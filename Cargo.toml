@@ -1,0 +1,17 @@
+[package]
+name = "space_lox"
+version = "0.1.0"
+authors = ["John Chabot <johnchabot2013@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "lox_runtime"
+path = "src/lib.rs"
+
+[[bin]]
+name = "john_lox_main"
+path = "src/main.rs"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
