@@ -1,6 +1,9 @@
+type Value = f64;
+
+// 
 #[derive(Debug)]
 pub struct ValueVec {
-  pub values: Vec<f64>
+  pub values: Vec<Value>
 }
 
 impl ValueVec {
