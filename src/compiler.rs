@@ -13,7 +13,7 @@ pub fn compile(source: &str) {
     } else {
       print!("   | ");
     }
-    println!("{:?} {}", token.kind, token.lexeme);
+    println!("{:?} {}", token.kind, token.lexeme.replace(" ", "<space>").replace("\n", "<newline>"));
 
     if token.kind == TokenKind::Eof {
       break;
