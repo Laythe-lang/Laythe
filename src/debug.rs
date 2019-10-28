@@ -32,9 +32,9 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
 }
 
 /// print a constant
-fn constant_instruction(name: &str, chunk: &Chunk, constant: &usize) {
+fn constant_instruction(name: &str, chunk: &Chunk, constant: &u8) {
   print!("{} {:4} ", name, constant);
-  print_value(chunk.constants.values[*constant]);
+  print_value(chunk.constants.values[*constant as usize]);
   println!();
 }
 

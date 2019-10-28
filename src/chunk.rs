@@ -23,7 +23,7 @@ pub enum OpCode {
   Divide,
 
   /// Constant OpCode
-  Constant(usize)
+  Constant(u8)
 }
 
 /// Represent tokens on a line

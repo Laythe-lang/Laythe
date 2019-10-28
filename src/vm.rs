@@ -1,7 +1,7 @@
 use std::io::{stdin, stdout, Write};
 use std::fs::read_to_string;
 use crate::chunk::{Chunk, OpCode};
-use crate::compiler::compile;
+use crate::compiler::{Compiler};
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_instruction;
@@ -33,8 +33,17 @@ impl Vm {
   }
 
   pub fn interpret(&mut self, source: &str) -> InterpretResult  {
-    compile(source);
-    return InterpretResult::Ok;
+    let mut chunk = Chunk::new();
+    let mut compiler = Compiler::new(source, &mut chunk);
+    
+    if !compiler.compile() {
+      return InterpretResult::CompileError
+    }
+
+    self.chunk = Box::new(chunk);
+    self.ip = 0;
+
+    self.run()
   }
 
   pub fn run(&mut self) -> InterpretResult {
@@ -90,8 +99,8 @@ impl Vm {
     }
   }
 
-  fn read_constant(&self, index: &usize) -> f64 {
-    self.chunk.constants.values[*index]
+  fn read_constant(&self, index: &u8) -> f64 {
+    self.chunk.constants.values[*index as usize]
   }
 
   fn push (&mut self, value: f64) {
@@ -137,7 +146,7 @@ impl Vm {
     self.push(left / right);
   }
 
-  fn op_constant(&mut self, index: usize) {
+  fn op_constant(&mut self, index: u8) {
     let constant = self.read_constant(&index);
     self.push(constant);
   }

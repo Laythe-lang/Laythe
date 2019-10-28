@@ -1,7 +1,5 @@
-// use std::io::{Write, stdout};
-
 /// A token in the space lox language
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Token<'a> {
   /// The token kind
   pub kind: TokenKind,
@@ -14,7 +12,7 @@ pub struct Token<'a> {
 }
 
 /// Token kinds in the space lox language
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum TokenKind {
   LeftParen,
   RightParen,
@@ -149,7 +147,7 @@ impl<'a> Scanner<'a> {
   /// assert_eq!(token.kind, TokenKind::Equal);
   /// assert_eq!(token.lexeme, "=");
   /// ```
-  pub fn scan_token(&mut self) -> Token {
+  pub fn scan_token(&mut self) -> Token<'a> {
 
     // advance whitespace
     self.skip_white_space();
@@ -222,7 +220,7 @@ impl<'a> Scanner<'a> {
   }
 
   /// Generate an identifier token
-  fn identifier(&mut self) -> Token {
+  fn identifier(&mut self) -> Token<'a> {
 
     // advance until we hit whitespace or a special char
     while !self.is_at_end() && (is_alpha(self.peek()) || is_digit(self.peek())) {
@@ -234,7 +232,7 @@ impl<'a> Scanner<'a> {
   }
 
   /// Generate a number token
-  fn number(&mut self) -> Token {
+  fn number(&mut self) -> Token<'a> {
 
     // advance consecutive digits
     while is_digit(self.peek()) {
@@ -257,7 +255,7 @@ impl<'a> Scanner<'a> {
   }
 
   /// Generate a string token
-  fn string(&mut self) -> Token {
+  fn string(&mut self) -> Token<'a> {
     while self.peek() != "\"" && !self.is_at_end() {
       if self.peek() == "\n" {
         self.line += 1;
@@ -359,17 +357,17 @@ impl<'a> Scanner<'a> {
   }
 
   /// Make a token from the current state of the scanner
-  fn make_token_source(&self, kind: TokenKind) -> Token {
+  fn make_token_source(&self, kind: TokenKind) -> Token<'a> {
     self.make_token(kind, self.current_slice(), self.line)
   }
 
   /// Make a new error token
-  fn error_token(&self, message: &'static str) -> Token {
+  fn error_token(&self, message: &'static str) -> Token<'a> {
     self.make_token(TokenKind::Error, message, self.line)
   }
 
   /// Make a new token
-  fn make_token(&self, kind: TokenKind, lexeme: &'a str, line: i32) -> Token {
+  fn make_token(&self, kind: TokenKind, lexeme: &'a str, line: i32) -> Token<'a> {
     Token { kind, lexeme, line }
   }
 
@@ -407,12 +405,12 @@ impl<'a> Scanner<'a> {
   }
 
   /// Get the current str slice
-  fn current_slice(&self) -> &str {
+  fn current_slice(&self) -> &'a str {
     &self.source[self.start..self.current - 1]
   }
 
   /// Advance the char index forward returning the current
-  fn advance(&mut self) -> &str {
+  pub fn advance(&mut self) -> &str {
     let current = &self.source[self.char_start..self.current];
     self.advance_indices();
     current
