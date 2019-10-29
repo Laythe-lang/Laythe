@@ -175,7 +175,7 @@ impl<'a> Scanner<'a> {
       "-" => self.make_token_source(TokenKind::Minus),
       "+" => self.make_token_source(TokenKind::Plus),
       "/" => self.make_token_source(TokenKind::Slash),
-      "*" => self.make_token_source(TokenKind::Slash),
+      "*" => self.make_token_source(TokenKind::Star),
       "=" => {
         if self.match_token("=") {
           self.make_token_source(TokenKind::EqualEqual)
@@ -235,16 +235,16 @@ impl<'a> Scanner<'a> {
   fn number(&mut self) -> Token<'a> {
 
     // advance consecutive digits
-    while is_digit(self.peek()) {
+    while !self.is_at_end() && is_digit(self.peek()) {
       self.advance();
     }
 
     // check if floating point format
-    if self.peek() == "." {
+    if !self.is_at_end() && self.peek() == "." {
       if let Some(next) = self.peek_next() {
         if is_digit(next) {
           self.advance();
-          while is_digit(self.peek()) {
+          while !self.is_at_end() && is_digit(self.peek()) {
             self.advance();
           }
         }
@@ -256,7 +256,7 @@ impl<'a> Scanner<'a> {
 
   /// Generate a string token
   fn string(&mut self) -> Token<'a> {
-    while self.peek() != "\"" && !self.is_at_end() {
+    while !self.is_at_end() && self.peek() != "\"" {
       if self.peek() == "\n" {
         self.line += 1;
       }
@@ -448,19 +448,19 @@ impl<'a> Scanner<'a> {
 
   /// Is the scanner at eof
   fn is_at_end(&self) -> bool {
-    self.current >= self.source.len()
+    self.current > self.source.len()
   }
 
   /// Is the index at eof
   fn char_index_at_end(&self, index: usize) -> bool {
-    index >= self.source.len()
+    index > self.source.len()
   }
 }
 
 /// What is the previous char boundary
 fn previous_boundary(source: &str, start: usize) -> usize {
   let mut current = start - 1;
-  while !source.is_char_boundary(current) && current < source.len() {
+  while !source.is_char_boundary(current) && current > 0 {
     current -= 1;
   }
 
@@ -485,4 +485,78 @@ fn is_digit(c: &str) -> bool {
 /// Is the str slice a alphabetic. Assumes single char
 fn is_alpha(c: &str) -> bool {
   (c >= "a" && c <= "z") || (c >= "A" && c < "Z") || c == "_"
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  const TOKEN_KINDS: [TokenKind; 40] = [
+    TokenKind::LeftParen, TokenKind::RightParen, TokenKind::LeftBrace, 
+    TokenKind::RightBrace, TokenKind::Comma, TokenKind::Dot, TokenKind::Minus, 
+    TokenKind::Plus, TokenKind::Semicolon, TokenKind::Slash, TokenKind::Star,
+
+    TokenKind::Bang, TokenKind::BangEqual, TokenKind::Equal, TokenKind::EqualEqual, 
+    TokenKind::Greater, TokenKind::GreaterEqual, TokenKind::Less, TokenKind::LessEqual,
+
+    TokenKind::Identifier, TokenKind::String, TokenKind::Number,
+
+    TokenKind::And, TokenKind::Class, TokenKind::Else, TokenKind::False,
+    TokenKind::For, TokenKind::Fun, TokenKind::If, TokenKind::Nil, TokenKind::Or,
+    TokenKind::Print, TokenKind::Return, TokenKind::Super, TokenKind::This,
+    TokenKind::True, TokenKind::Var, TokenKind::While,
+
+    TokenKind::Error, TokenKind::Eof,
+  ];
+
+  const EXAMPLES: &[&str] = &[
+    "(", ")", "{", "}",
+    ",", ".", "-", "+",
+    ";", "/", "*",
+
+    "!", "!=", "=", "==",
+    ">", ">=", "<", "<=",
+
+    "example", "\"example\"", "10.3",
+
+    "and", "class", "else",
+    "false", "for", "fun", 
+    "if", "nil", "or",
+    "print", "return", "super", 
+    "this", "true", "var",
+    "while",
+
+    "$%", "",
+  ];
+
+  #[test]
+  fn single_token() {
+    for (token_kind, example) in TOKEN_KINDS.iter().zip(EXAMPLES.iter()) {
+      let mut scanner = Scanner::new(example);
+      let scanned_token = scanner.scan_token().clone();
+      assert_eq!(scanned_token.kind, token_kind.clone());
+    }
+  }
+
+  #[test]
+  fn multiple_tokens() {
+    let basic = "10 + 3";
+    let mut scanner = Scanner::new(basic);
+
+    let token_ten = scanner.scan_token().clone();
+    assert_eq!(token_ten.kind, TokenKind::Number);
+    assert_eq!(token_ten.lexeme, "10");
+
+    let token_plus = scanner.scan_token().clone();
+    assert_eq!(token_plus.kind, TokenKind::Plus);
+    assert_eq!(token_plus.lexeme, "+");
+
+    let token_three = scanner.scan_token().clone();
+    assert_eq!(token_three.kind, TokenKind::Number);
+    assert_eq!(token_three.lexeme, "3");
+
+    let token_eof = scanner.scan_token().clone();
+    assert_eq!(token_eof.kind, TokenKind::Eof);
+    assert_eq!(token_eof.lexeme, "");
+  }
 }
