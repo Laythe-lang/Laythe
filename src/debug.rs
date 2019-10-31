@@ -1,4 +1,5 @@
 use crate::chunk::{Chunk, OpCode};
+use crate::value::{Value};
 
 /// Write a chunk to console
 pub fn disassemble_chunk(code_chunk: &Chunk, name: &str) -> () {
@@ -27,6 +28,13 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
     OpCode::Subtract => simple_instruction("Subtract"),
     OpCode::Multiply => simple_instruction("Multiply"),
     OpCode::Divide => simple_instruction("Divide"),
+    OpCode::Not => simple_instruction("Not"),
+    OpCode::Nil => simple_instruction("Nil"),
+    OpCode::True => simple_instruction("True"),
+    OpCode::False => simple_instruction("False"),
+    OpCode::Equal => simple_instruction("Equal"),
+    OpCode::Greater => simple_instruction("Greater"),
+    OpCode::Less => simple_instruction("Less"),
     OpCode::Constant(constant) => constant_instruction("Constant", chunk, constant),
   }
 }
@@ -34,7 +42,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
 /// print a constant
 fn constant_instruction(name: &str, chunk: &Chunk, constant: &u8) {
   print!("{} {:4} ", name, constant);
-  print_value(chunk.constants.values[*constant as usize]);
+  print_value(&chunk.constants.values[*constant as usize]);
   println!();
 }
 
@@ -44,6 +52,6 @@ fn simple_instruction(name: &str) {
 }
 
 /// print a value
-fn print_value(value: f64) {
+fn print_value(value: &Value) {
   print!("{}", value);
 }

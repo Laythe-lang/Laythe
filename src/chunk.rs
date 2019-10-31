@@ -1,7 +1,7 @@
-use crate::value::ValueVec;
+use crate::value::{ValueVec, Value};
 
 /// Space Lox virtual machine byte codes
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum OpCode {
 
   /// Return OpCode
@@ -22,8 +22,29 @@ pub enum OpCode {
   /// Divide OpCode
   Divide,
 
+  /// Not OpCode
+  Not,
+
   /// Constant OpCode
-  Constant(u8)
+  Constant(u8),
+
+  /// Nill OpCode
+  Nil,
+
+  /// True OpCode
+  True,
+
+  /// False OpCode
+  False,
+
+  /// Equal OpCode
+  Equal,
+
+  /// Greater OpCode
+  Greater,
+
+  /// Less OpCode
+  Less
 }
 
 /// Represent tokens on a line
@@ -115,18 +136,19 @@ impl Chunk {
   /// # Examples
   /// ```
   /// use lox_runtime::chunk::Chunk;
+  /// use lox_runtime::value::Value;
   /// 
   /// let mut chunk = Chunk::new(); 
-  /// let index_1 = chunk.add_constant(10.4); 
-  /// let index_2 = chunk.add_constant(5.2);
+  /// let index_1 = chunk.add_constant(Value::Number(10.4)); 
+  /// let index_2 = chunk.add_constant(Value::Number(5.2));
   /// 
   /// assert_eq!(index_1, 0);
   /// assert_eq!(index_2, 1);
   /// 
-  /// assert_eq!(chunk.constants.values[index_1], 10.4);
-  /// assert_eq!(chunk.constants.values[index_2], 5.2);
+  /// assert_eq!(chunk.constants.values[index_1], Value::Number(10.4));
+  /// assert_eq!(chunk.constants.values[index_2], Value::Number(5.2));
   /// ```
-  pub fn add_constant(&mut self, value: f64) -> usize {
+  pub fn add_constant(&mut self, value: Value) -> usize {
     self.constants.values.push(value);
     return self.constants.values.len() - 1;
   }

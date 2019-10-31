@@ -1,6 +1,7 @@
 use crate::scanner::{Scanner, TokenKind, Token};
 use crate::chunk::{Chunk, OpCode};
 use crate::debug::{disassemble_chunk};
+use crate::value::{Value};
 
 /// The spacelox compiler for converting tokens to bytecode
 pub struct Compiler<'a> {
@@ -28,7 +29,6 @@ impl<'a> Compiler<'a> {
   /// let mut chunk = Chunk::new();
   /// 
   /// let mut compiler = Compiler::new(source, &mut chunk);
-  /// assert_eq!(compiler.compile(), true);
   /// ```
   pub fn new(source: &'a str, chunk: &'a mut Chunk) -> Self {
     Self { 
@@ -89,7 +89,14 @@ impl<'a> Compiler<'a> {
     let precedence = get_rule(operator_kind.clone()).precedence.higher();
     self.parse_precendence(precedence);
 
+    println!("{:?}", operator_kind);
     match operator_kind {
+      TokenKind::BangEqual => self.emit_bytes(OpCode::Equal, OpCode::Not),
+      TokenKind::EqualEqual => self.emit_byte(OpCode::Equal),
+      TokenKind::Greater => self.emit_byte(OpCode::Greater),
+      TokenKind::GreaterEqual => self.emit_bytes(OpCode::Less, OpCode::Not),
+      TokenKind::Less => self.emit_byte(OpCode::Less),
+      TokenKind::LessEqual => self.emit_bytes(OpCode::Greater, OpCode::Not),
       TokenKind::Plus => self.emit_byte(OpCode::Add),
       TokenKind::Minus => self.emit_byte(OpCode::Subtract),
       TokenKind::Star => self.emit_byte(OpCode::Multiply),
@@ -97,14 +104,7 @@ impl<'a> Compiler<'a> {
       _ => panic!("Invalid operator")
     }
   }
-
-  /// Compile a grouping expression
-  fn grouping(&mut self) {
-    self.expression();
-
-    self.parser.consume(TokenKind::RightParen, "Expected ')' after expression")
-  }
-
+    
   /// Compile a unary expression
   fn unary(&mut self) {
     let operator_kind = self.parser.previous.kind.clone();
@@ -115,14 +115,32 @@ impl<'a> Compiler<'a> {
     // Emit the operator instruction
     match operator_kind {
       TokenKind::Minus => self.emit_byte(OpCode::Negate),
+      TokenKind::Bang => self.emit_byte(OpCode::Not),
       _ => panic!(),
     }
   }
 
+  /// Compile a grouping expression
+  fn grouping(&mut self) {
+    self.expression();
+
+    self.parser.consume(TokenKind::RightParen, "Expected ')' after expression")
+  }
+
   /// Compile a number literal
   fn number(&mut self) {
-    let value = self.parser.previous.lexeme.parse::<f64>().expect("Unable to parse float");
-    self.emit_constant(value.clone());
+    let value = Value::Number(self.parser.previous.lexeme.parse::<f64>().expect("Unable to parse float"));
+    self.emit_constant(value);
+  }
+
+  /// Compile a literal
+  fn literal(&mut self) {
+    match self.parser.previous.kind {
+      TokenKind::True => self.emit_byte(OpCode::True),
+      TokenKind::False => self.emit_byte(OpCode::False),
+      TokenKind::Nil => self.emit_byte(OpCode::Nil),
+      _ => panic!(format!("Unexpected token kind {:?}", self.parser.previous.kind))
+    }
   }
 
   /// Compile an expression an a provided precedences
@@ -143,6 +161,7 @@ impl<'a> Compiler<'a> {
   /// Execute a provided action
   fn execute_action(&mut self, action: Act) {
     match action {
+      Act::Literal => self.literal(),
       Act::Binary => self.binary(), 
       Act::Unary => self.unary(), 
       Act::Grouping => self.grouping(), 
@@ -156,7 +175,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Add a constant to the current chunk
-  fn make_constant(&mut self, value: f64) -> u8 {
+  fn make_constant(&mut self, value: Value) -> u8 {
     let index = self.chunk.add_constant(value);
     if index > std::u8::MAX as usize {
       self.parser.error("Too many constants in one chunk.");
@@ -167,12 +186,19 @@ impl<'a> Compiler<'a> {
   }
 
   /// Emit byte code for a constant
-  fn emit_constant(&mut self, value: f64) {
+  fn emit_constant(&mut self, value: Value) {
     let index = self.make_constant(value);
     self.emit_byte(OpCode::Constant(index));
   }
 
-  /// Emit a provided byte code
+  /// Emit two provided instruction
+  fn emit_bytes(&mut self, op_code1: OpCode, op_code2: OpCode) {
+    let line = self.parser.current.line.clone();
+    self.chunk.write_instruction(op_code1, line);
+    self.chunk.write_instruction(op_code2, line);
+  }
+
+  /// Emit a provided instruction
   fn emit_byte(&mut self, op_code: OpCode) {
     let line = self.parser.current.line.clone();
     self.chunk.write_instruction(op_code, line);
@@ -248,15 +274,15 @@ const RULES_TABLE: [ParseRule; 40] = [
     // TOKEN_STAR
             
   ParseRule::new(
-    None,
+    Some(Act::Unary),
     None,
     Precedence::None),       
     // TOKEN_BANG
             
   ParseRule::new(
     None,
-    None,
-    Precedence::None),       
+    Some(Act::Binary),
+    Precedence::Equality),       
     // TOKEN_BANG_EQUAL
       
   ParseRule::new(
@@ -267,32 +293,32 @@ const RULES_TABLE: [ParseRule; 40] = [
            
   ParseRule::new(
     None,
-    None,
-    Precedence::None),       
+    Some(Act::Binary),
+    Precedence::Equality),       
     // TOKEN_EQUAL_EQUAL
      
   ParseRule::new(
     None,
-    None,
-    Precedence::None),       
+    Some(Act::Binary),
+    Precedence::Comparison),       
     // TOKEN_GREATER
          
   ParseRule::new(
     None,
-    None,
-    Precedence::None),       
+    Some(Act::Binary),
+    Precedence::Comparison),       
     // TOKEN_GREATER_EQUAL
    
   ParseRule::new(
     None,
-    None,
-    Precedence::None),       
+    Some(Act::Binary),
+    Precedence::Comparison),       
     // TOKEN_LESS
             
   ParseRule::new(
     None,
-    None,
-    Precedence::None),       
+    Some(Act::Binary),
+    Precedence::Comparison),       
     // TOKEN_LESS_EQUAL
       
   ParseRule::new(
@@ -332,7 +358,7 @@ const RULES_TABLE: [ParseRule; 40] = [
     // TOKEN_ELSE
             
   ParseRule::new(
-    None,
+    Some(Act::Literal),
     None,
     Precedence::None),       
     // TOKEN_FALSE
@@ -356,7 +382,7 @@ const RULES_TABLE: [ParseRule; 40] = [
     // TOKEN_IF
               
   ParseRule::new(
-    None,
+    Some(Act::Literal),
     None,
     Precedence::None),       
     // TOKEN_NIL
@@ -392,7 +418,7 @@ const RULES_TABLE: [ParseRule; 40] = [
     // TOKEN_THIS
             
   ParseRule::new(
-    None,
+    Some(Act::Literal),
     None,
     Precedence::None),
     // TOKEN_TRUE
@@ -574,4 +600,266 @@ enum Act {
   Binary,
   Unary,
   Number,
+  Literal,
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  // #[test]
+  // fn op_return() {
+  //   let mut chunk = Chunk::new(); 
+  //   let example = "";
+
+  //   let mut compiler = Compiler::new(example, &mut chunk);
+  //   assert_eq!(compiler.compile(), true);
+
+  //   assert_eq!(chunk.instructions.len(), 1);
+  //   assert_eq!(chunk.instructions[0], OpCode::Return);
+  // }
+
+  #[test]
+  fn op_number() {
+    let mut chunk = Chunk::new(); 
+    let example = "5.18";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 2);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Return);
+  }
+
+  #[test]
+  fn op_false() {
+    let mut chunk = Chunk::new(); 
+    let example = "false";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 2);
+    assert_eq!(chunk.instructions[0], OpCode::False);
+    assert_eq!(chunk.instructions[1], OpCode::Return);
+  }
+
+  #[test]
+  fn op_true() {
+    let mut chunk = Chunk::new(); 
+    let example = "true";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 2);
+    assert_eq!(chunk.instructions[0], OpCode::True);
+    assert_eq!(chunk.instructions[1], OpCode::Return);
+  }
+
+  #[test]
+  fn op_nil() {
+    let mut chunk = Chunk::new(); 
+    let example = "nil";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 2);
+    assert_eq!(chunk.instructions[0], OpCode::Nil);
+    assert_eq!(chunk.instructions[1], OpCode::Return);
+  }
+
+  #[test]
+  fn op_not() {
+    let mut chunk = Chunk::new(); 
+    let example = "!false";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 3);
+    assert_eq!(chunk.instructions[0], OpCode::False);
+    assert_eq!(chunk.instructions[1], OpCode::Not);
+    assert_eq!(chunk.instructions[2], OpCode::Return);
+  }
+
+  #[test]
+  fn op_negate() {
+    let mut chunk = Chunk::new(); 
+    let example = "-15";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 3);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Negate);
+    assert_eq!(chunk.instructions[2], OpCode::Return);
+  }
+
+
+  #[test]
+  fn op_add() {
+    let mut chunk = Chunk::new(); 
+    let example = "10 + 4";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 4);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Constant(1));
+    assert_eq!(chunk.instructions[2], OpCode::Add);
+    assert_eq!(chunk.instructions[3], OpCode::Return);
+  }
+
+  #[test]
+  fn op_subtract() {
+    let mut chunk = Chunk::new(); 
+    let example = "10 - 4";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 4);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Constant(1));
+    assert_eq!(chunk.instructions[2], OpCode::Subtract);
+    assert_eq!(chunk.instructions[3], OpCode::Return);
+  }
+
+  #[test]
+  fn op_divide() {
+    let mut chunk = Chunk::new(); 
+    let example = "10 / 4";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 4);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Constant(1));
+    assert_eq!(chunk.instructions[2], OpCode::Divide);
+    assert_eq!(chunk.instructions[3], OpCode::Return);
+  }
+
+  #[test]
+  fn op_multi() {
+    let mut chunk = Chunk::new(); 
+    let example = "10 * 4";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 4);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Constant(1));
+    assert_eq!(chunk.instructions[2], OpCode::Multiply);
+    assert_eq!(chunk.instructions[3], OpCode::Return);
+  }
+
+
+  #[test]
+  fn op_equal() {
+    let mut chunk = Chunk::new(); 
+    let example = "true == nil";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 4);
+    assert_eq!(chunk.instructions[0], OpCode::True);
+    assert_eq!(chunk.instructions[1], OpCode::Nil);
+    assert_eq!(chunk.instructions[2], OpCode::Equal);
+    assert_eq!(chunk.instructions[3], OpCode::Return);
+  }
+
+  #[test]
+  fn op_not_equal() {
+    let mut chunk = Chunk::new(); 
+    let example = "true != nil";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 5);
+    assert_eq!(chunk.instructions[0], OpCode::True);
+    assert_eq!(chunk.instructions[1], OpCode::Nil);
+    assert_eq!(chunk.instructions[2], OpCode::Equal);
+    assert_eq!(chunk.instructions[3], OpCode::Not);
+    assert_eq!(chunk.instructions[4], OpCode::Return);
+  }
+
+  #[test]
+  fn op_less() {
+    let mut chunk = Chunk::new(); 
+    let example = "3 < 5";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 4);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Constant(1));
+    assert_eq!(chunk.instructions[2], OpCode::Less);
+    assert_eq!(chunk.instructions[3], OpCode::Return);
+  }
+
+  #[test]
+  fn op_less_equal() {
+    let mut chunk = Chunk::new(); 
+    let example = "3 <= 5";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 5);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Constant(1));
+    assert_eq!(chunk.instructions[2], OpCode::Greater);
+    assert_eq!(chunk.instructions[3], OpCode::Not);
+    assert_eq!(chunk.instructions[4], OpCode::Return);
+  }
+
+  #[test]
+  fn op_greater() {
+    let mut chunk = Chunk::new(); 
+    let example = "3 > 5";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 4);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Constant(1));
+    assert_eq!(chunk.instructions[2], OpCode::Greater);
+    assert_eq!(chunk.instructions[3], OpCode::Return);
+  }
+
+  #[test]
+  fn op_greater_equal() {
+    let mut chunk = Chunk::new(); 
+    let example = "3 >= 5";
+
+    let mut compiler = Compiler::new(example, &mut chunk);
+    assert_eq!(compiler.compile(), true);
+
+    assert_eq!(chunk.instructions.len(), 5);
+    assert_eq!(chunk.instructions[0], OpCode::Constant(0));
+    assert_eq!(chunk.instructions[1], OpCode::Constant(1));
+    assert_eq!(chunk.instructions[2], OpCode::Less);
+    assert_eq!(chunk.instructions[3], OpCode::Not);
+    assert_eq!(chunk.instructions[4], OpCode::Return);
+  }
+
+
+    // OpCode::Add => self.op_add(),
+    // OpCode::Subtract => self.op_sub(),
+    // OpCode::Multiply => self.op_mul(),
+    // OpCode::Divide => self.op_div(),
+    // OpCode::Equal => self.op_equal(),
+    // OpCode::Greater => self.op_greater(),
+    // OpCode::Less => self.op_less(),
 }

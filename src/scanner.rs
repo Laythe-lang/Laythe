@@ -12,7 +12,7 @@ pub struct Token<'a> {
 }
 
 /// Token kinds in the space lox language
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone)]
 pub enum TokenKind {
   LeftParen,
   RightParen,
@@ -489,57 +489,82 @@ fn is_alpha(c: &str) -> bool {
 
 #[cfg(test)]
 mod test {
+  use std::collections::{HashMap};
   use super::*;
 
-  const TOKEN_KINDS: [TokenKind; 40] = [
-    TokenKind::LeftParen, TokenKind::RightParen, TokenKind::LeftBrace, 
-    TokenKind::RightBrace, TokenKind::Comma, TokenKind::Dot, TokenKind::Minus, 
-    TokenKind::Plus, TokenKind::Semicolon, TokenKind::Slash, TokenKind::Star,
+  enum TokenGen {
+    Symbol(Box<dyn Fn() -> String>),
+    Comparator(Box<dyn Fn() -> String>),
+    ALpha(Box<dyn Fn() -> String>)
+  }
 
-    TokenKind::Bang, TokenKind::BangEqual, TokenKind::Equal, TokenKind::EqualEqual, 
-    TokenKind::Greater, TokenKind::GreaterEqual, TokenKind::Less, TokenKind::LessEqual,
+  fn token_gen() -> HashMap<TokenKind, TokenGen> {
+    let mut map = HashMap::new();
 
-    TokenKind::Identifier, TokenKind::String, TokenKind::Number,
+    map.insert(TokenKind::LeftParen, TokenGen::Symbol(Box::new(|| String::from("("))));
+    map.insert(TokenKind::RightParen, TokenGen::Symbol(Box::new(|| String::from(")"))));
+    map.insert(TokenKind::LeftBrace, TokenGen::Symbol(Box::new(|| String::from("{"))));
+    map.insert(TokenKind::RightBrace, TokenGen::Symbol(Box::new(|| String::from("}"))));
+    map.insert(TokenKind::Comma, TokenGen::Symbol(Box::new(|| String::from(","))));
+    map.insert(TokenKind::Dot, TokenGen::Symbol(Box::new(|| String::from("."))));
+    map.insert(TokenKind::Minus, TokenGen::Symbol(Box::new(|| String::from("-"))));
+    map.insert(TokenKind::Plus, TokenGen::Symbol(Box::new(|| String::from("+"))));
+    map.insert(TokenKind::Semicolon, TokenGen::Symbol(Box::new(|| String::from(";"))));
+    map.insert(TokenKind::Slash, TokenGen::Symbol(Box::new(|| String::from("/"))));
+    map.insert(TokenKind::Star, TokenGen::Symbol(Box::new(|| String::from("*"))));
 
-    TokenKind::And, TokenKind::Class, TokenKind::Else, TokenKind::False,
-    TokenKind::For, TokenKind::Fun, TokenKind::If, TokenKind::Nil, TokenKind::Or,
-    TokenKind::Print, TokenKind::Return, TokenKind::Super, TokenKind::This,
-    TokenKind::True, TokenKind::Var, TokenKind::While,
+    map.insert(TokenKind::Bang, TokenGen::Comparator(Box::new(|| String::from("!"))));
+    map.insert(TokenKind::BangEqual, TokenGen::Comparator(Box::new(|| String::from("!="))));
+    map.insert(TokenKind::Equal, TokenGen::Comparator(Box::new(|| String::from("="))));
+    map.insert(TokenKind::EqualEqual, TokenGen::Comparator(Box::new(|| String::from("=="))));
+    map.insert(TokenKind::Greater, TokenGen::Comparator(Box::new(|| String::from(">"))));
+    map.insert(TokenKind::GreaterEqual, TokenGen::Comparator(Box::new(|| String::from(">="))));
+    map.insert(TokenKind::Less, TokenGen::Comparator(Box::new(|| String::from("<"))));
+    map.insert(TokenKind::LessEqual, TokenGen::Comparator(Box::new(|| String::from("<="))));
 
-    TokenKind::Error, TokenKind::Eof,
-  ];
+    map.insert(TokenKind::Identifier, TokenGen::ALpha(Box::new(|| String::from("example"))));
+    map.insert(TokenKind::String, TokenGen::Symbol(Box::new(|| String::from("\"example\""))));
+    map.insert(TokenKind::Number, TokenGen::ALpha(Box::new(|| String::from("12345"))));
 
-  const EXAMPLES: &[&str] = &[
-    "(", ")", "{", "}",
-    ",", ".", "-", "+",
-    ";", "/", "*",
+    map.insert(TokenKind::And, TokenGen::ALpha(Box::new(|| String::from("and"))));
+    map.insert(TokenKind::Class, TokenGen::ALpha(Box::new(|| String::from("class"))));
+    map.insert(TokenKind::Else, TokenGen::ALpha(Box::new(|| String::from("else"))));
+    map.insert(TokenKind::False, TokenGen::ALpha(Box::new(|| String::from("false"))));
+    map.insert(TokenKind::For, TokenGen::ALpha(Box::new(|| String::from("for"))));
+    map.insert(TokenKind::Fun, TokenGen::ALpha(Box::new(|| String::from("fun"))));
+    map.insert(TokenKind::If, TokenGen::ALpha(Box::new(|| String::from("if"))));
+    map.insert(TokenKind::Nil, TokenGen::ALpha(Box::new(|| String::from("nil"))));
+    map.insert(TokenKind::Or, TokenGen::ALpha(Box::new(|| String::from("or"))));
+    map.insert(TokenKind::Print, TokenGen::ALpha(Box::new(|| String::from("print"))));
+    map.insert(TokenKind::Return, TokenGen::ALpha(Box::new(|| String::from("return"))));
+    map.insert(TokenKind::Super, TokenGen::ALpha(Box::new(|| String::from("super"))));
+    map.insert(TokenKind::This, TokenGen::ALpha(Box::new(|| String::from("this"))));
+    map.insert(TokenKind::True, TokenGen::ALpha(Box::new(|| String::from("true"))));
+    map.insert(TokenKind::Var, TokenGen::ALpha(Box::new(|| String::from("var"))));
+    map.insert(TokenKind::While, TokenGen::ALpha(Box::new(|| String::from("while"))));
+    map.insert(TokenKind::Error, TokenGen::ALpha(Box::new(|| String::from("$$"))));
+    map.insert(TokenKind::Eof, TokenGen::ALpha(Box::new(|| String::from(""))));
 
-    "!", "!=", "=", "==",
-    ">", ">=", "<", "<=",
-
-    "example", "\"example\"", "10.3",
-
-    "and", "class", "else",
-    "false", "for", "fun", 
-    "if", "nil", "or",
-    "print", "return", "super", 
-    "this", "true", "var",
-    "while",
-
-    "$%", "",
-  ];
+    map
+  }
 
   #[test]
-  fn single_token() {
-    for (token_kind, example) in TOKEN_KINDS.iter().zip(EXAMPLES.iter()) {
-      let mut scanner = Scanner::new(example);
+  fn test_single_token() {
+    for (token_kind, gen) in token_gen() {
+      let example = match gen {
+        TokenGen::Symbol(x) => x(),
+        TokenGen::ALpha(x) => x(),
+        TokenGen::Comparator(x) => x(),
+      };
+
+      let mut scanner = Scanner::new(&example);
       let scanned_token = scanner.scan_token().clone();
       assert_eq!(scanned_token.kind, token_kind.clone());
     }
   }
 
   #[test]
-  fn multiple_tokens() {
+  fn test_multiple_tokens() {
     let basic = "10 + 3";
     let mut scanner = Scanner::new(basic);
 

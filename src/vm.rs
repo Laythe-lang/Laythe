@@ -1,7 +1,9 @@
 use std::io::{stdin, stdout, Write};
-use std::fs::read_to_string;
+use std::fs::{read_to_string};
+use std::mem::{discriminant};
 use crate::chunk::{Chunk, OpCode};
 use crate::compiler::{Compiler};
+use crate::value::{Value};
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_instruction;
@@ -18,7 +20,7 @@ pub enum InterpretResult {
 pub struct Vm {
   pub chunk: Box<Chunk>,
   pub ip: usize,
-  pub stack: [f64; STACK_MAX],
+  pub stack: [Value; STACK_MAX],
   pub stack_top: usize,
 }
 
@@ -27,7 +29,7 @@ impl Vm {
     return Vm {
       chunk: Box::new(Chunk::new()),
       ip: 0,
-      stack: [0.0; STACK_MAX],
+      stack: [Value::Nil; STACK_MAX],
       stack_top: 0,
     }
   }
@@ -55,15 +57,22 @@ impl Vm {
 
       self.ip += 1;
       match op_code {
-        OpCode::Negate =>  self.op_negate(),
+        OpCode::Negate => self.op_negate(),
         OpCode::Add => self.op_add(),
         OpCode::Subtract => self.op_sub(),
         OpCode::Multiply => self.op_mul(),
         OpCode::Divide => self.op_div(),
+        OpCode::Not => self.op_not(),
         OpCode::Constant(index) => {
-          let index_clone = index.clone();
-          self.op_constant(index_clone);
+          let index_copy = index.clone();
+          self.op_constant(index_copy);
         }
+        OpCode::Nil => self.push(Value::Nil),
+        OpCode::True => self.push(Value::Bool(true)),
+        OpCode::False => self.push(Value::Bool(false)),
+        OpCode::Equal => self.op_equal(),
+        OpCode::Greater => self.op_greater(),
+        OpCode::Less => self.op_less(),
         OpCode::Return => {
           println!("{}", self.pop());
           return InterpretResult::Ok;
@@ -99,55 +108,112 @@ impl Vm {
     }
   }
 
-  fn read_constant(&self, index: &u8) -> f64 {
-    self.chunk.constants.values[*index as usize]
+  fn runtime_error(&mut self, message: &str) {
+    eprintln!("{}", message);
+    eprintln!("[line{}] in script", self.chunk.get_line(self.ip));
+    self.reset_stack();
   }
 
-  fn push (&mut self, value: f64) {
+  fn read_constant(&self, index: &u8) -> &Value {
+    &self.chunk.constants.values[*index as usize]
+  }
+
+  fn push (&mut self, value: Value) {
     self.stack[self.stack_top] = value;
     self.stack_top += 1;
   }
 
-  fn pop(&mut self) -> f64 {
+  fn pop(&mut self) -> Value {
     self.stack_top -= 1;
     self.stack[self.stack_top]
   }
 
-  // fn reset_stack(&mut self) {
-  //   self.stack_top = 0;
-  // }
+  fn reset_stack(&mut self) {
+    self.stack_top = 0;
+  }
 
   fn op_negate(&mut self) {
-    let value = -self.pop();
-    self.push(value);
+    match self.pop() {
+      Value::Number(num) => self.push(Value::Number(-num)),
+      _ => self.runtime_error("Operand must be a number.")
+    }
+  }
+
+  fn op_not(&mut self) {
+    let value = self.pop().clone();
+    self.push(Value::Bool(is_falsey(value)))
   }
 
   fn op_add(&mut self) {
-    let right = self.pop();
-    let left = self.pop();
-    self.push(left + right);
+    match self.pop() {
+      Value::Number(left) => match self.pop() {
+        Value::Number(right) => self.push(Value::Number(left + right)),
+        _ => self.runtime_error("Operands must be numbers."),
+      },
+      _ => self.runtime_error("Operands must be numbers."),
+    }
   }
 
   fn op_sub(&mut self) {
-    let right = self.pop();
-    let left = self.pop();
-    self.push(left - right);
+    match self.pop() {
+      Value::Number(left) => match self.pop() {
+        Value::Number(right) => self.push(Value::Number(left - right)),
+        _ => self.runtime_error("Operands must be numbers."),
+      },
+      _ => self.runtime_error("Operands must be numbers."),
+    }
   }
 
   fn op_mul(&mut self) {
-    let right = self.pop();
-    let left = self.pop();
-    self.push(left * right);
+    match self.pop() {
+      Value::Number(left) => match self.pop() {
+        Value::Number(right) => self.push(Value::Number(left * right)),
+        _ => self.runtime_error("Operands must be numbers."),
+      },
+      _ => self.runtime_error("Operands must be numbers."),
+    }
   }
 
   fn op_div(&mut self) {
-    let right = self.pop();
-    let left = self.pop();
-    self.push(left / right);
+    match self.pop() {
+      Value::Number(left) => match self.pop() {
+        Value::Number(right) => self.push(Value::Number(left / right)),
+        _ => self.runtime_error("Operands must be numbers."),
+      },
+      _ => self.runtime_error("Operands must be numbers."),
+    }
   }
 
+  fn op_less(&mut self) {
+    match self.pop() {
+      Value::Number(left) => match self.pop() {
+        Value::Number(right) => self.push(Value::Bool(left < right)),
+        _ => self.runtime_error("Operands must be numbers."),
+      },
+      _ => self.runtime_error("Operands must be numbers."),
+    }
+  }
+
+  fn op_greater(&mut self) {
+    match self.pop() {
+      Value::Number(left) => match self.pop() {
+        Value::Number(right) => self.push(Value::Bool(left > right)),
+        _ => self.runtime_error("Operands must be numbers."),
+      },
+      _ => self.runtime_error("Operands must be numbers."),
+    }
+  }
+
+  fn op_equal(&mut self) {
+    let left = self.pop();
+    let right = self.pop();
+    
+    self.push(Value::Bool(values_equal(&left, &right)));
+  }
+
+
   fn op_constant(&mut self, index: u8) {
-    let constant = self.read_constant(&index);
+    let constant = self.read_constant(&index).clone();
     self.push(constant);
   }
 
@@ -166,3 +232,29 @@ fn read_file(path: &str) -> String {
   read_to_string(path).expect("Could not read file")
 }
 
+fn values_equal(left: &Value, right: &Value) -> bool {
+  if discriminant(&left) != discriminant(&right) {
+    return false
+  }
+
+  match left {
+    Value::Number(num1) => match right {
+      Value::Number(num2) => num1 == num2,
+      _ => panic!("discriminant failed")
+    },
+    Value::Bool(b1) => match right {
+      Value::Bool(b2) => b1 == b2,
+      _ => panic!("discriminant failed")
+    },
+    Value::Nil => true
+  }
+}
+
+
+fn is_falsey(value: Value) -> bool {
+  match value {
+    Value::Nil => true,
+    Value::Bool(b) => !b,
+    _ => false,
+  }
+}
