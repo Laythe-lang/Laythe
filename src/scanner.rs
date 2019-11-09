@@ -1,11 +1,13 @@
+use crate::utils::{next_boundary, previous_boundary};
+
 /// A token in the space lox language
 #[derive(Debug, Clone)]
-pub struct Token<'a> {
+pub struct Token {
   /// The token kind
   pub kind: TokenKind,
 
   /// The character array of the source
-  pub lexeme: &'a str,
+  pub lexeme: String,
 
   /// line number this token appears
   pub line: i32,
@@ -62,10 +64,10 @@ pub enum TokenKind {
 
 /// A scanner for the lox language. This struct is
 /// responsible for taking a source string and tokenizing it
-pub struct Scanner<'a> {
+pub struct Scanner {
 
   /// The input source string
-  source: &'a str,
+  source: String,
 
   /// The current line number
   line: i32,
@@ -84,7 +86,7 @@ const STRING_ERROR: &'static str = "Unterminated string";
 const UNKNOWN_CHARACTER: &'static str = "Unexpected character";
 const END_OF_FILE: &'static str = "";
 
-impl<'a> Scanner<'a> {
+impl<'a> Scanner {
   /// Create a new scanner that can be used to tokenize
   /// a lox source string
   /// 
@@ -92,12 +94,12 @@ impl<'a> Scanner<'a> {
   /// ```
   /// use lox_runtime::scanner::{Scanner, TokenKind};
   /// 
-  /// let source = "
+  /// let source = String::from("
   /// var x = \"something\";
   /// if not x == \"something\" {
   ///   print(x);
   /// } 
-  /// ";
+  /// ");
   /// 
   /// let mut scanner = Scanner::new(source);
   /// let token = scanner.scan_token();
@@ -105,12 +107,14 @@ impl<'a> Scanner<'a> {
   /// assert_eq!(token.kind, TokenKind::Var);
   /// assert_eq!(token.lexeme, "var");
   /// ```
-  pub fn new(source: &str) -> Scanner {
+  pub fn new(source: String) -> Scanner {
+    let current = next_boundary(&source, 0);
+
     Scanner {
       source,
 
       start: 0,
-      current: next_boundary(source, 0),
+      current,
       char_start: 0,
 
       line: 0,
@@ -124,12 +128,12 @@ impl<'a> Scanner<'a> {
   /// ```
   /// use lox_runtime::scanner::{Scanner, TokenKind};
   /// 
-  /// let source = "
+  /// let source = String::from("
   /// var x = \"something\";
   /// if not x == \"something\" {
   ///   print(x);
   /// } 
-  /// ";
+  /// ");
   /// 
   /// let mut scanner = Scanner::new(source);
   /// let mut token = scanner.scan_token();
@@ -147,24 +151,27 @@ impl<'a> Scanner<'a> {
   /// assert_eq!(token.kind, TokenKind::Equal);
   /// assert_eq!(token.lexeme, "=");
   /// ```
-  pub fn scan_token(&mut self) -> Token<'a> {
+  pub fn scan_token(&'a mut self) -> Token {
 
     // advance whitespace
     self.skip_white_space();
 
     // find the previous unicode boundary
-    self.start = previous_boundary(self.source, self.current);
+    self.start = previous_boundary(&self.source, self.current);
     self.char_start = self.start;
 
     // if at end return oef token
     if self.is_at_end() {
       self.current = self.start;
-      return self.make_token(TokenKind::Eof, END_OF_FILE, self.line);
+      return make_token(TokenKind::Eof, END_OF_FILE, self.line);
     }
 
     // move scanner index and get current unicode character
-    let c = self.advance();
-    match c {
+    let char_start = self.char_start;
+    let current = self.current;
+
+    self.advance_indices();
+    match &self.source[char_start..current] {
       "(" => self.make_token_source(TokenKind::LeftParen),
       ")" => self.make_token_source(TokenKind::RightParen),
       "{" => self.make_token_source(TokenKind::LeftBrace),
@@ -206,25 +213,26 @@ impl<'a> Scanner<'a> {
       }
       "\"" => self.string(),
       _ => {
-        if is_digit(c) {
+        if is_digit(&self.source[char_start..current]) {
           return self.number();
         }
 
-        if is_alpha(c) {
+        if is_alpha(&self.source[char_start..current]) {
           return self.identifier();
         }
 
+        eprintln!("{}", &self.source[char_start..current]);
         self.error_token(UNKNOWN_CHARACTER)
       }
     }
   }
 
   /// Generate an identifier token
-  fn identifier(&mut self) -> Token<'a> {
+  fn identifier(&'a mut self) -> Token {
 
     // advance until we hit whitespace or a special char
     while !self.is_at_end() && (is_alpha(self.peek()) || is_digit(self.peek())) {
-      self.advance();
+      self.advance_indices();
     }
 
     // identifier if we are actually a keyword
@@ -232,20 +240,20 @@ impl<'a> Scanner<'a> {
   }
 
   /// Generate a number token
-  fn number(&mut self) -> Token<'a> {
+  fn number(&'a mut self) -> Token {
 
     // advance consecutive digits
     while !self.is_at_end() && is_digit(self.peek()) {
-      self.advance();
+      self.advance_indices();
     }
 
     // check if floating point format
     if !self.is_at_end() && self.peek() == "." {
       if let Some(next) = self.peek_next() {
         if is_digit(next) {
-          self.advance();
+          self.advance_indices();
           while !self.is_at_end() && is_digit(self.peek()) {
-            self.advance();
+            self.advance_indices();
           }
         }
       }
@@ -255,19 +263,19 @@ impl<'a> Scanner<'a> {
   }
 
   /// Generate a string token
-  fn string(&mut self) -> Token<'a> {
+  fn string(&mut self) -> Token {
     while !self.is_at_end() && self.peek() != "\"" {
       if self.peek() == "\n" {
         self.line += 1;
       }
-      self.advance();
+      self.advance_indices();
     }
 
     if self.is_at_end() {
       return self.error_token(&STRING_ERROR);
     }
 
-    self.advance();
+    self.advance_indices();
     self.make_token_source(TokenKind::String)
   }
 
@@ -277,29 +285,25 @@ impl<'a> Scanner<'a> {
       let c = self.peek();
       match c {
         " " | "\r" | "\t" => {
-          self.advance();
+          self.advance_indices();
         }
         "\n" => {
           self.line += 1;
-          self.advance();
+          self.advance_indices();
         }
         "/" => match self.peek_next() {
           Some(next) => {
             if next == "/" {
               while self.peek() != "\n" && self.is_at_end() {
-                self.advance();
+                self.advance_indices();
               }
             } else {
               return;
             }
           }
-          None => {
-            return;
-          }
+          None => return,
         },
-        _ => {
-            return;
-          }
+        _ => return,
       }
     }
   }
@@ -357,24 +361,20 @@ impl<'a> Scanner<'a> {
   }
 
   /// Make a token from the current state of the scanner
-  fn make_token_source(&self, kind: TokenKind) -> Token<'a> {
-    self.make_token(kind, self.current_slice(), self.line)
+  fn make_token_source(&'a self, kind: TokenKind) -> Token {
+    make_token(kind, self.current_slice(), self.line)
   }
 
   /// Make a new error token
-  fn error_token(&self, message: &'static str) -> Token<'a> {
-    self.make_token(TokenKind::Error, message, self.line)
+  fn error_token(&'a self, message: &'static str) -> Token {
+    make_token(TokenKind::Error, message, self.line)
   }
 
-  /// Make a new token
-  fn make_token(&self, kind: TokenKind, lexeme: &'a str, line: i32) -> Token<'a> {
-    Token { kind, lexeme, line }
-  }
 
   /// Peek the next token
   fn peek_next(&self) -> Option<&str> {
     let start = self.current;
-    let end = next_boundary(self.source, self.current);
+    let end = next_boundary(&self.source, self.current);
 
     if self.char_index_at_end(end) {
       return None;
@@ -390,12 +390,12 @@ impl<'a> Scanner<'a> {
 
   /// Find the nth char from the current index
   fn nth_char_from(&self, start: usize, n: u8) -> Option<&str> {
-    let mut current_index = next_boundary(self.source, start);
+    let mut current_index = next_boundary(&self.source, start);
     let mut start_index = start;
 
     for _ in 0..n {
       start_index = current_index;
-      current_index = next_boundary(self.source, current_index);
+      current_index = next_boundary(&self.source, current_index);
     }
 
     match self.char_index_at_end(current_index) {
@@ -405,28 +405,21 @@ impl<'a> Scanner<'a> {
   }
 
   /// Get the current str slice
-  fn current_slice(&self) -> &'a str {
+  fn current_slice(&'a self) -> &'a str {
     &self.source[self.start..self.current - 1]
-  }
-
-  /// Advance the char index forward returning the current
-  pub fn advance(&mut self) -> &str {
-    let current = &self.source[self.char_start..self.current];
-    self.advance_indices();
-    current
   }
 
   /// Advance the housekeeping indices
   fn advance_indices(&mut self) {
     self.char_start = self.current;
-    self.current = next_boundary(self.source, self.current);
+    self.current = next_boundary(&self.source, self.current);
   }
 
   /// Find the nth next char boundary
   fn nth_next_boundary(&self, start: usize, n: usize) -> usize {
     let mut current = start;
     for _ in 0..n {
-      current = next_boundary(self.source, current);
+      current = next_boundary(&self.source, current);
     }
 
     current
@@ -457,24 +450,11 @@ impl<'a> Scanner<'a> {
   }
 }
 
-/// What is the previous char boundary
-fn previous_boundary(source: &str, start: usize) -> usize {
-  let mut current = start - 1;
-  while !source.is_char_boundary(current) && current > 0 {
-    current -= 1;
-  }
 
-  current
-}
-
-/// What is next char boundary
-fn next_boundary(source: &str, start: usize) -> usize {
-  let mut current = start + 1;
-  while !source.is_char_boundary(current) && current < source.len() {
-    current += 1;
-  }
-
-  current
+/// Make a new token
+fn make_token<'a>(kind: TokenKind, raw: &'a str, line: i32) -> Token {
+  let lexeme = raw.to_string();
+  Token { kind, lexeme, line }
 }
 
 /// Is the str slice a digit. Assumes single char
@@ -549,6 +529,16 @@ mod test {
   }
 
   #[test]
+  fn test_empty_string() {
+    let empty = String::from("");
+    let mut scanner = Scanner::new(empty);
+
+    let token_eof = scanner.scan_token().clone();
+    assert_eq!(token_eof.kind, TokenKind::Eof);
+    assert_eq!(token_eof.lexeme, "");
+  }
+
+  #[test]
   fn test_single_token() {
     for (token_kind, gen) in token_gen() {
       let example = match gen {
@@ -557,7 +547,7 @@ mod test {
         TokenGen::Comparator(x) => x(),
       };
 
-      let mut scanner = Scanner::new(&example);
+      let mut scanner = Scanner::new(example);
       let scanned_token = scanner.scan_token().clone();
       assert_eq!(scanned_token.kind, token_kind.clone());
     }
@@ -565,7 +555,7 @@ mod test {
 
   #[test]
   fn test_multiple_tokens() {
-    let basic = "10 + 3";
+    let basic = String::from("10 + 3");
     let mut scanner = Scanner::new(basic);
 
     let token_ten = scanner.scan_token().clone();

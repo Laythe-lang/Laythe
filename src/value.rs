@@ -1,11 +1,13 @@
 use std::fmt;
+use crate::object::{Obj};
 
 /// Enum of value types in spacelox
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Value {
   Bool(bool),
   Nil,
-  Number(f64)
+  Number(f64),
+  Obj(Obj)
 }
 
 impl fmt::Display for Value {
@@ -14,12 +16,15 @@ impl fmt::Display for Value {
       Value::Number(num) => write!(f, "{}", num),
       Value::Bool(b) => write!(f, "{}", b),
       Value::Nil => write!(f, "nil"),
+      Value::Obj(obj) => match obj {
+        Obj::String(string) => write!(f, "{}", string)
+      }
     }
   }
 }
 
 // Represents a collection of values
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ValueVec {
   pub values: Vec<Value>
 }

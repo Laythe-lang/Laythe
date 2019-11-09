@@ -1,4 +1,5 @@
 
+/// Determine if all are some or none
 pub fn option_all<T>(option1: Option<T>, option2: Option<T>) -> Option<(T, T)> {
   match option1 {
     Some(opt1) => match option2 {
@@ -7,6 +8,27 @@ pub fn option_all<T>(option1: Option<T>, option2: Option<T>) -> Option<(T, T)> {
     },
     None => None
   }
+}
+
+
+/// What is the previous unicode code point
+pub fn previous_boundary(source: &str, start: usize) -> usize {
+  let mut current = start - 1;
+  while !source.is_char_boundary(current) && current > 0 {
+    current -= 1;
+  }
+
+  current
+}
+
+/// What is next unicode code point
+pub fn next_boundary(source: &str, start: usize) -> usize {
+  let mut current = start + 1;
+  while !source.is_char_boundary(current) && current < source.len() {
+    current += 1;
+  }
+
+  current
 }
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use crate::value::{ValueVec, Value};
 
 /// Space Lox virtual machine byte codes
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum OpCode {
 
   /// Return OpCode
@@ -48,7 +48,7 @@ pub enum OpCode {
 }
 
 /// Represent tokens on a line
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct Line {
 
   /// Line number
@@ -68,7 +68,7 @@ impl Line {
 }
 
 /// Represents a chunk of code
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Chunk {
 
   /// instructions in this code chunk
