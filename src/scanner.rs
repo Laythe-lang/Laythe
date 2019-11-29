@@ -82,9 +82,9 @@ pub struct Scanner {
   char_start: usize,
 }
 
-const STRING_ERROR: &'static str = "Unterminated string";
-const UNKNOWN_CHARACTER: &'static str = "Unexpected character";
-const END_OF_FILE: &'static str = "";
+const STRING_ERROR: &str = "Unterminated string";
+const UNKNOWN_CHARACTER: &str = "Unexpected character";
+const END_OF_FILE: &str = "";
 
 impl<'a> Scanner {
   /// Create a new scanner that can be used to tokenize
@@ -162,7 +162,6 @@ impl<'a> Scanner {
 
     // if at end return oef token
     if self.is_at_end() {
-      self.current = self.start;
       return make_token(TokenKind::Eof, END_OF_FILE, self.line);
     }
 
@@ -221,7 +220,7 @@ impl<'a> Scanner {
           return self.identifier();
         }
 
-        eprintln!("{}", &self.source[char_start..current]);
+        eprintln!("slice {}", visible_whitespace(&self.source[char_start..current]));
         self.error_token(UNKNOWN_CHARACTER)
       }
     }
@@ -283,6 +282,7 @@ impl<'a> Scanner {
   fn skip_white_space(&mut self) {
     while !self.is_at_end() {
       let c = self.peek();
+
       match c {
         " " | "\r" | "\t" => {
           self.advance_indices();
@@ -309,7 +309,7 @@ impl<'a> Scanner {
   }
 
   /// Identify if the current slice is a keyword. 
-  /// This uses a short of hardcoded trie
+  /// This uses a short of hard coded trie
   fn identifier_type(&self) -> TokenKind {
     match self.nth_char_from(self.start, 0) {
       Some(c1) => match c1 {
@@ -398,9 +398,10 @@ impl<'a> Scanner {
       current_index = next_boundary(&self.source, current_index);
     }
 
-    match self.char_index_at_end(current_index) {
-      true => None,
-      false => Some(&self.source[start_index..current_index])
+    if self.char_index_at_end(current_index) { 
+      None 
+    } else {
+      Some(&self.source[start_index..current_index])
     }
   }
 
@@ -450,9 +451,19 @@ impl<'a> Scanner {
   }
 }
 
+fn visible_whitespace(white_space: &str) -> &str {
+  match white_space {
+    " " => "<space>",
+    "\t" => "<tab>",
+    "\r" => "<carageReturn>",
+    "\n" => "<newline>",
+    "/" => "/",
+    _ => white_space
+  }
+}
 
 /// Make a new token
-fn make_token<'a>(kind: TokenKind, raw: &'a str, line: i32) -> Token {
+fn make_token(kind: TokenKind, raw: &str, line: i32) -> Token {
   let lexeme = raw.to_string();
   Token { kind, lexeme, line }
 }
@@ -481,56 +492,56 @@ mod test {
   fn token_gen() -> HashMap<TokenKind, TokenGen> {
     let mut map = HashMap::new();
 
-    map.insert(TokenKind::LeftParen, TokenGen::Symbol(Box::new(|| String::from("("))));
-    map.insert(TokenKind::RightParen, TokenGen::Symbol(Box::new(|| String::from(")"))));
-    map.insert(TokenKind::LeftBrace, TokenGen::Symbol(Box::new(|| String::from("{"))));
-    map.insert(TokenKind::RightBrace, TokenGen::Symbol(Box::new(|| String::from("}"))));
-    map.insert(TokenKind::Comma, TokenGen::Symbol(Box::new(|| String::from(","))));
-    map.insert(TokenKind::Dot, TokenGen::Symbol(Box::new(|| String::from("."))));
-    map.insert(TokenKind::Minus, TokenGen::Symbol(Box::new(|| String::from("-"))));
-    map.insert(TokenKind::Plus, TokenGen::Symbol(Box::new(|| String::from("+"))));
-    map.insert(TokenKind::Semicolon, TokenGen::Symbol(Box::new(|| String::from(";"))));
-    map.insert(TokenKind::Slash, TokenGen::Symbol(Box::new(|| String::from("/"))));
-    map.insert(TokenKind::Star, TokenGen::Symbol(Box::new(|| String::from("*"))));
+    map.insert(TokenKind::LeftParen, TokenGen::Symbol(Box::new(|| "(".to_string())));
+    map.insert(TokenKind::RightParen, TokenGen::Symbol(Box::new(|| ")".to_string())));
+    map.insert(TokenKind::LeftBrace, TokenGen::Symbol(Box::new(|| "{".to_string())));
+    map.insert(TokenKind::RightBrace, TokenGen::Symbol(Box::new(|| "}".to_string())));
+    map.insert(TokenKind::Comma, TokenGen::Symbol(Box::new(|| ",".to_string())));
+    map.insert(TokenKind::Dot, TokenGen::Symbol(Box::new(|| ".".to_string())));
+    map.insert(TokenKind::Minus, TokenGen::Symbol(Box::new(|| "-".to_string())));
+    map.insert(TokenKind::Plus, TokenGen::Symbol(Box::new(|| "+".to_string())));
+    map.insert(TokenKind::Semicolon, TokenGen::Symbol(Box::new(|| ";".to_string())));
+    map.insert(TokenKind::Slash, TokenGen::Symbol(Box::new(|| "/".to_string())));
+    map.insert(TokenKind::Star, TokenGen::Symbol(Box::new(|| "*".to_string())));
 
-    map.insert(TokenKind::Bang, TokenGen::Comparator(Box::new(|| String::from("!"))));
-    map.insert(TokenKind::BangEqual, TokenGen::Comparator(Box::new(|| String::from("!="))));
-    map.insert(TokenKind::Equal, TokenGen::Comparator(Box::new(|| String::from("="))));
-    map.insert(TokenKind::EqualEqual, TokenGen::Comparator(Box::new(|| String::from("=="))));
-    map.insert(TokenKind::Greater, TokenGen::Comparator(Box::new(|| String::from(">"))));
-    map.insert(TokenKind::GreaterEqual, TokenGen::Comparator(Box::new(|| String::from(">="))));
-    map.insert(TokenKind::Less, TokenGen::Comparator(Box::new(|| String::from("<"))));
-    map.insert(TokenKind::LessEqual, TokenGen::Comparator(Box::new(|| String::from("<="))));
+    map.insert(TokenKind::Bang, TokenGen::Comparator(Box::new(|| "!".to_string())));
+    map.insert(TokenKind::BangEqual, TokenGen::Comparator(Box::new(|| "!=".to_string())));
+    map.insert(TokenKind::Equal, TokenGen::Comparator(Box::new(|| "=".to_string())));
+    map.insert(TokenKind::EqualEqual, TokenGen::Comparator(Box::new(|| "==".to_string())));
+    map.insert(TokenKind::Greater, TokenGen::Comparator(Box::new(|| ">".to_string())));
+    map.insert(TokenKind::GreaterEqual, TokenGen::Comparator(Box::new(|| ">=".to_string())));
+    map.insert(TokenKind::Less, TokenGen::Comparator(Box::new(|| "<".to_string())));
+    map.insert(TokenKind::LessEqual, TokenGen::Comparator(Box::new(|| "<=".to_string())));
 
-    map.insert(TokenKind::Identifier, TokenGen::ALpha(Box::new(|| String::from("example"))));
-    map.insert(TokenKind::String, TokenGen::Symbol(Box::new(|| String::from("\"example\""))));
-    map.insert(TokenKind::Number, TokenGen::ALpha(Box::new(|| String::from("12345"))));
+    map.insert(TokenKind::Identifier, TokenGen::ALpha(Box::new(|| "example".to_string())));
+    map.insert(TokenKind::String, TokenGen::Symbol(Box::new(|| "\"example\"".to_string())));
+    map.insert(TokenKind::Number, TokenGen::ALpha(Box::new(|| "12345".to_string())));
 
-    map.insert(TokenKind::And, TokenGen::ALpha(Box::new(|| String::from("and"))));
-    map.insert(TokenKind::Class, TokenGen::ALpha(Box::new(|| String::from("class"))));
-    map.insert(TokenKind::Else, TokenGen::ALpha(Box::new(|| String::from("else"))));
-    map.insert(TokenKind::False, TokenGen::ALpha(Box::new(|| String::from("false"))));
-    map.insert(TokenKind::For, TokenGen::ALpha(Box::new(|| String::from("for"))));
-    map.insert(TokenKind::Fun, TokenGen::ALpha(Box::new(|| String::from("fun"))));
-    map.insert(TokenKind::If, TokenGen::ALpha(Box::new(|| String::from("if"))));
-    map.insert(TokenKind::Nil, TokenGen::ALpha(Box::new(|| String::from("nil"))));
-    map.insert(TokenKind::Or, TokenGen::ALpha(Box::new(|| String::from("or"))));
-    map.insert(TokenKind::Print, TokenGen::ALpha(Box::new(|| String::from("print"))));
-    map.insert(TokenKind::Return, TokenGen::ALpha(Box::new(|| String::from("return"))));
-    map.insert(TokenKind::Super, TokenGen::ALpha(Box::new(|| String::from("super"))));
-    map.insert(TokenKind::This, TokenGen::ALpha(Box::new(|| String::from("this"))));
-    map.insert(TokenKind::True, TokenGen::ALpha(Box::new(|| String::from("true"))));
-    map.insert(TokenKind::Var, TokenGen::ALpha(Box::new(|| String::from("var"))));
-    map.insert(TokenKind::While, TokenGen::ALpha(Box::new(|| String::from("while"))));
-    map.insert(TokenKind::Error, TokenGen::ALpha(Box::new(|| String::from("$$"))));
-    map.insert(TokenKind::Eof, TokenGen::ALpha(Box::new(|| String::from(""))));
+    map.insert(TokenKind::And, TokenGen::ALpha(Box::new(|| "and".to_string())));
+    map.insert(TokenKind::Class, TokenGen::ALpha(Box::new(|| "class".to_string())));
+    map.insert(TokenKind::Else, TokenGen::ALpha(Box::new(|| "else".to_string())));
+    map.insert(TokenKind::False, TokenGen::ALpha(Box::new(|| "false".to_string())));
+    map.insert(TokenKind::For, TokenGen::ALpha(Box::new(|| "for".to_string())));
+    map.insert(TokenKind::Fun, TokenGen::ALpha(Box::new(|| "fun".to_string())));
+    map.insert(TokenKind::If, TokenGen::ALpha(Box::new(|| "if".to_string())));
+    map.insert(TokenKind::Nil, TokenGen::ALpha(Box::new(|| "nil".to_string())));
+    map.insert(TokenKind::Or, TokenGen::ALpha(Box::new(|| "or".to_string())));
+    map.insert(TokenKind::Print, TokenGen::ALpha(Box::new(|| "print".to_string())));
+    map.insert(TokenKind::Return, TokenGen::ALpha(Box::new(|| "return".to_string())));
+    map.insert(TokenKind::Super, TokenGen::ALpha(Box::new(|| "super".to_string())));
+    map.insert(TokenKind::This, TokenGen::ALpha(Box::new(|| "this".to_string())));
+    map.insert(TokenKind::True, TokenGen::ALpha(Box::new(|| "true".to_string())));
+    map.insert(TokenKind::Var, TokenGen::ALpha(Box::new(|| "var".to_string())));
+    map.insert(TokenKind::While, TokenGen::ALpha(Box::new(|| "while".to_string())));
+    map.insert(TokenKind::Error, TokenGen::ALpha(Box::new(|| "$$".to_string())));
+    map.insert(TokenKind::Eof, TokenGen::ALpha(Box::new(|| "".to_string())));
 
     map
   }
 
   #[test]
   fn test_empty_string() {
-    let empty = String::from("");
+    let empty = "".to_string();
     let mut scanner = Scanner::new(empty);
 
     let token_eof = scanner.scan_token().clone();
@@ -555,7 +566,7 @@ mod test {
 
   #[test]
   fn test_multiple_tokens() {
-    let basic = String::from("10 + 3");
+    let basic = "10 + 3".to_string();
     let mut scanner = Scanner::new(basic);
 
     let token_ten = scanner.scan_token().clone();

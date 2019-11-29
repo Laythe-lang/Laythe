@@ -1,8 +1,7 @@
-use crate::chunk::{Chunk, OpCode};
-use crate::value::{Value};
+use crate::chunk::{Chunk, ByteCode};
 
 /// Write a chunk to console
-pub fn disassemble_chunk(code_chunk: &Chunk, name: &str) -> () {
+pub fn disassemble_chunk(code_chunk: &Chunk, name: &str) {
   println!("== {0} ==", name);
 
   for offset in 0..code_chunk.instructions.len() {
@@ -22,36 +21,31 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
 
   let instruction = &chunk.instructions[offset];
   match instruction {
-    OpCode::Return => simple_instruction("Return"),
-    OpCode::Negate => simple_instruction("Negate"),
-    OpCode::Add => simple_instruction("Add"),
-    OpCode::Subtract => simple_instruction("Subtract"),
-    OpCode::Multiply => simple_instruction("Multiply"),
-    OpCode::Divide => simple_instruction("Divide"),
-    OpCode::Not => simple_instruction("Not"),
-    OpCode::Nil => simple_instruction("Nil"),
-    OpCode::True => simple_instruction("True"),
-    OpCode::False => simple_instruction("False"),
-    OpCode::Equal => simple_instruction("Equal"),
-    OpCode::Greater => simple_instruction("Greater"),
-    OpCode::Less => simple_instruction("Less"),
-    OpCode::Constant(constant) => constant_instruction("Constant", chunk, constant),
+    ByteCode::Return => simple_instruction("Return"),
+    ByteCode::Negate => simple_instruction("Negate"),
+    ByteCode::Add => simple_instruction("Add"),
+    ByteCode::Subtract => simple_instruction("Subtract"),
+    ByteCode::Multiply => simple_instruction("Multiply"),
+    ByteCode::Divide => simple_instruction("Divide"),
+    ByteCode::Not => simple_instruction("Not"),
+    ByteCode::Nil => simple_instruction("Nil"),
+    ByteCode::True => simple_instruction("True"),
+    ByteCode::False => simple_instruction("False"),
+    ByteCode::Equal => simple_instruction("Equal"),
+    ByteCode::Greater => simple_instruction("Greater"),
+    ByteCode::Less => simple_instruction("Less"),
+    ByteCode::Constant(constant) => constant_instruction("Constant", chunk, *constant),
   }
 }
 
 /// print a constant
-fn constant_instruction(name: &str, chunk: &Chunk, constant: &u8) {
+fn constant_instruction(name: &str, chunk: &Chunk, constant: u8) {
   print!("{} {:4} ", name, constant);
-  print_value(&chunk.constants.values[*constant as usize]);
+  print!("{}", &chunk.constants.values[constant as usize]);
   println!();
 }
 
 /// print a simple instruction
 fn simple_instruction(name: &str) {
   println!("{}", name);
-}
-
-/// print a value
-fn print_value(value: &Value) {
-  print!("{}", value);
 }

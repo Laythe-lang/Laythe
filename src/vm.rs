@@ -1,15 +1,16 @@
 use std::io::{stdin, stdout, Write};
 use std::fs::{read_to_string};
-use std::mem::{discriminant};
-use std::ptr;
-use crate::chunk::{Chunk, OpCode};
+use std::mem::{replace};
+use std::rc::{Rc, Weak};
+use crate::chunk::{Chunk, ByteCode};
 use crate::compiler::{Compiler};
 use crate::value::{Value};
+use crate::object::{Obj, ObjValue};
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_instruction;
 
-const STACK_MAX: usize = 500;
+pub const DEFAULT_STACK_MAX: usize = 500;
 
 #[derive(Debug)]
 pub enum InterpretResult {
@@ -18,33 +19,30 @@ pub enum InterpretResult {
   RuntimeError,
 }
 
+/// The virtual machine for the spacelox programming language
 pub struct Vm {
   pub chunk: Box<Chunk>,
   pub ip: usize,
   pub stack: Vec<Value>,
+  pub objects: Weak<Obj>,
   pub stack_top: usize,
 }
 
 impl Vm {
-  pub fn new() -> Vm {
-    let mut stack = Vec::with_capacity(STACK_MAX);
-    for _ in 0..STACK_MAX {
-      stack.push(Value::Nil);
-    }
-
-
-    return Vm {
-      chunk: Box::new(Chunk::new()),
+  pub fn new(stack: Vec<Value>) -> Vm {
+    Vm {
+      chunk: Box::new(Chunk::default()),
       ip: 0,
-      stack: stack,
+      stack,
+      objects: Weak::new(),
       stack_top: 0,
     }
   }
 
   pub fn repl(&mut self) {
-    let mut buffer = String::new();
-
     loop {
+      let mut buffer = String::new();
+
       print!("> ");
       stdout().flush().expect("Could not write to stdout");
 
@@ -69,7 +67,9 @@ impl Vm {
   }
 
   fn interpret(&mut self, source: String) -> InterpretResult  {
-    let compiler = Compiler::new(source, Chunk::new());
+    let allocate = |obj: Obj| { self.allocate(obj) }; 
+  
+    let compiler = Compiler::new(source, Chunk::default(), &allocate);
     let (success, chunk) = compiler.compile();
 
     if !success {
@@ -78,6 +78,7 @@ impl Vm {
 
     self.chunk = Box::new(chunk);
     self.ip = 0;
+
     self.run()
   }
 
@@ -90,23 +91,23 @@ impl Vm {
 
       self.ip += 1;
       match op_code {
-        OpCode::Negate => self.op_negate(),
-        OpCode::Add => self.op_add(),
-        OpCode::Subtract => self.op_sub(),
-        OpCode::Multiply => self.op_mul(),
-        OpCode::Divide => self.op_div(),
-        OpCode::Not => self.op_not(),
-        OpCode::Constant(index) => {
-          let index_copy = index.clone();
+        ByteCode::Negate => self.op_negate(),
+        ByteCode::Add => self.op_add(),
+        ByteCode::Subtract => self.op_sub(),
+        ByteCode::Multiply => self.op_mul(),
+        ByteCode::Divide => self.op_div(),
+        ByteCode::Not => self.op_not(),
+        ByteCode::Constant(index) => {
+          let index_copy = *index;
           self.op_constant(index_copy);
         }
-        OpCode::Nil => self.push(Value::Nil),
-        OpCode::True => self.push(Value::Bool(true)),
-        OpCode::False => self.push(Value::Bool(false)),
-        OpCode::Equal => self.op_equal(),
-        OpCode::Greater => self.op_greater(),
-        OpCode::Less => self.op_less(),
-        OpCode::Return => {
+        ByteCode::Nil => self.push(Value::Nil),
+        ByteCode::True => self.push(Value::Bool(true)),
+        ByteCode::False => self.push(Value::Bool(false)),
+        ByteCode::Equal => self.op_equal(),
+        ByteCode::Greater => self.op_greater(),
+        ByteCode::Less => self.op_less(),
+        ByteCode::Return => {
           if self.stack_top == 1 {
             println!("{}", self.pop());
           }
@@ -123,8 +124,17 @@ impl Vm {
     self.reset_stack();
   }
 
-  fn read_constant(&self, index: &u8) -> Value {
-    self.chunk.constants.values[*index as usize].clone()
+  fn read_constant(&self, index: u8) -> Value {
+    self.chunk.constants.values[index as usize].clone()
+  }
+
+  fn allocate(&mut self, obj: Obj) -> Obj {
+    obj.next = self.objects;
+    let strong_ref = Rc::new(obj);
+    let weak_ref = Rc::downgrade(&strong_ref);
+    self.objects = weak_ref;
+
+    obj
   }
 
   fn push (&mut self, value: Value) {
@@ -132,11 +142,13 @@ impl Vm {
     self.stack_top += 1;
   }
 
+  fn peek(&self, distance: usize) -> &Value {
+    &self.stack[self.stack_top - (distance + 1)]
+  }
+
   fn pop(&mut self) -> Value {
-    unsafe {
-      self.stack_top -= 1;
-      ptr::read(&self.stack[self.stack_top])
-    }
+    self.stack_top -= 1;
+    replace(&mut self.stack[self.stack_top], Value::Nil)
   }
 
   fn reset_stack(&mut self) {
@@ -151,27 +163,42 @@ impl Vm {
   }
 
   fn op_not(&mut self) {
-    unsafe {
-      self.stack_top -= 1;
-      let value = ptr::read(&self.stack[self.stack_top]);
-      self.push(Value::Bool(is_falsey(value)))
-    }
+    let value = self.pop();
+    self.push(Value::Bool(is_falsey(value)))
   }
 
   fn op_add(&mut self) {
-    match self.pop() {
-      Value::Number(left) => match self.pop() {
-        Value::Number(right) => self.push(Value::Number(left + right)),
-        _ => self.runtime_error("Operands must be numbers."),
+    match self.peek(0) {
+      Value::Obj(obj1) => match &obj1.value {
+        ObjValue::String(_str1) => match self.peek(1) {
+          Value::Obj(obj2) => match &obj2.value {
+            ObjValue::String(_str2) => {
+              let right = self.pop().move_obj().move_string();
+              let left = self.pop().move_obj().move_string();
+
+              let result = format!("{}{}", left, right);
+              self.push(Value::Obj(Obj::new(ObjValue::String(result))));
+            }
+          }
+          _ => self.runtime_error("Operands must be two numbers or two strings."),
+        }
       },
-      _ => self.runtime_error("Operands must be numbers."),
+      Value::Number(_num1) => match self.peek(1) {
+        Value::Number(_num2) => {
+          let right = self.pop().to_num();
+          let left = self.pop().to_num();
+          self.push(Value::Number(left + right));
+        }
+        _ => self.runtime_error("Operands must be two numbers or two strings."),
+      }
+      _ => self.runtime_error("Operands must be two numbers or two strings."),
     }
   }
 
   fn op_sub(&mut self) {
     match self.pop() {
-      Value::Number(left) => match self.pop() {
-        Value::Number(right) => self.push(Value::Number(left - right)),
+      Value::Number(right) => match self.pop() {
+        Value::Number(left) => self.push(Value::Number(left - right)),
         _ => self.runtime_error("Operands must be numbers."),
       },
       _ => self.runtime_error("Operands must be numbers."),
@@ -180,8 +207,8 @@ impl Vm {
 
   fn op_mul(&mut self) {
     match self.pop() {
-      Value::Number(left) => match self.pop() {
-        Value::Number(right) => self.push(Value::Number(left * right)),
+      Value::Number(right) => match self.pop() {
+        Value::Number(left) => self.push(Value::Number(left * right)),
         _ => self.runtime_error("Operands must be numbers."),
       },
       _ => self.runtime_error("Operands must be numbers."),
@@ -190,8 +217,8 @@ impl Vm {
 
   fn op_div(&mut self) {
     match self.pop() {
-      Value::Number(left) => match self.pop() {
-        Value::Number(right) => self.push(Value::Number(left / right)),
+      Value::Number(right) => match self.pop() {
+        Value::Number(left) => self.push(Value::Number(left / right)),
         _ => self.runtime_error("Operands must be numbers."),
       },
       _ => self.runtime_error("Operands must be numbers."),
@@ -200,8 +227,8 @@ impl Vm {
 
   fn op_less(&mut self) {
     match self.pop() {
-      Value::Number(left) => match self.pop() {
-        Value::Number(right) => self.push(Value::Bool(left < right)),
+      Value::Number(right) => match self.pop() {
+        Value::Number(left) => self.push(Value::Bool(left < right)),
         _ => self.runtime_error("Operands must be numbers."),
       },
       _ => self.runtime_error("Operands must be numbers."),
@@ -210,8 +237,8 @@ impl Vm {
 
   fn op_greater(&mut self) {
     match self.pop() {
-      Value::Number(left) => match self.pop() {
-        Value::Number(right) => self.push(Value::Bool(left > right)),
+      Value::Number(right) => match self.pop() {
+        Value::Number(left) => self.push(Value::Bool(left > right)),
         _ => self.runtime_error("Operands must be numbers."),
       },
       _ => self.runtime_error("Operands must be numbers."),
@@ -219,18 +246,15 @@ impl Vm {
   }
 
   fn op_equal(&mut self) {
-    unsafe {
-      let left = ptr::read(&self.stack[self.stack_top - 1]);
-      let right = ptr::read(&self.stack[self.stack_top - 2]);
-      self.stack_top -= 2;
+    let right = self.pop();
+    let left = self.pop();
 
-      self.push(Value::Bool(values_equal(left, right)));
-    }
+    self.push(Value::Bool(left == right));
   }
 
 
   fn op_constant(&mut self, index: u8) {
-    let constant = self.read_constant(&index);
+    let constant = self.read_constant(index);
     self.push(constant);
   }
 
@@ -249,25 +273,17 @@ fn read_file(path: &str) -> String {
   read_to_string(path).expect("Could not read file")
 }
 
-///
-fn values_equal(left: Value, right: Value) -> bool {
-  if discriminant(&left) != discriminant(&right) {
-    return false
+pub fn pre_allocated_stack(size: usize) -> Vec<Value> {
+  let mut stack = Vec::with_capacity(size);
+
+  // fill and initialize the stack with values
+  for _ in 0..size {
+    stack.push(Value::Nil);
   }
 
-  match left {
-    Value::Number(num1) => match right {
-      Value::Number(num2) => num1 == num2,
-      _ => panic!("discriminant failed")
-    },
-    Value::Bool(b1) => match right {
-      Value::Bool(b2) => b1 == b2,
-      _ => panic!("discriminant failed")
-    },
-    Value::Nil => true,
-    Value::Obj(_) => panic!("panic!")
-  }
+  stack
 }
+
 
 /// Is the provided `value` falsey according to spacelox rules
 /// 

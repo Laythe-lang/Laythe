@@ -2,7 +2,7 @@ use crate::value::{ValueVec, Value};
 
 /// Space Lox virtual machine byte codes
 #[derive(Debug, PartialEq, Clone)]
-pub enum OpCode {
+pub enum ByteCode {
 
   /// Return OpCode
   Return,
@@ -63,16 +63,16 @@ impl Line {
 
   /// Create a new line
   fn new(line: i32, count: i16) -> Line {
-    return Line { line, count };
+    Line { line, count }
   }
 }
 
 /// Represents a chunk of code
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Chunk {
 
   /// instructions in this code chunk
-  pub instructions: Vec<OpCode>,
+  pub instructions: Vec<ByteCode>,
 
   /// constants in this code chunk
   pub constants: ValueVec,
@@ -82,41 +82,22 @@ pub struct Chunk {
 }
 
 impl Chunk {
-
-  /// Create a new chunk
-  /// 
-  /// # Examples
-  /// ```
-  /// use lox_runtime::chunk::Chunk;
-  /// 
-  /// let chunk = Chunk::new();
-  /// assert_eq!(chunk.constants.values.len(), 0); 
-  /// assert_eq!(chunk.instructions.len(), 0);
-  /// ```
-  pub fn new() -> Chunk {
-    Chunk {
-      instructions: Vec::new(),
-      constants: ValueVec::new(),
-      lines: Vec::new(),
-    }
-  }
-
   /// Write an instruction to this chunk
   /// 
   /// # Examples
   /// ```
-  /// use lox_runtime::chunk::{Chunk, OpCode};
+  /// use lox_runtime::chunk::{Chunk, ByteCode};
   /// 
-  /// let mut chunk = Chunk::new();
-  /// chunk.write_instruction(OpCode::Return, 0);
-  /// chunk.write_instruction(OpCode::Add, 0);
-  /// chunk.write_instruction(OpCode::Constant(10), 1);
+  /// let mut chunk = Chunk::default();
+  /// chunk.write_instruction(ByteCode::Return, 0);
+  /// chunk.write_instruction(ByteCode::Add, 0);
+  /// chunk.write_instruction(ByteCode::Constant(10), 1);
   /// 
   /// assert_eq!(chunk.instructions.len(), 3);
   /// // assert_eq!(chunk.constants.values.len(), 1);
   /// ```
   /// 
-  pub fn write_instruction(&mut self, op_code: OpCode, line: i32) {
+  pub fn write_instruction(&mut self, op_code: ByteCode, line: i32) {
     self.instructions.push(op_code);
 
     match self.lines.last_mut() {
@@ -138,7 +119,7 @@ impl Chunk {
   /// use lox_runtime::chunk::Chunk;
   /// use lox_runtime::value::Value;
   /// 
-  /// let mut chunk = Chunk::new(); 
+  /// let mut chunk = Chunk::default(); 
   /// let index_1 = chunk.add_constant(Value::Number(10.4)); 
   /// let index_2 = chunk.add_constant(Value::Number(5.2));
   /// 
@@ -150,20 +131,20 @@ impl Chunk {
   /// ```
   pub fn add_constant(&mut self, value: Value) -> usize {
     self.constants.values.push(value);
-    return self.constants.values.len() - 1;
+    self.constants.values.len() - 1
   }
 
   /// Get the line number at a token offset
   /// 
   /// # Example
   /// ```
-  /// use lox_runtime::chunk::{Chunk, OpCode};
+  /// use lox_runtime::chunk::{Chunk, ByteCode};
   /// 
-  /// let mut chunk = Chunk::new();
+  /// let mut chunk = Chunk::default();
   /// 
-  /// chunk.write_instruction(OpCode::Add, 0);
-  /// chunk.write_instruction(OpCode::Divide, 0);
-  /// chunk.write_instruction(OpCode::Return, 2);
+  /// chunk.write_instruction(ByteCode::Add, 0);
+  /// chunk.write_instruction(ByteCode::Divide, 0);
+  /// chunk.write_instruction(ByteCode::Return, 2);
   /// 
   /// assert_eq!(chunk.get_line(0), 0);
   /// assert_eq!(chunk.get_line(1), 0);
@@ -177,7 +158,7 @@ impl Chunk {
   /// ```rust,should_panic
   /// use lox_runtime::chunk::Chunk;
   /// 
-  /// let chunk = Chunk::new();
+  /// let chunk = Chunk::default();
   /// chunk.get_line(3);
   /// ```
   pub fn get_line(&self, offset: usize) -> i32 {
