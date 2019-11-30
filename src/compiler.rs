@@ -1,46 +1,60 @@
-use std::rc::{Weak};
-use crate::scanner::{Scanner, TokenKind, Token};
-use crate::chunk::{Chunk, ByteCode};
-use crate::debug::{disassemble_chunk};
-use crate::value::{Value};
+use crate::chunk::{ByteCode, Chunk};
+use crate::debug::disassemble_chunk;
 use crate::object::{copy_string, Obj, ObjValue};
+use crate::scanner::{Scanner, Token, TokenKind};
+use crate::value::Value;
+
+/// The result of a compilation
+pub struct CompilerResult<'a> {
+  /// Was an error encountered while this chunk was compiled
+  pub success: bool,
+
+  /// The chunk that was compiled
+  pub chunk: Chunk<'a>,
+
+  /// A weak ref to the tail of the object linked list
+  pub obj_tail: Option<&'a Obj<'a>>,
+
+  /// A weak ref to the head of the object linked list
+  pub obj_head: Option<&'a Obj<'a>>,
+}
 
 /// The spacelox compiler for converting tokens to bytecode
-pub struct Compiler {
-  
-  /// The parser in charge incrementing the scanner and 
+pub struct Compiler<'a> {
+  /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
   parser: Parser,
 
   /// The current chunk this compiler points to
-  chunk: Chunk,
+  chunk: Chunk<'a>,
 
-  /// closure to tracker allocations
-  obj_tail: Weak<Obj>,
+  /// weak pointer to object link tail
+  obj_tail: Option<&'a Obj<'a>>,
 
-  obj_head: Weak<Obj>,
+  /// weak pointer to object link head
+  obj_head: Option<&'a Obj<'a>>,
 }
 
-impl Compiler {
+impl<'a> Compiler<'a> {
   /// Create a new instance of the spacelox compiler.
   /// The compiler write a sequence of op codes to the chunk
   /// to be executed
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use lox_runtime::chunk::{Chunk};
   /// use lox_runtime::compiler::{Compiler};
-  /// 
+  ///
   /// // an expression
   /// let source = "10 + 3".to_string();
   /// let chunk = Chunk::default();
-  /// 
+  ///
   /// let compiler = Compiler::new(source, chunk);
   /// ```
-  pub fn new(source: String, chunk: Chunk) -> Self {
-    Self { 
-      obj_tail: Weak::new(),
-      obj_head: Weak::new(),
+  pub fn new(source: String, chunk: Chunk<'a>) -> Self {
+    Self {
+      obj_tail: Option::None,
+      obj_head: Option::None,
       chunk,
       parser: Parser::new(source),
     }
@@ -48,42 +62,55 @@ impl Compiler {
 
   /// Compile the provided source code onto the chunk
   /// returns true if the compiler ran without parser errors
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use lox_runtime::chunk::{Chunk};
   /// use lox_runtime::compiler::{Compiler};
-  /// 
+  ///
   /// // an expression
   /// let source = "3 / 2 + 10".to_string();
   /// let chunk = Chunk::default();
-  /// 
+  ///
   /// let compiler = Compiler::new(source, chunk);
-  /// let (success, chunk) = compiler.compile();
-  /// assert_eq!(success, true);
+  /// let result = compiler.compile();
+  /// assert_eq!(result.success, true);
   /// ```
-  pub fn compile(mut self) -> (bool, Chunk) {
+  pub fn compile(mut self) -> CompilerResult<'a> {
     self.parser.advance();
-    
     match self.parser.current.kind {
       TokenKind::Eof => {
         self.end_compiler();
-        return (!self.parser.had_error, self.chunk)
-      },
+
+        return CompilerResult {
+          success: !self.parser.had_error,
+          chunk: self.chunk,
+          obj_tail: self.obj_tail,
+          obj_head: self.obj_head,
+        };
+      }
       _ => self.expression(),
     }
 
-    self.parser.consume(TokenKind::Eof, "Expected end of expression.");
+    self
+      .parser
+      .consume(TokenKind::Eof, "Expected end of expression.");
     self.end_compiler();
-    (!self.parser.had_error, self.chunk)
+
+    CompilerResult {
+      success: !self.parser.had_error,
+      chunk: self.chunk,
+      obj_tail: self.obj_tail,
+      obj_head: self.obj_head,
+    }
   }
 
   /// Parse an expression
   fn expression(&mut self) {
-    self.parse_precendence(Precedence::Assignment)
+    self.parse_precedence(Precedence::Assignment)
   }
 
-  /// End the complation at eof
+  /// End the compilation at eof
   fn end_compiler(&mut self) {
     self.emit_return();
 
@@ -99,16 +126,14 @@ impl Compiler {
   }
 
   /// Compiles a binary expression into it's equivalent bytecodes
-  /// 
+  ///
   /// # Panics
   /// This method will panic if an invalid binary operator is passed
   pub fn binary(&mut self) {
-
     // Remember the operator
     let operator_kind = self.parser.previous.kind.clone();
-  
     let precedence = get_rule(operator_kind.clone()).precedence.higher();
-    self.parse_precendence(precedence);
+    self.parse_precedence(precedence);
 
     match operator_kind {
       TokenKind::BangEqual => self.emit_bytes(ByteCode::Equal, ByteCode::Not),
@@ -121,19 +146,18 @@ impl Compiler {
       TokenKind::Minus => self.emit_byte(ByteCode::Subtract),
       TokenKind::Star => self.emit_byte(ByteCode::Multiply),
       TokenKind::Slash => self.emit_byte(ByteCode::Divide),
-      _ => panic!("Invalid operator")
+      _ => panic!("Invalid operator"),
     }
   }
-    
   /// Compile a unary expression into it's equivalent bytecode
-  /// 
+  ///
   /// # Panics
   /// This method will panic if an invalid unary operator is attempted to compile
   fn unary(&mut self) {
     let operator_kind = self.parser.previous.kind.clone();
 
     // Compile the operand
-    self.parse_precendence(Precedence::Unary);
+    self.parse_precedence(Precedence::Unary);
 
     // Emit the operator instruction
     match operator_kind {
@@ -147,18 +171,27 @@ impl Compiler {
   fn grouping(&mut self) {
     self.expression();
 
-    self.parser.consume(TokenKind::RightParen, "Expected ')' after expression")
+    self
+      .parser
+      .consume(TokenKind::RightParen, "Expected ')' after expression")
   }
 
   /// Compile a number literal
   fn number(&mut self) {
-    let value = Value::Number(self.parser.previous.lexeme.parse::<f64>().expect("Unable to parse float"));
+    let value = Value::Number(
+      self
+        .parser
+        .previous
+        .lexeme
+        .parse::<f64>()
+        .expect("Unable to parse float"),
+    );
     self.emit_constant(value);
   }
 
   /// Compile a string literal
   fn string(&mut self) {
-    let obj = Obj::new(ObjValue::String(copy_string(&self.parser.previous)));
+    let obj = self.allocate(ObjValue::String(copy_string(&self.parser.previous)));
     let value = Value::Obj(obj);
     self.emit_constant(value)
   }
@@ -169,12 +202,15 @@ impl Compiler {
       TokenKind::True => self.emit_byte(ByteCode::True),
       TokenKind::False => self.emit_byte(ByteCode::False),
       TokenKind::Nil => self.emit_byte(ByteCode::Nil),
-      _ => panic!(format!("Unexpected token kind {:?}", self.parser.previous.kind))
+      _ => panic!(format!(
+        "Unexpected token kind {:?}",
+        self.parser.previous.kind
+      )),
     }
   }
 
   /// Compile an expression an a provided precedences
-  fn parse_precendence(&mut self, precedence: Precedence) {
+  fn parse_precedence(&mut self, precedence: Precedence) {
     self.parser.advance();
 
     let prefix_fn = get_rule(self.parser.previous.kind.clone()).prefix.clone();
@@ -192,9 +228,9 @@ impl Compiler {
   fn execute_action(&mut self, action: Act) {
     match action {
       Act::Literal => self.literal(),
-      Act::Binary => self.binary(), 
-      Act::Unary => self.unary(), 
-      Act::Grouping => self.grouping(), 
+      Act::Binary => self.binary(),
+      Act::Unary => self.unary(),
+      Act::Grouping => self.grouping(),
       Act::Number => self.number(),
       Act::String => self.string(),
     }
@@ -206,7 +242,7 @@ impl Compiler {
   }
 
   /// Add a constant to the current chunk
-  fn make_constant(&mut self, value: Value) -> u8 {
+  fn make_constant(&mut self, value: Value<'a>) -> u8 {
     let index = self.chunk.add_constant(value);
     if index > std::u8::MAX as usize {
       self.parser.error("Too many constants in one chunk.");
@@ -217,7 +253,7 @@ impl Compiler {
   }
 
   /// Emit byte code for a constant
-  fn emit_constant(&mut self, value: Value) {
+  fn emit_constant(&mut self, value: Value<'a>) {
     let index = self.make_constant(value);
     self.emit_byte(ByteCode::Constant(index));
   }
@@ -235,11 +271,14 @@ impl Compiler {
     self.chunk.write_instruction(op_code, line);
   }
 
-  fn allocate(&mut self, obj: Obj) -> Obj {
-    obj.next = self.objects;
-    let strong_ref = Rc::new(obj);
-    let weak_ref = Rc::downgrade(&strong_ref);
-    self.objects = weak_ref;
+  fn allocate(&mut self, value: ObjValue) -> Obj<'a> {
+    let obj = Obj::new(value);
+    obj.next.set(self.obj_head);
+    self.obj_head = obj.next.get();
+
+    if self.obj_tail.is_none() {
+      self.obj_tail = self.obj_head;
+    }
 
     obj
   }
@@ -247,245 +286,85 @@ impl Compiler {
 
 /// The rules for infix and prefix operators
 const RULES_TABLE: [ParseRule; 40] = [
-  ParseRule::new(
-    Some(Act::Grouping),
-    None,
-    Precedence::None),       
-    // TOKEN_LEFT_PAREN
-
-  ParseRule::new(
-    None, 
-    None, 
-    Precedence::None),       
-    // TOKEN_RIGHT_PAREN
-
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_LEFT_BRACE
-
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),
-    // TOKEN_RIGHT_BRACE
-
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),
-    // TOKEN_COMMA
-
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),
-    // TOKEN_DOT
-             
-  ParseRule::new(
-    Some(Act::Unary),
-    Some(Act::Binary),
-    Precedence::Term),
-    // TOKEN_MINUS
-           
-  ParseRule::new(
-    None,
-    Some(Act::Binary),
-    Precedence::Term),
-    // TOKEN_PLUS
-            
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_SEMICOLON
-       
-  ParseRule::new(
-    None,
-    Some(Act::Binary),
-    Precedence::Factor),
-    // TOKEN_SLASH
-           
-  ParseRule::new(
-    None,
-    Some(Act::Binary),
-    Precedence::Factor),     
-    // TOKEN_STAR
-            
-  ParseRule::new(
-    Some(Act::Unary),
-    None,
-    Precedence::None),       
-    // TOKEN_BANG
-            
-  ParseRule::new(
-    None,
-    Some(Act::Binary),
-    Precedence::Equality),       
-    // TOKEN_BANG_EQUAL
-      
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_EQUAL
-           
-  ParseRule::new(
-    None,
-    Some(Act::Binary),
-    Precedence::Equality),       
-    // TOKEN_EQUAL_EQUAL
-     
-  ParseRule::new(
-    None,
-    Some(Act::Binary),
-    Precedence::Comparison),       
-    // TOKEN_GREATER
-         
-  ParseRule::new(
-    None,
-    Some(Act::Binary),
-    Precedence::Comparison),       
-    // TOKEN_GREATER_EQUAL
-   
-  ParseRule::new(
-    None,
-    Some(Act::Binary),
-    Precedence::Comparison),       
-    // TOKEN_LESS
-            
-  ParseRule::new(
-    None,
-    Some(Act::Binary),
-    Precedence::Comparison),       
-    // TOKEN_LESS_EQUAL
-      
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_IDENTIFIER
-      
-  ParseRule::new(
-    Some(Act::String),
-    None,
-    Precedence::None),       
-    // TOKEN_STRING
-          
-  ParseRule::new(
-    Some(Act::Number),
-    None,
-    Precedence::None),       
-    // TOKEN_NUMBER
-          
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_AND
-             
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_CLASS
-           
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_ELSE
-            
-  ParseRule::new(
-    Some(Act::Literal),
-    None,
-    Precedence::None),       
-    // TOKEN_FALSE
-           
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_FOR
-             
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_FUN
-             
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_IF
-              
-  ParseRule::new(
-    Some(Act::Literal),
-    None,
-    Precedence::None),       
-    // TOKEN_NIL
-             
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_OR
-              
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_PRINT
-           
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_RETURN
-          
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_SUPER
-           
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_THIS
-            
-  ParseRule::new(
-    Some(Act::Literal),
-    None,
-    Precedence::None),
-    // TOKEN_TRUE
-            
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_VAR
-             
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_WHILE
-           
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None),       
-    // TOKEN_ERROR
-           
-  ParseRule::new(
-    None,
-    None,
-    Precedence::None)        
-    // TOKEN_EOF 
+  ParseRule::new(Some(Act::Grouping), None, Precedence::None),
+  // TOKEN_LEFT_PAREN
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_RIGHT_PAREN
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_LEFT_BRACE
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_RIGHT_BRACE
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_COMMA
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_DOT
+  ParseRule::new(Some(Act::Unary), Some(Act::Binary), Precedence::Term),
+  // TOKEN_MINUS
+  ParseRule::new(None, Some(Act::Binary), Precedence::Term),
+  // TOKEN_PLUS
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_SEMICOLON
+  ParseRule::new(None, Some(Act::Binary), Precedence::Factor),
+  // TOKEN_SLASH
+  ParseRule::new(None, Some(Act::Binary), Precedence::Factor),
+  // TOKEN_STAR
+  ParseRule::new(Some(Act::Unary), None, Precedence::None),
+  // TOKEN_BANG
+  ParseRule::new(None, Some(Act::Binary), Precedence::Equality),
+  // TOKEN_BANG_EQUAL
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_EQUAL
+  ParseRule::new(None, Some(Act::Binary), Precedence::Equality),
+  // TOKEN_EQUAL_EQUAL
+  ParseRule::new(None, Some(Act::Binary), Precedence::Comparison),
+  // TOKEN_GREATER
+  ParseRule::new(None, Some(Act::Binary), Precedence::Comparison),
+  // TOKEN_GREATER_EQUAL
+  ParseRule::new(None, Some(Act::Binary), Precedence::Comparison),
+  // TOKEN_LESS
+  ParseRule::new(None, Some(Act::Binary), Precedence::Comparison),
+  // TOKEN_LESS_EQUAL
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_IDENTIFIER
+  ParseRule::new(Some(Act::String), None, Precedence::None),
+  // TOKEN_STRING
+  ParseRule::new(Some(Act::Number), None, Precedence::None),
+  // TOKEN_NUMBER
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_AND
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_CLASS
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_ELSE
+  ParseRule::new(Some(Act::Literal), None, Precedence::None),
+  // TOKEN_FALSE
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_FOR
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_FUN
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_IF
+  ParseRule::new(Some(Act::Literal), None, Precedence::None),
+  // TOKEN_NIL
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_OR
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_PRINT
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_RETURN
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_SUPER
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_THIS
+  ParseRule::new(Some(Act::Literal), None, Precedence::None),
+  // TOKEN_TRUE
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_VAR
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_WHILE
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_ERROR
+  ParseRule::new(None, None, Precedence::None), // TOKEN_EOF
 ];
 
 /// Get a rule from the rules table
@@ -496,7 +375,6 @@ const fn get_rule(kind: TokenKind) -> &'static ParseRule {
 /// The space lox parser. This struct is responsible for
 /// advancing the scanner and checking for specific conditions
 struct Parser {
-
   /// The current token
   current: Token,
 
@@ -510,19 +388,26 @@ struct Parser {
   panic_mode: bool,
 
   /// Help reference to the backing scanner
-  scanner: Scanner
+  scanner: Scanner,
 }
 
 impl Parser {
-
   /// Create a new instance of the parser from a source str
   pub fn new(source: String) -> Self {
-    Self { 
+    Self {
       scanner: Scanner::new(source),
       had_error: false,
       panic_mode: false,
-      previous: Token { lexeme: "error".to_string(), line: 0, kind: TokenKind::Error },
-      current: Token { lexeme: "error".to_string(), line: 0, kind: TokenKind::Error },
+      previous: Token {
+        lexeme: "error".to_string(),
+        line: 0,
+        kind: TokenKind::Error,
+      },
+      current: Token {
+        lexeme: "error".to_string(),
+        line: 0,
+        kind: TokenKind::Error,
+      },
     }
   }
 
@@ -542,7 +427,6 @@ impl Parser {
 
   /// Consume a token and advance the current token index
   fn consume(&mut self, kind: TokenKind, message: &str) {
-
     if self.current.kind == kind {
       self.advance();
       return;
@@ -575,7 +459,7 @@ impl Parser {
     match token.kind {
       TokenKind::Eof => eprint!(" at end"),
       TokenKind::Error => (),
-      _ => eprint!(" at {}", token.lexeme)
+      _ => eprint!(" at {}", token.lexeme),
     }
 
     eprintln!(": {}", message);
@@ -594,7 +478,7 @@ enum Precedence {
   Factor,
   Unary,
   Call,
-  Primary
+  Primary,
 }
 
 impl Precedence {
@@ -618,18 +502,15 @@ impl Precedence {
 struct ParseRule {
   prefix: Option<Act>,
   infix: Option<Act>,
-  precedence: Precedence
+  precedence: Precedence,
 }
 
 impl ParseRule {
-  const fn new(
-    prefix: Option<Act>,
-    infix: Option<Act>,
-    precedence: Precedence) -> Self {
+  const fn new(prefix: Option<Act>, infix: Option<Act>, precedence: Precedence) -> Self {
     Self {
       prefix,
       infix,
-      precedence
+      precedence,
     }
   }
 }
@@ -649,12 +530,11 @@ mod test {
   use super::*;
 
   fn test_compile(src: String) -> Vec<ByteCode> {
-    let allocate = |obj: Obj| obj;
-    let compiler = Compiler::new(src, Chunk::default(), &allocate);
-    let (success, chunk) = compiler.compile();
-    assert_eq!(success, true);
+    let compiler = Compiler::new(src, Chunk::default());
+    let result = compiler.compile();
+    assert_eq!(result.success, true);
 
-    chunk.instructions
+    result.chunk.instructions
   }
 
   #[test]
@@ -746,7 +626,6 @@ mod test {
     assert_eq!(instructions[2], ByteCode::Return);
   }
 
-
   #[test]
   fn op_add() {
     let example = "10 + 4".to_string();
@@ -798,7 +677,6 @@ mod test {
     assert_eq!(instructions[2], ByteCode::Multiply);
     assert_eq!(instructions[3], ByteCode::Return);
   }
-
 
   #[test]
   fn op_equal() {

@@ -69,19 +69,19 @@ impl Line {
 
 /// Represents a chunk of code
 #[derive(Debug, Clone, Default)]
-pub struct Chunk {
+pub struct Chunk<'a> {
 
   /// instructions in this code chunk
   pub instructions: Vec<ByteCode>,
 
   /// constants in this code chunk
-  pub constants: ValueVec,
+  pub constants: ValueVec<'a>,
 
   /// debug line information
   lines: Vec<Line>,
 }
 
-impl Chunk {
+impl<'a> Chunk<'a> {
   /// Write an instruction to this chunk
   /// 
   /// # Examples
@@ -129,7 +129,7 @@ impl Chunk {
   /// assert_eq!(chunk.constants.values[index_1], Value::Number(10.4));
   /// assert_eq!(chunk.constants.values[index_2], Value::Number(5.2));
   /// ```
-  pub fn add_constant(&mut self, value: Value) -> usize {
+  pub fn add_constant(&mut self, value: Value<'a>) -> usize {
     self.constants.values.push(value);
     self.constants.values.len() - 1
   }

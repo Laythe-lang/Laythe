@@ -1,12 +1,12 @@
-use std::fmt;
-use std::rc::Weak;
 use crate::scanner::{Token};
 use crate::utils::{next_boundary, previous_boundary};
+use std::fmt;
 use std::mem::{discriminant};
+use std::cell::{Cell};
 
 #[derive(Debug, Clone)]
-pub struct Obj {
-  pub next: Weak<Obj>,
+pub struct Obj<'a> {
+  pub next: Cell<Option<&'a Obj<'a>>>,
   pub value: ObjValue
 }
 
@@ -15,7 +15,7 @@ pub enum ObjValue {
   String(String)
 }
 
-impl PartialEq for Obj {
+impl<'a> PartialEq for Obj<'a> {
   /// Determine if this `Obj` and another `Obj` are equal inside
   /// of the spacelox runtime
   /// 
@@ -41,18 +41,18 @@ impl PartialEq for Obj {
   }
 }
 
-impl fmt::Display for Obj {
+impl<'a> fmt::Display for Obj<'a> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self.value {
-      ObjValue::String(store) => write!(f, "{}", store)
+      ObjValue::String(store) => write!(f, "{}", store),
     }
   }
 }
 
-impl Obj {
+impl<'a> Obj<'a> {
   /// Construct a new object for spacelox
-  pub fn new(value: ObjValue) -> Obj {
-    Obj { value, next: Weak::new() }
+  pub fn new(value: ObjValue) -> Obj<'a> {
+    Obj { value, next: Cell::new(Option::None) }
   }
 
   /// Convert spacelox value to string, panics if not a string
@@ -94,7 +94,7 @@ pub fn copy_string(token: &Token) -> String {
 mod test {
   use super::*;
 
-  fn example_each() -> Vec<Obj> {
+  fn example_each<'a>() -> Vec<Obj<'a>> {
     vec![
       Obj::new(ObjValue::String("example".to_string()))
     ]

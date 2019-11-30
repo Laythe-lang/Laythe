@@ -4,14 +4,14 @@ use crate::object::{Obj};
 
 /// Enum of value types in spacelox
 #[derive(Debug, Clone)]
-pub enum Value {
+pub enum Value<'a> {
   Bool(bool),
   Nil,
   Number(f64),
-  Obj(Obj)
+  Obj(Obj<'a>)
 }
 
-impl fmt::Display for Value {
+impl<'a> fmt::Display for Value<'a> {
   /// Implement display for value in spacelox
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match self {
@@ -23,7 +23,7 @@ impl fmt::Display for Value {
   }
 }
 
-impl PartialEq for Value {
+impl<'a> PartialEq for Value<'a> {
   /// Determine if this `Value` and another `Value` are equal inside
   /// of the spacelox runtime
   /// 
@@ -36,7 +36,7 @@ impl PartialEq for Value {
   /// 
   /// assert_eq!(val1 == val2, false);
   /// ```
-  fn eq(&self, other: &Value) -> bool {
+  fn eq(&self, other: &Value<'a>) -> bool {
     // check we're the same variant
     if discriminant(self) != discriminant(other) {
       return false
@@ -61,7 +61,7 @@ impl PartialEq for Value {
   }
 }
 
-impl Value {
+impl<'a> Value<'a> {
   /// Convert spacelox value to number, panics if not a number
   /// 
   /// # Examples
@@ -104,7 +104,7 @@ impl Value {
   /// let str1 = Value::Obj(Obj::new(ObjValue::String("example".to_string())));
   /// assert_eq!(str1.move_obj().move_string(), "example");
   /// ```
-  pub fn move_obj(self) -> Obj {
+  pub fn move_obj(self) -> Obj<'a> {
     match self {
       Value::Obj(obj) => obj,
       _ => panic!("Value is not string")
@@ -114,8 +114,8 @@ impl Value {
 
 // Represents a collection of values
 #[derive(Debug, Clone, Default)]
-pub struct ValueVec {
-  pub values: Vec<Value>
+pub struct ValueVec<'a> {
+  pub values: Vec<Value<'a>>
 }
 
 #[cfg(test)]
@@ -124,7 +124,7 @@ mod test {
   use crate::object::{ObjValue};
 
 
-  fn example_each() -> Vec<Value> {
+  fn example_each<'a>() -> Vec<Value<'a>> {
     vec![
       Value::Bool(true),
       Value::Nil,

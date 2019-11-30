@@ -1,11 +1,12 @@
-use std::io::{stdin, stdout, Write};
-use std::fs::{read_to_string};
-use std::mem::{replace};
-use std::rc::{Rc, Weak};
-use crate::chunk::{Chunk, ByteCode};
-use crate::compiler::{Compiler};
-use crate::value::{Value};
+use crate::chunk::{ByteCode, Chunk};
+use crate::compiler::Compiler;
 use crate::object::{Obj, ObjValue};
+use crate::value::Value;
+use crate::memory::free_objects;
+use std::fs::read_to_string;
+use std::io::{stdin, stdout, Write};
+use std::mem::replace;
+use std::ops::Drop;
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_instruction;
@@ -20,21 +21,30 @@ pub enum InterpretResult {
 }
 
 /// The virtual machine for the spacelox programming language
-pub struct Vm {
-  pub chunk: Box<Chunk>,
+pub struct Vm<'a> {
+  pub chunk: Box<Chunk<'a>>,
   pub ip: usize,
-  pub stack: Vec<Value>,
-  pub objects: Weak<Obj>,
+  pub stack: Vec<Value<'a>>,
+  pub objects: Option<&'a Obj<'a>>,
   pub stack_top: usize,
 }
 
-impl Vm {
+impl<'a> Drop for Vm<'a> {
+  fn drop(&mut self) {
+    match self.objects {
+      Some(obj) => free_objects(obj),
+      None => { }
+    }
+  }
+} 
+
+impl<'a> Vm<'a> {
   pub fn new(stack: Vec<Value>) -> Vm {
     Vm {
       chunk: Box::new(Chunk::default()),
       ip: 0,
       stack,
-      objects: Weak::new(),
+      objects: Option::None,
       stack_top: 0,
     }
   }
@@ -50,7 +60,7 @@ impl Vm {
         Ok(_) => {
           self.interpret(buffer.to_string());
         }
-        Err(error) => panic!(error)
+        Err(error) => panic!(error),
       }
     }
   }
@@ -62,21 +72,28 @@ impl Vm {
     match result {
       InterpretResult::CompileError => panic!("Compiler Error"),
       InterpretResult::RuntimeError => panic!("Runtime Error"),
-      InterpretResult::Ok => ()
+      InterpretResult::Ok => (),
     }
   }
 
-  fn interpret(&mut self, source: String) -> InterpretResult  {
-    let allocate = |obj: Obj| { self.allocate(obj) }; 
-  
-    let compiler = Compiler::new(source, Chunk::default(), &allocate);
-    let (success, chunk) = compiler.compile();
+  fn interpret(&mut self, source: String) -> InterpretResult {
+    // let allocate = |obj: Obj| self.allocate(obj);
+    let compiler = Compiler::new(source, Chunk::default());
+    let mut result = compiler.compile();
 
-    if !success {
-      return InterpretResult::CompileError
+    match result.obj_tail {
+      Some(_) => {
+        result.obj_tail = self.objects;
+        self.objects = result.obj_head;
+      }
+      None => {}
     }
 
-    self.chunk = Box::new(chunk);
+    if !result.success {
+      return InterpretResult::CompileError;
+    }
+
+    self.chunk = Box::new(result.chunk);
     self.ip = 0;
 
     self.run()
@@ -124,29 +141,28 @@ impl Vm {
     self.reset_stack();
   }
 
-  fn read_constant(&self, index: u8) -> Value {
+  fn read_constant(&self, index: u8) -> Value<'a> {
     self.chunk.constants.values[index as usize].clone()
   }
 
-  fn allocate(&mut self, obj: Obj) -> Obj {
-    obj.next = self.objects;
-    let strong_ref = Rc::new(obj);
-    let weak_ref = Rc::downgrade(&strong_ref);
-    self.objects = weak_ref;
+  // fn allocate(&mut self, obj: Obj) -> Obj {
+  //   obj.next = Some(self.objects);
+  //   let strong_ref = Rc::new(obj);
+  //   self.objects = strong_ref;
 
-    obj
-  }
+  //   obj
+  // }
 
-  fn push (&mut self, value: Value) {
+  fn push(&mut self, value: Value<'a>) {
     self.stack[self.stack_top] = value;
     self.stack_top += 1;
   }
 
-  fn peek(&self, distance: usize) -> &Value {
+  fn peek(&self, distance: usize) -> &Value<'a> {
     &self.stack[self.stack_top - (distance + 1)]
   }
 
-  fn pop(&mut self) -> Value {
+  fn pop(&mut self) -> Value<'a> {
     self.stack_top -= 1;
     replace(&mut self.stack[self.stack_top], Value::Nil)
   }
@@ -158,7 +174,7 @@ impl Vm {
   fn op_negate(&mut self) {
     match self.pop() {
       Value::Number(num) => self.push(Value::Number(-num)),
-      _ => self.runtime_error("Operand must be a number.")
+      _ => self.runtime_error("Operand must be a number."),
     }
   }
 
@@ -179,9 +195,10 @@ impl Vm {
               let result = format!("{}{}", left, right);
               self.push(Value::Obj(Obj::new(ObjValue::String(result))));
             }
-          }
+          },
           _ => self.runtime_error("Operands must be two numbers or two strings."),
-        }
+        },
+        // _ => self.runtime_error(message: &str)
       },
       Value::Number(_num1) => match self.peek(1) {
         Value::Number(_num2) => {
@@ -190,7 +207,7 @@ impl Vm {
           self.push(Value::Number(left + right));
         }
         _ => self.runtime_error("Operands must be two numbers or two strings."),
-      }
+      },
       _ => self.runtime_error("Operands must be two numbers or two strings."),
     }
   }
@@ -252,7 +269,6 @@ impl Vm {
     self.push(Value::Bool(left == right));
   }
 
-
   fn op_constant(&mut self, index: u8) {
     let constant = self.read_constant(index);
     self.push(constant);
@@ -273,7 +289,7 @@ fn read_file(path: &str) -> String {
   read_to_string(path).expect("Could not read file")
 }
 
-pub fn pre_allocated_stack(size: usize) -> Vec<Value> {
+pub fn pre_allocated_stack<'a>(size: usize) -> Vec<Value<'a>> {
   let mut stack = Vec::with_capacity(size);
 
   // fill and initialize the stack with values
@@ -284,12 +300,11 @@ pub fn pre_allocated_stack(size: usize) -> Vec<Value> {
   stack
 }
 
-
 /// Is the provided `value` falsey according to spacelox rules
-/// 
+///
 /// # Examples
 /// ```
-/// 
+///
 /// ```
 fn is_falsey(value: Value) -> bool {
   match value {
