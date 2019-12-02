@@ -1,41 +1,40 @@
 use crate::chunk::{ByteCode, Chunk};
 use crate::debug::disassemble_chunk;
-use crate::object::{copy_string, Obj, ObjValue};
+use crate::object::{Obj, ObjValue, copy_string};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
 
 /// The result of a compilation
-pub struct CompilerResult<'a> {
+pub struct CompilerResult<'c> {
   /// Was an error encountered while this chunk was compiled
   pub success: bool,
 
   /// The chunk that was compiled
-  pub chunk: Chunk<'a>,
+  pub chunk: Chunk<'c>,
+}
 
-  /// A weak ref to the tail of the object linked list
-  pub obj_tail: Option<&'a Obj<'a>>,
+pub struct CompilerAnalytics<'a, 'c: 'a> {
+  /// provide a side effect when the compiler allocates an object
+  pub allocate: &'a dyn Fn(ObjValue) -> Obj<'c>,
 
-  /// A weak ref to the head of the object linked list
-  pub obj_head: Option<&'a Obj<'a>>,
+  /// provide a mechanism to intern a string
+  pub intern: &'a dyn Fn(String) -> String,
 }
 
 /// The spacelox compiler for converting tokens to bytecode
-pub struct Compiler<'a> {
+pub struct Compiler<'a, 'c: 'a> {
   /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
   parser: Parser,
 
   /// The current chunk this compiler points to
-  chunk: Chunk<'a>,
+  chunk: Chunk<'c>,
 
-  /// weak pointer to object link tail
-  obj_tail: Option<&'a Obj<'a>>,
-
-  /// weak pointer to object link head
-  obj_head: Option<&'a Obj<'a>>,
+  /// Analytics for the compiler
+  analytics: CompilerAnalytics<'a, 'c>,
 }
 
-impl<'a> Compiler<'a> {
+impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// Create a new instance of the spacelox compiler.
   /// The compiler write a sequence of op codes to the chunk
   /// to be executed
@@ -43,19 +42,23 @@ impl<'a> Compiler<'a> {
   /// # Examples
   /// ```
   /// use lox_runtime::chunk::{Chunk};
-  /// use lox_runtime::compiler::{Compiler};
+  /// use lox_runtime::compiler::{Compiler, CompilerAnalytics};
+  /// use lox_runtime::object::{ObjValue, Obj};
   ///
   /// // an expression
   /// let source = "10 + 3".to_string();
   /// let chunk = Chunk::default();
   ///
-  /// let compiler = Compiler::new(source, chunk);
+  /// let allocate = |value: ObjValue| Obj::new(value);
+  /// let intern = |string: String| string;
+  /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
+  /// 
+  /// let compiler = Compiler::new(source, chunk, analytics);
   /// ```
-  pub fn new(source: String, chunk: Chunk<'a>) -> Self {
+  pub fn new(source: String, chunk: Chunk<'c>, analytics: CompilerAnalytics<'a, 'c>) -> Self {
     Self {
-      obj_tail: Option::None,
-      obj_head: Option::None,
       chunk,
+      analytics,
       parser: Parser::new(source),
     }
   }
@@ -66,18 +69,24 @@ impl<'a> Compiler<'a> {
   /// # Examples
   /// ```
   /// use lox_runtime::chunk::{Chunk};
-  /// use lox_runtime::compiler::{Compiler};
+  /// use lox_runtime::compiler::{Compiler, CompilerAnalytics};
+  /// use lox_runtime::object::{ObjValue, Obj};
   ///
   /// // an expression
   /// let source = "3 / 2 + 10".to_string();
   /// let chunk = Chunk::default();
   ///
-  /// let compiler = Compiler::new(source, chunk);
+  /// let allocate = |value: ObjValue| Obj::new(value);
+  /// let intern = |string: String| string;
+  /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
+  /// 
+  /// let compiler = Compiler::new(source, chunk, analytics);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
-  pub fn compile(mut self) -> CompilerResult<'a> {
+  pub fn compile(mut self) -> CompilerResult<'c> {
     self.parser.advance();
+
     match self.parser.current.kind {
       TokenKind::Eof => {
         self.end_compiler();
@@ -85,8 +94,6 @@ impl<'a> Compiler<'a> {
         return CompilerResult {
           success: !self.parser.had_error,
           chunk: self.chunk,
-          obj_tail: self.obj_tail,
-          obj_head: self.obj_head,
         };
       }
       _ => self.expression(),
@@ -100,8 +107,6 @@ impl<'a> Compiler<'a> {
     CompilerResult {
       success: !self.parser.had_error,
       chunk: self.chunk,
-      obj_tail: self.obj_tail,
-      obj_head: self.obj_head,
     }
   }
 
@@ -191,7 +196,8 @@ impl<'a> Compiler<'a> {
 
   /// Compile a string literal
   fn string(&mut self) {
-    let obj = self.allocate(ObjValue::String(copy_string(&self.parser.previous)));
+    let string = (self.analytics.intern)(copy_string(&self.parser.previous));
+    let obj = (self.analytics.allocate)(ObjValue::String(string));
     let value = Value::Obj(obj);
     self.emit_constant(value)
   }
@@ -242,7 +248,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Add a constant to the current chunk
-  fn make_constant(&mut self, value: Value<'a>) -> u8 {
+  fn make_constant(&mut self, value: Value<'c>) -> u8 {
     let index = self.chunk.add_constant(value);
     if index > std::u8::MAX as usize {
       self.parser.error("Too many constants in one chunk.");
@@ -253,7 +259,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Emit byte code for a constant
-  fn emit_constant(&mut self, value: Value<'a>) {
+  fn emit_constant(&mut self, value: Value<'c>) {
     let index = self.make_constant(value);
     self.emit_byte(ByteCode::Constant(index));
   }
@@ -269,18 +275,6 @@ impl<'a> Compiler<'a> {
   fn emit_byte(&mut self, op_code: ByteCode) {
     let line = self.parser.current.line;
     self.chunk.write_instruction(op_code, line);
-  }
-
-  fn allocate(&mut self, value: ObjValue) -> Obj<'a> {
-    let obj = Obj::new(value);
-    obj.next.set(self.obj_head);
-    self.obj_head = obj.next.get();
-
-    if self.obj_tail.is_none() {
-      self.obj_tail = self.obj_head;
-    }
-
-    obj
   }
 }
 
@@ -528,9 +522,64 @@ enum Act {
 #[cfg(test)]
 mod test {
   use super::*;
+  // use std::cell::Cell;
+
+  // struct TestCalled { 
+  //   allocate: Cell<Option<ObjValue>>,
+  //   intern: Cell<Option<String>>,
+  // }
+
+  // struct TestSetup<'a> {
+  //   analytics: CompilerAnalytics<'a, 'a>,
+  //   allocate: Box<dyn Fn(ObjValue) -> Obj<'a> + 'a>,
+  //   intern: Box<dyn Fn(String) -> String + 'a>,
+  // }
+
+  // impl TestCalled {
+  //   pub fn new() -> TestCalled {
+  //     TestCalled {
+  //       allocate: Cell::new(Option::None),
+  //       intern: Cell::new(Option::None),
+  //     }
+  //   }
+  // }
+
+  // fn test_analytics<'a>(allocate:&'a dyn Fn(ObjValue) -> Obj<'a>, intern: &'a dyn Fn(String) -> String) -> CompilerAnalytics<'a, 'a> {
+  //   CompilerAnalytics {
+  //     allocate: allocate,
+  //     intern: intern
+  //   }
+  // }
+
+  // fn test_setup<'a>(test_called: &'a TestCalled) -> TestSetup<'a> {
+  //   let allocate = Box::new(|value: ObjValue| {
+  //     test_called.allocate.set(Some(value.clone()));
+  //     Obj::new(value) 
+  //   });
+
+  //   let intern = Box::new(|string: String| {
+  //     test_called.intern.set(Some(string.clone()));
+  //     string
+  //   });
+
+  //   TestSetup {
+  //     analytics: test_analytics(&allocate, &intern),
+  //     allocate,
+  //     intern,
+  //   }
+  // }
 
   fn test_compile(src: String) -> Vec<ByteCode> {
-    let compiler = Compiler::new(src, Chunk::default());
+    let allocate = |value: ObjValue| Obj::new(value);
+    let intern = |string: String| string;
+    let compiler = Compiler::new(
+      src,
+      Chunk::default(),
+      CompilerAnalytics {
+        allocate: &allocate,
+        intern: &intern,
+      },
+    );
     let result = compiler.compile();
     assert_eq!(result.success, true);
 

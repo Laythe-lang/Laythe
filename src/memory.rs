@@ -9,13 +9,12 @@ pub fn free_objects(head: &Obj) {
     match next.get() {
       Some(next_obj) => {
         obj = next_obj;
-
-      },
-      None => { return; }
+      }
+      None => {
+        return;
+      }
     }
   }
 }
 
-fn free_object(_obj: &Obj) {
-
-}
+fn free_object(_obj: &Obj) {}

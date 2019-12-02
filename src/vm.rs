@@ -1,8 +1,10 @@
 use crate::chunk::{ByteCode, Chunk};
-use crate::compiler::Compiler;
-use crate::object::{Obj, ObjValue};
-use crate::value::Value;
+use crate::compiler::{Compiler, CompilerAnalytics};
 use crate::memory::free_objects;
+use crate::object::{Obj, ObjValue};
+use crate::table::Table;
+use crate::value::Value;
+use std::cell::Cell;
 use std::fs::read_to_string;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
@@ -25,18 +27,18 @@ pub struct Vm<'a> {
   pub chunk: Box<Chunk<'a>>,
   pub ip: usize,
   pub stack: Vec<Value<'a>>,
-  pub objects: Option<&'a Obj<'a>>,
+  pub objects: Cell<Option<&'a Obj<'a>>>,
   pub stack_top: usize,
+  pub strings: Table<'a>,
 }
 
 impl<'a> Drop for Vm<'a> {
   fn drop(&mut self) {
-    match self.objects {
-      Some(obj) => free_objects(obj),
-      None => { }
+    if let Some(obj) = self.objects.get() {
+      free_objects(obj);
     }
   }
-} 
+}
 
 impl<'a> Vm<'a> {
   pub fn new(stack: Vec<Value>) -> Vm {
@@ -44,8 +46,9 @@ impl<'a> Vm<'a> {
       chunk: Box::new(Chunk::default()),
       ip: 0,
       stack,
-      objects: Option::None,
+      objects: Cell::new(Option::None),
       stack_top: 0,
+      strings: Table::default(),
     }
   }
 
@@ -77,17 +80,18 @@ impl<'a> Vm<'a> {
   }
 
   fn interpret(&mut self, source: String) -> InterpretResult {
-    // let allocate = |obj: Obj| self.allocate(obj);
-    let compiler = Compiler::new(source, Chunk::default());
-    let mut result = compiler.compile();
+    let allocate = |value: ObjValue| self.allocate(value);
+    let intern = |string: String| self.intern(string);
 
-    match result.obj_tail {
-      Some(_) => {
-        result.obj_tail = self.objects;
-        self.objects = result.obj_head;
-      }
-      None => {}
-    }
+    let compiler = Compiler::new(
+      source,
+      Chunk::default(),
+      CompilerAnalytics {
+        allocate: &allocate,
+        intern: &intern,
+      },
+    );
+    let result = compiler.compile();
 
     if !result.success {
       return InterpretResult::CompileError;
@@ -145,13 +149,20 @@ impl<'a> Vm<'a> {
     self.chunk.constants.values[index as usize].clone()
   }
 
-  // fn allocate(&mut self, obj: Obj) -> Obj {
-  //   obj.next = Some(self.objects);
-  //   let strong_ref = Rc::new(obj);
-  //   self.objects = strong_ref;
+  fn allocate(&self, value: ObjValue) -> Obj<'a> {
+    let obj = Obj::new(value);
+    obj.next.set(self.objects.get());
+    self.objects.set(obj.next.get());
 
-  //   obj
-  // }
+    obj
+  }
+
+  fn intern(&self, value: String) -> String {
+    match self.strings.store.get_key_value(&value) {
+      Some((stored_key, _)) => stored_key.clone(),
+      None => value,
+    }
+  }
 
   fn push(&mut self, value: Value<'a>) {
     self.stack[self.stack_top] = value;
