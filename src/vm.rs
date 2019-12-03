@@ -30,6 +30,7 @@ pub struct Vm<'a> {
   pub objects: Cell<Option<&'a Obj<'a>>>,
   pub stack_top: usize,
   pub strings: Table<'a>,
+  pub globals: Table<'a>
 }
 
 impl<'a> Drop for Vm<'a> {
@@ -49,6 +50,7 @@ impl<'a> Vm<'a> {
       objects: Cell::new(Option::None),
       stack_top: 0,
       strings: Table::default(),
+      globals: Table::default(),
     }
   }
 
@@ -118,21 +120,52 @@ impl<'a> Vm<'a> {
         ByteCode::Multiply => self.op_mul(),
         ByteCode::Divide => self.op_div(),
         ByteCode::Not => self.op_not(),
-        ByteCode::Constant(index) => {
-          let index_copy = *index;
-          self.op_constant(index_copy);
+        ByteCode::Equal => self.op_equal(),
+        ByteCode::Greater => self.op_greater(),
+        ByteCode::Less => self.op_less(),
+        ByteCode::DefineGlobal(constant) => {
+          let index_copy = *constant;
+          self.op_define_global(index_copy);
+        }
+        ByteCode::SetGlobal(store_index) => {
+          let index_copy = *store_index;
+          let name = self.read_string(index_copy);
+
+          if self.globals.store.insert(name.clone(), self.peek(0).clone()).is_none() {
+            self.globals.store.remove_entry(&name);
+            self.runtime_error(&format!("Undedfined variable {}", name));
+            return InterpretResult::RuntimeError;
+          }
+        }
+        ByteCode::GetGlobal(store_index) => {
+          let index_copy = *store_index;
+          let name = self.read_string(index_copy);
+
+          match self.globals.store.get(&name) {
+            Some(global) => {
+              let global_clone = global.clone();
+              self.push(global_clone);
+            },
+            None => {
+              self.runtime_error(&format!("Undedfined variable {}", name));
+              return InterpretResult::RuntimeError;
+            }
+          }
+        }
+        ByteCode::Pop => {
+          self.pop();
         }
         ByteCode::Nil => self.push(Value::Nil),
         ByteCode::True => self.push(Value::Bool(true)),
         ByteCode::False => self.push(Value::Bool(false)),
-        ByteCode::Equal => self.op_equal(),
-        ByteCode::Greater => self.op_greater(),
-        ByteCode::Less => self.op_less(),
+        ByteCode::Constant(store_index) => {
+          let index_copy = *store_index;
+          self.op_constant(index_copy);
+        }
+        ByteCode::Print => {
+          println!("{}", self.pop());
+        }
         ByteCode::Return => {
-          if self.stack_top == 1 {
-            println!("{}", self.pop());
-          }
-
           return InterpretResult::Ok;
         }
       }
@@ -145,9 +178,28 @@ impl<'a> Vm<'a> {
     self.reset_stack();
   }
 
+  fn read_string(&mut self, index: u8) -> String {
+    match self.read_constant(index) {
+      Value::Obj(obj) => match obj.value {
+        ObjValue::String(string) => {
+          string
+        }
+      }
+      _ => panic!("Expected object.")
+    }
+
+  }
+
   fn read_constant(&self, index: u8) -> Value<'a> {
     self.chunk.constants.values[index as usize].clone()
   }
+
+  // fn read_byte(&mut self) -> ByteCode {
+  //   let byte_code = self.chunk.instructions[self.ip].clone();
+  //   self.ip += 1;
+
+  //   byte_code
+  // }
 
   fn allocate(&self, value: ObjValue) -> Obj<'a> {
     let obj = Obj::new(value);
@@ -180,6 +232,12 @@ impl<'a> Vm<'a> {
 
   fn reset_stack(&mut self) {
     self.stack_top = 0;
+  }
+
+  fn op_define_global(&mut self, store_index: u8) {
+    let name = self.read_string(store_index);
+    let global = self.pop();
+    self.globals.store.insert(name, global);
   }
 
   fn op_negate(&mut self) {

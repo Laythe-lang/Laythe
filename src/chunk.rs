@@ -3,46 +3,61 @@ use crate::value::{Value, ValueVec};
 /// Space Lox virtual machine byte codes
 #[derive(Debug, PartialEq, Clone)]
 pub enum ByteCode {
-  /// Return OpCode
+  /// Return ByteCode
   Return,
 
-  /// Negate OpCode
+  /// Negate ByteCode
   Negate,
 
-  /// Add OpCode
+  /// Print ByteCode
+  Print,
+
+  /// Add ByteCode
   Add,
 
-  /// Subtract OpCode
+  /// Subtract ByteCode
   Subtract,
 
   /// Multiply Opcode
   Multiply,
 
-  /// Divide OpCode
+  /// Divide ByteCode
   Divide,
 
-  /// Not OpCode
+  /// Not ByteCode
   Not,
 
-  /// Constant OpCode
+  /// Constant ByteCode
   Constant(u8),
 
-  /// Nill OpCode
+  /// Nill ByteCode
   Nil,
 
-  /// True OpCode
+  /// True ByteCode
   True,
 
-  /// False OpCode
+  /// False ByteCode
   False,
 
-  /// Equal OpCode
+  /// Pop ByteCode
+  Pop,
+
+  /// Define Global ByteCode
+  DefineGlobal(u8),
+
+  /// Get Global ByteCode
+  GetGlobal(u8),
+
+  /// Set Global ByteCode
+  SetGlobal(u8),
+
+  /// Equal ByteCode
   Equal,
 
-  /// Greater OpCode
+  /// Greater ByteCode
   Greater,
 
-  /// Less OpCode
+  /// Less ByteCode
   Less,
 }
 

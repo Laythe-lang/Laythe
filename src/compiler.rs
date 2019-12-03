@@ -1,6 +1,6 @@
 use crate::chunk::{ByteCode, Chunk};
 use crate::debug::disassemble_chunk;
-use crate::object::{Obj, ObjValue, copy_string};
+use crate::object::{copy_string, Obj, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
 
@@ -52,7 +52,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// let allocate = |value: ObjValue| Obj::new(value);
   /// let intern = |string: String| string;
   /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
-  /// 
+  ///
   /// let compiler = Compiler::new(source, chunk, analytics);
   /// ```
   pub fn new(source: String, chunk: Chunk<'c>, analytics: CompilerAnalytics<'a, 'c>) -> Self {
@@ -79,7 +79,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// let allocate = |value: ObjValue| Obj::new(value);
   /// let intern = |string: String| string;
   /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
-  /// 
+  ///
   /// let compiler = Compiler::new(source, chunk, analytics);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
@@ -87,16 +87,22 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   pub fn compile(mut self) -> CompilerResult<'c> {
     self.parser.advance();
 
-    match self.parser.current.kind {
-      TokenKind::Eof => {
-        self.end_compiler();
+    // early exit if ""
+    if let TokenKind::Eof = self.parser.current.kind {
+      self.end_compiler();
 
-        return CompilerResult {
-          success: !self.parser.had_error,
-          chunk: self.chunk,
-        };
+      return CompilerResult {
+        success: !self.parser.had_error,
+        chunk: self.chunk,
+      };
+    }
+
+    loop {
+      if self.parser.match_kind(TokenKind::Eof) {
+        break;
       }
-      _ => self.expression(),
+
+      self.declaration()
     }
 
     self
@@ -110,9 +116,91 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     }
   }
 
+  /// Parse a declaration
+  fn declaration(&mut self) {
+    if self.parser.match_kind(TokenKind::Var) {
+      self.var_declaration();
+    } else {
+      self.statement();
+    }
+
+    if self.parser.panic_mode {
+      self.synchronize();
+    }
+  }
+
+  /// Parse a statement
+  fn statement(&mut self) {
+    if self.parser.match_kind(TokenKind::Print) {
+      self.print_statement();
+    } else {
+      self.expression_statement();
+    }
+  }
+
   /// Parse an expression
   fn expression(&mut self) {
     self.parse_precedence(Precedence::Assignment)
+  }
+
+  /// Parse a variable declaration
+  fn var_declaration(&mut self) {
+    let global = self.parse_variable("Expect variable name.");
+
+    if self.parser.match_kind(TokenKind::Equal) {
+      self.expression();
+    } else {
+      self.emit_byte(ByteCode::Nil);
+    }
+
+    self.parser.consume(TokenKind::Semicolon, "Expect ';' after variable declaration.");
+
+    self.define_variable(global);
+  }
+
+  /// Parse an expression statement
+  fn expression_statement(&mut self) {
+    self.expression();
+    self
+      .parser
+      .consume(TokenKind::Semicolon, "Expect ';' after expression.");
+    self.emit_byte(ByteCode::Pop)
+  }
+
+  /// Parse print statement
+  fn print_statement(&mut self) {
+    self.expression();
+    self
+      .parser
+      .consume(TokenKind::Semicolon, "Expect ';' after value.");
+    self.emit_byte(ByteCode::Print)
+  }
+
+  /// Synchronize the compiler to a sentinel token
+  fn synchronize(&mut self) {
+    self.parser.panic_mode = false;
+
+    while self.parser.current.kind != TokenKind::Eof {
+      if self.parser.previous.kind == TokenKind::Semicolon {
+        return;
+      }
+
+      match self.parser.current.kind {
+        TokenKind::Class
+        | TokenKind::Fun
+        | TokenKind::Var
+        | TokenKind::For
+        | TokenKind::If
+        | TokenKind::While
+        | TokenKind::Print
+        | TokenKind::Return => {
+          return;
+        }
+        _ => {}
+      }
+
+      self.parser.advance();
+    }
   }
 
   /// End the compilation at eof
@@ -194,12 +282,28 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_constant(value);
   }
 
+  /// Compile a variable statement
+  fn variable(&mut self, can_assign: bool) {
+    self.named_variable(self.parser.previous.clone(), can_assign);
+  }
+
   /// Compile a string literal
   fn string(&mut self) {
     let string = (self.analytics.intern)(copy_string(&self.parser.previous));
     let obj = (self.analytics.allocate)(ObjValue::String(string));
     let value = Value::Obj(obj);
     self.emit_constant(value)
+  }
+
+  fn named_variable(&mut self, name: Token, can_assign: bool) {
+    let index = self.identifer_constant(name);
+
+    if can_assign && self.parser.match_kind(TokenKind::Equal) {
+      self.expression();
+      self.emit_byte(ByteCode::SetGlobal(index));
+    } else {
+      self.emit_byte(ByteCode::GetGlobal(index));
+    }
   }
 
   /// Compile a literal
@@ -219,23 +323,46 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   fn parse_precedence(&mut self, precedence: Precedence) {
     self.parser.advance();
 
+    let can_assign = precedence <= Precedence::Assignment;
     let prefix_fn = get_rule(self.parser.previous.kind.clone()).prefix.clone();
-    self.execute_action(prefix_fn.expect("Expected expression."));
+    self.execute_action(prefix_fn.expect("Expected expression."), can_assign);
 
     while precedence <= get_rule(self.parser.current.kind.clone()).precedence {
       self.parser.advance();
       let infix_fn = get_rule(self.parser.previous.kind.clone()).infix.clone();
 
-      self.execute_action(infix_fn.expect("Failure"));
+      self.execute_action(infix_fn.expect("Failure"), can_assign);
+    }
+
+    if can_assign && self.parser.match_kind(TokenKind::Equal) {
+      self.parser.error("Invalid assignment target.")
     }
   }
 
+  fn define_variable(&mut self, global: u8) {
+    self.emit_byte(ByteCode::DefineGlobal(global));
+  }
+
+  /// Parse a variable from the provided token return it's new constant
+  /// identifer if an identifer was identified
+  fn parse_variable(&mut self, error_message: &str) -> u8 {
+    self.parser.consume(TokenKind::Identifier, error_message);
+    self.identifer_constant(self.parser.previous.clone())
+  }
+
+  /// Generate a constant from the provided identifier token
+  fn identifer_constant(&mut self, name: Token) -> u8 {
+    let identifer = (self.analytics.allocate)(ObjValue::String(name.lexeme));
+    self.make_constant(Value::Obj(identifer))
+  }
+
   /// Execute a provided action
-  fn execute_action(&mut self, action: Act) {
+  fn execute_action(&mut self, action: Act, can_assign: bool) {
     match action {
       Act::Literal => self.literal(),
       Act::Binary => self.binary(),
       Act::Unary => self.unary(),
+      Act::Variable => self.variable(can_assign),
       Act::Grouping => self.grouping(),
       Act::Number => self.number(),
       Act::String => self.string(),
@@ -318,7 +445,7 @@ const RULES_TABLE: [ParseRule; 40] = [
   // TOKEN_LESS
   ParseRule::new(None, Some(Act::Binary), Precedence::Comparison),
   // TOKEN_LESS_EQUAL
-  ParseRule::new(None, None, Precedence::None),
+  ParseRule::new(Some(Act::Variable), None, Precedence::None),
   // TOKEN_IDENTIFIER
   ParseRule::new(Some(Act::String), None, Precedence::None),
   // TOKEN_STRING
@@ -403,6 +530,21 @@ impl Parser {
         kind: TokenKind::Error,
       },
     }
+  }
+
+  /// Does the provided token kind match if so advance the
+  /// token index
+  pub fn match_kind(&mut self, kind: TokenKind) -> bool {
+    if !self.check(kind) {
+      return false;
+    }
+    self.advance();
+    true
+  }
+
+  /// Does the provided token kind match the current kind
+  pub fn check(&self, kind: TokenKind) -> bool {
+    self.current.kind == kind
   }
 
   /// Advance the parser a token forward
@@ -517,6 +659,7 @@ enum Act {
   Number,
   String,
   Literal,
+  Variable,
 }
 
 #[cfg(test)]
@@ -524,7 +667,7 @@ mod test {
   use super::*;
   // use std::cell::Cell;
 
-  // struct TestCalled { 
+  // struct TestCalled {
   //   allocate: Cell<Option<ObjValue>>,
   //   intern: Cell<Option<String>>,
   // }
@@ -554,7 +697,7 @@ mod test {
   // fn test_setup<'a>(test_called: &'a TestCalled) -> TestSetup<'a> {
   //   let allocate = Box::new(|value: ObjValue| {
   //     test_called.allocate.set(Some(value.clone()));
-  //     Obj::new(value) 
+  //     Obj::new(value)
   //   });
 
   //   let intern = Box::new(|string: String| {
@@ -587,6 +730,91 @@ mod test {
   }
 
   #[test]
+  fn op_print() {
+    let example = "print 10;".to_string();
+
+    let instructions = test_compile(example);
+
+    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions[0].clone(), ByteCode::Constant(0));
+    assert_eq!(instructions[1].clone(), ByteCode::Print);
+    assert_eq!(instructions[2], ByteCode::Return);
+  }
+
+  // let global = self.parse_variable("Expect variable name.");
+
+  // if self.parser.match_kind(TokenKind::Equal) {
+  //   self.expression();
+  // } else {
+  //   self.emit_byte(ByteCode::Nil);
+  // }
+
+  // self.parser.consume(TokenKind::Semicolon, "Expect ';' after variable declaration.");
+
+  // self.define_variable(global);
+
+  #[test]
+  fn op_define_global_nil() {
+    let example = "var x;".to_string();
+
+    let instructions = test_compile(example);
+
+    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions[0], ByteCode::Nil);
+    assert_eq!(instructions[1], ByteCode::DefineGlobal(0));
+    assert_eq!(instructions[2], ByteCode::Return);
+  }
+
+  #[test]
+  fn op_define_global_val() {
+    let example = "var x = 10;".to_string();
+
+    let instructions = test_compile(example);
+
+    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions[0], ByteCode::Constant(1));
+    assert_eq!(instructions[1], ByteCode::DefineGlobal(0));
+    assert_eq!(instructions[2], ByteCode::Return);
+  }
+
+  #[test]
+  fn op_get_global() {
+    let example = "print x;".to_string();
+
+    let instructions = test_compile(example);
+
+    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions[0], ByteCode::GetGlobal(0));
+    assert_eq!(instructions[1], ByteCode::Print);
+    assert_eq!(instructions[2], ByteCode::Return);
+  }
+
+  #[test]
+  fn op_set_global() {
+    let example = "x = \"cat\";".to_string();
+
+    let instructions = test_compile(example);
+
+    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions[0], ByteCode::Constant(1));
+    assert_eq!(instructions[1], ByteCode::SetGlobal(0));
+    assert_eq!(instructions[2], ByteCode::Pop);
+    assert_eq!(instructions[3], ByteCode::Return);
+  }
+
+  #[test]
+  fn op_pop() {
+    let example = "false;".to_string();
+
+    let instructions = test_compile(example);
+
+    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions[0], ByteCode::False);
+    assert_eq!(instructions[1], ByteCode::Pop);
+    assert_eq!(instructions[2], ByteCode::Return);
+  }
+
+  #[test]
   fn op_return() {
     let example = "".to_string();
 
@@ -598,213 +826,230 @@ mod test {
 
   #[test]
   fn op_number() {
-    let example = "5.18".to_string();
+    let example = "5.18;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 2);
+    assert_eq!(instructions.len(), 3);
     assert_eq!(instructions[0].clone(), ByteCode::Constant(0));
-    assert_eq!(instructions[1].clone(), ByteCode::Return);
+    assert_eq!(instructions[1].clone(), ByteCode::Pop);
+    assert_eq!(instructions[2].clone(), ByteCode::Return);
   }
 
   #[test]
   fn op_string() {
-    let example = "\"example\"".to_string();
+    let example = "\"example\";".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 2);
+    assert_eq!(instructions.len(), 3);
     assert_eq!(instructions[0].clone(), ByteCode::Constant(0));
-    assert_eq!(instructions[1].clone(), ByteCode::Return);
+    assert_eq!(instructions[1].clone(), ByteCode::Pop);
+    assert_eq!(instructions[2].clone(), ByteCode::Return);
   }
 
   #[test]
   fn op_false() {
-    let example = "false".to_string();
+    let example = "false;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 2);
+    assert_eq!(instructions.len(), 3);
     assert_eq!(instructions[0], ByteCode::False);
-    assert_eq!(instructions[1], ByteCode::Return);
+    assert_eq!(instructions[1], ByteCode::Pop);
+    assert_eq!(instructions[2], ByteCode::Return);
   }
 
   #[test]
   fn op_true() {
-    let example = "true".to_string();
+    let example = "true;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 2);
+    assert_eq!(instructions.len(), 3);
     assert_eq!(instructions[0], ByteCode::True);
-    assert_eq!(instructions[1], ByteCode::Return);
+    assert_eq!(instructions[1], ByteCode::Pop);
+    assert_eq!(instructions[2], ByteCode::Return);
   }
 
   #[test]
   fn op_nil() {
-    let example = "nil".to_string();
+    let example = "nil;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 2);
+    assert_eq!(instructions.len(), 3);
     assert_eq!(instructions[0], ByteCode::Nil);
-    assert_eq!(instructions[1], ByteCode::Return);
+    assert_eq!(instructions[1], ByteCode::Pop);
+    assert_eq!(instructions[2], ByteCode::Return);
   }
 
   #[test]
   fn op_not() {
-    let example = "!false".to_string();
+    let example = "!false;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::False);
     assert_eq!(instructions[1], ByteCode::Not);
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Pop);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
   fn op_negate() {
-    let example = "-15".to_string();
+    let example = "-15;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Negate);
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Pop);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
   fn op_add() {
-    let example = "10 + 4".to_string();
+    let example = "10 + 4;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Add);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_eq!(instructions[3], ByteCode::Pop);
+    assert_eq!(instructions[4], ByteCode::Return);
   }
 
   #[test]
   fn op_subtract() {
-    let example = "10 - 4".to_string();
+    let example = "10 - 4;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Subtract);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_eq!(instructions[3], ByteCode::Pop);
+    assert_eq!(instructions[4], ByteCode::Return);
   }
 
   #[test]
   fn op_divide() {
-    let example = "10 / 4".to_string();
+    let example = "10 / 4;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Divide);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_eq!(instructions[3], ByteCode::Pop);
+    assert_eq!(instructions[4], ByteCode::Return);
   }
 
   #[test]
   fn op_multi() {
-    let example = "10 * 4".to_string();
+    let example = "10 * 4;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Multiply);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_eq!(instructions[3], ByteCode::Pop);
+    assert_eq!(instructions[4], ByteCode::Return);
   }
 
   #[test]
   fn op_equal() {
-    let example = "true == nil".to_string();
+    let example = "true == nil;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::True);
     assert_eq!(instructions[1], ByteCode::Nil);
     assert_eq!(instructions[2], ByteCode::Equal);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_eq!(instructions[3], ByteCode::Pop);
+    assert_eq!(instructions[4], ByteCode::Return);
   }
 
   #[test]
   fn op_not_equal() {
-    let example = "true != nil".to_string();
+    let example = "true != nil;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::True);
     assert_eq!(instructions[1], ByteCode::Nil);
     assert_eq!(instructions[2], ByteCode::Equal);
     assert_eq!(instructions[3], ByteCode::Not);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Pop);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
   fn op_less() {
-    let example = "3 < 5".to_string();
+    let example = "3 < 5;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Less);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_eq!(instructions[3], ByteCode::Pop);
+    assert_eq!(instructions[4], ByteCode::Return);
   }
 
   #[test]
   fn op_less_equal() {
-    let example = "3 <= 5".to_string();
+    let example = "3 <= 5;".to_string();
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Greater);
     assert_eq!(instructions[3], ByteCode::Not);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Pop);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
   fn op_greater() {
-    let example = "3 > 5".to_string();
-
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Greater);
-    assert_eq!(instructions[3], ByteCode::Return);
-  }
-
-  #[test]
-  fn op_greater_equal() {
-    let example = "3 >= 5".to_string();
+    let example = "3 > 5;".to_string();
 
     let instructions = test_compile(example);
 
     assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
+    assert_eq!(instructions[2], ByteCode::Greater);
+    assert_eq!(instructions[3], ByteCode::Pop);
+    assert_eq!(instructions[4], ByteCode::Return);
+  }
+
+  #[test]
+  fn op_greater_equal() {
+    let example = "3 >= 5;".to_string();
+
+    let instructions = test_compile(example);
+
+    assert_eq!(instructions.len(), 6);
+    assert_eq!(instructions[0], ByteCode::Constant(0));
+    assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Less);
     assert_eq!(instructions[3], ByteCode::Not);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Pop);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 }
