@@ -51,6 +51,12 @@ pub enum ByteCode {
   /// Set Global ByteCode
   SetGlobal(u8),
 
+  /// Get Local ByteCode
+  GetLocal(u8),
+
+  /// Set Local ByteCode
+  SetLocal(u8),
+
   /// Equal ByteCode
   Equal,
 

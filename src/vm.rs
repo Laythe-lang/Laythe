@@ -152,6 +152,14 @@ impl<'a> Vm<'a> {
             }
           }
         }
+        ByteCode::GetLocal(store_index) => {
+          let copy = self.stack[*store_index as usize].clone();
+          self.push(copy);
+        }
+        ByteCode::SetLocal(store_index) => {
+          let copy = self.peek(0).clone();
+          self.stack[*store_index as usize] = copy;
+        }
         ByteCode::Pop => {
           self.pop();
         }
@@ -356,17 +364,6 @@ impl<'a> Vm<'a> {
 
 fn read_file(path: &str) -> String {
   read_to_string(path).expect("Could not read file")
-}
-
-pub fn pre_allocated_stack<'a>(size: usize) -> Vec<Value<'a>> {
-  let mut stack = Vec::with_capacity(size);
-
-  // fill and initialize the stack with values
-  for _ in 0..size {
-    stack.push(Value::Nil);
-  }
-
-  stack
 }
 
 /// Is the provided `value` falsey according to spacelox rules

@@ -45,4 +45,26 @@ mod test {
     assert_eq!(option_all(none, some).is_some(), false);
     assert_eq!(option_all(none, none).is_some(), false);
   }
+
+  #[test]
+  fn test_previous_boundary() {
+    let example1 = "abc";
+    let example2 = "αβγ";
+
+    assert_eq!(previous_boundary(example1, 2), 1);
+    assert_eq!(previous_boundary(example1, 1), 0);
+    assert_eq!(previous_boundary(example2, 4), 2);
+    assert_eq!(previous_boundary(example2, 3), 2);
+  }
+
+  #[test]
+  fn test_next_boundary() {
+    let example1 = "abc";
+    let example2 = "αβγ";
+
+    assert_eq!(next_boundary(example1, 1), 2);
+    assert_eq!(next_boundary(example1, 0), 1);
+    assert_eq!(next_boundary(example2, 2), 4);
+    assert_eq!(next_boundary(example2, 3), 4);
+  }
 }

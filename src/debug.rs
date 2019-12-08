@@ -36,6 +36,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
     ByteCode::DefineGlobal(constant) => constant_instruction("DefineGlobal", chunk, *constant),
     ByteCode::GetGlobal(constant) => constant_instruction("GetGlobal", chunk, *constant),
     ByteCode::SetGlobal(constant) => constant_instruction("SetGlobal", chunk, *constant),
+    ByteCode::GetLocal(slot) => byte_instruction("GetLocal", *slot),
+    ByteCode::SetLocal(slot) => byte_instruction("SetLocal", *slot),
     ByteCode::Equal => simple_instruction("Equal"),
     ByteCode::Greater => simple_instruction("Greater"),
     ByteCode::Less => simple_instruction("Less"),
@@ -48,6 +50,10 @@ fn constant_instruction(name: &str, chunk: &Chunk, constant: u8) {
   print!("{} {:4} ", name, constant);
   print!("{}", &chunk.constants.values[constant as usize]);
   println!();
+}
+
+fn byte_instruction(name: &str, slot: u8) {
+  println!("{} {:4} ", name, slot);
 }
 
 /// print a simple instruction

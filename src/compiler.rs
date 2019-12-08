@@ -21,17 +21,35 @@ pub struct CompilerAnalytics<'a, 'c: 'a> {
   pub intern: &'a dyn Fn(String) -> String,
 }
 
+const UNINITIALIZED: i16 = -1;
+
+#[derive(Debug, Clone)]
+pub struct Local {
+  name: Option<Token>,
+
+  depth: i16,
+}
+
 /// The spacelox compiler for converting tokens to bytecode
 pub struct Compiler<'a, 'c: 'a> {
+  /// The current chunk this compiler points to
+  chunk: Chunk<'c>,
+
   /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
   parser: Parser,
 
-  /// The current chunk this compiler points to
-  chunk: Chunk<'c>,
-
   /// Analytics for the compiler
   analytics: CompilerAnalytics<'a, 'c>,
+
+  /// Number of locals
+  local_count: usize,
+
+  /// Current scope depth
+  scope_depth: i16,
+
+  /// The in scope locals
+  locals: Vec<Local>,
 }
 
 impl<'a, 'c: 'a> Compiler<'a, 'c> {
@@ -60,6 +78,15 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
       chunk,
       analytics,
       parser: Parser::new(source),
+      local_count: 0,
+      scope_depth: 0,
+      locals: vec![
+        Local {
+          name: Option::None,
+          depth: UNINITIALIZED,
+        };
+        std::u8::MAX as usize
+      ],
     }
   }
 
@@ -133,6 +160,10 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   fn statement(&mut self) {
     if self.parser.match_kind(TokenKind::Print) {
       self.print_statement();
+    } else if self.parser.match_kind(TokenKind::LeftBrace) {
+      self.begin_scope();
+      self.block();
+      self.end_scope();
     } else {
       self.expression_statement();
     }
@@ -141,6 +172,17 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// Parse an expression
   fn expression(&mut self) {
     self.parse_precedence(Precedence::Assignment)
+  }
+
+  /// Parse a block statement
+  fn block(&mut self) {
+    while !self.parser.check(TokenKind::RightBrace) && !self.parser.check(TokenKind::Eof) {
+      self.declaration();
+    }
+
+    self
+      .parser
+      .consume(TokenKind::RightBrace, "Expect '}' after block.")
   }
 
   /// Parse a variable declaration
@@ -153,7 +195,10 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
       self.emit_byte(ByteCode::Nil);
     }
 
-    self.parser.consume(TokenKind::Semicolon, "Expect ';' after variable declaration.");
+    self.parser.consume(
+      TokenKind::Semicolon,
+      "Expect ';' after variable declaration.",
+    );
 
     self.define_variable(global);
   }
@@ -209,6 +254,21 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
     #[cfg(debug_assertions)]
     self.print_chunk()
+  }
+
+  /// Increase the scope depth by 1
+  fn begin_scope(&mut self) {
+    self.scope_depth += 1;
+  }
+
+  /// Decrease the scope depth by 1
+  fn end_scope(&mut self) {
+    self.scope_depth -= 1;
+
+    while self.local_count > 0 && self.locals[self.local_count - 1].depth > self.scope_depth {
+      self.emit_byte(ByteCode::Pop);
+      self.local_count -= 1;
+    }
   }
 
   /// Print the chunk if debug and an error occurred
@@ -295,14 +355,26 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_constant(value)
   }
 
+  /// retrieve a named variable from either local or global scope
   fn named_variable(&mut self, name: Token, can_assign: bool) {
-    let index = self.identifer_constant(name);
+    let index = self.resolve_local(&name);
+
+    let (get_byte, set_byte) = match index {
+      Some(index) => (ByteCode::GetLocal(index), ByteCode::SetLocal(index)),
+      None => {
+        let global_index = self.identifer_constant(name);
+        (
+          ByteCode::GetGlobal(global_index),
+          ByteCode::SetGlobal(global_index),
+        )
+      }
+    };
 
     if can_assign && self.parser.match_kind(TokenKind::Equal) {
       self.expression();
-      self.emit_byte(ByteCode::SetGlobal(index));
+      self.emit_byte(set_byte);
     } else {
-      self.emit_byte(ByteCode::GetGlobal(index));
+      self.emit_byte(get_byte);
     }
   }
 
@@ -339,7 +411,13 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     }
   }
 
+  /// Define a variable
   fn define_variable(&mut self, global: u8) {
+    if self.scope_depth > 0 {
+      self.mark_initialized();
+      return;
+    }
+
     self.emit_byte(ByteCode::DefineGlobal(global));
   }
 
@@ -347,13 +425,93 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// identifer if an identifer was identified
   fn parse_variable(&mut self, error_message: &str) -> u8 {
     self.parser.consume(TokenKind::Identifier, error_message);
+    self.declare_variable();
+    if self.scope_depth > 0 {
+      return 0;
+    }
     self.identifer_constant(self.parser.previous.clone())
+  }
+
+  /// Mark a variable initialized
+  fn mark_initialized(&mut self) {
+    self.locals[self.local_count - 1].depth = self.scope_depth;
   }
 
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u8 {
     let identifer = (self.analytics.allocate)(ObjValue::String(name.lexeme));
     self.make_constant(Value::Obj(identifer))
+  }
+
+  fn add_local(&mut self, name: Token) {
+    if self.local_count == std::u8::MAX as usize {
+      self.parser.error("Too many local variables in function.");
+      return;
+    }
+
+    let local = &mut self.locals[self.local_count];
+    self.local_count += 1;
+
+    local.name = Some(name);
+    local.depth = self.scope_depth;
+  }
+
+  ///  declare a variable
+  fn declare_variable(&mut self) {
+    // if global exit
+    if self.scope_depth == 0 {
+      return;
+    }
+
+    let name = self.parser.previous.clone();
+    for i in (0..self.local_count).rev() {
+      let local = &self.locals[i];
+
+      // If we in a lower scope break
+      if local.depth != UNINITIALIZED && local.depth < self.scope_depth {
+        break;
+      }
+
+      // check that the same variable wasn't declared twice in the same scope
+      match &local.name {
+        Some(local_name) => {
+          if identifers_equal(&name, local_name) {
+            self
+              .parser
+              .error("Variable with this name already declared in this scope.");
+          }
+        }
+        None => panic!("local not set!"),
+      }
+    }
+
+    self.add_local(name);
+  }
+
+  /// resolve a token to a local if it exists
+  fn resolve_local(&mut self, name: &Token) -> Option<u8> {
+    for i in (0..self.local_count).rev() {
+      let local = &self.locals[i];
+
+      match &local.name {
+        Some(local_name) => {
+          if identifers_equal(&name, local_name) {
+            // handle the case were `var a = a;`
+            if local.depth == UNINITIALIZED {
+              self
+                .parser
+                .error("Cannot read local variable in its own initializer.")
+            }
+
+            return Some(i as u8);
+          }
+        }
+        None => panic!("local not set!"),
+      }
+    }
+
+    // not found
+    Option::None
   }
 
   /// Execute a provided action
@@ -491,6 +649,11 @@ const RULES_TABLE: [ParseRule; 40] = [
 /// Get a rule from the rules table
 const fn get_rule(kind: TokenKind) -> &'static ParseRule {
   &RULES_TABLE[kind as usize]
+}
+
+/// Are the two provided identifiers equal
+fn identifers_equal(a: &Token, b: &Token) -> bool {
+  a.lexeme == b.lexeme
 }
 
 /// The space lox parser. This struct is responsible for
@@ -687,16 +850,22 @@ mod test {
   //   }
   // }
 
-  // fn test_analytics<'a>(allocate:&'a dyn Fn(ObjValue) -> Obj<'a>, intern: &'a dyn Fn(String) -> String) -> CompilerAnalytics<'a, 'a> {
+  // fn test_analytics<'a>(
+  //   allocate: &'a dyn Fn(ObjValue) -> Obj<'a>,
+  //   intern: &'a dyn Fn(String) -> String,
+  // ) -> CompilerAnalytics<'a, 'a> {
   //   CompilerAnalytics {
   //     allocate: allocate,
-  //     intern: intern
+  //     intern: intern,
   //   }
   // }
 
-  // fn test_setup<'a>(test_called: &'a TestCalled) -> TestSetup<'a> {
+  // fn test_setup<'a>() -> (TestSetup<'a>, Box<TestCalled>) {
+  //   let test_called = Box::new(TestCalled::new());
+
   //   let allocate = Box::new(|value: ObjValue| {
-  //     test_called.allocate.set(Some(value.clone()));
+  //     let value_copy = value.clone();
+  //     test_called.allocate.set(Some(value_copy));
   //     Obj::new(value)
   //   });
 
@@ -705,11 +874,14 @@ mod test {
   //     string
   //   });
 
-  //   TestSetup {
-  //     analytics: test_analytics(&allocate, &intern),
-  //     allocate,
-  //     intern,
-  //   }
+  //   (
+  //     TestSetup {
+  //       analytics: test_analytics(&allocate, &intern),
+  //       allocate,
+  //       intern,
+  //     },
+  //     test_called,
+  //   )
   // }
 
   fn test_compile(src: String) -> Vec<ByteCode> {
@@ -741,17 +913,43 @@ mod test {
     assert_eq!(instructions[2], ByteCode::Return);
   }
 
-  // let global = self.parse_variable("Expect variable name.");
+  #[test]
+  fn declare_local() {
+    let example = "{ var x = 10; }".to_string();
 
-  // if self.parser.match_kind(TokenKind::Equal) {
-  //   self.expression();
-  // } else {
-  //   self.emit_byte(ByteCode::Nil);
-  // }
+    let instructions = test_compile(example);
+    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions[0], ByteCode::Constant(0));
+    assert_eq!(instructions[1], ByteCode::Pop);
+    assert_eq!(instructions[2], ByteCode::Return);
+  }
 
-  // self.parser.consume(TokenKind::Semicolon, "Expect ';' after variable declaration.");
+  #[test]
+  fn op_get_local() {
+    let example = "{ var x = 10; print(x); }".to_string();
 
-  // self.define_variable(global);
+    let instructions = test_compile(example);
+    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions[0], ByteCode::Constant(0));
+    assert_eq!(instructions[1], ByteCode::GetLocal(0));
+    assert_eq!(instructions[2], ByteCode::Print);
+    assert_eq!(instructions[3], ByteCode::Pop);
+    assert_eq!(instructions[4], ByteCode::Return);
+  }
+
+  #[test]
+  fn op_set_local() {
+    let example = "{ var x = 10; x = 5; }".to_string();
+
+    let instructions = test_compile(example);
+    assert_eq!(instructions.len(), 6);
+    assert_eq!(instructions[0], ByteCode::Constant(0));
+    assert_eq!(instructions[1], ByteCode::Constant(1));
+    assert_eq!(instructions[2], ByteCode::SetLocal(0));
+    assert_eq!(instructions[3], ByteCode::Pop);
+    assert_eq!(instructions[4], ByteCode::Pop);
+    assert_eq!(instructions[5], ByteCode::Return);
+  }
 
   #[test]
   fn op_define_global_nil() {
