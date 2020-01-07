@@ -3,6 +3,7 @@ use crate::debug::disassemble_chunk;
 use crate::object::{copy_string, Obj, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
+use std::convert::TryInto;
 
 /// The result of a compilation
 pub struct CompilerResult<'c> {
@@ -160,6 +161,12 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   fn statement(&mut self) {
     if self.parser.match_kind(TokenKind::Print) {
       self.print_statement();
+    } else if self.parser.match_kind(TokenKind::For) {
+      self.for_statement();
+    } else if self.parser.match_kind(TokenKind::If) {
+      self.if_statement();
+    } else if self.parser.match_kind(TokenKind::While) {
+      self.while_statement();
     } else if self.parser.match_kind(TokenKind::LeftBrace) {
       self.begin_scope();
       self.block();
@@ -208,7 +215,99 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.expression();
     self
       .parser
-      .consume(TokenKind::Semicolon, "Expect ';' after expression.");
+      .consume(TokenKind::Semicolon, "Expected ';' after expression.");
+    self.emit_byte(ByteCode::Pop)
+  }
+
+  fn for_statement(&mut self) {
+    self.begin_scope();
+    self.parser.consume(TokenKind::LeftParen, "Expected '(' after 'for'.");
+    
+    // parse an initializer
+    if self.parser.match_kind(TokenKind::Semicolon) {
+    } else if self.parser.match_kind(TokenKind::Var) {
+      self.var_declaration();
+    } else {
+      self.expression_statement();
+    }
+
+    let mut loop_start = self.chunk.instructions.len();
+    println!("loop_start: {}", loop_start);
+
+    // parse loop condition
+    let mut exit_jump: Option<usize> = Option::None;
+    if !self.parser.match_kind(TokenKind::Semicolon) {
+      self.expression();
+      self.parser.consume(TokenKind::Semicolon, "Expected ';' after loop condition");
+    
+      exit_jump = Some(self.emit_jump());
+      self.emit_byte(ByteCode::Pop);
+    }
+
+    // parse incrementor
+    if !self.parser.match_kind(TokenKind::RightParen) {
+      let body_jump = self.emit_jump();
+
+      let increment_start = self.chunk.instructions.len();
+      self.expression();
+      self.emit_byte(ByteCode::Pop);
+      self.parser.consume(TokenKind::RightParen, "Expect ')' after for clauses.");
+
+      self.emit_loop(loop_start);
+      loop_start = increment_start;
+      println!("increment_start: {}", loop_start);
+
+      self.chunk.instructions[body_jump] = ByteCode::Jump(self.patch_jump(body_jump));
+    }
+
+    self.statement();
+    self.emit_loop(loop_start);
+
+    // patch exit jump
+    if let Some(jump) = exit_jump {
+      self.chunk.instructions[jump] = ByteCode::JumpIfFalse(self.patch_jump(jump));
+      self.emit_byte(ByteCode::Pop);
+    }
+
+    self.end_scope();
+  }
+
+  /// Compile a while statement
+  fn if_statement(&mut self) {
+    self.parser.consume(TokenKind::LeftParen, "Expected '(' after 'if'.");
+    self.expression();
+    self.parser.consume(TokenKind::RightParen, "Expected ')' after condition.");
+
+    let then_jump = self.emit_jump();
+    self.emit_byte(ByteCode::Pop);
+    self.statement();
+
+    let else_jump = self.emit_jump();
+    self.chunk.instructions[then_jump] = ByteCode::JumpIfFalse(self.patch_jump(then_jump));
+    self.emit_byte(ByteCode::Pop);
+
+    if self.parser.match_kind(TokenKind::Else) {
+      self.statement();
+    }
+
+    self.chunk.instructions[else_jump] = ByteCode::Jump(self.patch_jump(else_jump));
+  }
+
+  fn while_statement(&mut self) {
+    let loop_start = self.chunk.instructions.len();
+
+    self.parser.consume(TokenKind::LeftParen, "Expected '(' after 'while'.");
+    self.expression();
+    self.parser.consume(TokenKind::RightParen, "Expected ')' after condition.");
+
+    let exit_jump = self.emit_jump();
+
+    self.emit_byte(ByteCode::Pop);
+    self.statement();
+
+    self.emit_loop(loop_start);
+
+    self.chunk.instructions[exit_jump] = ByteCode::JumpIfFalse(self.patch_jump(exit_jump));
     self.emit_byte(ByteCode::Pop)
   }
 
@@ -421,6 +520,28 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_byte(ByteCode::DefineGlobal(global));
   }
 
+  /// Emit instruction for a short circuited and
+  fn and(&mut self) {
+    let end_jump = self.emit_jump();
+
+    self.emit_byte(ByteCode::Pop);
+    self.parse_precedence(Precedence::And);
+
+    self.chunk.instructions[end_jump] = ByteCode::JumpIfFalse(self.patch_jump(end_jump));
+  }
+
+  /// Emit instruction for a short circuited and
+  fn or(&mut self) {
+    let else_jump = self.emit_jump();
+    let end_jump = self.emit_jump();
+
+    self.chunk.instructions[else_jump] = ByteCode::JumpIfFalse(self.patch_jump(else_jump));
+    self.emit_byte(ByteCode::Pop);
+
+    self.parse_precedence(Precedence::Or);
+    self.chunk.instructions[end_jump] = ByteCode::Jump(self.patch_jump(end_jump));
+  }
+
   /// Parse a variable from the provided token return it's new constant
   /// identifer if an identifer was identified
   fn parse_variable(&mut self, error_message: &str) -> u8 {
@@ -518,6 +639,8 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   fn execute_action(&mut self, action: Act, can_assign: bool) {
     match action {
       Act::Literal => self.literal(),
+      Act::And => self.and(),
+      Act::Or => self.or(),
       Act::Binary => self.binary(),
       Act::Unary => self.unary(),
       Act::Variable => self.variable(can_assign),
@@ -549,6 +672,27 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_byte(ByteCode::Constant(index));
   }
 
+
+  fn patch_jump(&mut self, offset: usize) -> u16 {
+    let jump = self.chunk.instructions.len() - offset - 1;
+
+    if jump > std::u16::MAX.try_into().unwrap() {
+      self.parser.error("Too much code to jump over.");
+    }
+
+    jump as u16
+    // self.chunk.instructions[offset] = ByteCode::JumpIfFalse(jump as u16)
+  }
+
+  fn emit_loop(&mut self, loop_start: usize) {
+    let offset = self.chunk.instructions.len() - loop_start + 1;
+    if offset > std::u16::MAX.try_into().unwrap() {
+      self.parser.error("Loop body too large.");
+    }
+
+    self.emit_byte(ByteCode::Loop(offset as u16));
+  }
+
   /// Emit two provided instruction
   fn emit_bytes(&mut self, op_code1: ByteCode, op_code2: ByteCode) {
     let line = self.parser.current.line;
@@ -560,6 +704,13 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   fn emit_byte(&mut self, op_code: ByteCode) {
     let line = self.parser.current.line;
     self.chunk.write_instruction(op_code, line);
+  }
+
+  /// Emit a jump instruction
+  fn emit_jump(&mut self) -> usize {
+    self.emit_byte(ByteCode::Noop);
+
+    return self.chunk.instructions.len() - 1;
   }
 }
 
@@ -609,7 +760,7 @@ const RULES_TABLE: [ParseRule; 40] = [
   // TOKEN_STRING
   ParseRule::new(Some(Act::Number), None, Precedence::None),
   // TOKEN_NUMBER
-  ParseRule::new(None, None, Precedence::None),
+  ParseRule::new(None, Some(Act::And), Precedence::And),
   // TOKEN_AND
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_CLASS
@@ -625,7 +776,7 @@ const RULES_TABLE: [ParseRule; 40] = [
   // TOKEN_IF
   ParseRule::new(Some(Act::Literal), None, Precedence::None),
   // TOKEN_NIL
-  ParseRule::new(None, None, Precedence::None),
+  ParseRule::new(None, Some(Act::Or), Precedence::Or),
   // TOKEN_OR
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_PRINT
@@ -816,6 +967,8 @@ impl ParseRule {
 
 #[derive(Clone)]
 enum Act {
+  And,
+  Or,
   Grouping,
   Binary,
   Unary,
@@ -911,6 +1064,87 @@ mod test {
     assert_eq!(instructions[0].clone(), ByteCode::Constant(0));
     assert_eq!(instructions[1].clone(), ByteCode::Print);
     assert_eq!(instructions[2], ByteCode::Return);
+  }
+
+  #[test]
+  fn for_loop() {
+    let example = "for (var x = 0; x < 10; x = x + 1) { print(x); }".to_string();
+
+    let instructions = test_compile(example);
+    assert_eq!(instructions.len(), 19);
+    assert_eq!(instructions[0], ByteCode::Constant(0));
+    assert_eq!(instructions[1], ByteCode::GetLocal(0));
+    assert_eq!(instructions[2], ByteCode::Constant(1));
+    assert_eq!(instructions[3], ByteCode::Less);
+    assert_eq!(instructions[4], ByteCode::JumpIfFalse(11));
+    assert_eq!(instructions[5], ByteCode::Pop);
+    assert_eq!(instructions[6], ByteCode::Jump(6));
+    assert_eq!(instructions[7], ByteCode::GetLocal(0));
+    assert_eq!(instructions[8], ByteCode::Constant(2));
+    assert_eq!(instructions[9], ByteCode::Add);
+    assert_eq!(instructions[10], ByteCode::SetLocal(0));
+    assert_eq!(instructions[11], ByteCode::Pop);
+    assert_eq!(instructions[12], ByteCode::Loop(12));
+    assert_eq!(instructions[13], ByteCode::GetLocal(0));
+    assert_eq!(instructions[14], ByteCode::Print);
+    assert_eq!(instructions[15], ByteCode::Loop(9));
+    assert_eq!(instructions[16], ByteCode::Pop);
+    assert_eq!(instructions[17], ByteCode::Pop);
+    assert_eq!(instructions[18], ByteCode::Return);
+  }
+
+  #[test]
+  fn while_loop() {
+    let example = "while (true) { print 10; }".to_string();
+
+    let instructions = test_compile(example);
+    assert_eq!(instructions.len(), 8);
+    assert_eq!(instructions[0], ByteCode::True);
+    assert_eq!(instructions[1], ByteCode::JumpIfFalse(4));
+    assert_eq!(instructions[2], ByteCode::Pop);
+    assert_eq!(instructions[3], ByteCode::Constant(0));
+    assert_eq!(instructions[4], ByteCode::Print);
+    assert_eq!(instructions[5], ByteCode::Loop(6));
+    assert_eq!(instructions[6], ByteCode::Pop);
+    assert_eq!(instructions[7], ByteCode::Return);
+  }
+
+  #[test]
+  fn if_condition() {
+    let example = "if (3 < 10) { print \"hi\"; }".to_string();
+
+    let instructions = test_compile(example);
+    assert_eq!(instructions.len(), 10);
+    assert_eq!(instructions[0], ByteCode::Constant(0));
+    assert_eq!(instructions[1], ByteCode::Constant(1));
+    assert_eq!(instructions[2], ByteCode::Less);
+    assert_eq!(instructions[3], ByteCode::JumpIfFalse(4));
+    assert_eq!(instructions[4], ByteCode::Pop);
+    assert_eq!(instructions[5], ByteCode::Constant(2));
+    assert_eq!(instructions[6], ByteCode::Print);
+    assert_eq!(instructions[7], ByteCode::Jump(1));
+    assert_eq!(instructions[8], ByteCode::Pop);
+    assert_eq!(instructions[9], ByteCode::Return);
+  }
+
+  #[test]
+  fn if_else_condition() {
+    let example = "if (3 < 10) { print \"hi\"; } else { print \"bye\" }".to_string();
+
+    let instructions = test_compile(example);
+    assert_eq!(instructions.len(), 12);
+    assert_eq!(instructions[0], ByteCode::Constant(0));
+    assert_eq!(instructions[1], ByteCode::Constant(1));
+    assert_eq!(instructions[2], ByteCode::Less);
+    assert_eq!(instructions[3], ByteCode::JumpIfFalse(4));
+    assert_eq!(instructions[4], ByteCode::Pop);
+    assert_eq!(instructions[5], ByteCode::Constant(2));
+    assert_eq!(instructions[6], ByteCode::Print);
+    assert_eq!(instructions[7], ByteCode::Jump(3));
+    assert_eq!(instructions[8], ByteCode::Pop);
+    assert_eq!(instructions[9], ByteCode::Constant(3));
+    assert_eq!(instructions[10], ByteCode::Print);
+    assert_eq!(instructions[11], ByteCode::Return);
   }
 
   #[test]

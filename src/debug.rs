@@ -38,11 +38,20 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
     ByteCode::SetGlobal(constant) => constant_instruction("SetGlobal", chunk, *constant),
     ByteCode::GetLocal(slot) => byte_instruction("GetLocal", *slot),
     ByteCode::SetLocal(slot) => byte_instruction("SetLocal", *slot),
+    ByteCode::Jump(jump) => jump_instruction("Jump", 1, *jump, offset as isize),
+    ByteCode::JumpIfFalse(jump) => jump_instruction("Jump", 1, *jump, offset as isize),
+    ByteCode::Loop(jump) => jump_instruction("Loop", -1, *jump, offset as isize),
+    ByteCode::Noop => simple_instruction("Noop"),
     ByteCode::Equal => simple_instruction("Equal"),
     ByteCode::Greater => simple_instruction("Greater"),
     ByteCode::Less => simple_instruction("Less"),
     ByteCode::Constant(constant) => constant_instruction("Constant", chunk, *constant),
   }
+}
+
+fn jump_instruction(name: &str, sign: isize, jump: u16, offset: isize) {
+  let net_jump = sign * (jump as isize);
+  println!("{} {:4} -> {}", name, offset, offset + 1 + net_jump);
 }
 
 /// print a constant
@@ -52,6 +61,7 @@ fn constant_instruction(name: &str, chunk: &Chunk, constant: u8) {
   println!();
 }
 
+/// print a byte instruction
 fn byte_instruction(name: &str, slot: u8) {
   println!("{} {:4} ", name, slot);
 }

@@ -123,42 +123,44 @@ impl<'a> Vm<'a> {
         ByteCode::Equal => self.op_equal(),
         ByteCode::Greater => self.op_greater(),
         ByteCode::Less => self.op_less(),
-        ByteCode::DefineGlobal(constant) => {
-          let index_copy = *constant;
-          self.op_define_global(index_copy);
+        ByteCode::JumpIfFalse(jump) => {
+          let copy = *jump;
+          self.op_jump_if_not_false(copy)
         }
-        ByteCode::SetGlobal(store_index) => {
-          let index_copy = *store_index;
-          let name = self.read_string(index_copy);
-
-          if self.globals.store.insert(name.clone(), self.peek(0).clone()).is_none() {
-            self.globals.store.remove_entry(&name);
-            self.runtime_error(&format!("Undedfined variable {}", name));
-            return InterpretResult::RuntimeError;
-          }
+        ByteCode::Jump(jump) => {
+          let copy = *jump;
+          self.op_jump(copy);
+        }
+        ByteCode::Loop(jump) => {
+          let copy = *jump;
+          self.op_loop(copy);
+        }
+        ByteCode::Noop => panic!("Noop was not replaced within compiler.rs"),
+        ByteCode::DefineGlobal(constant) => {
+          let copy = *constant;
+          self.op_define_global(copy);
         }
         ByteCode::GetGlobal(store_index) => {
-          let index_copy = *store_index;
-          let name = self.read_string(index_copy);
-
-          match self.globals.store.get(&name) {
-            Some(global) => {
-              let global_clone = global.clone();
-              self.push(global_clone);
-            },
-            None => {
-              self.runtime_error(&format!("Undedfined variable {}", name));
-              return InterpretResult::RuntimeError;
-            }
+          let copy = *store_index;
+          match self.op_get_global(copy) {
+            Some(result) => { return result }
+            None => {}
+          }
+        }
+        ByteCode::SetGlobal(store_index) => {
+          let copy = *store_index;
+          match self.op_set_global(copy) {
+            Some(result) => { return result }
+            None => {}
           }
         }
         ByteCode::GetLocal(store_index) => {
-          let copy = self.stack[*store_index as usize].clone();
-          self.push(copy);
-        }
+          let copy = *store_index;
+          self.op_get_local(copy);
+        } 
         ByteCode::SetLocal(store_index) => {
-          let copy = self.peek(0).clone();
-          self.stack[*store_index as usize] = copy;
+          let copy = *store_index;
+          self.op_set_local(copy);
         }
         ByteCode::Pop => {
           self.pop();
@@ -167,12 +169,10 @@ impl<'a> Vm<'a> {
         ByteCode::True => self.push(Value::Bool(true)),
         ByteCode::False => self.push(Value::Bool(false)),
         ByteCode::Constant(store_index) => {
-          let index_copy = *store_index;
-          self.op_constant(index_copy);
+          let copy = *store_index;
+          self.op_constant(copy);
         }
-        ByteCode::Print => {
-          println!("{}", self.pop());
-        }
+        ByteCode::Print => println!("{}", self.pop()),
         ByteCode::Return => {
           return InterpretResult::Ok;
         }
@@ -201,13 +201,6 @@ impl<'a> Vm<'a> {
   fn read_constant(&self, index: u8) -> Value<'a> {
     self.chunk.constants.values[index as usize].clone()
   }
-
-  // fn read_byte(&mut self) -> ByteCode {
-  //   let byte_code = self.chunk.instructions[self.ip].clone();
-  //   self.ip += 1;
-
-  //   byte_code
-  // }
 
   fn allocate(&self, value: ObjValue) -> Obj<'a> {
     let obj = Obj::new(value);
@@ -242,10 +235,62 @@ impl<'a> Vm<'a> {
     self.stack_top = 0;
   }
 
+  fn op_loop(&mut self, jump: u16) {
+    self.ip -= jump as usize;
+  }
+
+  fn op_jump_if_not_false(&mut self, jump: u16) {
+    if is_falsey(self.peek(0)) {
+      self.ip += jump as usize;
+    }
+  }
+
+  fn op_jump(&mut self, jump: u16) {
+    self.ip += jump as usize;
+  }
+
   fn op_define_global(&mut self, store_index: u8) {
     let name = self.read_string(store_index);
     let global = self.pop();
     self.globals.store.insert(name, global);
+  }
+
+  fn op_get_global(&mut self, store_index: u8) -> Option<InterpretResult> {
+    let name = self.read_string(store_index);
+
+    match self.globals.store.get(&name) {
+      Some(global) => {
+        let global_clone = global.clone();
+        self.push(global_clone);
+        None
+      },
+      None => {
+        self.runtime_error(&format!("Undedfined variable {}", name));
+        Some(InterpretResult::RuntimeError)
+      }
+    }
+  }
+
+  fn op_set_global(&mut self, store_index: u8) -> Option<InterpretResult> {
+    let name = self.read_string(store_index);
+
+    if self.globals.store.insert(name.clone(), self.peek(0).clone()).is_none() {
+      self.globals.store.remove_entry(&name);
+      self.runtime_error(&format!("Undedfined variable {}", name));
+      return Some(InterpretResult::RuntimeError);
+    }
+
+    None
+  }
+
+  fn op_set_local(&mut self, store_index: u8) {
+    let copy = self.peek(0).clone();
+    self.stack[store_index as usize] = copy;
+  }
+
+  fn op_get_local(&mut self, store_index: u8) {
+    let copy = self.stack[store_index as usize].clone();
+    self.push(copy);
   }
 
   fn op_negate(&mut self) {
@@ -257,7 +302,7 @@ impl<'a> Vm<'a> {
 
   fn op_not(&mut self) {
     let value = self.pop();
-    self.push(Value::Bool(is_falsey(value)))
+    self.push(Value::Bool(is_falsey(&value)))
   }
 
   fn op_add(&mut self) {
@@ -275,7 +320,6 @@ impl<'a> Vm<'a> {
           },
           _ => self.runtime_error("Operands must be two numbers or two strings."),
         },
-        // _ => self.runtime_error(message: &str)
       },
       Value::Number(_num1) => match self.peek(1) {
         Value::Number(_num2) => {
@@ -372,7 +416,7 @@ fn read_file(path: &str) -> String {
 /// ```
 ///
 /// ```
-fn is_falsey(value: Value) -> bool {
+fn is_falsey(value: &Value) -> bool {
   match value {
     Value::Nil => true,
     Value::Bool(b) => !b,

@@ -3,37 +3,37 @@ use crate::value::{Value, ValueVec};
 /// Space Lox virtual machine byte codes
 #[derive(Debug, PartialEq, Clone)]
 pub enum ByteCode {
-  /// Return ByteCode
+  /// Return from script or function
   Return,
 
-  /// Negate ByteCode
+  /// Negate a value
   Negate,
 
-  /// Print ByteCode
+  /// Print a value
   Print,
 
-  /// Add ByteCode
+  /// Add the top two operands on the stack
   Add,
 
-  /// Subtract ByteCode
+  /// Subtract the top two operands on the stack
   Subtract,
 
-  /// Multiply Opcode
+  /// Multiply the top two operands on the stack
   Multiply,
 
-  /// Divide ByteCode
+  /// Divide the top two operands on the stack
   Divide,
 
-  /// Not ByteCode
+  /// Apply Not operator to top stack element
   Not,
 
-  /// Constant ByteCode
+  /// Retrieve a constant from the constants table
   Constant(u8),
 
-  /// Nill ByteCode
+  /// Nil literal
   Nil,
 
-  /// True ByteCode
+  /// True Literal
   True,
 
   /// False ByteCode
@@ -42,28 +42,40 @@ pub enum ByteCode {
   /// Pop ByteCode
   Pop,
 
-  /// Define Global ByteCode
+  /// Define a global in the globals table at a index
   DefineGlobal(u8),
 
-  /// Get Global ByteCode
+  /// Retrieve a global at the given index
   GetGlobal(u8),
 
-  /// Set Global ByteCode
+  /// Set a global at the given index
   SetGlobal(u8),
 
-  /// Get Local ByteCode
+  /// Get a local at the given index
   GetLocal(u8),
 
-  /// Set Local ByteCode
+  /// Set a local at the given index
   SetLocal(u8),
 
-  /// Equal ByteCode
+  /// Jump to end of if block if false
+  JumpIfFalse(u16),
+
+  /// Jump conditionally to the ip
+  Jump(u16),
+
+  /// Jump to loop beginning
+  Loop(u16),
+
+  /// Temp loop placeholder
+  Noop,
+
+  /// Apply equality between the top two operands on the stack
   Equal,
 
-  /// Greater ByteCode
+  /// Apply greater between the top two operands on the stack
   Greater,
 
-  /// Less ByteCode
+  /// Less greater between the top two operands on the stack
   Less,
 }
 
