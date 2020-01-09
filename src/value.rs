@@ -113,7 +113,7 @@ impl<'a> Value<'a> {
 }
 
 // Represents a collection of values
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct ValueVec<'a> {
   pub values: Vec<Value<'a>>
 }

@@ -1,5 +1,6 @@
 use crate::scanner::{Token};
 use crate::utils::{next_boundary, previous_boundary};
+use crate::chunk::{Chunk};
 use std::fmt;
 use std::mem::{discriminant};
 use std::cell::{Cell};
@@ -8,12 +9,26 @@ use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone)]
 pub struct Obj<'a> {
   pub next: Cell<Option<&'a Obj<'a>>>,
-  pub value: ObjValue
+  pub value: ObjValue<'a>
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum ObjValue {
-  String(String)
+pub enum ObjValue<'a> {
+  String(String),
+  Fun(Fun<'a>)
+}
+
+#[derive(Debug, PartialEq, Clone, Default)]
+pub struct Fun<'a> {
+  pub arity: u8,
+  pub chunk: Chunk<'a>,
+  pub name: Option<String>,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum FunKind {
+  Fun,
+  Script
 }
 
 impl<'a> PartialEq for Obj<'a> {
@@ -29,7 +44,7 @@ impl<'a> PartialEq for Obj<'a> {
   /// 
   /// assert_eq!(obj1 == obj2, false);
   /// ```
-  fn eq(&self, other: &Obj) -> bool {
+  fn eq(&self, other: &Obj<'a>) -> bool {
     if discriminant(&self.value) != discriminant(&other.value) {
       return false
     }
@@ -37,6 +52,11 @@ impl<'a> PartialEq for Obj<'a> {
     match &self.value {
       ObjValue::String(str1) => match &other.value {
         ObjValue::String(str2) => str1 == str2,
+        _ => false,
+      }
+      ObjValue::Fun(func1) => match &other.value {
+        ObjValue::Fun(func2) => func1 == func2,
+        _ => false,
       }
     }
   }
@@ -65,7 +85,8 @@ impl<'a> Hash for Obj<'a> {
   /// ```
   fn hash<H: Hasher>(&self, state: &mut H) {
     match &self.value {
-      ObjValue::String(string) => string.hash(state), 
+      ObjValue::String(string) => string.hash(state),
+      ObjValue::Fun(func) => func.name.hash(state)
     }
   }
 }
@@ -83,13 +104,17 @@ impl<'a> fmt::Display for Obj<'a> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match &self.value {
       ObjValue::String(store) => write!(f, "{}", store),
+      ObjValue::Fun(func) => match &func.name {
+        Some(name) => write!(f, "<fn {}>", name),
+        None => write!(f, "<script>")
+      } 
     }
   }
 }
 
 impl<'a> Obj<'a> {
   /// Construct a new object for spacelox
-  pub fn new(value: ObjValue) -> Obj<'a> {
+  pub fn new(value: ObjValue<'a>) -> Obj<'a> {
     Obj { value, next: Cell::new(Option::None) }
   }
 
@@ -105,6 +130,30 @@ impl<'a> Obj<'a> {
   pub fn move_string(self) -> String {
     match self.value {
       ObjValue::String(str1) => str1,
+      _ => panic!("Expected string")
+    }
+  }
+
+  /// Convert spacelox value to function, panics if not a function
+  /// 
+  /// # Examples
+  /// ```
+  /// use lox_runtime::object::{Obj, ObjValue, ObjFun};
+  /// use lox_runtime::chunk::{Chunk};
+  /// 
+  /// let func = ObjFun { 
+  ///   name: Some("add".to_string()),
+  ///   arity: 3,
+  ///   chunk: Chunk::default()
+  /// };
+  /// 
+  /// let obj1 = Obj::new(ObjValue::Fun(func));
+  /// assert_eq!(obj1.to_string(), "<fn add>");
+  /// ```
+  pub fn move_fn(self) -> Fun<'a> {
+    match self.value {
+      ObjValue::Fun(func) => func,
+      _ => panic!("Expected function!"),
     }
   }
 }

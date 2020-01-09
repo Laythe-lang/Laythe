@@ -80,7 +80,7 @@ pub enum ByteCode {
 }
 
 /// Represent tokens on a line
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct Line {
   /// Line number
   pub line: i32,
@@ -97,7 +97,7 @@ impl Line {
 }
 
 /// Represents a chunk of code
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Chunk<'a> {
   /// instructions in this code chunk
   pub instructions: Vec<ByteCode>,

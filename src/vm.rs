@@ -1,7 +1,7 @@
 use crate::chunk::{ByteCode, Chunk};
 use crate::compiler::{Compiler, CompilerAnalytics};
 use crate::memory::free_objects;
-use crate::object::{Obj, ObjValue};
+use crate::object::{Obj, ObjValue, Fun};
 use crate::table::Table;
 use crate::value::Value;
 use std::cell::Cell;
@@ -9,11 +9,13 @@ use std::fs::read_to_string;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
 use std::ops::Drop;
+use std::mem::{MaybeUninit, transmute}
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_instruction;
 
 pub const DEFAULT_STACK_MAX: usize = 500;
+pub const FRAME_MAX: usize = 255;
 
 #[derive(Debug)]
 pub enum InterpretResult {
@@ -22,10 +24,17 @@ pub enum InterpretResult {
   RuntimeError,
 }
 
+/// A call frame in the space lox interpreter
+pub struct CallFrame<'a> {
+  fun: &'a Fun<'a>,
+  ip: usize,
+  slots: usize,
+}
+
 /// The virtual machine for the spacelox programming language
 pub struct Vm<'a> {
-  pub chunk: Box<Chunk<'a>>,
-  pub ip: usize,
+  pub frames: [CallFrame<'a>; FRAME_MAX],
+  pub frame_idx: usize,
   pub stack: Vec<Value<'a>>,
   pub objects: Cell<Option<&'a Obj<'a>>>,
   pub stack_top: usize,
@@ -43,9 +52,12 @@ impl<'a> Drop for Vm<'a> {
 
 impl<'a> Vm<'a> {
   pub fn new(stack: Vec<Value>) -> Vm {
+    let uninitialized_call_frame: [MaybeUninit<CallFrame<'a>; FRAME_MAX>] = [MaybeUninit<CallFrame<'a>>]
+
+
     Vm {
-      chunk: Box::new(Chunk::default()),
-      ip: 0,
+      frames: [CallFrame<'a>, FRAME_MAX],
+      frame_idx: 0,
       stack,
       objects: Cell::new(Option::None),
       stack_top: 0,
@@ -82,12 +94,11 @@ impl<'a> Vm<'a> {
   }
 
   fn interpret(&mut self, source: String) -> InterpretResult {
-    let allocate = |value: ObjValue| self.allocate(value);
+    let allocate = |value: ObjValue<'a>| self.allocate(value);
     let intern = |string: String| self.intern(string);
 
     let compiler = Compiler::new(
       source,
-      Chunk::default(),
       CompilerAnalytics {
         allocate: &allocate,
         intern: &intern,
@@ -99,20 +110,20 @@ impl<'a> Vm<'a> {
       return InterpretResult::CompileError;
     }
 
-    self.chunk = Box::new(result.chunk);
-    self.ip = 0;
+    self.chunk = Box::new(result.fun.chunk);
+    self.frame_idx = 0;
 
     self.run()
   }
 
   fn run(&mut self) -> InterpretResult {
     loop {
-      let op_code = &self.chunk.instructions[self.ip];
+      let op_code = &self.chunk.instructions[self.frame_idx];
 
       #[cfg(debug_assertions)]
       self.print_debug();
 
-      self.ip += 1;
+      self.frame_idx += 1;
       match op_code {
         ByteCode::Negate => self.op_negate(),
         ByteCode::Add => self.op_add(),
@@ -142,16 +153,16 @@ impl<'a> Vm<'a> {
         }
         ByteCode::GetGlobal(store_index) => {
           let copy = *store_index;
-          match self.op_get_global(copy) {
-            Some(result) => { return result }
-            None => {}
+
+          if let Some(result) = self.op_get_global(copy) {
+            return result;
           }
         }
         ByteCode::SetGlobal(store_index) => {
           let copy = *store_index;
-          match self.op_set_global(copy) {
-            Some(result) => { return result }
-            None => {}
+
+          if let Some(result) = self.op_set_global(copy) {
+            return result;
           }
         }
         ByteCode::GetLocal(store_index) => {
@@ -182,7 +193,7 @@ impl<'a> Vm<'a> {
 
   fn runtime_error(&mut self, message: &str) {
     eprintln!("{}", message);
-    eprintln!("[line{}] in script", self.chunk.get_line(self.ip));
+    eprintln!("[line{}] in script", self.chunk.get_line(self.frame_idx));
     self.reset_stack();
   }
 
@@ -192,6 +203,7 @@ impl<'a> Vm<'a> {
         ObjValue::String(string) => {
           string
         }
+        _ => panic!("Expected string.")
       }
       _ => panic!("Expected object.")
     }
@@ -202,7 +214,7 @@ impl<'a> Vm<'a> {
     self.chunk.constants.values[index as usize].clone()
   }
 
-  fn allocate(&self, value: ObjValue) -> Obj<'a> {
+  fn allocate(&self, value: ObjValue<'a>) -> Obj<'a> {
     let obj = Obj::new(value);
     obj.next.set(self.objects.get());
     self.objects.set(obj.next.get());
@@ -236,17 +248,17 @@ impl<'a> Vm<'a> {
   }
 
   fn op_loop(&mut self, jump: u16) {
-    self.ip -= jump as usize;
+    self.frame_idx -= jump as usize;
   }
 
   fn op_jump_if_not_false(&mut self, jump: u16) {
     if is_falsey(self.peek(0)) {
-      self.ip += jump as usize;
+      self.frame_idx += jump as usize;
     }
   }
 
   fn op_jump(&mut self, jump: u16) {
-    self.ip += jump as usize;
+    self.frame_idx += jump as usize;
   }
 
   fn op_define_global(&mut self, store_index: u8) {
@@ -317,9 +329,11 @@ impl<'a> Vm<'a> {
               let result = format!("{}{}", left, right);
               self.push(Value::Obj(Obj::new(ObjValue::String(result))));
             }
+            _ => self.runtime_error("Operands must be two numbers or two strings."),
           },
           _ => self.runtime_error("Operands must be two numbers or two strings."),
         },
+        _ => self.runtime_error("Operands must be two numbers or two strings."),
       },
       Value::Number(_num1) => match self.peek(1) {
         Value::Number(_num2) => {
@@ -402,7 +416,7 @@ impl<'a> Vm<'a> {
       print!("[ {} ]", self.stack[i]);
     }
     println!();
-    disassemble_instruction(&self.chunk, self.ip);
+    disassemble_instruction(&self.chunk, self.frame_idx);
   }
 }
 

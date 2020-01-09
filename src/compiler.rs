@@ -1,6 +1,6 @@
 use crate::chunk::{ByteCode, Chunk};
 use crate::debug::disassemble_chunk;
-use crate::object::{copy_string, Obj, ObjValue};
+use crate::object::{copy_string, Fun, FunKind, Obj, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
 use std::convert::TryInto;
@@ -11,12 +11,12 @@ pub struct CompilerResult<'c> {
   pub success: bool,
 
   /// The chunk that was compiled
-  pub chunk: Chunk<'c>,
+  pub fun: Fun<'c>,
 }
 
 pub struct CompilerAnalytics<'a, 'c: 'a> {
   /// provide a side effect when the compiler allocates an object
-  pub allocate: &'a dyn Fn(ObjValue) -> Obj<'c>,
+  pub allocate: &'a dyn Fn(ObjValue<'c>) -> Obj<'c>,
 
   /// provide a mechanism to intern a string
   pub intern: &'a dyn Fn(String) -> String,
@@ -33,8 +33,11 @@ pub struct Local {
 
 /// The spacelox compiler for converting tokens to bytecode
 pub struct Compiler<'a, 'c: 'a> {
-  /// The current chunk this compiler points to
-  chunk: Chunk<'c>,
+  /// The current function
+  fun: Fun<'c>,
+
+  /// The type the current function scope
+  fun_kind: FunKind,
 
   /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
@@ -64,19 +67,27 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// use lox_runtime::compiler::{Compiler, CompilerAnalytics};
   /// use lox_runtime::object::{ObjValue, Obj};
   ///
+  /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
+  ///   Obj::new(value)
+  /// }
+  ///
   /// // an expression
   /// let source = "10 + 3".to_string();
   /// let chunk = Chunk::default();
   ///
-  /// let allocate = |value: ObjValue| Obj::new(value);
   /// let intern = |string: String| string;
   /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
   ///
   /// let compiler = Compiler::new(source, chunk, analytics);
   /// ```
-  pub fn new(source: String, chunk: Chunk<'c>, analytics: CompilerAnalytics<'a, 'c>) -> Self {
+  pub fn new(source: String, analytics: CompilerAnalytics<'a, 'c>) -> Self {
     Self {
-      chunk,
+      fun: Fun {
+        arity: 0,
+        name: Option::None,
+        chunk: Chunk::default()
+      },
+      fun_kind: FunKind::Fun,
       analytics,
       parser: Parser::new(source),
       local_count: 0,
@@ -100,11 +111,14 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// use lox_runtime::compiler::{Compiler, CompilerAnalytics};
   /// use lox_runtime::object::{ObjValue, Obj};
   ///
+  /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
+  ///   Obj::new(value)
+  /// }
+  ///
   /// // an expression
   /// let source = "3 / 2 + 10".to_string();
   /// let chunk = Chunk::default();
   ///
-  /// let allocate = |value: ObjValue| Obj::new(value);
   /// let intern = |string: String| string;
   /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
   ///
@@ -121,7 +135,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
       return CompilerResult {
         success: !self.parser.had_error,
-        chunk: self.chunk,
+        fun: self.fun,
       };
     }
 
@@ -140,8 +154,13 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
     CompilerResult {
       success: !self.parser.had_error,
-      chunk: self.chunk,
+      fun: self.fun,
     }
+  }
+
+  /// The current chunk
+  fn current_chunk(&mut self) -> &mut Chunk<'c> {
+    &mut self.fun.chunk
   }
 
   /// Parse a declaration
@@ -221,8 +240,9 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
   fn for_statement(&mut self) {
     self.begin_scope();
-    self.parser.consume(TokenKind::LeftParen, "Expected '(' after 'for'.");
-    
+    self
+      .parser
+      .consume(TokenKind::LeftParen, "Expected '(' after 'for'.");
     // parse an initializer
     if self.parser.match_kind(TokenKind::Semicolon) {
     } else if self.parser.match_kind(TokenKind::Var) {
@@ -231,15 +251,16 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
       self.expression_statement();
     }
 
-    let mut loop_start = self.chunk.instructions.len();
+    let mut loop_start = self.current_chunk().instructions.len();
     println!("loop_start: {}", loop_start);
 
     // parse loop condition
     let mut exit_jump: Option<usize> = Option::None;
     if !self.parser.match_kind(TokenKind::Semicolon) {
       self.expression();
-      self.parser.consume(TokenKind::Semicolon, "Expected ';' after loop condition");
-    
+      self
+        .parser
+        .consume(TokenKind::Semicolon, "Expected ';' after loop condition");
       exit_jump = Some(self.emit_jump());
       self.emit_byte(ByteCode::Pop);
     }
@@ -248,16 +269,18 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     if !self.parser.match_kind(TokenKind::RightParen) {
       let body_jump = self.emit_jump();
 
-      let increment_start = self.chunk.instructions.len();
+      let increment_start = self.current_chunk().instructions.len();
       self.expression();
       self.emit_byte(ByteCode::Pop);
-      self.parser.consume(TokenKind::RightParen, "Expect ')' after for clauses.");
+      self
+        .parser
+        .consume(TokenKind::RightParen, "Expect ')' after for clauses.");
 
       self.emit_loop(loop_start);
       loop_start = increment_start;
       println!("increment_start: {}", loop_start);
 
-      self.chunk.instructions[body_jump] = ByteCode::Jump(self.patch_jump(body_jump));
+      self.current_chunk().instructions[body_jump] = ByteCode::Jump(self.patch_jump(body_jump));
     }
 
     self.statement();
@@ -265,7 +288,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
     // patch exit jump
     if let Some(jump) = exit_jump {
-      self.chunk.instructions[jump] = ByteCode::JumpIfFalse(self.patch_jump(jump));
+      self.current_chunk().instructions[jump] = ByteCode::JumpIfFalse(self.patch_jump(jump));
       self.emit_byte(ByteCode::Pop);
     }
 
@@ -274,31 +297,40 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
   /// Compile a while statement
   fn if_statement(&mut self) {
-    self.parser.consume(TokenKind::LeftParen, "Expected '(' after 'if'.");
+    self
+      .parser
+      .consume(TokenKind::LeftParen, "Expected '(' after 'if'.");
     self.expression();
-    self.parser.consume(TokenKind::RightParen, "Expected ')' after condition.");
+    self
+      .parser
+      .consume(TokenKind::RightParen, "Expected ')' after condition.");
 
     let then_jump = self.emit_jump();
     self.emit_byte(ByteCode::Pop);
     self.statement();
 
     let else_jump = self.emit_jump();
-    self.chunk.instructions[then_jump] = ByteCode::JumpIfFalse(self.patch_jump(then_jump));
+    self.current_chunk().instructions[then_jump] =
+      ByteCode::JumpIfFalse(self.patch_jump(then_jump));
     self.emit_byte(ByteCode::Pop);
 
     if self.parser.match_kind(TokenKind::Else) {
       self.statement();
     }
 
-    self.chunk.instructions[else_jump] = ByteCode::Jump(self.patch_jump(else_jump));
+    self.current_chunk().instructions[else_jump] = ByteCode::Jump(self.patch_jump(else_jump));
   }
 
   fn while_statement(&mut self) {
-    let loop_start = self.chunk.instructions.len();
+    let loop_start = self.current_chunk().instructions.len();
 
-    self.parser.consume(TokenKind::LeftParen, "Expected '(' after 'while'.");
+    self
+      .parser
+      .consume(TokenKind::LeftParen, "Expected '(' after 'while'.");
     self.expression();
-    self.parser.consume(TokenKind::RightParen, "Expected ')' after condition.");
+    self
+      .parser
+      .consume(TokenKind::RightParen, "Expected ')' after condition.");
 
     let exit_jump = self.emit_jump();
 
@@ -307,7 +339,8 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
     self.emit_loop(loop_start);
 
-    self.chunk.instructions[exit_jump] = ByteCode::JumpIfFalse(self.patch_jump(exit_jump));
+    self.current_chunk().instructions[exit_jump] =
+      ByteCode::JumpIfFalse(self.patch_jump(exit_jump));
     self.emit_byte(ByteCode::Pop)
   }
 
@@ -348,11 +381,11 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   }
 
   /// End the compilation at eof
-  fn end_compiler(&mut self) {
+  fn end_compiler(&self) {
     self.emit_return();
 
     #[cfg(debug_assertions)]
-    self.print_chunk()
+    self.print_chunk();
   }
 
   /// Increase the scope depth by 1
@@ -373,7 +406,10 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// Print the chunk if debug and an error occurred
   fn print_chunk(&self) {
     if self.parser.had_error {
-      disassemble_chunk(&self.chunk, "code")
+      disassemble_chunk(
+        &self.fun.chunk,
+        &self.fun.name.unwrap_or("<script>".to_string()),
+      )
     }
   }
 
@@ -527,7 +563,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_byte(ByteCode::Pop);
     self.parse_precedence(Precedence::And);
 
-    self.chunk.instructions[end_jump] = ByteCode::JumpIfFalse(self.patch_jump(end_jump));
+    self.current_chunk().instructions[end_jump] = ByteCode::JumpIfFalse(self.patch_jump(end_jump));
   }
 
   /// Emit instruction for a short circuited and
@@ -535,11 +571,12 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     let else_jump = self.emit_jump();
     let end_jump = self.emit_jump();
 
-    self.chunk.instructions[else_jump] = ByteCode::JumpIfFalse(self.patch_jump(else_jump));
+    self.current_chunk().instructions[else_jump] =
+      ByteCode::JumpIfFalse(self.patch_jump(else_jump));
     self.emit_byte(ByteCode::Pop);
 
     self.parse_precedence(Precedence::Or);
-    self.chunk.instructions[end_jump] = ByteCode::Jump(self.patch_jump(end_jump));
+    self.current_chunk().instructions[end_jump] = ByteCode::Jump(self.patch_jump(end_jump));
   }
 
   /// Parse a variable from the provided token return it's new constant
@@ -657,7 +694,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
   /// Add a constant to the current chunk
   fn make_constant(&mut self, value: Value<'c>) -> u8 {
-    let index = self.chunk.add_constant(value);
+    let index = self.current_chunk().add_constant(value);
     if index > std::u8::MAX as usize {
       self.parser.error("Too many constants in one chunk.");
       return 0;
@@ -672,9 +709,8 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_byte(ByteCode::Constant(index));
   }
 
-
   fn patch_jump(&mut self, offset: usize) -> u16 {
-    let jump = self.chunk.instructions.len() - offset - 1;
+    let jump = self.current_chunk().instructions.len() - offset - 1;
 
     if jump > std::u16::MAX.try_into().unwrap() {
       self.parser.error("Too much code to jump over.");
@@ -685,7 +721,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   }
 
   fn emit_loop(&mut self, loop_start: usize) {
-    let offset = self.chunk.instructions.len() - loop_start + 1;
+    let offset = self.current_chunk().instructions.len() - loop_start + 1;
     if offset > std::u16::MAX.try_into().unwrap() {
       self.parser.error("Loop body too large.");
     }
@@ -696,21 +732,21 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// Emit two provided instruction
   fn emit_bytes(&mut self, op_code1: ByteCode, op_code2: ByteCode) {
     let line = self.parser.current.line;
-    self.chunk.write_instruction(op_code1, line);
-    self.chunk.write_instruction(op_code2, line);
+    self.current_chunk().write_instruction(op_code1, line);
+    self.current_chunk().write_instruction(op_code2, line);
   }
 
   /// Emit a provided instruction
   fn emit_byte(&mut self, op_code: ByteCode) {
     let line = self.parser.current.line;
-    self.chunk.write_instruction(op_code, line);
+    self.current_chunk().write_instruction(op_code, line);
   }
 
   /// Emit a jump instruction
   fn emit_jump(&mut self) -> usize {
     self.emit_byte(ByteCode::Noop);
 
-    return self.chunk.instructions.len() - 1;
+    self.current_chunk().instructions.len() - 1
   }
 }
 
@@ -1037,8 +1073,8 @@ mod test {
   //   )
   // }
 
-  fn test_compile(src: String) -> Vec<ByteCode> {
-    let allocate = |value: ObjValue| Obj::new(value);
+  fn test_compile<'a>(src: String) -> Vec<ByteCode> {
+    let allocate = |value: ObjValue<'a>| Obj::new(value);
     let intern = |string: String| string;
     let compiler = Compiler::new(
       src,
@@ -1051,7 +1087,7 @@ mod test {
     let result = compiler.compile();
     assert_eq!(result.success, true);
 
-    result.chunk.instructions
+    result.fun.chunk.instructions
   }
 
   #[test]
