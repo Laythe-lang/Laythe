@@ -1,6 +1,6 @@
 use crate::chunk::{ByteCode, Chunk};
 use crate::debug::disassemble_chunk;
-use crate::object::{copy_string, Fun, FunKind, Obj, ObjValue};
+use crate::object::{copy_string, Fun, Obj, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
 use std::convert::TryInto;
@@ -37,7 +37,7 @@ pub struct Compiler<'a, 'c: 'a> {
   fun: Fun<'c>,
 
   /// The type the current function scope
-  fun_kind: FunKind,
+  // fun_kind: FunKind,
 
   /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
@@ -87,7 +87,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
         name: Option::None,
         chunk: Chunk::default()
       },
-      fun_kind: FunKind::Fun,
+      // fun_kind: FunKind::Fun,
       analytics,
       parser: Parser::new(source),
       local_count: 0,
@@ -381,7 +381,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   }
 
   /// End the compilation at eof
-  fn end_compiler(&self) {
+  fn end_compiler(&mut self) {
     self.emit_return();
 
     #[cfg(debug_assertions)]
@@ -406,9 +406,16 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// Print the chunk if debug and an error occurred
   fn print_chunk(&self) {
     if self.parser.had_error {
+      let script = "<script>".to_string();
+
+      let name = match &self.fun.name {
+        Some(name) => name,
+        None => &script
+      };
+
       disassemble_chunk(
         &self.fun.chunk,
-        &self.fun.name.unwrap_or("<script>".to_string()),
+        &name,
       )
     }
   }
@@ -1078,7 +1085,6 @@ mod test {
     let intern = |string: String| string;
     let compiler = Compiler::new(
       src,
-      Chunk::default(),
       CompilerAnalytics {
         allocate: &allocate,
         intern: &intern,
