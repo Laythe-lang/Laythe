@@ -73,12 +73,11 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   ///
   /// // an expression
   /// let source = "10 + 3".to_string();
-  /// let chunk = Chunk::default();
   ///
   /// let intern = |string: String| string;
   /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
   ///
-  /// let compiler = Compiler::new(source, chunk, analytics);
+  /// let compiler = Compiler::new(source, analytics);
   /// ```
   pub fn new(source: String, analytics: CompilerAnalytics<'a, 'c>) -> Self {
     Self {
@@ -117,12 +116,11 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   ///
   /// // an expression
   /// let source = "3 / 2 + 10".to_string();
-  /// let chunk = Chunk::default();
   ///
   /// let intern = |string: String| string;
   /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
   ///
-  /// let compiler = Compiler::new(source, chunk, analytics);
+  /// let compiler = Compiler::new(source, analytics);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```

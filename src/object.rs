@@ -138,10 +138,10 @@ impl<'a> Obj<'a> {
   /// 
   /// # Examples
   /// ```
-  /// use lox_runtime::object::{Obj, ObjValue, ObjFun};
+  /// use lox_runtime::object::{Obj, ObjValue, Fun};
   /// use lox_runtime::chunk::{Chunk};
   /// 
-  /// let func = ObjFun { 
+  /// let func = Fun { 
   ///   name: Some("add".to_string()),
   ///   arity: 3,
   ///   chunk: Chunk::default()
