@@ -44,6 +44,26 @@
     {
       "type": "lldb",
       "request": "launch",
+      "name": "Debug executable script",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=john_lox_main",
+          "--package=space_lox"
+        ],
+        "filter": {
+          "name": "john_lox_main",
+          "kind": "bin"
+        }
+      },
+      "args": [
+        "fixture/fib.lox"
+      ],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
       "name": "Debug unit tests in executable 'john_lox_main'",
       "cargo": {
         "args": [
