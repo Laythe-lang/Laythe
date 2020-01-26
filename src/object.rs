@@ -1,26 +1,61 @@
-use crate::scanner::{Token};
+use crate::chunk::Chunk;
+use crate::scanner::Token;
 use crate::utils::{next_boundary, previous_boundary};
-use crate::chunk::{Chunk};
+use crate::value::Value;
+use std::cell::Cell;
 use std::fmt;
-use std::mem::{discriminant};
-use std::cell::{Cell};
 use std::hash::{Hash, Hasher};
+use std::mem::discriminant;
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub struct Obj<'a> {
   pub next: Cell<Option<&'a Obj<'a>>>,
-  pub value: ObjValue<'a>
+  pub value: ObjValue<'a>,
 }
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ObjValue<'a> {
   String(String),
-  Fun(Fun<'a>)
+  Fun(Rc<Fun<'a>>),
+  NativeFn(NativeFun<'a>),
+}
+
+#[derive(Clone)]
+pub struct NativeFun<'a> {
+  pub arity: u8,
+  pub name: String,
+  pub fun: Rc<dyn Fn(&[Value<'a>]) -> NativeResult<'a> + 'a>,
+}
+
+impl<'a> PartialEq for NativeFun<'a> {
+  fn eq(&self, rhs: &NativeFun<'a>) -> bool {
+    if self.arity != rhs.arity {
+      return false;
+    }
+
+    self.name != rhs.name
+  }
+}
+
+impl<'a> fmt::Debug for NativeFun<'a> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(
+      f,
+      "NativeFun {{ arity: {}, name: {} }}",
+      self.arity, self.name
+    )
+  }
+}
+
+pub enum NativeResult<'a> {
+  Success(Value<'a>),
+  Error(String),
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
 pub struct Fun<'a> {
-  pub arity: u8,
+  pub arity: u16,
   pub chunk: Chunk<'a>,
   pub name: Option<String>,
 }
@@ -28,76 +63,87 @@ pub struct Fun<'a> {
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunKind {
   Fun,
-  Script
+  Script,
 }
 
 impl<'a> PartialEq for Obj<'a> {
   /// Determine if this `Obj` and another `Obj` are equal inside
   /// of the spacelox runtime
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use lox_runtime::object::{Obj, ObjValue};
-  /// 
+  ///
   /// let obj1 = Obj::new(ObjValue::String("example1".to_string()));
   /// let obj2 = Obj::new(ObjValue::String("example2".to_string()));
-  /// 
+  ///
   /// assert_eq!(obj1 == obj2, false);
   /// ```
   fn eq(&self, other: &Obj<'a>) -> bool {
     if discriminant(&self.value) != discriminant(&other.value) {
-      return false
+      return false;
     }
 
     match &self.value {
       ObjValue::String(str1) => match &other.value {
         ObjValue::String(str2) => str1 == str2,
         _ => false,
-      }
+      },
       ObjValue::Fun(func1) => match &other.value {
         ObjValue::Fun(func2) => func1 == func2,
         _ => false,
-      }
+      },
+      ObjValue::NativeFn(native_fun1) => match &other.value {
+        ObjValue::NativeFn(native_fun2) => native_fun1 == native_fun2,
+        _ => false,
+      },
     }
   }
 }
 
-impl <'a> Eq for Obj<'a> {}
+impl<'a> Eq for Obj<'a> {}
 
 impl<'a> Hash for Obj<'a> {
   /// Produces a hash for the lox object provided.alloc
-  /// 
+  ///
   /// # Example
   /// ```
   /// use lox_runtime::object::{Obj, ObjValue};
   /// use std::collections::{HashMap};
-  /// 
+  ///
   /// let mut hash_map: HashMap<Obj, i32> = HashMap::new();
   /// let string_obj1 = Obj::new(ObjValue::String("example".to_string()));
   /// let string_obj2 = Obj::new(ObjValue::String("example".to_string()));
   /// let string_obj3 = Obj::new(ObjValue::String("example".to_string()));
-  /// 
+  ///
   /// hash_map.insert(string_obj1, 10);
   /// assert_eq!(*hash_map.get(&string_obj3).unwrap(), 10);
-  /// 
+  ///
   /// hash_map.insert(string_obj2, 20);
   /// assert_eq!(*hash_map.get(&string_obj3).unwrap(), 20);
   /// ```
   fn hash<H: Hasher>(&self, state: &mut H) {
     match &self.value {
       ObjValue::String(string) => string.hash(state),
-      ObjValue::Fun(func) => func.name.hash(state)
+      ObjValue::Fun(func) => {
+        func.name.hash(state);
+        func.arity.hash(state);
+      }
+      ObjValue::NativeFn(native_func) => {
+        native_func.name.hash(state);
+        native_func.name.hash(state);
+      }
     }
   }
 }
 
 impl<'a> fmt::Display for Obj<'a> {
   /// Produce a human readable version of the display object
-  /// 
+  ///
   /// # Example
   /// ```
   /// use lox_runtime::object::{Obj, ObjValue};
-  /// 
+  ///
   /// let string_obj = Obj::new(ObjValue::String("example".to_string()));
   /// assert_eq!(format!("{}", string_obj), "example");
   /// ```
@@ -106,8 +152,9 @@ impl<'a> fmt::Display for Obj<'a> {
       ObjValue::String(store) => write!(f, "{}", store),
       ObjValue::Fun(func) => match &func.name {
         Some(name) => write!(f, "<fn {}>", name),
-        None => write!(f, "<script>")
-      } 
+        None => write!(f, "<script>"),
+      },
+      ObjValue::NativeFn(native_fun) => write!(f, "<native {}>", native_fun.name),
     }
   }
 }
@@ -115,67 +162,70 @@ impl<'a> fmt::Display for Obj<'a> {
 impl<'a> Obj<'a> {
   /// Construct a new object for spacelox
   pub fn new(value: ObjValue<'a>) -> Obj<'a> {
-    Obj { value, next: Cell::new(Option::None) }
+    Obj {
+      value,
+      next: Cell::new(Option::None),
+    }
   }
 
   /// Convert spacelox value to string, panics if not a string
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use lox_runtime::object::{Obj, ObjValue};
-  /// 
+  ///
   /// let obj1 = Obj::new(ObjValue::String("example".to_string()));
   /// assert_eq!(obj1.to_string(), "example");
   /// ```
   pub fn move_string(self) -> String {
     match self.value {
       ObjValue::String(str1) => str1,
-      _ => panic!("Expected string")
+      _ => panic!("Expected string"),
     }
   }
 
-  /// Convert spacelox value to function, panics if not a function
-  /// 
-  /// # Examples
-  /// ```
-  /// use lox_runtime::object::{Obj, ObjValue, Fun};
-  /// use lox_runtime::chunk::{Chunk};
-  /// 
-  /// let func = Fun { 
-  ///   name: Some("add".to_string()),
-  ///   arity: 3,
-  ///   chunk: Chunk::default()
-  /// };
-  /// 
-  /// let obj1 = Obj::new(ObjValue::Fun(func));
-  /// assert_eq!(obj1.to_string(), "<fn add>");
-  /// ```
-  pub fn move_fn(self) -> Fun<'a> {
-    match self.value {
-      ObjValue::Fun(func) => func,
-      _ => panic!("Expected function!"),
-    }
-  }
+  // Convert spacelox value to function, panics if not a function
+  //
+  // # Examples
+  // ```
+  // use lox_runtime::object::{Obj, ObjValue, Fun};
+  // use lox_runtime::chunk::{Chunk};
+  //
+  // let func = Fun {
+  //   name: Some("add".to_string()),
+  //   arity: 3,
+  //   chunk: Chunk::default()
+  // };
+  //
+  // let obj1 = Obj::new(ObjValue::Fun(func));
+  // assert_eq!(obj1.to_string(), "<fn add>");
+  // ```
+  // pub fn move_fn(self) -> Fun<'a> {
+  //   match self.value {
+  //     ObjValue::Fun(func) => func,
+  //     _ => panic!("Expected function!"),
+  //   }
+  // }
 }
 
 /// Copy a string from the str backing the provided token. Note this copy
 /// emits the enclosing quotes
-/// 
+///
 /// # Examples
 /// ```
 /// use lox_runtime::object::{Obj, ObjValue, copy_string};
 /// use lox_runtime::scanner::{Token, TokenKind};
-/// 
+///
 /// let token = Token {
 ///   kind: TokenKind::String,
 ///   lexeme: "\"a cat in a hat\"".to_string(),
 ///   line: 0
 /// };
-/// 
+///
 /// let copy = copy_string(&token);
 /// assert_eq!(copy, "a cat in a hat".to_string());
 /// assert_ne!(copy, "\"a cat in a hat\"".to_string());
-/// 
+///
 /// ```
 pub fn copy_string(token: &Token) -> String {
   let start = next_boundary(&token.lexeme, 0);
@@ -184,15 +234,12 @@ pub fn copy_string(token: &Token) -> String {
   token.lexeme[start..end].to_string()
 }
 
-
 #[cfg(test)]
 mod test {
   use super::*;
 
   fn example_each<'a>() -> Vec<Obj<'a>> {
-    vec![
-      Obj::new(ObjValue::String("example".to_string()))
-    ]
+    vec![Obj::new(ObjValue::String("example".to_string()))]
   }
 
   #[test]

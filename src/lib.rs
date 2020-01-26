@@ -1,11 +1,10 @@
-
 pub mod chunk;
-pub mod debug;
-pub mod value;
-pub mod object;
-pub mod vm;
 pub mod compiler;
-pub mod scanner;
-pub mod utils;
-pub mod table;
+pub mod debug;
 mod memory;
+pub mod object;
+pub mod scanner;
+pub mod table;
+pub mod utils;
+pub mod value;
+pub mod vm;

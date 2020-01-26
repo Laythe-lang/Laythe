@@ -1,9 +1,10 @@
 use crate::chunk::{ByteCode, Chunk};
 use crate::debug::disassemble_chunk;
-use crate::object::{copy_string, Fun, Obj, ObjValue};
+use crate::object::{copy_string, Fun, FunKind, Obj, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
 use std::convert::TryInto;
+use std::rc::Rc;
 
 /// The result of a compilation
 pub struct CompilerResult<'c> {
@@ -11,7 +12,7 @@ pub struct CompilerResult<'c> {
   pub success: bool,
 
   /// The chunk that was compiled
-  pub fun: Fun<'c>,
+  pub fun: Rc<Fun<'c>>,
 }
 
 pub struct CompilerAnalytics<'a, 'c: 'a> {
@@ -26,25 +27,27 @@ const UNINITIALIZED: i16 = -1;
 
 #[derive(Debug, Clone)]
 pub struct Local {
+  /// name of the local
   name: Option<Token>,
 
+  /// depth of the local
   depth: i16,
 }
 
 /// The spacelox compiler for converting tokens to bytecode
-pub struct Compiler<'a, 'c: 'a> {
+pub struct Compiler<'a, 's, 'c: 'a> {
   /// The current function
   fun: Fun<'c>,
 
   /// The type the current function scope
-  // fun_kind: FunKind,
+  fun_kind: FunKind,
 
   /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
-  parser: Parser,
+  parser: &'a mut Parser<'s>,
 
   /// Analytics for the compiler
-  analytics: CompilerAnalytics<'a, 'c>,
+  analytics: &'a CompilerAnalytics<'a, 'c>,
 
   /// Number of locals
   local_count: usize,
@@ -56,7 +59,7 @@ pub struct Compiler<'a, 'c: 'a> {
   locals: Vec<Local>,
 }
 
-impl<'a, 'c: 'a> Compiler<'a, 'c> {
+impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   /// Create a new instance of the spacelox compiler.
   /// The compiler write a sequence of op codes to the chunk
   /// to be executed
@@ -64,8 +67,8 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// # Examples
   /// ```
   /// use lox_runtime::chunk::{Chunk};
-  /// use lox_runtime::compiler::{Compiler, CompilerAnalytics};
-  /// use lox_runtime::object::{ObjValue, Obj};
+  /// use lox_runtime::compiler::{Compiler, CompilerAnalytics, Parser};
+  /// use lox_runtime::object::{ObjValue, Obj, FunKind};
   ///
   /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
   ///   Obj::new(value)
@@ -77,18 +80,29 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// let intern = |string: String| string;
   /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
   ///
-  /// let compiler = Compiler::new(source, analytics);
+  /// let mut parser = Parser::new(&source);
+  ///
+  /// let compiler = Compiler::new(&mut parser, &analytics, FunKind::Script);
   /// ```
-  pub fn new(source: String, analytics: CompilerAnalytics<'a, 'c>) -> Self {
+  pub fn new(
+    parser: &'a mut Parser<'s>,
+    analytics: &'a CompilerAnalytics<'a, 'c>,
+    fun_kind: FunKind,
+  ) -> Self {
+    let name = match fun_kind {
+      FunKind::Script => Option::None,
+      _ => Some(parser.previous.lexeme.to_string()),
+    };
+
     Self {
       fun: Fun {
         arity: 0,
-        name: Option::None,
-        chunk: Chunk::default()
+        name,
+        chunk: Chunk::default(),
       },
-      // fun_kind: FunKind::Fun,
+      fun_kind,
       analytics,
-      parser: Parser::new(source),
+      parser,
       local_count: 0,
       scope_depth: 0,
       locals: vec![
@@ -107,8 +121,8 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// # Examples
   /// ```
   /// use lox_runtime::chunk::{Chunk};
-  /// use lox_runtime::compiler::{Compiler, CompilerAnalytics};
-  /// use lox_runtime::object::{ObjValue, Obj};
+  /// use lox_runtime::compiler::{Compiler, CompilerAnalytics, Parser};
+  /// use lox_runtime::object::{ObjValue, Obj, FunKind};
   ///
   /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
   ///   Obj::new(value)
@@ -120,7 +134,9 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// let intern = |string: String| string;
   /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
   ///
-  /// let compiler = Compiler::new(source, analytics);
+  /// let mut parser = Parser::new(&source);
+  ///
+  /// let compiler = Compiler::new(&mut parser, &analytics, FunKind::Script);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
@@ -133,7 +149,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
       return CompilerResult {
         success: !self.parser.had_error,
-        fun: self.fun,
+        fun: Rc::new(self.fun),
       };
     }
 
@@ -152,7 +168,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
     CompilerResult {
       success: !self.parser.had_error,
-      fun: self.fun,
+      fun: Rc::new(self.fun),
     }
   }
 
@@ -163,7 +179,9 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
   /// Parse a declaration
   fn declaration(&mut self) {
-    if self.parser.match_kind(TokenKind::Var) {
+    if self.parser.match_kind(TokenKind::Fun) {
+      self.fun_declaration();
+    } else if self.parser.match_kind(TokenKind::Var) {
       self.var_declaration();
     } else {
       self.statement();
@@ -182,6 +200,8 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
       self.for_statement();
     } else if self.parser.match_kind(TokenKind::If) {
       self.if_statement();
+    } else if self.parser.match_kind(TokenKind::Return) {
+      self.return_statement();
     } else if self.parser.match_kind(TokenKind::While) {
       self.while_statement();
     } else if self.parser.match_kind(TokenKind::LeftBrace) {
@@ -207,6 +227,55 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self
       .parser
       .consume(TokenKind::RightBrace, "Expect '}' after block.")
+  }
+
+  /// Parse a function declaration
+  fn fun_declaration(&mut self) {
+    let global = self.parse_variable("Expect variable name.");
+
+    self.mark_initialized();
+    self.function(FunKind::Fun);
+    self.define_variable(global);
+  }
+
+  fn function(&mut self, fun_kind: FunKind) {
+    let mut fun_compiler = Compiler::new(&mut self.parser, self.analytics, fun_kind);
+    fun_compiler.begin_scope();
+
+    fun_compiler
+      .parser
+      .consume(TokenKind::LeftParen, "Expect '(' after function name.");
+
+    if !fun_compiler.parser.check(TokenKind::RightParen) {
+      loop {
+        fun_compiler.fun.arity += 1;
+        if fun_compiler.fun.arity == std::u8::MAX as u16 {
+          fun_compiler
+            .parser
+            .error_at_current("Cannot have more than 255 parameters.");
+        }
+
+        let param_constant = fun_compiler.parse_variable("Expect parameter name.");
+        fun_compiler.define_variable(param_constant);
+
+        if !fun_compiler.parser.match_kind(TokenKind::Comma) {
+          break;
+        }
+      }
+    }
+
+    fun_compiler
+      .parser
+      .consume(TokenKind::RightParen, "Expect ')' after parameters.");
+
+    fun_compiler
+      .parser
+      .consume(TokenKind::LeftBrace, "Expect '{' before function body.");
+    fun_compiler.block();
+
+    fun_compiler.end_compiler();
+    let fun = fun_compiler.fun;
+    self.emit_constant(Value::Obj(Obj::new(ObjValue::Fun(Rc::new(fun)))));
   }
 
   /// Parse a variable declaration
@@ -236,6 +305,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_byte(ByteCode::Pop)
   }
 
+  /// Parse for loop
   fn for_statement(&mut self) {
     self.begin_scope();
     self
@@ -293,32 +363,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.end_scope();
   }
 
-  /// Compile a while statement
-  fn if_statement(&mut self) {
-    self
-      .parser
-      .consume(TokenKind::LeftParen, "Expected '(' after 'if'.");
-    self.expression();
-    self
-      .parser
-      .consume(TokenKind::RightParen, "Expected ')' after condition.");
-
-    let then_jump = self.emit_jump();
-    self.emit_byte(ByteCode::Pop);
-    self.statement();
-
-    let else_jump = self.emit_jump();
-    self.current_chunk().instructions[then_jump] =
-      ByteCode::JumpIfFalse(self.patch_jump(then_jump));
-    self.emit_byte(ByteCode::Pop);
-
-    if self.parser.match_kind(TokenKind::Else) {
-      self.statement();
-    }
-
-    self.current_chunk().instructions[else_jump] = ByteCode::Jump(self.patch_jump(else_jump));
-  }
-
+  /// Parse while statement
   fn while_statement(&mut self) {
     let loop_start = self.current_chunk().instructions.len();
 
@@ -342,6 +387,36 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_byte(ByteCode::Pop)
   }
 
+  /// Compile a if statement
+  fn if_statement(&mut self) {
+    // parse condition
+    self
+      .parser
+      .consume(TokenKind::LeftParen, "Expected '(' after 'if'.");
+    self.expression();
+    self
+      .parser
+      .consume(TokenKind::RightParen, "Expected ')' after condition.");
+
+    // parse then branch
+    let then_jump = self.emit_jump();
+    self.emit_byte(ByteCode::Pop);
+    self.statement();
+
+    // emit else jump
+    let else_jump = self.emit_jump();
+    self.current_chunk().instructions[then_jump] =
+      ByteCode::JumpIfFalse(self.patch_jump(then_jump));
+    self.emit_byte(ByteCode::Pop);
+
+    // parse else branch if it exists
+    if self.parser.match_kind(TokenKind::Else) {
+      self.statement();
+    }
+
+    self.current_chunk().instructions[else_jump] = ByteCode::Jump(self.patch_jump(else_jump));
+  }
+
   /// Parse print statement
   fn print_statement(&mut self) {
     self.expression();
@@ -349,6 +424,22 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
       .parser
       .consume(TokenKind::Semicolon, "Expect ';' after value.");
     self.emit_byte(ByteCode::Print)
+  }
+
+  fn return_statement(&mut self) {
+    if self.fun_kind == FunKind::Script {
+      self.parser.error("Cannot return from top-level code.");
+    }
+
+    if self.parser.match_kind(TokenKind::Semicolon) {
+      self.emit_return();
+    } else {
+      self.expression();
+      self
+        .parser
+        .consume(TokenKind::Semicolon, "Expect ',' after return value.");
+      self.emit_byte(ByteCode::Return);
+    }
   }
 
   /// Synchronize the compiler to a sentinel token
@@ -408,13 +499,10 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
       let name = match &self.fun.name {
         Some(name) => name,
-        None => &script
+        None => &script,
       };
 
-      disassemble_chunk(
-        &self.fun.chunk,
-        &name,
-      )
+      disassemble_chunk(&self.fun.chunk, &name)
     }
   }
 
@@ -442,6 +530,12 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
       _ => panic!("Invalid operator"),
     }
   }
+
+  fn call(&mut self) {
+    let arg_count = self.argument_list();
+    self.emit_byte(ByteCode::Call(arg_count));
+  }
+
   /// Compile a unary expression into it's equivalent bytecode
   ///
   /// # Panics
@@ -561,6 +655,33 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_byte(ByteCode::DefineGlobal(global));
   }
 
+  /// Parse a list of argument to a function
+  fn argument_list(&mut self) -> u8 {
+    let mut arg_count: u8 = 0;
+
+    if !self.parser.check(TokenKind::RightParen) {
+      loop {
+        self.expression();
+
+        if arg_count == std::u8::MAX {
+          self
+            .parser
+            .error(&format!("Cannot have more than {} arguments", std::u8::MAX))
+        }
+        arg_count += 1;
+
+        if !self.parser.match_kind(TokenKind::Comma) {
+          break;
+        }
+      }
+    }
+
+    self
+      .parser
+      .consume(TokenKind::RightParen, "Expect ')' after argument");
+    arg_count
+  }
+
   /// Emit instruction for a short circuited and
   fn and(&mut self) {
     let end_jump = self.emit_jump();
@@ -597,7 +718,9 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
   /// Mark a variable initialized
   fn mark_initialized(&mut self) {
-    self.locals[self.local_count - 1].depth = self.scope_depth;
+    if self.scope_depth > 0 {
+      self.locals[self.local_count - 1].depth = self.scope_depth;
+    }
   }
 
   /// Generate a constant from the provided identifier token
@@ -680,6 +803,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
   /// Execute a provided action
   fn execute_action(&mut self, action: Act, can_assign: bool) {
     match action {
+      Act::Call => self.call(),
       Act::Literal => self.literal(),
       Act::And => self.and(),
       Act::Or => self.or(),
@@ -694,7 +818,8 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
   /// Emit byte code for a return
   fn emit_return(&mut self) {
-    self.emit_byte(ByteCode::Return)
+    self.emit_byte(ByteCode::Nil);
+    self.emit_byte(ByteCode::Return);
   }
 
   /// Add a constant to the current chunk
@@ -714,6 +839,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
     self.emit_byte(ByteCode::Constant(index));
   }
 
+  ///
   fn patch_jump(&mut self, offset: usize) -> u16 {
     let jump = self.current_chunk().instructions.len() - offset - 1;
 
@@ -757,7 +883,7 @@ impl<'a, 'c: 'a> Compiler<'a, 'c> {
 
 /// The rules for infix and prefix operators
 const RULES_TABLE: [ParseRule; 40] = [
-  ParseRule::new(Some(Act::Grouping), None, Precedence::None),
+  ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RIGHT_PAREN
@@ -850,7 +976,7 @@ fn identifers_equal(a: &Token, b: &Token) -> bool {
 
 /// The space lox parser. This struct is responsible for
 /// advancing the scanner and checking for specific conditions
-struct Parser {
+pub struct Parser<'a> {
   /// The current token
   current: Token,
 
@@ -864,12 +990,12 @@ struct Parser {
   panic_mode: bool,
 
   /// Help reference to the backing scanner
-  scanner: Scanner,
+  scanner: Scanner<'a>,
 }
 
-impl Parser {
+impl<'a> Parser<'a> {
   /// Create a new instance of the parser from a source str
-  pub fn new(source: String) -> Self {
+  pub fn new(source: &'a str) -> Self {
     Self {
       scanner: Scanner::new(source),
       had_error: false,
@@ -905,7 +1031,6 @@ impl Parser {
   /// Advance the parser a token forward
   pub fn advance(&mut self) {
     self.previous = self.current.clone();
-
     loop {
       self.current = self.scanner.scan_token();
       if self.current.kind != TokenKind::Error {
@@ -1016,6 +1141,7 @@ enum Act {
   Number,
   String,
   Literal,
+  Call,
   Variable,
 }
 
@@ -1081,17 +1207,18 @@ mod test {
   fn test_compile<'a>(src: String) -> Vec<ByteCode> {
     let allocate = |value: ObjValue<'a>| Obj::new(value);
     let intern = |string: String| string;
-    let compiler = Compiler::new(
-      src,
-      CompilerAnalytics {
-        allocate: &allocate,
-        intern: &intern,
-      },
-    );
+    let analytics = CompilerAnalytics {
+      allocate: &allocate,
+      intern: &intern,
+    };
+
+    let mut parser = Parser::new(&src);
+
+    let compiler = Compiler::new(&mut parser, &analytics, FunKind::Script);
     let result = compiler.compile();
     assert_eq!(result.success, true);
 
-    result.fun.chunk.instructions
+    result.fun.chunk.instructions.clone()
   }
 
   #[test]
@@ -1100,10 +1227,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0].clone(), ByteCode::Constant(0));
     assert_eq!(instructions[1].clone(), ByteCode::Print);
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1111,7 +1239,7 @@ mod test {
     let example = "for (var x = 0; x < 10; x = x + 1) { print(x); }".to_string();
 
     let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 19);
+    assert_eq!(instructions.len(), 20);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::GetLocal(0));
     assert_eq!(instructions[2], ByteCode::Constant(1));
@@ -1130,7 +1258,8 @@ mod test {
     assert_eq!(instructions[15], ByteCode::Loop(9));
     assert_eq!(instructions[16], ByteCode::Pop);
     assert_eq!(instructions[17], ByteCode::Pop);
-    assert_eq!(instructions[18], ByteCode::Return);
+    assert_eq!(instructions[18], ByteCode::Nil);
+    assert_eq!(instructions[19], ByteCode::Return);
   }
 
   #[test]
@@ -1138,7 +1267,7 @@ mod test {
     let example = "while (true) { print 10; }".to_string();
 
     let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 8);
+    assert_eq!(instructions.len(), 9);
     assert_eq!(instructions[0], ByteCode::True);
     assert_eq!(instructions[1], ByteCode::JumpIfFalse(4));
     assert_eq!(instructions[2], ByteCode::Pop);
@@ -1146,7 +1275,8 @@ mod test {
     assert_eq!(instructions[4], ByteCode::Print);
     assert_eq!(instructions[5], ByteCode::Loop(6));
     assert_eq!(instructions[6], ByteCode::Pop);
-    assert_eq!(instructions[7], ByteCode::Return);
+    assert_eq!(instructions[7], ByteCode::Nil);
+    assert_eq!(instructions[8], ByteCode::Return);
   }
 
   #[test]
@@ -1154,7 +1284,7 @@ mod test {
     let example = "if (3 < 10) { print \"hi\"; }".to_string();
 
     let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 10);
+    assert_eq!(instructions.len(), 11);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Less);
@@ -1164,7 +1294,8 @@ mod test {
     assert_eq!(instructions[6], ByteCode::Print);
     assert_eq!(instructions[7], ByteCode::Jump(1));
     assert_eq!(instructions[8], ByteCode::Pop);
-    assert_eq!(instructions[9], ByteCode::Return);
+    assert_eq!(instructions[9], ByteCode::Nil);
+    assert_eq!(instructions[10], ByteCode::Return);
   }
 
   #[test]
@@ -1172,7 +1303,7 @@ mod test {
     let example = "if (3 < 10) { print \"hi\"; } else { print \"bye\" }".to_string();
 
     let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 12);
+    assert_eq!(instructions.len(), 13);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Less);
@@ -1184,7 +1315,8 @@ mod test {
     assert_eq!(instructions[8], ByteCode::Pop);
     assert_eq!(instructions[9], ByteCode::Constant(3));
     assert_eq!(instructions[10], ByteCode::Print);
-    assert_eq!(instructions[11], ByteCode::Return);
+    assert_eq!(instructions[11], ByteCode::Nil);
+    assert_eq!(instructions[12], ByteCode::Return);
   }
 
   #[test]
@@ -1192,10 +1324,11 @@ mod test {
     let example = "{ var x = 10; }".to_string();
 
     let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1203,12 +1336,13 @@ mod test {
     let example = "{ var x = 10; print(x); }".to_string();
 
     let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::GetLocal(0));
     assert_eq!(instructions[2], ByteCode::Print);
     assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Nil);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
@@ -1216,13 +1350,14 @@ mod test {
     let example = "{ var x = 10; x = 5; }".to_string();
 
     let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 6);
+    assert_eq!(instructions.len(), 7);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::SetLocal(0));
     assert_eq!(instructions[3], ByteCode::Pop);
     assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Return);
+    assert_eq!(instructions[5], ByteCode::Nil);
+    assert_eq!(instructions[6], ByteCode::Return);
   }
 
   #[test]
@@ -1231,10 +1366,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::Nil);
     assert_eq!(instructions[1], ByteCode::DefineGlobal(0));
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1243,10 +1379,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::Constant(1));
     assert_eq!(instructions[1], ByteCode::DefineGlobal(0));
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1255,10 +1392,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::GetGlobal(0));
     assert_eq!(instructions[1], ByteCode::Print);
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1267,11 +1405,12 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::Constant(1));
     assert_eq!(instructions[1], ByteCode::SetGlobal(0));
     assert_eq!(instructions[2], ByteCode::Pop);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_eq!(instructions[3], ByteCode::Nil);
+    assert_eq!(instructions[4], ByteCode::Return);
   }
 
   #[test]
@@ -1280,10 +1419,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::False);
     assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1292,8 +1432,9 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 1);
-    assert_eq!(instructions[0], ByteCode::Return);
+    assert_eq!(instructions.len(), 2);
+    assert_eq!(instructions[0], ByteCode::Nil);
+    assert_eq!(instructions[1], ByteCode::Return);
   }
 
   #[test]
@@ -1302,10 +1443,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
-    assert_eq!(instructions[0].clone(), ByteCode::Constant(0));
-    assert_eq!(instructions[1].clone(), ByteCode::Pop);
-    assert_eq!(instructions[2].clone(), ByteCode::Return);
+    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions[0], ByteCode::Constant(0));
+    assert_eq!(instructions[1], ByteCode::Pop);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1314,10 +1456,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
-    assert_eq!(instructions[0].clone(), ByteCode::Constant(0));
-    assert_eq!(instructions[1].clone(), ByteCode::Pop);
-    assert_eq!(instructions[2].clone(), ByteCode::Return);
+    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions[0], ByteCode::Constant(0));
+    assert_eq!(instructions[1], ByteCode::Pop);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1326,10 +1469,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::False);
     assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1338,10 +1482,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::True);
     assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1350,10 +1495,11 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 3);
+    assert_eq!(instructions.len(), 4);
     assert_eq!(instructions[0], ByteCode::Nil);
     assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Return);
+    assert_eq!(instructions[2], ByteCode::Nil);
+    assert_eq!(instructions[3], ByteCode::Return);
   }
 
   #[test]
@@ -1362,11 +1508,12 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::False);
     assert_eq!(instructions[1], ByteCode::Not);
     assert_eq!(instructions[2], ByteCode::Pop);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_eq!(instructions[3], ByteCode::Nil);
+    assert_eq!(instructions[4], ByteCode::Return);
   }
 
   #[test]
@@ -1375,11 +1522,12 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
+    assert_eq!(instructions.len(), 5);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Negate);
     assert_eq!(instructions[2], ByteCode::Pop);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_eq!(instructions[3], ByteCode::Nil);
+    assert_eq!(instructions[4], ByteCode::Return);
   }
 
   #[test]
@@ -1388,12 +1536,13 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Add);
     assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Nil);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
@@ -1402,12 +1551,13 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Subtract);
     assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Nil);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
@@ -1416,12 +1566,13 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Divide);
     assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Nil);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
@@ -1430,12 +1581,13 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Multiply);
     assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Nil);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
@@ -1444,12 +1596,13 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::True);
     assert_eq!(instructions[1], ByteCode::Nil);
     assert_eq!(instructions[2], ByteCode::Equal);
     assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Nil);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
@@ -1458,13 +1611,14 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 6);
+    assert_eq!(instructions.len(), 7);
     assert_eq!(instructions[0], ByteCode::True);
     assert_eq!(instructions[1], ByteCode::Nil);
     assert_eq!(instructions[2], ByteCode::Equal);
     assert_eq!(instructions[3], ByteCode::Not);
     assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Return);
+    assert_eq!(instructions[5], ByteCode::Nil);
+    assert_eq!(instructions[6], ByteCode::Return);
   }
 
   #[test]
@@ -1473,12 +1627,13 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Less);
     assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Nil);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
@@ -1487,13 +1642,14 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 6);
+    assert_eq!(instructions.len(), 7);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Greater);
     assert_eq!(instructions[3], ByteCode::Not);
     assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Return);
+    assert_eq!(instructions[5], ByteCode::Nil);
+    assert_eq!(instructions[6], ByteCode::Return);
   }
 
   #[test]
@@ -1502,12 +1658,13 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 5);
+    assert_eq!(instructions.len(), 6);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Greater);
     assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Return);
+    assert_eq!(instructions[4], ByteCode::Nil);
+    assert_eq!(instructions[5], ByteCode::Return);
   }
 
   #[test]
@@ -1516,12 +1673,13 @@ mod test {
 
     let instructions = test_compile(example);
 
-    assert_eq!(instructions.len(), 6);
+    assert_eq!(instructions.len(), 7);
     assert_eq!(instructions[0], ByteCode::Constant(0));
     assert_eq!(instructions[1], ByteCode::Constant(1));
     assert_eq!(instructions[2], ByteCode::Less);
     assert_eq!(instructions[3], ByteCode::Not);
     assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Return);
+    assert_eq!(instructions[5], ByteCode::Nil);
+    assert_eq!(instructions[6], ByteCode::Return);
   }
 }

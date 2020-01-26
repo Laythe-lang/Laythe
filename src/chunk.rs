@@ -66,6 +66,9 @@ pub enum ByteCode {
   /// Jump to loop beginning
   Loop(u16),
 
+  /// Call a function
+  Call(u8),
+
   /// Temp loop placeholder
   Noop,
 
@@ -219,7 +222,5 @@ mod test {
   }
 
   #[cfg(test)]
-  mod chunk {
-
-  }
+  mod chunk {}
 }

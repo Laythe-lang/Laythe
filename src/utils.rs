@@ -1,15 +1,13 @@
-
 /// Determine if all are some or none
 pub fn option_all<T>(option1: Option<T>, option2: Option<T>) -> Option<(T, T)> {
   match option1 {
     Some(opt1) => match option2 {
       Some(opt2) => Some((opt1, opt2)),
-      None => None
+      None => None,
     },
-    None => None
+    None => None,
   }
 }
-
 
 /// What is the previous unicode code point
 pub fn previous_boundary(source: &str, start: usize) -> usize {
@@ -34,7 +32,7 @@ pub fn next_boundary(source: &str, start: usize) -> usize {
 #[cfg(test)]
 mod test {
   use super::*;
-  
+
   #[test]
   fn test_option_all() {
     let some = Some(true);

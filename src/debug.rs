@@ -1,4 +1,4 @@
-use crate::chunk::{Chunk, ByteCode};
+use crate::chunk::{ByteCode, Chunk};
 
 /// Write a chunk to console
 pub fn disassemble_chunk(code_chunk: &Chunk, name: &str) {
@@ -33,6 +33,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
     ByteCode::True => simple_instruction("True"),
     ByteCode::False => simple_instruction("False"),
     ByteCode::Pop => simple_instruction("Pop"),
+    ByteCode::Call(arg_count) => byte_instruction("Call", *arg_count),
     ByteCode::DefineGlobal(constant) => constant_instruction("DefineGlobal", chunk, *constant),
     ByteCode::GetGlobal(constant) => constant_instruction("GetGlobal", chunk, *constant),
     ByteCode::SetGlobal(constant) => constant_instruction("SetGlobal", chunk, *constant),
