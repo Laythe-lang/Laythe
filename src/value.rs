@@ -29,7 +29,7 @@ impl<'a> PartialEq for Value<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::value::Value;
+  /// use space_lox::value::Value;
   ///
   /// let val1 = Value::Bool(false);
   /// let val2 = Value::Bool(true);
@@ -66,7 +66,7 @@ impl<'a> Value<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::value::Value;
+  /// use space_lox::value::Value;
   ///
   /// let val1 = Value::Number(20.0);
   /// assert_eq!(val1.to_num(), 20.0);
@@ -82,7 +82,7 @@ impl<'a> Value<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::value::Value;
+  /// use space_lox::value::Value;
   ///
   /// let b1 = Value::Bool(false);
   /// assert_eq!(b1.to_bool(), false);
@@ -98,8 +98,8 @@ impl<'a> Value<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::value::Value;
-  /// use lox_runtime::object::{Obj, ObjValue};
+  /// use space_lox::value::Value;
+  /// use space_lox::object::{Obj, ObjValue};
   ///
   /// let str1 = Value::Obj(Obj::new(ObjValue::String("example".to_string())));
   /// assert_eq!(str1.move_obj().move_string(), "example");
@@ -108,6 +108,30 @@ impl<'a> Value<'a> {
     match self {
       Value::Obj(obj) => obj,
       _ => panic!("Value is not string"),
+    }
+  }
+
+  /// Get a string representation of the underlying type this value representing
+  ///
+  /// # Examples
+  /// use space_lox::value::Value;
+  /// use space_lox::object::{Obj, ObjValue};
+  ///
+  /// let nil = Value::Nil;
+  /// let bool = Value::Bool(true);
+  /// let number = Value::Number(10);
+  /// let string = Value::Obj(Obj::new(ObjValue::String("something")));
+  ///
+  /// assert_eq!(nil.value_type(), "nil");
+  /// assert_eq!(bool.value_type(), "bool");
+  /// assert_eq!(number.value_type(), "number");
+  /// assert_eq!(string.value_type(), "string");
+  pub fn value_type(&self) -> String {
+    match self {
+      Value::Nil => "nil".to_string(),
+      Value::Bool(_) => "bool".to_string(),
+      Value::Number(_) => "number".to_string(),
+      Value::Obj(obj) => obj.obj_type(),
     }
   }
 }

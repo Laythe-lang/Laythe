@@ -66,9 +66,9 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::chunk::{Chunk};
-  /// use lox_runtime::compiler::{Compiler, CompilerAnalytics, Parser};
-  /// use lox_runtime::object::{ObjValue, Obj, FunKind};
+  /// use space_lox::chunk::{Chunk};
+  /// use space_lox::compiler::{Compiler, CompilerAnalytics, Parser};
+  /// use space_lox::object::{ObjValue, Obj, FunKind};
   ///
   /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
   ///   Obj::new(value)
@@ -120,16 +120,16 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::chunk::{Chunk};
-  /// use lox_runtime::compiler::{Compiler, CompilerAnalytics, Parser};
-  /// use lox_runtime::object::{ObjValue, Obj, FunKind};
+  /// use space_lox::chunk::{Chunk};
+  /// use space_lox::compiler::{Compiler, CompilerAnalytics, Parser};
+  /// use space_lox::object::{ObjValue, Obj, FunKind};
   ///
   /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
   ///   Obj::new(value)
   /// }
   ///
   /// // an expression
-  /// let source = "3 / 2 + 10".to_string();
+  /// let source = "3 / 2 + 10;".to_string();
   ///
   /// let intern = |string: String| string;
   /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
@@ -320,7 +320,6 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     }
 
     let mut loop_start = self.current_chunk().instructions.len();
-    println!("loop_start: {}", loop_start);
 
     // parse loop condition
     let mut exit_jump: Option<usize> = Option::None;
@@ -346,7 +345,6 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
       self.emit_loop(loop_start);
       loop_start = increment_start;
-      println!("increment_start: {}", loop_start);
 
       self.current_chunk().instructions[body_jump] = ByteCode::Jump(self.patch_jump(body_jump));
     }
@@ -494,7 +492,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
   /// Print the chunk if debug and an error occurred
   fn print_chunk(&self) {
-    if self.parser.had_error {
+    if true || self.parser.had_error {
       let script = "<script>".to_string();
 
       let name = match &self.fun.name {
@@ -631,7 +629,14 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
     let can_assign = precedence <= Precedence::Assignment;
     let prefix_fn = get_rule(self.parser.previous.kind.clone()).prefix.clone();
-    self.execute_action(prefix_fn.expect("Expected expression."), can_assign);
+    
+    match prefix_fn {
+      Some(prefix) => self.execute_action(prefix, can_assign),
+      None => {
+        self.parser.error("Expected expression.");
+        return;
+      }
+    }
 
     while precedence <= get_rule(self.parser.current.kind.clone()).precedence {
       self.parser.advance();
@@ -666,7 +671,8 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
         if arg_count == std::u8::MAX {
           self
             .parser
-            .error(&format!("Cannot have more than {} arguments", std::u8::MAX))
+            .error(&format!("Cannot have more than {} arguments", std::u8::MAX));
+          return arg_count;
         }
         arg_count += 1;
 
@@ -839,7 +845,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     self.emit_byte(ByteCode::Constant(index));
   }
 
-  ///
+  /// Patch a jump once it's landing has been found
   fn patch_jump(&mut self, offset: usize) -> u16 {
     let jump = self.current_chunk().instructions.len() - offset - 1;
 
@@ -848,9 +854,9 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     }
 
     jump as u16
-    // self.chunk.instructions[offset] = ByteCode::JumpIfFalse(jump as u16)
   }
 
+  /// Emit a loop instruction
   fn emit_loop(&mut self, loop_start: usize) {
     let offset = self.current_chunk().instructions.len() - loop_start + 1;
     if offset > std::u16::MAX.try_into().unwrap() {
@@ -1079,6 +1085,7 @@ impl<'a> Parser<'a> {
     }
 
     eprintln!(": {}", message);
+    self.had_error = true;
   }
 }
 
@@ -1300,7 +1307,7 @@ mod test {
 
   #[test]
   fn if_else_condition() {
-    let example = "if (3 < 10) { print \"hi\"; } else { print \"bye\" }".to_string();
+    let example = "if (3 < 10) { print \"hi\"; } else { print \"bye\"; }".to_string();
 
     let instructions = test_compile(example);
     assert_eq!(instructions.len(), 13);

@@ -1,7 +1,7 @@
 use crate::chunk::Chunk;
+use crate::native::NativeFun;
 use crate::scanner::Token;
 use crate::utils::{next_boundary, previous_boundary};
-use crate::value::Value;
 use std::cell::Cell;
 use std::fmt;
 use std::hash::{Hash, Hasher};
@@ -19,38 +19,6 @@ pub enum ObjValue<'a> {
   String(String),
   Fun(Rc<Fun<'a>>),
   NativeFn(NativeFun<'a>),
-}
-
-#[derive(Clone)]
-pub struct NativeFun<'a> {
-  pub arity: u8,
-  pub name: String,
-  pub fun: Rc<dyn Fn(&[Value<'a>]) -> NativeResult<'a> + 'a>,
-}
-
-impl<'a> PartialEq for NativeFun<'a> {
-  fn eq(&self, rhs: &NativeFun<'a>) -> bool {
-    if self.arity != rhs.arity {
-      return false;
-    }
-
-    self.name != rhs.name
-  }
-}
-
-impl<'a> fmt::Debug for NativeFun<'a> {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(
-      f,
-      "NativeFun {{ arity: {}, name: {} }}",
-      self.arity, self.name
-    )
-  }
-}
-
-pub enum NativeResult<'a> {
-  Success(Value<'a>),
-  Error(String),
 }
 
 #[derive(Debug, PartialEq, Clone, Default)]
@@ -72,7 +40,7 @@ impl<'a> PartialEq for Obj<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::object::{Obj, ObjValue};
+  /// use space_lox::object::{Obj, ObjValue};
   ///
   /// let obj1 = Obj::new(ObjValue::String("example1".to_string()));
   /// let obj2 = Obj::new(ObjValue::String("example2".to_string()));
@@ -108,7 +76,7 @@ impl<'a> Hash for Obj<'a> {
   ///
   /// # Example
   /// ```
-  /// use lox_runtime::object::{Obj, ObjValue};
+  /// use space_lox::object::{Obj, ObjValue};
   /// use std::collections::{HashMap};
   ///
   /// let mut hash_map: HashMap<Obj, i32> = HashMap::new();
@@ -142,7 +110,7 @@ impl<'a> fmt::Display for Obj<'a> {
   ///
   /// # Example
   /// ```
-  /// use lox_runtime::object::{Obj, ObjValue};
+  /// use space_lox::object::{Obj, ObjValue};
   ///
   /// let string_obj = Obj::new(ObjValue::String("example".to_string()));
   /// assert_eq!(format!("{}", string_obj), "example");
@@ -172,7 +140,7 @@ impl<'a> Obj<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::object::{Obj, ObjValue};
+  /// use space_lox::object::{Obj, ObjValue};
   ///
   /// let obj1 = Obj::new(ObjValue::String("example".to_string()));
   /// assert_eq!(obj1.to_string(), "example");
@@ -184,28 +152,56 @@ impl<'a> Obj<'a> {
     }
   }
 
-  // Convert spacelox value to function, panics if not a function
-  //
-  // # Examples
-  // ```
-  // use lox_runtime::object::{Obj, ObjValue, Fun};
-  // use lox_runtime::chunk::{Chunk};
-  //
-  // let func = Fun {
-  //   name: Some("add".to_string()),
-  //   arity: 3,
-  //   chunk: Chunk::default()
-  // };
-  //
-  // let obj1 = Obj::new(ObjValue::Fun(func));
-  // assert_eq!(obj1.to_string(), "<fn add>");
-  // ```
-  // pub fn move_fn(self) -> Fun<'a> {
-  //   match self.value {
-  //     ObjValue::Fun(func) => func,
-  //     _ => panic!("Expected function!"),
-  //   }
-  // }
+  /// Convert spacelox value to function, panics if not a function
+  ///
+  /// # Examples
+  /// ```
+  /// use space_lox::object::{Obj, ObjValue, Fun};
+  /// use space_lox::chunk::{Chunk};
+  /// use std::rc::Rc;
+  ///
+  /// let func = Fun {
+  ///   name: Some("add".to_string()),
+  ///   arity: 3,
+  ///   chunk: Chunk::default()
+  /// };
+  ///
+  /// let obj1 = Obj::new(ObjValue::Fun(Rc::new(func)));
+  /// assert_eq!(obj1.to_string(), "<fn add>");
+  /// ```
+  pub fn move_fn(self) -> Rc<Fun<'a>> {
+    match self.value {
+      ObjValue::Fun(func) => func,
+      _ => panic!("Expected function!"),
+    }
+  }
+
+  /// Get a string representation of the underlying type this object representing
+  ///
+  /// # Examples
+  /// ```
+  /// use space_lox::object::{Obj, ObjValue, Fun};
+  /// use space_lox::chunk::{Chunk};
+  /// use std::rc::Rc;
+  ///
+  /// let func = Obj::new(ObjValue::Fun(Rc::new(Fun {
+  ///   name: Some("add".to_string()),
+  ///   arity: 3,
+  ///   chunk: Chunk::default()
+  /// })));
+  ///
+  /// let string = Obj::new(ObjValue::String("something".to_string()));
+  ///
+  /// assert_eq!(func.obj_type(), "function");
+  /// assert_eq!(string.obj_type(), "string");
+  /// ```
+  pub fn obj_type(&self) -> String {
+    match self.value {
+      ObjValue::String(_) => "string".to_string(),
+      ObjValue::Fun(_) => "function".to_string(),
+      ObjValue::NativeFn(_) => "function".to_string(),
+    }
+  }
 }
 
 /// Copy a string from the str backing the provided token. Note this copy
@@ -213,8 +209,8 @@ impl<'a> Obj<'a> {
 ///
 /// # Examples
 /// ```
-/// use lox_runtime::object::{Obj, ObjValue, copy_string};
-/// use lox_runtime::scanner::{Token, TokenKind};
+/// use space_lox::object::{Obj, ObjValue, copy_string};
+/// use space_lox::scanner::{Token, TokenKind};
 ///
 /// let token = Token {
 ///   kind: TokenKind::String,

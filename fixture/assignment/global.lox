@@ -1,8 +1,8 @@
 var a = "before";
-print a; // expect: before
+assertEq(a, "before"); // expect: before
 
 a = "after";
-print a; // expect: after
+assertEq(a, "after"); // expect: after
 
-print a = "arg"; // expect: arg
-print a; // expect: arg
+assertEq(a = "arg", "arg"); // expect: arg
+assertEq(a, "arg"); // expect: arg

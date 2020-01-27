@@ -1,23 +1,23 @@
-print true == true;    // expect: true
-print true == false;   // expect: false
-print false == true;   // expect: false
-print false == false;  // expect: true
+assertEq(true == true, true);     // expect: true
+assertEq(true == false, false);   // expect: false
+assertEq(false == true, false);   // expect: false
+assertEq(false == false, true);   // expect: true
 
 // Not equal to other types.
-print true == 1;        // expect: false
-print false == 0;       // expect: false
-print true == "true";   // expect: false
-print false == "false"; // expect: false
-print false == "";      // expect: false
+assertEq(true == 1, false);        // expect: false
+assertEq(false == 0, false);       // expect: false
+assertEq(true == "true", false);   // expect: false
+assertEq(false == "false", false); // expect: false
+assertEq(false == "", false);      // expect: false
 
-print true != true;    // expect: false
-print true != false;   // expect: true
-print false != true;   // expect: true
-print false != false;  // expect: false
+assertEq(true != true, false);   // expect: false
+assertEq(true != false, true);   // expect: true
+assertEq(false != true, true);   // expect: true
+assertEq(false != false, false); // expect: false
 
 // Not equal to other types.
-print true != 1;        // expect: true
-print false != 0;       // expect: true
-print true != "true";   // expect: true
-print false != "false"; // expect: true
-print false != "";      // expect: true
+assertEq(true != 1, true);        // expect: true
+assertEq(false != 0, true);       // expect: true
+assertEq(true != "true", true);   // expect: true
+assertEq(false != "false", true); // expect: true
+assertEq(false != "", true);      // expect: true

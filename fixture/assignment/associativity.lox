@@ -4,6 +4,6 @@ var c = "c";
 
 // Assignment is right-associative.
 a = b = c;
-print a; // expect: c
-print b; // expect: c
-print c; // expect: c
+assertEq(a, c); // expect: c
+assertEq(b, c); // expect: c
+assertEq(c, c); // expect: c

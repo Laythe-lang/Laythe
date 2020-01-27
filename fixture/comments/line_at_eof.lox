@@ -1,2 +1,2 @@
-print "ok"; // expect: ok
+assertEq("ok", "ok"); // expect: ok
 // comment

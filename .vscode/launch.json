@@ -7,7 +7,7 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in library 'lox_runtime'",
+      "name": "Debug unit tests in library 'space_lox'",
       "cargo": {
         "args": [
           "test",
@@ -16,7 +16,7 @@
           "--package=space_lox"
         ],
         "filter": {
-          "name": "lox_runtime",
+          "name": "space_lox",
           "kind": "lib"
         }
       },
@@ -26,15 +26,34 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'john_lox_main'",
+      "name": "Debug unit tests in executable 'space_lox_main'",
       "cargo": {
         "args": [
-          "build",
-          "--bin=john_lox_main",
+          "test",
+          "--no-run",
+          "--bin=space_lox_main",
           "--package=space_lox"
         ],
         "filter": {
-          "name": "john_lox_main",
+          "name": "space_lox_main",
+          "kind": "bin"
+        }
+      },
+      "args": [],
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
+      "name": "Debug executable 'space_lox_main'",
+      "cargo": {
+        "args": [
+          "build",
+          "--bin=space_lox_main",
+          "--package=space_lox"
+        ],
+        "filter": {
+          "name": "space_lox_main",
           "kind": "bin"
         }
       },
@@ -48,36 +67,17 @@
       "cargo": {
         "args": [
           "build",
-          "--bin=john_lox_main",
+          "--bin=space_lox_main",
           "--package=space_lox"
         ],
         "filter": {
-          "name": "john_lox_main",
+          "name": "space_lox_main",
           "kind": "bin"
         }
       },
       "args": [
-        "fixture/fib.lox"
+        "fixture/function/local_recursion.lox"
       ],
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "type": "lldb",
-      "request": "launch",
-      "name": "Debug unit tests in executable 'john_lox_main'",
-      "cargo": {
-        "args": [
-          "test",
-          "--no-run",
-          "--bin=john_lox_main",
-          "--package=space_lox"
-        ],
-        "filter": {
-          "name": "john_lox_main",
-          "kind": "bin"
-        }
-      },
-      "args": [],
       "cwd": "${workspaceFolder}"
     }
   ]

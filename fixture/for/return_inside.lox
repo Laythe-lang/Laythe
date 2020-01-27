@@ -5,5 +5,5 @@ fun f() {
   }
 }
 
-print f();
+assertEq(f(), "i");
 // expect: i

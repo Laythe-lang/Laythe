@@ -117,7 +117,7 @@ impl<'a> Chunk<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::chunk::{Chunk, ByteCode};
+  /// use space_lox::chunk::{Chunk, ByteCode};
   ///
   /// let mut chunk = Chunk::default();
   /// chunk.write_instruction(ByteCode::Return, 0);
@@ -147,8 +147,8 @@ impl<'a> Chunk<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::chunk::Chunk;
-  /// use lox_runtime::value::Value;
+  /// use space_lox::chunk::Chunk;
+  /// use space_lox::value::Value;
   ///
   /// let mut chunk = Chunk::default();
   /// let index_1 = chunk.add_constant(Value::Number(10.4));
@@ -169,7 +169,7 @@ impl<'a> Chunk<'a> {
   ///
   /// # Example
   /// ```
-  /// use lox_runtime::chunk::{Chunk, ByteCode};
+  /// use space_lox::chunk::{Chunk, ByteCode};
   ///
   /// let mut chunk = Chunk::default();
   ///
@@ -187,7 +187,7 @@ impl<'a> Chunk<'a> {
   /// This method panics if an offset is past the last instruction
   ///
   /// ```rust,should_panic
-  /// use lox_runtime::chunk::Chunk;
+  /// use space_lox::chunk::Chunk;
   ///
   /// let chunk = Chunk::default();
   /// chunk.get_line(3);

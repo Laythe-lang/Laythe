@@ -2,18 +2,15 @@ use crate::chunk::ByteCode;
 use crate::chunk::Chunk;
 use crate::compiler::{Compiler, CompilerAnalytics, Parser};
 use crate::memory::free_objects;
-use crate::object::{Fun, FunKind, NativeFun, NativeResult, Obj, ObjValue};
+use crate::native::{NativeFun, NativeResult};
+use crate::object::{Fun, FunKind, Obj, ObjValue};
 use crate::table::Table;
 use crate::value::Value;
 use std::cell::Cell;
-use std::fs::read_to_string;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
 use std::ops::Drop;
-use std::process;
 use std::rc::Rc;
-use std::time::SystemTime;
-
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_instruction;
@@ -21,7 +18,7 @@ use crate::debug::disassemble_instruction;
 pub const FRAME_MAX: usize = std::u8::MAX as usize;
 pub const DEFAULT_STACK_MAX: usize = FRAME_MAX * 16;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum InterpretResult {
   Ok,
   CompileError,
@@ -96,15 +93,8 @@ impl<'a> Vm<'a> {
     }
   }
 
-  pub fn run_file(&mut self, path: &str) {
-    let source = read_file(path);
-    let result = self.interpret(&source);
-
-    match result {
-      InterpretResult::CompileError => process::exit(1),
-      InterpretResult::RuntimeError => process::exit(2),
-      InterpretResult::Ok => (),
-    }
+  pub fn run(&mut self, source: &str) -> InterpretResult {
+    self.interpret(source)
   }
 
   fn interpret(&mut self, source: &str) -> InterpretResult {
@@ -156,35 +146,8 @@ impl<'a> Vm<'a> {
     match self.strings.store.get_key_value(&value) {
       Some((stored_key, _)) => stored_key.clone(),
       None => value,
-    }  
-  }
-}
-
-fn create_clock<'a>() -> Box<dyn Fn(&[Value<'a>]) -> NativeResult<'a>> {
-  let now = SystemTime::now();
-
-  Box::new(move |_: &[Value<'a>]| {
-    match now.elapsed() {
-      Ok(elasped) => {
-        NativeResult::Success(Value::Number((elasped.as_micros() as f64) / 1000000.0))
-      }
-      Err(e) => {
-        NativeResult::Error(format!("clock failed {}", e))
-      }
     }
-  })
-}
-
-pub fn create_natives<'a>() -> Vec<NativeFun<'a>> {
-  let mut natives = Vec::new();
-
-  natives.push(NativeFun {
-    name: "clock".to_string(),
-    arity: 0,
-    fun: Rc::new(create_clock())
-  });
-
-  natives
+  }
 }
 
 pub struct VmExecutor<'a, 'b: 'a> {
@@ -331,13 +294,14 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     return match result {
       NativeResult::Success(value) => {
         self.push(value);
+        self.stack_top -= arg_count as usize + 1;
         true
       }
-      NativeResult::Error(message) => {
+      NativeResult::RuntimeError(message) => {
         self.runtime_error(&message);
         false
       }
-    }
+    };
   }
 
   fn call(&mut self, fun: &Rc<Fun<'b>>, arg_count: u8) -> bool {
@@ -481,12 +445,12 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   fn op_set_local(&mut self, store_index: u8) {
     let copy = self.peek(0).clone();
     let slots = self.current_frame().slots;
-    self.stack[slots + store_index as usize] = copy;
+    self.stack[1 + slots + store_index as usize] = copy;
   }
 
   fn op_get_local(&mut self, store_index: u8) {
-    let frame = self.current_frame();
-    let copy = self.stack[1 + frame.slots + store_index as usize].clone();
+    let slots = self.current_frame().slots;
+    let copy = self.stack[1 + slots + store_index as usize].clone();
     self.push(copy);
   }
 
@@ -598,7 +562,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   #[cfg(debug_assertions)]
   fn print_debug(&self) {
     print!("          ");
-    for i in 0..self.stack_top {
+    for i in 1..self.stack_top {
       print!("[ {} ]", self.stack[i]);
     }
     println!();
@@ -612,11 +576,6 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     let frame = self.current_frame();
     frame.fun.chunk.instructions[frame.ip].clone()
   }
-}
-
-/// A utility to read a file at a given path
-fn read_file(path: &str) -> String {
-  read_to_string(path).expect("Could not read file")
 }
 
 /// Is the provided `value` falsey according to spacelox rules

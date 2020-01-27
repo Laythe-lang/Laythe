@@ -91,7 +91,7 @@ impl<'a> Scanner<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::scanner::{Scanner, TokenKind};
+  /// use space_lox::scanner::{Scanner, TokenKind};
   ///
   /// let source = String::from("
   /// var x = \"something\";
@@ -125,7 +125,7 @@ impl<'a> Scanner<'a> {
   ///
   /// # Examples
   /// ```
-  /// use lox_runtime::scanner::{Scanner, TokenKind};
+  /// use space_lox::scanner::{Scanner, TokenKind};
   ///
   /// let source = String::from("
   /// var x = \"something\";
@@ -293,7 +293,7 @@ impl<'a> Scanner<'a> {
         "/" => match self.peek_next() {
           Some(next) => {
             if next == "/" {
-              while self.peek() != "\n" && self.is_at_end() {
+              while !self.is_at_end() && self.peek() != "\n" {
                 self.advance_indices();
               }
             } else {
