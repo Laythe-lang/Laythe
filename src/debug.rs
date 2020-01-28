@@ -50,7 +50,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
   }
 }
 
-fn jump_instruction(name: &str, sign: isize, jump: u8, offset: isize) {
+fn jump_instruction(name: &str, sign: isize, jump: u16, offset: isize) {
   let net_jump = sign * (jump as isize);
   println!("{} {:4} -> {}", name, offset, offset + 1 + net_jump);
 }

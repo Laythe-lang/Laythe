@@ -1,1 +1,1 @@
-print nil; // expect: nil
+assertEq(nil, nil); // expect: nil

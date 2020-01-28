@@ -273,3 +273,163 @@ fn function() -> Result<(), std::io::Error> {
     "function/missing_arguments.lox",
   ], InterpretResult::RuntimeError)
 }
+
+#[test]
+fn if_stmt() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "if/dangling_else.lox",
+      "if/else.lox",
+      "if/if.lox",
+      "if/truth.lox",
+    ],
+    InterpretResult::Ok,
+  )?;
+
+  test_files(
+    &vec![
+      "if/class_in_else.lox",
+      "if/class_in_then.lox",
+      "if/fun_in_else.lox",
+      "if/fun_in_then.lox",
+      "if/var_in_then.lox",
+      "if/var_in_then.lox",
+    ],
+    InterpretResult::CompileError,
+  )?;
+
+  test_files(&vec![
+  ], InterpretResult::RuntimeError)
+}
+
+// #[test]
+// fn inheritance() -> Result<(), std::io::Error> {
+//   test_files(&vec![
+//     "expressions/evaluate.lox"
+//   ], InterpretResult::Ok)?;
+
+//   test_files(&vec![
+//   ], InterpretResult::CompileError)?;
+
+//   test_files(&vec![
+//   ], InterpretResult::RuntimeError)
+// }
+
+#[test]
+fn limit() -> Result<(), std::io::Error> {
+  test_files(&vec![
+    "expressions/evaluate.lox"
+  ], InterpretResult::Ok)?;
+
+  test_files(&vec![
+    "limit/loop_too_large.lox",
+    "limit/no_reuse_constants.lox",
+    "limit/too_many_constants.lox",
+    "limit/too_many_locals.lox",
+    
+    // "limit/too_many_upvalues.lox",
+  ], InterpretResult::CompileError)?;
+
+  test_files(&vec![
+    // "limit/stack_overflow.lox"
+  ], InterpretResult::RuntimeError)
+}
+
+#[test]
+fn logical_operator() -> Result<(), std::io::Error> {
+  test_files(&vec![
+    "logical_operator/and_truth.lox",
+    // "logical_operator/and.lox",
+    "logical_operator/or_truth.lox",
+    "logical_operator/or.lox",
+  ], InterpretResult::Ok)?;
+
+  test_files(&vec![
+  ], InterpretResult::CompileError)?;
+
+  test_files(&vec![
+  ], InterpretResult::RuntimeError)
+}
+
+
+// #[test]
+// fn method() -> Result<(), std::io::Error> {
+//   test_files(&vec![
+//   ], InterpretResult::Ok)?;
+
+//   test_files(&vec![
+//   ], InterpretResult::CompileError)?;
+
+//   test_files(&vec![
+//   ], InterpretResult::RuntimeError)
+// }
+
+#[test]
+fn nil() -> Result<(), std::io::Error> {
+  test_files(&vec![
+    "nil/literal.lox"
+  ], InterpretResult::Ok)?;
+
+  test_files(&vec![
+  ], InterpretResult::CompileError)?;
+
+  test_files(&vec![
+  ], InterpretResult::RuntimeError)
+}
+
+
+#[test]
+fn number() -> Result<(), std::io::Error> {
+  test_files(&vec![
+    "number/literals.lox",
+  ], InterpretResult::Ok)?;
+
+  test_files(&vec![
+    "number/decimal_point_at_eof.lox",
+    "number/leading_dot.lox",
+    "number/trailing_dot.lox",
+  ], InterpretResult::CompileError)?;
+
+  test_files(&vec![
+  ], InterpretResult::RuntimeError)
+}
+
+#[test]
+fn print() -> Result<(), std::io::Error> {
+  test_files(&vec![
+  ], InterpretResult::Ok)?;
+
+  test_files(&vec![
+    "print/missing_argument.lox",
+  ], InterpretResult::CompileError)?;
+
+  test_files(&vec![
+  ], InterpretResult::RuntimeError)
+}
+
+// #[test]
+// fn scanning() -> Result<(), std::io::Error> {
+//   test_files(&vec![
+//   ], InterpretResult::Ok)?;
+
+//   test_files(&vec![
+//   ], InterpretResult::CompileError)?;
+
+//   test_files(&vec![
+//   ], InterpretResult::RuntimeError)
+// }
+
+
+// #[test]
+fn string() -> Result<(), std::io::Error> {
+  test_files(&vec![
+  ], InterpretResult::Ok)?;
+
+  test_files(&vec![
+    "print/missing_argument.lox",
+  ], InterpretResult::CompileError)?;
+
+  test_files(&vec![
+  ], InterpretResult::RuntimeError)
+}
+

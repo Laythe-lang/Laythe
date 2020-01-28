@@ -1,8 +1,8 @@
 // False and nil are false.
-if (false) print "bad"; else print "false"; // expect: false
-if (nil) print "bad"; else print "nil"; // expect: nil
+if (false) assert(false); else assert(true); // expect: false
+if (nil) assert(false); else assert(true); // expect: nil
 
 // Everything else is true.
-if (true) print true; // expect: true
-if (0) print 0; // expect: 0
-if ("") print "empty"; // expect: empty
+if (true) assert(true); // expect: true
+if (0) assert(true); // expect: 0
+if ("") assert(true); // expect: empty
