@@ -5,21 +5,18 @@ use std::time::SystemTime;
 
 #[derive(Clone)]
 pub struct NativeFun<'a> {
-  pub arity: u8,
-  pub name: String,
+  pub meta: Box<NativeMeta>,
   pub fun: Rc<dyn Fn(&[Value<'a>]) -> NativeResult<'a> + 'a>,
+}
+
+#[derive(Clone)]
+pub struct NativeMeta {
+  pub name: String,
+  pub arity: u8,
 }
 
 impl<'a> PartialEq for NativeFun<'a> {
   fn eq(&self, rhs: &NativeFun<'a>) -> bool {
-    if self.arity != rhs.arity {
-      return false;
-    }
-
-    if self.name != rhs.name {
-      return false;
-    }
-
     Rc::ptr_eq(&self.fun, &rhs.fun)
   }
 }
@@ -29,8 +26,20 @@ impl<'a> fmt::Debug for NativeFun<'a> {
     write!(
       f,
       "NativeFun {{ arity: {}, name: {} }}",
-      self.arity, self.name
+      self.meta.arity, self.meta.name
     )
+  }
+}
+
+impl<'a> NativeFun<'a> {
+  pub fn new(fun: Rc<dyn Fn(&[Value<'a>]) -> NativeResult<'a> + 'a>,  name: String, arity: u8) -> Self {
+    NativeFun {
+      meta: Box::new(NativeMeta {
+        name,
+        arity
+      }),
+      fun
+    }
   }
 }
 
@@ -42,29 +51,29 @@ pub enum NativeResult<'a> {
 pub fn create_natives<'a>() -> Vec<NativeFun<'a>> {
   let mut natives = Vec::new();
 
-  natives.push(NativeFun {
-    name: "clock".to_string(),
-    arity: 0,
-    fun: Rc::new(create_clock()),
-  });
+  natives.push(NativeFun::new(
+    Rc::new(create_clock()),
+    "clock".to_string(),
+    0,
+  ));
 
-  natives.push(NativeFun {
-    name: "assert".to_string(),
-    arity: 1,
-    fun: Rc::new(assert),
-  });
+  natives.push(NativeFun::new(
+    Rc::new(assert),
+    "assert".to_string(),
+    1,
+  ));
 
-  natives.push(NativeFun {
-    name: "assertEq".to_string(),
-    arity: 2,
-    fun: Rc::new(assert_eq),
-  });
+  natives.push(NativeFun::new(
+    Rc::new(assert_eq),
+    "assertEq".to_string(),
+    2,
+  ));
 
-  natives.push(NativeFun {
-    name: "assertNe".to_string(),
-    arity: 2,
-    fun: Rc::new(assert_ne),
-  });
+  natives.push(NativeFun::new(
+    Rc::new(assert_ne),
+    "assertNe".to_string(),
+    2,
+  ));
 
   natives
 }

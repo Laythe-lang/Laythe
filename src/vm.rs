@@ -129,7 +129,7 @@ impl<'a> Vm<'a> {
 
   fn define_native(&mut self, native: NativeFun<'a>) {
     self.globals.store.insert(
-      native.name.clone(),
+      native.meta.name.clone(),
       Value::Obj(Obj::new(ObjValue::NativeFn(native))),
     );
   }
@@ -282,10 +282,10 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn call_native(&mut self, native: &NativeFun<'b>, arg_count: u8) -> bool {
-    if arg_count != native.arity {
+    if arg_count != native.meta.arity {
       self.runtime_error(&format!(
         "Function {} expected {} argument but got {}",
-        native.name, native.arity, arg_count,
+        native.meta.name, native.meta.arity, arg_count,
       ));
       return false;
     }
@@ -293,8 +293,8 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     let result = (native.fun)(&self.stack[(self.stack_top - arg_count as usize)..self.stack_top]);
     return match result {
       NativeResult::Success(value) => {
-        self.push(value);
         self.stack_top -= arg_count as usize + 1;
+        self.push(value);
         true
       }
       NativeResult::RuntimeError(message) => {
@@ -355,7 +355,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     self.reset_stack();
   }
 
-  fn read_string(&mut self, index: u8) -> String {
+  fn read_string<'c>(&mut self, index: u8) -> String {
     let frame = self.current_frame();
 
     match VmExecutor::read_constant(frame, index) {

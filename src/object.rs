@@ -7,6 +7,7 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem::discriminant;
 use std::rc::Rc;
+use std::ptr;
 
 #[derive(Debug, Clone)]
 pub struct Obj<'a> {
@@ -98,8 +99,9 @@ impl<'a> Hash for Obj<'a> {
         func.arity.hash(state);
       }
       ObjValue::NativeFn(native_func) => {
-        native_func.name.hash(state);
-        native_func.name.hash(state);
+        native_func.meta.name.hash(state);
+        native_func.meta.arity.hash(state);
+        ptr::hash(&**&native_func.fun, state)
       }
     }
   }
@@ -122,7 +124,7 @@ impl<'a> fmt::Display for Obj<'a> {
         Some(name) => write!(f, "<fn {}>", name),
         None => write!(f, "<script>"),
       },
-      ObjValue::NativeFn(native_fun) => write!(f, "<native {}>", native_fun.name),
+      ObjValue::NativeFn(native_fun) => write!(f, "<native {}>", native_fun.meta.name),
     }
   }
 }

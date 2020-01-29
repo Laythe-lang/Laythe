@@ -1,10 +1,12 @@
 use crate::chunk::{ByteCode, Chunk};
-use crate::debug::disassemble_chunk;
 use crate::object::{copy_string, Fun, FunKind, Obj, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
 use std::convert::TryInto;
 use std::rc::Rc;
+
+#[cfg(debug_assertions)]
+use crate::debug::disassemble_chunk;
 
 /// The result of a compilation
 pub struct CompilerResult<'c> {
@@ -491,6 +493,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   }
 
   /// Print the chunk if debug and an error occurred
+  #[cfg(debug_assertions)]
   fn print_chunk(&self) {
     if true || self.parser.had_error {
       let script = "<script>".to_string();
