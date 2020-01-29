@@ -46,6 +46,19 @@ fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Er
 }
 
 #[test]
+fn clock() -> Result<(), std::io::Error> {
+  let mut vm = create_vm();
+  let assert = fixture_path("assert/clock.lox").expect("No parent directory");
+
+  let mut file = File::open(assert)?;
+  let mut source = String::new();
+  file.read_to_string(&mut source)?;
+
+  assert_eq!(vm.run(&source), InterpretResult::Ok);
+  Ok(())
+}
+
+#[test]
 fn assert() -> Result<(), std::io::Error> {
   let mut vm = create_vm();
   let assert = fixture_path("assert/assert.lox").expect("No parent directory");
