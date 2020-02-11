@@ -5,4 +5,4 @@ class Foo {
   }
 }
 
-print Foo().method(); // expect: ok
+assertEq(Foo().method(), "ok"); // expect: ok

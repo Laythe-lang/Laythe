@@ -7,7 +7,7 @@ var a = "global";
 
   var a = "inner";
   assign();
-  print a; // expect: inner
+  assertEq(a, "inner"); // expect: inner
 }
 
-print a; // expect: assigned
+assertEq(a, "assigned"); // expect: assigned

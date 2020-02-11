@@ -3,4 +3,4 @@ fun f() {
   print "bad";
 }
 
-print f(); // expect: nil
+assertEq(f(), nil); // expect: nil

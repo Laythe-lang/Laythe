@@ -2,7 +2,7 @@ var f;
 
 fun foo(param) {
   fun f_() {
-    print param;
+    assertEq(param, "param");
   }
   f = f_;
 }

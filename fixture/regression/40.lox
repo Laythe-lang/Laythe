@@ -1,7 +1,7 @@
 fun caller(g) {
   g();
   // g should be a function, not nil.
-  print g == nil; // expect: false
+  assertEq(g == nil, false); // expect: false
 }
 
 fun callCaller() {
