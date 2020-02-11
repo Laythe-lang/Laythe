@@ -2,7 +2,7 @@ use crate::chunk::{ByteCode, Chunk, UpvalueIndex};
 use crate::compiler::{Compiler, CompilerAnalytics, Parser};
 use crate::memory::free_objects;
 use crate::native::{NativeFun, NativeResult};
-use crate::object::{Closure, Fun, FunKind, Obj, ObjValue, Upvalue, UpvalueLocation};
+use crate::object::{Closure, Fun, FunKind, Obj, ObjValue, Upvalue};
 use crate::table::Table;
 use crate::value::Value;
 use std::cell::Cell;
@@ -14,6 +14,8 @@ use std::rc::Rc;
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_instruction;
+#[cfg(debug_assertions)]
+use crate::object::UpvalueLocation;
 
 pub const FRAME_MAX: usize = std::u8::MAX as usize;
 pub const DEFAULT_STACK_MAX: usize = FRAME_MAX * 16;
@@ -34,12 +36,9 @@ pub struct CallFrame<'a> {
 }
 
 impl<'a> CallFrame<'a> {
-  pub fn new(fun: &Rc<Fun<'a>>) -> Self {
+  pub fn new(fun: &Fun<'a>) -> Self {
     CallFrame {
-      closure: Closure {
-        fun: fun.clone(),
-        upvalues: Vec::with_capacity(fun.upvalue_count),
-      },
+      closure: Closure::new(fun),
       ip: 0,
       slots: 0,
     }
@@ -131,10 +130,7 @@ impl<'a> Vm<'a> {
 
     let frames = vec![CallFrame::new(&null_fun); FRAME_MAX];
 
-    let script = Value::Obj(Obj::new(ObjValue::Closure(Closure {
-      upvalues: Vec::with_capacity(result.fun.upvalue_count),
-      fun: result.fun,
-    })));
+    let script = Value::Obj(Obj::new(ObjValue::Closure(Closure::new(&result.fun))));
     let executor = VmExecutor::new(self, frames, script);
     executor.run()
   }
@@ -207,7 +203,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
   fn run(mut self) -> InterpretResult {
     loop {
-      let op_code = self.frame_instruction();
+      let op_code = self.frame_instruction().clone();
 
       #[cfg(debug_assertions)]
       self.print_debug();
@@ -380,11 +376,11 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn call(&mut self, closure: Closure<'b>, arg_count: u8) -> Option<InterpretResult> {
-    if (arg_count as u16) != closure.fun.arity {
+    if (arg_count as u16) != closure.get_fun().arity {
       self.runtime_error(&format!(
         "Function {} expected {} arguments but got {}",
-        closure.fun.name.clone().unwrap_or("script".to_string()),
-        closure.fun.arity,
+        closure.get_fun().name.clone().unwrap_or("script".to_string()),
+        closure.get_fun().arity,
         arg_count
       ));
       return Some(InterpretResult::RuntimeError);
@@ -423,14 +419,14 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
     for frame in self.frames[0..self.frame_count].iter().rev() {
       let closure = &frame.closure;
-      let location = match &closure.fun.name {
+      let location = match &closure.get_fun().name {
         Some(name) => format!("{}()", name),
         None => "script".to_string(),
       };
 
       eprintln!(
         "[line {}] in {}",
-        closure.fun.chunk.get_line(frame.ip),
+        closure.get_fun().chunk.get_line(frame.ip),
         location
       );
     }
@@ -451,7 +447,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn read_constant<'c>(frame: &'c CallFrame<'b>, index: u8) -> &'c Value<'b> {
-    &frame.closure.fun.chunk.constants.values[index as usize]
+    &frame.closure.get_fun().chunk.constants.values[index as usize]
   }
 
   fn push(&mut self, value: Value<'b>) {
@@ -500,8 +496,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
     match self.globals.store.get(&name) {
       Some(global) => {
-        let global_clone = global.clone();
-        self.push(global_clone);
+        self.push(global.clone());
         None
       }
       None => {
@@ -670,10 +665,10 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   fn op_closure(&mut self, index: u8) {
     let frame = self.current_frame();
     let fun = VmExecutor::read_constant(frame, index).ref_obj().ref_fun();
-    let mut closure = Closure::new(Rc::clone(fun));
+    let mut closure = Closure::new(fun);
 
     for _ in 0..fun.upvalue_count {
-      let op_code = self.frame_instruction();
+      let op_code = self.frame_instruction().clone();
       self.increment_frame_ip(1);
 
       if let ByteCode::UpvalueIndex(upvalue_index) = op_code {
@@ -777,7 +772,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
     print!("Upvalues: ");
     let frame = self.current_frame();
-    for i in 0..frame.closure.fun.upvalue_count {
+    for i in 0..frame.closure.get_fun().upvalue_count {
       match &frame.closure.upvalues[i].borrow().location {
         UpvalueLocation::Stack(loc) => {
           print!("[ stack {} ]", unsafe { &**loc });
@@ -790,13 +785,13 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     println!();
 
     let frame = self.current_frame();
-    disassemble_instruction(&frame.closure.fun.chunk, frame.ip);
+    disassemble_instruction(&frame.closure.get_fun().chunk, frame.ip);
   }
 
   /// Get the current instruction from the present call frame
-  fn frame_instruction(&self) -> ByteCode {
+  fn frame_instruction(&self) -> &ByteCode {
     let frame = self.current_frame();
-    frame.closure.fun.chunk.instructions[frame.ip].clone()
+    &frame.closure.get_fun().chunk.instructions[frame.ip]
   }
 }
 

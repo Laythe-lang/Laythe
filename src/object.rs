@@ -20,39 +20,62 @@ pub struct Obj<'a> {
 #[derive(Debug, PartialEq, Clone)]
 pub enum ObjValue<'a> {
   String(String),
-  Fun(Rc<Fun<'a>>),
+  Fun(Box<Fun<'a>>),
   Closure(Closure<'a>),
   NativeFn(NativeFun<'a>),
   Upvalue(Upvalue<'a>),
 }
 
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Closure<'a> {
-  pub fun: Rc<Fun<'a>>,
+  pub fun: *const Fun<'a>,
   pub upvalues: Vec<Rc<RefCell<Upvalue<'a>>>>,
 }
 
 impl<'a> Closure<'a> {
-  /// Create a new closure using a Rc to an underlying Fun
+  /// Create a new closure using a pointer to an underlying Fun
   ///
   /// # Example
   /// ```
   /// use space_lox::object::{Closure, Fun};
   /// use space_lox::chunk::Chunk;
-  /// use std::rc::Rc;
   ///
-  /// let fun = Rc::new(Fun {
+  /// let fun = Box::new(Fun {
   ///   arity: 3,
   ///   upvalue_count: 2,
   ///   chunk: Chunk::default(),
   ///   name: Some("example".to_string())
   /// });
+  /// 
+  /// let closure = Closure::new(&fun);
+  /// assert_eq!(closure.get_fun().name.as_ref().unwrap().clone(), "example".to_string());
   /// ```
-  pub fn new(fun: Rc<Fun<'a>>) -> Self {
+  pub fn new(fun: &Fun<'a>) -> Self {
     Closure {
       upvalues: Vec::with_capacity(fun.upvalue_count),
       fun,
     }
+  }
+
+  /// Dereferenced the underlying function captured by this closure
+  /// 
+  /// # Example
+  /// ```
+  /// use space_lox::object::{Closure, Fun};
+  /// use space_lox::chunk::Chunk;
+  ///
+  /// let fun = Box::new(Fun {
+  ///   arity: 3,
+  ///   upvalue_count: 2,
+  ///   chunk: Chunk::default(),
+  ///   name: Some("example".to_string())
+  /// });
+  /// 
+  /// let closure = Closure::new(&fun);
+  /// assert_eq!(closure.get_fun().name.as_ref().unwrap().clone(), "example".to_string());
+  /// ```
+  pub fn get_fun(&self) -> &Fun<'a> {
+    unsafe { &*self.fun }
   }
 }
 
@@ -195,7 +218,7 @@ impl<'a> Hash for Obj<'a> {
         ptr::hash(&**&fun, state);
       }
       ObjValue::Closure(closure) => {
-        ptr::hash(&**&closure.fun, state);
+        ptr::hash(closure.fun, state);
       }
       ObjValue::Upvalue(upvalue) => {
         ptr::hash(unsafe { &**&upvalue.as_ptr() }, state);
@@ -223,7 +246,7 @@ impl<'a> fmt::Display for Obj<'a> {
         None => write!(f, "<script>"),
       },
       ObjValue::Upvalue(upvalue) => write!(f, "<upvalue {}>", unsafe { &*upvalue.as_ptr() }),
-      ObjValue::Closure(closure) => match &closure.fun.name {
+      ObjValue::Closure(closure) => match unsafe { &(*closure.fun).name } {
         Some(name) => write!(f, "<fn {}>", name),
         None => write!(f, "<script>"),
       },
@@ -288,10 +311,10 @@ impl<'a> Obj<'a> {
   ///   chunk: Chunk::default()
   /// };
   ///
-  /// let obj1 = Obj::new(ObjValue::Fun(Rc::new(func)));
+  /// let obj1 = Obj::new(ObjValue::Fun(Box::new(func)));
   /// assert_eq!(obj1.move_fun().name.clone().unwrap(), "add");
   /// ```
-  pub fn move_fun(self) -> Rc<Fun<'a>> {
+  pub fn move_fun(self) -> Box<Fun<'a>> {
     match self.value {
       ObjValue::Fun(fun) => fun,
       _ => panic!("Expected function!"),
@@ -313,10 +336,10 @@ impl<'a> Obj<'a> {
   ///   chunk: Chunk::default()
   /// };
   ///
-  /// let obj1 = Obj::new(ObjValue::Fun(Rc::new(func)));
+  /// let obj1 = Obj::new(ObjValue::Fun(Box::new(func)));
   /// assert_eq!(obj1.ref_fun().name.clone().unwrap(), "add");
   /// ```
-  pub fn ref_fun<'o>(&'o self) -> &'o Rc<Fun<'a>> {
+  pub fn ref_fun<'o>(&'o self) -> &'o Fun<'a> {
     match &self.value {
       ObjValue::Fun(fun) => fun,
       _ => panic!("Expected function!"),
@@ -331,17 +354,14 @@ impl<'a> Obj<'a> {
   /// use space_lox::chunk::{Chunk};
   /// use std::rc::Rc;
   ///
-  /// let func = Fun {
+  /// let fun = Fun {
   ///   name: Some("add".to_string()),
   ///   arity: 3,
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default()
   /// };
   ///
-  /// let obj1 = Obj::new(ObjValue::Closure(Closure {
-  ///   fun: Rc::new(func),
-  ///   upvalues: Vec::new()
-  /// }));
+  /// let obj1 = Obj::new(ObjValue::Closure(Closure::new(&fun)));
   /// assert_eq!(obj1.to_string(), "<fn add>");
   /// ```
   pub fn move_closure(self) -> Closure<'a> {
@@ -357,9 +377,8 @@ impl<'a> Obj<'a> {
   /// ```
   /// use space_lox::object::{Obj, ObjValue, Fun};
   /// use space_lox::chunk::{Chunk};
-  /// use std::rc::Rc;
   ///
-  /// let func = Obj::new(ObjValue::Fun(Rc::new(Fun {
+  /// let func = Obj::new(ObjValue::Fun(Box::new(Fun {
   ///   name: Some("add".to_string()),
   ///   arity: 3,
   ///   upvalue_count: 0,

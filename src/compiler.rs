@@ -3,7 +3,6 @@ use crate::object::{copy_string, Fun, FunKind, Obj, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
 use std::convert::TryInto;
-use std::rc::Rc;
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_chunk;
@@ -14,7 +13,7 @@ pub struct CompilerResult<'a> {
   pub success: bool,
 
   /// The chunk that was compiled
-  pub fun: Rc<Fun<'a>>,
+  pub fun: Box<Fun<'a>>,
 }
 
 pub struct CompilerAnalytics<'a, 'o: 'a> {
@@ -195,7 +194,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
       return CompilerResult {
         success: !self.parser.had_error,
-        fun: Rc::new(self.fun),
+        fun: Box::new(self.fun),
       };
     }
 
@@ -214,7 +213,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
     CompilerResult {
       success: !self.parser.had_error,
-      fun: Rc::new(self.fun),
+      fun: Box::new(self.fun),
     }
   }
 
@@ -323,9 +322,9 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
     fun_compiler.end_compiler();
     let upvalue_count = fun_compiler.fun.upvalue_count;
-    let rc = Rc::new(fun_compiler.fun);
+    let boxed_fun = Box::new(fun_compiler.fun);
 
-    let index = self.make_constant(Value::Obj(Obj::new(ObjValue::Fun(rc))));
+    let index = self.make_constant(Value::Obj(Obj::new(ObjValue::Fun(boxed_fun))));
     self.emit_byte(ByteCode::Closure(index));
 
     fun_compiler.upvalues[0..upvalue_count]
@@ -1265,7 +1264,7 @@ mod test {
     Fun((u8, Vec<ByteCodeTest>)),
   }
 
-  fn test_compile<'a>(src: String) -> Rc<Fun<'a>> {
+  fn test_compile<'a>(src: String) -> Box<Fun<'a>> {
     let allocate = |value: ObjValue<'a>| Obj::new(value);
     let intern = |string: String| string;
     let analytics = CompilerAnalytics {
@@ -1282,7 +1281,7 @@ mod test {
     result.fun
   }
 
-  fn assert_simple_bytecode<'a>(fun: Rc<Fun<'a>>, code: &[ByteCode]) {
+  fn assert_simple_bytecode<'a>(fun: Box<Fun<'a>>, code: &[ByteCode]) {
     let instructions = fun.chunk.instructions.clone();
     assert_eq!(instructions.len(), code.len());
 
@@ -1292,7 +1291,7 @@ mod test {
       .for_each(|(actual, expect)| assert_eq!(actual, expect));
   }
 
-  fn assert_fun_bytecode<'a>(fun: &Rc<Fun<'a>>, code: &[ByteCodeTest]) {
+  fn assert_fun_bytecode<'a>(fun: &Fun<'a>, code: &[ByteCodeTest]) {
     let instructions = fun.chunk.instructions.clone();
     assert_eq!(instructions.len(), code.len());
 
