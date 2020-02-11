@@ -1,4 +1,4 @@
-use crate::chunk::{ByteCode, Chunk};
+use crate::chunk::{ByteCode, Chunk, UpvalueIndex};
 use crate::object::{copy_string, Fun, FunKind, Obj, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
@@ -9,17 +9,17 @@ use std::rc::Rc;
 use crate::debug::disassemble_chunk;
 
 /// The result of a compilation
-pub struct CompilerResult<'c> {
+pub struct CompilerResult<'a> {
   /// Was an error encountered while this chunk was compiled
   pub success: bool,
 
   /// The chunk that was compiled
-  pub fun: Rc<Fun<'c>>,
+  pub fun: Rc<Fun<'a>>,
 }
 
-pub struct CompilerAnalytics<'a, 'c: 'a> {
+pub struct CompilerAnalytics<'a, 'o: 'a> {
   /// provide a side effect when the compiler allocates an object
-  pub allocate: &'a dyn Fn(ObjValue<'c>) -> Obj<'c>,
+  pub allocate: &'a dyn Fn(ObjValue<'o>) -> Obj<'o>,
 
   /// provide a mechanism to intern a string
   pub intern: &'a dyn Fn(String) -> String,
@@ -34,6 +34,9 @@ pub struct Local {
 
   /// depth of the local
   depth: i16,
+
+  /// is this local captured
+  is_captured: bool,
 }
 
 /// The spacelox compiler for converting tokens to bytecode
@@ -43,6 +46,10 @@ pub struct Compiler<'a, 's, 'c: 'a> {
 
   /// The type the current function scope
   fun_kind: FunKind,
+
+  /// The parent compiler if it exists note uses
+  /// unsafe pointer
+  enclosing: Option<*mut Compiler<'a, 's, 'c>>,
 
   /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
@@ -57,8 +64,11 @@ pub struct Compiler<'a, 's, 'c: 'a> {
   /// Current scope depth
   scope_depth: i16,
 
-  /// The in scope locals
+  /// locals in this function
   locals: Vec<Local>,
+
+  /// upvalues in this function
+  upvalues: Vec<UpvalueIndex>,
 }
 
 impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
@@ -99,21 +109,55 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     Self {
       fun: Fun {
         arity: 0,
+        upvalue_count: 0,
         name,
         chunk: Chunk::default(),
       },
       fun_kind,
       analytics,
       parser,
-      local_count: 0,
+      enclosing: None,
+      local_count: 1,
       scope_depth: 0,
       locals: vec![
         Local {
           name: Option::None,
           depth: UNINITIALIZED,
+          is_captured: false,
         };
         std::u8::MAX as usize
       ],
+      upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
+    }
+  }
+
+  pub fn child(
+    name: Option<String>,
+    fun_kind: FunKind,
+    enclosing: *mut Compiler<'a, 's, 'c>,
+  ) -> Self {
+    Self {
+      fun: Fun {
+        arity: 0,
+        upvalue_count: 0,
+        name,
+        chunk: Chunk::default(),
+      },
+      fun_kind,
+      analytics: unsafe { (*enclosing).analytics },
+      parser: unsafe { (*enclosing).parser },
+      enclosing: Some(enclosing),
+      local_count: 1,
+      scope_depth: 0,
+      locals: vec![
+        Local {
+          name: Option::None,
+          depth: UNINITIALIZED,
+          is_captured: false,
+        };
+        std::u8::MAX as usize
+      ],
+      upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
     }
   }
 
@@ -241,7 +285,9 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   }
 
   fn function(&mut self, fun_kind: FunKind) {
-    let mut fun_compiler = Compiler::new(&mut self.parser, self.analytics, fun_kind);
+    let name = Some(self.parser.previous.lexeme.to_string());
+
+    let mut fun_compiler = Compiler::child(name, fun_kind, &mut *self);
     fun_compiler.begin_scope();
 
     fun_compiler
@@ -276,8 +322,15 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     fun_compiler.block();
 
     fun_compiler.end_compiler();
-    let fun = fun_compiler.fun;
-    self.emit_constant(Value::Obj(Obj::new(ObjValue::Fun(Rc::new(fun)))));
+    let upvalue_count = fun_compiler.fun.upvalue_count;
+    let rc = Rc::new(fun_compiler.fun);
+
+    let index = self.make_constant(Value::Obj(Obj::new(ObjValue::Fun(rc))));
+    self.emit_byte(ByteCode::Closure(index));
+
+    fun_compiler.upvalues[0..upvalue_count]
+      .iter()
+      .for_each(|upvalue| self.emit_byte(ByteCode::UpvalueIndex(upvalue.clone())));
   }
 
   /// Parse a variable declaration
@@ -487,7 +540,11 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     self.scope_depth -= 1;
 
     while self.local_count > 0 && self.locals[self.local_count - 1].depth > self.scope_depth {
-      self.emit_byte(ByteCode::Pop);
+      if self.locals[self.local_count - 1].is_captured {
+        self.emit_byte(ByteCode::CloseUpvalue)
+      } else {
+        self.emit_byte(ByteCode::Pop);
+      }
       self.local_count -= 1;
     }
   }
@@ -595,14 +652,17 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     let index = self.resolve_local(&name);
 
     let (get_byte, set_byte) = match index {
-      Some(index) => (ByteCode::GetLocal(index), ByteCode::SetLocal(index)),
-      None => {
-        let global_index = self.identifer_constant(name);
-        (
-          ByteCode::GetGlobal(global_index),
-          ByteCode::SetGlobal(global_index),
-        )
-      }
+      Some(local) => (ByteCode::GetLocal(local), ByteCode::SetLocal(local)),
+      None => match self.resolve_upvalue(&name) {
+        Some(upvalue) => (ByteCode::GetUpvalue(upvalue), ByteCode::SetUpvalue(upvalue)),
+        None => {
+          let global_index = self.identifer_constant(name);
+          (
+            ByteCode::GetGlobal(global_index),
+            ByteCode::SetGlobal(global_index),
+          )
+        }
+      },
     };
 
     if can_assign && self.parser.match_kind(TokenKind::Equal) {
@@ -632,7 +692,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
     let can_assign = precedence <= Precedence::Assignment;
     let prefix_fn = get_rule(self.parser.previous.kind.clone()).prefix.clone();
-    
+
     match prefix_fn {
       Some(prefix) => self.execute_action(prefix, can_assign),
       None => {
@@ -768,15 +828,12 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
       }
 
       // check that the same variable wasn't declared twice in the same scope
-      match &local.name {
-        Some(local_name) => {
-          if identifers_equal(&name, local_name) {
-            self
-              .parser
-              .error("Variable with this name already declared in this scope.");
-          }
+      if let Some(local_name) = &local.name {
+        if identifers_equal(&name, local_name) {
+          self
+            .parser
+            .error("Variable with this name already declared in this scope.");
         }
-        None => panic!("local not set!"),
       }
     }
 
@@ -788,25 +845,69 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     for i in (0..self.local_count).rev() {
       let local = &self.locals[i];
 
-      match &local.name {
-        Some(local_name) => {
-          if identifers_equal(&name, local_name) {
-            // handle the case were `var a = a;`
-            if local.depth == UNINITIALIZED {
-              self
-                .parser
-                .error("Cannot read local variable in its own initializer.")
-            }
-
-            return Some(i as u8);
+      if let Some(local_name) = &local.name {
+        if identifers_equal(&name, local_name) {
+          // handle the case were `var a = a;`
+          if local.depth == UNINITIALIZED {
+            self
+              .parser
+              .error("Cannot read local variable in its own initializer.")
           }
+
+          return Some(i as u8);
         }
-        None => panic!("local not set!"),
       }
     }
 
     // not found
     Option::None
+  }
+
+  /// resolve a token to an upvalue in an enclosing scope if it exists
+  fn resolve_upvalue(&mut self, name: &Token) -> Option<u8> {
+    match self.enclosing {
+      Some(parent_ptr) => {
+        let parent = unsafe { &mut *parent_ptr };
+
+        match parent.resolve_local(name) {
+          Some(local) => {
+            parent.locals[local as usize].is_captured = true;
+            return Some(self.add_upvalue(UpvalueIndex::Local(local)) as u8);
+          }
+          None => parent
+            .resolve_upvalue(name)
+            .map(|upvalue| self.add_upvalue(UpvalueIndex::Upvalue(upvalue)) as u8),
+        }
+      }
+      None => None,
+    }
+  }
+
+  /// add an upvalue
+  fn add_upvalue(&mut self, upvalue: UpvalueIndex) -> usize {
+    let upvalue_count = self.fun.upvalue_count;
+
+    // check for existing upvalues
+    if let Some(i) = self.upvalues[0..upvalue_count]
+      .iter()
+      .position(|existing_upvalue| match (&existing_upvalue, &upvalue) {
+        (UpvalueIndex::Local(existing), UpvalueIndex::Local(new)) => *existing == *new,
+        _ => false,
+      })
+    {
+      return i;
+    }
+
+    // prevent overflow
+    if upvalue_count == std::u8::MAX as usize {
+      self.parser.error("Too many closure variable in function.");
+      return 0;
+    }
+
+    self.upvalues[upvalue_count] = upvalue;
+    self.fun.upvalue_count += 1;
+
+    upvalue_count
   }
 
   /// Execute a provided action
@@ -1158,63 +1259,13 @@ enum Act {
 #[cfg(test)]
 mod test {
   use super::*;
-  // use std::cell::Cell;
 
-  // struct TestCalled {
-  //   allocate: Cell<Option<ObjValue>>,
-  //   intern: Cell<Option<String>>,
-  // }
+  enum ByteCodeTest {
+    Code(ByteCode),
+    Fun((u8, Vec<ByteCodeTest>)),
+  }
 
-  // struct TestSetup<'a> {
-  //   analytics: CompilerAnalytics<'a, 'a>,
-  //   allocate: Box<dyn Fn(ObjValue) -> Obj<'a> + 'a>,
-  //   intern: Box<dyn Fn(String) -> String + 'a>,
-  // }
-
-  // impl TestCalled {
-  //   pub fn new() -> TestCalled {
-  //     TestCalled {
-  //       allocate: Cell::new(Option::None),
-  //       intern: Cell::new(Option::None),
-  //     }
-  //   }
-  // }
-
-  // fn test_analytics<'a>(
-  //   allocate: &'a dyn Fn(ObjValue) -> Obj<'a>,
-  //   intern: &'a dyn Fn(String) -> String,
-  // ) -> CompilerAnalytics<'a, 'a> {
-  //   CompilerAnalytics {
-  //     allocate: allocate,
-  //     intern: intern,
-  //   }
-  // }
-
-  // fn test_setup<'a>() -> (TestSetup<'a>, Box<TestCalled>) {
-  //   let test_called = Box::new(TestCalled::new());
-
-  //   let allocate = Box::new(|value: ObjValue| {
-  //     let value_copy = value.clone();
-  //     test_called.allocate.set(Some(value_copy));
-  //     Obj::new(value)
-  //   });
-
-  //   let intern = Box::new(|string: String| {
-  //     test_called.intern.set(Some(string.clone()));
-  //     string
-  //   });
-
-  //   (
-  //     TestSetup {
-  //       analytics: test_analytics(&allocate, &intern),
-  //       allocate,
-  //       intern,
-  //     },
-  //     test_called,
-  //   )
-  // }
-
-  fn test_compile<'a>(src: String) -> Vec<ByteCode> {
+  fn test_compile<'a>(src: String) -> Rc<Fun<'a>> {
     let allocate = |value: ObjValue<'a>| Obj::new(value);
     let intern = |string: String| string;
     let analytics = CompilerAnalytics {
@@ -1228,468 +1279,817 @@ mod test {
     let result = compiler.compile();
     assert_eq!(result.success, true);
 
-    result.fun.chunk.instructions.clone()
+    result.fun
+  }
+
+  fn assert_simple_bytecode<'a>(fun: Rc<Fun<'a>>, code: &[ByteCode]) {
+    let instructions = fun.chunk.instructions.clone();
+    assert_eq!(instructions.len(), code.len());
+
+    instructions
+      .iter()
+      .zip(code.iter())
+      .for_each(|(actual, expect)| assert_eq!(actual, expect));
+  }
+
+  fn assert_fun_bytecode<'a>(fun: &Rc<Fun<'a>>, code: &[ByteCodeTest]) {
+    let instructions = fun.chunk.instructions.clone();
+    assert_eq!(instructions.len(), code.len());
+
+    for i in 0..code.len() {
+      match instructions[i] {
+        ByteCode::Closure(index) => {
+          let fun = fun.chunk.constants.values[index as usize]
+            .ref_obj()
+            .ref_fun();
+
+          match &code[i] {
+            ByteCodeTest::Fun((expected, inner)) => {
+              assert_eq!(*expected, index);
+              assert_fun_bytecode(fun, &inner);
+            }
+            _ => assert!(false),
+          }
+        }
+        _ => match &code[i] {
+          ByteCodeTest::Code(byte_code) => {
+            assert_eq!(&instructions[i], byte_code);
+          }
+          _ => assert!(false),
+        },
+      }
+    }
   }
 
   #[test]
   fn op_print() {
     let example = "print 10;".to_string();
 
-    let instructions = test_compile(example);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Print,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
+  }
 
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0].clone(), ByteCode::Constant(0));
-    assert_eq!(instructions[1].clone(), ByteCode::Print);
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+  #[test]
+  fn open_upvalue() {
+    let example = "
+    fun example() {
+      var x = 0;
+      fun middle() {
+        fun inner() {
+          return x;
+        }
+
+        return inner();
+      }
+
+      return middle();
+    }
+    example();
+    "
+    .to_string();
+
+    let fun = test_compile(example);
+    assert_fun_bytecode(
+      &fun,
+      &vec![
+        ByteCodeTest::Fun((
+          // example
+          1,
+          vec![
+            ByteCodeTest::Code(ByteCode::Constant(0)),
+            ByteCodeTest::Fun((
+              // middle
+              1,
+              vec![
+                ByteCodeTest::Fun((
+                  // inner
+                  0,
+                  vec![
+                    ByteCodeTest::Code(ByteCode::GetUpvalue(0)),
+                    ByteCodeTest::Code(ByteCode::Return),
+                    ByteCodeTest::Code(ByteCode::Nil),
+                    ByteCodeTest::Code(ByteCode::Return),
+                  ],
+                )),
+                ByteCodeTest::Code(ByteCode::UpvalueIndex(UpvalueIndex::Upvalue(0))),
+                ByteCodeTest::Code(ByteCode::GetLocal(1)),
+                ByteCodeTest::Code(ByteCode::Call(0)),
+                ByteCodeTest::Code(ByteCode::Return),
+                ByteCodeTest::Code(ByteCode::Nil),
+                ByteCodeTest::Code(ByteCode::Return),
+              ],
+            )),
+            ByteCodeTest::Code(ByteCode::UpvalueIndex(UpvalueIndex::Local(1))),
+            ByteCodeTest::Code(ByteCode::GetLocal(2)),
+            ByteCodeTest::Code(ByteCode::Call(0)),
+            ByteCodeTest::Code(ByteCode::Return),
+            ByteCodeTest::Code(ByteCode::Nil),
+            ByteCodeTest::Code(ByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(ByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(ByteCode::GetGlobal(2)),
+        ByteCodeTest::Code(ByteCode::Call(0)),
+        ByteCodeTest::Code(ByteCode::Pop),
+        ByteCodeTest::Code(ByteCode::Nil),
+        ByteCodeTest::Code(ByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn close_upvalue() {
+    let example = "
+    fun example() {
+      var a = 10;
+      fun inner() {
+        return a;
+      }
+      return inner;
+    }
+    var inner = example();
+    inner();
+    "
+    .to_string();
+
+    let fun = test_compile(example);
+    assert_fun_bytecode(
+      &fun,
+      &vec![
+        ByteCodeTest::Fun((
+          1,
+          vec![
+            ByteCodeTest::Code(ByteCode::Constant(0)),
+            ByteCodeTest::Fun((
+              1,
+              vec![
+                ByteCodeTest::Code(ByteCode::GetUpvalue(0)),
+                ByteCodeTest::Code(ByteCode::Return),
+                ByteCodeTest::Code(ByteCode::Nil),
+                ByteCodeTest::Code(ByteCode::Return),
+              ],
+            )),
+            ByteCodeTest::Code(ByteCode::UpvalueIndex(UpvalueIndex::Local(1))),
+            ByteCodeTest::Code(ByteCode::GetLocal(2)),
+            ByteCodeTest::Code(ByteCode::Return),
+            ByteCodeTest::Code(ByteCode::Nil),
+            ByteCodeTest::Code(ByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(ByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(ByteCode::GetGlobal(3)),
+        ByteCodeTest::Code(ByteCode::Call(0)),
+        ByteCodeTest::Code(ByteCode::DefineGlobal(2)),
+        ByteCodeTest::Code(ByteCode::GetGlobal(4)),
+        ByteCodeTest::Code(ByteCode::Call(0)),
+        ByteCodeTest::Code(ByteCode::Pop),
+        ByteCodeTest::Code(ByteCode::Nil),
+        ByteCodeTest::Code(ByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn empty_fun() {
+    let example = "fun example() {} example();".to_string();
+
+    let fun = test_compile(example);
+    assert_fun_bytecode(
+      &fun,
+      &vec![
+        ByteCodeTest::Fun((
+          1,
+          vec![
+            ByteCodeTest::Code(ByteCode::Nil),
+            ByteCodeTest::Code(ByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(ByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(ByteCode::GetGlobal(2)),
+        ByteCodeTest::Code(ByteCode::Call(0)),
+        ByteCodeTest::Code(ByteCode::Pop),
+        ByteCodeTest::Code(ByteCode::Nil),
+        ByteCodeTest::Code(ByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn param_fun() {
+    let example = "
+    fun example(a) {
+      return a;
+    }
+    var a = 1;
+    example(a);
+    "
+    .to_string();
+
+    let fun = test_compile(example);
+    assert_fun_bytecode(
+      &fun,
+      &vec![
+        ByteCodeTest::Fun((
+          1,
+          vec![
+            ByteCodeTest::Code(ByteCode::GetLocal(1)),
+            ByteCodeTest::Code(ByteCode::Return),
+            ByteCodeTest::Code(ByteCode::Nil),
+            ByteCodeTest::Code(ByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(ByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(ByteCode::Constant(3)),
+        ByteCodeTest::Code(ByteCode::DefineGlobal(2)),
+        ByteCodeTest::Code(ByteCode::GetGlobal(4)),
+        ByteCodeTest::Code(ByteCode::GetGlobal(5)),
+        ByteCodeTest::Code(ByteCode::Call(1)),
+        ByteCodeTest::Code(ByteCode::Pop),
+        ByteCodeTest::Code(ByteCode::Nil),
+        ByteCodeTest::Code(ByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn empty_fun_basic() {
+    let example = "fun example() { var a = 10; return a; } example();".to_string();
+
+    let fun = test_compile(example);
+    assert_fun_bytecode(
+      &fun,
+      &vec![
+        ByteCodeTest::Fun((
+          1,
+          vec![
+            ByteCodeTest::Code(ByteCode::Constant(0)),
+            ByteCodeTest::Code(ByteCode::GetLocal(1)),
+            ByteCodeTest::Code(ByteCode::Return),
+            ByteCodeTest::Code(ByteCode::Nil),
+            ByteCodeTest::Code(ByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(ByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(ByteCode::GetGlobal(2)),
+        ByteCodeTest::Code(ByteCode::Call(0)),
+        ByteCodeTest::Code(ByteCode::Pop),
+        ByteCodeTest::Code(ByteCode::Nil),
+        ByteCodeTest::Code(ByteCode::Return),
+      ],
+    );
   }
 
   #[test]
   fn for_loop() {
     let example = "for (var x = 0; x < 10; x = x + 1) { print(x); }".to_string();
 
-    let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 20);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::GetLocal(0));
-    assert_eq!(instructions[2], ByteCode::Constant(1));
-    assert_eq!(instructions[3], ByteCode::Less);
-    assert_eq!(instructions[4], ByteCode::JumpIfFalse(11));
-    assert_eq!(instructions[5], ByteCode::Pop);
-    assert_eq!(instructions[6], ByteCode::Jump(6));
-    assert_eq!(instructions[7], ByteCode::GetLocal(0));
-    assert_eq!(instructions[8], ByteCode::Constant(2));
-    assert_eq!(instructions[9], ByteCode::Add);
-    assert_eq!(instructions[10], ByteCode::SetLocal(0));
-    assert_eq!(instructions[11], ByteCode::Pop);
-    assert_eq!(instructions[12], ByteCode::Loop(12));
-    assert_eq!(instructions[13], ByteCode::GetLocal(0));
-    assert_eq!(instructions[14], ByteCode::Print);
-    assert_eq!(instructions[15], ByteCode::Loop(9));
-    assert_eq!(instructions[16], ByteCode::Pop);
-    assert_eq!(instructions[17], ByteCode::Pop);
-    assert_eq!(instructions[18], ByteCode::Nil);
-    assert_eq!(instructions[19], ByteCode::Return);
+    let fun = test_compile(example);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::GetLocal(1),
+        ByteCode::Constant(1),
+        ByteCode::Less,
+        ByteCode::JumpIfFalse(11),
+        ByteCode::Pop,
+        ByteCode::Jump(6),
+        ByteCode::GetLocal(1),
+        ByteCode::Constant(2),
+        ByteCode::Add,
+        ByteCode::SetLocal(1),
+        ByteCode::Pop,
+        ByteCode::Loop(12),
+        ByteCode::GetLocal(1),
+        ByteCode::Print,
+        ByteCode::Loop(9),
+        ByteCode::Pop,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn while_loop() {
     let example = "while (true) { print 10; }".to_string();
+    let fun = test_compile(example);
 
-    let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 9);
-    assert_eq!(instructions[0], ByteCode::True);
-    assert_eq!(instructions[1], ByteCode::JumpIfFalse(4));
-    assert_eq!(instructions[2], ByteCode::Pop);
-    assert_eq!(instructions[3], ByteCode::Constant(0));
-    assert_eq!(instructions[4], ByteCode::Print);
-    assert_eq!(instructions[5], ByteCode::Loop(6));
-    assert_eq!(instructions[6], ByteCode::Pop);
-    assert_eq!(instructions[7], ByteCode::Nil);
-    assert_eq!(instructions[8], ByteCode::Return);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::True,
+        ByteCode::JumpIfFalse(4),
+        ByteCode::Pop,
+        ByteCode::Constant(0),
+        ByteCode::Print,
+        ByteCode::Loop(6),
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn if_condition() {
     let example = "if (3 < 10) { print \"hi\"; }".to_string();
 
-    let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 11);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Less);
-    assert_eq!(instructions[3], ByteCode::JumpIfFalse(4));
-    assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Constant(2));
-    assert_eq!(instructions[6], ByteCode::Print);
-    assert_eq!(instructions[7], ByteCode::Jump(1));
-    assert_eq!(instructions[8], ByteCode::Pop);
-    assert_eq!(instructions[9], ByteCode::Nil);
-    assert_eq!(instructions[10], ByteCode::Return);
+    let fun = test_compile(example);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Less,
+        ByteCode::JumpIfFalse(4),
+        ByteCode::Pop,
+        ByteCode::Constant(2),
+        ByteCode::Print,
+        ByteCode::Jump(1),
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn if_else_condition() {
     let example = "if (3 < 10) { print \"hi\"; } else { print \"bye\"; }".to_string();
 
-    let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 13);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Less);
-    assert_eq!(instructions[3], ByteCode::JumpIfFalse(4));
-    assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Constant(2));
-    assert_eq!(instructions[6], ByteCode::Print);
-    assert_eq!(instructions[7], ByteCode::Jump(3));
-    assert_eq!(instructions[8], ByteCode::Pop);
-    assert_eq!(instructions[9], ByteCode::Constant(3));
-    assert_eq!(instructions[10], ByteCode::Print);
-    assert_eq!(instructions[11], ByteCode::Nil);
-    assert_eq!(instructions[12], ByteCode::Return);
+    let fun = test_compile(example);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Less,
+        ByteCode::JumpIfFalse(4),
+        ByteCode::Pop,
+        ByteCode::Constant(2),
+        ByteCode::Print,
+        ByteCode::Jump(3),
+        ByteCode::Pop,
+        ByteCode::Constant(3),
+        ByteCode::Print,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn declare_local() {
     let example = "{ var x = 10; }".to_string();
 
-    let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_get_local() {
     let example = "{ var x = 10; print(x); }".to_string();
 
-    let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 6);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::GetLocal(0));
-    assert_eq!(instructions[2], ByteCode::Print);
-    assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Nil);
-    assert_eq!(instructions[5], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::GetLocal(1),
+        ByteCode::Print,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_set_local() {
     let example = "{ var x = 10; x = 5; }".to_string();
 
-    let instructions = test_compile(example);
-    assert_eq!(instructions.len(), 7);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::SetLocal(0));
-    assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Nil);
-    assert_eq!(instructions[6], ByteCode::Return);
+    let fun = test_compile(example);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::SetLocal(1),
+        ByteCode::Pop,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_define_global_nil() {
     let example = "var x;".to_string();
 
-    let instructions = test_compile(example);
+    let fun = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::Nil);
-    assert_eq!(instructions[1], ByteCode::DefineGlobal(0));
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Nil,
+        ByteCode::DefineGlobal(0),
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_define_global_val() {
     let example = "var x = 10;".to_string();
 
-    let instructions = test_compile(example);
+    let fun = test_compile(example);
 
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::Constant(1));
-    assert_eq!(instructions[1], ByteCode::DefineGlobal(0));
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(1),
+        ByteCode::DefineGlobal(0),
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_get_global() {
     let example = "print x;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::GetGlobal(0));
-    assert_eq!(instructions[1], ByteCode::Print);
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::GetGlobal(0),
+        ByteCode::Print,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_set_global() {
     let example = "x = \"cat\";".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 5);
-    assert_eq!(instructions[0], ByteCode::Constant(1));
-    assert_eq!(instructions[1], ByteCode::SetGlobal(0));
-    assert_eq!(instructions[2], ByteCode::Pop);
-    assert_eq!(instructions[3], ByteCode::Nil);
-    assert_eq!(instructions[4], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(1),
+        ByteCode::SetGlobal(0),
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_pop() {
     let example = "false;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::False);
-    assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::False,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_return() {
     let example = "".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 2);
-    assert_eq!(instructions[0], ByteCode::Nil);
-    assert_eq!(instructions[1], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(fun, &vec![ByteCode::Nil, ByteCode::Return]);
   }
 
   #[test]
   fn op_number() {
     let example = "5.18;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_string() {
     let example = "\"example\";".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_false() {
     let example = "false;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::False);
-    assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::False,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_true() {
     let example = "true;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::True);
-    assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::True,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_nil() {
     let example = "nil;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 4);
-    assert_eq!(instructions[0], ByteCode::Nil);
-    assert_eq!(instructions[1], ByteCode::Pop);
-    assert_eq!(instructions[2], ByteCode::Nil);
-    assert_eq!(instructions[3], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Nil,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_not() {
     let example = "!false;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 5);
-    assert_eq!(instructions[0], ByteCode::False);
-    assert_eq!(instructions[1], ByteCode::Not);
-    assert_eq!(instructions[2], ByteCode::Pop);
-    assert_eq!(instructions[3], ByteCode::Nil);
-    assert_eq!(instructions[4], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::False,
+        ByteCode::Not,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_negate() {
     let example = "-15;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 5);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Negate);
-    assert_eq!(instructions[2], ByteCode::Pop);
-    assert_eq!(instructions[3], ByteCode::Nil);
-    assert_eq!(instructions[4], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Negate,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_add() {
     let example = "10 + 4;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 6);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Add);
-    assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Nil);
-    assert_eq!(instructions[5], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Add,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_subtract() {
     let example = "10 - 4;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 6);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Subtract);
-    assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Nil);
-    assert_eq!(instructions[5], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Subtract,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_divide() {
     let example = "10 / 4;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 6);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Divide);
-    assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Nil);
-    assert_eq!(instructions[5], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Divide,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_multi() {
     let example = "10 * 4;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 6);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Multiply);
-    assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Nil);
-    assert_eq!(instructions[5], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Multiply,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_equal() {
     let example = "true == nil;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 6);
-    assert_eq!(instructions[0], ByteCode::True);
-    assert_eq!(instructions[1], ByteCode::Nil);
-    assert_eq!(instructions[2], ByteCode::Equal);
-    assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Nil);
-    assert_eq!(instructions[5], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::True,
+        ByteCode::Nil,
+        ByteCode::Equal,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_not_equal() {
     let example = "true != nil;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 7);
-    assert_eq!(instructions[0], ByteCode::True);
-    assert_eq!(instructions[1], ByteCode::Nil);
-    assert_eq!(instructions[2], ByteCode::Equal);
-    assert_eq!(instructions[3], ByteCode::Not);
-    assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Nil);
-    assert_eq!(instructions[6], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::True,
+        ByteCode::Nil,
+        ByteCode::Equal,
+        ByteCode::Not,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_less() {
     let example = "3 < 5;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 6);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Less);
-    assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Nil);
-    assert_eq!(instructions[5], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Less,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_less_equal() {
     let example = "3 <= 5;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 7);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Greater);
-    assert_eq!(instructions[3], ByteCode::Not);
-    assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Nil);
-    assert_eq!(instructions[6], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Greater,
+        ByteCode::Not,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_greater() {
     let example = "3 > 5;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 6);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Greater);
-    assert_eq!(instructions[3], ByteCode::Pop);
-    assert_eq!(instructions[4], ByteCode::Nil);
-    assert_eq!(instructions[5], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Greater,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 
   #[test]
   fn op_greater_equal() {
     let example = "3 >= 5;".to_string();
 
-    let instructions = test_compile(example);
-
-    assert_eq!(instructions.len(), 7);
-    assert_eq!(instructions[0], ByteCode::Constant(0));
-    assert_eq!(instructions[1], ByteCode::Constant(1));
-    assert_eq!(instructions[2], ByteCode::Less);
-    assert_eq!(instructions[3], ByteCode::Not);
-    assert_eq!(instructions[4], ByteCode::Pop);
-    assert_eq!(instructions[5], ByteCode::Nil);
-    assert_eq!(instructions[6], ByteCode::Return);
+    let fun = test_compile(example);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        ByteCode::Constant(0),
+        ByteCode::Constant(1),
+        ByteCode::Less,
+        ByteCode::Not,
+        ByteCode::Pop,
+        ByteCode::Nil,
+        ByteCode::Return,
+      ],
+    );
   }
 }

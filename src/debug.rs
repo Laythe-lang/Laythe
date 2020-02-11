@@ -1,16 +1,26 @@
-use crate::chunk::{ByteCode, Chunk};
+use crate::chunk::{ByteCode, Chunk, UpvalueIndex};
+use crate::object::ObjValue;
+use crate::value::Value;
 
 /// Write a chunk to console
 pub fn disassemble_chunk(code_chunk: &Chunk, name: &str) {
   println!("== {0} ==", name);
 
+  let mut skip_to: Option<usize> = None;
+
   for offset in 0..code_chunk.instructions.len() {
-    disassemble_instruction(code_chunk, offset)
+    if let Some(skip) = skip_to {
+      if skip >= offset {
+        continue;
+      }
+    }
+
+    skip_to = disassemble_instruction(code_chunk, offset)
   }
 }
 
 /// Write an instruction to console
-pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
+pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> Option<usize> {
   print!("{:0>4} ", offset);
 
   if offset > 0 && chunk.get_line(offset) == chunk.get_line(offset - 1) {
@@ -34,11 +44,16 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
     ByteCode::False => simple_instruction("False"),
     ByteCode::Pop => simple_instruction("Pop"),
     ByteCode::Call(arg_count) => byte_instruction("Call", *arg_count),
+    ByteCode::Closure(constant) => closure_instruction("Closure", chunk, *constant, offset),
+    ByteCode::CloseUpvalue => simple_instruction("CloseUpvalue"),
+    ByteCode::UpvalueIndex(_) => simple_instruction("!=== UpValueIndex - Invalid ===!"),
     ByteCode::DefineGlobal(constant) => constant_instruction("DefineGlobal", chunk, *constant),
     ByteCode::GetGlobal(constant) => constant_instruction("GetGlobal", chunk, *constant),
     ByteCode::SetGlobal(constant) => constant_instruction("SetGlobal", chunk, *constant),
     ByteCode::GetLocal(slot) => byte_instruction("GetLocal", *slot),
     ByteCode::SetLocal(slot) => byte_instruction("SetLocal", *slot),
+    ByteCode::GetUpvalue(slot) => byte_instruction("GetUpvalue", *slot),
+    ByteCode::SetUpvalue(slot) => byte_instruction("SetUpvalue", *slot),
     ByteCode::Jump(jump) => jump_instruction("Jump", 1, *jump, offset as isize),
     ByteCode::JumpIfFalse(jump) => jump_instruction("Jump", 1, *jump, offset as isize),
     ByteCode::Loop(jump) => jump_instruction("Loop", -1, *jump, offset as isize),
@@ -50,24 +65,78 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) {
   }
 }
 
-fn jump_instruction(name: &str, sign: isize, jump: u16, offset: isize) {
+fn jump_instruction(name: &str, sign: isize, jump: u16, offset: isize) -> Option<usize> {
   let net_jump = sign * (jump as isize);
-  println!("{} {:4} -> {}", name, offset, offset + 1 + net_jump);
+  println!("{:16} {:4} -> {}", name, offset, offset + 1 + net_jump);
+  None
 }
 
 /// print a constant
-fn constant_instruction(name: &str, chunk: &Chunk, constant: u8) {
-  print!("{} {:4} ", name, constant);
+fn constant_instruction(name: &str, chunk: &Chunk, constant: u8) -> Option<usize> {
+  print!("{:16} {:4} ", name, constant);
   print!("{}", &chunk.constants.values[constant as usize]);
   println!();
+  None
+}
+
+/// print a closure
+fn closure_instruction(name: &str, chunk: &Chunk, constant: u8, offset: usize) -> Option<usize> {
+  print!("{:16} {:4} ", name, constant);
+  print!("{}", &chunk.constants.values[constant as usize]);
+  println!();
+
+  let value = &chunk.constants.values[constant as usize];
+  let upvalue_count = match value {
+    Value::Obj(obj) => match &obj.value {
+      ObjValue::Fun(fun) => fun.upvalue_count,
+      _ => {
+        println!(
+          "!=== Compilation failure found {} instead of function ===!",
+          value.value_type()
+        );
+        0
+      }
+    },
+    _ => {
+      println!(
+        "!=== Compilation failure found {} instead of function ===!",
+        value.value_type()
+      );
+      0
+    }
+  };
+
+  for i in 0..upvalue_count {
+    let total_offset = offset + i + 1;
+    let upvalue_index = &chunk.instructions[total_offset];
+
+    if let ByteCode::UpvalueIndex(index) = upvalue_index {
+      match index {
+        UpvalueIndex::Local(local) => println!(
+          "{:0>4}      |                     local {}",
+          total_offset, local
+        ),
+        UpvalueIndex::Upvalue(upvalue) => println!(
+          "{:0>4}      |                     upvalue {}",
+          total_offset, upvalue
+        ),
+      }
+    } else {
+      println!("!=== Did not find upvalue ===!");
+    }
+  }
+
+  Some(offset + upvalue_count)
 }
 
 /// print a byte instruction
-fn byte_instruction(name: &str, slot: u8) {
-  println!("{} {:4} ", name, slot);
+fn byte_instruction(name: &str, slot: u8) -> Option<usize> {
+  println!("{:16} {:4} ", name, slot);
+  None
 }
 
 /// print a simple instruction
-fn simple_instruction(name: &str) {
-  println!("{}", name);
+fn simple_instruction(name: &str) -> Option<usize> {
+  println!("{:16}", name);
+  None
 }

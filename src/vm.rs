@@ -1,12 +1,12 @@
-use crate::chunk::ByteCode;
-use crate::chunk::Chunk;
+use crate::chunk::{ByteCode, Chunk, UpvalueIndex};
 use crate::compiler::{Compiler, CompilerAnalytics, Parser};
 use crate::memory::free_objects;
 use crate::native::{NativeFun, NativeResult};
-use crate::object::{Fun, FunKind, Obj, ObjValue};
+use crate::object::{Closure, Fun, FunKind, Obj, ObjValue, Upvalue, UpvalueLocation};
 use crate::table::Table;
 use crate::value::Value;
 use std::cell::Cell;
+use std::cell::RefCell;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
 use std::ops::Drop;
@@ -28,7 +28,7 @@ pub enum InterpretResult {
 /// A call frame in the space lox interpreter
 #[derive(Debug, Clone, PartialEq)]
 pub struct CallFrame<'a> {
-  fun: Rc<Fun<'a>>,
+  closure: Closure<'a>,
   ip: usize,
   slots: usize,
 }
@@ -36,7 +36,10 @@ pub struct CallFrame<'a> {
 impl<'a> CallFrame<'a> {
   pub fn new(fun: &Rc<Fun<'a>>) -> Self {
     CallFrame {
-      fun: fun.clone(),
+      closure: Closure {
+        fun: fun.clone(),
+        upvalues: Vec::with_capacity(fun.upvalue_count),
+      },
       ip: 0,
       slots: 0,
     }
@@ -45,10 +48,16 @@ impl<'a> CallFrame<'a> {
 
 /// The virtual machine for the spacelox programming language
 pub struct Vm<'a> {
-  pub frame_idx: usize,
+  /// A stack holding all local variable currently in use
   pub stack: Vec<Value<'a>>,
+
+  /// A reference to a variable currently in the vm
   pub objects: Cell<Option<&'a Obj<'a>>>,
+
+  /// an intern table of strings in use
   pub strings: Table<'a>,
+
+  /// global variable present in the vm
   pub globals: Table<'a>,
 }
 
@@ -63,7 +72,6 @@ impl<'a> Drop for Vm<'a> {
 impl<'a> Vm<'a> {
   pub fn new(stack: Vec<Value<'a>>, natives: Vec<NativeFun<'a>>) -> Vm<'a> {
     let mut vm = Vm {
-      frame_idx: 0,
       stack,
       objects: Cell::new(Option::None),
       strings: Table::default(),
@@ -116,13 +124,17 @@ impl<'a> Vm<'a> {
 
     let null_fun = Rc::new(Fun {
       arity: 0,
+      upvalue_count: 0,
       chunk: Chunk::default(),
       name: Some("null function".to_string()),
     });
 
     let frames = vec![CallFrame::new(&null_fun); FRAME_MAX];
 
-    let script = Value::Obj(Obj::new(ObjValue::Fun(result.fun)));
+    let script = Value::Obj(Obj::new(ObjValue::Closure(Closure {
+      upvalues: Vec::with_capacity(result.fun.upvalue_count),
+      fun: result.fun,
+    })));
     let executor = VmExecutor::new(self, frames, script);
     executor.run()
   }
@@ -151,13 +163,26 @@ impl<'a> Vm<'a> {
 }
 
 pub struct VmExecutor<'a, 'b: 'a> {
-  pub frames: Vec<CallFrame<'b>>,
-  pub frame_count: usize,
-  pub stack: &'a mut Vec<Value<'b>>,
-  pub objects: &'a Cell<Option<&'b Obj<'b>>>,
-  pub stack_top: usize,
-  pub strings: &'a Table<'b>,
-  pub globals: &'a mut Table<'b>,
+  /// A stack of call frames for the current execution
+  frames: Vec<CallFrame<'b>>,
+
+  /// The current frame depth of the program
+  frame_count: usize,
+
+  /// A stack holding all local variable currently in use
+  stack: &'a mut Vec<Value<'b>>,
+
+  /// A reference to a object currently in the vm
+  // objects: &'a Cell<Option<&'b Obj<'b>>>,
+
+  /// index to the top of the value stack
+  stack_top: usize,
+
+  /// global variable present in the vm
+  globals: &'a mut Table<'b>,
+
+  /// A collection of currently available upvalues
+  open_upvalues: Cell<Option<Rc<RefCell<Upvalue<'b>>>>>,
 }
 
 impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
@@ -170,10 +195,10 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
       frames,
       frame_count: 0,
       stack: &mut vm.stack,
-      objects: &vm.objects,
+      // objects: &vm.objects,
       stack_top: 1,
-      strings: &vm.strings,
       globals: &mut vm.globals,
+      open_upvalues: Cell::new(None),
     };
 
     executor.call_value(script, 0);
@@ -189,15 +214,43 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
       self.increment_frame_ip(1);
       match op_code {
-        ByteCode::Negate => self.op_negate(),
-        ByteCode::Add => self.op_add(),
-        ByteCode::Subtract => self.op_sub(),
-        ByteCode::Multiply => self.op_mul(),
-        ByteCode::Divide => self.op_div(),
+        ByteCode::Negate => {
+          if let Some(result) = self.op_negate() {
+            return result;
+          }
+        }
+        ByteCode::Add => {
+          if let Some(result) = self.op_add() {
+            return result;
+          }
+        }
+        ByteCode::Subtract => {
+          if let Some(result) = self.op_sub() {
+            return result;
+          }
+        }
+        ByteCode::Multiply => {
+          if let Some(result) = self.op_mul() {
+            return result;
+          }
+        }
+        ByteCode::Divide => {
+          if let Some(result) = self.op_div() {
+            return result;
+          }
+        }
         ByteCode::Not => self.op_not(),
         ByteCode::Equal => self.op_equal(),
-        ByteCode::Greater => self.op_greater(),
-        ByteCode::Less => self.op_less(),
+        ByteCode::Greater => {
+          if let Some(result) = self.op_greater() {
+            return result;
+          }
+        }
+        ByteCode::Less => {
+          if let Some(result) = self.op_less() {
+            return result;
+          }
+        }
         ByteCode::JumpIfFalse(jump) => self.op_jump_if_not_false(jump),
         ByteCode::Jump(jump) => {
           self.op_jump(jump);
@@ -209,21 +262,26 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
         ByteCode::DefineGlobal(constant) => {
           self.op_define_global(constant);
         }
-        ByteCode::GetGlobal(store_index) => {
-          if let Some(result) = self.op_get_global(store_index) {
+        ByteCode::GetGlobal(slot) => {
+          if let Some(result) = self.op_get_global(slot) {
             return result;
           }
         }
-        ByteCode::SetGlobal(store_index) => {
-          if let Some(result) = self.op_set_global(store_index) {
+        ByteCode::SetGlobal(slot) => {
+          if let Some(result) = self.op_set_global(slot) {
             return result;
           }
         }
-        ByteCode::GetLocal(store_index) => {
-          self.op_get_local(store_index);
+        ByteCode::GetLocal(slot) => {
+          self.op_get_local(slot);
         }
-        ByteCode::SetLocal(store_index) => {
-          self.op_set_local(store_index);
+        ByteCode::SetLocal(slot) => {
+          self.op_set_local(slot);
+        }
+        ByteCode::GetUpvalue(slot) => self.op_get_upvalue(slot),
+        ByteCode::SetUpvalue(slot) => self.op_set_upvalue(slot),
+        ByteCode::UpvalueIndex(_) => {
+          self.internal_error("UpvalueIndex should only be processed in closure");
         }
         ByteCode::Pop => {
           self.pop();
@@ -236,12 +294,20 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
         }
         ByteCode::Print => println!("{}", self.pop()),
         ByteCode::Call(arg_count) => {
-          if !self.call_value(self.peek(arg_count as usize).clone(), arg_count) {
-            return InterpretResult::RuntimeError;
+          if let Some(result) = self.call_value(self.peek(arg_count as usize).clone(), arg_count) {
+            return result;
           }
+        }
+        ByteCode::Closure(constant) => self.op_closure(constant),
+        ByteCode::CloseUpvalue => {
+          let value = self.get_val(self.stack_top - 1) as *const Value<'b>;
+          self.close_upvalues(value);
+          self.pop();
         }
         ByteCode::Return => {
           let result = self.pop();
+          let slots = self.get_val(self.current_frame().slots) as *const Value<'b>;
+          self.close_upvalues(slots);
           self.frame_count -= 1;
 
           if self.frame_count == 0 {
@@ -257,75 +323,84 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn current_frame(&self) -> &CallFrame<'b> {
-    &self.frames[self.frame_count - 1]
+    unsafe { self.frames.get_unchecked(self.frame_count - 1) }
   }
 
   fn current_mut_frame(&mut self) -> &mut CallFrame<'b> {
-    &mut self.frames[self.frame_count - 1]
+    unsafe { self.frames.get_unchecked_mut(self.frame_count - 1) }
   }
 
-  fn call_value(&mut self, callee: Value<'b>, arg_count: u8) -> bool {
+  fn call_value(&mut self, callee: Value<'b>, arg_count: u8) -> Option<InterpretResult> {
     match callee {
-      Value::Obj(obj) => match &obj.value {
-        ObjValue::Fun(fun) => self.call(fun, arg_count),
+      Value::Obj(obj) => match obj.value {
+        ObjValue::Closure(closure) => self.call(closure, arg_count),
         ObjValue::NativeFn(native) => self.call_native(native, arg_count),
+        ObjValue::Fun(fun) => panic!(
+          "function {} was not wrapped in a closure",
+          fun.name.clone().unwrap_or("script".to_string())
+        ),
         _ => {
           self.runtime_error("Can only call functions and classes.");
-          false
+          Some(InterpretResult::RuntimeError)
         }
       },
       _ => {
         self.runtime_error("Can only call functions and classes.");
-        false
+        Some(InterpretResult::RuntimeError)
       }
     }
   }
 
-  fn call_native(&mut self, native: &NativeFun<'b>, arg_count: u8) -> bool {
+  fn call_native(&mut self, native: NativeFun<'b>, arg_count: u8) -> Option<InterpretResult> {
     if arg_count != native.meta.arity {
       self.runtime_error(&format!(
         "Function {} expected {} argument but got {}",
         native.meta.name, native.meta.arity, arg_count,
       ));
-      return false;
+      return Some(InterpretResult::RuntimeError);
     }
 
-    let result = (native.fun)(&self.stack[(self.stack_top - arg_count as usize)..self.stack_top]);
-    return match result {
+    let args = unsafe {
+      self
+        .stack
+        .get_unchecked((self.stack_top - arg_count as usize)..self.stack_top)
+    };
+    let result = (native.fun)(args);
+    match result {
       NativeResult::Success(value) => {
         self.stack_top -= arg_count as usize + 1;
         self.push(value);
-        true
+        None
       }
       NativeResult::RuntimeError(message) => {
         self.runtime_error(&message);
-        false
+        Some(InterpretResult::RuntimeError)
       }
-    };
+    }
   }
 
-  fn call(&mut self, fun: &Rc<Fun<'b>>, arg_count: u8) -> bool {
-    if (arg_count as u16) != fun.arity {
+  fn call(&mut self, closure: Closure<'b>, arg_count: u8) -> Option<InterpretResult> {
+    if (arg_count as u16) != closure.fun.arity {
       self.runtime_error(&format!(
         "Function {} expected {} arguments but got {}",
-        fun.name.clone().unwrap_or("script".to_string()),
-        fun.arity,
+        closure.fun.name.clone().unwrap_or("script".to_string()),
+        closure.fun.arity,
         arg_count
       ));
-      return false;
+      return Some(InterpretResult::RuntimeError);
     }
 
     if self.frame_count == FRAME_MAX {
       self.runtime_error("Stack overflow.");
-      return false;
+      return Some(InterpretResult::RuntimeError);
     }
 
     self.frame_count += 1;
     let frame = &mut self.frames[self.frame_count - 1];
-    frame.fun = fun.clone();
+    frame.closure = closure;
     frame.ip = 0;
     frame.slots = self.stack_top - (arg_count as usize + 1);
-    true
+    None
   }
 
   fn increment_frame_ip(&mut self, offset: usize) {
@@ -338,18 +413,26 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     frame.ip -= offset;
   }
 
+  fn internal_error(&mut self, message: &str) {
+    self.runtime_error(&format!("!=== [Internal Error]:{} ===!", message))
+  }
+
   fn runtime_error(&mut self, message: &str) {
     eprintln!("{}", message);
     eprintln!("");
 
-    for frame in self.frames[0..self.frame_count].into_iter().rev() {
-      let fun = &frame.fun;
-      let location = match &fun.name {
+    for frame in self.frames[0..self.frame_count].iter().rev() {
+      let closure = &frame.closure;
+      let location = match &closure.fun.name {
         Some(name) => format!("{}()", name),
         None => "script".to_string(),
       };
 
-      eprintln!("[line {}] in {}", fun.chunk.get_line(frame.ip), location);
+      eprintln!(
+        "[line {}] in {}",
+        closure.fun.chunk.get_line(frame.ip),
+        location
+      );
     }
 
     self.reset_stack();
@@ -358,7 +441,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   fn read_string<'c>(&mut self, index: u8) -> String {
     let frame = self.current_frame();
 
-    match VmExecutor::read_constant(frame, index) {
+    match VmExecutor::read_constant(frame, index).clone() {
       Value::Obj(obj) => match obj.value {
         ObjValue::String(string) => string,
         _ => panic!("Expected string."),
@@ -367,8 +450,8 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     }
   }
 
-  fn read_constant(frame: &CallFrame<'b>, index: u8) -> Value<'b> {
-    frame.fun.chunk.constants.values[index as usize].clone()
+  fn read_constant<'c>(frame: &'c CallFrame<'b>, index: u8) -> &'c Value<'b> {
+    &frame.closure.fun.chunk.constants.values[index as usize]
   }
 
   fn push(&mut self, value: Value<'b>) {
@@ -377,16 +460,19 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn peek(&self, distance: usize) -> &Value<'b> {
-    &self.stack[self.stack_top - (distance + 1)]
+    self.get_val(self.stack_top - (distance + 1))
   }
 
   fn pop(&mut self) -> Value<'b> {
     self.stack_top -= 1;
-    replace(&mut self.stack[self.stack_top], Value::Nil)
+    let slot = self.get_val_mut(self.stack_top);
+    replace(slot, Value::Nil)
   }
 
   fn reset_stack(&mut self) {
     self.stack_top = 0;
+    self.frame_count = 0;
+    self.open_upvalues.set(None);
   }
 
   fn op_loop(&mut self, jump: u16) {
@@ -442,22 +528,41 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     None
   }
 
-  fn op_set_local(&mut self, store_index: u8) {
+  fn op_set_local(&mut self, slot: u8) {
     let copy = self.peek(0).clone();
     let slots = self.current_frame().slots;
-    self.stack[1 + slots + store_index as usize] = copy;
+    self.stack[slots + slot as usize] = copy;
   }
 
-  fn op_get_local(&mut self, store_index: u8) {
+  fn op_set_upvalue(&mut self, slot: u8) {
+    let value = self.peek(0) as *const Value<'b>;
+    self.current_mut_frame().closure.upvalues[slot as usize]
+      .borrow_mut()
+      .set(value);
+  }
+
+  fn op_get_local(&mut self, slot: u8) {
     let slots = self.current_frame().slots;
-    let copy = self.stack[1 + slots + store_index as usize].clone();
+    let copy = self.get_val(slots + slot as usize).clone();
     self.push(copy);
   }
 
-  fn op_negate(&mut self) {
+  fn op_get_upvalue(&mut self, slot: u8) {
+    let upvalue = &self.current_frame().closure.upvalues[slot as usize];
+    let value = unsafe { &*upvalue.borrow().as_ptr() }.clone();
+    self.push(value);
+  }
+
+  fn op_negate(&mut self) -> Option<InterpretResult> {
     match self.pop() {
-      Value::Number(num) => self.push(Value::Number(-num)),
-      _ => self.runtime_error("Operand must be a number."),
+      Value::Number(num) => {
+        self.push(Value::Number(-num));
+        None
+      }
+      _ => {
+        self.runtime_error("Operand must be a number.");
+        Some(InterpretResult::RuntimeError)
+      }
     }
   }
 
@@ -466,83 +571,92 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     self.push(Value::Bool(is_falsey(&value)))
   }
 
-  fn op_add(&mut self) {
-    match self.peek(0) {
-      Value::Obj(obj1) => match &obj1.value {
-        ObjValue::String(_str1) => match self.peek(1) {
-          Value::Obj(obj2) => match &obj2.value {
-            ObjValue::String(_str2) => {
-              let right = self.pop().move_obj().move_string();
-              let left = self.pop().move_obj().move_string();
-
-              let result = format!("{}{}", left, right);
-              self.push(Value::Obj(Obj::new(ObjValue::String(result))));
-            }
-            _ => self.runtime_error("Operands must be two numbers or two strings."),
-          },
-          _ => self.runtime_error("Operands must be two numbers or two strings."),
-        },
-        _ => self.runtime_error("Operands must be two numbers or two strings."),
-      },
-      Value::Number(_num1) => match self.peek(1) {
-        Value::Number(_num2) => {
-          let right = self.pop().to_num();
-          let left = self.pop().to_num();
-          self.push(Value::Number(left + right));
+  fn op_add(&mut self) -> Option<InterpretResult> {
+    match (self.pop(), self.pop()) {
+      (Value::Obj(obj1), Value::Obj(obj2)) => match (obj1.value, obj2.value) {
+        (ObjValue::String(right), ObjValue::String(left)) => {
+          let result = format!("{}{}", left, right);
+          self.push(Value::Obj(Obj::new(ObjValue::String(result))));
+          None
         }
-        _ => self.runtime_error("Operands must be two numbers or two strings."),
+        _ => {
+          self.runtime_error("Operands must be two numbers or two strings.");
+          Some(InterpretResult::RuntimeError)
+        }
       },
-      _ => self.runtime_error("Operands must be two numbers or two strings."),
+      (Value::Number(right), Value::Number(left)) => {
+        self.push(Value::Number(left + right));
+        None
+      }
+      _ => {
+        self.runtime_error("Operands must be two numbers or two strings.");
+        Some(InterpretResult::RuntimeError)
+      }
     }
   }
 
-  fn op_sub(&mut self) {
-    match self.pop() {
-      Value::Number(right) => match self.pop() {
-        Value::Number(left) => self.push(Value::Number(left - right)),
-        _ => self.runtime_error("Operands must be numbers."),
-      },
-      _ => self.runtime_error("Operands must be numbers."),
+  fn op_sub(&mut self) -> Option<InterpretResult> {
+    match (self.pop(), self.pop()) {
+      (Value::Number(right), Value::Number(left)) => {
+        self.push(Value::Number(left - right));
+        None
+      }
+      _ => {
+        self.runtime_error("Operands must be numbers.");
+        Some(InterpretResult::RuntimeError)
+      }
     }
   }
 
-  fn op_mul(&mut self) {
-    match self.pop() {
-      Value::Number(right) => match self.pop() {
-        Value::Number(left) => self.push(Value::Number(left * right)),
-        _ => self.runtime_error("Operands must be numbers."),
-      },
-      _ => self.runtime_error("Operands must be numbers."),
+  fn op_mul(&mut self) -> Option<InterpretResult> {
+    match (self.pop(), self.pop()) {
+      (Value::Number(right), Value::Number(left)) => {
+        self.push(Value::Number(left * right));
+        None
+      }
+      _ => {
+        self.runtime_error("Operands must be numbers.");
+        Some(InterpretResult::RuntimeError)
+      }
     }
   }
 
-  fn op_div(&mut self) {
-    match self.pop() {
-      Value::Number(right) => match self.pop() {
-        Value::Number(left) => self.push(Value::Number(left / right)),
-        _ => self.runtime_error("Operands must be numbers."),
-      },
-      _ => self.runtime_error("Operands must be numbers."),
+  fn op_div(&mut self) -> Option<InterpretResult> {
+    match (self.pop(), self.pop()) {
+      (Value::Number(right), Value::Number(left)) => {
+        self.push(Value::Number(left / right));
+        None
+      }
+      _ => {
+        self.runtime_error("Operands must be numbers.");
+        Some(InterpretResult::RuntimeError)
+      }
     }
   }
 
-  fn op_less(&mut self) {
-    match self.pop() {
-      Value::Number(right) => match self.pop() {
-        Value::Number(left) => self.push(Value::Bool(left < right)),
-        _ => self.runtime_error("Operands must be numbers."),
-      },
-      _ => self.runtime_error("Operands must be numbers."),
+  fn op_less(&mut self) -> Option<InterpretResult> {
+    match (self.pop(), self.pop()) {
+      (Value::Number(right), Value::Number(left)) => {
+        self.push(Value::Bool(left < right));
+        None
+      }
+      _ => {
+        self.runtime_error("Operands must be numbers.");
+        Some(InterpretResult::RuntimeError)
+      }
     }
   }
 
-  fn op_greater(&mut self) {
-    match self.pop() {
-      Value::Number(right) => match self.pop() {
-        Value::Number(left) => self.push(Value::Bool(left > right)),
-        _ => self.runtime_error("Operands must be numbers."),
-      },
-      _ => self.runtime_error("Operands must be numbers."),
+  fn op_greater(&mut self) -> Option<InterpretResult> {
+    match (self.pop(), self.pop()) {
+      (Value::Number(right), Value::Number(left)) => {
+        self.push(Value::Bool(left > right));
+        None
+      }
+      _ => {
+        self.runtime_error("Operands must be numbers.");
+        Some(InterpretResult::RuntimeError)
+      }
     }
   }
 
@@ -553,28 +667,136 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     self.push(Value::Bool(left == right));
   }
 
+  fn op_closure(&mut self, index: u8) {
+    let frame = self.current_frame();
+    let fun = VmExecutor::read_constant(frame, index).ref_obj().ref_fun();
+    let mut closure = Closure::new(Rc::clone(fun));
+
+    for _ in 0..fun.upvalue_count {
+      let op_code = self.frame_instruction();
+      self.increment_frame_ip(1);
+
+      if let ByteCode::UpvalueIndex(upvalue_index) = op_code {
+        match upvalue_index {
+          UpvalueIndex::Local(local) => {
+            let slots = self.current_frame().slots;
+            let value = self.get_val(slots + local as usize) as *const Value<'b>;
+            closure.upvalues.push(self.capture_upvalue(value));
+          }
+          UpvalueIndex::Upvalue(upvalue) => {
+            let upvalue = &self.current_frame().closure.upvalues[upvalue as usize];
+            closure.upvalues.push(Rc::clone(upvalue));
+          }
+        }
+      } else {
+        self.internal_error("Expected upvalues following closures")
+      }
+    }
+
+    let closure = Value::Obj(Obj::new(ObjValue::Closure(closure)));
+
+    self.push(closure);
+  }
+
+  fn capture_upvalue(&mut self, local: *const Value<'b>) -> Rc<RefCell<Upvalue<'b>>> {
+    let mut prev_upvalue: *const Option<Rc<RefCell<Upvalue<'b>>>> = &*Box::new(None);
+    let mut upvalue: *const Option<Rc<RefCell<Upvalue<'b>>>> = self.open_upvalues.as_ptr();
+
+    while let Some(upval) = unsafe { &*upvalue } {
+      if upval.as_ref().borrow().as_ptr() <= local {
+        break;
+      }
+
+      prev_upvalue = upvalue;
+      upvalue = &upval.borrow().next as *const Option<Rc<RefCell<Upvalue<'b>>>>;
+    }
+
+    if let Some(upval) = unsafe { &*upvalue } {
+      if upval.as_ref().borrow().as_ptr() == local {
+        return Rc::clone(&upval);
+      }
+    }
+
+    let created_upvalue = Rc::new(RefCell::new(Upvalue::new(local, unsafe {
+      (*upvalue).as_ref().map(|val| Rc::clone(val))
+    })));
+
+    match unsafe { &*prev_upvalue } {
+      Some(upvalue) => {
+        upvalue
+          .borrow_mut()
+          .next
+          .replace(Rc::clone(&created_upvalue));
+      }
+      None => {
+        self
+          .open_upvalues
+          .replace(Some(Rc::clone(&created_upvalue)));
+      }
+    }
+
+    created_upvalue
+  }
+
+  fn close_upvalues(&mut self, last: *const Value<'b>) {
+    while let Some(upvalue) = unsafe { &*self.open_upvalues.as_ptr() } {
+      if upvalue.as_ref().borrow().as_ptr() < last {
+        break;
+      }
+
+      let mut mut_upvalue = upvalue.borrow_mut();
+      mut_upvalue.hoist();
+      self
+        .open_upvalues
+        .replace(mut_upvalue.next.as_ref().map(|rc| Rc::clone(rc)));
+    }
+  }
+
   fn op_constant(&mut self, index: u8) {
     let frame = self.current_frame();
-    let constant = VmExecutor::read_constant(frame, index);
+    let constant = VmExecutor::read_constant(frame, index).clone();
     self.push(constant);
+  }
+
+  fn get_val(&self, index: usize) -> &Value<'b> {
+    unsafe { self.stack.get_unchecked(index) }
+  }
+
+  fn get_val_mut(&mut self, index: usize) -> &mut Value<'b> {
+    unsafe { self.stack.get_unchecked_mut(index) }
   }
 
   #[cfg(debug_assertions)]
   fn print_debug(&self) {
-    print!("          ");
+    print!("Stack:    ");
+    // print!("          ");
     for i in 1..self.stack_top {
-      print!("[ {} ]", self.stack[i]);
+      print!("[ {} ]", self.get_val(i));
+    }
+    println!();
+
+    print!("Upvalues: ");
+    let frame = self.current_frame();
+    for i in 0..frame.closure.fun.upvalue_count {
+      match &frame.closure.upvalues[i].borrow().location {
+        UpvalueLocation::Stack(loc) => {
+          print!("[ stack {} ]", unsafe { &**loc });
+        }
+        UpvalueLocation::Heap(loc) => {
+          print!("[ heap {} ]", loc);
+        }
+      }
     }
     println!();
 
     let frame = self.current_frame();
-    disassemble_instruction(&frame.fun.chunk, frame.ip);
+    disassemble_instruction(&frame.closure.fun.chunk, frame.ip);
   }
 
   /// Get the current instruction from the present call frame
   fn frame_instruction(&self) -> ByteCode {
     let frame = self.current_frame();
-    frame.fun.chunk.instructions[frame.ip].clone()
+    frame.closure.fun.chunk.instructions[frame.ip].clone()
   }
 }
 

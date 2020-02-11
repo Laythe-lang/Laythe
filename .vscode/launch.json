@@ -21,6 +21,7 @@
         }
       },
       "args": [],
+      "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}"
     },
     {
@@ -40,6 +41,7 @@
         }
       },
       "args": [],
+      "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}"
     },
     {
@@ -58,6 +60,7 @@
         }
       },
       "args": [],
+      "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}"
     },
     {
@@ -76,8 +79,9 @@
         }
       },
       "args": [
-        "fixture/function/local_recursion.lox"
+        "fixture/while/closure_in_body.lox"
       ],
+      "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}"
     }
   ]

@@ -51,6 +51,12 @@ pub enum ByteCode {
   /// Set a global at the given index
   SetGlobal(u8),
 
+  /// Retrieve an upvalue at the given index
+  GetUpvalue(u8),
+
+  /// Set an upvalue at the given index
+  SetUpvalue(u8),
+
   /// Get a local at the given index
   GetLocal(u8),
 
@@ -69,6 +75,15 @@ pub enum ByteCode {
   /// Call a function
   Call(u8),
 
+  /// Create a closure
+  Closure(u8),
+
+  /// Close an upvalue by moving it to the stack
+  CloseUpvalue,
+
+  /// An upvalue index for a closure
+  UpvalueIndex(UpvalueIndex),
+
   /// Temp loop placeholder
   Noop,
 
@@ -80,6 +95,25 @@ pub enum ByteCode {
 
   /// Less greater between the top two operands on the stack
   Less,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum UpvalueIndex {
+  /// The upvalue is actually local
+  Local(u8),
+
+  /// The upvalue points to the enclosing function
+  Upvalue(u8),
+}
+
+/// Contains the information to load
+#[derive(Debug, PartialEq, Clone)]
+pub struct ClosureLoader {
+  /// The slot the closure is store
+  slot: u8,
+
+  /// The upvalues associated with this closure
+  upvalues: Vec<UpvalueIndex>,
 }
 
 /// Represent tokens on a line

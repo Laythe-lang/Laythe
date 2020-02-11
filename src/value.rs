@@ -94,7 +94,7 @@ impl<'a> Value<'a> {
     }
   }
 
-  /// Convert spacelox value to an object, panics if not a object
+  /// Convert spacelox value to an object, panics if not am object
   ///
   /// # Examples
   /// ```
@@ -107,7 +107,24 @@ impl<'a> Value<'a> {
   pub fn move_obj(self) -> Obj<'a> {
     match self {
       Value::Obj(obj) => obj,
-      _ => panic!("Value is not string"),
+      _ => panic!("Value is not object"),
+    }
+  }
+
+  /// Convert space value to an object as ref, panics if not an object
+  ///
+  /// # Examples
+  /// ```
+  /// use space_lox::value::Value;
+  /// use space_lox::object::{Obj, ObjValue};
+  ///
+  /// let str1 = Value::Obj(Obj::new(ObjValue::String("example".to_string())));
+  /// assert_eq!(str1.ref_obj().ref_string(), "example");
+  /// ```
+  pub fn ref_obj<'o>(&'o self) -> &'o Obj<'a> {
+    match self {
+      Value::Obj(obj) => obj,
+      _ => panic!("Value is not object"),
     }
   }
 

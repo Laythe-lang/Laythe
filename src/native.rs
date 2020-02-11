@@ -32,13 +32,14 @@ impl<'a> fmt::Debug for NativeFun<'a> {
 }
 
 impl<'a> NativeFun<'a> {
-  pub fn new(fun: Rc<dyn Fn(&[Value<'a>]) -> NativeResult<'a> + 'a>,  name: String, arity: u8) -> Self {
+  pub fn new(
+    fun: Rc<dyn Fn(&[Value<'a>]) -> NativeResult<'a> + 'a>,
+    name: String,
+    arity: u8,
+  ) -> Self {
     NativeFun {
-      meta: Box::new(NativeMeta {
-        name,
-        arity
-      }),
-      fun
+      meta: Box::new(NativeMeta { name, arity }),
+      fun,
     }
   }
 }
@@ -57,11 +58,7 @@ pub fn create_natives<'a>() -> Vec<NativeFun<'a>> {
     0,
   ));
 
-  natives.push(NativeFun::new(
-    Rc::new(assert),
-    "assert".to_string(),
-    1,
-  ));
+  natives.push(NativeFun::new(Rc::new(assert), "assert".to_string(), 1));
 
   natives.push(NativeFun::new(
     Rc::new(assert_eq),
