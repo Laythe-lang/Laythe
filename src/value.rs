@@ -3,7 +3,7 @@ use std::fmt;
 use std::mem::discriminant;
 
 /// Enum of value types in spacelox
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Value<'a> {
   Bool(bool),
   Nil,
@@ -100,9 +100,11 @@ impl<'a> Value<'a> {
   /// ```
   /// use space_lox::value::Value;
   /// use space_lox::object::{Obj, ObjValue};
-  ///
-  /// let str1 = Value::Obj(Obj::new(ObjValue::String("example".to_string())));
-  /// assert_eq!(str1.move_obj().move_string(), "example");
+  /// use std::ptr::NonNull;
+  /// 
+  /// let str = "example";
+  /// let str1 = Value::Obj(Obj::new(ObjValue::String(NonNull::from(str))));
+  /// assert_eq!(str1.move_obj().ref_string(), "example");
   /// ```
   pub fn move_obj(self) -> Obj<'a> {
     match self {
@@ -117,8 +119,10 @@ impl<'a> Value<'a> {
   /// ```
   /// use space_lox::value::Value;
   /// use space_lox::object::{Obj, ObjValue};
+  /// use std::ptr::NonNull;
   ///
-  /// let str1 = Value::Obj(Obj::new(ObjValue::String("example".to_string())));
+  /// let str = "example";
+  /// let str1 = Value::Obj(Obj::new(ObjValue::String(NonNull::from(str))));
   /// assert_eq!(str1.ref_obj().ref_string(), "example");
   /// ```
   pub fn ref_obj<'o>(&'o self) -> &'o Obj<'a> {
@@ -154,7 +158,7 @@ impl<'a> Value<'a> {
 }
 
 // Represents a collection of values
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Clone, PartialEq, Default, Debug)]
 pub struct ValueVec<'a> {
   pub values: Vec<Value<'a>>,
 }
@@ -163,19 +167,21 @@ pub struct ValueVec<'a> {
 mod test {
   use super::*;
   use crate::object::ObjValue;
+  use std::ptr::NonNull;
 
-  fn example_each<'a>() -> Vec<Value<'a>> {
+  fn example_each<'a>(string: &'a str) -> Vec<Value<'a>> {
     vec![
       Value::Bool(true),
       Value::Nil,
       Value::Number(10.0),
-      Value::Obj(Obj::new(ObjValue::String("example".to_string()))),
+      Value::Obj(Obj::new(ObjValue::String(NonNull::from(string)))),
     ]
   }
 
   #[test]
   fn test_diff_type_no_equal() {
-    let examples = example_each();
+    let string = "example".to_string();
+    let examples = example_each(&string);
     for i in 0..examples.len() {
       for j in 0..examples.len() {
         if i == j {

@@ -1,20 +1,22 @@
-use crate::chunk::{ByteCode, Chunk, UpvalueIndex};
-use crate::compiler::{Compiler, CompilerAnalytics, Parser};
-use crate::memory::free_objects;
+use crate::chunk::{ByteCode, UpvalueIndex};
+use crate::compiler::{Compiler, Parser};
+use crate::memory::{Allocator};
 use crate::native::{NativeFun, NativeResult};
 use crate::object::{Closure, Fun, FunKind, Obj, ObjValue, Upvalue};
-use crate::table::Table;
 use crate::value::Value;
+use std::collections::HashMap;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
 use std::ops::Drop;
 use std::rc::Rc;
+use std::ptr::NonNull;
 
-#[cfg(debug_assertions)]
+#[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
-#[cfg(debug_assertions)]
+
+#[cfg(feature = "debug_upvalue")]
 use crate::object::UpvalueLocation;
 
 pub const FRAME_MAX: usize = std::u8::MAX as usize;
@@ -28,7 +30,7 @@ pub enum InterpretResult {
 }
 
 /// A call frame in the space lox interpreter
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct CallFrame<'a> {
   closure: Closure<'a>,
   ip: usize,
@@ -50,38 +52,20 @@ pub struct Vm<'a> {
   /// A stack holding all local variable currently in use
   pub stack: Vec<Value<'a>>,
 
-  /// A reference to a variable currently in the vm
-  pub objects: Cell<Option<&'a Obj<'a>>>,
+  /// A stack holding call frames currently in use
+  pub frames: Vec<CallFrame<'a>>,
 
-  /// an intern table of strings in use
-  pub strings: Table<'a>,
-
-  /// global variable present in the vm
-  pub globals: Table<'a>,
-}
-
-impl<'a> Drop for Vm<'a> {
-  fn drop(&mut self) {
-    if let Some(obj) = self.objects.get() {
-      free_objects(obj);
-    }
-  }
+  /// All the native functions
+  pub natives: Vec<Rc<dyn NativeFun<'a>>>,
 }
 
 impl<'a> Vm<'a> {
-  pub fn new(stack: Vec<Value<'a>>, natives: Vec<NativeFun<'a>>) -> Vm<'a> {
-    let mut vm = Vm {
+  pub fn new(stack: Vec<Value<'a>>, frames: Vec<CallFrame<'a>>, natives: Vec<Rc<dyn NativeFun<'a>>>) -> Vm<'a> {
+    Vm {
       stack,
-      objects: Cell::new(Option::None),
-      strings: Table::default(),
-      globals: Table::default(),
-    };
-
-    for native in natives.into_iter() {
-      vm.define_native(native);
+      frames,
+      natives,
     }
-
-    vm
   }
 
   pub fn repl(&mut self) {
@@ -105,62 +89,35 @@ impl<'a> Vm<'a> {
   }
 
   fn interpret(&mut self, source: &str) -> InterpretResult {
-    let allocate = |value: ObjValue<'a>| self.allocate(value);
-    let intern = |string: String| self.intern(string);
-    let analytics = CompilerAnalytics {
-      allocate: &allocate,
-      intern: &intern,
-    };
-
+    let mut allocator = Allocator::new();
     let mut parser = Parser::new(source);
 
-    let compiler = Compiler::new(&mut parser, &analytics, FunKind::Script);
+    let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
     let result = compiler.compile();
 
     if !result.success {
       return InterpretResult::CompileError;
     }
 
-    let null_fun = Rc::new(Fun {
-      arity: 0,
-      upvalue_count: 0,
-      chunk: Chunk::default(),
-      name: Some("null function".to_string()),
-    });
-
-    let frames = vec![CallFrame::new(&null_fun); FRAME_MAX];
-
     let script = Value::Obj(Obj::new(ObjValue::Closure(Closure::new(&result.fun))));
-    let executor = VmExecutor::new(self, frames, script);
+    let globals = define_globals(&self.natives, &mut allocator);
+    let executor = VmExecutor::new(self, script, globals, allocator);
     executor.run()
   }
+}
 
-  fn define_native(&mut self, native: NativeFun<'a>) {
-    self.globals.store.insert(
-      native.meta.name.clone(),
-      Value::Obj(Obj::new(ObjValue::NativeFn(native))),
-    );
-  }
-
-  fn allocate(&self, value: ObjValue<'a>) -> Obj<'a> {
-    let obj = Obj::new(value);
-    obj.next.set(self.objects.get());
-    self.objects.set(obj.next.get());
-
-    obj
-  }
-
-  fn intern(&self, value: String) -> String {
-    match self.strings.store.get_key_value(&value) {
-      Some((stored_key, _)) => stored_key.clone(),
-      None => value,
-    }
-  }
+fn define_globals<'a>(natives: &[Rc<dyn NativeFun<'a>>], allocator: &mut Allocator<'a>) -> HashMap<Obj<'a>, Value<'a>> {
+  let mut globals = HashMap::new();
+  natives.iter().for_each(|native| {
+    let name = allocator.allocate_string(native.meta().name.clone());
+    globals.insert(name, Value::Obj(Obj::new(ObjValue::NativeFn(Rc::clone(native)))));
+  });
+  globals
 }
 
 pub struct VmExecutor<'a, 'b: 'a> {
   /// A stack of call frames for the current execution
-  frames: Vec<CallFrame<'b>>,
+  frames: &'a mut Vec<CallFrame<'b>>,
 
   /// The current frame depth of the program
   frame_count: usize,
@@ -169,31 +126,38 @@ pub struct VmExecutor<'a, 'b: 'a> {
   stack: &'a mut Vec<Value<'b>>,
 
   /// A reference to a object currently in the vm
-  // objects: &'a Cell<Option<&'b Obj<'b>>>,
+  allocator: Allocator<'b>,
 
   /// index to the top of the value stack
   stack_top: usize,
 
   /// global variable present in the vm
-  globals: &'a mut Table<'b>,
+  globals: HashMap<Obj<'b>, Value<'b>>,
 
   /// A collection of currently available upvalues
   open_upvalues: Cell<Option<Rc<RefCell<Upvalue<'b>>>>>,
 }
 
+impl<'a, 'b: 'a> Drop for VmExecutor<'a, 'b> {
+  fn drop(&mut self) {
+
+  }
+}
+
 impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   pub fn new(
     vm: &'a mut Vm<'b>,
-    frames: Vec<CallFrame<'b>>,
     script: Value<'b>,
+    globals: HashMap<Obj<'b>, Value<'b>>,
+    allocator: Allocator<'b>
   ) -> VmExecutor<'a, 'b> {
     let mut executor = VmExecutor {
-      frames,
+      frames: &mut vm.frames,
       frame_count: 0,
       stack: &mut vm.stack,
-      // objects: &vm.objects,
+      allocator,
       stack_top: 1,
-      globals: &mut vm.globals,
+      globals,
       open_upvalues: Cell::new(None),
     };
 
@@ -205,7 +169,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     loop {
       let op_code = self.frame_instruction().clone();
 
-      #[cfg(debug_assertions)]
+      #[cfg(feature = "debug")]
       self.print_debug();
 
       self.increment_frame_ip(1);
@@ -330,7 +294,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     match callee {
       Value::Obj(obj) => match obj.value {
         ObjValue::Closure(closure) => self.call(closure, arg_count),
-        ObjValue::NativeFn(native) => self.call_native(native, arg_count),
+        ObjValue::NativeFn(native) => self.call_native(&*native, arg_count),
         ObjValue::Fun(fun) => panic!(
           "function {} was not wrapped in a closure",
           fun.name.clone().unwrap_or("script".to_string())
@@ -347,11 +311,12 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     }
   }
 
-  fn call_native(&mut self, native: NativeFun<'b>, arg_count: u8) -> Option<InterpretResult> {
-    if arg_count != native.meta.arity {
+  fn call_native(&mut self, native: &dyn NativeFun<'b>, arg_count: u8) -> Option<InterpretResult> {
+    let meta = native.meta();
+    if arg_count != meta.arity {
       self.runtime_error(&format!(
         "Function {} expected {} argument but got {}",
-        native.meta.name, native.meta.arity, arg_count,
+        meta.name, meta.arity, arg_count,
       ));
       return Some(InterpretResult::RuntimeError);
     }
@@ -361,7 +326,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
         .stack
         .get_unchecked((self.stack_top - arg_count as usize)..self.stack_top)
     };
-    let result = (native.fun)(args);
+    let result = native.call(args);
     match result {
       NativeResult::Success(value) => {
         self.stack_top -= arg_count as usize + 1;
@@ -434,7 +399,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     self.reset_stack();
   }
 
-  fn read_string<'c>(&mut self, index: u8) -> String {
+  fn read_string(&mut self, index: u8) -> NonNull<str> {
     let frame = self.current_frame();
 
     match VmExecutor::read_constant(frame, index).clone() {
@@ -486,37 +451,40 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn op_define_global(&mut self, store_index: u8) {
-    let name = self.read_string(store_index);
+    let string = self.read_string(store_index);
+    let name = self.allocator.copy_string(string);
     let global = self.pop();
-    self.globals.store.insert(name, global);
+    self.globals.insert(name, global);
   }
 
   fn op_get_global(&mut self, store_index: u8) -> Option<InterpretResult> {
-    let name = self.read_string(store_index);
+    let string = self.read_string(store_index);
+    let name = self.allocator.copy_string(string);
 
-    match self.globals.store.get(&name) {
-      Some(global) => {
-        self.push(global.clone());
+    let global = self.globals.get(&name).map(|global| global.clone());
+    match global {
+      Some(gbl) => {
+        self.push(gbl);
         None
       }
       None => {
-        self.runtime_error(&format!("Undedfined variable {}", name));
+        self.runtime_error(&format!("Undefined variable {}", name));
         Some(InterpretResult::RuntimeError)
       }
     }
   }
 
   fn op_set_global(&mut self, store_index: u8) -> Option<InterpretResult> {
-    let name = self.read_string(store_index);
+    let string = self.read_string(store_index);
+    let name = self.allocator.copy_string(string);
 
     if self
       .globals
-      .store
       .insert(name.clone(), self.peek(0).clone())
       .is_none()
     {
-      self.globals.store.remove_entry(&name);
-      self.runtime_error(&format!("Undedfined variable {}", name));
+      self.globals.remove_entry(&name);
+      self.runtime_error(&format!("Undefined variable {}", name));
       return Some(InterpretResult::RuntimeError);
     }
 
@@ -570,8 +538,9 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     match (self.pop(), self.pop()) {
       (Value::Obj(obj1), Value::Obj(obj2)) => match (obj1.value, obj2.value) {
         (ObjValue::String(right), ObjValue::String(left)) => {
-          let result = format!("{}{}", left, right);
-          self.push(Value::Obj(Obj::new(ObjValue::String(result))));
+          let result = unsafe { format!("{}{}", left.as_ref(), right.as_ref()) };
+          let value = self.allocator.allocate_string(result);
+          self.push(Value::Obj(value));
           None
         }
         _ => {
@@ -761,7 +730,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     unsafe { self.stack.get_unchecked_mut(index) }
   }
 
-  #[cfg(debug_assertions)]
+  #[cfg(feature = "debug")]
   fn print_debug(&self) {
     print!("Stack:    ");
     // print!("          ");
@@ -770,19 +739,22 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     }
     println!();
 
-    print!("Upvalues: ");
-    let frame = self.current_frame();
-    for i in 0..frame.closure.get_fun().upvalue_count {
-      match &frame.closure.upvalues[i].borrow().location {
-        UpvalueLocation::Stack(loc) => {
-          print!("[ stack {} ]", unsafe { &**loc });
-        }
-        UpvalueLocation::Heap(loc) => {
-          print!("[ heap {} ]", loc);
+    #[cfg(feature = "debug_upvalue")]
+    {
+      print!("Upvalues: ");
+      let frame = self.current_frame();
+      for i in 0..frame.closure.get_fun().upvalue_count {
+        match &frame.closure.upvalues[i].borrow().location {
+          UpvalueLocation::Stack(loc) => {
+            print!("[ stack {} ]", unsafe { &**loc });
+          }
+          UpvalueLocation::Heap(loc) => {
+            print!("[ heap {} ]", loc);
+          }
         }
       }
+      println!();
     }
-    println!();
 
     let frame = self.current_frame();
     disassemble_instruction(&frame.closure.get_fun().chunk, frame.ip);
@@ -803,3 +775,5 @@ fn is_falsey(value: &Value) -> bool {
     _ => false,
   }
 }
+
+

@@ -1,3 +1,7 @@
+[features]
+debug = []
+debug_upvalue = []
+
 [package]
 name = "space_lox"
 version = "0.1.0"

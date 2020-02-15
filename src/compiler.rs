@@ -1,7 +1,8 @@
 use crate::chunk::{ByteCode, Chunk, UpvalueIndex};
-use crate::object::{copy_string, Fun, FunKind, Obj, ObjValue};
+use crate::object::{copy_string, Fun, FunKind, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
+use crate::memory::Allocator;
 use std::convert::TryInto;
 
 #[cfg(debug_assertions)]
@@ -14,14 +15,6 @@ pub struct CompilerResult<'a> {
 
   /// The chunk that was compiled
   pub fun: Box<Fun<'a>>,
-}
-
-pub struct CompilerAnalytics<'a, 'o: 'a> {
-  /// provide a side effect when the compiler allocates an object
-  pub allocate: &'a dyn Fn(ObjValue<'o>) -> Obj<'o>,
-
-  /// provide a mechanism to intern a string
-  pub intern: &'a dyn Fn(String) -> String,
 }
 
 const UNINITIALIZED: i16 = -1;
@@ -55,7 +48,7 @@ pub struct Compiler<'a, 's, 'c: 'a> {
   parser: &'a mut Parser<'s>,
 
   /// Analytics for the compiler
-  analytics: &'a CompilerAnalytics<'a, 'c>,
+  allocator: &'a mut Allocator<'c>,
 
   /// Number of locals
   local_count: usize,
@@ -78,8 +71,9 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   /// # Examples
   /// ```
   /// use space_lox::chunk::{Chunk};
-  /// use space_lox::compiler::{Compiler, CompilerAnalytics, Parser};
+  /// use space_lox::compiler::{Compiler, Parser};
   /// use space_lox::object::{ObjValue, Obj, FunKind};
+  /// use space_lox::memory::Allocator;
   ///
   /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
   ///   Obj::new(value)
@@ -88,16 +82,14 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   /// // an expression
   /// let source = "10 + 3".to_string();
   ///
-  /// let intern = |string: String| string;
-  /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
-  ///
+  /// let mut allocator = Allocator::new();
   /// let mut parser = Parser::new(&source);
   ///
-  /// let compiler = Compiler::new(&mut parser, &analytics, FunKind::Script);
+  /// let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
   /// ```
   pub fn new(
     parser: &'a mut Parser<'s>,
-    analytics: &'a CompilerAnalytics<'a, 'c>,
+    allocator: &'a mut Allocator<'c>,
     fun_kind: FunKind,
   ) -> Self {
     let name = match fun_kind {
@@ -113,7 +105,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
         chunk: Chunk::default(),
       },
       fun_kind,
-      analytics,
+      allocator,
       parser,
       enclosing: None,
       local_count: 1,
@@ -130,7 +122,8 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     }
   }
 
-  pub fn child(
+  /// Construct an inner compiler used to compile functions inside of a script
+  fn child(
     name: Option<String>,
     fun_kind: FunKind,
     enclosing: *mut Compiler<'a, 's, 'c>,
@@ -143,7 +136,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
         chunk: Chunk::default(),
       },
       fun_kind,
-      analytics: unsafe { (*enclosing).analytics },
+      allocator: unsafe { (*enclosing).allocator },
       parser: unsafe { (*enclosing).parser },
       enclosing: Some(enclosing),
       local_count: 1,
@@ -166,8 +159,9 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   /// # Examples
   /// ```
   /// use space_lox::chunk::{Chunk};
-  /// use space_lox::compiler::{Compiler, CompilerAnalytics, Parser};
+  /// use space_lox::compiler::{Compiler, Parser};
   /// use space_lox::object::{ObjValue, Obj, FunKind};
+  /// use space_lox::memory::Allocator;
   ///
   /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
   ///   Obj::new(value)
@@ -176,12 +170,11 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   /// // an expression
   /// let source = "3 / 2 + 10;".to_string();
   ///
-  /// let intern = |string: String| string;
-  /// let analytics = CompilerAnalytics { allocate: &allocate, intern: &intern };
   ///
   /// let mut parser = Parser::new(&source);
+  /// let mut allocator = Allocator::new();
   ///
-  /// let compiler = Compiler::new(&mut parser, &analytics, FunKind::Script);
+  /// let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
@@ -324,7 +317,8 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     let upvalue_count = fun_compiler.fun.upvalue_count;
     let boxed_fun = Box::new(fun_compiler.fun);
 
-    let index = self.make_constant(Value::Obj(Obj::new(ObjValue::Fun(boxed_fun))));
+    let fun_obj = self.allocator.allocate(ObjValue::Fun(boxed_fun));
+    let index = self.make_constant(Value::Obj(fun_obj));
     self.emit_byte(ByteCode::Closure(index));
 
     fun_compiler.upvalues[0..upvalue_count]
@@ -640,9 +634,8 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
   /// Compile a string literal
   fn string(&mut self) {
-    let string = (self.analytics.intern)(copy_string(&self.parser.previous));
-    let obj = (self.analytics.allocate)(ObjValue::String(string));
-    let value = Value::Obj(obj);
+    let string = self.allocator.allocate_string(copy_string(&self.parser.previous));
+    let value = Value::Obj(string);
     self.emit_constant(value)
   }
 
@@ -793,7 +786,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u8 {
-    let identifer = (self.analytics.allocate)(ObjValue::String(name.lexeme));
+    let identifer = self.allocator.allocate_string(name.lexeme);
     self.make_constant(Value::Obj(identifer))
   }
 
@@ -1265,16 +1258,10 @@ mod test {
   }
 
   fn test_compile<'a>(src: String) -> Box<Fun<'a>> {
-    let allocate = |value: ObjValue<'a>| Obj::new(value);
-    let intern = |string: String| string;
-    let analytics = CompilerAnalytics {
-      allocate: &allocate,
-      intern: &intern,
-    };
-
+    let mut allocator = Allocator::new();
     let mut parser = Parser::new(&src);
 
-    let compiler = Compiler::new(&mut parser, &analytics, FunKind::Script);
+    let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
     let result = compiler.compile();
     assert_eq!(result.success, true);
 
