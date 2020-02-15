@@ -1,3 +1,10 @@
+[profile.dev]
+opt-level = 0
+
+[profile.release]
+opt-level = 3
+debug = true
+
 [features]
 debug = []
 debug_upvalue = []

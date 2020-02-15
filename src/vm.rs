@@ -99,7 +99,7 @@ impl<'a> Vm<'a> {
       return InterpretResult::CompileError;
     }
 
-    let script = Value::Obj(Obj::new(ObjValue::Closure(Closure::new(&result.fun))));
+    let script = Value::Obj(allocator.allocate(ObjValue::Closure(Closure::new(&result.fun))));
     let globals = define_globals(&self.natives, &mut allocator);
     let executor = VmExecutor::new(self, script, globals, allocator);
     executor.run()
@@ -110,7 +110,7 @@ fn define_globals<'a>(natives: &[Rc<dyn NativeFun<'a>>], allocator: &mut Allocat
   let mut globals = HashMap::new();
   natives.iter().for_each(|native| {
     let name = allocator.allocate_string(native.meta().name.clone());
-    globals.insert(name, Value::Obj(Obj::new(ObjValue::NativeFn(Rc::clone(native)))));
+    globals.insert(name, Value::Obj(allocator.allocate(ObjValue::NativeFn(Rc::clone(native)))));
   });
   globals
 }
@@ -657,7 +657,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
       }
     }
 
-    let closure = Value::Obj(Obj::new(ObjValue::Closure(closure)));
+    let closure = Value::Obj(self.allocator.allocate(ObjValue::Closure(closure)));
 
     self.push(closure);
   }
