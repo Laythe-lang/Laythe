@@ -1,8 +1,8 @@
 extern crate space_lox;
 use space_lox::native::create_natives;
-use space_lox::value::Value;
 use space_lox::object::Fun;
-use space_lox::vm::{InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX, CallFrame};
+use space_lox::value::Value;
+use space_lox::vm::{CallFrame, InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};

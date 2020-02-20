@@ -101,7 +101,7 @@ impl<'a> Value<'a> {
   /// use space_lox::value::Value;
   /// use space_lox::object::{Obj, ObjValue};
   /// use std::ptr::NonNull;
-  /// 
+  ///
   /// let str = "example";
   /// let str1 = Value::Obj(Obj::new(ObjValue::String(NonNull::from(str))));
   /// assert_eq!(str1.move_obj().ref_string(), "example");

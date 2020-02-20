@@ -9,8 +9,8 @@ use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem::{discriminant, replace};
 use std::ptr;
-use std::rc::Rc;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Closure<'a> {
@@ -32,7 +32,7 @@ impl<'a> Closure<'a> {
   ///   chunk: Chunk::default(),
   ///   name: Some("example".to_string())
   /// });
-  /// 
+  ///
   /// let closure = Closure::new(&fun);
   /// assert_eq!(closure.get_fun().name.as_ref().unwrap().clone(), "example".to_string());
   /// ```
@@ -44,7 +44,7 @@ impl<'a> Closure<'a> {
   }
 
   /// Dereferenced the underlying function captured by this closure
-  /// 
+  ///
   /// # Example
   /// ```
   /// use space_lox::object::{Closure, Fun};
@@ -56,7 +56,7 @@ impl<'a> Closure<'a> {
   ///   chunk: Chunk::default(),
   ///   name: Some("example".to_string())
   /// });
-  /// 
+  ///
   /// let closure = Closure::new(&fun);
   /// assert_eq!(closure.get_fun().name.as_ref().unwrap().clone(), "example".to_string());
   /// ```
@@ -77,16 +77,16 @@ pub struct Upvalue<'a> {
 
 impl<'a> Upvalue<'a> {
   /// Create a new instance of an upvalue
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use space_lox::object::{Obj, ObjValue, Upvalue};
   /// use space_lox::value::Value;
   /// use std::ptr::NonNull;
-  /// 
+  ///
   /// let example = "something";
   /// let value = Value::Obj(Obj::new(ObjValue::String(NonNull::from(example))));
-  /// 
+  ///
   /// let upvalue = Upvalue::new(&value, None);
   /// ```
   pub fn new(value: *const Value<'a>, next: Option<Rc<RefCell<Upvalue<'a>>>>) -> Self {
@@ -97,16 +97,16 @@ impl<'a> Upvalue<'a> {
   }
 
   /// Return the underlying value to the caller as a ptr
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use space_lox::object::{Obj, ObjValue, Upvalue};
   /// use space_lox::value::Value;
   /// use std::ptr::{eq, NonNull};
-  /// 
+  ///
   /// let example = "something";
   /// let value = Value::Obj(Obj::new(ObjValue::String(NonNull::from(example))));
-  /// 
+  ///
   /// let upvalue = Upvalue::new(&value, None);
   /// assert!(eq(upvalue.as_ptr(), &value as *const Value))
   /// ```
@@ -136,11 +136,16 @@ impl<'a> Upvalue<'a> {
 impl<'a> fmt::Debug for Upvalue<'a> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let location = match self.location {
-      UpvalueLocation::Stack(_) => "stack".to_string(), 
-      UpvalueLocation::Heap(_) => "heap".to_string()
+      UpvalueLocation::Stack(_) => "stack".to_string(),
+      UpvalueLocation::Heap(_) => "heap".to_string(),
     };
 
-    write!(f, "Upvalue {{ value: {}, location: {} }}", unsafe { &*self.as_ptr() }, location)
+    write!(
+      f,
+      "Upvalue {{ value: {}, location: {} }}",
+      unsafe { &*self.as_ptr() },
+      location
+    )
   }
 }
 
@@ -215,15 +220,16 @@ impl<'a> PartialEq for ObjValue<'a> {
 
     match (&self, &other) {
       (ObjValue::String(str1), ObjValue::String(str2)) => str1 == str2,
-      (ObjValue::Fun(fun1), ObjValue::Fun(fun2)) => fun1 == fun2, 
-      (ObjValue::Upvalue(upvalue1),  ObjValue::Upvalue(upvalue2)) => upvalue1 == upvalue2,
+      (ObjValue::Fun(fun1), ObjValue::Fun(fun2)) => fun1 == fun2,
+      (ObjValue::Upvalue(upvalue1), ObjValue::Upvalue(upvalue2)) => upvalue1 == upvalue2,
       (ObjValue::Closure(func1), ObjValue::Closure(func2)) => func1 == func2,
-      (ObjValue::NativeFn(native_fun1), ObjValue::NativeFn(native_fun2)) => native_fun1 == native_fun2,
-      _ => false
+      (ObjValue::NativeFn(native_fun1), ObjValue::NativeFn(native_fun2)) => {
+        native_fun1 == native_fun2
+      }
+      _ => false,
     }
   }
 }
-
 
 #[derive(Clone, Debug)]
 pub struct Obj<'a> {
@@ -239,7 +245,7 @@ impl<'a> PartialEq for Obj<'a> {
   /// ```
   /// use space_lox::object::{Obj, ObjValue};
   /// use std::ptr::NonNull;
-  /// 
+  ///
   /// let str1 = "example1";
   /// let str2 = "example2";
   ///
@@ -268,7 +274,7 @@ impl<'a> Hash for Obj<'a> {
   /// let str1 = "example";
   /// let str2 = "example";
   /// let str3 = "example";
-  /// 
+  ///
   /// let string_obj1 = Obj::new(ObjValue::String(NonNull::from(str1)));
   /// let string_obj2 = Obj::new(ObjValue::String(NonNull::from(str2)));
   /// let string_obj3 = Obj::new(ObjValue::String(NonNull::from(str3)));
@@ -437,7 +443,7 @@ impl<'a> Obj<'a> {
   /// use space_lox::native::create_natives;
   /// use std::ptr::NonNull;
   /// use std::rc::Rc;
-  /// 
+  ///
   /// let fun_inner = Fun {
   ///   name: Some("add".to_string()),
   ///   arity: 3,
@@ -449,12 +455,12 @@ impl<'a> Obj<'a> {
   ///
   /// let str = "example";
   /// let string = Obj::new(ObjValue::String(NonNull::from(str)));
-  /// 
+  ///
   /// let closure = Obj::new(ObjValue::Closure(Closure::new(&fun_inner)));
-  /// 
+  ///
   /// let value = Value::Nil;
   /// let upvalue = Obj::new(ObjValue::Upvalue(Upvalue::new(&value, None)));
-  /// 
+  ///
   /// let native = Obj::new(ObjValue::NativeFn(Rc::clone(&create_natives()[0])));
   ///
   /// assert_eq!(string.obj_type(), "string");
@@ -503,7 +509,7 @@ pub fn copy_string(token: &Token) -> String {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::native::{create_natives};
+  use crate::native::create_natives;
 
   fn example_each<'a>(string: &'a str, value: &Value<'a>, fun: &Fun<'a>) -> Vec<Obj<'a>> {
     let natives = create_natives();
@@ -534,7 +540,6 @@ mod test {
       chunk: Chunk::default(),
       name: Some("some_fun".to_string()),
     };
-
 
     let examples = example_each(&string, &value, &fun);
     for i in 0..examples.len() {

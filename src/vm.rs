@@ -1,17 +1,17 @@
 use crate::chunk::{ByteCode, UpvalueIndex};
 use crate::compiler::{Compiler, Parser};
-use crate::memory::{Allocator};
+use crate::memory::Allocator;
 use crate::native::{NativeFun, NativeResult};
 use crate::object::{Closure, Fun, FunKind, Obj, ObjValue, Upvalue};
 use crate::value::Value;
-use std::collections::HashMap;
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
 use std::ops::Drop;
-use std::rc::Rc;
 use std::ptr::NonNull;
+use std::rc::Rc;
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
@@ -60,7 +60,11 @@ pub struct Vm<'a> {
 }
 
 impl<'a> Vm<'a> {
-  pub fn new(stack: Vec<Value<'a>>, frames: Vec<CallFrame<'a>>, natives: Vec<Rc<dyn NativeFun<'a>>>) -> Vm<'a> {
+  pub fn new(
+    stack: Vec<Value<'a>>,
+    frames: Vec<CallFrame<'a>>,
+    natives: Vec<Rc<dyn NativeFun<'a>>>,
+  ) -> Vm<'a> {
     Vm {
       stack,
       frames,
@@ -106,11 +110,17 @@ impl<'a> Vm<'a> {
   }
 }
 
-fn define_globals<'a>(natives: &[Rc<dyn NativeFun<'a>>], allocator: &mut Allocator<'a>) -> HashMap<Obj<'a>, Value<'a>> {
+fn define_globals<'a>(
+  natives: &[Rc<dyn NativeFun<'a>>],
+  allocator: &mut Allocator<'a>,
+) -> HashMap<Obj<'a>, Value<'a>> {
   let mut globals = HashMap::new();
   natives.iter().for_each(|native| {
     let name = allocator.allocate_string(native.meta().name.clone());
-    globals.insert(name, Value::Obj(allocator.allocate(ObjValue::NativeFn(Rc::clone(native)))));
+    globals.insert(
+      name,
+      Value::Obj(allocator.allocate(ObjValue::NativeFn(Rc::clone(native)))),
+    );
   });
   globals
 }
@@ -139,9 +149,7 @@ pub struct VmExecutor<'a, 'b: 'a> {
 }
 
 impl<'a, 'b: 'a> Drop for VmExecutor<'a, 'b> {
-  fn drop(&mut self) {
-
-  }
+  fn drop(&mut self) {}
 }
 
 impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
@@ -149,7 +157,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     vm: &'a mut Vm<'b>,
     script: Value<'b>,
     globals: HashMap<Obj<'b>, Value<'b>>,
-    allocator: Allocator<'b>
+    allocator: Allocator<'b>,
   ) -> VmExecutor<'a, 'b> {
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
@@ -344,7 +352,11 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     if (arg_count as u16) != closure.get_fun().arity {
       self.runtime_error(&format!(
         "Function {} expected {} arguments but got {}",
-        closure.get_fun().name.clone().unwrap_or("script".to_string()),
+        closure
+          .get_fun()
+          .name
+          .clone()
+          .unwrap_or("script".to_string()),
         closure.get_fun().arity,
         arg_count
       ));
@@ -775,5 +787,3 @@ fn is_falsey(value: &Value) -> bool {
     _ => false,
   }
 }
-
-

@@ -1,6 +1,6 @@
 use crate::object::{Obj, ObjValue};
-use std::collections::HashSet;
 use std::cell::Cell;
+use std::collections::HashSet;
 use std::ptr::NonNull;
 
 pub struct Allocator<'a> {
@@ -20,7 +20,7 @@ impl<'a> Allocator<'a> {
     let obj = Obj::new(value);
     obj.next.set(self.objects.get());
     self.objects.set(obj.next.get());
-  
+
     obj
   }
 

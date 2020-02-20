@@ -1,8 +1,8 @@
 use crate::chunk::{ByteCode, Chunk, UpvalueIndex};
+use crate::memory::Allocator;
 use crate::object::{copy_string, Fun, FunKind, ObjValue};
 use crate::scanner::{Scanner, Token, TokenKind};
 use crate::value::Value;
-use crate::memory::Allocator;
 use std::convert::TryInto;
 
 #[cfg(debug_assertions)]
@@ -123,11 +123,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   }
 
   /// Construct an inner compiler used to compile functions inside of a script
-  fn child(
-    name: Option<String>,
-    fun_kind: FunKind,
-    enclosing: *mut Compiler<'a, 's, 'c>,
-  ) -> Self {
+  fn child(name: Option<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's, 'c>) -> Self {
     Self {
       fun: Fun {
         arity: 0,
@@ -276,6 +272,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     self.define_variable(global);
   }
 
+  /// Parse a function declaration and body
   fn function(&mut self, fun_kind: FunKind) {
     let name = Some(self.parser.previous.lexeme.to_string());
 
@@ -286,6 +283,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
       .parser
       .consume(TokenKind::LeftParen, "Expect '(' after function name.");
 
+    // parse function parameters
     if !fun_compiler.parser.check(TokenKind::RightParen) {
       loop {
         fun_compiler.fun.arity += 1;
@@ -313,6 +311,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
       .consume(TokenKind::LeftBrace, "Expect '{' before function body.");
     fun_compiler.block();
 
+    // end compilation of function chunk
     fun_compiler.end_compiler();
     let upvalue_count = fun_compiler.fun.upvalue_count;
     let boxed_fun = Box::new(fun_compiler.fun);
@@ -321,6 +320,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     let index = self.make_constant(Value::Obj(fun_obj));
     self.emit_byte(ByteCode::Closure(index));
 
+    // emit upvalue index instructions
     fun_compiler.upvalues[0..upvalue_count]
       .iter()
       .for_each(|upvalue| self.emit_byte(ByteCode::UpvalueIndex(upvalue.clone())));
@@ -561,7 +561,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   ///
   /// # Panics
   /// This method will panic if an invalid binary operator is passed
-  pub fn binary(&mut self) {
+  fn binary(&mut self) {
     // Remember the operator
     let operator_kind = self.parser.previous.kind.clone();
     let precedence = get_rule(operator_kind.clone()).precedence.higher();
@@ -582,6 +582,8 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     }
   }
 
+
+  /// Compile a call invocation
   fn call(&mut self) {
     let arg_count = self.argument_list();
     self.emit_byte(ByteCode::Call(arg_count));
@@ -634,7 +636,9 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
   /// Compile a string literal
   fn string(&mut self) {
-    let string = self.allocator.allocate_string(copy_string(&self.parser.previous));
+    let string = self
+      .allocator
+      .allocate_string(copy_string(&self.parser.previous));
     let value = Value::Obj(string);
     self.emit_constant(value)
   }

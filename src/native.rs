@@ -1,18 +1,17 @@
 use crate::value::Value;
+use std::fmt;
+use std::ptr;
 use std::rc::Rc;
 use std::time::SystemTime;
-use std::ptr;
-use std::fmt;
 
 pub enum NativeResult<'a> {
   /// The result of the native function call was a success with this value
   Success(Value<'a>),
 
-  /// The result of the native function call was an error with this runtime 
+  /// The result of the native function call was an error with this runtime
   /// message
   RuntimeError(String),
 }
-
 
 pub trait NativeFun<'a> {
   /// Meta data to this native function
@@ -34,7 +33,11 @@ impl<'a> PartialEq<dyn NativeFun<'a>> for dyn NativeFun<'a> {
 impl<'a> fmt::Debug for dyn NativeFun<'a> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let meta = self.meta();
-    write!(f, "NativeFun {{ name: {}, arity: {} }}", meta.name, meta.arity)
+    write!(
+      f,
+      "NativeFun {{ name: {}, arity: {} }}",
+      meta.name, meta.arity
+    )
   }
 }
 
@@ -94,7 +97,6 @@ impl<'a> NativeFun<'a> for NativeClock {
   }
 }
 
-
 #[derive(Clone, Debug)]
 struct NativeAssert {
   meta: Box<NativeMeta>,
@@ -135,7 +137,6 @@ impl<'a> NativeFun<'a> for NativeAssert {
   }
 }
 
-
 #[derive(Clone, Debug)]
 struct NativeAssertEq {
   meta: Box<NativeMeta>,
@@ -167,12 +168,10 @@ impl<'a> NativeFun<'a> for NativeAssertEq {
     if args[0] == args[1] {
       return NativeResult::Success(Value::Nil);
     }
-  
+
     NativeResult::RuntimeError(format!("{} and {} where not equal", args[0], args[1]))
   }
 }
-
-
 
 #[derive(Clone, Debug)]
 struct NativeAssertNe {
@@ -205,7 +204,7 @@ impl<'a> NativeFun<'a> for NativeAssertNe {
     if args[0] != args[1] {
       return NativeResult::Success(Value::Nil);
     }
-  
+
     NativeResult::RuntimeError(format!("{} and {} where equal", args[0], args[1]))
   }
 }
