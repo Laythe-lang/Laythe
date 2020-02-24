@@ -234,6 +234,7 @@ impl<'a> PartialEq for ObjValue<'a> {
 #[derive(Clone, Debug)]
 pub struct Obj<'a> {
   pub next: Cell<Option<&'a Obj<'a>>>,
+  pub is_marked: Cell<bool>,
   pub value: ObjValue<'a>,
 }
 
@@ -336,6 +337,7 @@ impl<'a> Obj<'a> {
   pub fn new(value: ObjValue<'a>) -> Obj<'a> {
     Obj {
       value,
+      is_marked: Cell::new(false),
       next: Cell::new(Option::None),
     }
   }
@@ -429,7 +431,14 @@ impl<'a> Obj<'a> {
   pub fn move_closure(self) -> Closure<'a> {
     match self.value {
       ObjValue::Closure(closure) => closure,
-      _ => panic!("Expected function!"),
+      _ => panic!("Expected closure!"),
+    }
+  }
+
+  pub fn ref_closure(&self) -> &Closure<'a> {
+    match &self.value {
+      ObjValue::Closure(closure) => closure,
+      _ => panic!("Expected closure!"),
     }
   }
 

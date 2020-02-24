@@ -32,7 +32,7 @@ pub enum InterpretResult {
 /// A call frame in the space lox interpreter
 #[derive(Clone, PartialEq)]
 pub struct CallFrame<'a> {
-  closure: Closure<'a>,
+  pub closure: Obj<'a>,
   ip: usize,
   slots: usize,
 }
@@ -40,7 +40,7 @@ pub struct CallFrame<'a> {
 impl<'a> CallFrame<'a> {
   pub fn new(fun: &Fun<'a>) -> Self {
     CallFrame {
-      closure: Closure::new(fun),
+      closure: Obj::new(ObjValue::Closure(Closure::new(fun))),
       ip: 0,
       slots: 0,
     }
@@ -127,22 +127,22 @@ fn define_globals<'a>(
 
 pub struct VmExecutor<'a, 'b: 'a> {
   /// A stack of call frames for the current execution
-  frames: &'a mut Vec<CallFrame<'b>>,
+  pub frames: &'a mut Vec<CallFrame<'b>>,
 
   /// The current frame depth of the program
-  frame_count: usize,
+  pub frame_count: usize,
 
   /// A stack holding all local variable currently in use
-  stack: &'a mut Vec<Value<'b>>,
+  pub stack: &'a mut Vec<Value<'b>>,
 
   /// A reference to a object currently in the vm
   allocator: Allocator<'b>,
 
   /// index to the top of the value stack
-  stack_top: usize,
+  pub stack_top: usize,
 
   /// global variable present in the vm
-  globals: HashMap<Obj<'b>, Value<'b>>,
+  pub globals: HashMap<Obj<'b>, Value<'b>>,
 
   /// A collection of currently available upvalues
   open_upvalues: Cell<Option<Rc<RefCell<Upvalue<'b>>>>>,
@@ -370,7 +370,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
     self.frame_count += 1;
     let frame = &mut self.frames[self.frame_count - 1];
-    frame.closure = closure;
+    frame.closure = Obj::new(ObjValue::Closure(closure));
     frame.ip = 0;
     frame.slots = self.stack_top - (arg_count as usize + 1);
     None
@@ -395,7 +395,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     eprintln!("");
 
     for frame in self.frames[0..self.frame_count].iter().rev() {
-      let closure = &frame.closure;
+      let closure = &frame.closure.ref_closure();
       let location = match &closure.get_fun().name {
         Some(name) => format!("{}()", name),
         None => "script".to_string(),
@@ -424,7 +424,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn read_constant<'c>(frame: &'c CallFrame<'b>, index: u8) -> &'c Value<'b> {
-    &frame.closure.get_fun().chunk.constants.values[index as usize]
+    &frame.closure.ref_closure().get_fun().chunk.constants.values[index as usize]
   }
 
   fn push(&mut self, value: Value<'b>) {
@@ -511,7 +511,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
   fn op_set_upvalue(&mut self, slot: u8) {
     let value = self.peek(0) as *const Value<'b>;
-    self.current_mut_frame().closure.upvalues[slot as usize]
+    self.current_mut_frame().closure.ref_closure().upvalues[slot as usize]
       .borrow_mut()
       .set(value);
   }
@@ -523,7 +523,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn op_get_upvalue(&mut self, slot: u8) {
-    let upvalue = &self.current_frame().closure.upvalues[slot as usize];
+    let upvalue = &self.current_frame().closure.ref_closure().upvalues[slot as usize];
     let value = unsafe { &*upvalue.borrow().as_ptr() }.clone();
     self.push(value);
   }
@@ -660,7 +660,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
             closure.upvalues.push(self.capture_upvalue(value));
           }
           UpvalueIndex::Upvalue(upvalue) => {
-            let upvalue = &self.current_frame().closure.upvalues[upvalue as usize];
+            let upvalue = &self.current_frame().closure.ref_closure().upvalues[upvalue as usize];
             closure.upvalues.push(Rc::clone(upvalue));
           }
         }
@@ -775,7 +775,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   /// Get the current instruction from the present call frame
   fn frame_instruction(&self) -> &ByteCode {
     let frame = self.current_frame();
-    &frame.closure.get_fun().chunk.instructions[frame.ip]
+    &frame.closure.ref_closure().get_fun().chunk.instructions[frame.ip]
   }
 }
 

@@ -582,7 +582,6 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     }
   }
 
-
   /// Compile a call invocation
   fn call(&mut self) {
     let arg_count = self.argument_list();
