@@ -1,8 +1,9 @@
-use crate::chunk::{ByteCode, Chunk, UpvalueIndex};
 use crate::memory::Allocator;
-use crate::object::{copy_string, Fun, FunKind, ObjValue};
-use crate::scanner::{Scanner, Token, TokenKind};
-use crate::value::Value;
+use crate::scanner::{Scanner};
+use spacelox_core::token::{Token, TokenKind};
+use spacelox_core::chunk::{ByteCode, Chunk, UpvalueIndex};
+use spacelox_core::object::{copy_string, Fun, FunKind, ObjValue};
+use spacelox_core::value::Value;
 use std::convert::TryInto;
 
 #[cfg(debug_assertions)]
@@ -70,10 +71,10 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::chunk::{Chunk};
-  /// use space_lox::compiler::{Compiler, Parser};
-  /// use space_lox::object::{ObjValue, Obj, FunKind};
-  /// use space_lox::memory::Allocator;
+  /// use spacelox_vm::compiler::{Compiler, Parser};
+  /// use spacelox_vm::memory::Allocator;
+  /// use spacelox_core::chunk::{Chunk};
+  /// use spacelox_core::object::{ObjValue, Obj, FunKind};
   ///
   /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
   ///   Obj::new(value)
@@ -154,10 +155,10 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::chunk::{Chunk};
-  /// use space_lox::compiler::{Compiler, Parser};
-  /// use space_lox::object::{ObjValue, Obj, FunKind};
-  /// use space_lox::memory::Allocator;
+  /// use spacelox_vm::compiler::{Compiler, Parser};
+  /// use spacelox_vm::memory::Allocator;
+  /// use spacelox_core::chunk::{Chunk};
+  /// use spacelox_core::object::{ObjValue, Obj, FunKind};
   ///
   /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
   ///   Obj::new(value)
@@ -1288,7 +1289,7 @@ mod test {
     for i in 0..code.len() {
       match instructions[i] {
         ByteCode::Closure(index) => {
-          let fun = fun.chunk.constants.values[index as usize]
+          let fun = fun.chunk.constants[index as usize]
             .ref_obj()
             .ref_fun();
 

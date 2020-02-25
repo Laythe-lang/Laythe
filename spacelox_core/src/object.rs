@@ -1,6 +1,6 @@
 use crate::chunk::Chunk;
 use crate::native::NativeFun;
-use crate::scanner::Token;
+use crate::token::Token;
 use crate::utils::{next_boundary, previous_boundary};
 use crate::value::Value;
 use std::cell::Cell;
@@ -23,8 +23,8 @@ impl<'a> Closure<'a> {
   ///
   /// # Example
   /// ```
-  /// use space_lox::object::{Closure, Fun};
-  /// use space_lox::chunk::Chunk;
+  /// use spacelox_core::object::{Closure, Fun};
+  /// use spacelox_core::chunk::Chunk;
   ///
   /// let fun = Box::new(Fun {
   ///   arity: 3,
@@ -47,8 +47,8 @@ impl<'a> Closure<'a> {
   ///
   /// # Example
   /// ```
-  /// use space_lox::object::{Closure, Fun};
-  /// use space_lox::chunk::Chunk;
+  /// use spacelox_core::object::{Closure, Fun};
+  /// use spacelox_core::chunk::Chunk;
   ///
   /// let fun = Box::new(Fun {
   ///   arity: 3,
@@ -80,8 +80,8 @@ impl<'a> Upvalue<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::object::{Obj, ObjValue, Upvalue};
-  /// use space_lox::value::Value;
+  /// use spacelox_core::object::{Obj, ObjValue, Upvalue};
+  /// use spacelox_core::value::Value;
   /// use std::ptr::NonNull;
   ///
   /// let example = "something";
@@ -100,8 +100,8 @@ impl<'a> Upvalue<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::object::{Obj, ObjValue, Upvalue};
-  /// use space_lox::value::Value;
+  /// use spacelox_core::object::{Obj, ObjValue, Upvalue};
+  /// use spacelox_core::value::Value;
   /// use std::ptr::{eq, NonNull};
   ///
   /// let example = "something";
@@ -202,7 +202,7 @@ impl<'a> PartialEq for ObjValue<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::object::{Obj, ObjValue};
+  /// use spacelox_core::object::{Obj, ObjValue};
   /// use std::ptr::NonNull;
   ///
   /// let str1 = "example1";
@@ -244,7 +244,7 @@ impl<'a> PartialEq for Obj<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::object::{Obj, ObjValue};
+  /// use spacelox_core::object::{Obj, ObjValue};
   /// use std::ptr::NonNull;
   ///
   /// let str1 = "example1";
@@ -267,7 +267,7 @@ impl<'a> Hash for Obj<'a> {
   ///
   /// # Example
   /// ```
-  /// use space_lox::object::{Obj, ObjValue};
+  /// use spacelox_core::object::{Obj, ObjValue};
   /// use std::collections::{HashMap};
   /// use std::ptr::NonNull;
   ///
@@ -308,7 +308,7 @@ impl<'a> fmt::Display for Obj<'a> {
   ///
   /// # Example
   /// ```
-  /// use space_lox::object::{Obj, ObjValue};
+  /// use spacelox_core::object::{Obj, ObjValue};
   /// use std::ptr::NonNull;
   ///
   /// let str = "example";
@@ -346,7 +346,7 @@ impl<'a> Obj<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::object::{Obj, ObjValue};
+  /// use spacelox_core::object::{Obj, ObjValue};
   /// use std::ptr::NonNull;
   ///
   /// let str = "example";
@@ -364,8 +364,8 @@ impl<'a> Obj<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::object::{Obj, ObjValue, Fun};
-  /// use space_lox::chunk::{Chunk};
+  /// use spacelox_core::object::{Obj, ObjValue, Fun};
+  /// use spacelox_core::chunk::{Chunk};
   /// use std::rc::Rc;
   ///
   /// let func = Fun {
@@ -389,8 +389,8 @@ impl<'a> Obj<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::object::{Obj, ObjValue, Fun};
-  /// use space_lox::chunk::{Chunk};
+  /// use spacelox_core::object::{Obj, ObjValue, Fun};
+  /// use spacelox_core::chunk::{Chunk};
   /// use std::rc::Rc;
   ///
   /// let func = Fun {
@@ -414,8 +414,8 @@ impl<'a> Obj<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::object::{Obj, ObjValue, Fun, Closure};
-  /// use space_lox::chunk::{Chunk};
+  /// use spacelox_core::object::{Obj, ObjValue, Fun, Closure};
+  /// use spacelox_core::chunk::{Chunk};
   /// use std::rc::Rc;
   ///
   /// let fun = Fun {
@@ -446,10 +446,10 @@ impl<'a> Obj<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::value::Value;
-  /// use space_lox::object::{Obj, ObjValue, Upvalue, Closure, Fun};
-  /// use space_lox::chunk::{Chunk};
-  /// use space_lox::native::create_natives;
+  /// use spacelox_core::value::Value;
+  /// use spacelox_core::object::{Obj, ObjValue, Upvalue, Closure, Fun};
+  /// use spacelox_core::chunk::{Chunk};
+  /// use spacelox_core::native::create_natives;
   /// use std::ptr::NonNull;
   /// use std::rc::Rc;
   ///
@@ -494,8 +494,8 @@ impl<'a> Obj<'a> {
 ///
 /// # Examples
 /// ```
-/// use space_lox::object::{Obj, ObjValue, copy_string};
-/// use space_lox::scanner::{Token, TokenKind};
+/// use spacelox_core::object::{Obj, ObjValue, copy_string};
+/// use spacelox_core::token::{Token, TokenKind};
 ///
 /// let token = Token {
 ///   kind: TokenKind::String,

@@ -1,9 +1,9 @@
-use crate::chunk::{ByteCode, UpvalueIndex};
 use crate::compiler::{Compiler, Parser};
 use crate::memory::Allocator;
-use crate::native::{NativeFun, NativeResult};
-use crate::object::{Closure, Fun, FunKind, Obj, ObjValue, Upvalue};
-use crate::value::Value;
+use spacelox_core::chunk::{ByteCode, UpvalueIndex};
+use spacelox_core::native::{NativeFun, NativeResult};
+use spacelox_core::object::{Closure, Fun, FunKind, Obj, ObjValue, Upvalue};
+use spacelox_core::value::Value;
 use std::cell::Cell;
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -424,7 +424,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn read_constant<'c>(frame: &'c CallFrame<'b>, index: u8) -> &'c Value<'b> {
-    &frame.closure.ref_closure().get_fun().chunk.constants.values[index as usize]
+    &frame.closure.ref_closure().get_fun().chunk.constants[index as usize]
   }
 
   fn push(&mut self, value: Value<'b>) {

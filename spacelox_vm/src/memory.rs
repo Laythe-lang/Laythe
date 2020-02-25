@@ -1,6 +1,6 @@
-use crate::object::{Obj, ObjValue};
-use crate::value::Value;
 use crate::vm::VmExecutor;
+use spacelox_core::object::{Obj, ObjValue};
+use spacelox_core::value::Value;
 use std::cell::Cell;
 use std::collections::{HashMap, HashSet};
 use std::ptr::NonNull;

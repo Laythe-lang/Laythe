@@ -1,29 +1,13 @@
+[workspace]
+members = [
+  "spacelox",
+  "spacelox_core",
+  "spacelox_vm"
+]
+
 [profile.dev]
 opt-level = 0
 
 [profile.release]
 opt-level = 3
 debug = true
-
-[features]
-debug = []
-debug_upvalue = []
-debug_gc = []
-
-[package]
-name = "space_lox"
-version = "0.1.0"
-authors = ["John Chabot <johnchabot2013@gmail.com>"]
-edition = "2018"
-
-[lib]
-name = "space_lox"
-path = "src/lib.rs"
-
-[[bin]]
-name = "space_lox_main"
-path = "src/main.rs"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[dependencies]

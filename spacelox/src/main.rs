@@ -1,7 +1,7 @@
-use space_lox::native::create_natives;
-use space_lox::object::Fun;
-use space_lox::value::Value;
-use space_lox::vm::{CallFrame, InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX};
+use spacelox_core::native::create_natives;
+use spacelox_core::object::Fun;
+use spacelox_core::value::Value;
+use spacelox_vm::vm::{CallFrame, InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX};
 use std::env;
 use std::fs::read_to_string;
 use std::process;

@@ -1,4 +1,4 @@
-use crate::value::{Value, ValueVec};
+use crate::value::Value;
 
 /// Space Lox virtual machine byte codes
 #[derive(Debug, PartialEq, Clone)]
@@ -140,7 +140,7 @@ pub struct Chunk<'a> {
   pub instructions: Vec<ByteCode>,
 
   /// constants in this code chunk
-  pub constants: ValueVec<'a>,
+  pub constants: Vec<Value<'a>>,
 
   /// debug line information
   lines: Vec<Line>,
@@ -151,7 +151,7 @@ impl<'a> Chunk<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::chunk::{Chunk, ByteCode};
+  /// use spacelox_core::chunk::{Chunk, ByteCode};
   ///
   /// let mut chunk = Chunk::default();
   /// chunk.write_instruction(ByteCode::Return, 0);
@@ -181,8 +181,8 @@ impl<'a> Chunk<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::chunk::Chunk;
-  /// use space_lox::value::Value;
+  /// use spacelox_core::chunk::Chunk;
+  /// use spacelox_core::value::Value;
   ///
   /// let mut chunk = Chunk::default();
   /// let index_1 = chunk.add_constant(Value::Number(10.4));
@@ -191,19 +191,19 @@ impl<'a> Chunk<'a> {
   /// assert_eq!(index_1, 0);
   /// assert_eq!(index_2, 1);
   ///
-  /// assert_eq!(chunk.constants.values[index_1], Value::Number(10.4));
-  /// assert_eq!(chunk.constants.values[index_2], Value::Number(5.2));
+  /// assert_eq!(chunk.constants[index_1], Value::Number(10.4));
+  /// assert_eq!(chunk.constants[index_2], Value::Number(5.2));
   /// ```
   pub fn add_constant(&mut self, value: Value<'a>) -> usize {
-    self.constants.values.push(value);
-    self.constants.values.len() - 1
+    self.constants.push(value);
+    self.constants.len() - 1
   }
 
   /// Get the line number at a token offset
   ///
   /// # Example
   /// ```
-  /// use space_lox::chunk::{Chunk, ByteCode};
+  /// use spacelox_core::chunk::{Chunk, ByteCode};
   ///
   /// let mut chunk = Chunk::default();
   ///
@@ -221,7 +221,7 @@ impl<'a> Chunk<'a> {
   /// This method panics if an offset is past the last instruction
   ///
   /// ```rust,should_panic
-  /// use space_lox::chunk::Chunk;
+  /// use spacelox_core::chunk::Chunk;
   ///
   /// let chunk = Chunk::default();
   /// chunk.get_line(3);

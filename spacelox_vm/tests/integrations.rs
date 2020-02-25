@@ -1,8 +1,7 @@
-extern crate space_lox;
-use space_lox::native::create_natives;
-use space_lox::object::Fun;
-use space_lox::value::Value;
-use space_lox::vm::{CallFrame, InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX};
+use spacelox_core::native::create_natives;
+use spacelox_core::object::Fun;
+use spacelox_core::value::Value;
+use spacelox_vm::vm::{CallFrame, InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
@@ -28,12 +27,13 @@ fn build() {
   assert_eq!(true, true);
 }
 
-fn fixture_path(path: &str) -> Option<PathBuf> {
+fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
   let test_path = Path::new(FILE_PATH);
-  match test_path.parent() {
-    Some(directory_path) => Some(directory_path.join("../fixture/").join(path)),
-    None => None,
-  }
+
+  test_path.parent()
+    .and_then(|path| path.parent())
+    .and_then(|path| path.parent())
+    .and_then(|path| Some(path.join("fixture").join(fixture_path)))
 }
 
 fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Error> {
@@ -42,9 +42,7 @@ fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Er
   for path in paths {
     let mut vm = create_vm(&fun);
 
-    println!("file: {}", path);
     let assert = fixture_path(path).expect("No parent directory");
-
     let mut file = File::open(assert)?;
     let mut source = String::new();
     file.read_to_string(&mut source)?;
@@ -59,6 +57,7 @@ fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Er
 fn clock() -> Result<(), std::io::Error> {
   let fun = Box::new(Fun::default());
   let mut vm = create_vm(&fun);
+
   let assert = fixture_path("assert/clock.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
@@ -73,6 +72,7 @@ fn clock() -> Result<(), std::io::Error> {
 fn assert() -> Result<(), std::io::Error> {
   let fun = Box::new(Fun::default());
   let mut vm = create_vm(&fun);
+
   let assert = fixture_path("assert/assert.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
@@ -87,6 +87,7 @@ fn assert() -> Result<(), std::io::Error> {
 fn assert_eq() -> Result<(), std::io::Error> {
   let fun = Box::new(Fun::default());
   let mut vm = create_vm(&fun);
+
   let assert = fixture_path("assert/assert_eq.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
@@ -101,6 +102,7 @@ fn assert_eq() -> Result<(), std::io::Error> {
 fn assert_ne() -> Result<(), std::io::Error> {
   let fun = Box::new(Fun::default());
   let mut vm = create_vm(&fun);
+
   let assert = fixture_path("assert/assert_ne.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;

@@ -1,66 +1,5 @@
-use crate::utils::{next_boundary, previous_boundary};
-
-/// A token in the space lox language
-#[derive(Debug, Clone)]
-pub struct Token {
-  /// The token kind
-  pub kind: TokenKind,
-
-  /// The character array of the source
-  pub lexeme: String,
-
-  /// line number this token appears
-  pub line: i32,
-}
-
-/// Token kinds in the space lox language
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
-pub enum TokenKind {
-  LeftParen,
-  RightParen,
-  LeftBrace,
-  RightBrace,
-  Comma,
-  Dot,
-  Minus,
-  Plus,
-  Semicolon,
-  Slash,
-  Star,
-
-  Bang,
-  BangEqual,
-  Equal,
-  EqualEqual,
-  Greater,
-  GreaterEqual,
-  Less,
-  LessEqual,
-
-  Identifier,
-  String,
-  Number,
-
-  And,
-  Class,
-  Else,
-  False,
-  For,
-  Fun,
-  If,
-  Nil,
-  Or,
-  Print,
-  Return,
-  Super,
-  This,
-  True,
-  Var,
-  While,
-
-  Error,
-  Eof,
-}
+use spacelox_core::utils::{next_boundary, previous_boundary};
+use spacelox_core::token::{TokenKind, Token};
 
 /// A scanner for the lox language. This struct is
 /// responsible for taking a source string and tokenizing it
@@ -91,7 +30,8 @@ impl<'a> Scanner<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::scanner::{Scanner, TokenKind};
+  /// use spacelox_vm::scanner::Scanner;
+  /// use spacelox_core::token::TokenKind;
   ///
   /// let source = String::from("
   /// var x = \"something\";
@@ -125,7 +65,8 @@ impl<'a> Scanner<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::scanner::{Scanner, TokenKind};
+  /// use spacelox_vm::scanner::{Scanner};
+  /// use spacelox_core::token::TokenKind;
   ///
   /// let source = String::from("
   /// var x = \"something\";

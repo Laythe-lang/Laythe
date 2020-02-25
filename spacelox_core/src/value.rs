@@ -29,7 +29,7 @@ impl<'a> PartialEq for Value<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::value::Value;
+  /// use spacelox_core::value::Value;
   ///
   /// let val1 = Value::Bool(false);
   /// let val2 = Value::Bool(true);
@@ -66,7 +66,7 @@ impl<'a> Value<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::value::Value;
+  /// use spacelox_core::value::Value;
   ///
   /// let val1 = Value::Number(20.0);
   /// assert_eq!(val1.to_num(), 20.0);
@@ -82,7 +82,7 @@ impl<'a> Value<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::value::Value;
+  /// use spacelox_core::value::Value;
   ///
   /// let b1 = Value::Bool(false);
   /// assert_eq!(b1.to_bool(), false);
@@ -98,8 +98,8 @@ impl<'a> Value<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::value::Value;
-  /// use space_lox::object::{Obj, ObjValue};
+  /// use spacelox_core::value::Value;
+  /// use spacelox_core::object::{Obj, ObjValue};
   /// use std::ptr::NonNull;
   ///
   /// let str = "example";
@@ -117,8 +117,8 @@ impl<'a> Value<'a> {
   ///
   /// # Examples
   /// ```
-  /// use space_lox::value::Value;
-  /// use space_lox::object::{Obj, ObjValue};
+  /// use spacelox_core::value::Value;
+  /// use spacelox_core::object::{Obj, ObjValue};
   /// use std::ptr::NonNull;
   ///
   /// let str = "example";
@@ -135,8 +135,8 @@ impl<'a> Value<'a> {
   /// Get a string representation of the underlying type this value representing
   ///
   /// # Examples
-  /// use space_lox::value::Value;
-  /// use space_lox::object::{Obj, ObjValue};
+  /// use spacelox_core::value::Value;
+  /// use spacelox_core::object::{Obj, ObjValue};
   ///
   /// let nil = Value::Nil;
   /// let bool = Value::Bool(true);
@@ -155,12 +155,6 @@ impl<'a> Value<'a> {
       Value::Obj(obj) => obj.obj_type(),
     }
   }
-}
-
-// Represents a collection of values
-#[derive(Clone, PartialEq, Default, Debug)]
-pub struct ValueVec<'a> {
-  pub values: Vec<Value<'a>>,
 }
 
 #[cfg(test)]

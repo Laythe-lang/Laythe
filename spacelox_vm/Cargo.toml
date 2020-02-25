@@ -1,0 +1,17 @@
+[package]
+name = "spacelox_vm"
+version = "0.1.0"
+authors = ["John Chabot <johnchabot2013@gmail.com>"]
+edition = "2018"
+
+[features]
+debug = []
+debug_upvalue = []
+debug_gc = []
+
+[lib]
+name = "spacelox_vm"
+path = "src/lib.rs"
+
+[dependencies]
+spacelox_core = { path = "../spacelox_core" }

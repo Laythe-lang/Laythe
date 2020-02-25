@@ -1,6 +1,6 @@
-use crate::chunk::{ByteCode, Chunk, UpvalueIndex};
-use crate::object::ObjValue;
-use crate::value::Value;
+use spacelox_core::chunk::{ByteCode, Chunk, UpvalueIndex};
+use spacelox_core::object::ObjValue;
+use spacelox_core::value::Value;
 
 /// Write a chunk to console
 pub fn disassemble_chunk(code_chunk: &Chunk, name: &str) {
@@ -74,7 +74,7 @@ fn jump_instruction(name: &str, sign: isize, jump: u16, offset: isize) -> Option
 /// print a constant
 fn constant_instruction(name: &str, chunk: &Chunk, constant: u8) -> Option<usize> {
   print!("{:16} {:4} ", name, constant);
-  print!("{}", &chunk.constants.values[constant as usize]);
+  print!("{}", &chunk.constants[constant as usize]);
   println!();
   None
 }
@@ -82,10 +82,10 @@ fn constant_instruction(name: &str, chunk: &Chunk, constant: u8) -> Option<usize
 /// print a closure
 fn closure_instruction(name: &str, chunk: &Chunk, constant: u8, offset: usize) -> Option<usize> {
   print!("{:16} {:4} ", name, constant);
-  print!("{}", &chunk.constants.values[constant as usize]);
+  print!("{}", &chunk.constants[constant as usize]);
   println!();
 
-  let value = &chunk.constants.values[constant as usize];
+  let value = &chunk.constants[constant as usize];
   let upvalue_count = match value {
     Value::Obj(obj) => match &obj.value {
       ObjValue::Fun(fun) => fun.upvalue_count,

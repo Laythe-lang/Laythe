@@ -7,47 +7,46 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in library 'space_lox'",
+      "name": "Debug unit tests in library 'spacelox_vm'",
       "cargo": {
         "args": [
           "test",
           "--no-run",
           "--lib",
-          "--package=space_lox"
+          "--package=spacelox_vm"
         ],
         "filter": {
-          "name": "space_lox",
+          "name": "spacelox_vm",
           "kind": "lib"
         }
       },
       "args": [],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}/spacelox_vm"
     },
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in executable 'space_lox_main'",
+      "name": "spacelox repl",
       "cargo": {
         "args": [
-          "test",
-          "--no-run",
-          "--bin=space_lox_main",
-          "--package=space_lox"
+          "build",
+          "--bin=spacelox",
+          "--package=spacelox"
         ],
         "filter": {
-          "name": "space_lox_main",
+          "name": "spacelox",
           "kind": "bin"
         }
       },
       "args": [],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}/spacelox"
     },
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug executable 'space_lox_main'",
+      "name": "spacelox script",
       "cargo": {
         "args": [
           "build",
@@ -55,26 +54,7 @@
           "--package=space_lox"
         ],
         "filter": {
-          "name": "space_lox_main",
-          "kind": "bin"
-        }
-      },
-      "args": [],
-      "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}"
-    },
-    {
-      "type": "lldb",
-      "request": "launch",
-      "name": "Debug executable script",
-      "cargo": {
-        "args": [
-          "build",
-          "--bin=space_lox_main",
-          "--package=space_lox"
-        ],
-        "filter": {
-          "name": "space_lox_main",
+          "name": "spacelox",
           "kind": "bin"
         }
       },
@@ -82,7 +62,7 @@
         "fixture/while/closure_in_body.lox"
       ],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}"
+      "cwd": "${workspaceFolder}/spacelox"
     }
   ]
 }
