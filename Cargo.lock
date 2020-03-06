@@ -11,11 +11,19 @@ dependencies = [
 [[package]]
 name = "spacelox_core"
 version = "0.1.0"
+dependencies = [
+ "spacelox_interner 0.1.0",
+]
+
+[[package]]
+name = "spacelox_interner"
+version = "0.1.0"
 
 [[package]]
 name = "spacelox_vm"
 version = "0.1.0"
 dependencies = [
  "spacelox_core 0.1.0",
+ "spacelox_interner 0.1.0",
 ]
 

@@ -1,5 +1,4 @@
 use spacelox_core::chunk::{ByteCode, Chunk, UpvalueIndex};
-use spacelox_core::object::ObjValue;
 use spacelox_core::value::Value;
 
 /// Write a chunk to console
@@ -87,16 +86,7 @@ fn closure_instruction(name: &str, chunk: &Chunk, constant: u8, offset: usize) -
 
   let value = &chunk.constants[constant as usize];
   let upvalue_count = match value {
-    Value::Obj(obj) => match &obj.value {
-      ObjValue::Fun(fun) => fun.upvalue_count,
-      _ => {
-        println!(
-          "!=== Compilation failure found {} instead of function ===!",
-          value.value_type()
-        );
-        0
-      }
-    },
+    Value::Fun(fun) => fun.upvalue_count,
     _ => {
       println!(
         "!=== Compilation failure found {} instead of function ===!",

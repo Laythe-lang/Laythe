@@ -1,5 +1,5 @@
+use spacelox_core::token::{Token, TokenKind};
 use spacelox_core::utils::{next_boundary, previous_boundary};
-use spacelox_core::token::{TokenKind, Token};
 
 /// A scanner for the lox language. This struct is
 /// responsible for taking a source string and tokenizing it

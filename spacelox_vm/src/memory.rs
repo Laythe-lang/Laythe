@@ -1,57 +1,50 @@
 use crate::vm::VmExecutor;
-use spacelox_core::object::{Obj, ObjValue};
-use spacelox_core::value::Value;
-use std::cell::Cell;
-use std::collections::{HashMap, HashSet};
+use spacelox_core::value::{Allocation, Managed, Trace, Value};
+use spacelox_interner::IStr;
+use std::collections::HashMap;
 use std::ptr::NonNull;
 
 #[cfg(feature = "debug_gc")]
 use std::mem;
 
-pub struct Allocator<'a> {
-  objects: Cell<Option<&'a Obj<'a>>>,
-  string_store: HashSet<String>,
+pub struct Gc {
+  objects: Vec<Box<Allocation<dyn Trace>>>,
 }
 
-impl<'a> Allocator<'a> {
+impl<'a> Gc {
   pub fn new() -> Self {
-    Allocator {
-      objects: Cell::new(None),
-      string_store: HashSet::new(),
+    Gc {
+      objects: Vec::new(),
     }
   }
 
-  pub fn allocate(&mut self, value: ObjValue<'a>) -> Obj<'a> {
-    self.reallocate();
-
-    let obj = Obj::new(value);
-    obj.next.set(self.objects.get());
-    self.objects.set(obj.next.get());
+  pub fn allocate<T: 'static + Trace>(&mut self, data: T) -> NonNull<Allocation<T>> {
+    // self.reallocate();
+    let mut alloc = Box::new(Allocation::new(data));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+    self.objects.push(alloc);
 
     #[cfg(feature = "debug_gc")]
     {
       println!(
         "{:p} allocate {} for {}",
-        &obj,
-        mem::size_of::<Obj<'a>>(),
+        &**value,
+        mem::size_of::<T>(),
         obj.obj_type()
       );
     }
 
-    obj
+    ptr
   }
 
-  pub fn allocate_string(&mut self, string: String) -> Obj<'a> {
-    let str_ptr = NonNull::from(self.intern_string(string));
-    self.allocate(ObjValue::String(str_ptr))
+  pub fn allocate_string(&mut self, string: &str) -> NonNull<Allocation<IStr>> {
+    let interned = IStr::new(string);
+    self.allocate(interned)
   }
 
-  pub fn copy_string(&mut self, string_ptr: NonNull<str>) -> Obj<'a> {
-    self.allocate(ObjValue::String(string_ptr))
-  }
-
-  fn intern_string(&mut self, string: String) -> &str {
-    &**self.string_store.get_or_insert(string)
+  pub fn copy_string(&mut self, string_ptr: &str) -> NonNull<Allocation<IStr>> {
+    let interned = IStr::new(string_ptr);
+    self.allocate(interned)
   }
 
   pub fn collect_garbage(&mut self, vm: &mut VmExecutor) {
@@ -77,25 +70,21 @@ impl<'a> Allocator<'a> {
       .iter()
       .for_each(|frame| mark_object(&frame.closure));
 
+    vm.open_upvalues
+      .iter()
+      .for_each(|upvalue| mark_object(upvalue));
+
     mark_table(&vm.globals);
   }
 
   pub fn free_objects(&mut self) {
-    loop {
-      match self.objects.get() {
-        Some(obj) => {
-          #[cfg(feature = "debug_gc")]
-          {
-            println!("{:p} free {}", obj, obj.obj_type());
-          }
-
-          self.objects.replace(obj.next.get());
-        }
-        None => {
-          return;
-        }
+    self.objects.retain(|obj| {
+      #[cfg(feature = "debug_gc")]
+      {
+        println!("{:p} free {}", obj, obj.obj_type());
       }
-    }
+      !(**obj).marked()
+    });
   }
 
   pub fn reallocate(&mut self) {
@@ -106,7 +95,7 @@ impl<'a> Allocator<'a> {
   }
 }
 
-fn mark_table(table: &HashMap<Obj, Value>) {
+fn mark_table(table: &HashMap<Managed<IStr>, Value>) {
   table.iter().for_each(|(key, val)| {
     mark_object(key);
     mark_value(val);
@@ -115,16 +104,20 @@ fn mark_table(table: &HashMap<Obj, Value>) {
 
 fn mark_value(value: &Value) {
   match value {
-    Value::Obj(obj) => mark_object(obj),
+    Value::String(string) => mark_object(string),
+    Value::Fun(fun) => mark_object(fun),
+    Value::Closure(closure) => mark_object(closure),
+    Value::Native(native) => mark_object(native),
+    Value::Upvalue(upvalue) => mark_object(upvalue),
     _ => (),
   }
 }
 
-fn mark_object(obj: &Obj) {
-  obj.is_marked.replace(true);
+fn mark_object<'a, T: 'a + Trace>(managed: &Managed<T>) {
+  managed.obj().mark();
 
   #[cfg(feature = "debug_gc")]
   {
-    println!("{:p} mark {}", obj, obj)
+    println!("{:p} mark {}", managed, managed)
   }
 }

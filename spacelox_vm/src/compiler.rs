@@ -1,21 +1,21 @@
-use crate::memory::Allocator;
-use crate::scanner::{Scanner};
-use spacelox_core::token::{Token, TokenKind};
+use crate::memory::Gc;
+use crate::scanner::Scanner;
 use spacelox_core::chunk::{ByteCode, Chunk, UpvalueIndex};
-use spacelox_core::object::{copy_string, Fun, FunKind, ObjValue};
-use spacelox_core::value::Value;
+use spacelox_core::token::{Token, TokenKind};
+use spacelox_core::utils::copy_string;
+use spacelox_core::value::{Fun, FunKind, Managed, Value};
 use std::convert::TryInto;
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_chunk;
 
 /// The result of a compilation
-pub struct CompilerResult<'a> {
+pub struct CompilerResult {
   /// Was an error encountered while this chunk was compiled
   pub success: bool,
 
   /// The chunk that was compiled
-  pub fun: Box<Fun<'a>>,
+  pub fun: Managed<Fun>,
 }
 
 const UNINITIALIZED: i16 = -1;
@@ -33,23 +33,23 @@ pub struct Local {
 }
 
 /// The spacelox compiler for converting tokens to bytecode
-pub struct Compiler<'a, 's, 'c: 'a> {
+pub struct Compiler<'a, 's> {
   /// The current function
-  fun: Fun<'c>,
+  fun: Fun,
 
   /// The type the current function scope
   fun_kind: FunKind,
 
   /// The parent compiler if it exists note uses
   /// unsafe pointer
-  enclosing: Option<*mut Compiler<'a, 's, 'c>>,
+  enclosing: Option<*mut Compiler<'a, 's>>,
 
   /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
   parser: &'a mut Parser<'s>,
 
   /// Analytics for the compiler
-  allocator: &'a mut Allocator<'c>,
+  gc: &'a mut Gc,
 
   /// Number of locals
   local_count: usize,
@@ -64,7 +64,7 @@ pub struct Compiler<'a, 's, 'c: 'a> {
   upvalues: Vec<UpvalueIndex>,
 }
 
-impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
+impl<'a, 's> Compiler<'a, 's> {
   /// Create a new instance of the spacelox compiler.
   /// The compiler write a sequence of op codes to the chunk
   /// to be executed
@@ -88,11 +88,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   ///
   /// let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
   /// ```
-  pub fn new(
-    parser: &'a mut Parser<'s>,
-    allocator: &'a mut Allocator<'c>,
-    fun_kind: FunKind,
-  ) -> Self {
+  pub fn new(parser: &'a mut Parser<'s>, gc: &'a mut Gc, fun_kind: FunKind) -> Self {
     let name = match fun_kind {
       FunKind::Script => Option::None,
       _ => Some(parser.previous.lexeme.to_string()),
@@ -106,7 +102,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
         chunk: Chunk::default(),
       },
       fun_kind,
-      allocator,
+      gc,
       parser,
       enclosing: None,
       local_count: 1,
@@ -124,7 +120,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   }
 
   /// Construct an inner compiler used to compile functions inside of a script
-  fn child(name: Option<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's, 'c>) -> Self {
+  fn child(name: Option<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
     Self {
       fun: Fun {
         arity: 0,
@@ -133,7 +129,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
         chunk: Chunk::default(),
       },
       fun_kind,
-      allocator: unsafe { (*enclosing).allocator },
+      gc: unsafe { (*enclosing).gc },
       parser: unsafe { (*enclosing).parser },
       enclosing: Some(enclosing),
       local_count: 1,
@@ -175,16 +171,19 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
-  pub fn compile(mut self) -> CompilerResult<'c> {
+  pub fn compile(mut self) -> CompilerResult {
     self.parser.advance();
 
     // early exit if ""
     if let TokenKind::Eof = self.parser.current.kind {
       self.end_compiler();
 
+      let fun = self.gc.allocate(self.fun);
+      let managed = Managed::from(fun);
+
       return CompilerResult {
         success: !self.parser.had_error,
-        fun: Box::new(self.fun),
+        fun: managed,
       };
     }
 
@@ -201,14 +200,17 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
       .consume(TokenKind::Eof, "Expected end of expression.");
     self.end_compiler();
 
+    let fun = self.gc.allocate(self.fun);
+    let managed = Managed::from(fun);
+
     CompilerResult {
       success: !self.parser.had_error,
-      fun: Box::new(self.fun),
+      fun: managed,
     }
   }
 
   /// The current chunk
-  fn current_chunk(&mut self) -> &mut Chunk<'c> {
+  fn current_chunk(&mut self) -> &mut Chunk {
     &mut self.fun.chunk
   }
 
@@ -315,10 +317,10 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
     // end compilation of function chunk
     fun_compiler.end_compiler();
     let upvalue_count = fun_compiler.fun.upvalue_count;
-    let boxed_fun = Box::new(fun_compiler.fun);
+    // let boxed_fun = Box::new(fun_compiler.fun);
 
-    let fun_obj = self.allocator.allocate(ObjValue::Fun(boxed_fun));
-    let index = self.make_constant(Value::Obj(fun_obj));
+    let alloc_fun = self.gc.allocate(fun_compiler.fun);
+    let index = self.make_constant(Value::Fun(Managed::from(alloc_fun)));
     self.emit_byte(ByteCode::Closure(index));
 
     // emit upvalue index instructions
@@ -636,10 +638,8 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
   /// Compile a string literal
   fn string(&mut self) {
-    let string = self
-      .allocator
-      .allocate_string(copy_string(&self.parser.previous));
-    let value = Value::Obj(string);
+    let string = self.gc.allocate_string(&copy_string(&self.parser.previous));
+    let value = Value::String(Managed::from(string));
     self.emit_constant(value)
   }
 
@@ -790,8 +790,8 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
 
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u8 {
-    let identifer = self.allocator.allocate_string(name.lexeme);
-    self.make_constant(Value::Obj(identifer))
+    let identifer = self.gc.allocate_string(&name.lexeme);
+    self.make_constant(Value::String(Managed::from(identifer)))
   }
 
   fn add_local(&mut self, name: Token) {
@@ -929,7 +929,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   }
 
   /// Add a constant to the current chunk
-  fn make_constant(&mut self, value: Value<'c>) -> u8 {
+  fn make_constant(&mut self, value: Value) -> u8 {
     let index = self.current_chunk().add_constant(value);
     if index > std::u8::MAX as usize {
       self.parser.error("Too many constants in one chunk.");
@@ -940,7 +940,7 @@ impl<'a, 's, 'c: 'a> Compiler<'a, 's, 'c> {
   }
 
   /// Emit byte code for a constant
-  fn emit_constant(&mut self, value: Value<'c>) {
+  fn emit_constant(&mut self, value: Value) {
     let index = self.make_constant(value);
     self.emit_byte(ByteCode::Constant(index));
   }
@@ -1261,18 +1261,18 @@ mod test {
     Fun((u8, Vec<ByteCodeTest>)),
   }
 
-  fn test_compile<'a>(src: String) -> Box<Fun<'a>> {
-    let mut allocator = Allocator::new();
+  fn test_compile<'a>(src: String) -> Box<Fun> {
+    let mut allocator = Gc::new();
     let mut parser = Parser::new(&src);
 
     let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
     let result = compiler.compile();
     assert_eq!(result.success, true);
 
-    result.fun
+    Box::new((*result.fun).clone())
   }
 
-  fn assert_simple_bytecode<'a>(fun: Box<Fun<'a>>, code: &[ByteCode]) {
+  fn assert_simple_bytecode(fun: Box<Fun>, code: &[ByteCode]) {
     let instructions = fun.chunk.instructions.clone();
     assert_eq!(instructions.len(), code.len());
 
@@ -1282,16 +1282,14 @@ mod test {
       .for_each(|(actual, expect)| assert_eq!(actual, expect));
   }
 
-  fn assert_fun_bytecode<'a>(fun: &Fun<'a>, code: &[ByteCodeTest]) {
+  fn assert_fun_bytecode(fun: &Fun, code: &[ByteCodeTest]) {
     let instructions = fun.chunk.instructions.clone();
     assert_eq!(instructions.len(), code.len());
 
     for i in 0..code.len() {
       match instructions[i] {
         ByteCode::Closure(index) => {
-          let fun = fun.chunk.constants[index as usize]
-            .ref_obj()
-            .ref_fun();
+          let fun = fun.chunk.constants[index as usize].ref_fun();
 
           match &code[i] {
             ByteCodeTest::Fun((expected, inner)) => {

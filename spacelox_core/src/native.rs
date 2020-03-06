@@ -4,33 +4,33 @@ use std::ptr;
 use std::rc::Rc;
 use std::time::SystemTime;
 
-pub enum NativeResult<'a> {
+pub enum NativeResult {
   /// The result of the native function call was a success with this value
-  Success(Value<'a>),
+  Success(Value),
 
   /// The result of the native function call was an error with this runtime
   /// message
   RuntimeError(String),
 }
 
-pub trait NativeFun<'a> {
+pub trait NativeFun {
   /// Meta data to this native function
   fn meta(&self) -> &NativeMeta;
 
   /// Call the native functions
-  fn call(&self, values: &[Value<'a>]) -> NativeResult<'a>;
+  fn call(&self, values: &[Value]) -> NativeResult;
 
   // /// Check if this native function is equal to another
-  fn eq(&self, rhs: &dyn NativeFun<'a>) -> bool;
+  fn eq(&self, rhs: &dyn NativeFun) -> bool;
 }
 
-impl<'a> PartialEq<dyn NativeFun<'a>> for dyn NativeFun<'a> {
-  fn eq(&self, rhs: &dyn NativeFun<'a>) -> bool {
+impl PartialEq<dyn NativeFun> for dyn NativeFun {
+  fn eq(&self, rhs: &dyn NativeFun) -> bool {
     self.eq(rhs)
   }
 }
 
-impl<'a> fmt::Debug for dyn NativeFun<'a> {
+impl fmt::Debug for dyn NativeFun {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let meta = self.meta();
     write!(
@@ -47,8 +47,8 @@ pub struct NativeMeta {
   pub arity: u8,
 }
 
-pub fn create_natives<'a>() -> Vec<Rc<dyn NativeFun<'a>>> {
-  let mut natives: Vec<Rc<dyn NativeFun<'a>>> = Vec::new();
+pub fn create_natives() -> Vec<Rc<dyn NativeFun>> {
+  let mut natives: Vec<Rc<dyn NativeFun>> = Vec::new();
 
   natives.push(Rc::new(NativeClock::new()));
   natives.push(Rc::new(NativeAssert::new()));
@@ -58,7 +58,7 @@ pub fn create_natives<'a>() -> Vec<Rc<dyn NativeFun<'a>>> {
   natives
 }
 
-fn native_eq<'a>(lhs: &dyn NativeFun<'a>, rhs: &dyn NativeFun<'a>) -> bool {
+fn native_eq(lhs: &dyn NativeFun, rhs: &dyn NativeFun) -> bool {
   ptr::eq(lhs.meta(), rhs.meta())
 }
 
@@ -80,16 +80,16 @@ impl NativeClock {
   }
 }
 
-impl<'a> NativeFun<'a> for NativeClock {
+impl NativeFun for NativeClock {
   fn meta(&self) -> &NativeMeta {
     &self.meta
   }
 
-  fn eq(&self, rhs: &dyn NativeFun<'a>) -> bool {
+  fn eq(&self, rhs: &dyn NativeFun) -> bool {
     native_eq(self, rhs)
   }
 
-  fn call(&self, _: &[Value<'a>]) -> NativeResult<'a> {
+  fn call(&self, _: &[Value]) -> NativeResult {
     match self.start.elapsed() {
       Ok(elasped) => NativeResult::Success(Value::Number((elasped.as_micros() as f64) / 1000000.0)),
       Err(e) => NativeResult::RuntimeError(format!("clock failed {}", e)),
@@ -115,16 +115,16 @@ impl NativeAssert {
   }
 }
 
-impl<'a> NativeFun<'a> for NativeAssert {
+impl NativeFun for NativeAssert {
   fn meta(&self) -> &NativeMeta {
     &self.meta
   }
 
-  fn eq(&self, rhs: &dyn NativeFun<'a>) -> bool {
+  fn eq(&self, rhs: &dyn NativeFun) -> bool {
     native_eq(self, rhs)
   }
 
-  fn call(&self, args: &[Value<'a>]) -> NativeResult<'a> {
+  fn call(&self, args: &[Value]) -> NativeResult {
     match args[0] {
       Value::Bool(b) => {
         if b {
@@ -155,16 +155,16 @@ impl NativeAssertEq {
   }
 }
 
-impl<'a> NativeFun<'a> for NativeAssertEq {
+impl NativeFun for NativeAssertEq {
   fn meta(&self) -> &NativeMeta {
     &self.meta
   }
 
-  fn eq(&self, rhs: &dyn NativeFun<'a>) -> bool {
+  fn eq(&self, rhs: &dyn NativeFun) -> bool {
     native_eq(self, rhs)
   }
 
-  fn call(&self, args: &[Value<'a>]) -> NativeResult<'a> {
+  fn call(&self, args: &[Value]) -> NativeResult {
     if args[0] == args[1] {
       return NativeResult::Success(Value::Nil);
     }
@@ -191,16 +191,16 @@ impl NativeAssertNe {
   }
 }
 
-impl<'a> NativeFun<'a> for NativeAssertNe {
+impl NativeFun for NativeAssertNe {
   fn meta(&self) -> &NativeMeta {
     &self.meta
   }
 
-  fn eq(&self, rhs: &dyn NativeFun<'a>) -> bool {
+  fn eq(&self, rhs: &dyn NativeFun) -> bool {
     native_eq(self, rhs)
   }
 
-  fn call(&self, args: &[Value<'a>]) -> NativeResult<'a> {
+  fn call(&self, args: &[Value]) -> NativeResult {
     if args[0] != args[1] {
       return NativeResult::Success(Value::Nil);
     }

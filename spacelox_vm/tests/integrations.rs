@@ -1,36 +1,40 @@
 use spacelox_core::native::create_natives;
-use spacelox_core::object::Fun;
-use spacelox_core::value::Value;
+use spacelox_core::value::{Closure, Fun, Managed, Value};
+use spacelox_vm::memory::Gc;
 use spacelox_vm::vm::{CallFrame, InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
 
-fn create_stack<'a>() -> Vec<Value<'a>> {
+fn create_stack<'a>() -> Vec<Value> {
   vec![Value::Nil; DEFAULT_STACK_MAX]
 }
 
-fn create_frames<'a>(fun: &Box<Fun<'a>>) -> Vec<CallFrame<'a>> {
-  vec![CallFrame::new(&fun); FRAME_MAX]
+fn create_frames<'a>(fun: Managed<Closure>) -> Vec<CallFrame> {
+  vec![CallFrame::new(fun); FRAME_MAX]
 }
 
-fn create_vm<'a>(fun: &Box<Fun<'a>>) -> Vm<'a> {
-  Vm::new(create_stack(), create_frames(fun), create_natives())
+fn create_vm<'a>(closure: Managed<Closure>) -> Vm {
+  Vm::new(create_stack(), create_frames(closure), create_natives())
 }
 
 const FILE_PATH: &str = file!();
 
 #[test]
 fn build() {
-  let fun = Box::new(Fun::default());
-  create_vm(&fun);
+  let fun = Fun::default();
+  let mut gc = Gc::new();
+
+  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+  create_vm(closure);
   assert_eq!(true, true);
 }
 
 fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
   let test_path = Path::new(FILE_PATH);
 
-  test_path.parent()
+  test_path
+    .parent()
     .and_then(|path| path.parent())
     .and_then(|path| path.parent())
     .and_then(|path| Some(path.join("fixture").join(fixture_path)))
@@ -38,9 +42,11 @@ fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
 
 fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Error> {
   let fun = Box::new(Fun::default());
+  let mut gc = Gc::new();
+  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
 
   for path in paths {
-    let mut vm = create_vm(&fun);
+    let mut vm = create_vm(closure.clone());
 
     let assert = fixture_path(path).expect("No parent directory");
     let mut file = File::open(assert)?;
@@ -56,7 +62,9 @@ fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Er
 #[test]
 fn clock() -> Result<(), std::io::Error> {
   let fun = Box::new(Fun::default());
-  let mut vm = create_vm(&fun);
+  let mut gc = Gc::new();
+  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+  let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/clock.lox").expect("No parent directory");
 
@@ -71,7 +79,9 @@ fn clock() -> Result<(), std::io::Error> {
 #[test]
 fn assert() -> Result<(), std::io::Error> {
   let fun = Box::new(Fun::default());
-  let mut vm = create_vm(&fun);
+  let mut gc = Gc::new();
+  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+  let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/assert.lox").expect("No parent directory");
 
@@ -86,7 +96,9 @@ fn assert() -> Result<(), std::io::Error> {
 #[test]
 fn assert_eq() -> Result<(), std::io::Error> {
   let fun = Box::new(Fun::default());
-  let mut vm = create_vm(&fun);
+  let mut gc = Gc::new();
+  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+  let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/assert_eq.lox").expect("No parent directory");
 
@@ -101,7 +113,9 @@ fn assert_eq() -> Result<(), std::io::Error> {
 #[test]
 fn assert_ne() -> Result<(), std::io::Error> {
   let fun = Box::new(Fun::default());
-  let mut vm = create_vm(&fun);
+  let mut gc = Gc::new();
+  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+  let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/assert_ne.lox").expect("No parent directory");
 

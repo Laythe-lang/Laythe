@@ -134,19 +134,19 @@ impl Line {
 }
 
 /// Represents a chunk of code
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct Chunk<'a> {
+#[derive(Clone, PartialEq, Default)]
+pub struct Chunk {
   /// instructions in this code chunk
   pub instructions: Vec<ByteCode>,
 
   /// constants in this code chunk
-  pub constants: Vec<Value<'a>>,
+  pub constants: Vec<Value>,
 
   /// debug line information
   lines: Vec<Line>,
 }
 
-impl<'a> Chunk<'a> {
+impl Chunk {
   /// Write an instruction to this chunk
   ///
   /// # Examples
@@ -194,7 +194,7 @@ impl<'a> Chunk<'a> {
   /// assert_eq!(chunk.constants[index_1], Value::Number(10.4));
   /// assert_eq!(chunk.constants[index_2], Value::Number(5.2));
   /// ```
-  pub fn add_constant(&mut self, value: Value<'a>) -> usize {
+  pub fn add_constant(&mut self, value: Value) -> usize {
     self.constants.push(value);
     self.constants.len() - 1
   }

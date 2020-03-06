@@ -1,16 +1,13 @@
 use crate::compiler::{Compiler, Parser};
-use crate::memory::Allocator;
+use crate::memory::Gc;
 use spacelox_core::chunk::{ByteCode, UpvalueIndex};
 use spacelox_core::native::{NativeFun, NativeResult};
-use spacelox_core::object::{Closure, Fun, FunKind, Obj, ObjValue, Upvalue};
-use spacelox_core::value::Value;
-use std::cell::Cell;
-use std::cell::RefCell;
+use spacelox_core::value::{Closure, FunKind, Managed, Upvalue, Value};
+use spacelox_interner::IStr;
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
 use std::ops::Drop;
-use std::ptr::NonNull;
 use std::rc::Rc;
 
 #[cfg(feature = "debug")]
@@ -31,16 +28,16 @@ pub enum InterpretResult {
 
 /// A call frame in the space lox interpreter
 #[derive(Clone, PartialEq)]
-pub struct CallFrame<'a> {
-  pub closure: Obj<'a>,
+pub struct CallFrame {
+  pub closure: Managed<Closure>,
   ip: usize,
   slots: usize,
 }
 
-impl<'a> CallFrame<'a> {
-  pub fn new(fun: &Fun<'a>) -> Self {
+impl<'a> CallFrame {
+  pub fn new(closure: Managed<Closure>) -> Self {
     CallFrame {
-      closure: Obj::new(ObjValue::Closure(Closure::new(fun))),
+      closure,
       ip: 0,
       slots: 0,
     }
@@ -48,23 +45,19 @@ impl<'a> CallFrame<'a> {
 }
 
 /// The virtual machine for the spacelox programming language
-pub struct Vm<'a> {
+pub struct Vm {
   /// A stack holding all local variable currently in use
-  pub stack: Vec<Value<'a>>,
+  pub stack: Vec<Value>,
 
   /// A stack holding call frames currently in use
-  pub frames: Vec<CallFrame<'a>>,
+  pub frames: Vec<CallFrame>,
 
   /// All the native functions
-  pub natives: Vec<Rc<dyn NativeFun<'a>>>,
+  pub natives: Vec<Rc<dyn NativeFun>>,
 }
 
-impl<'a> Vm<'a> {
-  pub fn new(
-    stack: Vec<Value<'a>>,
-    frames: Vec<CallFrame<'a>>,
-    natives: Vec<Rc<dyn NativeFun<'a>>>,
-  ) -> Vm<'a> {
+impl Vm {
+  pub fn new(stack: Vec<Value>, frames: Vec<CallFrame>, natives: Vec<Rc<dyn NativeFun>>) -> Vm {
     Vm {
       stack,
       frames,
@@ -93,80 +86,79 @@ impl<'a> Vm<'a> {
   }
 
   fn interpret(&mut self, source: &str) -> InterpretResult {
-    let mut allocator = Allocator::new();
+    let mut gc = Gc::new();
     let mut parser = Parser::new(source);
 
-    let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
+    let compiler = Compiler::new(&mut parser, &mut gc, FunKind::Script);
     let result = compiler.compile();
 
     if !result.success {
       return InterpretResult::CompileError;
     }
 
-    let script = Value::Obj(allocator.allocate(ObjValue::Closure(Closure::new(&result.fun))));
-    let globals = define_globals(&self.natives, &mut allocator);
-    let executor = VmExecutor::new(self, script, globals, allocator);
+    let script_closure = gc.allocate(Closure::new(&result.fun));
+    let script = Value::Closure(Managed::from(script_closure));
+    let globals = define_globals(&self.natives, &mut gc);
+    let executor = VmExecutor::new(self, script, globals, gc);
     executor.run()
   }
 }
 
-fn define_globals<'a>(
-  natives: &[Rc<dyn NativeFun<'a>>],
-  allocator: &mut Allocator<'a>,
-) -> HashMap<Obj<'a>, Value<'a>> {
+fn define_globals<'a>(natives: &[Rc<dyn NativeFun>], gc: &mut Gc) -> HashMap<Managed<IStr>, Value> {
   let mut globals = HashMap::new();
   natives.iter().for_each(|native| {
-    let name = allocator.allocate_string(native.meta().name.clone());
-    globals.insert(
-      name,
-      Value::Obj(allocator.allocate(ObjValue::NativeFn(Rc::clone(native)))),
-    );
+    let name = Managed::from(gc.allocate_string(&native.meta().name));
+
+    let native_value = Value::Native(Managed::from(gc.allocate(Rc::clone(native))));
+
+    globals.insert(name, native_value);
   });
+
   globals
 }
 
-pub struct VmExecutor<'a, 'b: 'a> {
+pub struct VmExecutor<'a> {
   /// A stack of call frames for the current execution
-  pub frames: &'a mut Vec<CallFrame<'b>>,
+  pub frames: &'a mut Vec<CallFrame>,
 
   /// The current frame depth of the program
   pub frame_count: usize,
 
   /// A stack holding all local variable currently in use
-  pub stack: &'a mut Vec<Value<'b>>,
+  pub stack: &'a mut Vec<Value>,
 
   /// A reference to a object currently in the vm
-  allocator: Allocator<'b>,
+  gc: Gc,
 
   /// index to the top of the value stack
   pub stack_top: usize,
 
   /// global variable present in the vm
-  pub globals: HashMap<Obj<'b>, Value<'b>>,
+  pub globals: HashMap<Managed<IStr>, Value>,
 
   /// A collection of currently available upvalues
-  open_upvalues: Cell<Option<Rc<RefCell<Upvalue<'b>>>>>,
+  pub open_upvalues: Vec<Managed<Upvalue>>,
 }
 
-impl<'a, 'b: 'a> Drop for VmExecutor<'a, 'b> {
+impl<'a> Drop for VmExecutor<'a> {
   fn drop(&mut self) {}
 }
 
-impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
+impl<'a> VmExecutor<'a> {
   pub fn new(
-    vm: &'a mut Vm<'b>,
-    script: Value<'b>,
-    globals: HashMap<Obj<'b>, Value<'b>>,
-    allocator: Allocator<'b>,
-  ) -> VmExecutor<'a, 'b> {
+    vm: &'a mut Vm,
+    script: Value,
+    globals: HashMap<Managed<IStr>, Value>,
+    gc: Gc,
+  ) -> VmExecutor<'a> {
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
       frame_count: 0,
       stack: &mut vm.stack,
-      allocator,
+      gc,
       stack_top: 1,
       globals,
-      open_upvalues: Cell::new(None),
+      open_upvalues: Vec::with_capacity(100),
     };
 
     executor.call_value(script, 0);
@@ -268,14 +260,12 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
         }
         ByteCode::Closure(constant) => self.op_closure(constant),
         ByteCode::CloseUpvalue => {
-          let value = self.get_val(self.stack_top - 1) as *const Value<'b>;
-          self.close_upvalues(value);
+          self.close_upvalues(self.stack_top - 1);
           self.pop();
         }
         ByteCode::Return => {
           let result = self.pop();
-          let slots = self.get_val(self.current_frame().slots) as *const Value<'b>;
-          self.close_upvalues(slots);
+          self.close_upvalues(self.current_frame().slots);
           self.frame_count -= 1;
 
           if self.frame_count == 0 {
@@ -290,28 +280,22 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     }
   }
 
-  fn current_frame(&self) -> &CallFrame<'b> {
+  fn current_frame(&self) -> &CallFrame {
     unsafe { self.frames.get_unchecked(self.frame_count - 1) }
   }
 
-  fn current_mut_frame(&mut self) -> &mut CallFrame<'b> {
+  fn current_mut_frame(&mut self) -> &mut CallFrame {
     unsafe { self.frames.get_unchecked_mut(self.frame_count - 1) }
   }
 
-  fn call_value(&mut self, callee: Value<'b>, arg_count: u8) -> Option<InterpretResult> {
-    match callee {
-      Value::Obj(obj) => match obj.value {
-        ObjValue::Closure(closure) => self.call(closure, arg_count),
-        ObjValue::NativeFn(native) => self.call_native(&*native, arg_count),
-        ObjValue::Fun(fun) => panic!(
-          "function {} was not wrapped in a closure",
-          fun.name.clone().unwrap_or("script".to_string())
-        ),
-        _ => {
-          self.runtime_error("Can only call functions and classes.");
-          Some(InterpretResult::RuntimeError)
-        }
-      },
+  fn call_value(&mut self, callee: Value, arg_count: u8) -> Option<InterpretResult> {
+    match &callee {
+      Value::Closure(closure) => self.call(closure, arg_count),
+      Value::Native(native) => self.call_native(native, arg_count),
+      Value::Fun(fun) => panic!(
+        "function {} was not wrapped in a closure",
+        fun.name.clone().unwrap_or("script".to_string())
+      ),
       _ => {
         self.runtime_error("Can only call functions and classes.");
         Some(InterpretResult::RuntimeError)
@@ -319,7 +303,11 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     }
   }
 
-  fn call_native(&mut self, native: &dyn NativeFun<'b>, arg_count: u8) -> Option<InterpretResult> {
+  fn call_native(
+    &mut self,
+    native: &Managed<Rc<dyn NativeFun>>,
+    arg_count: u8,
+  ) -> Option<InterpretResult> {
     let meta = native.meta();
     if arg_count != meta.arity {
       self.runtime_error(&format!(
@@ -348,7 +336,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     }
   }
 
-  fn call(&mut self, closure: Closure<'b>, arg_count: u8) -> Option<InterpretResult> {
+  fn call(&mut self, closure: &Managed<Closure>, arg_count: u8) -> Option<InterpretResult> {
     if (arg_count as u16) != closure.get_fun().arity {
       self.runtime_error(&format!(
         "Function {} expected {} arguments but got {}",
@@ -370,7 +358,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
     self.frame_count += 1;
     let frame = &mut self.frames[self.frame_count - 1];
-    frame.closure = Obj::new(ObjValue::Closure(closure));
+    frame.closure = closure.clone();
     frame.ip = 0;
     frame.slots = self.stack_top - (arg_count as usize + 1);
     None
@@ -395,7 +383,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     eprintln!("");
 
     for frame in self.frames[0..self.frame_count].iter().rev() {
-      let closure = &frame.closure.ref_closure();
+      let closure = &frame.closure;
       let location = match &closure.get_fun().name {
         Some(name) => format!("{}()", name),
         None => "script".to_string(),
@@ -411,32 +399,29 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     self.reset_stack();
   }
 
-  fn read_string(&mut self, index: u8) -> NonNull<str> {
+  fn read_string(&mut self, index: u8) -> Managed<IStr> {
     let frame = self.current_frame();
 
     match VmExecutor::read_constant(frame, index).clone() {
-      Value::Obj(obj) => match obj.value {
-        ObjValue::String(string) => string,
-        _ => panic!("Expected string."),
-      },
-      _ => panic!("Expected object."),
+      Value::String(string) => string,
+      _ => panic!("Expected string."),
     }
   }
 
-  fn read_constant<'c>(frame: &'c CallFrame<'b>, index: u8) -> &'c Value<'b> {
-    &frame.closure.ref_closure().get_fun().chunk.constants[index as usize]
+  fn read_constant<'b>(frame: &'b CallFrame, index: u8) -> &'b Value {
+    &frame.closure.get_fun().chunk.constants[index as usize]
   }
 
-  fn push(&mut self, value: Value<'b>) {
+  fn push(&mut self, value: Value) {
     self.stack[self.stack_top] = value;
     self.stack_top += 1;
   }
 
-  fn peek(&self, distance: usize) -> &Value<'b> {
+  fn peek(&self, distance: usize) -> &Value {
     self.get_val(self.stack_top - (distance + 1))
   }
 
-  fn pop(&mut self) -> Value<'b> {
+  fn pop(&mut self) -> Value {
     self.stack_top -= 1;
     let slot = self.get_val_mut(self.stack_top);
     replace(slot, Value::Nil)
@@ -445,7 +430,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   fn reset_stack(&mut self) {
     self.stack_top = 0;
     self.frame_count = 0;
-    self.open_upvalues.set(None);
+    self.open_upvalues.clear()
   }
 
   fn op_loop(&mut self, jump: u16) {
@@ -464,23 +449,22 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
   fn op_define_global(&mut self, store_index: u8) {
     let string = self.read_string(store_index);
-    let name = self.allocator.copy_string(string);
+    let name = Managed::from(self.gc.copy_string(string.as_str()));
     let global = self.pop();
     self.globals.insert(name, global);
   }
 
   fn op_get_global(&mut self, store_index: u8) -> Option<InterpretResult> {
     let string = self.read_string(store_index);
-    let name = self.allocator.copy_string(string);
 
-    let global = self.globals.get(&name).map(|global| global.clone());
+    let global = self.globals.get(&string).map(|global| global.clone());
     match global {
       Some(gbl) => {
         self.push(gbl);
         None
       }
       None => {
-        self.runtime_error(&format!("Undefined variable {}", name));
+        self.runtime_error(&format!("Undefined variable {}", string));
         Some(InterpretResult::RuntimeError)
       }
     }
@@ -488,15 +472,14 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
   fn op_set_global(&mut self, store_index: u8) -> Option<InterpretResult> {
     let string = self.read_string(store_index);
-    let name = self.allocator.copy_string(string);
 
     if self
       .globals
-      .insert(name.clone(), self.peek(0).clone())
+      .insert(string.clone(), self.peek(0).clone())
       .is_none()
     {
-      self.globals.remove_entry(&name);
-      self.runtime_error(&format!("Undefined variable {}", name));
+      self.globals.remove_entry(&string);
+      self.runtime_error(&format!("Undefined variable {}", string));
       return Some(InterpretResult::RuntimeError);
     }
 
@@ -510,10 +493,20 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn op_set_upvalue(&mut self, slot: u8) {
-    let value = self.peek(0) as *const Value<'b>;
-    self.current_mut_frame().closure.ref_closure().upvalues[slot as usize]
-      .borrow_mut()
-      .set(value);
+    let value = self.peek(0);
+    let upvalue = &self.current_frame().closure.upvalues[slot as usize];
+
+    let open_index = match upvalue.ref_upvalue() {
+      Upvalue::Open(index) => Some(*index),
+      Upvalue::Closed(store) => {
+        &store.replace(value.clone());
+        None
+      }
+    };
+
+    if let Some(index) = open_index {
+      self.stack[index] = value.clone();
+    }
   }
 
   fn op_get_local(&mut self, slot: u8) {
@@ -523,8 +516,13 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   }
 
   fn op_get_upvalue(&mut self, slot: u8) {
-    let upvalue = &self.current_frame().closure.ref_closure().upvalues[slot as usize];
-    let value = unsafe { &*upvalue.borrow().as_ptr() }.clone();
+    let upvalue = &self.current_frame().closure.upvalues[slot as usize];
+
+    let value = match upvalue.ref_upvalue() {
+      Upvalue::Open(index) => self.stack[*index].clone(),
+      Upvalue::Closed(store) => store.borrow().clone(),
+    };
+
     self.push(value);
   }
 
@@ -548,18 +546,12 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
   fn op_add(&mut self) -> Option<InterpretResult> {
     match (self.pop(), self.pop()) {
-      (Value::Obj(obj1), Value::Obj(obj2)) => match (obj1.value, obj2.value) {
-        (ObjValue::String(right), ObjValue::String(left)) => {
-          let result = unsafe { format!("{}{}", left.as_ref(), right.as_ref()) };
-          let value = self.allocator.allocate_string(result);
-          self.push(Value::Obj(value));
-          None
-        }
-        _ => {
-          self.runtime_error("Operands must be two numbers or two strings.");
-          Some(InterpretResult::RuntimeError)
-        }
-      },
+      (Value::String(right), Value::String(left)) => {
+        let result = format!("{}{}", left, right);
+        let string = Managed::from(self.gc.allocate_string(&result));
+        self.push(Value::String(string));
+        None
+      }
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Number(left + right));
         None
@@ -645,7 +637,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
 
   fn op_closure(&mut self, index: u8) {
     let frame = self.current_frame();
-    let fun = VmExecutor::read_constant(frame, index).ref_obj().ref_fun();
+    let fun = VmExecutor::read_constant(frame, index).ref_fun();
     let mut closure = Closure::new(fun);
 
     for _ in 0..fun.upvalue_count {
@@ -656,12 +648,12 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
         match upvalue_index {
           UpvalueIndex::Local(local) => {
             let slots = self.current_frame().slots;
-            let value = self.get_val(slots + local as usize) as *const Value<'b>;
-            closure.upvalues.push(self.capture_upvalue(value));
+            let index = slots + local as usize;
+            closure.upvalues.push(self.capture_upvalue(index));
           }
           UpvalueIndex::Upvalue(upvalue) => {
-            let upvalue = &self.current_frame().closure.ref_closure().upvalues[upvalue as usize];
-            closure.upvalues.push(Rc::clone(upvalue));
+            let upvalue = &self.current_frame().closure.upvalues[upvalue as usize];
+            closure.upvalues.push(upvalue.clone());
           }
         }
       } else {
@@ -669,63 +661,52 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
       }
     }
 
-    let closure = Value::Obj(self.allocator.allocate(ObjValue::Closure(closure)));
+    let closure = Value::Closure(Managed::from(self.gc.allocate(closure)));
 
     self.push(closure);
   }
 
-  fn capture_upvalue(&mut self, local: *const Value<'b>) -> Rc<RefCell<Upvalue<'b>>> {
-    let mut prev_upvalue: *const Option<Rc<RefCell<Upvalue<'b>>>> = &*Box::new(None);
-    let mut upvalue: *const Option<Rc<RefCell<Upvalue<'b>>>> = self.open_upvalues.as_ptr();
+  fn capture_upvalue(&mut self, local_index: usize) -> Value {
+    let closest_upvalue = self
+      .open_upvalues
+      .iter()
+      .rev()
+      .find(|upvalue| match ***upvalue {
+        Upvalue::Open(index) => index <= local_index,
+        Upvalue::Closed(_) => panic!("Encountered closed upvalue!"),
+      });
 
-    while let Some(upval) = unsafe { &*upvalue } {
-      if upval.as_ref().borrow().as_ptr() <= local {
-        break;
-      }
-
-      prev_upvalue = upvalue;
-      upvalue = &upval.borrow().next as *const Option<Rc<RefCell<Upvalue<'b>>>>;
-    }
-
-    if let Some(upval) = unsafe { &*upvalue } {
-      if upval.as_ref().borrow().as_ptr() == local {
-        return Rc::clone(&upval);
-      }
-    }
-
-    let created_upvalue = Rc::new(RefCell::new(Upvalue::new(local, unsafe {
-      (*upvalue).as_ref().map(|val| Rc::clone(val))
-    })));
-
-    match unsafe { &*prev_upvalue } {
-      Some(upvalue) => {
-        upvalue
-          .borrow_mut()
-          .next
-          .replace(Rc::clone(&created_upvalue));
-      }
-      None => {
-        self
-          .open_upvalues
-          .replace(Some(Rc::clone(&created_upvalue)));
+    if let Some(upvalue) = closest_upvalue {
+      if let Upvalue::Open(index) = **upvalue {
+        if index == local_index {
+          return Value::Upvalue(upvalue.clone());
+        }
       }
     }
 
-    created_upvalue
+    let created_upvalue = Managed::from(self.gc.allocate(Upvalue::Open(local_index)));
+    self.open_upvalues.push(created_upvalue);
+
+    Value::Upvalue(created_upvalue)
   }
 
-  fn close_upvalues(&mut self, last: *const Value<'b>) {
-    while let Some(upvalue) = unsafe { &*self.open_upvalues.as_ptr() } {
-      if upvalue.as_ref().borrow().as_ptr() < last {
+  fn close_upvalues(&mut self, last_index: usize) {
+    for upvalue in self.open_upvalues.iter().rev() {
+      let index = match **upvalue {
+        Upvalue::Open(index) => index,
+        Upvalue::Closed(_) => panic!("Unexpected closed upvalue"),
+      };
+
+      if index < last_index {
         break;
       }
 
-      let mut mut_upvalue = upvalue.borrow_mut();
-      mut_upvalue.hoist();
-      self
-        .open_upvalues
-        .replace(mut_upvalue.next.as_ref().map(|rc| Rc::clone(rc)));
+      let hoisted = Value::Upvalue(Managed::from(self.gc.allocate(upvalue.hoist(self.stack))));
+
+      self.stack[index] = hoisted;
     }
+
+    self.open_upvalues.retain(|upvalue| upvalue.is_open())
   }
 
   fn op_constant(&mut self, index: u8) {
@@ -734,11 +715,11 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
     self.push(constant);
   }
 
-  fn get_val(&self, index: usize) -> &Value<'b> {
+  fn get_val(&self, index: usize) -> &Value {
     unsafe { self.stack.get_unchecked(index) }
   }
 
-  fn get_val_mut(&mut self, index: usize) -> &mut Value<'b> {
+  fn get_val_mut(&mut self, index: usize) -> &mut Value {
     unsafe { self.stack.get_unchecked_mut(index) }
   }
 
@@ -757,10 +738,10 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
       let frame = self.current_frame();
       for i in 0..frame.closure.get_fun().upvalue_count {
         match &frame.closure.upvalues[i].borrow().location {
-          UpvalueLocation::Stack(loc) => {
+          Upvalue::Stack(loc) => {
             print!("[ stack {} ]", unsafe { &**loc });
           }
-          UpvalueLocation::Heap(loc) => {
+          Upvalue::Heap(loc) => {
             print!("[ heap {} ]", loc);
           }
         }
@@ -775,7 +756,7 @@ impl<'a, 'b: 'a> VmExecutor<'a, 'b> {
   /// Get the current instruction from the present call frame
   fn frame_instruction(&self) -> &ByteCode {
     let frame = self.current_frame();
-    &frame.closure.ref_closure().get_fun().chunk.instructions[frame.ip]
+    &frame.closure.get_fun().chunk.instructions[frame.ip]
   }
 }
 

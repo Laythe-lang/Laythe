@@ -1,3 +1,5 @@
+use crate::token::Token;
+
 /// What is the previous unicode code point
 pub fn previous_boundary(source: &str, start: usize) -> usize {
   let mut current = start - 1;
@@ -16,6 +18,32 @@ pub fn next_boundary(source: &str, start: usize) -> usize {
   }
 
   current
+}
+
+/// Copy a string from the str backing the provided token. Note this copy
+/// emits the enclosing quotes
+///
+/// # Examples
+/// ```
+/// use spacelox_core::object::{Obj, ObjValue, copy_string};
+/// use spacelox_core::token::{Token, TokenKind};
+///
+/// let token = Token {
+///   kind: TokenKind::String,
+///   lexeme: "\"a cat in a hat\"".to_string(),
+///   line: 0
+/// };
+///
+/// let copy = copy_string(&token);
+/// assert_eq!(copy, "a cat in a hat".to_string());
+/// assert_ne!(copy, "\"a cat in a hat\"".to_string());
+///
+/// ```
+pub fn copy_string(token: &Token) -> String {
+  let start = next_boundary(&token.lexeme, 0);
+  let end = previous_boundary(&token.lexeme, token.lexeme.len());
+
+  token.lexeme[start..end].to_string()
 }
 
 #[cfg(test)]
