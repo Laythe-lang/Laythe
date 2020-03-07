@@ -134,7 +134,7 @@ impl Line {
 }
 
 /// Represents a chunk of code
-#[derive(Clone, PartialEq, Default)]
+#[derive(Clone, PartialEq, Default, Debug)]
 pub struct Chunk {
   /// instructions in this code chunk
   pub instructions: Vec<ByteCode>,
@@ -256,5 +256,45 @@ mod test {
   }
 
   #[cfg(test)]
-  mod chunk {}
+  mod chunk {
+    use super::*;
+
+    #[test]
+    fn default() {
+      let chunk = Chunk::default();
+      assert_eq!(chunk.instructions.len(), 00);
+      assert_eq!(chunk.constants.len(), 0);
+    }
+
+    #[test]
+    fn write_instruction() {
+      let mut chunk = Chunk::default();
+      chunk.write_instruction(ByteCode::Nil, 0);
+
+      assert_eq!(chunk.instructions.len(), 1);
+      match chunk.instructions[0] {
+        ByteCode::Nil => assert!(true),
+        _ => assert!(false)
+      }
+    }
+
+    #[test]
+    fn add_constant() {
+      let mut chunk = Chunk::default();
+      let index = chunk.add_constant(Value::Nil);
+
+      assert_eq!(index, 0);
+      match chunk.constants[0] {
+        Value::Nil => assert!(true),
+        _ => assert!(false)
+      }
+    }
+
+    #[test]
+    fn get_line() {
+      let mut chunk = Chunk::default();
+      chunk.write_instruction(ByteCode::Nil, 0);
+      assert_eq!(chunk.get_line(0), 0);
+    }
+  }
 }

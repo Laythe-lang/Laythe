@@ -208,3 +208,46 @@ impl NativeFun for NativeAssertNe {
     NativeResult::RuntimeError(format!("{} and {} where equal", args[0], args[1]))
   }
 }
+
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[cfg(test)]
+  mod clock {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let clock = NativeClock::new();
+
+      assert_eq!(clock.meta.name, "clock");
+      assert_eq!(clock.meta.arity, 0);
+    }
+
+    #[test]
+    fn call() {
+      let clock = NativeClock::new();
+      let values: &[Value] = &[];
+
+      let result1 = clock.call(values);
+      let res1 = match result1 {
+        NativeResult::Success(res) => res,
+        NativeResult::RuntimeError(_) => panic!()
+      };
+
+      let result2 = clock.call(values);
+      let res2 = match result2 {
+        NativeResult::Success(res) => res,
+        NativeResult::RuntimeError(_) => panic!()
+      };
+
+      match (res1, res2) {
+        (Value::Number(num1), Value::Number(num2)) => assert!(num1 >= num2),
+        _ => panic!()
+      }
+    }
+  }
+}
+

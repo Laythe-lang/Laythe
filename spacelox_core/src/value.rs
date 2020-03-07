@@ -11,7 +11,7 @@ use std::ptr;
 use std::ptr::NonNull;
 use std::rc::Rc;
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub enum Upvalue {
   Open(usize),
   Closed(Rc<RefCell<Value>>),
@@ -22,20 +22,20 @@ impl Upvalue {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::object::Upvalue;
-  /// use spacelox_core::value::Value;
-  ///
+  /// use spacelox_core::value::{Value, Upvalue};
+  /// use std::rc::Rc;
+  /// 
   /// let stack = vec![
-  ///   Value::Number(10)
+  ///   Value::Number(10.0)
   /// ];
   ///
   /// let mut upvalue = Upvalue::Open(0);
-  /// upvalue.hoist(stack);
+  /// upvalue = upvalue.hoist(&stack);
   ///
   /// match upvalue {
-  ///   Upvalue::Open(_) => panic!(),
-  ///   Upvalue::Closed(box) => assert_eq!(*box, Value::Number(10)),
-  /// }
+  ///   Upvalue::Closed(store) => assert_eq!(store.replace(Value::Nil), Value::Number(10.0)),
+  ///   Upvalue::Open(_) => assert!(false),
+  /// };
   /// ```
   pub fn hoist(&self, stack: &Vec<Value>) -> Upvalue {
     match self {
@@ -51,7 +51,7 @@ impl Upvalue {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::object::Upvalue;
+  /// use spacelox_core::value::Upvalue;
   ///
   /// let upvalue = Upvalue::Open(0);
   /// assert_eq!(upvalue.is_open(), true);
@@ -70,7 +70,7 @@ pub enum FunKind {
   Script,
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Fun {
   /// Arity of this function
   pub arity: u16,
@@ -97,7 +97,7 @@ impl Default for Fun {
 }
 
 /// Enum of value types in spacelox
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Value {
   Bool(bool),
   Nil,
@@ -211,12 +211,17 @@ impl Value {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::object::{Obj, ObjValue};
+  /// use spacelox_core::value::{Value, Allocation, Managed};
+  /// use spacelox_interner::IStr;
   /// use std::ptr::NonNull;
   ///
-  /// let str = "example";
-  /// let obj1 = Obj::new(ObjValue::String(NonNull::from(str)));
-  /// assert_eq!(obj1.ref_string(), "example");
+  /// let str = IStr::new("example");
+  /// let mut alloc = Box::new(Allocation::new(str));
+  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+  /// let managed = Managed::from(ptr);
+  /// 
+  /// let value = Value::String(managed);
+  /// assert_eq!(value.ref_string(), "example");
   /// ```
   pub fn ref_string<'o>(&'o self) -> &'o str {
     match &self {
@@ -229,19 +234,22 @@ impl Value {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::object::{Obj, ObjValue, Fun};
-  /// use spacelox_core::chunk::{Chunk};
-  /// use std::rc::Rc;
+  /// use spacelox_core::value::{Value, Allocation, Managed, Fun};
+  /// use spacelox_core::chunk::Chunk;
+  /// use std::ptr::NonNull;
   ///
-  /// let func = Fun {
+  /// let fun = Fun {
   ///   name: Some("add".to_string()),
   ///   arity: 3,
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default()
   /// };
-  ///
-  /// let obj1 = Obj::new(ObjValue::Fun(Box::new(func)));
-  /// assert_eq!(obj1.ref_fun().name.clone().unwrap(), "add");
+  /// let mut alloc = Box::new(Allocation::new(fun));
+  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+  /// let managed = Managed::from(ptr);
+  /// 
+  /// let value = Value::Fun(managed);
+  /// assert_eq!(value.ref_fun().name.clone().unwrap(), "add");
   /// ```
   pub fn ref_fun<'o>(&'o self) -> &'o Fun {
     match &self {
@@ -254,9 +262,9 @@ impl Value {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::object::{Obj, ObjValue, Fun, Closure};
-  /// use spacelox_core::chunk::{Chunk};
-  /// use std::rc::Rc;
+  /// use spacelox_core::value::{Value, Allocation, Closure, Managed, Fun};
+  /// use spacelox_core::chunk::Chunk;
+  /// use std::ptr::NonNull;
   ///
   /// let fun = Fun {
   ///   name: Some("add".to_string()),
@@ -264,9 +272,14 @@ impl Value {
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default()
   /// };
-  ///
-  /// let obj1 = Obj::new(ObjValue::Closure(Closure::new(&fun)));
-  /// assert_eq!(obj1.ref_closure().fun.name.clone().unwrap(), "add".to_string());
+  /// let closure = Closure::new(&fun);
+  /// 
+  /// let mut alloc = Box::new(Allocation::new(closure));
+  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+  /// let managed = Managed::from(ptr);
+  /// 
+  /// let value = Value::Closure(managed);
+  /// assert_eq!(value.ref_closure().get_fun().name.clone().unwrap(), "add");
   /// ```
   pub fn ref_closure(&self) -> &Closure {
     match &self {
@@ -279,19 +292,21 @@ impl Value {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::object::{Obj, ObjValue, Fun, Closure};
-  /// use spacelox_core::chunk::{Chunk};
-  /// use std::rc::Rc;
+  /// use spacelox_core::value::{Value, Allocation, Upvalue, Managed};
+  /// use std::ptr::NonNull;
   ///
-  /// let fun = Fun {
-  ///   name: Some("add".to_string()),
-  ///   arity: 3,
-  ///   upvalue_count: 0,
-  ///   chunk: Chunk::default()
+  /// let upvalue = Upvalue::Open(0);
+  /// 
+  /// let mut alloc = Box::new(Allocation::new(upvalue));
+  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+  /// let managed = Managed::from(ptr);
+  /// 
+  /// let value = Value::Upvalue(managed);
+  /// 
+  /// match value.ref_upvalue() {
+  ///   Upvalue::Open(index) => assert_eq!(*index, 0),
+  ///   Upvalue::Closed(_) => assert!(false),
   /// };
-  ///
-  /// let obj1 = Obj::new(ObjValue::Closure(Closure::new(&fun)));
-  /// assert_eq!(obj1.ref_closure().fun.name.clone().unwrap(), "add".to_string());
   /// ```
   pub fn ref_upvalue(&self) -> &Upvalue {
     match &self {
@@ -329,7 +344,7 @@ impl Value {
   }
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Clone, Debug)]
 pub struct Closure {
   pub fun: *const Fun,
   pub upvalues: Vec<Value>,
@@ -340,7 +355,7 @@ impl Closure {
   ///
   /// # Example
   /// ```
-  /// use spacelox_core::object::{Closure, Fun};
+  /// use spacelox_core::value::{Closure, Fun};
   /// use spacelox_core::chunk::Chunk;
   ///
   /// let fun = Box::new(Fun {
@@ -364,7 +379,7 @@ impl Closure {
   ///
   /// # Example
   /// ```
-  /// use spacelox_core::object::{Closure, Fun};
+  /// use spacelox_core::value::{Closure, Fun};
   /// use spacelox_core::chunk::Chunk;
   ///
   /// let fun = Box::new(Fun {

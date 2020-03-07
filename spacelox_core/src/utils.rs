@@ -25,7 +25,7 @@ pub fn next_boundary(source: &str, start: usize) -> usize {
 ///
 /// # Examples
 /// ```
-/// use spacelox_core::object::{Obj, ObjValue, copy_string};
+/// use spacelox_core::utils::copy_string;
 /// use spacelox_core::token::{Token, TokenKind};
 ///
 /// let token = Token {
