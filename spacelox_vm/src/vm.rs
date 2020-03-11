@@ -51,14 +51,25 @@ pub struct Vm {
 
   /// All the native functions
   pub natives: Vec<Rc<dyn NativeFun>>,
+
+  /// The vm's garbage collector
+  gc: Gc,
+
+  /// A persisted set of globals most for a repl context
+  globals: HashMap<Managed<IStr>, Value>
 }
 
 impl Vm {
   pub fn new(stack: Vec<Value>, frames: Vec<CallFrame>, natives: Vec<Rc<dyn NativeFun>>) -> Vm {
+    let mut gc = Gc::new();
+    let globals = define_globals(&natives, &mut gc);
+
     Vm {
       stack,
       frames,
       natives,
+      gc,
+      globals,
     }
   }
 
@@ -83,20 +94,18 @@ impl Vm {
   }
 
   fn interpret(&mut self, source: &str) -> InterpretResult {
-    let mut gc = Gc::new();
     let mut parser = Parser::new(source);
 
-    let compiler = Compiler::new(&mut parser, &mut gc, FunKind::Script);
+    let compiler = Compiler::new(&mut parser, &mut self.gc, FunKind::Script);
     let result = compiler.compile();
 
     if !result.success {
       return InterpretResult::CompileError;
     }
 
-    let script_closure = gc.allocate(Closure::new(result.fun));
+    let script_closure = self.gc.allocate(Closure::new(result.fun));
     let script = Value::Closure(Managed::from(script_closure));
-    let globals = define_globals(&self.natives, &mut gc);
-    let executor = VmExecutor::new(self, script, globals, gc);
+    let executor = VmExecutor::new(self, script);
     executor.run()
   }
 }
@@ -125,13 +134,13 @@ pub struct VmExecutor<'a> {
   pub stack: &'a mut Vec<Value>,
 
   /// A reference to a object currently in the vm
-  gc: Gc,
+  gc: &'a mut Gc,
 
   /// index to the top of the value stack
   pub stack_top: usize,
 
   /// global variable present in the vm
-  pub globals: HashMap<Managed<IStr>, Value>,
+  pub globals: &'a mut HashMap<Managed<IStr>, Value>,
 
   /// A collection of currently available upvalues
   pub open_upvalues: Vec<Managed<Upvalue>>,
@@ -145,16 +154,14 @@ impl<'a> VmExecutor<'a> {
   pub fn new(
     vm: &'a mut Vm,
     script: Value,
-    globals: HashMap<Managed<IStr>, Value>,
-    gc: Gc,
   ) -> VmExecutor<'a> {
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
       frame_count: 0,
       stack: &mut vm.stack,
-      gc,
+      gc: &mut vm.gc,
       stack_top: 1,
-      globals,
+      globals: &mut vm.globals,
       open_upvalues: Vec::with_capacity(100),
     };
 
