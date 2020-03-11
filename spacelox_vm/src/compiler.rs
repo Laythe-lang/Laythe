@@ -72,18 +72,13 @@ impl<'a, 's> Compiler<'a, 's> {
   /// # Examples
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
-  /// use spacelox_vm::memory::Allocator;
-  /// use spacelox_core::chunk::{Chunk};
-  /// use spacelox_core::object::{ObjValue, Obj, FunKind};
-  ///
-  /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
-  ///   Obj::new(value)
-  /// }
+  /// use spacelox_vm::memory::Gc;
+  /// use spacelox_core::value::FunKind;
   ///
   /// // an expression
   /// let source = "10 + 3".to_string();
   ///
-  /// let mut allocator = Allocator::new();
+  /// let mut allocator = Gc::new();
   /// let mut parser = Parser::new(&source);
   ///
   /// let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
@@ -152,22 +147,16 @@ impl<'a, 's> Compiler<'a, 's> {
   /// # Examples
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
-  /// use spacelox_vm::memory::Allocator;
-  /// use spacelox_core::chunk::{Chunk};
-  /// use spacelox_core::object::{ObjValue, Obj, FunKind};
-  ///
-  /// fn allocate<'a> (value: ObjValue<'a>) -> Obj<'a> {
-  ///   Obj::new(value)
-  /// }
+  /// use spacelox_vm::memory::Gc;
+  /// use spacelox_core::value::FunKind;
   ///
   /// // an expression
   /// let source = "3 / 2 + 10;".to_string();
   ///
-  ///
   /// let mut parser = Parser::new(&source);
-  /// let mut allocator = Allocator::new();
+  /// let mut gc = Gc::new();
   ///
-  /// let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
+  /// let compiler = Compiler::new(&mut parser, &mut gc, FunKind::Script);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
@@ -1261,18 +1250,17 @@ mod test {
     Fun((u8, Vec<ByteCodeTest>)),
   }
 
-  fn test_compile<'a>(src: String) -> Box<Fun> {
-    let mut allocator = Gc::new();
+  fn test_compile<'a>(src: String, gc: &mut Gc) -> Managed<Fun> {
     let mut parser = Parser::new(&src);
 
-    let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
+    let compiler = Compiler::new(&mut parser, gc, FunKind::Script);
     let result = compiler.compile();
     assert_eq!(result.success, true);
 
-    Box::new((*result.fun).clone())
+    result.fun
   }
 
-  fn assert_simple_bytecode(fun: Box<Fun>, code: &[ByteCode]) {
+  fn assert_simple_bytecode(fun: Managed<Fun>, code: &[ByteCode]) {
     let instructions = fun.chunk.instructions.clone();
     assert_eq!(instructions.len(), code.len());
 
@@ -1313,7 +1301,8 @@ mod test {
   fn op_print() {
     let example = "print 10;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1344,7 +1333,8 @@ mod test {
     "
     .to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       &fun,
       &vec![
@@ -1408,7 +1398,8 @@ mod test {
     "
     .to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       &fun,
       &vec![
@@ -1449,7 +1440,8 @@ mod test {
   fn empty_fun() {
     let example = "fun example() {} example();".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       &fun,
       &vec![
@@ -1481,7 +1473,8 @@ mod test {
     "
     .to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       &fun,
       &vec![
@@ -1511,7 +1504,8 @@ mod test {
   fn empty_fun_basic() {
     let example = "fun example() { var a = 10; return a; } example();".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       &fun,
       &vec![
@@ -1539,7 +1533,8 @@ mod test {
   fn for_loop() {
     let example = "for (var x = 0; x < 10; x = x + 1) { print(x); }".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
       fun,
@@ -1571,7 +1566,8 @@ mod test {
   #[test]
   fn while_loop() {
     let example = "while (true) { print 10; }".to_string();
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
       fun,
@@ -1593,7 +1589,8 @@ mod test {
   fn if_condition() {
     let example = "if (3 < 10) { print \"hi\"; }".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
       fun,
@@ -1617,7 +1614,8 @@ mod test {
   fn if_else_condition() {
     let example = "if (3 < 10) { print \"hi\"; } else { print \"bye\"; }".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
       fun,
@@ -1643,7 +1641,8 @@ mod test {
   fn declare_local() {
     let example = "{ var x = 10; }".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1659,7 +1658,8 @@ mod test {
   fn op_get_local() {
     let example = "{ var x = 10; print(x); }".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1677,7 +1677,8 @@ mod test {
   fn op_set_local() {
     let example = "{ var x = 10; x = 5; }".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
       fun,
@@ -1697,7 +1698,8 @@ mod test {
   fn op_define_global_nil() {
     let example = "var x;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
       fun,
@@ -1714,7 +1716,8 @@ mod test {
   fn op_define_global_val() {
     let example = "var x = 10;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
       fun,
@@ -1731,7 +1734,8 @@ mod test {
   fn op_get_global() {
     let example = "print x;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1747,7 +1751,8 @@ mod test {
   fn op_set_global() {
     let example = "x = \"cat\";".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1764,7 +1769,8 @@ mod test {
   fn op_pop() {
     let example = "false;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1780,7 +1786,8 @@ mod test {
   fn op_return() {
     let example = "".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(fun, &vec![ByteCode::Nil, ByteCode::Return]);
   }
 
@@ -1788,7 +1795,8 @@ mod test {
   fn op_number() {
     let example = "5.18;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1804,7 +1812,8 @@ mod test {
   fn op_string() {
     let example = "\"example\";".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1820,7 +1829,8 @@ mod test {
   fn op_false() {
     let example = "false;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1836,7 +1846,8 @@ mod test {
   fn op_true() {
     let example = "true;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1852,7 +1863,8 @@ mod test {
   fn op_nil() {
     let example = "nil;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1868,7 +1880,8 @@ mod test {
   fn op_not() {
     let example = "!false;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1885,7 +1898,8 @@ mod test {
   fn op_negate() {
     let example = "-15;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1902,7 +1916,8 @@ mod test {
   fn op_add() {
     let example = "10 + 4;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1920,7 +1935,8 @@ mod test {
   fn op_subtract() {
     let example = "10 - 4;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1938,7 +1954,8 @@ mod test {
   fn op_divide() {
     let example = "10 / 4;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1956,7 +1973,8 @@ mod test {
   fn op_multi() {
     let example = "10 * 4;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1974,7 +1992,8 @@ mod test {
   fn op_equal() {
     let example = "true == nil;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -1992,7 +2011,8 @@ mod test {
   fn op_not_equal() {
     let example = "true != nil;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -2011,7 +2031,8 @@ mod test {
   fn op_less() {
     let example = "3 < 5;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -2029,7 +2050,8 @@ mod test {
   fn op_less_equal() {
     let example = "3 <= 5;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -2048,7 +2070,8 @@ mod test {
   fn op_greater() {
     let example = "3 > 5;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -2066,7 +2089,8 @@ mod test {
   fn op_greater_equal() {
     let example = "3 >= 5;".to_string();
 
-    let fun = test_compile(example);
+    let mut gc = Gc::new();
+    let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
       &vec![

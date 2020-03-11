@@ -7,9 +7,11 @@ use std::fs::read_to_string;
 use std::process;
 
 fn main() {
-  let fun = Box::new(Fun::default());
+  let fun = Fun::default();
   let mut gc = Gc::new();
-  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+
+  let alloc = gc.allocate(fun);
+  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
 
   let frames = vec![CallFrame::new(closure); FRAME_MAX];
   let stack = vec![Value::Nil; DEFAULT_STACK_MAX];

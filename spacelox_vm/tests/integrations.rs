@@ -25,7 +25,8 @@ fn build() {
   let fun = Fun::default();
   let mut gc = Gc::new();
 
-  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+  let alloc = gc.allocate(fun);
+  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
   create_vm(closure);
   assert_eq!(true, true);
 }
@@ -41,19 +42,22 @@ fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
 }
 
 fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Error> {
-  let fun = Box::new(Fun::default());
+  let fun = Fun::default();
   let mut gc = Gc::new();
-  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+
+  let alloc = gc.allocate(fun);
+  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
 
   for path in paths {
     let mut vm = create_vm(closure.clone());
 
     let assert = fixture_path(path).expect("No parent directory");
+    let debug_path = assert.to_str().map(|s| s.to_string());
     let mut file = File::open(assert)?;
     let mut source = String::new();
     file.read_to_string(&mut source)?;
 
-    assert_eq!(vm.run(&source), result);
+    assert_eq!(vm.run(&source), result, "Failing file {:?}", debug_path);
   }
 
   Ok(())
@@ -61,9 +65,11 @@ fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Er
 
 #[test]
 fn clock() -> Result<(), std::io::Error> {
-  let fun = Box::new(Fun::default());
+  let fun = Fun::default();
   let mut gc = Gc::new();
-  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+
+  let alloc = gc.allocate(fun);
+  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
   let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/clock.lox").expect("No parent directory");
@@ -78,9 +84,11 @@ fn clock() -> Result<(), std::io::Error> {
 
 #[test]
 fn assert() -> Result<(), std::io::Error> {
-  let fun = Box::new(Fun::default());
+  let fun = Fun::default();
   let mut gc = Gc::new();
-  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+
+  let alloc = gc.allocate(fun);
+  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
   let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/assert.lox").expect("No parent directory");
@@ -95,9 +103,11 @@ fn assert() -> Result<(), std::io::Error> {
 
 #[test]
 fn assert_eq() -> Result<(), std::io::Error> {
-  let fun = Box::new(Fun::default());
+  let fun = Fun::default();
   let mut gc = Gc::new();
-  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+
+  let alloc = gc.allocate(fun);
+  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
   let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/assert_eq.lox").expect("No parent directory");
@@ -112,9 +122,11 @@ fn assert_eq() -> Result<(), std::io::Error> {
 
 #[test]
 fn assert_ne() -> Result<(), std::io::Error> {
-  let fun = Box::new(Fun::default());
+  let fun = Fun::default();
   let mut gc = Gc::new();
-  let closure = Managed::from(gc.allocate(Closure::new(&fun)));
+
+  let alloc = gc.allocate(fun);
+  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
   let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/assert_ne.lox").expect("No parent directory");

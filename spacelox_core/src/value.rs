@@ -6,7 +6,8 @@ use std::cell::RefCell;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::mem::discriminant;
-use std::ops::Deref;
+use std::mem::replace;
+use std::ops::{Deref, DerefMut};
 use std::ptr;
 use std::ptr::NonNull;
 use std::rc::Rc;
@@ -24,24 +25,24 @@ impl Upvalue {
   /// ```
   /// use spacelox_core::value::{Value, Upvalue};
   /// use std::rc::Rc;
-  /// 
+  ///
   /// let stack = vec![
   ///   Value::Number(10.0)
   /// ];
   ///
   /// let mut upvalue = Upvalue::Open(0);
-  /// upvalue = upvalue.hoist(&stack);
+  /// upvalue.hoist(&stack);
   ///
   /// match upvalue {
   ///   Upvalue::Closed(store) => assert_eq!(store.replace(Value::Nil), Value::Number(10.0)),
   ///   Upvalue::Open(_) => assert!(false),
   /// };
   /// ```
-  pub fn hoist(&self, stack: &Vec<Value>) -> Upvalue {
+  pub fn hoist(&mut self, stack: &Vec<Value>) {
     match self {
       Upvalue::Open(index) => {
         let value = unsafe { stack.get_unchecked(*index) }.clone();
-        Upvalue::Closed(Rc::new(RefCell::new(value)))
+        replace(self, Upvalue::Closed(Rc::new(RefCell::new(value))));
       }
       Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
     }
@@ -131,7 +132,7 @@ impl fmt::Display for Value {
         Upvalue::Open(index) => write!(f, "<upvalue open {}>", index),
         Upvalue::Closed(store) => write!(f, "<upvalue closed {}>", store.borrow()),
       },
-      Self::Closure(closure) => match unsafe { &(*closure.fun).name } {
+      Self::Closure(closure) => match &closure.fun.name {
         Some(name) => write!(f, "<fn {}>", name),
         None => write!(f, "<script>"),
       },
@@ -165,10 +166,10 @@ impl PartialEq for Value {
       (Self::Bool(b1), Self::Bool(b2)) => b1 == b2,
       (Self::Nil, Self::Nil) => true,
       (Self::String(string1), Self::String(string2)) => string1 == string2,
-      (Self::Fun(fun1), Self::Fun(fun2)) => ptr::eq(fun1, fun2),
-      (Self::Closure(closure1), Self::Closure(closure2)) => ptr::eq(closure1, closure2),
-      (Self::Native(native1), Self::Native(native2)) => ptr::eq(native1, native2),
-      (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => ptr::eq(upvalue1, upvalue2),
+      (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
+      (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,
+      (Self::Native(native1), Self::Native(native2)) => native1 == native2,
+      (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => upvalue1 == upvalue2,
       _ => false,
     }
   }
@@ -219,13 +220,13 @@ impl Value {
   /// let mut alloc = Box::new(Allocation::new(str));
   /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
   /// let managed = Managed::from(ptr);
-  /// 
+  ///
   /// let value = Value::String(managed);
-  /// assert_eq!(value.ref_string(), "example");
+  /// assert_eq!(**value.ref_string(), IStr::new("example"));
   /// ```
-  pub fn ref_string<'o>(&'o self) -> &'o str {
+  pub fn ref_string<'o>(&'o self) -> &Managed<IStr> {
     match &self {
-      Self::String(str1) => &str1,
+      Self::String(str1) => str1,
       _ => panic!("Expected string"),
     }
   }
@@ -247,11 +248,11 @@ impl Value {
   /// let mut alloc = Box::new(Allocation::new(fun));
   /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
   /// let managed = Managed::from(ptr);
-  /// 
+  ///
   /// let value = Value::Fun(managed);
   /// assert_eq!(value.ref_fun().name.clone().unwrap(), "add");
   /// ```
-  pub fn ref_fun<'o>(&'o self) -> &'o Fun {
+  pub fn ref_fun(&self) -> &Managed<Fun> {
     match &self {
       Self::Fun(fun) => fun,
       _ => panic!("Expected function!"),
@@ -272,16 +273,18 @@ impl Value {
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default()
   /// };
-  /// let closure = Closure::new(&fun);
+  /// let mut alloc_fun = Box::new(Allocation::new(fun));
+  /// let managed_fun = Managed::from(unsafe { NonNull::new_unchecked(&mut *alloc_fun) });
   /// 
-  /// let mut alloc = Box::new(Allocation::new(closure));
-  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-  /// let managed = Managed::from(ptr);
-  /// 
-  /// let value = Value::Closure(managed);
-  /// assert_eq!(value.ref_closure().get_fun().name.clone().unwrap(), "add");
+  /// let closure = Closure::new(managed_fun);
+  ///
+  /// let mut alloc_closure = Box::new(Allocation::new(closure));
+  /// let managed_closure = Managed::from(unsafe { NonNull::new_unchecked(&mut *alloc_closure) });
+  ///
+  /// let value = Value::Closure(managed_closure);
+  /// assert_eq!(value.ref_closure().fun.name.clone().unwrap(), "add");
   /// ```
-  pub fn ref_closure(&self) -> &Closure {
+  pub fn ref_closure(&self) -> &Managed<Closure> {
     match &self {
       Self::Closure(closure) => closure,
       _ => panic!("Expected closure!"),
@@ -296,19 +299,19 @@ impl Value {
   /// use std::ptr::NonNull;
   ///
   /// let upvalue = Upvalue::Open(0);
-  /// 
+  ///
   /// let mut alloc = Box::new(Allocation::new(upvalue));
   /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
   /// let managed = Managed::from(ptr);
-  /// 
+  ///
   /// let value = Value::Upvalue(managed);
-  /// 
-  /// match value.ref_upvalue() {
-  ///   Upvalue::Open(index) => assert_eq!(*index, 0),
+  ///
+  /// match **value.ref_upvalue() {
+  ///   Upvalue::Open(index) => assert_eq!(index, 0),
   ///   Upvalue::Closed(_) => assert!(false),
   /// };
   /// ```
-  pub fn ref_upvalue(&self) -> &Upvalue {
+  pub fn ref_upvalue(&self) -> &Managed<Upvalue> {
     match &self {
       Self::Upvalue(upvalue) => &upvalue,
       _ => panic!("Expected upvalue!"),
@@ -346,7 +349,7 @@ impl Value {
 
 #[derive(PartialEq, Clone, Debug)]
 pub struct Closure {
-  pub fun: *const Fun,
+  pub fun: Managed<Fun>,
   pub upvalues: Vec<Value>,
 }
 
@@ -355,45 +358,27 @@ impl Closure {
   ///
   /// # Example
   /// ```
-  /// use spacelox_core::value::{Closure, Fun};
+  /// use spacelox_core::value::{Closure, Fun, Managed, Allocation};
   /// use spacelox_core::chunk::Chunk;
+  /// use std::ptr::NonNull;
   ///
-  /// let fun = Box::new(Fun {
+  /// let mut fun = Box::new(Allocation::new(Fun {
   ///   arity: 3,
   ///   upvalue_count: 2,
   ///   chunk: Chunk::default(),
   ///   name: Some("example".to_string())
-  /// });
+  /// }));
+  /// 
+  /// let managed_fun = Managed::from(unsafe { NonNull::new_unchecked(&mut *fun) });
   ///
-  /// let closure = Closure::new(&fun);
-  /// assert_eq!(closure.get_fun().name.as_ref().unwrap().clone(), "example".to_string());
+  /// let closure = Closure::new(managed_fun);
+  /// assert_eq!(closure.fun.name.as_ref().unwrap().clone(), "example".to_string());
   /// ```
-  pub fn new(fun: &Fun) -> Self {
+  pub fn new(fun: Managed<Fun>) -> Self {
     Closure {
       upvalues: Vec::with_capacity(fun.upvalue_count),
       fun,
     }
-  }
-
-  /// Dereferenced the underlying function captured by this closure
-  ///
-  /// # Example
-  /// ```
-  /// use spacelox_core::value::{Closure, Fun};
-  /// use spacelox_core::chunk::Chunk;
-  ///
-  /// let fun = Box::new(Fun {
-  ///   arity: 3,
-  ///   upvalue_count: 2,
-  ///   chunk: Chunk::default(),
-  ///   name: Some("example".to_string())
-  /// });
-  ///
-  /// let closure = Closure::new(&fun);
-  /// assert_eq!(closure.get_fun().name.as_ref().unwrap().clone(), "example".to_string());
-  /// ```
-  pub fn get_fun(&self) -> &Fun {
-    unsafe { &*self.fun }
   }
 }
 
@@ -441,7 +426,11 @@ impl<T: 'static + Trace + ?Sized> From<NonNull<Allocation<T>>> for Managed<T> {
 
 impl<T: 'static + Trace + ?Sized> Managed<T> {
   pub fn obj(&self) -> &Allocation<T> {
-    unsafe { &self.ptr.as_ref() }
+    unsafe { self.ptr.as_ref() }
+  }
+
+  pub fn obj_mut(&mut self) -> &mut Allocation<T> {
+    unsafe { self.ptr.as_mut() }
   }
 }
 
@@ -460,10 +449,21 @@ impl<T: 'static + Trace + ?Sized> Deref for Managed<T> {
   }
 }
 
+impl<T: 'static + Trace + ?Sized> DerefMut for Managed<T> {
+  fn deref_mut(&mut self) -> &mut T {
+    &mut self.obj_mut().data
+  }
+}
+
 impl<T: 'static + PartialEq + Trace + ?Sized> PartialEq for Managed<T> {
   fn eq(&self, other: &Managed<T>) -> bool {
     let left_inner: &T = &*self;
     let right_inner: &T = &*other;
+
+    if ptr::eq(left_inner, right_inner) {
+      return true;
+    }
+
     left_inner.eq(right_inner)
   }
 }
@@ -472,7 +472,7 @@ impl<T: 'static + Eq + Trace + ?Sized> Eq for Managed<T> {}
 impl<T: 'static + Hash + Trace + ?Sized> Hash for Managed<T> {
   fn hash<H: Hasher>(&self, state: &mut H) {
     let inner: &T = &*self;
-    inner.hash(state)
+    inner.hash(state);
   }
 }
 

@@ -47,6 +47,14 @@ impl<'a> Gc {
     self.allocate(interned)
   }
 
+  pub fn copy_managed<T: 'static + Trace + Clone>(
+    &mut self,
+    managed: &Managed<T>,
+  ) -> NonNull<Allocation<T>> {
+    let cloned = (**managed).clone();
+    self.allocate(cloned)
+  }
+
   pub fn collect_garbage(&mut self, vm: &mut VmExecutor) {
     #[cfg(feature = "debug_gc")]
     {

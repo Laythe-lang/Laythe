@@ -209,7 +209,6 @@ impl NativeFun for NativeAssertNe {
   }
 }
 
-
 #[cfg(test)]
 mod test {
   use super::*;
@@ -234,20 +233,19 @@ mod test {
       let result1 = clock.call(values);
       let res1 = match result1 {
         NativeResult::Success(res) => res,
-        NativeResult::RuntimeError(_) => panic!()
+        NativeResult::RuntimeError(_) => panic!(),
       };
 
       let result2 = clock.call(values);
       let res2 = match result2 {
         NativeResult::Success(res) => res,
-        NativeResult::RuntimeError(_) => panic!()
+        NativeResult::RuntimeError(_) => panic!(),
       };
 
       match (res1, res2) {
-        (Value::Number(num1), Value::Number(num2)) => assert!(num1 >= num2),
-        _ => panic!()
+        (Value::Number(num1), Value::Number(num2)) => assert!(num1 <= num2),
+        _ => panic!(),
       }
     }
   }
 }
-

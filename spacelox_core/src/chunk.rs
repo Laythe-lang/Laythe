@@ -274,7 +274,7 @@ mod test {
       assert_eq!(chunk.instructions.len(), 1);
       match chunk.instructions[0] {
         ByteCode::Nil => assert!(true),
-        _ => assert!(false)
+        _ => assert!(false),
       }
     }
 
@@ -286,7 +286,7 @@ mod test {
       assert_eq!(index, 0);
       match chunk.constants[0] {
         Value::Nil => assert!(true),
-        _ => assert!(false)
+        _ => assert!(false),
       }
     }
 

@@ -50,8 +50,8 @@
       "cargo": {
         "args": [
           "build",
-          "--bin=space_lox_main",
-          "--package=space_lox"
+          "--bin=spacelox",
+          "--package=spacelox"
         ],
         "filter": {
           "name": "spacelox",
@@ -59,10 +59,10 @@
         }
       },
       "args": [
-        "fixture/while/closure_in_body.lox"
+        "while/return_closure.lox"
       ],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}/spacelox"
+      "cwd": "${workspaceFolder}/spacelox_vm/fixture"
     }
   ]
 }

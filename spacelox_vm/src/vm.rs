@@ -13,9 +13,6 @@ use std::rc::Rc;
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
 
-#[cfg(feature = "debug_upvalue")]
-use crate::object::UpvalueLocation;
-
 pub const FRAME_MAX: usize = std::u8::MAX as usize;
 pub const DEFAULT_STACK_MAX: usize = FRAME_MAX * 16;
 
@@ -96,7 +93,7 @@ impl Vm {
       return InterpretResult::CompileError;
     }
 
-    let script_closure = gc.allocate(Closure::new(&result.fun));
+    let script_closure = gc.allocate(Closure::new(result.fun));
     let script = Value::Closure(Managed::from(script_closure));
     let globals = define_globals(&self.natives, &mut gc);
     let executor = VmExecutor::new(self, script, globals, gc);
@@ -109,7 +106,7 @@ fn define_globals<'a>(natives: &[Rc<dyn NativeFun>], gc: &mut Gc) -> HashMap<Man
   natives.iter().for_each(|native| {
     let name = Managed::from(gc.allocate_string(&native.meta().name));
 
-    let native_value = Value::Native(Managed::from(gc.allocate(Rc::clone(native))));
+    let native_value = Value::Native(Managed::from(gc.allocate(native.clone())));
 
     globals.insert(name, native_value);
   });
@@ -337,15 +334,11 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn call(&mut self, closure: &Managed<Closure>, arg_count: u8) -> Option<InterpretResult> {
-    if (arg_count as u16) != closure.get_fun().arity {
+    if (arg_count as u16) != closure.fun.arity {
       self.runtime_error(&format!(
         "Function {} expected {} arguments but got {}",
-        closure
-          .get_fun()
-          .name
-          .clone()
-          .unwrap_or("script".to_string()),
-        closure.get_fun().arity,
+        closure.fun.name.clone().unwrap_or("script".to_string()),
+        closure.fun.arity,
         arg_count
       ));
       return Some(InterpretResult::RuntimeError);
@@ -358,7 +351,7 @@ impl<'a> VmExecutor<'a> {
 
     self.frame_count += 1;
     let frame = &mut self.frames[self.frame_count - 1];
-    frame.closure = closure.clone();
+    frame.closure = Managed::from(self.gc.copy_managed(closure));
     frame.ip = 0;
     frame.slots = self.stack_top - (arg_count as usize + 1);
     None
@@ -384,14 +377,14 @@ impl<'a> VmExecutor<'a> {
 
     for frame in self.frames[0..self.frame_count].iter().rev() {
       let closure = &frame.closure;
-      let location = match &closure.get_fun().name {
+      let location = match &closure.fun.name {
         Some(name) => format!("{}()", name),
         None => "script".to_string(),
       };
 
       eprintln!(
         "[line {}] in {}",
-        closure.get_fun().chunk.get_line(frame.ip),
+        closure.fun.chunk.get_line(frame.ip),
         location
       );
     }
@@ -409,7 +402,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn read_constant<'b>(frame: &'b CallFrame, index: u8) -> &'b Value {
-    &frame.closure.get_fun().chunk.constants[index as usize]
+    &frame.closure.fun.chunk.constants[index as usize]
   }
 
   fn push(&mut self, value: Value) {
@@ -496,7 +489,7 @@ impl<'a> VmExecutor<'a> {
     let value = self.peek(0);
     let upvalue = &self.current_frame().closure.upvalues[slot as usize];
 
-    let open_index = match upvalue.ref_upvalue() {
+    let open_index = match &**upvalue.ref_upvalue() {
       Upvalue::Open(index) => Some(*index),
       Upvalue::Closed(store) => {
         &store.replace(value.clone());
@@ -518,7 +511,7 @@ impl<'a> VmExecutor<'a> {
   fn op_get_upvalue(&mut self, slot: u8) {
     let upvalue = &self.current_frame().closure.upvalues[slot as usize];
 
-    let value = match upvalue.ref_upvalue() {
+    let value = match &**upvalue.ref_upvalue() {
       Upvalue::Open(index) => self.stack[*index].clone(),
       Upvalue::Closed(store) => store.borrow().clone(),
     };
@@ -638,7 +631,7 @@ impl<'a> VmExecutor<'a> {
   fn op_closure(&mut self, index: u8) {
     let frame = self.current_frame();
     let fun = VmExecutor::read_constant(frame, index).ref_fun();
-    let mut closure = Closure::new(fun);
+    let mut closure = Closure::new(fun.clone());
 
     for _ in 0..fun.upvalue_count {
       let op_code = self.frame_instruction().clone();
@@ -646,10 +639,9 @@ impl<'a> VmExecutor<'a> {
 
       if let ByteCode::UpvalueIndex(upvalue_index) = op_code {
         match upvalue_index {
-          UpvalueIndex::Local(local) => {
-            let slots = self.current_frame().slots;
-            let index = slots + local as usize;
-            closure.upvalues.push(self.capture_upvalue(index));
+          UpvalueIndex::Local(index) => {
+            let total_index = self.current_frame().slots + index as usize;
+            closure.upvalues.push(self.capture_upvalue(total_index));
           }
           UpvalueIndex::Upvalue(upvalue) => {
             let upvalue = &self.current_frame().closure.upvalues[upvalue as usize];
@@ -691,7 +683,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn close_upvalues(&mut self, last_index: usize) {
-    for upvalue in self.open_upvalues.iter().rev() {
+    for upvalue in self.open_upvalues.iter_mut().rev() {
       let index = match **upvalue {
         Upvalue::Open(index) => index,
         Upvalue::Closed(_) => panic!("Unexpected closed upvalue"),
@@ -701,9 +693,7 @@ impl<'a> VmExecutor<'a> {
         break;
       }
 
-      let hoisted = Value::Upvalue(Managed::from(self.gc.allocate(upvalue.hoist(self.stack))));
-
-      self.stack[index] = hoisted;
+      upvalue.hoist(self.stack);
     }
 
     self.open_upvalues.retain(|upvalue| upvalue.is_open())
@@ -736,27 +726,30 @@ impl<'a> VmExecutor<'a> {
     {
       print!("Upvalues: ");
       let frame = self.current_frame();
-      for i in 0..frame.closure.get_fun().upvalue_count {
-        match &frame.closure.upvalues[i].borrow().location {
-          Upvalue::Stack(loc) => {
-            print!("[ stack {} ]", unsafe { &**loc });
+
+      frame
+        .closure
+        .upvalues
+        .iter()
+        .for_each(|upvalue| match &**upvalue.ref_upvalue() {
+          Upvalue::Open(index) => {
+            print!("[ stack {} ]", self.stack[*index + frame.slots]);
           }
-          Upvalue::Heap(loc) => {
-            print!("[ heap {} ]", loc);
+          Upvalue::Closed(closed) => {
+            print!("[ heap {} ]", closed.borrow());
           }
-        }
-      }
+        });
       println!();
     }
 
     let frame = self.current_frame();
-    disassemble_instruction(&frame.closure.get_fun().chunk, frame.ip);
+    disassemble_instruction(&frame.closure.fun.chunk, frame.ip);
   }
 
   /// Get the current instruction from the present call frame
   fn frame_instruction(&self) -> &ByteCode {
     let frame = self.current_frame();
-    &frame.closure.get_fun().chunk.instructions[frame.ip]
+    &frame.closure.fun.chunk.instructions[frame.ip]
   }
 }
 
