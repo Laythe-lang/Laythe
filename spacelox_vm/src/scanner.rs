@@ -394,7 +394,7 @@ fn visible_whitespace(white_space: &str) -> &str {
   match white_space {
     " " => "<space>",
     "\t" => "<tab>",
-    "\r" => "<carageReturn>",
+    "\r" => "<carriage return>",
     "\n" => "<newline>",
     "/" => "/",
     _ => white_space,
@@ -475,7 +475,6 @@ mod test {
       TokenKind::Star,
       TokenGen::Symbol(Box::new(|| "*".to_string())),
     );
-
     map.insert(
       TokenKind::Bang,
       TokenGen::Comparator(Box::new(|| "!".to_string())),
@@ -508,7 +507,6 @@ mod test {
       TokenKind::LessEqual,
       TokenGen::Comparator(Box::new(|| "<=".to_string())),
     );
-
     map.insert(
       TokenKind::Identifier,
       TokenGen::ALpha(Box::new(|| "example".to_string())),
@@ -521,7 +519,6 @@ mod test {
       TokenKind::Number,
       TokenGen::ALpha(Box::new(|| "12345".to_string())),
     );
-
     map.insert(
       TokenKind::And,
       TokenGen::ALpha(Box::new(|| "and".to_string())),

@@ -59,7 +59,7 @@
         }
       },
       "args": [
-        "while/return_closure.lox"
+        "assert/assert_eq.lox"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture"

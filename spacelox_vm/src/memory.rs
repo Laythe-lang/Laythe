@@ -1,67 +1,82 @@
-use crate::vm::VmExecutor;
-use spacelox_core::value::{Allocation, Managed, Trace, Value};
+use spacelox_core::managed::{Allocation, Manageable, Managed, Trace};
 use spacelox_interner::IStr;
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::fmt;
 use std::ptr::NonNull;
 
 #[cfg(feature = "debug_gc")]
 use std::mem;
 
 pub struct Gc {
-  objects: Vec<Box<Allocation<dyn Trace>>>,
+  objects: RefCell<Vec<Box<Allocation<dyn Manageable>>>>,
 }
 
 impl<'a> Gc {
   pub fn new() -> Self {
     Gc {
-      objects: Vec::new(),
+      objects: RefCell::new(Vec::with_capacity(100)),
     }
   }
 
-  pub fn allocate<T: 'static + Trace>(&mut self, data: T) -> NonNull<Allocation<T>> {
-    // self.reallocate();
+  pub fn manage<T: 'static + Manageable, C: Trace>(&self, data: T, context: &C) -> Managed<T> {
+    Managed::from(self.allocate(data, context))
+  }
+
+  pub fn manage_string<C: Trace>(&self, string: &str, context: &C) -> Managed<IStr> {
+    let interned = IStr::new(string);
+    self.manage(interned, context)
+  }
+
+  pub fn copy_string<C: Trace>(&self, string_ptr: &str, context: &C) -> Managed<IStr> {
+    let interned = IStr::new(string_ptr);
+    self.manage(interned, context)
+  }
+
+  pub fn copy_managed<T: 'static + Manageable + Clone, C: Trace>(
+    &self,
+    managed: &Managed<T>,
+    context: &C,
+  ) -> Managed<T> {
+    let cloned = (**managed).clone();
+    Managed::from(self.allocate(cloned, context))
+  }
+
+  fn allocate<T: 'static + Manageable, C: Trace>(
+    &self,
+    data: T,
+    context: &C,
+  ) -> NonNull<Allocation<T>> {
+    // #[cfg(feature = "debug_stress_gc")]
+    self.collect_garbage(context);
+
     let mut alloc = Box::new(Allocation::new(data));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-    self.objects.push(alloc);
+    self.objects.borrow_mut().push(alloc);
 
     #[cfg(feature = "debug_gc")]
     {
       println!(
         "{:p} allocate {} for {}",
-        &**value,
+        ptr.as_ptr(),
         mem::size_of::<T>(),
-        obj.obj_type()
+        unsafe { ptr.as_ref() }.alloc_type()
       );
     }
 
     ptr
   }
 
-  pub fn allocate_string(&mut self, string: &str) -> NonNull<Allocation<IStr>> {
-    let interned = IStr::new(string);
-    self.allocate(interned)
-  }
-
-  pub fn copy_string(&mut self, string_ptr: &str) -> NonNull<Allocation<IStr>> {
-    let interned = IStr::new(string_ptr);
-    self.allocate(interned)
-  }
-
-  pub fn copy_managed<T: 'static + Trace + Clone>(
-    &mut self,
-    managed: &Managed<T>,
-  ) -> NonNull<Allocation<T>> {
-    let cloned = (**managed).clone();
-    self.allocate(cloned)
-  }
-
-  pub fn collect_garbage(&mut self, vm: &mut VmExecutor) {
+  pub fn collect_garbage<C: Trace>(&self, context: &C) {
     #[cfg(feature = "debug_gc")]
     {
       println!("-- gc begin");
     }
 
-    self.mark_roots(vm);
+    let mut gray_stack = Vec::with_capacity(40);
+    if self.mark(context, &mut gray_stack) {
+      self.trace(&mut gray_stack);
+      self.sweep();
+    }
 
     #[cfg(feature = "debug_gc")]
     {
@@ -69,63 +84,67 @@ impl<'a> Gc {
     }
   }
 
-  pub fn mark_roots(&mut self, vm: &VmExecutor) {
-    vm.stack[0..vm.stack_top].iter().for_each(|value| {
-      mark_value(value);
-    });
-
-    vm.frames[0..vm.frame_count]
-      .iter()
-      .for_each(|frame| mark_object(&frame.closure));
-
-    vm.open_upvalues
-      .iter()
-      .for_each(|upvalue| mark_object(upvalue));
-
-    mark_table(&vm.globals);
+  fn mark<T: Trace>(&self, root: &T, gray_stack: &mut Vec<Managed<dyn Manageable>>) -> bool {
+    root.trace(&mut |obj| (self.mark_obj(obj, gray_stack)))
   }
 
-  pub fn free_objects(&mut self) {
-    self.objects.retain(|obj| {
-      #[cfg(feature = "debug_gc")]
-      {
-        println!("{:p} free {}", obj, obj.obj_type());
-      }
-      !(**obj).marked()
-    });
-  }
+  fn trace(&self, gray_stack: &mut Vec<Managed<dyn Manageable>>) {
+    let mut obj_buffer: Vec<Managed<dyn Manageable>> = Vec::with_capacity(60);
 
-  pub fn reallocate(&mut self) {
-    #[cfg(feature = "debug_gc")]
-    {
-      self.collect_garbage();
+    while let Some(gray) = gray_stack.pop() {
+      gray.trace(&mut |obj| obj_buffer.push(obj));
+
+      obj_buffer.drain(..).for_each(|obj| {
+        self.mark_obj(obj, gray_stack);
+      })
     }
   }
-}
 
-fn mark_table(table: &HashMap<Managed<IStr>, Value>) {
-  table.iter().for_each(|(key, val)| {
-    mark_object(key);
-    mark_value(val);
-  });
-}
+  pub fn sweep(&self) {
+    self.objects.borrow_mut().retain(|obj| {
+      let retain = (**obj).unmark();
 
-fn mark_value(value: &Value) {
-  match value {
-    Value::String(string) => mark_object(string),
-    Value::Fun(fun) => mark_object(fun),
-    Value::Closure(closure) => mark_object(closure),
-    Value::Native(native) => mark_object(native),
-    Value::Upvalue(upvalue) => mark_object(upvalue),
-    _ => (),
+      #[cfg(feature = "debug_gc")]
+      {
+        if !retain {
+          println!("{:p} free {}", obj, (**obj).debug());
+        }
+      }
+
+      retain
+    });
+  }
+
+  fn mark_obj(
+    &self,
+    managed: Managed<dyn Manageable>,
+    gray_stack: &mut Vec<Managed<dyn Manageable>>,
+  ) {
+    if managed.obj().mark() {
+      return;
+    }
+
+    #[cfg(feature = "debug_gc")]
+    {
+      println!("{:p} mark {}", &managed, managed.debug())
+    }
+
+    gray_stack.push(managed);
   }
 }
 
-fn mark_object<'a, T: 'a + Trace>(managed: &Managed<T>) {
-  managed.obj().mark();
+pub struct NoGc();
 
-  #[cfg(feature = "debug_gc")]
-  {
-    println!("{:p} mark {}", managed, managed)
+impl fmt::Display for NoGc {
+  fn fmt(&self, _: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    unreachable!()
   }
 }
+
+impl Trace for NoGc {
+  fn trace(&self, _: &mut dyn FnMut(Managed<(dyn Manageable)>)) -> bool {
+    false
+  }
+}
+
+pub static NO_GC: NoGc = NoGc {};

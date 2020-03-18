@@ -1,13 +1,15 @@
-use crate::memory::Gc;
+use crate::memory::{Gc, NO_GC};
 use crate::scanner::Scanner;
 use spacelox_core::chunk::{ByteCode, Chunk, UpvalueIndex};
+use spacelox_core::managed::Managed;
 use spacelox_core::token::{Token, TokenKind};
 use spacelox_core::utils::copy_string;
-use spacelox_core::value::{Fun, FunKind, Managed, Value};
+use spacelox_core::value::{Fun, FunKind, Value};
 use std::convert::TryInto;
 
 #[cfg(debug_assertions)]
 use crate::debug::disassemble_chunk;
+use spacelox_interner::IStr;
 
 /// The result of a compilation
 pub struct CompilerResult {
@@ -35,7 +37,7 @@ pub struct Local {
 /// The spacelox compiler for converting tokens to bytecode
 pub struct Compiler<'a, 's> {
   /// The current function
-  fun: Fun,
+  fun: Managed<Fun>,
 
   /// The type the current function scope
   fun_kind: FunKind,
@@ -86,16 +88,21 @@ impl<'a, 's> Compiler<'a, 's> {
   pub fn new(parser: &'a mut Parser<'s>, gc: &'a mut Gc, fun_kind: FunKind) -> Self {
     let name = match fun_kind {
       FunKind::Script => Option::None,
-      _ => Some(parser.previous.lexeme.to_string()),
+      _ => Some(IStr::new(&parser.previous.lexeme)),
     };
 
-    Self {
-      fun: Fun {
+    let fun = gc.manage(
+      Fun {
         arity: 0,
         upvalue_count: 0,
         name,
         chunk: Chunk::default(),
       },
+      &NO_GC,
+    );
+
+    Self {
+      fun,
       fun_kind,
       gc,
       parser,
@@ -115,14 +122,9 @@ impl<'a, 's> Compiler<'a, 's> {
   }
 
   /// Construct an inner compiler used to compile functions inside of a script
-  fn child(name: Option<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
-    Self {
-      fun: Fun {
-        arity: 0,
-        upvalue_count: 0,
-        name,
-        chunk: Chunk::default(),
-      },
+  fn child(name: Option<IStr>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
+    let mut child = Self {
+      fun: unsafe { (*enclosing).fun },
       fun_kind,
       gc: unsafe { (*enclosing).gc },
       parser: unsafe { (*enclosing).parser },
@@ -138,7 +140,19 @@ impl<'a, 's> Compiler<'a, 's> {
         std::u8::MAX as usize
       ],
       upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
-    }
+    };
+
+    child.fun = child.gc.manage(
+      Fun {
+        arity: 0,
+        upvalue_count: 0,
+        name,
+        chunk: Chunk::default(),
+      },
+      &NO_GC,
+    );
+
+    child
   }
 
   /// Compile the provided source code onto the chunk
@@ -167,12 +181,9 @@ impl<'a, 's> Compiler<'a, 's> {
     if let TokenKind::Eof = self.parser.current.kind {
       self.end_compiler();
 
-      let fun = self.gc.allocate(self.fun);
-      let managed = Managed::from(fun);
-
       return CompilerResult {
         success: !self.parser.had_error,
-        fun: managed,
+        fun: self.fun,
       };
     }
 
@@ -189,12 +200,9 @@ impl<'a, 's> Compiler<'a, 's> {
       .consume(TokenKind::Eof, "Expected end of expression.");
     self.end_compiler();
 
-    let fun = self.gc.allocate(self.fun);
-    let managed = Managed::from(fun);
-
     CompilerResult {
       success: !self.parser.had_error,
-      fun: managed,
+      fun: self.fun,
     }
   }
 
@@ -266,7 +274,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Parse a function declaration and body
   fn function(&mut self, fun_kind: FunKind) {
-    let name = Some(self.parser.previous.lexeme.to_string());
+    let name = Some(IStr::new(&self.parser.previous.lexeme));
 
     let mut fun_compiler = Compiler::child(name, fun_kind, &mut *self);
     fun_compiler.begin_scope();
@@ -308,8 +316,7 @@ impl<'a, 's> Compiler<'a, 's> {
     let upvalue_count = fun_compiler.fun.upvalue_count;
     // let boxed_fun = Box::new(fun_compiler.fun);
 
-    let alloc_fun = self.gc.allocate(fun_compiler.fun);
-    let index = self.make_constant(Value::Fun(Managed::from(alloc_fun)));
+    let index = self.make_constant(Value::Fun(fun_compiler.fun));
     self.emit_byte(ByteCode::Closure(index));
 
     // emit upvalue index instructions
@@ -538,7 +545,7 @@ impl<'a, 's> Compiler<'a, 's> {
   #[cfg(debug_assertions)]
   fn print_chunk(&self) {
     if true || self.parser.had_error {
-      let script = "<script>".to_string();
+      let script = IStr::new("<script>");
 
       let name = match &self.fun.name {
         Some(name) => name,
@@ -627,7 +634,9 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Compile a string literal
   fn string(&mut self) {
-    let string = self.gc.allocate_string(&copy_string(&self.parser.previous));
+    let string = self
+      .gc
+      .manage_string(&copy_string(&self.parser.previous), &NO_GC);
     let value = Value::String(Managed::from(string));
     self.emit_constant(value)
   }
@@ -779,7 +788,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u8 {
-    let identifer = self.gc.allocate_string(&name.lexeme);
+    let identifer = self.gc.manage_string(&name.lexeme, &NO_GC);
     self.make_constant(Value::String(Managed::from(identifer)))
   }
 

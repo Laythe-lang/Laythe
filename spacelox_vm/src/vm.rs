@@ -1,20 +1,24 @@
 use crate::compiler::{Compiler, Parser};
-use crate::memory::Gc;
+use crate::memory::{Gc, NO_GC};
 use spacelox_core::chunk::{ByteCode, UpvalueIndex};
+use spacelox_core::managed::{Manageable, Managed, Trace};
 use spacelox_core::native::{NativeFun, NativeResult};
-use spacelox_core::value::{Closure, FunKind, Managed, Upvalue, Value};
+use spacelox_core::{
+  utils::do_if_some,
+  value::{Closure, FunKind, Upvalue, Value},
+};
 use spacelox_interner::IStr;
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
 use std::ops::Drop;
-use std::rc::Rc;
+use std::{fmt, rc::Rc};
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
 
 pub const FRAME_MAX: usize = std::u8::MAX as usize;
-pub const DEFAULT_STACK_MAX: usize = FRAME_MAX * 16;
+pub const DEFAULT_STACK_MAX: usize = FRAME_MAX * 32;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpretResult {
@@ -49,28 +53,28 @@ pub struct Vm {
   /// A stack holding call frames currently in use
   pub frames: Vec<CallFrame>,
 
-  /// All the native functions
-  pub natives: Vec<Rc<dyn NativeFun>>,
-
   /// The vm's garbage collector
   gc: Gc,
 
   /// A persisted set of globals most for a repl context
-  globals: HashMap<Managed<IStr>, Value>
+  globals: HashMap<Managed<IStr>, Value>,
 }
 
 impl Vm {
   pub fn new(stack: Vec<Value>, frames: Vec<CallFrame>, natives: Vec<Rc<dyn NativeFun>>) -> Vm {
-    let mut gc = Gc::new();
-    let globals = define_globals(&natives, &mut gc);
+    let gc = Gc::new();
+    // let globals = define_globals(&natives, &mut gc);
 
-    Vm {
+    let mut vm = Vm {
       stack,
       frames,
-      natives,
       gc,
-      globals,
-    }
+      globals: HashMap::new(),
+    };
+
+    vm.define_globals(&natives);
+
+    vm
   }
 
   pub fn repl(&mut self) {
@@ -103,24 +107,21 @@ impl Vm {
       return InterpretResult::CompileError;
     }
 
-    let script_closure = self.gc.allocate(Closure::new(result.fun));
-    let script = Value::Closure(Managed::from(script_closure));
+    let script_closure = self.gc.manage(Closure::new(result.fun), &NO_GC);
+    let script = Value::Closure(script_closure);
     let executor = VmExecutor::new(self, script);
     executor.run()
   }
-}
 
-fn define_globals<'a>(natives: &[Rc<dyn NativeFun>], gc: &mut Gc) -> HashMap<Managed<IStr>, Value> {
-  let mut globals = HashMap::new();
-  natives.iter().for_each(|native| {
-    let name = Managed::from(gc.allocate_string(&native.meta().name));
+  fn define_globals<'a>(&mut self, natives: &[Rc<dyn NativeFun>]) {
+    natives.iter().for_each(|native| {
+      let name = self.gc.manage_string(&native.meta().name, &NO_GC);
 
-    let native_value = Value::Native(Managed::from(gc.allocate(native.clone())));
+      let native_value = Value::Native(self.gc.manage(native.clone(), &NO_GC));
 
-    globals.insert(name, native_value);
-  });
-
-  globals
+      self.globals.insert(name, native_value);
+    });
+  }
 }
 
 pub struct VmExecutor<'a> {
@@ -135,6 +136,9 @@ pub struct VmExecutor<'a> {
 
   /// A reference to a object currently in the vm
   gc: &'a mut Gc,
+
+  /// the main script level function
+  script: Value,
 
   /// index to the top of the value stack
   pub stack_top: usize,
@@ -151,21 +155,19 @@ impl<'a> Drop for VmExecutor<'a> {
 }
 
 impl<'a> VmExecutor<'a> {
-  pub fn new(
-    vm: &'a mut Vm,
-    script: Value,
-  ) -> VmExecutor<'a> {
+  pub fn new(vm: &'a mut Vm, script: Value) -> VmExecutor<'a> {
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
       frame_count: 0,
       stack: &mut vm.stack,
+      script,
       gc: &mut vm.gc,
       stack_top: 1,
       globals: &mut vm.globals,
       open_upvalues: Vec::with_capacity(100),
     };
 
-    executor.call_value(script, 0);
+    executor.call_value(executor.script.clone(), 0);
     executor
   }
 
@@ -298,7 +300,7 @@ impl<'a> VmExecutor<'a> {
       Value::Native(native) => self.call_native(native, arg_count),
       Value::Fun(fun) => panic!(
         "function {} was not wrapped in a closure",
-        fun.name.clone().unwrap_or("script".to_string())
+        fun.name.clone().unwrap_or(IStr::new("script"))
       ),
       _ => {
         self.runtime_error("Can only call functions and classes.");
@@ -344,7 +346,7 @@ impl<'a> VmExecutor<'a> {
     if (arg_count as u16) != closure.fun.arity {
       self.runtime_error(&format!(
         "Function {} expected {} arguments but got {}",
-        closure.fun.name.clone().unwrap_or("script".to_string()),
+        closure.fun.name.clone().unwrap_or(IStr::new("script")),
         closure.fun.arity,
         arg_count
       ));
@@ -356,11 +358,14 @@ impl<'a> VmExecutor<'a> {
       return Some(InterpretResult::RuntimeError);
     }
 
-    self.frame_count += 1;
-    let frame = &mut self.frames[self.frame_count - 1];
-    frame.closure = Managed::from(self.gc.copy_managed(closure));
+    let current_closure = self.gc.copy_managed(closure, self);
+
+    let frame = &mut self.frames[self.frame_count];
+    frame.closure = current_closure;
     frame.ip = 0;
     frame.slots = self.stack_top - (arg_count as usize + 1);
+
+    self.frame_count += 1;
     None
   }
 
@@ -449,7 +454,7 @@ impl<'a> VmExecutor<'a> {
 
   fn op_define_global(&mut self, store_index: u8) {
     let string = self.read_string(store_index);
-    let name = Managed::from(self.gc.copy_string(string.as_str()));
+    let name = self.gc.copy_string(string.as_str(), self);
     let global = self.pop();
     self.globals.insert(name, global);
   }
@@ -464,7 +469,7 @@ impl<'a> VmExecutor<'a> {
         None
       }
       None => {
-        self.runtime_error(&format!("Undefined variable {}", string));
+        self.runtime_error(&format!("Undefined variable {}", string.as_str()));
         Some(InterpretResult::RuntimeError)
       }
     }
@@ -479,7 +484,7 @@ impl<'a> VmExecutor<'a> {
       .is_none()
     {
       self.globals.remove_entry(&string);
-      self.runtime_error(&format!("Undefined variable {}", string));
+      self.runtime_error(&format!("Undefined variable {}", string.as_str()));
       return Some(InterpretResult::RuntimeError);
     }
 
@@ -493,19 +498,19 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn op_set_upvalue(&mut self, slot: u8) {
-    let value = self.peek(0);
-    let upvalue = &self.current_frame().closure.upvalues[slot as usize];
+    let value = self.peek(0).clone();
+    let upvalue = &mut self.current_mut_frame().closure.upvalues[slot as usize];
 
-    let open_index = match &**upvalue.ref_upvalue() {
+    let open_index = match &mut **upvalue.ref_mut_upvalue() {
       Upvalue::Open(index) => Some(*index),
       Upvalue::Closed(store) => {
-        &store.replace(value.clone());
+        replace(&mut **store, value.clone());
         None
       }
     };
 
     if let Some(index) = open_index {
-      self.stack[index] = value.clone();
+      self.stack[index] = value;
     }
   }
 
@@ -520,7 +525,7 @@ impl<'a> VmExecutor<'a> {
 
     let value = match &**upvalue.ref_upvalue() {
       Upvalue::Open(index) => self.stack[*index].clone(),
-      Upvalue::Closed(store) => store.borrow().clone(),
+      Upvalue::Closed(store) => *store.clone(),
     };
 
     self.push(value);
@@ -547,8 +552,8 @@ impl<'a> VmExecutor<'a> {
   fn op_add(&mut self) -> Option<InterpretResult> {
     match (self.pop(), self.pop()) {
       (Value::String(right), Value::String(left)) => {
-        let result = format!("{}{}", left, right);
-        let string = Managed::from(self.gc.allocate_string(&result));
+        let result = format!("{}{}", left.as_str(), right.as_str());
+        let string = self.gc.manage_string(&result, self);
         self.push(Value::String(string));
         None
       }
@@ -660,7 +665,7 @@ impl<'a> VmExecutor<'a> {
       }
     }
 
-    let closure = Value::Closure(Managed::from(self.gc.allocate(closure)));
+    let closure = Value::Closure(self.gc.manage(closure, self));
 
     self.push(closure);
   }
@@ -683,7 +688,7 @@ impl<'a> VmExecutor<'a> {
       }
     }
 
-    let created_upvalue = Managed::from(self.gc.allocate(Upvalue::Open(local_index)));
+    let created_upvalue = self.gc.manage(Upvalue::Open(local_index), self);
     self.open_upvalues.push(created_upvalue);
 
     Value::Upvalue(created_upvalue)
@@ -743,7 +748,7 @@ impl<'a> VmExecutor<'a> {
             print!("[ stack {} ]", self.stack[*index + frame.slots]);
           }
           Upvalue::Closed(closed) => {
-            print!("[ heap {} ]", closed.borrow());
+            print!("[ heap {} ]", closed);
           }
         });
       println!();
@@ -757,6 +762,38 @@ impl<'a> VmExecutor<'a> {
   fn frame_instruction(&self) -> &ByteCode {
     let frame = self.current_frame();
     &frame.closure.fun.chunk.instructions[frame.ip]
+  }
+}
+
+impl<'a> fmt::Display for VmExecutor<'a> {
+  fn fmt(&self, _: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+    unimplemented!()
+  }
+}
+
+impl<'a> Trace for VmExecutor<'a> {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool {
+    do_if_some(self.script.get_dyn_managed(), |obj| mark(obj));
+
+    self.stack[0..self.stack_top].iter().for_each(|value| {
+      do_if_some(value.get_dyn_managed(), |obj| mark(obj));
+    });
+
+    self.frames[0..self.frame_count]
+      .iter()
+      .for_each(|frame| mark(frame.closure.clone_dyn()));
+
+    self
+      .open_upvalues
+      .iter()
+      .for_each(|upvalue| mark(upvalue.clone_dyn()));
+
+    self.globals.iter().for_each(|(key, val)| {
+      mark(key.clone_dyn());
+      do_if_some(val.get_dyn_managed(), |obj| mark(obj));
+    });
+
+    true
   }
 }
 

@@ -1,6 +1,6 @@
 use spacelox_core::native::create_natives;
-use spacelox_core::value::{Closure, Fun, Managed, Value};
-use spacelox_vm::memory::Gc;
+use spacelox_core::value::{Closure, Fun, Value};
+use spacelox_vm::memory::{Gc, NO_GC};
 use spacelox_vm::vm::{CallFrame, InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX};
 use std::env;
 use std::fs::read_to_string;
@@ -8,10 +8,10 @@ use std::process;
 
 fn main() {
   let fun = Fun::default();
-  let mut gc = Gc::new();
+  let gc = Gc::new();
 
-  let alloc = gc.allocate(fun);
-  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
+  let managed_fun = gc.manage(fun, &NO_GC);
+  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
 
   let frames = vec![CallFrame::new(closure); FRAME_MAX];
   let stack = vec![Value::Nil; DEFAULT_STACK_MAX];

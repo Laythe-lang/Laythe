@@ -33,11 +33,17 @@ impl PartialEq<dyn NativeFun> for dyn NativeFun {
 impl fmt::Debug for dyn NativeFun {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let meta = self.meta();
-    write!(
-      f,
-      "NativeFun {{ name: {}, arity: {} }}",
-      meta.name, meta.arity
-    )
+    f.debug_struct("NativeFun")
+      .field("name", &meta.name)
+      .field("arity", &meta.arity)
+      .finish()
+  }
+}
+
+impl fmt::Display for dyn NativeFun {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let meta = self.meta();
+    write!(f, "<native {}>", meta.name)
   }
 }
 
@@ -61,7 +67,6 @@ pub fn create_natives() -> Vec<Rc<dyn NativeFun>> {
 fn native_eq(lhs: &dyn NativeFun, rhs: &dyn NativeFun) -> bool {
   ptr::eq(lhs.meta(), rhs.meta())
 }
-
 #[derive(Clone, Debug)]
 struct NativeClock {
   meta: Box<NativeMeta>,
@@ -91,7 +96,7 @@ impl NativeFun for NativeClock {
 
   fn call(&self, _: &[Value]) -> NativeResult {
     match self.start.elapsed() {
-      Ok(elasped) => NativeResult::Success(Value::Number((elasped.as_micros() as f64) / 1000000.0)),
+      Ok(elapsed) => NativeResult::Success(Value::Number((elapsed.as_micros() as f64) / 1000000.0)),
       Err(e) => NativeResult::RuntimeError(format!("clock failed {}", e)),
     }
   }
@@ -169,7 +174,7 @@ impl NativeFun for NativeAssertEq {
       return NativeResult::Success(Value::Nil);
     }
 
-    NativeResult::RuntimeError(format!("{} and {} where not equal", args[0], args[1]))
+    NativeResult::RuntimeError(format!("{:?} and {:?} where not equal", args[0], args[1]))
   }
 }
 
@@ -205,7 +210,7 @@ impl NativeFun for NativeAssertNe {
       return NativeResult::Success(Value::Nil);
     }
 
-    NativeResult::RuntimeError(format!("{} and {} where equal", args[0], args[1]))
+    NativeResult::RuntimeError(format!("{:?} and {:?} where equal", args[0], args[1]))
   }
 }
 

@@ -192,35 +192,3 @@ impl ToSocketAddrs for IStr {
     ToSocketAddrs::to_socket_addrs(self.as_str())
   }
 }
-
-#[cfg(feature = "serde-compat")]
-mod serde_compat {
-  use super::*;
-  use serde::{de, Deserialize, Deserializer, Serialize, Serializer};
-
-  impl Serialize for IStr {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-      Serialize::serialize(self.as_str(), s)
-    }
-  }
-
-  impl<'d> Deserialize<'d> for IStr {
-    fn deserialize<D: Deserializer<'d>>(d: D) -> Result<IStr, D::Error> {
-      d.deserialize_str(Visitor)
-    }
-  }
-
-  pub struct Visitor;
-
-  impl<'d> de::Visitor<'d> for Visitor {
-    type Value = IStr;
-
-    fn expecting(&self, f: &mut fmt::Formatter) -> fmt::Result {
-      f.write_str("string slice")
-    }
-
-    fn visit_str<E: de::Error>(self, value: &str) -> Result<IStr, E> {
-      Ok(IStr::new(value))
-    }
-  }
-}

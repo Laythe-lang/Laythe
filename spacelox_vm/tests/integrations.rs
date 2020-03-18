@@ -1,6 +1,7 @@
+use spacelox_core::managed::Managed;
 use spacelox_core::native::create_natives;
-use spacelox_core::value::{Closure, Fun, Managed, Value};
-use spacelox_vm::memory::Gc;
+use spacelox_core::value::{Closure, Fun, Value};
+use spacelox_vm::memory::{Gc, NO_GC};
 use spacelox_vm::vm::{CallFrame, InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX};
 use std::fs::File;
 use std::io::prelude::*;
@@ -18,19 +19,6 @@ fn create_vm<'a>(closure: Managed<Closure>) -> Vm {
   Vm::new(create_stack(), create_frames(closure), create_natives())
 }
 
-const FILE_PATH: &str = file!();
-
-#[test]
-fn build() {
-  let fun = Fun::default();
-  let mut gc = Gc::new();
-
-  let alloc = gc.allocate(fun);
-  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
-  create_vm(closure);
-  assert_eq!(true, true);
-}
-
 fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
   let test_path = Path::new(FILE_PATH);
 
@@ -43,10 +31,10 @@ fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
 
 fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Error> {
   let fun = Fun::default();
-  let mut gc = Gc::new();
+  let gc = Gc::new();
 
-  let alloc = gc.allocate(fun);
-  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
+  let managed_fun = gc.manage(fun, &NO_GC);
+  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
 
   for path in paths {
     let mut vm = create_vm(closure.clone());
@@ -63,13 +51,26 @@ fn test_files(paths: &[&str], result: InterpretResult) -> Result<(), std::io::Er
   Ok(())
 }
 
+const FILE_PATH: &str = file!();
+
+#[test]
+fn build() {
+  let fun = Fun::default();
+  let gc = Gc::new();
+
+  let managed_fun = gc.manage(fun, &NO_GC);
+  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
+  create_vm(closure);
+  assert!(true);
+}
+
 #[test]
 fn clock() -> Result<(), std::io::Error> {
   let fun = Fun::default();
-  let mut gc = Gc::new();
+  let gc = Gc::new();
 
-  let alloc = gc.allocate(fun);
-  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
+  let managed_fun = gc.manage(fun, &NO_GC);
+  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
   let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/clock.lox").expect("No parent directory");
@@ -85,10 +86,10 @@ fn clock() -> Result<(), std::io::Error> {
 #[test]
 fn assert() -> Result<(), std::io::Error> {
   let fun = Fun::default();
-  let mut gc = Gc::new();
+  let gc = Gc::new();
 
-  let alloc = gc.allocate(fun);
-  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
+  let managed_fun = gc.manage(fun, &NO_GC);
+  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
   let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/assert.lox").expect("No parent directory");
@@ -104,10 +105,10 @@ fn assert() -> Result<(), std::io::Error> {
 #[test]
 fn assert_eq() -> Result<(), std::io::Error> {
   let fun = Fun::default();
-  let mut gc = Gc::new();
+  let gc = Gc::new();
 
-  let alloc = gc.allocate(fun);
-  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
+  let managed_fun = gc.manage(fun, &NO_GC);
+  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
   let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/assert_eq.lox").expect("No parent directory");
@@ -123,10 +124,10 @@ fn assert_eq() -> Result<(), std::io::Error> {
 #[test]
 fn assert_ne() -> Result<(), std::io::Error> {
   let fun = Fun::default();
-  let mut gc = Gc::new();
+  let gc = Gc::new();
 
-  let alloc = gc.allocate(fun);
-  let closure = Managed::from(gc.allocate(Closure::new(Managed::from(alloc))));
+  let managed_fun = gc.manage(fun, &NO_GC);
+  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
   let mut vm = create_vm(closure.clone());
 
   let assert = fixture_path("assert/assert_ne.lox").expect("No parent directory");
@@ -400,7 +401,7 @@ fn limit() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
-      // "limit/stack_overflow.lox"
+      "limit/stack_overflow.lox"
     ],
     InterpretResult::RuntimeError,
   )
