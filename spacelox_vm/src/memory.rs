@@ -125,10 +125,14 @@ impl<'a> Gc {
     let size = alloc.size();
     self.heap.borrow_mut().push(alloc);
 
-    #[cfg(feature = "debug_stress_gc")]
-    self.collect_garbage(context);
+    #[cfg(feature = "debug_stress_gc")] 
+    {
+      self.mark_last();
+      self.collect_garbage(context);
+    }
     
     if self.bytes_allocated.replace(self.bytes_allocated.get() + size) > self.next_gc.get() {
+      self.mark_last();
       self.collect_garbage(context);
     }
 
@@ -234,6 +238,16 @@ impl<'a> Gc {
     }
 
     gray_stack.push(managed);
+  }
+
+  /// Mark the most recent allocated obj. This is in cases where an object has
+  /// been allocated but not moved onto a normal root
+  fn mark_last(&self) {
+    let mut borrowed = self.heap.borrow_mut();
+    let len = borrowed.len();
+
+    let last = &mut borrowed[len - 1];
+    last.mark();
   }
 }
 
