@@ -73,7 +73,7 @@ fn clock() -> Result<(), std::io::Error> {
   let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
   let mut vm = create_vm(closure.clone());
 
-  let assert = fixture_path("assert/clock.lox").expect("No parent directory");
+  let assert = fixture_path("native/clock.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
   let mut source = String::new();
@@ -92,7 +92,7 @@ fn assert() -> Result<(), std::io::Error> {
   let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
   let mut vm = create_vm(closure.clone());
 
-  let assert = fixture_path("assert/assert.lox").expect("No parent directory");
+  let assert = fixture_path("native/assert.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
   let mut source = String::new();
@@ -111,7 +111,7 @@ fn assert_eq() -> Result<(), std::io::Error> {
   let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
   let mut vm = create_vm(closure.clone());
 
-  let assert = fixture_path("assert/assert_eq.lox").expect("No parent directory");
+  let assert = fixture_path("native/assert_eq.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
   let mut source = String::new();
@@ -130,7 +130,7 @@ fn assert_ne() -> Result<(), std::io::Error> {
   let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
   let mut vm = create_vm(closure.clone());
 
-  let assert = fixture_path("assert/assert_ne.lox").expect("No parent directory");
+  let assert = fixture_path("native/assert_ne.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
   let mut source = String::new();
