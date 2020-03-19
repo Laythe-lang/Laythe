@@ -6,10 +6,10 @@ use spacelox_core::token::{Token, TokenKind};
 use spacelox_core::utils::copy_string;
 use spacelox_core::value::{Fun, FunKind, Value};
 use std::convert::TryInto;
-
-#[cfg(debug_assertions)]
-use crate::debug::disassemble_chunk;
 use spacelox_interner::IStr;
+
+#[cfg(feature = "debug")]
+use crate::debug::disassemble_chunk;
 
 /// The result of a compilation
 pub struct CompilerResult {
@@ -518,8 +518,12 @@ impl<'a, 's> Compiler<'a, 's> {
   fn end_compiler(&mut self) {
     self.emit_return();
 
-    #[cfg(debug_assertions)]
-    self.print_chunk();
+    #[cfg(feature = "debug")]
+    {
+      if self.parser.had_error {
+        self.print_chunk();
+      }
+    }
   }
 
   /// Increase the scope depth by 1
@@ -542,7 +546,7 @@ impl<'a, 's> Compiler<'a, 's> {
   }
 
   /// Print the chunk if debug and an error occurred
-  #[cfg(debug_assertions)]
+  #[cfg(feature = "debug")]
   fn print_chunk(&self) {
     if true || self.parser.had_error {
       let script = IStr::new("<script>");

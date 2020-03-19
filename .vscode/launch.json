@@ -59,7 +59,7 @@
         }
       },
       "args": [
-        "assert/assert_eq.lox"
+        "benchmark/string_equality.lox"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture"
