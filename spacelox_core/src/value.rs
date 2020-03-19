@@ -1,6 +1,6 @@
 use crate::chunk::Chunk;
 use crate::{
-  managed::{Manageable, Managed, Trace},
+  managed::{Manage, Managed, Trace},
   native::NativeFun,
   utils::do_if_some,
 };
@@ -100,7 +100,7 @@ impl fmt::Debug for Fun {
     f.debug_struct("Fun")
       .field("arity", &self.arity)
       .field("upvalue_count", &self.upvalue_count)
-      .field("chunk", &"chunk")
+      .field("chunk", &"Chunk { ... }")
       .field("name", &self.name)
       .finish()
   }
@@ -120,12 +120,12 @@ pub enum Value {
 }
 
 impl Trace for IStr {
-  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool {
+  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     true
   }
 }
 
-impl Manageable for IStr {
+impl Manage for IStr {
   fn alloc_type(&self) -> &str {
     "string"
   }
@@ -136,7 +136,7 @@ impl Manageable for IStr {
 }
 
 impl Trace for Fun {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     self
       .chunk
       .constants
@@ -147,7 +147,7 @@ impl Trace for Fun {
   }
 }
 
-impl Manageable for Fun {
+impl Manage for Fun {
   fn alloc_type(&self) -> &str {
     "function"
   }
@@ -158,7 +158,7 @@ impl Manageable for Fun {
 }
 
 impl Trace for Closure {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     self
       .upvalues
       .iter()
@@ -169,7 +169,7 @@ impl Trace for Closure {
   }
 }
 
-impl Manageable for Closure {
+impl Manage for Closure {
   fn alloc_type(&self) -> &str {
     "closure"
   }
@@ -180,12 +180,12 @@ impl Manageable for Closure {
 }
 
 impl Trace for Rc<dyn NativeFun> {
-  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool {
+  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     true
   }
 }
 
-impl Manageable for Rc<dyn NativeFun> {
+impl Manage for Rc<dyn NativeFun> {
   fn alloc_type(&self) -> &str {
     "native"
   }
@@ -196,7 +196,7 @@ impl Manageable for Rc<dyn NativeFun> {
 }
 
 impl Trace for Upvalue {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     match self {
       Upvalue::Closed(upvalue) => do_if_some(upvalue.get_dyn_managed(), |obj| mark(obj)),
       _ => (),
@@ -206,7 +206,7 @@ impl Trace for Upvalue {
   }
 }
 
-impl Manageable for Upvalue {
+impl Manage for Upvalue {
   fn alloc_type(&self) -> &str {
     "upvalue"
   }
@@ -475,7 +475,7 @@ impl Value {
     }
   }
 
-  pub fn get_dyn_managed(&self) -> Option<Managed<dyn Manageable>> {
+  pub fn get_dyn_managed(&self) -> Option<Managed<dyn Manage>> {
     match self {
       Value::String(string) => Some(string.clone_dyn()),
       Value::Fun(fun) => Some(fun.clone_dyn()),

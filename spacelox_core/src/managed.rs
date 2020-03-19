@@ -3,16 +3,17 @@ use std::{
   fmt,
   hash::{Hash, Hasher},
   ops::{Deref, DerefMut},
+  mem,
   ptr::{self, NonNull},
 };
 
 /// An entity that is traceable by the garbage collector
 pub trait Trace {
   /// Mark all objects that are reachable from this object
-  fn trace(&self, mark_obj: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool;
+  fn trace(&self, mark_obj: &mut dyn FnMut(Managed<dyn Manage>)) -> bool;
 }
 
-pub trait Manageable: Trace {
+pub trait Manage: Trace {
   /// What allocation type is
   fn alloc_type(&self) -> &str;
 
@@ -38,9 +39,19 @@ impl<T: 'static + Trace> Allocation<T> {
       header: Header::default(),
     }
   }
+
+  pub fn size(&self) -> usize {
+    mem::size_of::<T>()
+  }
 }
 
-impl<T: 'static + Manageable + ?Sized> Allocation<T> {
+impl Allocation<dyn Manage> {
+  pub fn size(&self) -> usize {
+    mem::size_of_val(&self.data)
+  }
+}
+
+impl<T: 'static + Manage + ?Sized> Allocation<T> {
   pub fn mark(&self) -> bool {
     self.header.marked.replace(true)
   }
@@ -62,11 +73,11 @@ impl<T: 'static + Manageable + ?Sized> Allocation<T> {
   }
 }
 
-pub struct Managed<T: 'static + Manageable + ?Sized> {
+pub struct Managed<T: 'static + Manage + ?Sized> {
   ptr: NonNull<Allocation<T>>,
 }
 
-impl<T: 'static + Manageable + ?Sized> Managed<T> {
+impl<T: 'static + Manage + ?Sized> Managed<T> {
   pub fn obj(&self) -> &Allocation<T> {
     unsafe { self.ptr.as_ref() }
   }
@@ -76,22 +87,26 @@ impl<T: 'static + Manageable + ?Sized> Managed<T> {
   }
 }
 
-impl<T: 'static + Manageable> Managed<T> {
-  pub fn clone_dyn(&self) -> Managed<dyn Manageable> {
+impl<T: 'static + Manage> Managed<T> {
+  pub fn clone_dyn(&self) -> Managed<dyn Manage> {
     Managed {
-      ptr: NonNull::from(self.obj()) as NonNull<Allocation<dyn Manageable>>,
+      ptr: NonNull::from(self.obj()) as NonNull<Allocation<dyn Manage>>,
     }
   }
+
+  pub fn size(&self) -> usize {
+    self.obj().size()
+  }
 }
 
-impl<T: 'static + Manageable> Trace for Managed<T> {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool {
+impl<T: 'static + Manage> Trace for Managed<T> {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     self.obj().data.trace(mark);
     true
   }
 }
 
-impl<T: 'static + Manageable> Manageable for Managed<T> {
+impl<T: 'static + Manage> Manage for Managed<T> {
   fn alloc_type(&self) -> &str {
     self.obj().data.alloc_type()
   }
@@ -101,14 +116,20 @@ impl<T: 'static + Manageable> Manageable for Managed<T> {
   }
 }
 
-impl Trace for Managed<dyn Manageable> {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool {
+impl Managed<dyn Manage> {
+  pub fn size(&self) -> usize {
+    self.obj().size()
+  }
+}
+
+impl Trace for Managed<dyn Manage> {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     self.obj().data.trace(mark);
     true
   }
 }
 
-impl Manageable for Managed<dyn Manageable> {
+impl Manage for Managed<dyn Manage> {
   fn alloc_type(&self) -> &str {
     self.obj().data.alloc_type()
   }
@@ -118,20 +139,20 @@ impl Manageable for Managed<dyn Manageable> {
   }
 }
 
-impl<T: 'static + Manageable + ?Sized> From<NonNull<Allocation<T>>> for Managed<T> {
+impl<T: 'static + Manage + ?Sized> From<NonNull<Allocation<T>>> for Managed<T> {
   fn from(fun: NonNull<Allocation<T>>) -> Self {
     Self { ptr: fun }
   }
 }
 
-impl<T: 'static + Manageable + ?Sized> Copy for Managed<T> {}
-impl<T: 'static + Manageable + ?Sized> Clone for Managed<T> {
+impl<T: 'static + Manage + ?Sized> Copy for Managed<T> {}
+impl<T: 'static + Manage + ?Sized> Clone for Managed<T> {
   fn clone(&self) -> Managed<T> {
     *self
   }
 }
 
-impl<T: 'static + Manageable> Deref for Managed<T> {
+impl<T: 'static + Manage> Deref for Managed<T> {
   type Target = T;
 
   fn deref(&self) -> &T {
@@ -139,13 +160,13 @@ impl<T: 'static + Manageable> Deref for Managed<T> {
   }
 }
 
-impl<T: 'static + Manageable> DerefMut for Managed<T> {
+impl<T: 'static + Manage> DerefMut for Managed<T> {
   fn deref_mut(&mut self) -> &mut T {
     &mut self.obj_mut().data
   }
 }
 
-impl<T: 'static + PartialEq + Manageable> PartialEq for Managed<T> {
+impl<T: 'static + PartialEq + Manage> PartialEq for Managed<T> {
   fn eq(&self, other: &Managed<T>) -> bool {
     let left_inner: &T = &*self;
     let right_inner: &T = &*other;
@@ -157,16 +178,16 @@ impl<T: 'static + PartialEq + Manageable> PartialEq for Managed<T> {
     left_inner.eq(right_inner)
   }
 }
-impl<T: 'static + Eq + Manageable> Eq for Managed<T> {}
+impl<T: 'static + Eq + Manage> Eq for Managed<T> {}
 
-impl<T: 'static + Hash + Manageable> Hash for Managed<T> {
+impl<T: 'static + Hash + Manage> Hash for Managed<T> {
   fn hash<H: Hasher>(&self, state: &mut H) {
     let inner: &T = &*self;
     inner.hash(state);
   }
 }
 
-impl<T: 'static + Manageable + fmt::Debug> fmt::Debug for Managed<T> {
+impl<T: 'static + Manage + fmt::Debug> fmt::Debug for Managed<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = &*self;
 

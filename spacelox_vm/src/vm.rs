@@ -1,7 +1,7 @@
 use crate::compiler::{Compiler, Parser};
 use crate::memory::{Gc, NO_GC};
 use spacelox_core::chunk::{ByteCode, UpvalueIndex};
-use spacelox_core::managed::{Manageable, Managed, Trace};
+use spacelox_core::managed::{Manage, Managed, Trace};
 use spacelox_core::native::{NativeFun, NativeResult};
 use spacelox_core::{
   utils::do_if_some,
@@ -115,7 +115,7 @@ impl Vm {
 
   fn define_globals<'a>(&mut self, natives: &[Rc<dyn NativeFun>]) {
     natives.iter().for_each(|native| {
-      let name = self.gc.manage_string(&native.meta().name, &NO_GC);
+      let name = self.gc.manage_str(&native.meta().name, &NO_GC);
 
       let native_value = Value::Native(self.gc.manage(native.clone(), &NO_GC));
 
@@ -358,7 +358,7 @@ impl<'a> VmExecutor<'a> {
       return Some(InterpretResult::RuntimeError);
     }
 
-    let current_closure = self.gc.copy_managed(closure, self);
+    let current_closure = self.gc.clone_managed(closure, self);
 
     let frame = &mut self.frames[self.frame_count];
     frame.closure = current_closure;
@@ -454,7 +454,7 @@ impl<'a> VmExecutor<'a> {
 
   fn op_define_global(&mut self, store_index: u8) {
     let string = self.read_string(store_index);
-    let name = self.gc.copy_string(string.as_str(), self);
+    let name = self.gc.manage_str(string.as_str(), self);
     let global = self.pop();
     self.globals.insert(name, global);
   }
@@ -553,7 +553,7 @@ impl<'a> VmExecutor<'a> {
     match (self.pop(), self.pop()) {
       (Value::String(right), Value::String(left)) => {
         let result = format!("{}{}", left.as_str(), right.as_str());
-        let string = self.gc.manage_string(&result, self);
+        let string = self.gc.manage_str(&result, self);
         self.push(Value::String(string));
         None
       }
@@ -772,7 +772,7 @@ impl<'a> fmt::Display for VmExecutor<'a> {
 }
 
 impl<'a> Trace for VmExecutor<'a> {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manageable>)) -> bool {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     do_if_some(self.script.get_dyn_managed(), |obj| mark(obj));
 
     self.stack[0..self.stack_top].iter().for_each(|value| {

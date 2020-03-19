@@ -636,7 +636,7 @@ impl<'a, 's> Compiler<'a, 's> {
   fn string(&mut self) {
     let string = self
       .gc
-      .manage_string(&copy_string(&self.parser.previous), &NO_GC);
+      .manage_str(&copy_string(&self.parser.previous), &NO_GC);
     let value = Value::String(Managed::from(string));
     self.emit_constant(value)
   }
@@ -788,7 +788,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u8 {
-    let identifer = self.gc.manage_string(&name.lexeme, &NO_GC);
+    let identifer = self.gc.manage_str(&name.lexeme, &NO_GC);
     self.make_constant(Value::String(Managed::from(identifer)))
   }
 
