@@ -187,11 +187,7 @@ impl<'a, 's> Compiler<'a, 's> {
       };
     }
 
-    loop {
-      if self.parser.match_kind(TokenKind::Eof) {
-        break;
-      }
-
+    while !self.parser.match_kind(TokenKind::Eof) {
       self.declaration()
     }
 
@@ -213,7 +209,9 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Parse a declaration
   fn declaration(&mut self) {
-    if self.parser.match_kind(TokenKind::Fun) {
+    if self.parser.match_kind(TokenKind::Class) {
+      self.class_declaration();
+    } else if self.parser.match_kind(TokenKind::Fun) {
       self.fun_declaration();
     } else if self.parser.match_kind(TokenKind::Var) {
       self.var_declaration();
@@ -261,6 +259,19 @@ impl<'a, 's> Compiler<'a, 's> {
     self
       .parser
       .consume(TokenKind::RightBrace, "Expect '}' after block.")
+  }
+
+  /// Parse a function declaration
+  fn class_declaration(&mut self) {
+    self.parser.consume(TokenKind::Identifier, "Expect class name.");
+    let name_constant = self.identifer_constant(self.parser.previous.clone());
+    self.declare_variable();
+
+    self.emit_byte(ByteCode::Class(name_constant));
+    self.define_variable(name_constant);
+
+    self.parser.consume(TokenKind::LeftBrace, "Expect '{' before class body.");
+    self.parser.consume(TokenKind::RightBrace, "Expect '}' after class body.");
   }
 
   /// Parse a function declaration
@@ -591,6 +602,19 @@ impl<'a, 's> Compiler<'a, 's> {
     self.emit_byte(ByteCode::Call(arg_count));
   }
 
+  /// 
+  fn dot(&mut self, can_assign: bool) {
+    self.parser.consume(TokenKind::Identifier, "Expect property name after '.'.");
+    let name = self.identifer_constant(self.parser.previous.clone());
+
+    if can_assign && self.parser.match_kind(TokenKind::Equal) {
+      self.expression();
+      self.emit_byte(ByteCode::SetProperty(name));
+    } else {
+      self.emit_byte(ByteCode::GetProperty(name));
+    }
+  }
+
   /// Compile a unary expression into it's equivalent bytecode
   ///
   /// # Panics
@@ -806,7 +830,7 @@ impl<'a, 's> Compiler<'a, 's> {
     self.local_count += 1;
 
     local.name = Some(name);
-    local.depth = self.scope_depth;
+    local.depth = -1;
   }
 
   ///  declare a variable
@@ -911,16 +935,17 @@ impl<'a, 's> Compiler<'a, 's> {
   /// Execute a provided action
   fn execute_action(&mut self, action: Act, can_assign: bool) {
     match action {
-      Act::Call => self.call(),
-      Act::Literal => self.literal(),
       Act::And => self.and(),
-      Act::Or => self.or(),
       Act::Binary => self.binary(),
+      Act::Call => self.call(),
+      Act::Dot => self.dot(can_assign),
+      Act::Grouping => self.grouping(),
+      Act::Literal => self.literal(),
+      Act::Number => self.number(),
+      Act::Or => self.or(),
+      Act::String => self.string(),
       Act::Unary => self.unary(),
       Act::Variable => self.variable(can_assign),
-      Act::Grouping => self.grouping(),
-      Act::Number => self.number(),
-      Act::String => self.string(),
     }
   }
 
@@ -1001,7 +1026,7 @@ const RULES_TABLE: [ParseRule; 40] = [
   // TOKEN_RIGHT_BRACE
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_COMMA
-  ParseRule::new(None, None, Precedence::None),
+  ParseRule::new(None, Some(Act::Dot), Precedence::Call),
   // TOKEN_DOT
   ParseRule::new(Some(Act::Unary), Some(Act::Binary), Precedence::Term),
   // TOKEN_MINUS
@@ -1243,14 +1268,15 @@ impl ParseRule {
 #[derive(Clone)]
 enum Act {
   And,
-  Or,
-  Grouping,
   Binary,
-  Unary,
-  Number,
-  String,
-  Literal,
   Call,
+  Dot,
+  Grouping,
+  Literal,
+  Number,
+  Or,
+  String,
+  Unary,
   Variable,
 }
 

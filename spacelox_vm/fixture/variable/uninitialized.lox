@@ -1,2 +1,2 @@
 var a;
-print a; // expect: nil
+assertEq(a, nil); // expect: nil

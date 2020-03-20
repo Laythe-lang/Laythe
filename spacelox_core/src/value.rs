@@ -9,102 +9,7 @@ use std::fmt;
 use std::mem::discriminant;
 use std::mem::replace;
 use std::rc::Rc;
-
-#[derive(PartialEq, Clone, Debug)]
-pub enum Upvalue {
-  Open(usize),
-  Closed(Box<Value>),
-}
-
-impl Upvalue {
-  /// Close over the upvalue by moving it onto the stack to the heap
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::{Value, Upvalue};
-  /// use std::rc::Rc;
-  ///
-  /// let stack = vec![
-  ///   Value::Number(10.0)
-  /// ];
-  ///
-  /// let mut upvalue = Upvalue::Open(0);
-  /// upvalue.hoist(&stack);
-  ///
-  /// match upvalue {
-  ///   Upvalue::Closed(store) => assert_eq!(*store, Value::Number(10.0)),
-  ///   Upvalue::Open(_) => assert!(false),
-  /// };
-  /// ```
-  pub fn hoist(&mut self, stack: &Vec<Value>) {
-    match self {
-      Upvalue::Open(index) => {
-        let value = unsafe { stack.get_unchecked(*index) }.clone();
-        replace(self, Upvalue::Closed(Box::new(value)));
-      }
-      Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
-    }
-  }
-
-  /// Is this upvalue currently open
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::Upvalue;
-  ///
-  /// let upvalue = Upvalue::Open(0);
-  /// assert_eq!(upvalue.is_open(), true);
-  /// ```
-  pub fn is_open(&self) -> bool {
-    match self {
-      Upvalue::Open(_) => true,
-      Upvalue::Closed(_) => false,
-    }
-  }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum FunKind {
-  Fun,
-  Script,
-}
-
-#[derive(PartialEq, Clone)]
-pub struct Fun {
-  /// Arity of this function
-  pub arity: u16,
-
-  /// Number of upvalues
-  pub upvalue_count: usize,
-
-  /// Code for the function body
-  pub chunk: Chunk,
-
-  /// Name if not top-level script
-  pub name: Option<IStr>,
-}
-
-impl Default for Fun {
-  fn default() -> Self {
-    Self {
-      arity: 0,
-      upvalue_count: 0,
-      chunk: Chunk::default(),
-      name: Some(IStr::new("null function")),
-    }
-  }
-}
-
-impl fmt::Debug for Fun {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Fun")
-      .field("arity", &self.arity)
-      .field("upvalue_count", &self.upvalue_count)
-      .field("chunk", &"Chunk { ... }")
-      .field("name", &self.name)
-      .finish()
-  }
-}
+use std::collections::HashMap;
 
 /// Enum of value types in spacelox
 #[derive(Clone, Debug)]
@@ -115,164 +20,10 @@ pub enum Value {
   String(Managed<IStr>),
   Fun(Managed<Fun>),
   Closure(Managed<Closure>),
+  Class(Managed<Class>),
+  Instance(Managed<Instance>),
   Native(Managed<Rc<dyn NativeFun>>),
   Upvalue(Managed<Upvalue>),
-}
-
-impl Trace for IStr {
-  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    true
-  }
-}
-
-impl Manage for IStr {
-  fn alloc_type(&self) -> &str {
-    "string"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
-  }
-}
-
-impl Trace for Fun {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    self
-      .chunk
-      .constants
-      .iter()
-      .for_each(|constant| do_if_some(constant.get_dyn_managed(), |obj| mark(obj)));
-
-    true
-  }
-}
-
-impl Manage for Fun {
-  fn alloc_type(&self) -> &str {
-    "function"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
-  }
-}
-
-impl Trace for Closure {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    self
-      .upvalues
-      .iter()
-      .for_each(|constant| do_if_some(constant.get_dyn_managed(), |obj| mark(obj)));
-
-    mark(self.fun.clone_dyn());
-    true
-  }
-}
-
-impl Manage for Closure {
-  fn alloc_type(&self) -> &str {
-    "closure"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
-  }
-}
-
-impl Trace for Rc<dyn NativeFun> {
-  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    true
-  }
-}
-
-impl Manage for Rc<dyn NativeFun> {
-  fn alloc_type(&self) -> &str {
-    "native"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
-  }
-}
-
-impl Trace for Upvalue {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    match self {
-      Upvalue::Closed(upvalue) => do_if_some(upvalue.get_dyn_managed(), |obj| mark(obj)),
-      _ => (),
-    }
-
-    true
-  }
-}
-
-impl Manage for Upvalue {
-  fn alloc_type(&self) -> &str {
-    "upvalue"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
-  }
-}
-
-impl fmt::Display for Value {
-  /// Implement display for value in spacelox
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      Self::Number(num) => write!(f, "{}", num),
-      Self::Bool(b) => write!(f, "{}", b),
-      Self::Nil => write!(f, "nil"),
-      Self::String(store) => write!(f, "'{}'", store.as_str()),
-      Self::Fun(fun) => match &fun.name {
-        Some(name) => write!(f, "<fn {}>", name),
-        None => write!(f, "<script>"),
-      },
-      Self::Upvalue(upvalue) => match &**upvalue {
-        Upvalue::Open(index) => write!(f, "<upvalue open {}>", index),
-        Upvalue::Closed(store) => write!(f, "<upvalue closed {}>", store),
-      },
-      Self::Closure(closure) => match &closure.fun.name {
-        Some(name) => write!(f, "<fn {}>", name),
-        None => write!(f, "<script>"),
-      },
-      Self::Native(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
-    }
-  }
-}
-
-impl PartialEq for Value {
-  /// Determine if this `Value` and another `Value` are equal inside
-  /// of the spacelox runtime
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::Value;
-  ///
-  /// let val1 = Value::Bool(false);
-  /// let val2 = Value::Bool(true);
-  ///
-  /// assert_eq!(val1 == val2, false);
-  /// ```
-  fn eq(&self, other: &Value) -> bool {
-    // check we're the same variant
-    if discriminant(self) != discriminant(other) {
-      return false;
-    }
-
-    // check the the variants have the same value
-    match (self, other) {
-      (Self::Number(num1), Self::Number(num2)) => num1 == num2,
-      (Self::Bool(b1), Self::Bool(b2)) => b1 == b2,
-      (Self::Nil, Self::Nil) => true,
-      (Self::String(string1), Self::String(string2)) => string1 == string2,
-      (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
-      (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,
-      (Self::Native(native1), Self::Native(native2)) => native1 == native2,
-      (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => upvalue1 == upvalue2,
-      _ => false,
-    }
-  }
 }
 
 impl Value {
@@ -470,6 +221,8 @@ impl Value {
       Value::String(_) => "string".to_string(),
       Value::Fun(_) => "function".to_string(),
       Value::Closure(_) => "closure".to_string(),
+      Value::Class(_) => "class".to_string(),
+      Value::Instance(_) => "instance".to_string(),
       Value::Upvalue(_) => "upvalue".to_string(),
       Value::Native(_) => "native".to_string(),
     }
@@ -484,6 +237,240 @@ impl Value {
       Value::Upvalue(upvalue) => Some(upvalue.clone_dyn()),
       _ => None,
     }
+  }
+}
+
+impl fmt::Display for Value {
+  /// Implement display for value in spacelox
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Self::Number(num) => write!(f, "{}", num),
+      Self::Bool(b) => write!(f, "{}", b),
+      Self::Nil => write!(f, "nil"),
+      Self::String(store) => write!(f, "'{}'", store.as_str()),
+      Self::Fun(fun) => match &fun.name {
+        Some(name) => write!(f, "<fn {}>", name),
+        None => write!(f, "<script>"),
+      },
+      Self::Upvalue(upvalue) => match &**upvalue {
+        Upvalue::Open(index) => write!(f, "<upvalue open {}>", index),
+        Upvalue::Closed(store) => write!(f, "<upvalue closed {}>", store),
+      },
+      Self::Closure(closure) => match &closure.fun.name {
+        Some(name) => write!(f, "<fn {}>", name),
+        None => write!(f, "<script>"),
+      },
+      Self::Class(class) => write!(f, "{}", &class.name.as_str()),
+      Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
+      Self::Native(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
+    }
+  }
+}
+
+impl PartialEq for Value {
+  /// Determine if this `Value` and another `Value` are equal inside
+  /// of the spacelox runtime
+  ///
+  /// # Examples
+  /// ```
+  /// use spacelox_core::value::Value;
+  ///
+  /// let val1 = Value::Bool(false);
+  /// let val2 = Value::Bool(true);
+  ///
+  /// assert_eq!(val1 == val2, false);
+  /// ```
+  fn eq(&self, other: &Value) -> bool {
+    // check we're the same variant
+    if discriminant(self) != discriminant(other) {
+      return false;
+    }
+
+    // check the the variants have the same value
+    match (self, other) {
+      (Self::Number(num1), Self::Number(num2)) => num1 == num2,
+      (Self::Bool(b1), Self::Bool(b2)) => b1 == b2,
+      (Self::Nil, Self::Nil) => true,
+      (Self::String(string1), Self::String(string2)) => string1 == string2,
+      (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
+      (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,
+      (Self::Native(native1), Self::Native(native2)) => native1 == native2,
+      (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => upvalue1 == upvalue2,
+      (Self::Class(class1), Self::Class(class2)) => class1 == class2,
+      (Self::Instance(instance1), Self::Instance(instance2)) => instance1 == instance2,
+      _ => false,
+    }
+  }
+}
+
+#[derive(PartialEq, Clone, Debug)]
+pub enum Upvalue {
+  Open(usize),
+  Closed(Box<Value>),
+}
+
+impl Upvalue {
+  /// Close over the upvalue by moving it onto the stack to the heap
+  ///
+  /// # Examples
+  /// ```
+  /// use spacelox_core::value::{Value, Upvalue};
+  /// use std::rc::Rc;
+  ///
+  /// let stack = vec![
+  ///   Value::Number(10.0)
+  /// ];
+  ///
+  /// let mut upvalue = Upvalue::Open(0);
+  /// upvalue.hoist(&stack);
+  ///
+  /// match upvalue {
+  ///   Upvalue::Closed(store) => assert_eq!(*store, Value::Number(10.0)),
+  ///   Upvalue::Open(_) => assert!(false),
+  /// };
+  /// ```
+  pub fn hoist(&mut self, stack: &Vec<Value>) {
+    match self {
+      Upvalue::Open(index) => {
+        let value = unsafe { stack.get_unchecked(*index) }.clone();
+        replace(self, Upvalue::Closed(Box::new(value)));
+      }
+      Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
+    }
+  }
+
+  /// Is this upvalue currently open
+  ///
+  /// # Examples
+  /// ```
+  /// use spacelox_core::value::Upvalue;
+  ///
+  /// let upvalue = Upvalue::Open(0);
+  /// assert_eq!(upvalue.is_open(), true);
+  /// ```
+  pub fn is_open(&self) -> bool {
+    match self {
+      Upvalue::Open(_) => true,
+      Upvalue::Closed(_) => false,
+    }
+  }
+}
+
+impl Trace for Upvalue {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+    match self {
+      Upvalue::Closed(upvalue) => do_if_some(upvalue.get_dyn_managed(), |obj| mark(obj)),
+      _ => (),
+    }
+
+    true
+  }
+}
+
+impl Manage for Upvalue {
+  fn alloc_type(&self) -> &str {
+    "upvalue"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self).to_string()
+  }
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum FunKind {
+  Fun,
+  Script,
+}
+
+#[derive(PartialEq, Clone)]
+pub struct Fun {
+  /// Arity of this function
+  pub arity: u16,
+
+  /// Number of upvalues
+  pub upvalue_count: usize,
+
+  /// Code for the function body
+  pub chunk: Chunk,
+
+  /// Name if not top-level script
+  pub name: Option<IStr>,
+}
+
+impl Default for Fun {
+  fn default() -> Self {
+    Self {
+      arity: 0,
+      upvalue_count: 0,
+      chunk: Chunk::default(),
+      name: Some(IStr::new("null function")),
+    }
+  }
+}
+
+impl fmt::Debug for Fun {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.debug_struct("Fun")
+      .field("arity", &self.arity)
+      .field("upvalue_count", &self.upvalue_count)
+      .field("chunk", &"Chunk { ... }")
+      .field("name", &self.name)
+      .finish()
+  }
+}
+
+impl Trace for Fun {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+    self
+      .chunk
+      .constants
+      .iter()
+      .for_each(|constant| do_if_some(constant.get_dyn_managed(), |obj| mark(obj)));
+
+    true
+  }
+}
+
+impl Manage for Fun {
+  fn alloc_type(&self) -> &str {
+    "function"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self).to_string()
+  }
+}
+
+impl Trace for IStr {
+  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+    true
+  }
+}
+
+impl Manage for IStr {
+  fn alloc_type(&self) -> &str {
+    "string"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self).to_string()
+  }
+}
+
+impl Trace for Rc<dyn NativeFun> {
+  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+    true
+  }
+}
+
+impl Manage for Rc<dyn NativeFun> {
+  fn alloc_type(&self) -> &str {
+    "native"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self).to_string()
   }
 }
 
@@ -530,6 +517,113 @@ impl fmt::Debug for Closure {
       .field("fun", &self.fun)
       .field("upvalues", &format!("[UpValue; {}]", &self.upvalues.len()))
       .finish()
+  }
+}
+
+impl Trace for Closure {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+    self
+      .upvalues
+      .iter()
+      .for_each(|constant| do_if_some(constant.get_dyn_managed(), |obj| mark(obj)));
+
+    mark(self.fun.clone_dyn());
+    true
+  }
+}
+
+impl Manage for Closure {
+  fn alloc_type(&self) -> &str {
+    "closure"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self).to_string()
+  }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct Class {
+  pub name: Managed<IStr>,
+}
+
+impl Class {
+  pub fn new(name: Managed<IStr>) -> Self {
+    Class {
+      name
+    }
+  }
+}
+
+impl fmt::Debug for Class {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.debug_struct("Class")
+      .field("name", &self.name)
+      .finish()
+  }
+}
+
+impl Trace for Class {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+    mark(self.name.clone_dyn());
+    true
+  }
+}
+
+impl Manage for Class {
+  fn alloc_type(&self) -> &str {
+    "class"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self).to_string()
+  }
+}
+
+#[derive(PartialEq, Clone)]
+pub struct Instance {
+  pub class: Managed<Class>,
+  pub fields: HashMap<Managed<IStr>, Value>,
+}
+
+impl Instance {
+  pub fn new(class: Managed<Class>) -> Self {
+    Instance {
+      class,
+      fields: HashMap::new(),
+    }
+  }
+}
+
+impl fmt::Debug for Instance {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.debug_struct("Instance")
+      .field("class", &self.class)
+      .field("fields", &self.fields)
+      .finish()
+  }
+}
+
+impl Trace for Instance {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+    mark(self.class.clone_dyn());
+
+    self.fields.iter().for_each(|(key, val)| {
+      mark(key.clone_dyn());
+      do_if_some(val.get_dyn_managed(), |obj| mark(obj));
+    });
+
+    true
+  }
+}
+
+impl Manage for Instance {
+  fn alloc_type(&self) -> &str {
+    "instance"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self).to_string()
   }
 }
 

@@ -1,8 +1,8 @@
 {
   var a = "outer";
   {
-    print a; // expect: outer
+    assertEq(a, "outer"); // expect: outer
     var a = "inner";
-    print a; // expect: inner
+    assertEq(a, "inner"); // expect: inner
   }
 }

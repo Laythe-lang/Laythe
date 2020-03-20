@@ -1,6 +1,6 @@
 var a = "global";
 {
   var a = "shadow";
-  print a; // expect: shadow
+  assertEq(a, "shadow"); // expect: shadow
 }
-print a; // expect: global
+assertEq(a, "global"); // expect: global

@@ -191,24 +191,25 @@ fn call() -> Result<(), std::io::Error> {
       "call/bool.lox",
       "call/nil.lox",
       "call/num.lox",
-      // "call/object.lox",
+      "call/object.lox",
       "call/string.lox",
     ],
     InterpretResult::RuntimeError,
   )
 }
 
-// #[test]
-// fn class() -> Result<(), std::io::Error> {
-//   test_files(&vec![
-//   ], InterpretResult::Ok)?;
+#[test]
+fn class() -> Result<(), std::io::Error> {
+  test_files(&vec![
+    "class/empty.lox"
+  ], InterpretResult::Ok)?;
 
-//   test_files(&vec![
-//   ], InterpretResult::CompileError)?;
+  test_files(&vec![
+  ], InterpretResult::CompileError)?;
 
-//   test_files(&vec![
-//   ], InterpretResult::RuntimeError)
-// }
+  test_files(&vec![
+  ], InterpretResult::RuntimeError)
+}
 
 #[test]
 fn closure() -> Result<(), std::io::Error> {
@@ -270,18 +271,38 @@ fn expressions() -> Result<(), std::io::Error> {
   test_files(&vec![], InterpretResult::RuntimeError)
 }
 
-// #[test]
-// fn field() -> Result<(), std::io::Error> {
-//   test_files(&vec![
-//     "expressions/evaluate.lox"
-//   ], InterpretResult::Ok)?;
+#[test]
+fn field() -> Result<(), std::io::Error> {
+  test_files(&vec![
+    "field/call_function_field.lox",
+    // "field/get_and_set_method.lox"
+    "field/many.lox",
+    // "field/method_binds_this.lox"
+    // "field/method.lox"
+    "field/on_instance.lox",
+  ], InterpretResult::Ok)?;
 
-//   test_files(&vec![
-//   ], InterpretResult::CompileError)?;
+  test_files(&vec![
+  ], InterpretResult::CompileError)?;
 
-//   test_files(&vec![
-//   ], InterpretResult::RuntimeError)
-// }
+  test_files(&vec![
+    "field/call_nonfunction_field.lox",
+    "field/get_on_bool.lox",
+    "field/get_on_class.lox",
+    "field/get_on_function.lox",
+    "field/get_on_nil.lox",
+    "field/get_on_num.lox",
+    "field/get_on_string.lox",
+    "field/set_evaluation_order.lox",
+    "field/set_on_bool.lox",
+    "field/set_on_class.lox",
+    "field/set_on_function.lox",
+    "field/set_on_nil.lox",
+    "field/set_on_num.lox",
+    "field/set_on_string.lox",
+    "field/undefined.lox",
+  ], InterpretResult::RuntimeError)
+}
 
 #[test]
 fn for_loop() -> Result<(), std::io::Error> {
@@ -297,7 +318,7 @@ fn for_loop() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
-      // "for/class_in_body.lox"
+      "for/class_in_body.lox",
       "for/fun_in_body.lox",
       "for/statement_condition.lox",
       "for/statement_increment.lox",
@@ -468,12 +489,12 @@ fn operator() -> Result<(), std::io::Error> {
       "operator/add.lox",
       "operator/comparison.lox",
       "operator/divide.lox",
-      // "operator/equals_class.lox",
+      "operator/equals_class.lox",
       // "operator/equals_method.lox",
       "operator/equals.lox",
       "operator/multiply.lox",
       "operator/negate.lox",
-      // "operator/not_class.lox",
+      "operator/not_class.lox",
       "operator/not_equals.lox",
       "operator/not.lox",
       "operator/subtract.lox",
@@ -587,6 +608,41 @@ fn string() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn variable() -> Result<(), std::io::Error> {
+  test_files(&vec![
+    "variable/early_bound.lox",
+    "variable/in_middle_of_block.lox",
+    "variable/in_nested_block.lox",
+    // "variable/local_from_method.lox",
+    "variable/redeclare_global.lox",
+    "variable/redefine_global.lox",
+    "variable/scope_reuse_in_different_blocks.lox",
+    "variable/shadow_and_local.lox",
+    "variable/shadow_global.lox",
+    "variable/shadow_local.lox",
+    "variable/uninitialized.lox",
+    "variable/unreached_undefined.lox",
+    "variable/use_global_in_initializer.lox",
+  ], InterpretResult::Ok)?;
+
+  test_files(&vec![
+    "variable/collide_with_parameter.lox",
+    "variable/duplicate_local.lox",
+    "variable/duplicate_parameter.lox",
+    "variable/use_false_as_var.lox",
+    "variable/use_local_in_initializer.lox",
+    "variable/use_nil_as_var.lox",
+    // "variable/use_this_as_var.lox",
+  ], InterpretResult::CompileError)?;
+
+  test_files(&vec![
+    "variable/undefined_global.lox",
+    "variable/undefined_local.lox",
+    "variable/undefined_local.lox",
+  ], InterpretResult::RuntimeError)
+}
+
+#[test]
 fn while_test() -> Result<(), std::io::Error> {
   test_files(
     &vec![
@@ -600,7 +656,7 @@ fn while_test() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
-      // "while/class_in_body.lox",
+      "while/class_in_body.lox",
       "while/fun_in_body.lox",
       "while/var_in_body.lox",
     ],

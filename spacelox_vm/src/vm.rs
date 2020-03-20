@@ -5,7 +5,7 @@ use spacelox_core::managed::{Manage, Managed, Trace};
 use spacelox_core::native::{NativeFun, NativeResult};
 use spacelox_core::{
   utils::do_if_some,
-  value::{Closure, FunKind, Upvalue, Value},
+  value::{Closure, FunKind, Instance, Class, Upvalue, Value},
 };
 use spacelox_interner::IStr;
 use std::collections::HashMap;
@@ -225,8 +225,8 @@ impl<'a> VmExecutor<'a> {
           self.op_loop(jump);
         }
         ByteCode::Noop => panic!("Noop was not replaced within compiler.rs"),
-        ByteCode::DefineGlobal(constant) => {
-          self.op_define_global(constant);
+        ByteCode::DefineGlobal(slot) => {
+          self.op_define_global(slot);
         }
         ByteCode::GetGlobal(slot) => {
           if let Some(result) = self.op_get_global(slot) {
@@ -238,14 +238,20 @@ impl<'a> VmExecutor<'a> {
             return result;
           }
         }
-        ByteCode::GetLocal(slot) => {
-          self.op_get_local(slot);
-        }
-        ByteCode::SetLocal(slot) => {
-          self.op_set_local(slot);
-        }
+        ByteCode::GetLocal(slot) => self.op_get_local(slot),
+        ByteCode::SetLocal(slot) => self.op_set_local(slot),
         ByteCode::GetUpvalue(slot) => self.op_get_upvalue(slot),
         ByteCode::SetUpvalue(slot) => self.op_set_upvalue(slot),
+        ByteCode::GetProperty(slot) => {
+          if let Some(result) = self.op_get_property(slot) {
+            return result;
+          }
+        }
+        ByteCode::SetProperty(slot) => {
+          if let Some(result) = self.op_set_property(slot) {
+            return result
+          }
+        }
         ByteCode::UpvalueIndex(_) => {
           self.internal_error("UpvalueIndex should only be processed in closure");
         }
@@ -264,7 +270,8 @@ impl<'a> VmExecutor<'a> {
             return result;
           }
         }
-        ByteCode::Closure(constant) => self.op_closure(constant),
+        ByteCode::Closure(slot) => self.op_closure(slot),
+        ByteCode::Class(slot) => self.op_class(slot),
         ByteCode::CloseUpvalue => {
           self.close_upvalues(self.stack_top - 1);
           self.pop();
@@ -298,6 +305,7 @@ impl<'a> VmExecutor<'a> {
     match &callee {
       Value::Closure(closure) => self.call(closure, arg_count),
       Value::Native(native) => self.call_native(native, arg_count),
+      Value::Class(class) => self.call_class(class, arg_count),
       Value::Fun(fun) => panic!(
         "function {} was not wrapped in a closure",
         fun.name.clone().unwrap_or(IStr::new("script"))
@@ -307,6 +315,18 @@ impl<'a> VmExecutor<'a> {
         Some(InterpretResult::RuntimeError)
       }
     }
+  }
+
+  fn call_class(
+    &mut self,
+    class: &Managed<Class>,
+    arg_count: u8,
+  ) -> Option<InterpretResult> {
+    let value = Value::Instance(self.gc.manage(Instance::new(class.clone()), self));
+    self.stack_top -= arg_count as usize + 1;
+    self.push(value);
+
+    None
   }
 
   fn call_native(
@@ -438,6 +458,12 @@ impl<'a> VmExecutor<'a> {
     self.open_upvalues.clear()
   }
 
+  fn op_class(&mut self, slot: u8) {
+    let name = self.read_string(slot);
+    let class = Value::Class(self.gc.manage(Class::new(name), self));
+    self.push(class)
+  }
+
   fn op_loop(&mut self, jump: u16) {
     self.decrement_frame_ip(jump as usize);
   }
@@ -452,8 +478,8 @@ impl<'a> VmExecutor<'a> {
     self.increment_frame_ip(jump as usize);
   }
 
-  fn op_define_global(&mut self, store_index: u8) {
-    let string = self.read_string(store_index);
+  fn op_define_global(&mut self, slot: u8) {
+    let string = self.read_string(slot);
     let name = self.gc.manage_str(string.as_str(), self);
     let global = self.pop();
     self.globals.insert(name, global);
@@ -497,6 +523,24 @@ impl<'a> VmExecutor<'a> {
     self.stack[slots + slot as usize] = copy;
   }
 
+  fn op_set_property(&mut self, slot: u8) -> Option<InterpretResult> {
+    let mut value = self.peek(1).clone();
+    let name = self.read_string(slot);
+    
+    if let Value::Instance(ref mut instance) = value {
+      instance.fields.insert(name.clone(), self.peek(0).clone());
+
+      let popped = self.pop();
+      self.pop();
+      self.push(popped);
+      
+      return None
+    }
+
+    self.runtime_error("Only instances have fields.");
+    Some(InterpretResult::RuntimeError)
+  }
+
   fn op_set_upvalue(&mut self, slot: u8) {
     let value = self.peek(0).clone();
     let upvalue = &mut self.current_mut_frame().closure.upvalues[slot as usize];
@@ -529,6 +573,25 @@ impl<'a> VmExecutor<'a> {
     };
 
     self.push(value);
+  }
+
+  fn op_get_property(&mut self, slot: u8) -> Option<InterpretResult> {
+    let value = self.peek(0).clone();
+    
+    if let Value::Instance(instance) = value {
+      let name = self.read_string(slot);
+      if let Some(value) = instance.fields.get(&name) {
+        self.pop();
+        self.push(value.clone());
+        return None
+      }
+
+      self.runtime_error(&format!("Undefined property {}", name.as_str()));
+      return Some(InterpretResult::RuntimeError)
+    }
+
+    self.runtime_error("Only instances have properties.");
+    Some(InterpretResult::RuntimeError)
   }
 
   fn op_negate(&mut self) -> Option<InterpretResult> {
@@ -640,9 +703,9 @@ impl<'a> VmExecutor<'a> {
     self.push(Value::Bool(left == right));
   }
 
-  fn op_closure(&mut self, index: u8) {
+  fn op_closure(&mut self, slot: u8) {
     let frame = self.current_frame();
-    let fun = VmExecutor::read_constant(frame, index).ref_fun();
+    let fun = VmExecutor::read_constant(frame, slot).ref_fun();
     let mut closure = Closure::new(fun.clone());
 
     for _ in 0..fun.upvalue_count {

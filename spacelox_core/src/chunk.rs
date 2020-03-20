@@ -63,6 +63,12 @@ pub enum ByteCode {
   /// Set a local at the given index
   SetLocal(u8),
 
+  /// Get a property off a class instance
+  GetProperty(u8),
+
+  /// Set a property on a class instance
+  SetProperty(u8),
+
   /// Jump to end of if block if false
   JumpIfFalse(u16),
 
@@ -77,6 +83,9 @@ pub enum ByteCode {
 
   /// Create a closure
   Closure(u8),
+
+  /// Create a class
+  Class(u8),
 
   /// Close an upvalue by moving it to the stack
   CloseUpvalue,

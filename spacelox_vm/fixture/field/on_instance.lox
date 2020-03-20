@@ -2,8 +2,8 @@ class Foo {}
 
 var foo = Foo();
 
-print foo.bar = "bar value"; // expect: bar value
-print foo.baz = "baz value"; // expect: baz value
+assertEq(foo.bar = "bar value", "bar value"); // expect: bar value
+assertEq(foo.baz = "baz value", "baz value"); // expect: baz value
 
-print foo.bar; // expect: bar value
-print foo.baz; // expect: baz value
+assertEq(foo.bar, "bar value"); // expect: bar value
+assertEq(foo.baz, "baz value"); // expect: baz value
