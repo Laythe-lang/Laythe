@@ -45,6 +45,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> Option<usize> {
     ByteCode::Call(arg_count) => byte_instruction("Call", *arg_count),
     ByteCode::Class(constant) => constant_instruction("Class", chunk, *constant),
     ByteCode::Closure(constant) => closure_instruction("Closure", chunk, *constant, offset),
+    ByteCode::Method(constant) => constant_instruction("Method", chunk, *constant),
     ByteCode::CloseUpvalue => simple_instruction("CloseUpvalue"),
     ByteCode::UpvalueIndex(_) => simple_instruction("!=== UpValueIndex - Invalid ===!"),
     ByteCode::DefineGlobal(constant) => constant_instruction("DefineGlobal", chunk, *constant),

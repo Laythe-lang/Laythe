@@ -84,6 +84,9 @@ pub enum ByteCode {
   /// Create a closure
   Closure(u8),
 
+  /// Create a method
+  Method(u8),
+
   /// Create a class
   Class(u8),
 

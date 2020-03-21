@@ -1,3 +1,4 @@
+use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, Parser};
 use crate::memory::{Gc, NO_GC};
 use spacelox_core::chunk::{ByteCode, UpvalueIndex};
@@ -5,76 +6,59 @@ use spacelox_core::managed::{Manage, Managed, Trace};
 use spacelox_core::native::{NativeFun, NativeResult};
 use spacelox_core::{
   utils::do_if_some,
-  value::{Closure, FunKind, Instance, Class, Upvalue, Value},
+  value::{BoundMethod, Class, Closure, Instance, Upvalue, Value},
 };
 use spacelox_interner::IStr;
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
-use std::ops::Drop;
-use std::{fmt, rc::Rc};
+use std::rc::Rc;
 
 #[cfg(feature = "debug")]
-use crate::debug::disassemble_instruction;
-
-pub const FRAME_MAX: usize = std::u8::MAX as usize;
-pub const DEFAULT_STACK_MAX: usize = FRAME_MAX * 32;
+use crate::{
+  constants::{define_special_string, SpecialStrings, FRAME_MAX},
+  debug::disassemble_instruction,
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum InterpretResult {
   Ok,
   CompileError,
   RuntimeError,
-}
-
-/// A call frame in the space lox interpreter
-#[derive(Clone, PartialEq)]
-pub struct CallFrame {
-  pub closure: Managed<Closure>,
-  ip: usize,
-  slots: usize,
-}
-
-impl<'a> CallFrame {
-  pub fn new(closure: Managed<Closure>) -> Self {
-    CallFrame {
-      closure,
-      ip: 0,
-      slots: 0,
-    }
-  }
+  InternalError,
 }
 
 /// The virtual machine for the spacelox programming language
 pub struct Vm {
   /// A stack holding all local variable currently in use
-  pub stack: Vec<Value>,
+  stack: Vec<Value>,
 
   /// A stack holding call frames currently in use
-  pub frames: Vec<CallFrame>,
+  frames: Vec<CallFrame>,
 
   /// The vm's garbage collector
   gc: Gc,
+
+  /// special strings to the vm that aren't keywords
+  special_strings: SpecialStrings,
 
   /// A persisted set of globals most for a repl context
   globals: HashMap<Managed<IStr>, Value>,
 }
 
 impl Vm {
-  pub fn new(stack: Vec<Value>, frames: Vec<CallFrame>, natives: Vec<Rc<dyn NativeFun>>) -> Vm {
-    let gc = Gc::new();
-    // let globals = define_globals(&natives, &mut gc);
+  pub fn new(stack: Vec<Value>, frames: Vec<CallFrame>, natives: &[Rc<dyn NativeFun>]) -> Vm {
+    let mut gc = Gc::new();
+    let special_strings = define_special_string(&mut gc);
+    let globals = define_globals(&mut gc, &natives);
 
-    let mut vm = Vm {
+    Vm {
       stack,
       frames,
       gc,
-      globals: HashMap::new(),
-    };
-
-    vm.define_globals(&natives);
-
-    vm
+      special_strings,
+      globals,
+    }
   }
 
   pub fn repl(&mut self) {
@@ -100,7 +84,7 @@ impl Vm {
   fn interpret(&mut self, source: &str) -> InterpretResult {
     let mut parser = Parser::new(source);
 
-    let compiler = Compiler::new(&mut parser, &mut self.gc, FunKind::Script);
+    let compiler = Compiler::new(&mut parser, None, &mut self.special_strings, &mut self.gc);
     let result = compiler.compile();
 
     if !result.success {
@@ -112,16 +96,19 @@ impl Vm {
     let executor = VmExecutor::new(self, script);
     executor.run()
   }
+}
 
-  fn define_globals<'a>(&mut self, natives: &[Rc<dyn NativeFun>]) {
-    natives.iter().for_each(|native| {
-      let name = self.gc.manage_str(&native.meta().name, &NO_GC);
+fn define_globals<'a>(gc: &mut Gc, natives: &[Rc<dyn NativeFun>]) -> HashMap<Managed<IStr>, Value> {
+  let mut globals = HashMap::new();
 
-      let native_value = Value::Native(self.gc.manage(native.clone(), &NO_GC));
+  natives.iter().for_each(|native| {
+    let name = gc.manage_str(&native.meta().name, &NO_GC);
+    let native_value = Value::Native(gc.manage(native.clone(), &NO_GC));
 
-      self.globals.insert(name, native_value);
-    });
-  }
+    globals.insert(name, native_value);
+  });
+
+  globals
 }
 
 pub struct VmExecutor<'a> {
@@ -140,6 +127,9 @@ pub struct VmExecutor<'a> {
   /// the main script level function
   script: Value,
 
+  /// class init string
+  special_strings: &'a SpecialStrings,
+
   /// index to the top of the value stack
   pub stack_top: usize,
 
@@ -150,10 +140,6 @@ pub struct VmExecutor<'a> {
   pub open_upvalues: Vec<Managed<Upvalue>>,
 }
 
-impl<'a> Drop for VmExecutor<'a> {
-  fn drop(&mut self) {}
-}
-
 impl<'a> VmExecutor<'a> {
   pub fn new(vm: &'a mut Vm, script: Value) -> VmExecutor<'a> {
     let mut executor = VmExecutor {
@@ -162,6 +148,7 @@ impl<'a> VmExecutor<'a> {
       stack: &mut vm.stack,
       script,
       gc: &mut vm.gc,
+      special_strings: &vm.special_strings,
       stack_top: 1,
       globals: &mut vm.globals,
       open_upvalues: Vec::with_capacity(100),
@@ -249,7 +236,7 @@ impl<'a> VmExecutor<'a> {
         }
         ByteCode::SetProperty(slot) => {
           if let Some(result) = self.op_set_property(slot) {
-            return result
+            return result;
           }
         }
         ByteCode::UpvalueIndex(_) => {
@@ -271,6 +258,7 @@ impl<'a> VmExecutor<'a> {
           }
         }
         ByteCode::Closure(slot) => self.op_closure(slot),
+        ByteCode::Method(slot) => self.op_method(slot),
         ByteCode::Class(slot) => self.op_class(slot),
         ByteCode::CloseUpvalue => {
           self.close_upvalues(self.stack_top - 1);
@@ -304,29 +292,30 @@ impl<'a> VmExecutor<'a> {
   fn call_value(&mut self, callee: Value, arg_count: u8) -> Option<InterpretResult> {
     match &callee {
       Value::Closure(closure) => self.call(closure, arg_count),
+      Value::Method(method) => self.call_method(method, arg_count),
       Value::Native(native) => self.call_native(native, arg_count),
       Value::Class(class) => self.call_class(class, arg_count),
       Value::Fun(fun) => panic!(
         "function {} was not wrapped in a closure",
         fun.name.clone().unwrap_or(IStr::new("script"))
       ),
-      _ => {
-        self.runtime_error("Can only call functions and classes.");
-        Some(InterpretResult::RuntimeError)
-      }
+      _ => self.runtime_error("Can only call functions and classes."),
     }
   }
 
-  fn call_class(
-    &mut self,
-    class: &Managed<Class>,
-    arg_count: u8,
-  ) -> Option<InterpretResult> {
+  fn call_class(&mut self, class: &Managed<Class>, arg_count: u8) -> Option<InterpretResult> {
     let value = Value::Instance(self.gc.manage(Instance::new(class.clone()), self));
     self.stack_top -= arg_count as usize + 1;
     self.push(value);
 
-    None
+    match class.methods.get(&self.special_strings.init) {
+      Some(init) => self.call(init, arg_count),
+      None => if arg_count != 0 { 
+        self.runtime_error(&format!("Expected 0 arguments but got {}", arg_count)) 
+      } else {
+        None
+      }
+    }
   }
 
   fn call_native(
@@ -389,6 +378,39 @@ impl<'a> VmExecutor<'a> {
     None
   }
 
+  fn call_method(
+    &mut self,
+    bound: &Managed<BoundMethod>,
+    arg_count: u8,
+  ) -> Option<InterpretResult> {
+    self.set_val(
+      self.stack_top - (arg_count as usize) - 1,
+      bound.receiver.clone(),
+    );
+    self.call(&bound.method, arg_count)
+  }
+
+  fn bind_method(
+    &mut self,
+    class: &Managed<Class>,
+    name: &Managed<IStr>,
+  ) -> Option<InterpretResult> {
+    match class.methods.get(name) {
+      Some(method) => {
+        let bound = self
+          .gc
+          .manage(BoundMethod::new(self.peek(0).clone(), method.clone()), self);
+        self.pop();
+        self.push(Value::Method(bound));
+        None
+      }
+      None => {
+        self.runtime_error(&format!("Undefined property {}", name.as_str()));
+        Some(InterpretResult::RuntimeError)
+      }
+    }
+  }
+
   fn increment_frame_ip(&mut self, offset: usize) {
     let frame = self.current_mut_frame();
     frame.ip += offset;
@@ -400,10 +422,16 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn internal_error(&mut self, message: &str) {
-    self.runtime_error(&format!("!=== [Internal Error]:{} ===!", message))
+    self.error(&format!("!=== [Internal Error]:{} ===!", message));
+    panic!("Internal error");
   }
 
-  fn runtime_error(&mut self, message: &str) {
+  fn runtime_error(&mut self, message: &str) -> Option<InterpretResult> {
+    self.error(message);
+    Some(InterpretResult::RuntimeError)
+  }
+
+  fn error(&mut self, message: &str) {
     eprintln!("{}", message);
     eprintln!("");
 
@@ -438,12 +466,16 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn push(&mut self, value: Value) {
-    self.stack[self.stack_top] = value;
+    self.set_val(self.stack_top, value);
     self.stack_top += 1;
   }
 
   fn peek(&self, distance: usize) -> &Value {
     self.get_val(self.stack_top - (distance + 1))
+  }
+
+  fn peek_mut(&mut self, distance: usize) -> &mut Value {
+    self.get_val_mut(self.stack_top - (distance + 1))
   }
 
   fn pop(&mut self) -> Value {
@@ -488,16 +520,12 @@ impl<'a> VmExecutor<'a> {
   fn op_get_global(&mut self, store_index: u8) -> Option<InterpretResult> {
     let string = self.read_string(store_index);
 
-    let global = self.globals.get(&string).map(|global| global.clone());
-    match global {
+    match self.globals.get(&string).map(|global| global.clone()) {
       Some(gbl) => {
         self.push(gbl);
         None
       }
-      None => {
-        self.runtime_error(&format!("Undefined variable {}", string.as_str()));
-        Some(InterpretResult::RuntimeError)
-      }
+      None => self.runtime_error(&format!("Undefined variable {}", string.as_str())),
     }
   }
 
@@ -510,8 +538,7 @@ impl<'a> VmExecutor<'a> {
       .is_none()
     {
       self.globals.remove_entry(&string);
-      self.runtime_error(&format!("Undefined variable {}", string.as_str()));
-      return Some(InterpretResult::RuntimeError);
+      return self.runtime_error(&format!("Undefined variable {}", string.as_str()));
     }
 
     None
@@ -526,19 +553,18 @@ impl<'a> VmExecutor<'a> {
   fn op_set_property(&mut self, slot: u8) -> Option<InterpretResult> {
     let mut value = self.peek(1).clone();
     let name = self.read_string(slot);
-    
+
     if let Value::Instance(ref mut instance) = value {
       instance.fields.insert(name.clone(), self.peek(0).clone());
 
       let popped = self.pop();
       self.pop();
       self.push(popped);
-      
-      return None
+
+      return None;
     }
 
-    self.runtime_error("Only instances have fields.");
-    Some(InterpretResult::RuntimeError)
+    self.runtime_error("Only instances have fields.")
   }
 
   fn op_set_upvalue(&mut self, slot: u8) {
@@ -577,21 +603,19 @@ impl<'a> VmExecutor<'a> {
 
   fn op_get_property(&mut self, slot: u8) -> Option<InterpretResult> {
     let value = self.peek(0).clone();
-    
+
     if let Value::Instance(instance) = value {
       let name = self.read_string(slot);
       if let Some(value) = instance.fields.get(&name) {
         self.pop();
         self.push(value.clone());
-        return None
+        return None;
       }
 
-      self.runtime_error(&format!("Undefined property {}", name.as_str()));
-      return Some(InterpretResult::RuntimeError)
+      return self.bind_method(&instance.class, &name);
     }
 
-    self.runtime_error("Only instances have properties.");
-    Some(InterpretResult::RuntimeError)
+    self.runtime_error("Only instances have properties.")
   }
 
   fn op_negate(&mut self) -> Option<InterpretResult> {
@@ -600,10 +624,7 @@ impl<'a> VmExecutor<'a> {
         self.push(Value::Number(-num));
         None
       }
-      _ => {
-        self.runtime_error("Operand must be a number.");
-        Some(InterpretResult::RuntimeError)
-      }
+      _ => self.runtime_error("Operand must be a number."),
     }
   }
 
@@ -624,10 +645,7 @@ impl<'a> VmExecutor<'a> {
         self.push(Value::Number(left + right));
         None
       }
-      _ => {
-        self.runtime_error("Operands must be two numbers or two strings.");
-        Some(InterpretResult::RuntimeError)
-      }
+      _ => self.runtime_error("Operands must be two numbers or two strings."),
     }
   }
 
@@ -637,10 +655,7 @@ impl<'a> VmExecutor<'a> {
         self.push(Value::Number(left - right));
         None
       }
-      _ => {
-        self.runtime_error("Operands must be numbers.");
-        Some(InterpretResult::RuntimeError)
-      }
+      _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
@@ -650,10 +665,7 @@ impl<'a> VmExecutor<'a> {
         self.push(Value::Number(left * right));
         None
       }
-      _ => {
-        self.runtime_error("Operands must be numbers.");
-        Some(InterpretResult::RuntimeError)
-      }
+      _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
@@ -663,10 +675,7 @@ impl<'a> VmExecutor<'a> {
         self.push(Value::Number(left / right));
         None
       }
-      _ => {
-        self.runtime_error("Operands must be numbers.");
-        Some(InterpretResult::RuntimeError)
-      }
+      _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
@@ -676,10 +685,7 @@ impl<'a> VmExecutor<'a> {
         self.push(Value::Bool(left < right));
         None
       }
-      _ => {
-        self.runtime_error("Operands must be numbers.");
-        Some(InterpretResult::RuntimeError)
-      }
+      _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
@@ -689,10 +695,7 @@ impl<'a> VmExecutor<'a> {
         self.push(Value::Bool(left > right));
         None
       }
-      _ => {
-        self.runtime_error("Operands must be numbers.");
-        Some(InterpretResult::RuntimeError)
-      }
+      _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
@@ -701,6 +704,20 @@ impl<'a> VmExecutor<'a> {
     let left = self.pop();
 
     self.push(Value::Bool(left == right));
+  }
+
+  fn op_method(&mut self, slot: u8) {
+    let name = self.read_string(slot);
+    let value = self.peek(0).clone();
+
+    match (self.peek_mut(1), value) {
+      (Value::Class(class), Value::Closure(method)) => {
+        class.methods.insert(name, method.clone());
+      }
+      _ => panic!("Internal spacelox error. stack invalid for op_method"),
+    }
+
+    self.pop();
   }
 
   fn op_closure(&mut self, slot: u8) {
@@ -788,6 +805,10 @@ impl<'a> VmExecutor<'a> {
     unsafe { self.stack.get_unchecked_mut(index) }
   }
 
+  fn set_val(&mut self, index: usize, val: Value) {
+    self.stack[index] = val;
+  }
+
   #[cfg(feature = "debug")]
   fn print_debug(&self) {
     print!("Stack:    ");
@@ -808,7 +829,7 @@ impl<'a> VmExecutor<'a> {
         .iter()
         .for_each(|upvalue| match &**upvalue.ref_upvalue() {
           Upvalue::Open(index) => {
-            print!("[ stack {} ]", self.stack[*index + frame.slots]);
+            print!("[ stack {} ]", self.get_val(*index + frame.slots));
           }
           Upvalue::Closed(closed) => {
             print!("[ heap {} ]", closed);
@@ -825,12 +846,6 @@ impl<'a> VmExecutor<'a> {
   fn frame_instruction(&self) -> &ByteCode {
     let frame = self.current_frame();
     &frame.closure.fun.chunk.instructions[frame.ip]
-  }
-}
-
-impl<'a> fmt::Display for VmExecutor<'a> {
-  fn fmt(&self, _: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-    unimplemented!()
   }
 }
 

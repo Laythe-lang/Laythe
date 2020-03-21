@@ -5,11 +5,11 @@ use crate::{
   utils::do_if_some,
 };
 use spacelox_interner::IStr;
+use std::collections::HashMap;
 use std::fmt;
 use std::mem::discriminant;
 use std::mem::replace;
 use std::rc::Rc;
-use std::collections::HashMap;
 
 /// Enum of value types in spacelox
 #[derive(Clone, Debug)]
@@ -22,6 +22,7 @@ pub enum Value {
   Closure(Managed<Closure>),
   Class(Managed<Class>),
   Instance(Managed<Instance>),
+  Method(Managed<BoundMethod>),
   Native(Managed<Rc<dyn NativeFun>>),
   Upvalue(Managed<Upvalue>),
 }
@@ -221,6 +222,7 @@ impl Value {
       Value::String(_) => "string".to_string(),
       Value::Fun(_) => "function".to_string(),
       Value::Closure(_) => "closure".to_string(),
+      Value::Method(_) => "method".to_string(),
       Value::Class(_) => "class".to_string(),
       Value::Instance(_) => "instance".to_string(),
       Value::Upvalue(_) => "upvalue".to_string(),
@@ -259,6 +261,10 @@ impl fmt::Display for Value {
       Self::Closure(closure) => match &closure.fun.name {
         Some(name) => write!(f, "<fn {}>", name),
         None => write!(f, "<script>"),
+      },
+      Self::Method(bound) => match &bound.method.fun.name {
+        Some(name) => write!(f, "<fn {}>", name),
+        None => panic!("Method not assigned a name"),
       },
       Self::Class(class) => write!(f, "{}", &class.name.as_str()),
       Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
@@ -380,6 +386,8 @@ impl Manage for Upvalue {
 #[derive(Debug, PartialEq, Clone)]
 pub enum FunKind {
   Fun,
+  Method,
+  Initializer,
   Script,
 }
 
@@ -545,27 +553,33 @@ impl Manage for Closure {
 #[derive(PartialEq, Clone)]
 pub struct Class {
   pub name: Managed<IStr>,
+  pub methods: HashMap<Managed<IStr>, Managed<Closure>>,
 }
 
 impl Class {
   pub fn new(name: Managed<IStr>) -> Self {
     Class {
-      name
+      name,
+      methods: HashMap::new(),
     }
   }
 }
 
 impl fmt::Debug for Class {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Class")
-      .field("name", &self.name)
-      .finish()
+    f.debug_struct("Class").field("name", &self.name).finish()
   }
 }
 
 impl Trace for Class {
   fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     mark(self.name.clone_dyn());
+
+    self.methods.iter().for_each(|(key, val)| {
+      mark(key.clone_dyn());
+      mark(val.clone_dyn());
+    });
+
     true
   }
 }
@@ -620,6 +634,44 @@ impl Trace for Instance {
 impl Manage for Instance {
   fn alloc_type(&self) -> &str {
     "instance"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self).to_string()
+  }
+}
+
+pub struct BoundMethod {
+  pub receiver: Value,
+  pub method: Managed<Closure>,
+}
+
+impl BoundMethod {
+  pub fn new(receiver: Value, method: Managed<Closure>) -> Self {
+    Self { receiver, method }
+  }
+}
+
+impl fmt::Debug for BoundMethod {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.debug_struct("BoundMethod")
+      .field("receiver", &self.receiver)
+      .field("method", &self.method)
+      .finish()
+  }
+}
+
+impl Trace for BoundMethod {
+  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+    do_if_some(self.receiver.get_dyn_managed(), |obj| mark(obj));
+    mark(self.method.clone_dyn());
+    true
+  }
+}
+
+impl Manage for BoundMethod {
+  fn alloc_type(&self) -> &str {
+    "method"
   }
 
   fn debug(&self) -> String {

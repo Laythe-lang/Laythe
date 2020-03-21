@@ -2,8 +2,8 @@ use std::{
   cell::Cell,
   fmt,
   hash::{Hash, Hasher},
-  ops::{Deref, DerefMut},
   mem,
+  ops::{Deref, DerefMut},
   ptr::{self, NonNull},
 };
 

@@ -1,6 +1,6 @@
 use spacelox_core::managed::{Allocation, Manage, Managed, Trace};
 use spacelox_interner::IStr;
-use std::cell::{RefCell, Cell};
+use std::cell::{Cell, RefCell};
 use std::fmt;
 use std::ptr::NonNull;
 
@@ -13,12 +13,12 @@ pub struct Gc {
 const GC_HEAP_GROW_FACTOR: usize = 2;
 
 impl<'a> Gc {
-  /// Create a new manged heap for spacelox for objects. 
-  /// 
+  /// Create a new manged heap for spacelox for objects.
+  ///
   /// # Examples
   /// ```
   /// use spacelox_vm::memory::Gc;
-  /// 
+  ///
   /// let gc = Gc::new();
   /// ```
   pub fn new() -> Self {
@@ -32,7 +32,7 @@ impl<'a> Gc {
   /// Create a `Managed<T>` from the provided `data`. This method will allocate space
   /// for `data` and return a pointer to it. In case of a gc the provided `context` is
   /// used to annotate active roots
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use spacelox_vm::memory::{Gc, NO_GC};
@@ -40,7 +40,7 @@ impl<'a> Gc {
   /// use spacelox_core::chunk::Chunk;
   /// use spacelox_core::managed::Managed;
   /// use spacelox_interner::IStr;
-  /// 
+  ///
   /// let gc = Gc::new();
   /// let fun = Fun {
   ///   arity: 3,
@@ -48,9 +48,9 @@ impl<'a> Gc {
   ///   chunk: Chunk::default(),
   ///   name: Some(IStr::new("fun")),
   /// };
-  /// 
+  ///
   /// let managed_fun = gc.manage(fun, &NO_GC);
-  /// 
+  ///
   /// assert_eq!(managed_fun.name, Some(IStr::new("fun")));
   pub fn manage<T: 'static + Manage, C: Trace>(&self, data: T, context: &C) -> Managed<T> {
     Managed::from(self.allocate(data, context))
@@ -58,9 +58,9 @@ impl<'a> Gc {
 
   /// Create a `Managed<IStr>` from a str slice. This creates
   /// or returns an interned string and allocates a pointer to the intern
-  /// cache. A Managed<IStr> can be created from `.manage` but will 
+  /// cache. A Managed<IStr> can be created from `.manage` but will
   /// not intern the string.
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use spacelox_vm::memory::{Gc, NO_GC};
@@ -68,10 +68,10 @@ impl<'a> Gc {
   /// use spacelox_core::managed::Managed;
   /// use spacelox_interner::IStr;
   /// use std::ptr;
-  /// 
+  ///
   /// let gc = Gc::new();
   /// let str = gc.manage_str(&"hi!", &NO_GC);
-  /// 
+  ///
   /// assert_eq!(str.as_str(), "hi!");
   /// ```
   pub fn manage_str<C: Trace>(&self, string: &str, context: &C) -> Managed<IStr> {
@@ -79,21 +79,21 @@ impl<'a> Gc {
     self.manage(interned, context)
   }
 
-  /// clone the the `Managed` data as a new heap allocation. 
-  /// A `Managed` clone will simply create a new pointer to the data. 
+  /// clone the the `Managed` data as a new heap allocation.
+  /// A `Managed` clone will simply create a new pointer to the data.
   /// In case of a gc the `context` is used to annotate roots
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use spacelox_vm::memory::{Gc, NO_GC};
   /// use spacelox_core::value::{Value, Upvalue};
   /// use spacelox_core::managed::Managed;
   /// use std::ptr;
-  /// 
+  ///
   /// let gc = Gc::new();
   /// let up1 = gc.manage(Upvalue::Open(0), &NO_GC);
   /// let up2 = gc.clone_managed(&up1, &NO_GC);
-  /// 
+  ///
   /// assert!(!ptr::eq(&*up1, &*up2));
   /// match (&*up1, &*up2) {
   ///   (Upvalue::Open(o1), Upvalue::Open(o2)) => assert_eq!(o1, o2),
@@ -110,7 +110,7 @@ impl<'a> Gc {
   }
 
   /// Allocate `data` on the gc's heap. If conditions are met
-  /// a garbage collection can be triggered. When triggered 
+  /// a garbage collection can be triggered. When triggered
   /// will use the roots provided by the `context`
   fn allocate<T: 'static + Manage, C: Trace>(
     &self,
@@ -125,13 +125,17 @@ impl<'a> Gc {
     let size = alloc.size();
     self.heap.borrow_mut().push(alloc);
 
-    #[cfg(feature = "debug_stress_gc")] 
+    #[cfg(feature = "debug_stress_gc")]
     {
       self.mark_last();
       self.collect_garbage(context);
     }
-    
-    if self.bytes_allocated.replace(self.bytes_allocated.get() + size) > self.next_gc.get() {
+
+    if self
+      .bytes_allocated
+      .replace(self.bytes_allocated.get() + size)
+      > self.next_gc.get()
+    {
       self.mark_last();
       self.collect_garbage(context);
     }
@@ -164,14 +168,22 @@ impl<'a> Gc {
 
       self.bytes_allocated.set(self.sweep());
 
-      self.next_gc.set(self.bytes_allocated.get() * GC_HEAP_GROW_FACTOR);
+      self
+        .next_gc
+        .set(self.bytes_allocated.get() * GC_HEAP_GROW_FACTOR);
     }
 
     #[cfg(feature = "debug_gc")]
     {
       let now = self.bytes_allocated.get();
       println!("-- gc end");
-      println!("   collected {} bytes (from {} to {}) next at {}", _before - now, _before, now, self.next_gc.get());
+      println!(
+        "   collected {} bytes (from {} to {}) next at {}",
+        _before - now,
+        _before,
+        now,
+        self.next_gc.get()
+      );
     }
   }
 
@@ -223,11 +235,7 @@ impl<'a> Gc {
   /// mark an `Managed` as reachable from some root. This method returns
   /// early if the object is already marked. If the object isn't marked
   /// adds the object to the the `gray_stack`
-  fn mark_obj(
-    &self,
-    managed: Managed<dyn Manage>,
-    gray_stack: &mut Vec<Managed<dyn Manage>>,
-  ) {
+  fn mark_obj(&self, managed: Managed<dyn Manage>, gray_stack: &mut Vec<Managed<dyn Manage>>) {
     if managed.obj().mark() {
       return;
     }

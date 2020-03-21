@@ -1,12 +1,13 @@
+use crate::constants::SpecialStrings;
 use crate::memory::{Gc, NO_GC};
 use crate::scanner::Scanner;
 use spacelox_core::chunk::{ByteCode, Chunk, UpvalueIndex};
-use spacelox_core::managed::Managed;
+use spacelox_core::managed::{Manage, Managed, Trace};
 use spacelox_core::token::{Token, TokenKind};
-use spacelox_core::utils::copy_string;
+use spacelox_core::utils::{copy_string, do_if_some};
 use spacelox_core::value::{Fun, FunKind, Value};
-use std::convert::TryInto;
 use spacelox_interner::IStr;
+use std::convert::TryInto;
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_chunk;
@@ -25,7 +26,7 @@ const UNINITIALIZED: i16 = -1;
 #[derive(Debug, Clone)]
 pub struct Local {
   /// name of the local
-  name: Option<Token>,
+  name: Option<String>,
 
   /// depth of the local
   depth: i16,
@@ -49,6 +50,12 @@ pub struct Compiler<'a, 's> {
   /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
   parser: &'a mut Parser<'s>,
+
+  /// The special strings in the spacelox context
+  special_strings: &'a SpecialStrings,
+
+  /// The current class class compiler
+  current_class: Option<Managed<ClassCompiler>>,
 
   /// Analytics for the compiler
   gc: &'a mut Gc,
@@ -75,27 +82,28 @@ impl<'a, 's> Compiler<'a, 's> {
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
   /// use spacelox_vm::memory::Gc;
-  /// use spacelox_core::value::FunKind;
+  /// use spacelox_vm::constants::define_special_string;
   ///
   /// // an expression
   /// let source = "10 + 3".to_string();
   ///
-  /// let mut allocator = Gc::new();
+  /// let mut gc = Gc::new();
   /// let mut parser = Parser::new(&source);
+  /// let strings = define_special_string(&mut gc);
   ///
-  /// let compiler = Compiler::new(&mut parser, &mut allocator, FunKind::Script);
+  /// let compiler = Compiler::new(&mut parser, None, &strings, &mut gc);
   /// ```
-  pub fn new(parser: &'a mut Parser<'s>, gc: &'a mut Gc, fun_kind: FunKind) -> Self {
-    let name = match fun_kind {
-      FunKind::Script => Option::None,
-      _ => Some(IStr::new(&parser.previous.lexeme)),
-    };
-
+  pub fn new(
+    parser: &'a mut Parser<'s>,
+    current_class: Option<Managed<ClassCompiler>>,
+    special_strings: &'a SpecialStrings,
+    gc: &'a mut Gc,
+  ) -> Self {
     let fun = gc.manage(
       Fun {
         arity: 0,
         upvalue_count: 0,
-        name,
+        name: None,
         chunk: Chunk::default(),
       },
       &NO_GC,
@@ -103,7 +111,9 @@ impl<'a, 's> Compiler<'a, 's> {
 
     Self {
       fun,
-      fun_kind,
+      current_class,
+      special_strings,
+      fun_kind: FunKind::Script,
       gc,
       parser,
       enclosing: None,
@@ -123,9 +133,25 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Construct an inner compiler used to compile functions inside of a script
   fn child(name: Option<IStr>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
+    let first_local = if let FunKind::Fun = fun_kind {
+      Local {
+        name: Option::None,
+        depth: UNINITIALIZED,
+        is_captured: false,
+      }
+    } else {
+      Local {
+        name: Some("this".to_string()),
+        depth: UNINITIALIZED,
+        is_captured: false,
+      }
+    };
+
     let mut child = Self {
       fun: unsafe { (*enclosing).fun },
       fun_kind,
+      special_strings: unsafe { (*enclosing).special_strings },
+      current_class: unsafe { (*enclosing).current_class },
       gc: unsafe { (*enclosing).gc },
       parser: unsafe { (*enclosing).parser },
       enclosing: Some(enclosing),
@@ -152,6 +178,8 @@ impl<'a, 's> Compiler<'a, 's> {
       &NO_GC,
     );
 
+    child.locals[0] = first_local;
+
     child
   }
 
@@ -162,15 +190,16 @@ impl<'a, 's> Compiler<'a, 's> {
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
   /// use spacelox_vm::memory::Gc;
-  /// use spacelox_core::value::FunKind;
+  /// use spacelox_vm::constants::define_special_string;
   ///
   /// // an expression
   /// let source = "3 / 2 + 10;".to_string();
   ///
-  /// let mut parser = Parser::new(&source);
   /// let mut gc = Gc::new();
+  /// let mut parser = Parser::new(&source);
+  /// let strings = define_special_string(&mut gc);
   ///
-  /// let compiler = Compiler::new(&mut parser, &mut gc, FunKind::Script);
+  /// let compiler = Compiler::new(&mut parser, None, &strings, &mut gc);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
@@ -263,15 +292,40 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Parse a function declaration
   fn class_declaration(&mut self) {
-    self.parser.consume(TokenKind::Identifier, "Expect class name.");
+    self
+      .parser
+      .consume(TokenKind::Identifier, "Expect class name.");
+
+    let class_name = self.parser.previous.clone();
     let name_constant = self.identifer_constant(self.parser.previous.clone());
     self.declare_variable();
 
     self.emit_byte(ByteCode::Class(name_constant));
     self.define_variable(name_constant);
 
-    self.parser.consume(TokenKind::LeftBrace, "Expect '{' before class body.");
-    self.parser.consume(TokenKind::RightBrace, "Expect '}' after class body.");
+    let class_compiler = Some(self.gc.manage(
+      ClassCompiler {
+        name: self.parser.previous.clone(),
+        enclosing: self.current_class,
+      },
+      &NO_GC,
+    ));
+    self.current_class = class_compiler;
+
+    self.named_variable(class_name, false);
+
+    self
+      .parser
+      .consume(TokenKind::LeftBrace, "Expect '{' before class body.");
+    while !self.parser.check(TokenKind::RightBrace) && self.parser.check(TokenKind::Eof) {
+      self.method();
+    }
+
+    self
+      .parser
+      .consume(TokenKind::RightBrace, "Expect '}' after class body.");
+    self.emit_byte(ByteCode::Pop);
+    self.current_class = class_compiler.and_then(|compiler| compiler.enclosing);
   }
 
   /// Parse a function declaration
@@ -334,6 +388,22 @@ impl<'a, 's> Compiler<'a, 's> {
     fun_compiler.upvalues[0..upvalue_count]
       .iter()
       .for_each(|upvalue| self.emit_byte(ByteCode::UpvalueIndex(upvalue.clone())));
+  }
+
+  fn method(&mut self) {
+    self
+      .parser
+      .consume(TokenKind::Identifier, "Expect method name.");
+    let constant = self.identifer_constant(self.parser.previous.clone());
+
+    let fun_kind = if self.special_strings.init.as_str() == &self.parser.previous.lexeme {
+      FunKind::Initializer
+    } else {
+      FunKind::Method
+    };
+
+    self.function(fun_kind);
+    self.emit_byte(ByteCode::Method(constant));
   }
 
   /// Parse a variable declaration
@@ -490,6 +560,10 @@ impl<'a, 's> Compiler<'a, 's> {
     if self.parser.match_kind(TokenKind::Semicolon) {
       self.emit_return();
     } else {
+      if let FunKind::Initializer = self.fun_kind {
+        self.parser.error("Cannot return a value from an initializer.");
+      }
+
       self.expression();
       self
         .parser
@@ -531,9 +605,9 @@ impl<'a, 's> Compiler<'a, 's> {
 
     #[cfg(feature = "debug")]
     {
-      if self.parser.had_error {
+      // if self.parser.had_error {
         self.print_chunk();
-      }
+      // }
     }
   }
 
@@ -602,9 +676,11 @@ impl<'a, 's> Compiler<'a, 's> {
     self.emit_byte(ByteCode::Call(arg_count));
   }
 
-  /// 
+  ///
   fn dot(&mut self, can_assign: bool) {
-    self.parser.consume(TokenKind::Identifier, "Expect property name after '.'.");
+    self
+      .parser
+      .consume(TokenKind::Identifier, "Expect property name after '.'.");
     let name = self.identifer_constant(self.parser.previous.clone());
 
     if can_assign && self.parser.match_kind(TokenKind::Equal) {
@@ -796,6 +872,16 @@ impl<'a, 's> Compiler<'a, 's> {
     self.current_chunk().instructions[end_jump] = ByteCode::Jump(self.patch_jump(end_jump));
   }
 
+  /// Parse a class's this identifier
+  fn this(&mut self) {
+    if self.current_class.is_none() {
+      self.parser.error("Cannot use 'this' outside of class.");
+      return;
+    }
+
+    self.variable(false);
+  }
+
   /// Parse a variable from the provided token return it's new constant
   /// identifer if an identifer was identified
   fn parse_variable(&mut self, error_message: &str) -> u8 {
@@ -829,7 +915,7 @@ impl<'a, 's> Compiler<'a, 's> {
     let local = &mut self.locals[self.local_count];
     self.local_count += 1;
 
-    local.name = Some(name);
+    local.name = Some(name.lexeme);
     local.depth = -1;
   }
 
@@ -851,7 +937,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
       // check that the same variable wasn't declared twice in the same scope
       if let Some(local_name) = &local.name {
-        if identifers_equal(&name, local_name) {
+        if &name.lexeme == local_name {
           self
             .parser
             .error("Variable with this name already declared in this scope.");
@@ -868,7 +954,7 @@ impl<'a, 's> Compiler<'a, 's> {
       let local = &self.locals[i];
 
       if let Some(local_name) = &local.name {
-        if identifers_equal(&name, local_name) {
+        if &name.lexeme == local_name {
           // handle the case were `var a = a;`
           if local.depth == UNINITIALIZED {
             self
@@ -944,6 +1030,7 @@ impl<'a, 's> Compiler<'a, 's> {
       Act::Number => self.number(),
       Act::Or => self.or(),
       Act::String => self.string(),
+      Act::This => self.this(),
       Act::Unary => self.unary(),
       Act::Variable => self.variable(can_assign),
     }
@@ -951,7 +1038,11 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Emit byte code for a return
   fn emit_return(&mut self) {
-    self.emit_byte(ByteCode::Nil);
+    match self.fun_kind {
+      FunKind::Initializer => self.emit_byte(ByteCode::GetLocal(0)),
+      _ => self.emit_byte(ByteCode::Nil),
+    }
+
     self.emit_byte(ByteCode::Return);
   }
 
@@ -1084,7 +1175,7 @@ const RULES_TABLE: [ParseRule; 40] = [
   // TOKEN_RETURN
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_SUPER
-  ParseRule::new(None, None, Precedence::None),
+  ParseRule::new(Some(Act::This), None, Precedence::None),
   // TOKEN_THIS
   ParseRule::new(Some(Act::Literal), None, Precedence::None),
   // TOKEN_TRUE
@@ -1094,7 +1185,8 @@ const RULES_TABLE: [ParseRule; 40] = [
   // TOKEN_WHILE
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_ERROR
-  ParseRule::new(None, None, Precedence::None), // TOKEN_EOF
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_EOF
 ];
 
 /// Get a rule from the rules table
@@ -1102,9 +1194,26 @@ const fn get_rule(kind: TokenKind) -> &'static ParseRule {
   &RULES_TABLE[kind as usize]
 }
 
-/// Are the two provided identifiers equal
-fn identifers_equal(a: &Token, b: &Token) -> bool {
-  a.lexeme == b.lexeme
+#[derive(Debug, Clone)]
+pub struct ClassCompiler {
+  enclosing: Option<Managed<ClassCompiler>>,
+  name: Token,
+}
+
+impl Trace for ClassCompiler {
+  fn trace(&self, mark_obj: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+    do_if_some(self.enclosing, |enclosing| mark_obj(enclosing.clone_dyn()));
+    true
+  }
+}
+
+impl Manage for ClassCompiler {
+  fn alloc_type(&self) -> &str {
+    "class compiler"
+  }
+  fn debug(&self) -> String {
+    format!("{:?}", self).to_string()
+  }
 }
 
 /// The space lox parser. This struct is responsible for
@@ -1276,6 +1385,7 @@ enum Act {
   Number,
   Or,
   String,
+  This,
   Unary,
   Variable,
 }
@@ -1283,6 +1393,7 @@ enum Act {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::constants::define_special_string;
 
   enum ByteCodeTest {
     Code(ByteCode),
@@ -1292,7 +1403,10 @@ mod test {
   fn test_compile<'a>(src: String, gc: &mut Gc) -> Managed<Fun> {
     let mut parser = Parser::new(&src);
 
-    let compiler = Compiler::new(&mut parser, gc, FunKind::Script);
+    let class_compiler = None;
+    let special_strings = define_special_string(gc);
+
+    let compiler = Compiler::new(&mut parser, class_compiler, &special_strings, gc);
     let result = compiler.compile();
     assert_eq!(result.success, true);
 

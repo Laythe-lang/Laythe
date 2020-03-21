@@ -1,8 +1,12 @@
 use spacelox_core::managed::Managed;
 use spacelox_core::native::create_natives;
 use spacelox_core::value::{Closure, Fun, Value};
+use spacelox_vm::constants::{DEFAULT_STACK_MAX, FRAME_MAX};
 use spacelox_vm::memory::{Gc, NO_GC};
-use spacelox_vm::vm::{CallFrame, InterpretResult, Vm, DEFAULT_STACK_MAX, FRAME_MAX};
+use spacelox_vm::{
+  call_frame::CallFrame,
+  vm::{InterpretResult, Vm},
+};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
@@ -16,7 +20,7 @@ fn create_frames<'a>(fun: Managed<Closure>) -> Vec<CallFrame> {
 }
 
 fn create_vm<'a>(closure: Managed<Closure>) -> Vm {
-  Vm::new(create_stack(), create_frames(closure), create_natives())
+  Vm::new(create_stack(), create_frames(closure), &create_natives())
 }
 
 fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
@@ -200,15 +204,11 @@ fn call() -> Result<(), std::io::Error> {
 
 #[test]
 fn class() -> Result<(), std::io::Error> {
-  test_files(&vec![
-    "class/empty.lox"
-  ], InterpretResult::Ok)?;
+  test_files(&vec!["class/empty.lox"], InterpretResult::Ok)?;
 
-  test_files(&vec![
-  ], InterpretResult::CompileError)?;
+  test_files(&vec![], InterpretResult::CompileError)?;
 
-  test_files(&vec![
-  ], InterpretResult::RuntimeError)
+  test_files(&vec![], InterpretResult::RuntimeError)
 }
 
 #[test]
@@ -273,35 +273,40 @@ fn expressions() -> Result<(), std::io::Error> {
 
 #[test]
 fn field() -> Result<(), std::io::Error> {
-  test_files(&vec![
-    "field/call_function_field.lox",
-    // "field/get_and_set_method.lox"
-    "field/many.lox",
-    // "field/method_binds_this.lox"
-    // "field/method.lox"
-    "field/on_instance.lox",
-  ], InterpretResult::Ok)?;
+  test_files(
+    &vec![
+      "field/call_function_field.lox",
+      // "field/get_and_set_method.lox"
+      "field/many.lox",
+      // "field/method_binds_this.lox"
+      // "field/method.lox"
+      "field/on_instance.lox",
+    ],
+    InterpretResult::Ok,
+  )?;
 
-  test_files(&vec![
-  ], InterpretResult::CompileError)?;
+  test_files(&vec![], InterpretResult::CompileError)?;
 
-  test_files(&vec![
-    "field/call_nonfunction_field.lox",
-    "field/get_on_bool.lox",
-    "field/get_on_class.lox",
-    "field/get_on_function.lox",
-    "field/get_on_nil.lox",
-    "field/get_on_num.lox",
-    "field/get_on_string.lox",
-    "field/set_evaluation_order.lox",
-    "field/set_on_bool.lox",
-    "field/set_on_class.lox",
-    "field/set_on_function.lox",
-    "field/set_on_nil.lox",
-    "field/set_on_num.lox",
-    "field/set_on_string.lox",
-    "field/undefined.lox",
-  ], InterpretResult::RuntimeError)
+  test_files(
+    &vec![
+      "field/call_nonfunction_field.lox",
+      "field/get_on_bool.lox",
+      "field/get_on_class.lox",
+      "field/get_on_function.lox",
+      "field/get_on_nil.lox",
+      "field/get_on_num.lox",
+      "field/get_on_string.lox",
+      "field/set_evaluation_order.lox",
+      "field/set_on_bool.lox",
+      "field/set_on_class.lox",
+      "field/set_on_function.lox",
+      "field/set_on_nil.lox",
+      "field/set_on_num.lox",
+      "field/set_on_string.lox",
+      "field/undefined.lox",
+    ],
+    InterpretResult::RuntimeError,
+  )
 }
 
 #[test]
@@ -421,9 +426,7 @@ fn limit() -> Result<(), std::io::Error> {
   )?;
 
   test_files(
-    &vec![
-      "limit/stack_overflow.lox"
-    ],
+    &vec!["limit/stack_overflow.lox"],
     InterpretResult::RuntimeError,
   )
 }
@@ -609,37 +612,46 @@ fn string() -> Result<(), std::io::Error> {
 
 #[test]
 fn variable() -> Result<(), std::io::Error> {
-  test_files(&vec![
-    "variable/early_bound.lox",
-    "variable/in_middle_of_block.lox",
-    "variable/in_nested_block.lox",
-    // "variable/local_from_method.lox",
-    "variable/redeclare_global.lox",
-    "variable/redefine_global.lox",
-    "variable/scope_reuse_in_different_blocks.lox",
-    "variable/shadow_and_local.lox",
-    "variable/shadow_global.lox",
-    "variable/shadow_local.lox",
-    "variable/uninitialized.lox",
-    "variable/unreached_undefined.lox",
-    "variable/use_global_in_initializer.lox",
-  ], InterpretResult::Ok)?;
+  test_files(
+    &vec![
+      "variable/early_bound.lox",
+      "variable/in_middle_of_block.lox",
+      "variable/in_nested_block.lox",
+      // "variable/local_from_method.lox",
+      "variable/redeclare_global.lox",
+      "variable/redefine_global.lox",
+      "variable/scope_reuse_in_different_blocks.lox",
+      "variable/shadow_and_local.lox",
+      "variable/shadow_global.lox",
+      "variable/shadow_local.lox",
+      "variable/uninitialized.lox",
+      "variable/unreached_undefined.lox",
+      "variable/use_global_in_initializer.lox",
+    ],
+    InterpretResult::Ok,
+  )?;
 
-  test_files(&vec![
-    "variable/collide_with_parameter.lox",
-    "variable/duplicate_local.lox",
-    "variable/duplicate_parameter.lox",
-    "variable/use_false_as_var.lox",
-    "variable/use_local_in_initializer.lox",
-    "variable/use_nil_as_var.lox",
-    // "variable/use_this_as_var.lox",
-  ], InterpretResult::CompileError)?;
+  test_files(
+    &vec![
+      "variable/collide_with_parameter.lox",
+      "variable/duplicate_local.lox",
+      "variable/duplicate_parameter.lox",
+      "variable/use_false_as_var.lox",
+      "variable/use_local_in_initializer.lox",
+      "variable/use_nil_as_var.lox",
+      // "variable/use_this_as_var.lox",
+    ],
+    InterpretResult::CompileError,
+  )?;
 
-  test_files(&vec![
-    "variable/undefined_global.lox",
-    "variable/undefined_local.lox",
-    "variable/undefined_local.lox",
-  ], InterpretResult::RuntimeError)
+  test_files(
+    &vec![
+      "variable/undefined_global.lox",
+      "variable/undefined_local.lox",
+      "variable/undefined_local.lox",
+    ],
+    InterpretResult::RuntimeError,
+  )
 }
 
 #[test]
