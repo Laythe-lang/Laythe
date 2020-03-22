@@ -7,5 +7,5 @@ class Foo {
 }
 
 var foo = Foo(1, 2);
-print foo.a; // expect: 1
-print foo.b; // expect: 2
+assertEq(foo.a, 1); // expect: 1
+assertEq(foo.b, 2); // expect: 2

@@ -1,7 +1,11 @@
+#[cfg(feature = "debug")]
 use spacelox_core::chunk::{ByteCode, Chunk, UpvalueIndex};
+
+#[cfg(feature = "debug")]
 use spacelox_core::value::Value;
 
 /// Write a chunk to console
+#[cfg(feature = "debug")]
 pub fn disassemble_chunk(code_chunk: &Chunk, name: &str) {
   println!("== {0} ==", name);
 
@@ -19,6 +23,7 @@ pub fn disassemble_chunk(code_chunk: &Chunk, name: &str) {
 }
 
 /// Write an instruction to console
+#[cfg(feature = "debug")]
 pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> Option<usize> {
   print!("{:0>4} ", offset);
 
@@ -43,6 +48,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> Option<usize> {
     ByteCode::False => simple_instruction("False"),
     ByteCode::Pop => simple_instruction("Pop"),
     ByteCode::Call(arg_count) => byte_instruction("Call", *arg_count),
+    ByteCode::Invoke((name, arg_count)) => invoke_instruction("Invoke", chunk, *name, *arg_count),
     ByteCode::Class(constant) => constant_instruction("Class", chunk, *constant),
     ByteCode::Closure(constant) => closure_instruction("Closure", chunk, *constant, offset),
     ByteCode::Method(constant) => constant_instruction("Method", chunk, *constant),
@@ -68,6 +74,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> Option<usize> {
   }
 }
 
+#[cfg(feature = "debug")]
 fn jump_instruction(name: &str, sign: isize, jump: u16, offset: isize) -> Option<usize> {
   let net_jump = sign * (jump as isize);
   println!("{:16} {:4} -> {}", name, offset, offset + 1 + net_jump);
@@ -75,6 +82,7 @@ fn jump_instruction(name: &str, sign: isize, jump: u16, offset: isize) -> Option
 }
 
 /// print a constant
+#[cfg(feature = "debug")]
 fn constant_instruction(name: &str, chunk: &Chunk, constant: u8) -> Option<usize> {
   print!("{:16} {:4} ", name, constant);
   print!("{}", &chunk.constants[constant as usize]);
@@ -83,6 +91,7 @@ fn constant_instruction(name: &str, chunk: &Chunk, constant: u8) -> Option<usize
 }
 
 /// print a closure
+#[cfg(feature = "debug")]
 fn closure_instruction(name: &str, chunk: &Chunk, constant: u8, offset: usize) -> Option<usize> {
   print!("{:16} {:4} ", name, constant);
   print!("{}", &chunk.constants[constant as usize]);
@@ -123,13 +132,23 @@ fn closure_instruction(name: &str, chunk: &Chunk, constant: u8, offset: usize) -
   Some(offset + upvalue_count)
 }
 
+#[cfg(feature = "debug")]
+fn invoke_instruction(name: &str, chunk: &Chunk, constant: u8, arg_count: u8) -> Option<usize> {
+  print!("{:16} ({} args) {:4} ", name, arg_count, constant);
+  print!("{}", &chunk.constants[constant as usize]);
+  println!();
+  None
+}
+
 /// print a byte instruction
+#[cfg(feature = "debug")]
 fn byte_instruction(name: &str, slot: u8) -> Option<usize> {
   println!("{:16} {:4} ", name, slot);
   None
 }
 
 /// print a simple instruction
+#[cfg(feature = "debug")]
 fn simple_instruction(name: &str) -> Option<usize> {
   println!("{:16}", name);
   None

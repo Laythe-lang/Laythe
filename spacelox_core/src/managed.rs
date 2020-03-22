@@ -13,6 +13,8 @@ pub trait Trace {
   fn trace(&self, mark_obj: &mut dyn FnMut(Managed<dyn Manage>)) -> bool;
 }
 
+/// An entity that can be managed and collected by the garbage collector.
+/// This trait provided debugging capabilities for the type being managed
 pub trait Manage: Trace {
   /// What allocation type is
   fn alloc_type(&self) -> &str;
@@ -21,6 +23,7 @@ pub trait Manage: Trace {
   fn debug(&self) -> String;
 }
 
+/// The header of an allocation indicate meta data about the object
 #[derive(Debug, Default)]
 pub struct Header {
   marked: Cell<bool>,
@@ -36,7 +39,9 @@ impl<T: 'static + Trace> Allocation<T> {
   pub fn new(data: T) -> Self {
     Self {
       data,
-      header: Header::default(),
+      header: Header {
+        marked: Cell::new(false),
+      },
     }
   }
 
@@ -178,6 +183,7 @@ impl<T: 'static + PartialEq + Manage> PartialEq for Managed<T> {
     left_inner.eq(right_inner)
   }
 }
+
 impl<T: 'static + Eq + Manage> Eq for Managed<T> {}
 
 impl<T: 'static + Hash + Manage> Hash for Managed<T> {
@@ -193,4 +199,11 @@ impl<T: 'static + Manage + fmt::Debug> fmt::Debug for Managed<T> {
 
     f.debug_struct("Managed").field("ptr", inner).finish()
   }
+}
+
+pub fn make_managed<T: 'static + Manage>(data: T) -> (Managed<T>, Box<Allocation<T>>) {
+  let mut alloc = Box::new(Allocation::new(data));
+  let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+
+  (Managed::from(ptr), alloc)
 }

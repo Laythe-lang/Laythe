@@ -219,7 +219,7 @@ fn closure() -> Result<(), std::io::Error> {
       "closure/assign_to_shadowed_later.lox",
       "closure/close_over_function_parameter.lox",
       "closure/close_over_later_variable.lox",
-      // "closure/close_over_method_parameter.lox",
+      "closure/close_over_method_parameter.lox",
       "closure/closed_closure_in_function.lox",
       "closure/nested_closure.lox",
       "closure/open_closure_in_function.lox",
@@ -250,17 +250,34 @@ fn comments() -> Result<(), std::io::Error> {
   )
 }
 
-// #[test]
-// fn constructor() -> Result<(), std::io::Error> {
-//   test_files(&vec![
-//   ], InterpretResult::Ok)?;
+#[test]
+fn constructor() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "constructor/arguments.lox",
+      "constructor/call_init_early_return.lox",
+      "constructor/call_init_explicitly.lox",
+      "constructor/default.lox",
+      "constructor/early_return.lox",
+      "constructor/return_in_nested_function.lox",
+    ],
+    InterpretResult::Ok,
+  )?;
 
-//   test_files(&vec![
-//   ], InterpretResult::CompileError)?;
+  test_files(
+    &vec!["constructor/return_value.lox"],
+    InterpretResult::CompileError,
+  )?;
 
-//   test_files(&vec![
-//   ], InterpretResult::RuntimeError)
-// }
+  test_files(
+    &vec![
+      "constructor/default_arguments.lox",
+      "constructor/extra_arguments.lox",
+      "constructor/missing_arguments.lox",
+    ],
+    InterpretResult::RuntimeError,
+  )
+}
 
 #[test]
 fn expressions() -> Result<(), std::io::Error> {
@@ -276,10 +293,10 @@ fn field() -> Result<(), std::io::Error> {
   test_files(
     &vec![
       "field/call_function_field.lox",
-      // "field/get_and_set_method.lox"
+      "field/get_and_set_method.lox",
       "field/many.lox",
-      // "field/method_binds_this.lox"
-      // "field/method.lox"
+      "field/method_binds_this.lox",
+      "field/method.lox",
       "field/on_instance.lox",
     ],
     InterpretResult::Ok,
@@ -448,17 +465,35 @@ fn logical_operator() -> Result<(), std::io::Error> {
   test_files(&vec![], InterpretResult::RuntimeError)
 }
 
-// #[test]
-// fn method() -> Result<(), std::io::Error> {
-//   test_files(&vec![
-//   ], InterpretResult::Ok)?;
+#[test]
+fn method() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "method/arity.lox",
+      "method/empty_block.lox",
+      "method/print_bound_method.lox",
+    ],
+    InterpretResult::Ok,
+  )?;
 
-//   test_files(&vec![
-//   ], InterpretResult::CompileError)?;
+  test_files(
+    &vec![
+      "method/too_many_arguments.lox",
+      "method/too_many_parameters.lox",
+    ],
+    InterpretResult::CompileError,
+  )?;
 
-//   test_files(&vec![
-//   ], InterpretResult::RuntimeError)
-// }
+  test_files(
+    &vec![
+      "method/extra_arguments.lox",
+      "method/missing_arguments.lox",
+      "method/not_found.lox",
+      "method/refer_to_name.lox",
+    ],
+    InterpretResult::RuntimeError,
+  )
+}
 
 #[test]
 fn nil() -> Result<(), std::io::Error> {
@@ -493,7 +528,7 @@ fn operator() -> Result<(), std::io::Error> {
       "operator/comparison.lox",
       "operator/divide.lox",
       "operator/equals_class.lox",
-      // "operator/equals_method.lox",
+      "operator/equals_method.lox",
       "operator/equals.lox",
       "operator/multiply.lox",
       "operator/negate.lox",
@@ -617,7 +652,7 @@ fn variable() -> Result<(), std::io::Error> {
       "variable/early_bound.lox",
       "variable/in_middle_of_block.lox",
       "variable/in_nested_block.lox",
-      // "variable/local_from_method.lox",
+      "variable/local_from_method.lox",
       "variable/redeclare_global.lox",
       "variable/redefine_global.lox",
       "variable/scope_reuse_in_different_blocks.lox",
@@ -639,7 +674,7 @@ fn variable() -> Result<(), std::io::Error> {
       "variable/use_false_as_var.lox",
       "variable/use_local_in_initializer.lox",
       "variable/use_nil_as_var.lox",
-      // "variable/use_this_as_var.lox",
+      "variable/use_this_as_var.lox",
     ],
     InterpretResult::CompileError,
   )?;

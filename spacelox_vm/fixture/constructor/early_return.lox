@@ -2,7 +2,7 @@ class Foo {
   init() {
     print "init";
     return;
-    print "nope";
+    assert(false);
   }
 }
 

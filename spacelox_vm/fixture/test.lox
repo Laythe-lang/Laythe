@@ -1,0 +1,12 @@
+class Example {
+  init() {
+    this.bro = "bro";
+  }
+
+  hi() {
+    print this.bro;
+  }
+}
+
+var andrew = Example();
+andrew.hi();

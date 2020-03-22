@@ -53,7 +53,7 @@ impl<'a> Gc {
   ///
   /// assert_eq!(managed_fun.name, Some(IStr::new("fun")));
   pub fn manage<T: 'static + Manage, C: Trace>(&self, data: T, context: &C) -> Managed<T> {
-    Managed::from(self.allocate(data, context))
+    self.allocate(data, context)
   }
 
   /// Create a `Managed<IStr>` from a str slice. This creates
@@ -76,7 +76,7 @@ impl<'a> Gc {
   /// ```
   pub fn manage_str<C: Trace>(&self, string: &str, context: &C) -> Managed<IStr> {
     let interned = IStr::new(string);
-    self.manage(interned, context)
+    self.allocate(interned, context)
   }
 
   /// clone the the `Managed` data as a new heap allocation.
@@ -92,7 +92,7 @@ impl<'a> Gc {
   ///
   /// let gc = Gc::new();
   /// let up1 = gc.manage(Upvalue::Open(0), &NO_GC);
-  /// let up2 = gc.clone_managed(&up1, &NO_GC);
+  /// let up2 = gc.clone_managed(up1, &NO_GC);
   ///
   /// assert!(!ptr::eq(&*up1, &*up2));
   /// match (&*up1, &*up2) {
@@ -102,11 +102,11 @@ impl<'a> Gc {
   /// ```
   pub fn clone_managed<T: 'static + Manage + Clone, C: Trace>(
     &self,
-    managed: &Managed<T>,
+    managed: Managed<T>,
     context: &C,
   ) -> Managed<T> {
-    let cloned = (**managed).clone();
-    Managed::from(self.allocate(cloned, context))
+    let cloned = (*managed).clone();
+    self.allocate(cloned, context)
   }
 
   /// Allocate `data` on the gc's heap. If conditions are met
@@ -116,28 +116,27 @@ impl<'a> Gc {
     &self,
     data: T,
     context: &C,
-  ) -> NonNull<Allocation<T>> {
+  ) -> Managed<T> {
     // create own store of allocation
     let mut alloc = Box::new(Allocation::new(data));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     // push onto heap
     let size = alloc.size();
+    let allocated = self
+      .bytes_allocated
+      .replace(self.bytes_allocated.get() + size);
     self.heap.borrow_mut().push(alloc);
+
+    let managed = Managed::from(ptr);
 
     #[cfg(feature = "debug_stress_gc")]
     {
-      self.mark_last();
-      self.collect_garbage(context);
+      self.collect_garbage(context, managed);
     }
 
-    if self
-      .bytes_allocated
-      .replace(self.bytes_allocated.get() + size)
-      > self.next_gc.get()
-    {
-      self.mark_last();
-      self.collect_garbage(context);
+    if allocated + size > self.next_gc.get() {
+      self.collect_garbage(context, managed);
     }
 
     #[cfg(feature = "debug_gc")]
@@ -150,12 +149,12 @@ impl<'a> Gc {
       );
     }
 
-    ptr
+    managed
   }
 
   /// Collect garbage present in the heap for unreachable objects. Use the provided context
   /// to mark a set of initial roots into the vm.
-  fn collect_garbage<C: Trace>(&self, context: &C) {
+  fn collect_garbage<T: 'static + Manage, C: Trace>(&self, context: &C, last: Managed<T>) {
     let mut _before = self.bytes_allocated.get();
     #[cfg(feature = "debug_gc")]
     {
@@ -164,6 +163,7 @@ impl<'a> Gc {
 
     let mut gray_stack = Vec::with_capacity(40);
     if self.mark(context, &mut gray_stack) {
+      self.mark_obj(last.clone_dyn(), &mut gray_stack);
       self.trace(&mut gray_stack);
 
       self.bytes_allocated.set(self.sweep());
@@ -222,7 +222,7 @@ impl<'a> Gc {
       #[cfg(feature = "debug_gc")]
       {
         if !retain {
-          println!("{:p} free {}", obj, (**obj).debug());
+          println!("{:p} free {}", &**obj, (**obj).debug());
         }
       }
 
@@ -242,20 +242,10 @@ impl<'a> Gc {
 
     #[cfg(feature = "debug_gc")]
     {
-      println!("{:p} mark {}", &*managed, managed.debug())
+      println!("{:p} mark {}", &*managed.obj(), managed.debug());
     }
 
     gray_stack.push(managed);
-  }
-
-  /// Mark the most recent allocated obj. This is in cases where an object has
-  /// been allocated but not moved onto a normal root
-  fn mark_last(&self) {
-    let mut borrowed = self.heap.borrow_mut();
-    let len = borrowed.len();
-
-    let last = &mut borrowed[len - 1];
-    last.mark();
   }
 }
 

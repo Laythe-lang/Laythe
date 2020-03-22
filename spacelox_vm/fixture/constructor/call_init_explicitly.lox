@@ -12,4 +12,4 @@ var foo2 = foo.init("two"); // expect: Foo.init(two)
 print foo2; // expect: Foo instance
 
 // Make sure init() doesn't create a fresh instance.
-print foo.field; // expect: init
+assertEq(foo.field, "init"); // expect: init

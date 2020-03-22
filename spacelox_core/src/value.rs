@@ -12,7 +12,7 @@ use std::mem::replace;
 use std::rc::Rc;
 
 /// Enum of value types in spacelox
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Value {
   Bool(bool),
   Nil,
@@ -91,11 +91,11 @@ impl Value {
   /// let managed = Managed::from(ptr);
   ///
   /// let value = Value::String(managed);
-  /// assert_eq!(**value.ref_string(), IStr::new("example"));
+  /// assert_eq!(*value.to_string(), IStr::new("example"));
   /// ```
-  pub fn ref_string<'o>(&'o self) -> &Managed<IStr> {
+  pub fn to_string<'o>(&'o self) -> Managed<IStr> {
     match self {
-      Self::String(str1) => str1,
+      Self::String(str1) => *str1,
       _ => panic!("Expected string"),
     }
   }
@@ -121,11 +121,11 @@ impl Value {
   /// let managed = Managed::from(ptr);
   ///
   /// let value = Value::Fun(managed);
-  /// assert_eq!(value.ref_fun().name.clone().unwrap(), "add");
+  /// assert_eq!(value.to_fun().name.clone().unwrap(), "add");
   /// ```
-  pub fn ref_fun(&self) -> &Managed<Fun> {
+  pub fn to_fun(&self) -> Managed<Fun> {
     match self {
-      Self::Fun(fun) => fun,
+      Self::Fun(fun) => *fun,
       _ => panic!("Expected function!"),
     }
   }
@@ -155,11 +155,11 @@ impl Value {
   /// let managed_closure = Managed::from(unsafe { NonNull::new_unchecked(&mut *alloc_closure) });
   ///
   /// let value = Value::Closure(managed_closure);
-  /// assert_eq!(value.ref_closure().fun.name.clone().unwrap(), "add");
+  /// assert_eq!(value.to_closure().fun.name.clone().unwrap(), "add");
   /// ```
-  pub fn ref_closure(&self) -> &Managed<Closure> {
+  pub fn to_closure(&self) -> Managed<Closure> {
     match self {
-      Self::Closure(closure) => closure,
+      Self::Closure(closure) => *closure,
       _ => panic!("Expected closure!"),
     }
   }
@@ -180,22 +180,37 @@ impl Value {
   ///
   /// let value = Value::Upvalue(managed);
   ///
-  /// match **value.ref_upvalue() {
+  /// match *value.to_upvalue() {
   ///   Upvalue::Open(index) => assert_eq!(index, 0),
   ///   Upvalue::Closed(_) => assert!(false),
   /// };
   /// ```
-  pub fn ref_upvalue(&self) -> &Managed<Upvalue> {
+  pub fn to_upvalue(&self) -> Managed<Upvalue> {
     match self {
-      Self::Upvalue(upvalue) => upvalue,
+      Self::Upvalue(upvalue) => *upvalue,
       _ => panic!("Expected upvalue!"),
     }
   }
 
-  pub fn ref_mut_upvalue(&mut self) -> &mut Managed<Upvalue> {
+  /// Unwrap and reference a spacelox instance, panics if not a instance
+  ///
+  /// # Examples
+  /// ```
+  /// use spacelox_core::value::{Value, Instance, Class};
+  /// use spacelox_core::managed::{Managed, Allocation, make_managed};
+  /// use spacelox_interner::IStr;
+  /// use std::ptr::NonNull;
+  ///
+  /// let (name, name_alloc) = make_managed(IStr::new("example"));
+  /// let (class, class_alloc) = make_managed(Class::new(name));
+  /// let (instance, instance_alloc) = make_managed(Instance::new(class));
+  ///
+  /// let value = Value::Instance(instance);
+  /// assert_eq!(value.to_instance().class, class);
+  pub fn to_instance(&self) -> Managed<Instance> {
     match self {
-      Self::Upvalue(upvalue) => upvalue,
-      _ => panic!("Expected upvalue!"),
+      Self::Instance(instance) => *instance,
+      _ => panic!("Expected instance!"),
     }
   }
 
@@ -237,6 +252,9 @@ impl Value {
       Value::Closure(closure) => Some(closure.clone_dyn()),
       Value::Native(native) => Some(native.clone_dyn()),
       Value::Upvalue(upvalue) => Some(upvalue.clone_dyn()),
+      Value::Method(method) => Some(method.clone_dyn()),
+      Value::Class(class) => Some(class.clone_dyn()),
+      Value::Instance(instance) => Some(instance.clone_dyn()),
       _ => None,
     }
   }
@@ -300,6 +318,7 @@ impl PartialEq for Value {
       (Self::String(string1), Self::String(string2)) => string1 == string2,
       (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
       (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,
+      (Self::Method(method1), Self::Method(method2)) => method1 == method2,
       (Self::Native(native1), Self::Native(native2)) => native1 == native2,
       (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => upvalue1 == upvalue2,
       (Self::Class(class1), Self::Class(class2)) => class1 == class2,
@@ -553,6 +572,7 @@ impl Manage for Closure {
 #[derive(PartialEq, Clone)]
 pub struct Class {
   pub name: Managed<IStr>,
+  pub init: Option<Managed<Closure>>,
   pub methods: HashMap<Managed<IStr>, Managed<Closure>>,
 }
 
@@ -560,6 +580,7 @@ impl Class {
   pub fn new(name: Managed<IStr>) -> Self {
     Class {
       name,
+      init: None,
       methods: HashMap::new(),
     }
   }
@@ -567,13 +588,18 @@ impl Class {
 
 impl fmt::Debug for Class {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Class").field("name", &self.name).finish()
+    f.debug_struct("Class")
+      .field("name", &self.name)
+      .field("methods", &"Methods: { ... }")
+      .field("init", &self.init)
+      .finish()
   }
 }
 
 impl Trace for Class {
   fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     mark(self.name.clone_dyn());
+    do_if_some(self.init, |init| mark(init.clone_dyn()));
 
     self.methods.iter().for_each(|(key, val)| {
       mark(key.clone_dyn());
@@ -641,6 +667,7 @@ impl Manage for Instance {
   }
 }
 
+#[derive(PartialEq, Clone)]
 pub struct BoundMethod {
   pub receiver: Value,
   pub method: Managed<Closure>,

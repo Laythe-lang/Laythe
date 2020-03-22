@@ -10,4 +10,4 @@ var fooMethod = foo.method;
 assert(fooMethod == fooMethod); // expect: true
 
 // Different closurizations.
-assertEq(foo.method == foo.method, false); // expect: false
+assert(foo.method == foo.method); // expect: true

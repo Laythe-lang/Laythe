@@ -1,7 +1,7 @@
 use crate::value::Value;
 
 /// Space Lox virtual machine byte codes
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum ByteCode {
   /// Return from script or function
   Return,
@@ -81,6 +81,9 @@ pub enum ByteCode {
   /// Call a function
   Call(u8),
 
+  /// Invoke a method
+  Invoke((u8, u8)),
+
   /// Create a closure
   Closure(u8),
 
@@ -109,7 +112,7 @@ pub enum ByteCode {
   Less,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UpvalueIndex {
   /// The upvalue is actually local
   Local(u8),

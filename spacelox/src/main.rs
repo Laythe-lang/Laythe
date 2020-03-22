@@ -1,10 +1,10 @@
-use spacelox_vm::constants::FRAME_MAX;
-use spacelox_vm::constants::DEFAULT_STACK_MAX;
 use spacelox_core::native::create_natives;
 use spacelox_core::value::{Closure, Fun, Value};
+use spacelox_vm::call_frame::CallFrame;
+use spacelox_vm::constants::DEFAULT_STACK_MAX;
+use spacelox_vm::constants::FRAME_MAX;
 use spacelox_vm::memory::{Gc, NO_GC};
 use spacelox_vm::vm::{InterpretResult, Vm};
-use spacelox_vm::call_frame::CallFrame;
 use std::env;
 use std::fs::read_to_string;
 use std::process;

@@ -89,7 +89,7 @@ impl<'a, 's> Compiler<'a, 's> {
   ///
   /// let mut gc = Gc::new();
   /// let mut parser = Parser::new(&source);
-  /// let strings = define_special_string(&mut gc);
+  /// let strings = define_special_string();
   ///
   /// let compiler = Compiler::new(&mut parser, None, &strings, &mut gc);
   /// ```
@@ -109,7 +109,7 @@ impl<'a, 's> Compiler<'a, 's> {
       &NO_GC,
     );
 
-    Self {
+    let mut compiler = Self {
       fun,
       current_class,
       special_strings,
@@ -128,28 +128,17 @@ impl<'a, 's> Compiler<'a, 's> {
         std::u8::MAX as usize
       ],
       upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
-    }
+    };
+
+    compiler.locals[0] = first_local(FunKind::Script);
+    compiler
   }
 
   /// Construct an inner compiler used to compile functions inside of a script
   fn child(name: Option<IStr>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
-    let first_local = if let FunKind::Fun = fun_kind {
-      Local {
-        name: Option::None,
-        depth: UNINITIALIZED,
-        is_captured: false,
-      }
-    } else {
-      Local {
-        name: Some("this".to_string()),
-        depth: UNINITIALIZED,
-        is_captured: false,
-      }
-    };
-
     let mut child = Self {
       fun: unsafe { (*enclosing).fun },
-      fun_kind,
+      fun_kind: fun_kind.clone(),
       special_strings: unsafe { (*enclosing).special_strings },
       current_class: unsafe { (*enclosing).current_class },
       gc: unsafe { (*enclosing).gc },
@@ -178,7 +167,7 @@ impl<'a, 's> Compiler<'a, 's> {
       &NO_GC,
     );
 
-    child.locals[0] = first_local;
+    child.locals[0] = first_local(fun_kind);
 
     child
   }
@@ -197,7 +186,7 @@ impl<'a, 's> Compiler<'a, 's> {
   ///
   /// let mut gc = Gc::new();
   /// let mut parser = Parser::new(&source);
-  /// let strings = define_special_string(&mut gc);
+  /// let strings = define_special_string();
   ///
   /// let compiler = Compiler::new(&mut parser, None, &strings, &mut gc);
   /// let result = compiler.compile();
@@ -317,7 +306,7 @@ impl<'a, 's> Compiler<'a, 's> {
     self
       .parser
       .consume(TokenKind::LeftBrace, "Expect '{' before class body.");
-    while !self.parser.check(TokenKind::RightBrace) && self.parser.check(TokenKind::Eof) {
+    while !self.parser.check(TokenKind::RightBrace) && !self.parser.check(TokenKind::Eof) {
       self.method();
     }
 
@@ -561,7 +550,9 @@ impl<'a, 's> Compiler<'a, 's> {
       self.emit_return();
     } else {
       if let FunKind::Initializer = self.fun_kind {
-        self.parser.error("Cannot return a value from an initializer.");
+        self
+          .parser
+          .error("Cannot return a value from an initializer.");
       }
 
       self.expression();
@@ -606,7 +597,7 @@ impl<'a, 's> Compiler<'a, 's> {
     #[cfg(feature = "debug")]
     {
       // if self.parser.had_error {
-        self.print_chunk();
+      self.print_chunk();
       // }
     }
   }
@@ -686,6 +677,9 @@ impl<'a, 's> Compiler<'a, 's> {
     if can_assign && self.parser.match_kind(TokenKind::Equal) {
       self.expression();
       self.emit_byte(ByteCode::SetProperty(name));
+    } else if self.parser.match_kind(TokenKind::LeftParen) {
+      let arg_count = self.argument_list();
+      self.emit_byte(ByteCode::Invoke((name, arg_count)));
     } else {
       self.emit_byte(ByteCode::GetProperty(name));
     }
@@ -1105,6 +1099,21 @@ impl<'a, 's> Compiler<'a, 's> {
   }
 }
 
+fn first_local(fun_kind: FunKind) -> Local {
+  match fun_kind {
+    FunKind::Fun => Local {
+      name: Option::None,
+      depth: 0,
+      is_captured: false,
+    },
+    _ => Local {
+      name: Some("this".to_string()),
+      depth: 0,
+      is_captured: false,
+    },
+  }
+}
+
 /// The rules for infix and prefix operators
 const RULES_TABLE: [ParseRule; 40] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
@@ -1404,7 +1413,7 @@ mod test {
     let mut parser = Parser::new(&src);
 
     let class_compiler = None;
-    let special_strings = define_special_string(gc);
+    let special_strings = define_special_string();
 
     let compiler = Compiler::new(&mut parser, class_compiler, &special_strings, gc);
     let result = compiler.compile();
@@ -1423,14 +1432,14 @@ mod test {
       .for_each(|(actual, expect)| assert_eq!(actual, expect));
   }
 
-  fn assert_fun_bytecode(fun: &Fun, code: &[ByteCodeTest]) {
+  fn assert_fun_bytecode(fun: Managed<Fun>, code: &[ByteCodeTest]) {
     let instructions = fun.chunk.instructions.clone();
     assert_eq!(instructions.len(), code.len());
 
     for i in 0..code.len() {
       match instructions[i] {
         ByteCode::Closure(index) => {
-          let fun = fun.chunk.constants[index as usize].ref_fun();
+          let fun = fun.chunk.constants[index as usize].to_fun();
 
           match &code[i] {
             ByteCodeTest::Fun((expected, inner)) => {
@@ -1489,7 +1498,7 @@ mod test {
     let mut gc = Gc::new();
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
-      &fun,
+      fun,
       &vec![
         ByteCodeTest::Fun((
           // example
@@ -1554,7 +1563,7 @@ mod test {
     let mut gc = Gc::new();
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
-      &fun,
+      fun,
       &vec![
         ByteCodeTest::Fun((
           1,
@@ -1596,7 +1605,7 @@ mod test {
     let mut gc = Gc::new();
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
-      &fun,
+      fun,
       &vec![
         ByteCodeTest::Fun((
           1,
@@ -1629,7 +1638,7 @@ mod test {
     let mut gc = Gc::new();
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
-      &fun,
+      fun,
       &vec![
         ByteCodeTest::Fun((
           1,
@@ -1660,7 +1669,7 @@ mod test {
     let mut gc = Gc::new();
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
-      &fun,
+      fun,
       &vec![
         ByteCodeTest::Fun((
           1,
