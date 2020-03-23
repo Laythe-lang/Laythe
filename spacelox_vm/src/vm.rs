@@ -260,9 +260,24 @@ impl<'a> VmExecutor<'a> {
             return result;
           }
         }
+        ByteCode::SuperInvoke((name, arg_count)) => {
+          if let Some(result) = self.op_super_invoke(name, arg_count) {
+            return result;
+          }
+        }
         ByteCode::Closure(slot) => self.op_closure(slot),
         ByteCode::Method(slot) => self.op_method(slot),
         ByteCode::Class(slot) => self.op_class(slot),
+        ByteCode::Inherit => {
+          if let Some(result) = self.op_inherit() {
+            return result;
+          }
+        }
+        ByteCode::GetSuper(slot) => {
+          if let Some(result) = self.op_get_super(slot) {
+            return result;
+          }
+        }
         ByteCode::CloseUpvalue => {
           self.close_upvalues(self.stack_top - 1);
           self.pop();
@@ -477,6 +492,13 @@ impl<'a> VmExecutor<'a> {
     }
   }
 
+  fn op_super_invoke(&mut self, constant: u8, arg_count: u8) -> Option<InterpretResult> {
+    let method_name = self.read_string(constant);
+    let super_class = self.pop().to_class();
+
+    self.invoke_from_class(super_class, method_name, arg_count)
+  }
+
   fn invoke_from_class(
     &mut self,
     class: Managed<Class>,
@@ -493,6 +515,31 @@ impl<'a> VmExecutor<'a> {
     let name = self.read_string(slot);
     let class = Value::Class(self.gc.manage(Class::new(name), self));
     self.push(class)
+  }
+
+  fn op_get_super(&mut self, slot: u8) -> Option<InterpretResult> {
+    let name = self.read_string(slot);
+    let super_class = self.pop().to_class();
+
+    self.bind_method(super_class, name)
+  }
+
+  fn op_inherit(&mut self) -> Option<InterpretResult> {
+    let mut class = self.peek(0).to_class();
+    
+    match self.peek(1) {
+      Value::Class(super_class) => {
+        super_class.methods.iter().for_each(|(key, value)| {
+          class.methods.entry(*key).or_insert_with(|| *value);
+        });
+
+        class.init = class.init.or(super_class.init);
+
+        self.pop();
+        None
+      }
+      _ => self.runtime_error("Superclass must be a class.")
+    }
   }
 
   fn op_loop(&mut self, jump: u16) {

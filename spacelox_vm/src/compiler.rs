@@ -292,14 +292,37 @@ impl<'a, 's> Compiler<'a, 's> {
     self.emit_byte(ByteCode::Class(name_constant));
     self.define_variable(name_constant);
 
-    let class_compiler = Some(self.gc.manage(
+    let mut class_compiler = self.gc.manage(
       ClassCompiler {
         name: self.parser.previous.clone(),
+        has_super_class: false,
         enclosing: self.current_class,
       },
       &NO_GC,
-    ));
-    self.current_class = class_compiler;
+    );
+    self.current_class = Some(class_compiler);
+
+    if self.parser.match_kind(TokenKind::Less) {
+      self.parser.consume(TokenKind::Identifier, "Expect superclass name.");
+      self.variable(false);
+
+      if class_name.lexeme == self.parser.previous.lexeme {
+        self.parser.error("A class cannot inherit from itself.");
+      }
+
+      self.begin_scope();
+      self.add_local(Token {
+        kind: TokenKind::Super,
+        lexeme: "super".to_string(),
+        line: class_name.line,
+      });
+      self.define_variable(0);
+
+      self.named_variable(class_name.clone(), false);
+      self.emit_byte(ByteCode::Inherit);
+
+      class_compiler.has_super_class = true;
+    }
 
     self.named_variable(class_name, false);
 
@@ -314,7 +337,12 @@ impl<'a, 's> Compiler<'a, 's> {
       .parser
       .consume(TokenKind::RightBrace, "Expect '}' after class body.");
     self.emit_byte(ByteCode::Pop);
-    self.current_class = class_compiler.and_then(|compiler| compiler.enclosing);
+
+    if class_compiler.has_super_class {
+      self.end_scope();
+    }
+
+    self.current_class = class_compiler.enclosing;
   }
 
   /// Parse a function declaration
@@ -876,6 +904,44 @@ impl<'a, 's> Compiler<'a, 's> {
     self.variable(false);
   }
 
+  fn super_(&mut self) {
+    match self.current_class {
+      None => self.parser.error("Cannot use 'super' outside of a class."),
+      Some(class) => if !class.has_super_class {
+        self.parser.error("Cannot use 'super' in a class with no superclass.");
+      }
+    }
+
+    self.parser.consume(TokenKind::Dot, "Expect '.' after 'super'.");
+    self.parser.consume(TokenKind::Identifier, "Expect superclass method name.");
+    let name = self.identifer_constant(self.parser.previous.clone());
+
+    self.named_variable(Token {
+      lexeme: "this".to_string(),
+      kind: TokenKind::This,
+      line: self.parser.previous.line,
+    }, false);
+
+    if self.parser.match_kind(TokenKind::LeftParen) {
+      let arg_count = self.argument_list();
+      self.named_variable(Token {
+        lexeme: "super".to_string(),
+        kind: TokenKind::Super,
+        line: self.parser.previous.line,
+      }, false);
+      self.emit_byte(ByteCode::SuperInvoke((name, arg_count)));
+    } else {
+      self.named_variable(Token {
+        lexeme: "super".to_string(),
+        kind: TokenKind::Super,
+        line: self.parser.previous.line,
+      }, false);
+  
+      self.emit_byte(ByteCode::GetSuper(name));
+    }
+
+  }
+
   /// Parse a variable from the provided token return it's new constant
   /// identifer if an identifer was identified
   fn parse_variable(&mut self, error_message: &str) -> u8 {
@@ -1024,6 +1090,7 @@ impl<'a, 's> Compiler<'a, 's> {
       Act::Number => self.number(),
       Act::Or => self.or(),
       Act::String => self.string(),
+      Act::Super => self.super_(),
       Act::This => self.this(),
       Act::Unary => self.unary(),
       Act::Variable => self.variable(can_assign),
@@ -1182,7 +1249,7 @@ const RULES_TABLE: [ParseRule; 40] = [
   // TOKEN_PRINT
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RETURN
-  ParseRule::new(None, None, Precedence::None),
+  ParseRule::new(Some(Act::Super), None, Precedence::None),
   // TOKEN_SUPER
   ParseRule::new(Some(Act::This), None, Precedence::None),
   // TOKEN_THIS
@@ -1206,6 +1273,7 @@ const fn get_rule(kind: TokenKind) -> &'static ParseRule {
 #[derive(Debug, Clone)]
 pub struct ClassCompiler {
   enclosing: Option<Managed<ClassCompiler>>,
+  has_super_class: bool,
   name: Token,
 }
 
@@ -1394,6 +1462,7 @@ enum Act {
   Number,
   Or,
   String,
+  Super,
   This,
   Unary,
   Variable,

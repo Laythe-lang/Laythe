@@ -169,16 +169,11 @@ impl Value {
   /// # Examples
   /// ```
   /// use spacelox_core::value::{Value, Upvalue};
-  /// use spacelox_core::managed::{Allocation, Managed};
+  /// use spacelox_core::managed::{Allocation, Managed, make_managed};
   /// use std::ptr::NonNull;
   ///
-  /// let upvalue = Upvalue::Open(0);
-  ///
-  /// let mut alloc = Box::new(Allocation::new(upvalue));
-  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-  /// let managed = Managed::from(ptr);
-  ///
-  /// let value = Value::Upvalue(managed);
+  /// let (upvalue, upvalue_alloc) = make_managed(Upvalue::Open(0));
+  /// let value = Value::Upvalue(upvalue);
   ///
   /// match *value.to_upvalue() {
   ///   Upvalue::Open(index) => assert_eq!(index, 0),
@@ -189,6 +184,28 @@ impl Value {
     match self {
       Self::Upvalue(upvalue) => *upvalue,
       _ => panic!("Expected upvalue!"),
+    }
+  }
+
+  /// Unwrap and reference a spacelox instance, panics if not a instance
+  ///
+  /// # Examples
+  /// ```
+  /// use spacelox_core::value::{Value, Instance, Class};
+  /// use spacelox_core::managed::{Managed, Allocation, make_managed};
+  /// use spacelox_interner::IStr;
+  /// use std::ptr::NonNull;
+  ///
+  /// let (name, name_alloc) = make_managed(IStr::new("example"));
+  /// let (class, class_alloc) = make_managed(Class::new(name));
+  ///
+  /// let value = Value::Class(class);
+  /// assert_eq!(value.to_class().name, name);
+  /// ```
+  pub fn to_class(&self) -> Managed<Class> {
+    match self {
+      Self::Class(class) => *class,
+      _ => panic!("Expected class.",)
     }
   }
 

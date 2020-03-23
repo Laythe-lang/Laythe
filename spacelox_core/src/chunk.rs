@@ -84,6 +84,9 @@ pub enum ByteCode {
   /// Invoke a method
   Invoke((u8, u8)),
 
+  /// Invoke a method on a super class
+  SuperInvoke((u8, u8)),
+
   /// Create a closure
   Closure(u8),
 
@@ -92,6 +95,12 @@ pub enum ByteCode {
 
   /// Create a class
   Class(u8),
+
+  /// Access this classes super 
+  GetSuper(u8),
+
+  /// Add inheritance to class
+  Inherit,
 
   /// Close an upvalue by moving it to the stack
   CloseUpvalue,
