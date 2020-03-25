@@ -1,14 +1,14 @@
 class Foo {
-  methodOnFoo() { print "foo"; }
-  override() { print "foo"; }
+  methodOnFoo() { return "foo"; }
+  override() { return "foo"; }
 }
 
 class Bar < Foo {
-  methodOnBar() { print "bar"; }
-  override() { print "bar"; }
+  methodOnBar() { return "bar"; }
+  override() { return "bar"; }
 }
 
 var bar = Bar();
-bar.methodOnFoo(); // expect: foo
-bar.methodOnBar(); // expect: bar
-bar.override(); // expect: bar
+assertEq(bar.methodOnFoo(), "foo"); // expect: foo
+assertEq(bar.methodOnBar(), "bar"); // expect: bar
+assertEq(bar.override(), "bar"); // expect: bar

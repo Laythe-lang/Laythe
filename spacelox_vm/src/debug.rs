@@ -48,8 +48,12 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> Option<usize> {
     ByteCode::False => simple_instruction("False"),
     ByteCode::Pop => simple_instruction("Pop"),
     ByteCode::Call(arg_count) => byte_instruction("Call", *arg_count),
-    ByteCode::Invoke((constant, arg_count)) => invoke_instruction("Invoke", chunk, *constant, *arg_count),
-    ByteCode::SuperInvoke((constant, arg_count)) => invoke_instruction("SuperInvoke", chunk, *constant, *arg_count),
+    ByteCode::Invoke((constant, arg_count)) => {
+      invoke_instruction("Invoke", chunk, *constant, *arg_count)
+    }
+    ByteCode::SuperInvoke((constant, arg_count)) => {
+      invoke_instruction("SuperInvoke", chunk, *constant, *arg_count)
+    }
     ByteCode::Class(constant) => constant_instruction("Class", chunk, *constant),
     ByteCode::GetSuper(constant) => constant_instruction("GetSuper", chunk, *constant),
     ByteCode::Inherit => simple_instruction("Inherit"),

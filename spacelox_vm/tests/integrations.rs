@@ -161,7 +161,7 @@ fn assignment() -> Result<(), std::io::Error> {
       "assignment/grouping.lox",
       "assignment/infix_operator.lox",
       "assignment/prefix_operator.lox",
-      // "assignment/to_this.lox",
+      "assignment/to_this.lox",
     ],
     InterpretResult::CompileError,
   )?;
@@ -414,18 +414,31 @@ fn if_stmt() -> Result<(), std::io::Error> {
   test_files(&vec![], InterpretResult::RuntimeError)
 }
 
-// #[test]
-// fn inheritance() -> Result<(), std::io::Error> {
-//   test_files(&vec![
-//     "expressions/evaluate.lox"
-//   ], InterpretResult::Ok)?;
+#[test]
+fn inheritance() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "inheritance/constructor.lox",
+      "inheritance/inherit_methods.lox",
+      "inheritance/set_fields_from_base_class.lox",
+    ],
+    InterpretResult::Ok,
+  )?;
 
-//   test_files(&vec![
-//   ], InterpretResult::CompileError)?;
+  test_files(
+    &vec!["inheritance/parenthesized_superclass.lox"],
+    InterpretResult::CompileError,
+  )?;
 
-//   test_files(&vec![
-//   ], InterpretResult::RuntimeError)
-// }
+  test_files(
+    &vec![
+      "inheritance/inherit_from_function.lox",
+      "inheritance/inherit_from_nil.lox",
+      "inheritance/inherit_from_number.lox",
+    ],
+    InterpretResult::RuntimeError,
+  )
+}
 
 #[test]
 fn limit() -> Result<(), std::io::Error> {
@@ -585,10 +598,7 @@ fn print() -> Result<(), std::io::Error> {
 #[test]
 fn regression() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "regression/40.lox",
-      // "regression/394.lox"
-    ],
+    &vec!["regression/40.lox", "regression/394.lox"],
     InterpretResult::Ok,
   )
 }
@@ -641,6 +651,46 @@ fn string() -> Result<(), std::io::Error> {
 
   test_files(
     &vec!["string/error_after_multiline.lox"],
+    InterpretResult::RuntimeError,
+  )
+}
+
+#[test]
+fn super_() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "super/bound_method.lox",
+      "super/call_other_method.lox",
+      "super/call_same_method.lox",
+      "super/closure.lox",
+      "super/constructor.lox",
+      "super/indirectly_inherited.lox",
+      "super/reassign_superclass.lox",
+      "super/super_in_closure_in_inherited_method.lox",
+      "super/super_in_inherited_method.lox",
+    ],
+    InterpretResult::Ok,
+  )?;
+
+  test_files(
+    &vec![
+      "super/no_superclass_bind.lox",
+      "super/no_superclass_call.lox",
+      "super/parenthesized.lox",
+      "super/super_at_top_level.lox",
+      "super/super_in_top_level_function.lox",
+      "super/super_without_dot.lox",
+      "super/super_without_name.lox",
+    ],
+    InterpretResult::CompileError,
+  )?;
+
+  test_files(
+    &vec![
+      "super/extra_arguments.lox",
+      "super/missing_arguments.lox",
+      "super/no_superclass_method.lox",
+    ],
     InterpretResult::RuntimeError,
   )
 }

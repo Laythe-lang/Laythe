@@ -96,7 +96,7 @@ pub enum ByteCode {
   /// Create a class
   Class(u8),
 
-  /// Access this classes super 
+  /// Access this classes super
   GetSuper(u8),
 
   /// Add inheritance to class

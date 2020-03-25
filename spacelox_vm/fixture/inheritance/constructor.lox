@@ -4,11 +4,11 @@ class A {
   }
 
   test() {
-    print this.field;
+    return this.field;
   }
 }
 
 class B < A {}
 
 var b = B("value");
-b.test(); // expect: value
+assertEq(b.test(), "value"); // expect: value

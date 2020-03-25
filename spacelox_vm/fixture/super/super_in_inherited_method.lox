@@ -1,23 +1,23 @@
 class A {
   say() {
-    print "A";
+    return "A";
   }
 }
 
 class B < A {
   test() {
-    super.say();
+    return super.say();
   }
 
   say() {
-    print "B";
+    return "B";
   }
 }
 
 class C < B {
   say() {
-    print "C";
+    return "C";
   }
 }
 
-C().test(); // expect: A
+assertEq(C().test(), "A"); // expect: A

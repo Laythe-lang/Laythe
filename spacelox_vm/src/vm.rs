@@ -1,5 +1,5 @@
 use crate::call_frame::CallFrame;
-use crate::compiler::{Compiler, Parser};
+use crate::compiler::{Compiler, CompilerResult, Parser};
 use crate::constants::{define_special_string, SpecialStrings, FRAME_MAX};
 use crate::memory::{Gc, NO_GC};
 use spacelox_core::chunk::{ByteCode, UpvalueIndex};
@@ -9,7 +9,6 @@ use spacelox_core::{
   utils::do_if_some,
   value::{BoundMethod, Class, Closure, Instance, Upvalue, Value},
 };
-use spacelox_interner::IStr;
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 use std::mem::replace;
@@ -41,7 +40,7 @@ pub struct Vm {
   special_strings: SpecialStrings,
 
   /// A persisted set of globals most for a repl context
-  globals: HashMap<Managed<IStr>, Value>,
+  globals: HashMap<Managed<String>, Value>,
 }
 
 impl Vm {
@@ -79,11 +78,15 @@ impl Vm {
     self.interpret(source)
   }
 
-  fn interpret(&mut self, source: &str) -> InterpretResult {
+  fn compile(&mut self, source: &str) -> CompilerResult {
     let mut parser = Parser::new(source);
 
     let compiler = Compiler::new(&mut parser, None, &mut self.special_strings, &mut self.gc);
-    let result = compiler.compile();
+    compiler.compile()
+  }
+
+  fn interpret(&mut self, source: &str) -> InterpretResult {
+    let result = self.compile(source);
 
     if !result.success {
       return InterpretResult::CompileError;
@@ -91,16 +94,19 @@ impl Vm {
 
     let script_closure = self.gc.manage(Closure::new(result.fun), &NO_GC);
     let script = Value::Closure(script_closure);
-    let executor = VmExecutor::new(self, script);
+    let mut executor = VmExecutor::new(self, script);
     executor.run()
   }
 }
 
-fn define_globals<'a>(gc: &mut Gc, natives: &[Rc<dyn NativeFun>]) -> HashMap<Managed<IStr>, Value> {
+fn define_globals<'a>(
+  gc: &mut Gc,
+  natives: &[Rc<dyn NativeFun>],
+) -> HashMap<Managed<String>, Value> {
   let mut globals = HashMap::new();
 
   natives.iter().for_each(|native| {
-    let name = gc.manage_str(&native.meta().name, &NO_GC);
+    let name = gc.manage_str(native.meta().name.to_string(), &NO_GC);
     let native_value = Value::Native(gc.manage(Rc::clone(native), &NO_GC));
 
     globals.insert(name, native_value);
@@ -109,7 +115,7 @@ fn define_globals<'a>(gc: &mut Gc, natives: &[Rc<dyn NativeFun>]) -> HashMap<Man
   globals
 }
 
-pub struct VmExecutor<'a> {
+struct VmExecutor<'a> {
   /// A stack of call frames for the current execution
   pub frames: &'a mut Vec<CallFrame>,
 
@@ -132,7 +138,7 @@ pub struct VmExecutor<'a> {
   pub stack_top: usize,
 
   /// global variable present in the vm
-  pub globals: &'a mut HashMap<Managed<IStr>, Value>,
+  pub globals: &'a mut HashMap<Managed<String>, Value>,
 
   /// A collection of currently available upvalues
   pub open_upvalues: Vec<Managed<Upvalue>>,
@@ -156,7 +162,7 @@ impl<'a> VmExecutor<'a> {
     executor
   }
 
-  fn run(mut self) -> InterpretResult {
+  pub fn run(&mut self) -> InterpretResult {
     loop {
       let op_code: ByteCode = self.frame_instruction();
 
@@ -314,18 +320,21 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Get the current instruction from the present call frame
+  #[inline]
   fn frame_instruction(&self) -> ByteCode {
     let frame = self.current_frame();
     frame.closure.fun.chunk.instructions[frame.ip]
   }
 
   /// increment the the current call frame instruction pointer
+  #[inline]
   fn increment_frame_ip(&mut self, offset: usize) {
     let frame = self.current_mut_frame();
     frame.ip += offset;
   }
 
   /// decrement the current call frames instruction pointer
+  #[inline]
   fn decrement_frame_ip(&mut self, offset: usize) {
     let frame = self.current_mut_frame();
     frame.ip -= offset;
@@ -352,15 +361,17 @@ impl<'a> VmExecutor<'a> {
     frame.closure.fun.chunk.constants[index as usize]
   }
 
-  fn read_string(&mut self, index: u8) -> Managed<IStr> {
+  fn read_string(&mut self, index: u8) -> Managed<String> {
     let frame = self.current_frame();
     VmExecutor::read_constant(frame, index).to_string()
   }
 
   fn reset_stack(&mut self) {
-    self.stack_top = 0;
+    self.stack_top = 1;
     self.frame_count = 0;
-    self.open_upvalues.clear()
+    self.open_upvalues.clear();
+
+    self.call_value(self.script, 0);
   }
 
   fn call_value(&mut self, callee: Value, arg_count: u8) -> Option<InterpretResult> {
@@ -371,7 +382,7 @@ impl<'a> VmExecutor<'a> {
       Value::Class(class) => self.call_class(class, arg_count),
       Value::Fun(fun) => panic!(
         "function {} was not wrapped in a closure",
-        fun.name.clone().unwrap_or(IStr::new("script"))
+        fun.name.clone().unwrap_or("script".to_string())
       ),
       _ => self.runtime_error("Can only call functions and classes."),
     }
@@ -430,7 +441,7 @@ impl<'a> VmExecutor<'a> {
     if (arg_count as u16) != closure.fun.arity {
       self.runtime_error(&format!(
         "Function {} expected {} arguments but got {}",
-        closure.fun.name.clone().unwrap_or(IStr::new("script")),
+        closure.fun.name.clone().unwrap_or("script".to_string()),
         closure.fun.arity,
         arg_count
       ));
@@ -458,7 +469,11 @@ impl<'a> VmExecutor<'a> {
     self.call(bound.method, arg_count)
   }
 
-  fn bind_method(&mut self, class: Managed<Class>, name: Managed<IStr>) -> Option<InterpretResult> {
+  fn bind_method(
+    &mut self,
+    class: Managed<Class>,
+    name: Managed<String>,
+  ) -> Option<InterpretResult> {
     match class.methods.get(&name) {
       Some(method) => {
         let bound = self
@@ -502,7 +517,7 @@ impl<'a> VmExecutor<'a> {
   fn invoke_from_class(
     &mut self,
     class: Managed<Class>,
-    method_name: Managed<IStr>,
+    method_name: Managed<String>,
     arg_count: u8,
   ) -> Option<InterpretResult> {
     match class.methods.get(&method_name) {
@@ -526,7 +541,7 @@ impl<'a> VmExecutor<'a> {
 
   fn op_inherit(&mut self) -> Option<InterpretResult> {
     let mut class = self.peek(0).to_class();
-    
+
     match self.peek(1) {
       Value::Class(super_class) => {
         super_class.methods.iter().for_each(|(key, value)| {
@@ -538,7 +553,7 @@ impl<'a> VmExecutor<'a> {
         self.pop();
         None
       }
-      _ => self.runtime_error("Superclass must be a class.")
+      _ => self.runtime_error("Superclass must be a class."),
     }
   }
 
@@ -695,7 +710,7 @@ impl<'a> VmExecutor<'a> {
     match (self.pop(), self.pop()) {
       (Value::String(right), Value::String(left)) => {
         let result = format!("{}{}", left.as_str(), right.as_str());
-        let string = self.gc.manage_str(&result, self);
+        let string = self.gc.manage_str(result, self);
         self.push(Value::String(string));
         None
       }

@@ -1,12 +1,13 @@
 use spacelox_core::managed::{Allocation, Manage, Managed, Trace};
-use spacelox_interner::IStr;
 use std::cell::{Cell, RefCell};
+use std::collections::{hash_map::Entry, HashMap};
 use std::fmt;
 use std::ptr::NonNull;
 
 pub struct Gc {
   heap: RefCell<Vec<Box<Allocation<dyn Manage>>>>,
   bytes_allocated: Cell<usize>,
+  intern_cache: RefCell<HashMap<String, Managed<String>>>,
   next_gc: Cell<usize>,
 }
 
@@ -25,6 +26,7 @@ impl<'a> Gc {
     Gc {
       heap: RefCell::new(Vec::with_capacity(100)),
       bytes_allocated: Cell::new(0),
+      intern_cache: RefCell::new(HashMap::new()),
       next_gc: Cell::new(1024 * 1024),
     }
   }
@@ -39,26 +41,26 @@ impl<'a> Gc {
   /// use spacelox_core::value::{Value, Fun};
   /// use spacelox_core::chunk::Chunk;
   /// use spacelox_core::managed::Managed;
-  /// use spacelox_interner::IStr;
   ///
   /// let gc = Gc::new();
   /// let fun = Fun {
   ///   arity: 3,
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default(),
-  ///   name: Some(IStr::new("fun")),
+  ///   name: Some("fun".to_string()),
   /// };
   ///
   /// let managed_fun = gc.manage(fun, &NO_GC);
   ///
-  /// assert_eq!(managed_fun.name, Some(IStr::new("fun")));
+  /// assert_eq!(managed_fun.name, Some("fun".to_string()));
+  /// ```
   pub fn manage<T: 'static + Manage, C: Trace>(&self, data: T, context: &C) -> Managed<T> {
     self.allocate(data, context)
   }
 
-  /// Create a `Managed<IStr>` from a str slice. This creates
+  /// Create a `Managed<String>` from a str slice. This creates
   /// or returns an interned string and allocates a pointer to the intern
-  /// cache. A Managed<IStr> can be created from `.manage` but will
+  /// cache. A Managed<String> can be created from `.manage` but will
   /// not intern the string.
   ///
   /// # Examples
@@ -66,17 +68,22 @@ impl<'a> Gc {
   /// use spacelox_vm::memory::{Gc, NO_GC};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::managed::Managed;
-  /// use spacelox_interner::IStr;
   /// use std::ptr;
   ///
   /// let gc = Gc::new();
-  /// let str = gc.manage_str(&"hi!", &NO_GC);
+  /// let str = gc.manage_str("hi!".to_string(), &NO_GC);
   ///
-  /// assert_eq!(str.as_str(), "hi!");
+  /// assert_eq!(&*str, "hi!");
   /// ```
-  pub fn manage_str<C: Trace>(&self, string: &str, context: &C) -> Managed<IStr> {
-    let interned = IStr::new(string);
-    self.allocate(interned, context)
+  pub fn manage_str<C: Trace>(&self, string: String, context: &C) -> Managed<String> {
+    let mut cache = self.intern_cache.borrow_mut();
+    match cache.entry(string) {
+      Entry::Vacant(vacant) => {
+        let managed = self.allocate(vacant.key().to_string(), context);
+        *vacant.insert(managed)
+      }
+      Entry::Occupied(occupied) => *occupied.get(),
+    }
   }
 
   /// clone the the `Managed` data as a new heap allocation.
@@ -112,11 +119,7 @@ impl<'a> Gc {
   /// Allocate `data` on the gc's heap. If conditions are met
   /// a garbage collection can be triggered. When triggered
   /// will use the roots provided by the `context`
-  fn allocate<T: 'static + Manage, C: Trace>(
-    &self,
-    data: T,
-    context: &C,
-  ) -> Managed<T> {
+  fn allocate<T: 'static + Manage, C: Trace>(&self, data: T, context: &C) -> Managed<T> {
     // create own store of allocation
     let mut alloc = Box::new(Allocation::new(data));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
@@ -166,7 +169,10 @@ impl<'a> Gc {
       self.mark_obj(last.clone_dyn(), &mut gray_stack);
       self.trace(&mut gray_stack);
 
-      self.bytes_allocated.set(self.sweep());
+      self.sweep_string_cache();
+      let remaining = self.sweep();
+
+      self.bytes_allocated.set(remaining);
 
       self
         .next_gc
@@ -230,6 +236,27 @@ impl<'a> Gc {
     });
 
     remaining
+  }
+
+  /// Remove strings from the cache that no longer have any references
+  /// in the heap
+  fn sweep_string_cache(&self) {
+    self.intern_cache.borrow_mut().retain(|_, &mut string| {
+      let retain = string.obj().marked();
+
+      #[cfg(feature = "debug_gc")]
+      {
+        if !retain {
+          println!(
+            "{:p} remove string from cache {}",
+            &**string,
+            (*string).debug()
+          );
+        }
+      }
+
+      retain
+    });
   }
 
   /// mark an `Managed` as reachable from some root. This method returns

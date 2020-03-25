@@ -4,11 +4,9 @@ use crate::{
   native::NativeFun,
   utils::do_if_some,
 };
-use spacelox_interner::IStr;
 use std::collections::HashMap;
 use std::fmt;
-use std::mem::discriminant;
-use std::mem::replace;
+use std::mem;
 use std::rc::Rc;
 
 /// Enum of value types in spacelox
@@ -17,7 +15,7 @@ pub enum Value {
   Bool(bool),
   Nil,
   Number(f64),
-  String(Managed<IStr>),
+  String(Managed<String>),
   Fun(Managed<Fun>),
   Closure(Managed<Closure>),
   Class(Managed<Class>),
@@ -82,18 +80,17 @@ impl Value {
   /// ```
   /// use spacelox_core::value::Value;
   /// use spacelox_core::managed::{Allocation, Managed};
-  /// use spacelox_interner::IStr;
   /// use std::ptr::NonNull;
   ///
-  /// let str = IStr::new("example");
+  /// let str = "example".to_string();
   /// let mut alloc = Box::new(Allocation::new(str));
   /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
   /// let managed = Managed::from(ptr);
   ///
   /// let value = Value::String(managed);
-  /// assert_eq!(*value.to_string(), IStr::new("example"));
+  /// assert_eq!(*value.to_string(), "example".to_string())
   /// ```
-  pub fn to_string<'o>(&'o self) -> Managed<IStr> {
+  pub fn to_string<'o>(&'o self) -> Managed<String> {
     match self {
       Self::String(str1) => *str1,
       _ => panic!("Expected string"),
@@ -107,11 +104,10 @@ impl Value {
   /// use spacelox_core::value::{Value, Fun};
   /// use spacelox_core::managed::{Allocation, Managed};
   /// use spacelox_core::chunk::Chunk;
-  /// use spacelox_interner::IStr;
   /// use std::ptr::NonNull;
   ///
   /// let fun = Fun {
-  ///   name: Some(IStr::new("add")),
+  ///   name: Some("add".to_string()),
   ///   arity: 3,
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default()
@@ -137,11 +133,10 @@ impl Value {
   /// use spacelox_core::value::{Value, Closure, Fun};
   /// use spacelox_core::managed::{Managed, Allocation};
   /// use spacelox_core::chunk::Chunk;
-  /// use spacelox_interner::IStr;
   /// use std::ptr::NonNull;
   ///
   /// let fun = Fun {
-  ///   name: Some(IStr::new("add")),
+  ///   name: Some("add".to_string()),
   ///   arity: 3,
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default()
@@ -193,10 +188,9 @@ impl Value {
   /// ```
   /// use spacelox_core::value::{Value, Instance, Class};
   /// use spacelox_core::managed::{Managed, Allocation, make_managed};
-  /// use spacelox_interner::IStr;
   /// use std::ptr::NonNull;
   ///
-  /// let (name, name_alloc) = make_managed(IStr::new("example"));
+  /// let (name, name_alloc) = make_managed("example".to_string());
   /// let (class, class_alloc) = make_managed(Class::new(name));
   ///
   /// let value = Value::Class(class);
@@ -205,7 +199,7 @@ impl Value {
   pub fn to_class(&self) -> Managed<Class> {
     match self {
       Self::Class(class) => *class,
-      _ => panic!("Expected class.",)
+      _ => panic!("Expected class.",),
     }
   }
 
@@ -215,10 +209,9 @@ impl Value {
   /// ```
   /// use spacelox_core::value::{Value, Instance, Class};
   /// use spacelox_core::managed::{Managed, Allocation, make_managed};
-  /// use spacelox_interner::IStr;
   /// use std::ptr::NonNull;
   ///
-  /// let (name, name_alloc) = make_managed(IStr::new("example"));
+  /// let (name, name_alloc) = make_managed("example".to_string());
   /// let (class, class_alloc) = make_managed(Class::new(name));
   /// let (instance, instance_alloc) = make_managed(Instance::new(class));
   ///
@@ -323,7 +316,7 @@ impl PartialEq for Value {
   /// ```
   fn eq(&self, other: &Value) -> bool {
     // check we're the same variant
-    if discriminant(self) != discriminant(other) {
+    if mem::discriminant(self) != mem::discriminant(other) {
       return false;
     }
 
@@ -375,7 +368,7 @@ impl Upvalue {
     match self {
       Upvalue::Open(index) => {
         let value = unsafe { stack.get_unchecked(*index) }.clone();
-        replace(self, Upvalue::Closed(Box::new(value)));
+        mem::replace(self, Upvalue::Closed(Box::new(value)));
       }
       Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
     }
@@ -415,7 +408,11 @@ impl Manage for Upvalue {
   }
 
   fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
+    format!("{:?}", self)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
   }
 }
 
@@ -439,7 +436,7 @@ pub struct Fun {
   pub chunk: Chunk,
 
   /// Name if not top-level script
-  pub name: Option<IStr>,
+  pub name: Option<String>,
 }
 
 impl Default for Fun {
@@ -448,7 +445,7 @@ impl Default for Fun {
       arity: 0,
       upvalue_count: 0,
       chunk: Chunk::default(),
-      name: Some(IStr::new("null function")),
+      name: Some("null function".to_string()),
     }
   }
 }
@@ -482,23 +479,31 @@ impl Manage for Fun {
   }
 
   fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
+    format!("{:?}", self)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
   }
 }
 
-impl Trace for IStr {
+impl Trace for String {
   fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
     true
   }
 }
 
-impl Manage for IStr {
+impl Manage for String {
   fn alloc_type(&self) -> &str {
     "string"
   }
 
   fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
+    format!("{:?}", self)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of_val(self)
   }
 }
 
@@ -514,7 +519,11 @@ impl Manage for Rc<dyn NativeFun> {
   }
 
   fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
+    format!("{:?}", self)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
   }
 }
 
@@ -532,14 +541,13 @@ impl Closure {
   /// use spacelox_core::value::{Closure, Fun};
   /// use spacelox_core::managed::{Managed, Allocation};
   /// use spacelox_core::chunk::Chunk;
-  /// use spacelox_interner::IStr;
   /// use std::ptr::NonNull;
   ///
   /// let mut fun = Box::new(Allocation::new(Fun {
   ///   arity: 3,
   ///   upvalue_count: 2,
   ///   chunk: Chunk::default(),
-  ///   name: Some(IStr::new("example"))
+  ///   name: Some("example".to_string())
   /// }));
   ///
   /// let managed_fun = Managed::from(unsafe { NonNull::new_unchecked(&mut *fun) });
@@ -582,19 +590,23 @@ impl Manage for Closure {
   }
 
   fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
+    format!("{:?}", self)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
   }
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Class {
-  pub name: Managed<IStr>,
+  pub name: Managed<String>,
   pub init: Option<Managed<Closure>>,
-  pub methods: HashMap<Managed<IStr>, Managed<Closure>>,
+  pub methods: HashMap<Managed<String>, Managed<Closure>>,
 }
 
 impl Class {
-  pub fn new(name: Managed<IStr>) -> Self {
+  pub fn new(name: Managed<String>) -> Self {
     Class {
       name,
       init: None,
@@ -633,14 +645,18 @@ impl Manage for Class {
   }
 
   fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
+    format!("{:?}", self)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Class>()
   }
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Instance {
   pub class: Managed<Class>,
-  pub fields: HashMap<Managed<IStr>, Value>,
+  pub fields: HashMap<Managed<String>, Value>,
 }
 
 impl Instance {
@@ -680,7 +696,11 @@ impl Manage for Instance {
   }
 
   fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
+    format!("{:?}", self)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Instance>()
   }
 }
 
@@ -719,7 +739,11 @@ impl Manage for BoundMethod {
   }
 
   fn debug(&self) -> String {
-    format!("{:?}", self).to_string()
+    format!("{:?}", self)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
   }
 }
 
@@ -729,7 +753,7 @@ mod test {
   use crate::managed::Allocation;
   use std::ptr::NonNull;
 
-  fn example_each(string: Managed<IStr>) -> Vec<Value> {
+  fn example_each(string: Managed<String>) -> Vec<Value> {
     vec![
       Value::Bool(true),
       Value::Nil,
@@ -741,7 +765,7 @@ mod test {
   #[test]
   fn test_diff_type_no_equal() {
     // let string = "example";
-    let mut string_alloc = Box::new(Allocation::new(IStr::new("data")));
+    let mut string_alloc = Box::new(Allocation::new("data".to_string()));
 
     // "blah".to_string().into_boxed_str();
     let string_ptr = unsafe { NonNull::new_unchecked(&mut *string_alloc) };

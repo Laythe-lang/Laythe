@@ -2,7 +2,6 @@ use std::{
   cell::Cell,
   fmt,
   hash::{Hash, Hasher},
-  mem,
   ops::{Deref, DerefMut},
   ptr::{self, NonNull},
 };
@@ -14,13 +13,16 @@ pub trait Trace {
 }
 
 /// An entity that can be managed and collected by the garbage collector.
-/// This trait provided debugging capabilities for the type being managed
+/// This trait provided debugging capabilities and statistics for the gc.
 pub trait Manage: Trace {
   /// What allocation type is
   fn alloc_type(&self) -> &str;
 
   /// What allocation type is
   fn debug(&self) -> String;
+
+  /// What is the size of this allocation
+  fn size(&self) -> usize;
 }
 
 /// The header of an allocation indicate meta data about the object
@@ -35,7 +37,7 @@ pub struct Allocation<T: 'static + Trace + ?Sized> {
   data: T,
 }
 
-impl<T: 'static + Trace> Allocation<T> {
+impl<T: 'static + Manage> Allocation<T> {
   pub fn new(data: T) -> Self {
     Self {
       data,
@@ -46,13 +48,13 @@ impl<T: 'static + Trace> Allocation<T> {
   }
 
   pub fn size(&self) -> usize {
-    mem::size_of::<T>()
+    self.data.size()
   }
 }
 
 impl Allocation<dyn Manage> {
   pub fn size(&self) -> usize {
-    mem::size_of_val(&self.data)
+    self.data.size()
   }
 }
 
@@ -119,10 +121,8 @@ impl<T: 'static + Manage> Manage for Managed<T> {
   fn debug(&self) -> String {
     self.obj().data.debug()
   }
-}
 
-impl Managed<dyn Manage> {
-  pub fn size(&self) -> usize {
+  fn size(&self) -> usize {
     self.obj().size()
   }
 }
@@ -141,6 +141,10 @@ impl Manage for Managed<dyn Manage> {
 
   fn debug(&self) -> String {
     self.obj().data.debug()
+  }
+
+  fn size(&self) -> usize {
+    self.obj().size()
   }
 }
 
@@ -171,16 +175,12 @@ impl<T: 'static + Manage> DerefMut for Managed<T> {
   }
 }
 
-impl<T: 'static + PartialEq + Manage> PartialEq for Managed<T> {
+impl<T: 'static + Manage> PartialEq for Managed<T> {
   fn eq(&self, other: &Managed<T>) -> bool {
     let left_inner: &T = &*self;
     let right_inner: &T = &*other;
 
-    if ptr::eq(left_inner, right_inner) {
-      return true;
-    }
-
-    left_inner.eq(right_inner)
+    ptr::eq(left_inner, right_inner)
   }
 }
 
@@ -189,7 +189,7 @@ impl<T: 'static + Eq + Manage> Eq for Managed<T> {}
 impl<T: 'static + Hash + Manage> Hash for Managed<T> {
   fn hash<H: Hasher>(&self, state: &mut H) {
     let inner: &T = &*self;
-    inner.hash(state);
+    ptr::hash(inner, state)
   }
 }
 

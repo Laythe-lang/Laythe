@@ -16,4 +16,10 @@ path = "src/lib.rs"
 
 [dependencies]
 spacelox_core = { path = "../spacelox_core" }
-spacelox_interner = { path = "../spacelox_interner" }
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "script_bench"
+harness = false

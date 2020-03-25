@@ -1,6 +1,6 @@
 class A {
   method(arg) {
-    print "A.method(" + arg + ")";
+    return "A.method(" + arg + ")";
   }
 }
 
@@ -10,10 +10,10 @@ class B < A {
   }
 
   method(arg) {
-    print "B.method(" + arg + ")";
+    return "B.method(" + arg + ")";
   }
 }
 
 
 var closure = B().getClosure();
-closure("arg"); // expect: A.method(arg)
+assertEq(closure("arg"), "A.method(arg)"); // expect: A.method(arg)

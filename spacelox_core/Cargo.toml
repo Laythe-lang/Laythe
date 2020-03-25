@@ -7,6 +7,3 @@ edition = "2018"
 [lib]
 name = "spacelox_core"
 path = "src/lib.rs"
-
-[dependencies]
-spacelox_interner = { path = "../spacelox_interner" }

@@ -6,8 +6,8 @@ use spacelox_core::managed::{Manage, Managed, Trace};
 use spacelox_core::token::{Token, TokenKind};
 use spacelox_core::utils::{copy_string, do_if_some};
 use spacelox_core::value::{Fun, FunKind, Value};
-use spacelox_interner::IStr;
 use std::convert::TryInto;
+use std::mem;
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_chunk;
@@ -135,7 +135,7 @@ impl<'a, 's> Compiler<'a, 's> {
   }
 
   /// Construct an inner compiler used to compile functions inside of a script
-  fn child(name: Option<IStr>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
+  fn child(name: Option<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
     let mut child = Self {
       fun: unsafe { (*enclosing).fun },
       fun_kind: fun_kind.clone(),
@@ -303,7 +303,9 @@ impl<'a, 's> Compiler<'a, 's> {
     self.current_class = Some(class_compiler);
 
     if self.parser.match_kind(TokenKind::Less) {
-      self.parser.consume(TokenKind::Identifier, "Expect superclass name.");
+      self
+        .parser
+        .consume(TokenKind::Identifier, "Expect superclass name.");
       self.variable(false);
 
       if class_name.lexeme == self.parser.previous.lexeme {
@@ -356,7 +358,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Parse a function declaration and body
   fn function(&mut self, fun_kind: FunKind) {
-    let name = Some(IStr::new(&self.parser.previous.lexeme));
+    let name = Some(self.parser.previous.lexeme.to_string());
 
     let mut fun_compiler = Compiler::child(name, fun_kind, &mut *self);
     fun_compiler.begin_scope();
@@ -653,7 +655,7 @@ impl<'a, 's> Compiler<'a, 's> {
   #[cfg(feature = "debug")]
   fn print_chunk(&self) {
     if true || self.parser.had_error {
-      let script = IStr::new("<script>");
+      let script = "<script>".to_string();
 
       let name = match &self.fun.name {
         Some(name) => name,
@@ -762,7 +764,7 @@ impl<'a, 's> Compiler<'a, 's> {
   fn string(&mut self) {
     let string = self
       .gc
-      .manage_str(&copy_string(&self.parser.previous), &NO_GC);
+      .manage_str(copy_string(&self.parser.previous), &NO_GC);
     let value = Value::String(Managed::from(string));
     self.emit_constant(value)
   }
@@ -907,39 +909,55 @@ impl<'a, 's> Compiler<'a, 's> {
   fn super_(&mut self) {
     match self.current_class {
       None => self.parser.error("Cannot use 'super' outside of a class."),
-      Some(class) => if !class.has_super_class {
-        self.parser.error("Cannot use 'super' in a class with no superclass.");
+      Some(class) => {
+        if !class.has_super_class {
+          self
+            .parser
+            .error("Cannot use 'super' in a class with no superclass.");
+        }
       }
     }
 
-    self.parser.consume(TokenKind::Dot, "Expect '.' after 'super'.");
-    self.parser.consume(TokenKind::Identifier, "Expect superclass method name.");
+    self
+      .parser
+      .consume(TokenKind::Dot, "Expect '.' after 'super'.");
+    self
+      .parser
+      .consume(TokenKind::Identifier, "Expect superclass method name.");
     let name = self.identifer_constant(self.parser.previous.clone());
 
-    self.named_variable(Token {
-      lexeme: "this".to_string(),
-      kind: TokenKind::This,
-      line: self.parser.previous.line,
-    }, false);
+    self.named_variable(
+      Token {
+        lexeme: "this".to_string(),
+        kind: TokenKind::This,
+        line: self.parser.previous.line,
+      },
+      false,
+    );
 
     if self.parser.match_kind(TokenKind::LeftParen) {
       let arg_count = self.argument_list();
-      self.named_variable(Token {
-        lexeme: "super".to_string(),
-        kind: TokenKind::Super,
-        line: self.parser.previous.line,
-      }, false);
+      self.named_variable(
+        Token {
+          lexeme: "super".to_string(),
+          kind: TokenKind::Super,
+          line: self.parser.previous.line,
+        },
+        false,
+      );
       self.emit_byte(ByteCode::SuperInvoke((name, arg_count)));
     } else {
-      self.named_variable(Token {
-        lexeme: "super".to_string(),
-        kind: TokenKind::Super,
-        line: self.parser.previous.line,
-      }, false);
-  
+      self.named_variable(
+        Token {
+          lexeme: "super".to_string(),
+          kind: TokenKind::Super,
+          line: self.parser.previous.line,
+        },
+        false,
+      );
+
       self.emit_byte(ByteCode::GetSuper(name));
     }
-
   }
 
   /// Parse a variable from the provided token return it's new constant
@@ -962,7 +980,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u8 {
-    let identifer = self.gc.manage_str(&name.lexeme, &NO_GC);
+    let identifer = self.gc.manage_str(name.lexeme, &NO_GC);
     self.make_constant(Value::String(Managed::from(identifer)))
   }
 
@@ -1288,8 +1306,13 @@ impl Manage for ClassCompiler {
   fn alloc_type(&self) -> &str {
     "class compiler"
   }
+
   fn debug(&self) -> String {
     format!("{:?}", self).to_string()
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
   }
 }
 
