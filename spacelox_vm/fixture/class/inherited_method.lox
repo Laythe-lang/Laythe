@@ -1,22 +1,22 @@
 class Foo {
   inFoo() {
-    print "in foo";
+    return "in foo";
   }
 }
 
 class Bar < Foo {
   inBar() {
-    print "in bar";
+    return "in bar";
   }
 }
 
 class Baz < Bar {
   inBaz() {
-    print "in baz";
+    return "in baz";
   }
 }
 
 var baz = Baz();
-baz.inFoo(); // expect: in foo
-baz.inBar(); // expect: in bar
-baz.inBaz(); // expect: in baz
+assertEq(baz.inFoo(), "in foo"); // expect: in foo
+assertEq(baz.inBar(), "in bar"); // expect: in bar
+assertEq(baz.inBaz(), "in baz"); // expect: in baz

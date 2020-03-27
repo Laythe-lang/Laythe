@@ -8,7 +8,7 @@ pub struct Token {
   pub lexeme: String,
 
   /// line number this token appears
-  pub line: i32,
+  pub line: u32,
 }
 
 /// Token kinds in the space lox language

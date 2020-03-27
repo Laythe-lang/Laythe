@@ -8,7 +8,7 @@ pub struct Scanner<'a> {
   source: &'a str,
 
   /// The current line number
-  line: i32,
+  line: u32,
 
   /// The start of the current token
   start: usize,
@@ -402,7 +402,7 @@ fn visible_whitespace(white_space: &str) -> &str {
 }
 
 /// Make a new token
-fn make_token(kind: TokenKind, raw: &str, line: i32) -> Token {
+fn make_token(kind: TokenKind, raw: &str, line: u32) -> Token {
   let lexeme = raw.to_string();
   Token { kind, lexeme, line }
 }

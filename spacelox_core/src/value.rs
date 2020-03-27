@@ -557,7 +557,7 @@ impl Closure {
   /// ```
   pub fn new(fun: Managed<Fun>) -> Self {
     Closure {
-      upvalues: Vec::with_capacity(fun.upvalue_count),
+      upvalues: Vec::with_capacity(fun.upvalue_count as usize),
       fun,
     }
   }

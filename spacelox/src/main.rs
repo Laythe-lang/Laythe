@@ -4,7 +4,7 @@ use spacelox_vm::call_frame::CallFrame;
 use spacelox_vm::constants::DEFAULT_STACK_MAX;
 use spacelox_vm::constants::FRAME_MAX;
 use spacelox_vm::memory::{Gc, NO_GC};
-use spacelox_vm::vm::{InterpretResult, Vm};
+use spacelox_vm::vm::{Interpret, Vm};
 use std::env;
 use std::fs::read_to_string;
 use std::process;
@@ -30,14 +30,13 @@ fn main() {
     }
     [_, file_path] => match read_to_string(file_path) {
       Ok(source) => match vm.run(&source) {
-        InterpretResult::Ok => process::exit(0),
-        InterpretResult::CompileError => process::exit(2),
-        InterpretResult::RuntimeError => process::exit(3),
-        InterpretResult::InternalError => process::exit(4),
+        Interpret::Ok => process::exit(0),
+        Interpret::CompileError => process::exit(2),
+        Interpret::RuntimeError => process::exit(3),
       },
       Err(e) => {
         eprintln!("{}", e);
-        process::exit(5)
+        process::exit(4)
       }
     },
     _ => {

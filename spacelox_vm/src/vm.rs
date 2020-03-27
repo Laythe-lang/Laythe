@@ -2,7 +2,7 @@ use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, CompilerResult, Parser};
 use crate::constants::{define_special_string, SpecialStrings, FRAME_MAX};
 use crate::memory::{Gc, NO_GC};
-use spacelox_core::chunk::{ByteCode, UpvalueIndex};
+use spacelox_core::chunk::{decode_u16, ByteCode, UpvalueIndex};
 use spacelox_core::managed::{Manage, Managed, Trace};
 use spacelox_core::native::{NativeFun, NativeResult};
 use spacelox_core::{
@@ -11,18 +11,19 @@ use spacelox_core::{
 };
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
-use std::mem::replace;
+use std::mem;
 use std::rc::Rc;
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
 
+pub type InterpretResult = Result<usize, Interpret>;
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum InterpretResult {
+pub enum Interpret {
   Ok,
   CompileError,
   RuntimeError,
-  InternalError,
 }
 
 /// The virtual machine for the spacelox programming language
@@ -74,7 +75,7 @@ impl Vm {
     }
   }
 
-  pub fn run(&mut self, source: &str) -> InterpretResult {
+  pub fn run(&mut self, source: &str) -> Interpret {
     self.interpret(source)
   }
 
@@ -85,11 +86,11 @@ impl Vm {
     compiler.compile()
   }
 
-  fn interpret(&mut self, source: &str) -> InterpretResult {
+  fn interpret(&mut self, source: &str) -> Interpret {
     let result = self.compile(source);
 
     if !result.success {
-      return InterpretResult::CompileError;
+      return Interpret::CompileError;
     }
 
     let script_closure = self.gc.manage(Closure::new(result.fun), &NO_GC);
@@ -158,186 +159,118 @@ impl<'a> VmExecutor<'a> {
       open_upvalues: Vec::with_capacity(100),
     };
 
-    executor.call_value(executor.script, 0);
-    executor
+    let result = executor.call(executor.script.to_closure(), 0, 0);
+    match result {
+      Ok(_) => executor,
+      _ => panic!("Script call failed"),
+    }
   }
 
-  pub fn run(&mut self) -> InterpretResult {
+  pub fn run(&mut self) -> Interpret {
+    let mut ip: usize = 0;
+
+    #[cfg(feature = "debug")]
+    let mut last_ip: usize = 0;
+
     loop {
-      let op_code: ByteCode = self.frame_instruction();
+      let op_code: ByteCode = self.frame_instruction(ip);
 
       #[cfg(feature = "debug")]
-      self.print_debug();
+      {
+        self.print_debug(ip, last_ip);
+        last_ip = ip;
+      }
 
-      self.increment_frame_ip(1);
-      match op_code {
-        ByteCode::Negate => {
-          if let Some(result) = self.op_negate() {
-            return result;
-          }
-        }
-        ByteCode::Add => {
-          if let Some(result) = self.op_add() {
-            return result;
-          }
-        }
-        ByteCode::Subtract => {
-          if let Some(result) = self.op_sub() {
-            return result;
-          }
-        }
-        ByteCode::Multiply => {
-          if let Some(result) = self.op_mul() {
-            return result;
-          }
-        }
-        ByteCode::Divide => {
-          if let Some(result) = self.op_div() {
-            return result;
-          }
-        }
-        ByteCode::Not => self.op_not(),
-        ByteCode::Equal => self.op_equal(),
-        ByteCode::Greater => {
-          if let Some(result) = self.op_greater() {
-            return result;
-          }
-        }
-        ByteCode::Less => {
-          if let Some(result) = self.op_less() {
-            return result;
-          }
-        }
-        ByteCode::JumpIfFalse(jump) => self.op_jump_if_not_false(jump),
-        ByteCode::Jump(jump) => {
-          self.op_jump(jump);
-        }
-        ByteCode::Loop(jump) => {
-          self.op_loop(jump);
-        }
-        ByteCode::Noop => panic!("Noop was not replaced within compiler.rs"),
-        ByteCode::DefineGlobal(slot) => {
-          self.op_define_global(slot);
-        }
-        ByteCode::GetGlobal(slot) => {
-          if let Some(result) = self.op_get_global(slot) {
-            return result;
-          }
-        }
-        ByteCode::SetGlobal(slot) => {
-          if let Some(result) = self.op_set_global(slot) {
-            return result;
-          }
-        }
-        ByteCode::GetLocal(slot) => self.op_get_local(slot),
-        ByteCode::SetLocal(slot) => self.op_set_local(slot),
-        ByteCode::GetUpvalue(slot) => self.op_get_upvalue(slot),
-        ByteCode::SetUpvalue(slot) => self.op_set_upvalue(slot),
-        ByteCode::GetProperty(slot) => {
-          if let Some(result) = self.op_get_property(slot) {
-            return result;
-          }
-        }
-        ByteCode::SetProperty(slot) => {
-          if let Some(result) = self.op_set_property(slot) {
-            return result;
-          }
-        }
-        ByteCode::UpvalueIndex(_) => {
-          self.internal_error("UpvalueIndex should only be processed in closure");
-        }
-        ByteCode::Pop => {
-          self.pop();
-        }
-        ByteCode::Nil => self.push(Value::Nil),
-        ByteCode::True => self.push(Value::Bool(true)),
-        ByteCode::False => self.push(Value::Bool(false)),
-        ByteCode::Constant(store_index) => {
-          self.op_constant(store_index);
-        }
-        ByteCode::Print => println!("{}", self.pop()),
-        ByteCode::Call(arg_count) => {
-          if let Some(result) = self.call_value(self.peek(arg_count as usize), arg_count) {
-            return result;
-          }
-        }
-        ByteCode::Invoke((name, arg_count)) => {
-          if let Some(result) = self.op_invoke(name, arg_count) {
-            return result;
-          }
-        }
-        ByteCode::SuperInvoke((name, arg_count)) => {
-          if let Some(result) = self.op_super_invoke(name, arg_count) {
-            return result;
-          }
-        }
-        ByteCode::Closure(slot) => self.op_closure(slot),
-        ByteCode::Method(slot) => self.op_method(slot),
-        ByteCode::Class(slot) => self.op_class(slot),
-        ByteCode::Inherit => {
-          if let Some(result) = self.op_inherit() {
-            return result;
-          }
-        }
-        ByteCode::GetSuper(slot) => {
-          if let Some(result) = self.op_get_super(slot) {
-            return result;
-          }
-        }
-        ByteCode::CloseUpvalue => {
-          self.close_upvalues(self.stack_top - 1);
-          self.pop();
-        }
-        ByteCode::Return => {
-          if let Some(result) = self.op_return() {
-            return result;
-          }
+      let result = match op_code {
+        ByteCode::Negate => self.op_negate(ip),
+        ByteCode::Add => self.op_add(ip),
+        ByteCode::Subtract => self.op_sub(ip),
+        ByteCode::Multiply => self.op_mul(ip),
+        ByteCode::Divide => self.op_div(ip),
+        ByteCode::Not => self.op_not(ip),
+        ByteCode::Equal => self.op_equal(ip),
+        ByteCode::Greater => self.op_greater(ip),
+        ByteCode::Less => self.op_less(ip),
+        ByteCode::JumpIfFalse => self.op_jump_if_not_false(ip),
+        ByteCode::Jump => self.op_jump(ip),
+        ByteCode::Loop => self.op_loop(ip),
+        ByteCode::DefineGlobal => self.op_define_global(ip),
+        ByteCode::GetGlobal => self.op_get_global(ip),
+        ByteCode::SetGlobal => self.op_set_global(ip),
+        ByteCode::GetLocal => self.op_get_local(ip),
+        ByteCode::SetLocal => self.op_set_local(ip),
+        ByteCode::GetUpvalue => self.op_get_upvalue(ip),
+        ByteCode::SetUpvalue => self.op_set_upvalue(ip),
+        ByteCode::GetProperty => self.op_get_property(ip),
+        ByteCode::SetProperty => self.op_set_property(ip),
+        ByteCode::Pop => self.op_pop(ip),
+        ByteCode::Nil => self.op_literal(ip, Value::Nil),
+        ByteCode::True => self.op_literal(ip, Value::Bool(true)),
+        ByteCode::False => self.op_literal(ip, Value::Bool(false)),
+        ByteCode::Constant => self.op_constant(ip),
+        ByteCode::Print => self.op_print(ip),
+        ByteCode::Call => self.op_call(ip),
+        ByteCode::Invoke => self.op_invoke(ip),
+        ByteCode::SuperInvoke => self.op_super_invoke(ip),
+        ByteCode::Closure => self.op_closure(ip),
+        ByteCode::Method => self.op_method(ip),
+        ByteCode::Class => self.op_class(ip),
+        ByteCode::Inherit => self.op_inherit(ip),
+        ByteCode::GetSuper => self.op_get_super(ip),
+        ByteCode::CloseUpvalue => self.op_close_upvalue(ip),
+        ByteCode::Return => self.op_return(ip),
+      };
+
+      match result {
+        Ok(new_ip) => ip = new_ip,
+        Err(interrupt) => {
+          return interrupt;
         }
       }
     }
   }
 
   /// Get an immutable reference to the current callframe
+  #[inline]
   fn current_frame(&self) -> &CallFrame {
     unsafe { self.frames.get_unchecked(self.frame_count - 1) }
   }
 
   /// Get a mutable reference to the current callframe
+  #[inline]
   fn current_mut_frame(&mut self) -> &mut CallFrame {
     unsafe { self.frames.get_unchecked_mut(self.frame_count - 1) }
   }
 
   /// Get an immutable reference to value on the stack
+  #[inline]
   fn get_val(&self, index: usize) -> Value {
     unsafe { *self.stack.get_unchecked(index) }
   }
 
   /// Set a value on the stack
+  #[inline]
   fn set_val(&mut self, index: usize, val: Value) {
     unsafe {
       *self.stack.get_unchecked_mut(index) = val;
     }
   }
 
+  /// read a u8 out of the bytecode
+  fn read_byte(&self, ip: usize) -> u8 {
+    self.current_frame().closure.fun.chunk.instructions[ip]
+  }
+
+  /// read a u16 out of the bytecode
+  fn read_short(&self, ip: usize) -> u16 {
+    decode_u16(self.read_byte(ip), self.read_byte(ip + 1))
+  }
+
   /// Get the current instruction from the present call frame
   #[inline]
-  fn frame_instruction(&self) -> ByteCode {
+  fn frame_instruction(&self, ip: usize) -> ByteCode {
     let frame = self.current_frame();
-    frame.closure.fun.chunk.instructions[frame.ip]
-  }
-
-  /// increment the the current call frame instruction pointer
-  #[inline]
-  fn increment_frame_ip(&mut self, offset: usize) {
-    let frame = self.current_mut_frame();
-    frame.ip += offset;
-  }
-
-  /// decrement the current call frames instruction pointer
-  #[inline]
-  fn decrement_frame_ip(&mut self, offset: usize) {
-    let frame = self.current_mut_frame();
-    frame.ip -= offset;
+    ByteCode::from(frame.closure.fun.chunk.instructions[ip])
   }
 
   /// push a value onto the stack
@@ -351,10 +284,20 @@ impl<'a> VmExecutor<'a> {
     self.get_val(self.stack_top - (distance + 1))
   }
 
+  fn op_literal(&mut self, ip: usize, value: Value) -> InterpretResult {
+    self.push(value);
+    Ok(ip + 1)
+  }
+
+  fn op_pop(&mut self, ip: usize) -> InterpretResult {
+    self.pop();
+    Ok(ip + 1)
+  }
+
   fn pop(&mut self) -> Value {
     self.stack_top -= 1;
     let ptr = unsafe { self.stack.get_unchecked_mut(self.stack_top) };
-    replace(ptr, Value::Nil)
+    mem::replace(ptr, Value::Nil)
   }
 
   fn read_constant<'b>(frame: &'b CallFrame, index: u8) -> Value {
@@ -370,16 +313,21 @@ impl<'a> VmExecutor<'a> {
     self.stack_top = 1;
     self.frame_count = 0;
     self.open_upvalues.clear();
-
-    self.call_value(self.script, 0);
   }
 
-  fn call_value(&mut self, callee: Value, arg_count: u8) -> Option<InterpretResult> {
+  fn op_call(&mut self, ip: usize) -> InterpretResult {
+    let arg_count = self.read_byte(ip + 1);
+    let callee = self.peek(arg_count as usize);
+
+    self.resolve_call(callee, arg_count, ip + 2)
+  }
+
+  fn resolve_call(&mut self, callee: Value, arg_count: u8, ip: usize) -> InterpretResult {
     match callee {
-      Value::Closure(closure) => self.call(closure, arg_count),
-      Value::Method(method) => self.call_method(method, arg_count),
-      Value::Native(native) => self.call_native(native, arg_count),
-      Value::Class(class) => self.call_class(class, arg_count),
+      Value::Closure(closure) => self.call(closure, arg_count, ip),
+      Value::Method(method) => self.call_method(method, arg_count, ip),
+      Value::Native(native) => self.call_native(native, arg_count, ip),
+      Value::Class(class) => self.call_class(class, arg_count, ip),
       Value::Fun(fun) => panic!(
         "function {} was not wrapped in a closure",
         fun.name.clone().unwrap_or("script".to_string())
@@ -388,17 +336,17 @@ impl<'a> VmExecutor<'a> {
     }
   }
 
-  fn call_class(&mut self, class: Managed<Class>, arg_count: u8) -> Option<InterpretResult> {
+  fn call_class(&mut self, class: Managed<Class>, arg_count: u8, ip: usize) -> InterpretResult {
     let value = Value::Instance(self.gc.manage(Instance::new(class), self));
     self.set_val(self.stack_top - (arg_count as usize) - 1, value);
 
     match class.init {
-      Some(init) => self.call(init, arg_count),
+      Some(init) => self.call(init, arg_count, ip),
       None => {
         if arg_count != 0 {
           self.runtime_error(&format!("Expected 0 arguments but got {}", arg_count))
         } else {
-          None
+          Ok(ip)
         }
       }
     }
@@ -408,14 +356,14 @@ impl<'a> VmExecutor<'a> {
     &mut self,
     native: Managed<Rc<dyn NativeFun>>,
     arg_count: u8,
-  ) -> Option<InterpretResult> {
+    ip: usize,
+  ) -> InterpretResult {
     let meta = native.meta();
     if arg_count != meta.arity {
-      self.runtime_error(&format!(
+      return self.runtime_error(&format!(
         "Function {} expected {} argument but got {}",
         meta.name, meta.arity, arg_count,
       ));
-      return Some(InterpretResult::RuntimeError);
     }
 
     let args = unsafe {
@@ -428,31 +376,31 @@ impl<'a> VmExecutor<'a> {
       NativeResult::Success(value) => {
         self.stack_top -= arg_count as usize + 1;
         self.push(value);
-        None
+        Ok(ip)
       }
       NativeResult::RuntimeError(message) => {
-        self.runtime_error(&message);
-        Some(InterpretResult::RuntimeError)
+        return self.runtime_error(&message);
       }
     }
   }
 
-  fn call(&mut self, closure: Managed<Closure>, arg_count: u8) -> Option<InterpretResult> {
+  fn call(&mut self, closure: Managed<Closure>, arg_count: u8, ip: usize) -> InterpretResult {
     if (arg_count as u16) != closure.fun.arity {
-      self.runtime_error(&format!(
+      return self.runtime_error(&format!(
         "Function {} expected {} arguments but got {}",
         closure.fun.name.clone().unwrap_or("script".to_string()),
         closure.fun.arity,
         arg_count
       ));
-      return Some(InterpretResult::RuntimeError);
     }
 
     if self.frame_count == FRAME_MAX {
-      self.runtime_error("Stack overflow.");
-      return Some(InterpretResult::RuntimeError);
+      return self.runtime_error("Stack overflow.");
     }
 
+    if self.frame_count > 0 {
+      self.current_mut_frame().ip = ip;
+    }
     let current_closure = self.gc.clone_managed(closure, self);
 
     let frame = &mut self.frames[self.frame_count];
@@ -461,19 +409,25 @@ impl<'a> VmExecutor<'a> {
     frame.slots = self.stack_top - (arg_count as usize + 1);
 
     self.frame_count += 1;
-    None
+    Ok(0)
   }
 
-  fn call_method(&mut self, bound: Managed<BoundMethod>, arg_count: u8) -> Option<InterpretResult> {
+  fn call_method(
+    &mut self,
+    bound: Managed<BoundMethod>,
+    arg_count: u8,
+    ip: usize,
+  ) -> InterpretResult {
     self.set_val(self.stack_top - (arg_count as usize) - 1, bound.receiver);
-    self.call(bound.method, arg_count)
+    self.call(bound.method, arg_count, ip)
   }
 
   fn bind_method(
     &mut self,
     class: Managed<Class>,
     name: Managed<String>,
-  ) -> Option<InterpretResult> {
+    ip: usize,
+  ) -> InterpretResult {
     match class.methods.get(&name) {
       Some(method) => {
         let bound = self
@@ -481,16 +435,16 @@ impl<'a> VmExecutor<'a> {
           .manage(BoundMethod::new(self.peek(0), *method), self);
         self.pop();
         self.push(Value::Method(bound));
-        None
+        Ok(ip)
       }
-      None => {
-        self.runtime_error(&format!("Undefined property {}", name.as_str()));
-        Some(InterpretResult::RuntimeError)
-      }
+      None => self.runtime_error(&format!("Undefined property {}", name.as_str())),
     }
   }
 
-  fn op_invoke(&mut self, constant: u8, arg_count: u8) -> Option<InterpretResult> {
+  fn op_invoke(&mut self, ip: usize) -> InterpretResult {
+    let constant = self.read_byte(ip + 1);
+    let arg_count = self.read_byte(ip + 2);
+
     let method_name = self.read_string(constant);
     let receiver = self.peek(arg_count as usize);
 
@@ -498,20 +452,23 @@ impl<'a> VmExecutor<'a> {
       match instance.fields.get(&method_name) {
         Some(field) => {
           self.set_val(self.stack_top - (arg_count as usize) - 1, *field);
-          return self.call_value(*field, arg_count);
+          return self.resolve_call(*field, arg_count, ip + 3);
         }
-        None => self.invoke_from_class(instance.class, method_name, arg_count),
+        None => self.invoke_from_class(instance.class, method_name, arg_count, ip + 3),
       }
     } else {
       self.runtime_error("Only instances have methods.")
     }
   }
 
-  fn op_super_invoke(&mut self, constant: u8, arg_count: u8) -> Option<InterpretResult> {
+  fn op_super_invoke(&mut self, ip: usize) -> InterpretResult {
+    let constant = self.read_byte(ip + 1);
+    let arg_count = self.read_byte(ip + 2);
+
     let method_name = self.read_string(constant);
     let super_class = self.pop().to_class();
 
-    self.invoke_from_class(super_class, method_name, arg_count)
+    self.invoke_from_class(super_class, method_name, arg_count, ip + 3)
   }
 
   fn invoke_from_class(
@@ -519,27 +476,31 @@ impl<'a> VmExecutor<'a> {
     class: Managed<Class>,
     method_name: Managed<String>,
     arg_count: u8,
-  ) -> Option<InterpretResult> {
+    ip: usize,
+  ) -> InterpretResult {
     match class.methods.get(&method_name) {
-      Some(method) => self.call(*method, arg_count),
+      Some(method) => self.call(*method, arg_count, ip),
       None => self.runtime_error(&format!("Undefined property {}.", method_name.as_str())),
     }
   }
 
-  fn op_class(&mut self, slot: u8) {
+  fn op_class(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
     let class = Value::Class(self.gc.manage(Class::new(name), self));
-    self.push(class)
+    self.push(class);
+    Ok(ip + 2)
   }
 
-  fn op_get_super(&mut self, slot: u8) -> Option<InterpretResult> {
+  fn op_get_super(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
     let super_class = self.pop().to_class();
 
-    self.bind_method(super_class, name)
+    self.bind_method(super_class, name, ip + 2)
   }
 
-  fn op_inherit(&mut self) -> Option<InterpretResult> {
+  fn op_inherit(&mut self, ip: usize) -> InterpretResult {
     let mut class = self.peek(0).to_class();
 
     match self.peek(1) {
@@ -551,50 +512,61 @@ impl<'a> VmExecutor<'a> {
         class.init = class.init.or(super_class.init);
 
         self.pop();
-        None
+        Ok(ip + 1)
       }
       _ => self.runtime_error("Superclass must be a class."),
     }
   }
 
-  fn op_loop(&mut self, jump: u16) {
-    self.decrement_frame_ip(jump as usize);
+  fn op_loop(&mut self, ip: usize) -> InterpretResult {
+    Ok(ip + 3 - self.read_short(ip + 1) as usize)
   }
 
-  fn op_jump_if_not_false(&mut self, jump: u16) {
+  fn op_jump_if_not_false(&mut self, ip: usize) -> InterpretResult {
+    let jump = self.read_short(ip + 1);
     if is_falsey(self.peek(0)) {
-      self.increment_frame_ip(jump as usize);
+      return Ok(ip + 3 + jump as usize);
     }
+
+    Ok(ip + 3)
   }
 
-  fn op_jump(&mut self, jump: u16) {
-    self.increment_frame_ip(jump as usize);
+  fn op_jump(&mut self, ip: usize) -> InterpretResult {
+    let jump = self.read_short(ip + 1);
+    Ok(ip + 3 + jump as usize)
   }
 
-  fn op_define_global(&mut self, slot: u8) {
+  fn op_define_global(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
     let global = self.pop();
     self.globals.insert(name, global);
+    Ok(ip + 2)
   }
 
-  fn op_set_global(&mut self, store_index: u8) -> Option<InterpretResult> {
-    let string = self.read_string(store_index);
+  fn op_set_global(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
+    let string = self.read_string(slot);
 
     if self.globals.insert(string, self.peek(0)).is_none() {
       self.globals.remove_entry(&string);
       return self.runtime_error(&format!("Undefined variable {}", string.as_str()));
     }
 
-    None
+    Ok(ip + 2)
   }
 
-  fn op_set_local(&mut self, slot: u8) {
+  fn op_set_local(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let copy = self.peek(0);
     let slots = self.current_frame().slots;
     self.stack[slots + slot as usize] = copy;
+
+    Ok(ip + 2)
   }
 
-  fn op_set_property(&mut self, slot: u8) -> Option<InterpretResult> {
+  fn op_set_property(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let mut value = self.peek(1);
     let name = self.read_string(slot);
 
@@ -605,20 +577,21 @@ impl<'a> VmExecutor<'a> {
       self.pop();
       self.push(popped);
 
-      return None;
+      return Ok(ip + 2);
     }
 
     self.runtime_error("Only instances have fields.")
   }
 
-  fn op_set_upvalue(&mut self, slot: u8) {
+  fn op_set_upvalue(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let value = self.peek(0);
     let upvalue = &mut self.current_mut_frame().closure.upvalues[slot as usize];
 
     let open_index = match &mut *upvalue.to_upvalue() {
       Upvalue::Open(index) => Some(*index),
       Upvalue::Closed(store) => {
-        replace(&mut **store, value);
+        mem::replace(&mut **store, value);
         None
       }
     };
@@ -626,28 +599,34 @@ impl<'a> VmExecutor<'a> {
     if let Some(index) = open_index {
       self.stack[index] = value;
     }
+
+    Ok(ip + 2)
   }
 
-  fn op_get_global(&mut self, store_index: u8) -> Option<InterpretResult> {
+  fn op_get_global(&mut self, ip: usize) -> InterpretResult {
+    let store_index = self.read_byte(ip + 1);
     let string = self.read_string(store_index);
 
     match self.globals.get(&string) {
       Some(gbl) => {
         let copy = *gbl;
         self.push(copy);
-        None
+        Ok(ip + 2)
       }
       None => self.runtime_error(&format!("Undefined variable {}", string.as_str())),
     }
   }
 
-  fn op_get_local(&mut self, slot: u8) {
+  fn op_get_local(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let slots = self.current_frame().slots;
     let copy = self.get_val(slots + slot as usize);
     self.push(copy);
+    Ok(ip + 2)
   }
 
-  fn op_get_upvalue(&mut self, slot: u8) {
+  fn op_get_upvalue(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let upvalue_value = &self.current_frame().closure.upvalues[slot as usize];
 
     let value = match &*upvalue_value.to_upvalue() {
@@ -656,130 +635,138 @@ impl<'a> VmExecutor<'a> {
     };
 
     self.push(value);
+    Ok(ip + 2)
   }
 
-  fn op_get_property(&mut self, slot: u8) -> Option<InterpretResult> {
+  fn op_get_property(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let value = self.peek(0);
 
     if let Value::Instance(instance) = value {
       let name = self.read_string(slot);
-      if let Some(value) = instance.fields.get(&name) {
-        self.pop();
-        self.push(*value);
-        return None;
-      }
 
-      return self.bind_method(instance.class, name);
+      return match instance.fields.get(&name) {
+        Some(value) => {
+          self.pop();
+          self.push(*value);
+          Ok(ip + 2)
+        }
+        None => self.bind_method(instance.class, name, ip + 2),
+      };
     }
 
     self.runtime_error("Only instances have properties.")
   }
 
-  fn op_return(&mut self) -> Option<InterpretResult> {
+  fn op_return(&mut self, _: usize) -> InterpretResult {
     let result = self.pop();
     self.close_upvalues(self.current_frame().slots);
     self.frame_count -= 1;
 
     if self.frame_count == 0 {
       self.pop();
-      return Some(InterpretResult::Ok);
+      return Err(Interpret::Ok);
     }
 
     self.stack_top = self.frames[self.frame_count].slots;
+    let return_ip = Ok(self.current_frame().ip);
     self.push(result);
 
-    None
+    return_ip
   }
 
-  fn op_negate(&mut self) -> Option<InterpretResult> {
+  fn op_negate(&mut self, ip: usize) -> InterpretResult {
     match self.pop() {
       Value::Number(num) => {
         self.push(Value::Number(-num));
-        None
+        Ok(ip + 1)
       }
       _ => self.runtime_error("Operand must be a number."),
     }
   }
 
-  fn op_not(&mut self) {
+  fn op_not(&mut self, ip: usize) -> InterpretResult {
     let value = self.pop();
-    self.push(Value::Bool(is_falsey(value)))
+    self.push(Value::Bool(is_falsey(value)));
+    Ok(ip + 1)
   }
 
-  fn op_add(&mut self) -> Option<InterpretResult> {
+  fn op_add(&mut self, ip: usize) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::String(right), Value::String(left)) => {
         let result = format!("{}{}", left.as_str(), right.as_str());
         let string = self.gc.manage_str(result, self);
         self.push(Value::String(string));
-        None
+        Ok(ip + 1)
       }
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Number(left + right));
-        None
+        Ok(ip + 1)
       }
       _ => self.runtime_error("Operands must be two numbers or two strings."),
     }
   }
 
-  fn op_sub(&mut self) -> Option<InterpretResult> {
+  fn op_sub(&mut self, ip: usize) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Number(left - right));
-        None
+        Ok(ip + 1)
       }
       _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
-  fn op_mul(&mut self) -> Option<InterpretResult> {
+  fn op_mul(&mut self, ip: usize) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Number(left * right));
-        None
+        Ok(ip + 1)
       }
       _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
-  fn op_div(&mut self) -> Option<InterpretResult> {
+  fn op_div(&mut self, ip: usize) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Number(left / right));
-        None
+        Ok(ip + 1)
       }
       _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
-  fn op_less(&mut self) -> Option<InterpretResult> {
+  fn op_less(&mut self, ip: usize) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Bool(left < right));
-        None
+        Ok(ip + 1)
       }
       _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
-  fn op_greater(&mut self) -> Option<InterpretResult> {
+  fn op_greater(&mut self, ip: usize) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Bool(left > right));
-        None
+        Ok(ip + 1)
       }
       _ => self.runtime_error("Operands must be numbers."),
     }
   }
 
-  fn op_equal(&mut self) {
+  fn op_equal(&mut self, ip: usize) -> InterpretResult {
     let right = self.pop();
     let left = self.pop();
 
     self.push(Value::Bool(left == right));
+    Ok(ip + 1)
   }
 
-  fn op_method(&mut self, slot: u8) {
+  fn op_method(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
 
     match (self.peek(1), self.peek(0)) {
@@ -793,36 +780,36 @@ impl<'a> VmExecutor<'a> {
     }
 
     self.pop();
+    Ok(ip + 2)
   }
 
-  fn op_closure(&mut self, slot: u8) {
+  fn op_closure(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let frame = self.current_frame();
     let fun = VmExecutor::read_constant(frame, slot).to_fun();
     let mut closure = Closure::new(fun);
+    let mut current_ip = ip + 2;
 
     for _ in 0..fun.upvalue_count {
-      let op_code = self.frame_instruction();
-      self.increment_frame_ip(1);
+      let upvalue_index: UpvalueIndex = unsafe { mem::transmute(self.read_short(current_ip)) };
 
-      if let ByteCode::UpvalueIndex(upvalue_index) = op_code {
-        match upvalue_index {
-          UpvalueIndex::Local(index) => {
-            let total_index = self.current_frame().slots + index as usize;
-            closure.upvalues.push(self.capture_upvalue(total_index));
-          }
-          UpvalueIndex::Upvalue(upvalue) => {
-            let upvalue = &self.current_frame().closure.upvalues[upvalue as usize];
-            closure.upvalues.push(*upvalue);
-          }
+      match upvalue_index {
+        UpvalueIndex::Local(index) => {
+          let total_index = self.current_frame().slots + index as usize;
+          closure.upvalues.push(self.capture_upvalue(total_index));
         }
-      } else {
-        self.internal_error("Expected upvalues following closures")
+        UpvalueIndex::Upvalue(upvalue) => {
+          let upvalue = &self.current_frame().closure.upvalues[upvalue as usize];
+          closure.upvalues.push(*upvalue);
+        }
       }
+
+      current_ip = current_ip + 2;
     }
 
     let closure = Value::Closure(self.gc.manage(closure, self));
-
     self.push(closure);
+    Ok(current_ip)
   }
 
   fn capture_upvalue(&mut self, local_index: usize) -> Value {
@@ -849,6 +836,12 @@ impl<'a> VmExecutor<'a> {
     Value::Upvalue(created_upvalue)
   }
 
+  fn op_close_upvalue(&mut self, ip: usize) -> InterpretResult {
+    self.close_upvalues(self.stack_top - 1);
+    self.pop();
+    Ok(ip + 1)
+  }
+
   fn close_upvalues(&mut self, last_index: usize) {
     for upvalue in self.open_upvalues.iter_mut().rev() {
       let index = match **upvalue {
@@ -866,15 +859,22 @@ impl<'a> VmExecutor<'a> {
     self.open_upvalues.retain(|upvalue| upvalue.is_open())
   }
 
-  fn op_constant(&mut self, index: u8) {
+  fn op_print(&mut self, ip: usize) -> InterpretResult {
+    println!("{}", self.pop());
+    Ok(ip + 1)
+  }
+
+  fn op_constant(&mut self, ip: usize) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
     let frame = self.current_frame();
-    let constant = VmExecutor::read_constant(frame, index);
+    let constant = VmExecutor::read_constant(frame, slot);
     self.push(constant);
+    Ok(ip + 2)
   }
 
   #[cfg(feature = "debug")]
-  fn print_debug(&self) {
-    print!("Stack:    ");
+  fn print_debug(&self, ip: usize, last_ip: usize) {
+    print!("Stack:        ");
     // print!("          ");
     for i in 1..self.stack_top {
       print!("[ {} ]", self.get_val(i));
@@ -883,16 +883,13 @@ impl<'a> VmExecutor<'a> {
 
     #[cfg(feature = "debug_upvalue")]
     {
-      print!("Upvalues: ");
-      let frame = self.current_frame();
-
-      frame
-        .closure
-        .upvalues
+      print!("Open UpVal:   ");
+      self
+        .open_upvalues
         .iter()
-        .for_each(|upvalue| match &*upvalue.to_upvalue() {
+        .for_each(|upvalue| match &**upvalue {
           Upvalue::Open(index) => {
-            print!("[ stack {} ]", self.get_val(*index + frame.slots));
+            print!("[ stack {} ]", self.get_val(*index));
           }
           Upvalue::Closed(closed) => {
             print!("[ heap {} ]", closed);
@@ -902,20 +899,13 @@ impl<'a> VmExecutor<'a> {
     }
 
     let frame = self.current_frame();
-    disassemble_instruction(&frame.closure.fun.chunk, frame.ip);
-  }
-
-  /// As an internal error been encounter inside the vm. print
-  /// the error then panic
-  fn internal_error(&mut self, message: &str) {
-    self.error(&format!("!=== [Internal Error]:{} ===!", message));
-    panic!("Internal error")
+    disassemble_instruction(&frame.closure.fun.chunk, ip, last_ip);
   }
 
   /// Report a known spacelox runtime error to the user
-  fn runtime_error(&mut self, message: &str) -> Option<InterpretResult> {
+  fn runtime_error(&mut self, message: &str) -> InterpretResult {
     self.error(message);
-    Some(InterpretResult::RuntimeError)
+    Err(Interpret::RuntimeError)
   }
 
   /// Print an error message and the current call stack to the user

@@ -7,6 +7,26 @@
     {
       "type": "lldb",
       "request": "launch",
+      "name": "Debug unit tests in library 'spacelox_core'",
+      "cargo": {
+        "args": [
+          "test",
+          "--no-run",
+          "--lib",
+          "--package=spacelox_core"
+        ],
+        "filter": {
+          "name": "spacelox_core",
+          "kind": "lib"
+        }
+      },
+      "args": [],
+      "sourceLanguages": ["rust"],
+      "cwd": "${workspaceFolder}/spacelox_core"
+    },
+    {
+      "type": "lldb",
+      "request": "launch",
       "name": "Debug unit tests in library 'spacelox_vm'",
       "cargo": {
         "args": [
@@ -59,10 +79,11 @@
         }
       },
       "args": [
-        "benchmark/string_equality.lox"
+        "regression/40.lox"
       ],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}/spacelox_vm/fixture"
+      "cwd": "${workspaceFolder}/spacelox_vm/fixture",
+      "preLaunchTask": "spacelox build"
     }
   ]
 }

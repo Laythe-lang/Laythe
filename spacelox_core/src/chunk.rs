@@ -1,8 +1,10 @@
 use crate::value::Value;
+use std::mem;
+use std::cmp;
 
 /// Space Lox virtual machine byte codes
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum ByteCode {
+pub enum AlignedByteCode {
   /// Return from script or function
   Return,
 
@@ -105,11 +107,8 @@ pub enum ByteCode {
   /// Close an upvalue by moving it to the stack
   CloseUpvalue,
 
-  /// An upvalue index for a closure
+  // An upvalue index for a closure
   UpvalueIndex(UpvalueIndex),
-
-  /// Temp loop placeholder
-  Noop,
 
   /// Apply equality between the top two operands on the stack
   Equal,
@@ -119,6 +118,281 @@ pub enum ByteCode {
 
   /// Less greater between the top two operands on the stack
   Less,
+}
+
+impl AlignedByteCode {
+  pub fn encode(self, code: &mut Vec<u8>) {
+    match self {
+      Self::Return => push_op(code, ByteCode::Return),
+      Self::Negate => push_op(code, ByteCode::Negate),
+      Self::Print => push_op(code, ByteCode::Print),
+      Self::Add => push_op(code, ByteCode::Add),
+      Self::Subtract => push_op(code, ByteCode::Subtract),
+      Self::Multiply => push_op(code, ByteCode::Multiply),
+      Self::Divide => push_op(code, ByteCode::Divide),
+      Self::Not => push_op(code, ByteCode::Not),
+      Self::Nil => push_op(code, ByteCode::Nil),
+      Self::True => push_op(code, ByteCode::True),
+      Self::False => push_op(code, ByteCode::False),
+      Self::Equal => push_op(code, ByteCode::Equal),
+      Self::Greater => push_op(code, ByteCode::Greater),
+      Self::Less => push_op(code, ByteCode::Less),
+      Self::Pop => push_op(code, ByteCode::Pop),
+      Self::Constant(slot) => push_op_u8(code, ByteCode::Constant, slot),
+      Self::DefineGlobal(slot) => push_op_u8(code, ByteCode::DefineGlobal, slot),
+      Self::GetGlobal(slot) => push_op_u8(code, ByteCode::GetGlobal, slot),
+      Self::SetGlobal(slot) => push_op_u8(code, ByteCode::SetGlobal, slot),
+      Self::GetUpvalue(slot) => push_op_u8(code, ByteCode::GetUpvalue, slot),
+      Self::SetUpvalue(slot) => push_op_u8(code, ByteCode::SetUpvalue, slot),
+      Self::GetLocal(slot) => push_op_u8(code, ByteCode::GetLocal, slot),
+      Self::SetLocal(slot) => push_op_u8(code, ByteCode::SetLocal, slot),
+      Self::GetProperty(slot) => push_op_u8(code, ByteCode::GetProperty, slot),
+      Self::SetProperty(slot) => push_op_u8(code, ByteCode::SetProperty, slot),
+      Self::JumpIfFalse(slot) => push_op_u16(code, ByteCode::JumpIfFalse, slot),
+      Self::Jump(slot) => push_op_u16(code, ByteCode::Jump, slot),
+      Self::Loop(slot) => push_op_u16(code, ByteCode::Loop, slot),
+      Self::Call(slot) => push_op_u8(code, ByteCode::Call, slot),
+      Self::Invoke((slot1, slot2)) => push_op_u8_tuple(code, ByteCode::Invoke, slot1, slot2),
+      Self::SuperInvoke((slot1, slot2)) => {
+        push_op_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2)
+      }
+      Self::Closure(slot) => push_op_u8(code, ByteCode::Closure, slot),
+      Self::Method(slot) => push_op_u8(code, ByteCode::Method, slot),
+      Self::Class(slot) => push_op_u8(code, ByteCode::Class, slot),
+      Self::GetSuper(slot) => push_op_u8(code, ByteCode::GetSuper, slot),
+      Self::Inherit => push_op(code, ByteCode::Inherit),
+      Self::CloseUpvalue => push_op(code, ByteCode::CloseUpvalue),
+      Self::UpvalueIndex(index) => {
+        let encoded: u16 = unsafe { mem::transmute(index) };
+        let (b1, b2) = encode_u16(encoded);
+        code.push(b1);
+        code.push(b2);
+      }
+    }
+  }
+
+  pub fn decode(store: &[u8], offset: usize) -> (AlignedByteCode, usize) {
+    let byte_code = ByteCode::from(store[offset]);
+
+    match byte_code {
+      ByteCode::Return => (AlignedByteCode::Return, offset + 1),
+      ByteCode::Negate => (AlignedByteCode::Negate, offset + 1),
+      ByteCode::Print => (AlignedByteCode::Print, offset + 1),
+      ByteCode::Add => (AlignedByteCode::Add, offset + 1),
+      ByteCode::Subtract => (AlignedByteCode::Subtract, offset + 1),
+      ByteCode::Multiply => (AlignedByteCode::Multiply, offset + 1),
+      ByteCode::Divide => (AlignedByteCode::Divide, offset + 1),
+      ByteCode::Not => (AlignedByteCode::Not, offset + 1),
+      ByteCode::Constant => (AlignedByteCode::Constant(store[offset + 1]), offset + 2),
+      ByteCode::Nil => (AlignedByteCode::Nil, offset + 1),
+      ByteCode::True => (AlignedByteCode::True, offset + 1),
+      ByteCode::False => (AlignedByteCode::False, offset + 1),
+      ByteCode::Pop => (AlignedByteCode::Pop, offset + 1),
+      ByteCode::DefineGlobal => (AlignedByteCode::DefineGlobal(store[offset + 1]), offset + 2),
+      ByteCode::GetGlobal => (AlignedByteCode::GetGlobal(store[offset + 1]), offset + 2),
+      ByteCode::SetGlobal => (AlignedByteCode::SetGlobal(store[offset + 1]), offset + 2),
+      ByteCode::GetUpvalue => (AlignedByteCode::GetUpvalue(store[offset + 1]), offset + 2),
+      ByteCode::SetUpvalue => (AlignedByteCode::SetUpvalue(store[offset + 1]), offset + 2),
+      ByteCode::GetLocal => (AlignedByteCode::GetLocal(store[offset + 1]), offset + 2),
+      ByteCode::SetLocal => (AlignedByteCode::SetLocal(store[offset + 1]), offset + 2),
+      ByteCode::GetProperty => (AlignedByteCode::GetProperty(store[offset + 1]), offset + 2),
+      ByteCode::SetProperty => (AlignedByteCode::SetProperty(store[offset + 1]), offset + 2),
+      ByteCode::JumpIfFalse => (
+        AlignedByteCode::JumpIfFalse(decode_u16(store[offset + 1], store[offset + 2])),
+        offset + 3,
+      ),
+      ByteCode::Jump => (
+        AlignedByteCode::Jump(decode_u16(store[offset + 1], store[offset + 2])),
+        offset + 3,
+      ),
+      ByteCode::Loop => (
+        AlignedByteCode::Loop(decode_u16(store[offset + 1], store[offset + 2])),
+        offset + 3,
+      ),
+      ByteCode::Call => (AlignedByteCode::Call(store[offset + 1]), offset + 2),
+      ByteCode::Invoke => (
+        AlignedByteCode::Invoke((store[offset + 1], store[offset + 2])),
+        offset + 3,
+      ),
+      ByteCode::SuperInvoke => (
+        AlignedByteCode::SuperInvoke((store[offset + 1], store[offset + 2])),
+        offset + 3,
+      ),
+      ByteCode::Closure => (AlignedByteCode::Closure(store[offset + 1]), offset + 2),
+      ByteCode::Method => (AlignedByteCode::Method(store[offset + 1]), offset + 2),
+      ByteCode::Class => (AlignedByteCode::Class(store[offset + 1]), offset + 2),
+      ByteCode::GetSuper => (AlignedByteCode::GetSuper(store[offset + 1]), offset + 2),
+      ByteCode::Inherit => (AlignedByteCode::Inherit, offset + 1),
+      ByteCode::CloseUpvalue => (AlignedByteCode::CloseUpvalue, offset + 1),
+      ByteCode::Equal => (AlignedByteCode::Equal, offset + 1),
+      ByteCode::Greater => (AlignedByteCode::Greater, offset + 1),
+      ByteCode::Less => (AlignedByteCode::Less, offset + 1),
+    }
+  }
+}
+
+/// Space Lox virtual machine byte codes
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ByteCode {
+  /// Return from script or function
+  Return,
+
+  /// Negate a value
+  Negate,
+
+  /// Print a value
+  Print,
+
+  /// Add the top two operands on the stack
+  Add,
+
+  /// Subtract the top two operands on the stack
+  Subtract,
+
+  /// Multiply the top two operands on the stack
+  Multiply,
+
+  /// Divide the top two operands on the stack
+  Divide,
+
+  /// Apply Not operator to top stack element
+  Not,
+
+  /// Retrieve a constant from the constants table
+  Constant,
+
+  /// Nil literal
+  Nil,
+
+  /// True Literal
+  True,
+
+  /// False ByteCode
+  False,
+
+  /// Pop ByteCode
+  Pop,
+
+  /// Define a global in the globals table at a index
+  DefineGlobal,
+
+  /// Retrieve a global at the given index
+  GetGlobal,
+
+  /// Set a global at the given index
+  SetGlobal,
+
+  /// Retrieve an upvalue at the given index
+  GetUpvalue,
+
+  /// Set an upvalue at the given index
+  SetUpvalue,
+
+  /// Get a local at the given index
+  GetLocal,
+
+  /// Set a local at the given index
+  SetLocal,
+
+  /// Get a property off a class instance
+  GetProperty,
+
+  /// Set a property on a class instance
+  SetProperty,
+
+  /// Jump to end of if block if false
+  JumpIfFalse,
+
+  /// Jump conditionally to the ip
+  Jump,
+
+  /// Jump to loop beginning
+  Loop,
+
+  /// Call a function
+  Call,
+
+  /// Invoke a method
+  Invoke,
+
+  /// Invoke a method on a super class
+  SuperInvoke,
+
+  /// Create a closure
+  Closure,
+
+  /// Create a method
+  Method,
+
+  /// Create a class
+  Class,
+
+  /// Access this classes super
+  GetSuper,
+
+  /// Add inheritance to class
+  Inherit,
+
+  /// Close an upvalue by moving it to the stack
+  CloseUpvalue,
+
+  /// Apply equality between the top two operands on the stack
+  Equal,
+
+  /// Apply greater between the top two operands on the stack
+  Greater,
+
+  /// Less greater between the top two operands on the stack
+  Less,
+}
+
+impl ByteCode {
+  fn to_byte(self) -> u8 {
+    unsafe { mem::transmute(self) }
+  }
+}
+
+impl From<u8> for ByteCode {
+  fn from(byte: u8) -> Self {
+    unsafe { mem::transmute(byte) }
+  }
+}
+
+pub fn encode_u16(val: u16) -> (u8, u8) {
+  (val as u8, (val >> 8) as u8)
+}
+
+pub fn decode_u16(b1: u8, b2: u8) -> u16 {
+  ((b2 as u16) << 8) | b1 as u16
+}
+
+fn push_op(code: &mut Vec<u8>, byte: ByteCode) {
+  code.push(byte.to_byte())
+}
+
+fn push_op_u8(code: &mut Vec<u8>, byte: ByteCode, param: u8) {
+  code.push(byte.to_byte());
+  code.push(param);
+}
+
+fn push_op_u8_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u8, param2: u8) {
+  code.push(byte.to_byte());
+  code.push(param1);
+  code.push(param2);
+}
+
+fn push_op_u16(code: &mut Vec<u8>, byte: ByteCode, param: u16) {
+  let (b1, b2) = encode_u16(param);
+  code.push(byte.to_byte());
+  code.push(b1);
+  code.push(b2);
+}
+
+pub fn write_op_u16(code: &mut [u8], byte: ByteCode, param: u16) {
+  let (b1, b2) = encode_u16(param);
+  code[0] = byte.to_byte();
+  code[1] = b1;
+  code[2] = b2;
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -144,16 +418,16 @@ pub struct ClosureLoader {
 #[derive(Debug, Clone, PartialEq)]
 struct Line {
   /// Line number
-  pub line: i32,
+  pub line: u32,
 
   /// Count of tokens on the line
-  pub count: i16,
+  pub offset: u32,
 }
 
 impl Line {
   /// Create a new line
-  fn new(line: i32, count: i16) -> Line {
-    Line { line, count }
+  fn new(line: u32, offset: u32) -> Line {
+    Line { line, offset }
   }
 }
 
@@ -161,7 +435,7 @@ impl Line {
 #[derive(Clone, PartialEq, Default, Debug)]
 pub struct Chunk {
   /// instructions in this code chunk
-  pub instructions: Vec<ByteCode>,
+  pub instructions: Vec<u8>,
 
   /// constants in this code chunk
   pub constants: Vec<Value>,
@@ -175,29 +449,31 @@ impl Chunk {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::chunk::{Chunk, ByteCode};
+  /// use spacelox_core::chunk::{Chunk, AlignedByteCode};
   ///
   /// let mut chunk = Chunk::default();
-  /// chunk.write_instruction(ByteCode::Return, 0);
-  /// chunk.write_instruction(ByteCode::Add, 0);
-  /// chunk.write_instruction(ByteCode::Constant(10), 1);
+  /// chunk.write_instruction(AlignedByteCode::Return, 0);
+  /// chunk.write_instruction(AlignedByteCode::Add, 0);
+  /// chunk.write_instruction(AlignedByteCode::Constant(10), 1);
   ///
-  /// assert_eq!(chunk.instructions.len(), 3);
-  /// // assert_eq!(chunk.constants.values.len(), 1);
+  /// assert_eq!(chunk.instructions.len(), 4);
   /// ```
   ///
-  pub fn write_instruction(&mut self, op_code: ByteCode, line: i32) {
-    self.instructions.push(op_code);
+  pub fn write_instruction(&mut self, op_code: AlignedByteCode, line: u32) {
+    let l1 = self.instructions.len() as u32;
+    op_code.encode(&mut self.instructions);
+    let l2 = self.instructions.len() as u32;
+    let delta = l2 - l1;
 
     match self.lines.last_mut() {
       Some(last_line) => {
         if last_line.line == line {
-          last_line.count += 1;
+          last_line.offset += delta;
         } else {
-          self.lines.push(Line::new(line, 1));
+          self.lines.push(Line::new(line, l2));
         }
       }
-      None => self.lines.push(Line::new(line, 1)),
+      None => self.lines.push(Line::new(line, l2)),
     }
   }
 
@@ -227,17 +503,18 @@ impl Chunk {
   ///
   /// # Example
   /// ```
-  /// use spacelox_core::chunk::{Chunk, ByteCode};
-  ///
+  /// use spacelox_core::chunk::{Chunk, AlignedByteCode};
   /// let mut chunk = Chunk::default();
-  ///
-  /// chunk.write_instruction(ByteCode::Add, 0);
-  /// chunk.write_instruction(ByteCode::Divide, 0);
-  /// chunk.write_instruction(ByteCode::Return, 2);
-  ///
-  /// assert_eq!(chunk.get_line(0), 0);
+  ///     
+  /// chunk.write_instruction(AlignedByteCode::Add, 0);
+  /// chunk.write_instruction(AlignedByteCode::Divide, 0);
+  /// chunk.write_instruction(AlignedByteCode::Return, 2);
+  /// chunk.write_instruction(AlignedByteCode::Constant(2), 3);
+  /// 
   /// assert_eq!(chunk.get_line(1), 0);
-  /// assert_eq!(chunk.get_line(2), 2);
+  /// assert_eq!(chunk.get_line(2), 0);
+  /// assert_eq!(chunk.get_line(3), 2);
+  /// assert_eq!(chunk.get_line(4), 3);
   /// ```
   ///
   /// # Panics
@@ -250,22 +527,90 @@ impl Chunk {
   /// let chunk = Chunk::default();
   /// chunk.get_line(3);
   /// ```
-  pub fn get_line(&self, offset: usize) -> i32 {
-    let mut current: usize = 0;
-    for line in &self.lines {
-      current += line.count as usize;
-      if current > offset {
-        return line.line;
-      }
-    }
+  pub fn get_line(&self, offset: usize) -> u32 {
+    let result = self
+      .lines
+      .binary_search_by_key(&(offset as u32), |line| line.offset);
 
-    panic!(format!("Unable to find line at offset {}", offset));
+    match result {
+      Ok(index) => self.lines[index].line,
+      Err(index) => self.lines[cmp::min(index, self.lines.len() - 1)].line,
+    }
   }
 }
 
 #[cfg(test)]
 mod test {
   use super::*;
+
+  mod byte_code {
+    use super::*;
+    // use std::mem;
+
+    #[test]
+    fn encode_decode() {
+      let code: Vec<(usize, AlignedByteCode)> = vec![
+        (1, AlignedByteCode::Return),
+        (1, AlignedByteCode::Negate),
+        (1, AlignedByteCode::Print),
+        (1, AlignedByteCode::Add),
+        (1, AlignedByteCode::Subtract),
+        (1, AlignedByteCode::Multiply),
+        (1, AlignedByteCode::Divide),
+        (1, AlignedByteCode::Not),
+        (2, AlignedByteCode::Constant(173)),
+        (1, AlignedByteCode::Nil),
+        (1, AlignedByteCode::True),
+        (1, AlignedByteCode::False),
+        (1, AlignedByteCode::Pop),
+        (2, AlignedByteCode::DefineGlobal(173)),
+        (2, AlignedByteCode::GetGlobal(173)),
+        (2, AlignedByteCode::SetGlobal(173)),
+        (2, AlignedByteCode::GetUpvalue(173)),
+        (2, AlignedByteCode::SetUpvalue(173)),
+        (2, AlignedByteCode::GetLocal(173)),
+        (2, AlignedByteCode::SetLocal(173)),
+        (2, AlignedByteCode::GetProperty(173)),
+        (2, AlignedByteCode::SetProperty(173)),
+        (3, AlignedByteCode::JumpIfFalse(13444)),
+        (3, AlignedByteCode::Jump(13444)),
+        (3, AlignedByteCode::Loop(13444)),
+        (2, AlignedByteCode::Call(173)),
+        (3, AlignedByteCode::Invoke((173, 173))),
+        (3, AlignedByteCode::SuperInvoke((173, 173))),
+        (2, AlignedByteCode::Closure(173)),
+        (2, AlignedByteCode::Method(173)),
+        (2, AlignedByteCode::Class(173)),
+        (2, AlignedByteCode::GetSuper(173)),
+        (1, AlignedByteCode::Inherit),
+        (1, AlignedByteCode::CloseUpvalue),
+        (1, AlignedByteCode::Equal),
+        (1, AlignedByteCode::Greater),
+        (1, AlignedByteCode::Less),
+      ];
+
+      let mut buffer: Vec<u8> = Vec::new();
+      for (size1, byte_code1) in &code {
+        for (size2, byte_code2) in &code {
+          byte_code1.encode(&mut buffer);
+          byte_code2.encode(&mut buffer);
+
+          let (decoded1, offset1) = AlignedByteCode::decode(&buffer, 0);
+          let (decoded2, offset2) = AlignedByteCode::decode(&buffer, offset1);
+  
+          println!("expected {:?} decoded {:?}", byte_code1, decoded1);
+          println!("expected {:?} decoded {:?}", byte_code2, decoded2);
+
+          assert_eq!(offset1, *size1);
+          assert_eq!(offset2, *size2 + offset1);
+
+          assert_eq!(*byte_code1, decoded1);
+          assert_eq!(*byte_code2, decoded2);
+          buffer.clear();
+        }
+      }
+    }
+  }
 
   #[cfg(test)]
   mod line {
@@ -275,7 +620,7 @@ mod test {
     fn line_new() {
       let line = Line::new(10, 5);
       assert_eq!(line.line, 10);
-      assert_eq!(line.count, 5);
+      assert_eq!(line.offset, 5);
     }
   }
 
@@ -293,11 +638,11 @@ mod test {
     #[test]
     fn write_instruction() {
       let mut chunk = Chunk::default();
-      chunk.write_instruction(ByteCode::Nil, 0);
+      chunk.write_instruction(AlignedByteCode::Nil, 0);
 
       assert_eq!(chunk.instructions.len(), 1);
       match chunk.instructions[0] {
-        ByteCode::Nil => assert!(true),
+        9 => assert!(true),
         _ => assert!(false),
       }
     }
@@ -317,7 +662,7 @@ mod test {
     #[test]
     fn get_line() {
       let mut chunk = Chunk::default();
-      chunk.write_instruction(ByteCode::Nil, 0);
+      chunk.write_instruction(AlignedByteCode::Nil, 0);
       assert_eq!(chunk.get_line(0), 0);
     }
   }

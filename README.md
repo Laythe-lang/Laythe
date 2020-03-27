@@ -2,7 +2,7 @@
 
 A rust implementation of lox as a virtual machine. This project is currently in progress as I progress through the book [Crafting Interpreters](https://craftinginterpreters.com/).
 
-# Get Started
+# Getting Started
 
 This project can be built uses the typical set of cargo commands for building, testing, running and benching.
 
