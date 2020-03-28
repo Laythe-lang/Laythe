@@ -7,7 +7,7 @@ use spacelox_core::managed::{Manage, Managed, Trace};
 use spacelox_core::native::{NativeFun, NativeResult};
 use spacelox_core::{
   utils::do_if_some,
-  value::{BoundMethod, Class, Closure, Instance, Upvalue, Value},
+  value::{BoundMethod, Class, Closure, Fun, Instance, Upvalue, Value},
 };
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
@@ -126,6 +126,9 @@ struct VmExecutor<'a> {
   /// A stack holding all local variable currently in use
   pub stack: &'a mut Vec<Value>,
 
+  /// The current fun
+  current_fun: Managed<Fun>,
+
   /// A reference to a object currently in the vm
   gc: &'a mut Gc,
 
@@ -147,11 +150,14 @@ struct VmExecutor<'a> {
 
 impl<'a> VmExecutor<'a> {
   pub fn new(vm: &'a mut Vm, script: Value) -> VmExecutor<'a> {
+    let current_fun = vm.gc.manage(Fun::default(), &NO_GC);
+
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
       frame_count: 0,
       stack: &mut vm.stack,
       script,
+      current_fun,
       gc: &mut vm.gc,
       special_strings: &vm.special_strings,
       stack_top: 1,
@@ -257,11 +263,13 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// read a u8 out of the bytecode
+  #[inline]
   fn read_byte(&self, ip: usize) -> u8 {
-    self.current_frame().closure.fun.chunk.instructions[ip]
+    unsafe { *self.current_fun.chunk.instructions.get_unchecked(ip) }
   }
 
   /// read a u16 out of the bytecode
+  #[inline]
   fn read_short(&self, ip: usize) -> u16 {
     decode_u16(self.read_byte(ip), self.read_byte(ip + 1))
   }
@@ -269,17 +277,24 @@ impl<'a> VmExecutor<'a> {
   /// Get the current instruction from the present call frame
   #[inline]
   fn frame_instruction(&self, ip: usize) -> ByteCode {
-    let frame = self.current_frame();
-    ByteCode::from(frame.closure.fun.chunk.instructions[ip])
+    ByteCode::from(unsafe { *self.current_fun.chunk.instructions.get_unchecked(ip) })
   }
 
   /// push a value onto the stack
+  #[inline]
   fn push(&mut self, value: Value) {
     self.set_val(self.stack_top, value);
     self.stack_top += 1;
   }
 
+  #[inline]
+  fn pop(&mut self) -> Value {
+    self.stack_top -= 1;
+    unsafe { *self.stack.get_unchecked(self.stack_top) }
+  }
+
   /// reference a value n slots from the stack head
+  #[inline]
   fn peek(&self, distance: usize) -> Value {
     self.get_val(self.stack_top - (distance + 1))
   }
@@ -294,19 +309,13 @@ impl<'a> VmExecutor<'a> {
     Ok(ip + 1)
   }
 
-  fn pop(&mut self) -> Value {
-    self.stack_top -= 1;
-    let ptr = unsafe { self.stack.get_unchecked_mut(self.stack_top) };
-    mem::replace(ptr, Value::Nil)
+
+  fn read_constant<'b>(&self, index: u8) -> Value {
+    self.current_fun.chunk.constants[index as usize]
   }
 
-  fn read_constant<'b>(frame: &'b CallFrame, index: u8) -> Value {
-    frame.closure.fun.chunk.constants[index as usize]
-  }
-
-  fn read_string(&mut self, index: u8) -> Managed<String> {
-    let frame = self.current_frame();
-    VmExecutor::read_constant(frame, index).to_string()
+  fn read_string(&self, index: u8) -> Managed<String> {
+    self.read_constant(index).to_string()
   }
 
   fn reset_stack(&mut self) {
@@ -408,6 +417,7 @@ impl<'a> VmExecutor<'a> {
     frame.ip = 0;
     frame.slots = self.stack_top - (arg_count as usize + 1);
 
+    self.current_fun = current_closure.fun;
     self.frame_count += 1;
     Ok(0)
   }
@@ -670,6 +680,7 @@ impl<'a> VmExecutor<'a> {
 
     self.stack_top = self.frames[self.frame_count].slots;
     let return_ip = Ok(self.current_frame().ip);
+    self.current_fun = self.current_frame().closure.fun;
     self.push(result);
 
     return_ip
@@ -785,8 +796,7 @@ impl<'a> VmExecutor<'a> {
 
   fn op_closure(&mut self, ip: usize) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
-    let frame = self.current_frame();
-    let fun = VmExecutor::read_constant(frame, slot).to_fun();
+    let fun = self.read_constant(slot).to_fun();
     let mut closure = Closure::new(fun);
     let mut current_ip = ip + 2;
 
@@ -866,8 +876,7 @@ impl<'a> VmExecutor<'a> {
 
   fn op_constant(&mut self, ip: usize) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
-    let frame = self.current_frame();
-    let constant = VmExecutor::read_constant(frame, slot);
+    let constant = self.read_constant(slot);
     self.push(constant);
     Ok(ip + 2)
   }
@@ -898,8 +907,7 @@ impl<'a> VmExecutor<'a> {
       println!();
     }
 
-    let frame = self.current_frame();
-    disassemble_instruction(&frame.closure.fun.chunk, ip, last_ip);
+    disassemble_instruction(self.current_fun.chunk, ip, last_ip);
   }
 
   /// Report a known spacelox runtime error to the user
