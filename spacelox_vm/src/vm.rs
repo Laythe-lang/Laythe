@@ -3,10 +3,9 @@ use crate::compiler::{Compiler, CompilerResult, Parser};
 use crate::constants::{define_special_string, SpecialStrings, FRAME_MAX};
 use crate::memory::{Gc, NO_GC};
 use spacelox_core::chunk::{decode_u16, ByteCode, UpvalueIndex};
-use spacelox_core::managed::{Manage, Managed, Trace};
+use spacelox_core::managed::{Managed, Trace};
 use spacelox_core::native::{NativeFun, NativeResult};
 use spacelox_core::{
-  utils::do_if_some,
   value::{BoundMethod, Class, Closure, Fun, Instance, Upvalue, Value},
 };
 use std::collections::HashMap;
@@ -940,25 +939,23 @@ impl<'a> VmExecutor<'a> {
 }
 
 impl<'a> Trace for VmExecutor<'a> {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    do_if_some(self.script.get_dyn_managed(), |obj| mark(obj));
-
+  fn trace(&self) -> bool {
     self.stack[0..self.stack_top].iter().for_each(|value| {
-      do_if_some(value.get_dyn_managed(), |obj| mark(obj));
+      value.trace();
     });
 
     self.frames[0..self.frame_count]
       .iter()
-      .for_each(|frame| mark(frame.closure.clone_dyn()));
+      .for_each(|frame| { frame.closure.trace(); });
 
     self
       .open_upvalues
       .iter()
-      .for_each(|upvalue| mark(upvalue.clone_dyn()));
+      .for_each(|upvalue| { upvalue.trace(); });
 
     self.globals.iter().for_each(|(key, val)| {
-      mark(key.clone_dyn());
-      do_if_some(val.get_dyn_managed(), |obj| mark(obj));
+      key.trace();
+      val.trace();
     });
 
     true

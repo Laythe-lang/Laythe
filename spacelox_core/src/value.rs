@@ -255,19 +255,33 @@ impl Value {
     }
   }
 
-  pub fn get_dyn_managed(&self) -> Option<Managed<dyn Manage>> {
+  pub fn trace(&self) -> bool {
     match self {
-      Value::String(string) => Some(string.clone_dyn()),
-      Value::Fun(fun) => Some(fun.clone_dyn()),
-      Value::Closure(closure) => Some(closure.clone_dyn()),
-      Value::Native(native) => Some(native.clone_dyn()),
-      Value::Upvalue(upvalue) => Some(upvalue.clone_dyn()),
-      Value::Method(method) => Some(method.clone_dyn()),
-      Value::Class(class) => Some(class.clone_dyn()),
-      Value::Instance(instance) => Some(instance.clone_dyn()),
-      _ => None,
+      Value::String(string) => string.trace(),
+      Value::Fun(fun) => fun.trace(),
+      Value::Closure(closure) => closure.trace(),
+      Value::Method(method) => method.trace(),
+      Value::Class(class) => class.trace(),
+      Value::Instance(instance) => instance.trace(),
+      Value::Upvalue(upvalue) => upvalue.trace(),
+      Value::Native(native) => native.trace(),
+      _ => true
     }
   }
+
+  // pub fn get_dyn_managed(&self) -> Option<Managed<dyn Manage>> {
+  //   match self {
+  //     Value::String(string) => Some(string.clone_dyn()),
+  //     Value::Fun(fun) => Some(fun.clone_dyn()),
+  //     Value::Closure(closure) => Some(closure.clone_dyn()),
+  //     Value::Native(native) => Some(native.clone_dyn()),
+  //     Value::Upvalue(upvalue) => Some(upvalue.clone_dyn()),
+  //     Value::Method(method) => Some(method.clone_dyn()),
+  //     Value::Class(class) => Some(class.clone_dyn()),
+  //     Value::Instance(instance) => Some(instance.clone_dyn()),
+  //     _ => None,
+  //   }
+  // }
 }
 
 impl fmt::Display for Value {
@@ -338,6 +352,22 @@ impl PartialEq for Value {
   }
 }
 
+impl Trace for Value {
+  fn trace(&self) -> bool { 
+    match self {
+      Value::String(string) => string.trace(),
+      Value::Fun(fun) => fun.trace(),
+      Value::Closure(closure) => closure.trace(),
+      Value::Method(method) => method.trace(),
+      Value::Class(class) => class.trace(),
+      Value::Instance(instance) => instance.trace(),
+      Value::Upvalue(upvalue) => upvalue.trace(),
+      Value::Native(native) => native.trace(),
+      _ => true
+    }
+  }
+}
+
 #[derive(PartialEq, Clone, Debug)]
 pub enum Upvalue {
   Open(usize),
@@ -392,13 +422,11 @@ impl Upvalue {
 }
 
 impl Trace for Upvalue {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+  fn trace(&self) -> bool {
     match self {
-      Upvalue::Closed(upvalue) => do_if_some(upvalue.get_dyn_managed(), |obj| mark(obj)),
-      _ => (),
+      Upvalue::Closed(upvalue) => upvalue.trace(),
+      _ => true,
     }
-
-    true
   }
 }
 
@@ -462,12 +490,12 @@ impl fmt::Debug for Fun {
 }
 
 impl Trace for Fun {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+  fn trace(&self) -> bool {
     self
       .chunk
       .constants
       .iter()
-      .for_each(|constant| do_if_some(constant.get_dyn_managed(), |obj| mark(obj)));
+      .for_each(|constant| { constant.trace(); });
 
     true
   }
@@ -488,7 +516,7 @@ impl Manage for Fun {
 }
 
 impl Trace for String {
-  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+  fn trace(&self) -> bool {
     true
   }
 }
@@ -508,7 +536,7 @@ impl Manage for String {
 }
 
 impl Trace for Rc<dyn NativeFun> {
-  fn trace(&self, _: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+  fn trace(&self) -> bool {
     true
   }
 }
@@ -573,13 +601,13 @@ impl fmt::Debug for Closure {
 }
 
 impl Trace for Closure {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
+  fn trace(&self) -> bool {
     self
       .upvalues
       .iter()
-      .for_each(|constant| do_if_some(constant.get_dyn_managed(), |obj| mark(obj)));
+      .for_each(|constant| { constant.trace(); });
 
-    mark(self.fun.clone_dyn());
+    self.fun.trace();
     true
   }
 }
@@ -626,13 +654,13 @@ impl fmt::Debug for Class {
 }
 
 impl Trace for Class {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    mark(self.name.clone_dyn());
-    do_if_some(self.init, |init| mark(init.clone_dyn()));
+  fn trace(&self) -> bool {
+    self.name.trace();
+    do_if_some(self.init, |init| { init.trace(); });
 
     self.methods.iter().for_each(|(key, val)| {
-      mark(key.clone_dyn());
-      mark(val.clone_dyn());
+      key.trace();
+      val.trace();
     });
 
     true
@@ -678,12 +706,12 @@ impl fmt::Debug for Instance {
 }
 
 impl Trace for Instance {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    mark(self.class.clone_dyn());
+  fn trace(&self) -> bool {
+    self.class.trace();
 
     self.fields.iter().for_each(|(key, val)| {
-      mark(key.clone_dyn());
-      do_if_some(val.get_dyn_managed(), |obj| mark(obj));
+      key.trace();
+      val.trace();
     });
 
     true
@@ -726,9 +754,9 @@ impl fmt::Debug for BoundMethod {
 }
 
 impl Trace for BoundMethod {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    do_if_some(self.receiver.get_dyn_managed(), |obj| mark(obj));
-    mark(self.method.clone_dyn());
+  fn trace(&self) -> bool {
+    self.receiver.trace();
+    self.method.trace();
     true
   }
 }

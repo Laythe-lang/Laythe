@@ -6,10 +6,34 @@ use std::{
   ptr::{self, NonNull},
 };
 
+/// Mark a managed entity as visited
+fn mark<T: Manage>(managed: Managed<T>) {
+  if managed.obj().mark() {
+    return;
+  }
+
+  #[cfg(feature = "debug_gc")]
+  {
+    println!("{:p} mark {}", &*managed.obj(), managed.debug());
+  }
+}
+
+/// Mark a dynamic managed entity as visited
+fn mark_dyn(managed: Managed<dyn Manage>) {
+  if managed.obj().mark() {
+    return;
+  }
+
+  #[cfg(feature = "debug_gc")]
+  {
+    println!("{:p} mark {}", &*managed.obj(), managed.debug());
+  }
+}
+
 /// An entity that is traceable by the garbage collector
 pub trait Trace {
   /// Mark all objects that are reachable from this object
-  fn trace(&self, mark_obj: &mut dyn FnMut(Managed<dyn Manage>)) -> bool;
+  fn trace(&self) -> bool;
 }
 
 /// An entity that can be managed and collected by the garbage collector.
@@ -107,8 +131,13 @@ impl<T: 'static + Manage> Managed<T> {
 }
 
 impl<T: 'static + Manage> Trace for Managed<T> {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    self.obj().data.trace(mark);
+  fn trace(&self) -> bool {
+    if self.obj().mark() {
+      return true;
+    }
+
+    mark(*self);
+    self.obj().data.trace();
     true
   }
 }
@@ -128,8 +157,13 @@ impl<T: 'static + Manage> Manage for Managed<T> {
 }
 
 impl Trace for Managed<dyn Manage> {
-  fn trace(&self, mark: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    self.obj().data.trace(mark);
+  fn trace(&self) -> bool {
+    if self.obj().mark() {
+      return true;
+    }
+
+    mark_dyn(*self);
+    self.obj().data.trace();
     true
   }
 }

@@ -79,7 +79,7 @@
         }
       },
       "args": [
-        "regression/40.lox"
+        "benchmark/fib.lox"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",

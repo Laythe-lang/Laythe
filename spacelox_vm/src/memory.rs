@@ -164,10 +164,8 @@ impl<'a> Gc {
       println!("-- gc begin");
     }
 
-    let mut gray_stack = Vec::with_capacity(40);
-    if self.mark(context, &mut gray_stack) {
-      self.mark_obj(last.clone_dyn(), &mut gray_stack);
-      self.trace(&mut gray_stack);
+    if context.trace() {
+      last.trace();
 
       self.sweep_string_cache();
       let remaining = self.sweep();
@@ -194,24 +192,27 @@ impl<'a> Gc {
   }
 
   /// Mark an initial set of roots are reachable filling the gray_stack
-  fn mark<T: Trace>(&self, root: &T, gray_stack: &mut Vec<Managed<dyn Manage>>) -> bool {
-    root.trace(&mut |obj| (self.mark_obj(obj, gray_stack)))
-  }
+  // fn mark<T: Trace>(&self, root: &T, gray_stack: &mut Vec<Managed<dyn Manage>>) -> bool {
+  //   root.trace(&mut |obj| (self.mark_obj(obj, gray_stack)))
+  // }
+  // fn mark<T: Trace>(&self, root: &T) -> bool {
+  //   root.trace()
+  // }
 
   /// trace all objects in the heap marking each one that is reachable from the
   /// vm roots
-  fn trace(&self, gray_stack: &mut Vec<Managed<dyn Manage>>) {
-    let mut obj_buffer: Vec<Managed<dyn Manage>> = Vec::with_capacity(60);
+  // fn trace(&self, gray_stack: &mut Vec<Managed<dyn Manage>>) {
+  //   let mut obj_buffer: Vec<Managed<dyn Manage>> = Vec::with_capacity(60);
 
-    while let Some(gray) = gray_stack.pop() {
-      gray.trace(&mut |obj| obj_buffer.push(obj));
+  //   while let Some(gray) = gray_stack.pop() {
+  //     gray.trace(&mut |obj| obj_buffer.push(obj));
 
-      // drain the temp buffer into the gray stack
-      obj_buffer.drain(..).for_each(|obj| {
-        self.mark_obj(obj, gray_stack);
-      })
-    }
-  }
+  //     // drain the temp buffer into the gray stack
+  //     obj_buffer.drain(..).for_each(|obj| {
+  //       self.mark_obj(obj, gray_stack);
+  //     })
+  //   }
+  // }
 
   /// Remove unmarked objects from the heap. This calculates the remaining
   /// memory present in the heap
@@ -259,21 +260,21 @@ impl<'a> Gc {
     });
   }
 
-  /// mark an `Managed` as reachable from some root. This method returns
-  /// early if the object is already marked. If the object isn't marked
-  /// adds the object to the the `gray_stack`
-  fn mark_obj(&self, managed: Managed<dyn Manage>, gray_stack: &mut Vec<Managed<dyn Manage>>) {
-    if managed.obj().mark() {
-      return;
-    }
+  // /// mark an `Managed` as reachable from some root. This method returns
+  // /// early if the object is already marked. If the object isn't marked
+  // /// adds the object to the the `gray_stack`
+  // fn mark_obj(&self, managed: Managed<dyn Manage>, gray_stack: &mut Vec<Managed<dyn Manage>>) {
+  //   if managed.obj().mark() {
+  //     return;
+  //   }
 
-    #[cfg(feature = "debug_gc")]
-    {
-      println!("{:p} mark {}", &*managed.obj(), managed.debug());
-    }
+  //   #[cfg(feature = "debug_gc")]
+  //   {
+  //     println!("{:p} mark {}", &*managed.obj(), managed.debug());
+  //   }
 
-    gray_stack.push(managed);
-  }
+  //   gray_stack.push(managed);
+  // }
 }
 
 pub struct NoGc();
@@ -285,7 +286,7 @@ impl fmt::Display for NoGc {
 }
 
 impl Trace for NoGc {
-  fn trace(&self, _: &mut dyn FnMut(Managed<(dyn Manage)>)) -> bool {
+  fn trace(&self) -> bool {
     false
   }
 }

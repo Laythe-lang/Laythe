@@ -1308,8 +1308,8 @@ pub struct ClassCompiler {
 }
 
 impl Trace for ClassCompiler {
-  fn trace(&self, mark_obj: &mut dyn FnMut(Managed<dyn Manage>)) -> bool {
-    do_if_some(self.enclosing, |enclosing| mark_obj(enclosing.clone_dyn()));
+  fn trace(&self) -> bool {
+    do_if_some(self.enclosing, |enclosing| { enclosing.trace(); });
     true
   }
 }
