@@ -4,10 +4,10 @@ use crate::{
   native::NativeFun,
   utils::do_if_some,
 };
-use std::collections::HashMap;
 use std::fmt;
 use std::mem;
 use std::rc::Rc;
+use fnv::FnvHashMap;
 
 /// Enum of value types in spacelox
 #[derive(Clone, Copy, Debug)]
@@ -394,7 +394,7 @@ impl Upvalue {
   ///   Upvalue::Open(_) => assert!(false),
   /// };
   /// ```
-  pub fn hoist(&mut self, stack: &Vec<Value>) {
+  pub fn hoist(&mut self, stack: &[Value]) {
     match self {
       Upvalue::Open(index) => {
         let value = unsafe { stack.get_unchecked(*index) }.clone();
@@ -630,7 +630,7 @@ impl Manage for Closure {
 pub struct Class {
   pub name: Managed<String>,
   pub init: Option<Managed<Closure>>,
-  pub methods: HashMap<Managed<String>, Managed<Closure>>,
+  pub methods: FnvHashMap<Managed<String>, Managed<Closure>>,
 }
 
 impl Class {
@@ -638,7 +638,7 @@ impl Class {
     Class {
       name,
       init: None,
-      methods: HashMap::new(),
+      methods: FnvHashMap::with_capacity_and_hasher(4, Default::default()),
     }
   }
 }
@@ -684,14 +684,14 @@ impl Manage for Class {
 #[derive(PartialEq, Clone)]
 pub struct Instance {
   pub class: Managed<Class>,
-  pub fields: HashMap<Managed<String>, Value>,
+  pub fields: FnvHashMap<Managed<String>, Value>,
 }
 
 impl Instance {
   pub fn new(class: Managed<Class>) -> Self {
     Instance {
       class,
-      fields: HashMap::new(),
+      fields: FnvHashMap::with_capacity_and_hasher(2, Default::default()),
     }
   }
 }

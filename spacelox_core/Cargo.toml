@@ -7,3 +7,10 @@ edition = "2018"
 [lib]
 name = "spacelox_core"
 path = "src/lib.rs"
+
+[features]
+debug = []
+
+[dependencies]
+fnv = "1.0.3"
+

@@ -8,10 +8,10 @@ use spacelox_core::native::{NativeFun, NativeResult};
 use spacelox_core::{
   value::{BoundMethod, Class, Closure, Fun, Instance, Upvalue, Value},
 };
-use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 use std::mem;
 use std::rc::Rc;
+use fnv::FnvHashMap;
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
@@ -40,7 +40,7 @@ pub struct Vm {
   special_strings: SpecialStrings,
 
   /// A persisted set of globals most for a repl context
-  globals: HashMap<Managed<String>, Value>,
+  globals: FnvHashMap<Managed<String>, Value>,
 }
 
 impl Vm {
@@ -102,8 +102,8 @@ impl Vm {
 fn define_globals<'a>(
   gc: &mut Gc,
   natives: &[Rc<dyn NativeFun>],
-) -> HashMap<Managed<String>, Value> {
-  let mut globals = HashMap::new();
+) -> FnvHashMap<Managed<String>, Value> {
+  let mut globals = FnvHashMap::with_capacity_and_hasher(natives.len(), Default::default());
 
   natives.iter().for_each(|native| {
     let name = gc.manage_str(native.meta().name.to_string(), &NO_GC);
@@ -141,7 +141,7 @@ struct VmExecutor<'a> {
   pub stack_top: usize,
 
   /// global variable present in the vm
-  pub globals: &'a mut HashMap<Managed<String>, Value>,
+  pub globals: &'a mut FnvHashMap<Managed<String>, Value>,
 
   /// A collection of currently available upvalues
   pub open_upvalues: Vec<Managed<Upvalue>>,
@@ -906,7 +906,7 @@ impl<'a> VmExecutor<'a> {
       println!();
     }
 
-    disassemble_instruction(self.current_fun.chunk, ip, last_ip);
+    disassemble_instruction(&self.current_fun.chunk, ip, last_ip);
   }
 
   /// Report a known spacelox runtime error to the user
