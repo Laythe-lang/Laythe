@@ -1,13 +1,13 @@
 use spacelox_core::managed::{Allocation, Manage, Managed, Trace};
 use std::cell::{Cell, RefCell};
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::HashMap;
 use std::fmt;
 use std::ptr::NonNull;
 
 pub struct Gc {
   heap: RefCell<Vec<Box<Allocation<dyn Manage>>>>,
   bytes_allocated: Cell<usize>,
-  intern_cache: RefCell<HashMap<String, Managed<String>>>,
+  intern_cache: RefCell<HashMap<&'static str, Managed<String>>>,
   next_gc: Cell<usize>,
 }
 
@@ -76,14 +76,14 @@ impl<'a> Gc {
   /// assert_eq!(&*str, "hi!");
   /// ```
   pub fn manage_str<C: Trace>(&self, string: String, context: &C) -> Managed<String> {
-    let mut cache = self.intern_cache.borrow_mut();
-    match cache.entry(string) {
-      Entry::Vacant(vacant) => {
-        let managed = self.allocate(vacant.key().to_string(), context);
-        *vacant.insert(managed)
-      }
-      Entry::Occupied(occupied) => *occupied.get(),
+    if let Some(cached) = self.intern_cache.borrow_mut().get(&*string) {
+      return *cached
     }
+
+    let managed = self.allocate(string, context);
+    let static_str: &'static str = unsafe { &*(&**managed as *const str) };
+    self.intern_cache.borrow_mut().insert(&static_str, managed);
+    managed
   }
 
   /// clone the the `Managed` data as a new heap allocation.
@@ -191,29 +191,6 @@ impl<'a> Gc {
     }
   }
 
-  /// Mark an initial set of roots are reachable filling the gray_stack
-  // fn mark<T: Trace>(&self, root: &T, gray_stack: &mut Vec<Managed<dyn Manage>>) -> bool {
-  //   root.trace(&mut |obj| (self.mark_obj(obj, gray_stack)))
-  // }
-  // fn mark<T: Trace>(&self, root: &T) -> bool {
-  //   root.trace()
-  // }
-
-  /// trace all objects in the heap marking each one that is reachable from the
-  /// vm roots
-  // fn trace(&self, gray_stack: &mut Vec<Managed<dyn Manage>>) {
-  //   let mut obj_buffer: Vec<Managed<dyn Manage>> = Vec::with_capacity(60);
-
-  //   while let Some(gray) = gray_stack.pop() {
-  //     gray.trace(&mut |obj| obj_buffer.push(obj));
-
-  //     // drain the temp buffer into the gray stack
-  //     obj_buffer.drain(..).for_each(|obj| {
-  //       self.mark_obj(obj, gray_stack);
-  //     })
-  //   }
-  // }
-
   /// Remove unmarked objects from the heap. This calculates the remaining
   /// memory present in the heap
   fn sweep(&self) -> usize {
@@ -259,22 +236,6 @@ impl<'a> Gc {
       retain
     });
   }
-
-  // /// mark an `Managed` as reachable from some root. This method returns
-  // /// early if the object is already marked. If the object isn't marked
-  // /// adds the object to the the `gray_stack`
-  // fn mark_obj(&self, managed: Managed<dyn Manage>, gray_stack: &mut Vec<Managed<dyn Manage>>) {
-  //   if managed.obj().mark() {
-  //     return;
-  //   }
-
-  //   #[cfg(feature = "debug_gc")]
-  //   {
-  //     println!("{:p} mark {}", &*managed.obj(), managed.debug());
-  //   }
-
-  //   gray_stack.push(managed);
-  // }
 }
 
 pub struct NoGc();

@@ -71,28 +71,48 @@
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M91.5,662.4 L91.5,653.4  '/>	<g transform="translate(91.5,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
+	<path stroke='black'  d='M112.1,662.4 L112.1,653.4  '/>	<g transform="translate(112.1,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
 		<text><tspan font-family="Helvetica" > 6.5</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M292.3,662.4 L292.3,653.4  '/>	<g transform="translate(292.3,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
+	<path stroke='black'  d='M215.4,662.4 L215.4,653.4  '/>	<g transform="translate(215.4,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
 		<text><tspan font-family="Helvetica" > 7</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M493.1,662.4 L493.1,653.4  '/>	<g transform="translate(493.1,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
+	<path stroke='black'  d='M318.7,662.4 L318.7,653.4  '/>	<g transform="translate(318.7,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
 		<text><tspan font-family="Helvetica" > 7.5</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M693.9,662.4 L693.9,653.4  '/>	<g transform="translate(693.9,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
+	<path stroke='black'  d='M422.1,662.4 L422.1,653.4  '/>	<g transform="translate(422.1,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
 		<text><tspan font-family="Helvetica" > 8</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='black'  d='M894.7,662.4 L894.7,653.4  '/>	<g transform="translate(894.7,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
+	<path stroke='black'  d='M525.4,662.4 L525.4,653.4  '/>	<g transform="translate(525.4,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
 		<text><tspan font-family="Helvetica" > 8.5</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='black'  d='M628.7,662.4 L628.7,653.4  '/>	<g transform="translate(628.7,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
+		<text><tspan font-family="Helvetica" > 9</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='black'  d='M732.1,662.4 L732.1,653.4  '/>	<g transform="translate(732.1,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
+		<text><tspan font-family="Helvetica" > 9.5</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='black'  d='M835.4,662.4 L835.4,653.4  '/>	<g transform="translate(835.4,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
+		<text><tspan font-family="Helvetica" > 10</tspan></text>
+	</g>
+</g>
+<g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
+	<path stroke='black'  d='M938.8,662.4 L938.8,653.4  '/>	<g transform="translate(938.8,684.3)" stroke="none" fill="black" font-family="Helvetica" font-size="12.00"  text-anchor="middle">
+		<text><tspan font-family="Helvetica" > 10.5</tspan></text>
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -158,37 +178,37 @@
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
 	<g stroke='none' shape-rendering='crispEdges'>
 		<polygon fill = 'rgb( 31, 120, 180)' fill-opacity = '0.250000' points = '1096.6,67.6 1138.8,67.6 1138.8,58.6 1096.6,58.6 '/>
-		<polygon fill = 'rgb( 31, 120, 180)' fill-opacity = '0.250000' points = '71.9,661.9 73.8,661.8 75.6,661.7 77.5,661.6 79.4,661.5 81.2,661.4 83.1,661.3 85.0,661.1 86.8,660.9 88.7,660.7 90.6,660.5 92.4,660.2 94.3,660.0 96.2,659.6 98.0,659.3 99.9,658.9
-101.8,658.4 103.7,657.9 105.5,657.4 107.4,656.8 109.3,656.1 111.1,655.4 113.0,654.6 114.9,653.7 116.7,652.7 118.6,651.6 120.5,650.5 122.3,649.2 124.2,647.8 126.1,646.2 127.9,644.6 129.8,642.8
-131.7,640.8 133.5,638.7 135.4,636.5 137.3,634.0 139.1,631.4 141.0,628.5 142.9,625.5 144.7,622.2 146.6,618.7 148.5,615.0 150.3,611.0 152.2,606.8 154.1,602.3 155.9,597.5 157.8,592.5 159.7,587.1
-161.6,581.5 163.4,575.6 165.3,569.3 167.2,562.8 169.0,556.0 170.9,548.8 172.8,541.3 174.6,533.5 176.5,525.4 178.4,517.0 180.2,508.3 182.1,499.2 184.0,489.9 185.8,480.3 187.7,470.5 189.6,460.3
-191.4,450.0 193.3,439.4 195.2,428.6 197.0,417.6 198.9,406.5 200.8,395.2 202.6,383.7 204.5,372.2 206.4,360.6 208.2,349.0 210.1,337.4 212.0,325.7 213.8,314.2 215.7,302.7 217.6,291.3 219.5,280.0
-221.3,268.9 223.2,258.0 225.1,247.4 226.9,237.0 228.8,226.9 230.7,217.1 232.5,207.6 234.4,198.5 236.3,189.8 238.1,181.6 240.0,173.7 241.9,166.3 243.7,159.4 245.6,153.0 247.5,147.0 249.3,141.6
-251.2,136.7 253.1,132.3 254.9,128.4 256.8,125.0 258.7,122.2 260.5,119.8 262.4,118.0 264.3,116.7 266.1,115.8 268.0,115.5 269.9,115.6 271.7,116.2 273.6,117.2 275.5,118.6 277.4,120.4 279.2,122.6
-281.1,125.1 283.0,128.0 284.8,131.2 286.7,134.8 288.6,138.6 290.4,142.6 292.3,146.9 294.2,151.5 296.0,156.2 297.9,161.1 299.8,166.2 301.6,171.4 303.5,176.8 305.4,182.4 307.2,188.0 309.1,193.7
-311.0,199.5 312.8,205.4 314.7,211.4 316.6,217.5 318.4,223.6 320.3,229.7 322.2,235.9 324.0,242.2 325.9,248.5 327.8,254.8 329.6,261.2 331.5,267.6 333.4,274.0 335.3,280.5 337.1,287.0 339.0,293.5
-340.9,300.1 342.7,306.6 344.6,313.3 346.5,319.9 348.3,326.6 350.2,333.3 352.1,340.1 353.9,346.8 355.8,353.6 357.7,360.4 359.5,367.2 361.4,374.0 363.3,380.9 365.1,387.7 367.0,394.5 368.9,401.4
-370.7,408.2 372.6,415.0 374.5,421.8 376.3,428.5 378.2,435.2 380.1,441.9 381.9,448.5 383.8,455.1 385.7,461.6 387.5,468.1 389.4,474.4 391.3,480.7 393.2,486.9 395.0,493.0 396.9,499.0 398.8,504.9
-400.6,510.7 402.5,516.4 404.4,521.9 406.2,527.3 408.1,532.6 410.0,537.8 411.8,542.8 413.7,547.7 415.6,552.5 417.4,557.1 419.3,561.6 421.2,565.9 423.0,570.1 424.9,574.1 426.8,578.0 428.6,581.8
-430.5,585.4 432.4,588.9 434.2,592.2 436.1,595.5 438.0,598.5 439.8,601.5 441.7,604.3 443.6,607.0 445.4,609.6 447.3,612.1 449.2,614.4 451.1,616.6 452.9,618.8 454.8,620.8 456.7,622.7 458.5,624.5
-460.4,626.3 462.3,627.9 464.1,629.5 466.0,630.9 467.9,632.3 469.7,633.6 471.6,634.8 473.5,636.0 475.3,637.1 477.2,638.1 479.1,639.1 480.9,640.0 482.8,640.8 484.7,641.6 486.5,642.4 488.4,643.0
-490.3,643.7 492.1,644.3 494.0,644.8 495.9,645.4 497.7,645.8 499.6,646.3 501.5,646.7 503.3,647.1 505.2,647.4 507.1,647.7 509.0,648.0 510.8,648.3 512.7,648.6 514.6,648.8 516.4,649.0 518.3,649.2
-520.2,649.4 522.0,649.6 523.9,649.8 525.8,650.0 527.6,650.1 529.5,650.3 531.4,650.5 533.2,650.6 535.1,650.8 537.0,650.9 538.8,651.1 540.7,651.3 542.6,651.4 544.4,651.6 546.3,651.8 548.2,652.0
-550.0,652.2 551.9,652.4 553.8,652.6 555.6,652.8 557.5,653.0 559.4,653.2 561.2,653.4 563.1,653.6 565.0,653.9 566.8,654.1 568.7,654.3 570.6,654.6 572.5,654.8 574.3,655.1 576.2,655.3 578.1,655.5
-579.9,655.8 581.8,656.0 583.7,656.2 585.5,656.4 587.4,656.6 589.3,656.8 591.1,657.0 593.0,657.2 594.9,657.4 596.7,657.5 598.6,657.7 600.5,657.8 602.3,657.9 604.2,658.0 606.1,658.1 607.9,658.2
-609.8,658.2 611.7,658.3 613.5,658.3 615.4,658.3 617.3,658.2 619.1,658.2 621.0,658.1 622.9,658.1 624.7,658.0 626.6,657.8 628.5,657.7 630.4,657.6 632.2,657.4 634.1,657.2 636.0,657.0 637.8,656.7
-639.7,656.5 641.6,656.2 643.4,656.0 645.3,655.7 647.2,655.4 649.0,655.1 650.9,654.7 652.8,654.4 654.6,654.0 656.5,653.7 658.4,653.3 660.2,653.0 662.1,652.6 664.0,652.2 665.8,651.8 667.7,651.5
-669.6,651.1 671.4,650.7 673.3,650.3 675.2,650.0 677.0,649.6 678.9,649.3 680.8,648.9 682.6,648.6 684.5,648.3 686.4,648.0 688.3,647.7 690.1,647.5 692.0,647.2 693.9,647.0 695.7,646.8 697.6,646.6
-699.5,646.4 701.3,646.3 703.2,646.2 705.1,646.1 706.9,646.0 708.8,645.9 710.7,645.9 712.5,645.9 714.4,645.9 716.3,646.0 718.1,646.1 720.0,646.2 721.9,646.3 723.7,646.4 725.6,646.6 727.5,646.8
-729.3,647.0 731.2,647.2 733.1,647.5 734.9,647.8 736.8,648.0 738.7,648.3 740.5,648.7 742.4,649.0 744.3,649.3 746.2,649.7 748.0,650.0 749.9,650.4 751.8,650.7 753.6,651.1 755.5,651.5 757.4,651.8
-759.2,652.2 761.1,652.6 763.0,652.9 764.8,653.3 766.7,653.7 768.6,654.0 770.4,654.3 772.3,654.7 774.2,655.0 776.0,655.3 777.9,655.6 779.8,655.8 781.6,656.1 783.5,656.3 785.4,656.6 787.2,656.8
-789.1,656.9 791.0,657.1 792.8,657.3 794.7,657.4 796.6,657.5 798.4,657.6 800.3,657.7 802.2,657.7 804.1,657.8 805.9,657.8 807.8,657.8 809.7,657.8 811.5,657.7 813.4,657.7 815.3,657.6 817.1,657.5
-819.0,657.4 820.9,657.3 822.7,657.2 824.6,657.1 826.5,656.9 828.3,656.7 830.2,656.6 832.1,656.4 833.9,656.2 835.8,656.0 837.7,655.8 839.5,655.6 841.4,655.5 843.3,655.3 845.1,655.1 847.0,654.9
-848.9,654.7 850.7,654.5 852.6,654.4 854.5,654.2 856.3,654.0 858.2,653.9 860.1,653.8 862.0,653.7 863.8,653.5 865.7,653.5 867.6,653.4 869.4,653.3 871.3,653.3 873.2,653.3 875.0,653.2 876.9,653.3
-878.8,653.3 880.6,653.3 882.5,653.4 884.4,653.4 886.2,653.5 888.1,653.6 890.0,653.8 891.8,653.9 893.7,654.0 895.6,654.2 897.4,654.4 899.3,654.6 901.2,654.8 903.0,655.0 904.9,655.2 906.8,655.4
-908.6,655.6 910.5,655.8 912.4,656.1 914.2,656.3 916.1,656.6 918.0,656.8 919.9,657.0 921.7,657.3 923.6,657.5 925.5,657.8 927.3,658.0 929.2,658.2 931.1,658.5 932.9,658.7 934.8,658.9 936.7,659.1
-938.5,659.3 940.4,659.5 942.3,659.7 944.1,659.9 946.0,660.0 947.9,660.2 949.7,660.4 951.6,660.5 953.5,660.7 955.3,660.8 957.2,660.9 959.1,661.0 960.9,661.2 962.8,661.3 964.7,661.4 966.5,661.4
-968.4,661.5 970.3,661.6 972.1,661.7 974.0,661.8 975.9,661.8 977.8,661.9 979.6,661.9 981.5,662.0 983.4,662.0 985.2,662.1 987.1,662.1 989.0,662.1 990.8,662.2 992.7,662.2 994.6,662.2 996.4,662.2
+		<polygon fill = 'rgb( 31, 120, 180)' fill-opacity = '0.250000' points = '71.9,662.2 73.8,662.1 75.6,662.1 77.5,662.0 79.4,661.9 81.2,661.8 83.1,661.7 85.0,661.6 86.8,661.4 88.7,661.2 90.6,661.0 92.4,660.7 94.3,660.4 96.2,660.0 98.0,659.5 99.9,659.0
+101.8,658.4 103.7,657.7 105.5,656.9 107.4,655.9 109.3,654.8 111.1,653.6 113.0,652.2 114.9,650.6 116.7,648.7 118.6,646.7 120.5,644.3 122.3,641.7 124.2,638.8 126.1,635.5 127.9,631.9 129.8,627.8
+131.7,623.3 133.5,618.4 135.4,613.0 137.3,607.1 139.1,600.6 141.0,593.6 142.9,586.0 144.7,577.7 146.6,568.9 148.5,559.5 150.3,549.4 152.2,538.6 154.1,527.3 155.9,515.3 157.8,502.7 159.7,489.5
+161.6,475.8 163.4,461.5 165.3,446.8 167.2,431.7 169.0,416.2 170.9,400.4 172.8,384.4 174.6,368.3 176.5,352.1 178.4,335.9 180.2,319.9 182.1,304.1 184.0,288.7 185.8,273.7 187.7,259.2 189.6,245.3
+191.4,232.2 193.3,219.8 195.2,208.4 197.0,198.0 198.9,188.7 200.8,180.4 202.6,173.4 204.5,167.6 206.4,163.1 208.2,159.8 210.1,157.9 212.0,157.3 213.8,158.0 215.7,160.1 217.6,163.3 219.5,167.9
+221.3,173.6 223.2,180.4 225.1,188.3 226.9,197.2 228.8,207.0 230.7,217.6 232.5,229.0 234.4,241.1 236.3,253.7 238.1,266.8 240.0,280.4 241.9,294.2 243.7,308.3 245.6,322.5 247.5,336.7 249.3,351.0
+251.2,365.2 253.1,379.2 254.9,393.0 256.8,406.6 258.7,419.8 260.5,432.7 262.4,445.2 264.3,457.3 266.1,468.9 268.0,480.1 269.9,490.8 271.7,501.0 273.6,510.7 275.5,519.8 277.4,528.5 279.2,536.7
+281.1,544.3 283.0,551.5 284.8,558.2 286.7,564.5 288.6,570.3 290.4,575.6 292.3,580.6 294.2,585.2 296.0,589.4 297.9,593.2 299.8,596.8 301.6,600.0 303.5,602.9 305.4,605.6 307.2,608.1 309.1,610.3
+311.0,612.4 312.8,614.2 314.7,616.0 316.6,617.5 318.4,619.0 320.3,620.3 322.2,621.6 324.0,622.7 325.9,623.8 327.8,624.9 329.6,625.9 331.5,626.9 333.4,627.9 335.3,628.8 337.1,629.8 339.0,630.7
+340.9,631.6 342.7,632.5 344.6,633.5 346.5,634.4 348.3,635.4 350.2,636.3 352.1,637.3 353.9,638.3 355.8,639.2 357.7,640.2 359.5,641.2 361.4,642.1 363.3,643.1 365.1,644.1 367.0,645.0 368.9,645.9
+370.7,646.8 372.6,647.7 374.5,648.6 376.3,649.5 378.2,650.3 380.1,651.1 381.9,651.9 383.8,652.6 385.7,653.3 387.5,654.0 389.4,654.7 391.3,655.3 393.2,655.9 395.0,656.4 396.9,656.9 398.8,657.4
+400.6,657.9 402.5,658.3 404.4,658.7 406.2,659.1 408.1,659.4 410.0,659.7 411.8,660.0 413.7,660.3 415.6,660.5 417.4,660.7 419.3,660.9 421.2,661.1 423.0,661.2 424.9,661.4 426.8,661.5 428.6,661.6
+430.5,661.7 432.4,661.8 434.2,661.9 436.1,662.0 438.0,662.0 439.8,662.1 441.7,662.1 443.6,662.2 445.4,662.2 447.3,662.2 449.2,662.3 451.1,662.3 452.9,662.3 454.8,662.3 456.7,662.3 458.5,662.3
+460.4,662.4 462.3,662.4 464.1,662.4 466.0,662.4 467.9,662.4 469.7,662.4 471.6,662.4 473.5,662.4 475.3,662.4 477.2,662.4 479.1,662.4 480.9,662.4 482.8,662.4 484.7,662.4 486.5,662.4 488.4,662.4
+490.3,662.4 492.1,662.4 494.0,662.4 495.9,662.4 497.7,662.4 499.6,662.4 501.5,662.4 503.3,662.4 505.2,662.4 507.1,662.4 509.0,662.4 510.8,662.4 512.7,662.4 514.6,662.4 516.4,662.4 518.3,662.4
+520.2,662.4 522.0,662.4 523.9,662.4 525.8,662.4 527.6,662.4 529.5,662.4 531.4,662.4 533.2,662.4 535.1,662.4 537.0,662.4 538.8,662.4 540.7,662.4 542.6,662.4 544.4,662.4 546.3,662.4 548.2,662.4
+550.0,662.4 551.9,662.4 553.8,662.4 555.6,662.4 557.5,662.4 559.4,662.4 561.2,662.4 563.1,662.4 565.0,662.4 566.8,662.4 568.7,662.4 570.6,662.4 572.5,662.4 574.3,662.4 576.2,662.4 578.1,662.4
+579.9,662.4 581.8,662.4 583.7,662.4 585.5,662.4 587.4,662.4 589.3,662.4 591.1,662.4 593.0,662.4 594.9,662.4 596.7,662.4 598.6,662.4 600.5,662.4 602.3,662.4 604.2,662.4 606.1,662.4 607.9,662.4
+609.8,662.4 611.7,662.4 613.5,662.4 615.4,662.4 617.3,662.4 619.1,662.4 621.0,662.4 622.9,662.4 624.7,662.4 626.6,662.4 628.5,662.4 630.4,662.4 632.2,662.4 634.1,662.4 636.0,662.4 637.8,662.4
+639.7,662.4 641.6,662.4 643.4,662.4 645.3,662.4 647.2,662.4 649.0,662.4 650.9,662.4 652.8,662.4 654.6,662.4 656.5,662.4 658.4,662.4 660.2,662.4 662.1,662.4 664.0,662.4 665.8,662.4 667.7,662.4
+669.6,662.4 671.4,662.4 673.3,662.4 675.2,662.4 677.0,662.4 678.9,662.4 680.8,662.4 682.6,662.4 684.5,662.4 686.4,662.4 688.3,662.4 690.1,662.4 692.0,662.4 693.9,662.4 695.7,662.4 697.6,662.4
+699.5,662.4 701.3,662.4 703.2,662.4 705.1,662.4 706.9,662.4 708.8,662.4 710.7,662.4 712.5,662.4 714.4,662.4 716.3,662.4 718.1,662.4 720.0,662.4 721.9,662.4 723.7,662.4 725.6,662.4 727.5,662.4
+729.3,662.4 731.2,662.4 733.1,662.4 734.9,662.4 736.8,662.4 738.7,662.4 740.5,662.4 742.4,662.4 744.3,662.4 746.2,662.4 748.0,662.4 749.9,662.4 751.8,662.4 753.6,662.4 755.5,662.4 757.4,662.4
+759.2,662.4 761.1,662.4 763.0,662.4 764.8,662.4 766.7,662.4 768.6,662.4 770.4,662.4 772.3,662.4 774.2,662.4 776.0,662.4 777.9,662.4 779.8,662.4 781.6,662.4 783.5,662.4 785.4,662.4 787.2,662.4
+789.1,662.4 791.0,662.4 792.8,662.4 794.7,662.4 796.6,662.4 798.4,662.4 800.3,662.4 802.2,662.4 804.1,662.4 805.9,662.4 807.8,662.4 809.7,662.3 811.5,662.3 813.4,662.3 815.3,662.3 817.1,662.3
+819.0,662.3 820.9,662.2 822.7,662.2 824.6,662.2 826.5,662.1 828.3,662.1 830.2,662.1 832.1,662.0 833.9,662.0 835.8,661.9 837.7,661.8 839.5,661.7 841.4,661.7 843.3,661.6 845.1,661.5 847.0,661.4
+848.9,661.2 850.7,661.1 852.6,661.0 854.5,660.8 856.3,660.7 858.2,660.5 860.1,660.3 862.0,660.1 863.8,660.0 865.7,659.8 867.6,659.5 869.4,659.3 871.3,659.1 873.2,658.9 875.0,658.7 876.9,658.5
+878.8,658.2 880.6,658.0 882.5,657.8 884.4,657.6 886.2,657.4 888.1,657.2 890.0,657.0 891.8,656.9 893.7,656.7 895.6,656.6 897.4,656.5 899.3,656.4 901.2,656.3 903.0,656.2 904.9,656.2 906.8,656.1
+908.6,656.1 910.5,656.2 912.4,656.2 914.2,656.3 916.1,656.4 918.0,656.5 919.9,656.6 921.7,656.7 923.6,656.9 925.5,657.0 927.3,657.2 929.2,657.4 931.1,657.6 932.9,657.8 934.8,658.0 936.7,658.2
+938.5,658.5 940.4,658.7 942.3,658.9 944.1,659.1 946.0,659.3 947.9,659.5 949.7,659.7 951.6,659.9 953.5,660.1 955.3,660.3 957.2,660.5 959.1,660.7 960.9,660.8 962.8,661.0 964.7,661.1 966.5,661.2
+968.4,661.4 970.3,661.5 972.1,661.6 974.0,661.7 975.9,661.7 977.8,661.8 979.6,661.9 981.5,662.0 983.4,662.0 985.2,662.1 987.1,662.1 989.0,662.1 990.8,662.2 992.7,662.2 994.6,662.2 996.4,662.3
 998.3,662.3 1000.2,662.3 1002.0,662.3 1003.9,662.3 1003.9,662.4 1002.0,662.4 1000.2,662.4 998.3,662.4 996.4,662.4 994.6,662.4 992.7,662.4 990.8,662.4 989.0,662.4 987.1,662.4 985.2,662.4 983.4,662.4
 981.5,662.4 979.6,662.4 977.8,662.4 975.9,662.4 974.0,662.4 972.1,662.4 970.3,662.4 968.4,662.4 966.5,662.4 964.7,662.4 962.8,662.4 960.9,662.4 959.1,662.4 957.2,662.4 955.3,662.4 953.5,662.4
 951.6,662.4 949.7,662.4 947.9,662.4 946.0,662.4 944.1,662.4 942.3,662.4 940.4,662.4 938.5,662.4 936.7,662.4 934.8,662.4 932.9,662.4 931.1,662.4 929.2,662.4 927.3,662.4 925.5,662.4 923.6,662.4
@@ -233,7 +253,7 @@
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb( 31, 120, 180)'  d='M1096.6,81.1 L1138.8,81.1 M306.4,662.4 L306.4,54.1  '/></g>
+	<path stroke='rgb( 31, 120, 180)'  d='M1096.6,81.1 L1138.8,81.1 M227.8,662.4 L227.8,54.1  '/></g>
 	</g>
 	<g id="gnuplot_plot_3" ><title>"Clean" sample</title>
 <g fill="none" color="white" stroke="rgb( 31, 120, 180)" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
@@ -244,102 +264,96 @@
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<use xlink:href='#gpPt6' transform='translate(420.3,650.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(232.9,644.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(200.1,638.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(298.9,632.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(201.1,625.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(391.3,619.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(233.1,613.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(461.6,607.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(343.4,601.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(201.7,595.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(347.3,589.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(330.5,583.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(331.2,577.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(379.4,571.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(318.6,565.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(249.5,559.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(288.5,552.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(239.5,546.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(236.7,540.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(247.3,534.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(206.7,528.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(253.7,522.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(218.9,516.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(302.4,510.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(250.7,504.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(237.6,498.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(243.0,492.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(299.3,486.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(254.2,479.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(301.0,473.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(233.1,467.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(292.2,461.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(339.6,455.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(322.4,449.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(357.4,443.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(344.0,437.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(236.2,431.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(262.1,425.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(246.1,419.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(247.0,413.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(325.6,406.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(295.6,400.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(254.1,394.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(273.0,388.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(373.7,382.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(304.2,376.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(328.5,370.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(282.5,364.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(225.1,358.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(254.4,352.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(232.3,346.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(240.4,340.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(253.0,333.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(249.1,327.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(288.1,321.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(373.9,315.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(252.3,309.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(281.6,303.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(356.3,297.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(343.0,291.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(335.6,285.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(352.9,279.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(272.5,273.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(262.3,267.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(363.0,260.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(333.7,254.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(281.3,248.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(324.3,242.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(343.1,236.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(270.4,230.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(415.0,224.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(265.4,218.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(254.6,212.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(227.3,206.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(286.2,200.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(253.7,175.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(265.1,169.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(248.7,163.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(260.3,157.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(242.3,151.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(317.3,145.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(292.9,139.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(384.0,133.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(301.8,127.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(246.5,121.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(254.3,114.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(276.0,108.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(342.3,102.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(372.6,96.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(366.5,90.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(257.8,84.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(299.3,78.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(254.8,72.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(295.8,66.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(242.1,60.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
-	<use xlink:href='#gpPt6' transform='translate(251.2,54.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(251.5,644.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(195.2,625.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(197.3,613.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(259.0,607.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(176.6,601.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(209.9,595.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(206.3,589.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(210.1,583.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(200.0,577.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(211.7,571.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(197.5,565.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(204.3,559.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(189.5,552.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(211.8,546.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(193.9,540.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(194.7,534.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(206.3,528.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(195.3,522.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(208.1,516.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(203.8,510.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(211.0,504.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(196.5,498.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(192.2,492.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(215.9,486.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(224.2,479.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(192.2,473.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(191.1,467.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(202.9,461.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(211.6,455.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(230.9,449.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(193.6,443.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(199.0,437.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(238.6,431.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(222.8,425.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(212.2,419.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(204.7,413.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(230.8,400.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(243.9,394.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(226.8,382.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(199.3,376.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(225.6,370.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(222.9,364.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(197.6,358.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(246.2,352.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(194.7,346.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(217.5,340.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(237.3,333.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(200.9,327.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(249.7,321.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(243.8,315.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(200.0,309.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(212.2,303.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(201.6,297.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(221.6,291.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(204.6,285.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(212.3,279.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(205.8,273.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(216.9,267.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(222.4,260.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(205.4,254.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(246.8,242.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(208.4,236.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(199.3,230.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(209.3,224.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(205.7,218.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(252.5,212.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(218.0,206.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(207.2,200.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(219.4,194.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(205.1,187.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(206.2,181.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(209.6,175.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(233.3,169.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(254.0,163.6) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(206.1,157.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(210.8,151.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(217.1,145.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(207.9,139.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(208.0,133.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(216.6,121.0) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(247.8,114.9) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(201.7,108.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(206.2,102.8) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(219.9,96.7) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(223.5,84.5) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(226.1,78.4) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(223.3,72.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(212.6,66.3) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(204.6,60.2) scale(3.38)' color='rgb( 31, 120, 180)'/>
+	<use xlink:href='#gpPt6' transform='translate(213.7,54.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
 	<use xlink:href='#gpPt6' transform='translate(1117.7,99.1) scale(3.38)' color='rgb( 31, 120, 180)'/>
 </g>
 	</g>
@@ -350,7 +364,10 @@
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<use xlink:href='#gpPt6' transform='translate(541.7,181.8) scale(3.38)' color='rgb(255, 127,   0)'/>
+	<use xlink:href='#gpPt6' transform='translate(168.1,638.1) scale(3.38)' color='rgb(255, 127,   0)'/>
+	<use xlink:href='#gpPt6' transform='translate(263.4,619.8) scale(3.38)' color='rgb(255, 127,   0)'/>
+	<use xlink:href='#gpPt6' transform='translate(285.1,388.7) scale(3.38)' color='rgb(255, 127,   0)'/>
+	<use xlink:href='#gpPt6' transform='translate(275.8,248.8) scale(3.38)' color='rgb(255, 127,   0)'/>
 	<use xlink:href='#gpPt6' transform='translate(1117.7,117.1) scale(3.38)' color='rgb(255, 127,   0)'/>
 </g>
 	</g>
@@ -361,9 +378,12 @@
 	</g>
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="1.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<use xlink:href='#gpPt6' transform='translate(875.7,656.3) scale(3.38)' color='rgb(227,  26,  28)'/>
-	<use xlink:href='#gpPt6' transform='translate(692.1,194.0) scale(3.38)' color='rgb(227,  26,  28)'/>
-	<use xlink:href='#gpPt6' transform='translate(730.7,187.9) scale(3.38)' color='rgb(227,  26,  28)'/>
+	<use xlink:href='#gpPt6' transform='translate(907.7,656.3) scale(3.38)' color='rgb(227,  26,  28)'/>
+	<use xlink:href='#gpPt6' transform='translate(333.7,650.2) scale(3.38)' color='rgb(227,  26,  28)'/>
+	<use xlink:href='#gpPt6' transform='translate(320.4,632.0) scale(3.38)' color='rgb(227,  26,  28)'/>
+	<use xlink:href='#gpPt6' transform='translate(332.8,406.9) scale(3.38)' color='rgb(227,  26,  28)'/>
+	<use xlink:href='#gpPt6' transform='translate(312.4,127.1) scale(3.38)' color='rgb(227,  26,  28)'/>
+	<use xlink:href='#gpPt6' transform='translate(359.2,90.6) scale(3.38)' color='rgb(227,  26,  28)'/>
 	<use xlink:href='#gpPt6' transform='translate(1117.7,135.1) scale(3.38)' color='rgb(227,  26,  28)'/>
 </g>
 	</g>
@@ -371,19 +391,19 @@
 <g fill="none" color="white" stroke="rgb(227,  26,  28)" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(255, 127,   0)'  d='M118.6,662.4 L118.6,54.1  '/></g>
+	<path stroke='rgb(255, 127,   0)'  d='M169.4,662.4 L169.4,54.1  '/></g>
 	</g>
 	<g id="gnuplot_plot_7" ><title>gnuplot_plot_7</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(255, 127,   0)'  d='M467.5,662.4 L467.5,54.1  '/></g>
+	<path stroke='rgb(255, 127,   0)'  d='M260.4,662.4 L260.4,54.1  '/></g>
 	</g>
 	<g id="gnuplot_plot_8" ><title>gnuplot_plot_8</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
-</g>
+	<path stroke='rgb(227,  26,  28)'  d='M135.3,662.4 L135.3,54.1  '/></g>
 	</g>
 	<g id="gnuplot_plot_9" ><title>gnuplot_plot_9</title>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
-	<path stroke='rgb(227,  26,  28)'  d='M598.3,662.4 L598.3,54.1  '/></g>
+	<path stroke='rgb(227,  26,  28)'  d='M294.5,662.4 L294.5,54.1  '/></g>
 	</g>
 <g fill="none" color="black" stroke="currentColor" stroke-width="2.00" stroke-linecap="butt" stroke-linejoin="miter">
 </g>

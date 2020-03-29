@@ -6,30 +6,6 @@ use std::{
   ptr::{self, NonNull},
 };
 
-/// Mark a managed entity as visited
-fn mark<T: Manage>(managed: Managed<T>) {
-  if managed.obj().mark() {
-    return;
-  }
-
-  #[cfg(feature = "debug_gc")]
-  {
-    println!("{:p} mark {}", &*managed.obj(), managed.debug());
-  }
-}
-
-/// Mark a dynamic managed entity as visited
-fn mark_dyn(managed: Managed<dyn Manage>) {
-  if managed.obj().mark() {
-    return;
-  }
-
-  #[cfg(feature = "debug_gc")]
-  {
-    println!("{:p} mark {}", &*managed.obj(), managed.debug());
-  }
-}
-
 /// An entity that is traceable by the garbage collector
 pub trait Trace {
   /// Mark all objects that are reachable from this object
@@ -136,7 +112,11 @@ impl<T: 'static + Manage> Trace for Managed<T> {
       return true;
     }
 
-    mark(*self);
+    #[cfg(feature = "debug_gc")]
+    {
+      println!("{:p} mark {}", &*managed.obj(), managed.debug());
+    }
+
     self.obj().data.trace();
     true
   }
@@ -162,7 +142,11 @@ impl Trace for Managed<dyn Manage> {
       return true;
     }
 
-    mark_dyn(*self);
+    #[cfg(feature = "debug_gc")]
+    {
+      println!("{:p} mark {}", &*managed.obj(), managed.debug());
+    }
+
     self.obj().data.trace();
     true
   }
