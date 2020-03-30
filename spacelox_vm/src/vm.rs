@@ -117,39 +117,43 @@ fn define_globals<'a>(
 
 struct VmExecutor<'a> {
   /// A stack of call frames for the current execution
-  pub frames: &'a mut Vec<CallFrame>,
-
-  /// The current frame depth of the program
-  pub frame_count: usize,
+  frames: &'a mut Vec<CallFrame>,
 
   /// A stack holding all local variable currently in use
-  pub stack: &'a mut Vec<Value>,
+  stack: &'a mut Vec<Value>,
 
-  /// The current fun
-  current_fun: Managed<Fun>,
-
-  /// A reference to a object currently in the vm
-  gc: &'a mut Gc,
-
-  /// the main script level function
-  script: Value,
+  /// global variable present in the vm
+  globals: &'a mut FnvHashMap<Managed<String>, Value>,
 
   /// class init string
   special_strings: &'a SpecialStrings,
 
-  /// index to the top of the value stack
-  pub stack_top: usize,
-
-  /// global variable present in the vm
-  pub globals: &'a mut FnvHashMap<Managed<String>, Value>,
+  /// A reference to a object currently in the vm
+  gc: &'a mut Gc,
 
   /// A collection of currently available upvalues
-  pub open_upvalues: Vec<Managed<Upvalue>>,
+  open_upvalues: Vec<Managed<Upvalue>>,
+
+  /// the main script level function
+  script: Value,
+
+  /// The current frame's function
+  current_fun: Managed<Fun>,
+
+  /// The current frame's closure
+  current_closure: Managed<Closure>,
+
+  /// index to the top of the value stack
+  stack_top: usize,
+
+  /// The current frame depth of the program
+  frame_count: usize,
 }
 
 impl<'a> VmExecutor<'a> {
   pub fn new(vm: &'a mut Vm, script: Value) -> VmExecutor<'a> {
     let current_fun = vm.gc.manage(Fun::default(), &NO_GC);
+    let current_closure = vm.gc.manage(Closure::new(current_fun), &NO_GC);
 
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
@@ -157,6 +161,7 @@ impl<'a> VmExecutor<'a> {
       stack: &mut vm.stack,
       script,
       current_fun,
+      current_closure,
       gc: &mut vm.gc,
       special_strings: &vm.special_strings,
       stack_top: 1,
@@ -416,7 +421,8 @@ impl<'a> VmExecutor<'a> {
     frame.ip = 0;
     frame.slots = self.stack_top - (arg_count as usize + 1);
 
-    self.current_fun = current_closure.fun;
+    self.current_closure = current_closure;
+    self.current_fun = self.current_closure.fun;
     self.frame_count += 1;
     Ok(0)
   }
@@ -595,7 +601,7 @@ impl<'a> VmExecutor<'a> {
   fn op_set_upvalue(&mut self, ip: usize) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let value = self.peek(0);
-    let upvalue = &mut self.current_mut_frame().closure.upvalues[slot as usize];
+    let upvalue = &mut self.current_closure.upvalues[slot as usize];
 
     let open_index = match &mut *upvalue.to_upvalue() {
       Upvalue::Open(index) => Some(*index),
@@ -679,7 +685,8 @@ impl<'a> VmExecutor<'a> {
 
     self.stack_top = self.frames[self.frame_count].slots;
     let return_ip = Ok(self.current_frame().ip);
-    self.current_fun = self.current_frame().closure.fun;
+    self.current_closure = self.current_frame().closure;
+    self.current_fun = self.current_closure.fun;
     self.push(result);
 
     return_ip
@@ -808,8 +815,8 @@ impl<'a> VmExecutor<'a> {
           closure.upvalues.push(self.capture_upvalue(total_index));
         }
         UpvalueIndex::Upvalue(upvalue) => {
-          let upvalue = &self.current_frame().closure.upvalues[upvalue as usize];
-          closure.upvalues.push(*upvalue);
+          let upvalue = self.current_closure.upvalues[upvalue as usize];
+          closure.upvalues.push(upvalue);
         }
       }
 
