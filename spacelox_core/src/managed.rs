@@ -112,9 +112,9 @@ impl<T: 'static + Manage> Trace for Managed<T> {
       return true;
     }
 
-    #[cfg(feature = "debug_gc")]
+    #[cfg(feature = "debug")]
     {
-      println!("{:p} mark {}", &*managed.obj(), managed.debug());
+      println!("{:p} mark {}", &*self.obj(), self.debug());
     }
 
     self.obj().data.trace();

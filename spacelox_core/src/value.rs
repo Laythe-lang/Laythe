@@ -20,7 +20,7 @@ pub enum Value {
   Closure(Managed<Closure>),
   Class(Managed<Class>),
   Instance(Managed<Instance>),
-  Method(Managed<BoundMethod>),
+  Method(Managed<Method>),
   Native(Managed<Rc<dyn NativeFun>>),
   Upvalue(Managed<Upvalue>),
 }
@@ -733,27 +733,27 @@ impl Manage for Instance {
 }
 
 #[derive(PartialEq, Clone)]
-pub struct BoundMethod {
+pub struct Method {
   pub receiver: Value,
   pub method: Managed<Closure>,
 }
 
-impl BoundMethod {
+impl Method {
   pub fn new(receiver: Value, method: Managed<Closure>) -> Self {
     Self { receiver, method }
   }
 }
 
-impl fmt::Debug for BoundMethod {
+impl fmt::Debug for Method {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_struct("BoundMethod")
-      .field("receiver", &self.receiver)
+      .field("receiver", &format!("{}", self.receiver))
       .field("method", &self.method)
       .finish()
   }
 }
 
-impl Trace for BoundMethod {
+impl Trace for Method {
   fn trace(&self) -> bool {
     self.receiver.trace();
     self.method.trace();
@@ -761,7 +761,7 @@ impl Trace for BoundMethod {
   }
 }
 
-impl Manage for BoundMethod {
+impl Manage for Method {
   fn alloc_type(&self) -> &str {
     "method"
   }

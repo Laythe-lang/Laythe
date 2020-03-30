@@ -6,7 +6,7 @@ use spacelox_core::chunk::{decode_u16, ByteCode, UpvalueIndex};
 use spacelox_core::managed::{Managed, Trace};
 use spacelox_core::native::{NativeFun, NativeResult};
 use spacelox_core::{
-  value::{BoundMethod, Class, Closure, Fun, Instance, Upvalue, Value},
+  value::{Method, Class, Closure, Fun, Instance, Upvalue, Value},
 };
 use std::io::{stdin, stdout, Write};
 use std::mem;
@@ -423,7 +423,7 @@ impl<'a> VmExecutor<'a> {
 
   fn call_method(
     &mut self,
-    bound: Managed<BoundMethod>,
+    bound: Managed<Method>,
     arg_count: u8,
     ip: usize,
   ) -> InterpretResult {
@@ -441,7 +441,7 @@ impl<'a> VmExecutor<'a> {
       Some(method) => {
         let bound = self
           .gc
-          .manage(BoundMethod::new(self.peek(0), *method), self);
+          .manage(Method::new(self.peek(0), *method), self);
         self.pop();
         self.push(Value::Method(bound));
         Ok(ip)
