@@ -4,15 +4,10 @@ version = "0.1.0"
 authors = ["John Chabot <johnchabot2013@gmail.com>"]
 edition = "2018"
 
-[features]
-debug = []
-debug_upvalue = []
-debug_gc = []
-
 [[bin]]
 name = "spacelox"
 path = "src/main.rs"
 
 [dependencies]
-spacelox_core = { path = "../spacelox_core" }
-spacelox_vm = { path = "../spacelox_vm" }#, features = ["debug", "debug_upvalue", "debug_gc"] }
+spacelox_core = { path = "../spacelox_core" } #, features = ["debug"] }
+spacelox_vm = { path = "../spacelox_vm" } #, features = ["debug", "debug_upvalue", "debug_gc", "debug_stress_gc"] }

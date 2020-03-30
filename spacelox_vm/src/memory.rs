@@ -5,10 +5,12 @@ use std::fmt;
 use std::ptr::NonNull;
 
 pub struct Gc {
+  nursery_heap: RefCell<Vec<Box<Allocation<dyn Manage>>>>,
   heap: RefCell<Vec<Box<Allocation<dyn Manage>>>>,
   bytes_allocated: Cell<usize>,
   intern_cache: RefCell<HashMap<&'static str, Managed<String>>>,
   next_gc: Cell<usize>,
+  gc_count: Cell<u128>,
 }
 
 const GC_HEAP_GROW_FACTOR: usize = 2;
@@ -24,10 +26,12 @@ impl<'a> Gc {
   /// ```
   pub fn new() -> Self {
     Gc {
-      heap: RefCell::new(Vec::with_capacity(100)),
+      nursery_heap: RefCell::new(Vec::with_capacity(1000)),
+      heap: RefCell::new(Vec::with_capacity(0)),
       bytes_allocated: Cell::new(0),
       intern_cache: RefCell::new(HashMap::new()),
       next_gc: Cell::new(1024 * 1024),
+      gc_count: Cell::new(0),
     }
   }
 
@@ -129,7 +133,7 @@ impl<'a> Gc {
     let allocated = self
       .bytes_allocated
       .replace(self.bytes_allocated.get() + size);
-    self.heap.borrow_mut().push(alloc);
+    self.nursery_heap.borrow_mut().push(alloc);
 
     let managed = Managed::from(ptr);
 
@@ -143,14 +147,7 @@ impl<'a> Gc {
     }
 
     #[cfg(feature = "debug_gc")]
-    {
-      println!(
-        "{:p} allocate {} for {}",
-        ptr.as_ptr(),
-        size,
-        unsafe { ptr.as_ref() }.debug()
-      );
-    }
+    self.debug_allocate(ptr, size);
 
     managed
   }
@@ -159,6 +156,8 @@ impl<'a> Gc {
   /// to mark a set of initial roots into the vm.
   fn collect_garbage<T: 'static + Manage, C: Trace>(&self, context: &C, last: Managed<T>) {
     let mut _before = self.bytes_allocated.get();
+    self.gc_count.set(self.gc_count.get() + 1);
+
     #[cfg(feature = "debug_gc")]
     {
       println!("-- gc begin");
@@ -194,23 +193,67 @@ impl<'a> Gc {
   /// Remove unmarked objects from the heap. This calculates the remaining
   /// memory present in the heap
   fn sweep(&self) -> usize {
-    let mut remaining: usize = 0;
+    if self.gc_count.get() % 10 == 0 {
+      self.sweep_full()
+    } else {
+      self.sweep_nursery()
+    }
+  }
 
-    self.heap.borrow_mut().retain(|obj| {
-      let retain = (**obj).unmark();
+  /// Remove unmarked objects from the nursery heap. Promoting surviving objects
+  /// to the normal heap
+  fn sweep_nursery(&self) -> usize {
+    let mut remaining: usize = 0;
+    let mut heap = self.heap.borrow_mut();
+
+    self.nursery_heap.borrow_mut().drain(..).for_each(|obj| {
+      let retain = (*obj).marked();
+
+      #[cfg(feature = "debug_gc")]
+      self.debug_free(&obj, !retain);
+
+      if retain {
+        heap.push(obj);
+      }
+    });
+
+    heap.iter().for_each(|obj| {
+      (*obj).unmark();
+      remaining = remaining + obj.size();
+    });
+
+    remaining
+  }
+
+  /// Remove unmarked objects from the both heaps. Promoting surviving objects
+  /// to the normal heap
+  fn sweep_full(&self) -> usize {
+    let mut remaining: usize = 0;
+    let mut heap = self.heap.borrow_mut();
+
+    self.nursery_heap.borrow_mut().drain(..).for_each(|obj| {
+      let retain = (*obj).marked();
+
+      #[cfg(feature = "debug_gc")]
+      self.debug_free(&obj, !retain);
+
+      if retain {
+        heap.push(obj);
+      }
+    });
+
+    heap.retain(|obj| {
+      let retain = (*obj).unmark();
+
+      #[cfg(feature = "debug_gc")]
+      self.debug_free(&obj, !retain);
 
       if retain {
         remaining = remaining + obj.size();
+        return true
       }
 
-      #[cfg(feature = "debug_gc")]
-      {
-        if !retain {
-          println!("{:p} free {}", &**obj, (**obj).debug());
-        }
-      }
-
-      retain
+      false
     });
 
     remaining
@@ -223,18 +266,44 @@ impl<'a> Gc {
       let retain = string.obj().marked();
 
       #[cfg(feature = "debug_gc")]
-      {
-        if !retain {
-          println!(
-            "{:p} remove string from cache {}",
-            &**string,
-            (*string).debug()
-          );
-        }
-      }
+      self.debug_string_remove(string, !retain);
 
       retain
     });
+  }
+
+  /// Debug logging for allocating an object.
+  #[cfg(feature = "debug_gc")]
+  fn debug_allocate<T: 'static + Manage>(&self, ptr: NonNull<Allocation<T>>, size: usize) {
+    #[cfg(feature = "debug_gc")]
+    {
+      println!(
+        "{:p} allocate {} for {}",
+        ptr.as_ptr(),
+        size,
+        unsafe { ptr.as_ref() }.debug()
+      );
+    }
+  }
+
+  /// Debug logging for removing a string from the cache.
+  #[cfg(feature = "debug_gc")]
+  fn debug_string_remove(&self, string: Managed<String>, free: bool) {
+    if free {
+      println!(
+        "{:p} remove string from cache {}",
+        &**string,
+        (*string).debug()
+      );
+    }
+  }
+
+  /// Debug logging for free an object.
+  #[cfg(feature = "debug_gc")]
+  fn debug_free(&self, obj: &Box<Allocation<dyn Manage>>, free: bool) {
+    if free {
+      println!("{:p} free {}", &**obj, (**obj).debug());
+    }
   }
 }
 
