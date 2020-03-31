@@ -1,6 +1,6 @@
 use crate::value::Value;
-use std::mem;
 use std::cmp;
+use std::mem;
 
 /// Space Lox virtual machine byte codes
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -510,7 +510,7 @@ impl Chunk {
   /// chunk.write_instruction(AlignedByteCode::Divide, 0);
   /// chunk.write_instruction(AlignedByteCode::Return, 2);
   /// chunk.write_instruction(AlignedByteCode::Constant(2), 3);
-  /// 
+  ///
   /// assert_eq!(chunk.get_line(1), 0);
   /// assert_eq!(chunk.get_line(2), 0);
   /// assert_eq!(chunk.get_line(3), 2);
@@ -597,7 +597,7 @@ mod test {
 
           let (decoded1, offset1) = AlignedByteCode::decode(&buffer, 0);
           let (decoded2, offset2) = AlignedByteCode::decode(&buffer, offset1);
-  
+
           println!("expected {:?} decoded {:?}", byte_code1, decoded1);
           println!("expected {:?} decoded {:?}", byte_code2, decoded2);
 

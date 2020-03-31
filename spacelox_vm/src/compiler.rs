@@ -1309,7 +1309,9 @@ pub struct ClassCompiler {
 
 impl Trace for ClassCompiler {
   fn trace(&self) -> bool {
-    do_if_some(self.enclosing, |enclosing| { enclosing.trace(); });
+    do_if_some(self.enclosing, |enclosing| {
+      enclosing.trace();
+    });
     true
   }
 }
@@ -1540,7 +1542,7 @@ mod test {
         AlignedByteCode::Closure(closure) => {
           decoded.push(byte_code);
           offset = decode_byte_code_closure(fun, &mut decoded, new_offset, closure)
-        },
+        }
         _ => {
           decoded.push(byte_code);
           offset = new_offset;
@@ -1551,11 +1553,16 @@ mod test {
     decoded
   }
 
-  fn decode_byte_code_closure(fun: Managed<Fun>, decoded: &mut Vec<AlignedByteCode>, offset: usize, slot: u8) -> usize {
+  fn decode_byte_code_closure(
+    fun: Managed<Fun>,
+    decoded: &mut Vec<AlignedByteCode>,
+    offset: usize,
+    slot: u8,
+  ) -> usize {
     let inner_fun = fun.chunk.constants[slot as usize].to_fun();
     let mut current_offset = offset;
 
-    let instructions = &fun.chunk.instructions;    
+    let instructions = &fun.chunk.instructions;
     for _ in 0..inner_fun.upvalue_count {
       let scalar = decode_u16(instructions[offset], instructions[offset + 1]);
 

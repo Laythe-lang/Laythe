@@ -2,16 +2,14 @@ use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, CompilerResult, Parser};
 use crate::constants::{define_special_string, SpecialStrings, FRAME_MAX};
 use crate::memory::{Gc, NO_GC};
+use fnv::FnvHashMap;
 use spacelox_core::chunk::{decode_u16, ByteCode, UpvalueIndex};
 use spacelox_core::managed::{Managed, Trace};
 use spacelox_core::native::{NativeFun, NativeResult};
-use spacelox_core::{
-  value::{Method, Class, Closure, Fun, Instance, Upvalue, Value},
-};
+use spacelox_core::value::{Class, Closure, Fun, Instance, Method, Upvalue, Value};
 use std::io::{stdin, stdout, Write};
 use std::mem;
 use std::rc::Rc;
-use fnv::FnvHashMap;
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
@@ -313,7 +311,6 @@ impl<'a> VmExecutor<'a> {
     Ok(ip + 1)
   }
 
-
   fn read_constant<'b>(&self, index: u8) -> Value {
     self.current_fun.chunk.constants[index as usize]
   }
@@ -427,12 +424,7 @@ impl<'a> VmExecutor<'a> {
     Ok(0)
   }
 
-  fn call_method(
-    &mut self,
-    bound: Managed<Method>,
-    arg_count: u8,
-    ip: usize,
-  ) -> InterpretResult {
+  fn call_method(&mut self, bound: Managed<Method>, arg_count: u8, ip: usize) -> InterpretResult {
     self.set_val(self.stack_top - (arg_count as usize) - 1, bound.receiver);
     self.call(bound.method, arg_count, ip)
   }
@@ -445,9 +437,7 @@ impl<'a> VmExecutor<'a> {
   ) -> InterpretResult {
     match class.methods.get(&name) {
       Some(method) => {
-        let bound = self
-          .gc
-          .manage(Method::new(self.peek(0), *method), self);
+        let bound = self.gc.manage(Method::new(self.peek(0), *method), self);
         self.pop();
         self.push(Value::Method(bound));
         Ok(ip)
@@ -951,14 +941,13 @@ impl<'a> Trace for VmExecutor<'a> {
       value.trace();
     });
 
-    self.frames[0..self.frame_count]
-      .iter()
-      .for_each(|frame| { frame.closure.trace(); });
+    self.frames[0..self.frame_count].iter().for_each(|frame| {
+      frame.closure.trace();
+    });
 
-    self
-      .open_upvalues
-      .iter()
-      .for_each(|upvalue| { upvalue.trace(); });
+    self.open_upvalues.iter().for_each(|upvalue| {
+      upvalue.trace();
+    });
 
     self.globals.iter().for_each(|(key, val)| {
       key.trace();

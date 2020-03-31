@@ -4,10 +4,10 @@ use crate::{
   native::NativeFun,
   utils::do_if_some,
 };
+use fnv::FnvHashMap;
 use std::fmt;
 use std::mem;
 use std::rc::Rc;
-use fnv::FnvHashMap;
 
 /// Enum of value types in spacelox
 #[derive(Clone, Copy, Debug)]
@@ -265,7 +265,7 @@ impl Value {
       Value::Instance(instance) => instance.trace(),
       Value::Upvalue(upvalue) => upvalue.trace(),
       Value::Native(native) => native.trace(),
-      _ => true
+      _ => true,
     }
   }
 
@@ -353,7 +353,7 @@ impl PartialEq for Value {
 }
 
 impl Trace for Value {
-  fn trace(&self) -> bool { 
+  fn trace(&self) -> bool {
     match self {
       Value::String(string) => string.trace(),
       Value::Fun(fun) => fun.trace(),
@@ -363,7 +363,7 @@ impl Trace for Value {
       Value::Instance(instance) => instance.trace(),
       Value::Upvalue(upvalue) => upvalue.trace(),
       Value::Native(native) => native.trace(),
-      _ => true
+      _ => true,
     }
   }
 }
@@ -491,11 +491,9 @@ impl fmt::Debug for Fun {
 
 impl Trace for Fun {
   fn trace(&self) -> bool {
-    self
-      .chunk
-      .constants
-      .iter()
-      .for_each(|constant| { constant.trace(); });
+    self.chunk.constants.iter().for_each(|constant| {
+      constant.trace();
+    });
 
     true
   }
@@ -602,10 +600,9 @@ impl fmt::Debug for Closure {
 
 impl Trace for Closure {
   fn trace(&self) -> bool {
-    self
-      .upvalues
-      .iter()
-      .for_each(|constant| { constant.trace(); });
+    self.upvalues.iter().for_each(|constant| {
+      constant.trace();
+    });
 
     self.fun.trace();
     true
@@ -656,7 +653,9 @@ impl fmt::Debug for Class {
 impl Trace for Class {
   fn trace(&self) -> bool {
     self.name.trace();
-    do_if_some(self.init, |init| { init.trace(); });
+    do_if_some(self.init, |init| {
+      init.trace();
+    });
 
     self.methods.iter().for_each(|(key, val)| {
       key.trace();

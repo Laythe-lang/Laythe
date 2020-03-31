@@ -81,7 +81,7 @@ impl<'a> Gc {
   /// ```
   pub fn manage_str<C: Trace>(&self, string: String, context: &C) -> Managed<String> {
     if let Some(cached) = self.intern_cache.borrow_mut().get(&*string) {
-      return *cached
+      return *cached;
     }
 
     let managed = self.allocate(string, context);
@@ -250,7 +250,7 @@ impl<'a> Gc {
 
       if retain {
         remaining = remaining + obj.size();
-        return true
+        return true;
       }
 
       false
