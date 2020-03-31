@@ -2,7 +2,8 @@
 members = [
   "spacelox",
   "spacelox_core",
-  "spacelox_vm"
+  "spacelox_vm",
+  "spacelox_wasm",
 ]
 
 [profile.dev]
