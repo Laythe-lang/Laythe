@@ -1,3 +1,4 @@
+use crate::io::StdIo;
 use std::{
   cell::Cell,
   fmt,
@@ -10,6 +11,8 @@ use std::{
 pub trait Trace {
   /// Mark all objects that are reachable from this object
   fn trace(&self) -> bool;
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool;
 }
 
 /// An entity that can be managed and collected by the garbage collector.
@@ -18,8 +21,13 @@ pub trait Manage: Trace {
   /// What allocation type is
   fn alloc_type(&self) -> &str;
 
-  /// What allocation type is
+  /// A debugging string for this managed object. Typically just wrapping
+  /// wrapping fmt::Debug so we can have dyn Manage
   fn debug(&self) -> String;
+
+  /// A debugging string that doesn't use any other `Manage` objects.
+  /// This is to avoid issues where the child object has already been freed
+  fn debug_free(&self) -> String;
 
   /// What is the size of this allocation
   fn size(&self) -> usize;
@@ -78,6 +86,10 @@ impl<T: 'static + Manage + ?Sized> Allocation<T> {
   pub fn debug(&self) -> String {
     self.data.debug()
   }
+
+  pub fn debug_free(&self) -> String {
+    self.data.debug_free()
+  }
 }
 
 pub struct Managed<T: 'static + Manage + ?Sized> {
@@ -112,12 +124,18 @@ impl<T: 'static + Manage> Trace for Managed<T> {
       return true;
     }
 
-    #[cfg(feature = "debug")]
-    {
-      println!("{:p} mark {}", &*self.obj(), self.debug());
+    self.obj().data.trace();
+    true
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    if self.obj().mark() {
+      return true;
     }
 
-    self.obj().data.trace();
+    stdio.println(&format!("{:p} mark {}", &*self.obj(), self.debug()));
+
+    self.obj().data.trace_debug(stdio);
     true
   }
 }
@@ -131,6 +149,10 @@ impl<T: 'static + Manage> Manage for Managed<T> {
     self.obj().data.debug()
   }
 
+  fn debug_free(&self) -> String {
+    self.obj().data.debug_free()
+  }
+
   fn size(&self) -> usize {
     self.obj().size()
   }
@@ -142,12 +164,18 @@ impl Trace for Managed<dyn Manage> {
       return true;
     }
 
-    #[cfg(feature = "debug_gc")]
-    {
-      println!("{:p} mark {}", &*managed.obj(), managed.debug());
+    self.obj().data.trace();
+    true
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    if self.obj().mark() {
+      return true;
     }
 
-    self.obj().data.trace();
+    stdio.println(&format!("{:p} mark {}", &*self.obj(), self.debug()));
+
+    self.obj().data.trace_debug(stdio);
     true
   }
 }
@@ -159,6 +187,10 @@ impl Manage for Managed<dyn Manage> {
 
   fn debug(&self) -> String {
     self.obj().data.debug()
+  }
+
+  fn debug_free(&self) -> String {
+    self.obj().data.debug_free()
   }
 
   fn size(&self) -> usize {

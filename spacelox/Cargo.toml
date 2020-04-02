@@ -9,5 +9,11 @@ name = "spacelox"
 path = "src/main.rs"
 
 [dependencies]
-spacelox_core = { path = "../spacelox_core" } #, features = ["debug"] }
-spacelox_vm = { path = "../spacelox_vm" } #, features = ["debug", "debug_upvalue", "debug_gc", "debug_stress_gc"] }
+spacelox_core = { path = "../spacelox_core" }
+spacelox_vm = { path = "../spacelox_vm" }
+
+# spacelox_vm features
+# debug
+# debug_upvalues
+# debug_stress_gc
+# debug_gc

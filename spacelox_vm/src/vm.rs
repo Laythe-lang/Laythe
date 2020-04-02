@@ -1,13 +1,14 @@
 use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, CompilerResult, Parser};
+use crate::constants::DEFAULT_STACK_MAX;
 use crate::constants::{define_special_string, SpecialStrings, FRAME_MAX};
 use crate::memory::{Gc, NO_GC};
 use fnv::FnvHashMap;
 use spacelox_core::chunk::{decode_u16, ByteCode, UpvalueIndex};
+use spacelox_core::io::{Io, NativeIo, StdIo};
 use spacelox_core::managed::{Managed, Trace};
-use spacelox_core::native::{NativeFun, NativeResult};
+use spacelox_core::native::{create_natives, NativeFun, NativeResult};
 use spacelox_core::value::{Class, Closure, Fun, Instance, Method, Upvalue, Value};
-use std::io::{stdin, stdout, Write};
 use std::mem;
 use std::rc::Rc;
 
@@ -23,8 +24,31 @@ pub enum Interpret {
   RuntimeError,
 }
 
+pub fn default_native_vm() -> Vm<NativeIo> {
+  let io = NativeIo::new();
+  Vm::new(io)
+}
+
+/// A set of dependencies needed by the virtual machine
+pub struct VmDependencies<I: Io> {
+  /// access to the environments io
+  io: I,
+
+  /// The garbage collector
+  gc: Gc<I::StdIo>,
+
+  /// The value stack
+  stack: Vec<Value>,
+
+  /// The callframe stack
+  frames: Vec<CallFrame>,
+
+  /// The native functions
+  natives: Vec<Rc<dyn NativeFun>>,
+}
+
 /// The virtual machine for the spacelox programming language
-pub struct Vm {
+pub struct Vm<I: Io> {
   /// A stack holding all local variable currently in use
   stack: Vec<Value>,
 
@@ -32,7 +56,10 @@ pub struct Vm {
   frames: Vec<CallFrame>,
 
   /// The vm's garbage collector
-  gc: Gc,
+  gc: Gc<I::StdIo>,
+
+  /// The environments io access
+  io: I,
 
   /// special strings to the vm that aren't keywords
   special_strings: SpecialStrings,
@@ -41,13 +68,23 @@ pub struct Vm {
   globals: FnvHashMap<Managed<String>, Value>,
 }
 
-impl Vm {
-  pub fn new(stack: Vec<Value>, frames: Vec<CallFrame>, natives: &[Rc<dyn NativeFun>]) -> Vm {
-    let mut gc = Gc::new();
+impl<I: Io> Vm<I> {
+  pub fn new(io: I) -> Vm<I> {
+    let fun = Fun::default();
+    let mut gc = Gc::new(io.stdio().clone());
+
+    let managed_fun = gc.manage(fun, &NO_GC);
+    let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
+
+    let frames = vec![CallFrame::new(closure); FRAME_MAX];
+    let stack = vec![Value::Nil; DEFAULT_STACK_MAX];
+    let natives = create_natives();
+
     let special_strings = define_special_string();
     let globals = define_globals(&mut gc, &natives);
 
     Vm {
+      io,
       stack,
       frames,
       gc,
@@ -57,13 +94,14 @@ impl Vm {
   }
 
   pub fn repl(&mut self) {
+    let stdio = self.io.stdio();
     loop {
       let mut buffer = String::new();
 
-      print!("> ");
-      stdout().flush().expect("Could not write to stdout");
+      stdio.print("> ");
+      stdio.flush().expect("Could not write to stdout");
 
-      match stdin().read_line(&mut buffer) {
+      match stdio.read_line(&mut buffer) {
         Ok(_) => {
           self.interpret(&buffer);
         }
@@ -77,9 +115,14 @@ impl Vm {
   }
 
   fn compile(&mut self, source: &str) -> CompilerResult {
-    let mut parser = Parser::new(source);
+    let mut parser = Parser::new(self.io.stdio(), source);
 
-    let compiler = Compiler::new(&mut parser, None, &mut self.special_strings, &mut self.gc);
+    let compiler = Compiler::new(
+      self.io.stdio(),
+      &mut parser,
+      &mut self.special_strings,
+      &mut self.gc,
+    );
     compiler.compile()
   }
 
@@ -97,8 +140,25 @@ impl Vm {
   }
 }
 
-fn define_globals<'a>(
-  gc: &mut Gc,
+impl<I: Io> From<VmDependencies<I>> for Vm<I> {
+  fn from(dependencies: VmDependencies<I>) -> Self {
+    let mut gc = dependencies.gc;
+    let special_strings = define_special_string();
+    let globals = define_globals(&mut gc, &dependencies.natives);
+
+    Vm {
+      io: dependencies.io,
+      stack: dependencies.stack,
+      frames: dependencies.frames,
+      gc,
+      special_strings,
+      globals,
+    }
+  }
+}
+
+fn define_globals<'a, S: StdIo>(
+  gc: &mut Gc<S>,
   natives: &[Rc<dyn NativeFun>],
 ) -> FnvHashMap<Managed<String>, Value> {
   let mut globals = FnvHashMap::with_capacity_and_hasher(natives.len(), Default::default());
@@ -113,7 +173,7 @@ fn define_globals<'a>(
   globals
 }
 
-struct VmExecutor<'a> {
+struct VmExecutor<'a, I: Io> {
   /// A stack of call frames for the current execution
   frames: &'a mut Vec<CallFrame>,
 
@@ -127,7 +187,10 @@ struct VmExecutor<'a> {
   special_strings: &'a SpecialStrings,
 
   /// A reference to a object currently in the vm
-  gc: &'a mut Gc,
+  gc: &'a mut Gc<I::StdIo>,
+
+  /// The environments io access
+  io: &'a I,
 
   /// A collection of currently available upvalues
   open_upvalues: Vec<Managed<Upvalue>>,
@@ -148,8 +211,8 @@ struct VmExecutor<'a> {
   frame_count: usize,
 }
 
-impl<'a> VmExecutor<'a> {
-  pub fn new(vm: &'a mut Vm, script: Value) -> VmExecutor<'a> {
+impl<'a, I: Io> VmExecutor<'a, I> {
+  pub fn new(vm: &'a mut Vm<I>, script: Value) -> VmExecutor<'a, I> {
     let current_fun = vm.gc.manage(Fun::default(), &NO_GC);
     let current_closure = vm.gc.manage(Closure::new(current_fun), &NO_GC);
 
@@ -161,6 +224,7 @@ impl<'a> VmExecutor<'a> {
       current_fun,
       current_closure,
       gc: &mut vm.gc,
+      io: &mut vm.io,
       special_strings: &vm.special_strings,
       stack_top: 1,
       globals: &mut vm.globals,
@@ -866,7 +930,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn op_print(&mut self, ip: usize) -> InterpretResult {
-    println!("{}", self.pop());
+    self.io.stdio().println(&format!("{}", self.pop()));
     Ok(ip + 1)
   }
 
@@ -879,31 +943,32 @@ impl<'a> VmExecutor<'a> {
 
   #[cfg(feature = "debug")]
   fn print_debug(&self, ip: usize, last_ip: usize) {
-    print!("Stack:        ");
-    // print!("          ");
+    let stdio = self.io.stdio();
+    stdio.print("Stack:        ");
+
     for i in 1..self.stack_top {
-      print!("[ {} ]", self.get_val(i));
+      stdio.print(&format!("[ {} ]", self.get_val(i)));
     }
-    println!();
+    stdio.println("");
 
     #[cfg(feature = "debug_upvalue")]
     {
-      print!("Open UpVal:   ");
+      stdio.print("Open UpVal:   ");
       self
         .open_upvalues
         .iter()
         .for_each(|upvalue| match &**upvalue {
           Upvalue::Open(index) => {
-            print!("[ stack {} ]", self.get_val(*index));
+            stdio.print(&format!("[ stack {} ]", self.get_val(*index)));
           }
           Upvalue::Closed(closed) => {
-            print!("[ heap {} ]", closed);
+            stdio.print(&format!("[ heap {} ]", closed));
           }
         });
-      println!();
+      stdio.println("");
     }
 
-    disassemble_instruction(&self.current_fun.chunk, ip, last_ip);
+    disassemble_instruction(&stdio, &self.current_fun.chunk, ip, last_ip);
   }
 
   /// Report a known spacelox runtime error to the user
@@ -914,8 +979,9 @@ impl<'a> VmExecutor<'a> {
 
   /// Print an error message and the current call stack to the user
   fn error(&mut self, message: &str) {
-    eprintln!("{}", message);
-    eprintln!("");
+    let stdio = self.io.stdio();
+    stdio.eprintln(&format!("{}", message));
+    stdio.eprintln(&format!(""));
 
     for frame in self.frames[0..self.frame_count].iter().rev() {
       let closure = &frame.closure;
@@ -924,18 +990,18 @@ impl<'a> VmExecutor<'a> {
         None => "script".to_string(),
       };
 
-      eprintln!(
+      stdio.eprintln(&format!(
         "[line {}] in {}",
         closure.fun.chunk.get_line(frame.ip),
         location
-      );
+      ));
     }
 
     self.reset_stack();
   }
 }
 
-impl<'a> Trace for VmExecutor<'a> {
+impl<'a, I: Io> Trace for VmExecutor<'a, I> {
   fn trace(&self) -> bool {
     self.stack[0..self.stack_top].iter().for_each(|value| {
       value.trace();
@@ -952,6 +1018,27 @@ impl<'a> Trace for VmExecutor<'a> {
     self.globals.iter().for_each(|(key, val)| {
       key.trace();
       val.trace();
+    });
+
+    true
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.stack[0..self.stack_top].iter().for_each(|value| {
+      value.trace_debug(stdio);
+    });
+
+    self.frames[0..self.frame_count].iter().for_each(|frame| {
+      frame.closure.trace_debug(stdio);
+    });
+
+    self.open_upvalues.iter().for_each(|upvalue| {
+      upvalue.trace_debug(stdio);
+    });
+
+    self.globals.iter().for_each(|(key, val)| {
+      key.trace_debug(stdio);
+      val.trace_debug(stdio);
     });
 
     true

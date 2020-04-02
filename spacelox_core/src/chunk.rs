@@ -598,9 +598,6 @@ mod test {
           let (decoded1, offset1) = AlignedByteCode::decode(&buffer, 0);
           let (decoded2, offset2) = AlignedByteCode::decode(&buffer, offset1);
 
-          println!("expected {:?} decoded {:?}", byte_code1, decoded1);
-          println!("expected {:?} decoded {:?}", byte_code2, decoded2);
-
           assert_eq!(offset1, *size1);
           assert_eq!(offset2, *size2 + offset1);
 

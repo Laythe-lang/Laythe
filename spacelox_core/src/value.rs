@@ -1,4 +1,5 @@
 use crate::chunk::Chunk;
+use crate::io::StdIo;
 use crate::{
   managed::{Manage, Managed, Trace},
   native::NativeFun,
@@ -366,6 +367,20 @@ impl Trace for Value {
       _ => true,
     }
   }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    match self {
+      Value::String(string) => string.trace_debug(stdio),
+      Value::Fun(fun) => fun.trace_debug(stdio),
+      Value::Closure(closure) => closure.trace_debug(stdio),
+      Value::Method(method) => method.trace_debug(stdio),
+      Value::Class(class) => class.trace_debug(stdio),
+      Value::Instance(instance) => instance.trace_debug(stdio),
+      Value::Upvalue(upvalue) => upvalue.trace_debug(stdio),
+      Value::Native(native) => native.trace_debug(stdio),
+      _ => true,
+    }
+  }
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -428,6 +443,13 @@ impl Trace for Upvalue {
       _ => true,
     }
   }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    match self {
+      Upvalue::Closed(upvalue) => upvalue.trace_debug(stdio),
+      _ => true,
+    }
+  }
 }
 
 impl Manage for Upvalue {
@@ -437,6 +459,13 @@ impl Manage for Upvalue {
 
   fn debug(&self) -> String {
     format!("{:?}", self)
+  }
+
+  fn debug_free(&self) -> String {
+    match self {
+      Self::Open(_) => format!("{:?}", self),
+      Self::Closed(_) => format!("Upvalue::Closed({{ ... }})"),
+    }
   }
 
   fn size(&self) -> usize {
@@ -497,6 +526,14 @@ impl Trace for Fun {
 
     true
   }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.chunk.constants.iter().for_each(|constant| {
+      constant.trace_debug(stdio);
+    });
+
+    true
+  }
 }
 
 impl Manage for Fun {
@@ -508,6 +545,10 @@ impl Manage for Fun {
     format!("{:?}", self)
   }
 
+  fn debug_free(&self) -> String {
+    format!("{:?}", self)
+  }
+
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }
@@ -515,6 +556,10 @@ impl Manage for Fun {
 
 impl Trace for String {
   fn trace(&self) -> bool {
+    true
+  }
+
+  fn trace_debug(&self, _: &dyn StdIo) -> bool {
     true
   }
 }
@@ -528,13 +573,21 @@ impl Manage for String {
     format!("{:?}", self)
   }
 
+  fn debug_free(&self) -> String {
+    format!("{:?}", self)
+  }
+
   fn size(&self) -> usize {
-    mem::size_of_val(self)
+    mem::size_of_val(self) + self.capacity()
   }
 }
 
 impl Trace for Rc<dyn NativeFun> {
   fn trace(&self) -> bool {
+    true
+  }
+
+  fn trace_debug(&self, _: &dyn StdIo) -> bool {
     true
   }
 }
@@ -545,6 +598,10 @@ impl Manage for Rc<dyn NativeFun> {
   }
 
   fn debug(&self) -> String {
+    format!("{:?}", self)
+  }
+
+  fn debug_free(&self) -> String {
     format!("{:?}", self)
   }
 
@@ -600,11 +657,20 @@ impl fmt::Debug for Closure {
 
 impl Trace for Closure {
   fn trace(&self) -> bool {
-    self.upvalues.iter().for_each(|constant| {
-      constant.trace();
+    self.upvalues.iter().for_each(|upvalue| {
+      upvalue.trace();
     });
 
     self.fun.trace();
+    true
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.upvalues.iter().for_each(|upvalue| {
+      upvalue.trace_debug(stdio);
+    });
+
+    self.fun.trace_debug(stdio);
     true
   }
 }
@@ -616,6 +682,10 @@ impl Manage for Closure {
 
   fn debug(&self) -> String {
     format!("{:?}", self)
+  }
+
+  fn debug_free(&self) -> String {
+    format!("Closure: {{ fun: {{ ... }}, upvalues: {{ ... }} }}")
   }
 
   fn size(&self) -> usize {
@@ -664,6 +734,20 @@ impl Trace for Class {
 
     true
   }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.name.trace_debug(stdio);
+    do_if_some(self.init, |init| {
+      init.trace_debug(stdio);
+    });
+
+    self.methods.iter().for_each(|(key, val)| {
+      key.trace_debug(stdio);
+      val.trace_debug(stdio);
+    });
+
+    true
+  }
 }
 
 impl Manage for Class {
@@ -673,6 +757,10 @@ impl Manage for Class {
 
   fn debug(&self) -> String {
     format!("{:?}", self)
+  }
+
+  fn debug_free(&self) -> String {
+    format!("Class: {{ init: {{...}}, name: {{...}}, methods: {{...}}}}")
   }
 
   fn size(&self) -> usize {
@@ -715,6 +803,17 @@ impl Trace for Instance {
 
     true
   }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.class.trace_debug(stdio);
+
+    self.fields.iter().for_each(|(key, val)| {
+      key.trace_debug(stdio);
+      val.trace_debug(stdio);
+    });
+
+    true
+  }
 }
 
 impl Manage for Instance {
@@ -724,6 +823,10 @@ impl Manage for Instance {
 
   fn debug(&self) -> String {
     format!("{:?}", self)
+  }
+
+  fn debug_free(&self) -> String {
+    format!("Instance: {{ class: {{...}}, fields: {{...}} }}")
   }
 
   fn size(&self) -> usize {
@@ -758,6 +861,12 @@ impl Trace for Method {
     self.method.trace();
     true
   }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.receiver.trace_debug(stdio);
+    self.method.trace_debug(stdio);
+    true
+  }
 }
 
 impl Manage for Method {
@@ -767,6 +876,10 @@ impl Manage for Method {
 
   fn debug(&self) -> String {
     format!("{:?}", self)
+  }
+
+  fn debug_free(&self) -> String {
+    format!("Method: {{ method: {{...}}, receiver: {{...}}}}")
   }
 
   fn size(&self) -> usize {

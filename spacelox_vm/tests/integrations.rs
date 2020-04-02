@@ -1,27 +1,7 @@
-use spacelox_core::managed::Managed;
-use spacelox_core::native::create_natives;
-use spacelox_core::value::{Closure, Fun, Value};
-use spacelox_vm::constants::{DEFAULT_STACK_MAX, FRAME_MAX};
-use spacelox_vm::memory::{Gc, NO_GC};
-use spacelox_vm::{
-  call_frame::CallFrame,
-  vm::{Interpret, Vm},
-};
+use spacelox_vm::vm::{default_native_vm, Interpret};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
-
-fn create_stack<'a>() -> Vec<Value> {
-  vec![Value::Nil; DEFAULT_STACK_MAX]
-}
-
-fn create_frames<'a>(fun: Managed<Closure>) -> Vec<CallFrame> {
-  vec![CallFrame::new(fun); FRAME_MAX]
-}
-
-fn create_vm<'a>(closure: Managed<Closure>) -> Vm {
-  Vm::new(create_stack(), create_frames(closure), &create_natives())
-}
 
 fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
   let test_path = Path::new(FILE_PATH);
@@ -34,14 +14,8 @@ fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
 }
 
 fn test_files(paths: &[&str], result: Interpret) -> Result<(), std::io::Error> {
-  let fun = Fun::default();
-  let gc = Gc::new();
-
-  let managed_fun = gc.manage(fun, &NO_GC);
-  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
-
   for path in paths {
-    let mut vm = create_vm(closure.clone());
+    let mut vm = default_native_vm();
 
     let assert = fixture_path(path).expect("No parent directory");
     let debug_path = assert.to_str().map(|s| s.to_string());
@@ -59,23 +33,13 @@ const FILE_PATH: &str = file!();
 
 #[test]
 fn build() {
-  let fun = Fun::default();
-  let gc = Gc::new();
-
-  let managed_fun = gc.manage(fun, &NO_GC);
-  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
-  create_vm(closure);
+  default_native_vm();
   assert!(true);
 }
 
 #[test]
 fn clock() -> Result<(), std::io::Error> {
-  let fun = Fun::default();
-  let gc = Gc::new();
-
-  let managed_fun = gc.manage(fun, &NO_GC);
-  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
-  let mut vm = create_vm(closure.clone());
+  let mut vm = default_native_vm();
 
   let assert = fixture_path("native/clock.lox").expect("No parent directory");
 
@@ -89,12 +53,7 @@ fn clock() -> Result<(), std::io::Error> {
 
 #[test]
 fn assert() -> Result<(), std::io::Error> {
-  let fun = Fun::default();
-  let gc = Gc::new();
-
-  let managed_fun = gc.manage(fun, &NO_GC);
-  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
-  let mut vm = create_vm(closure.clone());
+  let mut vm = default_native_vm();
 
   let assert = fixture_path("native/assert.lox").expect("No parent directory");
 
@@ -108,13 +67,7 @@ fn assert() -> Result<(), std::io::Error> {
 
 #[test]
 fn assert_eq() -> Result<(), std::io::Error> {
-  let fun = Fun::default();
-  let gc = Gc::new();
-
-  let managed_fun = gc.manage(fun, &NO_GC);
-  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
-  let mut vm = create_vm(closure.clone());
-
+  let mut vm = default_native_vm();
   let assert = fixture_path("native/assert_eq.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
@@ -127,13 +80,7 @@ fn assert_eq() -> Result<(), std::io::Error> {
 
 #[test]
 fn assert_ne() -> Result<(), std::io::Error> {
-  let fun = Fun::default();
-  let gc = Gc::new();
-
-  let managed_fun = gc.manage(fun, &NO_GC);
-  let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
-  let mut vm = create_vm(closure.clone());
-
+  let mut vm = default_native_vm();
   let assert = fixture_path("native/assert_ne.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
@@ -595,10 +542,7 @@ fn print() -> Result<(), std::io::Error> {
 #[test]
 fn regression() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "regression/40.lox",
-      // "regression/394.lox"
-    ],
+    &vec!["regression/40.lox", "regression/394.lox"],
     Interpret::Ok,
   )
 }
@@ -621,18 +565,6 @@ fn return_test() -> Result<(), std::io::Error> {
 
   test_files(&vec![], Interpret::RuntimeError)
 }
-
-// #[test]
-// fn scanning() -> Result<(), std::io::Error> {
-//   test_files(&vec![
-//   ], Interpret::Ok)?;
-
-//   test_files(&vec![
-//   ], Interpret::CompileError)?;
-
-//   test_files(&vec![
-//   ], Interpret::RuntimeError)
-// }
 
 #[test]
 fn string() -> Result<(), std::io::Error> {

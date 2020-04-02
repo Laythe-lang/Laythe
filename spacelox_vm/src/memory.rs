@@ -1,31 +1,52 @@
+use spacelox_core::io::StdIo;
 use spacelox_core::managed::{Allocation, Manage, Managed, Trace};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt;
 use std::ptr::NonNull;
 
-pub struct Gc {
+/// The garbage collector and memory manager for spacelox. Currently this is implemented a very crude
+/// generation mark and sweep collector. As of now the key areas for improvements are better allocation
+/// strategy and better tuning of the interaction between the nursery and regular heap
+pub struct Gc<S: StdIo> {
+  /// Standard io in the given environment
+  #[allow(dead_code)]
+  stdio: S,
+
+  /// The nursery heap for new objects initially allocated into this gc
   nursery_heap: RefCell<Vec<Box<Allocation<dyn Manage>>>>,
+
+  /// The regular heap where objects that have survived a gc reside
   heap: RefCell<Vec<Box<Allocation<dyn Manage>>>>,
+
+  /// The total byte allocated in both heaps
   bytes_allocated: Cell<usize>,
+
+  /// The intern string cache
   intern_cache: RefCell<HashMap<&'static str, Managed<String>>>,
+
+  /// The size in bytes of the gc before the next collection
   next_gc: Cell<usize>,
+
+  /// The total number of garbage collections that have occured
   gc_count: Cell<u128>,
 }
 
 const GC_HEAP_GROW_FACTOR: usize = 2;
 
-impl<'a> Gc {
+impl<'a, S: StdIo> Gc<S> {
   /// Create a new manged heap for spacelox for objects.
   ///
   /// # Examples
   /// ```
   /// use spacelox_vm::memory::Gc;
+  /// use spacelox_core::io::NativeStdIo;
   ///
-  /// let gc = Gc::new();
+  /// let gc = Gc::new(NativeStdIo::new());
   /// ```
-  pub fn new() -> Self {
+  pub fn new(stdio: S) -> Self {
     Gc {
+      stdio,
       nursery_heap: RefCell::new(Vec::with_capacity(1000)),
       heap: RefCell::new(Vec::with_capacity(0)),
       bytes_allocated: Cell::new(0),
@@ -45,8 +66,9 @@ impl<'a> Gc {
   /// use spacelox_core::value::{Value, Fun};
   /// use spacelox_core::chunk::Chunk;
   /// use spacelox_core::managed::Managed;
+  /// use spacelox_core::io::NativeStdIo;
   ///
-  /// let gc = Gc::new();
+  /// let gc = Gc::new(NativeStdIo::new());
   /// let fun = Fun {
   ///   arity: 3,
   ///   upvalue_count: 0,
@@ -72,9 +94,10 @@ impl<'a> Gc {
   /// use spacelox_vm::memory::{Gc, NO_GC};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::managed::Managed;
+  /// use spacelox_core::io::NativeStdIo;
   /// use std::ptr;
   ///
-  /// let gc = Gc::new();
+  /// let gc = Gc::new(NativeStdIo::new());
   /// let str = gc.manage_str("hi!".to_string(), &NO_GC);
   ///
   /// assert_eq!(&*str, "hi!");
@@ -99,9 +122,10 @@ impl<'a> Gc {
   /// use spacelox_vm::memory::{Gc, NO_GC};
   /// use spacelox_core::value::{Value, Upvalue};
   /// use spacelox_core::managed::Managed;
+  /// use spacelox_core::io::NativeStdIo;
   /// use std::ptr;
   ///
-  /// let gc = Gc::new();
+  /// let gc = Gc::new(NativeStdIo::new());
   /// let up1 = gc.manage(Upvalue::Open(0), &NO_GC);
   /// let up2 = gc.clone_managed(up1, &NO_GC);
   ///
@@ -159,12 +183,10 @@ impl<'a> Gc {
     self.gc_count.set(self.gc_count.get() + 1);
 
     #[cfg(feature = "debug_gc")]
-    {
-      println!("-- gc begin");
-    }
+    self.stdio.println("-- gc begin");
 
-    if context.trace() {
-      last.trace();
+    if self.trace(context) {
+      self.trace(&last);
 
       self.sweep_string_cache();
       let remaining = self.sweep();
@@ -179,15 +201,23 @@ impl<'a> Gc {
     #[cfg(feature = "debug_gc")]
     {
       let now = self.bytes_allocated.get();
-      println!("-- gc end");
-      println!(
+      self.stdio.println("-- gc end");
+      self.stdio.println(&format!(
         "   collected {} bytes (from {} to {}) next at {}",
         _before - now,
         _before,
         now,
         self.next_gc.get()
-      );
+      ));
     }
+  }
+
+  fn trace<T: Trace>(&self, entity: &T) -> bool {
+    #[cfg(not(feature = "debug_gc"))]
+    return entity.trace();
+
+    #[cfg(feature = "debug_gc")]
+    return entity.trace_debug(&self.stdio);
   }
 
   /// Remove unmarked objects from the heap. This calculates the remaining
@@ -277,12 +307,12 @@ impl<'a> Gc {
   fn debug_allocate<T: 'static + Manage>(&self, ptr: NonNull<Allocation<T>>, size: usize) {
     #[cfg(feature = "debug_gc")]
     {
-      println!(
+      self.stdio.println(&format!(
         "{:p} allocate {} for {}",
         ptr.as_ptr(),
         size,
         unsafe { ptr.as_ref() }.debug()
-      );
+      ));
     }
   }
 
@@ -290,11 +320,11 @@ impl<'a> Gc {
   #[cfg(feature = "debug_gc")]
   fn debug_string_remove(&self, string: Managed<String>, free: bool) {
     if free {
-      println!(
+      self.stdio.println(&format!(
         "{:p} remove string from cache {}",
         &**string,
-        (*string).debug()
-      );
+        (*string).debug(),
+      ));
     }
   }
 
@@ -302,7 +332,9 @@ impl<'a> Gc {
   #[cfg(feature = "debug_gc")]
   fn debug_free(&self, obj: &Box<Allocation<dyn Manage>>, free: bool) {
     if free {
-      println!("{:p} free {}", &**obj, (**obj).debug());
+      self
+        .stdio
+        .println(&format!("{:p} free {}", &**obj, (**obj).debug_free()));
     }
   }
 }
@@ -317,6 +349,10 @@ impl fmt::Display for NoGc {
 
 impl Trace for NoGc {
   fn trace(&self) -> bool {
+    false
+  }
+
+  fn trace_debug(&self, _: &dyn StdIo) -> bool {
     false
   }
 }

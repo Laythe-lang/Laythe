@@ -14,6 +14,7 @@
           "--no-run",
           "--lib",
           "--package=spacelox_core"
+          "--test-threads=1",
         ],
         "filter": {
           "name": "spacelox_core",
@@ -33,14 +34,14 @@
           "test",
           "--no-run",
           "--lib",
-          "--package=spacelox_vm"
+          "--package=spacelox_vm",
         ],
         "filter": {
           "name": "spacelox_vm",
           "kind": "lib"
         }
       },
-      "args": [],
+      "args": ["--test-threads=1"],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm"
     },
@@ -79,7 +80,7 @@
         }
       },
       "args": [
-        "benchmark/fib.lox"
+        "benchmark/binary_trees.lox"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",
