@@ -1,6 +1,6 @@
-use crate::constants::SpecialStrings;
 use crate::memory::{Gc, NO_GC};
 use crate::scanner::Scanner;
+use crate::constants::{INIT, LIST, THIS, SUPER};
 use spacelox_core::chunk::{encode_u16, AlignedByteCode, Chunk, UpvalueIndex};
 use spacelox_core::io::StdIo;
 use spacelox_core::managed::{Manage, Managed, Trace};
@@ -52,9 +52,6 @@ pub struct Compiler<'a, 's, S: StdIo + Clone> {
   /// expecting / consuming tokens
   parser: &'a mut Parser<'s, S>,
 
-  /// The special strings in the spacelox context
-  special_strings: &'a SpecialStrings,
-
   /// The current class class compiler
   current_class: Option<Managed<ClassCompiler>>,
 
@@ -86,7 +83,6 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
   /// use spacelox_vm::memory::Gc;
-  /// use spacelox_vm::constants::define_special_string;
   /// use spacelox_core::io::NativeStdIo;
   ///
   /// // an expression
@@ -96,14 +92,12 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// let mut stdio1 = NativeStdIo::new();
   /// let mut stdio2 = NativeStdIo::new();
   /// let mut parser = Parser::new(stdio1, &source);
-  /// let strings = define_special_string();
   ///
-  /// let compiler = Compiler::new(stdio2, &mut parser, &strings, &mut gc);
+  /// let compiler = Compiler::new(stdio2, &mut parser, &mut gc);
   /// ```
   pub fn new(
     stdio: S,
     parser: &'a mut Parser<'s, S>,
-    special_strings: &'a SpecialStrings,
     gc: &'a mut Gc<S>,
   ) -> Self {
     let fun = gc.manage(
@@ -119,7 +113,6 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
     let mut compiler = Self {
       fun,
       current_class: None,
-      special_strings,
       fun_kind: FunKind::Script,
       gc,
       stdio,
@@ -147,7 +140,6 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
     let mut child = Self {
       fun: unsafe { (*enclosing).fun },
       fun_kind: fun_kind.clone(),
-      special_strings: unsafe { (*enclosing).special_strings },
       current_class: unsafe { (*enclosing).current_class },
       gc: unsafe { (*enclosing).gc },
       stdio: unsafe { (*enclosing).stdio.clone() },
@@ -188,7 +180,6 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
   /// use spacelox_vm::memory::Gc;
-  /// use spacelox_vm::constants::define_special_string;
   /// use spacelox_core::io::NativeStdIo;
   ///
   /// // an expression
@@ -196,9 +187,8 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   ///
   /// let mut gc = Gc::new(NativeStdIo::new());
   /// let mut parser = Parser::new(NativeStdIo::new(), &source);
-  /// let strings = define_special_string();
   ///
-  /// let compiler = Compiler::new(NativeStdIo::new(), &mut parser, &strings, &mut gc);
+  /// let compiler = Compiler::new(NativeStdIo::new(), &mut parser, &mut gc);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
@@ -425,7 +415,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
       .consume(TokenKind::Identifier, "Expect method name.");
     let constant = self.identifer_constant(self.parser.previous.clone());
 
-    let fun_kind = if self.special_strings.init.as_str() == &self.parser.previous.lexeme {
+    let fun_kind = if INIT == &self.parser.previous.lexeme {
       FunKind::Initializer
     } else {
       FunKind::Method
@@ -697,11 +687,23 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
 
   /// Compile a call invocation
   fn call(&mut self) {
-    let arg_count = self.argument_list();
+    let arg_count = self.argument_list(TokenKind::RightParen);
     self.emit_byte(AlignedByteCode::Call(arg_count));
   }
 
-  ///
+  /// Compile a call invocation
+  fn list(&mut self) {
+    let arg_count = self.argument_list(TokenKind::RightParen);
+    let list = self.identifer_constant(Token {
+      lexeme: LIST.to_string(),
+      kind: TokenKind::Identifier,
+      line: self.parser.previous.line,
+    },);
+    self.emit_byte(AlignedByteCode::GetGlobal(list));
+    self.emit_byte(AlignedByteCode::Call(arg_count));
+  }
+
+  /// Compile an dot operator
   fn dot(&mut self, can_assign: bool) {
     self
       .parser
@@ -712,7 +714,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
       self.expression();
       self.emit_byte(AlignedByteCode::SetProperty(name));
     } else if self.parser.match_kind(TokenKind::LeftParen) {
-      let arg_count = self.argument_list();
+      let arg_count = self.argument_list(TokenKind::RightParen);
       self.emit_byte(AlignedByteCode::Invoke((name, arg_count)));
     } else {
       self.emit_byte(AlignedByteCode::GetProperty(name));
@@ -856,10 +858,10 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   }
 
   /// Parse a list of argument to a function
-  fn argument_list(&mut self) -> u8 {
+  fn argument_list(&mut self, stop_token: TokenKind) -> u8 {
     let mut arg_count: u8 = 0;
 
-    if !self.parser.check(TokenKind::RightParen) {
+    if !self.parser.check(stop_token) {
       loop {
         self.expression();
 
@@ -879,7 +881,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
 
     self
       .parser
-      .consume(TokenKind::RightParen, "Expect ')' after argument");
+      .consume(stop_token, "Expect ')' after argument");
     arg_count
   }
 
@@ -937,7 +939,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
 
     self.named_variable(
       Token {
-        lexeme: "this".to_string(),
+        lexeme: THIS.to_string(),
         kind: TokenKind::This,
         line: self.parser.previous.line,
       },
@@ -945,10 +947,10 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
     );
 
     if self.parser.match_kind(TokenKind::LeftParen) {
-      let arg_count = self.argument_list();
+      let arg_count = self.argument_list(TokenKind::RightParen);
       self.named_variable(
         Token {
-          lexeme: "super".to_string(),
+          lexeme: SUPER.to_string(),
           kind: TokenKind::Super,
           line: self.parser.previous.line,
         },
@@ -1111,6 +1113,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
       Act::And => self.and(),
       Act::Binary => self.binary(),
       Act::Call => self.call(),
+      Act::List => self.list(),
       Act::Dot => self.dot(can_assign),
       Act::Grouping => self.grouping(),
       Act::Literal => self.literal(),
@@ -1218,7 +1221,7 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 40] = [
+const RULES_TABLE: [ParseRule; 42] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
@@ -1227,6 +1230,10 @@ const RULES_TABLE: [ParseRule; 40] = [
   // TOKEN_LEFT_BRACE
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RIGHT_BRACE
+  ParseRule::new(Some(Act::List), None, Precedence::None),
+  // TOKEN_LEFT_BRACKET
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_RIGHT_BRACKET
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_COMMA
   ParseRule::new(None, Some(Act::Dot), Precedence::Call),
@@ -1517,6 +1524,7 @@ enum Act {
   And,
   Binary,
   Call,
+  List,
   Dot,
   Grouping,
   Literal,
@@ -1532,7 +1540,6 @@ enum Act {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::constants::define_special_string;
   use crate::debug::disassemble_chunk;
   use spacelox_core::chunk::decode_u16;
   use spacelox_core::io::NativeStdIo;
@@ -1545,9 +1552,7 @@ mod test {
   fn test_compile<'a>(src: String, gc: &mut Gc<NativeStdIo>) -> Managed<Fun> {
     let mut parser = Parser::new(NativeStdIo::new(), &src);
 
-    let special_strings = define_special_string();
-
-    let compiler = Compiler::new(NativeStdIo::new(), &mut parser, &special_strings, gc);
+    let compiler = Compiler::new(NativeStdIo::new(), &mut parser, gc);
     let result = compiler.compile();
     assert_eq!(result.success, true);
 

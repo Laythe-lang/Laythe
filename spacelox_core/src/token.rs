@@ -12,7 +12,7 @@ pub struct Token {
 }
 
 /// Token kinds in the space lox language
-#[derive(Debug, PartialEq, Eq, Hash, Clone)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
 pub enum TokenKind {
   LeftParen,
   RightParen,
@@ -26,6 +26,7 @@ pub enum TokenKind {
   Slash,
   Star,
 
+  // logical operators
   Bang,
   BangEqual,
   Equal,
@@ -35,10 +36,12 @@ pub enum TokenKind {
   Less,
   LessEqual,
 
+  // sequences
   Identifier,
   String,
   Number,
 
+  // keywords
   And,
   Class,
   Else,
@@ -56,6 +59,7 @@ pub enum TokenKind {
   Var,
   While,
 
+  // meta
   Error,
   Eof,
 }

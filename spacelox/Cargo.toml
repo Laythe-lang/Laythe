@@ -14,6 +14,6 @@ spacelox_vm = { path = "../spacelox_vm" }
 
 # spacelox_vm features
 # debug
-# debug_upvalues
+# debug_upvalue
 # debug_stress_gc
 # debug_gc

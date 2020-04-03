@@ -1,7 +1,7 @@
 use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, CompilerResult, Parser};
-use crate::constants::DEFAULT_STACK_MAX;
-use crate::constants::{define_special_string, SpecialStrings, FRAME_MAX};
+use crate::constants::{DEFAULT_STACK_MAX, INIT};
+use crate::constants::{FRAME_MAX};
 use crate::memory::{Gc, NO_GC};
 use fnv::FnvHashMap;
 use spacelox_core::chunk::{decode_u16, ByteCode, UpvalueIndex};
@@ -61,9 +61,6 @@ pub struct Vm<I: Io> {
   /// The environments io access
   io: I,
 
-  /// special strings to the vm that aren't keywords
-  special_strings: SpecialStrings,
-
   /// A persisted set of globals most for a repl context
   globals: FnvHashMap<Managed<String>, Value>,
 }
@@ -80,7 +77,6 @@ impl<I: Io> Vm<I> {
     let stack = vec![Value::Nil; DEFAULT_STACK_MAX];
     let natives = create_natives();
 
-    let special_strings = define_special_string();
     let globals = define_globals(&mut gc, &natives);
 
     Vm {
@@ -88,7 +84,6 @@ impl<I: Io> Vm<I> {
       stack,
       frames,
       gc,
-      special_strings,
       globals,
     }
   }
@@ -120,7 +115,6 @@ impl<I: Io> Vm<I> {
     let compiler = Compiler::new(
       self.io.stdio(),
       &mut parser,
-      &mut self.special_strings,
       &mut self.gc,
     );
     compiler.compile()
@@ -143,7 +137,6 @@ impl<I: Io> Vm<I> {
 impl<I: Io> From<VmDependencies<I>> for Vm<I> {
   fn from(dependencies: VmDependencies<I>) -> Self {
     let mut gc = dependencies.gc;
-    let special_strings = define_special_string();
     let globals = define_globals(&mut gc, &dependencies.natives);
 
     Vm {
@@ -151,7 +144,6 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
       stack: dependencies.stack,
       frames: dependencies.frames,
       gc,
-      special_strings,
       globals,
     }
   }
@@ -182,9 +174,6 @@ struct VmExecutor<'a, I: Io> {
 
   /// global variable present in the vm
   globals: &'a mut FnvHashMap<Managed<String>, Value>,
-
-  /// class init string
-  special_strings: &'a SpecialStrings,
 
   /// A reference to a object currently in the vm
   gc: &'a mut Gc<I::StdIo>,
@@ -225,7 +214,6 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       current_closure,
       gc: &mut vm.gc,
       io: &mut vm.io,
-      special_strings: &vm.special_strings,
       stack_top: 1,
       globals: &mut vm.globals,
       open_upvalues: Vec::with_capacity(100),
@@ -845,7 +833,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     match (self.peek(1), self.peek(0)) {
       (Value::Class(ref mut class), Value::Closure(method)) => {
-        if *name == self.special_strings.init {
+        if *name == INIT {
           class.init = Some(method);
         }
         class.methods.insert(name, method);
