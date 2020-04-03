@@ -475,7 +475,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     if self.frame_count > 0 {
       self.current_mut_frame().ip = ip;
     }
-    let current_closure = self.gc.clone_managed(closure, self);
+    let current_closure = match closure.upvalues.len() {
+      0 => closure,
+      _ => self.gc.clone_managed(closure, self)
+    };
 
     let frame = &mut self.frames[self.frame_count];
     frame.closure = current_closure;

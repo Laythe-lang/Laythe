@@ -80,7 +80,7 @@
         }
       },
       "args": [
-        "benchmark/binary_trees.lox"
+        "benchmark/fib.lox"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",

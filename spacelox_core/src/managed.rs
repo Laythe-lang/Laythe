@@ -12,6 +12,8 @@ pub trait Trace {
   /// Mark all objects that are reachable from this object
   fn trace(&self) -> bool;
 
+  /// Mark all objects that are reachable printing debugging information
+  /// for each object
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool;
 }
 
