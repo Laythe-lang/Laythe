@@ -1,7 +1,7 @@
 use crate::value::Value;
 use std::cmp;
-use std::mem;
 use std::convert::TryInto;
+use std::mem;
 
 /// Space Lox virtual machine byte codes
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -42,8 +42,11 @@ pub enum AlignedByteCode {
   /// False ByteCode
   False,
 
-  /// Create a list from literal
-  List(u32),
+  /// Create an empty lister
+  List,
+
+  /// Initialize list from literal
+  ListInit(u16),
 
   /// Pop ByteCode
   Pop,
@@ -138,7 +141,8 @@ impl AlignedByteCode {
       Self::Nil => push_op(code, ByteCode::Nil),
       Self::True => push_op(code, ByteCode::True),
       Self::False => push_op(code, ByteCode::False),
-      Self::List(slot) => push_op_u32(code, ByteCode::List, slot),
+      Self::List => push_op(code, ByteCode::List),
+      Self::ListInit(slot) => push_op_u16(code, ByteCode::ListInit, slot),
       Self::Equal => push_op(code, ByteCode::Equal),
       Self::Greater => push_op(code, ByteCode::Greater),
       Self::Less => push_op(code, ByteCode::Less),
@@ -191,7 +195,11 @@ impl AlignedByteCode {
       ByteCode::Nil => (AlignedByteCode::Nil, offset + 1),
       ByteCode::True => (AlignedByteCode::True, offset + 1),
       ByteCode::False => (AlignedByteCode::False, offset + 1),
-      ByteCode::List => (AlignedByteCode::List(decode_u32(&store[offset + 1..offset + 4])), offset + 3),
+      ByteCode::List => (AlignedByteCode::List, offset + 1),
+      ByteCode::ListInit => (
+        AlignedByteCode::ListInit(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
       ByteCode::Pop => (AlignedByteCode::Pop, offset + 1),
       ByteCode::DefineGlobal => (AlignedByteCode::DefineGlobal(store[offset + 1]), offset + 2),
       ByteCode::GetGlobal => (AlignedByteCode::GetGlobal(store[offset + 1]), offset + 2),
@@ -203,15 +211,15 @@ impl AlignedByteCode {
       ByteCode::GetProperty => (AlignedByteCode::GetProperty(store[offset + 1]), offset + 2),
       ByteCode::SetProperty => (AlignedByteCode::SetProperty(store[offset + 1]), offset + 2),
       ByteCode::JumpIfFalse => (
-        AlignedByteCode::JumpIfFalse(decode_u16(&store[offset + 1..offset + 2])),
+        AlignedByteCode::JumpIfFalse(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::Jump => (
-        AlignedByteCode::Jump(decode_u16(&store[offset + 1..offset + 2])),
+        AlignedByteCode::Jump(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::Loop => (
-        AlignedByteCode::Loop(decode_u16(&store[offset + 1..offset + 2])),
+        AlignedByteCode::Loop(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::Call => (AlignedByteCode::Call(store[offset + 1]), offset + 2),
@@ -275,8 +283,11 @@ pub enum ByteCode {
   /// False ByteCode
   False,
 
-  /// List literal
+  /// Empty list
   List,
+
+  /// Init List
+  ListInit,
 
   /// Pop ByteCode
   Pop,
@@ -578,6 +589,7 @@ mod test {
         (1, AlignedByteCode::Nil),
         (1, AlignedByteCode::True),
         (1, AlignedByteCode::False),
+        (3, AlignedByteCode::ListInit(13444)),
         (1, AlignedByteCode::Pop),
         (2, AlignedByteCode::DefineGlobal(173)),
         (2, AlignedByteCode::GetGlobal(173)),

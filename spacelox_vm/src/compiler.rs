@@ -688,14 +688,16 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Compile a index
-  fn index(&mut self) {
-
-  }
+  fn index(&mut self) {}
 
   /// Compile a call invocation
   fn list(&mut self) {
+    self.emit_byte(AlignedByteCode::List);
     let arg_count = self.list_arguments();
-    self.emit_byte(AlignedByteCode::List(arg_count));
+
+    if arg_count > 0 {
+      self.emit_byte(AlignedByteCode::ListInit(arg_count));
+    }
   }
 
   /// Compile an dot operator
@@ -854,15 +856,19 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a list of argument to a function
   fn call_arguments(&mut self) -> u8 {
-    let arg_count = self.consume_arguments(TokenKind::RightBracket, std::u32::MAX as usize);
-    self.parser.consume(TokenKind::RightBracket, "Expect ')' after arguments");
+    let arg_count = self.consume_arguments(TokenKind::RightParen, std::u8::MAX as usize);
+    self
+      .parser
+      .consume(TokenKind::RightParen, "Expect ')' after arguments");
     arg_count as u8
   }
 
-  fn list_arguments(&mut self) -> u32 {
-    let arg_count = self.consume_arguments(TokenKind::RightBracket, std::u32::MAX as usize);
-    self.parser.consume(TokenKind::RightBracket, "Expect ']' after arguments");
-    arg_count as u32
+  fn list_arguments(&mut self) -> u16 {
+    let arg_count = self.consume_arguments(TokenKind::RightBracket, std::u16::MAX as usize);
+    self
+      .parser
+      .consume(TokenKind::RightBracket, "Expect ']' after arguments");
+    arg_count as u16
   }
 
   fn consume_arguments(&mut self, stop_token: TokenKind, max: usize) -> usize {
@@ -1599,7 +1605,7 @@ mod test {
 
     let instructions = &fun.chunk.instructions;
     for _ in 0..inner_fun.upvalue_count {
-      let scalar = decode_u16(instructions[offset], instructions[offset + 1]);
+      let scalar = decode_u16(&instructions[offset..offset + 2]);
 
       let upvalue_index: UpvalueIndex = unsafe { mem::transmute(scalar) };
       decoded.push(AlignedByteCode::UpvalueIndex(upvalue_index));
@@ -1664,6 +1670,54 @@ mod test {
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Print,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn list_initializer() {
+    let example = "
+      var a = [1, 2, nil, false, \"cat\"];
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::List,
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Nil,
+        AlignedByteCode::False,
+        AlignedByteCode::Constant(3),
+        AlignedByteCode::ListInit(5),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn list_empty() {
+    let example = "
+      var a = [];
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::List,
+        AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],

@@ -409,6 +409,20 @@ fn limit() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn list() -> Result<(), std::io::Error> {
+  test_files(
+    &vec!["list/empty.lox", "list/homogenious.lox", "list/mixed.lox"],
+    Interpret::Ok,
+  )?;
+
+  test_files(&vec![
+    "list/missing_comma_in_parameters.lox"
+  ], Interpret::CompileError)?;
+
+  test_files(&vec![], Interpret::RuntimeError)
+}
+
+#[test]
 fn logical_operator() -> Result<(), std::io::Error> {
   test_files(
     &vec![

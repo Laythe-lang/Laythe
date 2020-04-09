@@ -45,6 +45,8 @@ pub fn disassemble_instruction<S: StdIo>(
     AlignedByteCode::Nil => simple_instruction(stdio, "Nil", offset),
     AlignedByteCode::True => simple_instruction(stdio, "True", offset),
     AlignedByteCode::False => simple_instruction(stdio, "False", offset),
+    AlignedByteCode::List => simple_instruction(stdio, "List", offset),
+    AlignedByteCode::ListInit(arg_count) => short_instruction(stdio, "ListInit", arg_count, offset),
     AlignedByteCode::Pop => simple_instruction(stdio, "Pop", offset),
     AlignedByteCode::Call(arg_count) => byte_instruction(stdio, "Call", arg_count, offset),
     AlignedByteCode::Invoke((constant, arg_count)) => {
@@ -152,7 +154,11 @@ fn closure_instruction(
 
   let mut current_offset = offset;
   for _ in 0..upvalue_count {
-    let upvalue_index: UpvalueIndex = unsafe { mem::transmute(decode_u16(&chunk.instructions[current_offset..current_offset + 1])) };
+    let upvalue_index: UpvalueIndex = unsafe {
+      mem::transmute(decode_u16(
+        &chunk.instructions[current_offset..current_offset + 2],
+      ))
+    };
 
     match upvalue_index {
       UpvalueIndex::Local(local) => stdio.println(&format!(
@@ -181,6 +187,12 @@ fn invoke_instruction(
 ) -> usize {
   stdio.print(&format!("{:16} ({} args) {:4} ", name, arg_count, constant));
   stdio.println(&format!("{}", &chunk.constants[constant as usize]));
+  offset
+}
+
+/// print a short instruction
+fn short_instruction(stdio: &impl StdIo, name: &str, slot: u16, offset: usize) -> usize {
+  stdio.println(&format!("{:16} {:4} ", name, slot));
   offset
 }
 

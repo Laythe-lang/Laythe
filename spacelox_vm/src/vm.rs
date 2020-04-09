@@ -11,9 +11,9 @@ use spacelox_core::native::{NativeFun, NativeMethod, NativeResult};
 use spacelox_core::value::{
   ArityKind, BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, Value,
 };
-use std::convert::TryInto;
 use spacelox_lib::assert::assert_funs;
 use spacelox_lib::{builtin::make_builtin_classes, time::clock_funs};
+use std::convert::TryInto;
 use std::mem;
 use std::ptr;
 use std::ptr::NonNull;
@@ -90,7 +90,7 @@ impl<I: Io> Vm<I> {
     natives.extend(clock_funs().into_iter());
 
     let builtin = make_builtin_classes(&gc, &NO_GC);
-    let globals = define_globals(&gc, natives, &builtin);
+    let globals = define_globals(&gc, natives);
 
     Vm {
       io,
@@ -148,7 +148,7 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
   fn from(dependencies: VmDependencies<I>) -> Self {
     let gc = dependencies.gc;
     let builtin = make_builtin_classes(&gc, &NO_GC);
-    let globals = define_globals(&gc, dependencies.natives, &builtin);
+    let globals = define_globals(&gc, dependencies.natives);
 
     Vm {
       io: dependencies.io,
@@ -161,7 +161,7 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
   }
 }
 
-fn define_globals(gc: &Gc, natives: Vec<Box<dyn NativeFun>>, builtin: &BuiltInClasses) -> FnvHashMap<Managed<String>, Value> {
+fn define_globals(gc: &Gc, natives: Vec<Box<dyn NativeFun>>) -> FnvHashMap<Managed<String>, Value> {
   let mut globals = FnvHashMap::with_capacity_and_hasher(natives.len(), Default::default());
 
   natives.into_iter().for_each(|native| {
@@ -170,15 +170,6 @@ fn define_globals(gc: &Gc, natives: Vec<Box<dyn NativeFun>>, builtin: &BuiltInCl
 
     globals.insert(name, native_value);
   });
-
-  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
-  globals.insert(builtin.nil.name, Value::Class(builtin.nil));
-  globals.insert(builtin.number.name, Value::Class(builtin.number));
-  globals.insert(builtin.string.name, Value::Class(builtin.string));
-  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
-  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
-  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
-  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
 
   globals
 }
@@ -215,7 +206,7 @@ struct VmExecutor<'a, I: Io + 'static> {
   current_frame: CallFrame,
 
   /// index to the top of the value stack
-  stack_top: u32,
+  stack_top: usize,
 
   /// The current frame depth of the program
   frame_count: usize,
@@ -289,7 +280,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::Nil => self.op_literal(ip, Value::Nil),
         ByteCode::True => self.op_literal(ip, Value::Bool(true)),
         ByteCode::False => self.op_literal(ip, Value::Bool(false)),
-        ByteCode::List => self.op_list(ip),
+        ByteCode::List => self.op_literal(ip, Value::List(self.gc.manage(Vec::new(), self))),
+        ByteCode::ListInit => self.op_list(ip),
         ByteCode::Constant => self.op_constant(ip),
         ByteCode::Print => self.op_print(ip),
         ByteCode::Call => self.op_call(ip),
@@ -327,13 +319,13 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// Get an immutable reference to value on the stack
   #[inline]
-  fn get_val(&self, index: u32) -> Value {
+  fn get_val(&self, index: usize) -> Value {
     unsafe { *self.stack.get_unchecked(index as usize) }
   }
 
   /// Set a value on the stack
   #[inline]
-  fn set_val(&mut self, index: u32, val: Value) {
+  fn set_val(&mut self, index: usize, val: Value) {
     unsafe {
       *self.stack.get_unchecked_mut(index as usize) = val;
     }
@@ -359,7 +351,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         .current_fun
         .chunk
         .instructions
-        .get_unchecked(ip as usize..ip as usize + 1)
+        .get_unchecked(ip as usize..ip as usize + 2)
     };
     let buffer = slice.try_into().expect("slice of incorrect length.");
     u16::from_ne_bytes(buffer)
@@ -394,7 +386,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// reference a value n slots from the stack head
   #[inline]
   fn peek(&self, distance: u32) -> Value {
-    self.get_val(self.stack_top - (distance + 1))
+    self.get_val(self.stack_top - (distance as usize + 1))
   }
 
   /// read a constant from the current chunk
@@ -434,6 +426,21 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(ip + 1)
   }
 
+  /// create a list from a list literal
+  fn op_list(&mut self, ip: u32) -> InterpretResult {
+    let arg_count = self.read_short(ip + 1);
+    let args = unsafe {
+      self
+        .stack
+        .get_unchecked(self.stack_top as usize - arg_count as usize..self.stack_top as usize)
+    };
+    let mut list = self.peek(arg_count as u32).to_list();
+    list.extend(args);
+    self.stack_top -= arg_count as usize;
+
+    Ok(ip + 3)
+  }
+
   /// call a function or method
   fn op_call(&mut self, ip: u32) -> InterpretResult {
     let arg_count = self.read_byte(ip + 1);
@@ -453,15 +460,19 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     match receiver {
       Value::Instance(instance) => match instance.fields.get(&method_name) {
         Some(field) => {
-          self.set_val(self.stack_top - (arg_count as u32) - 1, *field);
+          self.set_val(self.stack_top - (arg_count as usize) - 1, *field);
           self.resolve_call(*field, arg_count, ip + 3)
         }
         None => self.invoke_from_class(instance.class, method_name, arg_count, ip + 3),
       },
       Value::Bool(_) => self.invoke_from_class(self.builtin.bool, method_name, arg_count, ip + 3),
-      Value::Number(_) => self.invoke_from_class(self.builtin.number, method_name, arg_count, ip + 3),
+      Value::Number(_) => {
+        self.invoke_from_class(self.builtin.number, method_name, arg_count, ip + 3)
+      }
       Value::Nil => self.invoke_from_class(self.builtin.nil, method_name, arg_count, ip + 3),
-      Value::String(_) => self.invoke_from_class(self.builtin.string, method_name, arg_count, ip + 3),
+      Value::String(_) => {
+        self.invoke_from_class(self.builtin.string, method_name, arg_count, ip + 3)
+      }
       Value::Fun(_) => self.invoke_from_class(self.builtin.fun, method_name, arg_count, ip + 3),
       Value::Closure(closure) => {
         self.set_val(self.stack_top - 1, Value::Fun(closure.fun));
@@ -565,10 +576,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_set_local(&mut self, ip: u32) -> InterpretResult {
-    let slot = self.read_byte(ip + 1);
+    let slot = self.read_byte(ip + 1) as usize;
     let copy = self.peek(0);
-    let slots = self.current_frame.slots;
-    self.set_val(slots + slot as u32, copy);
+    let slots = self.current_frame.slots as usize;
+    self.set_val(slots + slot, copy);
 
     Ok(ip + 2)
   }
@@ -626,9 +637,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_get_local(&mut self, ip: u32) -> InterpretResult {
-    let slot = self.read_byte(ip + 1);
-    let slots = self.current_frame.slots;
-    let copy = self.get_val(slots + slot as u32);
+    let slot = self.read_byte(ip + 1) as usize;
+    let slots = self.current_frame.slots as usize;
+    let copy = self.get_val(slots + slot);
     self.push(copy);
     Ok(ip + 2)
   }
@@ -690,7 +701,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
 
     // pull the current frame out of the stack and set the cached frame
-    self.stack_top = self.frames[self.frame_count].slots;
+    self.stack_top = self.frames[self.frame_count].slots as usize;
     self.current_frame = *self.current_frame();
     self.current_fun = self.current_frame.closure.fun;
 
@@ -873,7 +884,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   fn call_class(&mut self, class: Managed<Class>, arg_count: u8, ip: u32) -> InterpretResult {
     let value = Value::Instance(self.gc.manage(Instance::new(class), self));
-    self.set_val(self.stack_top - (arg_count as u32) - 1, value);
+    self.set_val(self.stack_top - (arg_count as usize) - 1, value);
 
     match class.init {
       Some(init) => self.resolve_call(init, arg_count, ip),
@@ -904,12 +915,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let args = unsafe {
       self
         .stack
-        .get_unchecked((self.stack_top - arg_count as u32) as usize..self.stack_top as usize)
+        .get_unchecked((self.stack_top - arg_count as usize) as usize..self.stack_top as usize)
     };
 
     match native.call(&self.gc, self, args) {
       NativeResult::Success(value) => {
-        self.stack_top -= arg_count as u32 + 1;
+        self.stack_top -= arg_count as usize + 1;
         self.push(value);
         Ok(ip)
       }
@@ -934,12 +945,17 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let args = unsafe {
       self
         .stack
-        .get_unchecked((self.stack_top - arg_count as u32) as usize..self.stack_top as usize)
+        .get_unchecked((self.stack_top - arg_count as usize) as usize..self.stack_top as usize)
     };
 
-    match native.call(&self.gc, self, self.get_val(self.stack_top - arg_count as u32 - 1), args) {
+    match native.call(
+      &self.gc,
+      self,
+      self.get_val(self.stack_top - arg_count as usize - 1),
+      args,
+    ) {
       NativeResult::Success(value) => {
-        self.stack_top -= arg_count as u32 + 1;
+        self.stack_top -= arg_count as usize + 1;
         self.push(value);
         Ok(ip)
       }
@@ -949,17 +965,18 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// call a spacelox function setting it as the new call frame
   fn call(&mut self, closure: Managed<Closure>, arg_count: u8, ip: u32) -> InterpretResult {
-
     // check that the current function is called with the right number of args
-    if let Some(error) = self.check_arity(closure.fun.arity, arg_count, || closure
-      .fun
-      .name
-      .clone()
-      .unwrap_or_else(|| "script".to_string())) {
+    if let Some(error) = self.check_arity(closure.fun.arity, arg_count, || {
+      closure
+        .fun
+        .name
+        .clone()
+        .unwrap_or_else(|| "script".to_string())
+    }) {
       return error;
     }
 
-    // set the current
+    // set the current current instruction pointer. check for overflow
     match self.frame_count {
       0 => (),
       FRAME_MAX => {
@@ -971,7 +988,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let frame = &mut self.frames[self.frame_count];
     frame.closure = closure;
     frame.ip = 0;
-    frame.slots = self.stack_top - (arg_count as u32 + 1);
+    frame.slots = self.stack_top as u32 - (arg_count as u32 + 1);
 
     self.current_frame = *frame;
     self.current_fun = closure.fun;
@@ -979,16 +996,13 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(0)
   }
 
-  fn check_arity<F>(
-    &mut self,
-    arity: ArityKind,
-    arg_count: u8,
-    name: F,
-  ) -> Option<InterpretResult>
+  /// check that the number of args is valid for the function arity
+  fn check_arity<F>(&mut self, arity: ArityKind, arg_count: u8, name: F) -> Option<InterpretResult>
   where
     F: Fn() -> String,
   {
     match arity {
+      // if fixed we need exactly the correct amount
       ArityKind::Fixed(arity) => {
         if arg_count != arity {
           return Some(self.runtime_error(&format!(
@@ -999,6 +1013,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
           )));
         }
       }
+      // if variadic and ending with ... take arity +
       ArityKind::Variadic(arity) => {
         if arg_count < arity {
           return Some(self.runtime_error(&format!(
@@ -1016,7 +1031,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// Call a bound method
   fn call_method(&mut self, bound: Managed<Method>, arg_count: u8, ip: u32) -> InterpretResult {
-    self.set_val(self.stack_top - (arg_count as u32) - 1, bound.receiver);
+    self.set_val(self.stack_top - (arg_count as usize) - 1, bound.receiver);
     self.resolve_call(bound.method, arg_count, ip)
   }
 
@@ -1175,13 +1190,7 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
       val.trace();
     });
 
-    self.builtin.bool.trace();
-    self.builtin.nil.trace();
-    self.builtin.number.trace();
-    self.builtin.string.trace();
-    self.builtin.list.trace();
-    self.builtin.fun.trace();
-    self.builtin.native.trace();
+    self.builtin.trace();
 
     true
   }
@@ -1206,14 +1215,7 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
       val.trace_debug(stdio);
     });
 
-    self.builtin.bool.trace_debug(stdio);
-    self.builtin.nil.trace_debug(stdio);
-    self.builtin.number.trace_debug(stdio);
-    self.builtin.string.trace_debug(stdio);
-    self.builtin.list.trace_debug(stdio);
-    self.builtin.fun.trace_debug(stdio);
-    self.builtin.native.trace_debug(stdio);
-
+    self.builtin.trace_debug(stdio);
     true
   }
 }

@@ -10,16 +10,6 @@ use std::fmt;
 use std::mem;
 use std::ptr::NonNull;
 
-pub struct BuiltInClasses {
-  pub nil: Managed<Class>,
-  pub bool: Managed<Class>,
-  pub number: Managed<Class>,
-  pub string: Managed<Class>,
-  pub list: Managed<Class>,
-  pub fun: Managed<Class>,
-  pub native: Managed<Class>,
-}
-
 /// Enum of value types in spacelox
 #[derive(Clone, Copy, Debug)]
 pub enum Value {
@@ -400,6 +390,42 @@ impl Trace for Value {
       Value::NativeFun(native) => native.trace_debug(stdio),
       _ => true,
     }
+  }
+}
+
+pub struct BuiltInClasses {
+  pub nil: Managed<Class>,
+  pub bool: Managed<Class>,
+  pub number: Managed<Class>,
+  pub string: Managed<Class>,
+  pub list: Managed<Class>,
+  pub fun: Managed<Class>,
+  pub native: Managed<Class>,
+}
+
+impl Trace for BuiltInClasses {
+  fn trace(&self) -> bool {
+    self.bool.trace();
+    self.nil.trace();
+    self.number.trace();
+    self.string.trace();
+    self.list.trace();
+    self.fun.trace();
+    self.native.trace();
+
+    true
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.bool.trace_debug(stdio);
+    self.nil.trace_debug(stdio);
+    self.number.trace_debug(stdio);
+    self.string.trace_debug(stdio);
+    self.list.trace_debug(stdio);
+    self.fun.trace_debug(stdio);
+    self.native.trace_debug(stdio);
+
+    true
   }
 }
 #[derive(PartialEq, Clone, Debug)]
