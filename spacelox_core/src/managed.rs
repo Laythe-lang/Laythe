@@ -1,6 +1,7 @@
 use crate::io::StdIo;
 use std::{
   cell::Cell,
+  cmp::Ordering,
   fmt,
   hash::{Hash, Hasher},
   ops::{Deref, DerefMut},
@@ -109,13 +110,13 @@ impl<T: 'static + Manage + ?Sized> Managed<T> {
 }
 
 impl<T: 'static + Manage> Managed<T> {
-  pub fn clone_dyn(&self) -> Managed<dyn Manage> {
+  pub fn clone_dyn(self) -> Managed<dyn Manage> {
     Managed {
       ptr: NonNull::from(self.obj()) as NonNull<Allocation<dyn Manage>>,
     }
   }
 
-  pub fn size(&self) -> usize {
+  pub fn size(self) -> usize {
     self.obj().size()
   }
 }
@@ -236,12 +237,24 @@ impl<T: 'static + Manage> PartialEq for Managed<T> {
   }
 }
 
-impl<T: 'static + Eq + Manage> Eq for Managed<T> {}
+impl<T: 'static + Manage> Eq for Managed<T> {}
 
-impl<T: 'static + Hash + Manage> Hash for Managed<T> {
+impl<T: 'static + Manage> Hash for Managed<T> {
   fn hash<H: Hasher>(&self, state: &mut H) {
     let inner: &T = &*self;
     ptr::hash(inner, state)
+  }
+}
+
+impl<T: 'static + Manage> PartialOrd for Managed<T> {
+  fn partial_cmp(&self, other: &Managed<T>) -> Option<Ordering> {
+    Some(self.cmp(other))
+  }
+}
+
+impl<T: 'static + Manage> Ord for Managed<T> {
+  fn cmp(&self, other: &Managed<T>) -> Ordering {
+    self.ptr.cmp(&other.ptr)
   }
 }
 

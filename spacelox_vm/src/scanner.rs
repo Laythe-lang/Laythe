@@ -114,6 +114,8 @@ impl<'a> Scanner<'a> {
       ")" => self.make_token_source(TokenKind::RightParen),
       "{" => self.make_token_source(TokenKind::LeftBrace),
       "}" => self.make_token_source(TokenKind::RightBrace),
+      "[" => self.make_token_source(TokenKind::LeftBracket),
+      "]" => self.make_token_source(TokenKind::RightBracket),
       ";" => self.make_token_source(TokenKind::Semicolon),
       "," => self.make_token_source(TokenKind::Comma),
       "." => self.make_token_source(TokenKind::Dot),
@@ -414,7 +416,7 @@ fn is_digit(c: &str) -> bool {
 
 /// Is the str slice a alphabetic. Assumes single char
 fn is_alpha(c: &str) -> bool {
-  (c >= "a" && c <= "z") || (c >= "A" && c < "Z") || c == "_"
+  (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_"
 }
 
 #[cfg(test)]

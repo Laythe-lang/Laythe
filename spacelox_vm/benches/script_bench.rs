@@ -28,9 +28,12 @@ fn criterion_benchmark(c: &mut Criterion) {
   let binary_trees = load_source("binary_trees.lox");
   let equality = load_source("equality.lox");
   let fib = load_source("fib.lox");
+  let instantiation = load_source("instantiation.lox");
   let invocation = load_source("invocation.lox");
   let method_call = load_source("method_call.lox");
   let properties = load_source("properties.lox");
+  let trees = load_source("trees.lox");
+  let zoo = load_source("zoo.lox");
 
   let mut vm = default_native_vm();
 
@@ -46,11 +49,20 @@ fn criterion_benchmark(c: &mut Criterion) {
   c.bench_function("invocation", |b| {
     b.iter(|| vm.run(&invocation));
   });
+  c.bench_function("instantiation", |b| {
+    b.iter(|| vm.run(&instantiation));
+  });
   c.bench_function("method_call", |b| {
     b.iter(|| vm.run(&method_call));
   });
   c.bench_function("properties", |b| {
     b.iter(|| vm.run(&properties));
+  });
+  c.bench_function("trees", |b| {
+    b.iter(|| vm.run(&trees));
+  });
+  c.bench_function("zoo", |b| {
+    b.iter(|| vm.run(&zoo));
   });
 }
 

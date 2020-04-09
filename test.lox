@@ -1,0 +1,16 @@
+class Example {
+  method() {
+    return clock();
+  }
+}
+
+for (var i = 0; i < 100; i = i + 1) {
+  print clock();
+}
+
+var example = Example();
+for (var i = 0; i < 100; i = i + 1) {
+  print example.method();
+}
+
+

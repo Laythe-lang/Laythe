@@ -13,7 +13,7 @@
           "test",
           "--no-run",
           "--lib",
-          "--package=spacelox_core"
+          "--package=spacelox_core",
           "--test-threads=1",
         ],
         "filter": {
@@ -80,7 +80,7 @@
         }
       },
       "args": [
-        "benchmark/fib.lox"
+        "benchmark/properties.lox"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",

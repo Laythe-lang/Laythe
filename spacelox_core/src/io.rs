@@ -1,6 +1,7 @@
+use std::fmt;
 use std::io::{stdin, stdout, Result, Write};
 
-pub trait Io {
+pub trait Io: fmt::Debug + Default + Copy {
   type StdIo: StdIo + Clone;
 
   fn stdio(&self) -> Self::StdIo;
@@ -15,11 +16,12 @@ pub trait StdIo {
   fn read_line(&self, buffer: &mut String) -> Result<usize>;
 }
 
-pub struct NativeIo {}
+#[derive(Debug, Default, Clone, Copy)]
+pub struct NativeIo();
 
 impl NativeIo {
   pub fn new() -> Self {
-    Self {}
+    Self()
   }
 }
 
@@ -36,7 +38,7 @@ pub struct NativeStdIo();
 
 impl NativeStdIo {
   pub fn new() -> Self {
-    Self {}
+    Self()
   }
 }
 

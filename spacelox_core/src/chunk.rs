@@ -1,6 +1,7 @@
 use crate::value::Value;
 use std::cmp;
 use std::mem;
+use std::convert::TryInto;
 
 /// Space Lox virtual machine byte codes
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -40,6 +41,9 @@ pub enum AlignedByteCode {
 
   /// False ByteCode
   False,
+
+  /// Create a list from literal
+  List(u32),
 
   /// Pop ByteCode
   Pop,
@@ -134,6 +138,7 @@ impl AlignedByteCode {
       Self::Nil => push_op(code, ByteCode::Nil),
       Self::True => push_op(code, ByteCode::True),
       Self::False => push_op(code, ByteCode::False),
+      Self::List(slot) => push_op_u32(code, ByteCode::List, slot),
       Self::Equal => push_op(code, ByteCode::Equal),
       Self::Greater => push_op(code, ByteCode::Greater),
       Self::Less => push_op(code, ByteCode::Less),
@@ -164,9 +169,8 @@ impl AlignedByteCode {
       Self::CloseUpvalue => push_op(code, ByteCode::CloseUpvalue),
       Self::UpvalueIndex(index) => {
         let encoded: u16 = unsafe { mem::transmute(index) };
-        let (b1, b2) = encode_u16(encoded);
-        code.push(b1);
-        code.push(b2);
+        let bytes = encoded.to_ne_bytes();
+        code.extend_from_slice(&bytes);
       }
     }
   }
@@ -187,6 +191,7 @@ impl AlignedByteCode {
       ByteCode::Nil => (AlignedByteCode::Nil, offset + 1),
       ByteCode::True => (AlignedByteCode::True, offset + 1),
       ByteCode::False => (AlignedByteCode::False, offset + 1),
+      ByteCode::List => (AlignedByteCode::List(decode_u32(&store[offset + 1..offset + 4])), offset + 3),
       ByteCode::Pop => (AlignedByteCode::Pop, offset + 1),
       ByteCode::DefineGlobal => (AlignedByteCode::DefineGlobal(store[offset + 1]), offset + 2),
       ByteCode::GetGlobal => (AlignedByteCode::GetGlobal(store[offset + 1]), offset + 2),
@@ -198,15 +203,15 @@ impl AlignedByteCode {
       ByteCode::GetProperty => (AlignedByteCode::GetProperty(store[offset + 1]), offset + 2),
       ByteCode::SetProperty => (AlignedByteCode::SetProperty(store[offset + 1]), offset + 2),
       ByteCode::JumpIfFalse => (
-        AlignedByteCode::JumpIfFalse(decode_u16(store[offset + 1], store[offset + 2])),
+        AlignedByteCode::JumpIfFalse(decode_u16(&store[offset + 1..offset + 2])),
         offset + 3,
       ),
       ByteCode::Jump => (
-        AlignedByteCode::Jump(decode_u16(store[offset + 1], store[offset + 2])),
+        AlignedByteCode::Jump(decode_u16(&store[offset + 1..offset + 2])),
         offset + 3,
       ),
       ByteCode::Loop => (
-        AlignedByteCode::Loop(decode_u16(store[offset + 1], store[offset + 2])),
+        AlignedByteCode::Loop(decode_u16(&store[offset + 1..offset + 2])),
         offset + 3,
       ),
       ByteCode::Call => (AlignedByteCode::Call(store[offset + 1]), offset + 2),
@@ -269,6 +274,9 @@ pub enum ByteCode {
 
   /// False ByteCode
   False,
+
+  /// List literal
+  List,
 
   /// Pop ByteCode
   Pop,
@@ -353,17 +361,20 @@ impl ByteCode {
 }
 
 impl From<u8> for ByteCode {
+  #[inline]
   fn from(byte: u8) -> Self {
     unsafe { mem::transmute(byte) }
   }
 }
 
-pub fn encode_u16(val: u16) -> (u8, u8) {
-  (val as u8, (val >> 8) as u8)
+pub fn decode_u32(buffer: &[u8]) -> u32 {
+  let arr: [u8; 4] = buffer.try_into().expect("slice of incorrect length.");
+  u32::from_ne_bytes(arr)
 }
 
-pub fn decode_u16(b1: u8, b2: u8) -> u16 {
-  ((b2 as u16) << 8) | b1 as u16
+pub fn decode_u16(buffer: &[u8]) -> u16 {
+  let arr: [u8; 2] = buffer.try_into().expect("slice of incorrect length.");
+  u16::from_ne_bytes(arr)
 }
 
 fn push_op(code: &mut Vec<u8>, byte: ByteCode) {
@@ -382,18 +393,23 @@ fn push_op_u8_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u8, param2: u8) 
 }
 
 fn push_op_u16(code: &mut Vec<u8>, byte: ByteCode, param: u16) {
-  let (b1, b2) = encode_u16(param);
+  let param_bytes = param.to_ne_bytes();
   code.push(byte.to_byte());
-  code.push(b1);
-  code.push(b2);
+  code.extend_from_slice(&param_bytes);
 }
 
-pub fn write_op_u16(code: &mut [u8], byte: ByteCode, param: u16) {
-  let (b1, b2) = encode_u16(param);
-  code[0] = byte.to_byte();
-  code[1] = b1;
-  code[2] = b2;
+fn push_op_u32(code: &mut Vec<u8>, byte: ByteCode, param: u32) {
+  let param_bytes = param.to_ne_bytes();
+  code.push(byte.to_byte());
+  code.extend_from_slice(&param_bytes);
 }
+
+// pub fn write_op_u16(code: &mut [u8], byte: ByteCode, param: u16) {
+//   let (b1, b2) = encode_u16(param);
+//   code[0] = byte.to_byte();
+//   code[1] = b1;
+//   code[2] = b2;
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UpvalueIndex {
@@ -530,7 +546,7 @@ impl Chunk {
   pub fn get_line(&self, offset: usize) -> u32 {
     let result = self
       .lines
-      .binary_search_by_key(&(offset as u32), |line| line.offset);
+      .binary_search_by_key(&(offset), |line| line.offset as usize);
 
     match result {
       Ok(index) => self.lines[index].line,

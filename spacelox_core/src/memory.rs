@@ -1,5 +1,5 @@
-use spacelox_core::io::StdIo;
-use spacelox_core::managed::{Allocation, Manage, Managed, Trace};
+use crate::io::StdIo;
+use crate::managed::{Allocation, Manage, Managed, Trace};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::fmt;
@@ -8,10 +8,10 @@ use std::ptr::NonNull;
 /// The garbage collector and memory manager for spacelox. Currently this is implemented a very crude
 /// generation mark and sweep collector. As of now the key areas for improvements are better allocation
 /// strategy and better tuning of the interaction between the nursery and regular heap
-pub struct Gc<S: StdIo> {
-  /// Standard io in the given environment
+pub struct Gc {
+  /// Io in the given environment
   #[allow(dead_code)]
-  stdio: S,
+  stdio: Box<dyn StdIo>,
 
   /// The nursery heap for new objects initially allocated into this gc
   nursery_heap: RefCell<Vec<Box<Allocation<dyn Manage>>>>,
@@ -34,17 +34,17 @@ pub struct Gc<S: StdIo> {
 
 const GC_HEAP_GROW_FACTOR: usize = 2;
 
-impl<'a, S: StdIo> Gc<S> {
+impl<'a> Gc {
   /// Create a new manged heap for spacelox for objects.
   ///
   /// # Examples
   /// ```
-  /// use spacelox_vm::memory::Gc;
+  /// use spacelox_core::memory::Gc;
   /// use spacelox_core::io::NativeStdIo;
   ///
-  /// let gc = Gc::new(NativeStdIo::new());
+  /// let gc = Gc::new(Box::new(NativeStdIo::new()));
   /// ```
-  pub fn new(stdio: S) -> Self {
+  pub fn new(stdio: Box<dyn StdIo>) -> Self {
     Gc {
       stdio,
       nursery_heap: RefCell::new(Vec::with_capacity(1000)),
@@ -62,15 +62,15 @@ impl<'a, S: StdIo> Gc<S> {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_vm::memory::{Gc, NO_GC};
-  /// use spacelox_core::value::{Value, Fun};
+  /// use spacelox_core::memory::{Gc, NO_GC};
+  /// use spacelox_core::value::{Value, Fun, ArityKind};
   /// use spacelox_core::chunk::Chunk;
-  /// use spacelox_core::managed::Managed;
   /// use spacelox_core::io::NativeStdIo;
+  /// use spacelox_core::managed::Managed;
   ///
-  /// let gc = Gc::new(NativeStdIo::new());
-  /// let fun = Fun {
-  ///   arity: 3,
+  /// let gc = Gc::new(Box::new(NativeStdIo::new()));
+  /// let fun: Fun = Fun {
+  ///   arity: ArityKind::Fixed(3),
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default(),
   ///   name: Some("fun".to_string()),
@@ -80,7 +80,7 @@ impl<'a, S: StdIo> Gc<S> {
   ///
   /// assert_eq!(managed_fun.name, Some("fun".to_string()));
   /// ```
-  pub fn manage<T: 'static + Manage, C: Trace>(&self, data: T, context: &C) -> Managed<T> {
+  pub fn manage<T: 'static + Manage, C: Trace + ?Sized>(&self, data: T, context: &C) -> Managed<T> {
     self.allocate(data, context)
   }
 
@@ -91,18 +91,18 @@ impl<'a, S: StdIo> Gc<S> {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_vm::memory::{Gc, NO_GC};
+  /// use spacelox_core::memory::{Gc, NO_GC};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::managed::Managed;
   /// use spacelox_core::io::NativeStdIo;
   /// use std::ptr;
   ///
-  /// let gc = Gc::new(NativeStdIo::new());
+  /// let gc = Gc::new(Box::new(NativeStdIo::new()));
   /// let str = gc.manage_str("hi!".to_string(), &NO_GC);
   ///
   /// assert_eq!(&*str, "hi!");
   /// ```
-  pub fn manage_str<C: Trace>(&self, string: String, context: &C) -> Managed<String> {
+  pub fn manage_str<C: Trace + ?Sized>(&self, string: String, context: &C) -> Managed<String> {
     if let Some(cached) = self.intern_cache.borrow_mut().get(&*string) {
       return *cached;
     }
@@ -119,14 +119,16 @@ impl<'a, S: StdIo> Gc<S> {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_vm::memory::{Gc, NO_GC};
+  /// use spacelox_core::memory::{Gc, NO_GC};
   /// use spacelox_core::value::{Value, Upvalue};
   /// use spacelox_core::managed::Managed;
   /// use spacelox_core::io::NativeStdIo;
   /// use std::ptr;
   ///
-  /// let gc = Gc::new(NativeStdIo::new());
-  /// let up1 = gc.manage(Upvalue::Open(0), &NO_GC);
+  /// let gc = Gc::new(Box::new(NativeStdIo::new()));
+  /// let value = Value::Nil;
+  ///
+  /// let up1: Managed<Upvalue> = gc.manage(Upvalue::Open(ptr::NonNull::from(&value)), &NO_GC);
   /// let up2 = gc.clone_managed(up1, &NO_GC);
   ///
   /// assert!(!ptr::eq(&*up1, &*up2));
@@ -147,7 +149,7 @@ impl<'a, S: StdIo> Gc<S> {
   /// Allocate `data` on the gc's heap. If conditions are met
   /// a garbage collection can be triggered. When triggered
   /// will use the roots provided by the `context`
-  fn allocate<T: 'static + Manage, C: Trace>(&self, data: T, context: &C) -> Managed<T> {
+  fn allocate<T: 'static + Manage, C: Trace + ?Sized>(&self, data: T, context: &C) -> Managed<T> {
     // create own store of allocation
     let mut alloc = Box::new(Allocation::new(data));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
@@ -178,7 +180,7 @@ impl<'a, S: StdIo> Gc<S> {
 
   /// Collect garbage present in the heap for unreachable objects. Use the provided context
   /// to mark a set of initial roots into the vm.
-  fn collect_garbage<T: 'static + Manage, C: Trace>(&self, context: &C, last: Managed<T>) {
+  fn collect_garbage<T: 'static + Manage, C: Trace + ?Sized>(&self, context: &C, last: Managed<T>) {
     let mut _before = self.bytes_allocated.get();
     self.gc_count.set(self.gc_count.get() + 1);
 
@@ -212,7 +214,7 @@ impl<'a, S: StdIo> Gc<S> {
     }
   }
 
-  fn trace<T: Trace>(&self, entity: &T) -> bool {
+  fn trace<T: Trace + ?Sized>(&self, entity: &T) -> bool {
     #[cfg(not(feature = "debug_gc"))]
     return entity.trace();
 
@@ -249,7 +251,7 @@ impl<'a, S: StdIo> Gc<S> {
 
     heap.iter().for_each(|obj| {
       (*obj).unmark();
-      remaining = remaining + obj.size();
+      remaining += obj.size();
     });
 
     remaining
@@ -279,7 +281,7 @@ impl<'a, S: StdIo> Gc<S> {
       self.debug_free(&obj, !retain);
 
       if retain {
-        remaining = remaining + obj.size();
+        remaining += obj.size();
         return true;
       }
 
@@ -358,3 +360,18 @@ impl Trace for NoGc {
 }
 
 pub static NO_GC: NoGc = NoGc {};
+
+#[cfg(test)]
+mod test {
+  use super::*;
+  use crate::io::NativeStdIo;
+
+  #[test]
+  fn dyn_manage() {
+    let dyn_trace: Box<dyn Trace> = Box::new(NoGc());
+    let gc = Gc::new(Box::new(NativeStdIo()));
+
+    let dyn_manged_str = gc.manage(String::from("managed"), &*dyn_trace);
+    assert_eq!(*dyn_manged_str, String::from("managed"));
+  }
+}

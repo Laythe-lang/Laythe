@@ -4,7 +4,7 @@ use spacelox_core::value::Value;
 use std::mem;
 
 /// Write a chunk to console
-pub fn disassemble_chunk(stdio: &impl StdIo, code_chunk: &Chunk, name: &str) {
+pub fn disassemble_chunk<S: StdIo>(stdio: &S, code_chunk: &Chunk, name: &str) {
   stdio.println(&format!("== {0} ==", name));
 
   let mut offset: usize = 0;
@@ -18,8 +18,8 @@ pub fn disassemble_chunk(stdio: &impl StdIo, code_chunk: &Chunk, name: &str) {
 }
 
 /// Write an instruction to console
-pub fn disassemble_instruction(
-  stdio: &impl StdIo,
+pub fn disassemble_instruction<S: StdIo>(
+  stdio: &S,
   chunk: &Chunk,
   offset: usize,
   last_offset: usize,
@@ -32,7 +32,7 @@ pub fn disassemble_instruction(
     stdio.print(&format!("{:>4} ", chunk.get_line(offset)))
   }
 
-  let (instruction, offset) = AlignedByteCode::decode(&chunk.instructions, offset);
+  let (instruction, offset) = AlignedByteCode::decode(&chunk.instructions, offset as usize);
   match instruction {
     AlignedByteCode::Return => simple_instruction(stdio, "Return", offset),
     AlignedByteCode::Print => simple_instruction(stdio, "Print", offset),
@@ -83,8 +83,8 @@ pub fn disassemble_instruction(
     AlignedByteCode::SetLocal(slot) => byte_instruction(stdio, "SetLocal", slot, offset),
     AlignedByteCode::GetUpvalue(slot) => byte_instruction(stdio, "GetUpvalue", slot, offset),
     AlignedByteCode::SetUpvalue(slot) => byte_instruction(stdio, "SetUpvalue", slot, offset),
-    AlignedByteCode::SetProperty(slot) => byte_instruction(stdio, "GetProperty", slot, offset),
-    AlignedByteCode::GetProperty(slot) => byte_instruction(stdio, "SetProperty", slot, offset),
+    AlignedByteCode::SetProperty(slot) => byte_instruction(stdio, "SetProperty", slot, offset),
+    AlignedByteCode::GetProperty(slot) => byte_instruction(stdio, "GetProperty", slot, offset),
     AlignedByteCode::Jump(jump) => jump_instruction(stdio, "Jump", 1, jump, offset),
     AlignedByteCode::JumpIfFalse(jump) => jump_instruction(stdio, "JumpIfFalse", 1, jump, offset),
     AlignedByteCode::Loop(jump) => jump_instruction(stdio, "Loop", -1, jump, offset),
@@ -152,10 +152,7 @@ fn closure_instruction(
 
   let mut current_offset = offset;
   for _ in 0..upvalue_count {
-    let b1 = chunk.instructions[current_offset];
-    let b2 = chunk.instructions[current_offset + 1];
-
-    let upvalue_index: UpvalueIndex = unsafe { mem::transmute(decode_u16(b1, b2)) };
+    let upvalue_index: UpvalueIndex = unsafe { mem::transmute(decode_u16(&chunk.instructions[current_offset..current_offset + 1])) };
 
     match upvalue_index {
       UpvalueIndex::Local(local) => stdio.println(&format!(
@@ -168,7 +165,7 @@ fn closure_instruction(
       )),
     }
 
-    current_offset = current_offset + 2;
+    current_offset += 2;
   }
 
   current_offset

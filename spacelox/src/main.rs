@@ -1,3 +1,4 @@
+#![deny(clippy::all)]
 use spacelox_vm::vm::{default_native_vm, Interpret};
 use std::env;
 use std::fs::read_to_string;

@@ -1,21 +1,27 @@
 use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, CompilerResult, Parser};
+use crate::constants::FRAME_MAX;
 use crate::constants::{DEFAULT_STACK_MAX, INIT};
-use crate::constants::{FRAME_MAX};
-use crate::memory::{Gc, NO_GC};
 use fnv::FnvHashMap;
-use spacelox_core::chunk::{decode_u16, ByteCode, UpvalueIndex};
+use spacelox_core::chunk::{ByteCode, UpvalueIndex};
 use spacelox_core::io::{Io, NativeIo, StdIo};
 use spacelox_core::managed::{Managed, Trace};
-use spacelox_core::native::{create_natives, NativeFun, NativeResult};
-use spacelox_core::value::{Class, Closure, Fun, Instance, Method, Upvalue, Value};
+use spacelox_core::memory::{Gc, NO_GC};
+use spacelox_core::native::{NativeFun, NativeMethod, NativeResult};
+use spacelox_core::value::{
+  ArityKind, BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, Value,
+};
+use std::convert::TryInto;
+use spacelox_lib::assert::assert_funs;
+use spacelox_lib::{builtin::make_builtin_classes, time::clock_funs};
 use std::mem;
-use std::rc::Rc;
+use std::ptr;
+use std::ptr::NonNull;
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
 
-pub type InterpretResult = Result<usize, Interpret>;
+pub type InterpretResult = Result<u32, Interpret>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Interpret {
@@ -30,12 +36,12 @@ pub fn default_native_vm() -> Vm<NativeIo> {
 }
 
 /// A set of dependencies needed by the virtual machine
-pub struct VmDependencies<I: Io> {
+pub struct VmDependencies<I: Io + 'static> {
   /// access to the environments io
   io: I,
 
   /// The garbage collector
-  gc: Gc<I::StdIo>,
+  gc: Gc,
 
   /// The value stack
   stack: Vec<Value>,
@@ -44,19 +50,22 @@ pub struct VmDependencies<I: Io> {
   frames: Vec<CallFrame>,
 
   /// The native functions
-  natives: Vec<Rc<dyn NativeFun>>,
+  natives: Vec<Box<dyn NativeFun>>,
 }
 
 /// The virtual machine for the spacelox programming language
-pub struct Vm<I: Io> {
+pub struct Vm<I: Io + 'static> {
   /// A stack holding all local variable currently in use
   stack: Vec<Value>,
 
   /// A stack holding call frames currently in use
   frames: Vec<CallFrame>,
 
+  /// A collection of built in classes
+  builtin: BuiltInClasses,
+
   /// The vm's garbage collector
-  gc: Gc<I::StdIo>,
+  gc: Gc,
 
   /// The environments io access
   io: I,
@@ -68,21 +77,26 @@ pub struct Vm<I: Io> {
 impl<I: Io> Vm<I> {
   pub fn new(io: I) -> Vm<I> {
     let fun = Fun::default();
-    let mut gc = Gc::new(io.stdio().clone());
+    let gc = Gc::new(Box::new(io.stdio()));
 
     let managed_fun = gc.manage(fun, &NO_GC);
     let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
 
     let frames = vec![CallFrame::new(closure); FRAME_MAX];
     let stack = vec![Value::Nil; DEFAULT_STACK_MAX];
-    let natives = create_natives();
 
-    let globals = define_globals(&mut gc, &natives);
+    let mut natives = Vec::new();
+    natives.extend(assert_funs().into_iter());
+    natives.extend(clock_funs().into_iter());
+
+    let builtin = make_builtin_classes(&gc, &NO_GC);
+    let globals = define_globals(&gc, natives, &builtin);
 
     Vm {
       io,
       stack,
       frames,
+      builtin,
       gc,
       globals,
     }
@@ -112,11 +126,7 @@ impl<I: Io> Vm<I> {
   fn compile(&mut self, source: &str) -> CompilerResult {
     let mut parser = Parser::new(self.io.stdio(), source);
 
-    let compiler = Compiler::new(
-      self.io.stdio(),
-      &mut parser,
-      &mut self.gc,
-    );
+    let compiler = Compiler::new(self.io, &mut parser, &mut self.gc);
     compiler.compile()
   }
 
@@ -136,8 +146,9 @@ impl<I: Io> Vm<I> {
 
 impl<I: Io> From<VmDependencies<I>> for Vm<I> {
   fn from(dependencies: VmDependencies<I>) -> Self {
-    let mut gc = dependencies.gc;
-    let globals = define_globals(&mut gc, &dependencies.natives);
+    let gc = dependencies.gc;
+    let builtin = make_builtin_classes(&gc, &NO_GC);
+    let globals = define_globals(&gc, dependencies.natives, &builtin);
 
     Vm {
       io: dependencies.io,
@@ -145,27 +156,34 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
       frames: dependencies.frames,
       gc,
       globals,
+      builtin,
     }
   }
 }
 
-fn define_globals<'a, S: StdIo>(
-  gc: &mut Gc<S>,
-  natives: &[Rc<dyn NativeFun>],
-) -> FnvHashMap<Managed<String>, Value> {
+fn define_globals(gc: &Gc, natives: Vec<Box<dyn NativeFun>>, builtin: &BuiltInClasses) -> FnvHashMap<Managed<String>, Value> {
   let mut globals = FnvHashMap::with_capacity_and_hasher(natives.len(), Default::default());
 
-  natives.iter().for_each(|native| {
+  natives.into_iter().for_each(|native| {
     let name = gc.manage_str(native.meta().name.to_string(), &NO_GC);
-    let native_value = Value::Native(gc.manage(Rc::clone(native), &NO_GC));
+    let native_value = Value::NativeFun(gc.manage(native, &NO_GC));
 
     globals.insert(name, native_value);
   });
 
+  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
+  globals.insert(builtin.nil.name, Value::Class(builtin.nil));
+  globals.insert(builtin.number.name, Value::Class(builtin.number));
+  globals.insert(builtin.string.name, Value::Class(builtin.string));
+  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
+  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
+  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
+  globals.insert(builtin.bool.name, Value::Class(builtin.bool));
+
   globals
 }
 
-struct VmExecutor<'a, I: Io> {
+struct VmExecutor<'a, I: Io + 'static> {
   /// A stack of call frames for the current execution
   frames: &'a mut Vec<CallFrame>,
 
@@ -175,8 +193,11 @@ struct VmExecutor<'a, I: Io> {
   /// global variable present in the vm
   globals: &'a mut FnvHashMap<Managed<String>, Value>,
 
+  /// A collection of built in classes
+  builtin: &'a BuiltInClasses,
+
   /// A reference to a object currently in the vm
-  gc: &'a mut Gc<I::StdIo>,
+  gc: &'a mut Gc,
 
   /// The environments io access
   io: &'a I,
@@ -191,10 +212,10 @@ struct VmExecutor<'a, I: Io> {
   current_fun: Managed<Fun>,
 
   /// The current frame's closure
-  current_closure: Managed<Closure>,
+  current_frame: CallFrame,
 
   /// index to the top of the value stack
-  stack_top: usize,
+  stack_top: u32,
 
   /// The current frame depth of the program
   frame_count: usize,
@@ -202,8 +223,8 @@ struct VmExecutor<'a, I: Io> {
 
 impl<'a, I: Io> VmExecutor<'a, I> {
   pub fn new(vm: &'a mut Vm<I>, script: Value) -> VmExecutor<'a, I> {
-    let current_fun = vm.gc.manage(Fun::default(), &NO_GC);
-    let current_closure = vm.gc.manage(Closure::new(current_fun), &NO_GC);
+    let current_frame = vm.frames[0];
+    let current_fun = current_frame.closure.fun;
 
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
@@ -211,7 +232,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       stack: &mut vm.stack,
       script,
       current_fun,
-      current_closure,
+      current_frame,
+      builtin: &vm.builtin,
       gc: &mut vm.gc,
       io: &mut vm.io,
       stack_top: 1,
@@ -227,17 +249,17 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   pub fn run(&mut self) -> Interpret {
-    let mut ip: usize = 0;
+    let mut ip: u32 = 0;
 
     #[cfg(feature = "debug")]
-    let mut last_ip: usize = 0;
+    let mut last_ip: u32 = 0;
 
     loop {
       let op_code: ByteCode = self.frame_instruction(ip);
 
       #[cfg(feature = "debug")]
       {
-        self.print_debug(ip, last_ip);
+        self.print_debug(ip as usize, last_ip as usize);
         last_ip = ip;
       }
 
@@ -267,6 +289,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::Nil => self.op_literal(ip, Value::Nil),
         ByteCode::True => self.op_literal(ip, Value::Bool(true)),
         ByteCode::False => self.op_literal(ip, Value::Bool(false)),
+        ByteCode::List => self.op_list(ip),
         ByteCode::Constant => self.op_constant(ip),
         ByteCode::Print => self.op_print(ip),
         ByteCode::Call => self.op_call(ip),
@@ -304,34 +327,54 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// Get an immutable reference to value on the stack
   #[inline]
-  fn get_val(&self, index: usize) -> Value {
-    unsafe { *self.stack.get_unchecked(index) }
+  fn get_val(&self, index: u32) -> Value {
+    unsafe { *self.stack.get_unchecked(index as usize) }
   }
 
   /// Set a value on the stack
   #[inline]
-  fn set_val(&mut self, index: usize, val: Value) {
+  fn set_val(&mut self, index: u32, val: Value) {
     unsafe {
-      *self.stack.get_unchecked_mut(index) = val;
+      *self.stack.get_unchecked_mut(index as usize) = val;
     }
   }
 
   /// read a u8 out of the bytecode
   #[inline]
-  fn read_byte(&self, ip: usize) -> u8 {
-    unsafe { *self.current_fun.chunk.instructions.get_unchecked(ip) }
+  fn read_byte(&self, ip: u32) -> u8 {
+    unsafe {
+      *self
+        .current_fun
+        .chunk
+        .instructions
+        .get_unchecked(ip as usize)
+    }
   }
 
   /// read a u16 out of the bytecode
   #[inline]
-  fn read_short(&self, ip: usize) -> u16 {
-    decode_u16(self.read_byte(ip), self.read_byte(ip + 1))
+  fn read_short(&self, ip: u32) -> u16 {
+    let slice: &[u8] = unsafe {
+      self
+        .current_fun
+        .chunk
+        .instructions
+        .get_unchecked(ip as usize..ip as usize + 1)
+    };
+    let buffer = slice.try_into().expect("slice of incorrect length.");
+    u16::from_ne_bytes(buffer)
   }
 
   /// Get the current instruction from the present call frame
   #[inline]
-  fn frame_instruction(&self, ip: usize) -> ByteCode {
-    ByteCode::from(unsafe { *self.current_fun.chunk.instructions.get_unchecked(ip) })
+  fn frame_instruction(&self, ip: u32) -> ByteCode {
+    ByteCode::from(unsafe {
+      *self
+        .current_fun
+        .chunk
+        .instructions
+        .get_unchecked(ip as usize)
+    })
   }
 
   /// push a value onto the stack
@@ -341,187 +384,102 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.stack_top += 1;
   }
 
+  /// pop a value off the stack
   #[inline]
   fn pop(&mut self) -> Value {
     self.stack_top -= 1;
-    unsafe { *self.stack.get_unchecked(self.stack_top) }
+    unsafe { *self.stack.get_unchecked(self.stack_top as usize) }
   }
 
   /// reference a value n slots from the stack head
   #[inline]
-  fn peek(&self, distance: usize) -> Value {
+  fn peek(&self, distance: u32) -> Value {
     self.get_val(self.stack_top - (distance + 1))
   }
 
-  fn op_literal(&mut self, ip: usize, value: Value) -> InterpretResult {
-    self.push(value);
-    Ok(ip + 1)
+  /// read a constant from the current chunk
+  #[inline]
+  fn read_constant(&self, index: u8) -> Value {
+    unsafe {
+      *self
+        .current_fun
+        .chunk
+        .constants
+        .get_unchecked(index as usize)
+    }
   }
 
-  fn op_pop(&mut self, ip: usize) -> InterpretResult {
-    self.pop();
-    Ok(ip + 1)
-  }
-
-  fn read_constant<'b>(&self, index: u8) -> Value {
-    self.current_fun.chunk.constants[index as usize]
-  }
-
+  /// read a constant as a string from the current chunk
+  #[inline]
   fn read_string(&self, index: u8) -> Managed<String> {
     self.read_constant(index).to_string()
   }
 
+  /// reset the stack in case of interrupt
   fn reset_stack(&mut self) {
     self.stack_top = 1;
     self.frame_count = 0;
     self.open_upvalues.clear();
   }
 
-  fn op_call(&mut self, ip: usize) -> InterpretResult {
+  /// push a literal value onto the stack
+  fn op_literal(&mut self, ip: u32, value: Value) -> InterpretResult {
+    self.push(value);
+    Ok(ip + 1)
+  }
+
+  /// pop a value off the stack
+  fn op_pop(&mut self, ip: u32) -> InterpretResult {
+    self.pop();
+    Ok(ip + 1)
+  }
+
+  /// call a function or method
+  fn op_call(&mut self, ip: u32) -> InterpretResult {
     let arg_count = self.read_byte(ip + 1);
-    let callee = self.peek(arg_count as usize);
+    let callee = self.peek(arg_count as u32);
 
     self.resolve_call(callee, arg_count, ip + 2)
   }
 
-  fn resolve_call(&mut self, callee: Value, arg_count: u8, ip: usize) -> InterpretResult {
-    match callee {
-      Value::Closure(closure) => self.call(closure, arg_count, ip),
-      Value::Method(method) => self.call_method(method, arg_count, ip),
-      Value::Native(native) => self.call_native(native, arg_count, ip),
-      Value::Class(class) => self.call_class(class, arg_count, ip),
-      Value::Fun(fun) => panic!(
-        "function {} was not wrapped in a closure",
-        fun.name.clone().unwrap_or("script".to_string())
-      ),
-      _ => self.runtime_error("Can only call functions and classes."),
-    }
-  }
-
-  fn call_class(&mut self, class: Managed<Class>, arg_count: u8, ip: usize) -> InterpretResult {
-    let value = Value::Instance(self.gc.manage(Instance::new(class), self));
-    self.set_val(self.stack_top - (arg_count as usize) - 1, value);
-
-    match class.init {
-      Some(init) => self.call(init, arg_count, ip),
-      None => {
-        if arg_count != 0 {
-          self.runtime_error(&format!("Expected 0 arguments but got {}", arg_count))
-        } else {
-          Ok(ip)
-        }
-      }
-    }
-  }
-
-  fn call_native(
-    &mut self,
-    native: Managed<Rc<dyn NativeFun>>,
-    arg_count: u8,
-    ip: usize,
-  ) -> InterpretResult {
-    let meta = native.meta();
-    if arg_count != meta.arity {
-      return self.runtime_error(&format!(
-        "Function {} expected {} argument but got {}",
-        meta.name, meta.arity, arg_count,
-      ));
-    }
-
-    let args = unsafe {
-      self
-        .stack
-        .get_unchecked((self.stack_top - arg_count as usize)..self.stack_top)
-    };
-    let result = native.call(args);
-    match result {
-      NativeResult::Success(value) => {
-        self.stack_top -= arg_count as usize + 1;
-        self.push(value);
-        Ok(ip)
-      }
-      NativeResult::RuntimeError(message) => {
-        return self.runtime_error(&message);
-      }
-    }
-  }
-
-  fn call(&mut self, closure: Managed<Closure>, arg_count: u8, ip: usize) -> InterpretResult {
-    if (arg_count as u16) != closure.fun.arity {
-      return self.runtime_error(&format!(
-        "Function {} expected {} arguments but got {}",
-        closure.fun.name.clone().unwrap_or("script".to_string()),
-        closure.fun.arity,
-        arg_count
-      ));
-    }
-
-    if self.frame_count == FRAME_MAX {
-      return self.runtime_error("Stack overflow.");
-    }
-
-    if self.frame_count > 0 {
-      self.current_mut_frame().ip = ip;
-    }
-    let current_closure = match closure.upvalues.len() {
-      0 => closure,
-      _ => self.gc.clone_managed(closure, self)
-    };
-
-    let frame = &mut self.frames[self.frame_count];
-    frame.closure = current_closure;
-    frame.ip = 0;
-    frame.slots = self.stack_top - (arg_count as usize + 1);
-
-    self.current_closure = current_closure;
-    self.current_fun = self.current_closure.fun;
-    self.frame_count += 1;
-    Ok(0)
-  }
-
-  fn call_method(&mut self, bound: Managed<Method>, arg_count: u8, ip: usize) -> InterpretResult {
-    self.set_val(self.stack_top - (arg_count as usize) - 1, bound.receiver);
-    self.call(bound.method, arg_count, ip)
-  }
-
-  fn bind_method(
-    &mut self,
-    class: Managed<Class>,
-    name: Managed<String>,
-    ip: usize,
-  ) -> InterpretResult {
-    match class.methods.get(&name) {
-      Some(method) => {
-        let bound = self.gc.manage(Method::new(self.peek(0), *method), self);
-        self.pop();
-        self.push(Value::Method(bound));
-        Ok(ip)
-      }
-      None => self.runtime_error(&format!("Undefined property {}", name.as_str())),
-    }
-  }
-
-  fn op_invoke(&mut self, ip: usize) -> InterpretResult {
+  /// invoke a method on an instance's class
+  fn op_invoke(&mut self, ip: u32) -> InterpretResult {
     let constant = self.read_byte(ip + 1);
     let arg_count = self.read_byte(ip + 2);
 
     let method_name = self.read_string(constant);
-    let receiver = self.peek(arg_count as usize);
+    let receiver = self.peek(arg_count as u32);
 
-    if let Value::Instance(instance) = receiver {
-      match instance.fields.get(&method_name) {
+    match receiver {
+      Value::Instance(instance) => match instance.fields.get(&method_name) {
         Some(field) => {
-          self.set_val(self.stack_top - (arg_count as usize) - 1, *field);
-          return self.resolve_call(*field, arg_count, ip + 3);
+          self.set_val(self.stack_top - (arg_count as u32) - 1, *field);
+          self.resolve_call(*field, arg_count, ip + 3)
         }
         None => self.invoke_from_class(instance.class, method_name, arg_count, ip + 3),
+      },
+      Value::Bool(_) => self.invoke_from_class(self.builtin.bool, method_name, arg_count, ip + 3),
+      Value::Number(_) => self.invoke_from_class(self.builtin.number, method_name, arg_count, ip + 3),
+      Value::Nil => self.invoke_from_class(self.builtin.nil, method_name, arg_count, ip + 3),
+      Value::String(_) => self.invoke_from_class(self.builtin.string, method_name, arg_count, ip + 3),
+      Value::Fun(_) => self.invoke_from_class(self.builtin.fun, method_name, arg_count, ip + 3),
+      Value::Closure(closure) => {
+        self.set_val(self.stack_top - 1, Value::Fun(closure.fun));
+        self.invoke_from_class(self.builtin.fun, method_name, arg_count, ip + 3)
       }
-    } else {
-      self.runtime_error("Only instances have methods.")
+      Value::List(_) => self.invoke_from_class(self.builtin.list, method_name, arg_count, ip + 3),
+      Value::NativeFun(_) => {
+        self.invoke_from_class(self.builtin.native, method_name, arg_count, ip + 3)
+      }
+      Value::NativeMethod(_) => {
+        self.invoke_from_class(self.builtin.native, method_name, arg_count, ip + 3)
+      }
+      _ => self.runtime_error(&format!("{} does not have methods.", receiver.value_type())),
     }
   }
 
-  fn op_super_invoke(&mut self, ip: usize) -> InterpretResult {
+  /// invoke a method on a instance's super class
+  fn op_super_invoke(&mut self, ip: u32) -> InterpretResult {
     let constant = self.read_byte(ip + 1);
     let arg_count = self.read_byte(ip + 2);
 
@@ -531,20 +489,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.invoke_from_class(super_class, method_name, arg_count, ip + 3)
   }
 
-  fn invoke_from_class(
-    &mut self,
-    class: Managed<Class>,
-    method_name: Managed<String>,
-    arg_count: u8,
-    ip: usize,
-  ) -> InterpretResult {
-    match class.methods.get(&method_name) {
-      Some(method) => self.call(*method, arg_count, ip),
-      None => self.runtime_error(&format!("Undefined property {}.", method_name.as_str())),
-    }
-  }
-
-  fn op_class(&mut self, ip: usize) -> InterpretResult {
+  fn op_class(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
     let class = Value::Class(self.gc.manage(Class::new(name), self));
@@ -552,7 +497,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(ip + 2)
   }
 
-  fn op_get_super(&mut self, ip: usize) -> InterpretResult {
+  fn op_get_super(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
     let super_class = self.pop().to_class();
@@ -560,13 +505,16 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.bind_method(super_class, name, ip + 2)
   }
 
-  fn op_inherit(&mut self, ip: usize) -> InterpretResult {
+  fn op_inherit(&mut self, ip: u32) -> InterpretResult {
     let mut class = self.peek(0).to_class();
 
     match self.peek(1) {
       Value::Class(super_class) => {
-        super_class.methods.iter().for_each(|(key, value)| {
-          class.methods.entry(*key).or_insert_with(|| *value);
+        super_class.methods.for_each(|(key, value)| {
+          match class.methods.get(&*key) {
+            None => class.methods.insert(*key, *value),
+            _ => None,
+          };
         });
 
         class.init = class.init.or(super_class.init);
@@ -578,25 +526,25 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  fn op_loop(&mut self, ip: usize) -> InterpretResult {
-    Ok(ip + 3 - self.read_short(ip + 1) as usize)
+  fn op_loop(&mut self, ip: u32) -> InterpretResult {
+    Ok(ip + 3 - self.read_short(ip + 1) as u32)
   }
 
-  fn op_jump_if_not_false(&mut self, ip: usize) -> InterpretResult {
+  fn op_jump_if_not_false(&mut self, ip: u32) -> InterpretResult {
     let jump = self.read_short(ip + 1);
     if is_falsey(self.peek(0)) {
-      return Ok(ip + 3 + jump as usize);
+      return Ok(ip + 3 + jump as u32);
     }
 
     Ok(ip + 3)
   }
 
-  fn op_jump(&mut self, ip: usize) -> InterpretResult {
+  fn op_jump(&mut self, ip: u32) -> InterpretResult {
     let jump = self.read_short(ip + 1);
-    Ok(ip + 3 + jump as usize)
+    Ok(ip + 3 + jump as u32)
   }
 
-  fn op_define_global(&mut self, ip: usize) -> InterpretResult {
+  fn op_define_global(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
     let global = self.pop();
@@ -604,7 +552,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(ip + 2)
   }
 
-  fn op_set_global(&mut self, ip: usize) -> InterpretResult {
+  fn op_set_global(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let string = self.read_string(slot);
 
@@ -616,16 +564,16 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(ip + 2)
   }
 
-  fn op_set_local(&mut self, ip: usize) -> InterpretResult {
+  fn op_set_local(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let copy = self.peek(0);
-    let slots = self.current_frame().slots;
-    self.stack[slots + slot as usize] = copy;
+    let slots = self.current_frame.slots;
+    self.set_val(slots + slot as u32, copy);
 
     Ok(ip + 2)
   }
 
-  fn op_set_property(&mut self, ip: usize) -> InterpretResult {
+  fn op_set_property(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let mut value = self.peek(1);
     let name = self.read_string(slot);
@@ -643,27 +591,27 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.runtime_error("Only instances have fields.")
   }
 
-  fn op_set_upvalue(&mut self, ip: usize) -> InterpretResult {
+  fn op_set_upvalue(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let value = self.peek(0);
-    let upvalue = &mut self.current_closure.upvalues[slot as usize];
+    let upvalue = &mut self.current_frame.closure.upvalues[slot as usize];
 
     let open_index = match &mut *upvalue.to_upvalue() {
-      Upvalue::Open(index) => Some(*index),
+      Upvalue::Open(stack_ptr) => Some(*stack_ptr),
       Upvalue::Closed(store) => {
-        mem::replace(&mut **store, value);
+        **store = value;
         None
       }
     };
 
-    if let Some(index) = open_index {
-      self.stack[index] = value;
+    if let Some(stack_ptr) = open_index {
+      unsafe { ptr::write(stack_ptr.as_ptr(), value) }
     }
 
     Ok(ip + 2)
   }
 
-  fn op_get_global(&mut self, ip: usize) -> InterpretResult {
+  fn op_get_global(&mut self, ip: u32) -> InterpretResult {
     let store_index = self.read_byte(ip + 1);
     let string = self.read_string(store_index);
 
@@ -677,20 +625,20 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  fn op_get_local(&mut self, ip: usize) -> InterpretResult {
+  fn op_get_local(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
-    let slots = self.current_frame().slots;
-    let copy = self.get_val(slots + slot as usize);
+    let slots = self.current_frame.slots;
+    let copy = self.get_val(slots + slot as u32);
     self.push(copy);
     Ok(ip + 2)
   }
 
-  fn op_get_upvalue(&mut self, ip: usize) -> InterpretResult {
+  fn op_get_upvalue(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
-    let upvalue_value = &self.current_frame().closure.upvalues[slot as usize];
+    let upvalue_value = &self.current_frame.closure.upvalues[slot as usize];
 
     let value = match &*upvalue_value.to_upvalue() {
-      Upvalue::Open(index) => self.stack[*index],
+      Upvalue::Open(stack_ptr) => *unsafe { stack_ptr.as_ref() },
       Upvalue::Closed(store) => **store,
     };
 
@@ -698,46 +646,60 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(ip + 2)
   }
 
-  fn op_get_property(&mut self, ip: usize) -> InterpretResult {
+  fn op_get_property(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let value = self.peek(0);
+    let name = self.read_string(slot);
 
-    if let Value::Instance(instance) = value {
-      let name = self.read_string(slot);
-
-      return match instance.fields.get(&name) {
+    match value {
+      Value::Instance(instance) => match instance.fields.get(&name) {
         Some(value) => {
-          self.pop();
-          self.push(*value);
+          self.set_val(self.stack_top - 1, *value);
           Ok(ip + 2)
         }
         None => self.bind_method(instance.class, name, ip + 2),
-      };
+      },
+      Value::Bool(_) => self.bind_method(self.builtin.bool, name, ip),
+      Value::Number(_) => self.bind_method(self.builtin.number, name, ip),
+      Value::Nil => self.bind_method(self.builtin.nil, name, ip),
+      Value::String(_) => self.bind_method(self.builtin.string, name, ip),
+      Value::Fun(_) => self.bind_method(self.builtin.fun, name, ip),
+      Value::Closure(closure) => {
+        self.set_val(self.stack_top - 1, Value::Fun(closure.fun));
+        self.bind_method(self.builtin.fun, name, ip)
+      }
+      Value::List(_) => self.bind_method(self.builtin.list, name, ip),
+      Value::NativeFun(_) => self.bind_method(self.builtin.native, name, ip),
+      _ => self.runtime_error(&format!("{} does not have properties.", value.value_type())),
     }
-
-    self.runtime_error("Only instances have properties.")
   }
 
-  fn op_return(&mut self, _: usize) -> InterpretResult {
+  /// return from a spacelox function placing the result on top of the stack
+  fn op_return(&mut self, _: u32) -> InterpretResult {
+    // get the function result close upvalues and pop frame
     let result = self.pop();
-    self.close_upvalues(self.current_frame().slots);
+    self.close_upvalues(NonNull::from(
+      &self.stack[self.current_frame.slots as usize],
+    ));
     self.frame_count -= 1;
 
+    // if the frame was the whole script signal an ok interrupt
     if self.frame_count == 0 {
       self.pop();
       return Err(Interpret::Ok);
     }
 
+    // pull the current frame out of the stack and set the cached frame
     self.stack_top = self.frames[self.frame_count].slots;
-    let return_ip = Ok(self.current_frame().ip);
-    self.current_closure = self.current_frame().closure;
-    self.current_fun = self.current_closure.fun;
-    self.push(result);
+    self.current_frame = *self.current_frame();
+    self.current_fun = self.current_frame.closure.fun;
 
-    return_ip
+    // push the result onto the stack
+    self.push(result);
+    Ok(self.current_frame.ip)
   }
 
-  fn op_negate(&mut self, ip: usize) -> InterpretResult {
+  fn op_negate(&mut self, ip: u32) -> InterpretResult {
     match self.pop() {
       Value::Number(num) => {
         self.push(Value::Number(-num));
@@ -747,13 +709,13 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  fn op_not(&mut self, ip: usize) -> InterpretResult {
+  fn op_not(&mut self, ip: u32) -> InterpretResult {
     let value = self.pop();
     self.push(Value::Bool(is_falsey(value)));
     Ok(ip + 1)
   }
 
-  fn op_add(&mut self, ip: usize) -> InterpretResult {
+  fn op_add(&mut self, ip: u32) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::String(right), Value::String(left)) => {
         let result = format!("{}{}", left.as_str(), right.as_str());
@@ -769,7 +731,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  fn op_sub(&mut self, ip: usize) -> InterpretResult {
+  fn op_sub(&mut self, ip: u32) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Number(left - right));
@@ -779,7 +741,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  fn op_mul(&mut self, ip: usize) -> InterpretResult {
+  fn op_mul(&mut self, ip: u32) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Number(left * right));
@@ -789,7 +751,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  fn op_div(&mut self, ip: usize) -> InterpretResult {
+  fn op_div(&mut self, ip: u32) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Number(left / right));
@@ -799,7 +761,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  fn op_less(&mut self, ip: usize) -> InterpretResult {
+  fn op_less(&mut self, ip: u32) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Bool(left < right));
@@ -809,7 +771,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  fn op_greater(&mut self, ip: usize) -> InterpretResult {
+  fn op_greater(&mut self, ip: u32) -> InterpretResult {
     match (self.pop(), self.pop()) {
       (Value::Number(right), Value::Number(left)) => {
         self.push(Value::Bool(left > right));
@@ -819,7 +781,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  fn op_equal(&mut self, ip: usize) -> InterpretResult {
+  fn op_equal(&mut self, ip: u32) -> InterpretResult {
     let right = self.pop();
     let left = self.pop();
 
@@ -827,12 +789,13 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(ip + 1)
   }
 
-  fn op_method(&mut self, ip: usize) -> InterpretResult {
+  fn op_method(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
 
     match (self.peek(1), self.peek(0)) {
-      (Value::Class(ref mut class), Value::Closure(method)) => {
+      (Value::Class(ref mut class), Value::Closure(_)) => {
+        let method = self.peek(0);
         if *name == INIT {
           class.init = Some(method);
         }
@@ -845,7 +808,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(ip + 2)
   }
 
-  fn op_closure(&mut self, ip: usize) -> InterpretResult {
+  fn op_closure(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let fun = self.read_constant(slot).to_fun();
     let mut closure = Closure::new(fun);
@@ -856,16 +819,18 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
       match upvalue_index {
         UpvalueIndex::Local(index) => {
-          let total_index = self.current_frame().slots + index as usize;
-          closure.upvalues.push(self.capture_upvalue(total_index));
+          let total_index = self.current_frame.slots as usize + index as usize;
+          closure
+            .upvalues
+            .push(self.capture_upvalue(NonNull::from(&self.stack[total_index])));
         }
         UpvalueIndex::Upvalue(upvalue) => {
-          let upvalue = self.current_closure.upvalues[upvalue as usize];
+          let upvalue = self.current_frame.closure.upvalues[upvalue as usize];
           closure.upvalues.push(upvalue);
         }
       }
 
-      current_ip = current_ip + 2;
+      current_ip += 2;
     }
 
     let closure = Value::Closure(self.gc.manage(closure, self));
@@ -873,7 +838,221 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(current_ip)
   }
 
-  fn capture_upvalue(&mut self, local_index: usize) -> Value {
+  fn op_close_upvalue(&mut self, ip: u32) -> InterpretResult {
+    self.close_upvalues(NonNull::from(&self.stack[self.stack_top as usize - 1]));
+    self.pop();
+    Ok(ip + 1)
+  }
+
+  fn op_print(&mut self, ip: u32) -> InterpretResult {
+    self.io.stdio().println(&format!("{}", self.pop()));
+    Ok(ip + 1)
+  }
+
+  fn op_constant(&mut self, ip: u32) -> InterpretResult {
+    let slot = self.read_byte(ip + 1);
+    let constant = self.read_constant(slot);
+    self.push(constant);
+    Ok(ip + 2)
+  }
+
+  fn resolve_call(&mut self, callee: Value, arg_count: u8, ip: u32) -> InterpretResult {
+    match callee {
+      Value::Closure(closure) => self.call(closure, arg_count, ip),
+      Value::Method(method) => self.call_method(method, arg_count, ip),
+      Value::NativeFun(native_fun) => self.call_native_fun(native_fun, arg_count, ip),
+      Value::NativeMethod(native_method) => self.call_native_method(native_method, arg_count, ip),
+      Value::Class(class) => self.call_class(class, arg_count, ip),
+      Value::Fun(fun) => panic!(
+        "function {} was not wrapped in a closure",
+        fun.name.clone().unwrap_or_else(|| "script".to_string())
+      ),
+      _ => self.runtime_error("Can only call functions and classes."),
+    }
+  }
+
+  fn call_class(&mut self, class: Managed<Class>, arg_count: u8, ip: u32) -> InterpretResult {
+    let value = Value::Instance(self.gc.manage(Instance::new(class), self));
+    self.set_val(self.stack_top - (arg_count as u32) - 1, value);
+
+    match class.init {
+      Some(init) => self.resolve_call(init, arg_count, ip),
+      None => {
+        if arg_count != 0 {
+          self.runtime_error(&format!("Expected 0 arguments but got {}", arg_count))
+        } else {
+          Ok(ip)
+        }
+      }
+    }
+  }
+
+  /// call a native function immediately returning the result
+  fn call_native_fun(
+    &mut self,
+    native: Managed<Box<dyn NativeFun>>,
+    arg_count: u8,
+    ip: u32,
+  ) -> InterpretResult {
+    let meta = native.meta();
+
+    // check that the current function is called with the right number of args
+    if let Some(error) = self.check_arity(meta.arity, arg_count, || String::from(meta.name)) {
+      return error;
+    }
+
+    let args = unsafe {
+      self
+        .stack
+        .get_unchecked((self.stack_top - arg_count as u32) as usize..self.stack_top as usize)
+    };
+
+    match native.call(&self.gc, self, args) {
+      NativeResult::Success(value) => {
+        self.stack_top -= arg_count as u32 + 1;
+        self.push(value);
+        Ok(ip)
+      }
+      NativeResult::RuntimeError(message) => self.runtime_error(&message),
+    }
+  }
+
+  /// call a native method immediately returning the result
+  fn call_native_method(
+    &mut self,
+    native: Managed<Box<dyn NativeMethod>>,
+    arg_count: u8,
+    ip: u32,
+  ) -> InterpretResult {
+    let meta = native.meta();
+
+    // check that the current function is called with the right number of args
+    if let Some(error) = self.check_arity(meta.arity, arg_count, || String::from(meta.name)) {
+      return error;
+    }
+
+    let args = unsafe {
+      self
+        .stack
+        .get_unchecked((self.stack_top - arg_count as u32) as usize..self.stack_top as usize)
+    };
+
+    match native.call(&self.gc, self, self.get_val(self.stack_top - arg_count as u32 - 1), args) {
+      NativeResult::Success(value) => {
+        self.stack_top -= arg_count as u32 + 1;
+        self.push(value);
+        Ok(ip)
+      }
+      NativeResult::RuntimeError(message) => self.runtime_error(&message),
+    }
+  }
+
+  /// call a spacelox function setting it as the new call frame
+  fn call(&mut self, closure: Managed<Closure>, arg_count: u8, ip: u32) -> InterpretResult {
+
+    // check that the current function is called with the right number of args
+    if let Some(error) = self.check_arity(closure.fun.arity, arg_count, || closure
+      .fun
+      .name
+      .clone()
+      .unwrap_or_else(|| "script".to_string())) {
+      return error;
+    }
+
+    // set the current
+    match self.frame_count {
+      0 => (),
+      FRAME_MAX => {
+        return self.runtime_error("Stack overflow.");
+      }
+      _ => self.current_mut_frame().ip = ip,
+    }
+
+    let frame = &mut self.frames[self.frame_count];
+    frame.closure = closure;
+    frame.ip = 0;
+    frame.slots = self.stack_top - (arg_count as u32 + 1);
+
+    self.current_frame = *frame;
+    self.current_fun = closure.fun;
+    self.frame_count += 1;
+    Ok(0)
+  }
+
+  fn check_arity<F>(
+    &mut self,
+    arity: ArityKind,
+    arg_count: u8,
+    name: F,
+  ) -> Option<InterpretResult>
+  where
+    F: Fn() -> String,
+  {
+    match arity {
+      ArityKind::Fixed(arity) => {
+        if arg_count != arity {
+          return Some(self.runtime_error(&format!(
+            "Function {} expected {} argument(s) but got {}.",
+            name(),
+            arity,
+            arg_count,
+          )));
+        }
+      }
+      ArityKind::Variadic(arity) => {
+        if arg_count < arity {
+          return Some(self.runtime_error(&format!(
+            "Function {} expected at least {} argument(s) but got {}.",
+            name(),
+            arity,
+            arg_count,
+          )));
+        }
+      }
+    }
+
+    None
+  }
+
+  /// Call a bound method
+  fn call_method(&mut self, bound: Managed<Method>, arg_count: u8, ip: u32) -> InterpretResult {
+    self.set_val(self.stack_top - (arg_count as u32) - 1, bound.receiver);
+    self.resolve_call(bound.method, arg_count, ip)
+  }
+
+  /// bind a method to an instance
+  fn bind_method(
+    &mut self,
+    class: Managed<Class>,
+    name: Managed<String>,
+    ip: u32,
+  ) -> InterpretResult {
+    match class.methods.get(&name) {
+      Some(method) => {
+        let bound = self.gc.manage(Method::new(self.peek(0), *method), self);
+        self.set_val(self.stack_top - 1, Value::Method(bound));
+        Ok(ip)
+      }
+      None => self.runtime_error(&format!("Undefined property {}", name.as_str())),
+    }
+  }
+
+  /// invoke a method from the provided class
+  fn invoke_from_class(
+    &mut self,
+    class: Managed<Class>,
+    method_name: Managed<String>,
+    arg_count: u8,
+    ip: u32,
+  ) -> InterpretResult {
+    match class.methods.get(&method_name) {
+      Some(method) => self.resolve_call(*method, arg_count, ip),
+      None => self.runtime_error(&format!("Undefined property {}.", method_name.as_str())),
+    }
+  }
+
+  /// capture an upvalue return an existing upvalue if already captured
+  fn capture_upvalue(&mut self, local_index: NonNull<Value>) -> Value {
     let closest_upvalue = self
       .open_upvalues
       .iter()
@@ -897,13 +1076,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Value::Upvalue(created_upvalue)
   }
 
-  fn op_close_upvalue(&mut self, ip: usize) -> InterpretResult {
-    self.close_upvalues(self.stack_top - 1);
-    self.pop();
-    Ok(ip + 1)
-  }
-
-  fn close_upvalues(&mut self, last_index: usize) {
+  /// hoist all open upvalue above the last index
+  fn close_upvalues(&mut self, last_index: NonNull<Value>) {
     for upvalue in self.open_upvalues.iter_mut().rev() {
       let index = match **upvalue {
         Upvalue::Open(index) => index,
@@ -914,22 +1088,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         break;
       }
 
-      upvalue.hoist(self.stack);
+      upvalue.hoist();
     }
 
     self.open_upvalues.retain(|upvalue| upvalue.is_open())
-  }
-
-  fn op_print(&mut self, ip: usize) -> InterpretResult {
-    self.io.stdio().println(&format!("{}", self.pop()));
-    Ok(ip + 1)
-  }
-
-  fn op_constant(&mut self, ip: usize) -> InterpretResult {
-    let slot = self.read_byte(ip + 1);
-    let constant = self.read_constant(slot);
-    self.push(constant);
-    Ok(ip + 2)
   }
 
   #[cfg(feature = "debug")]
@@ -949,8 +1111,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         .open_upvalues
         .iter()
         .for_each(|upvalue| match &**upvalue {
-          Upvalue::Open(index) => {
-            stdio.print(&format!("[ stack {} ]", self.get_val(*index)));
+          Upvalue::Open(stack_ptr) => {
+            stdio.print(&format!("[ stack {} ]", unsafe { *stack_ptr.as_ref() }));
           }
           Upvalue::Closed(closed) => {
             stdio.print(&format!("[ heap {} ]", closed));
@@ -971,7 +1133,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// Print an error message and the current call stack to the user
   fn error(&mut self, message: &str) {
     let stdio = self.io.stdio();
-    stdio.eprintln(&format!("{}", message));
+    stdio.eprintln(message);
     stdio.eprintln(&format!(""));
 
     for frame in self.frames[0..self.frame_count].iter().rev() {
@@ -983,7 +1145,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
       stdio.eprintln(&format!(
         "[line {}] in {}",
-        closure.fun.chunk.get_line(frame.ip),
+        closure.fun.chunk.get_line(frame.ip as usize),
         location
       ));
     }
@@ -994,9 +1156,11 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
 impl<'a, I: Io> Trace for VmExecutor<'a, I> {
   fn trace(&self) -> bool {
-    self.stack[0..self.stack_top].iter().for_each(|value| {
-      value.trace();
-    });
+    self.stack[0..self.stack_top as usize]
+      .iter()
+      .for_each(|value| {
+        value.trace();
+      });
 
     self.frames[0..self.frame_count].iter().for_each(|frame| {
       frame.closure.trace();
@@ -1011,13 +1175,23 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
       val.trace();
     });
 
+    self.builtin.bool.trace();
+    self.builtin.nil.trace();
+    self.builtin.number.trace();
+    self.builtin.string.trace();
+    self.builtin.list.trace();
+    self.builtin.fun.trace();
+    self.builtin.native.trace();
+
     true
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.stack[0..self.stack_top].iter().for_each(|value| {
-      value.trace_debug(stdio);
-    });
+    self.stack[0..self.stack_top as usize]
+      .iter()
+      .for_each(|value| {
+        value.trace_debug(stdio);
+      });
 
     self.frames[0..self.frame_count].iter().for_each(|frame| {
       frame.closure.trace_debug(stdio);
@@ -1031,6 +1205,14 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
       key.trace_debug(stdio);
       val.trace_debug(stdio);
     });
+
+    self.builtin.bool.trace_debug(stdio);
+    self.builtin.nil.trace_debug(stdio);
+    self.builtin.number.trace_debug(stdio);
+    self.builtin.string.trace_debug(stdio);
+    self.builtin.list.trace_debug(stdio);
+    self.builtin.fun.trace_debug(stdio);
+    self.builtin.native.trace_debug(stdio);
 
     true
   }

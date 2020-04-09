@@ -1,14 +1,24 @@
 use crate::chunk::Chunk;
 use crate::io::StdIo;
 use crate::{
+  dynamic_map::DynamicMap,
   managed::{Manage, Managed, Trace},
-  native::NativeFun,
+  native::{NativeFun, NativeMethod},
   utils::do_if_some,
 };
-use fnv::FnvHashMap;
 use std::fmt;
 use std::mem;
-use std::rc::Rc;
+use std::ptr::NonNull;
+
+pub struct BuiltInClasses {
+  pub nil: Managed<Class>,
+  pub bool: Managed<Class>,
+  pub number: Managed<Class>,
+  pub string: Managed<Class>,
+  pub list: Managed<Class>,
+  pub fun: Managed<Class>,
+  pub native: Managed<Class>,
+}
 
 /// Enum of value types in spacelox
 #[derive(Clone, Copy, Debug)]
@@ -17,12 +27,14 @@ pub enum Value {
   Nil,
   Number(f64),
   String(Managed<String>),
+  List(Managed<Vec<Value>>),
   Fun(Managed<Fun>),
   Closure(Managed<Closure>),
   Class(Managed<Class>),
   Instance(Managed<Instance>),
   Method(Managed<Method>),
-  Native(Managed<Rc<dyn NativeFun>>),
+  NativeFun(Managed<Box<dyn NativeFun>>),
+  NativeMethod(Managed<Box<dyn NativeMethod>>),
   Upvalue(Managed<Upvalue>),
 }
 
@@ -80,21 +92,41 @@ impl Value {
   /// # Examples
   /// ```
   /// use spacelox_core::value::Value;
-  /// use spacelox_core::managed::{Allocation, Managed};
+  /// use spacelox_core::managed::{Allocation, Managed, make_managed};
   /// use std::ptr::NonNull;
   ///
-  /// let str = "example".to_string();
-  /// let mut alloc = Box::new(Allocation::new(str));
-  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-  /// let managed = Managed::from(ptr);
+  /// let (managed, alloc) = make_managed::<String>(String::from("example"));
   ///
   /// let value = Value::String(managed);
   /// assert_eq!(*value.to_string(), "example".to_string())
   /// ```
-  pub fn to_string<'o>(&'o self) -> Managed<String> {
+  pub fn to_string(&self) -> Managed<String> {
     match self {
       Self::String(str1) => *str1,
-      _ => panic!("Expected string"),
+      _ => panic!("Expected string."),
+    }
+  }
+
+  /// Unwrap and reference a spacelox list, panics if not a list
+  ///
+  /// # Examples
+  /// ```
+  /// use spacelox_core::value::Value;
+  /// use spacelox_core::managed::{Allocation, Managed};
+  /// use std::ptr::NonNull;
+  ///
+  /// let list: Vec<Value> = vec![Value::Nil];
+  /// let mut alloc = Box::new(Allocation::new(list));
+  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+  /// let managed = Managed::from(ptr);
+  ///
+  /// let value = Value::List(managed);
+  /// assert_eq!(value.to_list()[0], Value::Nil)
+  /// ```
+  pub fn to_list(&self) -> Managed<Vec<Value>> {
+    match self {
+      Self::List(list) => *list,
+      _ => panic!("Expected list."),
     }
   }
 
@@ -102,20 +134,18 @@ impl Value {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::value::{Value, Fun};
-  /// use spacelox_core::managed::{Allocation, Managed};
+  /// use spacelox_core::value::{Value, Fun, ArityKind};
+  /// use spacelox_core::managed::{Allocation, Managed, make_managed};
   /// use spacelox_core::chunk::Chunk;
   /// use std::ptr::NonNull;
   ///
-  /// let fun = Fun {
+  /// let fun: Fun = Fun {
   ///   name: Some("add".to_string()),
-  ///   arity: 3,
+  ///   arity: ArityKind::Fixed(3),
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default()
   /// };
-  /// let mut alloc = Box::new(Allocation::new(fun));
-  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-  /// let managed = Managed::from(ptr);
+  /// let (managed, alloc) = make_managed(fun);
   ///
   /// let value = Value::Fun(managed);
   /// assert_eq!(value.to_fun().name.clone().unwrap(), "add");
@@ -127,28 +157,33 @@ impl Value {
     }
   }
 
+  /// Unwrap and reference a spacelox native function, panics if not a native function
+  pub fn to_native_fun(&self) -> Managed<Box<dyn NativeFun>> {
+    match self {
+      Self::NativeFun(native) => *native,
+      _ => panic!("Expected function!"),
+    }
+  }
+
   /// Unwrap and reference a spacelox closure, panics if not a closure
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::value::{Value, Closure, Fun};
-  /// use spacelox_core::managed::{Managed, Allocation};
+  /// use spacelox_core::value::{Value, Closure, Fun, ArityKind};
+  /// use spacelox_core::managed::{Managed, Allocation, make_managed};
   /// use spacelox_core::chunk::Chunk;
   /// use std::ptr::NonNull;
   ///
   /// let fun = Fun {
   ///   name: Some("add".to_string()),
-  ///   arity: 3,
+  ///   arity: ArityKind::Fixed(3),
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default()
   /// };
-  /// let mut alloc_fun = Box::new(Allocation::new(fun));
-  /// let managed_fun = Managed::from(unsafe { NonNull::new_unchecked(&mut *alloc_fun) });
+  /// let (managed_fun, alloc_fun) = make_managed(fun);
   ///
   /// let closure = Closure::new(managed_fun);
-  ///
-  /// let mut alloc_closure = Box::new(Allocation::new(closure));
-  /// let managed_closure = Managed::from(unsafe { NonNull::new_unchecked(&mut *alloc_closure) });
+  /// let (managed_closure, alloc_closure) = make_managed(closure);
   ///
   /// let value = Value::Closure(managed_closure);
   /// assert_eq!(value.to_closure().fun.name.clone().unwrap(), "add");
@@ -168,11 +203,12 @@ impl Value {
   /// use spacelox_core::managed::{Allocation, Managed, make_managed};
   /// use std::ptr::NonNull;
   ///
-  /// let (upvalue, upvalue_alloc) = make_managed(Upvalue::Open(0));
+  /// let value = Value::Number(5.0);
+  /// let (upvalue, upvalue_alloc) = make_managed(Upvalue::Open(NonNull::from(&value)));
   /// let value = Value::Upvalue(upvalue);
   ///
   /// match *value.to_upvalue() {
-  ///   Upvalue::Open(index) => assert_eq!(index, 0),
+  ///   Upvalue::Open(stack_ptr) => assert_eq!(*unsafe { stack_ptr.as_ref() }, Value::Number(5.0)),
   ///   Upvalue::Closed(_) => assert!(false),
   /// };
   /// ```
@@ -246,43 +282,35 @@ impl Value {
       Value::Bool(_) => "bool".to_string(),
       Value::Number(_) => "number".to_string(),
       Value::String(_) => "string".to_string(),
+      Value::List(_) => "list".to_string(),
       Value::Fun(_) => "function".to_string(),
       Value::Closure(_) => "closure".to_string(),
       Value::Method(_) => "method".to_string(),
       Value::Class(_) => "class".to_string(),
       Value::Instance(_) => "instance".to_string(),
       Value::Upvalue(_) => "upvalue".to_string(),
-      Value::Native(_) => "native".to_string(),
+      Value::NativeFun(_) => "native function".to_string(),
+      Value::NativeMethod(_) => "native method".to_string(),
     }
   }
 
-  pub fn trace(&self) -> bool {
+  pub fn value_class(&self, builtin: &BuiltInClasses) -> Managed<Class> {
     match self {
-      Value::String(string) => string.trace(),
-      Value::Fun(fun) => fun.trace(),
-      Value::Closure(closure) => closure.trace(),
-      Value::Method(method) => method.trace(),
-      Value::Class(class) => class.trace(),
-      Value::Instance(instance) => instance.trace(),
-      Value::Upvalue(upvalue) => upvalue.trace(),
-      Value::Native(native) => native.trace(),
-      _ => true,
+      Value::Nil => builtin.nil,
+      Value::Bool(_) => builtin.bool,
+      Value::Number(_) => builtin.number,
+      Value::String(_) => builtin.string,
+      Value::List(_) => builtin.list,
+      Value::Fun(_) => builtin.fun,
+      Value::Closure(_) => builtin.fun,
+      Value::Method(_) => builtin.fun,
+      Value::Class(_) => panic!("TODO"),
+      Value::Instance(instance) => instance.class,
+      Value::Upvalue(upvalue) => upvalue.value().value_class(builtin),
+      Value::NativeFun(_) => builtin.native,
+      Value::NativeMethod(_) => builtin.native,
     }
   }
-
-  // pub fn get_dyn_managed(&self) -> Option<Managed<dyn Manage>> {
-  //   match self {
-  //     Value::String(string) => Some(string.clone_dyn()),
-  //     Value::Fun(fun) => Some(fun.clone_dyn()),
-  //     Value::Closure(closure) => Some(closure.clone_dyn()),
-  //     Value::Native(native) => Some(native.clone_dyn()),
-  //     Value::Upvalue(upvalue) => Some(upvalue.clone_dyn()),
-  //     Value::Method(method) => Some(method.clone_dyn()),
-  //     Value::Class(class) => Some(class.clone_dyn()),
-  //     Value::Instance(instance) => Some(instance.clone_dyn()),
-  //     _ => None,
-  //   }
-  // }
 }
 
 impl fmt::Display for Value {
@@ -292,26 +320,22 @@ impl fmt::Display for Value {
       Self::Number(num) => write!(f, "{}", num),
       Self::Bool(b) => write!(f, "{}", b),
       Self::Nil => write!(f, "nil"),
-      Self::String(store) => write!(f, "'{}'", store.as_str()),
+      Self::String(string) => write!(f, "'{}'", string.as_str()),
+      Self::List(_) => write!(f, "list"),
       Self::Fun(fun) => match &fun.name {
         Some(name) => write!(f, "<fn {}>", name),
         None => write!(f, "<script>"),
       },
       Self::Upvalue(upvalue) => match &**upvalue {
-        Upvalue::Open(index) => write!(f, "<upvalue open {}>", index),
+        Upvalue::Open(stack_ptr) => write!(f, "<upvalue open {}>", unsafe { stack_ptr.as_ref() }),
         Upvalue::Closed(store) => write!(f, "<upvalue closed {}>", store),
       },
-      Self::Closure(closure) => match &closure.fun.name {
-        Some(name) => write!(f, "<fn {}>", name),
-        None => write!(f, "<script>"),
-      },
-      Self::Method(bound) => match &bound.method.fun.name {
-        Some(name) => write!(f, "<fn {}>", name),
-        None => panic!("Method not assigned a name"),
-      },
+      Self::Closure(closure) => write!(f, "{}", closure.name()),
+      Self::Method(bound) => write!(f, "{}", bound.method),
       Self::Class(class) => write!(f, "{}", &class.name.as_str()),
       Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
-      Self::Native(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
+      Self::NativeFun(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
+      Self::NativeMethod(native_method) => write!(f, "<native {}>", native_method.meta().name),
     }
   }
 }
@@ -330,11 +354,6 @@ impl PartialEq for Value {
   /// assert_eq!(val1 == val2, false);
   /// ```
   fn eq(&self, other: &Value) -> bool {
-    // check we're the same variant
-    if mem::discriminant(self) != mem::discriminant(other) {
-      return false;
-    }
-
     // check the the variants have the same value
     match (self, other) {
       (Self::Number(num1), Self::Number(num2)) => num1 == num2,
@@ -344,7 +363,7 @@ impl PartialEq for Value {
       (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
       (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,
       (Self::Method(method1), Self::Method(method2)) => method1 == method2,
-      (Self::Native(native1), Self::Native(native2)) => native1 == native2,
+      (Self::NativeFun(native1), Self::NativeFun(native2)) => native1 == native2,
       (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => upvalue1 == upvalue2,
       (Self::Class(class1), Self::Class(class2)) => class1 == class2,
       (Self::Instance(instance1), Self::Instance(instance2)) => instance1 == instance2,
@@ -357,13 +376,14 @@ impl Trace for Value {
   fn trace(&self) -> bool {
     match self {
       Value::String(string) => string.trace(),
+      Value::List(list) => list.trace(),
       Value::Fun(fun) => fun.trace(),
       Value::Closure(closure) => closure.trace(),
       Value::Method(method) => method.trace(),
       Value::Class(class) => class.trace(),
       Value::Instance(instance) => instance.trace(),
       Value::Upvalue(upvalue) => upvalue.trace(),
-      Value::Native(native) => native.trace(),
+      Value::NativeFun(native) => native.trace(),
       _ => true,
     }
   }
@@ -377,15 +397,14 @@ impl Trace for Value {
       Value::Class(class) => class.trace_debug(stdio),
       Value::Instance(instance) => instance.trace_debug(stdio),
       Value::Upvalue(upvalue) => upvalue.trace_debug(stdio),
-      Value::Native(native) => native.trace_debug(stdio),
+      Value::NativeFun(native) => native.trace_debug(stdio),
       _ => true,
     }
   }
 }
-
 #[derive(PartialEq, Clone, Debug)]
 pub enum Upvalue {
-  Open(usize),
+  Open(NonNull<Value>),
   Closed(Box<Value>),
 }
 
@@ -396,23 +415,22 @@ impl Upvalue {
   /// ```
   /// use spacelox_core::value::{Value, Upvalue};
   /// use std::rc::Rc;
+  /// use std::ptr::NonNull;
   ///
-  /// let stack = vec![
-  ///   Value::Number(10.0)
-  /// ];
+  /// let value = Value::Number(10.0);
   ///
-  /// let mut upvalue = Upvalue::Open(0);
-  /// upvalue.hoist(&stack);
+  /// let mut upvalue = Upvalue::Open(NonNull::from(&value));
+  /// upvalue.hoist();
   ///
   /// match upvalue {
   ///   Upvalue::Closed(store) => assert_eq!(*store, Value::Number(10.0)),
   ///   Upvalue::Open(_) => assert!(false),
   /// };
   /// ```
-  pub fn hoist(&mut self, stack: &[Value]) {
+  pub fn hoist(&mut self) {
     match self {
-      Upvalue::Open(index) => {
-        let value = unsafe { stack.get_unchecked(*index) }.clone();
+      Upvalue::Open(stack_ptr) => {
+        let value = *unsafe { stack_ptr.as_ref() };
         mem::replace(self, Upvalue::Closed(Box::new(value)));
       }
       Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
@@ -423,15 +441,25 @@ impl Upvalue {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::value::Upvalue;
+  /// use spacelox_core::value::{Value, Upvalue};
+  /// use std::ptr::NonNull;
   ///
-  /// let upvalue = Upvalue::Open(0);
+  /// let value = Value::Nil;
+  ///
+  /// let upvalue = Upvalue::Open(NonNull::from(&value));
   /// assert_eq!(upvalue.is_open(), true);
   /// ```
   pub fn is_open(&self) -> bool {
     match self {
       Upvalue::Open(_) => true,
       Upvalue::Closed(_) => false,
+    }
+  }
+
+  pub fn value(&self) -> Value {
+    match self {
+      Upvalue::Open(stack_ptr) => *unsafe { stack_ptr.as_ref() },
+      Upvalue::Closed(store) => **store,
     }
   }
 }
@@ -463,8 +491,8 @@ impl Manage for Upvalue {
 
   fn debug_free(&self) -> String {
     match self {
-      Self::Open(_) => format!("{:?}", self),
-      Self::Closed(_) => format!("Upvalue::Closed({{ ... }})"),
+      Self::Open(_) => String::from("Upvalue::Open({{ ... }})"),
+      Self::Closed(_) => String::from("Upvalue::Closed({{ ... }})"),
     }
   }
 
@@ -481,10 +509,16 @@ pub enum FunKind {
   Script,
 }
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum ArityKind {
+  Fixed(u8),
+  Variadic(u8),
+}
+
 #[derive(PartialEq, Clone)]
 pub struct Fun {
   /// Arity of this function
-  pub arity: u16,
+  pub arity: ArityKind,
 
   /// Number of upvalues
   pub upvalue_count: usize,
@@ -499,7 +533,7 @@ pub struct Fun {
 impl Default for Fun {
   fn default() -> Self {
     Self {
-      arity: 0,
+      arity: ArityKind::Fixed(0),
       upvalue_count: 0,
       chunk: Chunk::default(),
       name: Some("null function".to_string()),
@@ -582,19 +616,27 @@ impl Manage for String {
   }
 }
 
-impl Trace for Rc<dyn NativeFun> {
+impl Trace for Vec<Value> {
   fn trace(&self) -> bool {
+    self.iter().for_each(|value| {
+      value.trace();
+    });
+
     true
   }
 
-  fn trace_debug(&self, _: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.iter().for_each(|value| {
+      value.trace_debug(stdio);
+    });
+
     true
   }
 }
 
-impl Manage for Rc<dyn NativeFun> {
+impl Manage for Vec<Value> {
   fn alloc_type(&self) -> &str {
-    "native"
+    "list"
   }
 
   fn debug(&self) -> String {
@@ -602,11 +644,11 @@ impl Manage for Rc<dyn NativeFun> {
   }
 
   fn debug_free(&self) -> String {
-    format!("{:?}", self)
+    String::from("List: [...]")
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<Self>()
+    mem::size_of_val(self) + self.capacity()
   }
 }
 
@@ -621,19 +663,19 @@ impl Closure {
   ///
   /// # Example
   /// ```
-  /// use spacelox_core::value::{Closure, Fun};
-  /// use spacelox_core::managed::{Managed, Allocation};
+  /// use spacelox_core::value::{Closure, Fun, ArityKind};
+  /// use spacelox_core::managed::{Managed, Allocation, make_managed};
   /// use spacelox_core::chunk::Chunk;
   /// use std::ptr::NonNull;
   ///
-  /// let mut fun = Box::new(Allocation::new(Fun {
-  ///   arity: 3,
+  /// let mut fun = Fun {
+  ///   arity: ArityKind::Fixed(3),
   ///   upvalue_count: 2,
   ///   chunk: Chunk::default(),
   ///   name: Some("example".to_string())
-  /// }));
+  /// };
   ///
-  /// let managed_fun = Managed::from(unsafe { NonNull::new_unchecked(&mut *fun) });
+  /// let (managed_fun, alloc_fun) = make_managed(fun);
   ///
   /// let closure = Closure::new(managed_fun);
   /// assert_eq!(closure.fun.name.as_ref().unwrap().clone(), "example".to_string());
@@ -642,6 +684,13 @@ impl Closure {
     Closure {
       upvalues: Vec::with_capacity(fun.upvalue_count as usize),
       fun,
+    }
+  }
+
+  pub fn name(&self) -> String {
+    match &self.fun.name {
+      Some(name) => format!("<fn {}>", name),
+      None => "<script>".to_string(),
     }
   }
 }
@@ -685,7 +734,7 @@ impl Manage for Closure {
   }
 
   fn debug_free(&self) -> String {
-    format!("Closure: {{ fun: {{ ... }}, upvalues: {{ ... }} }}")
+    String::from("Closure: {{ fun: {{ ... }}, upvalues: {{ ... }} }}")
   }
 
   fn size(&self) -> usize {
@@ -696,8 +745,9 @@ impl Manage for Closure {
 #[derive(PartialEq, Clone)]
 pub struct Class {
   pub name: Managed<String>,
-  pub init: Option<Managed<Closure>>,
-  pub methods: FnvHashMap<Managed<String>, Managed<Closure>>,
+  pub init: Option<Value>,
+  // pub methods: FnvHashMap<Managed<String>, Value>,
+  pub methods: DynamicMap<Managed<String>, Value>,
 }
 
 impl Class {
@@ -705,7 +755,8 @@ impl Class {
     Class {
       name,
       init: None,
-      methods: FnvHashMap::with_capacity_and_hasher(4, Default::default()),
+      // methods: FnvHashMap::with_capacity_and_hasher(4, Default::default()),
+      methods: DynamicMap::new(),
     }
   }
 }
@@ -727,10 +778,15 @@ impl Trace for Class {
       init.trace();
     });
 
-    self.methods.iter().for_each(|(key, val)| {
+    self.methods.for_each(|(key, val)| {
       key.trace();
       val.trace();
     });
+
+    // self.methods.iter().for_each(|(key, val)| {
+    //   key.trace();
+    //   val.trace();
+    // });
 
     true
   }
@@ -741,10 +797,15 @@ impl Trace for Class {
       init.trace_debug(stdio);
     });
 
-    self.methods.iter().for_each(|(key, val)| {
+    self.methods.for_each(|(key, val)| {
       key.trace_debug(stdio);
       val.trace_debug(stdio);
     });
+
+    // self.methods.iter().for_each(|(key, val)| {
+    //   key.trace_debug(stdio);
+    //   val.trace_debug(stdio);
+    // });
 
     true
   }
@@ -760,7 +821,7 @@ impl Manage for Class {
   }
 
   fn debug_free(&self) -> String {
-    format!("Class: {{ init: {{...}}, name: {{...}}, methods: {{...}}}}")
+    String::from("Class: {{ init: {{...}}, name: {{...}}, methods: {{...}}}}")
   }
 
   fn size(&self) -> usize {
@@ -771,14 +832,14 @@ impl Manage for Class {
 #[derive(PartialEq, Clone)]
 pub struct Instance {
   pub class: Managed<Class>,
-  pub fields: FnvHashMap<Managed<String>, Value>,
+  pub fields: DynamicMap<Managed<String>, Value>,
 }
 
 impl Instance {
   pub fn new(class: Managed<Class>) -> Self {
     Instance {
       class,
-      fields: FnvHashMap::with_capacity_and_hasher(2, Default::default()),
+      fields: DynamicMap::new(),
     }
   }
 }
@@ -796,7 +857,7 @@ impl Trace for Instance {
   fn trace(&self) -> bool {
     self.class.trace();
 
-    self.fields.iter().for_each(|(key, val)| {
+    self.fields.for_each(|(key, val)| {
       key.trace();
       val.trace();
     });
@@ -807,7 +868,7 @@ impl Trace for Instance {
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.class.trace_debug(stdio);
 
-    self.fields.iter().for_each(|(key, val)| {
+    self.fields.for_each(|(key, val)| {
       key.trace_debug(stdio);
       val.trace_debug(stdio);
     });
@@ -826,7 +887,7 @@ impl Manage for Instance {
   }
 
   fn debug_free(&self) -> String {
-    format!("Instance: {{ class: {{...}}, fields: {{...}} }}")
+    String::from("Instance: {{ class: {{...}}, fields: {{...}} }}")
   }
 
   fn size(&self) -> usize {
@@ -837,11 +898,11 @@ impl Manage for Instance {
 #[derive(PartialEq, Clone)]
 pub struct Method {
   pub receiver: Value,
-  pub method: Managed<Closure>,
+  pub method: Value,
 }
 
 impl Method {
-  pub fn new(receiver: Value, method: Managed<Closure>) -> Self {
+  pub fn new(receiver: Value, method: Value) -> Self {
     Self { receiver, method }
   }
 }
@@ -879,7 +940,7 @@ impl Manage for Method {
   }
 
   fn debug_free(&self) -> String {
-    format!("Method: {{ method: {{...}}, receiver: {{...}}}}")
+    String::from("Method: {{ method: {{...}}, receiver: {{...}}}}")
   }
 
   fn size(&self) -> usize {

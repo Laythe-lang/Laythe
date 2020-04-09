@@ -1,12 +1,12 @@
-use crate::memory::{Gc, NO_GC};
+use crate::constants::{INIT, SUPER, THIS};
 use crate::scanner::Scanner;
-use crate::constants::{INIT, LIST, THIS, SUPER};
-use spacelox_core::chunk::{encode_u16, AlignedByteCode, Chunk, UpvalueIndex};
-use spacelox_core::io::StdIo;
+use spacelox_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
+use spacelox_core::io::{Io, StdIo};
 use spacelox_core::managed::{Manage, Managed, Trace};
+use spacelox_core::memory::{Gc, NO_GC};
 use spacelox_core::token::{Token, TokenKind};
 use spacelox_core::utils::{copy_string, do_if_some};
-use spacelox_core::value::{Fun, FunKind, Value};
+use spacelox_core::value::{ArityKind, Fun, FunKind, Value};
 use std::convert::TryInto;
 use std::mem;
 
@@ -37,7 +37,7 @@ pub struct Local {
 }
 
 /// The spacelox compiler for converting tokens to bytecode
-pub struct Compiler<'a, 's, S: StdIo + Clone> {
+pub struct Compiler<'a, 's, I: Io + 'static> {
   /// The current function
   fun: Managed<Fun>,
 
@@ -46,20 +46,20 @@ pub struct Compiler<'a, 's, S: StdIo + Clone> {
 
   /// The parent compiler if it exists note uses
   /// unsafe pointer
-  enclosing: Option<*mut Compiler<'a, 's, S>>,
+  enclosing: Option<*mut Compiler<'a, 's, I>>,
 
   /// The parser in charge incrementing the scanner and
   /// expecting / consuming tokens
-  parser: &'a mut Parser<'s, S>,
+  parser: &'a mut Parser<'s, I::StdIo>,
 
   /// The current class class compiler
   current_class: Option<Managed<ClassCompiler>>,
 
   /// Analytics for the compiler
-  gc: &'a mut Gc<S>,
+  gc: &'a mut Gc,
 
   /// The environments standard io access
-  stdio: S,
+  io: I,
 
   /// Number of locals
   local_count: usize,
@@ -74,7 +74,7 @@ pub struct Compiler<'a, 's, S: StdIo + Clone> {
   upvalues: Vec<UpvalueIndex>,
 }
 
-impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
+impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// Create a new instance of the spacelox compiler.
   /// The compiler write a sequence of op codes to the chunk
   /// to be executed
@@ -82,27 +82,21 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// # Examples
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
-  /// use spacelox_vm::memory::Gc;
-  /// use spacelox_core::io::NativeStdIo;
+  /// use spacelox_core::memory::Gc;
+  /// use spacelox_core::io::{NativeIo, NativeStdIo};
   ///
   /// // an expression
   /// let source = "10 + 3".to_string();
   ///
-  /// let mut gc = Gc::new(NativeStdIo::new());
-  /// let mut stdio1 = NativeStdIo::new();
-  /// let mut stdio2 = NativeStdIo::new();
-  /// let mut parser = Parser::new(stdio1, &source);
+  /// let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+  /// let mut parser = Parser::new(NativeStdIo::new(), &source);
   ///
-  /// let compiler = Compiler::new(stdio2, &mut parser, &mut gc);
+  /// let compiler = Compiler::new(NativeIo::new(), &mut parser, &mut gc);
   /// ```
-  pub fn new(
-    stdio: S,
-    parser: &'a mut Parser<'s, S>,
-    gc: &'a mut Gc<S>,
-  ) -> Self {
+  pub fn new(io: I, parser: &'a mut Parser<'s, I::StdIo>, gc: &'a mut Gc) -> Self {
     let fun = gc.manage(
       Fun {
-        arity: 0,
+        arity: ArityKind::Fixed(0),
         upvalue_count: 0,
         name: None,
         chunk: Chunk::default(),
@@ -115,7 +109,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
       current_class: None,
       fun_kind: FunKind::Script,
       gc,
-      stdio,
+      io,
       parser,
       enclosing: None,
       local_count: 1,
@@ -136,13 +130,13 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   }
 
   /// Construct an inner compiler used to compile functions inside of a script
-  fn child(name: Option<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's, S>) -> Self {
+  fn child(name: Option<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's, I>) -> Self {
     let mut child = Self {
       fun: unsafe { (*enclosing).fun },
       fun_kind: fun_kind.clone(),
       current_class: unsafe { (*enclosing).current_class },
       gc: unsafe { (*enclosing).gc },
-      stdio: unsafe { (*enclosing).stdio.clone() },
+      io: unsafe { (*enclosing).io },
       parser: unsafe { (*enclosing).parser },
       enclosing: Some(enclosing),
       local_count: 1,
@@ -160,7 +154,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
 
     child.fun = child.gc.manage(
       Fun {
-        arity: 0,
+        arity: ArityKind::Fixed(0),
         upvalue_count: 0,
         name,
         chunk: Chunk::default(),
@@ -179,16 +173,16 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// # Examples
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
-  /// use spacelox_vm::memory::Gc;
-  /// use spacelox_core::io::NativeStdIo;
+  /// use spacelox_core::memory::Gc;
+  /// use spacelox_core::io::{NativeIo, NativeStdIo};
   ///
   /// // an expression
   /// let source = "3 / 2 + 10;".to_string();
   ///
-  /// let mut gc = Gc::new(NativeStdIo::new());
+  /// let mut gc = Gc::new(Box::new(NativeStdIo::new()));
   /// let mut parser = Parser::new(NativeStdIo::new(), &source);
   ///
-  /// let compiler = Compiler::new(NativeStdIo::new(), &mut parser, &mut gc);
+  /// let compiler = Compiler::new(NativeIo::new(), &mut parser, &mut gc);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
@@ -369,9 +363,11 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
 
     // parse function parameters
     if !fun_compiler.parser.check(TokenKind::RightParen) {
+      let mut arity: u16 = 0;
+
       loop {
-        fun_compiler.fun.arity += 1;
-        if fun_compiler.fun.arity == std::u8::MAX as u16 {
+        arity += 1;
+        if arity == std::u8::MAX as u16 {
           fun_compiler
             .parser
             .error_at_current("Cannot have more than 255 parameters.");
@@ -384,6 +380,8 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
           break;
         }
       }
+
+      fun_compiler.fun.arity = ArityKind::Fixed(arity as u8);
     }
 
     fun_compiler
@@ -406,7 +404,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
     // emit upvalue index instructions
     fun_compiler.upvalues[0..upvalue_count]
       .iter()
-      .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(upvalue.clone())));
+      .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(*upvalue)));
   }
 
   fn method(&mut self) {
@@ -415,7 +413,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
       .consume(TokenKind::Identifier, "Expect method name.");
     let constant = self.identifer_constant(self.parser.previous.clone());
 
-    let fun_kind = if INIT == &self.parser.previous.lexeme {
+    let fun_kind = if INIT == self.parser.previous.lexeme {
       FunKind::Initializer
     } else {
       FunKind::Method
@@ -648,16 +646,14 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// Print the chunk if debug and an error occurred
   #[cfg(feature = "debug")]
   fn print_chunk(&self) {
-    if true || self.parser.had_error {
-      let script = "<script>".to_string();
+    let script = "<script>".to_string();
 
-      let name = match &self.fun.name {
-        Some(name) => name,
-        None => &script,
-      };
+    let name = match &self.fun.name {
+      Some(name) => name,
+      None => &script,
+    };
 
-      disassemble_chunk(&self.stdio, &self.fun.chunk, &name)
-    }
+    disassemble_chunk(&self.io.stdio(), &self.fun.chunk, &name)
   }
 
   /// Compiles a binary expression into it's equivalent bytecodes
@@ -666,8 +662,8 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// This method will panic if an invalid binary operator is passed
   fn binary(&mut self) {
     // Remember the operator
-    let operator_kind = self.parser.previous.kind.clone();
-    let precedence = get_rule(operator_kind.clone()).precedence.higher();
+    let operator_kind = self.parser.previous.kind;
+    let precedence = get_rule(operator_kind).precedence.higher();
     self.parse_precedence(precedence);
 
     match operator_kind {
@@ -687,20 +683,19 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
 
   /// Compile a call invocation
   fn call(&mut self) {
-    let arg_count = self.argument_list(TokenKind::RightParen);
+    let arg_count = self.call_arguments();
     self.emit_byte(AlignedByteCode::Call(arg_count));
+  }
+
+  /// Compile a index
+  fn index(&mut self) {
+
   }
 
   /// Compile a call invocation
   fn list(&mut self) {
-    let arg_count = self.argument_list(TokenKind::RightParen);
-    let list = self.identifer_constant(Token {
-      lexeme: LIST.to_string(),
-      kind: TokenKind::Identifier,
-      line: self.parser.previous.line,
-    },);
-    self.emit_byte(AlignedByteCode::GetGlobal(list));
-    self.emit_byte(AlignedByteCode::Call(arg_count));
+    let arg_count = self.list_arguments();
+    self.emit_byte(AlignedByteCode::List(arg_count));
   }
 
   /// Compile an dot operator
@@ -714,7 +709,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
       self.expression();
       self.emit_byte(AlignedByteCode::SetProperty(name));
     } else if self.parser.match_kind(TokenKind::LeftParen) {
-      let arg_count = self.argument_list(TokenKind::RightParen);
+      let arg_count = self.call_arguments();
       self.emit_byte(AlignedByteCode::Invoke((name, arg_count)));
     } else {
       self.emit_byte(AlignedByteCode::GetProperty(name));
@@ -726,7 +721,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// # Panics
   /// This method will panic if an invalid unary operator is attempted to compile
   fn unary(&mut self) {
-    let operator_kind = self.parser.previous.kind.clone();
+    let operator_kind = self.parser.previous.kind;
 
     // Compile the operand
     self.parse_precedence(Precedence::Unary);
@@ -771,7 +766,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
     let string = self
       .gc
       .manage_str(copy_string(&self.parser.previous), &NO_GC);
-    let value = Value::String(Managed::from(string));
+    let value = Value::String(string);
     self.emit_constant(value)
   }
 
@@ -825,7 +820,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
     self.parser.advance();
 
     let can_assign = precedence <= Precedence::Assignment;
-    let prefix_fn = get_rule(self.parser.previous.kind.clone()).prefix.clone();
+    let prefix_fn = get_rule(self.parser.previous.kind).prefix.clone();
 
     match prefix_fn {
       Some(prefix) => self.execute_action(prefix, can_assign),
@@ -835,9 +830,9 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
       }
     }
 
-    while precedence <= get_rule(self.parser.current.kind.clone()).precedence {
+    while precedence <= get_rule(self.parser.current.kind).precedence {
       self.parser.advance();
-      let infix_fn = get_rule(self.parser.previous.kind.clone()).infix.clone();
+      let infix_fn = get_rule(self.parser.previous.kind).infix.clone();
 
       self.execute_action(infix_fn.expect("Failure"), can_assign);
     }
@@ -858,17 +853,29 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   }
 
   /// Parse a list of argument to a function
-  fn argument_list(&mut self, stop_token: TokenKind) -> u8 {
-    let mut arg_count: u8 = 0;
+  fn call_arguments(&mut self) -> u8 {
+    let arg_count = self.consume_arguments(TokenKind::RightBracket, std::u32::MAX as usize);
+    self.parser.consume(TokenKind::RightBracket, "Expect ')' after arguments");
+    arg_count as u8
+  }
+
+  fn list_arguments(&mut self) -> u32 {
+    let arg_count = self.consume_arguments(TokenKind::RightBracket, std::u32::MAX as usize);
+    self.parser.consume(TokenKind::RightBracket, "Expect ']' after arguments");
+    arg_count as u32
+  }
+
+  fn consume_arguments(&mut self, stop_token: TokenKind, max: usize) -> usize {
+    let mut arg_count: usize = 0;
 
     if !self.parser.check(stop_token) {
       loop {
         self.expression();
 
-        if arg_count == std::u8::MAX {
+        if arg_count == max {
           self
             .parser
-            .error(&format!("Cannot have more than {} arguments", std::u8::MAX));
+            .error(&format!("Cannot have more than {} arguments", max));
           return arg_count;
         }
         arg_count += 1;
@@ -879,9 +886,6 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
       }
     }
 
-    self
-      .parser
-      .consume(stop_token, "Expect ')' after argument");
     arg_count
   }
 
@@ -947,7 +951,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
     );
 
     if self.parser.match_kind(TokenKind::LeftParen) {
-      let arg_count = self.argument_list(TokenKind::RightParen);
+      let arg_count = self.call_arguments();
       self.named_variable(
         Token {
           lexeme: SUPER.to_string(),
@@ -992,7 +996,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u8 {
     let identifer = self.gc.manage_str(name.lexeme, &NO_GC);
-    self.make_constant(Value::String(Managed::from(identifer)))
+    self.make_constant(Value::String(identifer))
   }
 
   fn add_local(&mut self, name: Token) {
@@ -1069,7 +1073,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
         match parent.resolve_local(name) {
           Some(local) => {
             parent.locals[local as usize].is_captured = true;
-            return Some(self.add_upvalue(UpvalueIndex::Local(local)) as u8);
+            Some(self.add_upvalue(UpvalueIndex::Local(local)) as u8)
           }
           None => parent
             .resolve_upvalue(name)
@@ -1113,6 +1117,7 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
       Act::And => self.and(),
       Act::Binary => self.binary(),
       Act::Call => self.call(),
+      Act::Index => self.index(),
       Act::List => self.list(),
       Act::Dot => self.dot(can_assign),
       Act::Grouping => self.grouping(),
@@ -1157,10 +1162,9 @@ impl<'a, 's, S: StdIo + Clone> Compiler<'a, 's, S> {
   /// Patch a jump instruction
   fn patch_jump(&mut self, offset: usize) {
     let jump_landing = self.calc_jump(offset);
-    let encoded: u16 = unsafe { mem::transmute(jump_landing) };
-    let (b1, b2) = encode_u16(encoded);
-    self.current_chunk().instructions[offset] = b1;
-    self.current_chunk().instructions[offset + 1] = b2;
+    let buffer = jump_landing.to_ne_bytes();
+    self.current_chunk().instructions[offset] = buffer[0];
+    self.current_chunk().instructions[offset + 1] = buffer[1];
   }
 
   /// Calculate the jump once it's landing has been found
@@ -1230,7 +1234,7 @@ const RULES_TABLE: [ParseRule; 42] = [
   // TOKEN_LEFT_BRACE
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RIGHT_BRACE
-  ParseRule::new(Some(Act::List), None, Precedence::None),
+  ParseRule::new(Some(Act::List), Some(Act::Index), Precedence::None),
   // TOKEN_LEFT_BRACKET
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RIGHT_BRACKET
@@ -1524,6 +1528,7 @@ enum Act {
   And,
   Binary,
   Call,
+  Index,
   List,
   Dot,
   Grouping,
@@ -1542,17 +1547,18 @@ mod test {
   use super::*;
   use crate::debug::disassemble_chunk;
   use spacelox_core::chunk::decode_u16;
-  use spacelox_core::io::NativeStdIo;
+  use spacelox_core::io::{NativeIo, NativeStdIo};
 
   enum ByteCodeTest {
     Code(AlignedByteCode),
     Fun((u8, Vec<ByteCodeTest>)),
   }
 
-  fn test_compile<'a>(src: String, gc: &mut Gc<NativeStdIo>) -> Managed<Fun> {
-    let mut parser = Parser::new(NativeStdIo::new(), &src);
+  fn test_compile<'a>(src: String, gc: &mut Gc) -> Managed<Fun> {
+    let io = NativeIo::new();
+    let mut parser = Parser::new(io.stdio(), &src);
 
-    let compiler = Compiler::new(NativeStdIo::new(), &mut parser, gc);
+    let compiler = Compiler::new(io, &mut parser, gc);
     let result = compiler.compile();
     assert_eq!(result.success, true);
 
@@ -1651,7 +1657,7 @@ mod test {
   fn op_print() {
     let example = "print 10;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -1683,7 +1689,7 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       fun,
@@ -1748,7 +1754,7 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       fun,
@@ -1790,7 +1796,7 @@ mod test {
   fn empty_fun() {
     let example = "fun example() {} example();".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       fun,
@@ -1823,7 +1829,7 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       fun,
@@ -1854,7 +1860,7 @@ mod test {
   fn empty_fun_basic() {
     let example = "fun example() { var a = 10; return a; } example();".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_fun_bytecode(
       fun,
@@ -1883,7 +1889,7 @@ mod test {
   fn for_loop() {
     let example = "for (var x = 0; x < 10; x = x + 1) { print(x); }".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
@@ -1916,7 +1922,7 @@ mod test {
   #[test]
   fn while_loop() {
     let example = "while (true) { print 10; }".to_string();
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
@@ -1939,7 +1945,7 @@ mod test {
   fn or_operator() {
     let example = "print false or true;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
@@ -1961,7 +1967,7 @@ mod test {
   fn if_condition() {
     let example = "if (3 < 10) { print \"hi\"; }".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
@@ -1986,7 +1992,7 @@ mod test {
   fn if_else_condition() {
     let example = "if (3 < 10) { print \"hi\"; } else { print \"bye\"; }".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
@@ -2013,7 +2019,7 @@ mod test {
   fn declare_local() {
     let example = "{ var x = 10; }".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2030,7 +2036,7 @@ mod test {
   fn op_get_local() {
     let example = "{ var x = 10; print(x); }".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2049,7 +2055,7 @@ mod test {
   fn op_set_local() {
     let example = "{ var x = 10; x = 5; }".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
@@ -2070,7 +2076,7 @@ mod test {
   fn op_define_global_nil() {
     let example = "var x;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
@@ -2088,7 +2094,7 @@ mod test {
   fn op_define_global_val() {
     let example = "var x = 10;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
 
     assert_simple_bytecode(
@@ -2106,7 +2112,7 @@ mod test {
   fn op_get_global() {
     let example = "print x;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2123,7 +2129,7 @@ mod test {
   fn op_set_global() {
     let example = "x = \"cat\";".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2141,7 +2147,7 @@ mod test {
   fn op_pop() {
     let example = "false;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2158,7 +2164,7 @@ mod test {
   fn op_return() {
     let example = "".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(fun, &vec![AlignedByteCode::Nil, AlignedByteCode::Return]);
   }
@@ -2167,7 +2173,7 @@ mod test {
   fn op_number() {
     let example = "5.18;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2184,7 +2190,7 @@ mod test {
   fn op_string() {
     let example = "\"example\";".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2201,7 +2207,7 @@ mod test {
   fn op_false() {
     let example = "false;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2218,7 +2224,7 @@ mod test {
   fn op_true() {
     let example = "true;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2235,7 +2241,7 @@ mod test {
   fn op_nil() {
     let example = "nil;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2252,7 +2258,7 @@ mod test {
   fn op_not() {
     let example = "!false;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2270,7 +2276,7 @@ mod test {
   fn op_negate() {
     let example = "-15;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2288,7 +2294,7 @@ mod test {
   fn op_add() {
     let example = "10 + 4;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2307,7 +2313,7 @@ mod test {
   fn op_subtract() {
     let example = "10 - 4;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2326,7 +2332,7 @@ mod test {
   fn op_divide() {
     let example = "10 / 4;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2345,7 +2351,7 @@ mod test {
   fn op_multi() {
     let example = "10 * 4;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2364,7 +2370,7 @@ mod test {
   fn op_equal() {
     let example = "true == nil;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2383,7 +2389,7 @@ mod test {
   fn op_not_equal() {
     let example = "true != nil;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2403,7 +2409,7 @@ mod test {
   fn op_less() {
     let example = "3 < 5;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2422,7 +2428,7 @@ mod test {
   fn op_less_equal() {
     let example = "3 <= 5;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2442,7 +2448,7 @@ mod test {
   fn op_greater() {
     let example = "3 > 5;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
@@ -2461,7 +2467,7 @@ mod test {
   fn op_greater_equal() {
     let example = "3 >= 5;".to_string();
 
-    let mut gc = Gc::new(NativeStdIo::new());
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
     assert_simple_bytecode(
       fun,
