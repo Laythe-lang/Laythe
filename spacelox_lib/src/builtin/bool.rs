@@ -37,9 +37,6 @@ impl NativeMethod for BoolStr {
   }
 
   fn call(&self, gc: &Gc, context: &dyn Trace, this: Value, _args: &[Value]) -> NativeResult {
-    match this.to_bool() {
-      true => NativeResult::Success(Value::String(gc.manage(String::from("true"), context))),
-      false => NativeResult::Success(Value::String(gc.manage(String::from("false"), context))),
-    }
+    NativeResult::Success(Value::String(gc.manage_str(this.to_string(), context)))
   }
 }

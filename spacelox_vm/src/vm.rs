@@ -1,7 +1,6 @@
 use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, CompilerResult, Parser};
-use crate::constants::FRAME_MAX;
-use crate::constants::{DEFAULT_STACK_MAX, INIT};
+use crate::constants::{DEFAULT_STACK_MAX, FRAME_MAX, INIT, SCRIPT, PLACEHOLDER_NAME};
 use fnv::FnvHashMap;
 use spacelox_core::chunk::{ByteCode, UpvalueIndex};
 use spacelox_core::io::{Io, NativeIo, StdIo};
@@ -76,9 +75,9 @@ pub struct Vm<I: Io + 'static> {
 
 impl<I: Io> Vm<I> {
   pub fn new(io: I) -> Vm<I> {
-    let fun = Fun::default();
     let gc = Gc::new(Box::new(io.stdio()));
-
+    let fun = Fun::new(gc.manage_str(String::from(PLACEHOLDER_NAME), &NO_GC));
+    
     let managed_fun = gc.manage(fun, &NO_GC);
     let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
 
@@ -213,6 +212,7 @@ struct VmExecutor<'a, I: Io + 'static> {
 }
 
 impl<'a, I: Io> VmExecutor<'a, I> {
+  /// Create an instance of the vm executor that can execute the provided script.
   pub fn new(vm: &'a mut Vm<I>, script: Value) -> VmExecutor<'a, I> {
     let current_frame = vm.frames[0];
     let current_fun = current_frame.closure.fun;
@@ -239,6 +239,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
+  /// Main virtual machine execution loop. This will run the until the program interrupts
+  /// from a normal exit or from a runtime error.
   pub fn run(&mut self) -> Interpret {
     let mut ip: u32 = 0;
 
@@ -246,6 +248,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let mut last_ip: u32 = 0;
 
     loop {
+      // get the current instruction
       let op_code: ByteCode = self.frame_instruction(ip);
 
       #[cfg(feature = "debug")]
@@ -254,6 +257,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         last_ip = ip;
       }
 
+      // execute the decoded instruction
       let result = match op_code {
         ByteCode::Negate => self.op_negate(ip),
         ByteCode::Add => self.op_add(ip),
@@ -268,6 +272,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::Jump => self.op_jump(ip),
         ByteCode::Loop => self.op_loop(ip),
         ByteCode::DefineGlobal => self.op_define_global(ip),
+        ByteCode::GetIndex => self.op_get_index(ip),
+        ByteCode::SetIndex => self.op_set_index(ip),
         ByteCode::GetGlobal => self.op_get_global(ip),
         ByteCode::SetGlobal => self.op_set_global(ip),
         ByteCode::GetLocal => self.op_get_local(ip),
@@ -404,7 +410,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// read a constant as a string from the current chunk
   #[inline]
   fn read_string(&self, index: u8) -> Managed<String> {
-    self.read_constant(index).to_string()
+    self.read_constant(index).to_str()
   }
 
   /// reset the stack in case of interrupt
@@ -489,7 +495,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  /// invoke a method on a instance's super class
+  /// Invoke a method on a instance's super class
   fn op_super_invoke(&mut self, ip: u32) -> InterpretResult {
     let constant = self.read_byte(ip + 1);
     let arg_count = self.read_byte(ip + 2);
@@ -500,6 +506,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.invoke_from_class(super_class, method_name, arg_count, ip + 3)
   }
 
+  /// Generate a new class
   fn op_class(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
@@ -508,6 +515,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(ip + 2)
   }
 
+  /// Get this classes super class
   fn op_get_super(&mut self, ip: u32) -> InterpretResult {
     let slot = self.read_byte(ip + 1);
     let name = self.read_string(slot);
@@ -561,6 +569,29 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let global = self.pop();
     self.globals.insert(name, global);
     Ok(ip + 2)
+  }
+
+  fn op_set_index(&mut self, ip: u32) -> InterpretResult {
+    let mut target = self.peek(2);
+    let index = self.peek(1);
+
+    match (&mut target, index) {
+      (Value::List(list), Value::Number(num)) => {
+        let rounded = num as usize;
+        if rounded > list.len() {
+          return self.runtime_error(&format!(
+            "Index out of bounds. list was length {} but attempted to index with {}.",
+            list.len(),
+            rounded
+          ));
+        }
+
+        list[rounded] = self.pop();
+        self.pop();
+        Ok(ip + 1)
+      }
+      _ => self.runtime_error(&format!("{} cannot be indexed", target.value_type())),
+    }
   }
 
   fn op_set_global(&mut self, ip: u32) -> InterpretResult {
@@ -620,6 +651,27 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
 
     Ok(ip + 2)
+  }
+
+  fn op_get_index(&mut self, ip: u32) -> InterpretResult {
+    let index = self.pop();
+    let target = self.pop();
+
+    match (target, index) {
+      (Value::List(list), Value::Number(num)) => {
+        let rounded = num as usize;
+        if rounded > list.len() {
+          return self.runtime_error(&format!(
+            "Index out of bounds. list was length 0 but attempted to index with {}.",
+            rounded
+          ));
+        }
+
+        self.push(list[rounded]);
+        Ok(ip + 1)
+      }
+      _ => self.runtime_error(&format!("{} cannot be indexed", target.value_type())),
+    }
   }
 
   fn op_get_global(&mut self, ip: u32) -> InterpretResult {
@@ -876,7 +928,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       Value::Class(class) => self.call_class(class, arg_count, ip),
       Value::Fun(fun) => panic!(
         "function {} was not wrapped in a closure",
-        fun.name.clone().unwrap_or_else(|| "script".to_string())
+        fun.name
       ),
       _ => self.runtime_error("Can only call functions and classes."),
     }
@@ -967,11 +1019,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn call(&mut self, closure: Managed<Closure>, arg_count: u8, ip: u32) -> InterpretResult {
     // check that the current function is called with the right number of args
     if let Some(error) = self.check_arity(closure.fun.arity, arg_count, || {
-      closure
-        .fun
-        .name
-        .clone()
-        .unwrap_or_else(|| "script".to_string())
+      closure.fun.name.to_string()
     }) {
       return error;
     }
@@ -1153,9 +1201,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     for frame in self.frames[0..self.frame_count].iter().rev() {
       let closure = &frame.closure;
-      let location = match &closure.fun.name {
-        Some(name) => format!("{}()", name),
-        None => "script".to_string(),
+      let location: String = match &**closure.fun.name {
+        SCRIPT => SCRIPT.to_owned(),
+        _ => format!("{}()", closure.fun.name),
       };
 
       stdio.eprintln(&format!(

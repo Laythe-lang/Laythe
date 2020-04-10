@@ -258,6 +258,13 @@ impl<T: 'static + Manage> Ord for Managed<T> {
   }
 }
 
+impl<T: 'static + Manage + fmt::Display> fmt::Display for Managed<T> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    let inner: &T = &*self;
+    write!(f, "{}", inner)
+  }
+}
+
 impl<T: 'static + Manage + fmt::Debug> fmt::Debug for Managed<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = &*self;

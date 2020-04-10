@@ -39,7 +39,7 @@ impl NativeMethod for NativeName {
 
   fn call(&self, gc: &Gc, context: &dyn Trace, this: Value, _args: &[Value]) -> NativeResult {
     NativeResult::Success(Value::String(
-      gc.manage(String::from(this.to_native_fun().meta().name), context),
+      gc.manage_str(String::from(this.to_native_fun().meta().name), context),
     ))
   }
 }

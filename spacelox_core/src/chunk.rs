@@ -48,6 +48,12 @@ pub enum AlignedByteCode {
   /// Initialize list from literal
   ListInit(u16),
 
+  /// Get from an index
+  GetIndex,
+
+  /// Set to an index
+  SetIndex,
+
   /// Pop ByteCode
   Pop,
 
@@ -143,6 +149,8 @@ impl AlignedByteCode {
       Self::False => push_op(code, ByteCode::False),
       Self::List => push_op(code, ByteCode::List),
       Self::ListInit(slot) => push_op_u16(code, ByteCode::ListInit, slot),
+      Self::GetIndex => push_op(code, ByteCode::GetIndex),
+      Self::SetIndex => push_op(code, ByteCode::SetIndex),
       Self::Equal => push_op(code, ByteCode::Equal),
       Self::Greater => push_op(code, ByteCode::Greater),
       Self::Less => push_op(code, ByteCode::Less),
@@ -200,6 +208,8 @@ impl AlignedByteCode {
         AlignedByteCode::ListInit(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
+      ByteCode::GetIndex => (AlignedByteCode::GetIndex, offset + 1),
+      ByteCode::SetIndex => (AlignedByteCode::SetIndex, offset + 1),
       ByteCode::Pop => (AlignedByteCode::Pop, offset + 1),
       ByteCode::DefineGlobal => (AlignedByteCode::DefineGlobal(store[offset + 1]), offset + 2),
       ByteCode::GetGlobal => (AlignedByteCode::GetGlobal(store[offset + 1]), offset + 2),
@@ -288,6 +298,12 @@ pub enum ByteCode {
 
   /// Init List
   ListInit,
+
+  /// Get an index
+  GetIndex,
+
+  /// Set an index
+  SetIndex,
 
   /// Pop ByteCode
   Pop,
@@ -389,7 +405,7 @@ pub fn decode_u16(buffer: &[u8]) -> u16 {
 }
 
 fn push_op(code: &mut Vec<u8>, byte: ByteCode) {
-  code.push(byte.to_byte())
+  code.push(byte.to_byte());
 }
 
 fn push_op_u8(code: &mut Vec<u8>, byte: ByteCode, param: u8) {
@@ -408,19 +424,6 @@ fn push_op_u16(code: &mut Vec<u8>, byte: ByteCode, param: u16) {
   code.push(byte.to_byte());
   code.extend_from_slice(&param_bytes);
 }
-
-fn push_op_u32(code: &mut Vec<u8>, byte: ByteCode, param: u32) {
-  let param_bytes = param.to_ne_bytes();
-  code.push(byte.to_byte());
-  code.extend_from_slice(&param_bytes);
-}
-
-// pub fn write_op_u16(code: &mut [u8], byte: ByteCode, param: u16) {
-//   let (b1, b2) = encode_u16(param);
-//   code[0] = byte.to_byte();
-//   code[1] = b1;
-//   code[2] = b2;
-// }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UpvalueIndex {

@@ -7,5 +7,5 @@ def fib(n):
 
 
 start = time.time()
-print(fib(30) == 832040)
+print(fib(35) == 9227465)
 print(time.time() - start)

@@ -1,4 +1,4 @@
-use crate::constants::{INIT, SUPER, THIS};
+use crate::constants::{INIT, SUPER, THIS, SCRIPT};
 use crate::scanner::Scanner;
 use spacelox_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use spacelox_core::io::{Io, StdIo};
@@ -98,7 +98,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       Fun {
         arity: ArityKind::Fixed(0),
         upvalue_count: 0,
-        name: None,
+        name: gc.manage_str(String::from(SCRIPT), &NO_GC),
         chunk: Chunk::default(),
       },
       &NO_GC,
@@ -130,7 +130,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Construct an inner compiler used to compile functions inside of a script
-  fn child(name: Option<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's, I>) -> Self {
+  fn child(name: Managed<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's, I>) -> Self {
     let mut child = Self {
       fun: unsafe { (*enclosing).fun },
       fun_kind: fun_kind.clone(),
@@ -352,7 +352,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a function declaration and body
   fn function(&mut self, fun_kind: FunKind) {
-    let name = Some(self.parser.previous.lexeme.to_string());
+    let name = self.gc.manage_str(self.parser.previous.lexeme.to_string(), &NO_GC);
 
     let mut fun_compiler = Compiler::child(name, fun_kind, &mut *self);
     fun_compiler.begin_scope();
@@ -646,14 +646,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// Print the chunk if debug and an error occurred
   #[cfg(feature = "debug")]
   fn print_chunk(&self) {
-    let script = "<script>".to_string();
-
-    let name = match &self.fun.name {
-      Some(name) => name,
-      None => &script,
-    };
-
-    disassemble_chunk(&self.io.stdio(), &self.fun.chunk, &name)
+    disassemble_chunk(&self.io.stdio(), &self.fun.chunk, &self.fun.name)
   }
 
   /// Compiles a binary expression into it's equivalent bytecodes
@@ -687,9 +680,6 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self.emit_byte(AlignedByteCode::Call(arg_count));
   }
 
-  /// Compile a index
-  fn index(&mut self) {}
-
   /// Compile a call invocation
   fn list(&mut self) {
     self.emit_byte(AlignedByteCode::List);
@@ -697,6 +687,21 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     if arg_count > 0 {
       self.emit_byte(AlignedByteCode::ListInit(arg_count));
+    }
+  }
+
+  /// Compile a index
+  fn index(&mut self, can_assign: bool) {
+    self.expression();
+    self
+      .parser
+      .consume(TokenKind::RightBracket, "Expected ']' after index");
+
+    if can_assign && self.parser.match_kind(TokenKind::Equal) {
+      self.expression();
+      self.emit_byte(AlignedByteCode::SetIndex);
+    } else {
+      self.emit_byte(AlignedByteCode::GetIndex);
     }
   }
 
@@ -863,6 +868,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     arg_count as u8
   }
 
+  /// Parse a list of argument defining a list
   fn list_arguments(&mut self) -> u16 {
     let arg_count = self.consume_arguments(TokenKind::RightBracket, std::u16::MAX as usize);
     self
@@ -871,6 +877,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     arg_count as u16
   }
 
+  /// Consume a comma separated set of arguments for calls and lists
   fn consume_arguments(&mut self, stop_token: TokenKind, max: usize) -> usize {
     let mut arg_count: usize = 0;
 
@@ -1123,8 +1130,8 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       Act::And => self.and(),
       Act::Binary => self.binary(),
       Act::Call => self.call(),
-      Act::Index => self.index(),
       Act::List => self.list(),
+      Act::Index => self.index(can_assign),
       Act::Dot => self.dot(can_assign),
       Act::Grouping => self.grouping(),
       Act::Literal => self.literal(),
@@ -1240,7 +1247,7 @@ const RULES_TABLE: [ParseRule; 42] = [
   // TOKEN_LEFT_BRACE
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RIGHT_BRACE
-  ParseRule::new(Some(Act::List), Some(Act::Index), Precedence::None),
+  ParseRule::new(Some(Act::List), Some(Act::Index), Precedence::Call),
   // TOKEN_LEFT_BRACKET
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RIGHT_BRACKET
@@ -1627,14 +1634,9 @@ mod test {
   }
 
   fn assert_fun_bytecode(fun: Managed<Fun>, code: &[ByteCodeTest]) {
-    let name = match &fun.name {
-      Some(name) => name.to_owned(),
-      None => "test".to_owned(),
-    };
-
-    disassemble_chunk(&NativeStdIo::new(), &fun.chunk, &name);
+    disassemble_chunk(&NativeStdIo::new(), &fun.chunk, &*fun.name);
     let decoded_byte_code = decode_byte_code(fun);
-    assert_eq!(decoded_byte_code.len(), code.len(), "for fun {}", name);
+    assert_eq!(decoded_byte_code.len(), code.len(), "for fun {}", fun.name);
 
     for i in 0..code.len() {
       match decoded_byte_code[i] {
@@ -1669,6 +1671,67 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::Constant(0),
+        AlignedByteCode::Print,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn list_index_set() {
+    let example = "
+      var a = [clock, clock, clock];
+      a[1] = 5;
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::List,
+        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::ListInit(3),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(4),
+        AlignedByteCode::Constant(5),
+        AlignedByteCode::Constant(6),
+        AlignedByteCode::SetIndex,
+        AlignedByteCode::Pop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn list_index_get() {
+    let example = "
+      var a = [\"john\", \"joe\", \"jim\"];
+      print a[1];
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::List,
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Constant(3),
+        AlignedByteCode::ListInit(3),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(4),
+        AlignedByteCode::Constant(5),
+        AlignedByteCode::GetIndex,
         AlignedByteCode::Print,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,

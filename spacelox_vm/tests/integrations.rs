@@ -365,6 +365,18 @@ fn if_stmt() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn indexing() -> Result<(), std::io::Error> {
+  test_files(
+    &vec!["indexing/list_get.lox", "indexing/list_set.lox"],
+    Interpret::Ok,
+  )?;
+
+  test_files(&vec![], Interpret::CompileError)?;
+
+  test_files(&vec![], Interpret::RuntimeError)
+}
+
+#[test]
 fn inheritance() -> Result<(), std::io::Error> {
   test_files(
     &vec![
@@ -415,9 +427,13 @@ fn list() -> Result<(), std::io::Error> {
     Interpret::Ok,
   )?;
 
-  test_files(&vec![
-    "list/missing_comma_in_parameters.lox"
-  ], Interpret::CompileError)?;
+  test_files(
+    &vec![
+      "list/missing_comma_in_initializer.lox",
+      "list/missing_closing_bracket.lox",
+    ],
+    Interpret::CompileError,
+  )?;
 
   test_files(&vec![], Interpret::RuntimeError)
 }

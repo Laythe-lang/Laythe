@@ -37,10 +37,7 @@ impl NativeMethod for FunName {
     &self.meta
   }
 
-  fn call(&self, gc: &Gc, context: &dyn Trace, this: Value, _args: &[Value]) -> NativeResult {
-    NativeResult::Success(Value::String(gc.manage_str(
-      this.to_fun().name.clone().expect("expected user function"),
-      context,
-    )))
+  fn call(&self, _gc: &Gc, _context: &dyn Trace, this: Value, _args: &[Value]) -> NativeResult {
+    NativeResult::Success(Value::String(this.to_fun().name))
   }
 }

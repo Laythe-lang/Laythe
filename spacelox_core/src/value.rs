@@ -90,7 +90,7 @@ impl Value {
   /// let value = Value::String(managed);
   /// assert_eq!(*value.to_string(), "example".to_string())
   /// ```
-  pub fn to_string(&self) -> Managed<String> {
+  pub fn to_str(&self) -> Managed<String> {
     match self {
       Self::String(str1) => *str1,
       _ => panic!("Expected string."),
@@ -311,17 +311,17 @@ impl fmt::Display for Value {
       Self::Bool(b) => write!(f, "{}", b),
       Self::Nil => write!(f, "nil"),
       Self::String(string) => write!(f, "'{}'", string.as_str()),
-      Self::List(_) => write!(f, "list"),
-      Self::Fun(fun) => match &fun.name {
-        Some(name) => write!(f, "<fn {}>", name),
-        None => write!(f, "<script>"),
-      },
+      Self::List(list) => {
+        let strings: Vec<String> = list.iter().map(|x| format!("{}", x)).collect();
+        write!(f, "[{}]", strings.join(", "))
+      }
+      Self::Fun(fun) => write!(f, "{}", fun),
       Self::Upvalue(upvalue) => match &**upvalue {
-        Upvalue::Open(stack_ptr) => write!(f, "<upvalue open {}>", unsafe { stack_ptr.as_ref() }),
-        Upvalue::Closed(store) => write!(f, "<upvalue closed {}>", store),
+        Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
+        Upvalue::Closed(store) => write!(f, "{}", store),
       },
-      Self::Closure(closure) => write!(f, "{}", closure.name()),
-      Self::Method(bound) => write!(f, "{}", bound.method),
+      Self::Closure(closure) => write!(f, "{}", *closure.fun),
+      Self::Method(bound) => write!(f, "{}.{}", bound.receiver, bound.method),
       Self::Class(class) => write!(f, "{}", &class.name.as_str()),
       Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
       Self::NativeFun(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
@@ -553,18 +553,24 @@ pub struct Fun {
   pub chunk: Chunk,
 
   /// Name if not top-level script
-  pub name: Option<String>,
+  pub name: Managed<String>,
 }
 
-impl Default for Fun {
-  fn default() -> Self {
+impl Fun {
+  pub fn new(name: Managed<String>) -> Self {
     Self {
       arity: ArityKind::Fixed(0),
       upvalue_count: 0,
       chunk: Chunk::default(),
-      name: Some("null function".to_string()),
+      name,
     }
   }
+}
+
+impl fmt::Display for Fun {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      write!(f, "<fn {}>", self.name)
+    }
 }
 
 impl fmt::Debug for Fun {
@@ -580,6 +586,7 @@ impl fmt::Debug for Fun {
 
 impl Trace for Fun {
   fn trace(&self) -> bool {
+    self.name.trace();
     self.chunk.constants.iter().for_each(|constant| {
       constant.trace();
     });
@@ -710,13 +717,6 @@ impl Closure {
     Closure {
       upvalues: Vec::with_capacity(fun.upvalue_count as usize),
       fun,
-    }
-  }
-
-  pub fn name(&self) -> String {
-    match &self.fun.name {
-      Some(name) => format!("<fn {}>", name),
-      None => "<script>".to_string(),
     }
   }
 }

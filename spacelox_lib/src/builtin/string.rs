@@ -37,6 +37,6 @@ impl NativeMethod for StringStr {
   }
 
   fn call(&self, _gc: &Gc, _context: &dyn Trace, this: Value, _args: &[Value]) -> NativeResult {
-    NativeResult::Success(Value::String(this.to_string()))
+    NativeResult::Success(Value::String(this.to_str()))
   }
 }

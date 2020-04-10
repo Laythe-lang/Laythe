@@ -4,5 +4,5 @@ def fib(n)
 end 
 
 start = Time.new
-puts fib(30) == 832040
+puts fib(35) == 9227465
 puts Time.new - start

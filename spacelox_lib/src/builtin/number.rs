@@ -38,7 +38,7 @@ impl NativeMethod for NumberStr {
 
   fn call(&self, gc: &Gc, context: &dyn Trace, this: Value, _args: &[Value]) -> NativeResult {
     NativeResult::Success(Value::String(
-      gc.manage(String::from(format!("{}", this.to_num())), context),
+      gc.manage_str(this.to_string(), context),
     ))
   }
 }
