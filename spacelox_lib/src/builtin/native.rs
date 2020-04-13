@@ -20,12 +20,12 @@ pub fn create_native_class<C: Trace>(gc: &Gc, context: &C) -> Managed<Class> {
 }
 
 #[derive(Clone, Debug)]
-pub struct NativeName {
+struct NativeName {
   meta: Box<NativeMeta>,
 }
 
 impl NativeName {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(NATIVE_NAME),
     }

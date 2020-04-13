@@ -52,6 +52,14 @@ pub fn do_if_some<T, F: FnOnce(T)>(val: Option<T>, op: F) {
   }
 }
 
+pub fn use_sentinel_nan(val: f64) -> f64 {
+  if val.is_nan() {
+    std::f64::NAN
+  } else {
+    val
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;

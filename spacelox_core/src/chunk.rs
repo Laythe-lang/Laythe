@@ -42,11 +42,17 @@ pub enum AlignedByteCode {
   /// False ByteCode
   False,
 
-  /// Create an empty lister
+  /// Create an empty list
   List,
 
   /// Initialize list from literal
   ListInit(u16),
+
+  /// Create an empty map
+  Map,
+
+  /// Initial map from literal
+  MapInit(u16),
 
   /// Get from an index
   GetIndex,
@@ -149,6 +155,8 @@ impl AlignedByteCode {
       Self::False => push_op(code, ByteCode::False),
       Self::List => push_op(code, ByteCode::List),
       Self::ListInit(slot) => push_op_u16(code, ByteCode::ListInit, slot),
+      Self::Map => push_op(code, ByteCode::Map),
+      Self::MapInit(slot) => push_op_u16(code, ByteCode::MapInit, slot),
       Self::GetIndex => push_op(code, ByteCode::GetIndex),
       Self::SetIndex => push_op(code, ByteCode::SetIndex),
       Self::Equal => push_op(code, ByteCode::Equal),
@@ -206,6 +214,11 @@ impl AlignedByteCode {
       ByteCode::List => (AlignedByteCode::List, offset + 1),
       ByteCode::ListInit => (
         AlignedByteCode::ListInit(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Map => (AlignedByteCode::Map, offset + 1),
+      ByteCode::MapInit => (
+        AlignedByteCode::MapInit(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::GetIndex => (AlignedByteCode::GetIndex, offset + 1),
@@ -296,8 +309,14 @@ pub enum ByteCode {
   /// Empty list
   List,
 
-  /// Init List
+  /// Initialize List
   ListInit,
+
+  /// Empty Map
+  Map,
+
+  /// Initialize map
+  MapInit,
 
   /// Get an index
   GetIndex,

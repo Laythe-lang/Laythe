@@ -367,13 +367,25 @@ fn if_stmt() -> Result<(), std::io::Error> {
 #[test]
 fn indexing() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["indexing/list_get.lox", "indexing/list_set.lox"],
+    &vec![
+      "indexing/list_get.lox",
+      "indexing/list_set.lox",
+      "indexing/list_nested_get.lox",
+      "indexing/list_nested_set.lox",
+      "indexing/map_na_get.lox",
+      "indexing/map_ref_equal_get.lox",
+      "indexing/map_nested_get.lox",
+      "indexing/map_nested_set.lox",
+    ],
     Interpret::Ok,
   )?;
 
   test_files(&vec![], Interpret::CompileError)?;
 
-  test_files(&vec![], Interpret::RuntimeError)
+  test_files(&vec![
+    "indexing/list_out_of_range.lox",
+    "indexing/map_key_not_found.lox"
+  ], Interpret::RuntimeError)
 }
 
 #[test]
@@ -423,7 +435,7 @@ fn limit() -> Result<(), std::io::Error> {
 #[test]
 fn list() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["list/empty.lox", "list/homogenious.lox", "list/mixed.lox"],
+    &vec!["list/empty.lox", "list/homogeneous.lox", "list/mixed.lox"],
     Interpret::Ok,
   )?;
 
@@ -451,6 +463,26 @@ fn logical_operator() -> Result<(), std::io::Error> {
   )?;
 
   test_files(&vec![], Interpret::CompileError)?;
+
+  test_files(&vec![], Interpret::RuntimeError)
+}
+
+#[test]
+fn map() -> Result<(), std::io::Error> {
+  test_files(
+    &vec!["map/empty.lox", "map/homogeneous.lox", "map/mixed.lox"],
+    Interpret::Ok,
+  )?;
+
+  test_files(
+    &vec![
+      "map/missing_closing_curly.lox",
+      "map/missing_colon.lox",
+      "map/statement_key.lox",
+      "map/statement_value.lox",
+    ],
+    Interpret::CompileError,
+  )?;
 
   test_files(&vec![], Interpret::RuntimeError)
 }

@@ -116,6 +116,13 @@ impl<'a> Scanner<'a> {
       "}" => self.make_token_source(TokenKind::RightBrace),
       "[" => self.make_token_source(TokenKind::LeftBracket),
       "]" => self.make_token_source(TokenKind::RightBracket),
+      ":" => {
+        if self.match_token("{") {
+          self.make_token_source(TokenKind::MapOpen)
+        } else {
+          self.make_token_source(TokenKind::Colon)
+        }
+      }
       ";" => self.make_token_source(TokenKind::Semicolon),
       "," => self.make_token_source(TokenKind::Comma),
       "." => self.make_token_source(TokenKind::Dot),
@@ -162,7 +169,7 @@ impl<'a> Scanner<'a> {
         }
 
         eprintln!(
-          "slice {}",
+          "unknown character {}",
           visible_whitespace(&self.source[char_start..current])
         );
         self.error_token(UNKNOWN_CHARACTER)

@@ -19,12 +19,12 @@ pub fn create_bool_class<C: Trace>(gc: &Gc, context: &C) -> Managed<Class> {
 }
 
 #[derive(Clone, Debug)]
-pub struct BoolStr {
+struct BoolStr {
   meta: Box<NativeMeta>,
 }
 
 impl BoolStr {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(BOOL_STR),
     }

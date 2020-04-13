@@ -1,4 +1,4 @@
-use crate::constants::{INIT, SUPER, THIS, SCRIPT};
+use crate::constants::{INIT, SCRIPT, SUPER, THIS};
 use crate::scanner::Scanner;
 use spacelox_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use spacelox_core::io::{Io, StdIo};
@@ -232,7 +232,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     }
 
     if self.parser.panic_mode {
-      self.synchronize();
+      self.synchronize(None);
     }
   }
 
@@ -352,7 +352,9 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a function declaration and body
   fn function(&mut self, fun_kind: FunKind) {
-    let name = self.gc.manage_str(self.parser.previous.lexeme.to_string(), &NO_GC);
+    let name = self
+      .gc
+      .manage_str(self.parser.previous.lexeme.to_string(), &NO_GC);
 
     let mut fun_compiler = Compiler::child(name, fun_kind, &mut *self);
     fun_compiler.begin_scope();
@@ -590,7 +592,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Synchronize the compiler to a sentinel token
-  fn synchronize(&mut self) {
+  fn synchronize(&mut self, optional_stop: Option<TokenKind>) {
     self.parser.panic_mode = false;
 
     while self.parser.current.kind != TokenKind::Eof {
@@ -610,6 +612,12 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
           return;
         }
         _ => {}
+      }
+
+      if let Some(stop) = optional_stop {
+        if self.parser.current.kind == stop {
+          return;
+        }
       }
 
       self.parser.advance();
@@ -702,6 +710,40 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       self.emit_byte(AlignedByteCode::SetIndex);
     } else {
       self.emit_byte(AlignedByteCode::GetIndex);
+    }
+  }
+
+  /// Compile a map literal
+  fn map(&mut self) {
+    self.emit_byte(AlignedByteCode::Map);
+    let mut entries: usize = 0;
+
+    while !self.parser.check(TokenKind::RightBrace) {
+      self.expression();
+      self
+        .parser
+        .consume(TokenKind::Colon, "Expected ':' after map key");
+      self.expression();
+
+      if entries == std::u16::MAX as usize {
+        self.parser.error(&format!(
+          "Cannot have more than {} key value pairs in map literal",
+          entries
+        ));
+      }
+      entries += 1;
+
+      if !self.parser.match_kind(TokenKind::Comma) {
+        break;
+      }
+    }
+
+    self
+      .parser
+      .consume(TokenKind::RightBrace, "Expected '}' after map");
+
+    if entries > 0 {
+      self.emit_byte(AlignedByteCode::MapInit(entries as u16))
     }
   }
 
@@ -881,21 +923,19 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   fn consume_arguments(&mut self, stop_token: TokenKind, max: usize) -> usize {
     let mut arg_count: usize = 0;
 
-    if !self.parser.check(stop_token) {
-      loop {
-        self.expression();
+    while !self.parser.check(stop_token) {
+      self.expression();
 
-        if arg_count == max {
-          self
-            .parser
-            .error(&format!("Cannot have more than {} arguments", max));
-          return arg_count;
-        }
-        arg_count += 1;
+      if arg_count == max {
+        self
+          .parser
+          .error(&format!("Cannot have more than {} arguments", max));
+        return arg_count;
+      }
+      arg_count += 1;
 
-        if !self.parser.match_kind(TokenKind::Comma) {
-          break;
-        }
+      if !self.parser.match_kind(TokenKind::Comma) {
+        break;
       }
     }
 
@@ -1131,6 +1171,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       Act::Binary => self.binary(),
       Act::Call => self.call(),
       Act::List => self.list(),
+      Act::Map => self.map(),
       Act::Index => self.index(can_assign),
       Act::Dot => self.dot(can_assign),
       Act::Grouping => self.grouping(),
@@ -1222,6 +1263,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 }
 
+/// Get the first local for a given function kind
 fn first_local(fun_kind: FunKind) -> Local {
   match fun_kind {
     FunKind::Fun => Local {
@@ -1238,7 +1280,7 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 42] = [
+const RULES_TABLE: [ParseRule; 44] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
@@ -1259,6 +1301,8 @@ const RULES_TABLE: [ParseRule; 42] = [
   // TOKEN_MINUS
   ParseRule::new(None, Some(Act::Binary), Precedence::Term),
   // TOKEN_PLUS
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_COLON
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_SEMICOLON
   ParseRule::new(None, Some(Act::Binary), Precedence::Factor),
@@ -1287,6 +1331,8 @@ const RULES_TABLE: [ParseRule; 42] = [
   // TOKEN_STRING
   ParseRule::new(Some(Act::Number), None, Precedence::None),
   // TOKEN_NUMBER
+  ParseRule::new(Some(Act::Map), None, Precedence::Call),
+  // TOKEN_MAP_OPEN
   ParseRule::new(None, Some(Act::And), Precedence::And),
   // TOKEN_AND
   ParseRule::new(None, None, Precedence::None),
@@ -1543,6 +1589,7 @@ enum Act {
   Call,
   Index,
   List,
+  Map,
   Dot,
   Grouping,
   Literal,

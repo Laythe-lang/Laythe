@@ -24,6 +24,7 @@ pub enum TokenKind {
   Dot,
   Minus,
   Plus,
+  Colon,
   Semicolon,
   Slash,
   Star,
@@ -42,6 +43,7 @@ pub enum TokenKind {
   Identifier,
   String,
   Number,
+  MapOpen,
 
   // keywords
   And,

@@ -19,12 +19,12 @@ pub fn create_string_class<C: Trace>(gc: &Gc, context: &C) -> Managed<Class> {
 }
 
 #[derive(Clone, Debug)]
-pub struct StringStr {
+struct StringStr {
   meta: Box<NativeMeta>,
 }
 
 impl StringStr {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(STRING_STR),
     }

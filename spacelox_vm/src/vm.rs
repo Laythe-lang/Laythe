@@ -1,14 +1,15 @@
 use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, CompilerResult, Parser};
-use crate::constants::{DEFAULT_STACK_MAX, FRAME_MAX, INIT, SCRIPT, PLACEHOLDER_NAME};
+use crate::constants::{DEFAULT_STACK_MAX, FRAME_MAX, INIT, PLACEHOLDER_NAME, SCRIPT};
 use fnv::FnvHashMap;
 use spacelox_core::chunk::{ByteCode, UpvalueIndex};
 use spacelox_core::io::{Io, NativeIo, StdIo};
 use spacelox_core::managed::{Managed, Trace};
 use spacelox_core::memory::{Gc, NO_GC};
 use spacelox_core::native::{NativeFun, NativeMethod, NativeResult};
-use spacelox_core::value::{
-  ArityKind, BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, Value,
+use spacelox_core::{
+  utils::use_sentinel_nan,
+  value::{ArityKind, BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, Value},
 };
 use spacelox_lib::assert::assert_funs;
 use spacelox_lib::{builtin::make_builtin_classes, time::clock_funs};
@@ -77,7 +78,7 @@ impl<I: Io> Vm<I> {
   pub fn new(io: I) -> Vm<I> {
     let gc = Gc::new(Box::new(io.stdio()));
     let fun = Fun::new(gc.manage_str(String::from(PLACEHOLDER_NAME), &NO_GC));
-    
+
     let managed_fun = gc.manage(fun, &NO_GC);
     let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
 
@@ -288,6 +289,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::False => self.op_literal(ip, Value::Bool(false)),
         ByteCode::List => self.op_literal(ip, Value::List(self.gc.manage(Vec::new(), self))),
         ByteCode::ListInit => self.op_list(ip),
+        ByteCode::Map => {
+          self.op_literal(ip, Value::Map(self.gc.manage(FnvHashMap::default(), self)))
+        }
+        ByteCode::MapInit => self.op_map(ip),
         ByteCode::Constant => self.op_constant(ip),
         ByteCode::Print => self.op_print(ip),
         ByteCode::Call => self.op_call(ip),
@@ -447,6 +452,31 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Ok(ip + 3)
   }
 
+  /// create a list from a list literal
+  fn op_map(&mut self, ip: u32) -> InterpretResult {
+    let arg_count = self.read_short(ip + 1);
+    let mut map = self.peek(arg_count as u32 * 2).to_map();
+    map.reserve(arg_count as usize);
+
+    for i in 0..arg_count {
+      let key = unsafe {
+        self
+          .stack
+          .get_unchecked(self.stack_top - (i as usize * 2) - 2)
+      };
+      let value = unsafe {
+        self
+          .stack
+          .get_unchecked(self.stack_top - (i as usize * 2) - 1)
+      };
+
+      map.insert(*key, *value);
+    }
+    self.stack_top -= arg_count as usize * 2;
+
+    Ok(ip + 3)
+  }
+
   /// call a function or method
   fn op_call(&mut self, ip: u32) -> InterpretResult {
     let arg_count = self.read_byte(ip + 1);
@@ -485,6 +515,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         self.invoke_from_class(self.builtin.fun, method_name, arg_count, ip + 3)
       }
       Value::List(_) => self.invoke_from_class(self.builtin.list, method_name, arg_count, ip + 3),
+      Value::Map(_) => self.invoke_from_class(self.builtin.map, method_name, arg_count, ip + 3),
       Value::NativeFun(_) => {
         self.invoke_from_class(self.builtin.native, method_name, arg_count, ip + 3)
       }
@@ -578,7 +609,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     match (&mut target, index) {
       (Value::List(list), Value::Number(num)) => {
         let rounded = num as usize;
-        if rounded > list.len() {
+        if rounded >= list.len() {
           return self.runtime_error(&format!(
             "Index out of bounds. list was length {} but attempted to index with {}.",
             list.len(),
@@ -587,6 +618,16 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         }
 
         list[rounded] = self.pop();
+        self.pop();
+        Ok(ip + 1)
+      }
+      (Value::Map(map), Value::Number(num)) => {
+        map.insert(Value::Number(use_sentinel_nan(num)), self.pop());
+        self.pop();
+        Ok(ip + 1)
+      }
+      (Value::Map(map), _) => {
+        map.insert(index, self.pop());
         self.pop();
         Ok(ip + 1)
       }
@@ -660,7 +701,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     match (target, index) {
       (Value::List(list), Value::Number(num)) => {
         let rounded = num as usize;
-        if rounded > list.len() {
+        if rounded >= list.len() {
           return self.runtime_error(&format!(
             "Index out of bounds. list was length 0 but attempted to index with {}.",
             rounded
@@ -670,6 +711,22 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         self.push(list[rounded]);
         Ok(ip + 1)
       }
+      (Value::Map(map), Value::Number(num)) => {
+        match map.get(&Value::Number(use_sentinel_nan(num))) {
+          Some(value) => {
+            self.push(*value);
+            Ok(ip + 1)
+          }
+          None => self.runtime_error(&format!("Key {} does not exist in map", index)),
+        }
+      }
+      (Value::Map(map), _) => match map.get(&index) {
+        Some(value) => {
+          self.push(*value);
+          Ok(ip + 1)
+        }
+        None => self.runtime_error(&format!("Key {} does not exist in map", index)),
+      },
       _ => self.runtime_error(&format!("{} cannot be indexed", target.value_type())),
     }
   }
@@ -926,10 +983,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       Value::NativeFun(native_fun) => self.call_native_fun(native_fun, arg_count, ip),
       Value::NativeMethod(native_method) => self.call_native_method(native_method, arg_count, ip),
       Value::Class(class) => self.call_class(class, arg_count, ip),
-      Value::Fun(fun) => panic!(
-        "function {} was not wrapped in a closure",
-        fun.name
-      ),
+      Value::Fun(fun) => panic!("function {} was not wrapped in a closure", fun.name),
       _ => self.runtime_error("Can only call functions and classes."),
     }
   }

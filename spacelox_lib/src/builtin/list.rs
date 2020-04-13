@@ -49,14 +49,13 @@ pub fn create_list_class<C: Trace>(gc: &Gc, context: &C) -> Managed<Class> {
   class
 }
 
-
 #[derive(Clone, Debug)]
-pub struct ListStr {
+struct ListStr {
   meta: Box<NativeMeta>,
 }
 
 impl ListStr {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(LIST_STR),
     }
@@ -74,12 +73,12 @@ impl NativeMethod for ListStr {
 }
 
 #[derive(Clone, Debug)]
-pub struct ListLen {
+struct ListLen {
   meta: Box<NativeMeta>,
 }
 
 impl ListLen {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(LIST_LEN),
     }
@@ -97,12 +96,12 @@ impl NativeMethod for ListLen {
 }
 
 #[derive(Clone, Debug)]
-pub struct ListPush {
+struct ListPush {
   meta: Box<NativeMeta>,
 }
 
 impl ListPush {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(LIST_PUSH),
     }
@@ -121,12 +120,12 @@ impl NativeMethod for ListPush {
 }
 
 #[derive(Clone, Debug)]
-pub struct ListPop {
+struct ListPop {
   meta: Box<NativeMeta>,
 }
 
 impl ListPop {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(LIST_POP),
     }
@@ -147,12 +146,12 @@ impl NativeMethod for ListPop {
 }
 
 #[derive(Clone, Debug)]
-pub struct ListInsert {
+struct ListInsert {
   meta: Box<NativeMeta>,
 }
 
 impl ListInsert {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(LIST_INSERT),
     }
@@ -171,14 +170,13 @@ impl NativeMethod for ListInsert {
   }
 }
 
-
 #[derive(Clone, Debug)]
-pub struct ListContain {
+struct ListContain {
   meta: Box<NativeMeta>,
 }
 
 impl ListContain {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(LIST_CONTAINS),
     }

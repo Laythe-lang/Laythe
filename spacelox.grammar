@@ -15,6 +15,10 @@ statement      → exprStmt
                | whileStmt
                | block ;
 
+function       → IDENTIFIER "(" parameters? ")" block ;
+parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
+arguments      → expression ( "," expression )* ;
+
 exprStmt       → expression ";" ;
 forStmt        → "for" "(" ( varDecl | exprStmt | ";" )
                            expression? ";"
@@ -36,11 +40,17 @@ comparison     → addition ( ( ">" | ">=" | "<" | "<=" ) addition )* ;
 addition       → multiplication ( ( "-" | "+" ) multiplication )* ;
 multiplication → unary ( ( "/" | "*" ) unary )* ;
 
-unary          → ( "!" | "-" ) unary | call | index ;
-index          → primary ;
+unary          → ( "!" | "-" ) unary | call | map ;
+map            → "{" ( expression ":" expression ) "}"
 call           → primary ( "(" arguments? ")" | "[" expression "]" | "." IDENTIFIER )* ;
 
 primary        → "true" | "false" | "nil" | "this"
                | NUMBER | STRING | IDENTIFIER
                | "(" expression ")" | "[" arguments? "]"
                | "super" "." IDENTIFIER ;
+
+NUMBER         → DIGIT+ ( "." DIGIT+ )? ;
+STRING         → '"' <any char except '"'>* '"' ;
+IDENTIFIER     → ALPHA ( ALPHA | DIGIT )* ;
+ALPHA          → 'a' ... 'z' | 'A' ... 'Z' | '_' ;
+DIGIT          → '0' ... '9' ;

@@ -1,4 +1,4 @@
-use crate::io::StdIo;
+use crate::io::{NativeStdIo, StdIo};
 use crate::managed::{Allocation, Manage, Managed, Trace};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
@@ -73,12 +73,12 @@ impl<'a> Gc {
   ///   arity: ArityKind::Fixed(3),
   ///   upvalue_count: 0,
   ///   chunk: Chunk::default(),
-  ///   name: Some("fun".to_string()),
+  ///   name: gc.manage_str("fun".to_string(), &NO_GC),
   /// };
   ///
   /// let managed_fun = gc.manage(fun, &NO_GC);
   ///
-  /// assert_eq!(managed_fun.name, Some("fun".to_string()));
+  /// assert_eq!(&*managed_fun.name, "fun");
   /// ```
   pub fn manage<T: 'static + Manage, C: Trace + ?Sized>(&self, data: T, context: &C) -> Managed<T> {
     self.allocate(data, context)
@@ -105,7 +105,7 @@ impl<'a> Gc {
   pub fn manage_str<C: Trace + ?Sized>(&self, string: String, context: &C) -> Managed<String> {
     if let Some(cached) = self.intern_cache.borrow_mut().get(&*string) {
       return *cached;
-    }
+    } 
 
     let managed = self.allocate(string, context);
     let static_str: &'static str = unsafe { &*(&**managed as *const str) };
@@ -341,6 +341,11 @@ impl<'a> Gc {
   }
 }
 
+impl<'a> Default for Gc {
+  fn default() -> Self { 
+    Gc::new(Box::new(NativeStdIo::new()))
+  }
+} 
 pub struct NoGc();
 
 impl fmt::Display for NoGc {

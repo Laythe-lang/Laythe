@@ -20,12 +20,12 @@ pub fn create_fun_class<C: Trace>(gc: &Gc, context: &C) -> Managed<Class> {
 }
 
 #[derive(Clone, Debug)]
-pub struct FunName {
+struct FunName {
   meta: Box<NativeMeta>,
 }
 
 impl FunName {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(FUN_NAME),
     }

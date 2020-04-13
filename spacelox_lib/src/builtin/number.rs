@@ -19,12 +19,12 @@ pub fn create_number_class<C: Trace>(gc: &Gc, context: &C) -> Managed<Class> {
 }
 
 #[derive(Clone, Debug)]
-pub struct NumberStr {
+struct NumberStr {
   meta: Box<NativeMeta>,
 }
 
 impl NumberStr {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(NUMBER_STR),
     }
@@ -37,8 +37,6 @@ impl NativeMethod for NumberStr {
   }
 
   fn call(&self, gc: &Gc, context: &dyn Trace, this: Value, _args: &[Value]) -> NativeResult {
-    NativeResult::Success(Value::String(
-      gc.manage_str(this.to_string(), context),
-    ))
+    NativeResult::Success(Value::String(gc.manage_str(this.to_string(), context)))
   }
 }

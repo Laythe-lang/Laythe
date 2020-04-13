@@ -19,12 +19,12 @@ pub fn create_nil_class<C: Trace>(gc: &Gc, context: &C) -> Managed<Class> {
 }
 
 #[derive(Clone, Debug)]
-pub struct NilStr {
+struct NilStr {
   meta: Box<NativeMeta>,
 }
 
 impl NilStr {
-  pub fn new() -> Self {
+  fn new() -> Self {
     Self {
       meta: Box::new(NIL_STR),
     }
