@@ -1,7 +1,10 @@
-use crate::chunk::Chunk;
+use crate::chunk::{AlignedByteCode, Chunk};
 use crate::io::StdIo;
 use crate::{
+  arity::ArityKind,
+  constants::INIT,
   dynamic_map::DynamicMap,
+  hooks::Hooks,
   managed::{Manage, Managed, Trace},
   native::{NativeFun, NativeMethod},
   utils::do_if_some,
@@ -169,17 +172,13 @@ impl Value {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::value::{Value, Fun, ArityKind};
+  /// use spacelox_core::value::{Value, Fun};
+  /// use spacelox_core::arity::ArityKind;
   /// use spacelox_core::memory::{Gc, NO_GC};
   /// use spacelox_core::chunk::Chunk;
   ///
   /// let gc = Gc::default();
-  /// let fun: Fun = Fun {
-  ///   name: gc.manage_str(String::from("add"), &NO_GC),
-  ///   arity: ArityKind::Fixed(3),
-  ///   upvalue_count: 0,
-  ///   chunk: Chunk::default()
-  /// };
+  /// let fun: Fun = Fun::new(gc.manage_str(String::from("add"), &NO_GC));
   /// let managed = gc.manage(fun, &NO_GC);
   ///
   /// let value = Value::Fun(managed);
@@ -192,11 +191,19 @@ impl Value {
     }
   }
 
-  /// Unwrap and reference a spacelox native function, panics if not a native function
+  /// Unwrap a spacelox native function, panics if not a native function
   pub fn to_native_fun(&self) -> Managed<Box<dyn NativeFun>> {
     match self {
-      Self::NativeFun(native) => *native,
-      _ => panic!("Expected function!"),
+      Self::NativeFun(native_fun) => *native_fun,
+      _ => panic!("Expected native function!"),
+    }
+  }
+
+  /// Unwrap a spacelox native method, panics if not a native method
+  pub fn to_native_method(&self) -> Managed<Box<dyn NativeMethod>> {
+    match self {
+      Self::NativeMethod(native_method) => *native_method,
+      _ => panic!("Expected native method")
     }
   }
 
@@ -204,17 +211,13 @@ impl Value {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::value::{Value, Closure, Fun, ArityKind};
+  /// use spacelox_core::value::{Value, Closure, Fun};
+  /// use spacelox_core::arity::ArityKind;
   /// use spacelox_core::memory::{Gc, NO_GC};
   /// use spacelox_core::chunk::Chunk;
   ///
   /// let gc = Gc::default();
-  /// let fun = Fun {
-  ///   name: gc.manage_str("add".to_string(), &NO_GC),
-  ///   arity: ArityKind::Fixed(3),
-  ///   upvalue_count: 0,
-  ///   chunk: Chunk::default()
-  /// };
+  /// let fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
   /// let managed_fun = gc.manage(fun, &NO_GC);
   ///
   /// let closure = Closure::new(managed_fun);
@@ -227,6 +230,37 @@ impl Value {
     match self {
       Self::Closure(closure) => *closure,
       _ => panic!("Expected closure!"),
+    }
+  }
+
+  /// Unwrap and reference a spacelox method, panics if not a method
+  ///
+  /// # Examples
+  /// ```
+  /// use spacelox_core::value::{Value, Closure, Method, Fun};
+  /// use spacelox_core::arity::ArityKind;
+  /// use spacelox_core::memory::{Gc, NO_GC};
+  /// use spacelox_core::chunk::Chunk;
+  ///
+  /// let gc = Gc::default();
+  /// let fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
+  /// let managed_fun = gc.manage(fun, &NO_GC);
+  ///
+  /// let closure = Closure::new(managed_fun);
+  /// let managed_closure = gc.manage(closure, &NO_GC);
+  /// 
+  /// let nil = Value::Nil;
+  /// 
+  /// let method = Method::new(nil, Value::Closure(managed_closure));
+  /// let managed_method = gc.manage(method, &NO_GC);
+  ///
+  /// let value = Value::Method(managed_method);
+  /// assert_eq!(value.to_method(), managed_method);
+  /// ```
+  pub fn to_method(&self) -> Managed<Method> {
+    match self {
+      Self::Method(method) => *method,
+      _ => panic!("Expected method!"),
     }
   }
 
@@ -338,9 +372,9 @@ impl Value {
       Value::String(_) => builtin.string,
       Value::List(_) => builtin.list,
       Value::Map(_) => builtin.map,
-      Value::Fun(_) => builtin.fun,
-      Value::Closure(_) => builtin.fun,
-      Value::Method(_) => builtin.fun,
+      Value::Fun(_) => panic!("TODO"),
+      Value::Closure(_) => builtin.closure,
+      Value::Method(_) => builtin.method,
       Value::Class(_) => panic!("TODO"),
       Value::Instance(instance) => instance.class,
       Value::Upvalue(upvalue) => upvalue.value().value_class(builtin),
@@ -359,7 +393,11 @@ impl fmt::Display for Value {
       Self::Nil => write!(f, "nil"),
       Self::String(string) => write!(f, "'{}'", string.as_str()),
       Self::List(list) => {
-        let strings: Vec<String> = list.iter().map(|x| format!("{}", x)).collect();
+        let mut strings: Vec<String> = Vec::with_capacity(list.len());
+        for item in list.iter() {
+          strings.push(format!("{}", item));
+        }
+
         write!(f, "[{}]", strings.join(", "))
       }
       Self::Map(map) => {
@@ -367,7 +405,7 @@ impl fmt::Display for Value {
           .iter()
           .map(|(key, value)| format!("{}: {}", key, value))
           .collect();
-        write!(f, "{{{}}}", strings.join(", "))
+        write!(f, "{{ {} }}", strings.join(", "))
       }
       Self::Fun(fun) => write!(f, "{}", fun),
       Self::Upvalue(upvalue) => match &**upvalue {
@@ -485,8 +523,12 @@ impl Hash for Value {
 impl Trace for Value {
   fn trace(&self) -> bool {
     match self {
+      Value::Nil => true,
+      Value::Bool(_) => true,
+      Value::Number(_) => true,
       Value::String(string) => string.trace(),
       Value::List(list) => list.trace(),
+      Value::Map(map) => map.trace(),
       Value::Fun(fun) => fun.trace(),
       Value::Closure(closure) => closure.trace(),
       Value::Method(method) => method.trace(),
@@ -494,13 +536,18 @@ impl Trace for Value {
       Value::Instance(instance) => instance.trace(),
       Value::Upvalue(upvalue) => upvalue.trace(),
       Value::NativeFun(native) => native.trace(),
-      _ => true,
+      Value::NativeMethod(native) => native.trace(),
     }
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     match self {
+      Value::Nil => true,
+      Value::Bool(_) => true,
+      Value::Number(_) => true,
       Value::String(string) => string.trace_debug(stdio),
+      Value::List(list) => list.trace_debug(stdio),
+      Value::Map(map) => map.trace_debug(stdio),
       Value::Fun(fun) => fun.trace_debug(stdio),
       Value::Closure(closure) => closure.trace_debug(stdio),
       Value::Method(method) => method.trace_debug(stdio),
@@ -508,7 +555,7 @@ impl Trace for Value {
       Value::Instance(instance) => instance.trace_debug(stdio),
       Value::Upvalue(upvalue) => upvalue.trace_debug(stdio),
       Value::NativeFun(native) => native.trace_debug(stdio),
-      _ => true,
+      Value::NativeMethod(native) => native.trace_debug(stdio),
     }
   }
 }
@@ -520,7 +567,8 @@ pub struct BuiltInClasses {
   pub string: Managed<Class>,
   pub list: Managed<Class>,
   pub map: Managed<Class>,
-  pub fun: Managed<Class>,
+  pub closure: Managed<Class>,
+  pub method: Managed<Class>,
   pub native: Managed<Class>,
 }
 
@@ -531,7 +579,8 @@ impl Trace for BuiltInClasses {
     self.number.trace();
     self.string.trace();
     self.list.trace();
-    self.fun.trace();
+    self.map.trace();
+    self.closure.trace();
     self.native.trace();
 
     true
@@ -543,7 +592,8 @@ impl Trace for BuiltInClasses {
     self.number.trace_debug(stdio);
     self.string.trace_debug(stdio);
     self.list.trace_debug(stdio);
-    self.fun.trace_debug(stdio);
+    self.map.trace_debug(stdio);
+    self.closure.trace_debug(stdio);
     self.native.trace_debug(stdio);
 
     true
@@ -656,12 +706,6 @@ pub enum FunKind {
   Script,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
-pub enum ArityKind {
-  Fixed(u8),
-  Variadic(u8),
-}
-
 #[derive(PartialEq, Clone)]
 pub struct Fun {
   /// Arity of this function
@@ -671,7 +715,7 @@ pub struct Fun {
   pub upvalue_count: usize,
 
   /// Code for the function body
-  pub chunk: Chunk,
+  chunk: Chunk,
 
   /// Name if not top-level script
   pub name: Managed<String>,
@@ -685,6 +729,22 @@ impl Fun {
       chunk: Chunk::default(),
       name,
     }
+  }
+
+  pub fn chunk(&self) -> &Chunk {
+    &self.chunk
+  }
+
+  pub fn write_instruction(&mut self, hooks: &Hooks, op_code: AlignedByteCode, line: u32) {
+    hooks.resize(self, |fun| fun.chunk.write_instruction(op_code, line));
+  }
+
+  pub fn replace_instruction(&mut self, index: usize, instruction: u8) {
+    self.chunk.instructions[index] = instruction;
+  }
+
+  pub fn add_constant(&mut self, hooks: &Hooks, constant: Value) -> usize {
+    hooks.resize(self, |fun| fun.chunk.add_constant(constant))
   }
 }
 
@@ -700,7 +760,7 @@ impl fmt::Debug for Fun {
       .field("arity", &self.arity)
       .field("upvalue_count", &self.upvalue_count)
       .field("chunk", &"Chunk { ... }")
-      .field("name", &self.name)
+      .field("name", &"Managed(String {...})")
       .finish()
   }
 }
@@ -716,6 +776,7 @@ impl Trace for Fun {
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.name.trace_debug(stdio);
     self.chunk.constants.iter().for_each(|constant| {
       constant.trace_debug(stdio);
     });
@@ -738,7 +799,7 @@ impl Manage for Fun {
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<Self>()
+    mem::size_of::<Self>() + self.chunk.size()
   }
 }
 
@@ -766,7 +827,7 @@ impl Manage for String {
   }
 
   fn size(&self) -> usize {
-    mem::size_of_val(self) + self.capacity()
+    mem::size_of::<Self>() + self.capacity()
   }
 }
 
@@ -802,7 +863,7 @@ impl Manage for Vec<Value> {
   }
 
   fn size(&self) -> usize {
-    mem::size_of_val(self) + self.capacity()
+    mem::size_of::<Vec<Value>>() + mem::size_of::<Value>() * self.capacity()
   }
 }
 
@@ -840,7 +901,7 @@ impl Manage for FnvHashMap<Value, Value> {
   }
 
   fn size(&self) -> usize {
-    mem::size_of_val(self) + self.capacity()
+    mem::size_of::<FnvHashMap<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
   }
 }
 
@@ -855,18 +916,13 @@ impl Closure {
   ///
   /// # Example
   /// ```
-  /// use spacelox_core::value::{Closure, Fun, ArityKind};
+  /// use spacelox_core::value::{Closure, Fun};
+  /// use spacelox_core::arity::ArityKind;
   /// use spacelox_core::memory::{Gc, NO_GC};
   /// use spacelox_core::chunk::Chunk;
   ///
   /// let gc = Gc::default();
-  /// let mut fun = Fun {
-  ///   arity: ArityKind::Fixed(3),
-  ///   upvalue_count: 2,
-  ///   chunk: Chunk::default(),
-  ///   name: gc.manage_str("example".to_string(), &NO_GC)
-  /// };
-  ///
+  /// let mut fun = Fun::new(gc.manage_str("example".to_string(), &NO_GC));
   /// let managed_fun = gc.manage(fun, &NO_GC);
   ///
   /// let closure = Closure::new(managed_fun);
@@ -923,7 +979,7 @@ impl Manage for Closure {
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<Self>()
+    mem::size_of::<Self>() + mem::size_of::<Value>() * self.upvalues.capacity()
   }
 }
 
@@ -931,8 +987,7 @@ impl Manage for Closure {
 pub struct Class {
   pub name: Managed<String>,
   pub init: Option<Value>,
-  // pub methods: FnvHashMap<Managed<String>, Value>,
-  pub methods: DynamicMap<Managed<String>, Value>,
+  methods: DynamicMap<Managed<String>, Value>,
 }
 
 impl Class {
@@ -940,9 +995,35 @@ impl Class {
     Class {
       name,
       init: None,
-      // methods: FnvHashMap::with_capacity_and_hasher(4, Default::default()),
       methods: DynamicMap::new(),
     }
+  }
+
+  pub fn add_method(&mut self, hooks: &Hooks, name: Managed<String>, method: Value) {
+    if *name == INIT {
+      self.init = Some(method);
+    }
+
+    hooks.resize(self, |class| {
+      class.methods.insert(name, method);
+    });
+  }
+
+  pub fn get_method(&self, name: &Managed<String>) -> Option<&Value> {
+    self.methods.get(name)
+  }
+
+  pub fn inherit(&mut self, hooks: &Hooks, super_class: Managed<Class>) {
+    hooks.resize(self, |class| {
+      super_class.methods.for_each(|(key, value)| {
+        match class.methods.get(&*key) {
+          None => class.methods.insert(*key, *value),
+          _ => None,
+        };
+      });
+    });
+
+    self.init = self.init.or(super_class.init);
   }
 }
 
@@ -968,11 +1049,6 @@ impl Trace for Class {
       val.trace();
     });
 
-    // self.methods.iter().for_each(|(key, val)| {
-    //   key.trace();
-    //   val.trace();
-    // });
-
     true
   }
 
@@ -986,11 +1062,6 @@ impl Trace for Class {
       key.trace_debug(stdio);
       val.trace_debug(stdio);
     });
-
-    // self.methods.iter().for_each(|(key, val)| {
-    //   key.trace_debug(stdio);
-    //   val.trace_debug(stdio);
-    // });
 
     true
   }
@@ -1011,13 +1082,14 @@ impl Manage for Class {
 
   fn size(&self) -> usize {
     mem::size_of::<Class>()
+      + (mem::size_of::<Managed<String>>() + mem::size_of::<Value>()) * self.methods.capacity()
   }
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Instance {
   pub class: Managed<Class>,
-  pub fields: DynamicMap<Managed<String>, Value>,
+  fields: DynamicMap<Managed<String>, Value>,
 }
 
 impl Instance {
@@ -1026,6 +1098,16 @@ impl Instance {
       class,
       fields: DynamicMap::new(),
     }
+  }
+
+  pub fn set_field(&mut self, hooks: &Hooks, name: Managed<String>, value: Value) {
+    hooks.resize(self, |instance: &mut Instance| {
+      instance.fields.insert(name, value);
+    });
+  }
+
+  pub fn get_field(&self, name: &Managed<String>) -> Option<&Value> {
+    self.fields.get(name)
   }
 }
 
@@ -1077,6 +1159,7 @@ impl Manage for Instance {
 
   fn size(&self) -> usize {
     mem::size_of::<Instance>()
+      + (mem::size_of::<Managed<String>>() + mem::size_of::<Value>()) * self.fields.capacity()
   }
 }
 

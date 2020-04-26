@@ -4,6 +4,10 @@ version = "0.1.0"
 authors = ["John Chabot <johnchabot2013@gmail.com>"]
 edition = "2018"
 
+[features]
+debug_gc = []
+debug_stress_gc = []
+
 [lib]
 name = "spacelox_core"
 path = "src/lib.rs"

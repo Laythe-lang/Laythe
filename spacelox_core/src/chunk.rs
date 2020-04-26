@@ -140,6 +140,7 @@ pub enum AlignedByteCode {
 }
 
 impl AlignedByteCode {
+  /// Encode aligned bytecode as unaligned bytecode for better storage / compactness
   pub fn encode(self, code: &mut Vec<u8>) {
     match self {
       Self::Return => push_op(code, ByteCode::Return),
@@ -195,6 +196,7 @@ impl AlignedByteCode {
     }
   }
 
+  /// Decode unaligned bytecode to aligned bytecode. Primarily for testing purposes
   pub fn decode(store: &[u8], offset: usize) -> (AlignedByteCode, usize) {
     let byte_code = ByteCode::from(store[offset]);
 
@@ -401,12 +403,14 @@ pub enum ByteCode {
 }
 
 impl ByteCode {
+  /// Convert this bytecode to its underlying byte.
   fn to_byte(self) -> u8 {
     unsafe { mem::transmute(self) }
   }
 }
 
 impl From<u8> for ByteCode {
+  /// Get the enum bytecode for a raw byte
   #[inline]
   fn from(byte: u8) -> Self {
     unsafe { mem::transmute(byte) }
@@ -585,6 +589,14 @@ impl Chunk {
       Ok(index) => self.lines[index].line,
       Err(index) => self.lines[cmp::min(index, self.lines.len() - 1)].line,
     }
+  }
+
+  /// Get the approximate size of this chunk in bytes
+  pub fn size(&self) -> usize {
+    mem::size_of::<Self>()
+      + mem::size_of::<u8>() * self.instructions.capacity()
+      + mem::size_of::<Value>() * self.constants.capacity()
+      + mem::size_of::<Line>() * self.lines.capacity()
   }
 }
 

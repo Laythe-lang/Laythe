@@ -26,8 +26,9 @@ impl<K: Ord + Hash, V> DynamicMap<K, V> {
     match self {
       Self::Linear(linear) => {
         if linear.len() > SIZE_THRESHOLD {
+          let cap = linear.capacity();
           let mut hash = Self::Hash(FnvHashMap::with_capacity_and_hasher(
-            SIZE_THRESHOLD + 1,
+            std::cmp::max(SIZE_THRESHOLD * 2, cap),
             Default::default(),
           ));
           linear.drain().for_each(|(k, v)| {
@@ -42,6 +43,13 @@ impl<K: Ord + Hash, V> DynamicMap<K, V> {
         }
       }
       Self::Hash(hash) => hash.insert(key, value),
+    }
+  }
+
+  pub fn capacity(&self) -> usize {
+    match self {
+      Self::Linear(linear) => linear.capacity(),
+      Self::Hash(hash) => hash.capacity(),
     }
   }
 
