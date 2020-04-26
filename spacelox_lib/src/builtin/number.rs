@@ -1,18 +1,23 @@
-use spacelox_core::managed::{Managed, Trace};
-use spacelox_core::memory::Gc;
-use spacelox_core::native::{NativeMeta, NativeMethod, NativeResult};
-use spacelox_core::value::{ArityKind, Class, Value};
+use spacelox_core::{
+  CallResult,
+  managed::Managed,
+  native::{NativeMeta, NativeMethod},
+  arity::ArityKind,
+  hooks::Hooks,
+  value::{Class, Value},
+};
 
 pub const NUMBER_CLASS_NAME: &'static str = "Nil";
 const NUMBER_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
 
-pub fn create_number_class<C: Trace>(gc: &Gc, context: &C) -> Managed<Class> {
-  let name = gc.manage_str(String::from(NUMBER_CLASS_NAME), context);
-  let mut class = gc.manage(Class::new(name), context);
+pub fn create_number_class(hooks: &Hooks) -> Managed<Class> {
+  let name = hooks.manage_str(String::from(NUMBER_CLASS_NAME));
+  let mut class = hooks.manage(Class::new(name));
 
-  class.methods.insert(
-    gc.manage_str(String::from(NUMBER_STR.name), context),
-    Value::NativeMethod(gc.manage(Box::new(NumberStr::new()), context)),
+  class.add_method(
+    hooks,
+    hooks.manage_str(String::from(NUMBER_STR.name)),
+    Value::NativeMethod(hooks.manage(Box::new(NumberStr::new()))),
   );
 
   class
@@ -36,7 +41,40 @@ impl NativeMethod for NumberStr {
     &self.meta
   }
 
-  fn call(&self, gc: &Gc, context: &dyn Trace, this: Value, _args: &[Value]) -> NativeResult {
-    NativeResult::Success(Value::String(gc.manage_str(this.to_string(), context)))
+  fn call(&self, hook: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
+    Ok(Value::String(hook.manage_str(this.to_string())))
+  }
+}
+
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  mod str {
+    use super::*;
+    use crate::support::{TestContext, test_native_dependencies};
+
+    #[test]
+    fn new() {
+      let number_str = NumberStr::new();
+
+      assert_eq!(number_str.meta.name, "str");
+      assert_eq!(number_str.meta.arity, ArityKind::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let number_str = NumberStr::new();
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let mut hooks = Hooks::new(&mut context);
+
+      let result = number_str.call(&mut hooks, Value::Number(10.0), &[]);
+      match result {
+        Ok(r) => assert_eq!(*r.to_str(), String::from("10")),
+        Err(_) => assert!(false),
+      }
+    }
   }
 }
