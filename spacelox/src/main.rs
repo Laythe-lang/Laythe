@@ -1,5 +1,5 @@
 #![deny(clippy::all)]
-use spacelox_vm::vm::{default_native_vm, Interpret};
+use spacelox_vm::vm::{default_native_vm, ExecuteResult};
 use std::env;
 use std::fs::read_to_string;
 use std::process;
@@ -15,9 +15,10 @@ fn main() {
     }
     [_, file_path] => match read_to_string(file_path) {
       Ok(source) => match vm.run(&source) {
-        Interpret::Ok => process::exit(0),
-        Interpret::CompileError => process::exit(2),
-        Interpret::RuntimeError => process::exit(3),
+        ExecuteResult::Ok => process::exit(0),
+        ExecuteResult::FunResult(_) => panic!("Fun result should only be returned internally"),
+        ExecuteResult::CompileError => process::exit(2),
+        ExecuteResult::RuntimeError => process::exit(3),
       },
       Err(e) => {
         eprintln!("{}", e);

@@ -7,8 +7,6 @@ edition = "2018"
 [features]
 debug = []
 debug_upvalue = []
-debug_gc = []
-debug_stress_gc = []
 
 [lib]
 name = "spacelox_vm"
