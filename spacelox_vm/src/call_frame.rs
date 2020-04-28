@@ -1,5 +1,7 @@
-use spacelox_core::managed::Managed;
-use spacelox_core::value::Closure;
+use spacelox_core::{
+  value::{Value, Closure},
+  managed::Managed,
+};
 
 /// A call frame in the space lox interpreter
 #[derive(Clone, Copy, PartialEq)]
@@ -8,18 +10,18 @@ pub struct CallFrame {
   pub closure: Managed<Closure>,
 
   /// The instruction pointer for this frame
-  pub ip: u32,
+  pub ip: *const u8,
 
   /// The stack offset for this frame
-  pub slots: u32,
+  pub slots: *mut Value,
 }
 
 impl CallFrame {
   pub fn new(closure: Managed<Closure>) -> Self {
     CallFrame {
       closure,
-      ip: 0,
-      slots: 0,
+      ip: std::ptr::null(),
+      slots: std::ptr::null_mut(),
     }
   }
 }

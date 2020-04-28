@@ -693,7 +693,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     }
   }
 
-  /// Compile a index
+  /// Compile an index
   fn index(&mut self, can_assign: bool) {
     self.expression();
     self

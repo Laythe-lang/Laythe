@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "hooks/inline.lox"
+        "benchmark/list.lox",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",

@@ -21,18 +21,18 @@ pub fn disassemble_chunk<S: StdIo>(stdio: &S, code_chunk: &Chunk, name: &str) {
 pub fn disassemble_instruction<S: StdIo>(
   stdio: &S,
   chunk: &Chunk,
-  offset: usize,
+  ip: usize,
   last_offset: usize,
 ) -> usize {
-  stdio.print(&format!("{:0>4} ", offset));
+  stdio.print(&format!("{:0>4} ", ip));
 
-  if offset > 0 && chunk.get_line(offset) == chunk.get_line(last_offset) {
+  if ip > 0 && chunk.get_line(ip) == chunk.get_line(last_offset) {
     stdio.print("   | ")
   } else {
-    stdio.print(&format!("{:>4} ", chunk.get_line(offset)))
+    stdio.print(&format!("{:>4} ", chunk.get_line(ip)))
   }
 
-  let (instruction, offset) = AlignedByteCode::decode(&chunk.instructions, offset as usize);
+  let (instruction, offset) = AlignedByteCode::decode(&chunk.instructions, ip as usize);
   match instruction {
     AlignedByteCode::Return => simple_instruction(stdio, "Return", offset),
     AlignedByteCode::Print => simple_instruction(stdio, "Print", offset),
