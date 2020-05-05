@@ -1,11 +1,18 @@
+use super::iter::ITER_CLASS_NAME;
 use spacelox_core::{
-  CallResult,
-  managed::Managed,
-  hooks::Hooks,
   arity::ArityKind,
+  hooks::Hooks,
+  io::StdIo,
+  iterator::{SlIter, SlIterator},
+  managed::{Managed, Trace},
+  module::Module,
   native::{NativeMeta, NativeMethod},
+  package::Package,
   value::{Class, Value},
+  CallResult, ModuleResult,
 };
+use std::fmt;
+use std::mem;
 
 pub const LIST_CLASS_NAME: &'static str = "List";
 
@@ -17,10 +24,24 @@ const LIST_REMOVE: NativeMeta = NativeMeta::new("remove", ArityKind::Fixed(1));
 const LIST_INSERT: NativeMeta = NativeMeta::new("insert", ArityKind::Fixed(2));
 const LIST_CLEAR: NativeMeta = NativeMeta::new("clear", ArityKind::Fixed(0));
 const LIST_HAS: NativeMeta = NativeMeta::new("has", ArityKind::Fixed(1));
+const LIST_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0));
 
-pub fn create_list_class(hooks: &Hooks) -> Managed<Class> {
+pub fn declare_list_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
-  let mut class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::new(name));
+
+  self_module.add_export(hooks, name, Value::Class(class))
+}
+
+pub fn define_list_class(hooks: &Hooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
+  let mut class = self_module.get_symbol(hooks, name).unwrap().to_class();
+
+  let list_iter_name = hooks.manage_str(String::from(ITER_CLASS_NAME));
+  let list_iter_class = self_module
+    .get_symbol(hooks, list_iter_name)
+    .unwrap()
+    .to_class();
 
   class.add_method(
     hooks,
@@ -70,10 +91,14 @@ pub fn create_list_class(hooks: &Hooks) -> Managed<Class> {
     Value::NativeMethod(hooks.manage(Box::new(ListHas::new()))),
   );
 
-  class
+  class.add_method(
+    hooks,
+    hooks.manage_str(String::from(LIST_ITER.name)),
+    Value::NativeMethod(hooks.manage(Box::new(ListIter::new(list_iter_class)))),
+  )
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct ListStr {
   meta: Box<NativeMeta>,
 }
@@ -96,7 +121,7 @@ impl NativeMethod for ListStr {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct ListSize {
   meta: Box<NativeMeta>,
 }
@@ -119,7 +144,7 @@ impl NativeMethod for ListSize {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct ListPush {
   meta: Box<NativeMeta>,
 }
@@ -143,7 +168,7 @@ impl NativeMethod for ListPush {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct ListPop {
   meta: Box<NativeMeta>,
 }
@@ -169,7 +194,7 @@ impl NativeMethod for ListPop {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct ListRemove {
   meta: Box<NativeMeta>,
 }
@@ -208,7 +233,7 @@ impl NativeMethod for ListRemove {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct ListInsert {
   meta: Box<NativeMeta>,
 }
@@ -247,7 +272,7 @@ impl NativeMethod for ListInsert {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct ListClear {
   meta: Box<NativeMeta>,
 }
@@ -271,7 +296,7 @@ impl NativeMethod for ListClear {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct ListHas {
   meta: Box<NativeMeta>,
 }
@@ -291,6 +316,96 @@ impl NativeMethod for ListHas {
 
   fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     Ok(Value::Bool(this.to_list().contains(&args[0])))
+  }
+}
+
+#[derive(Clone, Debug)]
+struct ListIter {
+  meta: Box<NativeMeta>,
+  iter_class: Managed<Class>,
+}
+
+impl ListIter {
+  pub fn new(iter_class: Managed<Class>) -> Self {
+    Self {
+      meta: Box::new(LIST_ITER),
+      iter_class,
+    }
+  }
+}
+
+impl Trace for ListIter {
+  fn trace(&self) -> bool {
+    self.iter_class.trace();
+    true
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.iter_class.trace_debug(stdio);
+    true
+  }
+}
+
+impl NativeMethod for ListIter {
+  fn meta(&self) -> &NativeMeta {
+    &self.meta
+  }
+
+  fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
+    let inner_iter: Box<dyn SlIter> = Box::new(ListIterator::new(this.to_list()));
+    let iter = SlIterator::new(inner_iter, self.iter_class);
+    let iter = hooks.manage(iter);
+
+    Ok(Value::Iter(iter))
+  }
+}
+
+struct ListIterator {
+  list: Managed<Vec<Value>>,
+  index: isize,
+}
+
+impl ListIterator {
+  fn new(list: Managed<Vec<Value>>) -> Self {
+    Self { list, index: -1 }
+  }
+}
+
+impl SlIter for ListIterator {
+  fn current(&self) -> Value {
+    if self.index >= 0 && (self.index as usize) < self.list.len() {
+      return self.list[self.index as usize];
+    }
+
+    Value::Nil
+  }
+
+  fn next(&mut self) -> Value {
+    self.index += 1;
+    Value::Bool((self.index as usize) < self.list.len())
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>() + self.list.capacity() * mem::size_of::<Value>()
+  }
+}
+
+impl Trace for ListIterator {
+  fn trace(&self) -> bool {
+    self.list.trace()
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.list.trace_debug(stdio)
+  }
+}
+
+impl fmt::Debug for ListIterator {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("ListIterator")
+      .field("list", &self.list)
+      .field("index", &self.index)
+      .finish()
   }
 }
 
@@ -590,6 +705,89 @@ mod test {
         Ok(r) => {
           assert!(r.is_nil());
           assert_eq!(this.len(), 0);
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod has {
+    use super::*;
+    use crate::support::{test_native_dependencies, TestContext};
+
+    #[test]
+    fn new() {
+      let list_has = ListHas::new();
+
+      assert_eq!(list_has.meta.name, "has");
+      assert_eq!(list_has.meta.arity, ArityKind::Fixed(1));
+    }
+
+    #[test]
+    fn call() {
+      let list_has = ListHas::new();
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let mut hooks = Hooks::new(&mut context);
+
+      let list = vec![Value::Nil, Value::Number(10.0), Value::Bool(true)];
+      let this = hooks.manage(list);
+      let list_value = Value::List(this);
+
+      let result = list_has.call(&mut hooks, list_value, &[Value::Number(10.0)]);
+      match result {
+        Ok(r) => {
+          assert!(r.to_bool());
+        }
+        Err(_) => assert!(false),
+      }
+
+      let result = list_has.call(&mut hooks, list_value, &[Value::Bool(false)]);
+      match result {
+        Ok(r) => {
+          assert!(!r.to_bool());
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod iter {
+    use super::*;
+    use crate::support::{test_native_dependencies, TestContext};
+
+    #[test]
+    fn new() {
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let hooks = Hooks::new(&mut context);
+
+      let list_iter =
+        ListIter::new(hooks.manage(Class::new(hooks.manage_str(String::from("something")))));
+
+      assert_eq!(list_iter.meta.name, "iter");
+      assert_eq!(list_iter.meta.arity, ArityKind::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let mut hooks = Hooks::new(&mut context);
+      let list_iter =
+        ListIter::new(hooks.manage(Class::new(hooks.manage_str(String::from("something")))));
+
+      let list = vec![Value::Nil, Value::Number(10.0), Value::Bool(true)];
+      let this = hooks.manage(list);
+      let list_value = Value::List(this);
+
+      let result = list_iter.call(&mut hooks, list_value, &[]);
+      match result {
+        Ok(r) => {
+          let mut iter = r.to_iter();
+          assert_eq!(iter.current(), Value::Nil);
+          assert_eq!(iter.next(), Value::Bool(true));
+          assert_eq!(iter.current(), Value::Nil);
         }
         Err(_) => assert!(false),
       }

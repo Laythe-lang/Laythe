@@ -1,29 +1,37 @@
 use spacelox_core::{
-  CallResult,
-  managed::Managed,
-  native::{NativeMeta, NativeMethod},
   arity::ArityKind,
   hooks::Hooks,
+  io::StdIo,
+  managed::Trace,
+  module::Module,
+  native::{NativeMeta, NativeMethod},
+  package::Package,
   value::{Class, Value},
+  CallResult, ModuleResult,
 };
 
-pub const NUMBER_CLASS_NAME: &'static str = "Nil";
+pub const NUMBER_CLASS_NAME: &'static str = "Number";
 const NUMBER_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
 
-pub fn create_number_class(hooks: &Hooks) -> Managed<Class> {
+pub fn declare_number_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(NUMBER_CLASS_NAME));
-  let mut class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::new(name));
+
+  self_module.add_export(hooks, name, Value::Class(class))
+}
+
+pub fn define_number_class(hooks: &Hooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(NUMBER_CLASS_NAME));
+  let mut class = self_module.get_symbol(hooks, name).unwrap().to_class();
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NUMBER_STR.name)),
     Value::NativeMethod(hooks.manage(Box::new(NumberStr::new()))),
   );
-
-  class
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct NumberStr {
   meta: Box<NativeMeta>,
 }
@@ -46,14 +54,13 @@ impl NativeMethod for NumberStr {
   }
 }
 
-
 #[cfg(test)]
 mod test {
   use super::*;
 
   mod str {
     use super::*;
-    use crate::support::{TestContext, test_native_dependencies};
+    use crate::support::{test_native_dependencies, TestContext};
 
     #[test]
     fn new() {

@@ -1,10 +1,13 @@
-use spacelox_core::managed::Managed;
-use spacelox_core::native::{NativeMeta, NativeMethod};
 use spacelox_core::{
-  CallResult,
   arity::ArityKind,
   hooks::Hooks,
+  io::StdIo,
+  managed::Trace,
+  module::Module,
+  native::{NativeMeta, NativeMethod},
+  package::Package,
   value::{Class, Value},
+  CallResult, ModuleResult,
 };
 
 pub const MAP_CLASS_NAME: &'static str = "Map";
@@ -13,10 +16,18 @@ const MAP_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
 const MAP_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
 const MAP_HAS: NativeMeta = NativeMeta::new("has", ArityKind::Fixed(1));
 const MAP_GET: NativeMeta = NativeMeta::new("get", ArityKind::Fixed(1));
+const MAP_SET: NativeMeta = NativeMeta::new("set", ArityKind::Fixed(2));
 
-pub fn create_map_class(hooks: &Hooks) -> Managed<Class> {
+pub fn declare_map_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
-  let mut class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::new(name));
+
+  self_module.add_export(hooks, name, Value::Class(class))
+}
+
+pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
+  let mut class = self_module.get_symbol(hooks, name).unwrap().to_class();
 
   class.add_method(
     hooks,
@@ -42,10 +53,14 @@ pub fn create_map_class(hooks: &Hooks) -> Managed<Class> {
     Value::NativeMethod(hooks.manage(Box::new(MapGet::new()))),
   );
 
-  class
+  class.add_method(
+    hooks,
+    hooks.manage_str(String::from(MAP_SET.name)),
+    Value::NativeMethod(hooks.manage(Box::new(MapSet::new()))),
+  );
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct MapStr {
   meta: Box<NativeMeta>,
 }
@@ -68,7 +83,7 @@ impl NativeMethod for MapStr {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct MapSize {
   meta: Box<NativeMeta>,
 }
@@ -91,7 +106,7 @@ impl NativeMethod for MapSize {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct MapHas {
   meta: Box<NativeMeta>,
 }
@@ -114,7 +129,7 @@ impl NativeMethod for MapHas {
   }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct MapGet {
   meta: Box<NativeMeta>,
 }
@@ -140,6 +155,32 @@ impl NativeMethod for MapGet {
   }
 }
 
+#[derive(Clone, Debug, Trace)]
+struct MapSet {
+  meta: Box<NativeMeta>,
+}
+
+impl MapSet {
+  fn new() -> Self {
+    Self {
+      meta: Box::new(MAP_SET),
+    }
+  }
+}
+
+impl NativeMethod for MapSet {
+  fn meta(&self) -> &NativeMeta {
+    &self.meta
+  }
+
+  fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    match this.to_map().insert(args[0], args[1]) {
+      Some(value) => Ok(value),
+      None => Ok(Value::Nil),
+    }
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
@@ -148,7 +189,7 @@ mod test {
   mod str {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use fnv::FnvHashMap;
+    use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {
@@ -167,7 +208,7 @@ mod test {
 
       let values = &[];
 
-      let mut map = FnvHashMap::default();
+      let mut map = SlHashMap::default();
       map.insert(Value::Nil, Value::Nil);
       let this = hooks.manage(map);
 
@@ -183,7 +224,7 @@ mod test {
   mod size {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use fnv::FnvHashMap;
+    use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {
@@ -202,7 +243,7 @@ mod test {
 
       let values = &[];
 
-      let mut map = FnvHashMap::default();
+      let mut map = SlHashMap::default();
       map.insert(Value::Nil, Value::Nil);
       let this = hooks.manage(map);
 
@@ -218,7 +259,7 @@ mod test {
   mod has {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use fnv::FnvHashMap;
+    use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {
@@ -235,7 +276,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let mut map = FnvHashMap::default();
+      let mut map = SlHashMap::default();
       map.insert(Value::Nil, Value::Nil);
       let this = hooks.manage(map);
 
@@ -257,7 +298,7 @@ mod test {
   mod get {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use fnv::FnvHashMap;
+    use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {
@@ -274,7 +315,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let mut map = FnvHashMap::default();
+      let mut map = SlHashMap::default();
       map.insert(Value::Nil, Value::Bool(false));
       let this = hooks.manage(map);
 
@@ -285,6 +326,53 @@ mod test {
       }
 
       let result = map_get.call(&mut hooks, Value::Map(this), &[Value::Bool(true)]);
+      match result {
+        Ok(r) => assert!(r.is_nil()),
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  #[cfg(test)]
+  mod set {
+    use super::*;
+    use crate::support::{test_native_dependencies, TestContext};
+    use spacelox_core::SlHashMap;
+
+    #[test]
+    fn new() {
+      let map_get = MapSet::new();
+
+      assert_eq!(map_get.meta.name, "set");
+      assert_eq!(map_get.meta.arity, ArityKind::Fixed(2));
+    }
+
+    #[test]
+    fn call() {
+      let map_set = MapSet::new();
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let mut hooks = Hooks::new(&mut context);
+
+      let mut map = SlHashMap::default();
+      map.insert(Value::Nil, Value::Bool(false));
+      let this = hooks.manage(map);
+
+      let result = map_set.call(
+        &mut hooks,
+        Value::Map(this),
+        &[Value::Nil, Value::Bool(true)],
+      );
+      match result {
+        Ok(r) => assert_eq!(r.to_bool(), false),
+        Err(_) => assert!(false),
+      }
+
+      let result = map_set.call(
+        &mut hooks,
+        Value::Map(this),
+        &[Value::Number(15.0), Value::Bool(true)],
+      );
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),

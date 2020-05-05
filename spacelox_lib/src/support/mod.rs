@@ -1,11 +1,10 @@
 use spacelox_core::{
-  CallResult,
-  SpaceloxError,
-  managed::Trace,
-  io::{NativeStdIo, StdIo},
   hooks::HookContext,
+  io::{NativeStdIo, StdIo},
+  managed::Trace,
   memory::{Gc, NoGc, NO_GC},
   value::Value,
+  CallResult, SpaceloxError,
 };
 
 pub struct TestContext<'a> {
@@ -39,14 +38,20 @@ impl<'a> HookContext for TestContext<'a> {
       Value::NativeFun(native) => native.meta().arity,
       Value::NativeMethod(method) => method.meta().arity,
       _ => {
-        return Err(SpaceloxError::new(self.gc.manage_str(String::from("Not callable"), &NO_GC)));
+        return Err(SpaceloxError::new(
+          self.gc.manage_str(String::from("Not callable"), &NO_GC),
+        ));
       }
     };
 
     match arity.check(args.len() as u8) {
       Ok(_) => (),
       Err(_) => {
-        return Err(SpaceloxError::new(self.gc.manage_str(String::from("Not correct arity"), &NO_GC)))
+        return Err(SpaceloxError::new(
+          self
+            .gc
+            .manage_str(String::from("Not correct arity"), &NO_GC),
+        ))
       }
     }
 
@@ -56,7 +61,11 @@ impl<'a> HookContext for TestContext<'a> {
       return Ok(response);
     }
 
-    Err(SpaceloxError::new(self.gc.manage_str(String::from("No mocked results"), &NO_GC)))
+    Err(SpaceloxError::new(
+      self
+        .gc
+        .manage_str(String::from("No mocked results"), &NO_GC),
+    ))
   }
 }
 

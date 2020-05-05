@@ -1,14 +1,16 @@
 use spacelox_core::{
-  CallResult,
-  native::{NativeFun, NativeMeta},
   arity::ArityKind,
   hooks::Hooks,
+  io::StdIo,
+  managed::Trace,
+  native::{NativeFun, NativeMeta},
   value::Value,
+  CallResult,
 };
 
 const NATIVE_ASSERT_META: NativeMeta = NativeMeta::new("assert", ArityKind::Fixed(1));
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 /// A native method to assert that for a boolean true value
 pub struct NativeAssert {
   /// the assert meta data
@@ -39,16 +41,16 @@ impl NativeFun for NativeAssert {
     match args[0] {
       Value::Bool(b) => match b {
         true => Ok(Value::Nil),
-        false => hooks.error(String::from("'assert' expected true received false."))
-      }
-      _ => hooks.error(String::from("'assert' expected a boolean value."))
+        false => hooks.error(String::from("'assert' expected true received false.")),
+      },
+      _ => hooks.error(String::from("'assert' expected a boolean value.")),
     }
   }
 }
 
 const NATIVE_ASSERTEQ_META: NativeMeta = NativeMeta::new("assertEq", ArityKind::Fixed(2));
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 pub struct NativeAssertEq {
   meta: Box<NativeMeta>,
 }
@@ -84,7 +86,7 @@ impl NativeFun for NativeAssertEq {
 
 const NATIVE_ASSERTNE_META: NativeMeta = NativeMeta::new("assertNe", ArityKind::Fixed(2));
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 pub struct NativeAssertNe {
   meta: Box<NativeMeta>,
 }

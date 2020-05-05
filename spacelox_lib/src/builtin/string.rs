@@ -1,29 +1,37 @@
 use spacelox_core::{
-  CallResult,
-  native::{NativeMeta, NativeMethod},
-  managed::Managed,
-  hooks::Hooks,
   arity::ArityKind,
+  hooks::Hooks,
+  io::StdIo,
+  managed::Trace,
+  module::Module,
+  native::{NativeMeta, NativeMethod},
+  package::Package,
   value::{Class, Value},
+  CallResult, ModuleResult,
 };
 
 pub const STRING_CLASS_NAME: &'static str = "String";
 const STRING_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
 
-pub fn create_string_class(hooks: &Hooks) -> Managed<Class> {
+pub fn declare_string_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(STRING_CLASS_NAME));
-  let mut class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::new(name));
+
+  self_module.add_export(hooks, name, Value::Class(class))
+}
+
+pub fn define_string_class(hooks: &Hooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(STRING_CLASS_NAME));
+  let mut class = self_module.get_symbol(hooks, name).unwrap().to_class();
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(STRING_STR.name)),
     Value::NativeMethod(hooks.manage(Box::new(StringStr::new()))),
   );
-
-  class
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct StringStr {
   meta: Box<NativeMeta>,
 }
@@ -52,7 +60,7 @@ mod test {
 
   mod str {
     use super::*;
-    use crate::support::{TestContext, test_native_dependencies};
+    use crate::support::{test_native_dependencies, TestContext};
 
     #[test]
     fn new() {

@@ -1,30 +1,38 @@
 use spacelox_core::{
-  CallResult,
-  hooks::Hooks,
-  managed::Managed,
-  native::{NativeMeta, NativeMethod},
   arity::ArityKind,
+  hooks::Hooks,
+  io::StdIo,
+  managed::Trace,
+  module::Module,
+  native::{NativeMeta, NativeMethod},
+  package::Package,
   value::{Class, Value},
+  CallResult, ModuleResult,
 };
 
 pub const NATIVE_CLASS_NAME: &'static str = "Native";
 
 const NATIVE_NAME: NativeMeta = NativeMeta::new("name", ArityKind::Fixed(0));
 
-pub fn create_native_class(hooks: &Hooks) -> Managed<Class> {
+pub fn declare_native_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(NATIVE_CLASS_NAME));
-  let mut class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::new(name));
+
+  self_module.add_export(hooks, name, Value::Class(class))
+}
+
+pub fn define_native_class(hooks: &Hooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(NATIVE_CLASS_NAME));
+  let mut class = self_module.get_symbol(hooks, name).unwrap().to_class();
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NATIVE_NAME.name)),
     Value::NativeMethod(hooks.manage(Box::new(NativeName::new()))),
   );
-
-  class
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 struct NativeName {
   meta: Box<NativeMeta>,
 }
@@ -43,9 +51,9 @@ impl NativeMethod for NativeName {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(
-      hooks.manage_str(String::from(this.to_native_method().meta().name)),
-    ))
+    Ok(Value::String(hooks.manage_str(String::from(
+      this.to_native_method().meta().name,
+    ))))
   }
 }
 
@@ -55,7 +63,8 @@ mod test {
 
   mod name {
     use super::*;
-    use crate::support::{TestContext, test_native_dependencies};
+    use crate::support::{test_native_dependencies, TestContext};
+    use spacelox_core::managed::Managed;
 
     #[test]
     fn new() {

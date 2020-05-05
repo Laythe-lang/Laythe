@@ -1,11 +1,15 @@
 use spacelox_core::{
-  CallResult,
+  arity::ArityKind,
+  hooks::Hooks,
+  io::StdIo,
+  managed::Trace,
   native::{NativeFun, NativeMeta},
-  arity::ArityKind, hooks::Hooks, value::Value
+  value::Value,
+  CallResult,
 };
 use std::time::SystemTime;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Trace)]
 pub struct NativeClock {
   meta: Box<NativeMeta>,
   start: SystemTime,
