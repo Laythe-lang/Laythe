@@ -1,4 +1,5 @@
 use crate::token::Token;
+use std::mem;
 
 /// What is the previous unicode code point
 pub fn previous_boundary(source: &str, start: usize) -> usize {
@@ -50,6 +51,17 @@ pub fn do_if_some<T, F: FnOnce(T)>(val: Option<T>, op: F) {
   if let Some(some) = val {
     op(some);
   }
+}
+
+pub fn ptr_len<T>(start: *const T, end: *const T) -> usize {
+  let end_u = end as usize;
+  let start_u = start as usize;
+
+  if end_u < start_u {
+    return 0;
+  }
+  let byte_len: usize = end_u - start_u;
+  byte_len / mem::size_of::<T>()
 }
 
 pub fn use_sentinel_nan(val: f64) -> f64 {

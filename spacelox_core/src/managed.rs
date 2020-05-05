@@ -1,4 +1,7 @@
+extern crate proc_macro;
+
 use crate::io::StdIo;
+pub use spacelox_macro::*;
 use std::{
   cell::Cell,
   cmp::Ordering,

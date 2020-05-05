@@ -1,9 +1,8 @@
 use crate::{
-  CallResult,
   managed::{Manage, Managed, Trace},
   memory::Gc,
   value::Value,
-  SpaceloxError,
+  CallResult, SpaceloxError,
 };
 
 /// A set of commands that a native function to request from it's surrounding
@@ -16,17 +15,17 @@ pub struct Hooks<'a> {
 impl<'a> Hooks<'a> {
   /// Create a new Hooks instance. Uses the provided uses the surrounding
   /// context to allocate objects and call functions
-  /// 
+  ///
   /// # Examples
-  /// ``` 
+  /// ```
   /// use spacelox_core::hooks::{Hooks, NoContext};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::memory::Gc;
-  /// 
+  ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
-  /// 
+  ///
   /// let allocated = hooks.manage_str(String::from("example"));
   /// assert_eq!(*allocated, String::from("example"));
   /// ```
@@ -39,9 +38,18 @@ impl<'a> Hooks<'a> {
     self.context.call(callable, args)
   }
 
+  pub fn create_module() {}
+
+  pub fn load_module() {}
+
   /// Request a spacelox error object be generated with the provided message
   pub fn error(&self, message: String) -> CallResult {
     Err(SpaceloxError::new(self.manage_str(message)))
+  }
+
+  /// Request a spacelox error object be generated with the provided message
+  pub fn make_error(&self, message: String) -> SpaceloxError {
+    SpaceloxError::new(self.manage_str(message))
   }
 
   /// Request an object be managed by the context's garbage collector
@@ -78,11 +86,14 @@ pub trait HookContext: Trace {
   fn gc(&self) -> &Gc;
 }
 
+/// A placeholder context that does not gc and does not call functions
 pub struct NoContext<'a> {
+  /// A reference to a gc just to allocate
   gc: &'a Gc,
 }
 
 impl<'a> NoContext<'a> {
+  /// Create a new instance of no context
   pub fn new(gc: &'a Gc) -> Self {
     Self { gc }
   }

@@ -9,7 +9,7 @@ name = "spacelox"
 path = "src/main.rs"
 
 [dependencies]
-spacelox_core = { path = "../spacelox_core"}
+spacelox_core = { path = "../spacelox_core" }
 spacelox_vm = { path = "../spacelox_vm" }
 
 # spacelox_vm features

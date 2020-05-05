@@ -20,7 +20,7 @@ impl ArityKind {
   /// Arity Kind
   ///
   /// # Examples
-  /// ``` 
+  /// ```
   /// use spacelox_core::arity::{ArityKind, ArityError};
   ///
   /// let fixed_arity = ArityKind::Fixed(3);

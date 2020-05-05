@@ -1,10 +1,10 @@
 use crate::{
-  CallResult,
   arity::ArityKind,
   hooks::Hooks,
   io::StdIo,
   managed::{Manage, Trace},
   value::Value,
+  CallResult,
 };
 use std::fmt;
 use std::{mem, ptr};
@@ -25,7 +25,7 @@ impl NativeMeta {
   }
 }
 
-pub trait NativeFun {
+pub trait NativeFun: Trace {
   /// Meta data to this native function
   fn meta(&self) -> &NativeMeta;
 
@@ -58,11 +58,13 @@ impl fmt::Display for dyn NativeFun {
 
 impl Trace for Box<dyn NativeFun> {
   fn trace(&self) -> bool {
-    true
+    let inner: &dyn NativeFun = &**self;
+    inner.trace()
   }
 
-  fn trace_debug(&self, _: &dyn StdIo) -> bool {
-    true
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    let inner: &dyn NativeFun = &**self;
+    inner.trace_debug(stdio)
   }
 }
 
@@ -84,7 +86,7 @@ impl Manage for Box<dyn NativeFun> {
   }
 }
 
-pub trait NativeMethod {
+pub trait NativeMethod: Trace {
   /// Meta data to this native function
   fn meta(&self) -> &NativeMeta;
 
@@ -117,11 +119,13 @@ impl fmt::Display for dyn NativeMethod {
 
 impl Trace for Box<dyn NativeMethod> {
   fn trace(&self) -> bool {
-    true
+    let inner: &dyn NativeMethod = &**self;
+    inner.trace()
   }
 
-  fn trace_debug(&self, _: &dyn StdIo) -> bool {
-    true
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    let inner: &dyn NativeMethod = &**self;
+    inner.trace_debug(stdio)
   }
 }
 

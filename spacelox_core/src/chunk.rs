@@ -54,6 +54,12 @@ pub enum AlignedByteCode {
   /// Initial map from literal
   MapInit(u16),
 
+  /// Get the next element from an iterator
+  IterNext(u8),
+
+  /// Get the current value from an iterator
+  IterCurrent(u8),
+
   /// Get from an index
   GetIndex,
 
@@ -158,6 +164,8 @@ impl AlignedByteCode {
       Self::ListInit(slot) => push_op_u16(code, ByteCode::ListInit, slot),
       Self::Map => push_op(code, ByteCode::Map),
       Self::MapInit(slot) => push_op_u16(code, ByteCode::MapInit, slot),
+      Self::IterNext(slot) => push_op_u8(code, ByteCode::IterNext, slot),
+      Self::IterCurrent(slot) => push_op_u8(code, ByteCode::IterCurrent, slot),
       Self::GetIndex => push_op(code, ByteCode::GetIndex),
       Self::SetIndex => push_op(code, ByteCode::SetIndex),
       Self::Equal => push_op(code, ByteCode::Equal),
@@ -223,6 +231,8 @@ impl AlignedByteCode {
         AlignedByteCode::MapInit(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
+      ByteCode::IterNext => (AlignedByteCode::IterNext(store[offset + 1]), offset + 2),
+      ByteCode::IterCurrent => (AlignedByteCode::IterCurrent(store[offset + 1]), offset + 2),
       ByteCode::GetIndex => (AlignedByteCode::GetIndex, offset + 1),
       ByteCode::SetIndex => (AlignedByteCode::SetIndex, offset + 1),
       ByteCode::Pop => (AlignedByteCode::Pop, offset + 1),
@@ -319,6 +329,12 @@ pub enum ByteCode {
 
   /// Initialize map
   MapInit,
+
+  /// Get the next element from an iterator
+  IterNext,
+
+  /// Get the current value from an iterator
+  IterCurrent,
 
   /// Get an index
   GetIndex,
@@ -606,7 +622,6 @@ mod test {
 
   mod byte_code {
     use super::*;
-    // use std::mem;
 
     #[test]
     fn encode_decode() {
@@ -619,31 +634,38 @@ mod test {
         (1, AlignedByteCode::Multiply),
         (1, AlignedByteCode::Divide),
         (1, AlignedByteCode::Not),
-        (2, AlignedByteCode::Constant(173)),
+        (2, AlignedByteCode::Constant(113)),
         (1, AlignedByteCode::Nil),
         (1, AlignedByteCode::True),
         (1, AlignedByteCode::False),
-        (3, AlignedByteCode::ListInit(13444)),
+        (1, AlignedByteCode::List),
+        (3, AlignedByteCode::ListInit(54782)),
+        (1, AlignedByteCode::Map),
+        (3, AlignedByteCode::MapInit(1923)),
+        (2, AlignedByteCode::IterNext(81)),
+        (2, AlignedByteCode::IterCurrent(82)),
         (1, AlignedByteCode::Pop),
-        (2, AlignedByteCode::DefineGlobal(173)),
-        (2, AlignedByteCode::GetGlobal(173)),
-        (2, AlignedByteCode::SetGlobal(173)),
-        (2, AlignedByteCode::GetUpvalue(173)),
-        (2, AlignedByteCode::SetUpvalue(173)),
-        (2, AlignedByteCode::GetLocal(173)),
-        (2, AlignedByteCode::SetLocal(173)),
+        (2, AlignedByteCode::DefineGlobal(4)),
+        (2, AlignedByteCode::GetGlobal(119)),
+        (2, AlignedByteCode::SetGlobal(243)),
+        (2, AlignedByteCode::GetUpvalue(183)),
+        (2, AlignedByteCode::SetUpvalue(56)),
+        (2, AlignedByteCode::GetLocal(96)),
+        (2, AlignedByteCode::SetLocal(149)),
+        (1, AlignedByteCode::GetIndex),
+        (1, AlignedByteCode::SetIndex),
         (2, AlignedByteCode::GetProperty(173)),
-        (2, AlignedByteCode::SetProperty(173)),
-        (3, AlignedByteCode::JumpIfFalse(13444)),
-        (3, AlignedByteCode::Jump(13444)),
-        (3, AlignedByteCode::Loop(13444)),
-        (2, AlignedByteCode::Call(173)),
-        (3, AlignedByteCode::Invoke((173, 173))),
-        (3, AlignedByteCode::SuperInvoke((173, 173))),
-        (2, AlignedByteCode::Closure(173)),
-        (2, AlignedByteCode::Method(173)),
-        (2, AlignedByteCode::Class(173)),
-        (2, AlignedByteCode::GetSuper(173)),
+        (2, AlignedByteCode::SetProperty(253)),
+        (3, AlignedByteCode::JumpIfFalse(8941)),
+        (3, AlignedByteCode::Jump(95)),
+        (3, AlignedByteCode::Loop(34590)),
+        (2, AlignedByteCode::Call(77)),
+        (3, AlignedByteCode::Invoke((55, 19))),
+        (3, AlignedByteCode::SuperInvoke((205, 15))),
+        (2, AlignedByteCode::Closure(68)),
+        (2, AlignedByteCode::Method(188)),
+        (2, AlignedByteCode::Class(136)),
+        (2, AlignedByteCode::GetSuper(24)),
         (1, AlignedByteCode::Inherit),
         (1, AlignedByteCode::CloseUpvalue),
         (1, AlignedByteCode::Equal),

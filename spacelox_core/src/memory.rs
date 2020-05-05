@@ -1,7 +1,7 @@
 use crate::io::{NativeStdIo, StdIo};
 use crate::managed::{Allocation, Manage, Managed, Trace};
+use hashbrown::HashMap;
 use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
 use std::fmt;
 use std::ptr::NonNull;
 
@@ -337,6 +337,7 @@ impl<'a> Gc {
       #[cfg(feature = "debug_gc")]
       self.debug_string_remove(string, !retain);
 
+      #[allow(clippy::let_and_return)]
       retain
     });
   }

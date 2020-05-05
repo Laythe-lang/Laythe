@@ -5,11 +5,12 @@ use crate::{
   constants::INIT,
   dynamic_map::DynamicMap,
   hooks::Hooks,
+  iterator::SlIterator,
   managed::{Manage, Managed, Trace},
   native::{NativeFun, NativeMethod},
   utils::do_if_some,
+  SlHashMap,
 };
-use fnv::FnvHashMap;
 use std::fmt;
 use std::mem;
 use std::{hash::Hash, ptr::NonNull};
@@ -22,12 +23,13 @@ pub enum Value {
   Number(f64),
   String(Managed<String>),
   List(Managed<Vec<Value>>),
-  Map(Managed<FnvHashMap<Value, Value>>),
+  Map(Managed<SlHashMap<Value, Value>>),
   Fun(Managed<Fun>),
   Closure(Managed<Closure>),
   Class(Managed<Class>),
   Instance(Managed<Instance>),
   Method(Managed<Method>),
+  Iter(Managed<SlIterator>),
   NativeFun(Managed<Box<dyn NativeFun>>),
   NativeMethod(Managed<Box<dyn NativeMethod>>),
   Upvalue(Managed<Upvalue>),
@@ -46,6 +48,7 @@ pub enum ValueVariant {
   Closure,
   Class,
   Instance,
+  Iter,
   Method,
   NativeFun,
   NativeMethod,
@@ -150,10 +153,10 @@ impl Value {
   /// ```
   /// use spacelox_core::value::Value;
   /// use spacelox_core::managed::{Allocation, Managed, make_managed};
+  /// use spacelox_core::SlHashMap;
   /// use std::ptr::NonNull;
-  /// use fnv::FnvHashMap;
   ///
-  /// let map: FnvHashMap<Value, Value> = FnvHashMap::default();
+  /// let map: SlHashMap<Value, Value> = SlHashMap::default();
   /// let mut alloc = Box::new(Allocation::new(map));
   /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
   /// let managed = Managed::from(ptr);
@@ -161,10 +164,18 @@ impl Value {
   /// let value = Value::Map(managed);
   /// assert_eq!(value.to_map().len(), 0)
   /// ```
-  pub fn to_map(&self) -> Managed<FnvHashMap<Value, Value>> {
+  pub fn to_map(&self) -> Managed<SlHashMap<Value, Value>> {
     match self {
       Self::Map(map) => *map,
       _ => panic!("Expected list."),
+    }
+  }
+
+  /// Unwrap and reference a spacelox iterator, panics if not a iterator
+  pub fn to_iter(&self) -> Managed<SlIterator> {
+    match self {
+      Self::Iter(iter) => *iter,
+      _ => panic!("Expected iterator."),
     }
   }
 
@@ -203,7 +214,7 @@ impl Value {
   pub fn to_native_method(&self) -> Managed<Box<dyn NativeMethod>> {
     match self {
       Self::NativeMethod(native_method) => *native_method,
-      _ => panic!("Expected native method")
+      _ => panic!("Expected native method"),
     }
   }
 
@@ -248,9 +259,9 @@ impl Value {
   ///
   /// let closure = Closure::new(managed_fun);
   /// let managed_closure = gc.manage(closure, &NO_GC);
-  /// 
+  ///
   /// let nil = Value::Nil;
-  /// 
+  ///
   /// let method = Method::new(nil, Value::Closure(managed_closure));
   /// let managed_method = gc.manage(method, &NO_GC);
   ///
@@ -294,7 +305,6 @@ impl Value {
   /// ```
   /// use spacelox_core::value::{Value, Instance, Class};
   /// use spacelox_core::managed::{Managed, Allocation, make_managed};
-  /// use std::ptr::NonNull;
   ///
   /// let (name, name_alloc) = make_managed("example".to_string());
   /// let (class, class_alloc) = make_managed(Class::new(name));
@@ -315,7 +325,6 @@ impl Value {
   /// ```
   /// use spacelox_core::value::{Value, Instance, Class};
   /// use spacelox_core::managed::{Managed, Allocation, make_managed};
-  /// use std::ptr::NonNull;
   ///
   /// let (name, name_alloc) = make_managed("example".to_string());
   /// let (class, class_alloc) = make_managed(Class::new(name));
@@ -358,6 +367,7 @@ impl Value {
       Value::Method(_) => "method".to_string(),
       Value::Class(_) => "class".to_string(),
       Value::Instance(_) => "instance".to_string(),
+      Value::Iter(_) => "iterator".to_string(),
       Value::Upvalue(_) => "upvalue".to_string(),
       Value::NativeFun(_) => "native function".to_string(),
       Value::NativeMethod(_) => "native method".to_string(),
@@ -377,6 +387,7 @@ impl Value {
       Value::Method(_) => builtin.method,
       Value::Class(_) => panic!("TODO"),
       Value::Instance(instance) => instance.class,
+      Value::Iter(iterator) => iterator.class,
       Value::Upvalue(upvalue) => upvalue.value().value_class(builtin),
       Value::NativeFun(_) => builtin.native,
       Value::NativeMethod(_) => builtin.native,
@@ -416,6 +427,7 @@ impl fmt::Display for Value {
       Self::Method(bound) => write!(f, "{}.{}", bound.receiver, bound.method),
       Self::Class(class) => write!(f, "{}", &class.name.as_str()),
       Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
+      Self::Iter(iterator) => write!(f, "{} iterator", &iterator.class.name.as_str()),
       Self::NativeFun(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
       Self::NativeMethod(native_method) => write!(f, "<native {}>", native_method.meta().name),
     }
@@ -516,6 +528,10 @@ impl Hash for Value {
         ValueVariant::Instance.hash(state);
         instance.hash(state);
       }
+      Self::Iter(iter) => {
+        ValueVariant::Iter.hash(state);
+        iter.hash(state);
+      }
     };
   }
 }
@@ -534,6 +550,7 @@ impl Trace for Value {
       Value::Method(method) => method.trace(),
       Value::Class(class) => class.trace(),
       Value::Instance(instance) => instance.trace(),
+      Value::Iter(iter) => iter.trace(),
       Value::Upvalue(upvalue) => upvalue.trace(),
       Value::NativeFun(native) => native.trace(),
       Value::NativeMethod(native) => native.trace(),
@@ -553,6 +570,7 @@ impl Trace for Value {
       Value::Method(method) => method.trace_debug(stdio),
       Value::Class(class) => class.trace_debug(stdio),
       Value::Instance(instance) => instance.trace_debug(stdio),
+      Value::Iter(iter) => iter.trace_debug(stdio),
       Value::Upvalue(upvalue) => upvalue.trace_debug(stdio),
       Value::NativeFun(native) => native.trace_debug(stdio),
       Value::NativeMethod(native) => native.trace_debug(stdio),
@@ -581,6 +599,7 @@ impl Trace for BuiltInClasses {
     self.list.trace();
     self.map.trace();
     self.closure.trace();
+    self.method.trace();
     self.native.trace();
 
     true
@@ -594,6 +613,7 @@ impl Trace for BuiltInClasses {
     self.list.trace_debug(stdio);
     self.map.trace_debug(stdio);
     self.closure.trace_debug(stdio);
+    self.method.trace_debug(stdio);
     self.native.trace_debug(stdio);
 
     true
@@ -867,7 +887,7 @@ impl Manage for Vec<Value> {
   }
 }
 
-impl Trace for FnvHashMap<Value, Value> {
+impl Trace for SlHashMap<Value, Value> {
   fn trace(&self) -> bool {
     self.iter().for_each(|(key, value)| {
       key.trace();
@@ -887,7 +907,7 @@ impl Trace for FnvHashMap<Value, Value> {
   }
 }
 
-impl Manage for FnvHashMap<Value, Value> {
+impl Manage for SlHashMap<Value, Value> {
   fn alloc_type(&self) -> &str {
     "list"
   }
@@ -901,7 +921,7 @@ impl Manage for FnvHashMap<Value, Value> {
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<FnvHashMap<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
+    mem::size_of::<SlHashMap<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
   }
 }
 
