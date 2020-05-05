@@ -1,10 +1,11 @@
 [workspace]
 members = [
-  "spacelox",
   "spacelox_core",
-  "spacelox_vm",
   "spacelox_lib",
+  "spacelox_macro",
+  "spacelox_vm",
   "spacelox_wasm",
+  "spacelox",
 ]
 
 [profile.dev]
