@@ -1,32 +1,17 @@
 use spacelox_vm::vm::{default_native_vm, ExecuteResult};
 use std::fs::File;
 use std::io::prelude::*;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
+use support::{fixture_path_inner, test_files_inner};
+
+mod support;
 
 fn fixture_path(fixture_path: &str) -> Option<PathBuf> {
-  let test_path = Path::new(FILE_PATH);
-
-  test_path
-    .parent()
-    .and_then(|path| path.parent())
-    .and_then(|path| path.parent())
-    .and_then(|path| Some(path.join("fixture").join(fixture_path)))
+  fixture_path_inner(fixture_path, FILE_PATH)
 }
 
 fn test_files(paths: &[&str], result: ExecuteResult) -> Result<(), std::io::Error> {
-  for path in paths {
-    let mut vm = default_native_vm();
-
-    let assert = fixture_path(path).expect("No parent directory");
-    let debug_path = assert.to_str().map(|s| s.to_string());
-    let mut file = File::open(assert)?;
-    let mut source = String::new();
-    file.read_to_string(&mut source)?;
-
-    assert_eq!(vm.run(&source), result, "Failing file {:?}", debug_path);
-  }
-
-  Ok(())
+  test_files_inner(paths, FILE_PATH, result)
 }
 
 const FILE_PATH: &str = file!();
@@ -41,7 +26,7 @@ fn build() {
 fn clock() -> Result<(), std::io::Error> {
   let mut vm = default_native_vm();
 
-  let assert = fixture_path("native/clock.lox").expect("No parent directory");
+  let assert = fixture_path("language/native/clock.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
   let mut source = String::new();
@@ -55,7 +40,7 @@ fn clock() -> Result<(), std::io::Error> {
 fn assert() -> Result<(), std::io::Error> {
   let mut vm = default_native_vm();
 
-  let assert = fixture_path("native/assert.lox").expect("No parent directory");
+  let assert = fixture_path("language/native/assert.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
   let mut source = String::new();
@@ -68,7 +53,7 @@ fn assert() -> Result<(), std::io::Error> {
 #[test]
 fn assert_eq() -> Result<(), std::io::Error> {
   let mut vm = default_native_vm();
-  let assert = fixture_path("native/assert_eq.lox").expect("No parent directory");
+  let assert = fixture_path("language/native/assert_eq.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
   let mut source = String::new();
@@ -81,7 +66,7 @@ fn assert_eq() -> Result<(), std::io::Error> {
 #[test]
 fn assert_ne() -> Result<(), std::io::Error> {
   let mut vm = default_native_vm();
-  let assert = fixture_path("native/assert_ne.lox").expect("No parent directory");
+  let assert = fixture_path("language/native/assert_ne.lox").expect("No parent directory");
 
   let mut file = File::open(assert)?;
   let mut source = String::new();
@@ -95,26 +80,26 @@ fn assert_ne() -> Result<(), std::io::Error> {
 fn assignment() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "assignment/associativity.lox",
-      "assignment/global.lox",
-      "assignment/local.lox",
-      "assignment/syntax.lox",
+      "language/assignment/associativity.lox",
+      "language/assignment/global.lox",
+      "language/assignment/local.lox",
+      "language/assignment/syntax.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "assignment/grouping.lox",
-      "assignment/infix_operator.lox",
-      "assignment/prefix_operator.lox",
-      "assignment/to_this.lox",
+      "language/assignment/grouping.lox",
+      "language/assignment/infix_operator.lox",
+      "language/assignment/prefix_operator.lox",
+      "language/assignment/to_this.lox",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_files(
-    &vec!["assignment/undefined.lox"],
+    &vec!["language/assignment/undefined.lox"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -122,7 +107,7 @@ fn assignment() -> Result<(), std::io::Error> {
 #[test]
 fn block() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["block/empty.lox", "block/empty.lox"],
+    &vec!["language/block/empty.lox", "language/block/empty.lox"],
     ExecuteResult::Ok,
   )
 }
@@ -130,7 +115,7 @@ fn block() -> Result<(), std::io::Error> {
 #[test]
 fn bool() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["bool/equality.lox", "bool/not.lox"],
+    &vec!["language/bool/equality.lox", "language/bool/not.lox"],
     ExecuteResult::Ok,
   )
 }
@@ -139,11 +124,11 @@ fn bool() -> Result<(), std::io::Error> {
 fn call() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "call/bool.lox",
-      "call/nil.lox",
-      "call/num.lox",
-      "call/object.lox",
-      "call/string.lox",
+      "language/call/bool.lox",
+      "language/call/nil.lox",
+      "language/call/num.lox",
+      "language/call/object.lox",
+      "language/call/string.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -153,17 +138,20 @@ fn call() -> Result<(), std::io::Error> {
 fn class() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "class/empty.lox",
-      "class/inherited_method.lox",
-      "class/local_inherit_other.lox",
-      "class/local_reference_self.lox",
-      "class/reference_self.lox",
+      "language/class/empty.lox",
+      "language/class/inherited_method.lox",
+      "language/class/local_inherit_other.lox",
+      "language/class/local_reference_self.lox",
+      "language/class/reference_self.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
-    &vec!["class/inherit_self.lox", "class/local_inherit_self.lox"],
+    &vec![
+      "language/class/inherit_self.lox",
+      "language/class/local_inherit_self.lox",
+    ],
     ExecuteResult::CompileError,
   )?;
 
@@ -174,19 +162,19 @@ fn class() -> Result<(), std::io::Error> {
 fn closure() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "closure/assign_to_closure.lox",
-      "closure/assign_to_shadowed_later.lox",
-      "closure/close_over_function_parameter.lox",
-      "closure/close_over_later_variable.lox",
-      "closure/close_over_method_parameter.lox",
-      "closure/closed_closure_in_function.lox",
-      "closure/nested_closure.lox",
-      "closure/open_closure_in_function.lox",
-      "closure/reference_closure_multiple_times.lox",
-      "closure/reuse_closure_slot.lox",
-      "closure/shadow_closure_with_local.lox",
-      "closure/unused_closure.lox",
-      "closure/unused_later_closure.lox",
+      "language/closure/assign_to_closure.lox",
+      "language/closure/assign_to_shadowed_later.lox",
+      "language/closure/close_over_function_parameter.lox",
+      "language/closure/close_over_later_variable.lox",
+      "language/closure/close_over_method_parameter.lox",
+      "language/closure/closed_closure_in_function.lox",
+      "language/closure/nested_closure.lox",
+      "language/closure/open_closure_in_function.lox",
+      "language/closure/reference_closure_multiple_times.lox",
+      "language/closure/reuse_closure_slot.lox",
+      "language/closure/shadow_closure_with_local.lox",
+      "language/closure/unused_closure.lox",
+      "language/closure/unused_later_closure.lox",
     ],
     ExecuteResult::Ok,
   )?;
@@ -200,10 +188,10 @@ fn closure() -> Result<(), std::io::Error> {
 fn comments() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "comments/line_at_eof.lox",
-      "comments/only_line_comment_and_line.lox",
-      "comments/only_line_comment.lox",
-      "comments/unicode.lox",
+      "language/comments/line_at_eof.lox",
+      "language/comments/only_line_comment_and_line.lox",
+      "language/comments/only_line_comment.lox",
+      "language/comments/unicode.lox",
     ],
     ExecuteResult::Ok,
   )
@@ -213,26 +201,26 @@ fn comments() -> Result<(), std::io::Error> {
 fn constructor() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "constructor/arguments.lox",
-      "constructor/call_init_early_return.lox",
-      "constructor/call_init_explicitly.lox",
-      "constructor/default.lox",
-      "constructor/early_return.lox",
-      "constructor/return_in_nested_function.lox",
+      "language/constructor/arguments.lox",
+      "language/constructor/call_init_early_return.lox",
+      "language/constructor/call_init_explicitly.lox",
+      "language/constructor/default.lox",
+      "language/constructor/early_return.lox",
+      "language/constructor/return_in_nested_function.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
-    &vec!["constructor/return_value.lox"],
+    &vec!["language/constructor/return_value.lox"],
     ExecuteResult::CompileError,
   )?;
 
   test_files(
     &vec![
-      "constructor/default_arguments.lox",
-      "constructor/extra_arguments.lox",
-      "constructor/missing_arguments.lox",
+      "language/constructor/default_arguments.lox",
+      "language/constructor/extra_arguments.lox",
+      "language/constructor/missing_arguments.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -240,7 +228,10 @@ fn constructor() -> Result<(), std::io::Error> {
 
 #[test]
 fn expressions() -> Result<(), std::io::Error> {
-  test_files(&vec!["expressions/evaluate.lox"], ExecuteResult::Ok)?;
+  test_files(
+    &vec!["language/expressions/evaluate.lox"],
+    ExecuteResult::Ok,
+  )?;
 
   test_files(&vec![], ExecuteResult::CompileError)?;
 
@@ -251,12 +242,12 @@ fn expressions() -> Result<(), std::io::Error> {
 fn field() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "field/call_function_field.lox",
-      "field/get_and_set_method.lox",
-      "field/many.lox",
-      "field/method_binds_this.lox",
-      "field/method.lox",
-      "field/on_instance.lox",
+      "language/field/call_function_field.lox",
+      "language/field/get_and_set_method.lox",
+      "language/field/many.lox",
+      "language/field/method_binds_this.lox",
+      "language/field/method.lox",
+      "language/field/on_instance.lox",
     ],
     ExecuteResult::Ok,
   )?;
@@ -265,21 +256,21 @@ fn field() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
-      "field/call_nonfunction_field.lox",
-      "field/get_on_bool.lox",
-      "field/get_on_class.lox",
-      "field/get_on_function.lox",
-      "field/get_on_nil.lox",
-      "field/get_on_num.lox",
-      "field/get_on_string.lox",
-      "field/set_evaluation_order.lox",
-      "field/set_on_bool.lox",
-      "field/set_on_class.lox",
-      "field/set_on_function.lox",
-      "field/set_on_nil.lox",
-      "field/set_on_num.lox",
-      "field/set_on_string.lox",
-      "field/undefined.lox",
+      "language/field/call_nonfunction_field.lox",
+      "language/field/get_on_bool.lox",
+      "language/field/get_on_class.lox",
+      "language/field/get_on_function.lox",
+      "language/field/get_on_nil.lox",
+      "language/field/get_on_num.lox",
+      "language/field/get_on_string.lox",
+      "language/field/set_evaluation_order.lox",
+      "language/field/set_on_bool.lox",
+      "language/field/set_on_class.lox",
+      "language/field/set_on_function.lox",
+      "language/field/set_on_nil.lox",
+      "language/field/set_on_num.lox",
+      "language/field/set_on_string.lox",
+      "language/field/undefined.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -289,22 +280,46 @@ fn field() -> Result<(), std::io::Error> {
 fn for_loop() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "for/return_inside.lox",
-      "for/scope.lox",
-      "for/syntax.lox",
-      "for/closure_in_body.lox",
+      "language/for/return_inside.lox",
+      "language/for/scope.lox",
+      "language/for/syntax.lox",
+      "language/for/closure_in_body.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "for/class_in_body.lox",
-      "for/fun_in_body.lox",
-      "for/statement_condition.lox",
-      "for/statement_increment.lox",
-      "for/statement_initializer.lox",
-      "for/var_in_body.lox",
+      "language/for/class_in_body.lox",
+      "language/for/fun_in_body.lox",
+      "language/for/statement_condition.lox",
+      "language/for/statement_increment.lox",
+      "language/for/statement_initializer.lox",
+      "language/for/var_in_body.lox",
+    ],
+    ExecuteResult::CompileError,
+  )?;
+
+  test_files(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
+fn for_range_loop() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "language/for_range/return_inside.lox",
+      "language/for_range/scope.lox",
+      "language/for_range/closure_in_body.lox",
+    ],
+    ExecuteResult::Ok,
+  )?;
+
+  test_files(
+    &vec![
+      "language/for_range/class_in_body.lox",
+      "language/for_range/fun_in_body.lox",
+      "language/for_range/var_in_body.lox",
+      "language/for_range/statement_iterator.lox",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -316,31 +331,31 @@ fn for_loop() -> Result<(), std::io::Error> {
 fn function() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "function/empty_body.lox",
-      "function/local_recursion.lox",
-      "function/mutual_recursion.lox",
-      "function/parameters.lox",
-      "function/print.lox",
-      "function/recursion.lox",
+      "language/function/empty_body.lox",
+      "language/function/local_recursion.lox",
+      "language/function/mutual_recursion.lox",
+      "language/function/parameters.lox",
+      "language/function/print.lox",
+      "language/function/recursion.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "function/body_must_be_block.lox",
-      "function/missing_comma_in_parameters.lox",
-      "function/too_many_arguments.lox",
-      "function/too_many_parameters.lox",
+      "language/function/body_must_be_block.lox",
+      "language/function/missing_comma_in_parameters.lox",
+      "language/function/too_many_arguments.lox",
+      "language/function/too_many_parameters.lox",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_files(
     &vec![
-      "function/extra_arguments.lox",
-      "function/local_mutual_recursion.lox",
-      "function/missing_arguments.lox",
+      "language/function/extra_arguments.lox",
+      "language/function/local_mutual_recursion.lox",
+      "language/function/missing_arguments.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -350,45 +365,45 @@ fn function() -> Result<(), std::io::Error> {
 fn hooks() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "hooks/inline.lox",
-      "hooks/closure.lox",
-      "hooks/class.lox",
+      "language/hooks/inline.lox",
+      "language/hooks/closure.lox",
+      "language/hooks/class.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
-  test_files(
-    &vec![],
-    ExecuteResult::CompileError,
-  )?;
+  test_files(&vec![], ExecuteResult::CompileError)?;
 
-  test_files(&vec![
-    "hooks/pass_error_inline.lox",
-    "hooks/pass_error_closure.lox",
-    "hooks/pass_error_class.lox",
-  ], ExecuteResult::RuntimeError)
+  test_files(
+    &vec![
+      "language/hooks/pass_error_inline.lox",
+      "language/hooks/pass_error_closure.lox",
+      "language/hooks/pass_error_class.lox",
+    ],
+    ExecuteResult::RuntimeError,
+  )
 }
 
 #[test]
 fn if_stmt() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "if/dangling_else.lox",
-      "if/else.lox",
-      "if/if.lox",
-      "if/truth.lox",
+      "language/if/dangling_else.lox",
+      "language/if/else.lox",
+      "language/if/if.lox",
+      "language/if/truth.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "if/class_in_else.lox",
-      "if/class_in_then.lox",
-      "if/fun_in_else.lox",
-      "if/fun_in_then.lox",
-      "if/var_in_then.lox",
-      "if/var_in_then.lox",
+      "language/if/class_in_else.lox",
+      "language/if/class_in_then.lox",
+      "language/if/fun_in_else.lox",
+      "language/if/fun_in_then.lox",
+      "language/if/var_in_then.lox",
+      "language/if/var_in_then.lox",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -400,14 +415,14 @@ fn if_stmt() -> Result<(), std::io::Error> {
 fn indexing() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "indexing/list_get.lox",
-      "indexing/list_set.lox",
-      "indexing/list_nested_get.lox",
-      "indexing/list_nested_set.lox",
-      "indexing/map_na_get.lox",
-      "indexing/map_ref_equal_get.lox",
-      "indexing/map_nested_get.lox",
-      "indexing/map_nested_set.lox",
+      "language/indexing/list_get.lox",
+      "language/indexing/list_set.lox",
+      "language/indexing/list_nested_get.lox",
+      "language/indexing/list_nested_set.lox",
+      "language/indexing/map_na_get.lox",
+      "language/indexing/map_ref_equal_get.lox",
+      "language/indexing/map_nested_get.lox",
+      "language/indexing/map_nested_set.lox",
     ],
     ExecuteResult::Ok,
   )?;
@@ -416,8 +431,8 @@ fn indexing() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
-      "indexing/list_out_of_range.lox",
-      "indexing/map_key_not_found.lox",
+      "language/indexing/list_out_of_range.lox",
+      "language/indexing/map_key_not_found.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -427,23 +442,23 @@ fn indexing() -> Result<(), std::io::Error> {
 fn inheritance() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "inheritance/constructor.lox",
-      "inheritance/inherit_methods.lox",
-      "inheritance/set_fields_from_base_class.lox",
+      "language/inheritance/constructor.lox",
+      "language/inheritance/inherit_methods.lox",
+      "language/inheritance/set_fields_from_base_class.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
-    &vec!["inheritance/parenthesized_superclass.lox"],
+    &vec!["language/inheritance/parenthesized_superclass.lox"],
     ExecuteResult::CompileError,
   )?;
 
   test_files(
     &vec![
-      "inheritance/inherit_from_function.lox",
-      "inheritance/inherit_from_nil.lox",
-      "inheritance/inherit_from_number.lox",
+      "language/inheritance/inherit_from_function.lox",
+      "language/inheritance/inherit_from_nil.lox",
+      "language/inheritance/inherit_from_number.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -451,21 +466,24 @@ fn inheritance() -> Result<(), std::io::Error> {
 
 #[test]
 fn limit() -> Result<(), std::io::Error> {
-  test_files(&vec!["expressions/evaluate.lox"], ExecuteResult::Ok)?;
+  test_files(
+    &vec!["language/expressions/evaluate.lox"],
+    ExecuteResult::Ok,
+  )?;
 
   test_files(
     &vec![
-      "limit/loop_too_large.lox",
-      "limit/no_reuse_constants.lox",
-      "limit/too_many_constants.lox",
-      "limit/too_many_locals.lox",
-      "limit/too_many_upvalues.lox",
+      "language/limit/loop_too_large.lox",
+      "language/limit/no_reuse_constants.lox",
+      "language/limit/too_many_constants.lox",
+      "language/limit/too_many_locals.lox",
+      "language/limit/too_many_upvalues.lox",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_files(
-    &vec!["limit/stack_overflow.lox"],
+    &vec!["language/limit/stack_overflow.lox"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -473,14 +491,18 @@ fn limit() -> Result<(), std::io::Error> {
 #[test]
 fn list() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["list/empty.lox", "list/homogeneous.lox", "list/mixed.lox"],
+    &vec![
+      "language/list/empty.lox",
+      "language/list/homogeneous.lox",
+      "language/list/mixed.lox",
+    ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "list/missing_comma_in_initializer.lox",
-      "list/missing_closing_bracket.lox",
+      "language/list/missing_comma_in_initializer.lox",
+      "language/list/missing_closing_bracket.lox",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -492,10 +514,10 @@ fn list() -> Result<(), std::io::Error> {
 fn logical_operator() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "logical_operator/and_truth.lox",
-      "logical_operator/and.lox",
-      "logical_operator/or_truth.lox",
-      "logical_operator/or.lox",
+      "language/logical_operator/and_truth.lox",
+      "language/logical_operator/and.lox",
+      "language/logical_operator/or_truth.lox",
+      "language/logical_operator/or.lox",
     ],
     ExecuteResult::Ok,
   )?;
@@ -508,16 +530,20 @@ fn logical_operator() -> Result<(), std::io::Error> {
 #[test]
 fn map() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["map/empty.lox", "map/homogeneous.lox", "map/mixed.lox"],
+    &vec![
+      "language/map/empty.lox",
+      "language/map/homogeneous.lox",
+      "language/map/mixed.lox",
+    ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "map/missing_closing_curly.lox",
-      "map/missing_colon.lox",
-      "map/statement_key.lox",
-      "map/statement_value.lox",
+      "language/map/missing_closing_curly.lox",
+      "language/map/missing_colon.lox",
+      "language/map/statement_key.lox",
+      "language/map/statement_value.lox",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -529,27 +555,27 @@ fn map() -> Result<(), std::io::Error> {
 fn method() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "method/arity.lox",
-      "method/empty_block.lox",
-      "method/print_bound_method.lox",
+      "language/method/arity.lox",
+      "language/method/empty_block.lox",
+      "language/method/print_bound_method.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "method/too_many_arguments.lox",
-      "method/too_many_parameters.lox",
+      "language/method/too_many_arguments.lox",
+      "language/method/too_many_parameters.lox",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_files(
     &vec![
-      "method/extra_arguments.lox",
-      "method/missing_arguments.lox",
-      "method/not_found.lox",
-      "method/refer_to_name.lox",
+      "language/method/extra_arguments.lox",
+      "language/method/missing_arguments.lox",
+      "language/method/not_found.lox",
+      "language/method/refer_to_name.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -557,7 +583,7 @@ fn method() -> Result<(), std::io::Error> {
 
 #[test]
 fn nil() -> Result<(), std::io::Error> {
-  test_files(&vec!["nil/literal.lox"], ExecuteResult::Ok)?;
+  test_files(&vec!["language/nil/literal.lox"], ExecuteResult::Ok)?;
 
   test_files(&vec![], ExecuteResult::CompileError)?;
 
@@ -566,13 +592,13 @@ fn nil() -> Result<(), std::io::Error> {
 
 #[test]
 fn number() -> Result<(), std::io::Error> {
-  test_files(&vec!["number/literals.lox"], ExecuteResult::Ok)?;
+  test_files(&vec!["language/number/literals.lox"], ExecuteResult::Ok)?;
 
   test_files(
     &vec![
-      "number/decimal_point_at_eof.lox",
-      "number/leading_dot.lox",
-      "number/trailing_dot.lox",
+      "language/number/decimal_point_at_eof.lox",
+      "language/number/leading_dot.lox",
+      "language/number/trailing_dot.lox",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -584,18 +610,18 @@ fn number() -> Result<(), std::io::Error> {
 fn operator() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "operator/add.lox",
-      "operator/comparison.lox",
-      "operator/divide.lox",
-      "operator/equals_class.lox",
-      "operator/equals_method.lox",
-      "operator/equals.lox",
-      "operator/multiply.lox",
-      "operator/negate.lox",
-      "operator/not_class.lox",
-      "operator/not_equals.lox",
-      "operator/not.lox",
-      "operator/subtract.lox",
+      "language/operator/add.lox",
+      "language/operator/comparison.lox",
+      "language/operator/divide.lox",
+      "language/operator/equals_class.lox",
+      "language/operator/equals_method.lox",
+      "language/operator/equals.lox",
+      "language/operator/multiply.lox",
+      "language/operator/negate.lox",
+      "language/operator/not_class.lox",
+      "language/operator/not_equals.lox",
+      "language/operator/not.lox",
+      "language/operator/subtract.lox",
     ],
     ExecuteResult::Ok,
   )?;
@@ -604,27 +630,27 @@ fn operator() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
-      "operator/add_bool_nil.lox",
-      "operator/add_bool_num.lox",
-      "operator/add_bool_string.lox",
-      "operator/add_nil_nil.lox",
-      "operator/add_num_nil.lox",
-      "operator/add_string_nil.lox",
-      "operator/divide_nonnum_num.lox",
-      "operator/divide_num_nonnum.lox",
-      "operator/greater_nonnum_num.lox",
-      "operator/greater_num_nonnum.lox",
-      "operator/greater_or_equal_nonnum_num.lox",
-      "operator/greater_or_equal_num_nonnum.lox",
-      "operator/less_nonnum_num.lox",
-      "operator/less_num_nonnum.lox",
-      "operator/less_or_equal_nonnum_num.lox",
-      "operator/less_or_equal_num_nonnum.lox",
-      "operator/multiply_nonnum_num.lox",
-      "operator/multiply_num_nonnum.lox",
-      "operator/negate_nonnum.lox",
-      "operator/subtract_nonnum_num.lox",
-      "operator/subtract_num_nonnum.lox",
+      "language/operator/add_bool_nil.lox",
+      "language/operator/add_bool_num.lox",
+      "language/operator/add_bool_string.lox",
+      "language/operator/add_nil_nil.lox",
+      "language/operator/add_num_nil.lox",
+      "language/operator/add_string_nil.lox",
+      "language/operator/divide_nonnum_num.lox",
+      "language/operator/divide_num_nonnum.lox",
+      "language/operator/greater_nonnum_num.lox",
+      "language/operator/greater_num_nonnum.lox",
+      "language/operator/greater_or_equal_nonnum_num.lox",
+      "language/operator/greater_or_equal_num_nonnum.lox",
+      "language/operator/less_nonnum_num.lox",
+      "language/operator/less_num_nonnum.lox",
+      "language/operator/less_or_equal_nonnum_num.lox",
+      "language/operator/less_or_equal_num_nonnum.lox",
+      "language/operator/multiply_nonnum_num.lox",
+      "language/operator/multiply_num_nonnum.lox",
+      "language/operator/negate_nonnum.lox",
+      "language/operator/subtract_nonnum_num.lox",
+      "language/operator/subtract_num_nonnum.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -635,7 +661,7 @@ fn print() -> Result<(), std::io::Error> {
   test_files(&vec![], ExecuteResult::Ok)?;
 
   test_files(
-    &vec!["print/missing_argument.lox"],
+    &vec!["language/print/missing_argument.lox"],
     ExecuteResult::CompileError,
   )?;
 
@@ -645,7 +671,7 @@ fn print() -> Result<(), std::io::Error> {
 #[test]
 fn regression() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["regression/40.lox", "regression/394.lox"],
+    &vec!["language/regression/40.lox", "language/regression/394.lox"],
     ExecuteResult::Ok,
   )
 }
@@ -654,18 +680,18 @@ fn regression() -> Result<(), std::io::Error> {
 fn return_test() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "return/after_else.lox",
-      "return/after_if.lox",
-      "return/after_while.lox",
-      "return/in_function.lox",
-      "return/return_nil_if_no_value.lox",
-      "return/return_nil_if_no_value.lox",
+      "language/return/after_else.lox",
+      "language/return/after_if.lox",
+      "language/return/after_while.lox",
+      "language/return/in_function.lox",
+      "language/return/return_nil_if_no_value.lox",
+      "language/return/return_nil_if_no_value.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
-    &vec!["return/at_top_level.lox"],
+    &vec!["language/return/at_top_level.lox"],
     ExecuteResult::CompileError,
   )?;
 
@@ -675,17 +701,20 @@ fn return_test() -> Result<(), std::io::Error> {
 #[test]
 fn string() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["string/literals.lox", "string/multiline.lox"],
+    &vec![
+      "language/string/literals.lox",
+      "language/string/multiline.lox",
+    ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
-    &vec!["string/unterminated.lox"],
+    &vec!["language/string/unterminated.lox"],
     ExecuteResult::CompileError,
   )?;
 
   test_files(
-    &vec!["string/error_after_multiline.lox"],
+    &vec!["language/string/error_after_multiline.lox"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -694,37 +723,37 @@ fn string() -> Result<(), std::io::Error> {
 fn super_() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "super/bound_method.lox",
-      "super/call_other_method.lox",
-      "super/call_same_method.lox",
-      "super/closure.lox",
-      "super/constructor.lox",
-      "super/indirectly_inherited.lox",
-      "super/reassign_superclass.lox",
-      "super/super_in_closure_in_inherited_method.lox",
-      "super/super_in_inherited_method.lox",
+      "language/super/bound_method.lox",
+      "language/super/call_other_method.lox",
+      "language/super/call_same_method.lox",
+      "language/super/closure.lox",
+      "language/super/constructor.lox",
+      "language/super/indirectly_inherited.lox",
+      "language/super/reassign_superclass.lox",
+      "language/super/super_in_closure_in_inherited_method.lox",
+      "language/super/super_in_inherited_method.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "super/no_superclass_bind.lox",
-      "super/no_superclass_call.lox",
-      "super/parenthesized.lox",
-      "super/super_at_top_level.lox",
-      "super/super_in_top_level_function.lox",
-      "super/super_without_dot.lox",
-      "super/super_without_name.lox",
+      "language/super/no_superclass_bind.lox",
+      "language/super/no_superclass_call.lox",
+      "language/super/parenthesized.lox",
+      "language/super/super_at_top_level.lox",
+      "language/super/super_in_top_level_function.lox",
+      "language/super/super_without_dot.lox",
+      "language/super/super_without_name.lox",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_files(
     &vec![
-      "super/extra_arguments.lox",
-      "super/missing_arguments.lox",
-      "super/no_superclass_method.lox",
+      "language/super/extra_arguments.lox",
+      "language/super/missing_arguments.lox",
+      "language/super/no_superclass_method.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -734,41 +763,41 @@ fn super_() -> Result<(), std::io::Error> {
 fn variable() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "variable/early_bound.lox",
-      "variable/in_middle_of_block.lox",
-      "variable/in_nested_block.lox",
-      "variable/local_from_method.lox",
-      "variable/redeclare_global.lox",
-      "variable/redefine_global.lox",
-      "variable/scope_reuse_in_different_blocks.lox",
-      "variable/shadow_and_local.lox",
-      "variable/shadow_global.lox",
-      "variable/shadow_local.lox",
-      "variable/uninitialized.lox",
-      "variable/unreached_undefined.lox",
-      "variable/use_global_in_initializer.lox",
+      "language/variable/early_bound.lox",
+      "language/variable/in_middle_of_block.lox",
+      "language/variable/in_nested_block.lox",
+      "language/variable/local_from_method.lox",
+      "language/variable/redeclare_global.lox",
+      "language/variable/redefine_global.lox",
+      "language/variable/scope_reuse_in_different_blocks.lox",
+      "language/variable/shadow_and_local.lox",
+      "language/variable/shadow_global.lox",
+      "language/variable/shadow_local.lox",
+      "language/variable/uninitialized.lox",
+      "language/variable/unreached_undefined.lox",
+      "language/variable/use_global_in_initializer.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "variable/collide_with_parameter.lox",
-      "variable/duplicate_local.lox",
-      "variable/duplicate_parameter.lox",
-      "variable/use_false_as_var.lox",
-      "variable/use_local_in_initializer.lox",
-      "variable/use_nil_as_var.lox",
-      "variable/use_this_as_var.lox",
+      "language/variable/collide_with_parameter.lox",
+      "language/variable/duplicate_local.lox",
+      "language/variable/duplicate_parameter.lox",
+      "language/variable/use_false_as_var.lox",
+      "language/variable/use_local_in_initializer.lox",
+      "language/variable/use_nil_as_var.lox",
+      "language/variable/use_this_as_var.lox",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_files(
     &vec![
-      "variable/undefined_global.lox",
-      "variable/undefined_local.lox",
-      "variable/undefined_local.lox",
+      "language/variable/undefined_global.lox",
+      "language/variable/undefined_local.lox",
+      "language/variable/undefined_local.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -778,19 +807,19 @@ fn variable() -> Result<(), std::io::Error> {
 fn while_test() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "while/closure_in_body.lox",
-      "while/return_closure.lox",
-      "while/return_inside.lox",
-      "while/syntax.lox",
+      "language/while/closure_in_body.lox",
+      "language/while/return_closure.lox",
+      "language/while/return_inside.lox",
+      "language/while/syntax.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "while/class_in_body.lox",
-      "while/fun_in_body.lox",
-      "while/var_in_body.lox",
+      "language/while/class_in_body.lox",
+      "language/while/fun_in_body.lox",
+      "language/while/var_in_body.lox",
     ],
     ExecuteResult::CompileError,
   )?;
