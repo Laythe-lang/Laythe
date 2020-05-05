@@ -13,5 +13,7 @@ name = "spacelox_core"
 path = "src/lib.rs"
 
 [dependencies]
+spacelox_macro = { path = "../spacelox_macro" }
 fnv = "1.0.3"
 linear-map = "1.2.0"
+hashbrown = "0.7.2"
