@@ -1,6 +1,6 @@
 use spacelox_core::{
-  value::{Value, Closure},
   managed::Managed,
+  value::{Closure, Value},
 };
 
 /// A call frame in the space lox interpreter

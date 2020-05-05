@@ -1,13 +1,9 @@
-
 use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, CompilerResult, Parser};
 use crate::constants::{DEFAULT_STACK_MAX, FRAME_MAX};
-use fnv::FnvHashMap;
 use spacelox_core::hooks::NoContext;
 use spacelox_core::hooks::{HookContext, Hooks};
 use spacelox_core::{
-  CallResult,
-  SpaceloxError,
   arity::{ArityError, ArityKind},
   chunk::{ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT},
@@ -15,8 +11,9 @@ use spacelox_core::{
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
   native::{NativeFun, NativeMethod},
-  utils::use_sentinel_nan,
+  utils::{ptr_len, use_sentinel_nan},
   value::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, Value},
+  CallResult, SlHashMap, SpaceloxError,
 };
 use spacelox_lib::{assert::assert_funs, builtin::make_builtin_classes, time::clock_funs};
 use std::convert::TryInto;
@@ -89,7 +86,7 @@ pub struct Vm<I: Io + 'static> {
   io: I,
 
   /// A persisted set of globals most for a repl context
-  globals: FnvHashMap<Managed<String>, Value>,
+  globals: SlHashMap<Managed<String>, Value>,
 }
 
 impl<I: Io> Vm<I> {
@@ -107,7 +104,8 @@ impl<I: Io> Vm<I> {
     natives.extend(assert_funs().into_iter());
     natives.extend(clock_funs().into_iter());
 
-    let builtin = make_builtin_classes(&Hooks::new(&mut NoContext::new(&gc)));
+    let builtin = make_builtin_classes(&Hooks::new(&mut NoContext::new(&gc)))
+      .expect("Could not make built in classes.");
     let globals = define_globals(&gc, natives);
 
     Vm {
@@ -172,7 +170,8 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
   /// different environments
   fn from(dependencies: VmDependencies<I>) -> Self {
     let gc = dependencies.gc;
-    let builtin = make_builtin_classes(&Hooks::new(&mut NoContext::new(&gc)));
+    let builtin = make_builtin_classes(&Hooks::new(&mut NoContext::new(&gc)))
+      .expect("Could not create builtin classes.");
     let globals = define_globals(&gc, dependencies.natives);
 
     Vm {
@@ -186,8 +185,8 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
   }
 }
 
-fn define_globals(gc: &Gc, natives: Vec<Box<dyn NativeFun>>) -> FnvHashMap<Managed<String>, Value> {
-  let mut globals = FnvHashMap::with_capacity_and_hasher(natives.len(), Default::default());
+fn define_globals(gc: &Gc, natives: Vec<Box<dyn NativeFun>>) -> SlHashMap<Managed<String>, Value> {
+  let mut globals = SlHashMap::with_capacity_and_hasher(natives.len(), Default::default());
 
   natives.into_iter().for_each(|native| {
     let name = gc.manage_str(native.meta().name.to_string(), &NO_GC);
@@ -207,7 +206,7 @@ struct VmExecutor<'a, I: Io + 'static> {
   stack: &'a mut [Value],
 
   /// global variable present in the vm
-  globals: &'a mut FnvHashMap<Managed<String>, Value>,
+  globals: &'a mut SlHashMap<Managed<String>, Value>,
 
   /// A collection of built in classes
   builtin: &'a BuiltInClasses,
@@ -249,7 +248,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
-      frame_count: 0,
+      frame_count: 1,
       stack: &mut vm.stack,
       script,
       current_fun,
@@ -330,10 +329,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::False => self.op_literal(Value::Bool(false)),
         ByteCode::List => self.op_literal(Value::List(self.gc.manage(Vec::new(), self))),
         ByteCode::ListInit => self.op_list(),
-        ByteCode::Map => {
-          self.op_literal(Value::Map(self.gc.manage(FnvHashMap::default(), self)))
-        }
+        ByteCode::Map => self.op_literal(Value::Map(self.gc.manage(SlHashMap::default(), self))),
         ByteCode::MapInit => self.op_map(),
+        ByteCode::IterNext => self.op_iter_next(),
+        ByteCode::IterCurrent => self.op_iter_current(),
         ByteCode::Constant => self.op_constant(),
         ByteCode::Print => self.op_print(),
         ByteCode::Call => self.op_call(),
@@ -349,10 +348,11 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       };
 
       match result {
-        Signal::OkReturn => match mode {
-          RunMode::CallFunction => return ExecuteResult::FunResult(self.get_val(-1)),
-          _ => ()
-        },
+        Signal::OkReturn => {
+          if let RunMode::CallFunction = mode {
+            return ExecuteResult::FunResult(self.get_val(-1));
+          }
+        }
         Signal::Ok => (),
         Signal::RuntimeError => {
           let current_error = self.current_error.clone();
@@ -361,7 +361,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
               self.error(error);
               return ExecuteResult::RuntimeError;
             }
-            None => panic!("Runtime Error was not set.")
+            None => panic!("Runtime Error was not set."),
           }
         }
         Signal::Exit => {
@@ -455,7 +455,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// reset the stack in case of interrupt
   fn reset_stack(&mut self) {
     self.stack_top = &mut self.stack[1] as *mut Value;
-    self.frame_count = 0;
+    self.frame_count = 1;
     self.open_upvalues.clear();
   }
 
@@ -475,12 +475,15 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_list(&mut self) -> Signal {
     let arg_count = self.read_short();
     let args = unsafe {
-      std::slice::from_raw_parts(self.stack_top.offset(-(arg_count as isize)), arg_count as usize)
+      std::slice::from_raw_parts(
+        self.stack_top.offset(-(arg_count as isize)),
+        arg_count as usize,
+      )
     };
     let mut list = self.peek(arg_count as isize).to_list();
     self.gc.resize(&mut list, self, |list| list.extend(args));
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
-    
+
     Signal::Ok
   }
 
@@ -502,6 +505,42 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Signal::Ok
   }
 
+  /// move an iterator to the next element
+  fn op_iter_next(&mut self) -> Signal {
+    let receiver = self.peek(0);
+    let constant = self.read_byte();
+
+    match receiver {
+      Value::Iter(mut iter) => {
+        let result = iter.next();
+        self.set_val(-1, result);
+        Signal::Ok
+      }
+      _ => {
+        let method_name = self.read_string(constant);
+        self.invoke(receiver, method_name, 0)
+      }
+    }
+  }
+
+  /// get the current value from an iterator
+  fn op_iter_current(&mut self) -> Signal {
+    let value = self.peek(0);
+    let slot = self.read_byte();
+
+    match value {
+      Value::Iter(iter) => {
+        let result = iter.current();
+        self.set_val(-1, result);
+        Signal::Ok
+      }
+      _ => {
+        let name = self.read_string(slot);
+        self.get_property(value, name)
+      }
+    }
+  }
+
   /// call a function or method
   fn op_call(&mut self) -> Signal {
     let arg_count = self.read_byte();
@@ -518,7 +557,11 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let method_name = self.read_string(constant);
     let receiver = self.peek(arg_count as isize);
 
-    // self.update_ip(3);
+    self.invoke(receiver, method_name, arg_count)
+  }
+
+  /// invoke a method
+  fn invoke(&mut self, receiver: Value, method_name: Managed<String>, arg_count: u8) -> Signal {
     match receiver {
       Value::Instance(instance) => match instance.get_field(&method_name) {
         Some(field) => {
@@ -528,23 +571,15 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         None => self.invoke_from_class(instance.class, method_name, arg_count),
       },
       Value::Bool(_) => self.invoke_from_class(self.builtin.bool, method_name, arg_count),
-      Value::Number(_) => {
-        self.invoke_from_class(self.builtin.number, method_name, arg_count)
-      }
+      Value::Number(_) => self.invoke_from_class(self.builtin.number, method_name, arg_count),
       Value::Nil => self.invoke_from_class(self.builtin.nil, method_name, arg_count),
-      Value::String(_) => {
-        self.invoke_from_class(self.builtin.string, method_name, arg_count)
-      }
+      Value::String(_) => self.invoke_from_class(self.builtin.string, method_name, arg_count),
       Value::Closure(_) => self.invoke_from_class(self.builtin.closure, method_name, arg_count),
       Value::Method(_) => self.invoke_from_class(self.builtin.method, method_name, arg_count),
       Value::List(_) => self.invoke_from_class(self.builtin.list, method_name, arg_count),
       Value::Map(_) => self.invoke_from_class(self.builtin.map, method_name, arg_count),
-      Value::NativeFun(_) => {
-        self.invoke_from_class(self.builtin.native, method_name, arg_count)
-      }
-      Value::NativeMethod(_) => {
-        self.invoke_from_class(self.builtin.native, method_name, arg_count)
-      }
+      Value::NativeFun(_) => self.invoke_from_class(self.builtin.native, method_name, arg_count),
+      Value::NativeMethod(_) => self.invoke_from_class(self.builtin.native, method_name, arg_count),
       _ => self.runtime_error(&format!("{} does not have methods.", receiver.value_type())),
     }
   }
@@ -800,6 +835,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let value = self.peek(0);
     let name = self.read_string(slot);
 
+    self.get_property(value, name)
+  }
+
+  fn get_property(&mut self, value: Value, name: Managed<String>) -> Signal {
     match value {
       Value::Instance(instance) => match instance.get_field(&name) {
         Some(value) => {
@@ -829,7 +868,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.frame_count -= 1;
 
     // if the frame was the whole script signal an ok interrupt
-    if self.frame_count == 0 {
+    if self.frame_count == 1 {
       self.pop();
       return Signal::Exit;
     }
@@ -1025,11 +1064,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   /// call a native function immediately returning the result
-  fn call_native_fun(
-    &mut self,
-    native: Managed<Box<dyn NativeFun>>,
-    arg_count: u8,
-  ) -> Signal {
+  fn call_native_fun(&mut self, native: Managed<Box<dyn NativeFun>>, arg_count: u8) -> Signal {
     let meta = native.meta();
 
     // check that the current function is called with the right number of args
@@ -1037,7 +1072,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       return error;
     }
 
-    let args = unsafe { std::slice::from_raw_parts(self.stack_top.offset(-(arg_count as isize)), arg_count as usize) };
+    let args = unsafe {
+      std::slice::from_raw_parts(
+        self.stack_top.offset(-(arg_count as isize)),
+        arg_count as usize,
+      )
+    };
 
     match native.call(&Hooks::new(self), args) {
       Ok(value) => {
@@ -1062,7 +1102,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       return error;
     }
 
-    let args = unsafe { std::slice::from_raw_parts(self.stack_top.offset(-(arg_count as isize)), arg_count as usize) };
+    let args = unsafe {
+      std::slice::from_raw_parts(
+        self.stack_top.offset(-(arg_count as isize)),
+        arg_count as usize,
+      )
+    };
     let this = self.get_val(-(arg_count as isize) - 1);
 
     match native.call(&mut Hooks::new(self), this, &args) {
@@ -1089,8 +1134,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       return self.runtime_error("Stack overflow.");
     }
 
-    let frame_index = if self.frame_count == 0 { 0 } else { self.frame_count - 1};
-    self.frames[frame_index] = self.current_frame;
+    // let frame_ptr = &mut self.frames[self.frame_count - 1] as *mut CallFrame;
+    self.frames[self.frame_count - 1] = self.current_frame;
     let frame = &mut self.frames[self.frame_count];
     frame.closure = closure;
     frame.ip = &closure.fun.chunk().instructions[0] as *const u8;
@@ -1099,6 +1144,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.current_frame = *frame;
     self.current_fun = closure.fun;
     self.frame_count += 1;
+
     Signal::Ok
   }
 
@@ -1142,7 +1188,6 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn call_method(&mut self, bound: Managed<Method>, arg_count: u8) -> Signal {
     self.set_val(-(arg_count as isize) - 1, bound.receiver);
     self.resolve_call(bound.method, arg_count)
-        
   }
 
   /// bind a method to an instance
@@ -1220,9 +1265,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     unsafe {
       let start = &self.stack[1] as *const Value;
-      let len = self.stack_top.offset_from(start) as usize;
+      let len = ptr_len(start, self.stack_top);
       let slice = std::slice::from_raw_parts(start, len);
-  
+
       for value in slice {
         stdio.print(&format!("[ {} ]", *value));
       }
@@ -1247,17 +1292,17 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       stdio.println("");
     }
 
-    unsafe {
-      let start = &self.current_fun.chunk().instructions[0] as *const u8;
-      let offset = ip.offset_from(start) as usize;
-      let last_offset = last_ip.offset_from(start) as usize;
-      disassemble_instruction(&stdio, &self.current_fun.chunk(), offset, last_offset);
-    }
+    let start = &self.current_fun.chunk().instructions[0] as *const u8;
+    let offset = ptr_len(start, ip);
+    let last_offset = ptr_len(start, last_ip);
+    disassemble_instruction(&stdio, &self.current_fun.chunk(), offset, last_offset);
   }
 
   /// Report a known spacelox runtime error to the user
   fn runtime_error(&mut self, message: &str) -> Signal {
-    self.set_error(SpaceloxError::new(self.gc.manage_str(String::from(message), self)));
+    self.set_error(SpaceloxError::new(
+      self.gc.manage_str(String::from(message), self),
+    ));
     Signal::RuntimeError
   }
 
@@ -1274,7 +1319,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     stdio.eprintln(&*message);
     stdio.eprintln("");
 
-    for frame in self.frames[0..self.frame_count].iter().rev() {
+    for frame in self.frames[1..self.frame_count].iter().rev() {
       let closure = &frame.closure;
       let location: String = match &**closure.fun.name {
         SCRIPT => SCRIPT.to_owned(),
@@ -1298,14 +1343,12 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
 
     unsafe {
       let start = &self.stack[0] as *const Value;
-      let len = self.stack_top.offset_from(start) as usize + 1;
+      let len = ptr_len(start, self.stack_top);
       let slice = std::slice::from_raw_parts(start, len);
-  
-      slice
-        .iter()
-        .for_each(|value| {
-          value.trace();
-        });
+
+      slice.iter().for_each(|value| {
+        value.trace();
+      });
     }
 
     self.frames[0..self.frame_count].iter().for_each(|frame| {
@@ -1331,14 +1374,12 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
 
     unsafe {
       let start = &self.stack[0] as *const Value;
-      let len = self.stack_top.offset_from(start) as usize + 1;
+      let len = ptr_len(start, self.stack_top) + 1;
       let slice = std::slice::from_raw_parts(start, len);
-  
-      slice
-        .iter()
-        .for_each(|value| {
-          value.trace_debug(stdio);
-        });
+
+      slice.iter().for_each(|value| {
+        value.trace_debug(stdio);
+      });
     }
 
     self.frames[0..self.frame_count].iter().for_each(|frame| {
@@ -1371,8 +1412,8 @@ impl<'a, I: Io> HookContext for VmExecutor<'a, I> {
       ExecuteResult::CompileError => panic!("Compiler error should occur before code is executed"),
       ExecuteResult::RuntimeError => match self.current_error.clone() {
         Some(error) => Err(error),
-        None => panic!()
-      }
+        None => panic!(),
+      },
     }
   }
 }
@@ -1386,4 +1427,3 @@ fn is_falsey(value: Value) -> bool {
     _ => false,
   }
 }
-

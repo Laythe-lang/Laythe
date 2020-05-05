@@ -6,7 +6,7 @@ use spacelox_core::token::{Token, TokenKind};
 use spacelox_core::utils::{copy_string, do_if_some};
 use spacelox_core::{
   arity::ArityKind,
-  constants::{INIT, SCRIPT, SUPER, THIS},
+  constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
   hooks::Hooks,
   value::{Fun, FunKind, Value},
 };
@@ -37,6 +37,11 @@ pub struct Local {
 
   /// is this local captured
   is_captured: bool,
+}
+
+pub enum ForLoop {
+  Range(Token),
+  CStyle,
 }
 
 /// The spacelox compiler for converting tokens to bytecode
@@ -279,7 +284,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     let class_name = self.parser.previous.clone();
     let name_constant = self.identifer_constant(self.parser.previous.clone());
-    self.declare_variable();
+    self.declare_variable(self.parser.previous.clone());
 
     self.emit_byte(AlignedByteCode::Class(name_constant));
     self.define_variable(name_constant);
@@ -422,7 +427,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a variable declaration
   fn var_declaration(&mut self) {
-    let global = self.parse_variable("Expect variable name.");
+    let variable = self.parse_variable("Expect variable name.");
 
     if self.parser.match_kind(TokenKind::Equal) {
       self.expression();
@@ -435,7 +440,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       "Expect ';' after variable declaration.",
     );
 
-    self.define_variable(global);
+    self.define_variable(variable);
   }
 
   /// Parse an expression statement
@@ -453,14 +458,58 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self
       .parser
       .consume(TokenKind::LeftParen, "Expected '(' after 'for'.");
+
     // parse an initializer
-    if self.parser.match_kind(TokenKind::Semicolon) {
+    let style: ForLoop = if self.parser.match_kind(TokenKind::Semicolon) {
+      ForLoop::CStyle
     } else if self.parser.match_kind(TokenKind::Var) {
-      self.var_declaration();
+      self.for_var_declaration()
     } else {
       self.expression_statement();
+      ForLoop::CStyle
+    };
+
+    match style {
+      ForLoop::CStyle => self.for_cstyle_body(),
+      ForLoop::Range(variable) => self.for_range_body(variable),
     }
 
+    self.end_scope();
+  }
+
+  /// Parse a variable declaration in a for loop
+  fn for_var_declaration(&mut self) -> ForLoop {
+    let variable = self.parse_variable("Expect variable name.");
+    let variable_token = self.parser.previous.clone();
+
+    let style = if self.parser.match_kind(TokenKind::Equal) {
+      // assignment indicates a c style
+      self.expression();
+      ForLoop::CStyle
+    } else {
+      self.emit_byte(AlignedByteCode::Nil);
+
+      // the in keyword indicates a range for loop
+      if self.parser.match_kind(TokenKind::In) {
+        ForLoop::Range(variable_token)
+      } else {
+        ForLoop::CStyle
+      }
+    };
+
+    if let ForLoop::CStyle = style {
+      self.parser.consume(
+        TokenKind::Semicolon,
+        "Expect ';' after variable declaration.",
+      );
+    }
+
+    self.define_variable(variable);
+    style
+  }
+
+  /// Parse the body of a c style for loop
+  fn for_cstyle_body(&mut self) {
     let mut loop_start = self.current_chunk().instructions.len();
 
     // parse loop condition
@@ -499,8 +548,79 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       self.patch_jump(jump);
       self.emit_byte(AlignedByteCode::Pop);
     }
+  }
 
-    self.end_scope();
+  /// Parse the body of a range style for loop
+  fn for_range_body(&mut self, loop_token: Token) {
+    // push collection onto stack
+    self.expression();
+
+    let iterator_token = Token {
+      lexeme: ITER_VAR.to_string(),
+      kind: TokenKind::Identifier,
+      line: self.parser.previous.line,
+    };
+
+    // get constant for 'iter' method
+    let iter_const = self.identifer_constant(Token {
+      lexeme: ITER.to_string(),
+      kind: TokenKind::Identifier,
+      line: self.parser.previous.line,
+    });
+
+    // declare the hidden local $iter variable
+    let iterator_const = self.identifer_constant(iterator_token.clone());
+    self.declare_variable(iterator_token.clone());
+    self.emit_byte(AlignedByteCode::Invoke((iter_const, 0)));
+    self.define_variable(iterator_const);
+
+    self
+      .parser
+      .consume(TokenKind::RightParen, "Expected ')' after iterable.");
+
+    // mark start of loop
+    let loop_start = self.current_chunk().instructions.len();
+
+    // define iterator method constants
+    let next_const = self.identifer_constant(Token {
+      lexeme: "next".to_string(),
+      kind: TokenKind::Identifier,
+      line: self.parser.previous.line,
+    });
+
+    let current_const = self.identifer_constant(Token {
+      lexeme: "current".to_string(),
+      kind: TokenKind::Identifier,
+      line: self.parser.previous.line,
+    });
+
+    // call next on iterator
+    let iterator_variable = self
+      .resolve_local(&iterator_token)
+      .expect("Iterator variable was not defined.");
+    self.emit_byte(AlignedByteCode::GetLocal(iterator_variable));
+    self.emit_byte(AlignedByteCode::IterNext(next_const));
+
+    // check at end of iterator
+    let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
+    self.emit_byte(AlignedByteCode::Pop);
+
+    // assign $iter.current to loop variable
+    let loop_variable = self
+      .resolve_local(&loop_token)
+      .expect("Loop variable was not defined.");
+    self.emit_byte(AlignedByteCode::GetLocal(iterator_variable));
+    self.emit_byte(AlignedByteCode::IterCurrent(current_const));
+    self.emit_byte(AlignedByteCode::SetLocal(loop_variable));
+    self.emit_byte(AlignedByteCode::Pop);
+
+    // loop body
+    self.statement();
+    self.emit_loop(loop_start);
+
+    // loop back to top
+    self.patch_jump(exit_jump);
+    self.emit_byte(AlignedByteCode::Pop);
   }
 
   /// Parse while statement
@@ -885,13 +1005,13 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Define a variable
-  fn define_variable(&mut self, global: u8) {
+  fn define_variable(&mut self, variable: u8) {
     if self.scope_depth > 0 {
       self.mark_initialized();
       return;
     }
 
-    self.emit_byte(AlignedByteCode::DefineGlobal(global));
+    self.emit_byte(AlignedByteCode::DefineGlobal(variable));
   }
 
   /// Parse a list of argument to a function
@@ -1010,7 +1130,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     } else {
       self.named_variable(
         Token {
-          lexeme: "super".to_string(),
+          lexeme: SUPER.to_string(),
           kind: TokenKind::Super,
           line: self.parser.previous.line,
         },
@@ -1025,7 +1145,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// identifer if an identifer was identified
   fn parse_variable(&mut self, error_message: &str) -> u8 {
     self.parser.consume(TokenKind::Identifier, error_message);
-    self.declare_variable();
+    self.declare_variable(self.parser.previous.clone());
     if self.scope_depth > 0 {
       return 0;
     }
@@ -1059,13 +1179,12 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   ///  declare a variable
-  fn declare_variable(&mut self) {
+  fn declare_variable(&mut self, name: Token) {
     // if global exit
     if self.scope_depth == 0 {
       return;
     }
 
-    let name = self.parser.previous.clone();
     for i in (0..self.local_count).rev() {
       let local = &self.locals[i];
 
@@ -1273,7 +1392,7 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 44] = [
+const RULES_TABLE: [ParseRule; 45] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
@@ -1340,6 +1459,8 @@ const RULES_TABLE: [ParseRule; 44] = [
   // TOKEN_FUN
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_IF
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_IN
   ParseRule::new(Some(Act::Literal), None, Precedence::None),
   // TOKEN_NIL
   ParseRule::new(None, Some(Act::Or), Precedence::Or),
@@ -2050,6 +2171,52 @@ mod test {
   }
 
   #[test]
+  fn map() {
+    let example = "var a = :{ \"cat\": \"bat\", 10: nil };".to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Map,             // 0
+        AlignedByteCode::Constant(1),     // 1
+        AlignedByteCode::Constant(2),     // 3
+        AlignedByteCode::Constant(3),     // 5
+        AlignedByteCode::Nil,             // 7
+        AlignedByteCode::MapInit(2),      // 8
+        AlignedByteCode::DefineGlobal(0), // 11
+        AlignedByteCode::Nil,             // 13
+        AlignedByteCode::Return,          // 14
+      ],
+    );
+  }
+
+  #[test]
+  fn list() {
+    let example = "var a = [1, 2, 3, \"cat\"];".to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::List,            // 0
+        AlignedByteCode::Constant(1),     // 1
+        AlignedByteCode::Constant(2),     // 3
+        AlignedByteCode::Constant(3),     // 5
+        AlignedByteCode::Constant(4),     // 7
+        AlignedByteCode::ListInit(4),     // 9
+        AlignedByteCode::DefineGlobal(0), // 12
+        AlignedByteCode::Nil,             // 14
+        AlignedByteCode::Return,          // 15
+      ],
+    );
+  }
+
+  #[test]
   fn for_loop() {
     let example = "for (var x = 0; x < 10; x = x + 1) { print(x); }".to_string();
 
@@ -2084,6 +2251,43 @@ mod test {
   }
 
   #[test]
+  fn for_range_loop() {
+    let example = "for (var x in [1, 2, 3]) { print x; }".to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Nil,             // 0
+        AlignedByteCode::List,            // 1   local 1 = x
+        AlignedByteCode::Constant(0),     // 2   local 2 = [1, 2, 3].iter()
+        AlignedByteCode::Constant(1),     // 4   local 3 =
+        AlignedByteCode::Constant(2),     // 6
+        AlignedByteCode::ListInit(3),     // 8
+        AlignedByteCode::Invoke((3, 0)),  // 11  const 1 = 1
+        AlignedByteCode::GetLocal(2),     // 14  const 2 = 2
+        AlignedByteCode::IterNext(5),     // 16  const 3 = 3
+        AlignedByteCode::JumpIfFalse(14), // 18  const 4 = "iter"
+        AlignedByteCode::Pop,             // 21  const 5 = "next"
+        AlignedByteCode::GetLocal(2),     // 22
+        AlignedByteCode::IterCurrent(6),  // 24  const 6 = "current"
+        AlignedByteCode::SetLocal(1),     // 26
+        AlignedByteCode::Pop,             // 28
+        AlignedByteCode::GetLocal(1),     // 29
+        AlignedByteCode::Print,           // 31
+        AlignedByteCode::Loop(21),        // 32
+        AlignedByteCode::Pop,             // 35
+        AlignedByteCode::Pop,             // 36
+        AlignedByteCode::Pop,             // 37
+        AlignedByteCode::Nil,             // 38
+        AlignedByteCode::Return,          // 39
+      ],
+    );
+  }
+
+  #[test]
   fn while_loop() {
     let example = "while (true) { print 10; }".to_string();
     let mut gc = Gc::new(Box::new(NativeStdIo::new()));
@@ -2108,7 +2312,6 @@ mod test {
   #[test]
   fn or_operator() {
     let example = "print false or true;".to_string();
-
     let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
 

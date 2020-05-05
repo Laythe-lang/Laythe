@@ -274,7 +274,14 @@ impl<'a> Scanner<'a> {
           },
           None => TokenKind::Identifier,
         },
-        "i" => self.check_keyword(1, "f", TokenKind::If),
+        "i" => match self.nth_char_from(self.start, 1) {
+          Some(c2) => match c2 {
+            "f" => self.check_keyword(2, "", TokenKind::If),
+            "n" => self.check_keyword(2, "", TokenKind::In),
+            _ => TokenKind::Identifier,
+          },
+          None => TokenKind::Identifier,
+        },
         "n" => self.check_keyword(1, "il", TokenKind::Nil),
         "o" => self.check_keyword(1, "r", TokenKind::Or),
         "p" => self.check_keyword(1, "rint", TokenKind::Print),
@@ -555,6 +562,10 @@ mod test {
     map.insert(
       TokenKind::If,
       TokenGen::ALpha(Box::new(|| "if".to_string())),
+    );
+    map.insert(
+      TokenKind::In,
+      TokenGen::ALpha(Box::new(|| "in".to_string())),
     );
     map.insert(
       TokenKind::Nil,

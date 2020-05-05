@@ -49,6 +49,12 @@ pub fn disassemble_instruction<S: StdIo>(
     AlignedByteCode::ListInit(arg_count) => short_instruction(stdio, "ListInit", arg_count, offset),
     AlignedByteCode::Map => simple_instruction(stdio, "Map", offset),
     AlignedByteCode::MapInit(arg_count) => short_instruction(stdio, "MapInit", arg_count, offset),
+    AlignedByteCode::IterNext(constant) => {
+      invoke_instruction(stdio, "IterNext", chunk, constant, 0, offset)
+    }
+    AlignedByteCode::IterCurrent(constant) => {
+      constant_instruction(stdio, "IterCurrent", chunk, constant, offset)
+    }
     AlignedByteCode::GetIndex => simple_instruction(stdio, "GetIndex", offset),
     AlignedByteCode::SetIndex => simple_instruction(stdio, "SetIndex", offset),
     AlignedByteCode::Pop => simple_instruction(stdio, "Pop", offset),
@@ -89,8 +95,12 @@ pub fn disassemble_instruction<S: StdIo>(
     AlignedByteCode::SetLocal(slot) => byte_instruction(stdio, "SetLocal", slot, offset),
     AlignedByteCode::GetUpvalue(slot) => byte_instruction(stdio, "GetUpvalue", slot, offset),
     AlignedByteCode::SetUpvalue(slot) => byte_instruction(stdio, "SetUpvalue", slot, offset),
-    AlignedByteCode::SetProperty(slot) => byte_instruction(stdio, "SetProperty", slot, offset),
-    AlignedByteCode::GetProperty(slot) => byte_instruction(stdio, "GetProperty", slot, offset),
+    AlignedByteCode::SetProperty(slot) => {
+      constant_instruction(stdio, "SetProperty", chunk, slot, offset)
+    }
+    AlignedByteCode::GetProperty(slot) => {
+      constant_instruction(stdio, "GetProperty", chunk, slot, offset)
+    }
     AlignedByteCode::Jump(jump) => jump_instruction(stdio, "Jump", 1, jump, offset),
     AlignedByteCode::JumpIfFalse(jump) => jump_instruction(stdio, "JumpIfFalse", 1, jump, offset),
     AlignedByteCode::Loop(jump) => jump_instruction(stdio, "Loop", -1, jump, offset),
