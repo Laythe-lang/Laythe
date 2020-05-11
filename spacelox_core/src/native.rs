@@ -30,7 +30,7 @@ pub trait NativeFun: Trace {
   fn meta(&self) -> &NativeMeta;
 
   /// Call the native functions
-  fn call(&self, hooks: &Hooks, values: &[Value]) -> CallResult;
+  fn call(&self, hooks: &mut Hooks, values: &[Value]) -> CallResult;
 }
 
 impl PartialEq<dyn NativeFun> for dyn NativeFun {

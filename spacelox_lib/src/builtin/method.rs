@@ -2,7 +2,7 @@ use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
   io::StdIo,
-  managed::Trace,
+  managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
@@ -29,7 +29,9 @@ pub fn define_method_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(METHOD_NAME.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MethodName::new()))),
+    Value::NativeMethod(hooks.manage(Box::new(MethodName::new(
+      hooks.manage_str(String::from(METHOD_NAME.name)),
+    )))),
   );
 
   class.add_method(
@@ -41,13 +43,15 @@ pub fn define_method_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
 #[derive(Clone, Debug, Trace)]
 struct MethodName {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
+  method_name: Managed<String>,
 }
 
 impl MethodName {
-  fn new() -> Self {
+  fn new(method_name: Managed<String>) -> Self {
     Self {
-      meta: Box::new(METHOD_NAME),
+      meta: &METHOD_NAME,
+      method_name,
     }
   }
 }
@@ -57,21 +61,19 @@ impl NativeMethod for MethodName {
     &self.meta
   }
 
-  fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(this.to_method().method.to_closure().fun.name))
+  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    hooks.call_method_by_name(this.to_method().method, self.method_name, args)
   }
 }
 
 #[derive(Clone, Debug, Trace)]
 struct MethodCall {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl MethodCall {
   fn new() -> Self {
-    Self {
-      meta: Box::new(METHOD_CALL),
-    }
+    Self { meta: &METHOD_CALL }
   }
 }
 
@@ -81,7 +83,12 @@ impl NativeMethod for MethodCall {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    hooks.call(this, args)
+    let method = this.to_method();
+    match method.method {
+      Value::Closure(_) => hooks.call(this, args),
+      Value::NativeMethod(_) => hooks.call_method(method.receiver, method.method, args),
+      _ => panic!("TODO"),
+    }
   }
 }
 
@@ -92,11 +99,15 @@ mod test {
   mod name {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::value::{Closure, Fun, Instance, Method};
+    use spacelox_core::{
+      memory::NO_GC,
+      value::{Closure, Fun, Instance, Method},
+    };
 
     #[test]
     fn new() {
-      let method_name = MethodName::new();
+      let gc = test_native_dependencies();
+      let method_name = MethodName::new(gc.manage_str(String::from("name"), &NO_GC));
 
       assert_eq!(method_name.meta.name, "name");
       assert_eq!(method_name.meta.arity, ArityKind::Fixed(0));
@@ -104,10 +115,15 @@ mod test {
 
     #[test]
     fn call() {
-      let method_name = MethodName::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = TestContext::new(
+        &gc,
+        &[Value::String(
+          gc.manage_str(String::from("example"), &NO_GC),
+        )],
+      );
       let mut hooks = Hooks::new(&mut context);
+      let method_name = MethodName::new(hooks.manage_str(String::from("name")));
 
       let fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
       let class = hooks.manage(Class::new(hooks.manage_str(String::from("exampleClass"))));

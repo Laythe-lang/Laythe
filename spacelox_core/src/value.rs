@@ -389,8 +389,8 @@ impl Value {
       Value::Instance(instance) => instance.class,
       Value::Iter(iterator) => iterator.class,
       Value::Upvalue(upvalue) => upvalue.value().value_class(builtin),
-      Value::NativeFun(_) => builtin.native,
-      Value::NativeMethod(_) => builtin.native,
+      Value::NativeFun(_) => builtin.native_fun,
+      Value::NativeMethod(_) => builtin.native_method,
     }
   }
 }
@@ -428,8 +428,10 @@ impl fmt::Display for Value {
       Self::Class(class) => write!(f, "{}", &class.name.as_str()),
       Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
       Self::Iter(iterator) => write!(f, "{} iterator", &iterator.class.name.as_str()),
-      Self::NativeFun(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
-      Self::NativeMethod(native_method) => write!(f, "<native {}>", native_method.meta().name),
+      Self::NativeFun(native_fun) => write!(f, "<native fun {}>", native_fun.meta().name),
+      Self::NativeMethod(native_method) => {
+        write!(f, "<native method {}>", native_method.meta().name)
+      }
     }
   }
 }
@@ -587,7 +589,8 @@ pub struct BuiltInClasses {
   pub map: Managed<Class>,
   pub closure: Managed<Class>,
   pub method: Managed<Class>,
-  pub native: Managed<Class>,
+  pub native_fun: Managed<Class>,
+  pub native_method: Managed<Class>,
 }
 
 impl Trace for BuiltInClasses {
@@ -600,7 +603,8 @@ impl Trace for BuiltInClasses {
     self.map.trace();
     self.closure.trace();
     self.method.trace();
-    self.native.trace();
+    self.native_fun.trace();
+    self.native_method.trace();
 
     true
   }
@@ -614,7 +618,8 @@ impl Trace for BuiltInClasses {
     self.map.trace_debug(stdio);
     self.closure.trace_debug(stdio);
     self.method.trace_debug(stdio);
-    self.native.trace_debug(stdio);
+    self.native_fun.trace_debug(stdio);
+    self.native_method.trace_debug(stdio);
 
     true
   }

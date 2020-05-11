@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "benchmark/list.lox",
+        "std_lib/builtin/method/name.lox"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",

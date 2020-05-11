@@ -103,6 +103,11 @@ pub struct Managed<T: 'static + Manage + ?Sized> {
 }
 
 impl<T: 'static + Manage + ?Sized> Managed<T> {
+  /// Note this method is hilariously unsafe
+  pub unsafe fn deref_static(&self) -> &'static T {
+    &(*self.ptr.as_ptr()).data
+  }
+
   pub fn obj(&self) -> &Allocation<T> {
     unsafe { self.ptr.as_ref() }
   }

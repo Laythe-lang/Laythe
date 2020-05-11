@@ -1,6 +1,5 @@
 use crate::{
-  hooks::Hooks, managed::Managed, value::Value, ModuleResult, SlHashMap, SpaceloxError,
-  SymbolResult,
+  hooks::Hooks, managed::Managed, value::Value, ModuleResult, SlError, SlHashMap, SymbolResult,
 };
 use hashbrown::{hash_map::Entry, HashMap};
 
@@ -139,7 +138,7 @@ impl Module {
   }
 
   /// Retrieve a single item from this module
-  pub fn get_symbol(&self, hooks: &Hooks, symbol: Managed<String>) -> Result<Value, SpaceloxError> {
+  pub fn get_symbol(&self, hooks: &Hooks, symbol: Managed<String>) -> Result<Value, SlError> {
     match self.get_symbols(hooks, &vec![symbol]) {
       Ok(hash_map) => match hash_map.get(&symbol) {
         Some(symbol) => Ok(*symbol),

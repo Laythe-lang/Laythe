@@ -1,0 +1,10 @@
+var x = :{
+  "10": [1, 2, 3],
+  false: :{
+    5: false,
+    3: nil
+  },
+  true: "sup",
+};
+
+assertEq(x.str(), "{ true: 'sup', '10': [1, 2, 3], false: { 3: nil, 5: false } }");

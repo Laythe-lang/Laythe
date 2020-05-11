@@ -13,7 +13,7 @@ use spacelox_core::{
   native::{NativeFun, NativeMethod},
   utils::{ptr_len, use_sentinel_nan},
   value::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, Value},
-  CallResult, SlHashMap, SpaceloxError,
+  CallResult, SlError, SlHashMap,
 };
 use spacelox_lib::{assert::assert_funs, builtin::make_builtin_classes, time::clock_funs};
 use std::convert::TryInto;
@@ -42,7 +42,7 @@ pub enum ExecuteResult {
 
 pub enum RunMode {
   Normal,
-  CallFunction,
+  CallFunction(usize),
 }
 
 pub fn default_native_vm() -> Vm<NativeIo> {
@@ -100,12 +100,13 @@ impl<I: Io> Vm<I> {
     let frames = vec![CallFrame::new(closure); FRAME_MAX];
     let stack = vec![Value::Nil; DEFAULT_STACK_MAX];
 
+    let mut no_gc_context = NoContext::new(&gc);
+    let mut hooks = Hooks::new(&mut no_gc_context);
     let mut natives = Vec::new();
-    natives.extend(assert_funs().into_iter());
+    natives.extend(assert_funs(&mut hooks).into_iter());
     natives.extend(clock_funs().into_iter());
 
-    let builtin = make_builtin_classes(&Hooks::new(&mut NoContext::new(&gc)))
-      .expect("Could not make built in classes.");
+    let builtin = make_builtin_classes(&mut hooks).expect("Could not make built in classes.");
     let globals = define_globals(&gc, natives);
 
     Vm {
@@ -230,7 +231,7 @@ struct VmExecutor<'a, I: Io + 'static> {
   current_frame: CallFrame,
 
   /// The current error if one is active
-  current_error: Option<SpaceloxError>,
+  current_error: Option<SlError>,
 
   /// index to the top of the value stack
   stack_top: *mut Value,
@@ -271,14 +272,60 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   /// Run a spacelox function on top of the current stack.
-  /// This acts as a hook for native functions to call back into
-  pub fn call_value(&mut self, callable: Value, args: &[Value]) -> ExecuteResult {
+  /// This acts as a hook for native functions to execute spacelox function
+  fn run_fun(&mut self, callable: Value, args: &[Value]) -> ExecuteResult {
     for arg in args {
       self.push(*arg);
     }
 
-    self.resolve_call(callable, args.len() as u8);
-    self.run(RunMode::CallFunction)
+    let mode = RunMode::CallFunction(self.frame_count);
+    match self.resolve_call(callable, args.len() as u8) {
+      Signal::Ok => self.run(mode),
+      Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
+      Signal::RuntimeError => ExecuteResult::RuntimeError,
+      _ => panic!("TODO"),
+    }
+  }
+
+  /// Run a spacelox method on top of the current stack.
+  /// This acts as a hook for native functions to execute spacelox function
+  fn run_method(&mut self, this: Value, method: Value, args: &[Value]) -> ExecuteResult {
+    self.push(this);
+    for arg in args {
+      self.push(*arg);
+    }
+
+    let mode = RunMode::CallFunction(self.frame_count);
+    match self.resolve_call(method, args.len() as u8) {
+      Signal::Ok => self.run(mode),
+      Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
+      Signal::RuntimeError => ExecuteResult::RuntimeError,
+      _ => panic!("TODO"),
+    }
+  }
+
+  /// Run a method on a spacelox value on top of the current stack.
+  /// This acts as a hook for native function to execute spacelox methods
+  pub fn run_method_by_name(
+    &mut self,
+    this: Value,
+    method_name: Managed<String>,
+    args: &[Value],
+  ) -> ExecuteResult {
+    let class = this.value_class(self.builtin);
+
+    self.push(this);
+    for arg in args {
+      self.push(*arg);
+    }
+
+    let mode = RunMode::CallFunction(self.frame_count);
+    match self.invoke_from_class(class, method_name, args.len() as u8) {
+      Signal::Ok => self.run(mode),
+      Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
+      Signal::RuntimeError => ExecuteResult::RuntimeError,
+      _ => panic!("TODO"),
+    }
   }
 
   /// Main virtual machine execution loop. This will run the until the program interrupts
@@ -349,8 +396,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
       match result {
         Signal::OkReturn => {
-          if let RunMode::CallFunction = mode {
-            return ExecuteResult::FunResult(self.get_val(-1));
+          if let RunMode::CallFunction(depth) = mode {
+            if depth == self.frame_count {
+              return ExecuteResult::FunResult(self.get_val(-1));
+            }
           }
         }
         Signal::Ok => (),
@@ -512,7 +561,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     match receiver {
       Value::Iter(mut iter) => {
-        let result = iter.next();
+        let result = iter.next(&Hooks::new(self));
         self.set_val(-1, result);
         Signal::Ok
       }
@@ -570,6 +619,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         }
         None => self.invoke_from_class(instance.class, method_name, arg_count),
       },
+      Value::Iter(iter) => self.invoke_from_class(iter.class, method_name, arg_count),
       Value::Bool(_) => self.invoke_from_class(self.builtin.bool, method_name, arg_count),
       Value::Number(_) => self.invoke_from_class(self.builtin.number, method_name, arg_count),
       Value::Nil => self.invoke_from_class(self.builtin.nil, method_name, arg_count),
@@ -578,8 +628,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       Value::Method(_) => self.invoke_from_class(self.builtin.method, method_name, arg_count),
       Value::List(_) => self.invoke_from_class(self.builtin.list, method_name, arg_count),
       Value::Map(_) => self.invoke_from_class(self.builtin.map, method_name, arg_count),
-      Value::NativeFun(_) => self.invoke_from_class(self.builtin.native, method_name, arg_count),
-      Value::NativeMethod(_) => self.invoke_from_class(self.builtin.native, method_name, arg_count),
+      Value::NativeFun(_) => {
+        self.invoke_from_class(self.builtin.native_fun, method_name, arg_count)
+      }
+      Value::NativeMethod(_) => {
+        self.invoke_from_class(self.builtin.native_fun, method_name, arg_count)
+      }
       _ => self.runtime_error(&format!("{} does not have methods.", receiver.value_type())),
     }
   }
@@ -613,6 +667,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.bind_method(super_class, name)
   }
 
+  /// Inherit a class by directly copying methods onto the subclass.
   fn op_inherit(&mut self) -> Signal {
     let mut class = self.peek(0).to_class();
 
@@ -627,6 +682,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
+  /// Loop by performing an unconditional jump to a new instruction
   fn op_loop(&mut self) -> Signal {
     let jump = self.read_byte() as isize;
     self.update_ip(1 - jump);
@@ -732,7 +788,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       return Signal::Ok;
     }
 
-    self.runtime_error("Only instances have fields.")
+    self.runtime_error("Only instances have settable fields.")
   }
 
   fn op_set_upvalue(&mut self) -> Signal {
@@ -847,15 +903,23 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         }
         None => self.bind_method(instance.class, name),
       },
+      Value::Iter(iter) => match iter.get_field(&name) {
+        Some(value) => {
+          self.set_val(-1, *value);
+          Signal::Ok
+        }
+        None => self.bind_method(iter.class, name),
+      },
       Value::Bool(_) => self.bind_method(self.builtin.bool, name),
-      Value::Number(_) => self.bind_method(self.builtin.number, name),
       Value::Nil => self.bind_method(self.builtin.nil, name),
+      Value::Number(_) => self.bind_method(self.builtin.number, name),
       Value::String(_) => self.bind_method(self.builtin.string, name),
+      Value::List(_) => self.bind_method(self.builtin.list, name),
+      Value::Map(_) => self.bind_method(self.builtin.map, name),
       Value::Fun(_) => self.bind_method(self.builtin.closure, name),
       Value::Closure(_) => self.bind_method(self.builtin.closure, name),
-      // Value::Method(_) => self.bind_method(self.b)
-      Value::List(_) => self.bind_method(self.builtin.list, name),
-      Value::NativeFun(_) => self.bind_method(self.builtin.native, name),
+      Value::Method(_) => self.bind_method(self.builtin.method, name),
+      Value::NativeFun(_) => self.bind_method(self.builtin.native_fun, name),
       _ => self.runtime_error(&format!("{} does not have properties.", value.value_type())),
     }
   }
@@ -982,7 +1046,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         let method = self.peek(0);
         class.add_method(&Hooks::new(self), name, method);
       }
-      _ => panic!("Internal spacelox error. stack invalid for op_method"),
+      _ => panic!("Internal spacelox error. stack invalid for op_method."),
     }
 
     self.pop();
@@ -1079,11 +1143,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       )
     };
 
-    match native.call(&Hooks::new(self), args) {
+    match native.call(&mut Hooks::new(self), args) {
       Ok(value) => {
         self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
         self.push(value);
-        Signal::Ok
+
+        Signal::OkReturn
       }
       Err(error) => self.set_error(error),
     }
@@ -1114,7 +1179,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       Ok(value) => {
         self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
         self.push(value);
-        Signal::Ok
+
+        Signal::OkReturn
       }
       Err(error) => self.set_error(error),
     }
@@ -1258,9 +1324,25 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.open_upvalues.retain(|upvalue| upvalue.is_open())
   }
 
+  /// Print debugging information for the current instruction
   #[cfg(feature = "debug")]
   fn print_debug(&self, ip: *const u8, last_ip: *const u8) {
     let stdio = self.io.stdio();
+
+    self.print_stack_debug(&stdio);
+
+    #[cfg(feature = "debug_upvalue")]
+    self.print_upvalue_debug(&stdio);
+
+    let start = &self.current_fun.chunk().instructions[0] as *const u8;
+    let offset = ptr_len(start, ip);
+    let last_offset = ptr_len(start, last_ip);
+    disassemble_instruction(&stdio, &self.current_fun.chunk(), offset, last_offset);
+  }
+
+  /// Print the current stack
+  #[cfg(feature = "debug")]
+  fn print_stack_debug(&self, stdio: &I::StdIo) {
     stdio.print("Stack:        ");
 
     unsafe {
@@ -1274,45 +1356,54 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
 
     stdio.println("");
+  }
 
-    #[cfg(feature = "debug_upvalue")]
-    {
-      stdio.print("Open UpVal:   ");
-      self
-        .open_upvalues
-        .iter()
-        .for_each(|upvalue| match &**upvalue {
-          Upvalue::Open(stack_ptr) => {
-            stdio.print(&format!("[ stack {} ]", unsafe { *stack_ptr.as_ref() }));
-          }
-          Upvalue::Closed(closed) => {
-            stdio.print(&format!("[ heap {} ]", closed));
-          }
-        });
-      stdio.println("");
+  /// Print the current upvalues
+  #[cfg(feature = "debug_upvalue")]
+  fn print_upvalue_debug(&self, stdio: &I::StdIo) {
+    stdio.print("Open UpVal:   ");
+    self
+      .open_upvalues
+      .iter()
+      .for_each(|upvalue| match &**upvalue {
+        Upvalue::Open(stack_ptr) => {
+          stdio.print(&format!("[ stack {} ]", unsafe { *stack_ptr.as_ref() }));
+        }
+        Upvalue::Closed(closed) => {
+          stdio.print(&format!("[ heap {} ]", closed));
+        }
+      });
+    stdio.println("");
+  }
+
+  /// Convert an execute result to a call result
+  fn to_call_result(&self, execute_result: ExecuteResult) -> CallResult {
+    match execute_result {
+      ExecuteResult::FunResult(value) => Ok(value),
+      ExecuteResult::Ok => panic!("Accidental early exit in hook call."),
+      ExecuteResult::CompileError => panic!("Compiler error should occur before code is executed."),
+      ExecuteResult::RuntimeError => match self.current_error.clone() {
+        Some(error) => Err(error),
+        None => panic!("Error not set on vm executor."),
+      },
     }
-
-    let start = &self.current_fun.chunk().instructions[0] as *const u8;
-    let offset = ptr_len(start, ip);
-    let last_offset = ptr_len(start, last_ip);
-    disassemble_instruction(&stdio, &self.current_fun.chunk(), offset, last_offset);
   }
 
   /// Report a known spacelox runtime error to the user
   fn runtime_error(&mut self, message: &str) -> Signal {
-    self.set_error(SpaceloxError::new(
+    self.set_error(SlError::new(
       self.gc.manage_str(String::from(message), self),
     ));
     Signal::RuntimeError
   }
 
-  fn set_error(&mut self, error: SpaceloxError) -> Signal {
+  fn set_error(&mut self, error: SlError) -> Signal {
     self.current_error = Some(error);
     Signal::RuntimeError
   }
 
   /// Print an error message and the current call stack to the user
-  fn error(&mut self, error: &SpaceloxError) {
+  fn error(&mut self, error: &SlError) {
     let message = error.message;
 
     let stdio = self.io.stdio();
@@ -1406,15 +1497,23 @@ impl<'a, I: Io> HookContext for VmExecutor<'a, I> {
   }
 
   fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
-    match self.call_value(callable, args) {
-      ExecuteResult::FunResult(value) => Ok(value),
-      ExecuteResult::Ok => panic!("Accidental early exit in hook call."),
-      ExecuteResult::CompileError => panic!("Compiler error should occur before code is executed"),
-      ExecuteResult::RuntimeError => match self.current_error.clone() {
-        Some(error) => Err(error),
-        None => panic!(),
-      },
-    }
+    let result = self.run_fun(callable, args);
+    self.to_call_result(result)
+  }
+
+  fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> CallResult {
+    let result = self.run_method(this, method, args);
+    self.to_call_result(result)
+  }
+
+  fn call_method_by_name(
+    &mut self,
+    this: Value,
+    method_name: Managed<String>,
+    args: &[Value],
+  ) -> CallResult {
+    let result = self.run_method_by_name(this, method_name, args);
+    self.to_call_result(result)
   }
 }
 

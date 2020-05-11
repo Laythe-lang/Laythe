@@ -10,7 +10,8 @@ path = "src/lib.rs"
 
 [dependencies]
 spacelox_core = { path = "../spacelox_core" }
+hashbrown = "0.7.2"
+fnv = "1.0.3"
 
 [dev-dependencies]
-fnv = "1.0.3"
 criterion = "0.3"

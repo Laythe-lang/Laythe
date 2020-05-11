@@ -33,14 +33,12 @@ pub fn define_string_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
 #[derive(Clone, Debug, Trace)]
 struct StringStr {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl StringStr {
   fn new() -> Self {
-    Self {
-      meta: Box::new(STRING_STR),
-    }
+    Self { meta: &STRING_STR }
   }
 }
 

@@ -2,121 +2,153 @@ use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
   io::StdIo,
-  managed::Trace,
+  managed::{Managed, Trace},
   native::{NativeFun, NativeMeta},
   value::Value,
   CallResult,
 };
 
-const NATIVE_ASSERT_META: NativeMeta = NativeMeta::new("assert", ArityKind::Fixed(1));
+const ASSERT_META: NativeMeta = NativeMeta::new("assert", ArityKind::Fixed(1));
 
 #[derive(Clone, Debug, Trace)]
 /// A native method to assert that for a boolean true value
-pub struct NativeAssert {
+pub struct Assert {
   /// the assert meta data
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
+
+  /// reference to 'str'
+  method_str: Managed<String>,
 }
 
-impl NativeAssert {
+impl Assert {
   /// Construct a new instance of the native assert function
-  ///
-  /// ```
-  /// use spacelox_lib::assert::assert::NativeAssert;
-  ///
-  /// let native_assert = NativeAssert::new();
-  /// ```
-  pub fn new() -> Self {
+  pub fn new(method_str: Managed<String>) -> Self {
     Self {
-      meta: Box::new(NATIVE_ASSERT_META),
+      meta: &ASSERT_META,
+      method_str,
     }
   }
 }
 
-impl NativeFun for NativeAssert {
+impl NativeFun for Assert {
   fn meta(&self) -> &NativeMeta {
     &self.meta
   }
 
-  fn call(&self, hooks: &Hooks, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
     match args[0] {
       Value::Bool(b) => match b {
         true => Ok(Value::Nil),
-        false => hooks.error(String::from("'assert' expected true received false.")),
+        false => hooks.error(String::from(
+          "Assertion failed expected true received false",
+        )),
       },
-      _ => hooks.error(String::from("'assert' expected a boolean value.")),
+      _ => {
+        let result = hooks.call_method_by_name(args[0], self.method_str, &[]);
+
+        if let Ok(ok1) = result {
+          if let Value::String(str1) = ok1 {
+            return hooks.error(format!("Assertion failed expected true received {}.", str1));
+          }
+        }
+
+        return hooks.error(format!(
+          "Assertion failed expected true received {:?}.",
+          args[0]
+        ));
+      }
     }
   }
 }
 
-const NATIVE_ASSERTEQ_META: NativeMeta = NativeMeta::new("assertEq", ArityKind::Fixed(2));
+const ASSERTEQ_META: NativeMeta = NativeMeta::new("assertEq", ArityKind::Fixed(2));
 
 #[derive(Clone, Debug, Trace)]
-pub struct NativeAssertEq {
-  meta: Box<NativeMeta>,
+pub struct AssertEq {
+  meta: &'static NativeMeta,
+  method_str: Managed<String>,
 }
 
-impl NativeAssertEq {
+impl AssertEq {
   /// Construct a new instance of the native assertEq function
-  ///
-  /// ```
-  /// use spacelox_lib::assert::assert::NativeAssertEq;
-  ///
-  /// let native_assert = NativeAssertEq::new();
-  /// ```
-  pub fn new() -> Self {
+  pub fn new(method_str: Managed<String>) -> Self {
     Self {
-      meta: Box::new(NATIVE_ASSERTEQ_META),
+      meta: &ASSERTEQ_META,
+      method_str,
     }
   }
 }
 
-impl NativeFun for NativeAssertEq {
+impl NativeFun for AssertEq {
   fn meta(&self) -> &NativeMeta {
     &self.meta
   }
 
-  fn call(&self, hooks: &Hooks, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
     if args[0] == args[1] {
       return Ok(Value::Nil);
     }
 
-    hooks.error(format!("{:?} and {:?} where not equal", args[0], args[1]))
+    let result1 = hooks.call_method_by_name(args[0], self.method_str, &[]);
+    let result2 = hooks.call_method_by_name(args[1], self.method_str, &[]);
+
+    if let (Ok(ok1), Ok(ok2)) = (result1, result2) {
+      if let (Value::String(str1), Value::String(str2)) = (ok1, ok2) {
+        return hooks.error(format!(
+          "Assertion failed {} and {} are not equal.",
+          str1, str2
+        ));
+      }
+    }
+
+    return hooks.error(format!(
+      "Assertion failed {:?} and {:?} are not equal.",
+      args[0], args[1]
+    ));
   }
 }
 
-const NATIVE_ASSERTNE_META: NativeMeta = NativeMeta::new("assertNe", ArityKind::Fixed(2));
+const ASSERTNE_META: NativeMeta = NativeMeta::new("assertNe", ArityKind::Fixed(2));
 
 #[derive(Clone, Debug, Trace)]
-pub struct NativeAssertNe {
-  meta: Box<NativeMeta>,
+pub struct AssertNe {
+  meta: &'static NativeMeta,
+  method_str: Managed<String>,
 }
 
-impl NativeAssertNe {
+impl AssertNe {
   /// Construct a new instance of the native assertNe function
-  ///
-  /// ```
-  /// use spacelox_lib::assert::assert::NativeAssertNe;
-  ///
-  /// let native_assert = NativeAssertNe::new();
-  /// ```
-  pub fn new() -> Self {
+  pub fn new(method_str: Managed<String>) -> Self {
     Self {
-      meta: Box::new(NATIVE_ASSERTNE_META),
+      meta: &ASSERTNE_META,
+      method_str,
     }
   }
 }
 
-impl NativeFun for NativeAssertNe {
+impl NativeFun for AssertNe {
   fn meta(&self) -> &NativeMeta {
     &self.meta
   }
 
-  fn call(&self, hooks: &Hooks, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
     if args[0] != args[1] {
       return Ok(Value::Nil);
     }
 
-    hooks.error(format!("{:?} and {:?} where equal", args[0], args[1]))
+    let result1 = hooks.call_method_by_name(args[0], self.method_str, &[]);
+    let result2 = hooks.call_method_by_name(args[1], self.method_str, &[]);
+
+    if let (Ok(ok1), Ok(ok2)) = (result1, result2) {
+      if let (Value::String(str1), Value::String(str2)) = (ok1, ok2) {
+        return hooks.error(format!("Assertion failed {} and {} are equal.", str1, str2));
+      }
+    }
+
+    return hooks.error(format!(
+      "Assertion failed {:?} and {:?} are equal.",
+      args[0], args[1]
+    ));
   }
 }
 
@@ -130,10 +162,12 @@ mod test {
   mod assert {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
+    use spacelox_core::memory::NO_GC;
 
     #[test]
     fn new() {
-      let assert = NativeAssert::new();
+      let gc = test_native_dependencies();
+      let assert = Assert::new(gc.manage_str(String::from("str"), &NO_GC));
 
       assert_eq!(assert.meta.name, "assert");
       assert_eq!(assert.meta.arity, ArityKind::Fixed(1));
@@ -141,14 +175,14 @@ mod test {
 
     #[test]
     fn call() {
-      let assert = NativeAssert::new();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
-      let hooks = Hooks::new(&mut context);
+      let mut hooks = Hooks::new(&mut context);
 
+      let assert = Assert::new(hooks.manage_str(String::from("str")));
       let values = &[Value::Bool(true)];
 
-      let result = match assert.call(&hooks, values) {
+      let result = match assert.call(&mut hooks, values) {
         Ok(res) => res,
         Err(_) => panic!(),
       };
@@ -161,10 +195,12 @@ mod test {
   mod assert_eq {
     use super::*;
     use crate::support::TestContext;
+    use spacelox_core::memory::NO_GC;
 
     #[test]
     fn new() {
-      let assert_eq = NativeAssertEq::new();
+      let gc = test_native_dependencies();
+      let assert_eq = AssertEq::new(gc.manage_str(String::from("str"), &NO_GC));
 
       assert_eq!(assert_eq.meta.name, "assertEq");
       assert_eq!(assert_eq.meta.arity, ArityKind::Fixed(2));
@@ -172,14 +208,14 @@ mod test {
 
     #[test]
     fn call() {
-      let assert_eq = NativeAssertEq::new();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
-      let hooks = Hooks::new(&mut context);
+      let mut hooks = Hooks::new(&mut context);
+      let assert_eq = AssertEq::new(hooks.manage_str(String::from("str")));
 
       let values = &[Value::Number(10.5), Value::Number(10.5)];
 
-      let result = match assert_eq.call(&hooks, values) {
+      let result = match assert_eq.call(&mut hooks, values) {
         Ok(res) => res,
         Err(_) => panic!(),
       };
@@ -192,10 +228,12 @@ mod test {
   mod assert_ne {
     use super::*;
     use crate::support::TestContext;
+    use spacelox_core::memory::NO_GC;
 
     #[test]
     fn new() {
-      let assert_eq = NativeAssertNe::new();
+      let gc = test_native_dependencies();
+      let assert_eq = AssertNe::new(gc.manage_str(String::from("str"), &NO_GC));
 
       assert_eq!(assert_eq.meta.name, "assertNe");
       assert_eq!(assert_eq.meta.arity, ArityKind::Fixed(2));
@@ -203,14 +241,14 @@ mod test {
 
     #[test]
     fn call() {
-      let assert_eq = NativeAssertNe::new();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
-      let hooks = Hooks::new(&mut context);
+      let mut hooks = Hooks::new(&mut context);
+      let assert_eq = AssertNe::new(hooks.manage_str(String::from("str")));
 
       let values = &[Value::Number(10.5), Value::Nil];
 
-      let result = match assert_eq.call(&hooks, values) {
+      let result = match assert_eq.call(&mut hooks, values) {
         Ok(res) => res,
         Err(_) => panic!(),
       };

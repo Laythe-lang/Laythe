@@ -33,14 +33,12 @@ pub fn define_bool_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
 #[derive(Clone, Debug, Trace)]
 struct BoolStr {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl BoolStr {
   fn new() -> Self {
-    Self {
-      meta: Box::new(BOOL_STR),
-    }
+    Self { meta: &BOOL_STR }
   }
 }
 

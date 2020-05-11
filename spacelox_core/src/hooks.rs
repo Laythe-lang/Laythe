@@ -2,7 +2,7 @@ use crate::{
   managed::{Manage, Managed, Trace},
   memory::Gc,
   value::Value,
-  CallResult, SpaceloxError,
+  CallResult, SlError,
 };
 
 /// A set of commands that a native function to request from it's surrounding
@@ -38,18 +38,35 @@ impl<'a> Hooks<'a> {
     self.context.call(callable, args)
   }
 
+  /// Provide a value and a method for the surround context to execute
+  pub fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> CallResult {
+    self.context.call_method(this, method, args)
+  }
+
+  /// Provide a value and a method name for the surrounding context to execute
+  pub fn call_method_by_name(
+    &mut self,
+    this: Value,
+    method_name: Managed<String>,
+    args: &[Value],
+  ) -> CallResult {
+    self.context.call_method_by_name(this, method_name, args)
+  }
+
+  /// Stub for creating a module
   pub fn create_module() {}
 
+  /// Stub for loading a module
   pub fn load_module() {}
 
   /// Request a spacelox error object be generated with the provided message
   pub fn error(&self, message: String) -> CallResult {
-    Err(SpaceloxError::new(self.manage_str(message)))
+    Err(SlError::new(self.manage_str(message)))
   }
 
   /// Request a spacelox error object be generated with the provided message
-  pub fn make_error(&self, message: String) -> SpaceloxError {
-    SpaceloxError::new(self.manage_str(message))
+  pub fn make_error(&self, message: String) -> SlError {
+    SlError::new(self.manage_str(message))
   }
 
   /// Request an object be managed by the context's garbage collector
@@ -81,6 +98,17 @@ impl<'a> Hooks<'a> {
 pub trait HookContext: Trace {
   /// Execute a spacelox value in the surround context
   fn call(&mut self, callable: Value, args: &[Value]) -> CallResult;
+
+  /// Execute a method on a spacelox object with a given method name
+  fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> CallResult;
+
+  /// Execute a method on a spacelox object with a given method name
+  fn call_method_by_name(
+    &mut self,
+    this: Value,
+    method_name: Managed<String>,
+    args: &[Value],
+  ) -> CallResult;
 
   /// Get a reference to the context garbage collector
   fn gc(&self) -> &Gc;
@@ -114,6 +142,19 @@ impl<'a> HookContext for NoContext<'a> {
   }
 
   fn call(&mut self, _callable: Value, _args: &[Value]) -> CallResult {
+    Ok(Value::Nil)
+  }
+
+  fn call_method(&mut self, _this: Value, _method: Value, _args: &[Value]) -> CallResult {
+    Ok(Value::Nil)
+  }
+
+  fn call_method_by_name(
+    &mut self,
+    _this: Value,
+    _method_name: Managed<String>,
+    _args: &[Value],
+  ) -> CallResult {
     Ok(Value::Nil)
   }
 }

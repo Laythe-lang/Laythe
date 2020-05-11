@@ -434,6 +434,7 @@ version = "0.1.0"
 dependencies = [
  "criterion 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
+ "hashbrown 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "spacelox_core 0.1.0",
 ]
 

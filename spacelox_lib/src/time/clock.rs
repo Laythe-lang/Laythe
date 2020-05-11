@@ -10,34 +10,34 @@ use spacelox_core::{
 use std::time::SystemTime;
 
 #[derive(Clone, Debug, Trace)]
-pub struct NativeClock {
-  meta: Box<NativeMeta>,
+pub struct Clock {
+  meta: &'static NativeMeta,
   start: SystemTime,
 }
 
-const NATIVE_CLOCK_META: NativeMeta = NativeMeta::new("clock", ArityKind::Fixed(0));
+const CLOCK_META: NativeMeta = NativeMeta::new("clock", ArityKind::Fixed(0));
 
-impl Default for NativeClock {
+impl Default for Clock {
   fn default() -> Self {
     Self::new()
   }
 }
 
-impl NativeClock {
+impl Clock {
   pub fn new() -> Self {
     Self {
-      meta: Box::new(NATIVE_CLOCK_META),
+      meta: &CLOCK_META,
       start: SystemTime::now(),
     }
   }
 }
 
-impl NativeFun for NativeClock {
+impl NativeFun for Clock {
   fn meta(&self) -> &NativeMeta {
     &self.meta
   }
 
-  fn call(&self, hooks: &Hooks, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> CallResult {
     match self.start.elapsed() {
       Ok(elapsed) => Ok(Value::Number((elapsed.as_micros() as f64) / 1000000.0)),
       Err(e) => hooks.error(format!("clock failed {}", e)),
@@ -52,7 +52,7 @@ mod test {
 
   #[test]
   fn new() {
-    let clock = NativeClock::new();
+    let clock = Clock::new();
 
     assert_eq!(clock.meta.name, "clock");
     assert_eq!(clock.meta.arity, ArityKind::Fixed(0));
@@ -60,20 +60,20 @@ mod test {
 
   #[test]
   fn call() {
-    let clock = NativeClock::new();
+    let clock = Clock::new();
     let gc = test_native_dependencies();
     let mut context = TestContext::new(&gc, &[]);
-    let hooks = Hooks::new(&mut context);
+    let mut hooks = Hooks::new(&mut context);
 
     let values = &[];
 
-    let result1 = clock.call(&hooks, values);
+    let result1 = clock.call(&mut hooks, values);
     let res1 = match result1 {
       Ok(res) => res,
       Err(_) => panic!(),
     };
 
-    let result2 = clock.call(&hooks, values);
+    let result2 = clock.call(&mut hooks, values);
     let res2 = match result2 {
       Ok(res) => res,
       Err(_) => panic!(),

@@ -23,7 +23,14 @@ pub fn test_files_inner(
 
     let assert = fixture_path_inner(path, test_file_path).expect("No parent directory");
     let debug_path = assert.to_str().map(|s| s.to_string());
-    let mut file = File::open(assert)?;
+
+    let mut file = match File::open(assert.clone()) {
+      Ok(file) => file,
+      Err(err) => {
+        println!("Could not find {}", assert.to_str().unwrap());
+        return Err(err);
+      }
+    };
     let mut source = String::new();
     file.read_to_string(&mut source)?;
 

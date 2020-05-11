@@ -33,14 +33,12 @@ pub fn define_number_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
 #[derive(Clone, Debug, Trace)]
 struct NumberStr {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl NumberStr {
   fn new() -> Self {
-    Self {
-      meta: Box::new(NUMBER_STR),
-    }
+    Self { meta: &NUMBER_STR }
   }
 }
 

@@ -13,6 +13,7 @@ use spacelox_core::{
 pub const CLOSURE_CLASS_NAME: &'static str = "Fun";
 
 const CLOSURE_NAME: NativeMeta = NativeMeta::new("name", ArityKind::Fixed(0));
+const CLOSURE_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
 const CLOSURE_CALL: NativeMeta = NativeMeta::new("call", ArityKind::Variadic(0));
 
 pub fn declare_closure_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
@@ -34,6 +35,12 @@ pub fn define_closure_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
   class.add_method(
     hooks,
+    hooks.manage_str(String::from(CLOSURE_SIZE.name)),
+    Value::NativeMethod(hooks.manage(Box::new(ClosureSize::new()))),
+  );
+
+  class.add_method(
+    hooks,
     hooks.manage_str(String::from(CLOSURE_CALL.name)),
     Value::NativeMethod(hooks.manage(Box::new(ClosureCall::new()))),
   );
@@ -41,13 +48,13 @@ pub fn define_closure_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
 #[derive(Clone, Debug, Trace)]
 struct ClosureName {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl ClosureName {
   fn new() -> Self {
     Self {
-      meta: Box::new(CLOSURE_NAME),
+      meta: &CLOSURE_NAME,
     }
   }
 }
@@ -63,14 +70,43 @@ impl NativeMethod for ClosureName {
 }
 
 #[derive(Clone, Debug, Trace)]
+struct ClosureSize {
+  meta: &'static NativeMeta,
+}
+
+impl ClosureSize {
+  fn new() -> Self {
+    Self {
+      meta: &CLOSURE_SIZE,
+    }
+  }
+}
+
+impl NativeMethod for ClosureSize {
+  fn meta(&self) -> &NativeMeta {
+    &self.meta
+  }
+
+  fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
+    let req = match this.to_closure().fun.arity {
+      ArityKind::Default(req, _) => req,
+      ArityKind::Fixed(req) => req,
+      ArityKind::Variadic(req) => req,
+    };
+
+    Ok(Value::Number(req as f64))
+  }
+}
+
+#[derive(Clone, Debug, Trace)]
 struct ClosureCall {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl ClosureCall {
   fn new() -> Self {
     Self {
-      meta: Box::new(CLOSURE_CALL),
+      meta: &CLOSURE_CALL,
     }
   }
 }
@@ -116,6 +152,53 @@ mod test {
 
       match result1 {
         Ok(r) => assert_eq!(&*r.to_str(), "example"),
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod size {
+    use super::*;
+    use crate::support::{test_native_dependencies, TestContext};
+    use spacelox_core::value::{Closure, Fun};
+
+    #[test]
+    fn new() {
+      let closure_name = ClosureSize::new();
+
+      assert_eq!(closure_name.meta.name, "size");
+      assert_eq!(closure_name.meta.arity, ArityKind::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let closure_name = ClosureSize::new();
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let mut hooks = Hooks::new(&mut context);
+
+      let mut fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
+      fun.arity = ArityKind::Fixed(4);
+
+      let closure = hooks.manage(Closure::new(fun));
+
+      let result = closure_name.call(&mut hooks, Value::Closure(closure), &[]);
+      match result {
+        Ok(r) => assert_eq!(r.to_num(), 4.0),
+        Err(_) => assert!(false),
+      }
+
+      fun.arity = ArityKind::Default(2, 2);
+      let result = closure_name.call(&mut hooks, Value::Closure(closure), &[]);
+      match result {
+        Ok(r) => assert_eq!(r.to_num(), 2.0),
+        Err(_) => assert!(false),
+      }
+
+      fun.arity = ArityKind::Variadic(5);
+      let result = closure_name.call(&mut hooks, Value::Closure(closure), &[]);
+      match result {
+        Ok(r) => assert_eq!(r.to_num(), 5.0),
         Err(_) => assert!(false),
       }
     }

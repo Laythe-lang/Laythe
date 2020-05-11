@@ -15,11 +15,11 @@ pub mod token;
 pub mod utils;
 pub mod value;
 
-pub type CallResult = Result<value::Value, SpaceloxError>;
-pub type ModuleResult<T> = Result<T, SpaceloxError>;
-pub type PackageResult<T> = Result<T, SpaceloxError>;
+pub type CallResult = Result<value::Value, SlError>;
+pub type ModuleResult<T> = Result<T, SlError>;
+pub type PackageResult<T> = Result<T, SlError>;
 pub type SlHashMap<K, V> = HashMap<K, V, FnvBuildHasher>;
-pub type SymbolResult = Result<SlHashMap<Managed<String>, Value>, SpaceloxError>;
+pub type SymbolResult = Result<SlHashMap<Managed<String>, Value>, SlError>;
 
 use crate::managed::Managed;
 use fnv::FnvBuildHasher;
@@ -27,13 +27,13 @@ use hashbrown::HashMap;
 use std::fmt;
 use value::Value;
 
-#[derive(Clone, Debug)]
-pub struct SpaceloxError {
+#[derive(Clone, PartialEq, Debug)]
+pub struct SlError {
   pub message: Managed<String>,
-  inner: Option<Box<SpaceloxError>>,
+  inner: Option<Box<SlError>>,
 }
 
-impl SpaceloxError {
+impl SlError {
   pub fn new(message: Managed<String>) -> Self {
     Self {
       message,
@@ -42,7 +42,7 @@ impl SpaceloxError {
   }
 }
 
-impl fmt::Display for SpaceloxError {
+impl fmt::Display for SlError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "{}", self.message)
   }

@@ -1,22 +1,29 @@
+use super::iter::ITER_CLASS_NAME;
+use hashbrown::hash_map::Iter;
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
   io::StdIo,
-  managed::Trace,
+  iterator::{SlIter, SlIterator},
+  managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
   value::{Class, Value},
-  CallResult, ModuleResult,
+  CallResult, ModuleResult, SlHashMap,
 };
+use std::fmt;
+use std::mem;
 
 pub const MAP_CLASS_NAME: &'static str = "Map";
 
-const MAP_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
-const MAP_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
-const MAP_HAS: NativeMeta = NativeMeta::new("has", ArityKind::Fixed(1));
 const MAP_GET: NativeMeta = NativeMeta::new("get", ArityKind::Fixed(1));
+const MAP_HAS: NativeMeta = NativeMeta::new("has", ArityKind::Fixed(1));
 const MAP_SET: NativeMeta = NativeMeta::new("set", ArityKind::Fixed(2));
+const MAP_REMOVE: NativeMeta = NativeMeta::new("remove", ArityKind::Fixed(1));
+const MAP_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
+const MAP_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
+const MAP_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0));
 
 pub fn declare_map_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
@@ -28,6 +35,12 @@ pub fn declare_map_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResul
 pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
   let mut class = self_module.get_symbol(hooks, name).unwrap().to_class();
+
+  let map_iter_name = hooks.manage_str(String::from(ITER_CLASS_NAME));
+  let map_iter_class = self_module
+    .get_symbol(hooks, map_iter_name)
+    .unwrap()
+    .to_class();
 
   class.add_method(
     hooks,
@@ -55,21 +68,31 @@ pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
   class.add_method(
     hooks,
+    hooks.manage_str(String::from(MAP_REMOVE.name)),
+    Value::NativeMethod(hooks.manage(Box::new(MapRemove::new()))),
+  );
+
+  class.add_method(
+    hooks,
     hooks.manage_str(String::from(MAP_SET.name)),
     Value::NativeMethod(hooks.manage(Box::new(MapSet::new()))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(String::from(MAP_ITER.name)),
+    Value::NativeMethod(hooks.manage(Box::new(MapIter::new(map_iter_class)))),
   );
 }
 
 #[derive(Clone, Debug, Trace)]
 struct MapStr {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl MapStr {
   fn new() -> Self {
-    Self {
-      meta: Box::new(MAP_STR),
-    }
+    Self { meta: &MAP_STR }
   }
 }
 
@@ -85,14 +108,12 @@ impl NativeMethod for MapStr {
 
 #[derive(Clone, Debug, Trace)]
 struct MapSize {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl MapSize {
   fn new() -> Self {
-    Self {
-      meta: Box::new(MAP_SIZE),
-    }
+    Self { meta: &MAP_SIZE }
   }
 }
 
@@ -108,14 +129,12 @@ impl NativeMethod for MapSize {
 
 #[derive(Clone, Debug, Trace)]
 struct MapHas {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl MapHas {
   fn new() -> Self {
-    Self {
-      meta: Box::new(MAP_HAS),
-    }
+    Self { meta: &MAP_HAS }
   }
 }
 
@@ -131,14 +150,12 @@ impl NativeMethod for MapHas {
 
 #[derive(Clone, Debug, Trace)]
 struct MapGet {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl MapGet {
   fn new() -> Self {
-    Self {
-      meta: Box::new(MAP_GET),
-    }
+    Self { meta: &MAP_GET }
   }
 }
 
@@ -157,14 +174,12 @@ impl NativeMethod for MapGet {
 
 #[derive(Clone, Debug, Trace)]
 struct MapSet {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl MapSet {
   fn new() -> Self {
-    Self {
-      meta: Box::new(MAP_SET),
-    }
+    Self { meta: &MAP_SET }
   }
 }
 
@@ -178,6 +193,135 @@ impl NativeMethod for MapSet {
       Some(value) => Ok(value),
       None => Ok(Value::Nil),
     }
+  }
+}
+
+#[derive(Clone, Debug, Trace)]
+struct MapRemove {
+  meta: &'static NativeMeta,
+}
+
+impl MapRemove {
+  fn new() -> Self {
+    Self { meta: &MAP_REMOVE }
+  }
+}
+
+impl NativeMethod for MapRemove {
+  fn meta(&self) -> &NativeMeta {
+    &self.meta
+  }
+
+  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    match this.to_map().remove(&args[0]) {
+      Some(removed) => Ok(removed),
+      None => Err(hooks.make_error(String::from("Key not found in map."))),
+    }
+  }
+}
+
+struct MapIter {
+  meta: &'static NativeMeta,
+  iter_class: Managed<Class>,
+}
+
+impl MapIter {
+  pub fn new(iter_class: Managed<Class>) -> Self {
+    Self {
+      meta: &MAP_ITER,
+      iter_class,
+    }
+  }
+}
+
+impl Trace for MapIter {
+  fn trace(&self) -> bool {
+    self.iter_class.trace();
+    true
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.iter_class.trace_debug(stdio);
+    true
+  }
+}
+
+impl NativeMethod for MapIter {
+  fn meta(&self) -> &NativeMeta {
+    &self.meta
+  }
+
+  fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
+    let inner_iter: Box<dyn SlIter> = Box::new(MapIterator::new(this.to_map()));
+    let iter = SlIterator::new(inner_iter, self.iter_class);
+    let iter = hooks.manage(iter);
+
+    Ok(Value::Iter(iter))
+  }
+}
+
+struct MapIterator {
+  map: Managed<SlHashMap<Value, Value>>,
+  iter: Iter<'static, Value, Value>,
+  current: Value,
+}
+
+impl MapIterator {
+  fn new(map: Managed<SlHashMap<Value, Value>>) -> Self {
+    let iter = unsafe { map.deref_static().iter() };
+
+    Self {
+      map,
+      iter,
+      current: Value::Nil,
+    }
+  }
+}
+
+impl SlIter for MapIterator {
+  fn name(&self) -> &str {
+    "Map Iterator"
+  }
+
+  fn current(&self) -> Value {
+    self.current
+  }
+
+  fn next(&mut self, hooks: &Hooks) -> Value {
+    match self.iter.next() {
+      Some(next) => {
+        self.current = Value::List(hooks.manage(vec![*next.0, *next.1]));
+        Value::Bool(true)
+      }
+      None => {
+        self.current = Value::Nil;
+        Value::Bool(false)
+      }
+    }
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+}
+
+impl Trace for MapIterator {
+  fn trace(&self) -> bool {
+    self.map.trace()
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.map.trace_debug(stdio)
+  }
+}
+
+impl fmt::Debug for MapIterator {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.debug_struct("MapIterator")
+      .field("map", &self.map)
+      .field("iter", &self.iter)
+      .field("current", &self.current)
+      .finish()
   }
 }
 
@@ -341,10 +485,10 @@ mod test {
 
     #[test]
     fn new() {
-      let map_get = MapSet::new();
+      let map_set = MapSet::new();
 
-      assert_eq!(map_get.meta.name, "set");
-      assert_eq!(map_get.meta.arity, ArityKind::Fixed(2));
+      assert_eq!(map_set.meta.name, "set");
+      assert_eq!(map_set.meta.arity, ArityKind::Fixed(2));
     }
 
     #[test]
@@ -375,6 +519,45 @@ mod test {
       );
       match result {
         Ok(r) => assert!(r.is_nil()),
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  #[cfg(test)]
+  mod remove {
+    use super::*;
+    use crate::support::{test_native_dependencies, TestContext};
+    use spacelox_core::SlHashMap;
+
+    #[test]
+    fn new() {
+      let map_remove = MapRemove::new();
+
+      assert_eq!(map_remove.meta.name, "remove");
+      assert_eq!(map_remove.meta.arity, ArityKind::Fixed(1));
+    }
+
+    #[test]
+    fn call() {
+      let map_remove = MapRemove::new();
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let mut hooks = Hooks::new(&mut context);
+
+      let mut map = SlHashMap::default();
+      map.insert(Value::Nil, Value::Bool(false));
+      let this = hooks.manage(map);
+
+      let result = map_remove.call(&mut hooks, Value::Map(this), &[Value::Number(10.5)]);
+      match result {
+        Ok(_) => assert!(false),
+        Err(_) => assert!(true),
+      }
+
+      let result = map_remove.call(&mut hooks, Value::Map(this), &[Value::Nil]);
+      match result {
+        Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),
       }
     }

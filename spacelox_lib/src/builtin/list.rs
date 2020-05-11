@@ -12,19 +12,19 @@ use spacelox_core::{
   CallResult, ModuleResult,
 };
 use std::fmt;
-use std::mem;
+use std::{mem, slice::Iter};
 
 pub const LIST_CLASS_NAME: &'static str = "List";
 
-const LIST_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
-const LIST_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
-const LIST_PUSH: NativeMeta = NativeMeta::new("push", ArityKind::Variadic(1));
-const LIST_POP: NativeMeta = NativeMeta::new("pop", ArityKind::Fixed(0));
-const LIST_REMOVE: NativeMeta = NativeMeta::new("remove", ArityKind::Fixed(1));
-const LIST_INSERT: NativeMeta = NativeMeta::new("insert", ArityKind::Fixed(2));
 const LIST_CLEAR: NativeMeta = NativeMeta::new("clear", ArityKind::Fixed(0));
 const LIST_HAS: NativeMeta = NativeMeta::new("has", ArityKind::Fixed(1));
+const LIST_INSERT: NativeMeta = NativeMeta::new("insert", ArityKind::Fixed(2));
 const LIST_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0));
+const LIST_POP: NativeMeta = NativeMeta::new("pop", ArityKind::Fixed(0));
+const LIST_PUSH: NativeMeta = NativeMeta::new("push", ArityKind::Variadic(1));
+const LIST_REMOVE: NativeMeta = NativeMeta::new("remove", ArityKind::Fixed(1));
+const LIST_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
+const LIST_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
 
 pub fn declare_list_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
@@ -76,7 +76,9 @@ pub fn define_list_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_STR.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListStr::new()))),
+    Value::NativeMethod(hooks.manage(Box::new(ListStr::new(
+      hooks.manage_str(String::from(LIST_STR.name)),
+    )))),
   );
 
   class.add_method(
@@ -100,13 +102,15 @@ pub fn define_list_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
 #[derive(Clone, Debug, Trace)]
 struct ListStr {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
+  method_name: Managed<String>,
 }
 
 impl ListStr {
-  fn new() -> Self {
+  fn new(method_name: Managed<String>) -> Self {
     Self {
-      meta: Box::new(LIST_STR),
+      meta: &LIST_STR,
+      method_name,
     }
   }
 }
@@ -117,20 +121,36 @@ impl NativeMethod for ListStr {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(hooks.manage_str(this.to_string())))
+    let list = this.to_list();
+
+    let mut strings: Vec<String> = Vec::with_capacity(list.len() + 2);
+    for item in list.iter() {
+      let result = hooks.call_method_by_name(*item, self.method_name, &[])?;
+
+      if let Value::String(string) = result {
+        if let Value::String(_) = item {
+          strings.push(format!("'{}'", string.to_string()));
+        } else {
+          strings.push(string.to_string());
+        }
+      } else {
+        return Err(hooks.make_error(format!("No method str on {}", item)));
+      }
+    }
+
+    let formatted = format!("[{}]", strings.join(", "));
+    Ok(Value::String(hooks.manage_str(formatted)))
   }
 }
 
 #[derive(Clone, Debug, Trace)]
 struct ListSize {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl ListSize {
   fn new() -> Self {
-    Self {
-      meta: Box::new(LIST_SIZE),
-    }
+    Self { meta: &LIST_SIZE }
   }
 }
 
@@ -146,14 +166,12 @@ impl NativeMethod for ListSize {
 
 #[derive(Clone, Debug, Trace)]
 struct ListPush {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl ListPush {
   fn new() -> Self {
-    Self {
-      meta: Box::new(LIST_PUSH),
-    }
+    Self { meta: &LIST_PUSH }
   }
 }
 
@@ -163,21 +181,19 @@ impl NativeMethod for ListPush {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    hooks.resize(&mut this.to_list(), |list| list.extend(args));
+    hooks.resize(&mut this.to_list(), |list| list.extend_from_slice(args));
     Ok(Value::Nil)
   }
 }
 
 #[derive(Clone, Debug, Trace)]
 struct ListPop {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl ListPop {
   fn new() -> Self {
-    Self {
-      meta: Box::new(LIST_POP),
-    }
+    Self { meta: &LIST_POP }
   }
 }
 
@@ -196,14 +212,12 @@ impl NativeMethod for ListPop {
 
 #[derive(Clone, Debug, Trace)]
 struct ListRemove {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl ListRemove {
   fn new() -> Self {
-    Self {
-      meta: Box::new(LIST_REMOVE),
-    }
+    Self { meta: &LIST_REMOVE }
   }
 }
 
@@ -235,14 +249,12 @@ impl NativeMethod for ListRemove {
 
 #[derive(Clone, Debug, Trace)]
 struct ListInsert {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl ListInsert {
   fn new() -> Self {
-    Self {
-      meta: Box::new(LIST_INSERT),
-    }
+    Self { meta: &LIST_INSERT }
   }
 }
 
@@ -274,14 +286,12 @@ impl NativeMethod for ListInsert {
 
 #[derive(Clone, Debug, Trace)]
 struct ListClear {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl ListClear {
   fn new() -> Self {
-    Self {
-      meta: Box::new(LIST_CLEAR),
-    }
+    Self { meta: &LIST_CLEAR }
   }
 }
 
@@ -298,14 +308,12 @@ impl NativeMethod for ListClear {
 
 #[derive(Clone, Debug, Trace)]
 struct ListHas {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl ListHas {
   fn new() -> Self {
-    Self {
-      meta: Box::new(LIST_HAS),
-    }
+    Self { meta: &LIST_HAS }
   }
 }
 
@@ -321,14 +329,14 @@ impl NativeMethod for ListHas {
 
 #[derive(Clone, Debug)]
 struct ListIter {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
   iter_class: Managed<Class>,
 }
 
 impl ListIter {
   pub fn new(iter_class: Managed<Class>) -> Self {
     Self {
-      meta: Box::new(LIST_ITER),
+      meta: &LIST_ITER,
       iter_class,
     }
   }
@@ -362,31 +370,46 @@ impl NativeMethod for ListIter {
 
 struct ListIterator {
   list: Managed<Vec<Value>>,
-  index: isize,
+  current: Value,
+  iter: Iter<'static, Value>,
 }
 
 impl ListIterator {
   fn new(list: Managed<Vec<Value>>) -> Self {
-    Self { list, index: -1 }
+    let iter = unsafe { list.deref_static().iter() };
+
+    Self {
+      iter,
+      current: Value::Nil,
+      list,
+    }
   }
 }
 
 impl SlIter for ListIterator {
-  fn current(&self) -> Value {
-    if self.index >= 0 && (self.index as usize) < self.list.len() {
-      return self.list[self.index as usize];
-    }
-
-    Value::Nil
+  fn name(&self) -> &str {
+    "List Iterator"
   }
 
-  fn next(&mut self) -> Value {
-    self.index += 1;
-    Value::Bool((self.index as usize) < self.list.len())
+  fn current(&self) -> Value {
+    self.current
+  }
+
+  fn next(&mut self, _hooks: &Hooks) -> Value {
+    match self.iter.next() {
+      Some(value) => {
+        self.current = *value;
+        Value::Bool(true)
+      }
+      None => {
+        self.current = Value::Nil;
+        Value::Bool(false)
+      }
+    }
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<Self>() + self.list.capacity() * mem::size_of::<Value>()
+    mem::size_of::<Self>()
   }
 }
 
@@ -404,7 +427,8 @@ impl fmt::Debug for ListIterator {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("ListIterator")
       .field("list", &self.list)
-      .field("index", &self.index)
+      .field("current", &self.current)
+      .field("iter", &self.iter)
       .finish()
   }
 }
@@ -416,10 +440,15 @@ mod test {
   mod str {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
+    use spacelox_core::memory::NO_GC;
 
     #[test]
     fn new() {
-      let list_str = ListStr::new();
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let hooks = Hooks::new(&mut context);
+
+      let list_str = ListStr::new(hooks.manage_str(String::from("str")));
 
       assert_eq!(list_str.meta.name, "str");
       assert_eq!(list_str.meta.arity, ArityKind::Fixed(0));
@@ -427,19 +456,30 @@ mod test {
 
     #[test]
     fn call() {
-      let list_str = ListStr::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = TestContext::new(
+        &gc,
+        &[
+          Value::String(gc.manage_str(String::from("nil"), &NO_GC)),
+          Value::String(gc.manage_str(String::from("10"), &NO_GC)),
+          Value::String(gc.manage_str(String::from("[5]"), &NO_GC)),
+        ],
+      );
       let mut hooks = Hooks::new(&mut context);
+      let list_str = ListStr::new(hooks.manage_str(String::from("str")));
 
       let values = &[];
 
-      let list = vec![Value::Nil, Value::Number(10.0)];
+      let list = vec![
+        Value::Nil,
+        Value::Number(10.0),
+        Value::List(hooks.manage(vec![Value::Number(5.0)])),
+      ];
       let this = hooks.manage(list);
 
       let result = list_str.call(&mut hooks, Value::List(this), values);
       match result {
-        Ok(r) => assert_eq!(&*r.to_str(), "[nil, 10]"),
+        Ok(r) => assert_eq!(&*r.to_str(), "[nil, 10, [5]]"),
         Err(_) => assert!(false),
       }
     }
@@ -786,7 +826,7 @@ mod test {
         Ok(r) => {
           let mut iter = r.to_iter();
           assert_eq!(iter.current(), Value::Nil);
-          assert_eq!(iter.next(), Value::Bool(true));
+          assert_eq!(iter.next(&hooks), Value::Bool(true));
           assert_eq!(iter.current(), Value::Nil);
         }
         Err(_) => assert!(false),

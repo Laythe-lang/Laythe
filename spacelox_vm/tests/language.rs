@@ -365,9 +365,10 @@ fn function() -> Result<(), std::io::Error> {
 fn hooks() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "language/hooks/inline.lox",
-      "language/hooks/closure.lox",
-      "language/hooks/class.lox",
+      "language/hooks/call_native.lox",
+      "language/hooks/call_sl_function.lox",
+      "language/hooks/call_sl_closure.lox",
+      "language/hooks/call_sl_instance.lox",
     ],
     ExecuteResult::Ok,
   )?;
@@ -376,9 +377,10 @@ fn hooks() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
-      "language/hooks/pass_error_inline.lox",
-      "language/hooks/pass_error_closure.lox",
-      "language/hooks/pass_error_class.lox",
+      "language/hooks/pass_error_native.lox",
+      "language/hooks/pass_error_sl_function.lox",
+      "language/hooks/pass_error_sl_closure.lox",
+      "language/hooks/pass_error_sl_instance.lox",
     ],
     ExecuteResult::RuntimeError,
   )

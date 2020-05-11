@@ -1,5 +1,4 @@
 use crate::{
-  dynamic_map::DynamicMap,
   hooks::Hooks,
   io::StdIo,
   managed::{Manage, Managed, Trace},
@@ -12,65 +11,59 @@ use std::mem;
 /// is really a optimization for the Instance struct to avoid
 /// the need for hashing when the special IterCurrent and IterNext
 /// bytecodes are used
+#[derive(Debug)]
 pub struct SlIterator {
   /// The underlying iterator
   iterator: Box<dyn SlIter>,
 
-  /// The fields in the case that a user sets an additional fields
-  /// on the iterator
-  fields: DynamicMap<Managed<String>, Value>,
+  /// The current value of the iterator
+  current: Value,
 
   /// The class of this iterator
   pub class: Managed<Class>,
 }
 
 impl SlIterator {
+  /// Create a new iterator container
   pub fn new(iterator: Box<dyn SlIter>, class: Managed<Class>) -> Self {
     Self {
       iterator,
-      fields: DynamicMap::default(),
+      current: Value::Nil,
       class,
     }
   }
 
-  pub fn set_field(&mut self, hooks: &Hooks, name: Managed<String>, value: Value) {
-    hooks.resize(self, |instance: &mut SlIterator| {
-      instance.fields.insert(name, value);
-    });
-  }
-
+  /// Allow access the "current" field in the iterator
   pub fn get_field(&self, name: &Managed<String>) -> Option<&Value> {
-    self.fields.get(name)
+    if &***name == "current" {
+      return Some(&self.current);
+    }
+
+    None
   }
 
-  pub fn next(&mut self) -> Value {
-    self.iterator.next()
+  /// Get the name of this iterator
+  pub fn name(&self, hooks: &Hooks) -> Value {
+    Value::String(hooks.manage_str(String::from(self.iterator.name())))
   }
 
+  /// Increment the iterator
+  pub fn next(&mut self, hooks: &Hooks) -> Value {
+    let result = self.iterator.next(hooks);
+    self.current = self.iterator.current();
+    result
+  }
+
+  /// Get the current value of the iterator
   pub fn current(&self) -> Value {
-    self.iterator.current()
-  }
-}
-
-impl fmt::Debug for SlIterator {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Instance")
-      .field("class", &self.class)
-      .field("fields", &self.fields)
-      .field("iterator", &self.iterator)
-      .finish()
+    self.current
   }
 }
 
 impl Trace for SlIterator {
   fn trace(&self) -> bool {
     self.class.trace();
-
-    self.fields.for_each(|(key, val)| {
-      key.trace();
-      val.trace();
-    });
-
+    self.current.trace();
     self.iterator.trace();
 
     true
@@ -78,12 +71,7 @@ impl Trace for SlIterator {
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.class.trace_debug(stdio);
-
-    self.fields.for_each(|(key, val)| {
-      key.trace_debug(stdio);
-      val.trace_debug(stdio);
-    });
-
+    self.current.trace_debug(stdio);
     self.iterator.trace_debug(stdio);
 
     true
@@ -104,18 +92,19 @@ impl Manage for SlIterator {
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<SlIterator>()
-      + (mem::size_of::<Managed<String>>() + mem::size_of::<Value>()) * self.fields.capacity()
-      + self.iterator.size()
+    mem::size_of::<SlIterator>() + self.iterator.size()
   }
 }
 
 pub trait SlIter: Trace + fmt::Debug {
+  /// The name of the iterator mostly for debugging purposes
+  fn name(&self) -> &str;
+
   /// Get the current value from the iterator
   fn current(&self) -> Value;
 
   /// Get the next value indicating if the iterator has reached the end
-  fn next(&mut self) -> Value;
+  fn next(&mut self, hooks: &Hooks) -> Value;
 
   /// What is the size of this iterator
   fn size(&self) -> usize;

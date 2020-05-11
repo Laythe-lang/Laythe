@@ -33,14 +33,12 @@ pub fn define_nil_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
 #[derive(Clone, Debug, Trace)]
 struct NilStr {
-  meta: Box<NativeMeta>,
+  meta: &'static NativeMeta,
 }
 
 impl NilStr {
   fn new() -> Self {
-    Self {
-      meta: Box::new(NIL_STR),
-    }
+    Self { meta: &NIL_STR }
   }
 }
 
