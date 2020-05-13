@@ -21,5 +21,9 @@ fnv = "1.0.3"
 criterion = "0.3"
 
 [[bench]]
-name = "script_bench"
+name = "vm_benches"
+harness = false
+
+[[bench]]
+name = "compiler_benches"
 harness = false

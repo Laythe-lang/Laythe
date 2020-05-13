@@ -530,7 +530,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       )
     };
     let mut list = self.peek(arg_count as isize).to_list();
-    self.gc.resize(&mut list, self, |list| list.extend(args));
+    self.gc.grow(&mut list, self, |list| list.extend(args));
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
 
     Signal::Ok
@@ -542,7 +542,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let mut map = self.peek(arg_count as isize * 2).to_map();
     self
       .gc
-      .resize(&mut map, self, |map| map.reserve(arg_count as usize));
+      .grow(&mut map, self, |map| map.reserve(arg_count as usize));
 
     for i in 0..arg_count {
       let key = self.get_val(-(i as isize * 2) - 2);
@@ -734,7 +734,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       }
       (Value::Map(map), Value::Number(num)) => {
         let value = self.pop();
-        self.gc.resize(map, self, |map| {
+        self.gc.grow(map, self, |map| {
           map.insert(Value::Number(use_sentinel_nan(num)), value)
         });
         self.pop();
@@ -742,7 +742,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       }
       (Value::Map(map), _) => {
         let value = self.pop();
-        self.gc.resize(map, self, |map| map.insert(index, value));
+        self.gc.grow(map, self, |map| map.insert(index, value));
         self.pop();
         Signal::Ok
       }

@@ -1,5 +1,0 @@
-var map = :{};
-assertEq(map.set(1, false), nil);
-assertEq(map.set(1, true), false);
-assertEq(map.set("dude", 10), nil);
-assertEq(map.size(), 2);

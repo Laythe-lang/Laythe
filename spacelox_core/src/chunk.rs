@@ -614,6 +614,19 @@ impl Chunk {
       + mem::size_of::<Value>() * self.constants.capacity()
       + mem::size_of::<Line>() * self.lines.capacity()
   }
+
+  /// Shrink the chunk to its minimum size
+  pub fn shrink_to_fit(&mut self) {
+    self.instructions.shrink_to_fit();
+    self.constants.shrink_to_fit();
+    self.lines.shrink_to_fit();
+
+    self.constants.iter_mut().for_each(|constant| {
+      if let Value::Fun(fun) = constant {
+        fun.shrink_to_fit_internal();
+      }
+    })
+  }
 }
 
 #[cfg(test)]

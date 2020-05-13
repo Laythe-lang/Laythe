@@ -761,7 +761,7 @@ impl Fun {
   }
 
   pub fn write_instruction(&mut self, hooks: &Hooks, op_code: AlignedByteCode, line: u32) {
-    hooks.resize(self, |fun| fun.chunk.write_instruction(op_code, line));
+    hooks.grow(self, |fun| fun.chunk.write_instruction(op_code, line));
   }
 
   pub fn replace_instruction(&mut self, index: usize, instruction: u8) {
@@ -769,7 +769,15 @@ impl Fun {
   }
 
   pub fn add_constant(&mut self, hooks: &Hooks, constant: Value) -> usize {
-    hooks.resize(self, |fun| fun.chunk.add_constant(constant))
+    hooks.grow(self, |fun| fun.chunk.add_constant(constant))
+  }
+
+  pub fn shrink_to_fit(&mut self, hooks: &Hooks) {
+    hooks.shrink(self, |fun| fun.chunk.shrink_to_fit());
+  }
+
+  pub fn shrink_to_fit_internal(&mut self) {
+    self.chunk.shrink_to_fit();
   }
 }
 
@@ -1029,7 +1037,7 @@ impl Class {
       self.init = Some(method);
     }
 
-    hooks.resize(self, |class| {
+    hooks.grow(self, |class| {
       class.methods.insert(name, method);
     });
   }
@@ -1039,7 +1047,7 @@ impl Class {
   }
 
   pub fn inherit(&mut self, hooks: &Hooks, super_class: Managed<Class>) {
-    hooks.resize(self, |class| {
+    hooks.grow(self, |class| {
       super_class.methods.for_each(|(key, value)| {
         match class.methods.get(&*key) {
           None => class.methods.insert(*key, *value),
@@ -1126,7 +1134,7 @@ impl Instance {
   }
 
   pub fn set_field(&mut self, hooks: &Hooks, name: Managed<String>, value: Value) {
-    hooks.resize(self, |instance: &mut Instance| {
+    hooks.grow(self, |instance: &mut Instance| {
       instance.fields.insert(name, value);
     });
   }

@@ -1,5 +1,6 @@
 [workspace]
 members = [
+  "spacelox_compiler_bench",
   "spacelox_core",
   "spacelox_lib",
   "spacelox_macro",

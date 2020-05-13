@@ -1,7 +1,7 @@
-use spacelox_vm::compiler::{Compiler, Parser};
 use spacelox_core::hooks::{Hooks, NoContext};
+use spacelox_core::io::{Io, NativeIo};
 use spacelox_core::memory::Gc;
-use spacelox_core::io::{NativeIo, Io};
+use spacelox_vm::compiler::{Compiler, Parser};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -32,7 +32,7 @@ fn main() {
         compiler.compile();
       }
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));
-    },
+    }
     _ => {
       println!("Usage: spacelox_compiler_bench [path]");
       process::exit(1);

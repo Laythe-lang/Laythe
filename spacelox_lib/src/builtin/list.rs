@@ -11,7 +11,6 @@ use spacelox_core::{
   value::{Class, Value},
   CallResult, ModuleResult,
 };
-use std::fmt;
 use std::{mem, slice::Iter};
 
 pub const LIST_CLASS_NAME: &'static str = "List";
@@ -123,22 +122,42 @@ impl NativeMethod for ListStr {
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
     let list = this.to_list();
 
-    let mut strings: Vec<String> = Vec::with_capacity(list.len() + 2);
-    for item in list.iter() {
-      let result = hooks.call_method_by_name(*item, self.method_name, &[])?;
+    // buffer for temporary strings
+    let mut strings: Vec<String> = Vec::with_capacity(list.len());
+    let mut count: usize = 0;
 
-      if let Value::String(string) = result {
-        if let Value::String(_) = item {
-          strings.push(format!("'{}'", string.to_string()));
-        } else {
-          strings.push(string.to_string());
+    for item in list.iter() {
+      // if already string quote and add to temps
+      if let Value::String(string) = item {
+        strings.push(format!("'{}'", string.as_str()));
+        continue;
+      }
+
+      // call '.str' method on each value
+      match hooks.call_method_by_name(*item, self.method_name, &[]) {
+        Ok(result) => {
+          if let Value::String(string) = result {
+            count += 1;
+            hooks.push_root(string);
+            strings.push(string.to_string());
+          } else {
+            // if error throw away temporary strings
+            hooks.pop_roots(count);
+            return Err(hooks.make_error(format!("No method str on {}", item)));
+          }
         }
-      } else {
-        return Err(hooks.make_error(format!("No method str on {}", item)));
+        Err(err) => {
+          hooks.pop_roots(count);
+          return Err(err);
+        }
       }
     }
 
+    // format and join strings
     let formatted = format!("[{}]", strings.join(", "));
+
+    // pop temporary roots and return joined string
+    hooks.pop_roots(count);
     Ok(Value::String(hooks.manage_str(formatted)))
   }
 }
@@ -181,7 +200,7 @@ impl NativeMethod for ListPush {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    hooks.resize(&mut this.to_list(), |list| list.extend_from_slice(args));
+    hooks.grow(&mut this.to_list(), |list| list.extend_from_slice(args));
     Ok(Value::Nil)
   }
 }
@@ -231,7 +250,7 @@ impl NativeMethod for ListRemove {
     let mut list = this.to_list();
 
     if index < 0.0 {
-      return hooks.error(format!("Cannot remove at index {}", index));
+      return hooks.error(format!("Cannot remove at negative index {}.", index));
     }
 
     if index as usize >= list.len() {
@@ -279,7 +298,7 @@ impl NativeMethod for ListInsert {
       ));
     }
 
-    list.insert(index as usize, args[1]);
+    hooks.grow(&mut list, |list| list.insert(index as usize, args[1]));
     Ok(Value::Nil)
   }
 }
@@ -300,8 +319,8 @@ impl NativeMethod for ListClear {
     &self.meta
   }
 
-  fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    this.to_list().clear();
+  fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
+    hooks.shrink(&mut this.to_list(), |list| list.clear());
     Ok(Value::Nil)
   }
 }
@@ -368,6 +387,7 @@ impl NativeMethod for ListIter {
   }
 }
 
+#[derive(Debug)]
 struct ListIterator {
   list: Managed<Vec<Value>>,
   current: Value,
@@ -420,16 +440,6 @@ impl Trace for ListIterator {
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.list.trace_debug(stdio)
-  }
-}
-
-impl fmt::Debug for ListIterator {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.debug_struct("ListIterator")
-      .field("list", &self.list)
-      .field("current", &self.current)
-      .field("iter", &self.iter)
-      .finish()
   }
 }
 

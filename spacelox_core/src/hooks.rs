@@ -84,13 +84,28 @@ impl<'a> Hooks<'a> {
     self.context.gc().clone_managed(managed, self.context)
   }
 
-  /// Tell the context's gc that the provided managed object may resize during this operation
-  pub fn resize<T: 'static + Manage, R, F: Fn(&mut T) -> R>(
+  /// Tell the context's gc that the provided managed object may grow during this operation
+  pub fn grow<T: 'static + Manage, R, F: Fn(&mut T) -> R>(&self, managed: &mut T, action: F) -> R {
+    self.context.gc().grow(managed, self.context, action)
+  }
+
+  /// Tell the context's gc that the provided managed object may shrink during this operation
+  pub fn shrink<T: 'static + Manage, R, F: Fn(&mut T) -> R>(
     &self,
     managed: &mut T,
     action: F,
   ) -> R {
-    self.context.gc().resize(managed, self.context, action)
+    self.context.gc().shrink(managed, action)
+  }
+
+  /// Push a new root onto the gc
+  pub fn push_root<T: 'static + Manage>(&self, managed: T) {
+    self.context.gc().push_root(managed);
+  }
+
+  /// Pop a root off the gc
+  pub fn pop_roots(&self, count: usize) {
+    self.context.gc().pop_roots(count);
   }
 }
 

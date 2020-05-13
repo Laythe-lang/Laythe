@@ -19,6 +19,9 @@ pub struct Gc {
   /// The regular heap where objects that have survived a gc reside
   heap: RefCell<Vec<Box<Allocation<dyn Manage>>>>,
 
+  /// A collection of temporary roots in the gc
+  temp_roots: RefCell<Vec<Box<dyn Trace>>>,
+
   /// The total byte allocated in both heaps
   bytes_allocated: Cell<usize>,
 
@@ -50,10 +53,15 @@ impl<'a> Gc {
       nursery_heap: RefCell::new(Vec::with_capacity(1000)),
       heap: RefCell::new(Vec::with_capacity(0)),
       bytes_allocated: Cell::new(0),
+      temp_roots: RefCell::new(Vec::new()),
       intern_cache: RefCell::new(HashMap::new()),
       next_gc: Cell::new(1024 * 1024),
       gc_count: Cell::new(0),
     }
+  }
+
+  pub fn allocated(&self) -> usize {
+    self.bytes_allocated.get()
   }
 
   /// Create a `Managed<T>` from the provided `data`. This method will allocate space
@@ -142,9 +150,9 @@ impl<'a> Gc {
     self.allocate(cloned, context)
   }
 
-  /// track events that may change the size of the heap. If
+  /// track events that may grow the size of the heap. If
   /// a heap grows beyond the current threshold will trigger a gc
-  pub fn resize<T: 'static + Manage, R, F: Fn(&mut T) -> R, C: Trace + ?Sized>(
+  pub fn grow<T: 'static + Manage, R, F: Fn(&mut T) -> R, C: Trace + ?Sized>(
     &self,
     managed: &mut T,
     context: &C,
@@ -175,9 +183,43 @@ impl<'a> Gc {
     result
   }
 
+  /// track events that may shrink the size of the heap.
+  pub fn shrink<T: 'static + Manage, R, F: Fn(&mut T) -> R>(
+    &self,
+    managed: &mut T,
+    action: F,
+  ) -> R {
+    let before = managed.size();
+    let result = action(managed);
+    let after = managed.size();
+
+    // get the size delta before and after the action
+    // this would occur because of some resize
+    let delta = before - after;
+
+    self
+      .bytes_allocated
+      .replace(self.bytes_allocated.get() - delta);
+
+    result
+  }
+
+  /// Push a new temporary root onto the gc to avoid collection
+  pub fn push_root<T: 'static + Manage>(&self, managed: T) {
+    self.temp_roots.borrow_mut().push(Box::new(managed));
+  }
+
+  /// Pop a temporary root again allowing gc to occur normally
+  pub fn pop_roots(&self, count: usize) {
+    let mut temp_roots = self.temp_roots.borrow_mut();
+    let len = temp_roots.len();
+
+    temp_roots.truncate(len - count);
+  }
+
   /// Allocate `data` on the gc's heap. If conditions are met
-  /// a garbage collection can be triggered. When triggered
-  /// will use the roots provided by the `context`
+  /// a garbage collection can be triggered. When triggered will use the
+  /// context to determine the active roots.
   fn allocate<T: 'static + Manage, C: Trace + ?Sized>(&self, data: T, context: &C) -> Managed<T> {
     // create own store of allocation
     let mut alloc = Box::new(Allocation::new(data));
@@ -221,6 +263,10 @@ impl<'a> Gc {
     self.stdio.println("-- gc begin");
 
     if self.trace(context) {
+      self.temp_roots.borrow().iter().for_each(|root| {
+        root.trace();
+      });
+
       if let Some(obj) = last {
         self.trace(&obj);
       }

@@ -180,7 +180,16 @@ impl<'a> Scanner<'a> {
   /// Generate an identifier token
   fn identifier(&mut self) -> Token {
     // advance until we hit whitespace or a special char
-    while !self.is_at_end() && (is_alpha(self.peek()) || is_digit(self.peek())) {
+    loop {
+      if self.is_at_end() {
+        break;
+      }
+
+      let peek = self.peek();
+      if !(is_alpha(peek) || is_digit(peek)) {
+        break;
+      }
+
       self.advance_indices();
     }
 

@@ -191,6 +191,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     if let TokenKind::Eof = self.parser.current.kind {
       self.end_compiler();
 
+      self.fun.shrink_to_fit(self.hooks);
       return CompilerResult {
         success: !self.parser.had_error,
         fun: self.fun,
@@ -204,7 +205,9 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self
       .parser
       .consume(TokenKind::Eof, "Expected end of expression.");
+
     self.end_compiler();
+    self.fun.shrink_to_fit(self.hooks);
 
     CompilerResult {
       success: !self.parser.had_error,

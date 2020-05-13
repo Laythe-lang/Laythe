@@ -419,6 +419,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "spacelox_compiler_bench"
+version = "0.1.0"
+dependencies = [
+ "spacelox_core 0.1.0",
+ "spacelox_vm 0.1.0",
+]
+
+[[package]]
 name = "spacelox_core"
 version = "0.1.0"
 dependencies = [

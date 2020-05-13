@@ -35,18 +35,18 @@ fn nil() -> Result<(), std::io::Error> {
 fn closure() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/builtin/closure/name.lox",
-      "std_lib/builtin/closure/call.lox",
-      "std_lib/builtin/closure/size.lox",
+      // "std_lib/builtin/closure/name.lox",
+      // "std_lib/builtin/closure/call.lox",
+      // "std_lib/builtin/closure/size.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "std_lib/builtin/closure/name_wrong_args.lox",
-      "std_lib/builtin/closure/call_wrong_args.lox",
-      "std_lib/builtin/closure/size_wrong_args.lox",
+      // "std_lib/builtin/closure/name_wrong_args.lox",
+      // "std_lib/builtin/closure/call_wrong_args.lox",
+      // "std_lib/builtin/closure/size_wrong_args.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -96,7 +96,7 @@ fn map() -> Result<(), std::io::Error> {
       "std_lib/builtin/map/has.lox",
       "std_lib/builtin/map/get.lox",
       "std_lib/builtin/map/remove.lox",
-      "std_lib/builtin/map/set.lox",
+      "std_lib/builtin/map/insert.lox",
       "std_lib/builtin/map/iter.lox",
     ],
     ExecuteResult::Ok,
@@ -110,7 +110,7 @@ fn map() -> Result<(), std::io::Error> {
       "std_lib/builtin/map/get_wrong_args.lox",
       "std_lib/builtin/map/remove_wrong_args.lox",
       "std_lib/builtin/map/remove_missing_key.lox",
-      "std_lib/builtin/map/set_wrong_args.lox",
+      "std_lib/builtin/map/insert_wrong_args.lox",
       "std_lib/builtin/map/iter_wrong_args.lox",
     ],
     ExecuteResult::RuntimeError,
@@ -122,7 +122,7 @@ fn method() -> Result<(), std::io::Error> {
   test_files(
     &vec![
       // "std_lib/builtin/method/name.lox",
-      "std_lib/builtin/method/call.lox",
+      // "std_lib/builtin/method/call.lox",
     ],
     ExecuteResult::Ok,
   )?;

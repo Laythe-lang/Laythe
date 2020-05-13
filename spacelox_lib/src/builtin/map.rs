@@ -10,7 +10,7 @@ use spacelox_core::{
   native::{NativeMeta, NativeMethod},
   package::Package,
   value::{Class, Value},
-  CallResult, ModuleResult, SlHashMap,
+  CallResult, ModuleResult, SlError, SlHashMap,
 };
 use std::fmt;
 use std::mem;
@@ -19,7 +19,7 @@ pub const MAP_CLASS_NAME: &'static str = "Map";
 
 const MAP_GET: NativeMeta = NativeMeta::new("get", ArityKind::Fixed(1));
 const MAP_HAS: NativeMeta = NativeMeta::new("has", ArityKind::Fixed(1));
-const MAP_SET: NativeMeta = NativeMeta::new("set", ArityKind::Fixed(2));
+const MAP_INSERT: NativeMeta = NativeMeta::new("insert", ArityKind::Fixed(2));
 const MAP_REMOVE: NativeMeta = NativeMeta::new("remove", ArityKind::Fixed(1));
 const MAP_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
 const MAP_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
@@ -51,7 +51,9 @@ pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(MAP_STR.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MapStr::new()))),
+    Value::NativeMethod(hooks.manage(Box::new(MapStr::new(
+      hooks.manage_str(String::from(MAP_STR.name)),
+    )))),
   );
 
   class.add_method(
@@ -74,8 +76,8 @@ pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_SET.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MapSet::new()))),
+    hooks.manage_str(String::from(MAP_INSERT.name)),
+    Value::NativeMethod(hooks.manage(Box::new(MapInsert::new()))),
   );
 
   class.add_method(
@@ -85,14 +87,18 @@ pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   );
 }
 
-#[derive(Clone, Debug, Trace)]
+#[derive(Clone, Debug)]
 struct MapStr {
   meta: &'static NativeMeta,
+  method_name: Managed<String>,
 }
 
 impl MapStr {
-  fn new() -> Self {
-    Self { meta: &MAP_STR }
+  fn new(method_name: Managed<String>) -> Self {
+    Self {
+      meta: &MAP_STR,
+      method_name,
+    }
   }
 }
 
@@ -102,7 +108,58 @@ impl NativeMethod for MapStr {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(hooks.manage_str(this.to_string())))
+    let map = this.to_map();
+
+    // buffer for temporary strings
+    let mut strings: Vec<String> = Vec::with_capacity(map.len());
+
+    for (key, value) in map.iter() {
+      let mut kvp_string = String::new();
+
+      format_map_entry(key, self.method_name, &mut kvp_string, hooks)?;
+      kvp_string.push_str(": ");
+      format_map_entry(value, self.method_name, &mut kvp_string, hooks)?;
+
+      strings.push(kvp_string)
+    }
+
+    // format and join strings
+    let formatted = format!("{{ {} }}", strings.join(", "));
+    Ok(Value::String(hooks.manage_str(formatted)))
+  }
+}
+
+fn format_map_entry(
+  item: &Value,
+  method_name: Managed<String>,
+  buffer: &mut String,
+  hooks: &mut Hooks,
+) -> Result<(), SlError> {
+  // if already string quote and add to temps
+  if let Value::String(string) = *item {
+    buffer.push_str(&format!("'{}'", string));
+    return Ok(());
+  }
+
+  // call '.str' method on each value
+  let result = hooks.call_method_by_name(*item, method_name, &[])?;
+
+  if let Value::String(string) = result {
+    buffer.push_str(&*string);
+    Ok(())
+  } else {
+    // if error throw away temporary strings
+    Err(hooks.make_error(format!("No method str on {}", item)))
+  }
+}
+
+impl Trace for MapStr {
+  fn trace(&self) -> bool {
+    self.method_name.trace()
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.method_name.trace_debug(stdio)
   }
 }
 
@@ -173,23 +230,23 @@ impl NativeMethod for MapGet {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct MapSet {
+struct MapInsert {
   meta: &'static NativeMeta,
 }
 
-impl MapSet {
+impl MapInsert {
   fn new() -> Self {
-    Self { meta: &MAP_SET }
+    Self { meta: &MAP_INSERT }
   }
 }
 
-impl NativeMethod for MapSet {
+impl NativeMethod for MapInsert {
   fn meta(&self) -> &NativeMeta {
     &self.meta
   }
 
-  fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    match this.to_map().insert(args[0], args[1]) {
+  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    match hooks.grow(&mut this.to_map(), |map| map.insert(args[0], args[1])) {
       Some(value) => Ok(value),
       None => Ok(Value::Nil),
     }
@@ -213,7 +270,7 @@ impl NativeMethod for MapRemove {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    match this.to_map().remove(&args[0]) {
+    match hooks.shrink(&mut this.to_map(), |map| map.remove(&args[0])) {
       Some(removed) => Ok(removed),
       None => Err(hooks.make_error(String::from("Key not found in map."))),
     }
@@ -333,11 +390,14 @@ mod test {
   mod str {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::SlHashMap;
+    use spacelox_core::{memory::NO_GC, SlHashMap};
 
     #[test]
     fn new() {
-      let map_str = MapStr::new();
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let hooks = Hooks::new(&mut context);
+      let map_str = MapStr::new(hooks.manage_str(String::from("str")));
 
       assert_eq!(map_str.meta.name, "str");
       assert_eq!(map_str.meta.arity, ArityKind::Fixed(0));
@@ -345,10 +405,16 @@ mod test {
 
     #[test]
     fn call() {
-      let map_str = MapStr::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = TestContext::new(
+        &gc,
+        &[
+          Value::String(gc.manage_str(String::from("nil"), &NO_GC)),
+          Value::String(gc.manage_str(String::from("nil"), &NO_GC)),
+        ],
+      );
       let mut hooks = Hooks::new(&mut context);
+      let map_str = MapStr::new(hooks.manage_str(String::from("str")));
 
       let values = &[];
 
@@ -478,22 +544,22 @@ mod test {
   }
 
   #[cfg(test)]
-  mod set {
+  mod insert {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
     use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {
-      let map_set = MapSet::new();
+      let map_insert = MapInsert::new();
 
-      assert_eq!(map_set.meta.name, "set");
-      assert_eq!(map_set.meta.arity, ArityKind::Fixed(2));
+      assert_eq!(map_insert.meta.name, "insert");
+      assert_eq!(map_insert.meta.arity, ArityKind::Fixed(2));
     }
 
     #[test]
     fn call() {
-      let map_set = MapSet::new();
+      let map_insert = MapInsert::new();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -502,7 +568,7 @@ mod test {
       map.insert(Value::Nil, Value::Bool(false));
       let this = hooks.manage(map);
 
-      let result = map_set.call(
+      let result = map_insert.call(
         &mut hooks,
         Value::Map(this),
         &[Value::Nil, Value::Bool(true)],
@@ -512,7 +578,7 @@ mod test {
         Err(_) => assert!(false),
       }
 
-      let result = map_set.call(
+      let result = map_insert.call(
         &mut hooks,
         Value::Map(this),
         &[Value::Number(15.0), Value::Bool(true)],
