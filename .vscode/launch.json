@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "std_lib/builtin/method/name.lox"
+        "std_lib/builtin/iter/filter.lox",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",

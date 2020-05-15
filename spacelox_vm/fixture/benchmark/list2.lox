@@ -4,7 +4,7 @@ for (var j = 0; j < 1000; j = j + 1) {
 }
 
 var large = [];
-for (var j = 0; j < 10000; j = j + 1) {
+for (var j = 0; j < 100000; j = j + 1) {
   large.push(j);
 }
 

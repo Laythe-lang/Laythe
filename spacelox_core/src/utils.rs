@@ -1,4 +1,4 @@
-use crate::token::Token;
+use crate::{value::Value, token::Token};
 use std::mem;
 
 /// What is the previous unicode code point
@@ -19,6 +19,16 @@ pub fn next_boundary(source: &str, start: usize) -> usize {
   }
 
   current
+}
+
+/// Is the provided `value` falsey according to spacelox rules
+#[inline]
+pub fn is_falsey(value: Value) -> bool {
+  match value {
+    Value::Nil => true,
+    Value::Bool(b) => !b,
+    _ => false,
+  }
 }
 
 /// Copy a string from the str backing the provided token. Note this copy

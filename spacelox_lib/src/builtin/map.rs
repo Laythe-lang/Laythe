@@ -344,15 +344,15 @@ impl SlIter for MapIterator {
     self.current
   }
 
-  fn next(&mut self, hooks: &Hooks) -> Value {
+  fn next(&mut self, hooks: &mut Hooks) -> CallResult {
     match self.iter.next() {
       Some(next) => {
         self.current = Value::List(hooks.manage(vec![*next.0, *next.1]));
-        Value::Bool(true)
+        Ok(Value::Bool(true))
       }
       None => {
         self.current = Value::Nil;
-        Value::Bool(false)
+        Ok(Value::Bool(false))
       }
     }
   }

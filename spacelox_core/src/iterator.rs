@@ -2,7 +2,7 @@ use crate::{
   hooks::Hooks,
   io::StdIo,
   managed::{Manage, Managed, Trace},
-  value::{Class, Value},
+  value::{Class, Value}, CallResult,
 };
 use std::fmt;
 use std::mem;
@@ -48,7 +48,7 @@ impl SlIterator {
   }
 
   /// Increment the iterator
-  pub fn next(&mut self, hooks: &Hooks) -> Value {
+  pub fn next(&mut self, hooks: &mut Hooks) -> CallResult {
     let result = self.iterator.next(hooks);
     self.current = self.iterator.current();
     result
@@ -104,7 +104,7 @@ pub trait SlIter: Trace + fmt::Debug {
   fn current(&self) -> Value;
 
   /// Get the next value indicating if the iterator has reached the end
-  fn next(&mut self, hooks: &Hooks) -> Value;
+  fn next(&mut self, hooks: &mut Hooks) -> CallResult;
 
   /// What is the size of this iterator
   fn size(&self) -> usize;

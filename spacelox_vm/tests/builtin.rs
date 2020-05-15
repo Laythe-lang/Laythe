@@ -35,18 +35,39 @@ fn nil() -> Result<(), std::io::Error> {
 fn closure() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      // "std_lib/builtin/closure/name.lox",
-      // "std_lib/builtin/closure/call.lox",
-      // "std_lib/builtin/closure/size.lox",
+      "std_lib/builtin/closure/name.lox",
+      "std_lib/builtin/closure/call.lox",
+      "std_lib/builtin/closure/size.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      // "std_lib/builtin/closure/name_wrong_args.lox",
-      // "std_lib/builtin/closure/call_wrong_args.lox",
-      // "std_lib/builtin/closure/size_wrong_args.lox",
+      "std_lib/builtin/closure/name_wrong_args.lox",
+      "std_lib/builtin/closure/call_wrong_args.lox",
+      "std_lib/builtin/closure/size_wrong_args.lox",
+    ],
+    ExecuteResult::RuntimeError,
+  )
+}
+
+#[test]
+fn iter() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "std_lib/builtin/iter/str.lox",
+      "std_lib/builtin/iter/next.lox",
+      "std_lib/builtin/iter/iter.lox",
+      "std_lib/builtin/iter/map.lox",
+      "std_lib/builtin/iter/filter.lox",
+    ],
+    ExecuteResult::Ok,
+  )?;
+
+  test_files(
+    &vec![
+      // "std_lib/builtin/list/str_wrong_args.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -121,8 +142,8 @@ fn map() -> Result<(), std::io::Error> {
 fn method() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      // "std_lib/builtin/method/name.lox",
-      // "std_lib/builtin/method/call.lox",
+      "std_lib/builtin/method/name.lox",
+      "std_lib/builtin/method/call.lox",
     ],
     ExecuteResult::Ok,
   )?;

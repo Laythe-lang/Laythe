@@ -457,6 +457,7 @@ impl PartialEq for Value {
       (Self::Nil, Self::Nil) => true,
       (Self::String(string1), Self::String(string2)) => string1 == string2,
       (Self::List(list1), Self::List(list2)) => list1 == list2,
+      (Self::Iter(iter1), Self::Iter(iter2)) => iter1 == iter2,
       (Self::Map(map1), Self::Map(map2)) => map1 == map2,
       (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
       (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,

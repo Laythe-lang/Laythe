@@ -11,7 +11,7 @@ use spacelox_core::{
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
   native::{NativeFun, NativeMethod},
-  utils::{ptr_len, use_sentinel_nan},
+  utils::{ptr_len, use_sentinel_nan, is_falsey},
   value::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, Value},
   CallResult, SlError, SlHashMap,
 };
@@ -557,15 +557,20 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// move an iterator to the next element
   fn op_iter_next(&mut self) -> Signal {
     let receiver = self.peek(0);
-    let constant = self.read_byte();
 
     match receiver {
       Value::Iter(mut iter) => {
-        let result = iter.next(&Hooks::new(self));
-        self.set_val(-1, result);
-        Signal::Ok
+        self.update_ip(1);
+        match iter.next(&mut Hooks::new(self)) {
+          Ok(value) => {
+            self.set_val(-1, value);
+            Signal::Ok
+          }
+          Err(error) => self.set_error(error),
+        }
       }
       _ => {
+        let constant = self.read_byte();
         let method_name = self.read_string(constant);
         self.invoke(receiver, method_name, 0)
       }
@@ -575,15 +580,16 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// get the current value from an iterator
   fn op_iter_current(&mut self) -> Signal {
     let value = self.peek(0);
-    let slot = self.read_byte();
 
     match value {
       Value::Iter(iter) => {
+        self.update_ip(1);
         let result = iter.current();
         self.set_val(-1, result);
         Signal::Ok
       }
       _ => {
+        let slot = self.read_byte();
         let name = self.read_string(slot);
         self.get_property(value, name)
       }
@@ -844,7 +850,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         }
         None => self.runtime_error(&format!("Key {} does not exist in map", index)),
       },
-      _ => self.runtime_error(&format!("{} cannot be indexed", target.value_type())),
+      _ => self.runtime_error(&format!("{} cannot be indexed with {}.", target.value_type(), index.value_type())),
     }
   }
 
@@ -1517,12 +1523,4 @@ impl<'a, I: Io> HookContext for VmExecutor<'a, I> {
   }
 }
 
-/// Is the provided `value` falsey according to spacelox rules
-#[inline]
-fn is_falsey(value: Value) -> bool {
-  match value {
-    Value::Nil => true,
-    Value::Bool(b) => !b,
-    _ => false,
-  }
-}
+

@@ -415,15 +415,15 @@ impl SlIter for ListIterator {
     self.current
   }
 
-  fn next(&mut self, _hooks: &Hooks) -> Value {
+  fn next(&mut self, _hooks: &mut Hooks) -> CallResult {
     match self.iter.next() {
       Some(value) => {
         self.current = *value;
-        Value::Bool(true)
+        Ok(Value::Bool(true))
       }
       None => {
         self.current = Value::Nil;
-        Value::Bool(false)
+        Ok(Value::Bool(false))
       }
     }
   }
@@ -836,7 +836,7 @@ mod test {
         Ok(r) => {
           let mut iter = r.to_iter();
           assert_eq!(iter.current(), Value::Nil);
-          assert_eq!(iter.next(&hooks), Value::Bool(true));
+          assert_eq!(iter.next(&mut hooks).unwrap(), Value::Bool(true));
           assert_eq!(iter.current(), Value::Nil);
         }
         Err(_) => assert!(false),

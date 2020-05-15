@@ -467,6 +467,29 @@ fn inheritance() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn iterator() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "language/iterator/equality.lox",
+      "language/iterator/assign_iter_keep_state.lox",
+    ],
+    ExecuteResult::Ok,
+  )?;
+
+  test_files(
+    &vec![],
+    ExecuteResult::CompileError,
+  )?;
+
+  test_files(
+    &vec![
+      "language/iterator/cannot_set_current.lox",
+    ],
+    ExecuteResult::RuntimeError,
+  )
+}
+
+#[test]
 fn limit() -> Result<(), std::io::Error> {
   test_files(
     &vec![
