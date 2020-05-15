@@ -9,6 +9,15 @@ members = [
   "spacelox",
 ]
 
+default-members = [
+  "spacelox_core",
+  "spacelox_lib",
+  "spacelox_macro",
+  "spacelox_vm",
+  "spacelox_wasm",
+  "spacelox",
+]
+
 [profile.dev]
 opt-level = 0
 
