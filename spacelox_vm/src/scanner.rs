@@ -128,6 +128,7 @@ impl<'a> Scanner<'a> {
       "." => self.make_token_source(TokenKind::Dot),
       "-" => self.make_token_source(TokenKind::Minus),
       "+" => self.make_token_source(TokenKind::Plus),
+      "|" => self.make_token_source(TokenKind::Pipe),
       "/" => self.make_token_source(TokenKind::Slash),
       "*" => self.make_token_source(TokenKind::Star),
       "=" => {

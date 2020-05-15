@@ -8,7 +8,7 @@ use spacelox_core::{
   arity::ArityKind,
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
   hooks::Hooks,
-  value::{Fun, FunKind, Value},
+  value::{Fun, FunKind, Value}, SlHashMap,
 };
 use std::convert::TryInto;
 use std::mem;
@@ -63,7 +63,7 @@ pub struct Compiler<'a, 's, I: Io + 'static> {
   /// The current class class compiler
   current_class: Option<Managed<ClassCompiler>>,
 
-  /// Analytics for the compiler
+  /// hooks into the surround context. Used to allocate spacelox objects
   hooks: &'a Hooks<'a>,
 
   /// The environments standard io access
@@ -80,6 +80,9 @@ pub struct Compiler<'a, 's, I: Io + 'static> {
 
   /// upvalues in this function
   upvalues: Vec<UpvalueIndex>,
+
+  /// A set of constants used in the current function
+  constants: SlHashMap<Value, usize>,
 }
 
 impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
@@ -126,6 +129,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
         std::u8::MAX as usize
       ],
       upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
+      constants: SlHashMap::default(),
     };
 
     compiler.locals[0] = first_local(FunKind::Script);
@@ -153,6 +157,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
         std::u8::MAX as usize
       ],
       upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
+      constants: SlHashMap::default(),
     };
 
     child.fun = child.hooks.manage(Fun::new(name));
@@ -279,7 +284,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       .consume(TokenKind::RightBrace, "Expect '}' after block.")
   }
 
-  /// Parse a function declaration
+  /// Parse a class declaration
   fn class_declaration(&mut self) {
     self
       .parser
@@ -368,25 +373,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     // parse function parameters
     if !fun_compiler.parser.check(TokenKind::RightParen) {
-      let mut arity: u16 = 0;
-
-      loop {
-        arity += 1;
-        if arity == std::u8::MAX as u16 {
-          fun_compiler
-            .parser
-            .error_at_current("Cannot have more than 255 parameters.");
-        }
-
-        let param_constant = fun_compiler.parse_variable("Expect parameter name.");
-        fun_compiler.define_variable(param_constant);
-
-        if !fun_compiler.parser.match_kind(TokenKind::Comma) {
-          break;
-        }
-      }
-
-      fun_compiler.fun.arity = ArityKind::Fixed(arity as u8);
+      fun_compiler.function_arity();
     }
 
     fun_compiler
@@ -401,7 +388,6 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     // end compilation of function chunk
     fun_compiler.end_compiler();
     let upvalue_count = fun_compiler.fun.upvalue_count;
-    // let boxed_fun = Box::new(fun_compiler.fun);
 
     let index = self.make_constant(Value::Fun(fun_compiler.fun));
     self.emit_byte(AlignedByteCode::Closure(index));
@@ -865,6 +851,47 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     }
   }
 
+  /// Compile a lambda expression
+  fn lambda(&mut self) {
+    let name = self
+      .hooks
+      .manage_str(String::from("lambda"));
+
+    let mut fun_compiler = Compiler::child(name, FunKind::Fun, &mut *self);
+    fun_compiler.begin_scope();
+
+    // parse function parameters
+    if !fun_compiler.parser.check(TokenKind::Pipe) {
+      fun_compiler.function_arity();
+    }
+
+    fun_compiler
+      .parser
+      .consume(TokenKind::Pipe, "Expect '|' after lambda parameters.");
+
+    if fun_compiler.parser.match_kind(TokenKind::LeftBrace) {
+      fun_compiler.block();
+    } else {
+
+      // implicitly return expression lambdas
+      fun_compiler.expression();
+      fun_compiler.emit_byte(AlignedByteCode::Return)
+    }
+
+    // end compilation of function chunk
+    fun_compiler.end_compiler();
+    let upvalue_count = fun_compiler.fun.upvalue_count;
+    // let boxed_fun = Box::new(fun_compiler.fun);
+
+    let index = self.make_constant(Value::Fun(fun_compiler.fun));
+    self.emit_byte(AlignedByteCode::Closure(index));
+
+    // emit upvalue index instructions
+    fun_compiler.upvalues[0..upvalue_count]
+      .iter()
+      .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(*upvalue)));
+  }
+
   /// Compile an dot operator
   fn dot(&mut self, can_assign: bool) {
     self
@@ -1015,6 +1042,29 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     }
 
     self.emit_byte(AlignedByteCode::DefineGlobal(variable));
+  }
+
+  /// Parse the current functions arity
+  fn function_arity(&mut self) {
+    let mut arity: u16 = 0;
+
+    loop {
+      arity += 1;
+      if arity == std::u8::MAX as u16 {
+        self
+          .parser
+          .error_at_current("Cannot have more than 255 parameters.");
+      }
+
+      let param_constant = self.parse_variable("Expect parameter name.");
+      self.define_variable(param_constant);
+
+      if !self.parser.match_kind(TokenKind::Comma) {
+        break;
+      }
+    }
+
+    self.fun.arity = ArityKind::Fixed(arity as u8);
   }
 
   /// Parse a list of argument to a function
@@ -1287,6 +1337,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       Act::Call => self.call(),
       Act::List => self.list(),
       Act::Map => self.map(),
+      Act::Lambda => self.lambda(),
       Act::Index => self.index(can_assign),
       Act::Dot => self.dot(can_assign),
       Act::Grouping => self.grouping(),
@@ -1313,13 +1364,19 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Add a constant to the current chunk
   fn make_constant(&mut self, value: Value) -> u8 {
-    let index = self.fun.add_constant(&self.hooks, value);
-    if index > std::u8::MAX as usize {
-      self.parser.error("Too many constants in one chunk.");
-      return 0;
+    match self.constants.get(&value) {
+      Some(index) => *index as u8,
+      None => {
+        let index = self.fun.add_constant(&self.hooks, value);
+        if index > std::u8::MAX as usize {
+          self.parser.error("Too many constants in one chunk.");
+          return 0;
+        }
+    
+        self.constants.insert(value, index);
+        index as u8
+      }
     }
-
-    index as u8
   }
 
   /// Emit byte code for a constant
@@ -1395,7 +1452,7 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 45] = [
+const RULES_TABLE: [ParseRule; 46] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
@@ -1420,6 +1477,8 @@ const RULES_TABLE: [ParseRule; 45] = [
   // TOKEN_COLON
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_SEMICOLON
+  ParseRule::new(Some(Act::Lambda), None, Precedence::Call),
+  // TOKEN_PIPE
   ParseRule::new(None, Some(Act::Binary), Precedence::Factor),
   // TOKEN_SLASH
   ParseRule::new(None, Some(Act::Binary), Precedence::Factor),
@@ -1708,6 +1767,7 @@ enum Act {
   List,
   Map,
   Dot,
+  Lambda,
   Grouping,
   Literal,
   Number,
@@ -1850,6 +1910,89 @@ mod test {
   }
 
   #[test]
+  fn class_empty() {
+    let example = "
+      class A {}
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Class(0),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Pop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn class_with_methods() {
+    let example = "
+      class A {
+        init() {
+          this.field = true;
+        }
+
+        getField() {
+          return this.field;
+        }
+
+        getGetField() {
+          return this.getField();
+        }
+      }
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Fun((2, vec![
+          ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+          ByteCodeTest::Code(AlignedByteCode::True),
+          ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+          ByteCodeTest::Code(AlignedByteCode::Pop),
+          ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+          ByteCodeTest::Code(AlignedByteCode::Return),
+        ])),
+        ByteCodeTest::Code(AlignedByteCode::Method(1)),
+        ByteCodeTest::Fun((4, vec![
+          ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+          ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+          ByteCodeTest::Code(AlignedByteCode::Return),
+          ByteCodeTest::Code(AlignedByteCode::Nil),
+          ByteCodeTest::Code(AlignedByteCode::Return),
+        ])),
+        ByteCodeTest::Code(AlignedByteCode::Method(3)),
+        ByteCodeTest::Fun((6, vec![
+          ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+          ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
+          ByteCodeTest::Code(AlignedByteCode::Return),
+          ByteCodeTest::Code(AlignedByteCode::Nil),
+          ByteCodeTest::Code(AlignedByteCode::Return),
+        ])),
+        ByteCodeTest::Code(AlignedByteCode::Method(5)),
+        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return)
+      ],
+    );
+  }
+
+  #[test]
   fn list_index_set() {
     let example = "
       var a = [clock, clock, clock];
@@ -1865,13 +2008,13 @@ mod test {
       &vec![
         AlignedByteCode::List,
         AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::ListInit(3),
         AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(4),
-        AlignedByteCode::Constant(5),
-        AlignedByteCode::Constant(6),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Constant(3),
         AlignedByteCode::SetIndex,
         AlignedByteCode::Pop,
         AlignedByteCode::Nil,
@@ -1900,8 +2043,8 @@ mod test {
         AlignedByteCode::Constant(3),
         AlignedByteCode::ListInit(3),
         AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(4),
-        AlignedByteCode::Constant(5),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Constant(4),
         AlignedByteCode::GetIndex,
         AlignedByteCode::Print,
         AlignedByteCode::Nil,
@@ -1954,6 +2097,122 @@ mod test {
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn map_intializer() {
+    let example = "
+      var a = :{
+        \"key1\": 10,
+        \"key2\": nil,
+      };
+    ".to_string();
+
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Map,
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Constant(3),
+        AlignedByteCode::Nil,
+        AlignedByteCode::MapInit(2),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn map_empty() {
+    let example = "
+      var a = :{};
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Map,
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn lambda_expression_body() {
+    let example = "
+    var example = || 10;
+    example();
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Fun((
+          // example
+          1,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Call(0)),
+        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn lambda_block_body() {
+    let example = "
+    var example = || { return 10; };
+    example();
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Fun((
+          // example
+          1,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Call(0)),
+        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
       ],
     );
   }
@@ -2018,7 +2277,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Pop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -2068,10 +2327,10 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(3)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(4)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Pop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -2097,7 +2356,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Pop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -2134,8 +2393,8 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Constant(3)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(4)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(5)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
         ByteCodeTest::Code(AlignedByteCode::Call(1)),
         ByteCodeTest::Code(AlignedByteCode::Pop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -2164,7 +2423,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Pop),
         ByteCodeTest::Code(AlignedByteCode::Nil),

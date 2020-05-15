@@ -469,14 +469,15 @@ fn inheritance() -> Result<(), std::io::Error> {
 #[test]
 fn limit() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["language/expressions/evaluate.lox"],
+    &vec![
+      "language/limit/reuse_constants.lox",
+    ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
       "language/limit/loop_too_large.lox",
-      "language/limit/no_reuse_constants.lox",
       "language/limit/too_many_constants.lox",
       "language/limit/too_many_locals.lox",
       "language/limit/too_many_upvalues.lox",
@@ -486,6 +487,42 @@ fn limit() -> Result<(), std::io::Error> {
 
   test_files(
     &vec!["language/limit/stack_overflow.lox"],
+    ExecuteResult::RuntimeError,
+  )
+}
+
+
+#[test]
+fn lambda() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "language/lambda/expression_body.lox",
+      "language/lambda/empty_body.lox",
+      "language/lambda/mutual_recursion.lox",
+      "language/lambda/recursion.lox",
+      "language/lambda/parameters.lox",
+      "language/lambda/print.lox",
+    ],
+    ExecuteResult::Ok,
+  )?;
+
+  test_files(
+    &vec![
+      "language/lambda/local_recursion.lox",
+      "language/lambda/local_mutual_recursion.lox",
+      "language/lambda/body_must_be_block_or_expr.lox",
+      "language/lambda/missing_comma_in_parameters.lox",
+      "language/lambda/too_many_parameters.lox",
+      "language/lambda/too_many_arguments.lox",
+    ],
+    ExecuteResult::CompileError,
+  )?;
+
+  test_files(
+    &vec![
+      "language/lambda/extra_arguments.lox",
+      "language/lambda/missing_arguments.lox",
+    ],
     ExecuteResult::RuntimeError,
   )
 }
