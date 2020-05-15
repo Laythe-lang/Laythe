@@ -60,11 +60,22 @@ I've continued to work on the language with a few extensions. Below are some of 
 'true'
 ```
 
+**Lambdas**: There are now function expressions. This was actually a very minimal change to enable this as it reuses almost all the the function machinery.
+
+```
+> var func = |x| x * 2;
+> var withBody |name| { print "hi! " + name; };
+> func(5)
+10
+> withBody("John")
+hi! john
+```
+
 **New Collection Types**: Spacelox now has lists and maps as part of the language both supporting literals.
 
 ```lox
 > var list = [1, false, nil, 3, clock];
-> var map = :{ 'key1', 10, 'key2': false, 15: nil };
+> var map = { 'key1', 10, 'key2': false, 15: nil };
 > list[2];
 nil
 > map[false];

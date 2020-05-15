@@ -1,13 +1,13 @@
 fun fn() {}
 class A {}
 
-var map = :{
+var map = {
   10: 5,
   nil: true,
-  false: :{},
+  false: {},
   []: fn,
   fn: "cat",
   "key": "value",
   A(): 15.3,
-  :{}: nil,
+  {}: nil,
 };

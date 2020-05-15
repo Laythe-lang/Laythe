@@ -1,6 +1,6 @@
-var x = :{
+var x = {
   "10": [1, 2, 3],
-  false: :{
+  false: {
     5: false,
     3: nil
   },

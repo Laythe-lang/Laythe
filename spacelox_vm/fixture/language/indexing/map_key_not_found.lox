@@ -1,2 +1,2 @@
-var map = :{};
+var map = {};
 map["not found"];

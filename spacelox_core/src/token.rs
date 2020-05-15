@@ -44,7 +44,6 @@ pub enum TokenKind {
   Identifier,
   String,
   Number,
-  MapOpen,
 
   // keywords
   And,

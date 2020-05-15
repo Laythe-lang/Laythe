@@ -1452,12 +1452,12 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 46] = [
+const RULES_TABLE: [ParseRule; 45] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RIGHT_PAREN
-  ParseRule::new(None, None, Precedence::None),
+  ParseRule::new(Some(Act::Map), None, Precedence::Call),
   // TOKEN_LEFT_BRACE
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RIGHT_BRACE
@@ -1505,8 +1505,6 @@ const RULES_TABLE: [ParseRule; 46] = [
   // TOKEN_STRING
   ParseRule::new(Some(Act::Number), None, Precedence::None),
   // TOKEN_NUMBER
-  ParseRule::new(Some(Act::Map), None, Precedence::Call),
-  // TOKEN_MAP_OPEN
   ParseRule::new(None, Some(Act::And), Precedence::And),
   // TOKEN_AND
   ParseRule::new(None, None, Precedence::None),
@@ -2104,7 +2102,7 @@ mod test {
   #[test]
   fn map_intializer() {
     let example = "
-      var a = :{
+      var a = {
         \"key1\": 10,
         \"key2\": nil,
       };
@@ -2133,7 +2131,7 @@ mod test {
   #[test]
   fn map_empty() {
     let example = "
-      var a = :{};
+      var a = {};
     "
     .to_string();
 
@@ -2434,7 +2432,7 @@ mod test {
 
   #[test]
   fn map() {
-    let example = "var a = :{ \"cat\": \"bat\", 10: nil };".to_string();
+    let example = "var a = { \"cat\": \"bat\", 10: nil };".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);

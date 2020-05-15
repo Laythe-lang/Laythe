@@ -1,6 +1,6 @@
 fun example() {}
 
-var map = :{
+var map = {
   "cat": true,
   "dog": true,
   "parrot": true,

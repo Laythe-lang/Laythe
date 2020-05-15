@@ -1,4 +1,4 @@
-var map = :{
+var map = {
   10 / 0: true
 };
 
