@@ -476,15 +476,10 @@ fn iterator() -> Result<(), std::io::Error> {
     ExecuteResult::Ok,
   )?;
 
-  test_files(
-    &vec![],
-    ExecuteResult::CompileError,
-  )?;
+  test_files(&vec![], ExecuteResult::CompileError)?;
 
   test_files(
-    &vec![
-      "language/iterator/cannot_set_current.lox",
-    ],
+    &vec!["language/iterator/cannot_set_current.lox"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -492,9 +487,7 @@ fn iterator() -> Result<(), std::io::Error> {
 #[test]
 fn limit() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "language/limit/reuse_constants.lox",
-    ],
+    &vec!["language/limit/reuse_constants.lox"],
     ExecuteResult::Ok,
   )?;
 
@@ -513,7 +506,6 @@ fn limit() -> Result<(), std::io::Error> {
     ExecuteResult::RuntimeError,
   )
 }
-
 
 #[test]
 fn lambda() -> Result<(), std::io::Error> {

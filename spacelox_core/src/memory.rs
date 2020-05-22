@@ -71,7 +71,8 @@ impl<'a> Gc {
   /// # Examples
   /// ```
   /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::value::{Value, Fun};
+  /// use spacelox_core::value::Value;
+  /// use spacelox_core::object::Fun;
   /// use spacelox_core::arity::ArityKind;
   /// use spacelox_core::chunk::Chunk;
   /// use spacelox_core::io::NativeStdIo;
@@ -124,13 +125,14 @@ impl<'a> Gc {
   /// # Examples
   /// ```
   /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::value::{Value, Upvalue};
+  /// use spacelox_core::value::{Value, VALUE_NIL};
+  /// use spacelox_core::object::Upvalue;
   /// use spacelox_core::managed::Managed;
   /// use spacelox_core::io::NativeStdIo;
   /// use std::ptr;
   ///
   /// let gc = Gc::new(Box::new(NativeStdIo::new()));
-  /// let value = Value::Nil;
+  /// let value = VALUE_NIL;
   ///
   /// let up1: Managed<Upvalue> = gc.manage(Upvalue::Open(ptr::NonNull::from(&value)), &NO_GC);
   /// let up2 = gc.clone_managed(up1, &NO_GC);

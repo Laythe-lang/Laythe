@@ -9,11 +9,13 @@ use spacelox_core::{
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
-  value::{Class, Value},
+  value::{VALUE_NIL, Value},
+  object::Class,
   CallResult, ModuleResult, SlError, SlHashMap,
 };
 use std::fmt;
 use std::mem;
+use crate::support::to_dyn_method;
 
 pub const MAP_CLASS_NAME: &'static str = "Map";
 
@@ -29,7 +31,7 @@ pub fn declare_map_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResul
   let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::Class(class))
+  self_module.add_export(hooks, name, Value::from(class))
 }
 
 pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
@@ -45,45 +47,45 @@ pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(MAP_SIZE.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MapSize::new()))),
+    Value::from(to_dyn_method(hooks, MapSize::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(MAP_STR.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MapStr::new(
+    Value::from(to_dyn_method(hooks, MapStr::new(
       hooks.manage_str(String::from(MAP_STR.name)),
-    )))),
+    ))),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(MAP_HAS.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MapHas::new()))),
+    Value::from(to_dyn_method(hooks, MapHas::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(MAP_GET.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MapGet::new()))),
+    Value::from(to_dyn_method(hooks, MapGet::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(MAP_REMOVE.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MapRemove::new()))),
+    Value::from(to_dyn_method(hooks, MapRemove::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(MAP_INSERT.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MapInsert::new()))),
+    Value::from(to_dyn_method(hooks, MapInsert::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(MAP_ITER.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MapIter::new(map_iter_class)))),
+    Value::from(to_dyn_method(hooks, MapIter::new(map_iter_class))),
   );
 }
 
@@ -125,7 +127,7 @@ impl NativeMethod for MapStr {
 
     // format and join strings
     let formatted = format!("{{ {} }}", strings.join(", "));
-    Ok(Value::String(hooks.manage_str(formatted)))
+    Ok(Value::from(hooks.manage_str(formatted)))
   }
 }
 
@@ -136,16 +138,16 @@ fn format_map_entry(
   hooks: &mut Hooks,
 ) -> Result<(), SlError> {
   // if already string quote and add to temps
-  if let Value::String(string) = *item {
-    buffer.push_str(&format!("'{}'", string));
+  if item.is_str() {
+    buffer.push_str(&format!("'{}'", item.to_str()));
     return Ok(());
   }
 
   // call '.str' method on each value
   let result = hooks.call_method_by_name(*item, method_name, &[])?;
 
-  if let Value::String(string) = result {
-    buffer.push_str(&*string);
+  if result.is_str() {
+    buffer.push_str(&*result.to_str());
     Ok(())
   } else {
     // if error throw away temporary strings
@@ -180,7 +182,7 @@ impl NativeMethod for MapSize {
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::Number(this.to_map().len() as f64))
+    Ok(Value::from(this.to_map().len() as f64))
   }
 }
 
@@ -201,7 +203,7 @@ impl NativeMethod for MapHas {
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    Ok(Value::Bool(this.to_map().contains_key(&args[0])))
+    Ok(Value::from(this.to_map().contains_key(&args[0])))
   }
 }
 
@@ -224,7 +226,7 @@ impl NativeMethod for MapGet {
   fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     match this.to_map().get(&args[0]) {
       Some(value) => Ok(*value),
-      None => Ok(Value::Nil),
+      None => Ok(VALUE_NIL),
     }
   }
 }
@@ -248,7 +250,7 @@ impl NativeMethod for MapInsert {
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     match hooks.grow(&mut this.to_map(), |map| map.insert(args[0], args[1])) {
       Some(value) => Ok(value),
-      None => Ok(Value::Nil),
+      None => Ok(VALUE_NIL),
     }
   }
 }
@@ -313,7 +315,7 @@ impl NativeMethod for MapIter {
     let iter = SlIterator::new(inner_iter, self.iter_class);
     let iter = hooks.manage(iter);
 
-    Ok(Value::Iter(iter))
+    Ok(Value::from(iter))
   }
 }
 
@@ -330,7 +332,7 @@ impl MapIterator {
     Self {
       map,
       iter,
-      current: Value::Nil,
+      current: VALUE_NIL,
     }
   }
 }
@@ -347,12 +349,12 @@ impl SlIter for MapIterator {
   fn next(&mut self, hooks: &mut Hooks) -> CallResult {
     match self.iter.next() {
       Some(next) => {
-        self.current = Value::List(hooks.manage(vec![*next.0, *next.1]));
-        Ok(Value::Bool(true))
+        self.current = Value::from(hooks.manage(vec![*next.0, *next.1]));
+        Ok(Value::from(true))
       }
       None => {
-        self.current = Value::Nil;
-        Ok(Value::Bool(false))
+        self.current = VALUE_NIL;
+        Ok(Value::from(false))
       }
     }
   }
@@ -409,8 +411,8 @@ mod test {
       let mut context = TestContext::new(
         &gc,
         &[
-          Value::String(gc.manage_str(String::from("nil"), &NO_GC)),
-          Value::String(gc.manage_str(String::from("nil"), &NO_GC)),
+          Value::from(gc.manage_str(String::from("nil"), &NO_GC)),
+          Value::from(gc.manage_str(String::from("nil"), &NO_GC)),
         ],
       );
       let mut hooks = Hooks::new(&mut context);
@@ -419,10 +421,10 @@ mod test {
       let values = &[];
 
       let mut map = SlHashMap::default();
-      map.insert(Value::Nil, Value::Nil);
+      map.insert(VALUE_NIL, VALUE_NIL);
       let this = hooks.manage(map);
 
-      let result = map_str.call(&mut hooks, Value::Map(this), values);
+      let result = map_str.call(&mut hooks, Value::from(this), values);
       match result {
         Ok(r) => assert_eq!(&*r.to_str(), "{ nil: nil }"),
         Err(_) => assert!(false),
@@ -454,10 +456,10 @@ mod test {
       let values = &[];
 
       let mut map = SlHashMap::default();
-      map.insert(Value::Nil, Value::Nil);
+      map.insert(VALUE_NIL, VALUE_NIL);
       let this = hooks.manage(map);
 
-      let result = map_str.call(&mut hooks, Value::Map(this), values);
+      let result = map_str.call(&mut hooks, Value::from(this), values);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 1.0),
         Err(_) => assert!(false),
@@ -487,16 +489,16 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = SlHashMap::default();
-      map.insert(Value::Nil, Value::Nil);
+      map.insert(VALUE_NIL, VALUE_NIL);
       let this = hooks.manage(map);
 
-      let result = map_has.call(&mut hooks, Value::Map(this), &[Value::Nil]);
+      let result = map_has.call(&mut hooks, Value::from(this), &[VALUE_NIL]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), true),
         Err(_) => assert!(false),
       }
 
-      let result = map_has.call(&mut hooks, Value::Map(this), &[Value::Bool(false)]);
+      let result = map_has.call(&mut hooks, Value::from(this), &[Value::from(false)]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),
@@ -526,16 +528,16 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = SlHashMap::default();
-      map.insert(Value::Nil, Value::Bool(false));
+      map.insert(VALUE_NIL, Value::from(false));
       let this = hooks.manage(map);
 
-      let result = map_get.call(&mut hooks, Value::Map(this), &[Value::Nil]);
+      let result = map_get.call(&mut hooks, Value::from(this), &[VALUE_NIL]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),
       }
 
-      let result = map_get.call(&mut hooks, Value::Map(this), &[Value::Bool(true)]);
+      let result = map_get.call(&mut hooks, Value::from(this), &[Value::from(true)]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),
@@ -565,13 +567,13 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = SlHashMap::default();
-      map.insert(Value::Nil, Value::Bool(false));
+      map.insert(VALUE_NIL, Value::from(false));
       let this = hooks.manage(map);
 
       let result = map_insert.call(
         &mut hooks,
-        Value::Map(this),
-        &[Value::Nil, Value::Bool(true)],
+        Value::from(this),
+        &[VALUE_NIL, Value::from(true)],
       );
       match result {
         Ok(r) => assert_eq!(r.to_bool(), false),
@@ -580,8 +582,8 @@ mod test {
 
       let result = map_insert.call(
         &mut hooks,
-        Value::Map(this),
-        &[Value::Number(15.0), Value::Bool(true)],
+        Value::from(this),
+        &[Value::from(15.0), Value::from(true)],
       );
       match result {
         Ok(r) => assert!(r.is_nil()),
@@ -612,16 +614,16 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = SlHashMap::default();
-      map.insert(Value::Nil, Value::Bool(false));
+      map.insert(VALUE_NIL, Value::from(false));
       let this = hooks.manage(map);
 
-      let result = map_remove.call(&mut hooks, Value::Map(this), &[Value::Number(10.5)]);
+      let result = map_remove.call(&mut hooks, Value::from(this), &[Value::from(10.5)]);
       match result {
         Ok(_) => assert!(false),
         Err(_) => assert!(true),
       }
 
-      let result = map_remove.call(&mut hooks, Value::Map(this), &[Value::Nil]);
+      let result = map_remove.call(&mut hooks, Value::from(this), &[VALUE_NIL]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),

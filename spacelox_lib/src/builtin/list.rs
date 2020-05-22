@@ -8,10 +8,12 @@ use spacelox_core::{
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
-  value::{Class, Value},
+  value::{VALUE_NIL, Value},
+  object::Class,
   CallResult, ModuleResult,
 };
 use std::{mem, slice::Iter};
+use crate::support::to_dyn_method;
 
 pub const LIST_CLASS_NAME: &'static str = "List";
 
@@ -29,7 +31,7 @@ pub fn declare_list_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResu
   let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::Class(class))
+  self_module.add_export(hooks, name, Value::from(class))
 }
 
 pub fn define_list_class(hooks: &Hooks, self_module: &Module, _: &Package) {
@@ -45,57 +47,57 @@ pub fn define_list_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_SIZE.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListSize::new()))),
+    Value::from(to_dyn_method(hooks, ListSize::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_PUSH.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListPush::new()))),
+    Value::from(to_dyn_method(hooks, ListPush::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_POP.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListPop::new()))),
+    Value::from(to_dyn_method(hooks, ListPop::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_REMOVE.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListRemove::new()))),
+    Value::from(to_dyn_method(hooks, ListRemove::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_INSERT.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListInsert::new()))),
+    Value::from(to_dyn_method(hooks, ListInsert::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_STR.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListStr::new(
+    Value::from(to_dyn_method(hooks, ListStr::new(
       hooks.manage_str(String::from(LIST_STR.name)),
-    )))),
+    ))),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_CLEAR.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListClear::new()))),
+    Value::from(to_dyn_method(hooks, ListClear::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_HAS.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListHas::new()))),
+    Value::from(to_dyn_method(hooks, ListHas::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_ITER.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ListIter::new(list_iter_class)))),
+    Value::from(to_dyn_method(hooks, ListIter::new(list_iter_class))),
   )
 }
 
@@ -128,15 +130,16 @@ impl NativeMethod for ListStr {
 
     for item in list.iter() {
       // if already string quote and add to temps
-      if let Value::String(string) = item {
-        strings.push(format!("'{}'", string.as_str()));
+      if item.is_str() {
+        strings.push(format!("'{}'", item.to_str().as_str()));
         continue;
       }
 
       // call '.str' method on each value
       match hooks.call_method_by_name(*item, self.method_name, &[]) {
         Ok(result) => {
-          if let Value::String(string) = result {
+          if result.is_str() {
+            let string = result.to_str();
             count += 1;
             hooks.push_root(string);
             strings.push(string.to_string());
@@ -158,7 +161,7 @@ impl NativeMethod for ListStr {
 
     // pop temporary roots and return joined string
     hooks.pop_roots(count);
-    Ok(Value::String(hooks.manage_str(formatted)))
+    Ok(Value::from(hooks.manage_str(formatted)))
   }
 }
 
@@ -179,7 +182,7 @@ impl NativeMethod for ListSize {
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::Number(this.to_list().len() as f64))
+    Ok(Value::from(this.to_list().len() as f64))
   }
 }
 
@@ -201,7 +204,7 @@ impl NativeMethod for ListPush {
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     hooks.grow(&mut this.to_list(), |list| list.extend_from_slice(args));
-    Ok(Value::Nil)
+    Ok(VALUE_NIL)
   }
 }
 
@@ -224,7 +227,7 @@ impl NativeMethod for ListPop {
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
     match this.to_list().pop() {
       Some(value) => Ok(value),
-      None => Ok(Value::Nil),
+      None => Ok(VALUE_NIL),
     }
   }
 }
@@ -299,7 +302,7 @@ impl NativeMethod for ListInsert {
     }
 
     hooks.grow(&mut list, |list| list.insert(index as usize, args[1]));
-    Ok(Value::Nil)
+    Ok(VALUE_NIL)
   }
 }
 
@@ -321,7 +324,7 @@ impl NativeMethod for ListClear {
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
     hooks.shrink(&mut this.to_list(), |list| list.clear());
-    Ok(Value::Nil)
+    Ok(VALUE_NIL)
   }
 }
 
@@ -342,7 +345,7 @@ impl NativeMethod for ListHas {
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    Ok(Value::Bool(this.to_list().contains(&args[0])))
+    Ok(Value::from(this.to_list().contains(&args[0])))
   }
 }
 
@@ -383,7 +386,7 @@ impl NativeMethod for ListIter {
     let iter = SlIterator::new(inner_iter, self.iter_class);
     let iter = hooks.manage(iter);
 
-    Ok(Value::Iter(iter))
+    Ok(Value::from(iter))
   }
 }
 
@@ -400,7 +403,7 @@ impl ListIterator {
 
     Self {
       iter,
-      current: Value::Nil,
+      current: VALUE_NIL,
       list,
     }
   }
@@ -419,11 +422,11 @@ impl SlIter for ListIterator {
     match self.iter.next() {
       Some(value) => {
         self.current = *value;
-        Ok(Value::Bool(true))
+        Ok(Value::from(true))
       }
       None => {
-        self.current = Value::Nil;
-        Ok(Value::Bool(false))
+        self.current = VALUE_NIL;
+        Ok(Value::from(false))
       }
     }
   }
@@ -470,9 +473,9 @@ mod test {
       let mut context = TestContext::new(
         &gc,
         &[
-          Value::String(gc.manage_str(String::from("nil"), &NO_GC)),
-          Value::String(gc.manage_str(String::from("10"), &NO_GC)),
-          Value::String(gc.manage_str(String::from("[5]"), &NO_GC)),
+          Value::from(gc.manage_str(String::from("nil"), &NO_GC)),
+          Value::from(gc.manage_str(String::from("10"), &NO_GC)),
+          Value::from(gc.manage_str(String::from("[5]"), &NO_GC)),
         ],
       );
       let mut hooks = Hooks::new(&mut context);
@@ -481,13 +484,13 @@ mod test {
       let values = &[];
 
       let list = vec![
-        Value::Nil,
-        Value::Number(10.0),
-        Value::List(hooks.manage(vec![Value::Number(5.0)])),
+        VALUE_NIL,
+        Value::from(10.0),
+        Value::from(hooks.manage(vec![Value::from(5.0)])),
       ];
       let this = hooks.manage(list);
 
-      let result = list_str.call(&mut hooks, Value::List(this), values);
+      let result = list_str.call(&mut hooks, Value::from(this), values);
       match result {
         Ok(r) => assert_eq!(&*r.to_str(), "[nil, 10, [5]]"),
         Err(_) => assert!(false),
@@ -517,10 +520,10 @@ mod test {
 
       let values = &[];
 
-      let list = vec![Value::Nil, Value::Number(10.0)];
+      let list = vec![VALUE_NIL, Value::from(10.0)];
       let this = hooks.manage(list);
 
-      let result = list_size.call(&mut hooks, Value::List(this), values);
+      let result = list_size.call(&mut hooks, Value::from(this), values);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 2.0),
         Err(_) => assert!(false),
@@ -547,31 +550,31 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![Value::Nil, Value::Number(10.0)];
+      let list = vec![VALUE_NIL, Value::from(10.0)];
       let this = hooks.manage(list);
-      let list_value = Value::List(this);
+      let list_value = Value::from(this);
 
-      let result = list_push.call(&mut hooks, list_value, &[Value::Bool(false)]);
+      let result = list_push.call(&mut hooks, list_value, &[Value::from(false)]);
       match result {
         Ok(r) => {
-          assert_eq!(r, Value::Nil);
+          assert_eq!(r, VALUE_NIL);
           assert_eq!(list_value.to_list().len(), 3);
-          assert_eq!(list_value.to_list()[2], Value::Bool(false));
+          assert_eq!(list_value.to_list()[2], Value::from(false));
         }
         Err(_) => assert!(false),
       }
 
       let result = list_push.call(
         &mut hooks,
-        Value::List(this),
-        &[Value::Number(10.3), Value::Nil],
+        Value::from(this),
+        &[Value::from(10.3), VALUE_NIL],
       );
       match result {
         Ok(r) => {
-          assert_eq!(r, Value::Nil);
+          assert_eq!(r, VALUE_NIL);
           assert_eq!(list_value.to_list().len(), 5);
-          assert_eq!(list_value.to_list()[3], Value::Number(10.3));
-          assert_eq!(list_value.to_list()[4], Value::Nil);
+          assert_eq!(list_value.to_list()[3], Value::from(10.3));
+          assert_eq!(list_value.to_list()[4], VALUE_NIL);
         }
         Err(_) => assert!(false),
       }
@@ -597,9 +600,9 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![Value::Bool(true)];
+      let list = vec![Value::from(true)];
       let this = hooks.manage(list);
-      let list_value = Value::List(this);
+      let list_value = Value::from(this);
 
       let result = list_pop.call(&mut hooks, list_value, &[]);
       match result {
@@ -640,11 +643,11 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![Value::Nil, Value::Number(10.0), Value::Bool(true)];
+      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
       let this = hooks.manage(list);
-      let list_value = Value::List(this);
+      let list_value = Value::from(this);
 
-      let result = list_remove.call(&mut hooks, list_value, &[Value::Number(1.0)]);
+      let result = list_remove.call(&mut hooks, list_value, &[Value::from(1.0)]);
       match result {
         Ok(r) => {
           assert_eq!(r.to_num(), 10.0);
@@ -653,13 +656,13 @@ mod test {
         Err(_) => assert!(false),
       }
 
-      let result = list_remove.call(&mut hooks, list_value, &[Value::Number(-1.0)]);
+      let result = list_remove.call(&mut hooks, list_value, &[Value::from(-1.0)]);
       match result {
         Ok(_) => assert!(false),
         Err(_) => assert!(true),
       }
 
-      let result = list_remove.call(&mut hooks, list_value, &[Value::Number(10.0)]);
+      let result = list_remove.call(&mut hooks, list_value, &[Value::from(10.0)]);
       match result {
         Ok(_) => assert!(false),
         Err(_) => assert!(true),
@@ -686,31 +689,31 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![Value::Nil, Value::Number(10.0), Value::Bool(true)];
+      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
       let this = hooks.manage(list);
-      let list_value = Value::List(this);
+      let list_value = Value::from(this);
 
       let result = list_insert.call(
         &mut hooks,
         list_value,
-        &[Value::Number(1.0), Value::Bool(false)],
+        &[Value::from(1.0), Value::from(false)],
       );
       match result {
         Ok(r) => {
           assert!(r.is_nil());
-          assert_eq!(this[1], Value::Bool(false));
+          assert_eq!(this[1], Value::from(false));
           assert_eq!(this.len(), 4);
         }
         Err(_) => assert!(false),
       }
 
-      let result = list_insert.call(&mut hooks, list_value, &[Value::Number(-1.0)]);
+      let result = list_insert.call(&mut hooks, list_value, &[Value::from(-1.0)]);
       match result {
         Ok(_) => assert!(false),
         Err(_) => assert!(true),
       }
 
-      let result = list_insert.call(&mut hooks, list_value, &[Value::Number(10.0)]);
+      let result = list_insert.call(&mut hooks, list_value, &[Value::from(10.0)]);
       match result {
         Ok(_) => assert!(false),
         Err(_) => assert!(true),
@@ -737,9 +740,9 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![Value::Nil, Value::Number(10.0), Value::Bool(true)];
+      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
       let this = hooks.manage(list);
-      let list_value = Value::List(this);
+      let list_value = Value::from(this);
 
       let result = list_clear.call(&mut hooks, list_value, &[]);
       match result {
@@ -780,11 +783,11 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![Value::Nil, Value::Number(10.0), Value::Bool(true)];
+      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
       let this = hooks.manage(list);
-      let list_value = Value::List(this);
+      let list_value = Value::from(this);
 
-      let result = list_has.call(&mut hooks, list_value, &[Value::Number(10.0)]);
+      let result = list_has.call(&mut hooks, list_value, &[Value::from(10.0)]);
       match result {
         Ok(r) => {
           assert!(r.to_bool());
@@ -792,7 +795,7 @@ mod test {
         Err(_) => assert!(false),
       }
 
-      let result = list_has.call(&mut hooks, list_value, &[Value::Bool(false)]);
+      let result = list_has.call(&mut hooks, list_value, &[Value::from(false)]);
       match result {
         Ok(r) => {
           assert!(!r.to_bool());
@@ -827,17 +830,17 @@ mod test {
       let list_iter =
         ListIter::new(hooks.manage(Class::new(hooks.manage_str(String::from("something")))));
 
-      let list = vec![Value::Nil, Value::Number(10.0), Value::Bool(true)];
+      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
       let this = hooks.manage(list);
-      let list_value = Value::List(this);
+      let list_value = Value::from(this);
 
       let result = list_iter.call(&mut hooks, list_value, &[]);
       match result {
         Ok(r) => {
           let mut iter = r.to_iter();
-          assert_eq!(iter.current(), Value::Nil);
-          assert_eq!(iter.next(&mut hooks).unwrap(), Value::Bool(true));
-          assert_eq!(iter.current(), Value::Nil);
+          assert_eq!(iter.current(), VALUE_NIL);
+          assert_eq!(iter.next(&mut hooks).unwrap(), Value::from(true));
+          assert_eq!(iter.current(), VALUE_NIL);
         }
         Err(_) => assert!(false),
       }

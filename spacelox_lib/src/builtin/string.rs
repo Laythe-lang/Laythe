@@ -6,9 +6,11 @@ use spacelox_core::{
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
-  value::{Class, Value},
+  value::Value,
+  object::Class,
   CallResult, ModuleResult,
 };
+use crate::support::to_dyn_method;
 
 pub const STRING_CLASS_NAME: &'static str = "String";
 const STRING_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
@@ -17,7 +19,7 @@ pub fn declare_string_class(hooks: &Hooks, self_module: &mut Module) -> ModuleRe
   let name = hooks.manage_str(String::from(STRING_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::Class(class))
+  self_module.add_export(hooks, name, Value::from(class))
 }
 
 pub fn define_string_class(hooks: &Hooks, self_module: &Module, _: &Package) {
@@ -27,7 +29,7 @@ pub fn define_string_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(STRING_STR.name)),
-    Value::NativeMethod(hooks.manage(Box::new(StringStr::new()))),
+    Value::from(to_dyn_method(hooks, StringStr::new())),
   );
 }
 
@@ -48,7 +50,7 @@ impl NativeMethod for StringStr {
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(this.to_str()))
+    Ok(Value::from(this.to_str()))
   }
 }
 
@@ -75,7 +77,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let this = Value::String(hooks.manage_str(String::from("test")));
+      let this = Value::from(hooks.manage_str(String::from("test")));
       let result = string_str.call(&mut hooks, this, &[]);
       match result {
         Ok(r) => assert_eq!(*r.to_str(), String::from("test")),

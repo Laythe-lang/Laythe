@@ -1,42 +1,7 @@
-use crate::chunk::{AlignedByteCode, Chunk};
-use crate::io::StdIo;
-use crate::{
-  arity::ArityKind,
-  constants::INIT,
-  dynamic_map::DynamicMap,
-  hooks::Hooks,
-  iterator::SlIterator,
-  managed::{Manage, Managed, Trace},
-  native::{NativeFun, NativeMethod},
-  utils::do_if_some,
-  SlHashMap,
-};
-use std::fmt;
-use std::mem;
-use std::{hash::Hash, ptr::NonNull};
+pub struct Nil();
 
 /// Enum of value types in spacelox
-#[derive(Clone, Copy, Debug)]
-pub enum Value {
-  Bool(bool),
-  Nil,
-  Number(f64),
-  String(Managed<String>),
-  List(Managed<Vec<Value>>),
-  Map(Managed<SlHashMap<Value, Value>>),
-  Fun(Managed<Fun>),
-  Closure(Managed<Closure>),
-  Class(Managed<Class>),
-  Instance(Managed<Instance>),
-  Method(Managed<Method>),
-  Iter(Managed<SlIterator>),
-  NativeFun(Managed<Box<dyn NativeFun>>),
-  NativeMethod(Managed<Box<dyn NativeMethod>>),
-  Upvalue(Managed<Upvalue>),
-}
-
-/// Enum of value types in spacelox
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub enum ValueVariant {
   Bool,
   Nil,
@@ -55,1234 +20,1530 @@ pub enum ValueVariant {
   Upvalue,
 }
 
-impl Value {
-  /// Is this spacelox value nil
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::Value;
-  ///
-  /// let val1 = Value::Nil;
-  /// assert_eq!(val1.is_nil(), true);
-  /// ```
-  pub fn is_nil(&self) -> bool {
-    match self {
-      Value::Nil => true,
-      _ => false,
+#[cfg(not(feature = "nan_boxing"))]
+pub use self::unboxed::*;
+
+#[cfg(feature = "nan_boxing")]
+pub use self::boxed::*;
+
+#[cfg(not(feature = "nan_boxing"))]
+mod unboxed {
+  use super::*;
+  use crate::{
+    io::StdIo,
+    iterator::SlIterator,
+    managed::{Managed, Trace},
+    native::{NativeFun, NativeMethod},
+    object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue},
+    SlHashMap,
+  };
+  use std::fmt;
+  use std::hash::Hash;
+
+  pub const VALUE_NIL: Value = Value::Nil;
+  pub const VALUE_FALSE: Value = Value::Bool(false);
+  pub const VALUE_TRUE: Value = Value::Bool(true);
+
+  /// Enum of value types in spacelox
+  #[derive(Clone, Copy, Debug)]
+  pub enum Value {
+    Bool(bool),
+    Nil,
+    Number(f64),
+    String(Managed<String>),
+    List(Managed<Vec<Value>>),
+    Map(Managed<SlHashMap<Value, Value>>),
+    Fun(Managed<Fun>),
+    Closure(Managed<Closure>),
+    Class(Managed<Class>),
+    Instance(Managed<Instance>),
+    Method(Managed<Method>),
+    Iter(Managed<SlIterator>),
+    NativeFun(Managed<Box<dyn NativeFun>>),
+    NativeMethod(Managed<Box<dyn NativeMethod>>),
+    Upvalue(Managed<Upvalue>),
+  }
+
+  impl Value {
+    /// Is this spacelox value nil
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    ///
+    /// let val1 = Value::Nil;
+    /// assert_eq!(val1.is_nil(), true);
+    /// ```
+    pub fn is_nil(&self) -> bool {
+      match self {
+        Value::Nil => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_bool(&self) -> bool {
+      match self {
+        Value::Bool(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_num(&self) -> bool {
+      match self {
+        Value::Number(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_str(&self) -> bool {
+      match self {
+        Value::String(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_list(&self) -> bool {
+      match self {
+        Value::List(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_map(&self) -> bool {
+      match self {
+        Value::Map(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_iter(&self) -> bool {
+      match self {
+        Value::Iter(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_closure(&self) -> bool {
+      match self {
+        Value::Closure(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_fun(&self) -> bool {
+      match self {
+        Value::Fun(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_class(&self) -> bool {
+      match self {
+        Value::Class(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_instance(&self) -> bool {
+      match self {
+        Value::Instance(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_method(&self) -> bool {
+      match self {
+        Value::Method(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_native_fun(&self) -> bool {
+      match self {
+        Value::NativeFun(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_native_method(&self) -> bool {
+      match self {
+        Value::NativeMethod(_) => true,
+        _ => false,
+      }
+    }
+
+    pub fn is_upvalue(&self) -> bool {
+      match self {
+        Value::Upvalue(_) => true,
+        _ => false,
+      }
+    }
+
+    /// Convert spacelox value to number, panics if not a number
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    ///
+    /// let val1 = Value::Number(20.0);
+    /// assert_eq!(val1.to_num(), 20.0);
+    /// ```
+    pub fn to_num(&self) -> f64 {
+      match self {
+        Value::Number(num) => *num,
+        _ => panic!("Value is not number"),
+      }
+    }
+
+    /// Convert spacelox value to boolean, panics if not a bool
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    ///
+    /// let b1 = Value::Bool(false);
+    /// assert_eq!(b1.to_bool(), false);
+    /// ```
+    pub fn to_bool(&self) -> bool {
+      match self {
+        Value::Bool(b1) => *b1,
+        _ => panic!("Value is not boolean"),
+      }
+    }
+
+    /// Unwrap and reference a spacelox string, panics if not a string
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::memory::{Gc, NO_GC};
+    ///
+    /// let gc = Gc::default();
+    /// let managed =  gc.manage_str(String::from("example"), &NO_GC);
+    ///
+    /// let value = Value::String(managed);
+    /// assert_eq!(&*value.to_str(), "example")
+    /// ```
+    pub fn to_str(&self) -> Managed<String> {
+      match self {
+        Self::String(str1) => *str1,
+        _ => panic!("Expected string."),
+      }
+    }
+
+    /// Unwrap and reference a spacelox list, panics if not a list
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::managed::{Allocation, Managed};
+    /// use std::ptr::NonNull;
+    ///
+    /// let list: Vec<Value> = vec![Value::Nil];
+    /// let mut alloc = Box::new(Allocation::new(list));
+    /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+    /// let managed = Managed::from(ptr);
+    ///
+    /// let value = Value::List(managed);
+    /// assert_eq!(value.to_list()[0], Value::Nil)
+    /// ```
+    pub fn to_list(&self) -> Managed<Vec<Value>> {
+      match self {
+        Self::List(list) => *list,
+        _ => panic!("Expected list."),
+      }
+    }
+
+    /// Unwrap and reference a spacelox list, panics if not a list
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::managed::{Allocation, Managed, make_managed};
+    /// use spacelox_core::SlHashMap;
+    /// use std::ptr::NonNull;
+    ///
+    /// let map: SlHashMap<Value, Value> = SlHashMap::default();
+    /// let mut alloc = Box::new(Allocation::new(map));
+    /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+    /// let managed = Managed::from(ptr);
+    ///
+    /// let value = Value::Map(managed);
+    /// assert_eq!(value.to_map().len(), 0)
+    /// ```
+    pub fn to_map(&self) -> Managed<SlHashMap<Value, Value>> {
+      match self {
+        Self::Map(map) => *map,
+        _ => panic!("Expected list."),
+      }
+    }
+
+    /// Unwrap and reference a spacelox iterator, panics if not a iterator
+    pub fn to_iter(&self) -> Managed<SlIterator> {
+      match self {
+        Self::Iter(iter) => *iter,
+        _ => panic!("Expected iterator."),
+      }
+    }
+
+    /// Unwrap and reference a spacelox function, panics if not a function
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::object::Fun;
+    /// use spacelox_core::arity::ArityKind;
+    /// use spacelox_core::memory::{Gc, NO_GC};
+    /// use spacelox_core::chunk::Chunk;
+    ///
+    /// let gc = Gc::default();
+    /// let fun: Fun = Fun::new(gc.manage_str(String::from("add"), &NO_GC));
+    /// let managed = gc.manage(fun, &NO_GC);
+    ///
+    /// let value = Value::Fun(managed);
+    /// assert_eq!(&*value.to_fun().name, "add");
+    /// ```
+    pub fn to_fun(&self) -> Managed<Fun> {
+      match self {
+        Self::Fun(fun) => *fun,
+        _ => panic!("Expected function!"),
+      }
+    }
+
+    /// Unwrap a spacelox native function, panics if not a native function
+    pub fn to_native_fun(&self) -> Managed<Box<dyn NativeFun>> {
+      match self {
+        Self::NativeFun(native_fun) => *native_fun,
+        _ => panic!("Expected native function!"),
+      }
+    }
+
+    /// Unwrap a spacelox native method, panics if not a native method
+    pub fn to_native_method(&self) -> Managed<Box<dyn NativeMethod>> {
+      match self {
+        Self::NativeMethod(native_method) => *native_method,
+        _ => panic!("Expected native method"),
+      }
+    }
+
+    /// Unwrap and reference a spacelox closure, panics if not a closure
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::object::{Closure, Fun};
+    /// use spacelox_core::arity::ArityKind;
+    /// use spacelox_core::memory::{Gc, NO_GC};
+    /// use spacelox_core::chunk::Chunk;
+    ///
+    /// let gc = Gc::default();
+    /// let fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
+    /// let managed_fun = gc.manage(fun, &NO_GC);
+    ///
+    /// let closure = Closure::new(managed_fun);
+    /// let managed_closure = gc.manage(closure, &NO_GC);
+    ///
+    /// let value = Value::Closure(managed_closure);
+    /// assert_eq!(&*value.to_closure().fun.name.clone(), "add");
+    /// ```
+    pub fn to_closure(&self) -> Managed<Closure> {
+      match self {
+        Self::Closure(closure) => *closure,
+        _ => panic!("Expected closure!"),
+      }
+    }
+
+    /// Unwrap and reference a spacelox method, panics if not a method
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::object::{Closure, Method, Fun};
+    /// use spacelox_core::arity::ArityKind;
+    /// use spacelox_core::memory::{Gc, NO_GC};
+    /// use spacelox_core::chunk::Chunk;
+    ///
+    /// let gc = Gc::default();
+    /// let fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
+    /// let managed_fun = gc.manage(fun, &NO_GC);
+    ///
+    /// let closure = Closure::new(managed_fun);
+    /// let managed_closure = gc.manage(closure, &NO_GC);
+    ///
+    /// let nil = Value::Nil;
+    ///
+    /// let method = Method::new(nil, Value::Closure(managed_closure));
+    /// let managed_method = gc.manage(method, &NO_GC);
+    ///
+    /// let value = Value::Method(managed_method);
+    /// assert_eq!(value.to_method(), managed_method);
+    /// ```
+    pub fn to_method(&self) -> Managed<Method> {
+      match self {
+        Self::Method(method) => *method,
+        _ => panic!("Expected method!"),
+      }
+    }
+
+    /// Unwrap and reference a spacelox upvalue, panics if not a upvalue.
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::object::Upvalue;
+    /// use spacelox_core::managed::{Allocation, Managed, make_managed};
+    /// use std::ptr::NonNull;
+    ///
+    /// let value = Value::Number(5.0);
+    /// let (upvalue, upvalue_alloc) = make_managed(Upvalue::Open(NonNull::from(&value)));
+    /// let value = Value::Upvalue(upvalue);
+    ///
+    /// match *value.to_upvalue() {
+    ///   Upvalue::Open(stack_ptr) => assert_eq!(*unsafe { stack_ptr.as_ref() }, Value::Number(5.0)),
+    ///   Upvalue::Closed(_) => assert!(false),
+    /// };
+    /// ```
+    pub fn to_upvalue(&self) -> Managed<Upvalue> {
+      match self {
+        Self::Upvalue(upvalue) => *upvalue,
+        _ => panic!("Expected upvalue!"),
+      }
+    }
+
+    /// Unwrap and reference a spacelox instance, panics if not a instance
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::object::{Instance, Class};
+    /// use spacelox_core::managed::{Managed, Allocation, make_managed};
+    ///
+    /// let (name, name_alloc) = make_managed("example".to_string());
+    /// let (class, class_alloc) = make_managed(Class::new(name));
+    ///
+    /// let value = Value::Class(class);
+    /// assert_eq!(value.to_class().name, name);
+    /// ```
+    pub fn to_class(&self) -> Managed<Class> {
+      match self {
+        Self::Class(class) => *class,
+        _ => panic!("Expected class.",),
+      }
+    }
+
+    /// Unwrap and reference a spacelox instance, panics if not a instance
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::object::{Instance, Class};
+    /// use spacelox_core::managed::{Managed, Allocation, make_managed};
+    ///
+    /// let (name, name_alloc) = make_managed("example".to_string());
+    /// let (class, class_alloc) = make_managed(Class::new(name));
+    /// let (instance, instance_alloc) = make_managed(Instance::new(class));
+    ///
+    /// let value = Value::Instance(instance);
+    /// assert_eq!(value.to_instance().class, class);
+    pub fn to_instance(&self) -> Managed<Instance> {
+      match self {
+        Self::Instance(instance) => *instance,
+        _ => panic!("Expected instance!"),
+      }
+    }
+
+    /// Get a string representation of the underlying type this value representing
+    ///
+    /// # Examples
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::object::{Obj, ObjValue};
+    ///
+    /// let nil = Value::Nil;
+    /// let bool = Value::Bool(true);
+    /// let number = Value::Number(10);
+    /// let string = Value::Obj(Obj::new(ObjValue::String("something")));
+    ///
+    /// assert_eq!(nil.value_type(), "nil");
+    /// assert_eq!(bool.value_type(), "bool");
+    /// assert_eq!(number.value_type(), "number");
+    /// assert_eq!(string.value_type(), "string");
+    pub fn value_type(&self) -> String {
+      match self {
+        Value::Nil => "nil".to_string(),
+        Value::Bool(_) => "bool".to_string(),
+        Value::Number(_) => "number".to_string(),
+        Value::String(_) => "string".to_string(),
+        Value::List(_) => "list".to_string(),
+        Value::Map(_) => "map".to_string(),
+        Value::Fun(_) => "function".to_string(),
+        Value::Closure(_) => "closure".to_string(),
+        Value::Method(_) => "method".to_string(),
+        Value::Class(_) => "class".to_string(),
+        Value::Instance(_) => "instance".to_string(),
+        Value::Iter(_) => "iterator".to_string(),
+        Value::Upvalue(_) => "upvalue".to_string(),
+        Value::NativeFun(_) => "native function".to_string(),
+        Value::NativeMethod(_) => "native method".to_string(),
+      }
+    }
+
+    /// Get the class associated with this value
+    pub fn value_class(&self, builtin: &BuiltInClasses) -> Managed<Class> {
+      match self {
+        Value::Nil => builtin.nil,
+        Value::Bool(_) => builtin.bool,
+        Value::Number(_) => builtin.number,
+        Value::String(_) => builtin.string,
+        Value::List(_) => builtin.list,
+        Value::Map(_) => builtin.map,
+        Value::Fun(_) => panic!("TODO"),
+        Value::Closure(_) => builtin.closure,
+        Value::Method(_) => builtin.method,
+        Value::Class(_) => panic!("TODO"),
+        Value::Instance(instance) => instance.class,
+        Value::Iter(iterator) => iterator.class,
+        Value::Upvalue(upvalue) => upvalue.value().value_class(builtin),
+        Value::NativeFun(_) => builtin.native_fun,
+        Value::NativeMethod(_) => builtin.native_method,
+      }
+    }
+
+    pub fn kind(&self) -> ValueVariant {
+      match self {
+        Value::Nil => ValueVariant::Nil,
+        Value::Bool(_) => ValueVariant::Bool,
+        Value::Number(_) => ValueVariant::Number,
+        Value::String(_) => ValueVariant::String,
+        Value::List(_) => ValueVariant::List,
+        Value::Map(_) => ValueVariant::Map,
+        Value::Fun(_) => ValueVariant::Fun,
+        Value::Closure(_) => ValueVariant::Closure,
+        Value::Method(_) => ValueVariant::Method,
+        Value::Class(_) => ValueVariant::Class,
+        Value::Instance(_) => ValueVariant::Instance,
+        Value::Iter(_) => ValueVariant::Iter,
+        Value::Upvalue(_) => ValueVariant::Upvalue,
+        Value::NativeFun(_) => ValueVariant::NativeFun,
+        Value::NativeMethod(_) => ValueVariant::NativeMethod,
+      }
     }
   }
 
-  /// Convert spacelox value to number, panics if not a number
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::Value;
-  ///
-  /// let val1 = Value::Number(20.0);
-  /// assert_eq!(val1.to_num(), 20.0);
-  /// ```
-  pub fn to_num(&self) -> f64 {
-    match self {
-      Value::Number(num) => *num,
-      _ => panic!("Value is not number"),
+  impl From<Nil> for Value {
+    fn from(_: Nil) -> Self {
+      Value::Nil
     }
   }
 
-  /// Convert spacelox value to boolean, panics if not a bool
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::Value;
-  ///
-  /// let b1 = Value::Bool(false);
-  /// assert_eq!(b1.to_bool(), false);
-  /// ```
-  pub fn to_bool(&self) -> bool {
-    match self {
-      Value::Bool(b1) => *b1,
-      _ => panic!("Value is not boolean"),
+  impl From<bool> for Value {
+    fn from(b: bool) -> Self {
+      Value::Bool(b)
     }
   }
 
-  /// Unwrap and reference a spacelox string, panics if not a string
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::Value;
-  /// use spacelox_core::memory::{Gc, NO_GC};
-  ///
-  /// let gc = Gc::default();
-  /// let managed =  gc.manage_str(String::from("example"), &NO_GC);
-  ///
-  /// let value = Value::String(managed);
-  /// assert_eq!(&*value.to_str(), "example")
-  /// ```
-  pub fn to_str(&self) -> Managed<String> {
-    match self {
-      Self::String(str1) => *str1,
-      _ => panic!("Expected string."),
+  impl From<f64> for Value {
+    fn from(num: f64) -> Self {
+      Value::Number(num)
     }
   }
 
-  /// Unwrap and reference a spacelox list, panics if not a list
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::Value;
-  /// use spacelox_core::managed::{Allocation, Managed};
-  /// use std::ptr::NonNull;
-  ///
-  /// let list: Vec<Value> = vec![Value::Nil];
-  /// let mut alloc = Box::new(Allocation::new(list));
-  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-  /// let managed = Managed::from(ptr);
-  ///
-  /// let value = Value::List(managed);
-  /// assert_eq!(value.to_list()[0], Value::Nil)
-  /// ```
-  pub fn to_list(&self) -> Managed<Vec<Value>> {
-    match self {
-      Self::List(list) => *list,
-      _ => panic!("Expected list."),
+  impl From<Managed<String>> for Value {
+    fn from(managed: Managed<String>) -> Value {
+      Value::String(managed)
     }
   }
 
-  /// Unwrap and reference a spacelox list, panics if not a list
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::Value;
-  /// use spacelox_core::managed::{Allocation, Managed, make_managed};
-  /// use spacelox_core::SlHashMap;
-  /// use std::ptr::NonNull;
-  ///
-  /// let map: SlHashMap<Value, Value> = SlHashMap::default();
-  /// let mut alloc = Box::new(Allocation::new(map));
-  /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-  /// let managed = Managed::from(ptr);
-  ///
-  /// let value = Value::Map(managed);
-  /// assert_eq!(value.to_map().len(), 0)
-  /// ```
-  pub fn to_map(&self) -> Managed<SlHashMap<Value, Value>> {
-    match self {
-      Self::Map(map) => *map,
-      _ => panic!("Expected list."),
+  impl From<Managed<Vec<Value>>> for Value {
+    fn from(managed: Managed<Vec<Value>>) -> Value {
+      Value::List(managed)
     }
   }
 
-  /// Unwrap and reference a spacelox iterator, panics if not a iterator
-  pub fn to_iter(&self) -> Managed<SlIterator> {
-    match self {
-      Self::Iter(iter) => *iter,
-      _ => panic!("Expected iterator."),
+  impl From<Managed<SlHashMap<Value, Value>>> for Value {
+    fn from(managed: Managed<SlHashMap<Value, Value>>) -> Value {
+      Value::Map(managed)
     }
   }
 
-  /// Unwrap and reference a spacelox function, panics if not a function
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::{Value, Fun};
-  /// use spacelox_core::arity::ArityKind;
-  /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::chunk::Chunk;
-  ///
-  /// let gc = Gc::default();
-  /// let fun: Fun = Fun::new(gc.manage_str(String::from("add"), &NO_GC));
-  /// let managed = gc.manage(fun, &NO_GC);
-  ///
-  /// let value = Value::Fun(managed);
-  /// assert_eq!(&*value.to_fun().name, "add");
-  /// ```
-  pub fn to_fun(&self) -> Managed<Fun> {
-    match self {
-      Self::Fun(fun) => *fun,
-      _ => panic!("Expected function!"),
+  impl From<Managed<SlIterator>> for Value {
+    fn from(managed: Managed<SlIterator>) -> Value {
+      Value::Iter(managed)
     }
   }
 
-  /// Unwrap a spacelox native function, panics if not a native function
-  pub fn to_native_fun(&self) -> Managed<Box<dyn NativeFun>> {
-    match self {
-      Self::NativeFun(native_fun) => *native_fun,
-      _ => panic!("Expected native function!"),
+  impl From<Managed<Closure>> for Value {
+    fn from(managed: Managed<Closure>) -> Value {
+      Value::Closure(managed)
     }
   }
 
-  /// Unwrap a spacelox native method, panics if not a native method
-  pub fn to_native_method(&self) -> Managed<Box<dyn NativeMethod>> {
-    match self {
-      Self::NativeMethod(native_method) => *native_method,
-      _ => panic!("Expected native method"),
+  impl From<Managed<Fun>> for Value {
+    fn from(managed: Managed<Fun>) -> Value {
+      Value::Fun(managed)
     }
   }
 
-  /// Unwrap and reference a spacelox closure, panics if not a closure
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::{Value, Closure, Fun};
-  /// use spacelox_core::arity::ArityKind;
-  /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::chunk::Chunk;
-  ///
-  /// let gc = Gc::default();
-  /// let fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
-  /// let managed_fun = gc.manage(fun, &NO_GC);
-  ///
-  /// let closure = Closure::new(managed_fun);
-  /// let managed_closure = gc.manage(closure, &NO_GC);
-  ///
-  /// let value = Value::Closure(managed_closure);
-  /// assert_eq!(&*value.to_closure().fun.name.clone(), "add");
-  /// ```
-  pub fn to_closure(&self) -> Managed<Closure> {
-    match self {
-      Self::Closure(closure) => *closure,
-      _ => panic!("Expected closure!"),
+  impl From<Managed<Class>> for Value {
+    fn from(managed: Managed<Class>) -> Value {
+      Value::Class(managed)
     }
   }
 
-  /// Unwrap and reference a spacelox method, panics if not a method
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::{Value, Closure, Method, Fun};
-  /// use spacelox_core::arity::ArityKind;
-  /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::chunk::Chunk;
-  ///
-  /// let gc = Gc::default();
-  /// let fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
-  /// let managed_fun = gc.manage(fun, &NO_GC);
-  ///
-  /// let closure = Closure::new(managed_fun);
-  /// let managed_closure = gc.manage(closure, &NO_GC);
-  ///
-  /// let nil = Value::Nil;
-  ///
-  /// let method = Method::new(nil, Value::Closure(managed_closure));
-  /// let managed_method = gc.manage(method, &NO_GC);
-  ///
-  /// let value = Value::Method(managed_method);
-  /// assert_eq!(value.to_method(), managed_method);
-  /// ```
-  pub fn to_method(&self) -> Managed<Method> {
-    match self {
-      Self::Method(method) => *method,
-      _ => panic!("Expected method!"),
+  impl From<Managed<Instance>> for Value {
+    fn from(managed: Managed<Instance>) -> Value {
+      Value::Instance(managed)
     }
   }
 
-  /// Unwrap and reference a spacelox upvalue, panics if not a upvalue.
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::{Value, Upvalue};
-  /// use spacelox_core::managed::{Allocation, Managed, make_managed};
-  /// use std::ptr::NonNull;
-  ///
-  /// let value = Value::Number(5.0);
-  /// let (upvalue, upvalue_alloc) = make_managed(Upvalue::Open(NonNull::from(&value)));
-  /// let value = Value::Upvalue(upvalue);
-  ///
-  /// match *value.to_upvalue() {
-  ///   Upvalue::Open(stack_ptr) => assert_eq!(*unsafe { stack_ptr.as_ref() }, Value::Number(5.0)),
-  ///   Upvalue::Closed(_) => assert!(false),
-  /// };
-  /// ```
-  pub fn to_upvalue(&self) -> Managed<Upvalue> {
-    match self {
-      Self::Upvalue(upvalue) => *upvalue,
-      _ => panic!("Expected upvalue!"),
+  impl From<Managed<Method>> for Value {
+    fn from(managed: Managed<Method>) -> Value {
+      Value::Method(managed)
     }
   }
 
-  /// Unwrap and reference a spacelox instance, panics if not a instance
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::{Value, Instance, Class};
-  /// use spacelox_core::managed::{Managed, Allocation, make_managed};
-  ///
-  /// let (name, name_alloc) = make_managed("example".to_string());
-  /// let (class, class_alloc) = make_managed(Class::new(name));
-  ///
-  /// let value = Value::Class(class);
-  /// assert_eq!(value.to_class().name, name);
-  /// ```
-  pub fn to_class(&self) -> Managed<Class> {
-    match self {
-      Self::Class(class) => *class,
-      _ => panic!("Expected class.",),
+  impl From<Managed<Box<dyn NativeFun>>> for Value {
+    fn from(managed: Managed<Box<dyn NativeFun>>) -> Value {
+      Value::NativeFun(managed)
     }
   }
 
-  /// Unwrap and reference a spacelox instance, panics if not a instance
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::{Value, Instance, Class};
-  /// use spacelox_core::managed::{Managed, Allocation, make_managed};
-  ///
-  /// let (name, name_alloc) = make_managed("example".to_string());
-  /// let (class, class_alloc) = make_managed(Class::new(name));
-  /// let (instance, instance_alloc) = make_managed(Instance::new(class));
-  ///
-  /// let value = Value::Instance(instance);
-  /// assert_eq!(value.to_instance().class, class);
-  pub fn to_instance(&self) -> Managed<Instance> {
-    match self {
-      Self::Instance(instance) => *instance,
-      _ => panic!("Expected instance!"),
+  impl From<Managed<Box<dyn NativeMethod>>> for Value {
+    fn from(managed: Managed<Box<dyn NativeMethod>>) -> Value {
+      Value::NativeMethod(managed)
     }
   }
 
-  /// Get a string representation of the underlying type this value representing
-  ///
-  /// # Examples
-  /// use spacelox_core::value::Value;
-  /// use spacelox_core::object::{Obj, ObjValue};
-  ///
-  /// let nil = Value::Nil;
-  /// let bool = Value::Bool(true);
-  /// let number = Value::Number(10);
-  /// let string = Value::Obj(Obj::new(ObjValue::String("something")));
-  ///
-  /// assert_eq!(nil.value_type(), "nil");
-  /// assert_eq!(bool.value_type(), "bool");
-  /// assert_eq!(number.value_type(), "number");
-  /// assert_eq!(string.value_type(), "string");
-  pub fn value_type(&self) -> String {
-    match self {
-      Value::Nil => "nil".to_string(),
-      Value::Bool(_) => "bool".to_string(),
-      Value::Number(_) => "number".to_string(),
-      Value::String(_) => "string".to_string(),
-      Value::List(_) => "list".to_string(),
-      Value::Map(_) => "map".to_string(),
-      Value::Fun(_) => "function".to_string(),
-      Value::Closure(_) => "closure".to_string(),
-      Value::Method(_) => "method".to_string(),
-      Value::Class(_) => "class".to_string(),
-      Value::Instance(_) => "instance".to_string(),
-      Value::Iter(_) => "iterator".to_string(),
-      Value::Upvalue(_) => "upvalue".to_string(),
-      Value::NativeFun(_) => "native function".to_string(),
-      Value::NativeMethod(_) => "native method".to_string(),
+
+  impl From<Managed<Upvalue>> for Value {
+    fn from(managed: Managed<Upvalue>) -> Value {
+      Value::Upvalue(managed)
     }
   }
 
-  pub fn value_class(&self, builtin: &BuiltInClasses) -> Managed<Class> {
-    match self {
-      Value::Nil => builtin.nil,
-      Value::Bool(_) => builtin.bool,
-      Value::Number(_) => builtin.number,
-      Value::String(_) => builtin.string,
-      Value::List(_) => builtin.list,
-      Value::Map(_) => builtin.map,
-      Value::Fun(_) => panic!("TODO"),
-      Value::Closure(_) => builtin.closure,
-      Value::Method(_) => builtin.method,
-      Value::Class(_) => panic!("TODO"),
-      Value::Instance(instance) => instance.class,
-      Value::Iter(iterator) => iterator.class,
-      Value::Upvalue(upvalue) => upvalue.value().value_class(builtin),
-      Value::NativeFun(_) => builtin.native_fun,
-      Value::NativeMethod(_) => builtin.native_method,
-    }
-  }
-}
+  impl fmt::Display for Value {
+    /// Implement display for value in spacelox
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      match self {
+        Self::Number(num) => write!(f, "{}", num),
+        Self::Bool(b) => write!(f, "{}", b),
+        Self::Nil => write!(f, "nil"),
+        Self::String(string) => write!(f, "'{}'", string.as_str()),
+        Self::List(list) => {
+          let mut strings: Vec<String> = Vec::with_capacity(list.len());
+          for item in list.iter() {
+            strings.push(format!("{}", item));
+          }
 
-impl fmt::Display for Value {
-  /// Implement display for value in spacelox
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    match self {
-      Self::Number(num) => write!(f, "{}", num),
-      Self::Bool(b) => write!(f, "{}", b),
-      Self::Nil => write!(f, "nil"),
-      Self::String(string) => write!(f, "'{}'", string.as_str()),
-      Self::List(list) => {
-        let mut strings: Vec<String> = Vec::with_capacity(list.len());
-        for item in list.iter() {
-          strings.push(format!("{}", item));
+          write!(f, "[{}]", strings.join(", "))
         }
+        Self::Map(map) => {
+          let strings: Vec<String> = map
+            .iter()
+            .map(|(key, value)| format!("{}: {}", key, value))
+            .collect();
+          write!(f, "{{ {} }}", strings.join(", "))
+        }
+        Self::Fun(fun) => write!(f, "{}", fun),
+        Self::Upvalue(upvalue) => match &**upvalue {
+          Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
+          Upvalue::Closed(store) => write!(f, "{}", store),
+        },
+        Self::Closure(closure) => write!(f, "{}", *closure.fun),
+        Self::Method(bound) => write!(f, "{}.{}", bound.receiver, bound.method),
+        Self::Class(class) => write!(f, "{}", &class.name.as_str()),
+        Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
+        Self::Iter(iterator) => write!(f, "{} iterator", &iterator.class.name.as_str()),
+        Self::NativeFun(native_fun) => write!(f, "<native fun {}>", native_fun.meta().name),
+        Self::NativeMethod(native_method) => {
+          write!(f, "<native method {}>", native_method.meta().name)
+        }
+      }
+    }
+  }
 
-        write!(f, "[{}]", strings.join(", "))
+  impl PartialEq for Value {
+    /// Determine if this `Value` and another `Value` are equal inside
+    /// of the spacelox runtime
+    ///
+    /// # Examples
+    /// ```
+    /// use spacelox_core::value::Value;
+    ///
+    /// let val1 = Value::Bool(false);
+    /// let val2 = Value::Bool(true);
+    ///
+    /// assert_eq!(val1 == val2, false);
+    /// ```
+    fn eq(&self, other: &Value) -> bool {
+      // check the the variants have the same value
+      match (self, other) {
+        (Self::Number(num1), Self::Number(num2)) => num1 == num2,
+        (Self::Bool(b1), Self::Bool(b2)) => b1 == b2,
+        (Self::Nil, Self::Nil) => true,
+        (Self::String(string1), Self::String(string2)) => string1 == string2,
+        (Self::List(list1), Self::List(list2)) => list1 == list2,
+        (Self::Iter(iter1), Self::Iter(iter2)) => iter1 == iter2,
+        (Self::Map(map1), Self::Map(map2)) => map1 == map2,
+        (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
+        (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,
+        (Self::Method(method1), Self::Method(method2)) => method1 == method2,
+        (Self::NativeFun(native1), Self::NativeFun(native2)) => native1 == native2,
+        (Self::NativeMethod(native1), Self::NativeMethod(native2)) => native1 == native2,
+        (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => upvalue1 == upvalue2,
+        (Self::Class(class1), Self::Class(class2)) => class1 == class2,
+        (Self::Instance(instance1), Self::Instance(instance2)) => instance1 == instance2,
+        _ => false,
       }
-      Self::Map(map) => {
-        let strings: Vec<String> = map
-          .iter()
-          .map(|(key, value)| format!("{}: {}", key, value))
-          .collect();
-        write!(f, "{{ {} }}", strings.join(", "))
+    }
+  }
+
+  impl Eq for Value {}
+
+  impl Hash for Value {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+      // check the the variants have the same value
+      match self {
+        Self::Number(num) => {
+          ValueVariant::Number.hash(state);
+          (*num as u64).hash(state);
+        }
+        Self::Bool(b) => {
+          ValueVariant::Bool.hash(state);
+          b.hash(state);
+        }
+        Self::Nil => ValueVariant::Nil.hash(state),
+        Self::String(string) => {
+          ValueVariant::String.hash(state);
+          string.hash(state);
+        }
+        Self::List(list) => {
+          ValueVariant::List.hash(state);
+          list.hash(state);
+        }
+        Self::Map(map) => {
+          ValueVariant::Map.hash(state);
+          map.hash(state);
+        }
+        Self::Fun(fun) => {
+          ValueVariant::Fun.hash(state);
+          fun.hash(state);
+        }
+        Self::Closure(closure) => {
+          ValueVariant::Closure.hash(state);
+          closure.hash(state);
+        }
+        Self::Method(method) => {
+          ValueVariant::Method.hash(state);
+          method.hash(state);
+        }
+        Self::NativeFun(native) => {
+          ValueVariant::NativeFun.hash(state);
+          native.hash(state);
+        }
+        Self::NativeMethod(native) => {
+          ValueVariant::NativeMethod.hash(state);
+          native.hash(state);
+        }
+        Self::Upvalue(upvalue) => {
+          ValueVariant::Upvalue.hash(state);
+          upvalue.hash(state);
+        }
+        Self::Class(class) => {
+          ValueVariant::Class.hash(state);
+          class.hash(state);
+        }
+        Self::Instance(instance) => {
+          ValueVariant::Instance.hash(state);
+          instance.hash(state);
+        }
+        Self::Iter(iter) => {
+          ValueVariant::Iter.hash(state);
+          iter.hash(state);
+        }
+      };
+    }
+  }
+
+  impl Trace for Value {
+    fn trace(&self) -> bool {
+      match self {
+        Value::Nil => true,
+        Value::Bool(_) => true,
+        Value::Number(_) => true,
+        Value::String(string) => string.trace(),
+        Value::List(list) => list.trace(),
+        Value::Map(map) => map.trace(),
+        Value::Fun(fun) => fun.trace(),
+        Value::Closure(closure) => closure.trace(),
+        Value::Method(method) => method.trace(),
+        Value::Class(class) => class.trace(),
+        Value::Instance(instance) => instance.trace(),
+        Value::Iter(iter) => iter.trace(),
+        Value::Upvalue(upvalue) => upvalue.trace(),
+        Value::NativeFun(native) => native.trace(),
+        Value::NativeMethod(native) => native.trace(),
       }
-      Self::Fun(fun) => write!(f, "{}", fun),
-      Self::Upvalue(upvalue) => match &**upvalue {
-        Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
-        Upvalue::Closed(store) => write!(f, "{}", store),
-      },
-      Self::Closure(closure) => write!(f, "{}", *closure.fun),
-      Self::Method(bound) => write!(f, "{}.{}", bound.receiver, bound.method),
-      Self::Class(class) => write!(f, "{}", &class.name.as_str()),
-      Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
-      Self::Iter(iterator) => write!(f, "{} iterator", &iterator.class.name.as_str()),
-      Self::NativeFun(native_fun) => write!(f, "<native fun {}>", native_fun.meta().name),
-      Self::NativeMethod(native_method) => {
-        write!(f, "<native method {}>", native_method.meta().name)
+    }
+
+    fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+      match self {
+        Value::Nil => true,
+        Value::Bool(_) => true,
+        Value::Number(_) => true,
+        Value::String(string) => string.trace_debug(stdio),
+        Value::List(list) => list.trace_debug(stdio),
+        Value::Map(map) => map.trace_debug(stdio),
+        Value::Fun(fun) => fun.trace_debug(stdio),
+        Value::Closure(closure) => closure.trace_debug(stdio),
+        Value::Method(method) => method.trace_debug(stdio),
+        Value::Class(class) => class.trace_debug(stdio),
+        Value::Instance(instance) => instance.trace_debug(stdio),
+        Value::Iter(iter) => iter.trace_debug(stdio),
+        Value::Upvalue(upvalue) => upvalue.trace_debug(stdio),
+        Value::NativeFun(native) => native.trace_debug(stdio),
+        Value::NativeMethod(native) => native.trace_debug(stdio),
+      }
+    }
+  }
+
+  #[cfg(test)]
+  mod test {
+    use super::*;
+    use crate::managed::Allocation;
+    use std::ptr::NonNull;
+
+    fn example_each(string: Managed<String>) -> Vec<Value> {
+      vec![
+        Value::Bool(true),
+        Value::Nil,
+        Value::Number(10.0),
+        Value::String(string),
+      ]
+    }
+
+    #[test]
+    fn test_diff_type_no_equal() {
+      // let string = "example";
+      let mut string_alloc = Box::new(Allocation::new("data".to_string()));
+
+      // "blah".to_string().into_boxed_str();
+      let string_ptr = unsafe { NonNull::new_unchecked(&mut *string_alloc) };
+      let managed_string = Managed::from(string_ptr);
+
+      let examples = example_each(managed_string);
+      for i in 0..examples.len() {
+        for j in 0..examples.len() {
+          if i == j {
+            assert_eq!(examples[i] == examples[j], true);
+          } else {
+            assert_eq!(examples[i] == examples[j], false);
+          }
+        }
       }
     }
   }
 }
 
-impl PartialEq for Value {
-  /// Determine if this `Value` and another `Value` are equal inside
-  /// of the spacelox runtime
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::Value;
-  ///
-  /// let val1 = Value::Bool(false);
-  /// let val2 = Value::Bool(true);
-  ///
-  /// assert_eq!(val1 == val2, false);
-  /// ```
-  fn eq(&self, other: &Value) -> bool {
-    // check the the variants have the same value
-    match (self, other) {
-      (Self::Number(num1), Self::Number(num2)) => num1 == num2,
-      (Self::Bool(b1), Self::Bool(b2)) => b1 == b2,
-      (Self::Nil, Self::Nil) => true,
-      (Self::String(string1), Self::String(string2)) => string1 == string2,
-      (Self::List(list1), Self::List(list2)) => list1 == list2,
-      (Self::Iter(iter1), Self::Iter(iter2)) => iter1 == iter2,
-      (Self::Map(map1), Self::Map(map2)) => map1 == map2,
-      (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
-      (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,
-      (Self::Method(method1), Self::Method(method2)) => method1 == method2,
-      (Self::NativeFun(native1), Self::NativeFun(native2)) => native1 == native2,
-      (Self::NativeMethod(native1), Self::NativeMethod(native2)) => native1 == native2,
-      (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => upvalue1 == upvalue2,
-      (Self::Class(class1), Self::Class(class2)) => class1 == class2,
-      (Self::Instance(instance1), Self::Instance(instance2)) => instance1 == instance2,
-      _ => false,
+#[cfg(feature = "nan_boxing")]
+mod boxed {
+  use super::ValueVariant;
+  use crate::{
+    iterator::SlIterator,
+    managed::{Allocation, Manage, Managed, Trace},
+    native::{NativeFun, NativeMethod},
+    object::{Class, Closure, Fun, Instance, Method, Upvalue, BuiltInClasses},
+    SlHashMap,
+  };
+  use std::fmt;
+  use std::ptr::NonNull;
+
+  const BIT_SIGN: u64 = 0xc000000000000000;
+  const VARIANT_MASK: u64 = BIT_SIGN | QNAN | 0x0000000000000007;
+
+  const TAG_NIL: u64 = 1 | QNAN;  // 001
+  const TAG_FALSE: u64 = 2 | QNAN; // 010
+  const TAG_TRUE: u64 = 3 | QNAN; // 011
+  const TAG_STRING: u64 = 4 | QNAN; // 100
+  const TAG_LIST: u64 = 5 | QNAN; // 101
+  const TAG_MAP: u64 = 6 | QNAN; // 110
+  const TAG_CLOSURE: u64 = 7 | QNAN; // 111
+  const TAG_FUN: u64 = 0 | BIT_SIGN | QNAN;
+  const TAG_CLASS: u64 = 1 | BIT_SIGN | QNAN;
+  const TAG_INSTANCE: u64 = 2 | BIT_SIGN | QNAN;
+  const TAG_METHOD: u64 = 3 | BIT_SIGN | QNAN;
+  const TAG_ITER: u64 = 4 | BIT_SIGN | QNAN;
+  const TAG_NATIVE_FUN: u64 = 5 | BIT_SIGN | QNAN;
+  const TAG_NATIVE_METHOD: u64 = 6 | BIT_SIGN | QNAN;
+  const TAG_UPVALUE: u64 = 7 | BIT_SIGN | QNAN;
+
+  const TAGS: [u64; 15] = [
+    TAG_NIL,
+    TAG_FALSE,
+    TAG_TRUE,
+    TAG_STRING,
+    TAG_LIST,
+    TAG_MAP,
+    TAG_CLOSURE,
+    TAG_FUN,
+    TAG_CLASS,
+    TAG_INSTANCE,
+    TAG_METHOD,
+    TAG_ITER,
+    TAG_NATIVE_FUN,
+    TAG_NATIVE_METHOD,
+    TAG_UPVALUE,
+  ];
+
+  const TAG_VARIANTS: [ValueVariant; 15] = [
+    ValueVariant::Nil,
+    ValueVariant::Bool,
+    ValueVariant::Bool,
+    ValueVariant::String,
+    ValueVariant::List,
+    ValueVariant::Map,
+    ValueVariant::Closure,
+    ValueVariant::Fun,
+    ValueVariant::Class,
+    ValueVariant::Instance,
+    ValueVariant::Method,
+    ValueVariant::Iter,
+    ValueVariant::NativeFun,
+    ValueVariant::NativeMethod,
+    ValueVariant::Upvalue,
+  ];
+
+  #[derive(Clone, Copy)]
+  #[repr(C)]
+  union NumberUnion {
+    bits: u64,
+    num: f64,
+  }
+
+  // rust f64::NAN
+  // 0111 1111 1111 1000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000
+  //
+  // rust div by 0
+  // 0111 1111 1111 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000
+  //
+  // quiet NaN with signal indefinite
+  // 0111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000
+  const QNAN: u64 = 0x7ffc000000000000;
+
+  // 0111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0001
+  pub const VALUE_NIL: Value = Value(TAG_NIL);
+
+  // 0111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0010
+  pub const VALUE_TRUE: Value = Value(TAG_TRUE);
+
+  // 0111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0011
+  pub const VALUE_FALSE: Value = Value(TAG_FALSE);
+
+  #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
+  pub struct Value(u64);
+
+  impl Value {
+    pub fn is_nil(&self) -> bool {
+      self.0 == VALUE_NIL.0
     }
-  }
-}
 
-impl Eq for Value {}
-
-impl Hash for Value {
-  fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-    // check the the variants have the same value
-    match self {
-      Self::Number(num) => {
-        ValueVariant::Number.hash(state);
-        (*num as u64).hash(state);
-      }
-      Self::Bool(b) => {
-        ValueVariant::Bool.hash(state);
-        b.hash(state);
-      }
-      Self::Nil => ValueVariant::Nil.hash(state),
-      Self::String(string) => {
-        ValueVariant::String.hash(state);
-        string.hash(state);
-      }
-      Self::List(list) => {
-        ValueVariant::List.hash(state);
-        list.hash(state);
-      }
-      Self::Map(map) => {
-        ValueVariant::Map.hash(state);
-        map.hash(state);
-      }
-      Self::Fun(fun) => {
-        ValueVariant::Fun.hash(state);
-        fun.hash(state);
-      }
-      Self::Closure(closure) => {
-        ValueVariant::Closure.hash(state);
-        closure.hash(state);
-      }
-      Self::Method(method) => {
-        ValueVariant::Method.hash(state);
-        method.hash(state);
-      }
-      Self::NativeFun(native) => {
-        ValueVariant::NativeFun.hash(state);
-        native.hash(state);
-      }
-      Self::NativeMethod(native) => {
-        ValueVariant::NativeMethod.hash(state);
-        native.hash(state);
-      }
-      Self::Upvalue(upvalue) => {
-        ValueVariant::Upvalue.hash(state);
-        upvalue.hash(state);
-      }
-      Self::Class(class) => {
-        ValueVariant::Class.hash(state);
-        class.hash(state);
-      }
-      Self::Instance(instance) => {
-        ValueVariant::Instance.hash(state);
-        instance.hash(state);
-      }
-      Self::Iter(iter) => {
-        ValueVariant::Iter.hash(state);
-        iter.hash(state);
-      }
-    };
-  }
-}
-
-impl Trace for Value {
-  fn trace(&self) -> bool {
-    match self {
-      Value::Nil => true,
-      Value::Bool(_) => true,
-      Value::Number(_) => true,
-      Value::String(string) => string.trace(),
-      Value::List(list) => list.trace(),
-      Value::Map(map) => map.trace(),
-      Value::Fun(fun) => fun.trace(),
-      Value::Closure(closure) => closure.trace(),
-      Value::Method(method) => method.trace(),
-      Value::Class(class) => class.trace(),
-      Value::Instance(instance) => instance.trace(),
-      Value::Iter(iter) => iter.trace(),
-      Value::Upvalue(upvalue) => upvalue.trace(),
-      Value::NativeFun(native) => native.trace(),
-      Value::NativeMethod(native) => native.trace(),
+    pub fn is_bool(&self) -> bool {
+      self.0 == VALUE_FALSE.0 || self.0 == VALUE_TRUE.0
     }
-  }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    match self {
-      Value::Nil => true,
-      Value::Bool(_) => true,
-      Value::Number(_) => true,
-      Value::String(string) => string.trace_debug(stdio),
-      Value::List(list) => list.trace_debug(stdio),
-      Value::Map(map) => map.trace_debug(stdio),
-      Value::Fun(fun) => fun.trace_debug(stdio),
-      Value::Closure(closure) => closure.trace_debug(stdio),
-      Value::Method(method) => method.trace_debug(stdio),
-      Value::Class(class) => class.trace_debug(stdio),
-      Value::Instance(instance) => instance.trace_debug(stdio),
-      Value::Iter(iter) => iter.trace_debug(stdio),
-      Value::Upvalue(upvalue) => upvalue.trace_debug(stdio),
-      Value::NativeFun(native) => native.trace_debug(stdio),
-      Value::NativeMethod(native) => native.trace_debug(stdio),
+    pub fn is_num(&self) -> bool {
+      (self.0 & QNAN) != QNAN
     }
-  }
-}
 
-pub struct BuiltInClasses {
-  pub nil: Managed<Class>,
-  pub bool: Managed<Class>,
-  pub number: Managed<Class>,
-  pub string: Managed<Class>,
-  pub list: Managed<Class>,
-  pub map: Managed<Class>,
-  pub closure: Managed<Class>,
-  pub method: Managed<Class>,
-  pub native_fun: Managed<Class>,
-  pub native_method: Managed<Class>,
-}
+    fn is_obj_tag(&self, tag: u64) -> bool {
+      (self.0 & VARIANT_MASK) == tag
+    }
 
-impl Trace for BuiltInClasses {
-  fn trace(&self) -> bool {
-    self.bool.trace();
-    self.nil.trace();
-    self.number.trace();
-    self.string.trace();
-    self.list.trace();
-    self.map.trace();
-    self.closure.trace();
-    self.method.trace();
-    self.native_fun.trace();
-    self.native_method.trace();
+    pub fn is_str(&self) -> bool {
+      self.is_obj_tag(TAG_STRING)
+    }
 
-    true
-  }
+    pub fn is_list(&self) -> bool {
+      self.is_obj_tag(TAG_LIST)
+    }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.bool.trace_debug(stdio);
-    self.nil.trace_debug(stdio);
-    self.number.trace_debug(stdio);
-    self.string.trace_debug(stdio);
-    self.list.trace_debug(stdio);
-    self.map.trace_debug(stdio);
-    self.closure.trace_debug(stdio);
-    self.method.trace_debug(stdio);
-    self.native_fun.trace_debug(stdio);
-    self.native_method.trace_debug(stdio);
+    pub fn is_map(&self) -> bool {
+      self.is_obj_tag(TAG_MAP)
+    }
 
-    true
-  }
-}
-#[derive(PartialEq, Clone, Debug)]
-pub enum Upvalue {
-  Open(NonNull<Value>),
-  Closed(Box<Value>),
-}
+    pub fn is_iter(&self) -> bool {
+      self.is_obj_tag(TAG_ITER)
+    }
 
-impl Upvalue {
-  /// Close over the upvalue by moving it onto the stack to the heap
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::{Value, Upvalue};
-  /// use std::rc::Rc;
-  /// use std::ptr::NonNull;
-  ///
-  /// let value = Value::Number(10.0);
-  ///
-  /// let mut upvalue = Upvalue::Open(NonNull::from(&value));
-  /// upvalue.hoist();
-  ///
-  /// match upvalue {
-  ///   Upvalue::Closed(store) => assert_eq!(*store, Value::Number(10.0)),
-  ///   Upvalue::Open(_) => assert!(false),
-  /// };
-  /// ```
-  pub fn hoist(&mut self) {
-    match self {
-      Upvalue::Open(stack_ptr) => {
-        let value = *unsafe { stack_ptr.as_ref() };
-        mem::replace(self, Upvalue::Closed(Box::new(value)));
+    pub fn is_closure(&self) -> bool {
+      self.is_obj_tag(TAG_CLOSURE)
+    }
+
+    pub fn is_fun(&self) -> bool {
+      self.is_obj_tag(TAG_FUN)
+    }
+
+    pub fn is_class(&self) -> bool {
+      self.is_obj_tag(TAG_CLASS)
+    }
+
+    pub fn is_instance(&self) -> bool {
+      self.is_obj_tag(TAG_INSTANCE)
+    }
+
+    pub fn is_method(&self) -> bool {
+      self.is_obj_tag(TAG_METHOD)
+    }
+
+    pub fn is_native_fun(&self) -> bool {
+      self.is_obj_tag(TAG_NATIVE_FUN)
+    }
+
+    pub fn is_native_method(&self) -> bool {
+      self.is_obj_tag(TAG_NATIVE_METHOD)
+    }
+
+    pub fn is_upvalue(&self) -> bool {
+      self.is_obj_tag(TAG_UPVALUE)
+    }
+
+    pub fn to_bool(&self) -> bool {
+      *self == VALUE_TRUE
+    }
+
+    pub fn to_num(&self) -> f64 {
+      let union = NumberUnion { bits: self.0 };
+      unsafe { union.num }
+    }
+
+    pub fn to_obj_tag<T: 'static + Manage>(&self, tag: u64) -> Managed<T> {
+      let as_unsigned = self.0 & !(tag);
+      let ptr = unsafe { NonNull::new_unchecked(as_unsigned as usize as *mut Allocation<T>) };
+      Managed::from(ptr)
+    }
+
+    pub fn to_str(&self) -> Managed<String> {
+      self.to_obj_tag(TAG_STRING)
+    }
+
+    pub fn to_list(&self) -> Managed<Vec<Value>> {
+      self.to_obj_tag(TAG_LIST)
+    }
+
+    pub fn to_map(&self) -> Managed<SlHashMap<Value, Value>> {
+      self.to_obj_tag(TAG_MAP)
+    }
+
+    pub fn to_iter(&self) -> Managed<SlIterator> {
+      self.to_obj_tag(TAG_ITER)
+    }
+
+    pub fn to_closure(&self) -> Managed<Closure> {
+      self.to_obj_tag(TAG_CLOSURE)
+    }
+
+    pub fn to_fun(&self) -> Managed<Fun> {
+      self.to_obj_tag(TAG_FUN)
+    }
+
+    pub fn to_class(&self) -> Managed<Class> {
+      self.to_obj_tag(TAG_CLASS)
+    }
+
+    pub fn to_instance(&self) -> Managed<Instance> {
+      self.to_obj_tag(TAG_INSTANCE)
+    }
+
+    pub fn to_method(&self) -> Managed<Method> {
+      self.to_obj_tag(TAG_METHOD)
+    }
+
+    pub fn to_native_fun(&self) -> Managed<Box<dyn NativeFun>> {
+      self.to_obj_tag(TAG_NATIVE_FUN)
+    }
+
+    pub fn to_native_method(&self) -> Managed<Box<dyn NativeMethod>> {
+      self.to_obj_tag(TAG_NATIVE_METHOD)
+    }
+
+    pub fn to_upvalue(&self) -> Managed<Upvalue> {
+      self.to_obj_tag(TAG_UPVALUE)
+    }
+
+    pub fn kind(&self) -> ValueVariant {
+      if self.is_num() {
+        return ValueVariant::Number;
       }
-      Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
+
+      let masked = self.0 & VARIANT_MASK;
+      match TAGS.binary_search(&masked) {
+        Ok(index) => TAG_VARIANTS[index],
+        Err(_) => panic!("Could not find value variant."),
+      }
     }
-  }
 
-  /// Is this upvalue currently open
-  ///
-  /// # Examples
-  /// ```
-  /// use spacelox_core::value::{Value, Upvalue};
-  /// use std::ptr::NonNull;
-  ///
-  /// let value = Value::Nil;
-  ///
-  /// let upvalue = Upvalue::Open(NonNull::from(&value));
-  /// assert_eq!(upvalue.is_open(), true);
-  /// ```
-  pub fn is_open(&self) -> bool {
-    match self {
-      Upvalue::Open(_) => true,
-      Upvalue::Closed(_) => false,
+
+    /// Get a string representation of the underlying type this value representing
+    ///
+    /// # Examples
+    /// use spacelox_core::value::Value;
+    /// use spacelox_core::object::{Obj, ObjValue};
+    ///
+    /// let nil = Value::Nil;
+    /// let bool = Value::Bool(true);
+    /// let number = Value::Number(10);
+    /// let string = Value::Obj(Obj::new(ObjValue::String("something")));
+    ///
+    /// assert_eq!(nil.value_type(), "nil");
+    /// assert_eq!(bool.value_type(), "bool");
+    /// assert_eq!(number.value_type(), "number");
+    /// assert_eq!(string.value_type(), "string");
+    pub fn value_type(&self) -> String {
+      match self.kind() {
+        ValueVariant::Nil => "nil".to_string(),
+        ValueVariant::Bool => "bool".to_string(),
+        ValueVariant::Number => "number".to_string(),
+        ValueVariant::String => "string".to_string(),
+        ValueVariant::List => "list".to_string(),
+        ValueVariant::Map => "map".to_string(),
+        ValueVariant::Fun => "function".to_string(),
+        ValueVariant::Closure => "closure".to_string(),
+        ValueVariant::Method => "method".to_string(),
+        ValueVariant::Class => "class".to_string(),
+        ValueVariant::Instance => "instance".to_string(),
+        ValueVariant::Iter => "iterator".to_string(),
+        ValueVariant::Upvalue => "upvalue".to_string(),
+        ValueVariant::NativeFun => "native function".to_string(),
+        ValueVariant::NativeMethod => "native method".to_string(),
+      }
     }
-  }
 
-  pub fn value(&self) -> Value {
-    match self {
-      Upvalue::Open(stack_ptr) => *unsafe { stack_ptr.as_ref() },
-      Upvalue::Closed(store) => **store,
-    }
-  }
-}
-
-impl Trace for Upvalue {
-  fn trace(&self) -> bool {
-    match self {
-      Upvalue::Closed(upvalue) => upvalue.trace(),
-      _ => true,
-    }
-  }
-
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    match self {
-      Upvalue::Closed(upvalue) => upvalue.trace_debug(stdio),
-      _ => true,
-    }
-  }
-}
-
-impl Manage for Upvalue {
-  fn alloc_type(&self) -> &str {
-    "upvalue"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    match self {
-      Self::Open(_) => String::from("Upvalue::Open({{ ... }})"),
-      Self::Closed(_) => String::from("Upvalue::Closed({{ ... }})"),
-    }
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub enum FunKind {
-  Fun,
-  Method,
-  Initializer,
-  Script,
-}
-
-#[derive(PartialEq, Clone)]
-pub struct Fun {
-  /// Arity of this function
-  pub arity: ArityKind,
-
-  /// Number of upvalues
-  pub upvalue_count: usize,
-
-  /// Code for the function body
-  chunk: Chunk,
-
-  /// Name if not top-level script
-  pub name: Managed<String>,
-}
-
-impl Fun {
-  pub fn new(name: Managed<String>) -> Self {
-    Self {
-      arity: ArityKind::Fixed(0),
-      upvalue_count: 0,
-      chunk: Chunk::default(),
-      name,
+    /// Get the class associated with this value
+    pub fn value_class(&self, builtin: &BuiltInClasses) -> Managed<Class> {
+      match self.kind() {
+        ValueVariant::Nil => builtin.nil,
+        ValueVariant::Bool => builtin.bool,
+        ValueVariant::Number => builtin.number,
+        ValueVariant::String => builtin.string,
+        ValueVariant::List => builtin.list,
+        ValueVariant::Map => builtin.map,
+        ValueVariant::Fun => panic!("TODO"),
+        ValueVariant::Closure => builtin.closure,
+        ValueVariant::Method => builtin.method,
+        ValueVariant::Class => builtin.class,
+        ValueVariant::Instance => self.to_instance().class,
+        ValueVariant::Iter => self.to_iter().class,
+        ValueVariant::Upvalue => self.to_upvalue().value().value_class(builtin),
+        ValueVariant::NativeFun  => builtin.native_fun,
+        ValueVariant::NativeMethod  => builtin.native_method,
+      }
     }
   }
 
-  pub fn chunk(&self) -> &Chunk {
-    &self.chunk
-  }
-
-  pub fn write_instruction(&mut self, hooks: &Hooks, op_code: AlignedByteCode, line: u32) {
-    hooks.grow(self, |fun| fun.chunk.write_instruction(op_code, line));
-  }
-
-  pub fn replace_instruction(&mut self, index: usize, instruction: u8) {
-    self.chunk.instructions[index] = instruction;
-  }
-
-  pub fn add_constant(&mut self, hooks: &Hooks, constant: Value) -> usize {
-    hooks.grow(self, |fun| fun.chunk.add_constant(constant))
-  }
-
-  pub fn shrink_to_fit(&mut self, hooks: &Hooks) {
-    hooks.shrink(self, |fun| fun.chunk.shrink_to_fit());
-  }
-
-  pub fn shrink_to_fit_internal(&mut self) {
-    self.chunk.shrink_to_fit();
-  }
-}
-
-impl fmt::Display for Fun {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<fn {}>", self.name)
-  }
-}
-
-impl fmt::Debug for Fun {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Fun")
-      .field("arity", &self.arity)
-      .field("upvalue_count", &self.upvalue_count)
-      .field("chunk", &"Chunk { ... }")
-      .field("name", &"Managed(String {...})")
-      .finish()
-  }
-}
-
-impl Trace for Fun {
-  fn trace(&self) -> bool {
-    self.name.trace();
-    self.chunk.constants.iter().for_each(|constant| {
-      constant.trace();
-    });
-
-    true
-  }
-
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.name.trace_debug(stdio);
-    self.chunk.constants.iter().for_each(|constant| {
-      constant.trace_debug(stdio);
-    });
-
-    true
-  }
-}
-
-impl Manage for Fun {
-  fn alloc_type(&self) -> &str {
-    "function"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + self.chunk.size()
-  }
-}
-
-impl Trace for String {
-  fn trace(&self) -> bool {
-    true
-  }
-
-  fn trace_debug(&self, _: &dyn StdIo) -> bool {
-    true
-  }
-}
-
-impl Manage for String {
-  fn alloc_type(&self) -> &str {
-    "string"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + self.capacity()
-  }
-}
-
-impl Trace for Vec<Value> {
-  fn trace(&self) -> bool {
-    self.iter().for_each(|value| {
-      value.trace();
-    });
-
-    true
-  }
-
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.iter().for_each(|value| {
-      value.trace_debug(stdio);
-    });
-
-    true
-  }
-}
-
-impl Manage for Vec<Value> {
-  fn alloc_type(&self) -> &str {
-    "list"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    String::from("List: [...]")
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Vec<Value>>() + mem::size_of::<Value>() * self.capacity()
-  }
-}
-
-impl Trace for SlHashMap<Value, Value> {
-  fn trace(&self) -> bool {
-    self.iter().for_each(|(key, value)| {
-      key.trace();
-      value.trace();
-    });
-
-    true
-  }
-
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.iter().for_each(|(key, value)| {
-      key.trace_debug(stdio);
-      value.trace_debug(stdio);
-    });
-
-    true
-  }
-}
-
-impl Manage for SlHashMap<Value, Value> {
-  fn alloc_type(&self) -> &str {
-    "list"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    String::from("List: [...]")
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<SlHashMap<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
-  }
-}
-
-#[derive(PartialEq, Clone)]
-pub struct Closure {
-  pub fun: Managed<Fun>,
-  pub upvalues: Vec<Value>,
-}
-
-impl Closure {
-  /// Create a new closure using a pointer to an underlying Fun
-  ///
-  /// # Example
-  /// ```
-  /// use spacelox_core::value::{Closure, Fun};
-  /// use spacelox_core::arity::ArityKind;
-  /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::chunk::Chunk;
-  ///
-  /// let gc = Gc::default();
-  /// let mut fun = Fun::new(gc.manage_str("example".to_string(), &NO_GC));
-  /// let managed_fun = gc.manage(fun, &NO_GC);
-  ///
-  /// let closure = Closure::new(managed_fun);
-  /// assert_eq!(&*closure.fun.name, "example");
-  /// ```
-  pub fn new(fun: Managed<Fun>) -> Self {
-    Closure {
-      upvalues: Vec::with_capacity(fun.upvalue_count as usize),
-      fun,
+  impl Trace for Value {
+    fn trace(&self) -> bool {
+      match self.kind() {
+        ValueVariant::String => self.to_str().trace(),
+        ValueVariant::List => self.to_list().trace(),
+        ValueVariant::Map => self.to_map().trace(),
+        ValueVariant::Fun => self.to_fun().trace(),
+        ValueVariant::Closure => self.to_closure().trace(),
+        ValueVariant::Method => self.to_method().trace(),
+        ValueVariant::Class => self.to_class().trace(),
+        ValueVariant::Instance => self.to_instance().trace(),
+        ValueVariant::Iter => self.to_iter().trace(),
+        ValueVariant::Upvalue => self.to_upvalue().trace(),
+        ValueVariant::NativeFun  => self.to_native_fun().trace(),
+        ValueVariant::NativeMethod  => self.to_native_method().trace(),
+        _ => true,
+      }
     }
-  }
-}
-
-impl fmt::Debug for Closure {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Closure")
-      .field("fun", &self.fun)
-      .field("upvalues", &format!("[UpValue; {}]", &self.upvalues.len()))
-      .finish()
-  }
-}
-
-impl Trace for Closure {
-  fn trace(&self) -> bool {
-    self.upvalues.iter().for_each(|upvalue| {
-      upvalue.trace();
-    });
-
-    self.fun.trace();
-    true
-  }
-
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.upvalues.iter().for_each(|upvalue| {
-      upvalue.trace_debug(stdio);
-    });
-
-    self.fun.trace_debug(stdio);
-    true
-  }
-}
-
-impl Manage for Closure {
-  fn alloc_type(&self) -> &str {
-    "closure"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    String::from("Closure: {{ fun: {{ ... }}, upvalues: {{ ... }} }}")
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.upvalues.capacity()
-  }
-}
-
-#[derive(PartialEq, Clone)]
-pub struct Class {
-  pub name: Managed<String>,
-  pub init: Option<Value>,
-  methods: DynamicMap<Managed<String>, Value>,
-}
-
-impl Class {
-  pub fn new(name: Managed<String>) -> Self {
-    Class {
-      name,
-      init: None,
-      methods: DynamicMap::new(),
+    fn trace_debug(&self, stdio: &dyn crate::io::StdIo) -> bool {
+      match self.kind() {
+        ValueVariant::String => self.to_str().trace_debug(stdio),
+        ValueVariant::List => self.to_list().trace_debug(stdio),
+        ValueVariant::Map => self.to_map().trace_debug(stdio),
+        ValueVariant::Fun => self.to_fun().trace_debug(stdio),
+        ValueVariant::Closure => self.to_closure().trace_debug(stdio),
+        ValueVariant::Method => self.to_method().trace_debug(stdio),
+        ValueVariant::Class => self.to_class().trace_debug(stdio),
+        ValueVariant::Instance => self.to_instance().trace_debug(stdio),
+        ValueVariant::Iter => self.to_iter().trace_debug(stdio),
+        ValueVariant::Upvalue => self.to_upvalue().trace_debug(stdio),
+        ValueVariant::NativeFun  => self.to_native_fun().trace_debug(stdio),
+        ValueVariant::NativeMethod  => self.to_native_method().trace_debug(stdio),
+        _ => true,
+      }
     }
   }
 
-  pub fn add_method(&mut self, hooks: &Hooks, name: Managed<String>, method: Value) {
-    if *name == INIT {
-      self.init = Some(method);
-    }
+  pub struct Nil();
 
-    hooks.grow(self, |class| {
-      class.methods.insert(name, method);
-    });
-  }
-
-  pub fn get_method(&self, name: &Managed<String>) -> Option<&Value> {
-    self.methods.get(name)
-  }
-
-  pub fn inherit(&mut self, hooks: &Hooks, super_class: Managed<Class>) {
-    hooks.grow(self, |class| {
-      super_class.methods.for_each(|(key, value)| {
-        match class.methods.get(&*key) {
-          None => class.methods.insert(*key, *value),
-          _ => None,
-        };
-      });
-    });
-
-    self.init = self.init.or(super_class.init);
-  }
-}
-
-impl fmt::Debug for Class {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Class")
-      .field("name", &self.name)
-      .field("methods", &"Methods: { ... }")
-      .field("init", &self.init)
-      .finish()
-  }
-}
-
-impl Trace for Class {
-  fn trace(&self) -> bool {
-    self.name.trace();
-    do_if_some(self.init, |init| {
-      init.trace();
-    });
-
-    self.methods.for_each(|(key, val)| {
-      key.trace();
-      val.trace();
-    });
-
-    true
-  }
-
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.name.trace_debug(stdio);
-    do_if_some(self.init, |init| {
-      init.trace_debug(stdio);
-    });
-
-    self.methods.for_each(|(key, val)| {
-      key.trace_debug(stdio);
-      val.trace_debug(stdio);
-    });
-
-    true
-  }
-}
-
-impl Manage for Class {
-  fn alloc_type(&self) -> &str {
-    "class"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    String::from("Class: {{ init: {{...}}, name: {{...}}, methods: {{...}}}}")
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Class>()
-      + (mem::size_of::<Managed<String>>() + mem::size_of::<Value>()) * self.methods.capacity()
-  }
-}
-
-#[derive(PartialEq, Clone)]
-pub struct Instance {
-  pub class: Managed<Class>,
-  fields: DynamicMap<Managed<String>, Value>,
-}
-
-impl Instance {
-  pub fn new(class: Managed<Class>) -> Self {
-    Instance {
-      class,
-      fields: DynamicMap::new(),
+  impl From<Nil> for Value {
+    fn from(_: Nil) -> Self {
+      VALUE_NIL
     }
   }
 
-  pub fn set_field(&mut self, hooks: &Hooks, name: Managed<String>, value: Value) {
-    hooks.grow(self, |instance: &mut Instance| {
-      instance.fields.insert(name, value);
-    });
+  impl From<bool> for Value {
+    fn from(b: bool) -> Self {
+      if b {
+        VALUE_TRUE
+      } else {
+        VALUE_FALSE
+      }
+    }
   }
 
-  pub fn get_field(&self, name: &Managed<String>) -> Option<&Value> {
-    self.fields.get(name)
-  }
-}
-
-impl fmt::Debug for Instance {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Instance")
-      .field("class", &self.class)
-      .field("fields", &self.fields)
-      .finish()
-  }
-}
-
-impl Trace for Instance {
-  fn trace(&self) -> bool {
-    self.class.trace();
-
-    self.fields.for_each(|(key, val)| {
-      key.trace();
-      val.trace();
-    });
-
-    true
+  impl From<f64> for Value {
+    fn from(num: f64) -> Self {
+      let union = NumberUnion { num };
+      unsafe { Self(union.bits) }
+    }
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.class.trace_debug(stdio);
-
-    self.fields.for_each(|(key, val)| {
-      key.trace_debug(stdio);
-      val.trace_debug(stdio);
-    });
-
-    true
-  }
-}
-
-impl Manage for Instance {
-  fn alloc_type(&self) -> &str {
-    "instance"
+  impl From<Managed<String>> for Value {
+    fn from(managed: Managed<String>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_STRING)
+    }
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
+  impl From<Managed<Vec<Value>>> for Value {
+    fn from(managed: Managed<Vec<Value>>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_LIST)
+    }
   }
 
-  fn debug_free(&self) -> String {
-    String::from("Instance: {{ class: {{...}}, fields: {{...}} }}")
+  impl From<Managed<SlHashMap<Value, Value>>> for Value {
+    fn from(managed: Managed<SlHashMap<Value, Value>>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_MAP)
+    }
   }
 
-  fn size(&self) -> usize {
-    mem::size_of::<Instance>()
-      + (mem::size_of::<Managed<String>>() + mem::size_of::<Value>()) * self.fields.capacity()
-  }
-}
-
-#[derive(PartialEq, Clone)]
-pub struct Method {
-  pub receiver: Value,
-  pub method: Value,
-}
-
-impl Method {
-  pub fn new(receiver: Value, method: Value) -> Self {
-    Self { receiver, method }
-  }
-}
-
-impl fmt::Debug for Method {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("BoundMethod")
-      .field("receiver", &format!("{}", self.receiver))
-      .field("method", &self.method)
-      .finish()
-  }
-}
-
-impl Trace for Method {
-  fn trace(&self) -> bool {
-    self.receiver.trace();
-    self.method.trace();
-    true
+  impl From<Managed<SlIterator>> for Value {
+    fn from(managed: Managed<SlIterator>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_ITER)
+    }
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.receiver.trace_debug(stdio);
-    self.method.trace_debug(stdio);
-    true
-  }
-}
-
-impl Manage for Method {
-  fn alloc_type(&self) -> &str {
-    "method"
+  impl From<Managed<Closure>> for Value {
+    fn from(managed: Managed<Closure>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_CLOSURE)
+    }
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
+  impl From<Managed<Fun>> for Value {
+    fn from(managed: Managed<Fun>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_FUN)
+    }
   }
 
-  fn debug_free(&self) -> String {
-    String::from("Method: {{ method: {{...}}, receiver: {{...}}}}")
+  impl From<Managed<Class>> for Value {
+    fn from(managed: Managed<Class>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_CLASS)
+    }
   }
 
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
+  impl From<Managed<Instance>> for Value {
+    fn from(managed: Managed<Instance>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_INSTANCE)
+    }
+  }
+
+  impl From<Managed<Method>> for Value {
+    fn from(managed: Managed<Method>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_METHOD)
+    }
+  }
+
+  impl From<Managed<Box<dyn NativeFun>>> for Value {
+    fn from(managed: Managed<Box<dyn NativeFun>>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_NATIVE_FUN)
+    }
+  }
+
+  impl From<Managed<Box<dyn NativeMethod>>> for Value {
+    fn from(managed: Managed<Box<dyn NativeMethod>>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_NATIVE_METHOD)
+    }
+  }
+
+  impl From<Managed<Upvalue>> for Value {
+    fn from(managed: Managed<Upvalue>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_UPVALUE)
+    }
+  }
+
+  impl fmt::Display for Value {
+    /// Implement display for value in spacelox
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+      match self.kind() {
+        ValueVariant::Number => write!(f, "{}", self.to_num()),
+        ValueVariant::Bool => write!(f, "{}", self.to_bool()),
+        ValueVariant::Nil => write!(f, "nil"),
+        ValueVariant::String => write!(f, "'{}'", self.to_str()),
+        ValueVariant::List => {
+          let list = self.to_list();
+          let mut strings: Vec<String> = Vec::with_capacity(list.len());
+          for item in list.iter() {
+            strings.push(format!("{}", item));
+          }
+
+          write!(f, "[{}]", strings.join(", "))
+        }
+        ValueVariant::Map => {
+          let map = self.to_map();
+          let strings: Vec<String> = map
+            .iter()
+            .map(|(key, value)| format!("{}: {}", key, value))
+            .collect();
+          write!(f, "{{ {} }}", strings.join(", "))
+        }
+        ValueVariant::Fun => write!(f, "{}", self.to_fun()),
+        ValueVariant::Upvalue => match &*self.to_upvalue() {
+          Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
+          Upvalue::Closed(store) => write!(f, "{}", store),
+        },
+        ValueVariant::Closure => write!(f, "{}", *self.to_closure().fun),
+        ValueVariant::Method => {
+          let bound = self.to_method();
+          write!(f, "{}.{}", bound.receiver, bound.method)
+        }
+        ValueVariant::Class => write!(f, "{}", &self.to_class().name.as_str()),
+        ValueVariant::Instance => write!(f, "{} instance", &self.to_instance().class.name.as_str()),
+        ValueVariant::Iter => write!(f, "{} iterator", &self.to_iter().class.name.as_str()),
+        ValueVariant::NativeFun => write!(f, "<native fun {}>", self.to_native_fun().meta().name),
+        ValueVariant::NativeMethod => {
+          write!(f, "<native method {}>", self.to_native_method().meta().name)
+        }
+      }
+    }
   }
 }
 
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::managed::Allocation;
+  use crate::{SlHashMap, managed::{Allocation, Managed}, object::{Closure, Fun, Class}};
   use std::ptr::NonNull;
 
-  fn example_each(string: Managed<String>) -> Vec<Value> {
-    vec![
-      Value::Bool(true),
-      Value::Nil,
-      Value::Number(10.0),
-      Value::String(string),
-    ]
+  const VARIANTS: [ValueVariant; 15] = [
+    ValueVariant::Bool,
+    ValueVariant::Nil,
+    ValueVariant::Number,
+    ValueVariant::String,
+    ValueVariant::List,
+    ValueVariant::Map,
+    ValueVariant::Fun,
+    ValueVariant::Closure,
+    ValueVariant::Class,
+    ValueVariant::Instance,
+    ValueVariant::Iter,
+    ValueVariant::Method,
+    ValueVariant::NativeFun,
+    ValueVariant::NativeMethod,
+    ValueVariant::Upvalue,
+  ];
+
+  fn is_type(val: Value, variant: ValueVariant) -> bool {
+    match variant {
+      ValueVariant::Bool => val.is_bool(),
+      ValueVariant::Nil => val.is_nil(),
+      ValueVariant::Number => val.is_num(),
+      ValueVariant::String => val.is_str(),
+      ValueVariant::List => val.is_list(),
+      ValueVariant::Map => val.is_map(),
+      ValueVariant::Fun => val.is_fun(),
+      ValueVariant::Closure => val.is_closure(),
+      ValueVariant::Class => val.is_class(),
+      ValueVariant::Instance => val.is_instance(),
+      ValueVariant::Iter => val.is_iter(),
+      ValueVariant::Method => val.is_method(),
+      ValueVariant::NativeFun => val.is_native_fun(),
+      ValueVariant::NativeMethod => val.is_native_method(),
+      ValueVariant::Upvalue => val.is_upvalue()
+    }
+  }
+
+  fn assert_type(val: Value, target: ValueVariant) {
+    VARIANTS.iter().for_each(|variant| {
+      if target == *variant {
+        assert!(is_type(val, *variant), "Expected to be {:?}", *variant);
+      } else {
+        assert!(!is_type(val, *variant), "Expected not to be {:?}", *variant);
+      };
+    });
+  }
+
+  fn test_string() -> (Box<Allocation<String>>, Managed<String>) {
+    let string = "sup".to_string();
+    let mut alloc = Box::new(Allocation::new(string));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+
+    let managed = Managed::from(ptr);
+    (alloc, managed)
+  }
+
+  fn test_fun() -> (Box<Allocation<String>>, Box<Allocation<Fun>>, Managed<Fun>) {
+    let (alloc_string, name) = test_string();
+
+    let fun = Fun::new(name);
+    let mut alloc = Box::new(Allocation::new(fun));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+
+    let managed = Managed::from(ptr);
+    (alloc_string, alloc, managed)
+  }
+
+  fn test_closure() -> (Box<Allocation<String>>, Box<Allocation<Fun>>, Box<Allocation<Closure>>, Managed<Closure>) {
+    let (alloc_string, alloc_fun, fun) = test_fun();
+
+    let closure = Closure::new(fun);
+    let mut alloc = Box::new(Allocation::new(closure));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+
+    let managed = Managed::from(ptr);
+    (alloc_string, alloc_fun, alloc, managed)
+  }
+
+  fn test_class() -> (Box<Allocation<String>>, Box<Allocation<Class>>, Managed<Class>) {
+    let (alloc_string, string) = test_string();
+
+    let class = Class::new(string);
+    let mut alloc = Box::new(Allocation::new(class));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+
+    let managed = Managed::from(ptr);
+    (alloc_string, alloc, managed)
+  }
+
+  // Closure(Managed<Closure>),
+  // Class(Managed<Class>),
+  // Instance(Managed<Instance>),
+  // Method(Managed<Method>),
+  // Iter(Managed<SlIterator>),
+  // NativeFun(Managed<Box<dyn NativeFun>>),
+  // NativeMethod(Managed<Box<dyn NativeMethod>>),
+  // Upvalue(Managed<Upvalue>),
+
+  #[test]
+  fn bool() {
+    let val_true = Value::from(true);
+    let val_false = Value::from(false);
+
+    assert_type(val_true, ValueVariant::Bool);
+    assert_type(val_false, ValueVariant::Bool);
+
+    assert_eq!(val_true.to_bool(), true);
+    assert_eq!(val_false.to_bool(), false);
   }
 
   #[test]
-  fn test_diff_type_no_equal() {
-    // let string = "example";
-    let mut string_alloc = Box::new(Allocation::new("data".to_string()));
+  fn num() {
+    let val_div_zero = Value::from(1.0 / 0.0);
+    let val_nan = Value::from(f64::NAN);
+    let val_neg_infinity = Value::from(f64::NEG_INFINITY);
+    let val_normal = Value::from(5.3);
 
-    // "blah".to_string().into_boxed_str();
-    let string_ptr = unsafe { NonNull::new_unchecked(&mut *string_alloc) };
-    let managed_string = Managed::from(string_ptr);
+    assert_type(val_div_zero, ValueVariant::Number);
+    assert_type(val_nan, ValueVariant::Number);
+    assert_type(val_neg_infinity, ValueVariant::Number);
+    assert_type(val_normal, ValueVariant::Number);
 
-    let examples = example_each(managed_string);
-    for i in 0..examples.len() {
-      for j in 0..examples.len() {
-        if i == j {
-          assert_eq!(examples[i] == examples[j], true);
-        } else {
-          assert_eq!(examples[i] == examples[j], false);
-        }
-      }
-    }
+    assert_eq!(val_div_zero.to_num(), 1.0 / 0.0);
+    assert!(val_nan.to_num().is_nan());
+    assert_eq!(val_neg_infinity.to_num(), f64::NEG_INFINITY);
+    assert_eq!(val_normal.to_num(), 5.3);
+  }
+
+  #[test]
+  fn string() {
+    let string = "sup".to_string();
+    let mut alloc = Box::new(Allocation::new(string));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+
+    let managed = Managed::from(ptr);
+    let value = Value::from(managed);
+    let managed2: Managed<String> = value.to_str();
+
+    assert_type(value, ValueVariant::String);
+
+    assert_eq!(&*managed, &*managed2);
+    assert_eq!(managed, managed2);
+  }
+
+  #[test]
+  fn list() {
+    let list = vec![VALUE_NIL, VALUE_TRUE, VALUE_FALSE];
+    let mut alloc = Box::new(Allocation::new(list));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+
+    let managed = Managed::from(ptr);
+    let value = Value::from(managed);
+    let managed2: Managed<Vec<Value>> = value.to_list();
+
+    assert_type(value, ValueVariant::List);
+
+    assert_eq!(managed.len(), managed2.len());
+    assert_eq!(managed[0], managed2[0]);
+    assert_eq!(managed[1], managed2[1]);
+    assert_eq!(managed[2], managed2[2]);
+    assert_eq!(managed, managed2);
+  }
+
+  #[test]
+  fn map() {
+    let mut map: SlHashMap<Value, Value> = SlHashMap::default();
+    map.insert(VALUE_NIL, VALUE_TRUE);
+    map.insert(Value::from(10.0), VALUE_FALSE);
+
+    let mut alloc = Box::new(Allocation::new(map));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+
+    let managed = Managed::from(ptr);
+    let value = Value::from(managed);
+    let managed2 = value.to_map();
+
+    assert_type(value, ValueVariant::Map);
+
+    assert_eq!(managed.len(), managed2.len());
+    assert_eq!(managed.get(&VALUE_NIL), managed2.get(&VALUE_NIL));
+    assert_eq!(managed.get(&Value::from(10.0)), managed2.get(&Value::from(10.0)));
+  }
+
+  #[test]
+  fn fun() {
+    let (_, _, managed) = test_fun();
+    let value = Value::from(managed);
+    let managed2 = value.to_fun();
+
+    assert_type(value, ValueVariant::Fun);
+
+    assert_eq!(managed.name, managed2.name);
+    assert_eq!(managed.arity, managed2.arity);
+  }
+
+  #[test]
+  fn closure() {
+    let (_, _, _, managed) = test_closure();
+
+    let value = Value::from(managed);
+    let managed2 = value.to_closure();
+
+    assert_type(value, ValueVariant::Closure);
+
+    assert_eq!(managed.fun, managed2.fun);
+    assert_eq!(managed.upvalues.len(), managed2.upvalues.len());
+  }
+
+  #[test]
+  fn class() {
+    let (_, _, managed) = test_class();
+
+    let value = Value::from(managed);
+    let managed2 = value.to_class();
+
+    assert_type(value, ValueVariant::Class);
+
+    assert_eq!(managed.name, managed2.name);
   }
 }

@@ -1,6 +1,5 @@
 use spacelox_core::chunk::{decode_u16, AlignedByteCode, Chunk, UpvalueIndex};
 use spacelox_core::io::StdIo;
-use spacelox_core::value::Value;
 use std::mem;
 
 /// Write a chunk to console
@@ -155,15 +154,14 @@ fn closure_instruction(
   stdio.println(&format!("{}", &chunk.constants[constant as usize]));
 
   let value = &chunk.constants[constant as usize];
-  let upvalue_count = match value {
-    Value::Fun(fun) => fun.upvalue_count,
-    _ => {
-      stdio.eprintln(&format!(
-        "!=== Compilation failure found {} instead of function ===!",
-        value.value_type()
-      ));
-      0
-    }
+  let upvalue_count = if value.is_fun() {
+    value.to_fun().upvalue_count
+  } else {
+    stdio.eprintln(&format!(
+      "!=== Compilation failure found {} instead of function ===!",
+      value.value_type()
+    ));
+    0
   };
 
   let mut current_offset = offset;

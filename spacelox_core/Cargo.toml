@@ -5,6 +5,7 @@ authors = ["John Chabot <johnchabot2013@gmail.com>"]
 edition = "2018"
 
 [features]
+nan_boxing = []
 debug_gc = []
 debug_stress_gc = []
 

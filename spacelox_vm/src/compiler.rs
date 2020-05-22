@@ -8,7 +8,9 @@ use spacelox_core::{
   arity::ArityKind,
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
   hooks::Hooks,
-  value::{Fun, FunKind, Value}, SlHashMap,
+  object::{Fun, FunKind},
+  value::Value,
+  SlHashMap,
 };
 use std::convert::TryInto;
 use std::mem;
@@ -389,7 +391,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     fun_compiler.end_compiler();
     let upvalue_count = fun_compiler.fun.upvalue_count;
 
-    let index = self.make_constant(Value::Fun(fun_compiler.fun));
+    let index = self.make_constant(Value::from(fun_compiler.fun));
     self.emit_byte(AlignedByteCode::Closure(index));
 
     // emit upvalue index instructions
@@ -853,9 +855,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Compile a lambda expression
   fn lambda(&mut self) {
-    let name = self
-      .hooks
-      .manage_str(String::from("lambda"));
+    let name = self.hooks.manage_str(String::from("lambda"));
 
     let mut fun_compiler = Compiler::child(name, FunKind::Fun, &mut *self);
     fun_compiler.begin_scope();
@@ -872,7 +872,6 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     if fun_compiler.parser.match_kind(TokenKind::LeftBrace) {
       fun_compiler.block();
     } else {
-
       // implicitly return expression lambdas
       fun_compiler.expression();
       fun_compiler.emit_byte(AlignedByteCode::Return)
@@ -883,7 +882,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let upvalue_count = fun_compiler.fun.upvalue_count;
     // let boxed_fun = Box::new(fun_compiler.fun);
 
-    let index = self.make_constant(Value::Fun(fun_compiler.fun));
+    let index = self.make_constant(Value::from(fun_compiler.fun));
     self.emit_byte(AlignedByteCode::Closure(index));
 
     // emit upvalue index instructions
@@ -939,7 +938,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Compile a number literal
   fn number(&mut self) {
-    let value = Value::Number(
+    let value = Value::from(
       self
         .parser
         .previous
@@ -958,7 +957,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// Compile a string literal
   fn string(&mut self) {
     let string = self.hooks.manage_str(copy_string(&self.parser.previous));
-    let value = Value::String(string);
+    let value = Value::from(string);
     self.emit_constant(value)
   }
 
@@ -1215,7 +1214,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u8 {
     let identifer = self.hooks.manage_str(name.lexeme);
-    self.make_constant(Value::String(identifer))
+    self.make_constant(Value::from(identifer))
   }
 
   fn add_local(&mut self, name: Token) {
@@ -1372,7 +1371,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
           self.parser.error("Too many constants in one chunk.");
           return 0;
         }
-    
+
         self.constants.insert(value, index);
         index as u8
       }
@@ -1958,34 +1957,43 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Fun((2, vec![
-          ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-          ByteCodeTest::Code(AlignedByteCode::True),
-          ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-          ByteCodeTest::Code(AlignedByteCode::Pop),
-          ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-          ByteCodeTest::Code(AlignedByteCode::Return),
-        ])),
+        ByteCodeTest::Fun((
+          2,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::True),
+            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Pop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
         ByteCodeTest::Code(AlignedByteCode::Method(1)),
-        ByteCodeTest::Fun((4, vec![
-          ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-          ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-          ByteCodeTest::Code(AlignedByteCode::Return),
-          ByteCodeTest::Code(AlignedByteCode::Nil),
-          ByteCodeTest::Code(AlignedByteCode::Return),
-        ])),
+        ByteCodeTest::Fun((
+          4,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
         ByteCodeTest::Code(AlignedByteCode::Method(3)),
-        ByteCodeTest::Fun((6, vec![
-          ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-          ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
-          ByteCodeTest::Code(AlignedByteCode::Return),
-          ByteCodeTest::Code(AlignedByteCode::Nil),
-          ByteCodeTest::Code(AlignedByteCode::Return),
-        ])),
+        ByteCodeTest::Fun((
+          6,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
         ByteCodeTest::Code(AlignedByteCode::Method(5)),
         ByteCodeTest::Code(AlignedByteCode::Pop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return)
+        ByteCodeTest::Code(AlignedByteCode::Return),
       ],
     );
   }
@@ -2106,8 +2114,8 @@ mod test {
         \"key1\": 10,
         \"key2\": nil,
       };
-    ".to_string();
-
+    "
+    .to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);

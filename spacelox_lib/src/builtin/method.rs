@@ -6,9 +6,11 @@ use spacelox_core::{
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
-  value::{Class, Value},
+  value::Value,
+  object::Class,
   CallResult, ModuleResult,
 };
+use crate::support::to_dyn_method;
 
 pub const METHOD_CLASS_NAME: &'static str = "Method";
 
@@ -19,7 +21,7 @@ pub fn declare_method_class(hooks: &Hooks, self_module: &mut Module) -> ModuleRe
   let name = hooks.manage_str(String::from(METHOD_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::Class(class))
+  self_module.add_export(hooks, name, Value::from(class))
 }
 
 pub fn define_method_class(hooks: &Hooks, self_module: &Module, _: &Package) {
@@ -29,15 +31,15 @@ pub fn define_method_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(METHOD_NAME.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MethodName::new(
+    Value::from(to_dyn_method(hooks, MethodName::new(
       hooks.manage_str(String::from(METHOD_NAME.name)),
-    )))),
+    ))),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(METHOD_CALL.name)),
-    Value::NativeMethod(hooks.manage(Box::new(MethodCall::new()))),
+    Value::from(to_dyn_method(hooks, MethodCall::new())),
   );
 }
 
@@ -84,10 +86,14 @@ impl NativeMethod for MethodCall {
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     let method = this.to_method();
-    match method.method {
-      Value::Closure(_) => hooks.call(this, args),
-      Value::NativeMethod(_) => hooks.call_method(method.receiver, method.method, args),
-      _ => panic!("TODO"),
+    let callable = method.method;
+
+    if callable.is_closure() {
+      hooks.call(this, args)
+    } else if callable.is_native_method() {
+      hooks.call_method(method.receiver, method.method, args)
+    } else {
+      panic!("TODO")
     }
   }
 }
@@ -101,7 +107,7 @@ mod test {
     use crate::support::{test_native_dependencies, TestContext};
     use spacelox_core::{
       memory::NO_GC,
-      value::{Closure, Fun, Instance, Method},
+      object::{Closure, Fun, Instance, Method},
     };
 
     #[test]
@@ -118,7 +124,7 @@ mod test {
       let gc = test_native_dependencies();
       let mut context = TestContext::new(
         &gc,
-        &[Value::String(
+        &[Value::from(
           gc.manage_str(String::from("example"), &NO_GC),
         )],
       );
@@ -130,11 +136,11 @@ mod test {
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(
-        Value::Instance(instance),
-        Value::Closure(closure),
+        Value::from(instance),
+        Value::from(closure),
       ));
 
-      let result1 = method_name.call(&mut hooks, Value::Method(method), &[]);
+      let result1 = method_name.call(&mut hooks, Value::from(method), &[]);
 
       match result1 {
         Ok(r) => assert_eq!(&*r.to_str(), "example"),
@@ -146,7 +152,7 @@ mod test {
   mod call {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::value::{Closure, Fun, Instance, Method};
+    use spacelox_core::object::{Closure, Fun, Instance, Method};
 
     #[test]
     fn new() {
@@ -160,7 +166,7 @@ mod test {
     fn call() {
       let method_call = MethodCall::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[Value::Number(14.3)]);
+      let mut context = TestContext::new(&gc, &[Value::from(14.3)]);
       let mut hooks = Hooks::new(&mut context);
 
       let fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
@@ -168,11 +174,11 @@ mod test {
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(
-        Value::Instance(instance),
-        Value::Closure(closure),
+        Value::from(instance),
+        Value::from(closure),
       ));
 
-      let result1 = method_call.call(&mut hooks, Value::Method(method), &[]);
+      let result1 = method_call.call(&mut hooks, Value::from(method), &[]);
 
       match result1 {
         Ok(r) => assert_eq!(r.to_num(), 14.3),

@@ -10,6 +10,7 @@ pub mod managed;
 pub mod memory;
 pub mod module;
 pub mod native;
+pub mod object;
 pub mod package;
 pub mod token;
 pub mod utils;

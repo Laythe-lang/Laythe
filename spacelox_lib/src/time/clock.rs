@@ -39,7 +39,7 @@ impl NativeFun for Clock {
 
   fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> CallResult {
     match self.start.elapsed() {
-      Ok(elapsed) => Ok(Value::Number((elapsed.as_micros() as f64) / 1000000.0)),
+      Ok(elapsed) => Ok(Value::from((elapsed.as_micros() as f64) / 1000000.0)),
       Err(e) => hooks.error(format!("clock failed {}", e)),
     }
   }
@@ -79,9 +79,10 @@ mod test {
       Err(_) => panic!(),
     };
 
-    match (res1, res2) {
-      (Value::Number(num1), Value::Number(num2)) => assert!(num1 <= num2),
-      _ => panic!(),
+    if res1.is_num() && res2.is_num() {
+      assert!(res1.to_num() <= res2.to_num());
+    } else {
+      panic!();
     }
   }
 }

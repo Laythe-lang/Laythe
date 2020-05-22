@@ -6,9 +6,11 @@ use spacelox_core::{
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
-  value::{Class, Value},
+  value::Value,
+  object::Class,
   CallResult, ModuleResult,
 };
+use crate::support::to_dyn_method;
 
 pub const CLOSURE_CLASS_NAME: &'static str = "Fun";
 
@@ -20,7 +22,7 @@ pub fn declare_closure_class(hooks: &Hooks, self_module: &mut Module) -> ModuleR
   let name = hooks.manage_str(String::from(CLOSURE_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::Class(class))
+  self_module.add_export(hooks, name, Value::from(class))
 }
 
 pub fn define_closure_class(hooks: &Hooks, self_module: &Module, _: &Package) {
@@ -30,19 +32,19 @@ pub fn define_closure_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(CLOSURE_NAME.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ClosureName::new()))),
+    Value::from(to_dyn_method(hooks, ClosureName::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(CLOSURE_SIZE.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ClosureSize::new()))),
+    Value::from(to_dyn_method(hooks, ClosureSize::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(CLOSURE_CALL.name)),
-    Value::NativeMethod(hooks.manage(Box::new(ClosureCall::new()))),
+    Value::from(to_dyn_method(hooks, ClosureCall::new())),
   );
 }
 
@@ -65,7 +67,7 @@ impl NativeMethod for ClosureName {
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(this.to_closure().fun.name))
+    Ok(Value::from(this.to_closure().fun.name))
   }
 }
 
@@ -94,7 +96,7 @@ impl NativeMethod for ClosureSize {
       ArityKind::Variadic(req) => req,
     };
 
-    Ok(Value::Number(req as f64))
+    Ok(Value::from(req as f64))
   }
 }
 
@@ -128,7 +130,7 @@ mod test {
   mod name {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::value::{Closure, Fun};
+    use spacelox_core::object::{Closure, Fun};
 
     #[test]
     fn new() {
@@ -148,7 +150,7 @@ mod test {
       let fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
       let closure = hooks.manage(Closure::new(fun));
 
-      let result1 = closure_name.call(&mut hooks, Value::Closure(closure), &[]);
+      let result1 = closure_name.call(&mut hooks, Value::from(closure), &[]);
 
       match result1 {
         Ok(r) => assert_eq!(&*r.to_str(), "example"),
@@ -160,7 +162,7 @@ mod test {
   mod size {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::value::{Closure, Fun};
+    use spacelox_core::object::{Closure, Fun};
 
     #[test]
     fn new() {
@@ -182,21 +184,21 @@ mod test {
 
       let closure = hooks.manage(Closure::new(fun));
 
-      let result = closure_name.call(&mut hooks, Value::Closure(closure), &[]);
+      let result = closure_name.call(&mut hooks, Value::from(closure), &[]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 4.0),
         Err(_) => assert!(false),
       }
 
       fun.arity = ArityKind::Default(2, 2);
-      let result = closure_name.call(&mut hooks, Value::Closure(closure), &[]);
+      let result = closure_name.call(&mut hooks, Value::from(closure), &[]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 2.0),
         Err(_) => assert!(false),
       }
 
       fun.arity = ArityKind::Variadic(5);
-      let result = closure_name.call(&mut hooks, Value::Closure(closure), &[]);
+      let result = closure_name.call(&mut hooks, Value::from(closure), &[]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 5.0),
         Err(_) => assert!(false),
@@ -207,7 +209,7 @@ mod test {
   mod call {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::value::{Closure, Fun};
+    use spacelox_core::object::{Closure, Fun};
 
     #[test]
     fn new() {
@@ -221,7 +223,7 @@ mod test {
     fn call() {
       let closure_call = ClosureCall::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[Value::Number(4.3)]);
+      let mut context = TestContext::new(&gc, &[Value::from(4.3)]);
       let mut hooks = Hooks::new(&mut context);
 
       let mut fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
@@ -229,8 +231,8 @@ mod test {
 
       let closure = hooks.manage(Closure::new(fun));
 
-      let args = &[Value::String(hooks.manage_str(String::from("input")))];
-      let result1 = closure_call.call(&mut hooks, Value::Closure(closure), args);
+      let args = &[Value::from(hooks.manage_str(String::from("input")))];
+      let result1 = closure_call.call(&mut hooks, Value::from(closure), args);
 
       match result1 {
         Ok(r) => assert_eq!(r.to_num(), 4.3),

@@ -6,9 +6,11 @@ use spacelox_core::{
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
-  value::{Class, Value},
+  value::Value,
+  object::Class,
   CallResult, ModuleResult,
 };
+use crate::support::to_dyn_method;
 
 pub const NUMBER_CLASS_NAME: &'static str = "Number";
 const NUMBER_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
@@ -17,7 +19,7 @@ pub fn declare_number_class(hooks: &Hooks, self_module: &mut Module) -> ModuleRe
   let name = hooks.manage_str(String::from(NUMBER_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::Class(class))
+  self_module.add_export(hooks, name, Value::from(class))
 }
 
 pub fn define_number_class(hooks: &Hooks, self_module: &Module, _: &Package) {
@@ -27,7 +29,7 @@ pub fn define_number_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NUMBER_STR.name)),
-    Value::NativeMethod(hooks.manage(Box::new(NumberStr::new()))),
+    Value::from(to_dyn_method(hooks, NumberStr::new())),
   );
 }
 
@@ -48,7 +50,7 @@ impl NativeMethod for NumberStr {
   }
 
   fn call(&self, hook: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(hook.manage_str(this.to_string())))
+    Ok(Value::from(hook.manage_str(this.to_num().to_string())))
   }
 }
 
@@ -75,7 +77,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let result = number_str.call(&mut hooks, Value::Number(10.0), &[]);
+      let result = number_str.call(&mut hooks, Value::from(10.0), &[]);
       match result {
         Ok(r) => assert_eq!(*r.to_str(), String::from("10")),
         Err(_) => assert!(false),

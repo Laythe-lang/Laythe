@@ -13,7 +13,7 @@ name = "spacelox_vm"
 path = "src/lib.rs"
 
 [dependencies]
-spacelox_core = { path = "../spacelox_core" }
+spacelox_core = { path = "../spacelox_core", features = ["nan_boxing"] }
 spacelox_lib = { path = "../spacelox_lib" }
 fnv = "1.0.3"
 

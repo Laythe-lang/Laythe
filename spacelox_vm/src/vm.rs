@@ -11,8 +11,9 @@ use spacelox_core::{
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
   native::{NativeFun, NativeMethod},
-  utils::{ptr_len, use_sentinel_nan, is_falsey},
-  value::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, Value},
+  utils::{is_falsey, ptr_len, use_sentinel_nan},
+  value::{VALUE_NIL, Value, ValueVariant},
+  object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue},
   CallResult, SlError, SlHashMap,
 };
 use spacelox_lib::{assert::assert_funs, builtin::make_builtin_classes, time::clock_funs};
@@ -98,7 +99,7 @@ impl<I: Io> Vm<I> {
     let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
 
     let frames = vec![CallFrame::new(closure); FRAME_MAX];
-    let stack = vec![Value::Nil; DEFAULT_STACK_MAX];
+    let stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
 
     let mut no_gc_context = NoContext::new(&gc);
     let mut hooks = Hooks::new(&mut no_gc_context);
@@ -149,7 +150,7 @@ impl<I: Io> Vm<I> {
     }
 
     let script_closure = self.gc.manage(Closure::new(result.fun), &NO_GC);
-    let script = Value::Closure(script_closure);
+    let script = Value::from(script_closure);
     let mut executor = VmExecutor::new(self, script);
     executor.run(RunMode::Normal)
   }
@@ -191,7 +192,7 @@ fn define_globals(gc: &Gc, natives: Vec<Box<dyn NativeFun>>) -> SlHashMap<Manage
 
   natives.into_iter().for_each(|native| {
     let name = gc.manage_str(native.meta().name.to_string(), &NO_GC);
-    let native_value = Value::NativeFun(gc.manage(native, &NO_GC));
+    let native_value = Value::from(gc.manage(native, &NO_GC));
 
     globals.insert(name, native_value);
   });
@@ -371,12 +372,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::GetProperty => self.op_get_property(),
         ByteCode::SetProperty => self.op_set_property(),
         ByteCode::Pop => self.op_pop(),
-        ByteCode::Nil => self.op_literal(Value::Nil),
-        ByteCode::True => self.op_literal(Value::Bool(true)),
-        ByteCode::False => self.op_literal(Value::Bool(false)),
-        ByteCode::List => self.op_literal(Value::List(self.gc.manage(Vec::new(), self))),
+        ByteCode::Nil => self.op_literal(VALUE_NIL),
+        ByteCode::True => self.op_literal(Value::from(true)),
+        ByteCode::False => self.op_literal(Value::from(false)),
+        ByteCode::List => self.op_literal(Value::from(self.gc.manage(Vec::new(), self))),
         ByteCode::ListInit => self.op_list(),
-        ByteCode::Map => self.op_literal(Value::Map(self.gc.manage(SlHashMap::default(), self))),
+        ByteCode::Map => self.op_literal(Value::from(self.gc.manage(SlHashMap::default(), self))),
         ByteCode::MapInit => self.op_map(),
         ByteCode::IterNext => self.op_iter_next(),
         ByteCode::IterCurrent => self.op_iter_current(),
@@ -558,22 +559,19 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_iter_next(&mut self) -> Signal {
     let receiver = self.peek(0);
 
-    match receiver {
-      Value::Iter(mut iter) => {
-        self.update_ip(1);
-        match iter.next(&mut Hooks::new(self)) {
-          Ok(value) => {
-            self.set_val(-1, value);
-            Signal::Ok
-          }
-          Err(error) => self.set_error(error),
+    if receiver.is_iter() {
+      self.update_ip(1);
+      match receiver.to_iter().next(&mut Hooks::new(self)) {
+        Ok(value) => {
+          self.set_val(-1, value);
+          Signal::Ok
         }
+        Err(error) => self.set_error(error),
       }
-      _ => {
-        let constant = self.read_byte();
-        let method_name = self.read_string(constant);
-        self.invoke(receiver, method_name, 0)
-      }
+    } else {
+      let constant = self.read_byte();
+      let method_name = self.read_string(constant);
+      self.invoke(receiver, method_name, 0)
     }
   }
 
@@ -581,18 +579,15 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_iter_current(&mut self) -> Signal {
     let value = self.peek(0);
 
-    match value {
-      Value::Iter(iter) => {
-        self.update_ip(1);
-        let result = iter.current();
-        self.set_val(-1, result);
-        Signal::Ok
-      }
-      _ => {
-        let slot = self.read_byte();
-        let name = self.read_string(slot);
-        self.get_property(value, name)
-      }
+    if value.is_iter() {
+      self.update_ip(1);
+      let result = value.to_iter().current();
+      self.set_val(-1, result);
+      Signal::Ok
+    } else {
+      let slot = self.read_byte();
+      let name = self.read_string(slot);
+      self.get_property(value, name)
     }
   }
 
@@ -617,31 +612,16 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// invoke a method
   fn invoke(&mut self, receiver: Value, method_name: Managed<String>, arg_count: u8) -> Signal {
-    match receiver {
-      Value::Instance(instance) => match instance.get_field(&method_name) {
-        Some(field) => {
-          self.set_val(-(arg_count as isize) - 1, *field);
-          self.resolve_call(*field, arg_count)
-        }
-        None => self.invoke_from_class(instance.class, method_name, arg_count),
-      },
-      Value::Iter(iter) => self.invoke_from_class(iter.class, method_name, arg_count),
-      Value::Bool(_) => self.invoke_from_class(self.builtin.bool, method_name, arg_count),
-      Value::Number(_) => self.invoke_from_class(self.builtin.number, method_name, arg_count),
-      Value::Nil => self.invoke_from_class(self.builtin.nil, method_name, arg_count),
-      Value::String(_) => self.invoke_from_class(self.builtin.string, method_name, arg_count),
-      Value::Closure(_) => self.invoke_from_class(self.builtin.closure, method_name, arg_count),
-      Value::Method(_) => self.invoke_from_class(self.builtin.method, method_name, arg_count),
-      Value::List(_) => self.invoke_from_class(self.builtin.list, method_name, arg_count),
-      Value::Map(_) => self.invoke_from_class(self.builtin.map, method_name, arg_count),
-      Value::NativeFun(_) => {
-        self.invoke_from_class(self.builtin.native_fun, method_name, arg_count)
+    let class = receiver.value_class(&self.builtin);
+    if receiver.is_instance() {
+      let instance = receiver.to_instance();
+      if let Some(field) = instance.get_field(&method_name) {
+        self.set_val(-(arg_count as isize) - 1, *field);
+        return self.resolve_call(*field, arg_count);
       }
-      Value::NativeMethod(_) => {
-        self.invoke_from_class(self.builtin.native_fun, method_name, arg_count)
-      }
-      _ => self.runtime_error(&format!("{} does not have methods.", receiver.value_type())),
     }
+
+    self.invoke_from_class(class, method_name, arg_count)
   }
 
   /// Invoke a method on a instance's super class
@@ -659,7 +639,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_class(&mut self) -> Signal {
     let slot = self.read_byte();
     let name = self.read_string(slot);
-    let class = Value::Class(self.gc.manage(Class::new(name), self));
+    let class = Value::from(self.gc.manage(Class::new(name), self));
     self.push(class);
     Signal::Ok
   }
@@ -677,14 +657,14 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_inherit(&mut self) -> Signal {
     let mut class = self.peek(0).to_class();
 
-    match self.peek(1) {
-      Value::Class(super_class) => {
-        class.inherit(&Hooks::new(self), super_class);
+    let peek = self.peek(1);
+    if peek.is_class() {
+      class.inherit(&Hooks::new(self), peek.to_class());
 
-        self.pop();
-        Signal::Ok
-      }
-      _ => self.runtime_error("Superclass must be a class."),
+      self.pop();
+      Signal::Ok
+    } else {
+      self.runtime_error("Superclass must be a class.")
     }
   }
 
@@ -720,40 +700,45 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_set_index(&mut self) -> Signal {
-    let mut target = self.peek(2);
+    let target = self.peek(2);
     let index = self.peek(1);
 
-    match (&mut target, index) {
-      (Value::List(list), Value::Number(num)) => {
-        let rounded = num as usize;
-        if rounded >= list.len() {
-          return self.runtime_error(&format!(
-            "Index out of bounds. list was length {} but attempted to index with {}.",
-            list.len(),
-            rounded
-          ));
-        }
+    if target.is_list() && index.is_num() {
+      let mut list = target.to_list();
+      let num = index.to_num();
 
-        list[rounded] = self.pop();
-        self.pop();
-        Signal::Ok
+      let rounded = num as usize;
+      if rounded >= list.len() {
+        return self.runtime_error(&format!(
+          "Index out of bounds. list was length {} but attempted to index with {}.",
+          list.len(),
+          rounded
+        ));
       }
-      (Value::Map(map), Value::Number(num)) => {
+
+      list[rounded] = self.pop();
+      self.pop();
+      return Signal::Ok
+    } else if target.is_map() {
+      let mut map = target.to_map();
+
+      if index.is_num() {
+        let num = index.to_num();
         let value = self.pop();
-        self.gc.grow(map, self, |map| {
-          map.insert(Value::Number(use_sentinel_nan(num)), value)
+        self.gc.grow(&mut map, self, |map| {
+          map.insert(Value::from(use_sentinel_nan(num)), value)
         });
         self.pop();
-        Signal::Ok
-      }
-      (Value::Map(map), _) => {
+        return Signal::Ok
+      } else {
         let value = self.pop();
-        self.gc.grow(map, self, |map| map.insert(index, value));
+        self.gc.grow(&mut map, self, |map| map.insert(index, value));
         self.pop();
-        Signal::Ok
+        return Signal::Ok
       }
-      _ => self.runtime_error(&format!("{} cannot be indexed", target.value_type())),
     }
+    
+    self.runtime_error(&format!("{} cannot be indexed by {}.", target.value_type(), index.value_type()))
   }
 
   fn op_set_global(&mut self) -> Signal {
@@ -780,10 +765,11 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   fn op_set_property(&mut self) -> Signal {
     let slot = self.read_byte();
-    let mut value = self.peek(1);
+    let value = self.peek(1);
     let name = self.read_string(slot);
 
-    if let Value::Instance(ref mut instance) = value {
+    if value.is_instance() {
+      let mut instance = value.to_instance();
       let value = self.peek(0);
       instance.set_field(&Hooks::new(self), name, value);
 
@@ -821,21 +807,35 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let index = self.pop();
     let target = self.pop();
 
-    match (target, index) {
-      (Value::List(list), Value::Number(num)) => {
-        let rounded = num as usize;
-        if rounded >= list.len() {
-          return self.runtime_error(&format!(
-            "Index out of bounds. list was length 0 but attempted to index with {}.",
-            rounded
-          ));
-        }
 
-        self.push(list[rounded]);
-        Signal::Ok
+    if target.is_list() && index.is_num() {
+      let list = target.to_list();
+      let num = index.to_num();
+
+      let rounded = num as usize;
+      if rounded >= list.len() {
+        return self.runtime_error(&format!(
+          "Index out of bounds. list was length 0 but attempted to index with {}.",
+          rounded
+        ));
       }
-      (Value::Map(map), Value::Number(num)) => {
-        match map.get(&Value::Number(use_sentinel_nan(num))) {
+
+      self.push(list[rounded]);
+      return Signal::Ok;
+    } else if target.is_map() {
+      let map = target.to_map();
+
+      if index.is_num() {
+        let num = index.to_num();
+        return match map.get(&Value::from(use_sentinel_nan(num))) {
+          Some(value) => {
+            self.push(*value);
+            Signal::Ok
+          }
+          None => self.runtime_error(&format!("Key {} does not exist in map", index)),
+        }
+      } else {
+        return match map.get(&index) {
           Some(value) => {
             self.push(*value);
             Signal::Ok
@@ -843,15 +843,13 @@ impl<'a, I: Io> VmExecutor<'a, I> {
           None => self.runtime_error(&format!("Key {} does not exist in map", index)),
         }
       }
-      (Value::Map(map), _) => match map.get(&index) {
-        Some(value) => {
-          self.push(*value);
-          Signal::Ok
-        }
-        None => self.runtime_error(&format!("Key {} does not exist in map", index)),
-      },
-      _ => self.runtime_error(&format!("{} cannot be indexed with {}.", target.value_type(), index.value_type())),
     }
+
+    self.runtime_error(&format!(
+      "{} cannot be indexed with {}.",
+      target.value_type(),
+      index.value_type()
+    ))
   }
 
   fn op_get_global(&mut self) -> Signal {
@@ -901,33 +899,25 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn get_property(&mut self, value: Value, name: Managed<String>) -> Signal {
-    match value {
-      Value::Instance(instance) => match instance.get_field(&name) {
-        Some(value) => {
-          self.set_val(-1, *value);
-          Signal::Ok
-        }
-        None => self.bind_method(instance.class, name),
-      },
-      Value::Iter(iter) => match iter.get_field(&name) {
-        Some(value) => {
-          self.set_val(-1, *value);
-          Signal::Ok
-        }
-        None => self.bind_method(iter.class, name),
-      },
-      Value::Bool(_) => self.bind_method(self.builtin.bool, name),
-      Value::Nil => self.bind_method(self.builtin.nil, name),
-      Value::Number(_) => self.bind_method(self.builtin.number, name),
-      Value::String(_) => self.bind_method(self.builtin.string, name),
-      Value::List(_) => self.bind_method(self.builtin.list, name),
-      Value::Map(_) => self.bind_method(self.builtin.map, name),
-      Value::Fun(_) => self.bind_method(self.builtin.closure, name),
-      Value::Closure(_) => self.bind_method(self.builtin.closure, name),
-      Value::Method(_) => self.bind_method(self.builtin.method, name),
-      Value::NativeFun(_) => self.bind_method(self.builtin.native_fun, name),
-      _ => self.runtime_error(&format!("{} does not have properties.", value.value_type())),
+    let class = value.value_class(&self.builtin);
+
+    if value.is_instance() {
+      let instance = value.to_instance();
+      
+      if let Some(value) = instance.get_field(&name) {
+        self.set_val(-1, *value);
+        return Signal::Ok
+      }
+    } else if value.is_iter() {
+      let iter = value.to_iter();
+
+      if let Some(value) = iter.get_field(&name) {
+        self.set_val(-1, *value);
+        return Signal::Ok
+      }
     }
+
+    self.bind_method(class, name)
   }
 
   /// return from a spacelox function placing the result on top of the stack
@@ -954,92 +944,98 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_negate(&mut self) -> Signal {
-    match self.pop() {
-      Value::Number(num) => {
-        self.push(Value::Number(-num));
-        Signal::Ok
-      }
-      _ => self.runtime_error("Operand must be a number."),
+    let pop = self.pop();
+
+    if pop.is_num() {
+      self.push(Value::from(-pop.to_num()));
+      Signal::Ok
+    } else {
+      self.runtime_error("Operand must be a number.")
     }
   }
 
   fn op_not(&mut self) -> Signal {
     let value = self.pop();
-    self.push(Value::Bool(is_falsey(value)));
+    self.push(Value::from(is_falsey(value)));
     Signal::Ok
   }
 
   fn op_add(&mut self) -> Signal {
-    match (self.pop(), self.pop()) {
-      (Value::String(right), Value::String(left)) => {
-        let result = format!("{}{}", left.as_str(), right.as_str());
-        let string = self.gc.manage_str(result, self);
-        self.push(Value::String(string));
-        Signal::Ok
-      }
-      (Value::Number(right), Value::Number(left)) => {
-        self.push(Value::Number(left + right));
-        Signal::Ok
-      }
-      _ => self.runtime_error("Operands must be two numbers or two strings."),
+    let (right, left) = (self.pop(), self.pop());
+
+    if right.is_str() && left.is_str() {
+      let result = format!("{}{}", left.to_str(), right.to_str());
+      let string = self.gc.manage_str(result, self);
+      self.push(Value::from(string));
+      Signal::Ok
+    } else if right.is_num() && left.is_num() {
+      self.push(Value::from(left.to_num() + right.to_num()));
+      Signal::Ok
+    } else {
+      self.runtime_error("Operands must be two numbers or two strings.")
     }
   }
 
   fn op_sub(&mut self) -> Signal {
-    match (self.pop(), self.pop()) {
-      (Value::Number(right), Value::Number(left)) => {
-        self.push(Value::Number(left - right));
-        Signal::Ok
-      }
-      _ => self.runtime_error("Operands must be numbers."),
+    let (right, left) = (self.pop(), self.pop());
+
+    if right.is_num() && left.is_num() {
+      self.push(Value::from(left.to_num() - right.to_num()));
+      return Signal::Ok
     }
+
+    self.runtime_error("Operands must be numbers.")
   }
 
   fn op_mul(&mut self) -> Signal {
-    match (self.pop(), self.pop()) {
-      (Value::Number(right), Value::Number(left)) => {
-        self.push(Value::Number(left * right));
-        Signal::Ok
-      }
-      _ => self.runtime_error("Operands must be numbers."),
+    let (right, left) = (self.pop(), self.pop());
+
+    if right.is_num() && left.is_num() {
+      self.push(Value::from(left.to_num() * right.to_num()));
+      return Signal::Ok
     }
+
+    self.runtime_error("Operands must be numbers.")
   }
 
   fn op_div(&mut self) -> Signal {
-    match (self.pop(), self.pop()) {
-      (Value::Number(right), Value::Number(left)) => {
-        self.push(Value::Number(left / right));
-        Signal::Ok
-      }
-      _ => self.runtime_error("Operands must be numbers."),
+    let (right, left) = (self.pop(), self.pop());
+
+    if right.is_num() && left.is_num() {
+      self.push(Value::from(left.to_num() / right.to_num()));
+      return Signal::Ok
     }
+
+    self.runtime_error("Operands must be numbers.")
   }
 
   fn op_less(&mut self) -> Signal {
-    match (self.pop(), self.pop()) {
-      (Value::Number(right), Value::Number(left)) => {
-        self.push(Value::Bool(left < right));
-        Signal::Ok
-      }
-      _ => self.runtime_error("Operands must be numbers."),
+    let (right, left) = (self.pop(), self.pop());
+
+    if right.is_num() && left.is_num() {
+      self.push(Value::from(left.to_num() < right.to_num()));
+      return Signal::Ok
     }
+
+    self.runtime_error("Operands must be numbers.")
   }
 
   fn op_greater(&mut self) -> Signal {
-    match (self.pop(), self.pop()) {
-      (Value::Number(right), Value::Number(left)) => {
-        self.push(Value::Bool(left > right));
-        Signal::Ok
-      }
-      _ => self.runtime_error("Operands must be numbers."),
+    let (right, left) = (self.pop(), self.pop());
+
+    if right.is_num() && left.is_num() {
+      self.push(Value::from(left.to_num() > right.to_num()));
+      return Signal::Ok
     }
+
+    self.runtime_error("Operands must be numbers.")
   }
 
   fn op_equal(&mut self) -> Signal {
     let right = self.pop();
     let left = self.pop();
 
-    self.push(Value::Bool(left == right));
+    self.push(Value::from(left == right));
     Signal::Ok
   }
 
@@ -1047,12 +1043,13 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let slot = self.read_byte();
     let name = self.read_string(slot);
 
-    match (self.peek(1), self.peek(0)) {
-      (Value::Class(ref mut class), Value::Closure(_)) => {
-        let method = self.peek(0);
-        class.add_method(&Hooks::new(self), name, method);
-      }
-      _ => panic!("Internal spacelox error. stack invalid for op_method."),
+    let class = self.peek(1);
+    let method = self.peek(0);
+
+    if class.is_class() && method.is_closure() {
+      class.to_class().add_method(&Hooks::new(self), name, method);
+    } else {
+      panic!("Internal spacelox error. stack invalid for op_method.");
     }
 
     self.pop();
@@ -1081,7 +1078,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       }
     }
 
-    let closure = Value::Closure(self.gc.manage(closure, self));
+    let closure = Value::from(self.gc.manage(closure, self));
     self.push(closure);
     Signal::Ok
   }
@@ -1106,19 +1103,19 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn resolve_call(&mut self, callee: Value, arg_count: u8) -> Signal {
-    match callee {
-      Value::Closure(closure) => self.call(closure, arg_count),
-      Value::Method(method) => self.call_method(method, arg_count),
-      Value::NativeFun(native_fun) => self.call_native_fun(native_fun, arg_count),
-      Value::NativeMethod(native_method) => self.call_native_method(native_method, arg_count),
-      Value::Class(class) => self.call_class(class, arg_count),
-      Value::Fun(fun) => panic!("function {} was not wrapped in a closure", fun.name),
+    match callee.kind() {
+      ValueVariant::Closure => self.call(callee.to_closure(), arg_count),
+      ValueVariant::Method => self.call_method(callee.to_method(), arg_count),
+      ValueVariant::NativeFun => self.call_native_fun(callee.to_native_fun(), arg_count),
+      ValueVariant::NativeMethod => self.call_native_method(callee.to_native_method(), arg_count),
+      ValueVariant::Class => self.call_class(callee.to_class(), arg_count),
+      ValueVariant::Fun => panic!("function {} was not wrapped in a closure", callee.to_fun().name),
       _ => self.runtime_error("Can only call functions and classes."),
     }
   }
 
   fn call_class(&mut self, class: Managed<Class>, arg_count: u8) -> Signal {
-    let value = Value::Instance(self.gc.manage(Instance::new(class), self));
+    let value = Value::from(self.gc.manage(Instance::new(class), self));
     self.set_val(-(arg_count as isize) - 1, value);
 
     match class.init {
@@ -1267,7 +1264,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     match class.get_method(&name) {
       Some(method) => {
         let bound = self.gc.manage(Method::new(self.peek(0), *method), self);
-        self.set_val(-1, Value::Method(bound));
+        self.set_val(-1, Value::from(bound));
         Signal::Ok
       }
       None => self.runtime_error(&format!("Undefined property {}", name.as_str())),
@@ -1301,7 +1298,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     if let Some(upvalue) = closest_upvalue {
       if let Upvalue::Open(index) = **upvalue {
         if index == local_index {
-          return Value::Upvalue(*upvalue);
+          return Value::from(*upvalue);
         }
       }
     }
@@ -1309,7 +1306,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let created_upvalue = self.gc.manage(Upvalue::Open(local_index), self);
     self.open_upvalues.push(created_upvalue);
 
-    Value::Upvalue(created_upvalue)
+    Value::from(created_upvalue)
   }
 
   /// hoist all open upvalue above the last index
@@ -1522,5 +1519,3 @@ impl<'a, I: Io> HookContext for VmExecutor<'a, I> {
     self.to_call_result(result)
   }
 }
-
-

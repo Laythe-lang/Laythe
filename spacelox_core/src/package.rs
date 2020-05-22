@@ -168,7 +168,7 @@ impl Package {
   /// let mut module = Module::new(hooks.manage_str(String::from("my_module")));
   ///
   /// let export_name = hooks.manage_str(String::from("exported"));
-  /// module.add_export(&hooks, export_name, Value::Bool(true));
+  /// module.add_export(&hooks, export_name, Value::from(true));
   ///
   /// let mut package = Package::new(hooks.manage_str(String::from("my_package")));
   /// package.add_module(&hooks, module);
@@ -184,7 +184,7 @@ impl Package {
   ///
   /// if let Ok(result) = symbols1 {
   ///   assert_eq!(result.len(), 1);
-  ///   assert_eq!(*result.get(&export_name).unwrap(), Value::Bool(true));
+  ///   assert_eq!(*result.get(&export_name).unwrap(), Value::from(true));
   /// }
   /// ```
   pub fn get_symbols(&self, hooks: &Hooks, import: Import) -> SymbolResult {

@@ -6,9 +6,11 @@ use spacelox_core::{
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
-  value::{Class, Value},
+  value::Value,
+  object::Class,
   CallResult, ModuleResult,
 };
+use crate::support::to_dyn_method;
 
 pub const NIL_CLASS_NAME: &'static str = "Nil";
 const NIL_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
@@ -17,7 +19,7 @@ pub fn declare_nil_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResul
   let name = hooks.manage_str(String::from(NIL_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::Class(class))
+  self_module.add_export(hooks, name, Value::from(class))
 }
 
 pub fn define_nil_class(hooks: &Hooks, self_module: &Module, _: &Package) {
@@ -27,7 +29,7 @@ pub fn define_nil_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NIL_STR.name)),
-    Value::NativeMethod(hooks.manage(Box::new(NilStr::new()))),
+    Value::from(to_dyn_method(hooks, NilStr::new())),
   );
 }
 
@@ -47,8 +49,8 @@ impl NativeMethod for NilStr {
     &self.meta
   }
 
-  fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(hooks.manage_str(this.to_string())))
+  fn call(&self, hooks: &mut Hooks, _this: Value, _args: &[Value]) -> CallResult {
+    Ok(Value::from(hooks.manage_str("nil".to_string())))
   }
 }
 
@@ -59,6 +61,7 @@ mod test {
   mod str {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
+    use spacelox_core::value::VALUE_NIL;
 
     #[test]
     fn new() {
@@ -75,7 +78,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let result = nil_str.call(&mut hooks, Value::Nil, &[]);
+      let result = nil_str.call(&mut hooks, VALUE_NIL, &[]);
       match result {
         Ok(r) => assert_eq!(*r.to_str(), String::from("nil")),
         Err(_) => assert!(false),

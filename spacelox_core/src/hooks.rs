@@ -1,7 +1,7 @@
 use crate::{
   managed::{Manage, Managed, Trace},
   memory::Gc,
-  value::Value,
+  value::{Value, VALUE_NIL},
   CallResult, SlError,
 };
 
@@ -157,11 +157,11 @@ impl<'a> HookContext for NoContext<'a> {
   }
 
   fn call(&mut self, _callable: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::Nil)
+    Ok(VALUE_NIL)
   }
 
   fn call_method(&mut self, _this: Value, _method: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::Nil)
+    Ok(VALUE_NIL)
   }
 
   fn call_method_by_name(
@@ -170,6 +170,6 @@ impl<'a> HookContext for NoContext<'a> {
     _method_name: Managed<String>,
     _args: &[Value],
   ) -> CallResult {
-    Ok(Value::Nil)
+    Ok(VALUE_NIL)
   }
 }

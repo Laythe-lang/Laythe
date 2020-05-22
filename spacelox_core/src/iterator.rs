@@ -2,7 +2,9 @@ use crate::{
   hooks::Hooks,
   io::StdIo,
   managed::{Manage, Managed, Trace},
-  value::{Class, Value}, CallResult,
+  object::Class,
+  value::{Value, VALUE_NIL},
+  CallResult,
 };
 use std::fmt;
 use std::mem;
@@ -28,7 +30,7 @@ impl SlIterator {
   pub fn new(iterator: Box<dyn SlIter>, class: Managed<Class>) -> Self {
     Self {
       iterator,
-      current: Value::Nil,
+      current: VALUE_NIL,
       class,
     }
   }
@@ -44,7 +46,7 @@ impl SlIterator {
 
   /// Get the name of this iterator
   pub fn name(&self, hooks: &Hooks) -> Value {
-    Value::String(hooks.manage_str(String::from(self.iterator.name())))
+    Value::from(hooks.manage_str(String::from(self.iterator.name())))
   }
 
   /// Increment the iterator

@@ -108,6 +108,10 @@ impl<T: 'static + Manage + ?Sized> Managed<T> {
     &(*self.ptr.as_ptr()).data
   }
 
+  pub fn to_usize(&self) -> usize {
+    self.ptr.as_ptr() as *const () as usize
+  }
+
   pub fn obj(&self) -> &Allocation<T> {
     unsafe { self.ptr.as_ref() }
   }
@@ -210,8 +214,8 @@ impl Manage for Managed<dyn Manage> {
 }
 
 impl<T: 'static + Manage + ?Sized> From<NonNull<Allocation<T>>> for Managed<T> {
-  fn from(fun: NonNull<Allocation<T>>) -> Self {
-    Self { ptr: fun }
+  fn from(ptr: NonNull<Allocation<T>>) -> Self {
+    Self { ptr }
   }
 }
 

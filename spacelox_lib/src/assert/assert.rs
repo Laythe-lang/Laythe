@@ -4,7 +4,7 @@ use spacelox_core::{
   io::StdIo,
   managed::{Managed, Trace},
   native::{NativeFun, NativeMeta},
-  value::Value,
+  value::{VALUE_NIL, Value},
   CallResult,
 };
 
@@ -36,27 +36,27 @@ impl NativeFun for Assert {
   }
 
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    match args[0] {
-      Value::Bool(b) => match b {
-        true => Ok(Value::Nil),
-        false => hooks.error(String::from(
+    if args[0].is_bool() {
+      if args[0].to_bool() {
+        Ok(VALUE_NIL)
+      } else {
+        hooks.error(String::from(
           "Assertion failed expected true received false",
-        )),
-      },
-      _ => {
-        let result = hooks.call_method_by_name(args[0], self.method_str, &[]);
-
-        if let Ok(ok1) = result {
-          if let Value::String(str1) = ok1 {
-            return hooks.error(format!("Assertion failed expected true received {}.", str1));
-          }
-        }
-
-        return hooks.error(format!(
-          "Assertion failed expected true received {:?}.",
-          args[0]
-        ));
+        ))
       }
+    } else {
+      let result = hooks.call_method_by_name(args[0], self.method_str, &[]);
+
+      if let Ok(ok) = result {
+        if ok.is_str() {
+          return hooks.error(format!("Assertion failed expected true received {}.", ok.to_str()));
+        }
+      }
+
+      hooks.error(format!(
+        "Assertion failed expected true received {:?}.",
+        args[0]
+      ))
     }
   }
 }
@@ -86,17 +86,17 @@ impl NativeFun for AssertEq {
 
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
     if args[0] == args[1] {
-      return Ok(Value::Nil);
+      return Ok(VALUE_NIL);
     }
 
     let result1 = hooks.call_method_by_name(args[0], self.method_str, &[]);
     let result2 = hooks.call_method_by_name(args[1], self.method_str, &[]);
 
     if let (Ok(ok1), Ok(ok2)) = (result1, result2) {
-      if let (Value::String(str1), Value::String(str2)) = (ok1, ok2) {
+      if ok1.is_str() && ok2.is_str() {
         return hooks.error(format!(
           "Assertion failed {} and {} are not equal.",
-          str1, str2
+          ok1.to_str(), ok2.to_str()
         ));
       }
     }
@@ -133,15 +133,15 @@ impl NativeFun for AssertNe {
 
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
     if args[0] != args[1] {
-      return Ok(Value::Nil);
+      return Ok(VALUE_NIL);
     }
 
     let result1 = hooks.call_method_by_name(args[0], self.method_str, &[]);
     let result2 = hooks.call_method_by_name(args[1], self.method_str, &[]);
 
     if let (Ok(ok1), Ok(ok2)) = (result1, result2) {
-      if let (Value::String(str1), Value::String(str2)) = (ok1, ok2) {
-        return hooks.error(format!("Assertion failed {} and {} are equal.", str1, str2));
+      if ok1.is_str() && ok2.is_str() {
+        return hooks.error(format!("Assertion failed {} and {} are equal.", ok1.to_str(), ok2.to_str()));
       }
     }
 
@@ -180,14 +180,14 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let assert = Assert::new(hooks.manage_str(String::from("str")));
-      let values = &[Value::Bool(true)];
+      let values = &[Value::from(true)];
 
       let result = match assert.call(&mut hooks, values) {
         Ok(res) => res,
         Err(_) => panic!(),
       };
 
-      assert_eq!(result, Value::Nil);
+      assert_eq!(result, VALUE_NIL);
     }
   }
 
@@ -213,14 +213,14 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let assert_eq = AssertEq::new(hooks.manage_str(String::from("str")));
 
-      let values = &[Value::Number(10.5), Value::Number(10.5)];
+      let values = &[Value::from(10.5), Value::from(10.5)];
 
       let result = match assert_eq.call(&mut hooks, values) {
         Ok(res) => res,
         Err(_) => panic!(),
       };
 
-      assert_eq!(result, Value::Nil);
+      assert_eq!(result, VALUE_NIL);
     }
   }
 
@@ -246,14 +246,14 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let assert_eq = AssertNe::new(hooks.manage_str(String::from("str")));
 
-      let values = &[Value::Number(10.5), Value::Nil];
+      let values = &[Value::from(10.5), VALUE_NIL];
 
       let result = match assert_eq.call(&mut hooks, values) {
         Ok(res) => res,
         Err(_) => panic!(),
       };
 
-      assert_eq!(result, Value::Nil);
+      assert_eq!(result, VALUE_NIL);
     }
   }
 }

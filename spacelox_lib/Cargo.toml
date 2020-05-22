@@ -9,7 +9,7 @@ name = "spacelox_lib"
 path = "src/lib.rs"
 
 [dependencies]
-spacelox_core = { path = "../spacelox_core" }
+spacelox_core = { path = "../spacelox_core", features = ["nan_boxing"] }
 hashbrown = "0.7.2"
 fnv = "1.0.3"
 

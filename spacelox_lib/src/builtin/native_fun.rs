@@ -6,9 +6,11 @@ use spacelox_core::{
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
-  value::{Class, Value},
+  value::Value,
+  object::Class,
   CallResult, ModuleResult,
 };
+use crate::support::to_dyn_method;
 
 pub const NATIVE_FUN_CLASS_NAME: &'static str = "Native Fun";
 
@@ -19,7 +21,7 @@ pub fn declare_native_fun_class(hooks: &Hooks, self_module: &mut Module) -> Modu
   let name = hooks.manage_str(String::from(NATIVE_FUN_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::Class(class))
+  self_module.add_export(hooks, name, Value::from(class))
 }
 
 pub fn define_native_fun_class(hooks: &Hooks, self_module: &Module, _: &Package) {
@@ -29,13 +31,13 @@ pub fn define_native_fun_class(hooks: &Hooks, self_module: &Module, _: &Package)
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NATIVE_FUN_NAME.name)),
-    Value::NativeMethod(hooks.manage(Box::new(NativeFunName::new()))),
+    Value::from(to_dyn_method(hooks, NativeFunName::new())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NATIVE_FUN_CALL.name)),
-    Value::NativeMethod(hooks.manage(Box::new(NativeFunCall::new()))),
+    Value::from(to_dyn_method(hooks, NativeFunCall::new())),
   );
 }
 
@@ -58,7 +60,7 @@ impl NativeMethod for NativeFunName {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(
+    Ok(Value::from(
       hooks.manage_str(String::from(this.to_native_fun().meta().name)),
     ))
   }
@@ -117,7 +119,7 @@ mod test {
       let managed: Managed<Box<dyn NativeFun>> = hooks.manage(Box::new(Assert::new(
         hooks.manage_str(String::from("example")),
       )));
-      let result = native_fun_name.call(&mut hooks, Value::NativeFun(managed), &[]);
+      let result = native_fun_name.call(&mut hooks, Value::from(managed), &[]);
       match result {
         Ok(r) => assert_eq!(*r.to_str(), String::from("assert")),
         Err(_) => assert!(false),
@@ -131,7 +133,7 @@ mod test {
       assert::assert::Assert,
       support::{test_native_dependencies, TestContext},
     };
-    use spacelox_core::{managed::Managed, native::NativeFun};
+    use spacelox_core::{managed::Managed, native::NativeFun, value::VALUE_NIL};
 
     #[test]
     fn new() {
@@ -145,13 +147,13 @@ mod test {
     fn call() {
       let native_fun_call = NativeFunCall::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[Value::Nil]);
+      let mut context = TestContext::new(&gc, &[VALUE_NIL]);
       let mut hooks = Hooks::new(&mut context);
 
       let managed: Managed<Box<dyn NativeFun>> =
         hooks.manage(Box::new(Assert::new(hooks.manage_str(String::from("str")))));
       let result =
-        native_fun_call.call(&mut hooks, Value::NativeFun(managed), &[Value::Bool(true)]);
+        native_fun_call.call(&mut hooks, Value::from(managed), &[Value::from(true)]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),

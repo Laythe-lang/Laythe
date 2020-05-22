@@ -554,14 +554,14 @@ impl Chunk {
   /// use spacelox_core::value::Value;
   ///
   /// let mut chunk = Chunk::default();
-  /// let index_1 = chunk.add_constant(Value::Number(10.4));
-  /// let index_2 = chunk.add_constant(Value::Number(5.2));
+  /// let index_1 = chunk.add_constant(Value::from(10.4));
+  /// let index_2 = chunk.add_constant(Value::from(5.2));
   ///
   /// assert_eq!(index_1, 0);
   /// assert_eq!(index_2, 1);
   ///
-  /// assert_eq!(chunk.constants[index_1], Value::Number(10.4));
-  /// assert_eq!(chunk.constants[index_2], Value::Number(5.2));
+  /// assert_eq!(chunk.constants[index_1], Value::from(10.4));
+  /// assert_eq!(chunk.constants[index_2], Value::from(5.2));
   /// ```
   pub fn add_constant(&mut self, value: Value) -> usize {
     self.constants.push(value);
@@ -622,8 +622,8 @@ impl Chunk {
     self.lines.shrink_to_fit();
 
     self.constants.iter_mut().for_each(|constant| {
-      if let Value::Fun(fun) = constant {
-        fun.shrink_to_fit_internal();
+      if constant.is_fun() {
+        constant.to_fun().shrink_to_fit_internal();
       }
     })
   }
@@ -743,14 +743,13 @@ mod test {
 
     #[test]
     fn add_constant() {
+      use crate::value::VALUE_NIL;
+
       let mut chunk = Chunk::default();
-      let index = chunk.add_constant(Value::Nil);
+      let index = chunk.add_constant(VALUE_NIL);
 
       assert_eq!(index, 0);
-      match chunk.constants[0] {
-        Value::Nil => assert!(true),
-        _ => assert!(false),
-      }
+      assert!(chunk.constants[0].is_nil());
     }
 
     #[test]

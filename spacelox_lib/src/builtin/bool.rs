@@ -6,9 +6,11 @@ use spacelox_core::{
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
-  value::{Class, Value},
+  value::{VALUE_TRUE, Value},
+  object::Class,
   CallResult, ModuleResult,
 };
+use crate::support::to_dyn_method;
 
 pub const BOOL_CLASS_NAME: &'static str = "Bool";
 const BOOL_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
@@ -17,7 +19,7 @@ pub fn declare_bool_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResu
   let name = hooks.manage_str(String::from(BOOL_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::Class(class))
+  self_module.add_export(hooks, name, Value::from(class))
 }
 
 pub fn define_bool_class(hooks: &Hooks, self_module: &Module, _: &Package) {
@@ -27,7 +29,7 @@ pub fn define_bool_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(BOOL_STR.name)),
-    Value::NativeMethod(hooks.manage(Box::new(BoolStr::new()))),
+    Value::from(to_dyn_method(hooks, BoolStr::new())),
   );
 }
 
@@ -48,7 +50,11 @@ impl NativeMethod for BoolStr {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::String(hooks.manage_str(this.to_string())))
+    if this == VALUE_TRUE {
+      Ok(Value::from(hooks.manage_str("true".to_string())))
+    } else {
+      Ok(Value::from(hooks.manage_str("false".to_string())))
+    }
   }
 }
 
@@ -75,8 +81,8 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let b_true = Value::Bool(true);
-      let b_false = Value::Bool(false);
+      let b_true = Value::from(true);
+      let b_false = Value::from(false);
 
       let result1 = bool_str.call(&mut hooks, b_true, &[]);
       let result2 = bool_str.call(&mut hooks, b_false, &[]);

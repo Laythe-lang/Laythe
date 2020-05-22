@@ -48,8 +48,8 @@ impl Module {
   ///
   /// let export_name = hooks.manage_str(String::from("exported"));
   ///
-  /// let result1 = module.add_export(&hooks, export_name, Value::Bool(true));
-  /// let result2 = module.add_export(&hooks, export_name, Value::Bool(false));
+  /// let result1 = module.add_export(&hooks, export_name, Value::from(true));
+  /// let result2 = module.add_export(&hooks, export_name, Value::from(false));
   ///
   /// assert_eq!(result1.is_ok(), true);
   /// assert_eq!(result2.is_err(), true);
@@ -88,7 +88,7 @@ impl Module {
   /// let mut module = Module::new(hooks.manage_str(String::from("module")));
   ///
   /// let export_name = hooks.manage_str(String::from("exported"));
-  /// module.add_export(&hooks, export_name, Value::Bool(true));
+  /// module.add_export(&hooks, export_name, Value::from(true));
   ///
   /// let successful = vec![hooks.manage_str(String::from("exported"))];
   /// let failing = vec![hooks.manage_str(String::from("not_exported"))];
@@ -101,7 +101,7 @@ impl Module {
   ///
   /// if let Ok(result) = symbols1 {
   ///   assert_eq!(result.len(), 1);
-  ///   assert_eq!(*result.get(&export_name).unwrap(), Value::Bool(true));
+  ///   assert_eq!(*result.get(&export_name).unwrap(), Value::from(true));
   /// }
   /// ```
   pub fn get_symbols(&self, hooks: &Hooks, symbols: &[Managed<String>]) -> SymbolResult {
