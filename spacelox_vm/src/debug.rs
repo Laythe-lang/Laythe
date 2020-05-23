@@ -56,7 +56,7 @@ pub fn disassemble_instruction<S: StdIo>(
     }
     AlignedByteCode::GetIndex => simple_instruction(stdio, "GetIndex", offset),
     AlignedByteCode::SetIndex => simple_instruction(stdio, "SetIndex", offset),
-    AlignedByteCode::Pop => simple_instruction(stdio, "Pop", offset),
+    AlignedByteCode::Drop => simple_instruction(stdio, "Drop", offset),
     AlignedByteCode::Call(arg_count) => byte_instruction(stdio, "Call", arg_count, offset),
     AlignedByteCode::Invoke((constant, arg_count)) => {
       invoke_instruction(stdio, "Invoke", chunk, constant, arg_count, offset)

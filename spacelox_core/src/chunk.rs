@@ -66,8 +66,8 @@ pub enum AlignedByteCode {
   /// Set to an index
   SetIndex,
 
-  /// Pop ByteCode
-  Pop,
+  /// Drop ByteCode
+  Drop,
 
   /// Define a global in the globals table at a index
   DefineGlobal(u8),
@@ -171,7 +171,7 @@ impl AlignedByteCode {
       Self::Equal => push_op(code, ByteCode::Equal),
       Self::Greater => push_op(code, ByteCode::Greater),
       Self::Less => push_op(code, ByteCode::Less),
-      Self::Pop => push_op(code, ByteCode::Pop),
+      Self::Drop => push_op(code, ByteCode::Drop),
       Self::Constant(slot) => push_op_u8(code, ByteCode::Constant, slot),
       Self::DefineGlobal(slot) => push_op_u8(code, ByteCode::DefineGlobal, slot),
       Self::GetGlobal(slot) => push_op_u8(code, ByteCode::GetGlobal, slot),
@@ -235,7 +235,7 @@ impl AlignedByteCode {
       ByteCode::IterCurrent => (AlignedByteCode::IterCurrent(store[offset + 1]), offset + 2),
       ByteCode::GetIndex => (AlignedByteCode::GetIndex, offset + 1),
       ByteCode::SetIndex => (AlignedByteCode::SetIndex, offset + 1),
-      ByteCode::Pop => (AlignedByteCode::Pop, offset + 1),
+      ByteCode::Drop => (AlignedByteCode::Drop, offset + 1),
       ByteCode::DefineGlobal => (AlignedByteCode::DefineGlobal(store[offset + 1]), offset + 2),
       ByteCode::GetGlobal => (AlignedByteCode::GetGlobal(store[offset + 1]), offset + 2),
       ByteCode::SetGlobal => (AlignedByteCode::SetGlobal(store[offset + 1]), offset + 2),
@@ -342,8 +342,8 @@ pub enum ByteCode {
   /// Set an index
   SetIndex,
 
-  /// Pop ByteCode
-  Pop,
+  /// Drop ByteCode
+  Drop,
 
   /// Define a global in the globals table at a index
   DefineGlobal,
@@ -657,7 +657,7 @@ mod test {
         (3, AlignedByteCode::MapInit(1923)),
         (2, AlignedByteCode::IterNext(81)),
         (2, AlignedByteCode::IterCurrent(82)),
-        (1, AlignedByteCode::Pop),
+        (1, AlignedByteCode::Drop),
         (2, AlignedByteCode::DefineGlobal(4)),
         (2, AlignedByteCode::GetGlobal(119)),
         (2, AlignedByteCode::SetGlobal(243)),

@@ -371,7 +371,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::SetUpvalue => self.op_set_upvalue(),
         ByteCode::GetProperty => self.op_get_property(),
         ByteCode::SetProperty => self.op_set_property(),
-        ByteCode::Pop => self.op_pop(),
+        ByteCode::Drop => self.op_drop(),
         ByteCode::Nil => self.op_literal(VALUE_NIL),
         ByteCode::True => self.op_literal(Value::from(true)),
         ByteCode::False => self.op_literal(Value::from(false)),
@@ -472,6 +472,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.get_val(0)
   }
 
+  /// drop a value off the stack
+  #[inline]
+  fn drop(&mut self) {
+    self.stack_top = unsafe { self.stack_top.offset(-1) };
+  }
+
   /// reference a value n slots from the stack head
   #[inline]
   fn peek(&self, distance: isize) -> Value {
@@ -509,9 +515,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Signal::Ok
   }
 
-  /// pop a value off the stack
-  fn op_pop(&mut self) -> Signal {
-    self.pop();
+  /// drop a value off the stack
+  fn op_drop(&mut self) -> Signal {
+    self.drop();
     Signal::Ok
   }
 
@@ -655,7 +661,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     if peek.is_class() {
       class.inherit(&Hooks::new(self), peek.to_class());
 
-      self.pop();
+      self.drop();
       Signal::Ok
     } else {
       self.runtime_error("Superclass must be a class.")
@@ -711,7 +717,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       }
 
       list[rounded] = self.pop();
-      self.pop();
+      self.drop();
       return Signal::Ok;
     } else if target.is_map() {
       let mut map = target.to_map();
@@ -722,12 +728,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         self.gc.grow(&mut map, self, |map| {
           map.insert(Value::from(use_sentinel_nan(num)), value)
         });
-        self.pop();
+        self.drop();
         return Signal::Ok;
       } else {
         let value = self.pop();
         self.gc.grow(&mut map, self, |map| map.insert(index, value));
-        self.pop();
+        self.drop();
         return Signal::Ok;
       }
     }
@@ -772,7 +778,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       instance.set_field(&Hooks::new(self), name, value);
 
       let popped = self.pop();
-      self.pop();
+      self.drop();
       self.push(popped);
 
       return Signal::Ok;
@@ -930,7 +936,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     // if the frame was the whole script signal an ok interrupt
     if self.frame_count == 1 {
-      self.pop();
+      self.drop();
       return Signal::Exit;
     }
 
@@ -1053,7 +1059,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       panic!("Internal spacelox error. stack invalid for op_method.");
     }
 
-    self.pop();
+    self.drop();
     Signal::Ok
   }
 
@@ -1086,7 +1092,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   fn op_close_upvalue(&mut self) -> Signal {
     self.close_upvalues(NonNull::from(unsafe { &*self.stack_top.offset(-1) }));
-    self.pop();
+    self.drop();
     Signal::Ok
   }
 

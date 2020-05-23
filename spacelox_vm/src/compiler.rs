@@ -342,7 +342,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self
       .parser
       .consume(TokenKind::RightBrace, "Expect '}' after class body.");
-    self.emit_byte(AlignedByteCode::Pop);
+    self.emit_byte(AlignedByteCode::Drop);
 
     if class_compiler.has_super_class {
       self.end_scope();
@@ -440,7 +440,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self
       .parser
       .consume(TokenKind::Semicolon, "Expected ';' after expression.");
-    self.emit_byte(AlignedByteCode::Pop)
+    self.emit_byte(AlignedByteCode::Drop)
   }
 
   /// Parse for loop
@@ -511,7 +511,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
         .parser
         .consume(TokenKind::Semicolon, "Expected ';' after loop condition");
       exit_jump = Some(self.emit_jump(AlignedByteCode::JumpIfFalse(0)));
-      self.emit_byte(AlignedByteCode::Pop);
+      self.emit_byte(AlignedByteCode::Drop);
     }
 
     // parse incrementor
@@ -520,7 +520,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
       let increment_start = self.current_chunk().instructions.len();
       self.expression();
-      self.emit_byte(AlignedByteCode::Pop);
+      self.emit_byte(AlignedByteCode::Drop);
       self
         .parser
         .consume(TokenKind::RightParen, "Expect ')' after for clauses.");
@@ -537,7 +537,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     // patch exit jump
     if let Some(jump) = exit_jump {
       self.patch_jump(jump);
-      self.emit_byte(AlignedByteCode::Pop);
+      self.emit_byte(AlignedByteCode::Drop);
     }
   }
 
@@ -594,7 +594,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     // check at end of iterator
     let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
-    self.emit_byte(AlignedByteCode::Pop);
+    self.emit_byte(AlignedByteCode::Drop);
 
     // assign $iter.current to loop variable
     let loop_variable = self
@@ -603,7 +603,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self.emit_byte(AlignedByteCode::GetLocal(iterator_variable));
     self.emit_byte(AlignedByteCode::IterCurrent(current_const));
     self.emit_byte(AlignedByteCode::SetLocal(loop_variable));
-    self.emit_byte(AlignedByteCode::Pop);
+    self.emit_byte(AlignedByteCode::Drop);
 
     // loop body
     self.statement();
@@ -611,7 +611,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     // loop back to top
     self.patch_jump(exit_jump);
-    self.emit_byte(AlignedByteCode::Pop);
+    self.emit_byte(AlignedByteCode::Drop);
   }
 
   /// Parse while statement
@@ -628,13 +628,13 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
 
-    self.emit_byte(AlignedByteCode::Pop);
+    self.emit_byte(AlignedByteCode::Drop);
     self.statement();
 
     self.emit_loop(loop_start);
 
     self.patch_jump(exit_jump);
-    self.emit_byte(AlignedByteCode::Pop)
+    self.emit_byte(AlignedByteCode::Drop)
   }
 
   /// Compile a if statement
@@ -650,13 +650,13 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     // parse then branch
     let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
-    self.emit_byte(AlignedByteCode::Pop);
+    self.emit_byte(AlignedByteCode::Drop);
     self.statement();
 
     // emit else jump
     let else_jump = self.emit_jump(AlignedByteCode::Jump(0));
     self.patch_jump(then_jump);
-    self.emit_byte(AlignedByteCode::Pop);
+    self.emit_byte(AlignedByteCode::Drop);
 
     // parse else branch if it exists
     if self.parser.match_kind(TokenKind::Else) {
@@ -751,7 +751,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       if self.locals[self.local_count - 1].is_captured {
         self.emit_byte(AlignedByteCode::CloseUpvalue)
       } else {
-        self.emit_byte(AlignedByteCode::Pop);
+        self.emit_byte(AlignedByteCode::Drop);
       }
       self.local_count -= 1;
     }
@@ -1111,7 +1111,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   fn and(&mut self) {
     let end_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
 
-    self.emit_byte(AlignedByteCode::Pop);
+    self.emit_byte(AlignedByteCode::Drop);
     self.parse_precedence(Precedence::And);
 
     self.patch_jump(end_jump);
@@ -1123,7 +1123,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let end_jump = self.emit_jump(AlignedByteCode::Jump(0));
 
     self.patch_jump(else_jump);
-    self.emit_byte(AlignedByteCode::Pop);
+    self.emit_byte(AlignedByteCode::Drop);
 
     self.parse_precedence(Precedence::Or);
     self.patch_jump(end_jump);
@@ -1928,7 +1928,7 @@ mod test {
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -1969,7 +1969,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
             ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Pop),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
@@ -1997,7 +1997,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(5)),
-        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2028,7 +2028,7 @@ mod test {
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::SetIndex,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2189,7 +2189,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2222,7 +2222,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2291,7 +2291,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2344,7 +2344,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(2)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2370,7 +2370,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2408,7 +2408,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
         ByteCodeTest::Code(AlignedByteCode::Call(1)),
-        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2437,7 +2437,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Pop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2505,19 +2505,19 @@ mod test {
         AlignedByteCode::Constant(1),     // 4
         AlignedByteCode::Less,            // 6
         AlignedByteCode::JumpIfFalse(21), // 7
-        AlignedByteCode::Pop,             // 10
+        AlignedByteCode::Drop,             // 10
         AlignedByteCode::Jump(11),        // 11
         AlignedByteCode::GetLocal(1),     // 14
         AlignedByteCode::Constant(2),     // 16
         AlignedByteCode::Add,             // 18
         AlignedByteCode::SetLocal(1),     // 19
-        AlignedByteCode::Pop,             // 21
+        AlignedByteCode::Drop,             // 21
         AlignedByteCode::Loop(23),        // 22
         AlignedByteCode::GetLocal(1),     // 25
         AlignedByteCode::Print,           // 27
         AlignedByteCode::Loop(17),        // 28
-        AlignedByteCode::Pop,             // 31
-        AlignedByteCode::Pop,             // 32
+        AlignedByteCode::Drop,             // 31
+        AlignedByteCode::Drop,             // 32
         AlignedByteCode::Nil,             // 33
         AlignedByteCode::Return,          // 34
       ],
@@ -2544,17 +2544,17 @@ mod test {
         AlignedByteCode::GetLocal(2),     // 14  const 2 = 2
         AlignedByteCode::IterNext(5),     // 16  const 3 = 3
         AlignedByteCode::JumpIfFalse(14), // 18  const 4 = "iter"
-        AlignedByteCode::Pop,             // 21  const 5 = "next"
+        AlignedByteCode::Drop,             // 21  const 5 = "next"
         AlignedByteCode::GetLocal(2),     // 22
         AlignedByteCode::IterCurrent(6),  // 24  const 6 = "current"
         AlignedByteCode::SetLocal(1),     // 26
-        AlignedByteCode::Pop,             // 28
+        AlignedByteCode::Drop,             // 28
         AlignedByteCode::GetLocal(1),     // 29
         AlignedByteCode::Print,           // 31
         AlignedByteCode::Loop(21),        // 32
-        AlignedByteCode::Pop,             // 35
-        AlignedByteCode::Pop,             // 36
-        AlignedByteCode::Pop,             // 37
+        AlignedByteCode::Drop,             // 35
+        AlignedByteCode::Drop,             // 36
+        AlignedByteCode::Drop,             // 37
         AlignedByteCode::Nil,             // 38
         AlignedByteCode::Return,          // 39
       ],
@@ -2572,11 +2572,11 @@ mod test {
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(7),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(0),
         AlignedByteCode::Print,
         AlignedByteCode::Loop(11),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2595,7 +2595,7 @@ mod test {
         AlignedByteCode::False,
         AlignedByteCode::JumpIfFalse(3),
         AlignedByteCode::Jump(2),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::True,
         AlignedByteCode::Print,
         AlignedByteCode::Nil,
@@ -2618,11 +2618,11 @@ mod test {
         AlignedByteCode::Constant(1),
         AlignedByteCode::Less,
         AlignedByteCode::JumpIfFalse(7),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(2),
         AlignedByteCode::Print,
         AlignedByteCode::Jump(1),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2643,11 +2643,11 @@ mod test {
         AlignedByteCode::Constant(1),    // 2
         AlignedByteCode::Less,           // 4
         AlignedByteCode::JumpIfFalse(7), // 5
-        AlignedByteCode::Pop,            // 8
+        AlignedByteCode::Drop,            // 8
         AlignedByteCode::Constant(2),    // 9
         AlignedByteCode::Print,          // 11
         AlignedByteCode::Jump(4),        // 12
-        AlignedByteCode::Pop,            // 15
+        AlignedByteCode::Drop,            // 15
         AlignedByteCode::Constant(3),    // 17
         AlignedByteCode::Print,          // 18
         AlignedByteCode::Nil,            // 19
@@ -2666,7 +2666,7 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::Constant(0),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2685,7 +2685,7 @@ mod test {
         AlignedByteCode::Constant(0),
         AlignedByteCode::GetLocal(1),
         AlignedByteCode::Print,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2705,8 +2705,8 @@ mod test {
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::SetLocal(1),
-        AlignedByteCode::Pop,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2777,7 +2777,7 @@ mod test {
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::SetGlobal(0),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2794,7 +2794,7 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::False,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2820,7 +2820,7 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::Constant(0),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2837,7 +2837,7 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::Constant(0),
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2854,7 +2854,7 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::False,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2871,7 +2871,7 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2888,7 +2888,7 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::Nil,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2906,7 +2906,7 @@ mod test {
       &vec![
         AlignedByteCode::False,
         AlignedByteCode::Not,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2924,7 +2924,7 @@ mod test {
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Negate,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2943,7 +2943,7 @@ mod test {
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Add,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2962,7 +2962,7 @@ mod test {
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Subtract,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2981,7 +2981,7 @@ mod test {
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Divide,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3000,7 +3000,7 @@ mod test {
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Multiply,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3019,7 +3019,7 @@ mod test {
         AlignedByteCode::True,
         AlignedByteCode::Nil,
         AlignedByteCode::Equal,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3039,7 +3039,7 @@ mod test {
         AlignedByteCode::Nil,
         AlignedByteCode::Equal,
         AlignedByteCode::Not,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3058,7 +3058,7 @@ mod test {
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Less,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3078,7 +3078,7 @@ mod test {
         AlignedByteCode::Constant(1),
         AlignedByteCode::Greater,
         AlignedByteCode::Not,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3097,7 +3097,7 @@ mod test {
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Greater,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3117,7 +3117,7 @@ mod test {
         AlignedByteCode::Constant(1),
         AlignedByteCode::Less,
         AlignedByteCode::Not,
-        AlignedByteCode::Pop,
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
