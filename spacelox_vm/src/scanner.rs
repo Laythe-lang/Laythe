@@ -153,7 +153,8 @@ impl<'a> Scanner<'a> {
           self.make_token_source(TokenKind::Bang)
         }
       }
-      "\"" => self.string(),
+      "\"" => self.string("\""),
+      "'" => self.string("'"),
       _ => {
         if is_digit(&self.source[char_start..current]) {
           return self.number();
@@ -215,8 +216,8 @@ impl<'a> Scanner<'a> {
   }
 
   /// Generate a string token
-  fn string(&mut self) -> Token {
-    while !self.is_at_end() && self.peek() != "\"" {
+  fn string(&mut self, quote_char: &str) -> Token {
+    while !self.is_at_end() && self.peek() != quote_char {
       if self.peek() == "\n" {
         self.line += 1;
       }
