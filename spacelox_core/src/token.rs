@@ -30,6 +30,11 @@ pub enum TokenKind {
   Slash,
   Star,
 
+  // modules
+  Export,
+  Import,
+  From,
+
   // logical operators
   Bang,
   BangEqual,

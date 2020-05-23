@@ -268,11 +268,19 @@ impl<'a> Scanner<'a> {
       Some(c1) => match c1 {
         "a" => self.check_keyword(1, "nd", TokenKind::And),
         "c" => self.check_keyword(1, "lass", TokenKind::Class),
-        "e" => self.check_keyword(1, "lse", TokenKind::Else),
+        "e" => match self.nth_char_from(self.start, 1) {
+          Some(c2) => match c2 {
+            "l" => self.check_keyword(2, "se", TokenKind::Else),
+            "x" => self.check_keyword(2, "port", TokenKind::Export),
+            _ => TokenKind::Identifier,
+          },
+          None => TokenKind::Identifier
+        }
         "f" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "a" => self.check_keyword(2, "lse", TokenKind::False),
             "o" => self.check_keyword(2, "r", TokenKind::For),
+            "r" => self.check_keyword(2, "om", TokenKind::From),
             "u" => self.check_keyword(2, "n", TokenKind::Fun),
             _ => TokenKind::Identifier,
           },
@@ -281,6 +289,7 @@ impl<'a> Scanner<'a> {
         "i" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "f" => self.check_keyword(2, "", TokenKind::If),
+            "m" => self.check_keyword(2, "port", TokenKind::Import),
             "n" => self.check_keyword(2, "", TokenKind::In),
             _ => TokenKind::Identifier,
           },
@@ -552,6 +561,10 @@ mod test {
       TokenGen::ALpha(Box::new(|| "else".to_string())),
     );
     map.insert(
+      TokenKind::Export,
+      TokenGen::ALpha(Box::new(|| "export".to_string())),
+    );
+    map.insert(
       TokenKind::False,
       TokenGen::ALpha(Box::new(|| "false".to_string())),
     );
@@ -560,12 +573,20 @@ mod test {
       TokenGen::ALpha(Box::new(|| "for".to_string())),
     );
     map.insert(
+      TokenKind::From,
+      TokenGen::ALpha(Box::new(|| "from".to_string())),
+    );
+    map.insert(
       TokenKind::Fun,
       TokenGen::ALpha(Box::new(|| "fun".to_string())),
     );
     map.insert(
       TokenKind::If,
       TokenGen::ALpha(Box::new(|| "if".to_string())),
+    );
+    map.insert(
+      TokenKind::Import,
+      TokenGen::ALpha(Box::new(|| "import".to_string())),
     );
     map.insert(
       TokenKind::In,

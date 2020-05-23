@@ -1451,7 +1451,7 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 45] = [
+const RULES_TABLE: [ParseRule; 48] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
@@ -1482,6 +1482,12 @@ const RULES_TABLE: [ParseRule; 45] = [
   // TOKEN_SLASH
   ParseRule::new(None, Some(Act::Binary), Precedence::Factor),
   // TOKEN_STAR
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_EXPORT
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_IMPORT
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_FROM
   ParseRule::new(Some(Act::Unary), None, Precedence::None),
   // TOKEN_BANG
   ParseRule::new(None, Some(Act::Binary), Precedence::Equality),

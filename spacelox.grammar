@@ -1,13 +1,19 @@
-declaration    → classDecl
+declaration    → symbolDecl
+               | exportDecl
+               | statement ;
+
+exportDecl     → "export" symbolDecl;
+
+symbolDecl     → classDecl
                | funDecl
                | varDecl
-               | statement ;
 
 classDecl      → "class" IDENTIFIER ( "<" IDENTIFIER )?
                  "{" function* "}" ;
 funDecl        → "fun" function ;
 varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
 statement      → exprStmt
+               | importStmt
                | forStmt
                | ifStmt
                | printStmt
@@ -20,6 +26,9 @@ parameters     → IDENTIFIER ( "," IDENTIFIER )* ;
 arguments      → expression ( "," expression )* ;
 
 exprStmt       → expression ";" ;
+importStmt     → "import" imports "from" STRING
+imports        → ( IDENTIFIER | "{" importSymbol ( "," importSymbol )* "}" )
+importSymbol   → ( IDENTIFIER (":" IDENTIFIER)? )
 forStmt        → "for" "(" ( varDecl | exprStmt | ";" )
                            expression? ";"
                            expression? ")" statement ;
@@ -41,7 +50,9 @@ addition       → multiplication ( ( "-" | "+" ) multiplication )* ;
 multiplication → unary ( ( "/" | "*" ) unary )* ;
 
 unary          → ( "!" | "-" ) unary | call | map ;
-map            → "{" ( expression ":" expression ) "}"
+list           → "[" ( expression ( "," expression )* ","? )? "]"
+map            → "{" ( mapEntry ( "," mapEntry )* ","? )? "}"
+mapEntry       → expression ":" expression
 call           → primary ( "(" arguments? ")" | "[" expression "]" | "." IDENTIFIER )* ;
 
 primary        → "true" | "false" | "nil" | "this"
