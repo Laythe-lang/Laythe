@@ -1,8 +1,4 @@
-use spacelox_core::{
-  managed::Managed,
-  value::Value,
-  object::Closure,
-};
+use spacelox_core::{managed::Managed, object::Closure, value::Value};
 
 /// A call frame in the space lox interpreter
 #[derive(Clone, Copy, PartialEq)]

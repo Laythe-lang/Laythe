@@ -1,4 +1,5 @@
 use super::iter::ITER_CLASS_NAME;
+use crate::support::to_dyn_method;
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
@@ -7,13 +8,12 @@ use spacelox_core::{
   managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  package::Package,
-  value::{VALUE_NIL, Value},
   object::Class,
+  package::Package,
+  value::{Value, VALUE_NIL},
   CallResult, ModuleResult,
 };
 use std::{mem, slice::Iter};
-use crate::support::to_dyn_method;
 
 pub const LIST_CLASS_NAME: &'static str = "List";
 
@@ -77,9 +77,10 @@ pub fn define_list_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_STR.name)),
-    Value::from(to_dyn_method(hooks, ListStr::new(
-      hooks.manage_str(String::from(LIST_STR.name)),
-    ))),
+    Value::from(to_dyn_method(
+      hooks,
+      ListStr::new(hooks.manage_str(String::from(LIST_STR.name))),
+    )),
   );
 
   class.add_method(

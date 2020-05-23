@@ -1,3 +1,4 @@
+use crate::support::to_dyn_method;
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
@@ -5,12 +6,11 @@ use spacelox_core::{
   managed::Trace,
   module::Module,
   native::{NativeMeta, NativeMethod},
+  object::Class,
   package::Package,
   value::Value,
-  object::Class,
   CallResult, ModuleResult,
 };
-use crate::support::to_dyn_method;
 
 pub const NATIVE_METHOD_CLASS_NAME: &'static str = "Native Method";
 
@@ -147,8 +147,7 @@ mod test {
 
       let managed: Managed<Box<dyn NativeFun>> =
         hooks.manage(Box::new(Assert::new(hooks.manage_str(String::from("str")))));
-      let result =
-        native_fun_call.call(&mut hooks, Value::from(managed), &[Value::from(true)]);
+      let result = native_fun_call.call(&mut hooks, Value::from(managed), &[Value::from(true)]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),

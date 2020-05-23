@@ -1,4 +1,5 @@
 pub mod bool;
+pub mod class;
 pub mod closure;
 pub mod iter;
 pub mod list;
@@ -9,7 +10,6 @@ pub mod native_method;
 pub mod nil;
 pub mod number;
 pub mod string;
-pub mod class;
 
 use crate::builtin::bool::{declare_bool_class, define_bool_class};
 use class::{declare_class_class, define_class_class};
@@ -22,14 +22,10 @@ use native_fun::{declare_native_fun_class, define_native_fun_class};
 use native_method::{declare_native_method_class, define_native_method_class};
 use nil::{declare_nil_class, define_nil_class};
 use number::{declare_number_class, define_number_class};
-use string::{declare_string_class, define_string_class};
 use spacelox_core::{
-  module::Module,
-  package::Package,
-  object::BuiltInClasses,
-  hooks::Hooks,
-  SlError
+  hooks::Hooks, module::Module, object::BuiltInClasses, package::Package, SlError,
 };
+use string::{declare_string_class, define_string_class};
 
 pub fn make_builtin_classes(hooks: &Hooks) -> Result<BuiltInClasses, SlError> {
   let mut module = Module::new(hooks.manage_str(String::from("builtin")));

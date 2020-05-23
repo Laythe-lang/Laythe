@@ -1,10 +1,9 @@
-use spacelox_core::{
-  hooks::Hooks,
-  managed::Managed,
-  native::NativeMethod,
-};
+use spacelox_core::{hooks::Hooks, managed::Managed, native::NativeMethod};
 
-pub fn to_dyn_method<T: 'static + NativeMethod>(hooks: &Hooks, method: T) -> Managed<Box<dyn NativeMethod>> {
+pub fn to_dyn_method<T: 'static + NativeMethod>(
+  hooks: &Hooks,
+  method: T,
+) -> Managed<Box<dyn NativeMethod>> {
   hooks.manage(Box::new(method) as Box<dyn NativeMethod>)
 }
 
@@ -14,11 +13,13 @@ pub use self::test::*;
 #[cfg(test)]
 mod test {
   use spacelox_core::{
-    hooks::{HookContext},
-    managed::{Trace, Managed},
+    arity::ArityKind,
+    hooks::HookContext,
+    io::{NativeStdIo, StdIo},
+    managed::{Managed, Trace},
     memory::{Gc, NoGc, NO_GC},
-    value::{ValueVariant, Value},
-    arity::ArityKind, SlError, CallResult, io::{StdIo, NativeStdIo},
+    value::{Value, ValueVariant},
+    CallResult, SlError,
   };
 
   pub struct TestContext<'a> {
@@ -27,7 +28,7 @@ mod test {
     responses: Vec<Value>,
     response_count: usize,
   }
-  
+
   impl<'a> TestContext<'a> {
     pub fn new(gc: &'a Gc, responses: &[Value]) -> Self {
       Self {
@@ -38,12 +39,12 @@ mod test {
       }
     }
   }
-  
+
   impl<'a> HookContext for TestContext<'a> {
     fn gc(&self) -> &Gc {
       self.gc
     }
-  
+
     fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
       let arity = match callable.kind() {
         ValueVariant::Closure => callable.to_closure().fun.arity,
@@ -56,7 +57,7 @@ mod test {
           ));
         }
       };
-  
+
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
@@ -67,20 +68,20 @@ mod test {
           ))
         }
       }
-  
+
       if self.response_count < self.responses.len() {
         let response = self.responses[self.response_count];
         self.response_count += 1;
         return Ok(response);
       }
-  
+
       Err(SlError::new(
         self
           .gc
           .manage_str(String::from("No mocked results"), &NO_GC),
       ))
     }
-  
+
     fn call_method(&mut self, _this: Value, method: Value, args: &[Value]) -> CallResult {
       let arity = match method.kind() {
         ValueVariant::Closure => method.to_closure().fun.arity,
@@ -93,7 +94,7 @@ mod test {
           ));
         }
       };
-  
+
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
@@ -104,20 +105,20 @@ mod test {
           ))
         }
       }
-  
+
       if self.response_count < self.responses.len() {
         let response = self.responses[self.response_count];
         self.response_count += 1;
         return Ok(response);
       }
-  
+
       Err(SlError::new(
         self
           .gc
           .manage_str(String::from("No mocked results"), &NO_GC),
       ))
     }
-  
+
     fn call_method_by_name(
       &mut self,
       this: Value,
@@ -146,7 +147,7 @@ mod test {
       } else {
         ArityKind::Variadic(0)
       };
-  
+
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
@@ -157,13 +158,13 @@ mod test {
           ))
         }
       }
-  
+
       if self.response_count < self.responses.len() {
         let response = self.responses[self.response_count];
         self.response_count += 1;
         return Ok(response);
       }
-  
+
       Err(SlError::new(
         self
           .gc
@@ -171,19 +172,18 @@ mod test {
       ))
     }
   }
-  
+
   impl<'a> Trace for TestContext<'a> {
     fn trace(&self) -> bool {
       self.no_gc.trace()
     }
-  
+
     fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
       self.no_gc.trace_debug(stdio)
     }
   }
-  
+
   pub fn test_native_dependencies() -> Box<Gc> {
     Box::new(Gc::new(Box::new(NativeStdIo())))
   }
 }
-

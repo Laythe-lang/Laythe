@@ -241,6 +241,7 @@ impl<T: 'static + Manage> DerefMut for Managed<T> {
 }
 
 impl<T: 'static + Manage> PartialEq for Managed<T> {
+  #[inline]
   fn eq(&self, other: &Managed<T>) -> bool {
     let left_inner: &T = &*self;
     let right_inner: &T = &*other;
@@ -252,9 +253,9 @@ impl<T: 'static + Manage> PartialEq for Managed<T> {
 impl<T: 'static + Manage> Eq for Managed<T> {}
 
 impl<T: 'static + Manage> Hash for Managed<T> {
+  #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
-    let inner: &T = &*self;
-    ptr::hash(inner, state)
+    ptr::hash(self.ptr.as_ptr(), state)
   }
 }
 

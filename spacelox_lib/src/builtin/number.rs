@@ -1,3 +1,4 @@
+use crate::support::to_dyn_method;
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
@@ -5,12 +6,11 @@ use spacelox_core::{
   managed::Trace,
   module::Module,
   native::{NativeMeta, NativeMethod},
+  object::Class,
   package::Package,
   value::Value,
-  object::Class,
   CallResult, ModuleResult,
 };
-use crate::support::to_dyn_method;
 
 pub const NUMBER_CLASS_NAME: &'static str = "Number";
 const NUMBER_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));

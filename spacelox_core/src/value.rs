@@ -1,3 +1,11 @@
+use crate::{
+  iterator::SlIterator,
+  managed::Managed,
+  native::{NativeFun, NativeMethod},
+  object::{Class, Closure, Fun, Instance, Method, Upvalue},
+  SlHashMap,
+};
+
 pub struct Nil();
 
 /// Enum of value types in spacelox
@@ -18,6 +26,25 @@ pub enum ValueVariant {
   NativeFun,
   NativeMethod,
   Upvalue,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum ValueEnum {
+  Bool(bool),
+  Nil,
+  Number(f64),
+  String(Managed<String>),
+  List(Managed<Vec<Value>>),
+  Map(Managed<SlHashMap<Value, Value>>),
+  Fun(Managed<Fun>),
+  Closure(Managed<Closure>),
+  Class(Managed<Class>),
+  Instance(Managed<Instance>),
+  Method(Managed<Method>),
+  Iter(Managed<SlIterator>),
+  NativeFun(Managed<Box<dyn NativeFun>>),
+  NativeMethod(Managed<Box<dyn NativeMethod>>),
+  Upvalue(Managed<Upvalue>),
 }
 
 #[cfg(not(feature = "nan_boxing"))]
@@ -45,24 +72,7 @@ mod unboxed {
   pub const VALUE_TRUE: Value = Value::Bool(true);
 
   /// Enum of value types in spacelox
-  #[derive(Clone, Copy, Debug)]
-  pub enum Value {
-    Bool(bool),
-    Nil,
-    Number(f64),
-    String(Managed<String>),
-    List(Managed<Vec<Value>>),
-    Map(Managed<SlHashMap<Value, Value>>),
-    Fun(Managed<Fun>),
-    Closure(Managed<Closure>),
-    Class(Managed<Class>),
-    Instance(Managed<Instance>),
-    Method(Managed<Method>),
-    Iter(Managed<SlIterator>),
-    NativeFun(Managed<Box<dyn NativeFun>>),
-    NativeMethod(Managed<Box<dyn NativeMethod>>),
-    Upvalue(Managed<Upvalue>),
-  }
+  pub type Value = ValueEnum;
 
   impl Value {
     /// Is this spacelox value nil
@@ -74,6 +84,7 @@ mod unboxed {
     /// let val1 = Value::Nil;
     /// assert_eq!(val1.is_nil(), true);
     /// ```
+    #[inline]
     pub fn is_nil(&self) -> bool {
       match self {
         Value::Nil => true,
@@ -81,6 +92,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_bool(&self) -> bool {
       match self {
         Value::Bool(_) => true,
@@ -88,6 +100,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_num(&self) -> bool {
       match self {
         Value::Number(_) => true,
@@ -95,6 +108,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_str(&self) -> bool {
       match self {
         Value::String(_) => true,
@@ -102,6 +116,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_list(&self) -> bool {
       match self {
         Value::List(_) => true,
@@ -109,6 +124,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_map(&self) -> bool {
       match self {
         Value::Map(_) => true,
@@ -116,6 +132,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_iter(&self) -> bool {
       match self {
         Value::Iter(_) => true,
@@ -123,6 +140,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_closure(&self) -> bool {
       match self {
         Value::Closure(_) => true,
@@ -130,6 +148,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_fun(&self) -> bool {
       match self {
         Value::Fun(_) => true,
@@ -137,6 +156,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_class(&self) -> bool {
       match self {
         Value::Class(_) => true,
@@ -144,6 +164,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_instance(&self) -> bool {
       match self {
         Value::Instance(_) => true,
@@ -151,6 +172,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_method(&self) -> bool {
       match self {
         Value::Method(_) => true,
@@ -158,6 +180,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_native_fun(&self) -> bool {
       match self {
         Value::NativeFun(_) => true,
@@ -165,6 +188,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_native_method(&self) -> bool {
       match self {
         Value::NativeMethod(_) => true,
@@ -172,6 +196,7 @@ mod unboxed {
       }
     }
 
+    #[inline]
     pub fn is_upvalue(&self) -> bool {
       match self {
         Value::Upvalue(_) => true,
@@ -188,6 +213,7 @@ mod unboxed {
     /// let val1 = Value::Number(20.0);
     /// assert_eq!(val1.to_num(), 20.0);
     /// ```
+    #[inline]
     pub fn to_num(&self) -> f64 {
       match self {
         Value::Number(num) => *num,
@@ -204,6 +230,7 @@ mod unboxed {
     /// let b1 = Value::Bool(false);
     /// assert_eq!(b1.to_bool(), false);
     /// ```
+    #[inline]
     pub fn to_bool(&self) -> bool {
       match self {
         Value::Bool(b1) => *b1,
@@ -224,6 +251,7 @@ mod unboxed {
     /// let value = Value::String(managed);
     /// assert_eq!(&*value.to_str(), "example")
     /// ```
+    #[inline]
     pub fn to_str(&self) -> Managed<String> {
       match self {
         Self::String(str1) => *str1,
@@ -247,6 +275,7 @@ mod unboxed {
     /// let value = Value::List(managed);
     /// assert_eq!(value.to_list()[0], Value::Nil)
     /// ```
+    #[inline]
     pub fn to_list(&self) -> Managed<Vec<Value>> {
       match self {
         Self::List(list) => *list,
@@ -271,6 +300,7 @@ mod unboxed {
     /// let value = Value::Map(managed);
     /// assert_eq!(value.to_map().len(), 0)
     /// ```
+    #[inline]
     pub fn to_map(&self) -> Managed<SlHashMap<Value, Value>> {
       match self {
         Self::Map(map) => *map,
@@ -279,6 +309,7 @@ mod unboxed {
     }
 
     /// Unwrap and reference a spacelox iterator, panics if not a iterator
+    #[inline]
     pub fn to_iter(&self) -> Managed<SlIterator> {
       match self {
         Self::Iter(iter) => *iter,
@@ -303,6 +334,7 @@ mod unboxed {
     /// let value = Value::Fun(managed);
     /// assert_eq!(&*value.to_fun().name, "add");
     /// ```
+    #[inline]
     pub fn to_fun(&self) -> Managed<Fun> {
       match self {
         Self::Fun(fun) => *fun,
@@ -311,6 +343,7 @@ mod unboxed {
     }
 
     /// Unwrap a spacelox native function, panics if not a native function
+    #[inline]
     pub fn to_native_fun(&self) -> Managed<Box<dyn NativeFun>> {
       match self {
         Self::NativeFun(native_fun) => *native_fun,
@@ -319,6 +352,7 @@ mod unboxed {
     }
 
     /// Unwrap a spacelox native method, panics if not a native method
+    #[inline]
     pub fn to_native_method(&self) -> Managed<Box<dyn NativeMethod>> {
       match self {
         Self::NativeMethod(native_method) => *native_method,
@@ -613,7 +647,6 @@ mod unboxed {
     }
   }
 
-
   impl From<Managed<Upvalue>> for Value {
     fn from(managed: Managed<Upvalue>) -> Value {
       Value::Upvalue(managed)
@@ -851,16 +884,17 @@ mod boxed {
     iterator::SlIterator,
     managed::{Allocation, Manage, Managed, Trace},
     native::{NativeFun, NativeMethod},
-    object::{Class, Closure, Fun, Instance, Method, Upvalue, BuiltInClasses},
+    object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue},
     SlHashMap,
   };
   use std::fmt;
   use std::ptr::NonNull;
 
   const BIT_SIGN: u64 = 0xc000000000000000;
-  const VARIANT_MASK: u64 = BIT_SIGN | QNAN | 0x0000000000000007;
+  const PTR_BITS: u64 = 0x0000000000000007;
+  const VARIANT_MASK: u64 = BIT_SIGN | QNAN | PTR_BITS;
 
-  const TAG_NIL: u64 = 1 | QNAN;  // 001
+  const TAG_NIL: u64 = 1 | QNAN; // 001
   const TAG_FALSE: u64 = 2 | QNAN; // 010
   const TAG_TRUE: u64 = 3 | QNAN; // 011
   const TAG_STRING: u64 = 4 | QNAN; // 100
@@ -876,41 +910,41 @@ mod boxed {
   const TAG_NATIVE_METHOD: u64 = 6 | BIT_SIGN | QNAN;
   const TAG_UPVALUE: u64 = 7 | BIT_SIGN | QNAN;
 
-  const TAGS: [u64; 15] = [
-    TAG_NIL,
-    TAG_FALSE,
-    TAG_TRUE,
-    TAG_STRING,
-    TAG_LIST,
-    TAG_MAP,
-    TAG_CLOSURE,
-    TAG_FUN,
-    TAG_CLASS,
-    TAG_INSTANCE,
-    TAG_METHOD,
-    TAG_ITER,
-    TAG_NATIVE_FUN,
-    TAG_NATIVE_METHOD,
-    TAG_UPVALUE,
-  ];
+  // const TAGS: [u64; 15] = [
+  //   TAG_NIL,
+  //   TAG_FALSE,
+  //   TAG_TRUE,
+  //   TAG_STRING,
+  //   TAG_LIST,
+  //   TAG_MAP,
+  //   TAG_CLOSURE,
+  //   TAG_FUN,
+  //   TAG_CLASS,
+  //   TAG_INSTANCE,
+  //   TAG_METHOD,
+  //   TAG_ITER,
+  //   TAG_NATIVE_FUN,
+  //   TAG_NATIVE_METHOD,
+  //   TAG_UPVALUE,
+  // ];
 
-  const TAG_VARIANTS: [ValueVariant; 15] = [
-    ValueVariant::Nil,
-    ValueVariant::Bool,
-    ValueVariant::Bool,
-    ValueVariant::String,
-    ValueVariant::List,
-    ValueVariant::Map,
-    ValueVariant::Closure,
-    ValueVariant::Fun,
-    ValueVariant::Class,
-    ValueVariant::Instance,
-    ValueVariant::Method,
-    ValueVariant::Iter,
-    ValueVariant::NativeFun,
-    ValueVariant::NativeMethod,
-    ValueVariant::Upvalue,
-  ];
+  // const TAG_VARIANTS: [ValueVariant; 15] = [
+  //   ValueVariant::Nil,
+  //   ValueVariant::Bool,
+  //   ValueVariant::Bool,
+  //   ValueVariant::String,
+  //   ValueVariant::List,
+  //   ValueVariant::Map,
+  //   ValueVariant::Closure,
+  //   ValueVariant::Fun,
+  //   ValueVariant::Class,
+  //   ValueVariant::Instance,
+  //   ValueVariant::Method,
+  //   ValueVariant::Iter,
+  //   ValueVariant::NativeFun,
+  //   ValueVariant::NativeMethod,
+  //   ValueVariant::Upvalue,
+  // ];
 
   #[derive(Clone, Copy)]
   #[repr(C)]
@@ -942,145 +976,198 @@ mod boxed {
   pub struct Value(u64);
 
   impl Value {
+    #[inline]
     pub fn is_nil(&self) -> bool {
       self.0 == VALUE_NIL.0
     }
 
+    #[inline]
     pub fn is_bool(&self) -> bool {
       self.0 == VALUE_FALSE.0 || self.0 == VALUE_TRUE.0
     }
 
+    #[inline]
     pub fn is_num(&self) -> bool {
       (self.0 & QNAN) != QNAN
     }
 
+    #[inline]
     fn is_obj_tag(&self, tag: u64) -> bool {
       (self.0 & VARIANT_MASK) == tag
     }
 
+    #[inline]
     pub fn is_str(&self) -> bool {
       self.is_obj_tag(TAG_STRING)
     }
 
+    #[inline]
     pub fn is_list(&self) -> bool {
       self.is_obj_tag(TAG_LIST)
     }
 
+    #[inline]
     pub fn is_map(&self) -> bool {
       self.is_obj_tag(TAG_MAP)
     }
 
+    #[inline]
     pub fn is_iter(&self) -> bool {
       self.is_obj_tag(TAG_ITER)
     }
 
+    #[inline]
     pub fn is_closure(&self) -> bool {
       self.is_obj_tag(TAG_CLOSURE)
     }
 
+    #[inline]
     pub fn is_fun(&self) -> bool {
       self.is_obj_tag(TAG_FUN)
     }
 
+    #[inline]
     pub fn is_class(&self) -> bool {
       self.is_obj_tag(TAG_CLASS)
     }
 
+    #[inline]
     pub fn is_instance(&self) -> bool {
       self.is_obj_tag(TAG_INSTANCE)
     }
 
+    #[inline]
     pub fn is_method(&self) -> bool {
       self.is_obj_tag(TAG_METHOD)
     }
 
+    #[inline]
     pub fn is_native_fun(&self) -> bool {
       self.is_obj_tag(TAG_NATIVE_FUN)
     }
 
+    #[inline]
     pub fn is_native_method(&self) -> bool {
       self.is_obj_tag(TAG_NATIVE_METHOD)
     }
 
+    #[inline]
     pub fn is_upvalue(&self) -> bool {
       self.is_obj_tag(TAG_UPVALUE)
     }
 
+    #[inline]
     pub fn to_bool(&self) -> bool {
       *self == VALUE_TRUE
     }
 
+    #[inline]
     pub fn to_num(&self) -> f64 {
       let union = NumberUnion { bits: self.0 };
       unsafe { union.num }
     }
 
+    #[inline]
     pub fn to_obj_tag<T: 'static + Manage>(&self, tag: u64) -> Managed<T> {
-      let as_unsigned = self.0 & !(tag);
+      let as_unsigned = self.0 & !tag;
       let ptr = unsafe { NonNull::new_unchecked(as_unsigned as usize as *mut Allocation<T>) };
       Managed::from(ptr)
     }
 
+    #[inline]
     pub fn to_str(&self) -> Managed<String> {
       self.to_obj_tag(TAG_STRING)
     }
 
+    #[inline]
     pub fn to_list(&self) -> Managed<Vec<Value>> {
       self.to_obj_tag(TAG_LIST)
     }
 
+    #[inline]
     pub fn to_map(&self) -> Managed<SlHashMap<Value, Value>> {
       self.to_obj_tag(TAG_MAP)
     }
 
+    #[inline]
     pub fn to_iter(&self) -> Managed<SlIterator> {
       self.to_obj_tag(TAG_ITER)
     }
 
+    #[inline]
     pub fn to_closure(&self) -> Managed<Closure> {
       self.to_obj_tag(TAG_CLOSURE)
     }
 
+    #[inline]
     pub fn to_fun(&self) -> Managed<Fun> {
       self.to_obj_tag(TAG_FUN)
     }
 
+    #[inline]
     pub fn to_class(&self) -> Managed<Class> {
       self.to_obj_tag(TAG_CLASS)
     }
 
+    #[inline]
     pub fn to_instance(&self) -> Managed<Instance> {
       self.to_obj_tag(TAG_INSTANCE)
     }
 
+    #[inline]
     pub fn to_method(&self) -> Managed<Method> {
       self.to_obj_tag(TAG_METHOD)
     }
 
+    #[inline]
     pub fn to_native_fun(&self) -> Managed<Box<dyn NativeFun>> {
       self.to_obj_tag(TAG_NATIVE_FUN)
     }
 
+    #[inline]
     pub fn to_native_method(&self) -> Managed<Box<dyn NativeMethod>> {
       self.to_obj_tag(TAG_NATIVE_METHOD)
     }
 
+    #[inline]
     pub fn to_upvalue(&self) -> Managed<Upvalue> {
       self.to_obj_tag(TAG_UPVALUE)
     }
 
+    #[inline]
     pub fn kind(&self) -> ValueVariant {
       if self.is_num() {
         return ValueVariant::Number;
       }
 
-      let masked = self.0 & VARIANT_MASK;
-      match TAGS.binary_search(&masked) {
-        Ok(index) => TAG_VARIANTS[index],
-        Err(_) => panic!("Could not find value variant."),
+      let top_bit = (self.0 >> 63) as u8;
+      let lower_byte = self.0 as u8;
+
+      if top_bit == 0 {
+        match lower_byte & 0x07 {
+          1 => ValueVariant::Nil,
+          2 => ValueVariant::Bool,
+          3 => ValueVariant::Bool,
+          4 => ValueVariant::String,
+          5 => ValueVariant::List,
+          6 => ValueVariant::Map,
+          7 => ValueVariant::Closure,
+          _ => panic!("value kind failed."),
+        }
+      } else {
+        match lower_byte & 0x07 {
+          0 => ValueVariant::Fun,
+          1 => ValueVariant::Class,
+          2 => ValueVariant::Instance,
+          3 => ValueVariant::Method,
+          4 => ValueVariant::Iter,
+          5 => ValueVariant::NativeFun,
+          6 => ValueVariant::NativeMethod,
+          7 => ValueVariant::Upvalue,
+          _ => panic!("value kind failed."),
+        }
       }
     }
-
 
     /// Get a string representation of the underlying type this value representing
     ///
@@ -1133,8 +1220,8 @@ mod boxed {
         ValueVariant::Instance => self.to_instance().class,
         ValueVariant::Iter => self.to_iter().class,
         ValueVariant::Upvalue => self.to_upvalue().value().value_class(builtin),
-        ValueVariant::NativeFun  => builtin.native_fun,
-        ValueVariant::NativeMethod  => builtin.native_method,
+        ValueVariant::NativeFun => builtin.native_fun,
+        ValueVariant::NativeMethod => builtin.native_method,
       }
     }
   }
@@ -1152,8 +1239,8 @@ mod boxed {
         ValueVariant::Instance => self.to_instance().trace(),
         ValueVariant::Iter => self.to_iter().trace(),
         ValueVariant::Upvalue => self.to_upvalue().trace(),
-        ValueVariant::NativeFun  => self.to_native_fun().trace(),
-        ValueVariant::NativeMethod  => self.to_native_method().trace(),
+        ValueVariant::NativeFun => self.to_native_fun().trace(),
+        ValueVariant::NativeMethod => self.to_native_method().trace(),
         _ => true,
       }
     }
@@ -1169,8 +1256,8 @@ mod boxed {
         ValueVariant::Instance => self.to_instance().trace_debug(stdio),
         ValueVariant::Iter => self.to_iter().trace_debug(stdio),
         ValueVariant::Upvalue => self.to_upvalue().trace_debug(stdio),
-        ValueVariant::NativeFun  => self.to_native_fun().trace_debug(stdio),
-        ValueVariant::NativeMethod  => self.to_native_method().trace_debug(stdio),
+        ValueVariant::NativeFun => self.to_native_fun().trace_debug(stdio),
+        ValueVariant::NativeMethod => self.to_native_method().trace_debug(stdio),
         _ => true,
       }
     }
@@ -1323,7 +1410,11 @@ mod boxed {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::{SlHashMap, managed::{Allocation, Managed}, object::{Closure, Fun, Class}};
+  use crate::{
+    managed::{Allocation, Managed},
+    object::{Class, Closure, Fun},
+    SlHashMap,
+  };
   use std::ptr::NonNull;
 
   const VARIANTS: [ValueVariant; 15] = [
@@ -1360,7 +1451,7 @@ mod test {
       ValueVariant::Method => val.is_method(),
       ValueVariant::NativeFun => val.is_native_fun(),
       ValueVariant::NativeMethod => val.is_native_method(),
-      ValueVariant::Upvalue => val.is_upvalue()
+      ValueVariant::Upvalue => val.is_upvalue(),
     }
   }
 
@@ -1394,7 +1485,12 @@ mod test {
     (alloc_string, alloc, managed)
   }
 
-  fn test_closure() -> (Box<Allocation<String>>, Box<Allocation<Fun>>, Box<Allocation<Closure>>, Managed<Closure>) {
+  fn test_closure() -> (
+    Box<Allocation<String>>,
+    Box<Allocation<Fun>>,
+    Box<Allocation<Closure>>,
+    Managed<Closure>,
+  ) {
     let (alloc_string, alloc_fun, fun) = test_fun();
 
     let closure = Closure::new(fun);
@@ -1405,7 +1501,11 @@ mod test {
     (alloc_string, alloc_fun, alloc, managed)
   }
 
-  fn test_class() -> (Box<Allocation<String>>, Box<Allocation<Class>>, Managed<Class>) {
+  fn test_class() -> (
+    Box<Allocation<String>>,
+    Box<Allocation<Class>>,
+    Managed<Class>,
+  ) {
     let (alloc_string, string) = test_string();
 
     let class = Class::new(string);
@@ -1507,7 +1607,10 @@ mod test {
 
     assert_eq!(managed.len(), managed2.len());
     assert_eq!(managed.get(&VALUE_NIL), managed2.get(&VALUE_NIL));
-    assert_eq!(managed.get(&Value::from(10.0)), managed2.get(&Value::from(10.0)));
+    assert_eq!(
+      managed.get(&Value::from(10.0)),
+      managed2.get(&Value::from(10.0))
+    );
   }
 
   #[test]

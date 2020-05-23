@@ -4,7 +4,7 @@ use spacelox_core::{
   io::StdIo,
   managed::{Managed, Trace},
   native::{NativeFun, NativeMeta},
-  value::{VALUE_NIL, Value},
+  value::{Value, VALUE_NIL},
   CallResult,
 };
 
@@ -49,7 +49,10 @@ impl NativeFun for Assert {
 
       if let Ok(ok) = result {
         if ok.is_str() {
-          return hooks.error(format!("Assertion failed expected true received {}.", ok.to_str()));
+          return hooks.error(format!(
+            "Assertion failed expected true received {}.",
+            ok.to_str()
+          ));
         }
       }
 
@@ -96,7 +99,8 @@ impl NativeFun for AssertEq {
       if ok1.is_str() && ok2.is_str() {
         return hooks.error(format!(
           "Assertion failed {} and {} are not equal.",
-          ok1.to_str(), ok2.to_str()
+          ok1.to_str(),
+          ok2.to_str()
         ));
       }
     }
@@ -141,7 +145,11 @@ impl NativeFun for AssertNe {
 
     if let (Ok(ok1), Ok(ok2)) = (result1, result2) {
       if ok1.is_str() && ok2.is_str() {
-        return hooks.error(format!("Assertion failed {} and {} are equal.", ok1.to_str(), ok2.to_str()));
+        return hooks.error(format!(
+          "Assertion failed {} and {} are equal.",
+          ok1.to_str(),
+          ok2.to_str()
+        ));
       }
     }
 

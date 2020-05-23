@@ -1,3 +1,4 @@
+use crate::support::to_dyn_method;
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
@@ -5,12 +6,11 @@ use spacelox_core::{
   managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
+  object::Class,
   package::Package,
   value::Value,
-  object::Class,
   CallResult, ModuleResult,
 };
-use crate::support::to_dyn_method;
 
 pub const METHOD_CLASS_NAME: &'static str = "Method";
 
@@ -31,9 +31,10 @@ pub fn define_method_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(METHOD_NAME.name)),
-    Value::from(to_dyn_method(hooks, MethodName::new(
-      hooks.manage_str(String::from(METHOD_NAME.name)),
-    ))),
+    Value::from(to_dyn_method(
+      hooks,
+      MethodName::new(hooks.manage_str(String::from(METHOD_NAME.name))),
+    )),
   );
 
   class.add_method(
@@ -124,9 +125,7 @@ mod test {
       let gc = test_native_dependencies();
       let mut context = TestContext::new(
         &gc,
-        &[Value::from(
-          gc.manage_str(String::from("example"), &NO_GC),
-        )],
+        &[Value::from(gc.manage_str(String::from("example"), &NO_GC))],
       );
       let mut hooks = Hooks::new(&mut context);
       let method_name = MethodName::new(hooks.manage_str(String::from("name")));
@@ -135,10 +134,7 @@ mod test {
       let class = hooks.manage(Class::new(hooks.manage_str(String::from("exampleClass"))));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
-      let method = hooks.manage(Method::new(
-        Value::from(instance),
-        Value::from(closure),
-      ));
+      let method = hooks.manage(Method::new(Value::from(instance), Value::from(closure)));
 
       let result1 = method_name.call(&mut hooks, Value::from(method), &[]);
 
@@ -173,10 +169,7 @@ mod test {
       let class = hooks.manage(Class::new(hooks.manage_str(String::from("exampleClass"))));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
-      let method = hooks.manage(Method::new(
-        Value::from(instance),
-        Value::from(closure),
-      ));
+      let method = hooks.manage(Method::new(Value::from(instance), Value::from(closure)));
 
       let result1 = method_call.call(&mut hooks, Value::from(method), &[]);
 

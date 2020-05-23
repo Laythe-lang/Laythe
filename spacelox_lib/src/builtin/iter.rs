@@ -1,3 +1,4 @@
+use crate::support::to_dyn_method;
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
@@ -6,14 +7,13 @@ use spacelox_core::{
   managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
+  object::Class,
   package::Package,
   utils::is_falsey,
-  value::{VALUE_NIL, Value},
-  object::Class,
+  value::{Value, VALUE_NIL},
   CallResult, ModuleResult,
 };
 use std::mem;
-use crate::support::to_dyn_method;
 
 pub const ITER_CLASS_NAME: &'static str = "Iter";
 const ITER_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
@@ -49,7 +49,6 @@ pub fn define_iter_class(hooks: &Hooks, self_module: &Module, _: &Package) {
     hooks,
     hooks.manage_str(String::from(ITER_ITER.name)),
     Value::from(to_dyn_method(hooks, IterIter::new())),
-
   );
 
   let class_copy = class.clone();
@@ -57,13 +56,12 @@ pub fn define_iter_class(hooks: &Hooks, self_module: &Module, _: &Package) {
     hooks,
     hooks.manage_str(String::from(ITER_MAP.name)),
     Value::from(to_dyn_method(hooks, IterMap::new(class_copy))),
-
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_FILTER.name)),
-    Value::from(to_dyn_method(hooks, IterFilter::new(class_copy ))),
+    Value::from(to_dyn_method(hooks, IterFilter::new(class_copy))),
   );
 }
 

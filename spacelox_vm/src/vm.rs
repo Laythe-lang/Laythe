@@ -11,9 +11,9 @@ use spacelox_core::{
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
   native::{NativeFun, NativeMethod},
-  utils::{is_falsey, ptr_len, use_sentinel_nan},
-  value::{VALUE_NIL, Value, ValueVariant},
   object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue},
+  utils::{is_falsey, ptr_len, use_sentinel_nan},
+  value::{Value, ValueVariant, VALUE_NIL},
   CallResult, SlError, SlHashMap,
 };
 use spacelox_lib::{assert::assert_funs, builtin::make_builtin_classes, time::clock_funs};
@@ -421,12 +421,6 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
-  /// Get an immutable reference to the current callframe
-  #[inline]
-  fn current_frame(&self) -> &CallFrame {
-    unsafe { self.frames.get_unchecked(self.frame_count - 1) }
-  }
-
   /// Get an immutable reference to value on the stack
   #[inline]
   fn get_val(&self, offset: isize) -> Value {
@@ -612,7 +606,6 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// invoke a method
   fn invoke(&mut self, receiver: Value, method_name: Managed<String>, arg_count: u8) -> Signal {
-    let class = receiver.value_class(&self.builtin);
     if receiver.is_instance() {
       let instance = receiver.to_instance();
       if let Some(field) = instance.get_field(&method_name) {
@@ -621,6 +614,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       }
     }
 
+    let class = receiver.value_class(&self.builtin);
     self.invoke_from_class(class, method_name, arg_count)
   }
 
@@ -718,7 +712,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
       list[rounded] = self.pop();
       self.pop();
-      return Signal::Ok
+      return Signal::Ok;
     } else if target.is_map() {
       let mut map = target.to_map();
 
@@ -729,16 +723,20 @@ impl<'a, I: Io> VmExecutor<'a, I> {
           map.insert(Value::from(use_sentinel_nan(num)), value)
         });
         self.pop();
-        return Signal::Ok
+        return Signal::Ok;
       } else {
         let value = self.pop();
         self.gc.grow(&mut map, self, |map| map.insert(index, value));
         self.pop();
-        return Signal::Ok
+        return Signal::Ok;
       }
     }
-    
-    self.runtime_error(&format!("{} cannot be indexed by {}.", target.value_type(), index.value_type()))
+
+    self.runtime_error(&format!(
+      "{} cannot be indexed by {}.",
+      target.value_type(),
+      index.value_type()
+    ))
   }
 
   fn op_set_global(&mut self) -> Signal {
@@ -807,7 +805,6 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let index = self.pop();
     let target = self.pop();
 
-
     if target.is_list() && index.is_num() {
       let list = target.to_list();
       let num = index.to_num();
@@ -833,7 +830,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
             Signal::Ok
           }
           None => self.runtime_error(&format!("Key {} does not exist in map", index)),
-        }
+        };
       } else {
         return match map.get(&index) {
           Some(value) => {
@@ -841,7 +838,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
             Signal::Ok
           }
           None => self.runtime_error(&format!("Key {} does not exist in map", index)),
-        }
+        };
       }
     }
 
@@ -899,24 +896,28 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn get_property(&mut self, value: Value, name: Managed<String>) -> Signal {
-    let class = value.value_class(&self.builtin);
+    let kind = value.kind();
+    match kind {
+      ValueVariant::Instance => {
+        let instance = value.to_instance();
 
-    if value.is_instance() {
-      let instance = value.to_instance();
-      
-      if let Some(value) = instance.get_field(&name) {
-        self.set_val(-1, *value);
-        return Signal::Ok
+        if let Some(value) = instance.get_field(&name) {
+          self.set_val(-1, *value);
+          return Signal::Ok;
+        }
       }
-    } else if value.is_iter() {
-      let iter = value.to_iter();
+      ValueVariant::Iter => {
+        let iter = value.to_iter();
 
-      if let Some(value) = iter.get_field(&name) {
-        self.set_val(-1, *value);
-        return Signal::Ok
+        if let Some(value) = iter.get_field(&name) {
+          self.set_val(-1, *value);
+          return Signal::Ok;
+        }
       }
+      _ => (),
     }
 
+    let class = self.builtin.for_variant(value, kind);
     self.bind_method(class, name)
   }
 
@@ -935,7 +936,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     // pull the current frame out of the stack and set the cached frame
     self.stack_top = self.frames[self.frame_count].slots;
-    self.current_frame = *self.current_frame();
+    self.current_frame = self.frames[self.frame_count - 1];
     self.current_fun = self.current_frame.closure.fun;
 
     // push the result onto the stack
@@ -963,13 +964,13 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_add(&mut self) -> Signal {
     let (right, left) = (self.pop(), self.pop());
 
-    if right.is_str() && left.is_str() {
+    if right.is_num() && left.is_num() {
+      self.push(Value::from(left.to_num() + right.to_num()));
+      Signal::Ok
+    } else if right.is_str() && left.is_str() {
       let result = format!("{}{}", left.to_str(), right.to_str());
       let string = self.gc.manage_str(result, self);
       self.push(Value::from(string));
-      Signal::Ok
-    } else if right.is_num() && left.is_num() {
-      self.push(Value::from(left.to_num() + right.to_num()));
       Signal::Ok
     } else {
       self.runtime_error("Operands must be two numbers or two strings.")
@@ -981,7 +982,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     if right.is_num() && left.is_num() {
       self.push(Value::from(left.to_num() - right.to_num()));
-      return Signal::Ok
+      return Signal::Ok;
     }
 
     self.runtime_error("Operands must be numbers.")
@@ -992,7 +993,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     if right.is_num() && left.is_num() {
       self.push(Value::from(left.to_num() * right.to_num()));
-      return Signal::Ok
+      return Signal::Ok;
     }
 
     self.runtime_error("Operands must be numbers.")
@@ -1003,7 +1004,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     if right.is_num() && left.is_num() {
       self.push(Value::from(left.to_num() / right.to_num()));
-      return Signal::Ok
+      return Signal::Ok;
     }
 
     self.runtime_error("Operands must be numbers.")
@@ -1014,7 +1015,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     if right.is_num() && left.is_num() {
       self.push(Value::from(left.to_num() < right.to_num()));
-      return Signal::Ok
+      return Signal::Ok;
     }
 
     self.runtime_error("Operands must be numbers.")
@@ -1025,7 +1026,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     if right.is_num() && left.is_num() {
       self.push(Value::from(left.to_num() > right.to_num()));
-      return Signal::Ok
+      return Signal::Ok;
     }
 
     self.runtime_error("Operands must be numbers.")
@@ -1109,7 +1110,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       ValueVariant::NativeFun => self.call_native_fun(callee.to_native_fun(), arg_count),
       ValueVariant::NativeMethod => self.call_native_method(callee.to_native_method(), arg_count),
       ValueVariant::Class => self.call_class(callee.to_class(), arg_count),
-      ValueVariant::Fun => panic!("function {} was not wrapped in a closure", callee.to_fun().name),
+      ValueVariant::Fun => panic!(
+        "function {} was not wrapped in a closure",
+        callee.to_fun().name
+      ),
       _ => self.runtime_error("Can only call functions and classes."),
     }
   }
@@ -1204,13 +1208,21 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
 
     // let frame_ptr = &mut self.frames[self.frame_count - 1] as *mut CallFrame;
-    self.frames[self.frame_count - 1] = self.current_frame;
-    let frame = &mut self.frames[self.frame_count];
-    frame.closure = closure;
-    frame.ip = &closure.fun.chunk().instructions[0] as *const u8;
-    frame.slots = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
+    unsafe {
+      *self.frames.get_unchecked_mut(self.frame_count - 1) = self.current_frame;
+      let frame = self.frames.get_unchecked_mut(self.frame_count);
+      frame.closure = closure;
+      frame.ip = closure.fun.chunk().instructions.get_unchecked(0) as *const u8;
+      frame.slots = self.stack_top.offset(-(arg_count as isize) - 1);
+      self.current_frame = *frame;
+    }
+    // self.frames[self.frame_count - 1] = self.current_frame;
+    // let frame = &mut self.frames[self.frame_count];
+    // frame.closure = closure;
+    // frame.ip = &closure.fun.chunk().instructions[0] as *const u8;
+    // frame.slots = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
 
-    self.current_frame = *frame;
+    // self.current_frame = *frame;
     self.current_fun = closure.fun;
     self.frame_count += 1;
 

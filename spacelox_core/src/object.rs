@@ -7,7 +7,7 @@ use crate::{
   io::StdIo,
   managed::{Manage, Managed, Trace},
   utils::do_if_some,
-  value::Value,
+  value::{Value, ValueVariant},
   SlHashMap,
 };
 use std::{fmt, mem, ptr::NonNull};
@@ -24,6 +24,28 @@ pub struct BuiltInClasses {
   pub method: Managed<Class>,
   pub native_fun: Managed<Class>,
   pub native_method: Managed<Class>,
+}
+
+impl BuiltInClasses {
+  pub fn for_variant(&self, value: Value, variant: ValueVariant) -> Managed<Class> {
+    match variant {
+      ValueVariant::Bool => self.bool,
+      ValueVariant::Nil => self.nil,
+      ValueVariant::Number => self.number,
+      ValueVariant::String => self.string,
+      ValueVariant::List => self.list,
+      ValueVariant::Map => self.map,
+      ValueVariant::Fun => panic!(),
+      ValueVariant::Closure => self.closure,
+      ValueVariant::Class => self.class,
+      ValueVariant::Instance => value.to_instance().class,
+      ValueVariant::Iter => value.to_iter().class,
+      ValueVariant::Method => self.method,
+      ValueVariant::NativeFun => self.native_fun,
+      ValueVariant::NativeMethod => self.native_method,
+      ValueVariant::Upvalue => value.to_upvalue().value().value_class(self),
+    }
+  }
 }
 
 impl Trace for BuiltInClasses {

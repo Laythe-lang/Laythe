@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "std_lib/builtin/iter/filter.lox",
+        "benchmark/trees.lox",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",

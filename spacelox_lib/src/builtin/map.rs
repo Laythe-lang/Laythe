@@ -1,4 +1,5 @@
 use super::iter::ITER_CLASS_NAME;
+use crate::support::to_dyn_method;
 use hashbrown::hash_map::Iter;
 use spacelox_core::{
   arity::ArityKind,
@@ -8,14 +9,13 @@ use spacelox_core::{
   managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  package::Package,
-  value::{VALUE_NIL, Value},
   object::Class,
+  package::Package,
+  value::{Value, VALUE_NIL},
   CallResult, ModuleResult, SlError, SlHashMap,
 };
 use std::fmt;
 use std::mem;
-use crate::support::to_dyn_method;
 
 pub const MAP_CLASS_NAME: &'static str = "Map";
 
@@ -53,9 +53,10 @@ pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(MAP_STR.name)),
-    Value::from(to_dyn_method(hooks, MapStr::new(
-      hooks.manage_str(String::from(MAP_STR.name)),
-    ))),
+    Value::from(to_dyn_method(
+      hooks,
+      MapStr::new(hooks.manage_str(String::from(MAP_STR.name))),
+    )),
   );
 
   class.add_method(
