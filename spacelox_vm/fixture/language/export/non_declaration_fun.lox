@@ -1,0 +1,2 @@
+fun example() {}
+export example;

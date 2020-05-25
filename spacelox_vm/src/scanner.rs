@@ -275,8 +275,8 @@ impl<'a> Scanner<'a> {
             "x" => self.check_keyword(2, "port", TokenKind::Export),
             _ => TokenKind::Identifier,
           },
-          None => TokenKind::Identifier
-        }
+          None => TokenKind::Identifier,
+        },
         "f" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "a" => self.check_keyword(2, "lse", TokenKind::False),

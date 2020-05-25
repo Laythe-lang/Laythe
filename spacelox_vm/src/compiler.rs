@@ -234,14 +234,26 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a declaration
   fn declaration(&mut self) {
-    if self.parser.match_kind(TokenKind::Class) {
-      self.class_declaration();
-    } else if self.parser.match_kind(TokenKind::Fun) {
-      self.fun_declaration();
-    } else if self.parser.match_kind(TokenKind::Var) {
-      self.var_declaration();
-    } else {
-      self.statement();
+    match self.parser.current.kind {
+      TokenKind::Class => {
+        self.parser.advance();
+        self.class_declaration();
+      }
+      TokenKind::Fun => {
+        self.parser.advance();
+        self.fun_declaration();
+      }
+      TokenKind::Var => {
+        self.parser.advance();
+        self.var_declaration();
+      }
+      TokenKind::Export => {
+        self.parser.advance();
+        self.export_declaration();
+      }
+      _ => {
+        self.statement();
+      }
     }
 
     if self.parser.panic_mode {
@@ -249,24 +261,78 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     }
   }
 
+  /// Parse a symbol declaration
+  fn export_declaration(&mut self) {
+    let symbol = match self.parser.current.kind {
+      TokenKind::Class => {
+        self.parser.advance();
+        Some(self.class_declaration())
+      }
+      TokenKind::Fun => {
+        self.parser.advance();
+        Some(self.fun_declaration())
+      }
+      TokenKind::Var => {
+        self.parser.advance();
+        Some(self.var_declaration())
+      }
+      _ => {
+        None
+      }
+    };
+
+    if self.scope_depth == 0 {
+      match symbol {
+        Some(valid_symbol) => {
+          self.emit_byte(AlignedByteCode::Export(valid_symbol));
+        }
+        None => self
+          .parser
+          .error_at_current("Can only export variable, function or class declarations."),
+      }
+    } else {
+      self
+        .parser
+        .error_at_current("Can only export from the module scope.")
+    }
+  }
+
   /// Parse a statement
   fn statement(&mut self) {
-    if self.parser.match_kind(TokenKind::Print) {
-      self.print_statement();
-    } else if self.parser.match_kind(TokenKind::For) {
-      self.for_statement();
-    } else if self.parser.match_kind(TokenKind::If) {
-      self.if_statement();
-    } else if self.parser.match_kind(TokenKind::Return) {
-      self.return_statement();
-    } else if self.parser.match_kind(TokenKind::While) {
-      self.while_statement();
-    } else if self.parser.match_kind(TokenKind::LeftBrace) {
-      self.begin_scope();
-      self.block();
-      self.end_scope();
-    } else {
-      self.expression_statement();
+    match self.parser.current.kind {
+      TokenKind::Print => {
+        self.parser.advance();
+        self.print_statement();
+      }
+      TokenKind::For => {
+        self.parser.advance();
+        self.for_statement();
+      }
+      TokenKind::If => {
+        self.parser.advance();
+        self.if_statement();
+      }
+      TokenKind::Return => {
+        self.parser.advance();
+        self.return_statement();
+      }
+      TokenKind::While => {
+        self.parser.advance();
+        self.while_statement();
+      }
+      TokenKind::Import => {
+        self.parser.advance();
+        self.import_statement();
+      }
+      TokenKind::LeftBrace => {
+        self.parser.advance();
+        self.begin_scope();
+        self.block();
+        self.end_scope();
+      }
+      _ => {
+        self.expression_statement();
+      }
     }
   }
 
@@ -287,7 +353,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Parse a class declaration
-  fn class_declaration(&mut self) {
+  fn class_declaration(&mut self) -> u16 {
     self
       .parser
       .consume(TokenKind::Identifier, "Expect class name.");
@@ -349,15 +415,17 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     }
 
     self.current_class = class_compiler.enclosing;
+    name_constant
   }
 
   /// Parse a function declaration
-  fn fun_declaration(&mut self) {
+  fn fun_declaration(&mut self) -> u16 {
     let global = self.parse_variable("Expect variable name.");
 
     self.mark_initialized();
     self.function(FunKind::Fun);
     self.define_variable(global);
+    global
   }
 
   /// Parse a function declaration and body
@@ -417,7 +485,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Parse a variable declaration
-  fn var_declaration(&mut self) {
+  fn var_declaration(&mut self) -> u16 {
     let variable = self.parse_variable("Expect variable name.");
 
     if self.parser.match_kind(TokenKind::Equal) {
@@ -432,6 +500,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     );
 
     self.define_variable(variable);
+    variable
   }
 
   /// Parse an expression statement
@@ -664,6 +733,34 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     }
 
     self.patch_jump(else_jump);
+  }
+
+  /// Parse an import statement
+  fn import_statement(&mut self) {
+    self
+      .parser
+      .consume(TokenKind::Identifier, "Expected name following import.");
+    let name = self.identifer_constant(self.parser.previous.clone());
+
+    self
+      .parser
+      .consume(TokenKind::From, "Expected 'from' following import name.");
+
+    self
+      .parser
+      .consume(TokenKind::String, "Expected path string after 'from'.");
+    let string = self.hooks.manage_str(copy_string(&self.parser.previous));
+    let value = Value::from(string);
+    let path = self.make_constant(value);
+    self.parser.consume(TokenKind::Semicolon, "Expect ';' after value.");
+
+    if self.scope_depth == 0 {
+      self.emit_byte(AlignedByteCode::Import((name, path)))
+    } else {
+      self
+        .parser
+        .error_at_current("Can only import from the module scope.")
+    }
   }
 
   /// Parse print statement
@@ -1034,7 +1131,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Define a variable
-  fn define_variable(&mut self, variable: u8) {
+  fn define_variable(&mut self, variable: u16) {
     if self.scope_depth > 0 {
       self.mark_initialized();
       return;
@@ -1195,7 +1292,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a variable from the provided token return it's new constant
   /// identifer if an identifer was identified
-  fn parse_variable(&mut self, error_message: &str) -> u8 {
+  fn parse_variable(&mut self, error_message: &str) -> u16 {
     self.parser.consume(TokenKind::Identifier, error_message);
     self.declare_variable(self.parser.previous.clone());
     if self.scope_depth > 0 {
@@ -1212,7 +1309,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Generate a constant from the provided identifier token
-  fn identifer_constant(&mut self, name: Token) -> u8 {
+  fn identifer_constant(&mut self, name: Token) -> u16 {
     let identifer = self.hooks.manage_str(name.lexeme);
     self.make_constant(Value::from(identifer))
   }
@@ -1362,18 +1459,18 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Add a constant to the current chunk
-  fn make_constant(&mut self, value: Value) -> u8 {
+  fn make_constant(&mut self, value: Value) -> u16 {
     match self.constants.get(&value) {
-      Some(index) => *index as u8,
+      Some(index) => *index as u16,
       None => {
         let index = self.fun.add_constant(&self.hooks, value);
-        if index > std::u8::MAX as usize {
+        if index > std::u16::MAX as usize {
           self.parser.error("Too many constants in one chunk.");
           return 0;
         }
 
         self.constants.insert(value, index);
-        index as u8
+        index as u16
       }
     }
   }
@@ -1381,7 +1478,12 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// Emit byte code for a constant
   fn emit_constant(&mut self, value: Value) {
     let index = self.make_constant(value);
-    self.emit_byte(AlignedByteCode::Constant(index));
+
+    if index <= std::u8::MAX as u16 {
+      self.emit_byte(AlignedByteCode::Constant(index as u8));
+    } else {
+      self.emit_byte(AlignedByteCode::ConstantLong(index));
+    }
   }
 
   /// Patch a jump instruction
@@ -1795,7 +1897,7 @@ mod test {
 
   enum ByteCodeTest {
     Code(AlignedByteCode),
-    Fun((u8, Vec<ByteCodeTest>)),
+    Fun((u16, Vec<ByteCodeTest>)),
   }
 
   fn test_compile<'a>(src: String, gc: &mut Gc) -> Managed<Fun> {
@@ -1839,7 +1941,7 @@ mod test {
     fun: Managed<Fun>,
     decoded: &mut Vec<AlignedByteCode>,
     offset: usize,
-    slot: u8,
+    slot: u16,
   ) -> usize {
     let inner_fun = fun.chunk().constants[slot as usize].to_fun();
     let mut current_offset = offset;
@@ -1906,6 +2008,98 @@ mod test {
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Print,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn import() {
+    let example = r#"
+      import time from "std/time";
+    "#.to_string();
+
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Import((0, 1)),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn export_variable() {
+    let example = "
+      export var x = 10;
+    ".to_string();
+
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Export(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn export_fun() {
+    let example = "
+      export fun example() {}
+    ".to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Fun((
+          1,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Export(0)),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ]
+    );
+  }
+
+  #[test]
+  fn export_class() {
+    let example = "
+      export class example {}
+    ".to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo::new()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Class(0),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Export(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2505,19 +2699,19 @@ mod test {
         AlignedByteCode::Constant(1),     // 4
         AlignedByteCode::Less,            // 6
         AlignedByteCode::JumpIfFalse(21), // 7
-        AlignedByteCode::Drop,             // 10
+        AlignedByteCode::Drop,            // 10
         AlignedByteCode::Jump(11),        // 11
         AlignedByteCode::GetLocal(1),     // 14
         AlignedByteCode::Constant(2),     // 16
         AlignedByteCode::Add,             // 18
         AlignedByteCode::SetLocal(1),     // 19
-        AlignedByteCode::Drop,             // 21
+        AlignedByteCode::Drop,            // 21
         AlignedByteCode::Loop(23),        // 22
         AlignedByteCode::GetLocal(1),     // 25
         AlignedByteCode::Print,           // 27
         AlignedByteCode::Loop(17),        // 28
-        AlignedByteCode::Drop,             // 31
-        AlignedByteCode::Drop,             // 32
+        AlignedByteCode::Drop,            // 31
+        AlignedByteCode::Drop,            // 32
         AlignedByteCode::Nil,             // 33
         AlignedByteCode::Return,          // 34
       ],
@@ -2543,18 +2737,18 @@ mod test {
         AlignedByteCode::Invoke((3, 0)),  // 11  const 1 = 1
         AlignedByteCode::GetLocal(2),     // 14  const 2 = 2
         AlignedByteCode::IterNext(5),     // 16  const 3 = 3
-        AlignedByteCode::JumpIfFalse(14), // 18  const 4 = "iter"
-        AlignedByteCode::Drop,             // 21  const 5 = "next"
+        AlignedByteCode::JumpIfFalse(15), // 18  const 4 = "iter"
+        AlignedByteCode::Drop,            // 21  const 5 = "next"
         AlignedByteCode::GetLocal(2),     // 22
         AlignedByteCode::IterCurrent(6),  // 24  const 6 = "current"
         AlignedByteCode::SetLocal(1),     // 26
-        AlignedByteCode::Drop,             // 28
+        AlignedByteCode::Drop,            // 28
         AlignedByteCode::GetLocal(1),     // 29
         AlignedByteCode::Print,           // 31
-        AlignedByteCode::Loop(21),        // 32
-        AlignedByteCode::Drop,             // 35
-        AlignedByteCode::Drop,             // 36
-        AlignedByteCode::Drop,             // 37
+        AlignedByteCode::Loop(23),        // 32
+        AlignedByteCode::Drop,            // 35
+        AlignedByteCode::Drop,            // 36
+        AlignedByteCode::Drop,            // 37
         AlignedByteCode::Nil,             // 38
         AlignedByteCode::Return,          // 39
       ],
@@ -2643,11 +2837,11 @@ mod test {
         AlignedByteCode::Constant(1),    // 2
         AlignedByteCode::Less,           // 4
         AlignedByteCode::JumpIfFalse(7), // 5
-        AlignedByteCode::Drop,            // 8
+        AlignedByteCode::Drop,           // 8
         AlignedByteCode::Constant(2),    // 9
         AlignedByteCode::Print,          // 11
         AlignedByteCode::Jump(4),        // 12
-        AlignedByteCode::Drop,            // 15
+        AlignedByteCode::Drop,           // 15
         AlignedByteCode::Constant(3),    // 17
         AlignedByteCode::Print,          // 18
         AlignedByteCode::Nil,            // 19

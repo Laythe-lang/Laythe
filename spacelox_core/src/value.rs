@@ -890,8 +890,8 @@ mod boxed {
   use std::fmt;
   use std::ptr::NonNull;
 
-  const BIT_SIGN: u64 = 0xc000000000000000;
-  const PTR_BITS: u64 = 0x0000000000000007;
+  const BIT_SIGN: u64 = 0xc000_0000_0000_0000;
+  const PTR_BITS: u64 = 0x0000_0000_0000_0007;
   const VARIANT_MASK: u64 = BIT_SIGN | QNAN | PTR_BITS;
 
   const TAG_NIL: u64 = 1 | QNAN; // 001
@@ -961,7 +961,7 @@ mod boxed {
   //
   // quiet NaN with signal indefinite
   // 0111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000
-  const QNAN: u64 = 0x7ffc000000000000;
+  const QNAN: u64 = 0x7ffc_0000_0000_0000;
 
   // 0111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0001
   pub const VALUE_NIL: Value = Value(TAG_NIL);

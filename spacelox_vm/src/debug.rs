@@ -58,6 +58,12 @@ pub fn disassemble_instruction<S: StdIo>(
     AlignedByteCode::SetIndex => simple_instruction(stdio, "SetIndex", offset),
     AlignedByteCode::Drop => simple_instruction(stdio, "Drop", offset),
     AlignedByteCode::Call(arg_count) => byte_instruction(stdio, "Call", arg_count, offset),
+    AlignedByteCode::Import((name, path)) => {
+      import_instruction(stdio, "Import", chunk, name, path, offset)
+    }
+    AlignedByteCode::Export(constant) => {
+      constant_instruction(stdio, "Export", chunk, constant, offset)
+    }
     AlignedByteCode::Invoke((constant, arg_count)) => {
       invoke_instruction(stdio, "Invoke", chunk, constant, arg_count, offset)
     }
@@ -107,7 +113,10 @@ pub fn disassemble_instruction<S: StdIo>(
     AlignedByteCode::Greater => simple_instruction(stdio, "Greater", offset),
     AlignedByteCode::Less => simple_instruction(stdio, "Less", offset),
     AlignedByteCode::Constant(constant) => {
-      constant_instruction(stdio, "Constant", chunk, constant, offset)
+      constant_instruction(stdio, "Constant", chunk, constant as u16, offset)
+    }
+    AlignedByteCode::ConstantLong(constant) => {
+      constant_instruction(stdio, "ConstantLong", chunk, constant, offset)
     }
   }
 }
@@ -121,7 +130,7 @@ fn jump_instruction(
 ) -> usize {
   let net_jump = sign * (jump as isize);
   stdio.println(&format!(
-    "{:16} {:4} -> {}",
+    "{:16} {:5} -> {}",
     name,
     offset - 3,
     (offset as isize) + net_jump
@@ -134,10 +143,10 @@ fn constant_instruction(
   stdio: &impl StdIo,
   name: &str,
   chunk: &Chunk,
-  constant: u8,
+  constant: u16,
   offset: usize,
 ) -> usize {
-  stdio.print(&format!("{:16} {:4} ", name, constant));
+  stdio.print(&format!("{:16} {:5} ", name, constant));
   stdio.println(&format!("{}", &chunk.constants[constant as usize]));
   offset
 }
@@ -147,10 +156,10 @@ fn closure_instruction(
   stdio: &impl StdIo,
   name: &str,
   chunk: &Chunk,
-  constant: u8,
+  constant: u16,
   offset: usize,
 ) -> usize {
-  stdio.print(&format!("{:16} {:4} ", name, constant));
+  stdio.print(&format!("{:16} {:5} ", name, constant));
   stdio.println(&format!("{}", &chunk.constants[constant as usize]));
 
   let value = &chunk.constants[constant as usize];
@@ -193,24 +202,40 @@ fn invoke_instruction(
   stdio: &impl StdIo,
   name: &str,
   chunk: &Chunk,
-  constant: u8,
+  constant: u16,
   arg_count: u8,
   offset: usize,
 ) -> usize {
-  stdio.print(&format!("{:16} ({} args) {:4} ", name, arg_count, constant));
+  stdio.print(&format!("{:16} {:5} ({} args) ", name, arg_count, constant));
   stdio.println(&format!("{}", &chunk.constants[constant as usize]));
+  offset
+}
+
+fn import_instruction(
+  stdio: &impl StdIo,
+  name: &str,
+  chunk: &Chunk,
+  import_name: u16,
+  path: u16,
+  offset: usize,
+) -> usize {
+  stdio.print(&format!("{:16} {:5} {:5} ", name, path, import_name));
+  stdio.println(&format!(
+    "{} {}",
+    &chunk.constants[import_name as usize], &chunk.constants[path as usize]
+  ));
   offset
 }
 
 /// print a short instruction
 fn short_instruction(stdio: &impl StdIo, name: &str, slot: u16, offset: usize) -> usize {
-  stdio.println(&format!("{:16} {:4} ", name, slot));
+  stdio.println(&format!("{:16} {:5}", name, slot));
   offset
 }
 
 /// print a byte instruction
 fn byte_instruction(stdio: &impl StdIo, name: &str, slot: u8, offset: usize) -> usize {
-  stdio.println(&format!("{:16} {:4} ", name, slot));
+  stdio.println(&format!("{:16} {:5}", name, slot));
   offset
 }
 

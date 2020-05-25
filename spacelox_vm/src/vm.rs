@@ -371,6 +371,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::SetUpvalue => self.op_set_upvalue(),
         ByteCode::GetProperty => self.op_get_property(),
         ByteCode::SetProperty => self.op_set_property(),
+        ByteCode::Import => self.op_import(),
+        ByteCode::Export => self.op_export(),
         ByteCode::Drop => self.op_drop(),
         ByteCode::Nil => self.op_literal(VALUE_NIL),
         ByteCode::True => self.op_literal(Value::from(true)),
@@ -382,6 +384,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::IterNext => self.op_iter_next(),
         ByteCode::IterCurrent => self.op_iter_current(),
         ByteCode::Constant => self.op_constant(),
+        ByteCode::ConstantLong => self.op_constant_long(),
         ByteCode::Print => self.op_print(),
         ByteCode::Call => self.op_call(),
         ByteCode::Invoke => self.op_invoke(),
@@ -486,7 +489,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// read a constant from the current chunk
   #[inline]
-  fn read_constant(&self, index: u8) -> Value {
+  fn read_constant(&self, index: u16) -> Value {
     unsafe {
       *self
         .current_fun
@@ -498,7 +501,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// read a constant as a string from the current chunk
   #[inline]
-  fn read_string(&self, index: u8) -> Managed<String> {
+  fn read_string(&self, index: u16) -> Managed<String> {
     self.read_constant(index).to_str()
   }
 
@@ -560,7 +563,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let receiver = self.peek(0);
 
     if receiver.is_iter() {
-      self.update_ip(1);
+      self.update_ip(2);
       match receiver.to_iter().next(&mut Hooks::new(self)) {
         Ok(value) => {
           self.set_val(-1, value);
@@ -569,7 +572,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         Err(error) => self.set_error(error),
       }
     } else {
-      let constant = self.read_byte();
+      let constant = self.read_short();
       let method_name = self.read_string(constant);
       self.invoke(receiver, method_name, 0)
     }
@@ -580,12 +583,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let value = self.peek(0);
 
     if value.is_iter() {
-      self.update_ip(1);
+      self.update_ip(2);
       let result = value.to_iter().current();
       self.set_val(-1, result);
       Signal::Ok
     } else {
-      let slot = self.read_byte();
+      let slot = self.read_short();
       let name = self.read_string(slot);
       self.get_property(value, name)
     }
@@ -601,7 +604,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// invoke a method on an instance's class
   fn op_invoke(&mut self) -> Signal {
-    let constant = self.read_byte();
+    let constant = self.read_short();
     let arg_count = self.read_byte();
 
     let method_name = self.read_string(constant);
@@ -626,7 +629,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// Invoke a method on a instance's super class
   fn op_super_invoke(&mut self) -> Signal {
-    let constant = self.read_byte();
+    let constant = self.read_short();
     let arg_count = self.read_byte();
 
     let method_name = self.read_string(constant);
@@ -637,7 +640,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// Generate a new class
   fn op_class(&mut self) -> Signal {
-    let slot = self.read_byte();
+    let slot = self.read_short();
     let name = self.read_string(slot);
     let class = Value::from(self.gc.manage(Class::new(name), self));
     self.push(class);
@@ -646,7 +649,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// Get this classes super class
   fn op_get_super(&mut self) -> Signal {
-    let slot = self.read_byte();
+    let slot = self.read_short();
     let name = self.read_string(slot);
     let super_class = self.pop().to_class();
 
@@ -670,8 +673,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// Loop by performing an unconditional jump to a new instruction
   fn op_loop(&mut self) -> Signal {
-    let jump = self.read_byte() as isize;
-    self.update_ip(1 - jump);
+    let jump = self.read_short() as isize;
+    self.update_ip(-jump);
     Signal::Ok
   }
 
@@ -692,7 +695,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_define_global(&mut self) -> Signal {
-    let slot = self.read_byte();
+    let slot = self.read_short();
     let name = self.read_string(slot);
     let global = self.pop();
     self.globals.insert(name, global);
@@ -746,7 +749,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_set_global(&mut self) -> Signal {
-    let slot = self.read_byte();
+    let slot = self.read_short();
     let string = self.read_string(slot);
 
     if self.globals.insert(string, self.peek(0)).is_none() {
@@ -768,7 +771,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_set_property(&mut self) -> Signal {
-    let slot = self.read_byte();
+    let slot = self.read_short();
     let value = self.peek(1);
     let name = self.read_string(slot);
 
@@ -856,7 +859,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_get_global(&mut self) -> Signal {
-    let store_index = self.read_byte();
+    let store_index = self.read_short();
     let string = self.read_string(store_index);
 
     match self.globals.get(&string) {
@@ -894,7 +897,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_get_property(&mut self) -> Signal {
-    let slot = self.read_byte();
+    let slot = self.read_short();
     let value = self.peek(0);
     let name = self.read_string(slot);
 
@@ -925,6 +928,24 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     let class = self.builtin.for_variant(value, kind);
     self.bind_method(class, name)
+  }
+
+  fn op_import(&mut self) -> Signal {
+    let index_name = self.read_short();
+    let index_path = self.read_short();
+
+    let _name = self.read_string(index_name);
+    let _path = self.read_string(index_path);
+
+    Signal::Ok
+  }
+
+  fn op_export(&mut self) -> Signal {
+    let index = self.read_short();
+    let name = self.read_string(index);
+    let _symbols = self.globals.get(&name);
+
+    Signal::Ok
   }
 
   /// return from a spacelox function placing the result on top of the stack
@@ -1047,7 +1068,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_method(&mut self) -> Signal {
-    let slot = self.read_byte();
+    let slot = self.read_short();
     let name = self.read_string(slot);
 
     let class = self.peek(1);
@@ -1064,7 +1085,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_closure(&mut self) -> Signal {
-    let slot = self.read_byte();
+    let slot = self.read_short();
     let fun = self.read_constant(slot).to_fun();
     let mut closure = Closure::new(fun);
 
@@ -1103,6 +1124,14 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   fn op_constant(&mut self) -> Signal {
     let slot = self.read_byte();
+    let constant = self.read_constant(slot as u16);
+    self.push(constant);
+
+    Signal::Ok
+  }
+
+  fn op_constant_long(&mut self) -> Signal {
+    let slot = self.read_short();
     let constant = self.read_constant(slot);
     self.push(constant);
 
@@ -1329,20 +1358,22 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// hoist all open upvalue above the last index
   fn close_upvalues(&mut self, last_index: NonNull<Value>) {
-    for upvalue in self.open_upvalues.iter_mut().rev() {
-      let index = match **upvalue {
-        Upvalue::Open(index) => index,
-        Upvalue::Closed(_) => panic!("Unexpected closed upvalue"),
-      };
-
-      if index < last_index {
-        break;
+    if self.open_upvalues.len() > 0 {
+      for upvalue in self.open_upvalues.iter_mut().rev() {
+        let index = match **upvalue {
+          Upvalue::Open(index) => index,
+          Upvalue::Closed(_) => panic!("Unexpected closed upvalue"),
+        };
+  
+        if index < last_index {
+          break;
+        }
+  
+        upvalue.hoist();
       }
-
-      upvalue.hoist();
+  
+      self.open_upvalues.retain(|upvalue| upvalue.is_open())
     }
-
-    self.open_upvalues.retain(|upvalue| upvalue.is_open())
   }
 
   /// Print debugging information for the current instruction

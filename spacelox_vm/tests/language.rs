@@ -227,6 +227,24 @@ fn constructor() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn export() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![],
+    ExecuteResult::Ok,
+  )?;
+
+  test_files(&vec![
+    "language/export/literal.lox",
+    "language/export/local.lox",
+    "language/export/non_declaration_class.lox",
+    "language/export/non_declaration_fun.lox",
+    "language/export/non_declaration_var.lox",
+  ], ExecuteResult::CompileError)?;
+
+  test_files(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
 fn expressions() -> Result<(), std::io::Error> {
   test_files(
     &vec!["language/expressions/evaluate.lox"],
@@ -411,6 +429,28 @@ fn if_stmt() -> Result<(), std::io::Error> {
   )?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
+fn import() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![],
+    ExecuteResult::Ok,
+  )?;
+
+  test_files(&vec![
+    "language/import/missing_name.lox",
+    "language/import/missing_semicolon.lox",
+    "language/import/non_identifier_name.lox",
+    "language/import/non_string_literal.lox",
+    "language/import/non_string_path.lox",
+  ], ExecuteResult::CompileError)?;
+
+  test_files(
+    &vec![
+    ],
+    ExecuteResult::RuntimeError,
+  )
 }
 
 #[test]
@@ -763,7 +803,10 @@ fn string() -> Result<(), std::io::Error> {
   )?;
 
   test_files(
-    &vec!["language/string/unterminated.lox"],
+    &vec![
+      "language/string/unterminated_double.lox",
+      "language/string/unterminated_single.lox"
+    ],
     ExecuteResult::CompileError,
   )?;
 
