@@ -33,6 +33,9 @@ pub enum AlignedByteCode {
   /// Retrieve a constant from the constants table
   Constant(u8),
 
+  /// Retrieve a constant of higher number from the constants table
+  ConstantLong(u16),
+
   /// Nil literal
   Nil,
 
@@ -55,10 +58,10 @@ pub enum AlignedByteCode {
   MapInit(u16),
 
   /// Get the next element from an iterator
-  IterNext(u8),
+  IterNext(u16),
 
   /// Get the current value from an iterator
-  IterCurrent(u8),
+  IterCurrent(u16),
 
   /// Get from an index
   GetIndex,
@@ -69,14 +72,20 @@ pub enum AlignedByteCode {
   /// Drop ByteCode
   Drop,
 
+  /// Import all symbols
+  Import((u16, u16)),
+
+  /// Export a symbol from the current module
+  Export(u16),
+
   /// Define a global in the globals table at a index
-  DefineGlobal(u8),
+  DefineGlobal(u16),
 
   /// Retrieve a global at the given index
-  GetGlobal(u8),
+  GetGlobal(u16),
 
   /// Set a global at the given index
-  SetGlobal(u8),
+  SetGlobal(u16),
 
   /// Retrieve an upvalue at the given index
   GetUpvalue(u8),
@@ -91,10 +100,10 @@ pub enum AlignedByteCode {
   SetLocal(u8),
 
   /// Get a property off a class instance
-  GetProperty(u8),
+  GetProperty(u16),
 
   /// Set a property on a class instance
-  SetProperty(u8),
+  SetProperty(u16),
 
   /// Jump to end of if block if false
   JumpIfFalse(u16),
@@ -109,22 +118,22 @@ pub enum AlignedByteCode {
   Call(u8),
 
   /// Invoke a method
-  Invoke((u8, u8)),
+  Invoke((u16, u8)),
 
   /// Invoke a method on a super class
-  SuperInvoke((u8, u8)),
+  SuperInvoke((u16, u8)),
 
   /// Create a closure
-  Closure(u8),
+  Closure(u16),
 
   /// Create a method
-  Method(u8),
+  Method(u16),
 
   /// Create a class
-  Class(u8),
+  Class(u16),
 
   /// Access this classes super
-  GetSuper(u8),
+  GetSuper(u16),
 
   /// Add inheritance to class
   Inherit,
@@ -164,8 +173,8 @@ impl AlignedByteCode {
       Self::ListInit(slot) => push_op_u16(code, ByteCode::ListInit, slot),
       Self::Map => push_op(code, ByteCode::Map),
       Self::MapInit(slot) => push_op_u16(code, ByteCode::MapInit, slot),
-      Self::IterNext(slot) => push_op_u8(code, ByteCode::IterNext, slot),
-      Self::IterCurrent(slot) => push_op_u8(code, ByteCode::IterCurrent, slot),
+      Self::IterNext(slot) => push_op_u16(code, ByteCode::IterNext, slot),
+      Self::IterCurrent(slot) => push_op_u16(code, ByteCode::IterCurrent, slot),
       Self::GetIndex => push_op(code, ByteCode::GetIndex),
       Self::SetIndex => push_op(code, ByteCode::SetIndex),
       Self::Equal => push_op(code, ByteCode::Equal),
@@ -173,27 +182,30 @@ impl AlignedByteCode {
       Self::Less => push_op(code, ByteCode::Less),
       Self::Drop => push_op(code, ByteCode::Drop),
       Self::Constant(slot) => push_op_u8(code, ByteCode::Constant, slot),
-      Self::DefineGlobal(slot) => push_op_u8(code, ByteCode::DefineGlobal, slot),
-      Self::GetGlobal(slot) => push_op_u8(code, ByteCode::GetGlobal, slot),
-      Self::SetGlobal(slot) => push_op_u8(code, ByteCode::SetGlobal, slot),
+      Self::ConstantLong(slot) => push_op_u16(code, ByteCode::ConstantLong, slot),
+      Self::Import((name, path)) => push_op_u16_tuple(code, ByteCode::Import, name, path),
+      Self::Export(slot) => push_op_u16(code, ByteCode::Export, slot),
+      Self::DefineGlobal(slot) => push_op_u16(code, ByteCode::DefineGlobal, slot),
+      Self::GetGlobal(slot) => push_op_u16(code, ByteCode::GetGlobal, slot),
+      Self::SetGlobal(slot) => push_op_u16(code, ByteCode::SetGlobal, slot),
       Self::GetUpvalue(slot) => push_op_u8(code, ByteCode::GetUpvalue, slot),
       Self::SetUpvalue(slot) => push_op_u8(code, ByteCode::SetUpvalue, slot),
       Self::GetLocal(slot) => push_op_u8(code, ByteCode::GetLocal, slot),
       Self::SetLocal(slot) => push_op_u8(code, ByteCode::SetLocal, slot),
-      Self::GetProperty(slot) => push_op_u8(code, ByteCode::GetProperty, slot),
-      Self::SetProperty(slot) => push_op_u8(code, ByteCode::SetProperty, slot),
+      Self::GetProperty(slot) => push_op_u16(code, ByteCode::GetProperty, slot),
+      Self::SetProperty(slot) => push_op_u16(code, ByteCode::SetProperty, slot),
       Self::JumpIfFalse(slot) => push_op_u16(code, ByteCode::JumpIfFalse, slot),
       Self::Jump(slot) => push_op_u16(code, ByteCode::Jump, slot),
       Self::Loop(slot) => push_op_u16(code, ByteCode::Loop, slot),
       Self::Call(slot) => push_op_u8(code, ByteCode::Call, slot),
-      Self::Invoke((slot1, slot2)) => push_op_u8_tuple(code, ByteCode::Invoke, slot1, slot2),
+      Self::Invoke((slot1, slot2)) => push_op_u16_u8_tuple(code, ByteCode::Invoke, slot1, slot2),
       Self::SuperInvoke((slot1, slot2)) => {
-        push_op_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2)
+        push_op_u16_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2)
       }
-      Self::Closure(slot) => push_op_u8(code, ByteCode::Closure, slot),
-      Self::Method(slot) => push_op_u8(code, ByteCode::Method, slot),
-      Self::Class(slot) => push_op_u8(code, ByteCode::Class, slot),
-      Self::GetSuper(slot) => push_op_u8(code, ByteCode::GetSuper, slot),
+      Self::Closure(slot) => push_op_u16(code, ByteCode::Closure, slot),
+      Self::Method(slot) => push_op_u16(code, ByteCode::Method, slot),
+      Self::Class(slot) => push_op_u16(code, ByteCode::Class, slot),
+      Self::GetSuper(slot) => push_op_u16(code, ByteCode::GetSuper, slot),
       Self::Inherit => push_op(code, ByteCode::Inherit),
       Self::CloseUpvalue => push_op(code, ByteCode::CloseUpvalue),
       Self::UpvalueIndex(index) => {
@@ -218,6 +230,10 @@ impl AlignedByteCode {
       ByteCode::Divide => (AlignedByteCode::Divide, offset + 1),
       ByteCode::Not => (AlignedByteCode::Not, offset + 1),
       ByteCode::Constant => (AlignedByteCode::Constant(store[offset + 1]), offset + 2),
+      ByteCode::ConstantLong => (
+        AlignedByteCode::ConstantLong(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
       ByteCode::Nil => (AlignedByteCode::Nil, offset + 1),
       ByteCode::True => (AlignedByteCode::True, offset + 1),
       ByteCode::False => (AlignedByteCode::False, offset + 1),
@@ -231,20 +247,52 @@ impl AlignedByteCode {
         AlignedByteCode::MapInit(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::IterNext => (AlignedByteCode::IterNext(store[offset + 1]), offset + 2),
-      ByteCode::IterCurrent => (AlignedByteCode::IterCurrent(store[offset + 1]), offset + 2),
+      ByteCode::IterNext => (
+        AlignedByteCode::IterNext(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::IterCurrent => (
+        AlignedByteCode::IterCurrent(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
       ByteCode::GetIndex => (AlignedByteCode::GetIndex, offset + 1),
       ByteCode::SetIndex => (AlignedByteCode::SetIndex, offset + 1),
       ByteCode::Drop => (AlignedByteCode::Drop, offset + 1),
-      ByteCode::DefineGlobal => (AlignedByteCode::DefineGlobal(store[offset + 1]), offset + 2),
-      ByteCode::GetGlobal => (AlignedByteCode::GetGlobal(store[offset + 1]), offset + 2),
-      ByteCode::SetGlobal => (AlignedByteCode::SetGlobal(store[offset + 1]), offset + 2),
+      ByteCode::Import => (
+        AlignedByteCode::Import((
+          decode_u16(&store[offset + 1..offset + 3]),
+          decode_u16(&store[offset + 3..offset + 5]),
+        )),
+        offset + 5,
+      ),
+      ByteCode::Export => (
+        AlignedByteCode::Export(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::DefineGlobal => (
+        AlignedByteCode::DefineGlobal(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::GetGlobal => (
+        AlignedByteCode::GetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::SetGlobal => (
+        AlignedByteCode::SetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
       ByteCode::GetUpvalue => (AlignedByteCode::GetUpvalue(store[offset + 1]), offset + 2),
       ByteCode::SetUpvalue => (AlignedByteCode::SetUpvalue(store[offset + 1]), offset + 2),
       ByteCode::GetLocal => (AlignedByteCode::GetLocal(store[offset + 1]), offset + 2),
       ByteCode::SetLocal => (AlignedByteCode::SetLocal(store[offset + 1]), offset + 2),
-      ByteCode::GetProperty => (AlignedByteCode::GetProperty(store[offset + 1]), offset + 2),
-      ByteCode::SetProperty => (AlignedByteCode::SetProperty(store[offset + 1]), offset + 2),
+      ByteCode::GetProperty => (
+        AlignedByteCode::GetProperty(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::SetProperty => (
+        AlignedByteCode::SetProperty(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
       ByteCode::JumpIfFalse => (
         AlignedByteCode::JumpIfFalse(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
@@ -259,17 +307,35 @@ impl AlignedByteCode {
       ),
       ByteCode::Call => (AlignedByteCode::Call(store[offset + 1]), offset + 2),
       ByteCode::Invoke => (
-        AlignedByteCode::Invoke((store[offset + 1], store[offset + 2])),
-        offset + 3,
+        AlignedByteCode::Invoke((
+          decode_u16(&store[offset + 1..offset + 3]),
+          store[offset + 3],
+        )),
+        offset + 4,
       ),
       ByteCode::SuperInvoke => (
-        AlignedByteCode::SuperInvoke((store[offset + 1], store[offset + 2])),
+        AlignedByteCode::SuperInvoke((
+          decode_u16(&store[offset + 1..offset + 3]),
+          store[offset + 3],
+        )),
+        offset + 4,
+      ),
+      ByteCode::Closure => (
+        AlignedByteCode::Closure(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::Closure => (AlignedByteCode::Closure(store[offset + 1]), offset + 2),
-      ByteCode::Method => (AlignedByteCode::Method(store[offset + 1]), offset + 2),
-      ByteCode::Class => (AlignedByteCode::Class(store[offset + 1]), offset + 2),
-      ByteCode::GetSuper => (AlignedByteCode::GetSuper(store[offset + 1]), offset + 2),
+      ByteCode::Method => (
+        AlignedByteCode::Method(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Class => (
+        AlignedByteCode::Class(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::GetSuper => (
+        AlignedByteCode::GetSuper(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
       ByteCode::Inherit => (AlignedByteCode::Inherit, offset + 1),
       ByteCode::CloseUpvalue => (AlignedByteCode::CloseUpvalue, offset + 1),
       ByteCode::Equal => (AlignedByteCode::Equal, offset + 1),
@@ -309,6 +375,9 @@ pub enum ByteCode {
   /// Retrieve a constant from the constants table
   Constant,
 
+  /// Retrieve a constant of higher number from the constants table
+  ConstantLong,
+
   /// Nil literal
   Nil,
 
@@ -344,6 +413,12 @@ pub enum ByteCode {
 
   /// Drop ByteCode
   Drop,
+
+  /// Import all symbols
+  Import,
+
+  /// Export a symbol from the current module
+  Export,
 
   /// Define a global in the globals table at a index
   DefineGlobal,
@@ -452,10 +527,19 @@ fn push_op_u8(code: &mut Vec<u8>, byte: ByteCode, param: u8) {
   code.push(param);
 }
 
-fn push_op_u8_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u8, param2: u8) {
+fn push_op_u16_u8_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2: u8) {
   code.push(byte.to_byte());
-  code.push(param1);
+  let param_bytes = param1.to_ne_bytes();
+  code.extend_from_slice(&param_bytes);
   code.push(param2);
+}
+
+fn push_op_u16_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2: u16) {
+  code.push(byte.to_byte());
+  let param_bytes = param1.to_ne_bytes();
+  code.extend_from_slice(&param_bytes);
+  let param_bytes = param2.to_ne_bytes();
+  code.extend_from_slice(&param_bytes);
 }
 
 fn push_op_u16(code: &mut Vec<u8>, byte: ByteCode, param: u16) {
@@ -648,6 +732,9 @@ mod test {
         (1, AlignedByteCode::Divide),
         (1, AlignedByteCode::Not),
         (2, AlignedByteCode::Constant(113)),
+        (3, AlignedByteCode::ConstantLong(45863)),
+        (5, AlignedByteCode::Import((14, 2235))),
+        (3, AlignedByteCode::Export(7811)),
         (1, AlignedByteCode::Nil),
         (1, AlignedByteCode::True),
         (1, AlignedByteCode::False),
@@ -655,30 +742,30 @@ mod test {
         (3, AlignedByteCode::ListInit(54782)),
         (1, AlignedByteCode::Map),
         (3, AlignedByteCode::MapInit(1923)),
-        (2, AlignedByteCode::IterNext(81)),
-        (2, AlignedByteCode::IterCurrent(82)),
+        (3, AlignedByteCode::IterNext(81)),
+        (3, AlignedByteCode::IterCurrent(49882)),
         (1, AlignedByteCode::Drop),
-        (2, AlignedByteCode::DefineGlobal(4)),
-        (2, AlignedByteCode::GetGlobal(119)),
-        (2, AlignedByteCode::SetGlobal(243)),
+        (3, AlignedByteCode::DefineGlobal(42)),
+        (3, AlignedByteCode::GetGlobal(14119)),
+        (3, AlignedByteCode::SetGlobal(2043)),
         (2, AlignedByteCode::GetUpvalue(183)),
         (2, AlignedByteCode::SetUpvalue(56)),
         (2, AlignedByteCode::GetLocal(96)),
         (2, AlignedByteCode::SetLocal(149)),
         (1, AlignedByteCode::GetIndex),
         (1, AlignedByteCode::SetIndex),
-        (2, AlignedByteCode::GetProperty(173)),
-        (2, AlignedByteCode::SetProperty(253)),
+        (3, AlignedByteCode::GetProperty(18273)),
+        (3, AlignedByteCode::SetProperty(253)),
         (3, AlignedByteCode::JumpIfFalse(8941)),
         (3, AlignedByteCode::Jump(95)),
         (3, AlignedByteCode::Loop(34590)),
         (2, AlignedByteCode::Call(77)),
-        (3, AlignedByteCode::Invoke((55, 19))),
-        (3, AlignedByteCode::SuperInvoke((205, 15))),
-        (2, AlignedByteCode::Closure(68)),
-        (2, AlignedByteCode::Method(188)),
-        (2, AlignedByteCode::Class(136)),
-        (2, AlignedByteCode::GetSuper(24)),
+        (4, AlignedByteCode::Invoke((5591, 19))),
+        (4, AlignedByteCode::SuperInvoke((2105, 15))),
+        (3, AlignedByteCode::Closure(3638)),
+        (3, AlignedByteCode::Method(188)),
+        (3, AlignedByteCode::Class(64136)),
+        (3, AlignedByteCode::GetSuper(24)),
         (1, AlignedByteCode::Inherit),
         (1, AlignedByteCode::CloseUpvalue),
         (1, AlignedByteCode::Equal),
@@ -736,7 +823,7 @@ mod test {
 
       assert_eq!(chunk.instructions.len(), 1);
       match chunk.instructions[0] {
-        9 => assert!(true),
+        10 => assert!(true),
         _ => assert!(false),
       }
     }
