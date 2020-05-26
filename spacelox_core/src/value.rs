@@ -1411,11 +1411,13 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
-    managed::{Allocation, Managed},
+    managed::{Allocation, Manage, Managed},
+    module::Module,
     object::{Class, Closure, Fun},
     SlHashMap,
   };
   use std::ptr::NonNull;
+  type Allocs = Vec<Box<Allocation<dyn Manage>>>;
 
   const VARIANTS: [ValueVariant; 15] = [
     ValueVariant::Bool,
@@ -1465,55 +1467,68 @@ mod test {
     });
   }
 
-  fn test_string() -> (Box<Allocation<String>>, Managed<String>) {
+  fn test_string() -> (Allocs, Managed<String>) {
     let string = "sup".to_string();
     let mut alloc = Box::new(Allocation::new(string));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
-    (alloc, managed)
+    (vec![alloc], managed)
   }
 
-  fn test_fun() -> (Box<Allocation<String>>, Box<Allocation<Fun>>, Managed<Fun>) {
-    let (alloc_string, name) = test_string();
+  fn test_module() -> (Allocs, Managed<Module>) {
+    let (allocs_string, name) = test_string();
+    let mut alloc = Box::new(Allocation::new(Module::new(name)));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let fun = Fun::new(name);
+    let managed = Managed::from(ptr);
+    let mut allocs: Allocs = vec![alloc];
+    allocs.extend(allocs_string);
+    (allocs, managed)
+  }
+
+  fn test_fun() -> (Allocs, Managed<Fun>) {
+    let (allocs_string, name) = test_string();
+    let (allocs_module, module) = test_module();
+
+    let fun = Fun::new(name, module);
     let mut alloc = Box::new(Allocation::new(fun));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
-    (alloc_string, alloc, managed)
+    let mut allocs: Allocs = vec![alloc];
+    allocs.extend(allocs_string);
+    allocs.extend(allocs_module);
+
+    (allocs, managed)
   }
 
-  fn test_closure() -> (
-    Box<Allocation<String>>,
-    Box<Allocation<Fun>>,
-    Box<Allocation<Closure>>,
-    Managed<Closure>,
-  ) {
-    let (alloc_string, alloc_fun, fun) = test_fun();
+  fn test_closure() -> (Allocs, Managed<Closure>) {
+    let (allocs_fun, fun) = test_fun();
 
     let closure = Closure::new(fun);
     let mut alloc = Box::new(Allocation::new(closure));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
-    (alloc_string, alloc_fun, alloc, managed)
+    let mut allocs: Allocs = vec![alloc];
+    allocs.extend(allocs_fun);
+
+    (allocs, managed)
   }
 
-  fn test_class() -> (
-    Box<Allocation<String>>,
-    Box<Allocation<Class>>,
-    Managed<Class>,
-  ) {
-    let (alloc_string, string) = test_string();
+  fn test_class() -> (Allocs, Managed<Class>) {
+    let (allocs_string, string) = test_string();
 
     let class = Class::new(string);
     let mut alloc = Box::new(Allocation::new(class));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
-    (alloc_string, alloc, managed)
+
+    let mut allocs: Allocs = vec![alloc];
+    allocs.extend(allocs_string);
+    (allocs, managed)
   }
 
   // Closure(Managed<Closure>),
@@ -1615,7 +1630,7 @@ mod test {
 
   #[test]
   fn fun() {
-    let (_, _, managed) = test_fun();
+    let (_, managed) = test_fun();
     let value = Value::from(managed);
     let managed2 = value.to_fun();
 
@@ -1627,7 +1642,7 @@ mod test {
 
   #[test]
   fn closure() {
-    let (_, _, _, managed) = test_closure();
+    let (_, managed) = test_closure();
 
     let value = Value::from(managed);
     let managed2 = value.to_closure();
@@ -1640,7 +1655,7 @@ mod test {
 
   #[test]
   fn class() {
-    let (_, _, managed) = test_class();
+    let (_, managed) = test_class();
 
     let value = Value::from(managed);
     let managed2 = value.to_class();

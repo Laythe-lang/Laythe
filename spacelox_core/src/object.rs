@@ -6,6 +6,7 @@ use crate::{
   hooks::Hooks,
   io::StdIo,
   managed::{Manage, Managed, Trace},
+  module::Module,
   utils::do_if_some,
   value::{Value, ValueVariant},
   SlHashMap,
@@ -191,25 +192,29 @@ pub enum FunKind {
 
 #[derive(PartialEq, Clone)]
 pub struct Fun {
+  /// Name if not top-level script
+  pub name: Managed<String>,
+
   /// Arity of this function
   pub arity: ArityKind,
 
   /// Number of upvalues
   pub upvalue_count: usize,
 
+  /// The module this function belongs to
+  pub module: Managed<Module>,
+
   /// Code for the function body
   chunk: Chunk,
-
-  /// Name if not top-level script
-  pub name: Managed<String>,
 }
 
 impl Fun {
-  pub fn new(name: Managed<String>) -> Self {
+  pub fn new(name: Managed<String>, module: Managed<Module>) -> Self {
     Self {
       arity: ArityKind::Fixed(0),
       upvalue_count: 0,
       chunk: Chunk::default(),
+      module,
       name,
     }
   }
@@ -248,10 +253,11 @@ impl fmt::Display for Fun {
 impl fmt::Debug for Fun {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_struct("Fun")
+      .field("name", &"Managed(String {...})")
       .field("arity", &self.arity)
       .field("upvalue_count", &self.upvalue_count)
+      .field("Module", &"Manged(Module: { ... })")
       .field("chunk", &"Chunk { ... }")
-      .field("name", &"Managed(String {...})")
       .finish()
   }
 }
@@ -262,6 +268,7 @@ impl Trace for Fun {
     self.chunk.constants.iter().for_each(|constant| {
       constant.trace();
     });
+    self.module.trace();
 
     true
   }
@@ -271,6 +278,7 @@ impl Trace for Fun {
     self.chunk.constants.iter().for_each(|constant| {
       constant.trace_debug(stdio);
     });
+    self.module.trace_debug(stdio);
 
     true
   }
@@ -410,10 +418,12 @@ impl Closure {
   /// use spacelox_core::object::{Closure, Fun};
   /// use spacelox_core::arity::ArityKind;
   /// use spacelox_core::memory::{Gc, NO_GC};
+  /// use spacelox_core::module::Module;
   /// use spacelox_core::chunk::Chunk;
   ///
   /// let gc = Gc::default();
-  /// let mut fun = Fun::new(gc.manage_str("example".to_string(), &NO_GC));
+  /// let module = gc.manage(Module::new(gc.manage_str("module".to_string(), &NO_GC)), &NO_GC);
+  /// let mut fun = Fun::new(gc.manage_str("example".to_string(), &NO_GC), module);
   /// let managed_fun = gc.manage(fun, &NO_GC);
   ///
   /// let closure = Closure::new(managed_fun);

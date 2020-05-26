@@ -34,29 +34,30 @@ fn criterion_benchmark(c: &mut Criterion) {
   let properties = load_source("properties.lox");
   let trees = load_source("trees.lox");
   let zoo = load_source("zoo.lox");
+  let bench_module_name = "Benchmark";
 
   c.bench_with_input(
     BenchmarkId::new("run binary_trees", 1),
     &binary_trees,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(&s));
+      b.iter(|| vm.run(bench_module_name, &s));
     },
   );
   c.bench_with_input(BenchmarkId::new("run equality", 2), &equality, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(&s));
+    b.iter(|| vm.run(bench_module_name, &s));
   });
   c.bench_with_input(BenchmarkId::new("run fib", 3), &fib, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(&s));
+    b.iter(|| vm.run(bench_module_name, &s));
   });
   c.bench_with_input(
     BenchmarkId::new("run invocation", 4),
     &invocation,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(&s));
+      b.iter(|| vm.run(bench_module_name, &s));
     },
   );
   c.bench_with_input(
@@ -64,7 +65,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     &instantiation,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(&s));
+      b.iter(|| vm.run(bench_module_name, &s));
     },
   );
   c.bench_with_input(
@@ -72,7 +73,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     &method_call,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(&s));
+      b.iter(|| vm.run(bench_module_name, &s));
     },
   );
   c.bench_with_input(
@@ -80,16 +81,16 @@ fn criterion_benchmark(c: &mut Criterion) {
     &properties,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(&s));
+      b.iter(|| vm.run(bench_module_name, &s));
     },
   );
   c.bench_with_input(BenchmarkId::new("run trees", 8), &trees, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(&s));
+    b.iter(|| vm.run(bench_module_name, &s));
   });
   c.bench_with_input(BenchmarkId::new("run zoo", 9), &zoo, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(&s));
+    b.iter(|| vm.run(bench_module_name, &s));
   });
 }
 

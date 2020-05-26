@@ -15,6 +15,7 @@ fn test_files(paths: &[&str], result: ExecuteResult) -> Result<(), std::io::Erro
 }
 
 const FILE_PATH: &str = file!();
+const MODULE_NAME: &str = "test";
 
 #[test]
 fn build() {
@@ -32,7 +33,7 @@ fn clock() -> Result<(), std::io::Error> {
   let mut source = String::new();
   file.read_to_string(&mut source)?;
 
-  assert_eq!(vm.run(&source), ExecuteResult::Ok);
+  assert_eq!(vm.run(MODULE_NAME, &source), ExecuteResult::Ok);
   Ok(())
 }
 
@@ -46,7 +47,7 @@ fn assert() -> Result<(), std::io::Error> {
   let mut source = String::new();
   file.read_to_string(&mut source)?;
 
-  assert_eq!(vm.run(&source), ExecuteResult::Ok);
+  assert_eq!(vm.run(MODULE_NAME, &source), ExecuteResult::Ok);
   Ok(())
 }
 
@@ -59,7 +60,7 @@ fn assert_eq() -> Result<(), std::io::Error> {
   let mut source = String::new();
   file.read_to_string(&mut source)?;
 
-  assert_eq!(vm.run(&source), ExecuteResult::Ok);
+  assert_eq!(vm.run(MODULE_NAME, &source), ExecuteResult::Ok);
   Ok(())
 }
 
@@ -72,7 +73,7 @@ fn assert_ne() -> Result<(), std::io::Error> {
   let mut source = String::new();
   file.read_to_string(&mut source)?;
 
-  assert_eq!(vm.run(&source), ExecuteResult::Ok);
+  assert_eq!(vm.run(MODULE_NAME, &source), ExecuteResult::Ok);
   Ok(())
 }
 

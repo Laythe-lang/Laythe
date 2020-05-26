@@ -8,6 +8,7 @@ use spacelox_core::{
   arity::ArityKind,
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
   hooks::Hooks,
+  module::Module,
   object::{Fun, FunKind},
   value::Value,
   SlHashMap,
@@ -54,6 +55,9 @@ pub struct Compiler<'a, 's, I: Io + 'static> {
   /// The type the current function scope
   fun_kind: FunKind,
 
+  /// The current module
+  module: Managed<Module>,
+
   /// The parent compiler if it exists note uses
   /// unsafe pointer
   enclosing: Option<*mut Compiler<'a, 's, I>>,
@@ -96,6 +100,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
   /// use spacelox_core::memory::Gc;
+  /// use spacelox_core::module::Module;
   /// use spacelox_core::hooks::{Hooks, NoContext};
   /// use spacelox_core::io::{NativeIo, NativeStdIo};
   ///
@@ -106,16 +111,23 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut context = NoContext::new(&gc);
   /// let mut hooks = Hooks::new(&mut context);
   /// let mut parser = Parser::new(NativeStdIo::new(), &source);
+  /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
   ///
-  /// let compiler = Compiler::new(NativeIo::new(), &mut parser, &mut hooks);
+  /// let compiler = Compiler::new(module, NativeIo::new(), &mut parser, &mut hooks);
   /// ```
-  pub fn new(io: I, parser: &'a mut Parser<'s, I::StdIo>, hooks: &'a Hooks<'a>) -> Self {
-    let fun = hooks.manage(Fun::new(hooks.manage_str(String::from(SCRIPT))));
+  pub fn new(
+    module: Managed<Module>,
+    io: I,
+    parser: &'a mut Parser<'s, I::StdIo>,
+    hooks: &'a Hooks<'a>,
+  ) -> Self {
+    let fun = hooks.manage(Fun::new(hooks.manage_str(String::from(SCRIPT)), module));
 
     let mut compiler = Self {
       fun,
-      current_class: None,
       fun_kind: FunKind::Script,
+      module,
+      current_class: None,
       hooks,
       io,
       parser,
@@ -143,6 +155,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let mut child = Self {
       fun: unsafe { (*enclosing).fun },
       fun_kind: fun_kind.clone(),
+      module: unsafe { (*enclosing).module },
       current_class: unsafe { (*enclosing).current_class },
       hooks: unsafe { (*enclosing).hooks },
       io: unsafe { (*enclosing).io },
@@ -162,7 +175,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       constants: SlHashMap::default(),
     };
 
-    child.fun = child.hooks.manage(Fun::new(name));
+    child.fun = child.hooks.manage(Fun::new(name, child.module));
 
     child.locals[0] = first_local(fun_kind);
 
@@ -176,6 +189,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
   /// use spacelox_core::memory::Gc;
+  /// use spacelox_core::module::Module;
   /// use spacelox_core::hooks::{Hooks, NoContext};
   /// use spacelox_core::io::{NativeIo, NativeStdIo};
   ///
@@ -186,8 +200,9 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut context = NoContext::new(&gc);
   /// let mut hooks = Hooks::new(&mut context);
   /// let mut parser = Parser::new(NativeStdIo::new(), &source);
+  /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
   ///
-  /// let compiler = Compiler::new(NativeIo::new(), &mut parser, &mut hooks);
+  /// let compiler = Compiler::new(module, NativeIo::new(), &mut parser, &mut hooks);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
@@ -1907,7 +1922,8 @@ mod test {
     let mut context = NoContext::new(gc);
     let hooks = &Hooks::new(&mut context);
 
-    let compiler = Compiler::new(io, &mut parser, &hooks);
+    let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
+    let compiler = Compiler::new(module, io, &mut parser, &hooks);
     let result = compiler.compile();
     assert_eq!(result.success, true);
 

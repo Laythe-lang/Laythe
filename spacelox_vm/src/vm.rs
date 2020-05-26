@@ -1,6 +1,6 @@
 use crate::call_frame::CallFrame;
 use crate::compiler::{Compiler, CompilerResult, Parser};
-use crate::constants::{DEFAULT_STACK_MAX, FRAME_MAX};
+use crate::constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE};
 use spacelox_core::hooks::NoContext;
 use spacelox_core::hooks::{HookContext, Hooks};
 use spacelox_core::{
@@ -10,6 +10,7 @@ use spacelox_core::{
   io::{Io, NativeIo, StdIo},
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
+  module::Module,
   native::{NativeFun, NativeMethod},
   object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
@@ -93,7 +94,14 @@ pub struct Vm<I: Io + 'static> {
 impl<I: Io> Vm<I> {
   pub fn new(io: I) -> Vm<I> {
     let gc = Gc::new(Box::new(io.stdio()));
-    let fun = Fun::new(gc.manage_str(String::from(PLACEHOLDER_NAME), &NO_GC));
+    let module = gc.manage(
+      Module::new(gc.manage_str(PLACEHOLDER_NAME.to_string(), &NO_GC)),
+      &NO_GC,
+    );
+    let fun = Fun::new(
+      gc.manage_str(String::from(PLACEHOLDER_NAME), &NO_GC),
+      module,
+    );
 
     let managed_fun = gc.manage(fun, &NO_GC);
     let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
@@ -122,6 +130,7 @@ impl<I: Io> Vm<I> {
 
   pub fn repl(&mut self) {
     let stdio = self.io.stdio();
+
     loop {
       let mut buffer = String::new();
 
@@ -130,20 +139,20 @@ impl<I: Io> Vm<I> {
 
       match stdio.read_line(&mut buffer) {
         Ok(_) => {
-          self.interpret(&buffer);
+          self.interpret(REPL_MODULE, &buffer);
         }
         Err(error) => panic!(error),
       }
     }
   }
 
-  pub fn run(&mut self, source: &str) -> ExecuteResult {
-    self.interpret(source)
+  pub fn run(&mut self, module_name: &str, source: &str) -> ExecuteResult {
+    self.interpret(module_name, source)
   }
 
   /// Interpret the provided spacelox script returning the execution result
-  fn interpret(&mut self, source: &str) -> ExecuteResult {
-    let result = self.compile(source);
+  fn interpret(&mut self, module_name: &str, source: &str) -> ExecuteResult {
+    let result = self.compile(module_name.to_string(), source);
 
     if !result.success {
       return ExecuteResult::CompileError;
@@ -156,13 +165,14 @@ impl<I: Io> Vm<I> {
   }
 
   /// Compile the provided spacelox source into the virtual machine's bytecode
-  fn compile(&mut self, source: &str) -> CompilerResult {
+  fn compile(&mut self, name: String, source: &str) -> CompilerResult {
     let mut parser = Parser::new(self.io.stdio(), source);
 
     let mut compiler_context = NoContext::new(&self.gc);
     let hooks = Hooks::new(&mut compiler_context);
 
-    let compiler = Compiler::new(self.io, &mut parser, &hooks);
+    let module = hooks.manage(Module::new(hooks.manage_str(name)));
+    let compiler = Compiler::new(module, self.io, &mut parser, &hooks);
     compiler.compile()
   }
 }

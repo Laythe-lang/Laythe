@@ -71,15 +71,14 @@ impl<'a> Gc {
   /// # Examples
   /// ```
   /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::value::Value;
+  /// use spacelox_core::module::Module;
   /// use spacelox_core::object::Fun;
-  /// use spacelox_core::arity::ArityKind;
-  /// use spacelox_core::chunk::Chunk;
   /// use spacelox_core::io::NativeStdIo;
   /// use spacelox_core::managed::Managed;
   ///
   /// let gc = Gc::new(Box::new(NativeStdIo::new()));
-  /// let fun: Fun = Fun::new(gc.manage_str("fun".to_string(), &NO_GC));
+  /// let module = gc.manage(Module::new(gc.manage_str("module".to_string(), &NO_GC)), &NO_GC);
+  /// let fun: Fun = Fun::new(gc.manage_str("fun".to_string(), &NO_GC), module);
   ///
   /// let managed_fun = gc.manage(fun, &NO_GC);
   ///

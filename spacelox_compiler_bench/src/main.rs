@@ -1,6 +1,6 @@
 use spacelox_core::hooks::{Hooks, NoContext};
 use spacelox_core::io::{Io, NativeIo};
-use spacelox_core::memory::Gc;
+use spacelox_core::{memory::Gc, module::Module};
 use spacelox_vm::compiler::{Compiler, Parser};
 use std::env;
 use std::fs::File;
@@ -28,7 +28,8 @@ fn main() {
         let hooks = Hooks::new(&mut context);
         let io = NativeIo::new();
         let mut parser = Parser::new(io.stdio(), &source);
-        let compiler = Compiler::new(io, &mut parser, &hooks);
+        let module = hooks.manage(Module::new(hooks.manage_str("Benchmark".to_string())));
+        let compiler = Compiler::new(module, io, &mut parser, &hooks);
         compiler.compile();
       }
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));

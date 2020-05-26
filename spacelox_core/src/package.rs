@@ -214,7 +214,7 @@ impl fmt::Debug for Package {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_struct("Package")
       .field("name", &*self.name)
-      .field("entities", &"entities: { ... }")
+      .field("entities", &"SlHashMap: { ... }")
       .finish()
   }
 }

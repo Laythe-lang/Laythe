@@ -2,7 +2,7 @@
 use spacelox_vm::vm::{default_native_vm, ExecuteResult};
 use std::env;
 use std::fs::read_to_string;
-use std::process;
+use std::{ffi::OsStr, path::Path, process};
 
 fn main() {
   let mut vm = default_native_vm();
@@ -13,18 +13,28 @@ fn main() {
       vm.repl();
       process::exit(0);
     }
-    [_, file_path] => match read_to_string(file_path) {
-      Ok(source) => match vm.run(&source) {
-        ExecuteResult::Ok => process::exit(0),
-        ExecuteResult::FunResult(_) => panic!("Fun result should only be returned internally"),
-        ExecuteResult::CompileError => process::exit(2),
-        ExecuteResult::RuntimeError => process::exit(3),
-      },
-      Err(e) => {
-        eprintln!("{}", e);
-        process::exit(4)
+    [_, file_path] => {
+      let path = Path::new(file_path);
+      let name = path.file_name().unwrap_or(OsStr::new("unknown"));
+      let file_name = name.to_str();
+
+      match (file_name, read_to_string(path)) {
+        (Some(file_name), Ok(source)) => match vm.run(file_name, &source) {
+          ExecuteResult::Ok => process::exit(0),
+          ExecuteResult::FunResult(_) => panic!("Fun result should only be returned internally"),
+          ExecuteResult::CompileError => process::exit(2),
+          ExecuteResult::RuntimeError => process::exit(3),
+        },
+        (_, Err(e)) => {
+          eprintln!("{}", e);
+          process::exit(4)
+        }
+        (None, _) => {
+          eprintln!("{}", "Could not convert filename");
+          process::exit(4)
+        }
       }
-    },
+    }
     _ => {
       println!("Usage: spacelox [path]");
       process::exit(1);

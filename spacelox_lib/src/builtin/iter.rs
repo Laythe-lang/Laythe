@@ -471,11 +471,8 @@ mod test {
   #[cfg(test)]
   mod map {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::{
-      iterator::SlIterator,
-      object::{Closure, Fun},
-    };
+    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use spacelox_core::{iterator::SlIterator, object::Closure};
 
     #[test]
     fn new() {
@@ -501,9 +498,11 @@ mod test {
       let (iter, class) = test_input(&hooks);
       let managed = hooks.manage(SlIterator::new(iter, class));
       let this = Value::from(managed);
-      let fun = Value::from(hooks.manage(Closure::new(
-        hooks.manage(Fun::new(hooks.manage_str(String::from("example")))),
-      )));
+      let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
+        &hooks,
+        "example".to_string(),
+        "module".to_string(),
+      ))));
 
       fun.to_closure().fun.arity = ArityKind::Fixed(1);
 

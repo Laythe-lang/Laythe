@@ -105,10 +105,10 @@ mod test {
 
   mod name {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
     use spacelox_core::{
       memory::NO_GC,
-      object::{Closure, Fun, Instance, Method},
+      object::{Closure, Instance, Method},
     };
 
     #[test]
@@ -130,7 +130,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let method_name = MethodName::new(hooks.manage_str(String::from("name")));
 
-      let fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
+      let fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
       let class = hooks.manage(Class::new(hooks.manage_str(String::from("exampleClass"))));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
@@ -147,8 +147,8 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::object::{Closure, Fun, Instance, Method};
+    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use spacelox_core::object::{Closure, Instance, Method};
 
     #[test]
     fn new() {
@@ -165,7 +165,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[Value::from(14.3)]);
       let mut hooks = Hooks::new(&mut context);
 
-      let fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
+      let fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
       let class = hooks.manage(Class::new(hooks.manage_str(String::from("exampleClass"))));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));

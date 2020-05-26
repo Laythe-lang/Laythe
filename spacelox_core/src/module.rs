@@ -177,8 +177,8 @@ impl fmt::Debug for Module {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_struct("Module")
       .field("name", &*self.name)
-      .field("exports", &"exports: { ... }")
-      .field("symbols", &"symbols: { ... }")
+      .field("exports", &"SlHashMap: { ... }")
+      .field("symbols", &"SlHashMap: { ... }")
       .finish()
   }
 }

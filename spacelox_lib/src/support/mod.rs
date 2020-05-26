@@ -14,10 +14,12 @@ pub use self::test::*;
 mod test {
   use spacelox_core::{
     arity::ArityKind,
-    hooks::HookContext,
+    hooks::{HookContext, Hooks},
     io::{NativeStdIo, StdIo},
     managed::{Managed, Trace},
     memory::{Gc, NoGc, NO_GC},
+    module::Module,
+    object::Fun,
     value::{Value, ValueVariant},
     CallResult, SlError,
   };
@@ -185,5 +187,10 @@ mod test {
 
   pub fn test_native_dependencies() -> Box<Gc> {
     Box::new(Gc::new(Box::new(NativeStdIo())))
+  }
+
+  pub fn fun_from_hooks(hooks: &Hooks, name: String, module_name: String) -> Managed<Fun> {
+    let module = hooks.manage(Module::new(hooks.manage_str(module_name)));
+    hooks.manage(Fun::new(hooks.manage_str(name), module))
   }
 }

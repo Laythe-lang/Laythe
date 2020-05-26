@@ -129,8 +129,8 @@ mod test {
 
   mod name {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::object::{Closure, Fun};
+    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use spacelox_core::object::Closure;
 
     #[test]
     fn new() {
@@ -147,7 +147,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
+      let fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
       let closure = hooks.manage(Closure::new(fun));
 
       let result1 = closure_name.call(&mut hooks, Value::from(closure), &[]);
@@ -161,8 +161,8 @@ mod test {
 
   mod size {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::object::{Closure, Fun};
+    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use spacelox_core::object::Closure;
 
     #[test]
     fn new() {
@@ -179,7 +179,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let mut fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
+      let mut fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
       fun.arity = ArityKind::Fixed(4);
 
       let closure = hooks.manage(Closure::new(fun));
@@ -208,8 +208,8 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::object::{Closure, Fun};
+    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use spacelox_core::object::Closure;
 
     #[test]
     fn new() {
@@ -226,7 +226,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[Value::from(4.3)]);
       let mut hooks = Hooks::new(&mut context);
 
-      let mut fun = hooks.manage(Fun::new(hooks.manage_str(String::from("example"))));
+      let mut fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
       fun.arity = ArityKind::Fixed(1);
 
       let closure = hooks.manage(Closure::new(fun));

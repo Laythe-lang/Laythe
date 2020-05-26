@@ -33,8 +33,14 @@ pub fn test_files_inner(
     };
     let mut source = String::new();
     file.read_to_string(&mut source)?;
+    let module_name = "Test";
 
-    assert_eq!(vm.run(&source), result, "Failing file {:?}", debug_path);
+    assert_eq!(
+      vm.run(module_name, &source),
+      result,
+      "Failing file {:?}",
+      debug_path
+    );
   }
 
   Ok(())
