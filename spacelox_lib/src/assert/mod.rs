@@ -5,7 +5,7 @@ use spacelox_core::{hooks::Hooks, native::NativeFun};
 
 pub fn assert_funs(hooks: &Hooks) -> Vec<Box<dyn NativeFun>> {
   let mut native_funs: Vec<Box<dyn NativeFun>> = Vec::new();
-  let str_method_name = hooks.manage_str(String::from("str"));
+  let str_method_name = hooks.manage_str("str".to_string());
 
   native_funs.push(Box::new(Assert::new(str_method_name)));
   native_funs.push(Box::new(AssertEq::new(str_method_name)));

@@ -117,11 +117,11 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let managed: Managed<Box<dyn NativeFun>> = hooks.manage(Box::new(Assert::new(
-        hooks.manage_str(String::from("example")),
+        hooks.manage_str("example".to_string()),
       )));
       let result = native_fun_name.call(&mut hooks, Value::from(managed), &[]);
       match result {
-        Ok(r) => assert_eq!(*r.to_str(), String::from("assert")),
+        Ok(r) => assert_eq!(*r.to_str(), "assert".to_string()),
         Err(_) => assert!(false),
       }
     }
@@ -151,7 +151,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let managed: Managed<Box<dyn NativeFun>> =
-        hooks.manage(Box::new(Assert::new(hooks.manage_str(String::from("str")))));
+        hooks.manage(Box::new(Assert::new(hooks.manage_str("str".to_string()))));
       let result = native_fun_call.call(&mut hooks, Value::from(managed), &[Value::from(true)]);
       match result {
         Ok(r) => assert!(r.is_nil()),

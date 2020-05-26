@@ -80,7 +80,7 @@ mod test {
 
       let result = nil_str.call(&mut hooks, VALUE_NIL, &[]);
       match result {
-        Ok(r) => assert_eq!(*r.to_str(), String::from("nil")),
+        Ok(r) => assert_eq!(*r.to_str(), "nil".to_string()),
         Err(_) => assert!(false),
       }
     }

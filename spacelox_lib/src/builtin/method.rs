@@ -114,7 +114,7 @@ mod test {
     #[test]
     fn new() {
       let gc = test_native_dependencies();
-      let method_name = MethodName::new(gc.manage_str(String::from("name"), &NO_GC));
+      let method_name = MethodName::new(gc.manage_str("name".to_string(), &NO_GC));
 
       assert_eq!(method_name.meta.name, "name");
       assert_eq!(method_name.meta.arity, ArityKind::Fixed(0));
@@ -125,13 +125,13 @@ mod test {
       let gc = test_native_dependencies();
       let mut context = TestContext::new(
         &gc,
-        &[Value::from(gc.manage_str(String::from("example"), &NO_GC))],
+        &[Value::from(gc.manage_str("example".to_string(), &NO_GC))],
       );
       let mut hooks = Hooks::new(&mut context);
-      let method_name = MethodName::new(hooks.manage_str(String::from("name")));
+      let method_name = MethodName::new(hooks.manage_str("name".to_string()));
 
       let fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
-      let class = hooks.manage(Class::new(hooks.manage_str(String::from("exampleClass"))));
+      let class = hooks.manage(Class::new(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(Value::from(instance), Value::from(closure)));
@@ -166,7 +166,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
-      let class = hooks.manage(Class::new(hooks.manage_str(String::from("exampleClass"))));
+      let class = hooks.manage(Class::new(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(Value::from(instance), Value::from(closure)));

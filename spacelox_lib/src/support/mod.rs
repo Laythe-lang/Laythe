@@ -55,7 +55,7 @@ mod test {
         ValueVariant::NativeMethod => callable.to_native_method().meta().arity,
         _ => {
           return Err(SlError::new(
-            self.gc.manage_str(String::from("Not callable"), &NO_GC),
+            self.gc.manage_str("Not callable".to_string(), &NO_GC),
           ));
         }
       };
@@ -66,7 +66,7 @@ mod test {
           return Err(SlError::new(
             self
               .gc
-              .manage_str(String::from("Incorrect function arity"), &NO_GC),
+              .manage_str("Incorrect function arity".to_string(), &NO_GC),
           ))
         }
       }
@@ -80,7 +80,7 @@ mod test {
       Err(SlError::new(
         self
           .gc
-          .manage_str(String::from("No mocked results"), &NO_GC),
+          .manage_str("No mocked results".to_string(), &NO_GC),
       ))
     }
 
@@ -92,7 +92,7 @@ mod test {
         ValueVariant::NativeMethod => method.to_native_method().meta().arity,
         _ => {
           return Err(SlError::new(
-            self.gc.manage_str(String::from("Not callable"), &NO_GC),
+            self.gc.manage_str("Not callable".to_string(), &NO_GC),
           ));
         }
       };
@@ -103,7 +103,7 @@ mod test {
           return Err(SlError::new(
             self
               .gc
-              .manage_str(String::from("Incorrect function arity"), &NO_GC),
+              .manage_str("Incorrect function arity".to_string(), &NO_GC),
           ))
         }
       }
@@ -117,7 +117,7 @@ mod test {
       Err(SlError::new(
         self
           .gc
-          .manage_str(String::from("No mocked results"), &NO_GC),
+          .manage_str("No mocked results".to_string(), &NO_GC),
       ))
     }
 
@@ -156,7 +156,7 @@ mod test {
           return Err(SlError::new(
             self
               .gc
-              .manage_str(String::from("Incorrect method arity"), &NO_GC),
+              .manage_str("Incorrect method arity".to_string(), &NO_GC),
           ))
         }
       }
@@ -170,7 +170,7 @@ mod test {
       Err(SlError::new(
         self
           .gc
-          .manage_str(String::from("No mocked results"), &NO_GC),
+          .manage_str("No mocked results".to_string(), &NO_GC),
       ))
     }
   }

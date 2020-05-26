@@ -368,7 +368,7 @@ mod test {
   fn test_input(hooks: &Hooks) -> (Box<dyn SlIter>, Managed<Class>) {
     (
       Box::new(TestIterator::new()),
-      hooks.manage(Class::new(hooks.manage_str(String::from("test")))),
+      hooks.manage(Class::new(hooks.manage_str("test".to_string()))),
     )
   }
 
@@ -481,7 +481,7 @@ mod test {
       let hooks = Hooks::new(&mut context);
 
       let iter_map =
-        IterMap::new(hooks.manage(Class::new(hooks.manage_str(String::from("something")))));
+        IterMap::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
 
       assert_eq!(iter_map.meta.name, "map");
       assert_eq!(iter_map.meta.arity, ArityKind::Fixed(1));
@@ -493,7 +493,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[Value::from(5.0)]);
       let mut hooks = Hooks::new(&mut context);
       let iter_map =
-        IterMap::new(hooks.manage(Class::new(hooks.manage_str(String::from("something")))));
+        IterMap::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
 
       let (iter, class) = test_input(&hooks);
       let managed = hooks.manage(SlIterator::new(iter, class));

@@ -79,7 +79,7 @@ mod test {
 
       let result = number_str.call(&mut hooks, Value::from(10.0), &[]);
       match result {
-        Ok(r) => assert_eq!(*r.to_str(), String::from("10")),
+        Ok(r) => assert_eq!(*r.to_str(), "10".to_string()),
         Err(_) => assert!(false),
       }
     }

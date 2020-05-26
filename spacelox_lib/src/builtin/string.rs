@@ -77,10 +77,10 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let this = Value::from(hooks.manage_str(String::from("test")));
+      let this = Value::from(hooks.manage_str("test".to_string()));
       let result = string_str.call(&mut hooks, this, &[]);
       match result {
-        Ok(r) => assert_eq!(*r.to_str(), String::from("test")),
+        Ok(r) => assert_eq!(*r.to_str(), "test".to_string()),
         Err(_) => assert!(false),
       }
     }

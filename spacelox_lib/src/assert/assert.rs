@@ -175,7 +175,7 @@ mod test {
     #[test]
     fn new() {
       let gc = test_native_dependencies();
-      let assert = Assert::new(gc.manage_str(String::from("str"), &NO_GC));
+      let assert = Assert::new(gc.manage_str("str".to_string(), &NO_GC));
 
       assert_eq!(assert.meta.name, "assert");
       assert_eq!(assert.meta.arity, ArityKind::Fixed(1));
@@ -187,7 +187,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let assert = Assert::new(hooks.manage_str(String::from("str")));
+      let assert = Assert::new(hooks.manage_str("str".to_string()));
       let values = &[Value::from(true)];
 
       let result = match assert.call(&mut hooks, values) {
@@ -208,7 +208,7 @@ mod test {
     #[test]
     fn new() {
       let gc = test_native_dependencies();
-      let assert_eq = AssertEq::new(gc.manage_str(String::from("str"), &NO_GC));
+      let assert_eq = AssertEq::new(gc.manage_str("str".to_string(), &NO_GC));
 
       assert_eq!(assert_eq.meta.name, "assertEq");
       assert_eq!(assert_eq.meta.arity, ArityKind::Fixed(2));
@@ -219,7 +219,7 @@ mod test {
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
-      let assert_eq = AssertEq::new(hooks.manage_str(String::from("str")));
+      let assert_eq = AssertEq::new(hooks.manage_str("str".to_string()));
 
       let values = &[Value::from(10.5), Value::from(10.5)];
 
@@ -241,7 +241,7 @@ mod test {
     #[test]
     fn new() {
       let gc = test_native_dependencies();
-      let assert_eq = AssertNe::new(gc.manage_str(String::from("str"), &NO_GC));
+      let assert_eq = AssertNe::new(gc.manage_str("str".to_string(), &NO_GC));
 
       assert_eq!(assert_eq.meta.name, "assertNe");
       assert_eq!(assert_eq.meta.arity, ArityKind::Fixed(2));
@@ -252,7 +252,7 @@ mod test {
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
-      let assert_eq = AssertNe::new(hooks.manage_str(String::from("str")));
+      let assert_eq = AssertNe::new(hooks.manage_str("str".to_string()));
 
       let values = &[Value::from(10.5), VALUE_NIL];
 

@@ -90,7 +90,7 @@ impl Manage for SlIterator {
   }
 
   fn debug_free(&self) -> String {
-    String::from("Iterator: {{ class: {{...}}, fields: {{...}} }}, iterator: {{ ... }}")
+    "Iterator: {{ class: {{...}}, fields: {{...}} }}, iterator: {{ ... }}".to_string()
   }
 
   fn size(&self) -> usize {

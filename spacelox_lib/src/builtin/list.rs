@@ -463,7 +463,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let hooks = Hooks::new(&mut context);
 
-      let list_str = ListStr::new(hooks.manage_str(String::from("str")));
+      let list_str = ListStr::new(hooks.manage_str("str".to_string()));
 
       assert_eq!(list_str.meta.name, "str");
       assert_eq!(list_str.meta.arity, ArityKind::Fixed(0));
@@ -475,13 +475,13 @@ mod test {
       let mut context = TestContext::new(
         &gc,
         &[
-          Value::from(gc.manage_str(String::from("nil"), &NO_GC)),
-          Value::from(gc.manage_str(String::from("10"), &NO_GC)),
-          Value::from(gc.manage_str(String::from("[5]"), &NO_GC)),
+          Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
+          Value::from(gc.manage_str("10".to_string(), &NO_GC)),
+          Value::from(gc.manage_str("[5]".to_string(), &NO_GC)),
         ],
       );
       let mut hooks = Hooks::new(&mut context);
-      let list_str = ListStr::new(hooks.manage_str(String::from("str")));
+      let list_str = ListStr::new(hooks.manage_str("str".to_string()));
 
       let values = &[];
 
@@ -818,7 +818,7 @@ mod test {
       let hooks = Hooks::new(&mut context);
 
       let list_iter =
-        ListIter::new(hooks.manage(Class::new(hooks.manage_str(String::from("something")))));
+        ListIter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
 
       assert_eq!(list_iter.meta.name, "iter");
       assert_eq!(list_iter.meta.arity, ArityKind::Fixed(0));
@@ -830,7 +830,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
       let list_iter =
-        ListIter::new(hooks.manage(Class::new(hooks.manage_str(String::from("something")))));
+        ListIter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
 
       let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
       let this = hooks.manage(list);

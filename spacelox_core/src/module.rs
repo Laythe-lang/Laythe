@@ -30,7 +30,7 @@ impl Module {
   /// use spacelox_core::memory::{Gc, NO_GC};
   ///
   /// let gc = Gc::default();
-  /// let module = Module::new(gc.manage_str(String::from("example"), &NO_GC));
+  /// let module = Module::new(gc.manage_str("example".to_string(), &NO_GC));
   /// ```
   pub fn new(name: Managed<String>) -> Self {
     Module {
@@ -53,9 +53,9 @@ impl Module {
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let mut module = Module::new(hooks.manage_str(String::from("module")));
+  /// let mut module = Module::new(hooks.manage_str("module".to_string()));
   ///
-  /// let export_name = hooks.manage_str(String::from("exported"));
+  /// let export_name = hooks.manage_str("exported".to_string());
   ///
   /// let result1 = module.export_symbol(&hooks, export_name, Value::from(true));
   /// let result2 = module.export_symbol(&hooks, export_name, Value::from(false));
@@ -94,9 +94,9 @@ impl Module {
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let mut module = Module::new(hooks.manage_str(String::from("module")));
+  /// let mut module = Module::new(hooks.manage_str("module".to_string()));
   ///
-  /// let export_name = hooks.manage_str(String::from("exported"));
+  /// let export_name = hooks.manage_str("exported".to_string());
   /// module.export_symbol(&hooks, export_name, Value::from(true));
   ///
   /// let symbols = module.import();
@@ -126,9 +126,9 @@ impl Module {
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let mut module = Module::new(hooks.manage_str(String::from("module")));
+  /// let mut module = Module::new(hooks.manage_str("module".to_string()));
   ///
-  /// let name = hooks.manage_str(String::from("exported"));
+  /// let name = hooks.manage_str("exported".to_string());
   /// module.insert_symbol(name, Value::from(true));
   ///
   /// let symbol = module.get_symbol(name);
@@ -156,9 +156,9 @@ impl Module {
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let mut module = Module::new(hooks.manage_str(String::from("module")));
+  /// let mut module = Module::new(hooks.manage_str("module".to_string()));
   ///
-  /// let name = hooks.manage_str(String::from("exported"));
+  /// let name = hooks.manage_str("exported".to_string());
   ///
   /// let symbol = module.get_symbol(name);
   ///
@@ -222,7 +222,7 @@ impl Manage for Module {
     format!("{:?}", self)
   }
   fn debug_free(&self) -> String {
-    String::from("Module: {{ name: {{...}}, exports: {{...}}, symbols: {{...}}}}")
+    "Module: {{ name: {{...}}, exports: {{...}}, symbols: {{...}}}}".to_string()
   }
 
   fn size(&self) -> usize {

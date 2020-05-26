@@ -28,8 +28,8 @@ use spacelox_core::{
 use string::{declare_string_class, define_string_class};
 
 pub fn make_builtin_classes(hooks: &Hooks) -> Result<BuiltInClasses, SlError> {
-  let mut module = Module::new(hooks.manage_str(String::from("builtin")));
-  let package = Package::new(hooks.manage_str(String::from("std")));
+  let mut module = Module::new(hooks.manage_str("builtin".to_string()));
+  let package = Package::new(hooks.manage_str("std".to_string()));
 
   declare_bool_class(hooks, &mut module)?;
   declare_closure_class(hooks, &mut module)?;
@@ -61,47 +61,47 @@ pub fn make_builtin_classes(hooks: &Hooks) -> Result<BuiltInClasses, SlError> {
 
   let builtin = BuiltInClasses {
     bool: exports
-      .get(&hooks.manage_str(String::from("Bool")))
+      .get(&hooks.manage_str("Bool".to_string()))
       .unwrap()
       .to_class(),
     class: exports
-      .get(&hooks.manage_str(String::from("Class")))
+      .get(&hooks.manage_str("Class".to_string()))
       .unwrap()
       .to_class(),
     nil: exports
-      .get(&hooks.manage_str(String::from("Nil")))
+      .get(&hooks.manage_str("Nil".to_string()))
       .unwrap()
       .to_class(),
     number: exports
-      .get(&hooks.manage_str(String::from("Number")))
+      .get(&hooks.manage_str("Number".to_string()))
       .unwrap()
       .to_class(),
     string: exports
-      .get(&hooks.manage_str(String::from("String")))
+      .get(&hooks.manage_str("String".to_string()))
       .unwrap()
       .to_class(),
     list: exports
-      .get(&hooks.manage_str(String::from("List")))
+      .get(&hooks.manage_str("List".to_string()))
       .unwrap()
       .to_class(),
     map: exports
-      .get(&hooks.manage_str(String::from("Map")))
+      .get(&hooks.manage_str("Map".to_string()))
       .unwrap()
       .to_class(),
     closure: exports
-      .get(&hooks.manage_str(String::from("Fun")))
+      .get(&hooks.manage_str("Fun".to_string()))
       .unwrap()
       .to_class(),
     method: exports
-      .get(&hooks.manage_str(String::from("Method")))
+      .get(&hooks.manage_str("Method".to_string()))
       .unwrap()
       .to_class(),
     native_fun: exports
-      .get(&hooks.manage_str(String::from("Native Fun")))
+      .get(&hooks.manage_str("Native Fun".to_string()))
       .unwrap()
       .to_class(),
     native_method: exports
-      .get(&hooks.manage_str(String::from("Native Method")))
+      .get(&hooks.manage_str("Native Method".to_string()))
       .unwrap()
       .to_class(),
   };

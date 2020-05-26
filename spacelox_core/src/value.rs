@@ -246,7 +246,7 @@ mod unboxed {
     /// use spacelox_core::memory::{Gc, NO_GC};
     ///
     /// let gc = Gc::default();
-    /// let managed =  gc.manage_str(String::from("example"), &NO_GC);
+    /// let managed =  gc.manage_str("example".to_string(), &NO_GC);
     ///
     /// let value = Value::String(managed);
     /// assert_eq!(&*value.to_str(), "example")
@@ -328,7 +328,7 @@ mod unboxed {
     /// use spacelox_core::chunk::Chunk;
     ///
     /// let gc = Gc::default();
-    /// let fun: Fun = Fun::new(gc.manage_str(String::from("add"), &NO_GC));
+    /// let fun: Fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
     /// let managed = gc.manage(fun, &NO_GC);
     ///
     /// let value = Value::Fun(managed);

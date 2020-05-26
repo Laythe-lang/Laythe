@@ -231,7 +231,7 @@ mod test {
 
       let closure = hooks.manage(Closure::new(fun));
 
-      let args = &[Value::from(hooks.manage_str(String::from("input")))];
+      let args = &[Value::from(hooks.manage_str("input".to_string()))];
       let result1 = closure_call.call(&mut hooks, Value::from(closure), args);
 
       match result1 {

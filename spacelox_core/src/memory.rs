@@ -461,7 +461,7 @@ mod test {
     let dyn_trace: Box<dyn Trace> = Box::new(NoGc());
     let gc = Gc::new(Box::new(NativeStdIo()));
 
-    let dyn_manged_str = gc.manage(String::from("managed"), &*dyn_trace);
-    assert_eq!(*dyn_manged_str, String::from("managed"));
+    let dyn_manged_str = gc.manage("managed".to_string(), &*dyn_trace);
+    assert_eq!(*dyn_manged_str, "managed".to_string());
   }
 }

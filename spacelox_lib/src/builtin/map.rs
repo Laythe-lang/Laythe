@@ -272,7 +272,7 @@ impl NativeMethod for MapRemove {
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     match hooks.shrink(&mut this.to_map(), |map| map.remove(&args[0])) {
       Some(removed) => Ok(removed),
-      None => Err(hooks.make_error(String::from("Key not found in map."))),
+      None => Err(hooks.make_error("Key not found in map.".to_string())),
     }
   }
 }
@@ -397,7 +397,7 @@ mod test {
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let hooks = Hooks::new(&mut context);
-      let map_str = MapStr::new(hooks.manage_str(String::from("str")));
+      let map_str = MapStr::new(hooks.manage_str("str".to_string()));
 
       assert_eq!(map_str.meta.name, "str");
       assert_eq!(map_str.meta.arity, ArityKind::Fixed(0));
@@ -409,12 +409,12 @@ mod test {
       let mut context = TestContext::new(
         &gc,
         &[
-          Value::from(gc.manage_str(String::from("nil"), &NO_GC)),
-          Value::from(gc.manage_str(String::from("nil"), &NO_GC)),
+          Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
+          Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
         ],
       );
       let mut hooks = Hooks::new(&mut context);
-      let map_str = MapStr::new(hooks.manage_str(String::from("str")));
+      let map_str = MapStr::new(hooks.manage_str("str".to_string()));
 
       let values = &[];
 

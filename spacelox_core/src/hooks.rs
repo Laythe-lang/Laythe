@@ -26,8 +26,8 @@ impl<'a> Hooks<'a> {
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let allocated = hooks.manage_str(String::from("example"));
-  /// assert_eq!(*allocated, String::from("example"));
+  /// let allocated = hooks.manage_str("example".to_string());
+  /// assert_eq!(*allocated, "example".to_string());
   /// ```
   pub fn new(context: &'a mut dyn HookContext) -> Hooks<'a> {
     Hooks { context }

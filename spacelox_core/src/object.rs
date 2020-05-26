@@ -172,8 +172,8 @@ impl Manage for Upvalue {
 
   fn debug_free(&self) -> String {
     match self {
-      Self::Open(_) => String::from("Upvalue::Open({{ ... }})"),
-      Self::Closed(_) => String::from("Upvalue::Closed({{ ... }})"),
+      Self::Open(_) => "Upvalue::Open({{ ... }})".to_string(),
+      Self::Closed(_) => "Upvalue::Closed({{ ... }})".to_string(),
     }
   }
 
@@ -358,7 +358,7 @@ impl<T: 'static + Trace + fmt::Debug> Manage for Vec<T> {
   }
 
   fn debug_free(&self) -> String {
-    String::from("List: [...]")
+    "List: [...]".to_string()
   }
 
   fn size(&self) -> usize {
@@ -396,7 +396,7 @@ impl<T: 'static + Trace + fmt::Debug> Manage for SlHashMap<T, T> {
   }
 
   fn debug_free(&self) -> String {
-    String::from("Map: {...}")
+    "Map: {...}".to_string()
   }
 
   fn size(&self) -> usize {
@@ -476,7 +476,7 @@ impl Manage for Closure {
   }
 
   fn debug_free(&self) -> String {
-    String::from("Closure: {{ fun: {{ ... }}, upvalues: {{ ... }} }}")
+    "Closure: {{ fun: {{ ... }}, upvalues: {{ ... }} }}".to_string()
   }
 
   fn size(&self) -> usize {
@@ -578,7 +578,7 @@ impl Manage for Class {
   }
 
   fn debug_free(&self) -> String {
-    String::from("Class: {{ init: {{...}}, name: {{...}}, methods: {{...}}}}")
+    "Class: {{ init: {{...}}, name: {{...}}, methods: {{...}}}}".to_string()
   }
 
   fn size(&self) -> usize {
@@ -655,7 +655,7 @@ impl Manage for Instance {
   }
 
   fn debug_free(&self) -> String {
-    String::from("Instance: {{ class: {{...}}, fields: {{...}} }}")
+    "Instance: {{ class: {{...}}, fields: {{...}} }}".to_string()
   }
 
   fn size(&self) -> usize {
@@ -709,7 +709,7 @@ impl Manage for Method {
   }
 
   fn debug_free(&self) -> String {
-    String::from("Method: {{ method: {{...}}, receiver: {{...}}}}")
+    "Method: {{ method: {{...}}, receiver: {{...}}}}".to_string()
   }
 
   fn size(&self) -> usize {

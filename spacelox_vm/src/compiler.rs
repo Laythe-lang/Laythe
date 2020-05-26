@@ -967,7 +967,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Compile a lambda expression
   fn lambda(&mut self) {
-    let name = self.hooks.manage_str(String::from("lambda"));
+    let name = self.hooks.manage_str("lambda".to_string());
 
     let mut fun_compiler = Compiler::child(name, FunKind::Fun, &mut *self);
     fun_compiler.begin_scope();
