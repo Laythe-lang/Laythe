@@ -1,7 +1,12 @@
 use crate::{
-  hooks::Hooks, managed::Managed, value::Value, ModuleResult, SlHashMap,
+  hooks::Hooks,
+  managed::{Manage, Managed, Trace},
+  value::Value,
+  ModuleResult, SlHashMap,
 };
 use hashbrown::{hash_map::Entry, HashMap};
+use std::fmt;
+use std::mem;
 
 /// A struct representing a collection of class functions and variable of shared functionality
 #[derive(Clone)]
@@ -109,7 +114,7 @@ impl Module {
   }
 
   /// Insert a symbol into this module's symbol table
-  /// 
+  ///
   /// #Examples
   /// ```
   /// use spacelox_core::module::Module;
@@ -132,14 +137,14 @@ impl Module {
   ///   assert_eq!(*result, Value::from(true));
   /// } else {
   ///   assert!(false);
-  /// } 
+  /// }
   /// ```
   pub fn insert_symbol(&mut self, name: Managed<String>, symbol: Value) {
     self.symbols.insert(name, symbol);
   }
 
   /// Get a symbol from this module's symbol table
-  /// 
+  ///
   /// #Examples
   /// ```
   /// use spacelox_core::module::Module;
@@ -161,9 +166,68 @@ impl Module {
   ///   assert!(false);
   /// } else {
   ///   assert!(true);
-  /// } 
+  /// }
   /// ```
   pub fn get_symbol(&mut self, name: Managed<String>) -> Option<&Value> {
     self.symbols.get(&name)
+  }
+}
+
+impl fmt::Debug for Module {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.debug_struct("Module")
+      .field("name", &*self.name)
+      .field("exports", &"exports: { ... }")
+      .field("symbols", &"symbols: { ... }")
+      .finish()
+  }
+}
+
+impl Trace for Module {
+  fn trace(&self) -> bool {
+    self.name.trace();
+
+    self.exports.iter().for_each(|(key, value)| {
+      key.trace();
+      value.trace();
+    });
+    self.symbols.iter().for_each(|(key, value)| {
+      key.trace();
+      value.trace();
+    });
+
+    true
+  }
+  fn trace_debug(&self, stdio: &dyn crate::io::StdIo) -> bool {
+    self.name.trace_debug(stdio);
+
+    self.exports.iter().for_each(|(key, value)| {
+      key.trace_debug(stdio);
+      value.trace_debug(stdio);
+    });
+    self.symbols.iter().for_each(|(key, value)| {
+      key.trace_debug(stdio);
+      value.trace_debug(stdio);
+    });
+
+    true
+  }
+}
+
+impl Manage for Module {
+  fn alloc_type(&self) -> &str {
+    "module"
+  }
+  fn debug(&self) -> String {
+    format!("{:?}", self)
+  }
+  fn debug_free(&self) -> String {
+    String::from("Module: {{ name: {{...}}, exports: {{...}}, symbols: {{...}}}}")
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+      + (mem::size_of::<Managed<String>>() + mem::size_of::<Value>())
+        * (self.exports.capacity() + self.symbols.capacity())
   }
 }

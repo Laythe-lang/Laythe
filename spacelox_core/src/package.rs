@@ -1,8 +1,12 @@
 use crate::{
-  hooks::Hooks, managed::Managed, module::Module, PackageResult,
-  SymbolResult, SlHashMap,
+  hooks::Hooks,
+  managed::{Manage, Managed, Trace},
+  module::Module,
+  PackageResult, SlHashMap, SymbolResult,
 };
-use hashbrown::{hash_map::Entry};
+use hashbrown::hash_map::Entry;
+use std::fmt;
+use std::mem;
 
 /// An object representing an import request from a file
 pub struct Import(Vec<Managed<String>>);
@@ -203,5 +207,63 @@ impl Package {
       },
       None => Err(hooks.make_error(format!("Could not resolve module {}", import.path_str()))),
     }
+  }
+}
+
+impl fmt::Debug for Package {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    f.debug_struct("Package")
+      .field("name", &*self.name)
+      .field("entities", &"entities: { ... }")
+      .finish()
+  }
+}
+
+impl Trace for Package {
+  fn trace(&self) -> bool {
+    self.name.trace();
+
+    self.entities.iter().for_each(|(key, value)| {
+      key.trace();
+
+      match value {
+        PackageEntity::Module(module) => module.trace(),
+        PackageEntity::Package(package) => package.trace(),
+      };
+    });
+
+    true
+  }
+  fn trace_debug(&self, stdio: &dyn crate::io::StdIo) -> bool {
+    self.name.trace_debug(stdio);
+
+    self.entities.iter().for_each(|(key, value)| {
+      key.trace();
+
+      match value {
+        PackageEntity::Module(module) => module.trace_debug(stdio),
+        PackageEntity::Package(package) => package.trace_debug(stdio),
+      };
+    });
+
+    true
+  }
+}
+
+impl Manage for Package {
+  fn alloc_type(&self) -> &str {
+    "package"
+  }
+  fn debug(&self) -> String {
+    format!("{:?}", self)
+  }
+  fn debug_free(&self) -> String {
+    String::from("Package: {{ name: {{...}}, entities: {{...}}}}")
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+      + (mem::size_of::<Managed<String>>() + mem::size_of::<PackageEntity>())
+        * (self.entities.capacity())
   }
 }

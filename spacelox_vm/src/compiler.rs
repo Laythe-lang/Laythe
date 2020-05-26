@@ -276,9 +276,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
         self.parser.advance();
         Some(self.var_declaration())
       }
-      _ => {
-        None
-      }
+      _ => None,
     };
 
     if self.scope_depth == 0 {
@@ -752,7 +750,9 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let string = self.hooks.manage_str(copy_string(&self.parser.previous));
     let value = Value::from(string);
     let path = self.make_constant(value);
-    self.parser.consume(TokenKind::Semicolon, "Expect ';' after value.");
+    self
+      .parser
+      .consume(TokenKind::Semicolon, "Expect ';' after value.");
 
     if self.scope_depth == 0 {
       self.emit_byte(AlignedByteCode::Import((name, path)))
@@ -2018,8 +2018,8 @@ mod test {
   fn import() {
     let example = r#"
       import time from "std/time";
-    "#.to_string();
-
+    "#
+    .to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
@@ -2038,8 +2038,8 @@ mod test {
   fn export_variable() {
     let example = "
       export var x = 10;
-    ".to_string();
-
+    "
+    .to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
@@ -2060,7 +2060,8 @@ mod test {
   fn export_fun() {
     let example = "
       export fun example() {}
-    ".to_string();
+    "
+    .to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);
@@ -2079,7 +2080,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Export(0)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
-      ]
+      ],
     );
   }
 
@@ -2087,7 +2088,8 @@ mod test {
   fn export_class() {
     let example = "
       export class example {}
-    ".to_string();
+    "
+    .to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo::new()));
     let fun = test_compile(example, &mut gc);

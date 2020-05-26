@@ -1364,14 +1364,14 @@ impl<'a, I: Io> VmExecutor<'a, I> {
           Upvalue::Open(index) => index,
           Upvalue::Closed(_) => panic!("Unexpected closed upvalue"),
         };
-  
+
         if index < last_index {
           break;
         }
-  
+
         upvalue.hoist();
       }
-  
+
       self.open_upvalues.retain(|upvalue| upvalue.is_open())
     }
   }

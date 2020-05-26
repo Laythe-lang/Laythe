@@ -39,11 +39,7 @@ pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   let mut class = self_module.import().get(&name).unwrap().to_class();
 
   let map_iter_name = hooks.manage_str(String::from(ITER_CLASS_NAME));
-  let map_iter_class = self_module
-    .import()
-    .get(&map_iter_name)
-    .unwrap()
-    .to_class();
+  let map_iter_class = self_module.import().get(&map_iter_name).unwrap().to_class();
 
   class.add_method(
     hooks,
