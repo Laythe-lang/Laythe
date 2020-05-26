@@ -1,42 +1,31 @@
 use crate::{
-  hooks::Hooks, managed::Managed, module::Module, value::Value, PackageResult, SlHashMap,
-  SymbolResult,
+  hooks::Hooks, managed::Managed, module::Module, PackageResult,
+  SymbolResult, SlHashMap,
 };
-use hashbrown::{hash_map::Entry, HashMap};
+use hashbrown::{hash_map::Entry};
 
 /// An object representing an import request from a file
-pub struct Import {
-  /// The path as sequence of string segments
-  pub path: Vec<Managed<String>>,
-
-  /// The symbols that have been requested for import
-  pub symbols: Vec<Managed<String>>,
-}
+pub struct Import(Vec<Managed<String>>);
 
 impl Import {
   /// Create a new import
-  pub fn new(path: Vec<Managed<String>>, symbols: Vec<Managed<String>>) -> Self {
-    Self { path, symbols }
+  pub fn new(path: Vec<Managed<String>>) -> Self {
+    Self(path)
   }
 
-  pub fn from_strs(hooks: &Hooks, symbols: &str, path: &str) -> Self {
-    let symbols = symbols
-      .split(",")
-      .map(|str| hooks.manage_str(String::from(str)))
-      .collect();
-
+  pub fn from_strs(hooks: &Hooks, path: &str) -> Self {
     let path = path
       .split("/")
       .map(|segment| hooks.manage_str(String::from(segment)))
       .collect();
 
-    Self { symbols, path }
+    Self(path)
   }
 
   /// Generate a path string from the internal representation
   pub fn path_str(&self) -> String {
-    let mut path = format!("{}", self.path[0]);
-    for segment in &self.path[1..] {
+    let mut path = format!("{}", self.0[0]);
+    for segment in &self.0[1..] {
       path.push_str(&format!("/{}", segment))
     }
 
@@ -60,7 +49,7 @@ pub struct Package {
   name: Managed<String>,
 
   /// A hash of names to sub packages and modules
-  entities: HashMap<Managed<String>, PackageEntity>,
+  entities: SlHashMap<Managed<String>, PackageEntity>,
 }
 
 impl Package {
@@ -77,7 +66,7 @@ impl Package {
   pub fn new(name: Managed<String>) -> Self {
     Self {
       name,
-      entities: HashMap::with_hasher(Default::default()),
+      entities: SlHashMap::with_hasher(Default::default()),
     }
   }
 
@@ -131,13 +120,13 @@ impl Package {
   /// let mut package = Package::new(hooks.manage_str(String::from("package")));
   /// let sub_package = Package::new(hooks.manage_str(String::from("sub_module")));
   ///
-  /// let result1 = package.add_sub_package(&hooks, sub_package.clone());
-  /// let result2 = package.add_sub_package(&hooks, sub_package);
+  /// let result1 = package.add_package(&hooks, sub_package.clone());
+  /// let result2 = package.add_package(&hooks, sub_package);
   ///
   /// assert_eq!(result1.is_ok(), true);
   /// assert_eq!(result2.is_err(), true);
   /// ```
-  pub fn add_sub_package(&mut self, hooks: &Hooks, sub_package: Package) -> PackageResult<()> {
+  pub fn add_package(&mut self, hooks: &Hooks, sub_package: Package) -> PackageResult<()> {
     match self.entities.entry(sub_package.name) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
         "Cannot add sub package {} to package {}",
@@ -168,16 +157,16 @@ impl Package {
   /// let mut module = Module::new(hooks.manage_str(String::from("my_module")));
   ///
   /// let export_name = hooks.manage_str(String::from("exported"));
-  /// module.add_export(&hooks, export_name, Value::from(true));
+  /// module.export_symbol(&hooks, export_name, Value::from(true));
   ///
   /// let mut package = Package::new(hooks.manage_str(String::from("my_package")));
   /// package.add_module(&hooks, module);
   ///
-  /// let successful = Import::from_strs(&hooks, "exported", "my_package/my_module");
-  /// let failing = Import::from_strs(&hooks, "exported", "my_package/not_my_module");
+  /// let successful = Import::from_strs(&hooks, "my_package/my_module");
+  /// let failing = Import::from_strs(&hooks, "my_package/not_my_module");
   ///
-  /// let symbols1 = package.get_symbols(&hooks, successful);
-  /// let symbols2 = package.get_symbols(&hooks, failing);
+  /// let symbols1 = package.import(&hooks, successful);
+  /// let symbols2 = package.import(&hooks, failing);
   ///
   /// assert_eq!(symbols1.is_ok(), true);
   /// assert_eq!(symbols2.is_err(), true);
@@ -187,65 +176,30 @@ impl Package {
   ///   assert_eq!(*result.get(&export_name).unwrap(), Value::from(true));
   /// }
   /// ```
-  pub fn get_symbols(&self, hooks: &Hooks, import: Import) -> SymbolResult {
-    if import.symbols.len() == 0 {
-      panic!("No symbols imported");
-    }
-
-    if import.path.len() == 0 {
+  pub fn import(&self, hooks: &Hooks, import: Import) -> SymbolResult {
+    if import.0.len() == 0 {
       panic!("No path in import");
     }
 
-    if import.path[0] == self.name {
-      self._get_symbols(hooks, 1, import)
+    if import.0[0] == self.name {
+      self._import(hooks, 1, import)
     } else {
       panic!("import resolution should not have selected this package");
     }
   }
 
-  pub fn get_all_symbols(&self) -> SymbolResult {
-    let mut result = HashMap::with_hasher(Default::default());
-
-    self._get_all_symbols(&mut result);
-    Ok(result)
-  }
-
-  fn _get_all_symbols(&self, results: &mut SlHashMap<Managed<String>, Value>) {
-    self.entities.iter().for_each(|(_, entity)| {
-      match entity {
-        PackageEntity::Module(module) => {
-          module.get_all_symbols().iter().for_each(|(name, symbol)| {
-            let replaced = results.insert(*name, *symbol);
-
-            // since this should only be used in std check we don't have multiple
-            // of the same name
-            debug_assert!(
-              replaced.is_none(),
-              "{} has multiple symbols with name {}",
-              self.name,
-              name
-            );
-          });
-        }
-        PackageEntity::Package(package) => {
-          package._get_all_symbols(results);
-        }
-      }
-    })
-  }
-
   /// Get a set of symbols from this packages using a requested. This method
   /// is used internally to track how far down the import path has currently been resolved
-  fn _get_symbols(&self, hooks: &Hooks, depth: usize, import: Import) -> SymbolResult {
-    if depth >= import.path.len() {
+  fn _import(&self, hooks: &Hooks, depth: usize, import: Import) -> SymbolResult {
+    if depth >= import.0.len() {
       return Err(hooks.make_error(format!("Could not resolve module {}", import.path_str())));
     }
 
-    let key = import.path[depth];
+    let key = import.0[depth];
     match self.entities.get(&key) {
       Some(entity) => match entity {
-        PackageEntity::Package(sub_package) => sub_package._get_symbols(hooks, depth + 1, import),
-        PackageEntity::Module(module) => module.get_symbols(hooks, &import.symbols),
+        PackageEntity::Package(sub_package) => sub_package._import(hooks, depth + 1, import),
+        PackageEntity::Module(module) => Ok(module.import()),
       },
       None => Err(hooks.make_error(format!("Could not resolve module {}", import.path_str()))),
     }

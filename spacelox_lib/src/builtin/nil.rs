@@ -19,12 +19,12 @@ pub fn declare_nil_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResul
   let name = hooks.manage_str(String::from(NIL_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::from(class))
+  self_module.export_symbol(hooks, name, Value::from(class))
 }
 
 pub fn define_nil_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   let name = hooks.manage_str(String::from(NIL_CLASS_NAME));
-  let mut class = self_module.get_symbol(hooks, name).unwrap().to_class();
+  let mut class = self_module.import().get(&name).unwrap().to_class();
 
   class.add_method(
     hooks,

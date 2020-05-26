@@ -20,7 +20,7 @@ pub type CallResult = Result<value::Value, SlError>;
 pub type ModuleResult<T> = Result<T, SlError>;
 pub type PackageResult<T> = Result<T, SlError>;
 pub type SlHashMap<K, V> = HashMap<K, V, FnvBuildHasher>;
-pub type SymbolResult = Result<SlHashMap<Managed<String>, Value>, SlError>;
+pub type SymbolResult<'a> = Result<&'a SlHashMap<Managed<String>, Value>, SlError>;
 
 use crate::managed::Managed;
 use fnv::FnvBuildHasher;

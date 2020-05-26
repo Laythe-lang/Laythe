@@ -8,7 +8,7 @@ pub fn declare_class_class(hooks: &Hooks, self_module: &mut Module) -> ModuleRes
   let name = hooks.manage_str(String::from(STRING_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.add_export(hooks, name, Value::from(class))
+  self_module.export_symbol(hooks, name, Value::from(class))
 }
 
 pub fn define_class_class(_hooks: &Hooks, _self_module: &Module, _: &Package) {}

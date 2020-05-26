@@ -57,7 +57,7 @@ pub fn make_builtin_classes(hooks: &Hooks) -> Result<BuiltInClasses, SlError> {
   define_number_class(hooks, &module, &package);
   define_string_class(hooks, &module, &package);
 
-  let exports = module.get_all_symbols();
+  let exports = module.import();
 
   let builtin = BuiltInClasses {
     bool: exports
