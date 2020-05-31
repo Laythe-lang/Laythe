@@ -1,5 +1,5 @@
 use spacelox_core::chunk::{decode_u16, AlignedByteCode, Chunk, UpvalueIndex};
-use spacelox_core::io::StdIo;
+use spacelox_env::stdio::StdIo;
 use std::mem;
 
 /// Write a chunk to console

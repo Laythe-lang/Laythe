@@ -1,18 +1,20 @@
 use super::iter::ITER_CLASS_NAME;
-use crate::support::to_dyn_method;
+use crate::support::{export_and_insert, to_dyn_method};
 use hashbrown::hash_map::Iter;
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
-  io::StdIo,
   iterator::{SlIter, SlIterator},
-  managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  object::Class,
+  object::{Class, SlHashMap, SlVec},
   package::Package,
   value::{Value, VALUE_NIL},
-  CallResult, ModuleResult, SlError, SlHashMap,
+  CallResult, ModuleResult, SlError,
+};
+use spacelox_env::{
+  managed::{Managed, Trace},
+  stdio::StdIo,
 };
 use std::fmt;
 use std::mem;
@@ -31,14 +33,14 @@ pub fn declare_map_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResul
   let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.export_symbol(hooks, name, Value::from(class))
+  export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
 pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
+  let name = Value::from(hooks.manage_str(String::from(MAP_CLASS_NAME)));
   let mut class = self_module.import().get(&name).unwrap().to_class();
 
-  let map_iter_name = hooks.manage_str(String::from(ITER_CLASS_NAME));
+  let map_iter_name = Value::from(hooks.manage_str(String::from(ITER_CLASS_NAME)));
   let map_iter_class = self_module.import().get(&map_iter_name).unwrap().to_class();
 
   class.add_method(
@@ -347,7 +349,7 @@ impl SlIter for MapIterator {
   fn next(&mut self, hooks: &mut Hooks) -> CallResult {
     match self.iter.next() {
       Some(next) => {
-        self.current = Value::from(hooks.manage(vec![*next.0, *next.1]));
+        self.current = Value::from(hooks.manage(SlVec::new(&[*next.0, *next.1])));
         Ok(Value::from(true))
       }
       None => {
@@ -385,12 +387,13 @@ impl fmt::Debug for MapIterator {
 #[cfg(test)]
 mod test {
   use super::*;
+  use spacelox_core::object::SlHashMap;
+  use spacelox_env::memory::NO_GC;
 
   #[cfg(test)]
   mod str {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::{memory::NO_GC, SlHashMap};
 
     #[test]
     fn new() {
@@ -434,7 +437,6 @@ mod test {
   mod size {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {
@@ -469,7 +471,6 @@ mod test {
   mod has {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {
@@ -508,7 +509,6 @@ mod test {
   mod get {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {
@@ -547,7 +547,6 @@ mod test {
   mod insert {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {
@@ -594,7 +593,6 @@ mod test {
   mod remove {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::SlHashMap;
 
     #[test]
     fn new() {

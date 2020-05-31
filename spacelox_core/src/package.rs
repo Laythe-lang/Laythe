@@ -1,10 +1,9 @@
-use crate::{
-  hooks::Hooks,
-  managed::{Manage, Managed, Trace},
-  module::Module,
-  PackageResult, SlHashMap, SymbolResult,
-};
+use crate::{hooks::Hooks, module::Module, object::SlHashMap, PackageResult};
 use hashbrown::hash_map::Entry;
+use spacelox_env::{
+  managed::{Manage, Managed, Trace},
+  stdio::StdIo,
+};
 use std::fmt;
 use std::mem;
 
@@ -41,10 +40,10 @@ impl Import {
 #[derive(Clone)]
 enum PackageEntity {
   /// A module in a package
-  Module(Module),
+  Module(Managed<Module>),
 
   /// A sub package in this package
-  Package(Package),
+  Package(Managed<Package>),
 }
 
 #[derive(Clone)]
@@ -62,7 +61,7 @@ impl Package {
   /// # Example
   /// ```
   /// use spacelox_core::package::Package;
-  /// use spacelox_core::memory::{Gc, NO_GC};
+  /// use spacelox_env::memory::{Gc, NO_GC};
   ///
   /// let gc = Gc::default();
   /// let package = Package::new(gc.manage_str("example".to_string(), &NO_GC));
@@ -70,7 +69,7 @@ impl Package {
   pub fn new(name: Managed<String>) -> Self {
     Self {
       name,
-      entities: SlHashMap::with_hasher(Default::default()),
+      entities: SlHashMap::default(),
     }
   }
 
@@ -80,15 +79,15 @@ impl Package {
   /// ```
   /// use spacelox_core::package::Package;
   /// use spacelox_core::module::Module;
-  /// use spacelox_core::memory::{Gc};
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use spacelox_env::memory::{Gc};
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let mut package = Package::new(hooks.manage_str("package".to_string()));
-  /// let module = Module::new(hooks.manage_str("module".to_string()));
+  /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
   ///
   /// let result1 = package.add_module(&hooks, module.clone());
   /// let result2 = package.add_module(&hooks, module);
@@ -96,7 +95,7 @@ impl Package {
   /// assert_eq!(result1.is_ok(), true);
   /// assert_eq!(result2.is_err(), true);
   /// ```
-  pub fn add_module(&mut self, hooks: &Hooks, module: Module) -> PackageResult<()> {
+  pub fn add_module(&mut self, hooks: &Hooks, module: Managed<Module>) -> PackageResult<()> {
     match self.entities.entry(module.name) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
         "Cannot add module {} to package {}",
@@ -114,23 +113,23 @@ impl Package {
   /// # Example
   /// ```
   /// use spacelox_core::package::Package;
-  /// use spacelox_core::memory::{Gc};
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use spacelox_env::memory::{Gc};
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let mut package = Package::new(hooks.manage_str("package".to_string()));
-  /// let sub_package = Package::new(hooks.manage_str("sub_module".to_string()));
+  /// let sub_package = hooks.manage(Package::new(hooks.manage_str("sub_module".to_string())));
   ///
-  /// let result1 = package.add_package(&hooks, sub_package.clone());
+  /// let result1 = package.add_package(&hooks, sub_package);
   /// let result2 = package.add_package(&hooks, sub_package);
   ///
   /// assert_eq!(result1.is_ok(), true);
   /// assert_eq!(result2.is_err(), true);
   /// ```
-  pub fn add_package(&mut self, hooks: &Hooks, sub_package: Package) -> PackageResult<()> {
+  pub fn add_package(&mut self, hooks: &Hooks, sub_package: Managed<Package>) -> PackageResult<()> {
     match self.entities.entry(sub_package.name) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
         "Cannot add sub package {} to package {}",
@@ -150,18 +149,19 @@ impl Package {
   /// ```
   /// use spacelox_core::module::Module;
   /// use spacelox_core::package::{Package, Import};
-  /// use spacelox_core::memory::{Gc};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use spacelox_env::memory::{Gc};
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let mut module = Module::new(hooks.manage_str("my_module".to_string()));
+  /// let mut module = hooks.manage(Module::new(hooks.manage_str("my_module".to_string())));
   ///
   /// let export_name = hooks.manage_str("exported".to_string());
-  /// module.export_symbol(&hooks, export_name, Value::from(true));
+  /// module.insert_symbol(&hooks, export_name, Value::from(true));
+  /// module.export_symbol(&hooks, export_name);
   ///
   /// let mut package = Package::new(hooks.manage_str("my_package".to_string()));
   /// package.add_module(&hooks, module);
@@ -177,10 +177,10 @@ impl Package {
   ///
   /// if let Ok(result) = symbols1 {
   ///   assert_eq!(result.len(), 1);
-  ///   assert_eq!(*result.get(&export_name).unwrap(), Value::from(true));
+  ///   assert_eq!(*result.get_symbol(export_name).unwrap(), Value::from(true));
   /// }
   /// ```
-  pub fn import(&self, hooks: &Hooks, import: Import) -> SymbolResult {
+  pub fn import(&self, hooks: &Hooks, import: Import) -> PackageResult<Managed<Module>> {
     if import.0.len() == 0 {
       panic!("No path in import");
     }
@@ -194,7 +194,7 @@ impl Package {
 
   /// Get a set of symbols from this packages using a requested. This method
   /// is used internally to track how far down the import path has currently been resolved
-  fn _import(&self, hooks: &Hooks, depth: usize, import: Import) -> SymbolResult {
+  fn _import(&self, hooks: &Hooks, depth: usize, import: Import) -> PackageResult<Managed<Module>> {
     if depth >= import.0.len() {
       return Err(hooks.make_error(format!("Could not resolve module {}", import.path_str())));
     }
@@ -203,7 +203,7 @@ impl Package {
     match self.entities.get(&key) {
       Some(entity) => match entity {
         PackageEntity::Package(sub_package) => sub_package._import(hooks, depth + 1, import),
-        PackageEntity::Module(module) => Ok(module.import()),
+        PackageEntity::Module(module) => Ok(*module),
       },
       None => Err(hooks.make_error(format!("Could not resolve module {}", import.path_str()))),
     }
@@ -234,7 +234,7 @@ impl Trace for Package {
 
     true
   }
-  fn trace_debug(&self, stdio: &dyn crate::io::StdIo) -> bool {
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.name.trace_debug(stdio);
 
     self.entities.iter().for_each(|(key, value)| {

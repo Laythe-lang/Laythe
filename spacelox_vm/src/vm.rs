@@ -7,17 +7,22 @@ use spacelox_core::{
   arity::{ArityError, ArityKind},
   chunk::{ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT},
-  io::{Io, NativeIo, StdIo},
-  managed::{Managed, Trace},
-  memory::{Gc, NO_GC},
   module::Module,
   native::{NativeFun, NativeMethod},
-  object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue},
+  object::SlHashMap,
+  object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, SlVec, Upvalue},
+  package::{Import, Package},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
   value::{Value, ValueVariant, VALUE_NIL},
-  CallResult, SlError, SlHashMap,
+  CallResult, SlError,
 };
-use spacelox_lib::{assert::assert_funs, builtin::make_builtin_classes, time::clock_funs};
+use spacelox_env::{
+  io::{Io, NativeIo},
+  managed::{Managed, Trace},
+  memory::{Gc, NO_GC},
+  stdio::StdIo,
+};
+use spacelox_lib::{builtin_from_std_lib, create_std_lib, GLOBAL, STD};
 use std::convert::TryInto;
 use std::mem;
 use std::ptr;
@@ -48,7 +53,7 @@ pub enum RunMode {
 }
 
 pub fn default_native_vm() -> Vm<NativeIo> {
-  let io = NativeIo::new();
+  let io = NativeIo();
   Vm::new(io)
 }
 
@@ -67,7 +72,7 @@ pub struct VmDependencies<I: Io + 'static> {
   frames: Vec<CallFrame>,
 
   /// The native functions
-  natives: Vec<Box<dyn NativeFun>>,
+  std_lib: Managed<Package>,
 }
 
 /// The virtual machine for the spacelox programming language
@@ -87,8 +92,11 @@ pub struct Vm<I: Io + 'static> {
   /// The environments io access
   io: I,
 
-  /// A persisted set of globals most for a repl context
-  globals: SlHashMap<Managed<String>, Value>,
+  /// The standard library
+  std_lib: Managed<Package>,
+
+  /// The global module
+  global: Managed<Module>,
 }
 
 impl<I: Io> Vm<I> {
@@ -110,13 +118,21 @@ impl<I: Io> Vm<I> {
     let stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
 
     let mut no_gc_context = NoContext::new(&gc);
-    let mut hooks = Hooks::new(&mut no_gc_context);
-    let mut natives = Vec::new();
-    natives.extend(assert_funs(&mut hooks).into_iter());
-    natives.extend(clock_funs().into_iter());
+    let hooks = Hooks::new(&mut no_gc_context);
 
-    let builtin = make_builtin_classes(&mut hooks).expect("Could not make built in classes.");
-    let globals = define_globals(&gc, natives);
+    let std_lib = create_std_lib(&hooks).expect("Standard library creation failed");
+    let global = std_lib
+      .import(
+        &hooks,
+        Import::new(vec![
+          hooks.manage_str(STD.to_string()),
+          hooks.manage_str(GLOBAL.to_string()),
+        ]),
+      )
+      .expect("Could not retrieve global module");
+
+    let builtin = builtin_from_std_lib(&hooks, &global)
+      .expect("Failed to generate builtin class from global module");
 
     Vm {
       io,
@@ -124,7 +140,8 @@ impl<I: Io> Vm<I> {
       frames,
       builtin,
       gc,
-      globals,
+      std_lib,
+      global,
     }
   }
 
@@ -182,32 +199,33 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
   /// different environments
   fn from(dependencies: VmDependencies<I>) -> Self {
     let gc = dependencies.gc;
-    let builtin = make_builtin_classes(&Hooks::new(&mut NoContext::new(&gc)))
-      .expect("Could not create builtin classes.");
-    let globals = define_globals(&gc, dependencies.natives);
+    let mut no_gc_context = NoContext::new(&gc);
+    let hooks = Hooks::new(&mut no_gc_context);
+
+    let std_lib = dependencies.std_lib;
+    let global = std_lib
+      .import(
+        &hooks,
+        Import::new(vec![
+          hooks.manage_str(STD.to_string()),
+          hooks.manage_str(GLOBAL.to_string()),
+        ]),
+      )
+      .expect("Could not retrieve global module");
+
+    let builtin = builtin_from_std_lib(&hooks, &global)
+      .expect("Failed to generate builtin class from global module");
 
     Vm {
       io: dependencies.io,
       stack: dependencies.stack,
       frames: dependencies.frames,
       gc,
-      globals,
+      std_lib: dependencies.std_lib,
       builtin,
+      global,
     }
   }
-}
-
-fn define_globals(gc: &Gc, natives: Vec<Box<dyn NativeFun>>) -> SlHashMap<Managed<String>, Value> {
-  let mut globals = SlHashMap::with_capacity_and_hasher(natives.len(), Default::default());
-
-  natives.into_iter().for_each(|native| {
-    let name = gc.manage_str(native.meta().name.to_string(), &NO_GC);
-    let native_value = Value::from(gc.manage(native, &NO_GC));
-
-    globals.insert(name, native_value);
-  });
-
-  globals
 }
 
 struct VmExecutor<'a, I: Io + 'static> {
@@ -218,7 +236,10 @@ struct VmExecutor<'a, I: Io + 'static> {
   stack: &'a mut [Value],
 
   /// global variable present in the vm
-  globals: &'a mut SlHashMap<Managed<String>, Value>,
+  global: Managed<Module>,
+
+  /// the standard lib package
+  std_lib: Managed<Package>,
 
   /// A collection of built in classes
   builtin: &'a BuiltInClasses,
@@ -244,6 +265,9 @@ struct VmExecutor<'a, I: Io + 'static> {
   /// The current error if one is active
   current_error: Option<SlError>,
 
+  /// The current module
+  current_module: Managed<Module>,
+
   /// index to the top of the value stack
   stack_top: *mut Value,
 
@@ -256,6 +280,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   pub fn new(vm: &'a mut Vm<I>, script: Value) -> VmExecutor<'a, I> {
     let current_frame = vm.frames[0];
     let current_fun = current_frame.closure.fun;
+    let current_module = current_fun.module;
     let stack_top = &mut vm.stack[1] as *mut Value;
 
     let mut executor = VmExecutor {
@@ -265,17 +290,25 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       script,
       current_fun,
       current_frame,
+      current_module,
       current_error: None,
       builtin: &vm.builtin,
       gc: &mut vm.gc,
       io: &mut vm.io,
       stack_top,
-      globals: &mut vm.globals,
+      global: vm.global,
+      std_lib: vm.std_lib,
       open_upvalues: Vec::with_capacity(100),
     };
 
     executor.current_frame.ip = &executor.script.to_closure().fun.chunk().instructions[0];
     let result = executor.call(executor.script.to_closure(), 0);
+
+    let mut current_module = executor.current_module;
+    vm.global
+      .transfer_exported(&Hooks::new(&mut executor), &mut current_module)
+      .expect("Transfer global module failed");
+
     match result {
       Signal::Ok => executor,
       _ => panic!("Script call failed"),
@@ -387,7 +420,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::Nil => self.op_literal(VALUE_NIL),
         ByteCode::True => self.op_literal(Value::from(true)),
         ByteCode::False => self.op_literal(Value::from(false)),
-        ByteCode::List => self.op_literal(Value::from(self.gc.manage(Vec::new(), self))),
+        ByteCode::List => self.op_literal(Value::from(self.gc.manage(SlVec::default(), self))),
         ByteCode::ListInit => self.op_list(),
         ByteCode::Map => self.op_literal(Value::from(self.gc.manage(SlHashMap::default(), self))),
         ByteCode::MapInit => self.op_map(),
@@ -421,7 +454,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
           let current_error = self.current_error.clone();
           match &current_error {
             Some(error) => {
-              self.error(error);
+              self.print_error(error);
               return ExecuteResult::RuntimeError;
             }
             None => panic!("Runtime Error was not set."),
@@ -544,7 +577,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       )
     };
     let mut list = self.peek(arg_count as isize).to_list();
-    self.gc.grow(&mut list, self, |list| list.extend(args));
+    self
+      .gc
+      .grow(&mut list, self, |list| list.extend_from_slice(args));
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
 
     Signal::Ok
@@ -708,7 +743,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let slot = self.read_short();
     let name = self.read_string(slot);
     let global = self.pop();
-    self.globals.insert(name, global);
+    let mut current_module = self.current_module;
+    current_module.insert_symbol(&Hooks::new(self), name, global);
     Signal::Ok
   }
 
@@ -761,9 +797,14 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_set_global(&mut self) -> Signal {
     let slot = self.read_short();
     let string = self.read_string(slot);
+    let peek = self.peek(0);
 
-    if self.globals.insert(string, self.peek(0)).is_none() {
-      self.globals.remove_entry(&string);
+    let mut current_module = self.current_module;
+    if current_module
+      .insert_symbol(&Hooks::new(self), string, peek)
+      .is_none()
+    {
+      current_module.remove_symbol(&Hooks::new(self), string);
       return self.runtime_error(&format!("Undefined variable {}", string.as_str()));
     }
 
@@ -872,7 +913,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let store_index = self.read_short();
     let string = self.read_string(store_index);
 
-    match self.globals.get(&string) {
+    match self.current_module.get_symbol(string) {
       Some(gbl) => {
         let copy = *gbl;
         self.push(copy);
@@ -953,9 +994,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_export(&mut self) -> Signal {
     let index = self.read_short();
     let name = self.read_string(index);
-    let _symbols = self.globals.get(&name);
+    let mut copy = self.current_module;
 
-    Signal::Ok
+    match copy.export_symbol(&Hooks::new(self), name) {
+      Ok(_) => Signal::Ok,
+      Err(err) => self.set_error(err),
+    }
   }
 
   /// return from a spacelox function placing the result on top of the stack
@@ -975,6 +1019,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     self.stack_top = self.frames[self.frame_count].slots;
     self.current_frame = self.frames[self.frame_count - 1];
     self.current_fun = self.current_frame.closure.fun;
+    self.current_module = self.current_fun.module;
 
     // push the result onto the stack
     self.push(result);
@@ -1261,14 +1306,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       frame.slots = self.stack_top.offset(-(arg_count as isize) - 1);
       self.current_frame = *frame;
     }
-    // self.frames[self.frame_count - 1] = self.current_frame;
-    // let frame = &mut self.frames[self.frame_count];
-    // frame.closure = closure;
-    // frame.ip = &closure.fun.chunk().instructions[0] as *const u8;
-    // frame.slots = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
 
-    // self.current_frame = *frame;
     self.current_fun = closure.fun;
+    self.current_module = self.current_fun.module;
     self.frame_count += 1;
 
     Signal::Ok
@@ -1459,13 +1499,14 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Signal::RuntimeError
   }
 
+  /// Set the current error place the vm signal a runtime error
   fn set_error(&mut self, error: SlError) -> Signal {
     self.current_error = Some(error);
     Signal::RuntimeError
   }
 
   /// Print an error message and the current call stack to the user
-  fn error(&mut self, error: &SlError) {
+  fn print_error(&mut self, error: &SlError) {
     let message = error.message;
 
     let stdio = self.io.stdio();
@@ -1512,12 +1553,10 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
       upvalue.trace();
     });
 
-    self.globals.iter().for_each(|(key, val)| {
-      key.trace();
-      val.trace();
-    });
-
+    self.current_module.trace();
     self.builtin.trace();
+    self.std_lib.trace();
+    self.global.trace();
 
     true
   }
@@ -1543,12 +1582,11 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
       upvalue.trace_debug(stdio);
     });
 
-    self.globals.iter().for_each(|(key, val)| {
-      key.trace_debug(stdio);
-      val.trace_debug(stdio);
-    });
-
+    self.current_module.trace_debug(stdio);
     self.builtin.trace_debug(stdio);
+    self.std_lib.trace_debug(stdio);
+    self.global.trace_debug(stdio);
+
     true
   }
 }

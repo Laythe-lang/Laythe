@@ -1,10 +1,8 @@
-use crate::{
-  hooks::Hooks,
+use crate::{hooks::Hooks, object::SlHashMap, value::Value, ModuleResult, SlHashSet};
+use spacelox_env::{
   managed::{Manage, Managed, Trace},
-  value::Value,
-  ModuleResult, SlHashMap,
+  stdio::StdIo,
 };
-use hashbrown::{hash_map::Entry, HashMap};
 use std::fmt;
 use std::mem;
 
@@ -15,7 +13,7 @@ pub struct Module {
   pub name: Managed<String>,
 
   /// A key value set of named exports from the provided modules
-  exports: SlHashMap<Managed<String>, Value>,
+  exports: SlHashSet<Managed<String>>,
 
   /// All of the top level symbols in this module
   symbols: SlHashMap<Managed<String>, Value>,
@@ -27,7 +25,7 @@ impl Module {
   /// # Example
   /// ```
   /// use spacelox_core::module::Module;
-  /// use spacelox_core::memory::{Gc, NO_GC};
+  /// use spacelox_env::memory::{Gc, NO_GC};
   ///
   /// let gc = Gc::default();
   /// let module = Module::new(gc.manage_str("example".to_string(), &NO_GC));
@@ -35,8 +33,8 @@ impl Module {
   pub fn new(name: Managed<String>) -> Self {
     Module {
       name,
-      exports: HashMap::with_hasher(Default::default()),
-      symbols: HashMap::with_hasher(Default::default()),
+      exports: SlHashSet::default(),
+      symbols: SlHashMap::default(),
     }
   }
 
@@ -45,7 +43,7 @@ impl Module {
   /// # Example
   /// ```
   /// use spacelox_core::module::Module;
-  /// use spacelox_core::memory::{Gc};
+  /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
   ///
@@ -57,27 +55,22 @@ impl Module {
   ///
   /// let export_name = hooks.manage_str("exported".to_string());
   ///
-  /// let result1 = module.export_symbol(&hooks, export_name, Value::from(true));
-  /// let result2 = module.export_symbol(&hooks, export_name, Value::from(false));
+  /// module.insert_symbol(&hooks, export_name, Value::from(true));
+  /// let result1 = module.export_symbol(&hooks, export_name);
+  /// let result2 = module.export_symbol(&hooks, export_name);
   ///
   /// assert_eq!(result1.is_ok(), true);
   /// assert_eq!(result2.is_err(), true);
   /// ```
-  pub fn export_symbol(
-    &mut self,
-    hooks: &Hooks,
-    name: Managed<String>,
-    symbol: Value,
-  ) -> ModuleResult<()> {
-    match self.exports.entry(name) {
-      Entry::Occupied(_) => Err(hooks.make_error(format!(
+  pub fn export_symbol(&mut self, hooks: &Hooks, name: Managed<String>) -> ModuleResult<()> {
+    if self.exports.contains(&name) {
+      Err(hooks.make_error(format!(
         "{} has already been exported from {}",
         name, self.name
-      ))),
-      Entry::Vacant(entry) => {
-        entry.insert(symbol);
-        Ok(())
-      }
+      )))
+    } else {
+      hooks.grow(self, |module| module.exports.insert(name));
+      Ok(())
     }
   }
 
@@ -86,7 +79,7 @@ impl Module {
   /// # Example
   /// ```
   /// use spacelox_core::module::Module;
-  /// use spacelox_core::memory::{Gc};
+  /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
   ///
@@ -97,20 +90,33 @@ impl Module {
   /// let mut module = Module::new(hooks.manage_str("module".to_string()));
   ///
   /// let export_name = hooks.manage_str("exported".to_string());
-  /// module.export_symbol(&hooks, export_name, Value::from(true));
+  /// module.insert_symbol(&hooks, export_name, Value::from(true));
+  /// module.export_symbol(&hooks, export_name);
   ///
   /// let symbols = module.import();
   ///
   /// assert_eq!(symbols.len(), 1);
   ///
-  /// if let Some(result) = symbols.get(&export_name) {
+  /// if let Some(result) = symbols.get(&Value::from(export_name)) {
   ///   assert_eq!(*result, Value::from(true));
   /// } else {
   ///   assert!(false);
   /// }
   /// ```
-  pub fn import(&self) -> &SlHashMap<Managed<String>, Value> {
-    &self.exports
+  pub fn import(&self) -> SlHashMap<Value, Value> {
+    let mut import = SlHashMap::default();
+
+    self.exports.iter().for_each(|export| {
+      import.insert(
+        Value::from(*export),
+        *self
+          .symbols
+          .get(export)
+          .expect("Exports should mirror symbols"),
+      );
+    });
+
+    import
   }
 
   /// Insert a symbol into this module's symbol table
@@ -118,7 +124,7 @@ impl Module {
   /// #Examples
   /// ```
   /// use spacelox_core::module::Module;
-  /// use spacelox_core::memory::{Gc};
+  /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
   ///
@@ -129,7 +135,7 @@ impl Module {
   /// let mut module = Module::new(hooks.manage_str("module".to_string()));
   ///
   /// let name = hooks.manage_str("exported".to_string());
-  /// module.insert_symbol(name, Value::from(true));
+  /// module.insert_symbol(&hooks, name, Value::from(true));
   ///
   /// let symbol = module.get_symbol(name);
   ///
@@ -139,8 +145,13 @@ impl Module {
   ///   assert!(false);
   /// }
   /// ```
-  pub fn insert_symbol(&mut self, name: Managed<String>, symbol: Value) {
-    self.symbols.insert(name, symbol);
+  pub fn insert_symbol(
+    &mut self,
+    hooks: &Hooks,
+    name: Managed<String>,
+    symbol: Value,
+  ) -> Option<Value> {
+    hooks.grow(self, |module| module.symbols.insert(name, symbol))
   }
 
   /// Get a symbol from this module's symbol table
@@ -148,7 +159,7 @@ impl Module {
   /// #Examples
   /// ```
   /// use spacelox_core::module::Module;
-  /// use spacelox_core::memory::{Gc};
+  /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
   ///
@@ -168,8 +179,36 @@ impl Module {
   ///   assert!(true);
   /// }
   /// ```
-  pub fn get_symbol(&mut self, name: Managed<String>) -> Option<&Value> {
+  pub fn get_symbol(&self, name: Managed<String>) -> Option<&Value> {
     self.symbols.get(&name)
+  }
+
+  pub fn len(&self) -> usize {
+    self.symbols.len()
+  }
+
+  /// Remove a symbol from this module
+  pub fn remove_symbol(&mut self, hooks: &Hooks, name: Managed<String>) {
+    hooks.shrink(self, |module| {
+      module.symbols.remove(&name);
+      module.exports.remove(&name);
+    });
+  }
+
+  /// Transfer the export symbols to another module
+  pub fn transfer_exported(&self, hooks: &Hooks, other: &mut Module) -> ModuleResult<()> {
+    for export in &self.exports {
+      other.insert_symbol(
+        hooks,
+        *export,
+        *self
+          .symbols
+          .get(export)
+          .expect("Exported value not in symbol table."),
+      );
+    }
+
+    Ok(())
   }
 }
 
@@ -187,9 +226,8 @@ impl Trace for Module {
   fn trace(&self) -> bool {
     self.name.trace();
 
-    self.exports.iter().for_each(|(key, value)| {
+    self.exports.iter().for_each(|key| {
       key.trace();
-      value.trace();
     });
     self.symbols.iter().for_each(|(key, value)| {
       key.trace();
@@ -198,12 +236,11 @@ impl Trace for Module {
 
     true
   }
-  fn trace_debug(&self, stdio: &dyn crate::io::StdIo) -> bool {
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.name.trace_debug(stdio);
 
-    self.exports.iter().for_each(|(key, value)| {
+    self.exports.iter().for_each(|key| {
       key.trace_debug(stdio);
-      value.trace_debug(stdio);
     });
     self.symbols.iter().for_each(|(key, value)| {
       key.trace_debug(stdio);

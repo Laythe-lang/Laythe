@@ -1,10 +1,12 @@
 use crate::{
   hooks::Hooks,
-  io::StdIo,
-  managed::{Manage, Managed, Trace},
   object::Class,
   value::{Value, VALUE_NIL},
   CallResult,
+};
+use spacelox_env::{
+  managed::{Manage, Managed, Trace},
+  stdio::StdIo,
 };
 use std::fmt;
 use std::mem;

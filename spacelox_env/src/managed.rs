@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use crate::io::StdIo;
+use crate::stdio::StdIo;
 pub use spacelox_macro::*;
 use std::{
   cell::Cell,

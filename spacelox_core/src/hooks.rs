@@ -1,8 +1,11 @@
 use crate::{
-  managed::{Manage, Managed, Trace},
-  memory::Gc,
   value::{Value, VALUE_NIL},
   CallResult, SlError,
+};
+use spacelox_env::{
+  managed::{Manage, Managed, Trace},
+  memory::Gc,
+  stdio::StdIo,
 };
 
 /// A set of commands that a native function to request from it's surrounding
@@ -20,7 +23,7 @@ impl<'a> Hooks<'a> {
   /// ```
   /// use spacelox_core::hooks::{Hooks, NoContext};
   /// use spacelox_core::value::Value;
-  /// use spacelox_core::memory::Gc;
+  /// use spacelox_env::memory::Gc;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
@@ -146,7 +149,7 @@ impl<'a> Trace for NoContext<'a> {
   fn trace(&self) -> bool {
     false
   }
-  fn trace_debug(&self, _stdio: &dyn crate::io::StdIo) -> bool {
+  fn trace_debug(&self, _stdio: &dyn StdIo) -> bool {
     false
   }
 }

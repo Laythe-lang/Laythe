@@ -1,9 +1,7 @@
-use crate::support::to_dyn_method;
+use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
-  io::StdIo,
-  managed::Trace,
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::Class,
@@ -11,6 +9,7 @@ use spacelox_core::{
   value::Value,
   CallResult, ModuleResult,
 };
+use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const NATIVE_METHOD_CLASS_NAME: &'static str = "Native Method";
 
@@ -21,11 +20,11 @@ pub fn declare_native_method_class(hooks: &Hooks, self_module: &mut Module) -> M
   let name = hooks.manage_str(String::from(NATIVE_METHOD_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.export_symbol(hooks, name, Value::from(class))
+  export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
 pub fn define_native_method_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = hooks.manage_str(String::from(NATIVE_METHOD_CLASS_NAME));
+  let name = Value::from(hooks.manage_str(String::from(NATIVE_METHOD_CLASS_NAME)));
   let mut class = self_module.import().get(&name).unwrap().to_class();
 
   class.add_method(
@@ -92,11 +91,11 @@ impl NativeMethod for NativeMethodCall {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::support::{test_native_dependencies, TestContext};
+  use spacelox_env::managed::Managed;
 
   mod name {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::managed::Managed;
 
     #[test]
     fn new() {
@@ -124,11 +123,8 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::{
-      assert::assert::Assert,
-      support::{test_native_dependencies, TestContext},
-    };
-    use spacelox_core::{managed::Managed, native::NativeFun, value::VALUE_NIL};
+    use crate::assert::assert::Assert;
+    use spacelox_core::{native::NativeFun, value::VALUE_NIL};
 
     #[test]
     fn new() {

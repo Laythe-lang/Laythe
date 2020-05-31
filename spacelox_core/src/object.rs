@@ -4,14 +4,26 @@ use crate::{
   constants::INIT,
   dynamic_map::DynamicMap,
   hooks::Hooks,
-  io::StdIo,
-  managed::{Manage, Managed, Trace},
   module::Module,
   utils::do_if_some,
   value::{Value, ValueVariant},
-  SlHashMap,
 };
-use std::{fmt, mem, ptr::NonNull};
+use core::slice;
+use fnv::FnvBuildHasher;
+use hash_map::Entry;
+use hashbrown::{hash_map, HashMap};
+use slice::SliceIndex;
+use spacelox_env::{
+  managed::{Manage, Managed, Trace},
+  stdio::StdIo,
+};
+use std::{
+  fmt,
+  hash::Hash,
+  mem,
+  ops::{Index, IndexMut},
+  ptr::NonNull,
+};
 
 pub struct BuiltInClasses {
   pub nil: Managed<Class>,
@@ -302,35 +314,88 @@ impl Manage for Fun {
   }
 }
 
-impl Trace for String {
-  fn trace(&self) -> bool {
-    true
+#[derive(Clone, Debug)]
+pub struct SlVec<T>(Vec<T>);
+
+impl<T> SlVec<T> {
+  pub fn iter(&self) -> slice::Iter<'_, T> {
+    self.0.iter()
   }
 
-  fn trace_debug(&self, _: &dyn StdIo) -> bool {
-    true
+  pub fn capacity(&self) -> usize {
+    self.0.capacity()
+  }
+
+  pub fn len(&self) -> usize {
+    self.0.len()
+  }
+
+  pub fn push(&mut self, value: T) {
+    self.0.push(value)
+  }
+
+  pub fn pop(&mut self) -> Option<T> {
+    self.0.pop()
+  }
+
+  pub fn remove(&mut self, index: usize) -> T {
+    self.0.remove(index)
+  }
+
+  pub fn insert(&mut self, index: usize, value: T) {
+    self.0.insert(index, value)
+  }
+
+  pub fn clear(&mut self) {
+    self.0.clear()
   }
 }
 
-impl Manage for String {
-  fn alloc_type(&self) -> &str {
-    "string"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + self.capacity()
+impl<T: PartialEq> SlVec<T> {
+  pub fn contains(&mut self, value: &T) -> bool {
+    self.0.contains(value)
   }
 }
 
-impl<T: 'static + Trace> Trace for Vec<T> {
+impl<T> Default for SlVec<T> {
+  fn default() -> Self {
+    Self(Vec::new())
+  }
+}
+
+impl<T: Clone> SlVec<T> {
+  pub fn new(values: &[T]) -> Self {
+    let mut vec = Self(Vec::new());
+    vec.0.extend_from_slice(values);
+    vec
+  }
+
+  pub fn extend_from_slice(&mut self, other: &[T]) {
+    self.0.extend_from_slice(other)
+  }
+}
+
+impl<T, I: SliceIndex<[T]>> Index<I> for SlVec<T> {
+  type Output = <I as SliceIndex<[T]>>::Output;
+
+  fn index(&self, index: I) -> &<Vec<T> as Index<I>>::Output {
+    &self.0[index]
+  }
+}
+
+impl<T, I: SliceIndex<[T]>> IndexMut<I> for SlVec<T> {
+  fn index_mut(&mut self, index: I) -> &mut <Vec<T> as Index<I>>::Output {
+    &mut self.0[index]
+  }
+}
+
+impl<T> From<Vec<T>> for SlVec<T> {
+  fn from(vec: Vec<T>) -> Self {
+    SlVec(vec)
+  }
+}
+
+impl<T: 'static + Trace> Trace for SlVec<T> {
   fn trace(&self) -> bool {
     self.iter().for_each(|value| {
       value.trace();
@@ -348,7 +413,7 @@ impl<T: 'static + Trace> Trace for Vec<T> {
   }
 }
 
-impl<T: 'static + Trace + fmt::Debug> Manage for Vec<T> {
+impl<T: 'static + Trace + fmt::Debug> Manage for SlVec<T> {
   fn alloc_type(&self) -> &str {
     "list"
   }
@@ -363,6 +428,55 @@ impl<T: 'static + Trace + fmt::Debug> Manage for Vec<T> {
 
   fn size(&self) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * self.capacity()
+  }
+}
+
+#[derive(Clone, Debug)]
+pub struct SlHashMap<K, V>(HashMap<K, V, FnvBuildHasher>);
+
+impl<K, V> SlHashMap<K, V> {
+  pub fn len(&self) -> usize {
+    self.0.len()
+  }
+
+  pub fn capacity(&self) -> usize {
+    self.0.capacity()
+  }
+
+  pub fn iter(&self) -> hash_map::Iter<'_, K, V> {
+    self.0.iter()
+  }
+}
+
+impl<K: Eq + Hash, V> SlHashMap<K, V> {
+  pub fn reserve(&mut self, additional: usize) {
+    self.0.reserve(additional)
+  }
+
+  pub fn get(&self, key: &K) -> Option<&V> {
+    self.0.get(key)
+  }
+
+  pub fn contains_key(&self, key: &K) -> bool {
+    self.0.contains_key(key)
+  }
+
+  pub fn remove(&mut self, key: &K) -> Option<V> {
+    self.0.remove(key)
+  }
+
+  pub fn entry(&mut self, key: K) -> Entry<'_, K, V, FnvBuildHasher> {
+    self.0.entry(key)
+  }
+
+  pub fn insert(&mut self, key: K, value: V) -> Option<V> {
+    self.0.insert(key, value)
+  }
+}
+
+impl<K, V> Default for SlHashMap<K, V> {
+  fn default() -> Self {
+    SlHashMap(HashMap::default())
   }
 }
 
@@ -417,7 +531,7 @@ impl Closure {
   /// ```
   /// use spacelox_core::object::{Closure, Fun};
   /// use spacelox_core::arity::ArityKind;
-  /// use spacelox_core::memory::{Gc, NO_GC};
+  /// use spacelox_env::memory::{Gc, NO_GC};
   /// use spacelox_core::module::Module;
   /// use spacelox_core::chunk::Chunk;
   ///

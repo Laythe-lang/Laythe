@@ -1,9 +1,38 @@
-use crate::io::{NativeStdIo, StdIo};
 use crate::managed::{Allocation, Manage, Managed, Trace};
+use crate::stdio::StdIo;
 use hashbrown::HashMap;
 use std::cell::{Cell, RefCell};
 use std::fmt;
+use std::mem;
 use std::ptr::NonNull;
+
+impl Trace for String {
+  fn trace(&self) -> bool {
+    true
+  }
+
+  fn trace_debug(&self, _: &dyn StdIo) -> bool {
+    true
+  }
+}
+
+impl Manage for String {
+  fn alloc_type(&self) -> &str {
+    "string"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self)
+  }
+
+  fn debug_free(&self) -> String {
+    format!("{:?}", self)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>() + self.capacity()
+  }
+}
 
 /// The garbage collector and memory manager for spacelox. Currently this is implemented a very crude
 /// generation mark and sweep collector. As of now the key areas for improvements are better allocation
@@ -42,8 +71,8 @@ impl<'a> Gc {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::memory::Gc;
-  /// use spacelox_core::io::NativeStdIo;
+  /// use spacelox_env::memory::Gc;
+  /// use spacelox_env::stdio::NativeStdIo;
   ///
   /// let gc = Gc::new(Box::new(NativeStdIo::new()));
   /// ```
@@ -70,19 +99,13 @@ impl<'a> Gc {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::module::Module;
-  /// use spacelox_core::object::Fun;
-  /// use spacelox_core::io::NativeStdIo;
-  /// use spacelox_core::managed::Managed;
+  /// use spacelox_env::memory::{Gc, NO_GC};
+  /// use spacelox_env::managed::Managed;
   ///
-  /// let gc = Gc::new(Box::new(NativeStdIo::new()));
-  /// let module = gc.manage(Module::new(gc.manage_str("module".to_string(), &NO_GC)), &NO_GC);
-  /// let fun: Fun = Fun::new(gc.manage_str("fun".to_string(), &NO_GC), module);
+  /// let gc = Gc::default();
+  /// let string = gc.manage("example".to_string(), &NO_GC);
   ///
-  /// let managed_fun = gc.manage(fun, &NO_GC);
-  ///
-  /// assert_eq!(&*managed_fun.name, "fun");
+  /// assert_eq!(&*string, "example");
   /// ```
   pub fn manage<T: 'static + Manage, C: Trace + ?Sized>(&self, data: T, context: &C) -> Managed<T> {
     self.allocate(data, context)
@@ -95,13 +118,11 @@ impl<'a> Gc {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::value::Value;
-  /// use spacelox_core::managed::Managed;
-  /// use spacelox_core::io::NativeStdIo;
+  /// use spacelox_env::memory::{Gc, NO_GC};
+  /// use spacelox_env::managed::Managed;
   /// use std::ptr;
   ///
-  /// let gc = Gc::new(Box::new(NativeStdIo::new()));
+  /// let gc = Gc::default();
   /// let str = gc.manage_str("hi!".to_string(), &NO_GC);
   ///
   /// assert_eq!(&*str, "hi!");
@@ -123,24 +144,17 @@ impl<'a> Gc {
   ///
   /// # Examples
   /// ```
-  /// use spacelox_core::memory::{Gc, NO_GC};
-  /// use spacelox_core::value::{Value, VALUE_NIL};
-  /// use spacelox_core::object::Upvalue;
-  /// use spacelox_core::managed::Managed;
-  /// use spacelox_core::io::NativeStdIo;
+  /// use spacelox_env::memory::{Gc, NO_GC};
+  /// use spacelox_env::managed::Managed;
   /// use std::ptr;
   ///
-  /// let gc = Gc::new(Box::new(NativeStdIo::new()));
-  /// let value = VALUE_NIL;
+  /// let gc = Gc::default();
   ///
-  /// let up1: Managed<Upvalue> = gc.manage(Upvalue::Open(ptr::NonNull::from(&value)), &NO_GC);
-  /// let up2 = gc.clone_managed(up1, &NO_GC);
+  /// let string1 = gc.manage("example".to_string(), &NO_GC);
+  /// let string2 = gc.clone_managed(string1, &NO_GC);
   ///
-  /// assert!(!ptr::eq(&*up1, &*up2));
-  /// match (&*up1, &*up2) {
-  ///   (Upvalue::Open(o1), Upvalue::Open(o2)) => assert_eq!(o1, o2),
-  ///   _ => panic!("No equal!"),
-  /// }
+  /// assert!(!ptr::eq(&*string1, &*string2));
+  /// assert_eq!(&**string1, &**string2);
   /// ```
   pub fn clone_managed<T: 'static + Manage + Clone, C: Trace + ?Sized>(
     &self,
@@ -428,6 +442,8 @@ impl<'a> Gc {
 
 impl<'a> Default for Gc {
   fn default() -> Self {
+    use crate::stdio::NativeStdIo;
+
     Gc::new(Box::new(NativeStdIo::new()))
   }
 }
@@ -454,7 +470,7 @@ pub static NO_GC: NoGc = NoGc();
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::io::NativeStdIo;
+  use crate::stdio::NativeStdIo;
 
   #[test]
   fn dyn_manage() {

@@ -1,14 +1,45 @@
+use crate::support::export_and_insert;
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
-  io::StdIo,
-  managed::{Managed, Trace},
+  module::Module,
   native::{NativeFun, NativeMeta},
   value::{Value, VALUE_NIL},
-  CallResult,
+  CallResult, ModuleResult,
+};
+use spacelox_env::{
+  managed::{Managed, Trace},
+  stdio::StdIo,
 };
 
 const ASSERT_META: NativeMeta = NativeMeta::new("assert", ArityKind::Fixed(1));
+const ASSERTEQ_META: NativeMeta = NativeMeta::new("assertEq", ArityKind::Fixed(2));
+const ASSERTNE_META: NativeMeta = NativeMeta::new("assertNe", ArityKind::Fixed(2));
+
+pub fn declare_assert_funs(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
+  let str_name = hooks.manage_str("str".to_string());
+
+  export_and_insert(
+    hooks,
+    self_module,
+    hooks.manage_str(ASSERT_META.name.to_string()),
+    Value::from(hooks.manage(Box::new(Assert::new(str_name)) as Box<dyn NativeFun>)),
+  )?;
+
+  export_and_insert(
+    hooks,
+    self_module,
+    hooks.manage_str(ASSERTEQ_META.name.to_string()),
+    Value::from(hooks.manage(Box::new(AssertEq::new(str_name)) as Box<dyn NativeFun>)),
+  )?;
+
+  export_and_insert(
+    hooks,
+    self_module,
+    hooks.manage_str(ASSERTNE_META.name.to_string()),
+    Value::from(hooks.manage(Box::new(AssertNe::new(str_name)) as Box<dyn NativeFun>)),
+  )
+}
 
 #[derive(Clone, Debug, Trace)]
 /// A native method to assert that for a boolean true value
@@ -64,8 +95,6 @@ impl NativeFun for Assert {
   }
 }
 
-const ASSERTEQ_META: NativeMeta = NativeMeta::new("assertEq", ArityKind::Fixed(2));
-
 #[derive(Clone, Debug, Trace)]
 pub struct AssertEq {
   meta: &'static NativeMeta,
@@ -111,8 +140,6 @@ impl NativeFun for AssertEq {
     ));
   }
 }
-
-const ASSERTNE_META: NativeMeta = NativeMeta::new("assertNe", ArityKind::Fixed(2));
 
 #[derive(Clone, Debug, Trace)]
 pub struct AssertNe {
@@ -160,17 +187,15 @@ impl NativeFun for AssertNe {
   }
 }
 
+#[cfg(test)]
 mod test {
-  #[cfg(test)]
   use super::*;
-  #[cfg(test)]
-  use crate::support::test_native_dependencies;
+  use crate::support::{test_native_dependencies, TestContext};
+  use spacelox_env::memory::NO_GC;
 
   #[cfg(test)]
   mod assert {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::memory::NO_GC;
 
     #[test]
     fn new() {
@@ -202,8 +227,6 @@ mod test {
   #[cfg(test)]
   mod assert_eq {
     use super::*;
-    use crate::support::TestContext;
-    use spacelox_core::memory::NO_GC;
 
     #[test]
     fn new() {
@@ -235,8 +258,6 @@ mod test {
   #[cfg(test)]
   mod assert_ne {
     use super::*;
-    use crate::support::TestContext;
-    use spacelox_core::memory::NO_GC;
 
     #[test]
     fn new() {

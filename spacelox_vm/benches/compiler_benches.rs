@@ -1,7 +1,10 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use spacelox_core::hooks::{Hooks, NoContext};
-use spacelox_core::io::{Io, NativeIo};
-use spacelox_core::{memory::Gc, module::Module};
+use spacelox_core::module::Module;
+use spacelox_env::{
+  io::{Io, NativeIo},
+  memory::Gc,
+};
 use spacelox_vm::compiler::{Compiler, Parser};
 use std::fs::File;
 use std::io::prelude::*;
@@ -32,7 +35,7 @@ fn compile_source(source: &str) {
   let mut context = NoContext::new(&gc);
   let hooks = Hooks::new(&mut context);
   let module = hooks.manage(Module::new(hooks.manage_str("Benchmark".to_string())));
-  let io = NativeIo::new();
+  let io = NativeIo::default();
   let mut parser = Parser::new(io.stdio(), source);
   let compiler = Compiler::new(module, io, &mut parser, &hooks);
   compiler.compile();

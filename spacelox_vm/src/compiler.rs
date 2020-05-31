@@ -1,7 +1,5 @@
 use crate::scanner::Scanner;
 use spacelox_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
-use spacelox_core::io::{Io, StdIo};
-use spacelox_core::managed::{Manage, Managed, Trace};
 use spacelox_core::token::{Token, TokenKind};
 use spacelox_core::utils::{copy_string, do_if_some};
 use spacelox_core::{
@@ -9,9 +7,14 @@ use spacelox_core::{
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
   hooks::Hooks,
   module::Module,
+  object::SlHashMap,
   object::{Fun, FunKind},
   value::Value,
-  SlHashMap,
+};
+use spacelox_env::{
+  io::Io,
+  managed::{Manage, Managed, Trace},
+  stdio::StdIo,
 };
 use std::convert::TryInto;
 use std::mem;
@@ -99,21 +102,22 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// # Examples
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
-  /// use spacelox_core::memory::Gc;
   /// use spacelox_core::module::Module;
   /// use spacelox_core::hooks::{Hooks, NoContext};
-  /// use spacelox_core::io::{NativeIo, NativeStdIo};
+  /// use spacelox_env::io::NativeIo;
+  /// use spacelox_env::stdio::NativeStdIo;
+  /// use spacelox_env::memory::Gc;
   ///
   /// // an expression
   /// let source = "10 + 3".to_string();
   ///
-  /// let gc = Gc::new(Box::new(NativeStdIo::new()));
+  /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let mut hooks = Hooks::new(&mut context);
   /// let mut parser = Parser::new(NativeStdIo::new(), &source);
   /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
   ///
-  /// let compiler = Compiler::new(module, NativeIo::new(), &mut parser, &mut hooks);
+  /// let compiler = Compiler::new(module, NativeIo::default(), &mut parser, &mut hooks);
   /// ```
   pub fn new(
     module: Managed<Module>,
@@ -188,10 +192,11 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// # Examples
   /// ```
   /// use spacelox_vm::compiler::{Compiler, Parser};
-  /// use spacelox_core::memory::Gc;
   /// use spacelox_core::module::Module;
   /// use spacelox_core::hooks::{Hooks, NoContext};
-  /// use spacelox_core::io::{NativeIo, NativeStdIo};
+  /// use spacelox_env::io::NativeIo;
+  /// use spacelox_env::stdio::NativeStdIo;
+  /// use spacelox_env::memory::Gc;
   ///
   /// // an expression
   /// let source = "3 / 2 + 10;".to_string();
@@ -202,7 +207,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut parser = Parser::new(NativeStdIo::new(), &source);
   /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
   ///
-  /// let compiler = Compiler::new(module, NativeIo::new(), &mut parser, &mut hooks);
+  /// let compiler = Compiler::new(module, NativeIo::default(), &mut parser, &mut hooks);
   /// let result = compiler.compile();
   /// assert_eq!(result.success, true);
   /// ```
@@ -1904,11 +1909,8 @@ mod test {
   use super::*;
   use crate::debug::disassemble_chunk;
   use spacelox_core::chunk::decode_u16;
-  use spacelox_core::memory::Gc;
-  use spacelox_core::{
-    hooks::NoContext,
-    io::{NativeIo, NativeStdIo},
-  };
+  use spacelox_core::hooks::NoContext;
+  use spacelox_env::{io::NativeIo, memory::Gc, stdio::NativeStdIo};
 
   enum ByteCodeTest {
     Code(AlignedByteCode),
@@ -1916,7 +1918,7 @@ mod test {
   }
 
   fn test_compile<'a>(src: String, gc: &mut Gc) -> Managed<Fun> {
-    let io = NativeIo::new();
+    let io = NativeIo();
     let mut parser = Parser::new(io.stdio(), &src);
 
     let mut context = NoContext::new(gc);

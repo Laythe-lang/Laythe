@@ -1,17 +1,19 @@
 use super::iter::ITER_CLASS_NAME;
-use crate::support::to_dyn_method;
+use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
-  io::StdIo,
   iterator::{SlIter, SlIterator},
-  managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  object::Class,
+  object::{Class, SlVec},
   package::Package,
   value::{Value, VALUE_NIL},
   CallResult, ModuleResult,
+};
+use spacelox_env::{
+  managed::{Managed, Trace},
+  stdio::StdIo,
 };
 use std::{mem, slice::Iter};
 
@@ -31,14 +33,14 @@ pub fn declare_list_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResu
   let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.export_symbol(hooks, name, Value::from(class))
+  export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
 pub fn define_list_class(hooks: &Hooks, self_module: &Module, _: &Package) {
   let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
-  let mut class = self_module.import().get(&name).unwrap().to_class();
+  let mut class = self_module.get_symbol(name).unwrap().to_class();
 
-  let list_iter_name = hooks.manage_str(String::from(ITER_CLASS_NAME));
+  let list_iter_name = Value::from(hooks.manage_str(String::from(ITER_CLASS_NAME)));
   let list_iter_class = self_module
     .import()
     .get(&list_iter_name)
@@ -394,13 +396,13 @@ impl NativeMethod for ListIter {
 
 #[derive(Debug)]
 struct ListIterator {
-  list: Managed<Vec<Value>>,
+  list: Managed<SlVec<Value>>,
   current: Value,
   iter: Iter<'static, Value>,
 }
 
 impl ListIterator {
-  fn new(list: Managed<Vec<Value>>) -> Self {
+  fn new(list: Managed<SlVec<Value>>) -> Self {
     let iter = unsafe { list.deref_static().iter() };
 
     Self {
@@ -455,7 +457,7 @@ mod test {
   mod str {
     use super::*;
     use crate::support::{test_native_dependencies, TestContext};
-    use spacelox_core::memory::NO_GC;
+    use spacelox_env::memory::NO_GC;
 
     #[test]
     fn new() {
@@ -485,11 +487,11 @@ mod test {
 
       let values = &[];
 
-      let list = vec![
+      let list = SlVec::from(vec![
         VALUE_NIL,
         Value::from(10.0),
-        Value::from(hooks.manage(vec![Value::from(5.0)])),
-      ];
+        Value::from(hooks.manage(SlVec::from(vec![Value::from(5.0)]))),
+      ]);
       let this = hooks.manage(list);
 
       let result = list_str.call(&mut hooks, Value::from(this), values);
@@ -522,7 +524,7 @@ mod test {
 
       let values = &[];
 
-      let list = vec![VALUE_NIL, Value::from(10.0)];
+      let list = SlVec::from(vec![VALUE_NIL, Value::from(10.0)]);
       let this = hooks.manage(list);
 
       let result = list_size.call(&mut hooks, Value::from(this), values);
@@ -552,7 +554,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![VALUE_NIL, Value::from(10.0)];
+      let list = SlVec::from(vec![VALUE_NIL, Value::from(10.0)]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -602,7 +604,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![Value::from(true)];
+      let list = SlVec::from(vec![Value::from(true)]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -645,7 +647,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
+      let list = SlVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -691,7 +693,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
+      let list = SlVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -742,7 +744,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
+      let list = SlVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -785,7 +787,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
+      let list = SlVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -832,7 +834,7 @@ mod test {
       let list_iter =
         ListIter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
 
-      let list = vec![VALUE_NIL, Value::from(10.0), Value::from(true)];
+      let list = SlVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 

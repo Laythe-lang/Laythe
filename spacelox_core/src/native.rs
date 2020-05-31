@@ -1,10 +1,7 @@
-use crate::{
-  arity::ArityKind,
-  hooks::Hooks,
-  io::StdIo,
+use crate::{arity::ArityKind, hooks::Hooks, value::Value, CallResult};
+use spacelox_env::{
   managed::{Manage, Trace},
-  value::Value,
-  CallResult,
+  stdio::StdIo,
 };
 use std::fmt;
 use std::{mem, ptr};

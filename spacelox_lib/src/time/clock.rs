@@ -1,12 +1,13 @@
+use crate::support::export_and_insert;
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
-  io::StdIo,
-  managed::Trace,
+  module::Module,
   native::{NativeFun, NativeMeta},
   value::Value,
-  CallResult,
+  CallResult, ModuleResult,
 };
+use spacelox_env::{managed::Trace, stdio::StdIo};
 use std::time::SystemTime;
 
 #[derive(Clone, Debug, Trace)]
@@ -16,6 +17,15 @@ pub struct Clock {
 }
 
 const CLOCK_META: NativeMeta = NativeMeta::new("clock", ArityKind::Fixed(0));
+
+pub fn declare_clock_funs(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
+  export_and_insert(
+    hooks,
+    self_module,
+    hooks.manage_str(CLOCK_META.name.to_string()),
+    Value::from(hooks.manage(Box::new(Clock::new()) as Box<dyn NativeFun>)),
+  )
+}
 
 impl Default for Clock {
   fn default() -> Self {

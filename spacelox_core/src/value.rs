@@ -1,10 +1,9 @@
 use crate::{
   iterator::SlIterator,
-  managed::Managed,
   native::{NativeFun, NativeMethod},
-  object::{Class, Closure, Fun, Instance, Method, Upvalue},
-  SlHashMap,
+  object::{Class, Closure, Fun, Instance, Method, SlHashMap, SlVec, Upvalue},
 };
+use spacelox_env::managed::Managed;
 
 pub struct Nil();
 
@@ -34,7 +33,7 @@ pub enum ValueEnum {
   Nil,
   Number(f64),
   String(Managed<String>),
-  List(Managed<Vec<Value>>),
+  List(Managed<SlVec<Value>>),
   Map(Managed<SlHashMap<Value, Value>>),
   Fun(Managed<Fun>),
   Closure(Managed<Closure>),
@@ -882,11 +881,14 @@ mod boxed {
   use super::ValueVariant;
   use crate::{
     iterator::SlIterator,
-    managed::{Allocation, Manage, Managed, Trace},
     native::{NativeFun, NativeMethod},
-    object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue},
-    SlHashMap,
+    object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, SlHashMap, SlVec, Upvalue},
   };
+  use spacelox_env::{
+    managed::{Allocation, Manage, Managed, Trace},
+    stdio::StdIo,
+  };
+
   use std::fmt;
   use std::ptr::NonNull;
 
@@ -909,42 +911,6 @@ mod boxed {
   const TAG_NATIVE_FUN: u64 = 5 | BIT_SIGN | QNAN;
   const TAG_NATIVE_METHOD: u64 = 6 | BIT_SIGN | QNAN;
   const TAG_UPVALUE: u64 = 7 | BIT_SIGN | QNAN;
-
-  // const TAGS: [u64; 15] = [
-  //   TAG_NIL,
-  //   TAG_FALSE,
-  //   TAG_TRUE,
-  //   TAG_STRING,
-  //   TAG_LIST,
-  //   TAG_MAP,
-  //   TAG_CLOSURE,
-  //   TAG_FUN,
-  //   TAG_CLASS,
-  //   TAG_INSTANCE,
-  //   TAG_METHOD,
-  //   TAG_ITER,
-  //   TAG_NATIVE_FUN,
-  //   TAG_NATIVE_METHOD,
-  //   TAG_UPVALUE,
-  // ];
-
-  // const TAG_VARIANTS: [ValueVariant; 15] = [
-  //   ValueVariant::Nil,
-  //   ValueVariant::Bool,
-  //   ValueVariant::Bool,
-  //   ValueVariant::String,
-  //   ValueVariant::List,
-  //   ValueVariant::Map,
-  //   ValueVariant::Closure,
-  //   ValueVariant::Fun,
-  //   ValueVariant::Class,
-  //   ValueVariant::Instance,
-  //   ValueVariant::Method,
-  //   ValueVariant::Iter,
-  //   ValueVariant::NativeFun,
-  //   ValueVariant::NativeMethod,
-  //   ValueVariant::Upvalue,
-  // ];
 
   #[derive(Clone, Copy)]
   #[repr(C)]
@@ -1080,7 +1046,7 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_list(&self) -> Managed<Vec<Value>> {
+    pub fn to_list(&self) -> Managed<SlVec<Value>> {
       self.to_obj_tag(TAG_LIST)
     }
 
@@ -1244,7 +1210,7 @@ mod boxed {
         _ => true,
       }
     }
-    fn trace_debug(&self, stdio: &dyn crate::io::StdIo) -> bool {
+    fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
       match self.kind() {
         ValueVariant::String => self.to_str().trace_debug(stdio),
         ValueVariant::List => self.to_list().trace_debug(stdio),
@@ -1294,8 +1260,8 @@ mod boxed {
     }
   }
 
-  impl From<Managed<Vec<Value>>> for Value {
-    fn from(managed: Managed<Vec<Value>>) -> Value {
+  impl From<Managed<SlVec<Value>>> for Value {
+    fn from(managed: Managed<SlVec<Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_LIST)
     }
   }
@@ -1411,11 +1377,10 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
-    managed::{Allocation, Manage, Managed},
     module::Module,
-    object::{Class, Closure, Fun},
-    SlHashMap,
+    object::{Class, Closure, Fun, SlHashMap},
   };
+  use spacelox_env::managed::{Allocation, Manage, Managed};
   use std::ptr::NonNull;
   type Allocs = Vec<Box<Allocation<dyn Manage>>>;
 
@@ -1588,13 +1553,13 @@ mod test {
 
   #[test]
   fn list() {
-    let list = vec![VALUE_NIL, VALUE_TRUE, VALUE_FALSE];
+    let list = SlVec::from(vec![VALUE_NIL, VALUE_TRUE, VALUE_FALSE]);
     let mut alloc = Box::new(Allocation::new(list));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
     let value = Value::from(managed);
-    let managed2: Managed<Vec<Value>> = value.to_list();
+    let managed2 = value.to_list();
 
     assert_type(value, ValueVariant::List);
 

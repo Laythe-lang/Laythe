@@ -66,9 +66,7 @@ fn iter() -> Result<(), std::io::Error> {
   )?;
 
   test_files(
-    &vec![
-      // "std_lib/builtin/list/str_wrong_args.lox",
-    ],
+    &vec!["std_lib/builtin/list/str_wrong_args.lox"],
     ExecuteResult::RuntimeError,
   )
 }

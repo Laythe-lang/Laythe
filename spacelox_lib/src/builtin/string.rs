@@ -1,9 +1,7 @@
-use crate::support::to_dyn_method;
+use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
-  io::StdIo,
-  managed::Trace,
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::Class,
@@ -11,6 +9,7 @@ use spacelox_core::{
   value::Value,
   CallResult, ModuleResult,
 };
+use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const STRING_CLASS_NAME: &'static str = "String";
 const STRING_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
@@ -19,11 +18,11 @@ pub fn declare_string_class(hooks: &Hooks, self_module: &mut Module) -> ModuleRe
   let name = hooks.manage_str(String::from(STRING_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.export_symbol(hooks, name, Value::from(class))
+  export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
 pub fn define_string_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = hooks.manage_str(String::from(STRING_CLASS_NAME));
+  let name = Value::from(hooks.manage_str(String::from(STRING_CLASS_NAME)));
   let mut class = self_module.import().get(&name).unwrap().to_class();
 
   class.add_method(

@@ -15,6 +15,7 @@ path = "src/lib.rs"
 [dependencies]
 spacelox_core = { path = "../spacelox_core", features = ["nan_boxing"] }
 spacelox_lib = { path = "../spacelox_lib" }
+spacelox_env = { path = "../spacelox_env" }
 fnv = "1.0.3"
 
 [dev-dependencies]

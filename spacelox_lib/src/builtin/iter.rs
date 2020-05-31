@@ -1,10 +1,8 @@
-use crate::support::to_dyn_method;
+use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
-  io::StdIo,
   iterator::{SlIter, SlIterator},
-  managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::Class,
@@ -12,6 +10,10 @@ use spacelox_core::{
   utils::is_falsey,
   value::{Value, VALUE_NIL},
   CallResult, ModuleResult,
+};
+use spacelox_env::{
+  managed::{Managed, Trace},
+  stdio::StdIo,
 };
 use std::mem;
 
@@ -26,11 +28,11 @@ pub fn declare_iter_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResu
   let name = hooks.manage_str(String::from(ITER_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.export_symbol(hooks, name, Value::from(class))
+  export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
 pub fn define_iter_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = hooks.manage_str(String::from(ITER_CLASS_NAME));
+  let name = Value::from(hooks.manage_str(String::from(ITER_CLASS_NAME)));
   let mut class = self_module.import().get(&name).unwrap().to_class();
 
   class.add_method(
@@ -329,7 +331,8 @@ impl Trace for FilterIterator {
 #[cfg(test)]
 mod test {
   use super::*;
-  use spacelox_core::{iterator::SlIter, managed::Managed};
+  use spacelox_core::iterator::SlIter;
+  use spacelox_env::managed::Managed;
 
   #[derive(Trace, Debug)]
   struct TestIterator {

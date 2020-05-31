@@ -4,10 +4,7 @@ pub mod chunk;
 pub mod constants;
 pub mod dynamic_map;
 pub mod hooks;
-pub mod io;
 pub mod iterator;
-pub mod managed;
-pub mod memory;
 pub mod module;
 pub mod native;
 pub mod object;
@@ -19,14 +16,12 @@ pub mod value;
 pub type CallResult = Result<value::Value, SlError>;
 pub type ModuleResult<T> = Result<T, SlError>;
 pub type PackageResult<T> = Result<T, SlError>;
-pub type SlHashMap<K, V> = HashMap<K, V, FnvBuildHasher>;
-pub type SymbolResult<'a> = Result<&'a SlHashMap<Managed<String>, Value>, SlError>;
+pub type SlHashSet<K> = HashSet<K, FnvBuildHasher>;
 
-use crate::managed::Managed;
 use fnv::FnvBuildHasher;
-use hashbrown::HashMap;
+use hashbrown::HashSet;
+use spacelox_env::managed::Managed;
 use std::fmt;
-use value::Value;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct SlError {

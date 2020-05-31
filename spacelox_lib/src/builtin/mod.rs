@@ -22,15 +22,15 @@ use native_fun::{declare_native_fun_class, define_native_fun_class};
 use native_method::{declare_native_method_class, define_native_method_class};
 use nil::{declare_nil_class, define_nil_class};
 use number::{declare_number_class, define_number_class};
-use spacelox_core::{
-  hooks::Hooks, module::Module, object::BuiltInClasses, package::Package, SlError,
-};
+use spacelox_core::{hooks::Hooks, module::Module, package::Package, ModuleResult};
+use spacelox_env::managed::Managed;
 use string::{declare_string_class, define_string_class};
 
-pub fn make_builtin_classes(hooks: &Hooks) -> Result<BuiltInClasses, SlError> {
-  let mut module = Module::new(hooks.manage_str("builtin".to_string()));
-  let package = Package::new(hooks.manage_str("std".to_string()));
-
+pub(crate) fn create_builtin_classes(
+  hooks: &Hooks,
+  mut module: Managed<Module>,
+  package: Managed<Package>,
+) -> ModuleResult<()> {
   declare_bool_class(hooks, &mut module)?;
   declare_closure_class(hooks, &mut module)?;
   declare_class_class(hooks, &mut module)?;
@@ -57,60 +57,5 @@ pub fn make_builtin_classes(hooks: &Hooks) -> Result<BuiltInClasses, SlError> {
   define_number_class(hooks, &module, &package);
   define_string_class(hooks, &module, &package);
 
-  let exports = module.import();
-
-  let builtin = BuiltInClasses {
-    bool: exports
-      .get(&hooks.manage_str("Bool".to_string()))
-      .unwrap()
-      .to_class(),
-    class: exports
-      .get(&hooks.manage_str("Class".to_string()))
-      .unwrap()
-      .to_class(),
-    nil: exports
-      .get(&hooks.manage_str("Nil".to_string()))
-      .unwrap()
-      .to_class(),
-    number: exports
-      .get(&hooks.manage_str("Number".to_string()))
-      .unwrap()
-      .to_class(),
-    string: exports
-      .get(&hooks.manage_str("String".to_string()))
-      .unwrap()
-      .to_class(),
-    list: exports
-      .get(&hooks.manage_str("List".to_string()))
-      .unwrap()
-      .to_class(),
-    map: exports
-      .get(&hooks.manage_str("Map".to_string()))
-      .unwrap()
-      .to_class(),
-    closure: exports
-      .get(&hooks.manage_str("Fun".to_string()))
-      .unwrap()
-      .to_class(),
-    method: exports
-      .get(&hooks.manage_str("Method".to_string()))
-      .unwrap()
-      .to_class(),
-    native_fun: exports
-      .get(&hooks.manage_str("Native Fun".to_string()))
-      .unwrap()
-      .to_class(),
-    native_method: exports
-      .get(&hooks.manage_str("Native Method".to_string()))
-      .unwrap()
-      .to_class(),
-  };
-
-  debug_assert!(assert_function_same_interface(&builtin));
-
-  Ok(builtin)
-}
-
-fn assert_function_same_interface(_builtin: &BuiltInClasses) -> bool {
-  true
+  Ok(())
 }

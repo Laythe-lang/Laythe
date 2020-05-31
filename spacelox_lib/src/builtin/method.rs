@@ -1,15 +1,17 @@
-use crate::support::to_dyn_method;
+use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
   hooks::Hooks,
-  io::StdIo,
-  managed::{Managed, Trace},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::Class,
   package::Package,
   value::Value,
   CallResult, ModuleResult,
+};
+use spacelox_env::{
+  managed::{Managed, Trace},
+  stdio::StdIo,
 };
 
 pub const METHOD_CLASS_NAME: &'static str = "Method";
@@ -21,11 +23,11 @@ pub fn declare_method_class(hooks: &Hooks, self_module: &mut Module) -> ModuleRe
   let name = hooks.manage_str(String::from(METHOD_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
-  self_module.export_symbol(hooks, name, Value::from(class))
+  export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
 pub fn define_method_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = hooks.manage_str(String::from(METHOD_CLASS_NAME));
+  let name = Value::from(hooks.manage_str(String::from(METHOD_CLASS_NAME)));
   let mut class = self_module.import().get(&name).unwrap().to_class();
 
   class.add_method(
@@ -106,10 +108,8 @@ mod test {
   mod name {
     use super::*;
     use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
-    use spacelox_core::{
-      memory::NO_GC,
-      object::{Closure, Instance, Method},
-    };
+    use spacelox_core::object::{Closure, Instance, Method};
+    use spacelox_env::memory::NO_GC;
 
     #[test]
     fn new() {

@@ -1,10 +1,23 @@
-use spacelox_core::{hooks::Hooks, managed::Managed, native::NativeMethod};
+use spacelox_core::{
+  hooks::Hooks, module::Module, native::NativeMethod, value::Value, ModuleResult,
+};
+use spacelox_env::managed::Managed;
 
 pub fn to_dyn_method<T: 'static + NativeMethod>(
   hooks: &Hooks,
   method: T,
 ) -> Managed<Box<dyn NativeMethod>> {
   hooks.manage(Box::new(method) as Box<dyn NativeMethod>)
+}
+
+pub fn export_and_insert(
+  hooks: &Hooks,
+  module: &mut Module,
+  name: Managed<String>,
+  symbol: Value,
+) -> ModuleResult<()> {
+  module.insert_symbol(hooks, name, symbol);
+  module.export_symbol(hooks, name)
 }
 
 #[cfg(test)]
@@ -15,13 +28,15 @@ mod test {
   use spacelox_core::{
     arity::ArityKind,
     hooks::{HookContext, Hooks},
-    io::{NativeStdIo, StdIo},
-    managed::{Managed, Trace},
-    memory::{Gc, NoGc, NO_GC},
     module::Module,
     object::Fun,
     value::{Value, ValueVariant},
     CallResult, SlError,
+  };
+  use spacelox_env::{
+    managed::{Managed, Trace},
+    memory::{Gc, NoGc, NO_GC},
+    stdio::StdIo,
   };
 
   pub struct TestContext<'a> {
@@ -78,9 +93,7 @@ mod test {
       }
 
       Err(SlError::new(
-        self
-          .gc
-          .manage_str("No mocked results".to_string(), &NO_GC),
+        self.gc.manage_str("No mocked results".to_string(), &NO_GC),
       ))
     }
 
@@ -115,9 +128,7 @@ mod test {
       }
 
       Err(SlError::new(
-        self
-          .gc
-          .manage_str("No mocked results".to_string(), &NO_GC),
+        self.gc.manage_str("No mocked results".to_string(), &NO_GC),
       ))
     }
 
@@ -168,9 +179,7 @@ mod test {
       }
 
       Err(SlError::new(
-        self
-          .gc
-          .manage_str("No mocked results".to_string(), &NO_GC),
+        self.gc.manage_str("No mocked results".to_string(), &NO_GC),
       ))
     }
   }
@@ -186,7 +195,7 @@ mod test {
   }
 
   pub fn test_native_dependencies() -> Box<Gc> {
-    Box::new(Gc::new(Box::new(NativeStdIo())))
+    Box::new(Gc::default())
   }
 
   pub fn fun_from_hooks(hooks: &Hooks, name: String, module_name: String) -> Managed<Fun> {
