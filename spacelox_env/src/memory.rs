@@ -3,36 +3,7 @@ use crate::stdio::StdIo;
 use hashbrown::HashMap;
 use std::cell::{Cell, RefCell};
 use std::fmt;
-use std::mem;
 use std::ptr::NonNull;
-
-impl Trace for String {
-  fn trace(&self) -> bool {
-    true
-  }
-
-  fn trace_debug(&self, _: &dyn StdIo) -> bool {
-    true
-  }
-}
-
-impl Manage for String {
-  fn alloc_type(&self) -> &str {
-    "string"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + self.capacity()
-  }
-}
 
 /// The garbage collector and memory manager for spacelox. Currently this is implemented a very crude
 /// generation mark and sweep collector. As of now the key areas for improvements are better allocation

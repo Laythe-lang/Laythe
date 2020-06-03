@@ -423,6 +423,7 @@ name = "spacelox_compiler_bench"
 version = "0.1.0"
 dependencies = [
  "spacelox_core 0.1.0",
+ "spacelox_env 0.1.0",
  "spacelox_vm 0.1.0",
 ]
 
@@ -433,6 +434,14 @@ dependencies = [
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "hashbrown 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "linear-map 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "spacelox_env 0.1.0",
+]
+
+[[package]]
+name = "spacelox_env"
+version = "0.1.0"
+dependencies = [
+ "hashbrown 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "spacelox_macro 0.1.0",
 ]
 
@@ -444,6 +453,7 @@ dependencies = [
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "hashbrown 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "spacelox_core 0.1.0",
+ "spacelox_env 0.1.0",
 ]
 
 [[package]]
@@ -462,6 +472,7 @@ dependencies = [
  "criterion 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "fnv 1.0.6 (registry+https://github.com/rust-lang/crates.io-index)",
  "spacelox_core 0.1.0",
+ "spacelox_env 0.1.0",
  "spacelox_lib 0.1.0",
 ]
 

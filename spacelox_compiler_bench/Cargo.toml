@@ -9,3 +9,4 @@ edition = "2018"
 [dependencies]
 spacelox_core = { path = "../spacelox_core" }
 spacelox_vm = { path = "../spacelox_vm" }
+spacelox_env = { path = "../spacelox_env" }

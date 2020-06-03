@@ -33,7 +33,7 @@ pub fn test_files_inner(
     };
     let mut source = String::new();
     file.read_to_string(&mut source)?;
-    let module_name = "Test";
+    let module_name = PathBuf::from("./Test.lox");
 
     assert_eq!(
       vm.run(module_name, &source),

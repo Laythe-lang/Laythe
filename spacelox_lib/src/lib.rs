@@ -11,6 +11,7 @@ use spacelox_core::{
   PackageResult,
 };
 use spacelox_env::managed::Managed;
+use std::path::PathBuf;
 use time::create_clock_funs;
 pub mod assert;
 pub mod builtin;
@@ -19,6 +20,7 @@ pub mod time;
 
 pub const STD: &'static str = "std";
 pub const GLOBAL: &'static str = "global";
+pub const GLOBAL_PATH: &'static str = "std/global.lox";
 
 pub fn create_std_lib(hooks: &Hooks) -> PackageResult<Managed<Package>> {
   let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
@@ -30,7 +32,10 @@ pub fn create_std_lib(hooks: &Hooks) -> PackageResult<Managed<Package>> {
 }
 
 fn create_global(hooks: &Hooks, std: Managed<Package>) -> ModuleResult<Managed<Module>> {
-  let global = hooks.manage(Module::new(hooks.manage_str(GLOBAL.to_string())));
+  let global = hooks.manage(Module::new(
+    hooks.manage_str(GLOBAL.to_string()),
+    hooks.manage(PathBuf::from(GLOBAL_PATH)),
+  ));
 
   create_builtin_classes(hooks, global, std)?;
   create_assert_funs(hooks, global, std)?;

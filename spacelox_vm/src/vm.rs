@@ -1,12 +1,14 @@
-use crate::call_frame::CallFrame;
-use crate::compiler::{Compiler, CompilerResult, Parser};
-use crate::constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE};
-use spacelox_core::hooks::NoContext;
-use spacelox_core::hooks::{HookContext, Hooks};
+use crate::{
+  call_frame::CallFrame,
+  compiler::{Compiler, CompilerResult, Parser},
+  constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
+  dep_manager::DepManager,
+};
 use spacelox_core::{
   arity::{ArityError, ArityKind},
   chunk::{ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT},
+  hooks::{HookContext, Hooks, NoContext},
   module::Module,
   native::{NativeFun, NativeMethod},
   object::SlHashMap,
@@ -17,6 +19,7 @@ use spacelox_core::{
   CallResult, SlError,
 };
 use spacelox_env::{
+  env::EnvIo,
   io::{Io, NativeIo},
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
@@ -26,7 +29,7 @@ use spacelox_lib::{builtin_from_std_lib, create_std_lib, GLOBAL, STD};
 use std::convert::TryInto;
 use std::mem;
 use std::ptr;
-use std::ptr::NonNull;
+use std::{path::PathBuf, ptr::NonNull};
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
@@ -92,8 +95,8 @@ pub struct Vm<I: Io + 'static> {
   /// The environments io access
   io: I,
 
-  /// The standard library
-  std_lib: Managed<Package>,
+  /// an object to manage the current dependencies
+  dep_manager: Managed<DepManager<I>>,
 
   /// The global module
   global: Managed<Module>,
@@ -103,7 +106,10 @@ impl<I: Io> Vm<I> {
   pub fn new(io: I) -> Vm<I> {
     let gc = Gc::new(Box::new(io.stdio()));
     let module = gc.manage(
-      Module::new(gc.manage_str(PLACEHOLDER_NAME.to_string(), &NO_GC)),
+      Module::new(
+        gc.manage_str(PLACEHOLDER_NAME.to_string(), &NO_GC),
+        gc.manage(PathBuf::from(PLACEHOLDER_NAME), &NO_GC),
+      ),
       &NO_GC,
     );
     let fun = Fun::new(
@@ -134,13 +140,21 @@ impl<I: Io> Vm<I> {
     let builtin = builtin_from_std_lib(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
+    let cwd = io
+      .envio()
+      .current_dir()
+      .expect("Could not obtain the current working directory.");
+
+    let mut dep_manager = hooks.manage(DepManager::new(io, hooks.manage(cwd)));
+    dep_manager.add_package(std_lib);
+
     Vm {
       io,
       stack,
       frames,
       builtin,
       gc,
-      std_lib,
+      dep_manager,
       global,
     }
   }
@@ -156,39 +170,59 @@ impl<I: Io> Vm<I> {
 
       match stdio.read_line(&mut buffer) {
         Ok(_) => {
-          self.interpret(REPL_MODULE, &buffer);
+          self.interpret(PathBuf::from(REPL_MODULE), &buffer);
         }
         Err(error) => panic!(error),
       }
     }
   }
 
-  pub fn run(&mut self, module_name: &str, source: &str) -> ExecuteResult {
-    self.interpret(module_name, source)
+  pub fn run(&mut self, module_path: PathBuf, source: &str) -> ExecuteResult {
+    self.interpret(module_path, source)
   }
 
   /// Interpret the provided spacelox script returning the execution result
-  fn interpret(&mut self, module_name: &str, source: &str) -> ExecuteResult {
-    let result = self.compile(module_name.to_string(), source);
+  fn interpret(&mut self, module_path: PathBuf, source: &str) -> ExecuteResult {
+    match module_path.file_stem() {
+      Some(module_os_name) => match module_os_name.to_str() {
+        Some(module_name) => {
+          let result = self.compile(module_name.to_string(), module_path, source);
 
-    if !result.success {
-      return ExecuteResult::CompileError;
+          if !result.success {
+            return ExecuteResult::CompileError;
+          }
+
+          let script_closure = self.gc.manage(Closure::new(result.fun), &NO_GC);
+          let script = Value::from(script_closure);
+          let mut executor = VmExecutor::new(self, script);
+          executor.run(RunMode::Normal)
+        }
+        None => {
+          self
+            .io
+            .stdio()
+            .println("Unable to extract filename from script path.");
+          return ExecuteResult::RuntimeError;
+        }
+      },
+      None => {
+        self
+          .io
+          .stdio()
+          .println("Unable to extract filename from script path.");
+        return ExecuteResult::RuntimeError;
+      }
     }
-
-    let script_closure = self.gc.manage(Closure::new(result.fun), &NO_GC);
-    let script = Value::from(script_closure);
-    let mut executor = VmExecutor::new(self, script);
-    executor.run(RunMode::Normal)
   }
 
   /// Compile the provided spacelox source into the virtual machine's bytecode
-  fn compile(&mut self, name: String, source: &str) -> CompilerResult {
+  fn compile(&mut self, name: String, path: PathBuf, source: &str) -> CompilerResult {
     let mut parser = Parser::new(self.io.stdio(), source);
 
     let mut compiler_context = NoContext::new(&self.gc);
     let hooks = Hooks::new(&mut compiler_context);
 
-    let module = hooks.manage(Module::new(hooks.manage_str(name)));
+    let module = hooks.manage(Module::new(hooks.manage_str(name), hooks.manage(path)));
     let compiler = Compiler::new(module, self.io, &mut parser, &hooks);
     compiler.compile()
   }
@@ -216,12 +250,20 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
     let builtin = builtin_from_std_lib(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
+    let cwd = dependencies
+      .io
+      .envio()
+      .current_dir()
+      .expect("Could not obtain the current working directory.");
+    let mut dep_manager = hooks.manage(DepManager::new(dependencies.io, hooks.manage(cwd)));
+    dep_manager.add_package(std_lib);
+
     Vm {
       io: dependencies.io,
       stack: dependencies.stack,
       frames: dependencies.frames,
       gc,
-      std_lib: dependencies.std_lib,
+      dep_manager,
       builtin,
       global,
     }
@@ -239,7 +281,7 @@ struct VmExecutor<'a, I: Io + 'static> {
   global: Managed<Module>,
 
   /// the standard lib package
-  std_lib: Managed<Package>,
+  dep_manager: Managed<DepManager<I>>,
 
   /// A collection of built in classes
   builtin: &'a BuiltInClasses,
@@ -297,7 +339,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       io: &mut vm.io,
       stack_top,
       global: vm.global,
-      std_lib: vm.std_lib,
+      dep_manager: vm.dep_manager,
       open_upvalues: Vec::with_capacity(100),
     };
 
@@ -400,7 +442,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::Equal => self.op_equal(),
         ByteCode::Greater => self.op_greater(),
         ByteCode::Less => self.op_less(),
-        ByteCode::JumpIfFalse => self.op_jump_if_not_false(),
+        ByteCode::JumpIfFalse => self.op_jump_if_false(),
         ByteCode::Jump => self.op_jump(),
         ByteCode::Loop => self.op_loop(),
         ByteCode::DefineGlobal => self.op_define_global(),
@@ -723,7 +765,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Signal::Ok
   }
 
-  fn op_jump_if_not_false(&mut self) -> Signal {
+  /// Jump if the condition evaluates to a falsey value
+  fn op_jump_if_false(&mut self) -> Signal {
     let jump = self.read_short();
     if is_falsey(self.peek(0)) {
       self.update_ip(jump as isize);
@@ -733,12 +776,14 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Signal::Ok
   }
 
+  /// Unconditionally jump to some other instruction
   fn op_jump(&mut self) -> Signal {
     let jump = self.read_short();
     self.update_ip(jump as isize);
     Signal::Ok
   }
 
+  /// Define a global variable
   fn op_define_global(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
@@ -982,13 +1027,20 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_import(&mut self) -> Signal {
-    let index_name = self.read_short();
     let index_path = self.read_short();
+    let path = self.read_string(index_path);
 
-    let _name = self.read_string(index_name);
-    let _path = self.read_string(index_path);
+    let mut dep_manager = self.dep_manager;
+    let current_module = self.current_module;
 
-    Signal::Ok
+    match dep_manager
+      .import(&Hooks::new(self), current_module, path) {
+        Ok(module) => {
+          self.push(Value::from(self.gc.manage(module.import(), self)));
+          Signal::Ok
+        }
+        Err(error) => { self.set_error(error) }
+    }
   }
 
   fn op_export(&mut self) -> Signal {
@@ -1555,7 +1607,7 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
 
     self.current_module.trace();
     self.builtin.trace();
-    self.std_lib.trace();
+    self.dep_manager.trace();
     self.global.trace();
 
     true
@@ -1584,7 +1636,7 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
 
     self.current_module.trace_debug(stdio);
     self.builtin.trace_debug(stdio);
-    self.std_lib.trace_debug(stdio);
+    self.dep_manager.trace_debug(stdio);
     self.global.trace_debug(stdio);
 
     true

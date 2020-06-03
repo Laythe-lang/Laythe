@@ -1,12 +1,15 @@
 use spacelox_core::hooks::{Hooks, NoContext};
-use spacelox_core::io::{Io, NativeIo};
-use spacelox_core::{memory::Gc, module::Module};
+use spacelox_core::module::Module;
+use spacelox_env::{
+  io::{Io, NativeIo},
+  memory::Gc,
+};
 use spacelox_vm::compiler::{Compiler, Parser};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::process;
-use std::time::Instant;
+use std::{path::PathBuf, time::Instant};
 
 fn load_source(path: &str) -> String {
   let mut file = File::open(path).unwrap();
@@ -26,9 +29,12 @@ fn main() {
         let gc = Gc::default();
         let mut context = NoContext::new(&gc);
         let hooks = Hooks::new(&mut context);
-        let io = NativeIo::new();
+        let io = NativeIo::default();
         let mut parser = Parser::new(io.stdio(), &source);
-        let module = hooks.manage(Module::new(hooks.manage_str("Benchmark".to_string())));
+        let module = hooks.manage(Module::new(
+          hooks.manage_str("Benchmark".to_string()),
+          hooks.manage(PathBuf::from("/Benchmark.lox"))
+        ));
         let compiler = Compiler::new(module, io, &mut parser, &hooks);
         compiler.compile();
       }

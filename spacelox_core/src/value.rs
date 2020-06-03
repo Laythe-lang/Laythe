@@ -1,9 +1,3 @@
-use crate::{
-  iterator::SlIterator,
-  native::{NativeFun, NativeMethod},
-  object::{Class, Closure, Fun, Instance, Method, SlHashMap, SlVec, Upvalue},
-};
-use spacelox_env::managed::Managed;
 
 pub struct Nil();
 
@@ -27,25 +21,6 @@ pub enum ValueVariant {
   Upvalue,
 }
 
-#[derive(Clone, Copy, Debug)]
-pub enum ValueEnum {
-  Bool(bool),
-  Nil,
-  Number(f64),
-  String(Managed<String>),
-  List(Managed<SlVec<Value>>),
-  Map(Managed<SlHashMap<Value, Value>>),
-  Fun(Managed<Fun>),
-  Closure(Managed<Closure>),
-  Class(Managed<Class>),
-  Instance(Managed<Instance>),
-  Method(Managed<Method>),
-  Iter(Managed<SlIterator>),
-  NativeFun(Managed<Box<dyn NativeFun>>),
-  NativeMethod(Managed<Box<dyn NativeMethod>>),
-  Upvalue(Managed<Upvalue>),
-}
-
 #[cfg(not(feature = "nan_boxing"))]
 pub use self::unboxed::*;
 
@@ -56,12 +31,13 @@ pub use self::boxed::*;
 mod unboxed {
   use super::*;
   use crate::{
-    io::StdIo,
     iterator::SlIterator,
-    managed::{Managed, Trace},
     native::{NativeFun, NativeMethod},
-    object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue},
-    SlHashMap,
+    object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, SlVec, SlHashMap},
+  };
+  use spacelox_env::{
+    stdio::StdIo,
+    managed::{Managed, Trace},
   };
   use std::fmt;
   use std::hash::Hash;
@@ -71,7 +47,24 @@ mod unboxed {
   pub const VALUE_TRUE: Value = Value::Bool(true);
 
   /// Enum of value types in spacelox
-  pub type Value = ValueEnum;
+  #[derive(Clone, Copy, Debug)]
+  pub enum Value {
+    Bool(bool),
+    Nil,
+    Number(f64),
+    String(Managed<String>),
+    List(Managed<SlVec<Value>>),
+    Map(Managed<SlHashMap<Value, Value>>),
+    Fun(Managed<Fun>),
+    Closure(Managed<Closure>),
+    Class(Managed<Class>),
+    Instance(Managed<Instance>),
+    Method(Managed<Method>),
+    Iter(Managed<SlIterator>),
+    NativeFun(Managed<Box<dyn NativeFun>>),
+    NativeMethod(Managed<Box<dyn NativeMethod>>),
+    Upvalue(Managed<Upvalue>),
+  }
 
   impl Value {
     /// Is this spacelox value nil
@@ -242,10 +235,13 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use spacelox_core::value::Value;
-    /// use spacelox_core::memory::{Gc, NO_GC};
+    /// use spacelox_core::hooks::{Hooks, NoContext};
+    /// use spacelox_env::memory::Gc;
     ///
     /// let gc = Gc::default();
-    /// let managed =  gc.manage_str("example".to_string(), &NO_GC);
+    /// let mut context = NoContext::new(&gc);
+    /// let hooks = Hooks::new(&mut context);
+    /// let managed =  hooks.manage_str("example".to_string());
     ///
     /// let value = Value::String(managed);
     /// assert_eq!(&*value.to_str(), "example")
@@ -263,10 +259,12 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use spacelox_core::value::Value;
-    /// use spacelox_core::managed::{Allocation, Managed};
+    /// use spacelox_core::object::SlVec;
+    /// use spacelox_env::managed::{Allocation, Managed};
+    /// 
     /// use std::ptr::NonNull;
     ///
-    /// let list: Vec<Value> = vec![Value::Nil];
+    /// let list = SlVec::from(vec![Value::Nil]);
     /// let mut alloc = Box::new(Allocation::new(list));
     /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
     /// let managed = Managed::from(ptr);
@@ -275,7 +273,7 @@ mod unboxed {
     /// assert_eq!(value.to_list()[0], Value::Nil)
     /// ```
     #[inline]
-    pub fn to_list(&self) -> Managed<Vec<Value>> {
+    pub fn to_list(&self) -> Managed<SlVec<Value>> {
       match self {
         Self::List(list) => *list,
         _ => panic!("Expected list."),
@@ -287,8 +285,8 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use spacelox_core::value::Value;
-    /// use spacelox_core::managed::{Allocation, Managed, make_managed};
-    /// use spacelox_core::SlHashMap;
+    /// use spacelox_env::managed::{Allocation, Managed, make_managed};
+    /// use spacelox_core::object::SlHashMap;
     /// use std::ptr::NonNull;
     ///
     /// let map: SlHashMap<Value, Value> = SlHashMap::default();
@@ -322,13 +320,20 @@ mod unboxed {
     /// ```
     /// use spacelox_core::value::Value;
     /// use spacelox_core::object::Fun;
+    /// use spacelox_core::module::Module;
     /// use spacelox_core::arity::ArityKind;
-    /// use spacelox_core::memory::{Gc, NO_GC};
     /// use spacelox_core::chunk::Chunk;
+    /// use spacelox_core::hooks::{Hooks, NoContext};
+    /// use spacelox_env::memory::Gc;
+    /// use std::path::PathBuf;
     ///
     /// let gc = Gc::default();
-    /// let fun: Fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
-    /// let managed = gc.manage(fun, &NO_GC);
+    /// let mut context = NoContext::new(&gc);
+    /// let hooks = Hooks::new(&mut context);
+    /// 
+    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.lox"))));
+    /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
+    /// let managed = hooks.manage(fun);
     ///
     /// let value = Value::Fun(managed);
     /// assert_eq!(&*value.to_fun().name, "add");
@@ -366,12 +371,19 @@ mod unboxed {
     /// use spacelox_core::value::Value;
     /// use spacelox_core::object::{Closure, Fun};
     /// use spacelox_core::arity::ArityKind;
-    /// use spacelox_core::memory::{Gc, NO_GC};
+    /// use spacelox_env::memory::{Gc, NO_GC};
+    /// use spacelox_core::module::Module;
     /// use spacelox_core::chunk::Chunk;
+    /// use spacelox_core::hooks::{Hooks, NoContext};
+    /// use std::path::PathBuf;
     ///
     /// let gc = Gc::default();
-    /// let fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
-    /// let managed_fun = gc.manage(fun, &NO_GC);
+    /// let mut context = NoContext::new(&gc);
+    /// let hooks = Hooks::new(&mut context);
+    ///
+    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.lox"))));
+    /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
+    /// let managed_fun = hooks.manage(fun);
     ///
     /// let closure = Closure::new(managed_fun);
     /// let managed_closure = gc.manage(closure, &NO_GC);
@@ -393,12 +405,19 @@ mod unboxed {
     /// use spacelox_core::value::Value;
     /// use spacelox_core::object::{Closure, Method, Fun};
     /// use spacelox_core::arity::ArityKind;
-    /// use spacelox_core::memory::{Gc, NO_GC};
+    /// use spacelox_core::module::Module;
+    /// use spacelox_env::memory::{Gc, NO_GC};
     /// use spacelox_core::chunk::Chunk;
+    /// use spacelox_core::hooks::{Hooks, NoContext};
+    /// use std::path::PathBuf;
     ///
     /// let gc = Gc::default();
-    /// let fun = Fun::new(gc.manage_str("add".to_string(), &NO_GC));
-    /// let managed_fun = gc.manage(fun, &NO_GC);
+    /// let mut context = NoContext::new(&gc);
+    /// let hooks = Hooks::new(&mut context);
+    ///
+    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.lox"))));
+    /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
+    /// let managed_fun = hooks.manage(fun);
     ///
     /// let closure = Closure::new(managed_fun);
     /// let managed_closure = gc.manage(closure, &NO_GC);
@@ -424,7 +443,7 @@ mod unboxed {
     /// ```
     /// use spacelox_core::value::Value;
     /// use spacelox_core::object::Upvalue;
-    /// use spacelox_core::managed::{Allocation, Managed, make_managed};
+    /// use spacelox_env::managed::{Allocation, Managed, make_managed};
     /// use std::ptr::NonNull;
     ///
     /// let value = Value::Number(5.0);
@@ -449,7 +468,7 @@ mod unboxed {
     /// ```
     /// use spacelox_core::value::Value;
     /// use spacelox_core::object::{Instance, Class};
-    /// use spacelox_core::managed::{Managed, Allocation, make_managed};
+    /// use spacelox_env::managed::{Managed, Allocation, make_managed};
     ///
     /// let (name, name_alloc) = make_managed("example".to_string());
     /// let (class, class_alloc) = make_managed(Class::new(name));
@@ -470,7 +489,7 @@ mod unboxed {
     /// ```
     /// use spacelox_core::value::Value;
     /// use spacelox_core::object::{Instance, Class};
-    /// use spacelox_core::managed::{Managed, Allocation, make_managed};
+    /// use spacelox_env::managed::{Managed, Allocation, make_managed};
     ///
     /// let (name, name_alloc) = make_managed("example".to_string());
     /// let (class, class_alloc) = make_managed(Class::new(name));
@@ -586,8 +605,8 @@ mod unboxed {
     }
   }
 
-  impl From<Managed<Vec<Value>>> for Value {
-    fn from(managed: Managed<Vec<Value>>) -> Value {
+  impl From<Managed<SlVec<Value>>> for Value {
+    fn from(managed: Managed<SlVec<Value>>) -> Value {
       Value::List(managed)
     }
   }
@@ -841,7 +860,7 @@ mod unboxed {
   #[cfg(test)]
   mod test {
     use super::*;
-    use crate::managed::Allocation;
+    use spacelox_env::managed::Allocation;
     use std::ptr::NonNull;
 
     fn example_each(string: Managed<String>) -> Vec<Value> {
@@ -1378,10 +1397,10 @@ mod test {
   use super::*;
   use crate::{
     module::Module,
-    object::{Class, Closure, Fun, SlHashMap},
+    object::{Class, Closure, Fun, SlHashMap, SlVec},
   };
   use spacelox_env::managed::{Allocation, Manage, Managed};
-  use std::ptr::NonNull;
+  use std::{path::PathBuf, ptr::NonNull};
   type Allocs = Vec<Box<Allocation<dyn Manage>>>;
 
   const VARIANTS: [ValueVariant; 15] = [
@@ -1441,14 +1460,25 @@ mod test {
     (vec![alloc], managed)
   }
 
+  fn test_path() -> (Allocs, Managed<PathBuf>) {
+    let path = PathBuf::from("test/sup.lox");
+    let mut alloc = Box::new(Allocation::new(path));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+
+    let managed = Managed::from(ptr);
+    (vec![alloc], managed)
+  }
+
   fn test_module() -> (Allocs, Managed<Module>) {
     let (allocs_string, name) = test_string();
-    let mut alloc = Box::new(Allocation::new(Module::new(name)));
+    let (allocs_path, path) = test_path();
+    let mut alloc = Box::new(Allocation::new(Module::new(name, path)));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
     let mut allocs: Allocs = vec![alloc];
     allocs.extend(allocs_string);
+    allocs.extend(allocs_path);
     (allocs, managed)
   }
 

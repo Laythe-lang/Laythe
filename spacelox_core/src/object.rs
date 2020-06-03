@@ -534,11 +534,19 @@ impl Closure {
   /// use spacelox_env::memory::{Gc, NO_GC};
   /// use spacelox_core::module::Module;
   /// use spacelox_core::chunk::Chunk;
+  /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
-  /// let module = gc.manage(Module::new(gc.manage_str("module".to_string(), &NO_GC)), &NO_GC);
-  /// let mut fun = Fun::new(gc.manage_str("example".to_string(), &NO_GC), module);
-  /// let managed_fun = gc.manage(fun, &NO_GC);
+  /// let mut context = NoContext::new(&gc);
+  /// let hooks = Hooks::new(&mut context);
+  /// 
+  /// let module = hooks.manage(Module::new(
+  ///   hooks.manage_str("module".to_string()),
+  ///   hooks.manage(PathBuf::from("self/module.lox")),
+  /// ));
+  /// let mut fun = Fun::new(hooks.manage_str("example".to_string()), module);
+  /// let managed_fun = hooks.manage(fun);
   ///
   /// let closure = Closure::new(managed_fun);
   /// assert_eq!(&*closure.fun.name, "example");

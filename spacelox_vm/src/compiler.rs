@@ -107,6 +107,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// use spacelox_env::io::NativeIo;
   /// use spacelox_env::stdio::NativeStdIo;
   /// use spacelox_env::memory::Gc;
+  /// use std::path::PathBuf;
   ///
   /// // an expression
   /// let source = "10 + 3".to_string();
@@ -115,7 +116,10 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut context = NoContext::new(&gc);
   /// let mut hooks = Hooks::new(&mut context);
   /// let mut parser = Parser::new(NativeStdIo::new(), &source);
-  /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
+  /// let module = hooks.manage(Module::new(
+  ///  hooks.manage_str("module".to_string()),
+  ///  hooks.manage(PathBuf::from("./module.lox"))
+  /// ));
   ///
   /// let compiler = Compiler::new(module, NativeIo::default(), &mut parser, &mut hooks);
   /// ```
@@ -197,6 +201,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// use spacelox_env::io::NativeIo;
   /// use spacelox_env::stdio::NativeStdIo;
   /// use spacelox_env::memory::Gc;
+  /// use std::path::PathBuf;
   ///
   /// // an expression
   /// let source = "3 / 2 + 10;".to_string();
@@ -205,7 +210,10 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut context = NoContext::new(&gc);
   /// let mut hooks = Hooks::new(&mut context);
   /// let mut parser = Parser::new(NativeStdIo::new(), &source);
-  /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
+  /// let module = hooks.manage(Module::new(
+  ///  hooks.manage_str("module".to_string()),
+  ///  hooks.manage(PathBuf::from("./module.lox"))
+  /// ));
   ///
   /// let compiler = Compiler::new(module, NativeIo::default(), &mut parser, &mut hooks);
   /// let result = compiler.compile();
@@ -775,7 +783,8 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       .consume(TokenKind::Semicolon, "Expect ';' after value.");
 
     if self.scope_depth == 0 {
-      self.emit_byte(AlignedByteCode::Import((name, path)))
+      self.emit_byte(AlignedByteCode::Import(path));
+      self.emit_byte(AlignedByteCode::DefineGlobal(name));
     } else {
       self
         .parser
@@ -1911,6 +1920,7 @@ mod test {
   use spacelox_core::chunk::decode_u16;
   use spacelox_core::hooks::NoContext;
   use spacelox_env::{io::NativeIo, memory::Gc, stdio::NativeStdIo};
+  use std::path::PathBuf;
 
   enum ByteCodeTest {
     Code(AlignedByteCode),
@@ -1924,7 +1934,10 @@ mod test {
     let mut context = NoContext::new(gc);
     let hooks = &Hooks::new(&mut context);
 
-    let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
+    let module = hooks.manage(Module::new(
+      hooks.manage_str("module".to_string()),
+      hooks.manage(PathBuf::from("path/module.lox")),
+    ));
     let compiler = Compiler::new(module, io, &mut parser, &hooks);
     let result = compiler.compile();
     assert_eq!(result.success, true);
@@ -2045,7 +2058,8 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Import((0, 1)),
+        AlignedByteCode::Import(1),
+        AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],

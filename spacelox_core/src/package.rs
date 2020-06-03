@@ -16,6 +16,11 @@ impl Import {
     Self(path)
   }
 
+  /// Get the package name 
+  pub fn package(&self) -> Option<Managed<String>> {
+    self.0.first().map(|segment| *segment)
+  }
+
   pub fn from_strs(hooks: &Hooks, path: &str) -> Self {
     let path = path
       .split("/")
@@ -57,15 +62,6 @@ pub struct Package {
 
 impl Package {
   /// Create a new package
-  ///
-  /// # Example
-  /// ```
-  /// use spacelox_core::package::Package;
-  /// use spacelox_env::memory::{Gc, NO_GC};
-  ///
-  /// let gc = Gc::default();
-  /// let package = Package::new(gc.manage_str("example".to_string(), &NO_GC));
-  /// ```
   pub fn new(name: Managed<String>) -> Self {
     Self {
       name,
@@ -73,28 +69,12 @@ impl Package {
     }
   }
 
+  /// Retrieve the name of this package
+  pub fn name(&self) -> Managed<String> {
+    self.name
+  }
+
   /// Add a module to this package
-  ///
-  /// # Example
-  /// ```
-  /// use spacelox_core::package::Package;
-  /// use spacelox_core::module::Module;
-  /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
-  /// use spacelox_env::memory::{Gc};
-  ///
-  /// let gc = Gc::default();
-  /// let mut context = NoContext::new(&gc);
-  /// let hooks = Hooks::new(&mut context);
-  ///
-  /// let mut package = Package::new(hooks.manage_str("package".to_string()));
-  /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string())));
-  ///
-  /// let result1 = package.add_module(&hooks, module.clone());
-  /// let result2 = package.add_module(&hooks, module);
-  ///
-  /// assert_eq!(result1.is_ok(), true);
-  /// assert_eq!(result2.is_err(), true);
-  /// ```
   pub fn add_module(&mut self, hooks: &Hooks, module: Managed<Module>) -> PackageResult<()> {
     match self.entities.entry(module.name) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
@@ -109,26 +89,6 @@ impl Package {
   }
 
   /// Add a sub package to this package
-  ///
-  /// # Example
-  /// ```
-  /// use spacelox_core::package::Package;
-  /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
-  /// use spacelox_env::memory::{Gc};
-  ///
-  /// let gc = Gc::default();
-  /// let mut context = NoContext::new(&gc);
-  /// let hooks = Hooks::new(&mut context);
-  ///
-  /// let mut package = Package::new(hooks.manage_str("package".to_string()));
-  /// let sub_package = hooks.manage(Package::new(hooks.manage_str("sub_module".to_string())));
-  ///
-  /// let result1 = package.add_package(&hooks, sub_package);
-  /// let result2 = package.add_package(&hooks, sub_package);
-  ///
-  /// assert_eq!(result1.is_ok(), true);
-  /// assert_eq!(result2.is_err(), true);
-  /// ```
   pub fn add_package(&mut self, hooks: &Hooks, sub_package: Managed<Package>) -> PackageResult<()> {
     match self.entities.entry(sub_package.name) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
@@ -144,42 +104,6 @@ impl Package {
 
   /// Get a set of symbols from this package using a requested import. This
   /// operation can fail if some or all of the symbols are not found.
-  ///
-  /// # Example
-  /// ```
-  /// use spacelox_core::module::Module;
-  /// use spacelox_core::package::{Package, Import};
-  /// use spacelox_core::value::Value;
-  /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
-  /// use spacelox_env::memory::{Gc};
-  ///
-  /// let gc = Gc::default();
-  /// let mut context = NoContext::new(&gc);
-  /// let hooks = Hooks::new(&mut context);
-  ///
-  /// let mut module = hooks.manage(Module::new(hooks.manage_str("my_module".to_string())));
-  ///
-  /// let export_name = hooks.manage_str("exported".to_string());
-  /// module.insert_symbol(&hooks, export_name, Value::from(true));
-  /// module.export_symbol(&hooks, export_name);
-  ///
-  /// let mut package = Package::new(hooks.manage_str("my_package".to_string()));
-  /// package.add_module(&hooks, module);
-  ///
-  /// let successful = Import::from_strs(&hooks, "my_package/my_module");
-  /// let failing = Import::from_strs(&hooks, "my_package/not_my_module");
-  ///
-  /// let symbols1 = package.import(&hooks, successful);
-  /// let symbols2 = package.import(&hooks, failing);
-  ///
-  /// assert_eq!(symbols1.is_ok(), true);
-  /// assert_eq!(symbols2.is_err(), true);
-  ///
-  /// if let Ok(result) = symbols1 {
-  ///   assert_eq!(result.len(), 1);
-  ///   assert_eq!(*result.get_symbol(export_name).unwrap(), Value::from(true));
-  /// }
-  /// ```
   pub fn import(&self, hooks: &Hooks, import: Import) -> PackageResult<Managed<Module>> {
     if import.0.len() == 0 {
       panic!("No path in import");
@@ -199,6 +123,7 @@ impl Package {
       return Err(hooks.make_error(format!("Could not resolve module {}", import.path_str())));
     }
 
+    println!("here");
     let key = import.0[depth];
     match self.entities.get(&key) {
       Some(entity) => match entity {
@@ -265,5 +190,111 @@ impl Manage for Package {
     mem::size_of::<Self>()
       + (mem::size_of::<Managed<String>>() + mem::size_of::<PackageEntity>())
         * (self.entities.capacity())
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  #[test]
+  fn new() {
+    use crate::package::Package;
+    use spacelox_env::memory::{Gc, NO_GC};
+        
+    let gc = Gc::default();
+    Package::new(gc.manage_str("example".to_string(), &NO_GC));
+  }
+
+  #[test]
+  fn name() {
+    use crate::package::Package;
+    use spacelox_env::memory::{Gc, NO_GC};
+        
+    let gc = Gc::default();
+    let package = Package::new(gc.manage_str("example".to_string(), &NO_GC));
+        
+    assert_eq!(&*package.name(), "example");
+  }
+
+  #[test]
+  fn add_module() {
+    use crate::package::Package;
+    use crate::module::Module;
+    use crate::hooks::{NoContext, Hooks};
+    use spacelox_env::memory::{Gc};
+    use std::path::PathBuf;
+        
+    let gc = Gc::default();
+    let mut context = NoContext::new(&gc);
+    let hooks = Hooks::new(&mut context);
+        
+    let mut package = Package::new(hooks.manage_str("package".to_string()));
+    let module = hooks.manage(Module::new(
+      hooks.manage_str("module".to_string()),
+      hooks.manage(PathBuf::from("self/module.lox"))
+    ));
+        
+    let result1 = package.add_module(&hooks, module.clone());
+    let result2 = package.add_module(&hooks, module);
+        
+    assert_eq!(result1.is_ok(), true);
+    assert_eq!(result2.is_err(), true);
+  }
+
+  #[test]
+  fn add_package() {
+    use crate::package::Package;
+    use crate::hooks::{NoContext, Hooks};
+    use spacelox_env::memory::{Gc};
+    
+    let gc = Gc::default();
+    let mut context = NoContext::new(&gc);
+    let hooks = Hooks::new(&mut context);
+    
+    let mut package = Package::new(hooks.manage_str("package".to_string()));
+    let sub_package = hooks.manage(Package::new(hooks.manage_str("sub_module".to_string())));
+    
+    let result1 = package.add_package(&hooks, sub_package);
+    let result2 = package.add_package(&hooks, sub_package);
+    
+    assert_eq!(result1.is_ok(), true);
+    assert_eq!(result2.is_err(), true);
+  }
+
+  #[test]
+  fn import() {
+    use crate::module::Module;
+    use crate::package::{Package, Import};
+    use crate::value::Value;
+    use crate::hooks::{NoContext, Hooks};
+    use spacelox_env::memory::Gc;
+    use std::path::PathBuf;
+
+    let gc = Gc::default();
+    let mut context = NoContext::new(&gc);
+    let hooks = Hooks::new(&mut context);
+    
+    let mut module = hooks.manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("my_package/my_module.lox"))).unwrap());
+    let export_name = hooks.manage_str("exported".to_string());
+    module.insert_symbol(&hooks, export_name, Value::from(true));
+    assert!(module.export_symbol(&hooks, export_name).is_ok());
+    
+    let mut package = Package::new(hooks.manage_str("my_package".to_string()));
+    assert!(package.add_module(&hooks, module).is_ok());
+    
+    let successful = Import::from_strs(&hooks, "my_package/my_module");
+    let failing = Import::from_strs(&hooks, "my_package/not_my_module");
+    
+    let symbols1 = package.import(&hooks, successful);
+    let symbols2 = package.import(&hooks, failing);
+    
+    assert_eq!(symbols1.is_ok(), true);
+    assert_eq!(symbols2.is_err(), true);
+    
+    if let Ok(result) = symbols1 {
+      assert_eq!(result.len(), 1);
+      assert_eq!(*result.get_symbol(export_name).unwrap(), Value::from(true));
+    }
   }
 }

@@ -1,7 +1,7 @@
 use spacelox_vm::vm::{default_native_vm, ExecuteResult};
 use std::fs::File;
 use std::io::prelude::*;
-use std::path::PathBuf;
+use std::path::{PathBuf};
 use support::{fixture_path_inner, test_files_inner};
 
 mod support;
@@ -15,7 +15,7 @@ fn test_files(paths: &[&str], result: ExecuteResult) -> Result<(), std::io::Erro
 }
 
 const FILE_PATH: &str = file!();
-const MODULE_NAME: &str = "test";
+const MODULE_NAME: &str = "./test.lox";
 
 #[test]
 fn build() {
@@ -33,7 +33,7 @@ fn clock() -> Result<(), std::io::Error> {
   let mut source = String::new();
   file.read_to_string(&mut source)?;
 
-  assert_eq!(vm.run(MODULE_NAME, &source), ExecuteResult::Ok);
+  assert_eq!(vm.run(PathBuf::from(MODULE_NAME), &source), ExecuteResult::Ok);
   Ok(())
 }
 
@@ -47,7 +47,7 @@ fn assert() -> Result<(), std::io::Error> {
   let mut source = String::new();
   file.read_to_string(&mut source)?;
 
-  assert_eq!(vm.run(MODULE_NAME, &source), ExecuteResult::Ok);
+  assert_eq!(vm.run(PathBuf::from(MODULE_NAME), &source), ExecuteResult::Ok);
   Ok(())
 }
 
@@ -60,7 +60,7 @@ fn assert_eq() -> Result<(), std::io::Error> {
   let mut source = String::new();
   file.read_to_string(&mut source)?;
 
-  assert_eq!(vm.run(MODULE_NAME, &source), ExecuteResult::Ok);
+  assert_eq!(vm.run(PathBuf::from(MODULE_NAME), &source), ExecuteResult::Ok);
   Ok(())
 }
 
@@ -73,7 +73,7 @@ fn assert_ne() -> Result<(), std::io::Error> {
   let mut source = String::new();
   file.read_to_string(&mut source)?;
 
-  assert_eq!(vm.run(MODULE_NAME, &source), ExecuteResult::Ok);
+  assert_eq!(vm.run(PathBuf::from(MODULE_NAME), &source), ExecuteResult::Ok);
   Ok(())
 }
 

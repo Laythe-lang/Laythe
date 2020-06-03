@@ -34,7 +34,10 @@ fn compile_source(source: &str) {
   let gc = Gc::default();
   let mut context = NoContext::new(&gc);
   let hooks = Hooks::new(&mut context);
-  let module = hooks.manage(Module::new(hooks.manage_str("Benchmark".to_string())));
+  let module = hooks.manage(Module::new(
+    hooks.manage_str("Benchmark".to_string()),
+    hooks.manage(PathBuf::from("./Benchmark.lox"))
+  ));
   let io = NativeIo::default();
   let mut parser = Parser::new(io.stdio(), source);
   let compiler = Compiler::new(module, io, &mut parser, &hooks);

@@ -73,7 +73,7 @@ pub enum AlignedByteCode {
   Drop,
 
   /// Import all symbols
-  Import((u16, u16)),
+  Import(u16),
 
   /// Export a symbol from the current module
   Export(u16),
@@ -183,7 +183,7 @@ impl AlignedByteCode {
       Self::Drop => push_op(code, ByteCode::Drop),
       Self::Constant(slot) => push_op_u8(code, ByteCode::Constant, slot),
       Self::ConstantLong(slot) => push_op_u16(code, ByteCode::ConstantLong, slot),
-      Self::Import((name, path)) => push_op_u16_tuple(code, ByteCode::Import, name, path),
+      Self::Import(path) => push_op_u16(code, ByteCode::Import, path),
       Self::Export(slot) => push_op_u16(code, ByteCode::Export, slot),
       Self::DefineGlobal(slot) => push_op_u16(code, ByteCode::DefineGlobal, slot),
       Self::GetGlobal(slot) => push_op_u16(code, ByteCode::GetGlobal, slot),
@@ -259,11 +259,8 @@ impl AlignedByteCode {
       ByteCode::SetIndex => (AlignedByteCode::SetIndex, offset + 1),
       ByteCode::Drop => (AlignedByteCode::Drop, offset + 1),
       ByteCode::Import => (
-        AlignedByteCode::Import((
-          decode_u16(&store[offset + 1..offset + 3]),
-          decode_u16(&store[offset + 3..offset + 5]),
-        )),
-        offset + 5,
+        AlignedByteCode::Import(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
       ),
       ByteCode::Export => (
         AlignedByteCode::Export(decode_u16(&store[offset + 1..offset + 3])),
@@ -534,14 +531,6 @@ fn push_op_u16_u8_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2:
   code.push(param2);
 }
 
-fn push_op_u16_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2: u16) {
-  code.push(byte.to_byte());
-  let param_bytes = param1.to_ne_bytes();
-  code.extend_from_slice(&param_bytes);
-  let param_bytes = param2.to_ne_bytes();
-  code.extend_from_slice(&param_bytes);
-}
-
 fn push_op_u16(code: &mut Vec<u8>, byte: ByteCode, param: u16) {
   let param_bytes = param.to_ne_bytes();
   code.push(byte.to_byte());
@@ -733,7 +722,7 @@ mod test {
         (1, AlignedByteCode::Not),
         (2, AlignedByteCode::Constant(113)),
         (3, AlignedByteCode::ConstantLong(45863)),
-        (5, AlignedByteCode::Import((14, 2235))),
+        (3, AlignedByteCode::Import(2235)),
         (3, AlignedByteCode::Export(7811)),
         (1, AlignedByteCode::Nil),
         (1, AlignedByteCode::True),

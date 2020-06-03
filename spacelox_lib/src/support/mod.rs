@@ -38,6 +38,7 @@ mod test {
     memory::{Gc, NoGc, NO_GC},
     stdio::StdIo,
   };
+  use std::path::PathBuf;
 
   pub struct TestContext<'a> {
     gc: &'a Gc,
@@ -199,7 +200,10 @@ mod test {
   }
 
   pub fn fun_from_hooks(hooks: &Hooks, name: String, module_name: String) -> Managed<Fun> {
-    let module = hooks.manage(Module::new(hooks.manage_str(module_name)));
+    let module = hooks.manage(Module::new(
+      hooks.manage_str(module_name),
+      hooks.manage(PathBuf::from("path/name.lox")),
+    ));
     hooks.manage(Fun::new(hooks.manage_str(name), module))
   }
 }

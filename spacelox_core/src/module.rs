@@ -4,13 +4,16 @@ use spacelox_env::{
   stdio::StdIo,
 };
 use std::fmt;
-use std::mem;
+use std::{mem, path::PathBuf};
 
 /// A struct representing a collection of class functions and variable of shared functionality
 #[derive(Clone)]
 pub struct Module {
   /// The name of the module
   pub name: Managed<String>,
+
+  /// The full filepath to this module
+  pub path: Managed<PathBuf>,
 
   /// A key value set of named exports from the provided modules
   exports: SlHashSet<Managed<String>>,
@@ -26,16 +29,56 @@ impl Module {
   /// ```
   /// use spacelox_core::module::Module;
   /// use spacelox_env::memory::{Gc, NO_GC};
+  /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
-  /// let module = Module::new(gc.manage_str("example".to_string(), &NO_GC));
+  /// let path = PathBuf::from("self/path.lox");
+  /// let module = Module::new(
+  ///   gc.manage_str("example".to_string(), &NO_GC),
+  ///   gc.manage(path, &NO_GC)
+  /// );
   /// ```
-  pub fn new(name: Managed<String>) -> Self {
+  pub fn new(name: Managed<String>, path: Managed<PathBuf>) -> Self {
     Module {
       name,
+      path,
       exports: SlHashSet::default(),
       symbols: SlHashMap::default(),
     }
+  }
+
+  /// Create a module from a filepath
+  ///
+  /// # Example
+  /// ```
+  /// use spacelox_core::module::Module;
+  /// use spacelox_env::memory::{Gc, NO_GC};
+  /// use spacelox_core::hooks::{NoContext, Hooks};
+  /// use std::path::PathBuf;
+  ///
+  /// let gc = Gc::default();
+  /// let mut context = NoContext::new(&gc);
+  /// let hooks = Hooks::new(&mut context);
+  ///
+  /// let path = hooks.manage(PathBuf::from("self/path.lox"));
+  /// let module = Module::from_path(
+  ///   &hooks,
+  ///   path,
+  /// );
+  /// ```
+  pub fn from_path(hooks: &Hooks, path: Managed<PathBuf>) -> Option<Self> {
+    let module_name = path.file_stem()
+      .and_then(|m| m.to_str())
+      .map(|m| m.to_string())?;
+
+    let name = hooks.manage_str(module_name);
+
+    Some(Self {
+      name,
+      path,
+      exports: SlHashSet::default(),
+      symbols: SlHashMap::default(),
+    })
   }
 
   /// Add export a new symbol from this module. Exported names must be unique
@@ -46,12 +89,16 @@ impl Module {
   /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let mut module = Module::new(hooks.manage_str("module".to_string()));
+  /// let mut module = Module::new(
+  ///   hooks.manage_str("module".to_string()),
+  ///   hooks.manage(PathBuf::from("self/module.lox")),
+  /// );
   ///
   /// let export_name = hooks.manage_str("exported".to_string());
   ///
@@ -82,12 +129,16 @@ impl Module {
   /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let mut module = Module::new(hooks.manage_str("module".to_string()));
+  /// let mut module = Module::new(
+  ///   hooks.manage_str("module".to_string()),
+  ///   hooks.manage(PathBuf::from("self/module.lox"))
+  /// );
   ///
   /// let export_name = hooks.manage_str("exported".to_string());
   /// module.insert_symbol(&hooks, export_name, Value::from(true));
@@ -127,12 +178,16 @@ impl Module {
   /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let mut module = Module::new(hooks.manage_str("module".to_string()));
+  /// let mut module = Module::new(
+  ///   hooks.manage_str("module".to_string()),
+  ///   hooks.manage(PathBuf::from("self/module.lox"))
+  /// );
   ///
   /// let name = hooks.manage_str("exported".to_string());
   /// module.insert_symbol(&hooks, name, Value::from(true));
@@ -162,12 +217,16 @@ impl Module {
   /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
   /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let mut module = Module::new(hooks.manage_str("module".to_string()));
+  /// let mut module = Module::new(
+  ///   hooks.manage_str("module".to_string()),
+  ///   hooks.manage(PathBuf::from("self/module.lox")),
+  /// );
   ///
   /// let name = hooks.manage_str("exported".to_string());
   ///

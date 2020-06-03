@@ -58,9 +58,7 @@ pub fn disassemble_instruction<S: StdIo>(
     AlignedByteCode::SetIndex => simple_instruction(stdio, "SetIndex", offset),
     AlignedByteCode::Drop => simple_instruction(stdio, "Drop", offset),
     AlignedByteCode::Call(arg_count) => byte_instruction(stdio, "Call", arg_count, offset),
-    AlignedByteCode::Import((name, path)) => {
-      import_instruction(stdio, "Import", chunk, name, path, offset)
-    }
+    AlignedByteCode::Import(path) => constant_instruction(stdio, "Import", chunk, path, offset),
     AlignedByteCode::Export(constant) => {
       constant_instruction(stdio, "Export", chunk, constant, offset)
     }
@@ -208,22 +206,6 @@ fn invoke_instruction(
 ) -> usize {
   stdio.print(&format!("{:16} {:5} ({} args) ", name, arg_count, constant));
   stdio.println(&format!("{}", &chunk.constants[constant as usize]));
-  offset
-}
-
-fn import_instruction(
-  stdio: &impl StdIo,
-  name: &str,
-  chunk: &Chunk,
-  import_name: u16,
-  path: u16,
-  offset: usize,
-) -> usize {
-  stdio.print(&format!("{:16} {:5} {:5} ", name, path, import_name));
-  stdio.println(&format!(
-    "{} {}",
-    &chunk.constants[import_name as usize], &chunk.constants[path as usize]
-  ));
   offset
 }
 
