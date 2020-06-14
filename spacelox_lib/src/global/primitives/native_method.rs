@@ -1,9 +1,9 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
-  hooks::Hooks,
+  hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
   object::Class,
   package::Package,
   value::Value,
@@ -13,19 +13,27 @@ use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const NATIVE_METHOD_CLASS_NAME: &'static str = "Native Method";
 
-const NATIVE_METHOD_NAME: NativeMeta = NativeMeta::new("name", ArityKind::Fixed(0));
-const NATIVE_METHOD_CALL: NativeMeta = NativeMeta::new("call", ArityKind::Variadic(0));
+const NATIVE_METHOD_NAME: NativeMeta = NativeMeta::new("name", ArityKind::Fixed(0), &[]);
+const NATIVE_METHOD_CALL: NativeMeta = NativeMeta::new(
+  "call",
+  ArityKind::Variadic(0),
+  &[Parameter::new("args", ParameterKind::Any)],
+);
 
-pub fn declare_native_method_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_native_method_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(NATIVE_METHOD_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
-pub fn define_native_method_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = Value::from(hooks.manage_str(String::from(NATIVE_METHOD_CLASS_NAME)));
-  let mut class = self_module.import().get(&name).unwrap().to_class();
+pub fn define_native_method_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(NATIVE_METHOD_CLASS_NAME));
+  let mut class = self_module
+    .import(hooks)
+    .get_field(&name)
+    .unwrap()
+    .to_class();
 
   class.add_method(
     hooks,
@@ -123,7 +131,7 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::assert::assert::Assert;
+    use crate::global::support::TestNative;
     use spacelox_core::{native::NativeFun, value::VALUE_NIL};
 
     #[test]
@@ -141,9 +149,8 @@ mod test {
       let mut context = TestContext::new(&gc, &[VALUE_NIL]);
       let mut hooks = Hooks::new(&mut context);
 
-      let managed: Managed<Box<dyn NativeFun>> =
-        hooks.manage(Box::new(Assert::new(hooks.manage_str("str".to_string()))));
-      let result = native_fun_call.call(&mut hooks, Value::from(managed), &[Value::from(true)]);
+      let managed: Managed<Box<dyn NativeFun>> = hooks.manage(Box::new(TestNative()));
+      let result = native_fun_call.call(&mut hooks, Value::from(managed), &[]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),

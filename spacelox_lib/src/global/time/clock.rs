@@ -1,7 +1,7 @@
 use crate::support::export_and_insert;
 use spacelox_core::{
   arity::ArityKind,
-  hooks::Hooks,
+  hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeFun, NativeMeta},
   value::Value,
@@ -16,9 +16,9 @@ pub struct Clock {
   start: SystemTime,
 }
 
-const CLOCK_META: NativeMeta = NativeMeta::new("clock", ArityKind::Fixed(0));
+const CLOCK_META: NativeMeta = NativeMeta::new("clock", ArityKind::Fixed(0), &[]);
 
-pub fn declare_clock_funs(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_clock_funs(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   export_and_insert(
     hooks,
     self_module,

@@ -1,8 +1,8 @@
 use crate::constants::IMPORT_SEPARATOR;
 use spacelox_core::{
-  hooks::Hooks,
+  hooks::GcHooks,
   module::Module,
-  object::SlHashMap,
+  object::{BuiltIn, BuiltInDependencies, BuiltinPrimitives, SlHashMap},
   package::{Import, Package},
   ModuleResult,
 };
@@ -14,11 +14,14 @@ use spacelox_env::{
 use std::{fmt, mem, path::PathBuf};
 
 pub struct DepManager<I: Io> {
+  /// The directory of the entry point
+  pub src_dir: Managed<PathBuf>,
+
   /// interface to the current environments io
   io: I,
 
-  /// The directory of the entry point
-  src_directory: Managed<PathBuf>,
+  /// A collection of builtin in classes, values and functions
+  builtin: BuiltIn,
 
   /// A collection of packages that have already been loaded
   packages: SlHashMap<Managed<String>, Managed<Package>>,
@@ -29,28 +32,38 @@ pub struct DepManager<I: Io> {
 
 impl<I: Io> DepManager<I> {
   /// Create a new dependency manager
-  pub fn new(io: I, src_directory: Managed<PathBuf>) -> Self {
+  pub fn new(io: I, builtin: BuiltIn, src_dir: Managed<PathBuf>) -> Self {
     Self {
       io,
-      src_directory,
+      src_dir,
+      builtin,
       packages: SlHashMap::default(),
       cache: SlHashMap::default(),
     }
   }
 
+  /// Get the class for primitives in spacelox
+  pub fn primitive_classes(&self) -> &BuiltinPrimitives {
+    &self.builtin.primitives
+  }
+
+  /// Get the classes for dependency entities in spacelox
+  pub fn dependency_classes(&self) -> &BuiltInDependencies {
+    &self.builtin.dependencies
+  }
+
   /// Import a module using the given path
   pub fn import(
     &mut self,
-    hooks: &Hooks,
+    hooks: &GcHooks,
     module: Managed<Module>,
     path: Managed<String>,
   ) -> ModuleResult<Managed<Module>> {
+    let mut module_dir = (*module.path).clone();
+    module_dir.pop();
+
     // determine relative position of module relative to the src directory
-    let relative = match self
-      .io
-      .fsio()
-      .normalized_import(&*self.src_directory, &*module.path)
-    {
+    let relative = match self.io.fsio().relative_path(&*self.src_dir, &module_dir) {
       Ok(relative) => relative,
       Err(err) => return Err(hooks.make_error(err.message)),
     };
@@ -59,6 +72,7 @@ impl<I: Io> DepManager<I> {
     let relative: Vec<String> = relative
       .ancestors()
       .map(|p| p.display().to_string())
+      .filter(|p| p != "")
       .collect();
 
     // split import into segments and join to relative path
@@ -102,7 +116,7 @@ impl<I: Io> fmt::Debug for DepManager<I> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("DepManager")
       .field("io", &self.io)
-      .field("src_directory", &self.src_directory)
+      .field("src_directory", &self.src_dir)
       .field("packages", &"SlHashMap { ... })")
       .field("cache", &"SlHashMap { ... }")
       .finish()

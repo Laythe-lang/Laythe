@@ -8,11 +8,11 @@ use spacelox_core::{
   arity::{ArityError, ArityKind},
   chunk::{ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT},
-  hooks::{HookContext, Hooks, NoContext},
+  hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks, NoContext},
   module::Module,
   native::{NativeFun, NativeMethod},
   object::SlHashMap,
-  object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, SlVec, Upvalue},
+  object::{Class, Closure, Fun, Instance, Method, SlVec, Upvalue},
   package::{Import, Package},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
   value::{Value, ValueVariant, VALUE_NIL},
@@ -20,12 +20,13 @@ use spacelox_core::{
 };
 use spacelox_env::{
   env::EnvIo,
+  fs::FsIo,
   io::{Io, NativeIo},
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
   stdio::StdIo,
 };
-use spacelox_lib::{builtin_from_std_lib, create_std_lib, GLOBAL, STD};
+use spacelox_lib::{create_std_lib, global::builtin_from_global_module, GLOBAL, STD};
 use std::convert::TryInto;
 use std::mem;
 use std::ptr;
@@ -86,9 +87,6 @@ pub struct Vm<I: Io + 'static> {
   /// A stack holding call frames currently in use
   frames: Vec<CallFrame>,
 
-  /// A collection of built in classes
-  builtin: BuiltInClasses,
-
   /// The vm's garbage collector
   gc: Gc,
 
@@ -105,26 +103,25 @@ pub struct Vm<I: Io + 'static> {
 impl<I: Io> Vm<I> {
   pub fn new(io: I) -> Vm<I> {
     let gc = Gc::new(Box::new(io.stdio()));
-    let module = gc.manage(
-      Module::new(
-        gc.manage_str(PLACEHOLDER_NAME.to_string(), &NO_GC),
-        gc.manage(PathBuf::from(PLACEHOLDER_NAME), &NO_GC),
-      ),
-      &NO_GC,
-    );
-    let fun = Fun::new(
-      gc.manage_str(String::from(PLACEHOLDER_NAME), &NO_GC),
-      module,
-    );
+    let mut no_gc_context = NoContext::new(&gc);
+    let hooks = GcHooks::new(&mut no_gc_context);
 
-    let managed_fun = gc.manage(fun, &NO_GC);
-    let closure = gc.manage(Closure::new(managed_fun), &NO_GC);
+    let cwd = io
+      .envio()
+      .current_dir()
+      .expect("Could not obtain the current working directory.");
+
+    let module = hooks.manage(Module::new(
+      hooks.manage_str(PLACEHOLDER_NAME.to_string()),
+      hooks.manage(PathBuf::from(PLACEHOLDER_NAME)),
+    ));
+    let fun = Fun::new(hooks.manage_str(String::from(PLACEHOLDER_NAME)), module);
+
+    let managed_fun = hooks.manage(fun);
+    let closure = hooks.manage(Closure::new(managed_fun));
 
     let frames = vec![CallFrame::new(closure); FRAME_MAX];
     let stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
-
-    let mut no_gc_context = NoContext::new(&gc);
-    let hooks = Hooks::new(&mut no_gc_context);
 
     let std_lib = create_std_lib(&hooks).expect("Standard library creation failed");
     let global = std_lib
@@ -137,30 +134,29 @@ impl<I: Io> Vm<I> {
       )
       .expect("Could not retrieve global module");
 
-    let builtin = builtin_from_std_lib(&hooks, &global)
+    let builtin = builtin_from_global_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let cwd = io
-      .envio()
-      .current_dir()
-      .expect("Could not obtain the current working directory.");
-
-    let mut dep_manager = hooks.manage(DepManager::new(io, hooks.manage(cwd)));
+    let mut dep_manager = hooks.manage(DepManager::new(io, builtin, hooks.manage(cwd)));
     dep_manager.add_package(std_lib);
 
     Vm {
       io,
       stack,
       frames,
-      builtin,
       gc,
       dep_manager,
       global,
     }
   }
 
+  /// Start the interactive repl
   pub fn repl(&mut self) {
     let stdio = self.io.stdio();
+
+    let main_module = self
+      .main_module(self.dep_manager.src_dir.join(PathBuf::from(REPL_MODULE)))
+      .expect("TODO");
 
     loop {
       let mut buffer = String::new();
@@ -170,61 +166,85 @@ impl<I: Io> Vm<I> {
 
       match stdio.read_line(&mut buffer) {
         Ok(_) => {
-          self.interpret(PathBuf::from(REPL_MODULE), &buffer);
+          self.interpret(main_module, &buffer);
         }
         Err(error) => panic!(error),
       }
     }
   }
 
+  /// Run the provided source file
   pub fn run(&mut self, module_path: PathBuf, source: &str) -> ExecuteResult {
-    self.interpret(module_path, source)
+    match self.io.fsio().canonicalize(&module_path) {
+      Ok(module_path) => {
+        let mut directory = module_path.clone();
+        directory.pop();
+
+        self.dep_manager.src_dir = self.gc.manage(directory, &NO_GC);
+        let main_module = match self.main_module(module_path) {
+          Ok(module) => module,
+          Err(err) => { return err; }
+        };
+
+        self.interpret(main_module, source)
+      }
+      Err(err) => {
+        self.io.stdio().println(&err.message);
+        ExecuteResult::RuntimeError
+      }
+    }
   }
 
   /// Interpret the provided spacelox script returning the execution result
-  fn interpret(&mut self, module_path: PathBuf, source: &str) -> ExecuteResult {
-    match module_path.file_stem() {
-      Some(module_os_name) => match module_os_name.to_str() {
-        Some(module_name) => {
-          let result = self.compile(module_name.to_string(), module_path, source);
+  fn interpret(&mut self, main_module: Managed<Module>, source: &str) -> ExecuteResult {
+    match self.compile(main_module, source) {
+      Ok(fun) => {
+        let script_closure = self.gc.manage(Closure::new(fun), &NO_GC);
+        let script = Value::from(script_closure);
 
-          if !result.success {
-            return ExecuteResult::CompileError;
-          }
+        let mut executor = VmExecutor::new(self, script);
+        executor.run(RunMode::Normal)
+      }
+      Err(()) => ExecuteResult::CompileError,
+    }
+  }
 
-          let script_closure = self.gc.manage(Closure::new(result.fun), &NO_GC);
-          let script = Value::from(script_closure);
-          let mut executor = VmExecutor::new(self, script);
-          executor.run(RunMode::Normal)
-        }
-        None => {
-          self
-            .io
-            .stdio()
-            .println("Unable to extract filename from script path.");
-          return ExecuteResult::RuntimeError;
-        }
-      },
+  /// Compile the provided spacelox source into the virtual machine's bytecode
+  fn compile(&mut self, module: Managed<Module>, source: &str) -> CompilerResult {
+    let mut parser = Parser::new(self.io.stdio(), source);
+
+    let mut compiler_context = NoContext::new(&self.gc);
+    let hooks = GcHooks::new(&mut compiler_context);
+
+    let compiler = Compiler::new(module, self.io, &mut parser, &hooks);
+    compiler.compile()
+  }
+
+  fn main_module(&self, module_path: PathBuf) -> Result<Managed<Module>, ExecuteResult> {
+    let no_gc_context = NoContext::new(&self.gc);
+    let hooks = GcHooks::new(&no_gc_context);
+
+    let module = match Module::from_path(&hooks, hooks.manage(module_path)) {
+      Some(module) => module,
       None => {
         self
           .io
           .stdio()
           .println("Unable to extract filename from script path.");
-        return ExecuteResult::RuntimeError;
+        return Err(ExecuteResult::RuntimeError);
+      }
+    };
+    let mut module = hooks.manage(module);
+
+    match self.global.transfer_exported(&hooks, &mut module) {
+      Ok(_) => {}
+      Err(_) => {
+        self.io.stdio().println("Transfer global module failed.");
+        return Err(ExecuteResult::RuntimeError);
       }
     }
-  }
 
-  /// Compile the provided spacelox source into the virtual machine's bytecode
-  fn compile(&mut self, name: String, path: PathBuf, source: &str) -> CompilerResult {
-    let mut parser = Parser::new(self.io.stdio(), source);
-
-    let mut compiler_context = NoContext::new(&self.gc);
-    let hooks = Hooks::new(&mut compiler_context);
-
-    let module = hooks.manage(Module::new(hooks.manage_str(name), hooks.manage(path)));
-    let compiler = Compiler::new(module, self.io, &mut parser, &hooks);
-    compiler.compile()
+    Ok(module)
   }
 }
 
@@ -234,7 +254,7 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
   fn from(dependencies: VmDependencies<I>) -> Self {
     let gc = dependencies.gc;
     let mut no_gc_context = NoContext::new(&gc);
-    let hooks = Hooks::new(&mut no_gc_context);
+    let hooks = GcHooks::new(&mut no_gc_context);
 
     let std_lib = dependencies.std_lib;
     let global = std_lib
@@ -247,7 +267,7 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
       )
       .expect("Could not retrieve global module");
 
-    let builtin = builtin_from_std_lib(&hooks, &global)
+    let builtin = builtin_from_global_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
     let cwd = dependencies
@@ -255,7 +275,9 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
       .envio()
       .current_dir()
       .expect("Could not obtain the current working directory.");
-    let mut dep_manager = hooks.manage(DepManager::new(dependencies.io, hooks.manage(cwd)));
+
+    let mut dep_manager =
+      hooks.manage(DepManager::new(dependencies.io, builtin, hooks.manage(cwd)));
     dep_manager.add_package(std_lib);
 
     Vm {
@@ -264,7 +286,6 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
       frames: dependencies.frames,
       gc,
       dep_manager,
-      builtin,
       global,
     }
   }
@@ -282,9 +303,6 @@ struct VmExecutor<'a, I: Io + 'static> {
 
   /// the standard lib package
   dep_manager: Managed<DepManager<I>>,
-
-  /// A collection of built in classes
-  builtin: &'a BuiltInClasses,
 
   /// A reference to a object currently in the vm
   gc: &'a mut Gc,
@@ -334,7 +352,6 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       current_frame,
       current_module,
       current_error: None,
-      builtin: &vm.builtin,
       gc: &mut vm.gc,
       io: &mut vm.io,
       stack_top,
@@ -348,7 +365,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     let mut current_module = executor.current_module;
     vm.global
-      .transfer_exported(&Hooks::new(&mut executor), &mut current_module)
+      .transfer_exported(&GcHooks::new(&mut executor), &mut current_module)
       .expect("Transfer global module failed");
 
     match result {
@@ -398,7 +415,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     method_name: Managed<String>,
     args: &[Value],
   ) -> ExecuteResult {
-    let class = this.value_class(self.builtin);
+    let class = this.value_class(self.dep_manager.primitive_classes());
 
     self.push(this);
     for arg in args {
@@ -710,7 +727,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       }
     }
 
-    let class = receiver.value_class(&self.builtin);
+    let class = receiver.value_class(&self.dep_manager.primitive_classes());
     self.invoke_from_class(class, method_name, arg_count)
   }
 
@@ -749,7 +766,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     let peek = self.peek(1);
     if peek.is_class() {
-      class.inherit(&Hooks::new(self), peek.to_class());
+      class.inherit(&GcHooks::new(self), peek.to_class());
 
       self.drop();
       Signal::Ok
@@ -789,7 +806,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let name = self.read_string(slot);
     let global = self.pop();
     let mut current_module = self.current_module;
-    current_module.insert_symbol(&Hooks::new(self), name, global);
+    current_module.insert_symbol(&GcHooks::new(self), name, global);
     Signal::Ok
   }
 
@@ -846,10 +863,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     let mut current_module = self.current_module;
     if current_module
-      .insert_symbol(&Hooks::new(self), string, peek)
+      .insert_symbol(&GcHooks::new(self), string, peek)
       .is_none()
     {
-      current_module.remove_symbol(&Hooks::new(self), string);
+      current_module.remove_symbol(&GcHooks::new(self), string);
       return self.runtime_error(&format!("Undefined variable {}", string.as_str()));
     }
 
@@ -874,7 +891,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     if value.is_instance() {
       let mut instance = value.to_instance();
       let value = self.peek(0);
-      instance.set_field(&Hooks::new(self), name, value);
+      instance.set_field(&GcHooks::new(self), name, value);
 
       let popped = self.pop();
       self.drop();
@@ -1022,7 +1039,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       _ => (),
     }
 
-    let class = self.builtin.for_variant(value, kind);
+    let class = self
+      .dep_manager
+      .primitive_classes()
+      .for_variant(value, kind);
     self.bind_method(class, name)
   }
 
@@ -1033,13 +1053,14 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let mut dep_manager = self.dep_manager;
     let current_module = self.current_module;
 
-    match dep_manager
-      .import(&Hooks::new(self), current_module, path) {
-        Ok(module) => {
-          self.push(Value::from(self.gc.manage(module.import(), self)));
-          Signal::Ok
-        }
-        Err(error) => { self.set_error(error) }
+    match dep_manager.import(&GcHooks::new(self), current_module, path) {
+      Ok(module) => {
+        self.push(Value::from(
+          self.gc.manage(module.import(&GcHooks::new(self)), self),
+        ));
+        Signal::Ok
+      }
+      Err(error) => self.set_error(error),
     }
   }
 
@@ -1048,7 +1069,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let name = self.read_string(index);
     let mut copy = self.current_module;
 
-    match copy.export_symbol(&Hooks::new(self), name) {
+    match copy.export_symbol(&GcHooks::new(self), name) {
       Ok(_) => Signal::Ok,
       Err(err) => self.set_error(err),
     }
@@ -1182,7 +1203,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let method = self.peek(0);
 
     if class.is_class() && method.is_closure() {
-      class.to_class().add_method(&Hooks::new(self), name, method);
+      class
+        .to_class()
+        .add_method(&GcHooks::new(self), name, method);
     } else {
       panic!("Internal spacelox error. stack invalid for op_method.");
     }
@@ -1606,7 +1629,6 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
     });
 
     self.current_module.trace();
-    self.builtin.trace();
     self.dep_manager.trace();
     self.global.trace();
 
@@ -1635,7 +1657,6 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
     });
 
     self.current_module.trace_debug(stdio);
-    self.builtin.trace_debug(stdio);
     self.dep_manager.trace_debug(stdio);
     self.global.trace_debug(stdio);
 
@@ -1644,10 +1665,22 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
 }
 
 impl<'a, I: Io> HookContext for VmExecutor<'a, I> {
+  fn gc_context(&self) -> &dyn GcContext {
+    self
+  }
+
+  fn call_context(&mut self) -> &mut dyn CallContext {
+    self
+  }
+}
+
+impl<'a, I: Io> GcContext for VmExecutor<'a, I> {
   fn gc(&self) -> &Gc {
     self.gc
   }
+}
 
+impl<'a, I: Io> CallContext for VmExecutor<'a, I> {
   fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
     let result = self.run_fun(callable, args);
     self.to_call_result(result)

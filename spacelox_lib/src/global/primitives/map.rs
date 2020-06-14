@@ -3,10 +3,10 @@ use crate::support::{export_and_insert, to_dyn_method};
 use hashbrown::hash_map::Iter;
 use spacelox_core::{
   arity::ArityKind,
-  hooks::Hooks,
+  hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
   object::{Class, SlHashMap, SlVec},
   package::Package,
   value::{Value, VALUE_NIL},
@@ -21,27 +21,54 @@ use std::mem;
 
 pub const MAP_CLASS_NAME: &'static str = "Map";
 
-const MAP_GET: NativeMeta = NativeMeta::new("get", ArityKind::Fixed(1));
-const MAP_HAS: NativeMeta = NativeMeta::new("has", ArityKind::Fixed(1));
-const MAP_INSERT: NativeMeta = NativeMeta::new("insert", ArityKind::Fixed(2));
-const MAP_REMOVE: NativeMeta = NativeMeta::new("remove", ArityKind::Fixed(1));
-const MAP_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
-const MAP_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
-const MAP_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0));
+const MAP_GET: NativeMeta = NativeMeta::new(
+  "get",
+  ArityKind::Fixed(1),
+  &[Parameter::new("key", ParameterKind::Any)],
+);
+const MAP_HAS: NativeMeta = NativeMeta::new(
+  "has",
+  ArityKind::Fixed(1),
+  &[Parameter::new("key", ParameterKind::Any)],
+);
+const MAP_INSERT: NativeMeta = NativeMeta::new(
+  "insert",
+  ArityKind::Fixed(2),
+  &[
+    Parameter::new("key", ParameterKind::Any),
+    Parameter::new("val", ParameterKind::Any),
+  ],
+);
+const MAP_REMOVE: NativeMeta = NativeMeta::new(
+  "remove",
+  ArityKind::Fixed(1),
+  &[Parameter::new("key", ParameterKind::Any)],
+);
+const MAP_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0), &[]);
+const MAP_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
+const MAP_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0), &[]);
 
-pub fn declare_map_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_map_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
-pub fn define_map_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = Value::from(hooks.manage_str(String::from(MAP_CLASS_NAME)));
-  let mut class = self_module.import().get(&name).unwrap().to_class();
+pub fn define_map_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
+  let mut class = self_module
+    .import(hooks)
+    .get_field(&name)
+    .unwrap()
+    .to_class();
 
-  let map_iter_name = Value::from(hooks.manage_str(String::from(ITER_CLASS_NAME)));
-  let map_iter_class = self_module.import().get(&map_iter_name).unwrap().to_class();
+  let map_iter_name = hooks.manage_str(String::from(ITER_CLASS_NAME));
+  let map_iter_class = self_module
+    .import(hooks)
+    .get_field(&map_iter_name)
+    .unwrap()
+    .to_class();
 
   class.add_method(
     hooks,

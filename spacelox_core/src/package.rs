@@ -1,5 +1,5 @@
-use crate::{hooks::Hooks, module::Module, object::SlHashMap, PackageResult};
-use hashbrown::hash_map::Entry;
+use crate::{hooks::GcHooks, module::Module, object::SlHashMap, PackageResult};
+use hashbrown::hash_map::{Entry, Iter};
 use spacelox_env::{
   managed::{Manage, Managed, Trace},
   stdio::StdIo,
@@ -16,14 +16,14 @@ impl Import {
     Self(path)
   }
 
-  /// Get the package name 
+  /// Get the package name
   pub fn package(&self) -> Option<Managed<String>> {
-    self.0.first().map(|segment| *segment)
+    self.0.first().copied()
   }
 
-  pub fn from_strs(hooks: &Hooks, path: &str) -> Self {
+  pub fn from_strs(hooks: &GcHooks, path: &str) -> Self {
     let path = path
-      .split("/")
+      .split('/')
       .map(|segment| hooks.manage_str(String::from(segment)))
       .collect();
 
@@ -43,7 +43,7 @@ impl Import {
 
 /// Enum of the entities in a package
 #[derive(Clone)]
-enum PackageEntity {
+pub enum PackageEntity {
   /// A module in a package
   Module(Managed<Module>),
 
@@ -75,7 +75,7 @@ impl Package {
   }
 
   /// Add a module to this package
-  pub fn add_module(&mut self, hooks: &Hooks, module: Managed<Module>) -> PackageResult<()> {
+  pub fn add_module(&mut self, hooks: &GcHooks, module: Managed<Module>) -> PackageResult<()> {
     match self.entities.entry(module.name) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
         "Cannot add module {} to package {}",
@@ -89,7 +89,11 @@ impl Package {
   }
 
   /// Add a sub package to this package
-  pub fn add_package(&mut self, hooks: &Hooks, sub_package: Managed<Package>) -> PackageResult<()> {
+  pub fn add_package(
+    &mut self,
+    hooks: &GcHooks,
+    sub_package: Managed<Package>,
+  ) -> PackageResult<()> {
     match self.entities.entry(sub_package.name) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
         "Cannot add sub package {} to package {}",
@@ -102,10 +106,15 @@ impl Package {
     }
   }
 
+  /// Get an iterator to the elements in this package
+  pub fn entities(&self) -> Iter<'_, Managed<String>, PackageEntity> {
+    self.entities.iter()
+  }
+
   /// Get a set of symbols from this package using a requested import. This
   /// operation can fail if some or all of the symbols are not found.
-  pub fn import(&self, hooks: &Hooks, import: Import) -> PackageResult<Managed<Module>> {
-    if import.0.len() == 0 {
+  pub fn import(&self, hooks: &GcHooks, import: Import) -> PackageResult<Managed<Module>> {
+    if import.0.is_empty() {
       panic!("No path in import");
     }
 
@@ -118,12 +127,16 @@ impl Package {
 
   /// Get a set of symbols from this packages using a requested. This method
   /// is used internally to track how far down the import path has currently been resolved
-  fn _import(&self, hooks: &Hooks, depth: usize, import: Import) -> PackageResult<Managed<Module>> {
+  fn _import(
+    &self,
+    hooks: &GcHooks,
+    depth: usize,
+    import: Import,
+  ) -> PackageResult<Managed<Module>> {
     if depth >= import.0.len() {
       return Err(hooks.make_error(format!("Could not resolve module {}", import.path_str())));
     }
 
-    println!("here");
     let key = import.0[depth];
     match self.entities.get(&key) {
       Some(entity) => match entity {
@@ -195,13 +208,11 @@ impl Manage for Package {
 
 #[cfg(test)]
 mod test {
-  use super::*;
-
   #[test]
   fn new() {
     use crate::package::Package;
     use spacelox_env::memory::{Gc, NO_GC};
-        
+
     let gc = Gc::default();
     Package::new(gc.manage_str("example".to_string(), &NO_GC));
   }
@@ -210,88 +221,94 @@ mod test {
   fn name() {
     use crate::package::Package;
     use spacelox_env::memory::{Gc, NO_GC};
-        
+
     let gc = Gc::default();
     let package = Package::new(gc.manage_str("example".to_string(), &NO_GC));
-        
+
     assert_eq!(&*package.name(), "example");
   }
 
   #[test]
   fn add_module() {
-    use crate::package::Package;
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
-    use crate::hooks::{NoContext, Hooks};
-    use spacelox_env::memory::{Gc};
+    use crate::package::Package;
+    use spacelox_env::memory::Gc;
     use std::path::PathBuf;
-        
+
     let gc = Gc::default();
     let mut context = NoContext::new(&gc);
-    let hooks = Hooks::new(&mut context);
-        
+    let hooks = GcHooks::new(&mut context);
+
     let mut package = Package::new(hooks.manage_str("package".to_string()));
     let module = hooks.manage(Module::new(
       hooks.manage_str("module".to_string()),
-      hooks.manage(PathBuf::from("self/module.lox"))
+      hooks.manage(PathBuf::from("self/module.lox")),
     ));
-        
+
     let result1 = package.add_module(&hooks, module.clone());
     let result2 = package.add_module(&hooks, module);
-        
+
     assert_eq!(result1.is_ok(), true);
     assert_eq!(result2.is_err(), true);
   }
 
   #[test]
   fn add_package() {
+    use crate::hooks::{GcHooks, NoContext};
     use crate::package::Package;
-    use crate::hooks::{NoContext, Hooks};
-    use spacelox_env::memory::{Gc};
-    
+    use spacelox_env::memory::Gc;
+
     let gc = Gc::default();
     let mut context = NoContext::new(&gc);
-    let hooks = Hooks::new(&mut context);
-    
+    let hooks = GcHooks::new(&mut context);
+
     let mut package = Package::new(hooks.manage_str("package".to_string()));
     let sub_package = hooks.manage(Package::new(hooks.manage_str("sub_module".to_string())));
-    
+
     let result1 = package.add_package(&hooks, sub_package);
     let result2 = package.add_package(&hooks, sub_package);
-    
+
     assert_eq!(result1.is_ok(), true);
     assert_eq!(result2.is_err(), true);
   }
 
   #[test]
   fn import() {
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
-    use crate::package::{Package, Import};
+    use crate::package::{Import, Package};
     use crate::value::Value;
-    use crate::hooks::{NoContext, Hooks};
     use spacelox_env::memory::Gc;
     use std::path::PathBuf;
 
     let gc = Gc::default();
     let mut context = NoContext::new(&gc);
-    let hooks = Hooks::new(&mut context);
-    
-    let mut module = hooks.manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("my_package/my_module.lox"))).unwrap());
+    let hooks = GcHooks::new(&mut context);
+
+    let mut module = hooks.manage(
+      Module::from_path(
+        &hooks,
+        hooks.manage(PathBuf::from("my_package/my_module.lox")),
+      )
+      .unwrap(),
+    );
     let export_name = hooks.manage_str("exported".to_string());
     module.insert_symbol(&hooks, export_name, Value::from(true));
     assert!(module.export_symbol(&hooks, export_name).is_ok());
-    
+
     let mut package = Package::new(hooks.manage_str("my_package".to_string()));
     assert!(package.add_module(&hooks, module).is_ok());
-    
+
     let successful = Import::from_strs(&hooks, "my_package/my_module");
     let failing = Import::from_strs(&hooks, "my_package/not_my_module");
-    
+
     let symbols1 = package.import(&hooks, successful);
     let symbols2 = package.import(&hooks, failing);
-    
+
     assert_eq!(symbols1.is_ok(), true);
     assert_eq!(symbols2.is_err(), true);
-    
+
     if let Ok(result) = symbols1 {
       assert_eq!(result.len(), 1);
       assert_eq!(*result.get_symbol(export_name).unwrap(), Value::from(true));

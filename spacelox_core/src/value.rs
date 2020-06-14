@@ -1,4 +1,3 @@
-
 pub struct Nil();
 
 /// Enum of value types in spacelox
@@ -33,11 +32,11 @@ mod unboxed {
   use crate::{
     iterator::SlIterator,
     native::{NativeFun, NativeMethod},
-    object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, Upvalue, SlVec, SlHashMap},
+    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, Method, SlHashMap, SlVec, Upvalue},
   };
   use spacelox_env::{
-    stdio::StdIo,
     managed::{Managed, Trace},
+    stdio::StdIo,
   };
   use std::fmt;
   use std::hash::Hash;
@@ -261,7 +260,7 @@ mod unboxed {
     /// use spacelox_core::value::Value;
     /// use spacelox_core::object::SlVec;
     /// use spacelox_env::managed::{Allocation, Managed};
-    /// 
+    ///
     /// use std::ptr::NonNull;
     ///
     /// let list = SlVec::from(vec![Value::Nil]);
@@ -330,7 +329,7 @@ mod unboxed {
     /// let gc = Gc::default();
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
-    /// 
+    ///
     /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.lox"))));
     /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
     /// let managed = hooks.manage(fun);
@@ -540,7 +539,7 @@ mod unboxed {
     }
 
     /// Get the class associated with this value
-    pub fn value_class(&self, builtin: &BuiltInClasses) -> Managed<Class> {
+    pub fn value_class(&self, builtin: &BuiltinPrimitives) -> Managed<Class> {
       match self {
         Value::Nil => builtin.nil,
         Value::Bool(_) => builtin.bool,
@@ -901,7 +900,7 @@ mod boxed {
   use crate::{
     iterator::SlIterator,
     native::{NativeFun, NativeMethod},
-    object::{BuiltInClasses, Class, Closure, Fun, Instance, Method, SlHashMap, SlVec, Upvalue},
+    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, Method, SlHashMap, SlVec, Upvalue},
   };
   use spacelox_env::{
     managed::{Allocation, Manage, Managed, Trace},
@@ -1190,7 +1189,7 @@ mod boxed {
     }
 
     /// Get the class associated with this value
-    pub fn value_class(&self, builtin: &BuiltInClasses) -> Managed<Class> {
+    pub fn value_class(&self, builtin: &BuiltinPrimitives) -> Managed<Class> {
       match self.kind() {
         ValueVariant::Nil => builtin.nil,
         ValueVariant::Bool => builtin.bool,

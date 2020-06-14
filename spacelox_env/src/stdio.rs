@@ -12,8 +12,8 @@ pub trait StdIo {
 #[derive(Debug, Clone)]
 pub struct NativeStdIo();
 
-impl NativeStdIo {
-  pub fn new() -> Self {
+impl Default for NativeStdIo {
+  fn default() -> Self {
     Self()
   }
 }

@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use spacelox_core::hooks::{Hooks, NoContext};
+use spacelox_core::hooks::{GcHooks, NoContext};
 use spacelox_core::module::Module;
 use spacelox_env::{
   io::{Io, NativeIo},
@@ -33,15 +33,13 @@ fn load_source(dir: &str) -> String {
 fn compile_source(source: &str) {
   let gc = Gc::default();
   let mut context = NoContext::new(&gc);
-  let hooks = Hooks::new(&mut context);
-  let module = hooks.manage(Module::new(
-    hooks.manage_str("Benchmark".to_string()),
-    hooks.manage(PathBuf::from("./Benchmark.lox"))
-  ));
+  let hooks = GcHooks::new(&mut context);
+  let module = hooks
+    .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("./Benchmark.lox"))).unwrap());
   let io = NativeIo::default();
   let mut parser = Parser::new(io.stdio(), source);
   let compiler = Compiler::new(module, io, &mut parser, &hooks);
-  compiler.compile();
+  compiler.compile().unwrap();
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

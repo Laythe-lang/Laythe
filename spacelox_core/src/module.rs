@@ -1,4 +1,9 @@
-use crate::{hooks::Hooks, object::SlHashMap, value::Value, ModuleResult, SlHashSet};
+use crate::{
+  hooks::GcHooks,
+  object::{Class, Instance, SlHashMap},
+  value::Value,
+  ModuleResult, SlHashSet,
+};
 use spacelox_env::{
   managed::{Manage, Managed, Trace},
   stdio::StdIo,
@@ -14,6 +19,9 @@ pub struct Module {
 
   /// The full filepath to this module
   pub path: Managed<PathBuf>,
+
+  /// The class that represents this module when imported
+  module_class: Option<Managed<Class>>,
 
   /// A key value set of named exports from the provided modules
   exports: SlHashSet<Managed<String>>,
@@ -42,6 +50,7 @@ impl Module {
     Module {
       name,
       path,
+      module_class: None,
       exports: SlHashSet::default(),
       symbols: SlHashMap::default(),
     }
@@ -53,12 +62,12 @@ impl Module {
   /// ```
   /// use spacelox_core::module::Module;
   /// use spacelox_env::memory::{Gc, NO_GC};
-  /// use spacelox_core::hooks::{NoContext, Hooks};
+  /// use spacelox_core::hooks::{NoContext, GcHooks};
   /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
-  /// let hooks = Hooks::new(&mut context);
+  /// let hooks = GcHooks::new(&mut context);
   ///
   /// let path = hooks.manage(PathBuf::from("self/path.lox"));
   /// let module = Module::from_path(
@@ -66,8 +75,9 @@ impl Module {
   ///   path,
   /// );
   /// ```
-  pub fn from_path(hooks: &Hooks, path: Managed<PathBuf>) -> Option<Self> {
-    let module_name = path.file_stem()
+  pub fn from_path(hooks: &GcHooks, path: Managed<PathBuf>) -> Option<Self> {
+    let module_name = path
+      .file_stem()
       .and_then(|m| m.to_str())
       .map(|m| m.to_string())?;
 
@@ -76,6 +86,7 @@ impl Module {
     Some(Self {
       name,
       path,
+      module_class: None,
       exports: SlHashSet::default(),
       symbols: SlHashMap::default(),
     })
@@ -88,12 +99,12 @@ impl Module {
   /// use spacelox_core::module::Module;
   /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
-  /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use spacelox_core::hooks::{NoContext, GcHooks, HookContext};
   /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
-  /// let hooks = Hooks::new(&mut context);
+  /// let hooks = GcHooks::new(&mut context);
   ///
   /// let mut module = Module::new(
   ///   hooks.manage_str("module".to_string()),
@@ -109,7 +120,7 @@ impl Module {
   /// assert_eq!(result1.is_ok(), true);
   /// assert_eq!(result2.is_err(), true);
   /// ```
-  pub fn export_symbol(&mut self, hooks: &Hooks, name: Managed<String>) -> ModuleResult<()> {
+  pub fn export_symbol(&mut self, hooks: &GcHooks, name: Managed<String>) -> ModuleResult<()> {
     if self.exports.contains(&name) {
       Err(hooks.make_error(format!(
         "{} has already been exported from {}",
@@ -128,12 +139,12 @@ impl Module {
   /// use spacelox_core::module::Module;
   /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
-  /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use spacelox_core::hooks::{NoContext, GcHooks, HookContext};
   /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
-  /// let hooks = Hooks::new(&mut context);
+  /// let hooks = GcHooks::new(&mut context);
   ///
   /// let mut module = Module::new(
   ///   hooks.manage_str("module".to_string()),
@@ -144,22 +155,29 @@ impl Module {
   /// module.insert_symbol(&hooks, export_name, Value::from(true));
   /// module.export_symbol(&hooks, export_name);
   ///
-  /// let symbols = module.import();
+  /// let symbols = module.import(&hooks);
   ///
-  /// assert_eq!(symbols.len(), 1);
-  ///
-  /// if let Some(result) = symbols.get(&Value::from(export_name)) {
+  /// if let Some(result) = symbols.get_field(&export_name) {
   ///   assert_eq!(*result, Value::from(true));
   /// } else {
   ///   assert!(false);
   /// }
   /// ```
-  pub fn import(&self) -> SlHashMap<Value, Value> {
-    let mut import = SlHashMap::default();
+  pub fn import(&self, hooks: &GcHooks) -> Instance {
+    let class = match self.module_class {
+      Some(class) => class,
+      None => {
+        let class = hooks.manage(Class::new(self.name));
+        class
+      }
+    };
+
+    let mut import = Instance::new(class);
 
     self.exports.iter().for_each(|export| {
-      import.insert(
-        Value::from(*export),
+      import.set_field(
+        hooks,
+        *export,
         *self
           .symbols
           .get(export)
@@ -177,12 +195,12 @@ impl Module {
   /// use spacelox_core::module::Module;
   /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
-  /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use spacelox_core::hooks::{NoContext, GcHooks, HookContext};
   /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
-  /// let hooks = Hooks::new(&mut context);
+  /// let hooks = GcHooks::new(&mut context);
   ///
   /// let mut module = Module::new(
   ///   hooks.manage_str("module".to_string()),
@@ -202,7 +220,7 @@ impl Module {
   /// ```
   pub fn insert_symbol(
     &mut self,
-    hooks: &Hooks,
+    hooks: &GcHooks,
     name: Managed<String>,
     symbol: Value,
   ) -> Option<Value> {
@@ -216,12 +234,12 @@ impl Module {
   /// use spacelox_core::module::Module;
   /// use spacelox_env::memory::{Gc};
   /// use spacelox_core::value::Value;
-  /// use spacelox_core::hooks::{NoContext, Hooks, HookContext};
+  /// use spacelox_core::hooks::{NoContext, GcHooks, HookContext};
   /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
-  /// let hooks = Hooks::new(&mut context);
+  /// let hooks = GcHooks::new(&mut context);
   ///
   /// let mut module = Module::new(
   ///   hooks.manage_str("module".to_string()),
@@ -242,12 +260,18 @@ impl Module {
     self.symbols.get(&name)
   }
 
+  /// how many symbols are in this module
   pub fn len(&self) -> usize {
     self.symbols.len()
   }
 
+  /// Is this module empty
+  pub fn is_empty(&self) -> bool {
+    self.symbols.is_empty()
+  }
+
   /// Remove a symbol from this module
-  pub fn remove_symbol(&mut self, hooks: &Hooks, name: Managed<String>) {
+  pub fn remove_symbol(&mut self, hooks: &GcHooks, name: Managed<String>) {
     hooks.shrink(self, |module| {
       module.symbols.remove(&name);
       module.exports.remove(&name);
@@ -255,7 +279,7 @@ impl Module {
   }
 
   /// Transfer the export symbols to another module
-  pub fn transfer_exported(&self, hooks: &Hooks, other: &mut Module) -> ModuleResult<()> {
+  pub fn transfer_exported(&self, hooks: &GcHooks, other: &mut Module) -> ModuleResult<()> {
     for export in &self.exports {
       other.insert_symbol(
         hooks,

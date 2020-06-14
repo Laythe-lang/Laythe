@@ -148,3 +148,13 @@ fn method() -> Result<(), std::io::Error> {
 
   test_files(&vec![], ExecuteResult::RuntimeError)
 }
+
+#[test]
+fn str() -> Result<(), std::io::Error> {
+  test_files(
+    &vec!["std_lib/builtin/str/str.lox", "std_lib/builtin/str/has.lox"],
+    ExecuteResult::Ok,
+  )?;
+
+  test_files(&vec![], ExecuteResult::RuntimeError)
+}

@@ -1,7 +1,7 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
-  hooks::Hooks,
+  hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::Class,
@@ -12,18 +12,22 @@ use spacelox_core::{
 use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const NIL_CLASS_NAME: &'static str = "Nil";
-const NIL_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
+const NIL_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
 
-pub fn declare_nil_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_nil_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(NIL_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
-pub fn define_nil_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = Value::from(hooks.manage_str(String::from(NIL_CLASS_NAME)));
-  let mut class = self_module.import().get(&name).unwrap().to_class();
+pub fn define_nil_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(NIL_CLASS_NAME));
+  let mut class = self_module
+    .import(hooks)
+    .get_field(&name)
+    .unwrap()
+    .to_class();
 
   class.add_method(
     hooks,

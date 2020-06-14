@@ -1,87 +1,77 @@
 #![deny(clippy::all)]
-use assert::create_assert_funs;
-use builtin::{
-  bool::BOOL_CLASS_NAME, class::CLASS_CLASS_NAME, closure::CLOSURE_CLASS_NAME,
-  create_builtin_classes, list::LIST_CLASS_NAME, map::MAP_CLASS_NAME, method::METHOD_CLASS_NAME,
-  native_fun::NATIVE_FUN_CLASS_NAME, native_method::NATIVE_METHOD_CLASS_NAME, nil::NIL_CLASS_NAME,
-  number::NUMBER_CLASS_NAME, string::STRING_CLASS_NAME,
-};
-use spacelox_core::{
-  hooks::Hooks, module::Module, object::BuiltInClasses, package::Package, ModuleResult,
-  PackageResult,
-};
-use spacelox_env::managed::Managed;
-use std::path::PathBuf;
-use time::create_clock_funs;
-pub mod assert;
-pub mod builtin;
+pub mod global;
+mod math;
 mod support;
-pub mod time;
 
-pub const STD: &'static str = "std";
-pub const GLOBAL: &'static str = "global";
-pub const GLOBAL_PATH: &'static str = "std/global.lox";
+use global::create_global;
+use math::create_math;
+use spacelox_core::{hooks::GcHooks, package::Package, PackageResult};
+use spacelox_env::managed::Managed;
 
-pub fn create_std_lib(hooks: &Hooks) -> PackageResult<Managed<Package>> {
+pub const STD: &str = "std";
+pub const GLOBAL: &str = "global";
+pub const GLOBAL_PATH: &str = "std/global.lox";
+
+pub fn create_std_lib(hooks: &GcHooks) -> PackageResult<Managed<Package>> {
   let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
 
   let global = create_global(hooks, std)?;
+  let math = create_math(hooks, std)?;
+
   std.add_module(hooks, global)?;
+  std.add_module(hooks, math)?;
 
   Ok(std)
 }
 
-fn create_global(hooks: &Hooks, std: Managed<Package>) -> ModuleResult<Managed<Module>> {
-  let global = hooks.manage(Module::new(
-    hooks.manage_str(GLOBAL.to_string()),
-    hooks.manage(PathBuf::from(GLOBAL_PATH)),
-  ));
+#[cfg(test)]
+mod test {
+  use super::*;
+  use crate::support::{test_native_dependencies, TestContext};
+  use spacelox_core::{arity::ArityKind, package::PackageEntity, value::ValueVariant};
 
-  create_builtin_classes(hooks, global, std)?;
-  create_assert_funs(hooks, global, std)?;
-  create_clock_funs(hooks, global, std)?;
+  fn check_inner(hooks: &GcHooks, package: Managed<Package>) {
+    package.entities().for_each(|(_key, entity)| match entity {
+      PackageEntity::Module(module) => {
+        let import = module.import(hooks);
+        import.fields().for_each(|(_key, symbol)| {
+          let option = match symbol.clone().kind() {
+            ValueVariant::NativeFun => Some(symbol.to_native_fun().meta().clone()),
+            ValueVariant::NativeMethod => Some(symbol.to_native_method().meta().clone()),
+            _ => None,
+          };
 
-  Ok(global)
-}
+          if let Some(fun_meta) = option {
+            match fun_meta.arity {
+              ArityKind::Default(_, total_count) => {
+                assert_eq!(fun_meta.parameters.len(), total_count as usize);
+              }
+              ArityKind::Fixed(count) => {
+                assert_eq!(fun_meta.parameters.len(), count as usize);
+              }
+              ArityKind::Variadic(min_count) => {
+                assert_eq!(fun_meta.parameters.len(), min_count as usize + 1);
+              }
+            }
+          }
+        });
+      }
+      PackageEntity::Package(package) => {
+        check_inner(hooks, *package);
+      }
+    })
+  }
 
-pub fn builtin_from_std_lib(hooks: &Hooks, module: &Module) -> Option<BuiltInClasses> {
-  Some(BuiltInClasses {
-    nil: module
-      .get_symbol(hooks.manage_str(NIL_CLASS_NAME.to_string()))?
-      .to_class(),
-    bool: module
-      .get_symbol(hooks.manage_str(BOOL_CLASS_NAME.to_string()))?
-      .to_class(),
-    class: module
-      .get_symbol(hooks.manage_str(CLASS_CLASS_NAME.to_string()))?
-      .to_class(),
-    number: module
-      .get_symbol(hooks.manage_str(NUMBER_CLASS_NAME.to_string()))?
-      .to_class(),
-    string: module
-      .get_symbol(hooks.manage_str(STRING_CLASS_NAME.to_string()))?
-      .to_class(),
-    list: module
-      .get_symbol(hooks.manage_str(LIST_CLASS_NAME.to_string()))?
-      .to_class(),
-    map: module
-      .get_symbol(hooks.manage_str(MAP_CLASS_NAME.to_string()))?
-      .to_class(),
-    closure: module
-      .get_symbol(hooks.manage_str(CLOSURE_CLASS_NAME.to_string()))?
-      .to_class(),
-    method: module
-      .get_symbol(hooks.manage_str(METHOD_CLASS_NAME.to_string()))?
-      .to_class(),
-    native_fun: module
-      .get_symbol(hooks.manage_str(NATIVE_FUN_CLASS_NAME.to_string()))?
-      .to_class(),
-    native_method: module
-      .get_symbol(hooks.manage_str(NATIVE_METHOD_CLASS_NAME.to_string()))?
-      .to_class(),
-  })
-}
+  #[test]
+  fn new() {
+    let gc = test_native_dependencies();
+    let mut context = TestContext::new(&gc, &[]);
+    let hooks = GcHooks::new(&mut context);
 
-pub fn assert_function_same_interface(_builtin: &BuiltInClasses) -> bool {
-  true
+    let std_lib = create_std_lib(&hooks);
+    assert!(std_lib.is_ok());
+
+    let std_lib = std_lib.unwrap();
+    check_inner(&hooks, std_lib);
+  }
 }

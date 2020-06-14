@@ -1,4 +1,4 @@
-use spacelox_core::hooks::{Hooks, NoContext};
+use spacelox_core::hooks::{GcHooks, NoContext};
 use spacelox_core::module::Module;
 use spacelox_env::{
   io::{Io, NativeIo},
@@ -28,15 +28,14 @@ fn main() {
       for _ in 0..1000000 {
         let gc = Gc::default();
         let mut context = NoContext::new(&gc);
-        let hooks = Hooks::new(&mut context);
+        let hooks = GcHooks::new(&mut context);
         let io = NativeIo::default();
         let mut parser = Parser::new(io.stdio(), &source);
-        let module = hooks.manage(Module::new(
-          hooks.manage_str("Benchmark".to_string()),
-          hooks.manage(PathBuf::from("/Benchmark.lox"))
-        ));
+        let module =
+          Module::from_path(&hooks, hooks.manage(PathBuf::from("/Benchmark.lox"))).unwrap();
+        let module = hooks.manage(module);
         let compiler = Compiler::new(module, io, &mut parser, &hooks);
-        compiler.compile();
+        compiler.compile().unwrap();
       }
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));
     }

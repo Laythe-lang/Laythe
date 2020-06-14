@@ -1,17 +1,17 @@
 use spacelox_core::{
-  hooks::Hooks, module::Module, native::NativeMethod, value::Value, ModuleResult,
+  hooks::GcHooks, module::Module, native::NativeMethod, value::Value, ModuleResult,
 };
 use spacelox_env::managed::Managed;
 
 pub fn to_dyn_method<T: 'static + NativeMethod>(
-  hooks: &Hooks,
+  hooks: &GcHooks,
   method: T,
 ) -> Managed<Box<dyn NativeMethod>> {
   hooks.manage(Box::new(method) as Box<dyn NativeMethod>)
 }
 
 pub fn export_and_insert(
-  hooks: &Hooks,
+  hooks: &GcHooks,
   module: &mut Module,
   name: Managed<String>,
   symbol: Value,
@@ -27,7 +27,7 @@ pub use self::test::*;
 mod test {
   use spacelox_core::{
     arity::ArityKind,
-    hooks::{HookContext, Hooks},
+    hooks::{CallContext, GcContext, GcHooks, HookContext},
     module::Module,
     object::Fun,
     value::{Value, ValueVariant},
@@ -59,10 +59,22 @@ mod test {
   }
 
   impl<'a> HookContext for TestContext<'a> {
+    fn gc_context(&self) -> &dyn GcContext {
+      self
+    }
+
+    fn call_context(&mut self) -> &mut dyn CallContext {
+      self
+    }
+  }
+
+  impl<'a> GcContext for TestContext<'a> {
     fn gc(&self) -> &Gc {
       self.gc
     }
+  }
 
+  impl<'a> CallContext for TestContext<'a> {
     fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
       let arity = match callable.kind() {
         ValueVariant::Closure => callable.to_closure().fun.arity,
@@ -199,11 +211,16 @@ mod test {
     Box::new(Gc::default())
   }
 
-  pub fn fun_from_hooks(hooks: &Hooks, name: String, module_name: String) -> Managed<Fun> {
-    let module = hooks.manage(Module::new(
-      hooks.manage_str(module_name),
-      hooks.manage(PathBuf::from("path/name.lox")),
-    ));
+  pub fn fun_from_hooks(hooks: &GcHooks, name: String, module_name: &str) -> Managed<Fun> {
+    let module = match Module::from_path(
+      &hooks,
+      hooks.manage(PathBuf::from(format!("path/{}.lox", module_name))),
+    ) {
+      Some(module) => module,
+      None => unreachable!(),
+    };
+
+    let module = hooks.manage(module);
     hooks.manage(Fun::new(hooks.manage_str(name), module))
   }
 }

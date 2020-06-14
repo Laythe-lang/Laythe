@@ -11,7 +11,7 @@ pub mod nil;
 pub mod number;
 pub mod string;
 
-use crate::builtin::bool::{declare_bool_class, define_bool_class};
+use self::bool::{declare_bool_class, define_bool_class};
 use class::{declare_class_class, define_class_class};
 use closure::{declare_closure_class, define_closure_class};
 use iter::{declare_iter_class, define_iter_class};
@@ -22,12 +22,12 @@ use native_fun::{declare_native_fun_class, define_native_fun_class};
 use native_method::{declare_native_method_class, define_native_method_class};
 use nil::{declare_nil_class, define_nil_class};
 use number::{declare_number_class, define_number_class};
-use spacelox_core::{hooks::Hooks, module::Module, package::Package, ModuleResult};
+use spacelox_core::{hooks::GcHooks, module::Module, package::Package, ModuleResult};
 use spacelox_env::managed::Managed;
 use string::{declare_string_class, define_string_class};
 
-pub(crate) fn create_builtin_classes(
-  hooks: &Hooks,
+pub(crate) fn create_primitive_classes(
+  hooks: &GcHooks,
   mut module: Managed<Module>,
   package: Managed<Package>,
 ) -> ModuleResult<()> {

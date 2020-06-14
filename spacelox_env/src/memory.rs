@@ -45,7 +45,7 @@ impl<'a> Gc {
   /// use spacelox_env::memory::Gc;
   /// use spacelox_env::stdio::NativeStdIo;
   ///
-  /// let gc = Gc::new(Box::new(NativeStdIo::new()));
+  /// let gc = Gc::new(Box::new(NativeStdIo()));
   /// ```
   pub fn new(stdio: Box<dyn StdIo>) -> Self {
     Gc {
@@ -364,12 +364,12 @@ impl<'a> Gc {
   /// in the heap
   fn sweep_string_cache(&self) {
     self.intern_cache.borrow_mut().retain(|_, &mut string| {
+      #[allow(clippy::let_and_return)]
       let retain = string.obj().marked();
 
       #[cfg(feature = "debug_gc")]
       self.debug_string_remove(string, !retain);
 
-      #[allow(clippy::let_and_return)]
       retain
     });
   }
@@ -415,7 +415,7 @@ impl<'a> Default for Gc {
   fn default() -> Self {
     use crate::stdio::NativeStdIo;
 
-    Gc::new(Box::new(NativeStdIo::new()))
+    Gc::new(Box::new(NativeStdIo()))
   }
 }
 pub struct NoGc();

@@ -6,6 +6,32 @@ use spacelox_env::{
 use std::fmt;
 use std::{mem, ptr};
 
+#[derive(Copy, Clone, Debug)]
+pub struct Parameter {
+  pub name: &'static str,
+  pub kind: ParameterKind,
+}
+
+impl Parameter {
+  pub const fn new(name: &'static str, kind: ParameterKind) -> Self {
+    Parameter { name, kind }
+  }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub enum ParameterKind {
+  Any,
+  Bool,
+  Number,
+  String,
+  List,
+  Map,
+  Class,
+  Instance,
+  Iter,
+  Fun,
+}
+
 #[derive(Clone, Debug)]
 pub struct NativeMeta {
   /// The name of the native function
@@ -13,12 +39,19 @@ pub struct NativeMeta {
 
   /// The arity of the function
   pub arity: ArityKind,
+
+  /// what are the required
+  pub parameters: &'static [Parameter],
 }
 
 impl NativeMeta {
   /// Create a new set of meta date for a native function
-  pub const fn new(name: &'static str, arity: ArityKind) -> Self {
-    NativeMeta { name, arity }
+  pub const fn new(name: &'static str, arity: ArityKind, parameters: &'static [Parameter]) -> Self {
+    NativeMeta {
+      name,
+      arity,
+      parameters,
+    }
   }
 }
 

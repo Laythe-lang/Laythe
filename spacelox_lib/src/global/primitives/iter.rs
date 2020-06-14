@@ -1,10 +1,10 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
-  hooks::Hooks,
+  hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
   object::Class,
   package::Package,
   utils::is_falsey,
@@ -18,22 +18,34 @@ use spacelox_env::{
 use std::mem;
 
 pub const ITER_CLASS_NAME: &'static str = "Iter";
-const ITER_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
-const ITER_NEXT: NativeMeta = NativeMeta::new("next", ArityKind::Fixed(0));
-const ITER_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0));
-const ITER_MAP: NativeMeta = NativeMeta::new("map", ArityKind::Fixed(1));
-const ITER_FILTER: NativeMeta = NativeMeta::new("filter", ArityKind::Fixed(1));
+const ITER_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
+const ITER_NEXT: NativeMeta = NativeMeta::new("next", ArityKind::Fixed(0), &[]);
+const ITER_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0), &[]);
+const ITER_MAP: NativeMeta = NativeMeta::new(
+  "map",
+  ArityKind::Fixed(1),
+  &[Parameter::new("fun", ParameterKind::Fun)],
+);
+const ITER_FILTER: NativeMeta = NativeMeta::new(
+  "filter",
+  ArityKind::Fixed(1),
+  &[Parameter::new("fun", ParameterKind::Fun)],
+);
 
-pub fn declare_iter_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_iter_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(ITER_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
-pub fn define_iter_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = Value::from(hooks.manage_str(String::from(ITER_CLASS_NAME)));
-  let mut class = self_module.import().get(&name).unwrap().to_class();
+pub fn define_iter_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(ITER_CLASS_NAME));
+  let mut class = self_module
+    .import(hooks)
+    .get_field(&name)
+    .unwrap()
+    .to_class();
 
   class.add_method(
     hooks,
@@ -502,9 +514,9 @@ mod test {
       let managed = hooks.manage(SlIterator::new(iter, class));
       let this = Value::from(managed);
       let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
-        &hooks,
+        &hooks.to_gc(),
         "example".to_string(),
-        "module".to_string(),
+        "module",
       ))));
 
       fun.to_closure().fun.arity = ArityKind::Fixed(1);

@@ -8,9 +8,8 @@ var x = {
 };
 
 var str = x.str();
-// TODO str.has
-assert(true);
-// assert(str.has("true: 'sup'"));
-// assert(str.has("'10': [1, 2, 3]"));
-// assert(str.has("3: nil"));
-// assert(str.has("5: false"));
+
+assert(str.has("true: 'sup'"));
+assert(str.has("'10': [1, 2, 3]"));
+assert(str.has("3: nil"));
+assert(str.has("5: false"));

@@ -2,10 +2,10 @@ use super::iter::ITER_CLASS_NAME;
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
-  hooks::Hooks,
+  hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
   object::{Class, SlVec},
   package::Package,
   value::{Value, VALUE_NIL},
@@ -19,31 +19,50 @@ use std::{mem, slice::Iter};
 
 pub const LIST_CLASS_NAME: &'static str = "List";
 
-const LIST_CLEAR: NativeMeta = NativeMeta::new("clear", ArityKind::Fixed(0));
-const LIST_HAS: NativeMeta = NativeMeta::new("has", ArityKind::Fixed(1));
-const LIST_INSERT: NativeMeta = NativeMeta::new("insert", ArityKind::Fixed(2));
-const LIST_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0));
-const LIST_POP: NativeMeta = NativeMeta::new("pop", ArityKind::Fixed(0));
-const LIST_PUSH: NativeMeta = NativeMeta::new("push", ArityKind::Variadic(1));
-const LIST_REMOVE: NativeMeta = NativeMeta::new("remove", ArityKind::Fixed(1));
-const LIST_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
-const LIST_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0));
+const LIST_CLEAR: NativeMeta = NativeMeta::new("clear", ArityKind::Fixed(0), &[]);
+const LIST_HAS: NativeMeta = NativeMeta::new(
+  "has",
+  ArityKind::Fixed(1),
+  &[Parameter::new("val", ParameterKind::Any)],
+);
+const LIST_INSERT: NativeMeta = NativeMeta::new(
+  "insert",
+  ArityKind::Fixed(2),
+  &[
+    Parameter::new("index", ParameterKind::Number),
+    Parameter::new("val", ParameterKind::Any),
+  ],
+);
+const LIST_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0), &[]);
+const LIST_POP: NativeMeta = NativeMeta::new("pop", ArityKind::Fixed(0), &[]);
+const LIST_PUSH: NativeMeta = NativeMeta::new(
+  "push",
+  ArityKind::Variadic(1),
+  &[Parameter::new("vals", ParameterKind::Any)],
+);
+const LIST_REMOVE: NativeMeta = NativeMeta::new(
+  "remove",
+  ArityKind::Fixed(1),
+  &[Parameter::new("index", ParameterKind::Number)],
+);
+const LIST_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0), &[]);
+const LIST_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
 
-pub fn declare_list_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_list_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
-pub fn define_list_class(hooks: &Hooks, self_module: &Module, _: &Package) {
+pub fn define_list_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
   let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
   let mut class = self_module.get_symbol(name).unwrap().to_class();
 
-  let list_iter_name = Value::from(hooks.manage_str(String::from(ITER_CLASS_NAME)));
+  let list_iter_name = hooks.manage_str(String::from(ITER_CLASS_NAME));
   let list_iter_class = self_module
-    .import()
-    .get(&list_iter_name)
+    .import(hooks)
+    .get_field(&list_iter_name)
     .unwrap()
     .to_class();
 

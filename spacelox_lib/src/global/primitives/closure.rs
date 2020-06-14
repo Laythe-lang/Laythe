@@ -1,9 +1,9 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   arity::ArityKind,
-  hooks::Hooks,
+  hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
   object::Class,
   package::Package,
   value::Value,
@@ -13,20 +13,28 @@ use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const CLOSURE_CLASS_NAME: &'static str = "Fun";
 
-const CLOSURE_NAME: NativeMeta = NativeMeta::new("name", ArityKind::Fixed(0));
-const CLOSURE_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0));
-const CLOSURE_CALL: NativeMeta = NativeMeta::new("call", ArityKind::Variadic(0));
+const CLOSURE_NAME: NativeMeta = NativeMeta::new("name", ArityKind::Fixed(0), &[]);
+const CLOSURE_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0), &[]);
+const CLOSURE_CALL: NativeMeta = NativeMeta::new(
+  "call",
+  ArityKind::Variadic(0),
+  &[Parameter::new("args", ParameterKind::Any)],
+);
 
-pub fn declare_closure_class(hooks: &Hooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_closure_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(CLOSURE_CLASS_NAME));
   let class = hooks.manage(Class::new(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
-pub fn define_closure_class(hooks: &Hooks, self_module: &Module, _: &Package) {
-  let name = Value::from(hooks.manage_str(String::from(CLOSURE_CLASS_NAME)));
-  let mut class = self_module.import().get(&name).unwrap().to_class();
+pub fn define_closure_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
+  let name = hooks.manage_str(String::from(CLOSURE_CLASS_NAME));
+  let mut class = self_module
+    .import(hooks)
+    .get_field(&name)
+    .unwrap()
+    .to_class();
 
   class.add_method(
     hooks,
@@ -146,7 +154,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
+      let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
       let closure = hooks.manage(Closure::new(fun));
 
       let result1 = closure_name.call(&mut hooks, Value::from(closure), &[]);
@@ -178,7 +186,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let mut fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
+      let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
       fun.arity = ArityKind::Fixed(4);
 
       let closure = hooks.manage(Closure::new(fun));
@@ -225,7 +233,7 @@ mod test {
       let mut context = TestContext::new(&gc, &[Value::from(4.3)]);
       let mut hooks = Hooks::new(&mut context);
 
-      let mut fun = fun_from_hooks(&hooks, "example".to_string(), "module".to_string());
+      let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
       fun.arity = ArityKind::Fixed(1);
 
       let closure = hooks.manage(Closure::new(fun));

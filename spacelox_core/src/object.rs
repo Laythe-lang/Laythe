@@ -3,7 +3,7 @@ use crate::{
   chunk::{AlignedByteCode, Chunk},
   constants::INIT,
   dynamic_map::DynamicMap,
-  hooks::Hooks,
+  hooks::GcHooks,
   module::Module,
   utils::do_if_some,
   value::{Value, ValueVariant},
@@ -25,21 +25,62 @@ use std::{
   ptr::NonNull,
 };
 
-pub struct BuiltInClasses {
+pub struct BuiltIn {
+  pub dependencies: BuiltInDependencies,
+
+  pub primitives: BuiltinPrimitives,
+}
+
+impl Trace for BuiltIn {
+  fn trace(&self) -> bool {
+    self.primitives.trace()
+  }
+
+  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.primitives.trace_debug(stdio)
+  }
+}
+
+pub struct BuiltInDependencies {
+  pub module: Managed<Class>,
+}
+
+pub struct BuiltinPrimitives {
+  // the Nil class
   pub nil: Managed<Class>,
+
+  // the Bool class
   pub bool: Managed<Class>,
+
+  // the Class class
   pub class: Managed<Class>,
+
+  // the Number class
   pub number: Managed<Class>,
+
+  // the String class
   pub string: Managed<Class>,
+
+  // the List class
   pub list: Managed<Class>,
+
+  // the Map class
   pub map: Managed<Class>,
+
+  // the Closure class
   pub closure: Managed<Class>,
+
+  // the method class
   pub method: Managed<Class>,
+
+  // the NativeFun class
   pub native_fun: Managed<Class>,
+
+  // the NativeMethod class
   pub native_method: Managed<Class>,
 }
 
-impl BuiltInClasses {
+impl BuiltinPrimitives {
   pub fn for_variant(&self, value: Value, variant: ValueVariant) -> Managed<Class> {
     match variant {
       ValueVariant::Bool => self.bool,
@@ -61,7 +102,7 @@ impl BuiltInClasses {
   }
 }
 
-impl Trace for BuiltInClasses {
+impl Trace for BuiltinPrimitives {
   fn trace(&self) -> bool {
     self.bool.trace();
     self.nil.trace();
@@ -123,7 +164,7 @@ impl Upvalue {
     match self {
       Upvalue::Open(stack_ptr) => {
         let value = *unsafe { stack_ptr.as_ref() };
-        mem::replace(self, Upvalue::Closed(Box::new(value)));
+        *self = Upvalue::Closed(Box::new(value));
       }
       Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
     }
@@ -235,7 +276,7 @@ impl Fun {
     &self.chunk
   }
 
-  pub fn write_instruction(&mut self, hooks: &Hooks, op_code: AlignedByteCode, line: u32) {
+  pub fn write_instruction(&mut self, hooks: &GcHooks, op_code: AlignedByteCode, line: u32) {
     hooks.grow(self, |fun| fun.chunk.write_instruction(op_code, line));
   }
 
@@ -243,11 +284,11 @@ impl Fun {
     self.chunk.instructions[index] = instruction;
   }
 
-  pub fn add_constant(&mut self, hooks: &Hooks, constant: Value) -> usize {
+  pub fn add_constant(&mut self, hooks: &GcHooks, constant: Value) -> usize {
     hooks.grow(self, |fun| fun.chunk.add_constant(constant))
   }
 
-  pub fn shrink_to_fit(&mut self, hooks: &Hooks) {
+  pub fn shrink_to_fit(&mut self, hooks: &GcHooks) {
     hooks.shrink(self, |fun| fun.chunk.shrink_to_fit());
   }
 
@@ -328,6 +369,10 @@ impl<T> SlVec<T> {
 
   pub fn len(&self) -> usize {
     self.0.len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
   }
 
   pub fn push(&mut self, value: T) {
@@ -439,6 +484,10 @@ impl<K, V> SlHashMap<K, V> {
     self.0.len()
   }
 
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+
   pub fn capacity(&self) -> usize {
     self.0.capacity()
   }
@@ -540,7 +589,7 @@ impl Closure {
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
-  /// 
+  ///
   /// let module = hooks.manage(Module::new(
   ///   hooks.manage_str("module".to_string()),
   ///   hooks.manage(PathBuf::from("self/module.lox")),
@@ -622,7 +671,7 @@ impl Class {
     }
   }
 
-  pub fn add_method(&mut self, hooks: &Hooks, name: Managed<String>, method: Value) {
+  pub fn add_method(&mut self, hooks: &GcHooks, name: Managed<String>, method: Value) {
     if *name == INIT {
       self.init = Some(method);
     }
@@ -636,7 +685,7 @@ impl Class {
     self.methods.get(name)
   }
 
-  pub fn inherit(&mut self, hooks: &Hooks, super_class: Managed<Class>) {
+  pub fn inherit(&mut self, hooks: &GcHooks, super_class: Managed<Class>) {
     hooks.grow(self, |class| {
       super_class.methods.for_each(|(key, value)| {
         match class.methods.get(&*key) {
@@ -723,7 +772,11 @@ impl Instance {
     }
   }
 
-  pub fn set_field(&mut self, hooks: &Hooks, name: Managed<String>, value: Value) {
+  pub fn fields(&self) -> &DynamicMap<Managed<String>, Value> {
+    &self.fields
+  }
+
+  pub fn set_field(&mut self, hooks: &GcHooks, name: Managed<String>, value: Value) {
     hooks.grow(self, |instance: &mut Instance| {
       instance.fields.insert(name, value);
     });
