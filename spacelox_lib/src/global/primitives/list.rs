@@ -1,11 +1,11 @@
 use super::iter::ITER_CLASS_NAME;
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  arity::ArityKind,
+  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
-  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
+  native::{NativeMeta, NativeMethod},
   object::{Class, SlVec},
   package::Package,
   value::{Value, VALUE_NIL},
@@ -19,34 +19,34 @@ use std::{mem, slice::Iter};
 
 pub const LIST_CLASS_NAME: &'static str = "List";
 
-const LIST_CLEAR: NativeMeta = NativeMeta::new("clear", ArityKind::Fixed(0), &[]);
+const LIST_CLEAR: NativeMeta = NativeMeta::new("clear", Arity::Fixed(0), &[]);
 const LIST_HAS: NativeMeta = NativeMeta::new(
   "has",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("val", ParameterKind::Any)],
 );
 const LIST_INSERT: NativeMeta = NativeMeta::new(
   "insert",
-  ArityKind::Fixed(2),
+  Arity::Fixed(2),
   &[
     Parameter::new("index", ParameterKind::Number),
     Parameter::new("val", ParameterKind::Any),
   ],
 );
-const LIST_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0), &[]);
-const LIST_POP: NativeMeta = NativeMeta::new("pop", ArityKind::Fixed(0), &[]);
+const LIST_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0), &[]);
+const LIST_POP: NativeMeta = NativeMeta::new("pop", Arity::Fixed(0), &[]);
 const LIST_PUSH: NativeMeta = NativeMeta::new(
   "push",
-  ArityKind::Variadic(1),
+  Arity::Variadic(0),
   &[Parameter::new("vals", ParameterKind::Any)],
 );
 const LIST_REMOVE: NativeMeta = NativeMeta::new(
   "remove",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("index", ParameterKind::Number)],
 );
-const LIST_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0), &[]);
-const LIST_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
+const LIST_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
+const LIST_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 
 pub fn declare_list_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
@@ -487,7 +487,7 @@ mod test {
       let list_str = ListStr::new(hooks.manage_str("str".to_string()));
 
       assert_eq!(list_str.meta.name, "str");
-      assert_eq!(list_str.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(list_str.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -531,7 +531,7 @@ mod test {
       let list_size = ListSize::new();
 
       assert_eq!(list_size.meta.name, "size");
-      assert_eq!(list_size.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(list_size.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -563,7 +563,8 @@ mod test {
       let list_push = ListPush::new();
 
       assert_eq!(list_push.meta.name, "push");
-      assert_eq!(list_push.meta.arity, ArityKind::Variadic(1));
+      assert_eq!(list_push.meta.signature.arity, Arity::Variadic(0));
+      assert_eq!(list_push.meta.signature.parameters[0].kind, ParameterKind::Any);
     }
 
     #[test]
@@ -613,7 +614,7 @@ mod test {
       let list_pop = ListPop::new();
 
       assert_eq!(list_pop.meta.name, "pop");
-      assert_eq!(list_pop.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(list_pop.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -656,7 +657,8 @@ mod test {
       let list_remove = ListRemove::new();
 
       assert_eq!(list_remove.meta.name, "remove");
-      assert_eq!(list_remove.meta.arity, ArityKind::Fixed(1));
+      assert_eq!(list_remove.meta.signature.arity, Arity::Fixed(1));
+      assert_eq!(list_remove.meta.signature.parameters[0].kind, ParameterKind::Number);
     }
 
     #[test]
@@ -702,7 +704,9 @@ mod test {
       let list_insert = ListInsert::new();
 
       assert_eq!(list_insert.meta.name, "insert");
-      assert_eq!(list_insert.meta.arity, ArityKind::Fixed(2));
+      assert_eq!(list_insert.meta.signature.arity, Arity::Fixed(2));
+      assert_eq!(list_insert.meta.signature.parameters[0].kind, ParameterKind::Number);
+      assert_eq!(list_insert.meta.signature.parameters[1].kind, ParameterKind::Any);
     }
 
     #[test]
@@ -753,7 +757,7 @@ mod test {
       let list_clear = ListClear::new();
 
       assert_eq!(list_clear.meta.name, "clear");
-      assert_eq!(list_clear.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(list_clear.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -796,7 +800,7 @@ mod test {
       let list_has = ListHas::new();
 
       assert_eq!(list_has.meta.name, "has");
-      assert_eq!(list_has.meta.arity, ArityKind::Fixed(1));
+      assert_eq!(list_has.meta.signature.arity, Arity::Fixed(1));
     }
 
     #[test]
@@ -842,7 +846,7 @@ mod test {
         ListIter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
 
       assert_eq!(list_iter.meta.name, "iter");
-      assert_eq!(list_iter.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(list_iter.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]

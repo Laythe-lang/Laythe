@@ -1,3 +1,0 @@
-import Math from 'std/math';
-
-Math.cos(10, 5);

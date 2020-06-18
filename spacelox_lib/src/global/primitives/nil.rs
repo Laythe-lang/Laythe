@@ -1,6 +1,6 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  arity::ArityKind,
+  signature::{Arity},
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeMeta, NativeMethod},
@@ -12,7 +12,7 @@ use spacelox_core::{
 use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const NIL_CLASS_NAME: &'static str = "Nil";
-const NIL_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
+const NIL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 
 pub fn declare_nil_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(NIL_CLASS_NAME));
@@ -71,7 +71,7 @@ mod test {
       let nil_str = NilStr::new();
 
       assert_eq!(nil_str.meta.name, "str");
-      assert_eq!(nil_str.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(nil_str.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]

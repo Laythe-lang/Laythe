@@ -16,7 +16,7 @@ fn bool() -> Result<(), std::io::Error> {
   test_files(&vec![], ExecuteResult::CompileError)?;
 
   test_files(
-    &vec!["std_lib/builtin/bool/str_wrong_args.lox"],
+    &vec![],
     ExecuteResult::RuntimeError,
   )
 }
@@ -26,7 +26,7 @@ fn nil() -> Result<(), std::io::Error> {
   test_files(&vec!["std_lib/builtin/nil/str.lox"], ExecuteResult::Ok)?;
 
   test_files(
-    &vec!["std_lib/builtin/nil/str_wrong_args.lox"],
+    &vec![],
     ExecuteResult::RuntimeError,
   )
 }
@@ -66,7 +66,7 @@ fn iter() -> Result<(), std::io::Error> {
   )?;
 
   test_files(
-    &vec!["std_lib/builtin/list/str_wrong_args.lox"],
+    &vec![],
     ExecuteResult::RuntimeError,
   )
 }
@@ -90,17 +90,8 @@ fn list() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
-      "std_lib/builtin/list/clear_wrong_args.lox",
-      "std_lib/builtin/list/has_wrong_args.lox",
       "std_lib/builtin/list/insert_out_of_bounds.lox",
-      "std_lib/builtin/list/insert_wrong_args.lox",
-      "std_lib/builtin/list/iter_wrong_args.lox",
-      "std_lib/builtin/list/pop_wrong_args.lox",
-      "std_lib/builtin/list/push_wrong_args.lox",
       "std_lib/builtin/list/remove_out_of_bounds.lox",
-      "std_lib/builtin/list/remove_wrong_args.lox",
-      "std_lib/builtin/list/size_wrong_args.lox",
-      "std_lib/builtin/list/str_wrong_args.lox",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -123,14 +114,7 @@ fn map() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
-      "std_lib/builtin/map/size_wrong_args.lox",
-      "std_lib/builtin/map/str_wrong_args.lox",
-      "std_lib/builtin/map/has_wrong_args.lox",
-      "std_lib/builtin/map/get_wrong_args.lox",
-      "std_lib/builtin/map/remove_wrong_args.lox",
       "std_lib/builtin/map/remove_missing_key.lox",
-      "std_lib/builtin/map/insert_wrong_args.lox",
-      "std_lib/builtin/map/iter_wrong_args.lox",
     ],
     ExecuteResult::RuntimeError,
   )

@@ -5,12 +5,12 @@ use crate::{
   dep_manager::DepManager,
 };
 use spacelox_core::{
-  arity::{ArityError, ArityKind},
+  signature::{ArityError, ParameterKind},
   chunk::{ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT},
   hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks, NoContext},
   module::Module,
-  native::{NativeFun, NativeMethod},
+  native::{NativeFun, NativeMeta, NativeMethod},
   object::SlHashMap,
   object::{Class, Closure, Fun, Instance, Method, SlVec, Upvalue},
   package::{Import, Package},
@@ -183,7 +183,9 @@ impl<I: Io> Vm<I> {
         self.dep_manager.src_dir = self.gc.manage(directory, &NO_GC);
         let main_module = match self.main_module(module_path) {
           Ok(module) => module,
-          Err(err) => { return err; }
+          Err(err) => {
+            return err;
+          }
         };
 
         self.interpret(main_module, source)
@@ -1303,17 +1305,17 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn call_native_fun(&mut self, native: Managed<Box<dyn NativeFun>>, arg_count: u8) -> Signal {
     let meta = native.meta();
 
-    // check that the current function is called with the right number of args
-    if let Some(error) = self.check_arity(meta.arity, arg_count, || String::from(meta.name)) {
-      return error;
-    }
-
     let args = unsafe {
       std::slice::from_raw_parts(
         self.stack_top.offset(-(arg_count as isize)),
         arg_count as usize,
       )
     };
+
+    // check that the current function is called with the right number of args and types
+    if let Some(signal) = self.check_native_arity(meta, args) {
+      return signal;
+    }
 
     match native.call(&mut Hooks::new(self), args) {
       Ok(value) => {
@@ -1334,17 +1336,18 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   ) -> Signal {
     let meta = native.meta();
 
-    // check that the current function is called with the right number of args
-    if let Some(error) = self.check_arity(meta.arity, arg_count, || String::from(meta.name)) {
-      return error;
-    }
-
     let args = unsafe {
       std::slice::from_raw_parts(
         self.stack_top.offset(-(arg_count as isize)),
         arg_count as usize,
       )
     };
+
+    // check that the current function is called with the right number of args and types
+    if let Some(error) = self.check_native_arity(meta, args) {
+      return error;
+    }
+
     let this = self.get_val(-(arg_count as isize) - 1);
 
     match native.call(&mut Hooks::new(self), this, &args) {
@@ -1361,9 +1364,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// call a spacelox function setting it as the new call frame
   fn call(&mut self, closure: Managed<Closure>, arg_count: u8) -> Signal {
     // check that the current function is called with the right number of args
-    if let Some(error) = self.check_arity(closure.fun.arity, arg_count, || {
-      closure.fun.name.to_string()
-    }) {
+    if let Some(error) = self.check_arity(closure.fun, arg_count) {
       return error;
     }
 
@@ -1390,38 +1391,85 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   /// check that the number of args is valid for the function arity
-  fn check_arity<F>(&mut self, arity: ArityKind, arg_count: u8, name: F) -> Option<Signal>
-  where
-    F: Fn() -> String,
+  fn check_arity(&mut self, fun: Managed<Fun>, arg_count: u8) -> Option<Signal>
   {
-    match arity.check(arg_count) {
+    match fun.arity.check(arg_count) {
       Ok(_) => None,
       Err(error) => match error {
         ArityError::Fixed(arity) => Some(self.runtime_error(&format!(
           "{} expected {} argument(s) but got {}.",
-          name(),
+          fun.name,
           arity,
           arg_count,
         ))),
         ArityError::Variadic(arity) => Some(self.runtime_error(&format!(
           "{} expected at least {} argument(s) but got {}.",
-          name(),
+          fun.name,
           arity,
           arg_count,
         ))),
         ArityError::DefaultLow(arity) => Some(self.runtime_error(&format!(
           "{} expected at least {} argument(s) but got {}.",
-          name(),
+          fun.name,
           arity,
           arg_count,
         ))),
         ArityError::DefaultHigh(arity) => Some(self.runtime_error(&format!(
           "{} expected at most {} argument(s) but got {}.",
-          name(),
+          fun.name,
           arity,
           arg_count,
         ))),
       },
+    }
+  }
+
+  fn check_native_arity(&mut self, native_meta: &NativeMeta, args: &[Value]) -> Option<Signal> {
+    match native_meta.signature.check(args) {
+      Ok(()) => None,
+      Err(err) => match err {
+        spacelox_core::signature::SignatureError::LengthFixed(expected) => {
+          Some(self.runtime_error(&format!(
+            "{} expected {} argument(s) but received {}.",
+            native_meta.name,
+            expected,
+            args.len(),
+          )))
+        }
+        spacelox_core::signature::SignatureError::LengthVariadic(expected) => {
+          Some(self.runtime_error(&format!(
+            "{} expected at least {} argument(s) but received {}.",
+            native_meta.name,
+            expected,
+            args.len(),
+          )))
+        }
+        spacelox_core::signature::SignatureError::LengthDefaultLow(expected) => {
+          Some(self.runtime_error(&format!(
+            "{} expected at least {} argument(s) but received {}.",
+            native_meta.name,
+            expected,
+            args.len(),
+          )))
+        }
+        spacelox_core::signature::SignatureError::LengthDefaultHigh(expected) => {
+          Some(self.runtime_error(&format!(
+            "{} expected at most {} argument(s) but received {}.",
+            native_meta.name,
+            expected,
+            args.len(),
+          )))
+        }
+        spacelox_core::signature::SignatureError::TypeWrong(parameter) => {
+          Some(self.runtime_error(&format!(
+            "{} parameter {} must be a {} not a {}.",
+            native_meta.name,
+            native_meta.signature.parameters[parameter as usize].name,
+            native_meta.signature.parameters[parameter as usize].kind,
+            ParameterKind::from(args[parameter as usize])
+          )))
+        }
+      }
     }
   }
 

@@ -3,7 +3,7 @@ use spacelox_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use spacelox_core::token::{Token, TokenKind};
 use spacelox_core::utils::{copy_string, do_if_some};
 use spacelox_core::{
-  arity::ArityKind,
+  signature::Arity,
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
   hooks::GcHooks,
   module::Module,
@@ -1185,7 +1185,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       }
     }
 
-    self.fun.arity = ArityKind::Fixed(arity as u8);
+    self.fun.arity = Arity::Fixed(arity as u8);
   }
 
   /// Parse a list of argument to a function

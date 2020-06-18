@@ -2,11 +2,11 @@ use super::iter::ITER_CLASS_NAME;
 use crate::support::{export_and_insert, to_dyn_method};
 use hashbrown::hash_map::Iter;
 use spacelox_core::{
-  arity::ArityKind,
+  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
-  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
+  native::{NativeMeta, NativeMethod},
   object::{Class, SlHashMap, SlVec},
   package::Package,
   value::{Value, VALUE_NIL},
@@ -23,17 +23,17 @@ pub const MAP_CLASS_NAME: &'static str = "Map";
 
 const MAP_GET: NativeMeta = NativeMeta::new(
   "get",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("key", ParameterKind::Any)],
 );
 const MAP_HAS: NativeMeta = NativeMeta::new(
   "has",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("key", ParameterKind::Any)],
 );
 const MAP_INSERT: NativeMeta = NativeMeta::new(
   "insert",
-  ArityKind::Fixed(2),
+  Arity::Fixed(2),
   &[
     Parameter::new("key", ParameterKind::Any),
     Parameter::new("val", ParameterKind::Any),
@@ -41,12 +41,12 @@ const MAP_INSERT: NativeMeta = NativeMeta::new(
 );
 const MAP_REMOVE: NativeMeta = NativeMeta::new(
   "remove",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("key", ParameterKind::Any)],
 );
-const MAP_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0), &[]);
-const MAP_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
-const MAP_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0), &[]);
+const MAP_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
+const MAP_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
+const MAP_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0), &[]);
 
 pub fn declare_map_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
@@ -430,7 +430,7 @@ mod test {
       let map_str = MapStr::new(hooks.manage_str("str".to_string()));
 
       assert_eq!(map_str.meta.name, "str");
-      assert_eq!(map_str.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(map_str.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -470,7 +470,7 @@ mod test {
       let map_str = MapSize::new();
 
       assert_eq!(map_str.meta.name, "size");
-      assert_eq!(map_str.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(map_str.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -504,7 +504,7 @@ mod test {
       let map_has = MapHas::new();
 
       assert_eq!(map_has.meta.name, "has");
-      assert_eq!(map_has.meta.arity, ArityKind::Fixed(1));
+      assert_eq!(map_has.meta.signature.arity, Arity::Fixed(1));
     }
 
     #[test]
@@ -542,7 +542,8 @@ mod test {
       let map_get = MapGet::new();
 
       assert_eq!(map_get.meta.name, "get");
-      assert_eq!(map_get.meta.arity, ArityKind::Fixed(1));
+      assert_eq!(map_get.meta.signature.arity, Arity::Fixed(1));
+      assert_eq!(map_get.meta.signature.parameters[0].kind, ParameterKind::Any);
     }
 
     #[test]
@@ -580,7 +581,9 @@ mod test {
       let map_insert = MapInsert::new();
 
       assert_eq!(map_insert.meta.name, "insert");
-      assert_eq!(map_insert.meta.arity, ArityKind::Fixed(2));
+      assert_eq!(map_insert.meta.signature.arity, Arity::Fixed(2));
+      assert_eq!(map_insert.meta.signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(map_insert.meta.signature.parameters[1].kind, ParameterKind::Any);
     }
 
     #[test]
@@ -626,7 +629,8 @@ mod test {
       let map_remove = MapRemove::new();
 
       assert_eq!(map_remove.meta.name, "remove");
-      assert_eq!(map_remove.meta.arity, ArityKind::Fixed(1));
+      assert_eq!(map_remove.meta.signature.arity, Arity::Fixed(1));
+      assert_eq!(map_remove.meta.signature.parameters[0].kind, ParameterKind::Any);
     }
 
     #[test]

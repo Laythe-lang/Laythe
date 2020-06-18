@@ -1,9 +1,9 @@
 use crate::support::export_and_insert;
 use spacelox_core::{
-  arity::ArityKind,
+  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeFun, NativeMeta, Parameter, ParameterKind},
+  native::{NativeFun, NativeMeta},
   value::Value,
   CallResult, ModuleResult,
 };
@@ -14,22 +14,22 @@ const E: &str = "e";
 
 const SIN_META: NativeMeta = NativeMeta::new(
   "sin",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("val", ParameterKind::Number)],
 );
 const COS_META: NativeMeta = NativeMeta::new(
   "cos",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("val", ParameterKind::Number)],
 );
 const LN_META: NativeMeta = NativeMeta::new(
   "ln",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("val", ParameterKind::Number)],
 );
 const ABS_META: NativeMeta = NativeMeta::new(
   "abs",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("val", ParameterKind::Number)],
 );
 
@@ -89,11 +89,7 @@ impl NativeFun for Sin {
     &SIN_META
   }
 
-  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    if !args[0].is_num() {
-      return Err(hooks.make_error("sin expected numerical parameter".to_string()));
-    }
-
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
     Ok(Value::from(args[0].to_num().sin()))
   }
 }
@@ -106,11 +102,7 @@ impl NativeFun for Cos {
     &COS_META
   }
 
-  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    if !args[0].is_num() {
-      return Err(hooks.make_error("cos expected numerical parameter".to_string()));
-    }
-
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
     Ok(Value::from(args[0].to_num().cos()))
   }
 }
@@ -123,11 +115,7 @@ impl NativeFun for Ln {
     &LN_META
   }
 
-  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    if !args[0].is_num() {
-      return Err(hooks.make_error("ln expected numerical parameter".to_string()));
-    }
-
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
     Ok(Value::from(args[0].to_num().ln()))
   }
 }
@@ -140,11 +128,7 @@ impl NativeFun for Abs {
     &ABS_META
   }
 
-  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    if !args[0].is_num() {
-      return Err(hooks.make_error("abs expected numerical parameter".to_string()));
-    }
-
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
     Ok(Value::from(args[0].to_num().abs()))
   }
 }
@@ -163,7 +147,8 @@ mod test {
       let sin = Sin();
 
       assert_eq!(sin.meta().name, "sin");
-      assert_eq!(sin.meta().arity, ArityKind::Fixed(1));
+      assert_eq!(sin.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(sin.meta().signature.parameters[0].kind, ParameterKind::Number);
     }
 
     #[test]
@@ -190,7 +175,8 @@ mod test {
       let cos = Cos();
 
       assert_eq!(cos.meta().name, "cos");
-      assert_eq!(cos.meta().arity, ArityKind::Fixed(1));
+      assert_eq!(cos.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(cos.meta().signature.parameters[0].kind, ParameterKind::Number);
     }
 
     #[test]
@@ -217,7 +203,8 @@ mod test {
       let ln = Ln();
 
       assert_eq!(ln.meta().name, "ln");
-      assert_eq!(ln.meta().arity, ArityKind::Fixed(1));
+      assert_eq!(ln.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(ln.meta().signature.parameters[0].kind, ParameterKind::Number);
     }
 
     #[test]

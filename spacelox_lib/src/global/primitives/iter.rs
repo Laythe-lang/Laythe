@@ -1,10 +1,10 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  arity::ArityKind,
+  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
-  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
+  native::{NativeMeta, NativeMethod},
   object::Class,
   package::Package,
   utils::is_falsey,
@@ -18,17 +18,17 @@ use spacelox_env::{
 use std::mem;
 
 pub const ITER_CLASS_NAME: &'static str = "Iter";
-const ITER_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
-const ITER_NEXT: NativeMeta = NativeMeta::new("next", ArityKind::Fixed(0), &[]);
-const ITER_ITER: NativeMeta = NativeMeta::new("iter", ArityKind::Fixed(0), &[]);
+const ITER_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
+const ITER_NEXT: NativeMeta = NativeMeta::new("next", Arity::Fixed(0), &[]);
+const ITER_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0), &[]);
 const ITER_MAP: NativeMeta = NativeMeta::new(
   "map",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("fun", ParameterKind::Fun)],
 );
 const ITER_FILTER: NativeMeta = NativeMeta::new(
   "filter",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("fun", ParameterKind::Fun)],
 );
 
@@ -247,7 +247,7 @@ struct IterFilter {
 impl IterFilter {
   fn new(iter_class: Managed<Class>) -> Self {
     Self {
-      meta: &ITER_MAP,
+      meta: &ITER_FILTER,
       iter_class,
     }
   }
@@ -398,7 +398,7 @@ mod test {
       let iter_str = IterStr::new();
 
       assert_eq!(iter_str.meta.name, "str");
-      assert_eq!(iter_str.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(iter_str.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -430,7 +430,7 @@ mod test {
       let iter_next = IterNext::new();
 
       assert_eq!(iter_next.meta.name, "next");
-      assert_eq!(iter_next.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(iter_next.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -461,7 +461,7 @@ mod test {
       let iter_iter = IterIter::new();
 
       assert_eq!(iter_iter.meta.name, "iter");
-      assert_eq!(iter_iter.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(iter_iter.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -499,7 +499,8 @@ mod test {
         IterMap::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
 
       assert_eq!(iter_map.meta.name, "map");
-      assert_eq!(iter_map.meta.arity, ArityKind::Fixed(1));
+      assert_eq!(iter_map.meta.signature.arity, Arity::Fixed(1));
+      assert_eq!(iter_map.meta.signature.parameters[0].kind, ParameterKind::Fun);
     }
 
     #[test]
@@ -519,7 +520,7 @@ mod test {
         "module",
       ))));
 
-      fun.to_closure().fun.arity = ArityKind::Fixed(1);
+      fun.to_closure().fun.arity = Arity::Fixed(1);
 
       let result = iter_map.call(&mut hooks, this, &[fun]);
       match result {
@@ -527,6 +528,58 @@ mod test {
           let mut map_iter = r.to_iter();
           assert_eq!(map_iter.next(&mut hooks).unwrap(), Value::from(true));
           assert_eq!(map_iter.current(), Value::from(5.0));
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod filter {
+    use super::*;
+    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use spacelox_core::{iterator::SlIterator, object::Closure};
+
+    #[test]
+    fn new() {
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[]);
+      let hooks = Hooks::new(&mut context);
+
+      let iter_filter =
+        IterFilter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
+
+      assert_eq!(iter_filter.meta.name, "filter");
+      assert_eq!(iter_filter.meta.signature.arity, Arity::Fixed(1));
+      assert_eq!(iter_filter.meta.signature.parameters[0].kind, ParameterKind::Fun);
+    }
+
+    #[test]
+    fn call() {
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[Value::from(false), Value::from(true), Value::from(true)]);
+      let mut hooks = Hooks::new(&mut context);
+      let iter_filter =
+        IterFilter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
+
+      let (iter, class) = test_input(&hooks);
+      let managed = hooks.manage(SlIterator::new(iter, class));
+      let this = Value::from(managed);
+      let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
+        &hooks.to_gc(),
+        "example".to_string(),
+        "module",
+      ))));
+
+      fun.to_closure().fun.arity = Arity::Fixed(1);
+
+      let result = iter_filter.call(&mut hooks, this, &[fun]);
+      match result {
+        Ok(r) => {
+          let mut filter_iter = r.to_iter();
+          assert_eq!(filter_iter.next(&mut hooks).unwrap(), Value::from(true));
+          assert_eq!(filter_iter.current(), Value::from(2.0));
+          assert_eq!(filter_iter.next(&mut hooks).unwrap(), Value::from(true));
+          assert_eq!(filter_iter.current(), Value::from(3.0));
         }
         Err(_) => assert!(false),
       }

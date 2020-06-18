@@ -16,7 +16,7 @@ fn utils() -> Result<(), std::io::Error> {
       "std_lib/math/utils/abs.lox",
       "std_lib/math/utils/cos.lox",
       "std_lib/math/utils/ln.lox",
-      "std_lib/math/utils/sin.lox" 
+      "std_lib/math/utils/sin.lox",
     ],
     ExecuteResult::Ok,
   )?;
@@ -24,12 +24,7 @@ fn utils() -> Result<(), std::io::Error> {
   test_files(&vec![], ExecuteResult::CompileError)?;
 
   test_files(
-    &vec![
-      "std_lib/math/utils/cos_wrong_args.lox",
-      "std_lib/math/utils/cos_wrong_type.lox",
-      "std_lib/math/utils/sin_wrong_args.lox",
-      "std_lib/math/utils/sin_wrong_args.lox",
-    ],
+    &vec![],
     ExecuteResult::RuntimeError,
   )
 }

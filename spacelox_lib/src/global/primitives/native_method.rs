@@ -1,9 +1,9 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  arity::ArityKind,
+  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
+  native::{NativeMeta, NativeMethod},
   object::Class,
   package::Package,
   value::Value,
@@ -13,10 +13,10 @@ use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const NATIVE_METHOD_CLASS_NAME: &'static str = "Native Method";
 
-const NATIVE_METHOD_NAME: NativeMeta = NativeMeta::new("name", ArityKind::Fixed(0), &[]);
+const NATIVE_METHOD_NAME: NativeMeta = NativeMeta::new("name", Arity::Fixed(0), &[]);
 const NATIVE_METHOD_CALL: NativeMeta = NativeMeta::new(
   "call",
-  ArityKind::Variadic(0),
+  Arity::Variadic(0),
   &[Parameter::new("args", ParameterKind::Any)],
 );
 
@@ -110,7 +110,7 @@ mod test {
       let native_method_name = NativeMethodName::new();
 
       assert_eq!(native_method_name.meta.name, "name");
-      assert_eq!(native_method_name.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(native_method_name.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -139,7 +139,8 @@ mod test {
       let native_fun_call = NativeMethodCall::new();
 
       assert_eq!(native_fun_call.meta.name, "call");
-      assert_eq!(native_fun_call.meta.arity, ArityKind::Variadic(0));
+      assert_eq!(native_fun_call.meta.signature.arity, Arity::Variadic(0));
+      assert_eq!(native_fun_call.meta.signature.parameters[0].kind, ParameterKind::Any);
     }
 
     #[test]

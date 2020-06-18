@@ -446,9 +446,10 @@ fn import() -> Result<(), std::io::Error> {
     ExecuteResult::CompileError,
   )?;
 
-  test_files(&vec![
-    "language/import/std_lib_not_real.lox",
-  ], ExecuteResult::RuntimeError)
+  test_files(
+    &vec!["language/import/std_lib_not_real.lox"],
+    ExecuteResult::RuntimeError,
+  )
 }
 
 #[test]

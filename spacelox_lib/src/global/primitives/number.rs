@@ -1,6 +1,6 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  arity::ArityKind,
+  signature::Arity,
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeMeta, NativeMethod},
@@ -12,7 +12,7 @@ use spacelox_core::{
 use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const NUMBER_CLASS_NAME: &'static str = "Number";
-const NUMBER_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
+const NUMBER_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 
 pub fn declare_number_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(NUMBER_CLASS_NAME));
@@ -70,7 +70,7 @@ mod test {
       let number_str = NumberStr::new();
 
       assert_eq!(number_str.meta.name, "str");
-      assert_eq!(number_str.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(number_str.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]

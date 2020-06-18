@@ -28,7 +28,7 @@ pub fn create_std_lib(hooks: &GcHooks) -> PackageResult<Managed<Package>> {
 mod test {
   use super::*;
   use crate::support::{test_native_dependencies, TestContext};
-  use spacelox_core::{arity::ArityKind, package::PackageEntity, value::ValueVariant};
+  use spacelox_core::{signature::Arity, package::PackageEntity, value::ValueVariant};
 
   fn check_inner(hooks: &GcHooks, package: Managed<Package>) {
     package.entities().for_each(|(_key, entity)| match entity {
@@ -42,15 +42,15 @@ mod test {
           };
 
           if let Some(fun_meta) = option {
-            match fun_meta.arity {
-              ArityKind::Default(_, total_count) => {
-                assert_eq!(fun_meta.parameters.len(), total_count as usize);
+            match fun_meta.signature.arity {
+              Arity::Default(_, total_count) => {
+                assert_eq!(fun_meta.signature.parameters.len(), total_count as usize);
               }
-              ArityKind::Fixed(count) => {
-                assert_eq!(fun_meta.parameters.len(), count as usize);
+              Arity::Fixed(count) => {
+                assert_eq!(fun_meta.signature.parameters.len(), count as usize);
               }
-              ArityKind::Variadic(min_count) => {
-                assert_eq!(fun_meta.parameters.len(), min_count as usize + 1);
+              Arity::Variadic(min_count) => {
+                assert_eq!(fun_meta.signature.parameters.len(), min_count as usize + 1);
               }
             }
           }

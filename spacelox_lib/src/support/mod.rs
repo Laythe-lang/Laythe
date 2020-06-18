@@ -26,7 +26,7 @@ pub use self::test::*;
 #[cfg(test)]
 mod test {
   use spacelox_core::{
-    arity::ArityKind,
+    signature::Arity,
     hooks::{CallContext, GcContext, GcHooks, HookContext},
     module::Module,
     object::Fun,
@@ -79,8 +79,8 @@ mod test {
       let arity = match callable.kind() {
         ValueVariant::Closure => callable.to_closure().fun.arity,
         ValueVariant::Method => callable.to_method().method.to_closure().fun.arity,
-        ValueVariant::NativeFun => callable.to_native_fun().meta().arity,
-        ValueVariant::NativeMethod => callable.to_native_method().meta().arity,
+        ValueVariant::NativeFun => callable.to_native_fun().meta().signature.arity,
+        ValueVariant::NativeMethod => callable.to_native_method().meta().signature.arity,
         _ => {
           return Err(SlError::new(
             self.gc.manage_str("Not callable".to_string(), &NO_GC),
@@ -114,8 +114,8 @@ mod test {
       let arity = match method.kind() {
         ValueVariant::Closure => method.to_closure().fun.arity,
         ValueVariant::Method => method.to_method().method.to_closure().fun.arity,
-        ValueVariant::NativeFun => method.to_native_fun().meta().arity,
-        ValueVariant::NativeMethod => method.to_native_method().meta().arity,
+        ValueVariant::NativeFun => method.to_native_fun().meta().signature.arity,
+        ValueVariant::NativeMethod => method.to_native_method().meta().signature.arity,
         _ => {
           return Err(SlError::new(
             self.gc.manage_str("Not callable".to_string(), &NO_GC),
@@ -158,7 +158,7 @@ mod test {
             if method.is_closure() {
               method.to_closure().fun.arity
             } else if method.is_native_method() {
-              method.to_native_fun().meta().arity
+              method.to_native_fun().meta().signature.arity
             } else {
               panic!("Only closures and native methods should be methods on an instance")
             }
@@ -171,7 +171,7 @@ mod test {
           }
         }
       } else {
-        ArityKind::Variadic(0)
+        Arity::Variadic(0)
       };
 
       match arity.check(args.len() as u8) {

@@ -1,9 +1,9 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  arity::ArityKind,
+  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
+  native::{NativeMeta, NativeMethod},
   object::Class,
   package::Package,
   value::Value,
@@ -13,11 +13,11 @@ use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const CLOSURE_CLASS_NAME: &'static str = "Fun";
 
-const CLOSURE_NAME: NativeMeta = NativeMeta::new("name", ArityKind::Fixed(0), &[]);
-const CLOSURE_SIZE: NativeMeta = NativeMeta::new("size", ArityKind::Fixed(0), &[]);
+const CLOSURE_NAME: NativeMeta = NativeMeta::new("name", Arity::Fixed(0), &[]);
+const CLOSURE_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
 const CLOSURE_CALL: NativeMeta = NativeMeta::new(
   "call",
-  ArityKind::Variadic(0),
+  Arity::Variadic(0),
   &[Parameter::new("args", ParameterKind::Any)],
 );
 
@@ -98,9 +98,9 @@ impl NativeMethod for ClosureSize {
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
     let req = match this.to_closure().fun.arity {
-      ArityKind::Default(req, _) => req,
-      ArityKind::Fixed(req) => req,
-      ArityKind::Variadic(req) => req,
+      Arity::Default(req, _) => req,
+      Arity::Fixed(req) => req,
+      Arity::Variadic(req) => req,
     };
 
     Ok(Value::from(req as f64))
@@ -144,7 +144,7 @@ mod test {
       let closure_name = ClosureName::new();
 
       assert_eq!(closure_name.meta.name, "name");
-      assert_eq!(closure_name.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(closure_name.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -176,7 +176,7 @@ mod test {
       let closure_name = ClosureSize::new();
 
       assert_eq!(closure_name.meta.name, "size");
-      assert_eq!(closure_name.meta.arity, ArityKind::Fixed(0));
+      assert_eq!(closure_name.meta.signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -187,7 +187,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
-      fun.arity = ArityKind::Fixed(4);
+      fun.arity = Arity::Fixed(4);
 
       let closure = hooks.manage(Closure::new(fun));
 
@@ -197,14 +197,14 @@ mod test {
         Err(_) => assert!(false),
       }
 
-      fun.arity = ArityKind::Default(2, 2);
+      fun.arity = Arity::Default(2, 2);
       let result = closure_name.call(&mut hooks, Value::from(closure), &[]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 2.0),
         Err(_) => assert!(false),
       }
 
-      fun.arity = ArityKind::Variadic(5);
+      fun.arity = Arity::Variadic(5);
       let result = closure_name.call(&mut hooks, Value::from(closure), &[]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 5.0),
@@ -223,7 +223,8 @@ mod test {
       let closure_call = ClosureCall::new();
 
       assert_eq!(closure_call.meta.name, "call");
-      assert_eq!(closure_call.meta.arity, ArityKind::Variadic(0));
+      assert_eq!(closure_call.meta.signature.arity, Arity::Variadic(0));
+      assert_eq!(closure_call.meta.signature.parameters[0].kind, ParameterKind::Any);
     }
 
     #[test]
@@ -234,7 +235,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
-      fun.arity = ArityKind::Fixed(1);
+      fun.arity = Arity::Fixed(1);
 
       let closure = hooks.manage(Closure::new(fun));
 

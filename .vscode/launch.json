@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "std_lib/math/utils/sin.lox",
+        "benchmark/instantiation.lox",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",

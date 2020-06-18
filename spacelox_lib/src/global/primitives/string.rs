@@ -1,9 +1,9 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  arity::ArityKind,
+  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeMeta, NativeMethod, Parameter, ParameterKind},
+  native::{NativeMeta, NativeMethod},
   object::Class,
   package::Package,
   value::Value,
@@ -12,10 +12,10 @@ use spacelox_core::{
 use spacelox_env::{managed::Trace, stdio::StdIo};
 
 pub const STRING_CLASS_NAME: &str = "String";
-const STRING_STR: NativeMeta = NativeMeta::new("str", ArityKind::Fixed(0), &[]);
+const STRING_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 const STRING_HAS: NativeMeta = NativeMeta::new(
   "has",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("string", ParameterKind::String)],
 );
 
@@ -68,11 +68,7 @@ impl NativeMethod for StringHas {
     &STRING_HAS
   }
 
-  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    if !args[0].is_str() {
-      return Err(hooks.make_error("has expected a string argument.".to_string()));
-    }
-
+  fn call(&self, _vhooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     let str = this.to_str();
     Ok(Value::from(str.contains(&*args[0].to_str())))
   }
@@ -91,7 +87,7 @@ mod test {
       let string_str = StringStr();
 
       assert_eq!(string_str.meta().name, "str");
-      assert_eq!(string_str.meta().arity, ArityKind::Fixed(0));
+      assert_eq!(string_str.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -119,7 +115,7 @@ mod test {
       let string_str = StringHas();
 
       assert_eq!(string_str.meta().name, "has");
-      assert_eq!(string_str.meta().arity, ArityKind::Fixed(1));
+      assert_eq!(string_str.meta().signature.arity, Arity::Fixed(1));
     }
 
     #[test]

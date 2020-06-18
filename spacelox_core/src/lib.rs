@@ -1,5 +1,4 @@
 #![deny(clippy::all)]
-pub mod arity;
 pub mod chunk;
 pub mod constants;
 pub mod dynamic_map;
@@ -9,6 +8,7 @@ pub mod module;
 pub mod native;
 pub mod object;
 pub mod package;
+pub mod signature;
 pub mod token;
 pub mod utils;
 pub mod value;

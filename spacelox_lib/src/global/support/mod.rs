@@ -1,5 +1,5 @@
 use spacelox_core::{
-  arity::ArityKind,
+  signature::Arity,
   hooks::Hooks,
   native::{NativeFun, NativeMeta},
   value::{Value, VALUE_NIL},
@@ -7,7 +7,7 @@ use spacelox_core::{
 };
 use spacelox_env::{managed::Trace, stdio::StdIo};
 
-const TEST_META: NativeMeta = NativeMeta::new("test", ArityKind::Fixed(0), &[]);
+const TEST_META: NativeMeta = NativeMeta::new("test", Arity::Fixed(0), &[]);
 
 #[derive(Clone, Debug, Trace)]
 pub struct TestNative();

@@ -1,10 +1,10 @@
 use crate::{
-  arity::ArityKind,
   chunk::{AlignedByteCode, Chunk},
   constants::INIT,
   dynamic_map::DynamicMap,
   hooks::GcHooks,
   module::Module,
+  signature::Arity,
   utils::do_if_some,
   value::{Value, ValueVariant},
 };
@@ -249,7 +249,7 @@ pub struct Fun {
   pub name: Managed<String>,
 
   /// Arity of this function
-  pub arity: ArityKind,
+  pub arity: Arity,
 
   /// Number of upvalues
   pub upvalue_count: usize,
@@ -264,7 +264,7 @@ pub struct Fun {
 impl Fun {
   pub fn new(name: Managed<String>, module: Managed<Module>) -> Self {
     Self {
-      arity: ArityKind::Fixed(0),
+      arity: Arity::Fixed(0),
       upvalue_count: 0,
       chunk: Chunk::default(),
       module,
@@ -579,7 +579,7 @@ impl Closure {
   /// # Example
   /// ```
   /// use spacelox_core::object::{Closure, Fun};
-  /// use spacelox_core::arity::ArityKind;
+  /// use spacelox_core::signature::Arity;
   /// use spacelox_env::memory::{Gc, NO_GC};
   /// use spacelox_core::module::Module;
   /// use spacelox_core::chunk::Chunk;

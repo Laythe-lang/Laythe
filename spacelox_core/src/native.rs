@@ -1,4 +1,9 @@
-use crate::{arity::ArityKind, hooks::Hooks, value::Value, CallResult};
+use crate::{
+  hooks::Hooks,
+  signature::{Arity, Parameter, Signature},
+  value::Value,
+  CallResult,
+};
 use spacelox_env::{
   managed::{Manage, Trace},
   stdio::StdIo,
@@ -6,51 +11,21 @@ use spacelox_env::{
 use std::fmt;
 use std::{mem, ptr};
 
-#[derive(Copy, Clone, Debug)]
-pub struct Parameter {
-  pub name: &'static str,
-  pub kind: ParameterKind,
-}
-
-impl Parameter {
-  pub const fn new(name: &'static str, kind: ParameterKind) -> Self {
-    Parameter { name, kind }
-  }
-}
-
-#[derive(Copy, Clone, Debug)]
-pub enum ParameterKind {
-  Any,
-  Bool,
-  Number,
-  String,
-  List,
-  Map,
-  Class,
-  Instance,
-  Iter,
-  Fun,
-}
-
 #[derive(Clone, Debug)]
 pub struct NativeMeta {
   /// The name of the native function
   pub name: &'static str,
 
-  /// The arity of the function
-  pub arity: ArityKind,
-
-  /// what are the required
-  pub parameters: &'static [Parameter],
+  /// The signature of this native function or method
+  pub signature: Signature,
 }
 
 impl NativeMeta {
   /// Create a new set of meta date for a native function
-  pub const fn new(name: &'static str, arity: ArityKind, parameters: &'static [Parameter]) -> Self {
+  pub const fn new(name: &'static str, arity: Arity, parameters: &'static [Parameter]) -> Self {
     NativeMeta {
       name,
-      arity,
-      parameters,
+      signature: Signature::new(arity, parameters),
     }
   }
 }
@@ -74,7 +49,7 @@ impl fmt::Debug for dyn NativeFun {
     let meta = self.meta();
     f.debug_struct("NativeFun")
       .field("name", &meta.name)
-      .field("arity", &meta.arity)
+      .field("signature", &meta.signature)
       .finish()
   }
 }
@@ -135,7 +110,7 @@ impl fmt::Debug for dyn NativeMethod {
     let meta = self.meta();
     f.debug_struct("NativeMethod")
       .field("name", &meta.name)
-      .field("arity", &meta.arity)
+      .field("signature", &meta.signature)
       .finish()
   }
 }

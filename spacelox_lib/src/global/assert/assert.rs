@@ -1,9 +1,9 @@
 use crate::support::export_and_insert;
 use spacelox_core::{
-  arity::ArityKind,
+  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeFun, NativeMeta, Parameter, ParameterKind},
+  native::{NativeFun, NativeMeta},
   value::{Value, VALUE_NIL},
   CallResult, ModuleResult,
 };
@@ -14,12 +14,12 @@ use spacelox_env::{
 
 const ASSERT_META: NativeMeta = NativeMeta::new(
   "assert",
-  ArityKind::Fixed(1),
+  Arity::Fixed(1),
   &[Parameter::new("value", ParameterKind::Bool)],
 );
 const ASSERTEQ_META: NativeMeta = NativeMeta::new(
   "assertEq",
-  ArityKind::Fixed(2),
+  Arity::Fixed(2),
   &[
     Parameter::new("actual", ParameterKind::Any),
     Parameter::new("expected", ParameterKind::Any),
@@ -27,7 +27,7 @@ const ASSERTEQ_META: NativeMeta = NativeMeta::new(
 );
 const ASSERTNE_META: NativeMeta = NativeMeta::new(
   "assertNe",
-  ArityKind::Fixed(2),
+  Arity::Fixed(2),
   &[
     Parameter::new("actual", ParameterKind::Any),
     Parameter::new("unexpected", ParameterKind::Any),
@@ -91,17 +91,12 @@ impl NativeFun for Assert {
   }
 
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    if args[0].is_bool() {
-      if args[0].to_bool() {
-        Ok(VALUE_NIL)
-      } else {
-        hooks.error(String::from(
-          "Assertion failed expected true received false",
-        ))
-      }
+    if args[0].to_bool() {
+      Ok(VALUE_NIL)
     } else {
-      let arg = to_str(hooks, args[0]);
-      hooks.error(format!("Assertion failed expected true received {}.", arg))
+      hooks.error(String::from(
+        "Assertion failed expected true received false",
+      ))
     }
   }
 }
@@ -183,7 +178,8 @@ mod test {
       let assert = Assert::new(gc.manage_str("str".to_string(), &NO_GC));
 
       assert_eq!(assert.meta().name, "assert");
-      assert_eq!(assert.meta().arity, ArityKind::Fixed(1));
+      assert_eq!(assert.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(assert.meta().signature.parameters[0].kind, ParameterKind::Bool);
     }
 
     #[test]
@@ -214,7 +210,9 @@ mod test {
       let assert_eq = AssertEq::new(gc.manage_str("str".to_string(), &NO_GC));
 
       assert_eq!(assert_eq.meta().name, "assertEq");
-      assert_eq!(assert_eq.meta().arity, ArityKind::Fixed(2));
+      assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
+      assert_eq!(assert_eq.meta().signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(assert_eq.meta().signature.parameters[1].kind, ParameterKind::Any);
     }
 
     #[test]
@@ -245,7 +243,9 @@ mod test {
       let assert_eq = AssertNe::new(gc.manage_str("str".to_string(), &NO_GC));
 
       assert_eq!(assert_eq.meta().name, "assertNe");
-      assert_eq!(assert_eq.meta().arity, ArityKind::Fixed(2));
+      assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
+      assert_eq!(assert_eq.meta().signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(assert_eq.meta().signature.parameters[1].kind, ParameterKind::Any);
     }
 
     #[test]
