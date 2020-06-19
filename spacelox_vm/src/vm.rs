@@ -322,13 +322,10 @@ struct VmExecutor<'a, I: Io + 'static> {
   current_fun: Managed<Fun>,
 
   /// The current frame's closure
-  current_frame: CallFrame,
+  current_frame: *mut CallFrame,
 
   /// The current error if one is active
   current_error: Option<SlError>,
-
-  /// The current module
-  current_module: Managed<Module>,
 
   /// index to the top of the value stack
   stack_top: *mut Value,
@@ -340,11 +337,11 @@ struct VmExecutor<'a, I: Io + 'static> {
 impl<'a, I: Io> VmExecutor<'a, I> {
   /// Create an instance of the vm executor that can execute the provided script.
   pub fn new(vm: &'a mut Vm<I>, script: Value) -> VmExecutor<'a, I> {
-    let current_frame = vm.frames[0];
+    let current_frame = { &mut vm.frames[0] };
     let current_fun = current_frame.closure.fun;
-    let current_module = current_fun.module;
     let stack_top = &mut vm.stack[1] as *mut Value;
 
+    let current_frame = current_frame as *mut CallFrame;
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
       frame_count: 1,
@@ -352,7 +349,6 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       script,
       current_fun,
       current_frame,
-      current_module,
       current_error: None,
       gc: &mut vm.gc,
       io: &mut vm.io,
@@ -362,10 +358,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       open_upvalues: Vec::with_capacity(100),
     };
 
-    executor.current_frame.ip = &executor.script.to_closure().fun.chunk().instructions[0];
+    executor.set_ip(&executor.script.to_closure().fun.chunk().instructions[0]);
     let result = executor.call(executor.script.to_closure(), 0);
 
-    let mut current_module = executor.current_module;
+    let mut current_module = executor.current_fun.module;
     vm.global
       .transfer_exported(&GcHooks::new(&mut executor), &mut current_module)
       .expect("Transfer global module failed");
@@ -445,7 +441,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
       #[cfg(feature = "debug")]
       {
-        let ip = unsafe { self.current_frame.ip.offset(-1) };
+        let ip = unsafe { self.ip().offset(-1) };
         self.print_debug(ip, last_ip);
         last_ip = ip;
       }
@@ -543,13 +539,37 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// Update the current instruction pointer
   #[inline]
   fn update_ip(&mut self, offset: isize) {
-    unsafe { self.current_frame.ip = self.current_frame.ip.offset(offset) };
+    unsafe { self.set_ip(self.ip().offset(offset)); }
+  }
+
+  /// Get the current instruction 
+  #[inline]
+  fn ip(&self) -> *const u8 {
+    unsafe { (*self.current_frame).ip }
+  }
+
+  /// Get the current frame slots
+  #[inline]
+  fn slots(&self) -> *mut Value {
+    unsafe { (*self.current_frame).slots }
+  }
+
+  /// Get the current closure
+  #[inline]
+  fn closure(&self) -> Managed<Closure> {
+    unsafe { (*self.current_frame).closure }
+  }
+
+  /// Set the current
+  #[inline]
+  fn set_ip(&mut self, new_ip: *const u8) {
+    unsafe { (*self.current_frame).ip = new_ip }
   }
 
   /// read a u8 out of the bytecode
   #[inline]
   fn read_byte(&mut self) -> u8 {
-    let byte = unsafe { *self.current_frame.ip };
+    let byte = unsafe { *self.ip() };
     self.update_ip(1);
     byte
   }
@@ -557,7 +577,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// read a u16 out of the bytecode
   #[inline]
   fn read_short(&mut self) -> u16 {
-    let slice = unsafe { std::slice::from_raw_parts(self.current_frame.ip, 2) };
+    let slice = unsafe { std::slice::from_raw_parts(self.ip(), 2) };
     let buffer = slice.try_into().expect("slice of incorrect length.");
     let short = u16::from_ne_bytes(buffer);
     self.update_ip(2);
@@ -807,7 +827,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let slot = self.read_short();
     let name = self.read_string(slot);
     let global = self.pop();
-    let mut current_module = self.current_module;
+    let mut current_module = self.current_fun.module;
     current_module.insert_symbol(&GcHooks::new(self), name, global);
     Signal::Ok
   }
@@ -863,7 +883,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let string = self.read_string(slot);
     let peek = self.peek(0);
 
-    let mut current_module = self.current_module;
+    let mut current_module = self.current_fun.module;
     if current_module
       .insert_symbol(&GcHooks::new(self), string, peek)
       .is_none()
@@ -878,7 +898,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_set_local(&mut self) -> Signal {
     let slot = self.read_byte() as isize;
     let copy = self.peek(0);
-    let slots = self.current_frame.slots;
+    let slots = self.slots();
 
     unsafe { *slots.offset(slot) = copy }
 
@@ -908,7 +928,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_set_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
     let value = self.peek(0);
-    let upvalue = &mut self.current_frame.closure.upvalues[slot as usize];
+    let upvalue = &mut self.closure().upvalues[slot as usize];
 
     let open_index = match &mut *upvalue.to_upvalue() {
       Upvalue::Open(stack_ptr) => Some(*stack_ptr),
@@ -977,7 +997,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let store_index = self.read_short();
     let string = self.read_string(store_index);
 
-    match self.current_module.get_symbol(string) {
+    match self.current_fun.module.get_symbol(string) {
       Some(gbl) => {
         let copy = *gbl;
         self.push(copy);
@@ -989,9 +1009,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   fn op_get_local(&mut self) -> Signal {
     let slot = self.read_byte() as isize;
-    let slots = self.current_frame.slots;
-
-    let copy = unsafe { *slots.offset(slot) };
+    let copy = unsafe { *self.slots().offset(slot) };
 
     self.push(copy);
     Signal::Ok
@@ -999,7 +1017,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   fn op_get_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
-    let upvalue_value = &self.current_frame.closure.upvalues[slot as usize];
+    let upvalue_value = &self.closure().upvalues[slot as usize];
 
     let value = match &*upvalue_value.to_upvalue() {
       Upvalue::Open(stack_ptr) => *unsafe { stack_ptr.as_ref() },
@@ -1053,7 +1071,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let path = self.read_string(index_path);
 
     let mut dep_manager = self.dep_manager;
-    let current_module = self.current_module;
+    let current_module = self.current_fun.module;
 
     match dep_manager.import(&GcHooks::new(self), current_module, path) {
       Ok(module) => {
@@ -1069,7 +1087,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_export(&mut self) -> Signal {
     let index = self.read_short();
     let name = self.read_string(index);
-    let mut copy = self.current_module;
+    let mut copy = self.current_fun.module;
 
     match copy.export_symbol(&GcHooks::new(self), name) {
       Ok(_) => Signal::Ok,
@@ -1081,7 +1099,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_return(&mut self) -> Signal {
     // get the function result close upvalues and pop frame
     let result = self.pop();
-    self.close_upvalues(NonNull::from(unsafe { &*self.current_frame.slots }));
+    self.close_upvalues(NonNull::from(unsafe { &*self.slots() }));
     self.frame_count -= 1;
 
     // if the frame was the whole script signal an ok interrupt
@@ -1091,10 +1109,11 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
 
     // pull the current frame out of the stack and set the cached frame
-    self.stack_top = self.frames[self.frame_count].slots;
-    self.current_frame = self.frames[self.frame_count - 1];
-    self.current_fun = self.current_frame.closure.fun;
-    self.current_module = self.current_fun.module;
+    unsafe {
+      self.stack_top = self.slots();
+      self.current_frame = self.current_frame.offset(-1);
+      self.current_fun = self.closure().fun;
+    }
 
     // push the result onto the stack
     self.push(result);
@@ -1226,13 +1245,13 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
       match upvalue_index {
         UpvalueIndex::Local(index) => {
-          let value = unsafe { &*self.current_frame.slots.offset(index as isize) };
+          let value = unsafe { &*self.slots().offset(index as isize) };
           closure
             .upvalues
             .push(self.capture_upvalue(NonNull::from(value)));
         }
         UpvalueIndex::Upvalue(upvalue) => {
-          let upvalue = self.current_frame.closure.upvalues[upvalue as usize];
+          let upvalue = self.closure().upvalues[upvalue as usize];
           closure.upvalues.push(upvalue);
         }
       }
@@ -1373,18 +1392,15 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       return self.runtime_error("Stack overflow.");
     }
 
-    // let frame_ptr = &mut self.frames[self.frame_count - 1] as *mut CallFrame;
     unsafe {
-      *self.frames.get_unchecked_mut(self.frame_count - 1) = self.current_frame;
-      let frame = self.frames.get_unchecked_mut(self.frame_count);
+      let frame = &mut *self.current_frame.offset(1);
       frame.closure = closure;
       frame.ip = closure.fun.chunk().instructions.get_unchecked(0) as *const u8;
       frame.slots = self.stack_top.offset(-(arg_count as isize) - 1);
-      self.current_frame = *frame;
+      self.current_frame = frame as *mut CallFrame;
     }
 
     self.current_fun = closure.fun;
-    self.current_module = self.current_fun.module;
     self.frame_count += 1;
 
     Signal::Ok
@@ -1676,7 +1692,6 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
       upvalue.trace();
     });
 
-    self.current_module.trace();
     self.dep_manager.trace();
     self.global.trace();
 
@@ -1704,7 +1719,6 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
       upvalue.trace_debug(stdio);
     });
 
-    self.current_module.trace_debug(stdio);
     self.dep_manager.trace_debug(stdio);
     self.global.trace_debug(stdio);
 
