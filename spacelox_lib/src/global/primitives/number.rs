@@ -1,13 +1,14 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  signature::Arity,
   hooks::{GcHooks, Hooks},
+  iterator::{SlIter, SlIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::Class,
   package::Package,
+  signature::Arity,
   value::Value,
-  CallResult, ModuleResult, iterator::{SlIterator, SlIter},
+  CallResult, ModuleResult,
 };
 use spacelox_env::{managed::Trace, stdio::StdIo};
 use std::mem;
@@ -68,7 +69,7 @@ impl NativeMethod for NumberTimes {
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
     let max = this.to_num();
     if max < 0.0 {
-      return Err(hooks.make_error("times requires a positive number.".to_string()))
+      return Err(hooks.make_error("times requires a positive number.".to_string()));
     }
 
     let inner_iter: Box<dyn SlIter> = Box::new(TimesIterator::new(max));
@@ -89,7 +90,7 @@ impl TimesIterator {
   fn new(max: f64) -> Self {
     Self {
       current: -1.0,
-      max: max - 1.0
+      max: max - 1.0,
     }
   }
 }

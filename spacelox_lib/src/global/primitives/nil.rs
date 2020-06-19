@@ -1,11 +1,11 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  signature::{Arity},
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::Class,
   package::Package,
+  signature::Arity,
   value::Value,
   CallResult, ModuleResult,
 };

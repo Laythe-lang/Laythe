@@ -130,7 +130,7 @@ impl From<Value> for ParameterKind {
       ValueVariant::Method => ParameterKind::Fun,
       ValueVariant::NativeFun => ParameterKind::Fun,
       ValueVariant::NativeMethod => ParameterKind::Fun,
-      ValueVariant::Upvalue => panic!("Should not pass in upvalue directly")
+      ValueVariant::Upvalue => panic!("Should not pass in upvalue directly"),
     }
   }
 }
@@ -148,7 +148,7 @@ impl Display for ParameterKind {
       ParameterKind::Class => write!(f, "class"),
       ParameterKind::Instance => write!(f, "instance"),
       ParameterKind::Iter => write!(f, "iterator"),
-      ParameterKind::Fun => write!(f, "function")
+      ParameterKind::Fun => write!(f, "function"),
     }
   }
 }

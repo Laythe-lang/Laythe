@@ -28,7 +28,7 @@ pub fn create_std_lib(hooks: &GcHooks) -> PackageResult<Managed<Package>> {
 mod test {
   use super::*;
   use crate::support::{test_native_dependencies, TestContext};
-  use spacelox_core::{signature::Arity, package::PackageEntity, value::ValueVariant};
+  use spacelox_core::{package::PackageEntity, signature::Arity, value::ValueVariant};
 
   fn check_inner(hooks: &GcHooks, package: Managed<Package>) {
     package.entities().for_each(|(_key, entity)| match entity {

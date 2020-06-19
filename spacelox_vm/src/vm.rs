@@ -5,7 +5,6 @@ use crate::{
   dep_manager::DepManager,
 };
 use spacelox_core::{
-  signature::{ArityError, ParameterKind},
   chunk::{ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT},
   hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks, NoContext},
@@ -14,6 +13,7 @@ use spacelox_core::{
   object::SlHashMap,
   object::{Class, Closure, Fun, Instance, Method, SlVec, Upvalue},
   package::{Import, Package},
+  signature::{ArityError, ParameterKind},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
   value::{Value, ValueVariant, VALUE_NIL},
   CallResult, SlError,
@@ -539,10 +539,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   /// Update the current instruction pointer
   #[inline]
   fn update_ip(&mut self, offset: isize) {
-    unsafe { self.set_ip(self.ip().offset(offset)); }
+    unsafe {
+      self.set_ip(self.ip().offset(offset));
+    }
   }
 
-  /// Get the current instruction 
+  /// Get the current instruction
   #[inline]
   fn ip(&self) -> *const u8 {
     unsafe { (*self.current_frame).ip }
@@ -1407,34 +1409,25 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   /// check that the number of args is valid for the function arity
-  fn check_arity(&mut self, fun: Managed<Fun>, arg_count: u8) -> Option<Signal>
-  {
+  fn check_arity(&mut self, fun: Managed<Fun>, arg_count: u8) -> Option<Signal> {
     match fun.arity.check(arg_count) {
       Ok(_) => None,
       Err(error) => match error {
         ArityError::Fixed(arity) => Some(self.runtime_error(&format!(
           "{} expected {} argument(s) but got {}.",
-          fun.name,
-          arity,
-          arg_count,
+          fun.name, arity, arg_count,
         ))),
         ArityError::Variadic(arity) => Some(self.runtime_error(&format!(
           "{} expected at least {} argument(s) but got {}.",
-          fun.name,
-          arity,
-          arg_count,
+          fun.name, arity, arg_count,
         ))),
         ArityError::DefaultLow(arity) => Some(self.runtime_error(&format!(
           "{} expected at least {} argument(s) but got {}.",
-          fun.name,
-          arity,
-          arg_count,
+          fun.name, arity, arg_count,
         ))),
         ArityError::DefaultHigh(arity) => Some(self.runtime_error(&format!(
           "{} expected at most {} argument(s) but got {}.",
-          fun.name,
-          arity,
-          arg_count,
+          fun.name, arity, arg_count,
         ))),
       },
     }
@@ -1485,7 +1478,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
             ParameterKind::from(args[parameter as usize])
           )))
         }
-      }
+      },
     }
   }
 

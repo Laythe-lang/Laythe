@@ -1,9 +1,9 @@
 use crate::support::export_and_insert;
 use spacelox_core::{
-  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeFun, NativeMeta},
+  signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
   CallResult, ModuleResult,
 };
@@ -179,7 +179,10 @@ mod test {
 
       assert_eq!(assert.meta().name, "assert");
       assert_eq!(assert.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(assert.meta().signature.parameters[0].kind, ParameterKind::Bool);
+      assert_eq!(
+        assert.meta().signature.parameters[0].kind,
+        ParameterKind::Bool
+      );
     }
 
     #[test]
@@ -211,8 +214,14 @@ mod test {
 
       assert_eq!(assert_eq.meta().name, "assertEq");
       assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(assert_eq.meta().signature.parameters[0].kind, ParameterKind::Any);
-      assert_eq!(assert_eq.meta().signature.parameters[1].kind, ParameterKind::Any);
+      assert_eq!(
+        assert_eq.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+      assert_eq!(
+        assert_eq.meta().signature.parameters[1].kind,
+        ParameterKind::Any
+      );
     }
 
     #[test]
@@ -244,8 +253,14 @@ mod test {
 
       assert_eq!(assert_eq.meta().name, "assertNe");
       assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(assert_eq.meta().signature.parameters[0].kind, ParameterKind::Any);
-      assert_eq!(assert_eq.meta().signature.parameters[1].kind, ParameterKind::Any);
+      assert_eq!(
+        assert_eq.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+      assert_eq!(
+        assert_eq.meta().signature.parameters[1].kind,
+        ParameterKind::Any
+      );
     }
 
     #[test]

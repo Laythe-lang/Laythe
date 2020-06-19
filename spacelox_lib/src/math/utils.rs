@@ -1,9 +1,9 @@
 use crate::support::export_and_insert;
 use spacelox_core::{
-  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeFun, NativeMeta},
+  signature::{Arity, Parameter, ParameterKind},
   value::Value,
   CallResult, ModuleResult,
 };
@@ -148,7 +148,10 @@ mod test {
 
       assert_eq!(sin.meta().name, "sin");
       assert_eq!(sin.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(sin.meta().signature.parameters[0].kind, ParameterKind::Number);
+      assert_eq!(
+        sin.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
     }
 
     #[test]
@@ -176,7 +179,10 @@ mod test {
 
       assert_eq!(cos.meta().name, "cos");
       assert_eq!(cos.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(cos.meta().signature.parameters[0].kind, ParameterKind::Number);
+      assert_eq!(
+        cos.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
     }
 
     #[test]
@@ -204,7 +210,10 @@ mod test {
 
       assert_eq!(ln.meta().name, "ln");
       assert_eq!(ln.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(ln.meta().signature.parameters[0].kind, ParameterKind::Number);
+      assert_eq!(
+        ln.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
     }
 
     #[test]

@@ -1,13 +1,13 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use hashbrown::hash_map::Iter;
 use spacelox_core::{
-  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::{Class, SlHashMap, SlVec},
   package::Package,
+  signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
   CallResult, ModuleResult, SlError,
 };
@@ -115,9 +115,7 @@ struct MapStr {
 
 impl MapStr {
   fn new(method_name: Managed<String>) -> Self {
-    Self {
-      method_name,
-    }
+    Self { method_name }
   }
 }
 
@@ -470,7 +468,10 @@ mod test {
 
       assert_eq!(map_get.meta().name, "get");
       assert_eq!(map_get.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(map_get.meta().signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(
+        map_get.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
     }
 
     #[test]
@@ -509,8 +510,14 @@ mod test {
 
       assert_eq!(map_insert.meta().name, "insert");
       assert_eq!(map_insert.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(map_insert.meta().signature.parameters[0].kind, ParameterKind::Any);
-      assert_eq!(map_insert.meta().signature.parameters[1].kind, ParameterKind::Any);
+      assert_eq!(
+        map_insert.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+      assert_eq!(
+        map_insert.meta().signature.parameters[1].kind,
+        ParameterKind::Any
+      );
     }
 
     #[test]
@@ -557,7 +564,10 @@ mod test {
 
       assert_eq!(map_remove.meta().name, "remove");
       assert_eq!(map_remove.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(map_remove.meta().signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(
+        map_remove.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
     }
 
     #[test]

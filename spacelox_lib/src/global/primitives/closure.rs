@@ -1,11 +1,11 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::Class,
   package::Package,
+  signature::{Arity, Parameter, ParameterKind},
   value::Value,
   CallResult, ModuleResult,
 };
@@ -194,7 +194,10 @@ mod test {
 
       assert_eq!(closure_call.meta().name, "call");
       assert_eq!(closure_call.meta().signature.arity, Arity::Variadic(0));
-      assert_eq!(closure_call.meta().signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(
+        closure_call.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
     }
 
     #[test]

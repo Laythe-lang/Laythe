@@ -3,12 +3,12 @@ use spacelox_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use spacelox_core::token::{Token, TokenKind};
 use spacelox_core::utils::{copy_string, do_if_some};
 use spacelox_core::{
-  signature::Arity,
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
   hooks::GcHooks,
   module::Module,
   object::SlHashMap,
   object::{Fun, FunKind},
+  signature::Arity,
   value::Value,
 };
 use spacelox_env::{

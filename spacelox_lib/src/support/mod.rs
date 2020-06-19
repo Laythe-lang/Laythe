@@ -26,10 +26,10 @@ pub use self::test::*;
 #[cfg(test)]
 mod test {
   use spacelox_core::{
-    signature::Arity,
     hooks::{CallContext, GcContext, GcHooks, HookContext},
     module::Module,
     object::Fun,
+    signature::Arity,
     value::{Value, ValueVariant},
     CallResult, SlError,
   };

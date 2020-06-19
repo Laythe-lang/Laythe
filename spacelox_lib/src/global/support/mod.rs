@@ -1,7 +1,7 @@
 use spacelox_core::{
-  signature::Arity,
   hooks::Hooks,
   native::{NativeFun, NativeMeta},
+  signature::Arity,
   value::{Value, VALUE_NIL},
   CallResult,
 };

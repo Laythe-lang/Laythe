@@ -1,12 +1,12 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::Class,
   package::Package,
+  signature::{Arity, Parameter, ParameterKind},
   utils::is_falsey,
   value::{Value, VALUE_NIL},
   CallResult, ModuleResult,
@@ -34,7 +34,10 @@ const ITER_FILTER: NativeMeta = NativeMeta::new(
 const ITER_REDUCE: NativeMeta = NativeMeta::new(
   "reduce",
   Arity::Fixed(2),
-  &[Parameter::new("initial", ParameterKind::Any), Parameter::new("fun", ParameterKind::Fun)],
+  &[
+    Parameter::new("initial", ParameterKind::Any),
+    Parameter::new("fun", ParameterKind::Fun),
+  ],
 );
 const ITER_EACH: NativeMeta = NativeMeta::new(
   "each",
@@ -109,7 +112,9 @@ impl NativeMethod for IterStr {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::from(hooks.manage_str(this.to_iter().name().to_string())))
+    Ok(Value::from(
+      hooks.manage_str(this.to_iter().name().to_string()),
+    ))
   }
 }
 
@@ -334,7 +339,6 @@ impl NativeMethod for IterEach {
   }
 }
 
-
 #[cfg(test)]
 mod test {
   use super::*;
@@ -486,7 +490,10 @@ mod test {
 
       assert_eq!(iter_map.meta().name, "map");
       assert_eq!(iter_map.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(iter_map.meta().signature.parameters[0].kind, ParameterKind::Fun);
+      assert_eq!(
+        iter_map.meta().signature.parameters[0].kind,
+        ParameterKind::Fun
+      );
     }
 
     #[test]
@@ -530,13 +537,19 @@ mod test {
 
       assert_eq!(iter_filter.meta().name, "filter");
       assert_eq!(iter_filter.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(iter_filter.meta().signature.parameters[0].kind, ParameterKind::Fun);
+      assert_eq!(
+        iter_filter.meta().signature.parameters[0].kind,
+        ParameterKind::Fun
+      );
     }
 
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[Value::from(false), Value::from(true), Value::from(true)]);
+      let mut context = TestContext::new(
+        &gc,
+        &[Value::from(false), Value::from(true), Value::from(true)],
+      );
       let mut hooks = Hooks::new(&mut context);
       let iter_filter = IterFilter();
 
@@ -576,20 +589,29 @@ mod test {
 
       assert_eq!(iter_reduce.meta().name, "reduce");
       assert_eq!(iter_reduce.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(iter_reduce.meta().signature.parameters[0].kind, ParameterKind::Any);
-      assert_eq!(iter_reduce.meta().signature.parameters[1].kind, ParameterKind::Fun);
+      assert_eq!(
+        iter_reduce.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+      assert_eq!(
+        iter_reduce.meta().signature.parameters[1].kind,
+        ParameterKind::Fun
+      );
     }
 
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[
-        Value::from(false),
-        Value::from(false),
-        Value::from(false),
-        Value::from(false),
-        Value::from(10.1),
-      ]);
+      let mut context = TestContext::new(
+        &gc,
+        &[
+          Value::from(false),
+          Value::from(false),
+          Value::from(false),
+          Value::from(false),
+          Value::from(10.1),
+        ],
+      );
       let mut hooks = Hooks::new(&mut context);
       let iter_reduce = IterReduce();
 
@@ -626,7 +648,10 @@ mod test {
 
       assert_eq!(iter_each.meta().name, "each");
       assert_eq!(iter_each.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(iter_each.meta().signature.parameters[0].kind, ParameterKind::Fun);
+      assert_eq!(
+        iter_each.meta().signature.parameters[0].kind,
+        ParameterKind::Fun
+      );
     }
 
     #[test]
@@ -649,9 +674,7 @@ mod test {
 
       let result = iter_reduce.call(&mut hooks, this, &[fun]);
       match result {
-        Ok(r) => {
-          assert!(r.is_nil())
-        }
+        Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),
       }
     }

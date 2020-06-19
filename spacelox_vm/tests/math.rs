@@ -23,8 +23,5 @@ fn utils() -> Result<(), std::io::Error> {
 
   test_files(&vec![], ExecuteResult::CompileError)?;
 
-  test_files(
-    &vec![],
-    ExecuteResult::RuntimeError,
-  )
+  test_files(&vec![], ExecuteResult::RuntimeError)
 }

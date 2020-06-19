@@ -1,9 +1,9 @@
 use crate::support::export_and_insert;
 use spacelox_core::{
-  signature::Arity,
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeFun, NativeMeta},
+  signature::Arity,
   value::Value,
   CallResult, ModuleResult,
 };

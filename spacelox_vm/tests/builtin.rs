@@ -15,20 +15,14 @@ fn bool() -> Result<(), std::io::Error> {
 
   test_files(&vec![], ExecuteResult::CompileError)?;
 
-  test_files(
-    &vec![],
-    ExecuteResult::RuntimeError,
-  )
+  test_files(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
 fn nil() -> Result<(), std::io::Error> {
   test_files(&vec!["std_lib/builtin/nil/str.lox"], ExecuteResult::Ok)?;
 
-  test_files(
-    &vec![],
-    ExecuteResult::RuntimeError,
-  )
+  test_files(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
@@ -56,19 +50,18 @@ fn closure() -> Result<(), std::io::Error> {
 fn iter() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/builtin/iter/str.lox",
-      "std_lib/builtin/iter/next.lox",
+      "std_lib/builtin/iter/each.lox",
+      "std_lib/builtin/iter/filter.lox",
       "std_lib/builtin/iter/iter.lox",
       "std_lib/builtin/iter/map.lox",
-      "std_lib/builtin/iter/filter.lox",
+      "std_lib/builtin/iter/next.lox",
+      "std_lib/builtin/iter/reduce.lox",
+      "std_lib/builtin/iter/str.lox",
     ],
     ExecuteResult::Ok,
   )?;
 
-  test_files(
-    &vec![],
-    ExecuteResult::RuntimeError,
-  )
+  test_files(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
@@ -113,11 +106,16 @@ fn map() -> Result<(), std::io::Error> {
   )?;
 
   test_files(
-    &vec![
-      "std_lib/builtin/map/remove_missing_key.lox",
-    ],
+    &vec!["std_lib/builtin/map/remove_missing_key.lox"],
     ExecuteResult::RuntimeError,
   )
+}
+
+#[test]
+fn number() -> Result<(), std::io::Error> {
+  test_files(&vec!["std_lib/builtin/number/times.lox"], ExecuteResult::Ok)?;
+
+  test_files(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]

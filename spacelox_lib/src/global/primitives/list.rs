@@ -1,12 +1,12 @@
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
-  signature::{Arity, Parameter, ParameterKind},
   hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::{Class, SlVec},
   package::Package,
+  signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
   CallResult, ModuleResult,
 };
@@ -532,7 +532,10 @@ mod test {
 
       assert_eq!(list_push.meta.name, "push");
       assert_eq!(list_push.meta.signature.arity, Arity::Variadic(0));
-      assert_eq!(list_push.meta.signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(
+        list_push.meta.signature.parameters[0].kind,
+        ParameterKind::Any
+      );
     }
 
     #[test]
@@ -626,7 +629,10 @@ mod test {
 
       assert_eq!(list_remove.meta.name, "remove");
       assert_eq!(list_remove.meta.signature.arity, Arity::Fixed(1));
-      assert_eq!(list_remove.meta.signature.parameters[0].kind, ParameterKind::Number);
+      assert_eq!(
+        list_remove.meta.signature.parameters[0].kind,
+        ParameterKind::Number
+      );
     }
 
     #[test]
@@ -673,8 +679,14 @@ mod test {
 
       assert_eq!(list_insert.meta.name, "insert");
       assert_eq!(list_insert.meta.signature.arity, Arity::Fixed(2));
-      assert_eq!(list_insert.meta.signature.parameters[0].kind, ParameterKind::Number);
-      assert_eq!(list_insert.meta.signature.parameters[1].kind, ParameterKind::Any);
+      assert_eq!(
+        list_insert.meta.signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+      assert_eq!(
+        list_insert.meta.signature.parameters[1].kind,
+        ParameterKind::Any
+      );
     }
 
     #[test]
