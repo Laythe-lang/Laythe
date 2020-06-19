@@ -31,6 +31,16 @@ const ITER_FILTER: NativeMeta = NativeMeta::new(
   Arity::Fixed(1),
   &[Parameter::new("fun", ParameterKind::Fun)],
 );
+const ITER_REDUCE: NativeMeta = NativeMeta::new(
+  "reduce",
+  Arity::Fixed(2),
+  &[Parameter::new("initial", ParameterKind::Any), Parameter::new("fun", ParameterKind::Fun)],
+);
+const ITER_EACH: NativeMeta = NativeMeta::new(
+  "each",
+  Arity::Fixed(1),
+  &[Parameter::new("fun", ParameterKind::Fun)],
+);
 
 pub fn declare_iter_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(ITER_CLASS_NAME));
@@ -50,70 +60,65 @@ pub fn define_iter_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_STR.name)),
-    Value::from(to_dyn_method(hooks, IterStr::new())),
+    Value::from(to_dyn_method(hooks, IterStr())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_NEXT.name)),
-    Value::from(to_dyn_method(hooks, IterNext::new())),
+    Value::from(to_dyn_method(hooks, IterNext())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_ITER.name)),
-    Value::from(to_dyn_method(hooks, IterIter::new())),
+    Value::from(to_dyn_method(hooks, IterIter())),
   );
 
-  let class_copy = class.clone();
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_MAP.name)),
-    Value::from(to_dyn_method(hooks, IterMap::new(class_copy))),
+    Value::from(to_dyn_method(hooks, IterMap())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_FILTER.name)),
-    Value::from(to_dyn_method(hooks, IterFilter::new(class_copy))),
+    Value::from(to_dyn_method(hooks, IterFilter())),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(String::from(ITER_REDUCE.name)),
+    Value::from(to_dyn_method(hooks, IterReduce())),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(String::from(ITER_EACH.name)),
+    Value::from(to_dyn_method(hooks, IterEach())),
   );
 }
 
 #[derive(Clone, Debug, Trace)]
-struct IterStr {
-  meta: &'static NativeMeta,
-}
-
-impl IterStr {
-  fn new() -> Self {
-    Self { meta: &ITER_STR }
-  }
-}
+struct IterStr();
 
 impl NativeMethod for IterStr {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &ITER_STR
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(this.to_iter().name(hooks))
+    Ok(Value::from(hooks.manage_str(this.to_iter().name().to_string())))
   }
 }
 
 #[derive(Clone, Debug, Trace)]
-struct IterNext {
-  meta: &'static NativeMeta,
-}
-
-impl IterNext {
-  fn new() -> Self {
-    Self { meta: &ITER_NEXT }
-  }
-}
+struct IterNext();
 
 impl NativeMethod for IterNext {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &ITER_NEXT
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -122,19 +127,11 @@ impl NativeMethod for IterNext {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct IterIter {
-  meta: &'static NativeMeta,
-}
-
-impl IterIter {
-  fn new() -> Self {
-    Self { meta: &ITER_ITER }
-  }
-}
+struct IterIter();
 
 impl NativeMethod for IterIter {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &ITER_ITER
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -142,43 +139,20 @@ impl NativeMethod for IterIter {
   }
 }
 
-struct IterMap {
-  meta: &'static NativeMeta,
-  iter_class: Managed<Class>,
-}
-
-impl IterMap {
-  fn new(iter_class: Managed<Class>) -> Self {
-    Self {
-      meta: &ITER_MAP,
-      iter_class,
-    }
-  }
-}
+#[derive(Trace)]
+struct IterMap();
 
 impl NativeMethod for IterMap {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &ITER_MAP
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     let inner_iter: Box<dyn SlIter> = Box::new(MapIterator::new(this.to_iter(), args[0]));
-    let iter = SlIterator::new(inner_iter, self.iter_class);
+    let iter = SlIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
     Ok(Value::from(iter))
-  }
-}
-
-impl Trace for IterMap {
-  fn trace(&self) -> bool {
-    self.iter_class.trace();
-    true
-  }
-
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.iter_class.trace_debug(stdio);
-    true
   }
 }
 
@@ -239,43 +213,20 @@ impl Trace for MapIterator {
   }
 }
 
-struct IterFilter {
-  meta: &'static NativeMeta,
-  iter_class: Managed<Class>,
-}
-
-impl IterFilter {
-  fn new(iter_class: Managed<Class>) -> Self {
-    Self {
-      meta: &ITER_FILTER,
-      iter_class,
-    }
-  }
-}
+#[derive(Trace)]
+struct IterFilter();
 
 impl NativeMethod for IterFilter {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &ITER_FILTER
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     let inner_iter: Box<dyn SlIter> = Box::new(FilterIterator::new(this.to_iter(), args[0]));
-    let iter = SlIterator::new(inner_iter, self.iter_class);
+    let iter = SlIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
     Ok(Value::from(iter))
-  }
-}
-
-impl Trace for IterFilter {
-  fn trace(&self) -> bool {
-    self.iter_class.trace();
-    true
-  }
-
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.iter_class.trace_debug(stdio);
-    true
   }
 }
 
@@ -340,11 +291,54 @@ impl Trace for FilterIterator {
   }
 }
 
+#[derive(Trace)]
+struct IterReduce();
+
+impl NativeMethod for IterReduce {
+  fn meta(&self) -> &NativeMeta {
+    &ITER_REDUCE
+  }
+
+  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    let mut accumulator = args[0];
+    let callable = args[1];
+    let mut iter = this.to_iter();
+
+    while !is_falsey(iter.next(hooks)?) {
+      let current = iter.current();
+      accumulator = hooks.call(callable, &[accumulator, current])?;
+    }
+
+    Ok(accumulator)
+  }
+}
+
+#[derive(Trace)]
+struct IterEach();
+
+impl NativeMethod for IterEach {
+  fn meta(&self) -> &NativeMeta {
+    &ITER_EACH
+  }
+
+  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    let callable = args[0];
+    let mut iter = this.to_iter();
+
+    while !is_falsey(iter.next(hooks)?) {
+      let current = iter.current();
+      hooks.call(callable, &[current])?;
+    }
+
+    Ok(VALUE_NIL)
+  }
+}
+
+
 #[cfg(test)]
 mod test {
   use super::*;
   use spacelox_core::iterator::SlIter;
-  use spacelox_env::managed::Managed;
 
   #[derive(Trace, Debug)]
   struct TestIterator {
@@ -380,11 +374,8 @@ mod test {
     }
   }
 
-  fn test_input(hooks: &Hooks) -> (Box<dyn SlIter>, Managed<Class>) {
-    (
-      Box::new(TestIterator::new()),
-      hooks.manage(Class::new(hooks.manage_str("test".to_string()))),
-    )
+  fn test_input() -> Box<dyn SlIter> {
+    Box::new(TestIterator::new())
   }
 
   #[cfg(test)]
@@ -395,21 +386,21 @@ mod test {
 
     #[test]
     fn new() {
-      let iter_str = IterStr::new();
+      let iter_str = IterStr();
 
-      assert_eq!(iter_str.meta.name, "str");
-      assert_eq!(iter_str.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(iter_str.meta().name, "str");
+      assert_eq!(iter_str.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let iter_str = IterStr::new();
+      let iter_str = IterStr();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let (iter, class) = test_input(&hooks);
-      let this = hooks.manage(SlIterator::new(iter, class));
+      let iter = test_input();
+      let this = hooks.manage(SlIterator::new(iter));
 
       let result = iter_str.call(&mut hooks, Value::from(this), &[]);
       match result {
@@ -427,21 +418,21 @@ mod test {
 
     #[test]
     fn new() {
-      let iter_next = IterNext::new();
+      let iter_next = IterNext();
 
-      assert_eq!(iter_next.meta.name, "next");
-      assert_eq!(iter_next.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(iter_next.meta().name, "next");
+      assert_eq!(iter_next.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let iter_next = IterNext::new();
+      let iter_next = IterNext();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let (iter, class) = test_input(&hooks);
-      let this = hooks.manage(SlIterator::new(iter, class));
+      let iter = test_input();
+      let this = hooks.manage(SlIterator::new(iter));
 
       let result = iter_next.call(&mut hooks, Value::from(this), &[]);
       match result {
@@ -458,21 +449,21 @@ mod test {
 
     #[test]
     fn new() {
-      let iter_iter = IterIter::new();
+      let iter_iter = IterIter();
 
-      assert_eq!(iter_iter.meta.name, "iter");
-      assert_eq!(iter_iter.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(iter_iter.meta().name, "iter");
+      assert_eq!(iter_iter.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let iter_iter = IterIter::new();
+      let iter_iter = IterIter();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let (iter, class) = test_input(&hooks);
-      let managed = hooks.manage(SlIterator::new(iter, class));
+      let iter = test_input();
+      let managed = hooks.manage(SlIterator::new(iter));
       let this = Value::from(managed);
 
       let result = iter_iter.call(&mut hooks, this, &[]);
@@ -491,16 +482,11 @@ mod test {
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
-      let hooks = Hooks::new(&mut context);
+      let iter_map = IterMap();
 
-      let iter_map =
-        IterMap::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
-
-      assert_eq!(iter_map.meta.name, "map");
-      assert_eq!(iter_map.meta.signature.arity, Arity::Fixed(1));
-      assert_eq!(iter_map.meta.signature.parameters[0].kind, ParameterKind::Fun);
+      assert_eq!(iter_map.meta().name, "map");
+      assert_eq!(iter_map.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(iter_map.meta().signature.parameters[0].kind, ParameterKind::Fun);
     }
 
     #[test]
@@ -508,11 +494,10 @@ mod test {
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[Value::from(5.0)]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_map =
-        IterMap::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
+      let iter_map = IterMap();
 
-      let (iter, class) = test_input(&hooks);
-      let managed = hooks.manage(SlIterator::new(iter, class));
+      let iter = test_input();
+      let managed = hooks.manage(SlIterator::new(iter));
       let this = Value::from(managed);
       let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
@@ -541,16 +526,11 @@ mod test {
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
-      let hooks = Hooks::new(&mut context);
+      let iter_filter = IterFilter();
 
-      let iter_filter =
-        IterFilter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
-
-      assert_eq!(iter_filter.meta.name, "filter");
-      assert_eq!(iter_filter.meta.signature.arity, Arity::Fixed(1));
-      assert_eq!(iter_filter.meta.signature.parameters[0].kind, ParameterKind::Fun);
+      assert_eq!(iter_filter.meta().name, "filter");
+      assert_eq!(iter_filter.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(iter_filter.meta().signature.parameters[0].kind, ParameterKind::Fun);
     }
 
     #[test]
@@ -558,11 +538,10 @@ mod test {
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[Value::from(false), Value::from(true), Value::from(true)]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_filter =
-        IterFilter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
+      let iter_filter = IterFilter();
 
-      let (iter, class) = test_input(&hooks);
-      let managed = hooks.manage(SlIterator::new(iter, class));
+      let iter = test_input();
+      let managed = hooks.manage(SlIterator::new(iter));
       let this = Value::from(managed);
       let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
@@ -580,6 +559,98 @@ mod test {
           assert_eq!(filter_iter.current(), Value::from(2.0));
           assert_eq!(filter_iter.next(&mut hooks).unwrap(), Value::from(true));
           assert_eq!(filter_iter.current(), Value::from(3.0));
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod reduce {
+    use super::*;
+    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use spacelox_core::{iterator::SlIterator, object::Closure};
+
+    #[test]
+    fn new() {
+      let iter_reduce = IterReduce();
+
+      assert_eq!(iter_reduce.meta().name, "reduce");
+      assert_eq!(iter_reduce.meta().signature.arity, Arity::Fixed(2));
+      assert_eq!(iter_reduce.meta().signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(iter_reduce.meta().signature.parameters[1].kind, ParameterKind::Fun);
+    }
+
+    #[test]
+    fn call() {
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[
+        Value::from(false),
+        Value::from(false),
+        Value::from(false),
+        Value::from(false),
+        Value::from(10.1),
+      ]);
+      let mut hooks = Hooks::new(&mut context);
+      let iter_reduce = IterReduce();
+
+      let iter = test_input();
+      let managed = hooks.manage(SlIterator::new(iter));
+      let this = Value::from(managed);
+      let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
+        &hooks.to_gc(),
+        "example".to_string(),
+        "module",
+      ))));
+
+      fun.to_closure().fun.arity = Arity::Fixed(2);
+
+      let result = iter_reduce.call(&mut hooks, this, &[Value::from(0.0), fun]);
+      match result {
+        Ok(r) => {
+          assert!(r.is_num());
+          assert_eq!(r.to_num(), 10.1);
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod each {
+    use super::*;
+    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use spacelox_core::{iterator::SlIterator, object::Closure};
+
+    #[test]
+    fn new() {
+      let iter_each = IterEach();
+
+      assert_eq!(iter_each.meta().name, "each");
+      assert_eq!(iter_each.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(iter_each.meta().signature.parameters[0].kind, ParameterKind::Fun);
+    }
+
+    #[test]
+    fn call() {
+      let gc = test_native_dependencies();
+      let mut context = TestContext::new(&gc, &[Value::from(false); 5]);
+      let mut hooks = Hooks::new(&mut context);
+      let iter_reduce = IterEach();
+
+      let iter = test_input();
+      let managed = hooks.manage(SlIterator::new(iter));
+      let this = Value::from(managed);
+      let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
+        &hooks.to_gc(),
+        "example".to_string(),
+        "module",
+      ))));
+
+      fun.to_closure().fun.arity = Arity::Fixed(1);
+
+      let result = iter_reduce.call(&mut hooks, this, &[fun]);
+      match result {
+        Ok(r) => {
+          assert!(r.is_nil())
         }
         Err(_) => assert!(false),
       }

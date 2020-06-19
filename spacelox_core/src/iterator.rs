@@ -1,6 +1,5 @@
 use crate::{
   hooks::Hooks,
-  object::Class,
   value::{Value, VALUE_NIL},
   CallResult,
 };
@@ -22,18 +21,14 @@ pub struct SlIterator {
 
   /// The current value of the iterator
   current: Value,
-
-  /// The class of this iterator
-  pub class: Managed<Class>,
 }
 
 impl SlIterator {
   /// Create a new iterator container
-  pub fn new(iterator: Box<dyn SlIter>, class: Managed<Class>) -> Self {
+  pub fn new(iterator: Box<dyn SlIter>) -> Self {
     Self {
       iterator,
       current: VALUE_NIL,
-      class,
     }
   }
 
@@ -47,8 +42,8 @@ impl SlIterator {
   }
 
   /// Get the name of this iterator
-  pub fn name(&self, hooks: &Hooks) -> Value {
-    Value::from(hooks.manage_str(String::from(self.iterator.name())))
+  pub fn name(&self) -> &str {
+    self.iterator.name()
   }
 
   /// Increment the iterator
@@ -66,7 +61,6 @@ impl SlIterator {
 
 impl Trace for SlIterator {
   fn trace(&self) -> bool {
-    self.class.trace();
     self.current.trace();
     self.iterator.trace();
 
@@ -74,7 +68,6 @@ impl Trace for SlIterator {
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.class.trace_debug(stdio);
     self.current.trace_debug(stdio);
     self.iterator.trace_debug(stdio);
 

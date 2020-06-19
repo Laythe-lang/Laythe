@@ -32,24 +32,16 @@ pub fn define_bool_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
   class.add_method(
     &hooks,
     hooks.manage_str(String::from(BOOL_STR.name)),
-    Value::from(to_dyn_method(hooks, BoolStr::new())),
+    Value::from(to_dyn_method(hooks, BoolStr())),
   );
 }
 
 #[derive(Clone, Debug, Trace)]
-struct BoolStr {
-  meta: &'static NativeMeta,
-}
-
-impl BoolStr {
-  fn new() -> Self {
-    Self { meta: &BOOL_STR }
-  }
-}
+struct BoolStr();
 
 impl NativeMethod for BoolStr {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &BOOL_STR
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -71,15 +63,15 @@ mod test {
 
     #[test]
     fn new() {
-      let bool_str = BoolStr::new();
+      let bool_str = BoolStr();
 
-      assert_eq!(bool_str.meta.name, "str");
-      assert_eq!(bool_str.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(bool_str.meta().name, "str");
+      assert_eq!(bool_str.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let bool_str = BoolStr::new();
+      let bool_str = BoolStr();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);

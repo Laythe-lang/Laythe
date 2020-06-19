@@ -50,20 +50,18 @@ pub fn define_method_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(METHOD_CALL.name)),
-    Value::from(to_dyn_method(hooks, MethodCall::new())),
+    Value::from(to_dyn_method(hooks, MethodCall())),
   );
 }
 
 #[derive(Clone, Debug, Trace)]
 struct MethodName {
-  meta: &'static NativeMeta,
   method_name: Managed<String>,
 }
 
 impl MethodName {
   fn new(method_name: Managed<String>) -> Self {
     Self {
-      meta: &METHOD_NAME,
       method_name,
     }
   }
@@ -71,7 +69,7 @@ impl MethodName {
 
 impl NativeMethod for MethodName {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &METHOD_NAME
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
@@ -80,19 +78,11 @@ impl NativeMethod for MethodName {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct MethodCall {
-  meta: &'static NativeMeta,
-}
-
-impl MethodCall {
-  fn new() -> Self {
-    Self { meta: &METHOD_CALL }
-  }
-}
+struct MethodCall();
 
 impl NativeMethod for MethodCall {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &METHOD_CALL
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
@@ -124,8 +114,8 @@ mod test {
       let gc = test_native_dependencies();
       let method_name = MethodName::new(gc.manage_str("name".to_string(), &NO_GC));
 
-      assert_eq!(method_name.meta.name, "name");
-      assert_eq!(method_name.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(method_name.meta().name, "name");
+      assert_eq!(method_name.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -160,16 +150,16 @@ mod test {
 
     #[test]
     fn new() {
-      let closure_call = MethodCall::new();
+      let closure_call = MethodCall();
 
-      assert_eq!(closure_call.meta.name, "call");
-      assert_eq!(closure_call.meta.signature.arity, Arity::Variadic(0));
-      assert_eq!(closure_call.meta.signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(closure_call.meta().name, "call");
+      assert_eq!(closure_call.meta().signature.arity, Arity::Variadic(0));
+      assert_eq!(closure_call.meta().signature.parameters[0].kind, ParameterKind::Any);
     }
 
     #[test]
     fn call() {
-      let method_call = MethodCall::new();
+      let method_call = MethodCall();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[Value::from(14.3)]);
       let mut hooks = Hooks::new(&mut context);

@@ -38,32 +38,22 @@ pub fn define_native_fun_class(hooks: &GcHooks, self_module: &Module, _: &Packag
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NATIVE_FUN_NAME.name)),
-    Value::from(to_dyn_method(hooks, NativeFunName::new())),
+    Value::from(to_dyn_method(hooks, NativeFunName())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NATIVE_FUN_CALL.name)),
-    Value::from(to_dyn_method(hooks, NativeFunCall::new())),
+    Value::from(to_dyn_method(hooks, NativeFunCall())),
   );
 }
 
 #[derive(Clone, Debug, Trace)]
-struct NativeFunName {
-  meta: &'static NativeMeta,
-}
-
-impl NativeFunName {
-  fn new() -> Self {
-    Self {
-      meta: &NATIVE_FUN_NAME,
-    }
-  }
-}
+struct NativeFunName();
 
 impl NativeMethod for NativeFunName {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &NATIVE_FUN_NAME
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -74,21 +64,11 @@ impl NativeMethod for NativeFunName {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct NativeFunCall {
-  meta: &'static NativeMeta,
-}
-
-impl NativeFunCall {
-  fn new() -> Self {
-    Self {
-      meta: &NATIVE_FUN_CALL,
-    }
-  }
-}
+struct NativeFunCall();
 
 impl NativeMethod for NativeFunCall {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &NATIVE_FUN_CALL
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
@@ -111,15 +91,15 @@ mod test {
 
     #[test]
     fn new() {
-      let native_fun_name = NativeFunName::new();
+      let native_fun_name = NativeFunName();
 
-      assert_eq!(native_fun_name.meta.name, "name");
-      assert_eq!(native_fun_name.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(native_fun_name.meta().name, "name");
+      assert_eq!(native_fun_name.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let native_fun_name = NativeFunName::new();
+      let native_fun_name = NativeFunName();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -143,16 +123,16 @@ mod test {
 
     #[test]
     fn new() {
-      let native_fun_call = NativeFunCall::new();
+      let native_fun_call = NativeFunCall();
 
-      assert_eq!(native_fun_call.meta.name, "call");
-      assert_eq!(native_fun_call.meta.signature.arity, Arity::Variadic(0));
-      assert_eq!(native_fun_call.meta.signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(native_fun_call.meta().name, "call");
+      assert_eq!(native_fun_call.meta().signature.arity, Arity::Variadic(0));
+      assert_eq!(native_fun_call.meta().signature.parameters[0].kind, ParameterKind::Any);
     }
 
     #[test]
     fn call() {
-      let native_fun_call = NativeFunCall::new();
+      let native_fun_call = NativeFunCall();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[VALUE_NIL]);
       let mut hooks = Hooks::new(&mut context);

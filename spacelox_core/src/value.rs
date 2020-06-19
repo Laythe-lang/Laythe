@@ -552,7 +552,7 @@ mod unboxed {
         Value::Method(_) => builtin.method,
         Value::Class(_) => panic!("TODO"),
         Value::Instance(instance) => instance.class,
-        Value::Iter(iterator) => iterator.class,
+        Value::Iter(_) => builtin.iter,
         Value::Upvalue(upvalue) => upvalue.value().value_class(builtin),
         Value::NativeFun(_) => builtin.native_fun,
         Value::NativeMethod(_) => builtin.native_method,
@@ -702,7 +702,7 @@ mod unboxed {
         Self::Method(bound) => write!(f, "{}.{}", bound.receiver, bound.method),
         Self::Class(class) => write!(f, "{}", &class.name.as_str()),
         Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
-        Self::Iter(iterator) => write!(f, "{} iterator", &iterator.class.name.as_str()),
+        Self::Iter(iterator) => write!(f, "{} iterator", &iterator.name()),
         Self::NativeFun(native_fun) => write!(f, "<native fun {}>", native_fun.meta().name),
         Self::NativeMethod(native_method) => {
           write!(f, "<native method {}>", native_method.meta().name)
@@ -1202,7 +1202,7 @@ mod boxed {
         ValueVariant::Method => builtin.method,
         ValueVariant::Class => builtin.class,
         ValueVariant::Instance => self.to_instance().class,
-        ValueVariant::Iter => self.to_iter().class,
+        ValueVariant::Iter => builtin.iter,
         ValueVariant::Upvalue => self.to_upvalue().value().value_class(builtin),
         ValueVariant::NativeFun => builtin.native_fun,
         ValueVariant::NativeMethod => builtin.native_method,
@@ -1380,8 +1380,8 @@ mod boxed {
           write!(f, "{}.{}", bound.receiver, bound.method)
         }
         ValueVariant::Class => write!(f, "{}", &self.to_class().name.as_str()),
-        ValueVariant::Instance => write!(f, "{} instance", &self.to_instance().class.name.as_str()),
-        ValueVariant::Iter => write!(f, "{} iterator", &self.to_iter().class.name.as_str()),
+        ValueVariant::Instance => write!(f, "{} instance", &self.to_instance().class.name),
+        ValueVariant::Iter => write!(f, "{}", &self.to_iter().name()),
         ValueVariant::NativeFun => write!(f, "<native fun {}>", self.to_native_fun().meta().name),
         ValueVariant::NativeMethod => {
           write!(f, "<native method {}>", self.to_native_method().meta().name)

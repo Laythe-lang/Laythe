@@ -1,4 +1,3 @@
-use super::iter::ITER_CLASS_NAME;
 use crate::support::{export_and_insert, to_dyn_method};
 use spacelox_core::{
   signature::{Arity, Parameter, ParameterKind},
@@ -59,13 +58,6 @@ pub fn define_list_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
   let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
   let mut class = self_module.get_symbol(name).unwrap().to_class();
 
-  let list_iter_name = hooks.manage_str(String::from(ITER_CLASS_NAME));
-  let list_iter_class = self_module
-    .import(hooks)
-    .get_field(&list_iter_name)
-    .unwrap()
-    .to_class();
-
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_SIZE.name)),
@@ -120,7 +112,7 @@ pub fn define_list_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_ITER.name)),
-    Value::from(to_dyn_method(hooks, ListIter::new(list_iter_class))),
+    Value::from(to_dyn_method(hooks, ListIter())),
   )
 }
 
@@ -372,41 +364,17 @@ impl NativeMethod for ListHas {
   }
 }
 
-#[derive(Clone, Debug)]
-struct ListIter {
-  meta: &'static NativeMeta,
-  iter_class: Managed<Class>,
-}
-
-impl ListIter {
-  pub fn new(iter_class: Managed<Class>) -> Self {
-    Self {
-      meta: &LIST_ITER,
-      iter_class,
-    }
-  }
-}
-
-impl Trace for ListIter {
-  fn trace(&self) -> bool {
-    self.iter_class.trace();
-    true
-  }
-
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    self.iter_class.trace_debug(stdio);
-    true
-  }
-}
+#[derive(Clone, Debug, Trace)]
+struct ListIter();
 
 impl NativeMethod for ListIter {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &LIST_ITER
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
     let inner_iter: Box<dyn SlIter> = Box::new(ListIterator::new(this.to_list()));
-    let iter = SlIterator::new(inner_iter, self.iter_class);
+    let iter = SlIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
     Ok(Value::from(iter))
@@ -838,15 +806,10 @@ mod test {
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
-      let hooks = Hooks::new(&mut context);
+      let list_iter = ListIter();
 
-      let list_iter =
-        ListIter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
-
-      assert_eq!(list_iter.meta.name, "iter");
-      assert_eq!(list_iter.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(list_iter.meta().name, "iter");
+      assert_eq!(list_iter.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -854,8 +817,7 @@ mod test {
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
-      let list_iter =
-        ListIter::new(hooks.manage(Class::new(hooks.manage_str("something".to_string()))));
+      let list_iter = ListIter();
 
       let list = SlVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
       let this = hooks.manage(list);

@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "benchmark/instantiation.lox",
+        "benchmark/list2.lox",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/spacelox_vm/fixture",

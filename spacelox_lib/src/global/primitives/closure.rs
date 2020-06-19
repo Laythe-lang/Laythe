@@ -39,38 +39,28 @@ pub fn define_closure_class(hooks: &GcHooks, self_module: &Module, _: &Package) 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(CLOSURE_NAME.name)),
-    Value::from(to_dyn_method(hooks, ClosureName::new())),
+    Value::from(to_dyn_method(hooks, ClosureName())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(CLOSURE_SIZE.name)),
-    Value::from(to_dyn_method(hooks, ClosureSize::new())),
+    Value::from(to_dyn_method(hooks, ClosureSize())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(CLOSURE_CALL.name)),
-    Value::from(to_dyn_method(hooks, ClosureCall::new())),
+    Value::from(to_dyn_method(hooks, ClosureCall())),
   );
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ClosureName {
-  meta: &'static NativeMeta,
-}
-
-impl ClosureName {
-  fn new() -> Self {
-    Self {
-      meta: &CLOSURE_NAME,
-    }
-  }
-}
+struct ClosureName();
 
 impl NativeMethod for ClosureName {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &CLOSURE_NAME
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -79,21 +69,11 @@ impl NativeMethod for ClosureName {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ClosureSize {
-  meta: &'static NativeMeta,
-}
-
-impl ClosureSize {
-  fn new() -> Self {
-    Self {
-      meta: &CLOSURE_SIZE,
-    }
-  }
-}
+struct ClosureSize();
 
 impl NativeMethod for ClosureSize {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &CLOSURE_SIZE
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -108,21 +88,11 @@ impl NativeMethod for ClosureSize {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ClosureCall {
-  meta: &'static NativeMeta,
-}
-
-impl ClosureCall {
-  fn new() -> Self {
-    Self {
-      meta: &CLOSURE_CALL,
-    }
-  }
-}
+struct ClosureCall();
 
 impl NativeMethod for ClosureCall {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &CLOSURE_CALL
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
@@ -141,15 +111,15 @@ mod test {
 
     #[test]
     fn new() {
-      let closure_name = ClosureName::new();
+      let closure_name = ClosureName();
 
-      assert_eq!(closure_name.meta.name, "name");
-      assert_eq!(closure_name.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(closure_name.meta().name, "name");
+      assert_eq!(closure_name.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let closure_name = ClosureName::new();
+      let closure_name = ClosureName();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -173,15 +143,15 @@ mod test {
 
     #[test]
     fn new() {
-      let closure_name = ClosureSize::new();
+      let closure_name = ClosureSize();
 
-      assert_eq!(closure_name.meta.name, "size");
-      assert_eq!(closure_name.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(closure_name.meta().name, "size");
+      assert_eq!(closure_name.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let closure_name = ClosureSize::new();
+      let closure_name = ClosureSize();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -220,16 +190,16 @@ mod test {
 
     #[test]
     fn new() {
-      let closure_call = ClosureCall::new();
+      let closure_call = ClosureCall();
 
-      assert_eq!(closure_call.meta.name, "call");
-      assert_eq!(closure_call.meta.signature.arity, Arity::Variadic(0));
-      assert_eq!(closure_call.meta.signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(closure_call.meta().name, "call");
+      assert_eq!(closure_call.meta().signature.arity, Arity::Variadic(0));
+      assert_eq!(closure_call.meta().signature.parameters[0].kind, ParameterKind::Any);
     }
 
     #[test]
     fn call() {
-      let closure_call = ClosureCall::new();
+      let closure_call = ClosureCall();
       let gc = test_native_dependencies();
       let mut context = TestContext::new(&gc, &[Value::from(4.3)]);
       let mut hooks = Hooks::new(&mut context);

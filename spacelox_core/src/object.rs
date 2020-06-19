@@ -67,6 +67,9 @@ pub struct BuiltinPrimitives {
   // the Map class
   pub map: Managed<Class>,
 
+  // the Iter class
+  pub iter: Managed<Class>,
+
   // the Closure class
   pub closure: Managed<Class>,
 
@@ -93,7 +96,7 @@ impl BuiltinPrimitives {
       ValueVariant::Closure => self.closure,
       ValueVariant::Class => self.class,
       ValueVariant::Instance => value.to_instance().class,
-      ValueVariant::Iter => value.to_iter().class,
+      ValueVariant::Iter => self.iter,
       ValueVariant::Method => self.method,
       ValueVariant::NativeFun => self.native_fun,
       ValueVariant::NativeMethod => self.native_method,

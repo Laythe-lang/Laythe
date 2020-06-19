@@ -10,12 +10,6 @@ use spacelox_core::{
 use spacelox_env::{managed::Trace, stdio::StdIo};
 use std::time::SystemTime;
 
-#[derive(Clone, Debug, Trace)]
-pub struct Clock {
-  meta: &'static NativeMeta,
-  start: SystemTime,
-}
-
 const CLOCK_META: NativeMeta = NativeMeta::new("clock", Arity::Fixed(0), &[]);
 
 pub fn declare_clock_funs(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
@@ -27,6 +21,11 @@ pub fn declare_clock_funs(hooks: &GcHooks, self_module: &mut Module) -> ModuleRe
   )
 }
 
+#[derive(Clone, Debug, Trace)]
+pub struct Clock {
+  start: SystemTime,
+}
+
 impl Default for Clock {
   fn default() -> Self {
     Self::new()
@@ -36,7 +35,6 @@ impl Default for Clock {
 impl Clock {
   pub fn new() -> Self {
     Self {
-      meta: &CLOCK_META,
       start: SystemTime::now(),
     }
   }
@@ -44,7 +42,7 @@ impl Clock {
 
 impl NativeFun for Clock {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &CLOCK_META
   }
 
   fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> CallResult {
@@ -64,8 +62,8 @@ mod test {
   fn new() {
     let clock = Clock::new();
 
-    assert_eq!(clock.meta.name, "clock");
-    assert_eq!(clock.meta.signature.arity, Arity::Fixed(0));
+    assert_eq!(clock.meta().name, "clock");
+    assert_eq!(clock.meta().signature.arity, Arity::Fixed(0));
   }
 
   #[test]
