@@ -68,6 +68,8 @@ pub enum TokenKind {
   True,
   Var,
   While,
+  Try,
+  Catch,
 
   // meta
   Error,

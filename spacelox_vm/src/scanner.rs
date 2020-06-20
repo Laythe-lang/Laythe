@@ -268,7 +268,14 @@ impl<'a> Scanner<'a> {
     match self.nth_char_from(self.start, 0) {
       Some(c1) => match c1 {
         "a" => self.check_keyword(1, "nd", TokenKind::And),
-        "c" => self.check_keyword(1, "lass", TokenKind::Class),
+        "c" => match self.nth_char_from(self.start, 1) {
+          Some(c2) => match c2 {
+            "a" => self.check_keyword(2, "tch", TokenKind::Catch),
+            "l" => self.check_keyword(2, "ass", TokenKind::Class),
+            _ => TokenKind::Identifier
+          }
+          None => TokenKind::Identifier
+        }
         "e" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "l" => self.check_keyword(2, "se", TokenKind::Else),
@@ -304,7 +311,14 @@ impl<'a> Scanner<'a> {
         "t" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "h" => self.check_keyword(2, "is", TokenKind::This),
-            "r" => self.check_keyword(2, "ue", TokenKind::True),
+            "r" => match self.nth_char_from(self.start, 2) {
+              Some(c3) => match c3 {
+                "u" => self.check_keyword(3, "e", TokenKind::True),
+                "y" => TokenKind::Try,
+                _ => TokenKind::Identifier
+              }
+              None => TokenKind::Identifier,
+            }
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
@@ -554,6 +568,10 @@ mod test {
       TokenGen::ALpha(Box::new(|| "and".to_string())),
     );
     map.insert(
+      TokenKind::Catch,
+      TokenGen::ALpha(Box::new(|| "catch".to_string())),
+    );
+    map.insert(
       TokenKind::Class,
       TokenGen::ALpha(Box::new(|| "class".to_string())),
     );
@@ -620,6 +638,10 @@ mod test {
     map.insert(
       TokenKind::True,
       TokenGen::ALpha(Box::new(|| "true".to_string())),
+    );
+    map.insert(
+      TokenKind::Try,
+      TokenGen::ALpha(Box::new(|| "try".to_string())),
     );
     map.insert(
       TokenKind::Var,
