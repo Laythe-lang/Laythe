@@ -368,7 +368,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     match result {
       Signal::Ok => executor,
-      _ => panic!("Script call failed"),
+      _ => executor.internal_error("Main script call failed."),
     }
   }
 
@@ -384,7 +384,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       Signal::Ok => self.run(mode),
       Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
-      _ => panic!("TODO"),
+      _ => self.internal_error("Unexpected signal in run_fun."),
     }
   }
 
@@ -401,7 +401,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       Signal::Ok => self.run(mode),
       Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
-      _ => panic!("TODO"),
+      _ => self.internal_error("Unexpected signal in run_method."),
     }
   }
 
@@ -425,7 +425,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       Signal::Ok => self.run(mode),
       Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
-      _ => panic!("TODO"),
+      _ => self.internal_error("Unexpected signal in run_method_by_name."),
     }
   }
 
@@ -514,7 +514,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
               self.print_error(error);
               return ExecuteResult::RuntimeError;
             }
-            None => panic!("Runtime Error was not set."),
+            None => self.internal_error("Runtime error was not set."),
           }
         }
         Signal::Exit => {
@@ -1230,7 +1230,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         .to_class()
         .add_method(&GcHooks::new(self), name, method);
     } else {
-      panic!("Internal spacelox error. stack invalid for op_method.");
+      self.internal_error("Invalid Stack for op_method.");
     }
 
     self.drop();
@@ -1298,10 +1298,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       ValueVariant::NativeFun => self.call_native_fun(callee.to_native_fun(), arg_count),
       ValueVariant::NativeMethod => self.call_native_method(callee.to_native_method(), arg_count),
       ValueVariant::Class => self.call_class(callee.to_class(), arg_count),
-      ValueVariant::Fun => panic!(
-        "function {} was not wrapped in a closure",
+      ValueVariant::Fun => self.internal_error(&format!(
+        "Function {} was not wrapped in a closure.",
         callee.to_fun().name
-      ),
+      )),
       _ => self.runtime_error("Can only call functions and classes."),
     }
   }
@@ -1521,7 +1521,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       .rev()
       .find(|upvalue| match ***upvalue {
         Upvalue::Open(index) => index <= local_index,
-        Upvalue::Closed(_) => panic!("Encountered closed upvalue!"),
+        Upvalue::Closed(_) => self.internal_error("Encountered closed upvalue."),
       });
 
     if let Some(upvalue) = closest_upvalue {
@@ -1544,7 +1544,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       for upvalue in self.open_upvalues.iter_mut().rev() {
         let index = match **upvalue {
           Upvalue::Open(index) => index,
-          Upvalue::Closed(_) => panic!("Unexpected closed upvalue"),
+          Upvalue::Closed(_) => self.internal_error("Unexpected closed upvalue."),
         };
 
         if index < last_index {
@@ -1614,13 +1614,18 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn to_call_result(&self, execute_result: ExecuteResult) -> CallResult {
     match execute_result {
       ExecuteResult::FunResult(value) => Ok(value),
-      ExecuteResult::Ok => panic!("Accidental early exit in hook call."),
-      ExecuteResult::CompileError => panic!("Compiler error should occur before code is executed."),
+      ExecuteResult::Ok => self.internal_error("Accidental early exit in hook call."),
+      ExecuteResult::CompileError => self.internal_error("Compiler error should occur before code is executed."),
       ExecuteResult::RuntimeError => match self.current_error.clone() {
         Some(error) => Err(error),
-        None => panic!("Error not set on vm executor."),
+        None => self.internal_error("Error not set on vm executor."),
       },
     }
+  }
+
+  /// Report an internal issue to the user
+  fn internal_error(&self, message: &str) -> ! {
+    panic!(format!("Internal Error: {}", message))
   }
 
   /// Report a known spacelox runtime error to the user
