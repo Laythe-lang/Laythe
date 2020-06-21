@@ -246,7 +246,22 @@ pub enum FunKind {
   Script,
 }
 
-#[derive(PartialEq, Clone)]
+#[derive(Clone)]
+pub struct TryBlock {
+  /// Start of the try block
+  start: u16,
+
+  /// End of the try block
+  end: u16,
+}
+
+impl TryBlock {
+  pub fn new(start: u16, end: u16) -> Self {
+    TryBlock { start, end }
+  }
+}
+
+#[derive(Clone)]
 pub struct Fun {
   /// Name if not top-level script
   pub name: Managed<String>,
@@ -260,6 +275,9 @@ pub struct Fun {
   /// The module this function belongs to
   pub module: Managed<Module>,
 
+  /// Catch block present in this function
+  try_blocks: Vec<TryBlock>,
+
   /// Code for the function body
   chunk: Chunk,
 }
@@ -272,11 +290,34 @@ impl Fun {
       chunk: Chunk::default(),
       module,
       name,
+      try_blocks: Vec::new(),
     }
   }
 
   pub fn chunk(&self) -> &Chunk {
     &self.chunk
+  }
+
+  pub fn add_try(&mut self, try_block: TryBlock) {
+    self.try_blocks.push(try_block);
+  }
+
+  pub fn has_catch_jump(&self, ip: u16) -> Option<u16> {
+    let mut min_range = std::u16::MAX;
+    let mut jump = None;
+
+    for try_block in &self.try_blocks {
+      if ip >= try_block.start && ip < try_block.end {
+        let len = try_block.end - try_block.start;
+
+        if len < min_range {
+          min_range = len;
+          jump = Some(try_block.end);
+        }
+      }
+    }
+
+    jump
   }
 
   pub fn write_instruction(&mut self, hooks: &GcHooks, op_code: AlignedByteCode, line: u32) {
@@ -297,6 +338,7 @@ impl Fun {
 
   pub fn shrink_to_fit_internal(&mut self) {
     self.chunk.shrink_to_fit();
+    self.try_blocks.shrink_to_fit();
   }
 }
 
@@ -354,10 +396,12 @@ impl Manage for Fun {
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<Self>() + self.chunk.size()
+    mem::size_of::<Self>()
+      + self.chunk.size()
+      + mem::size_of::<TryBlock>()
+      + self.try_blocks.capacity()
   }
 }
-
 #[derive(Clone, Debug)]
 pub struct SlVec<T>(Vec<T>);
 

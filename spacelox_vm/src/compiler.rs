@@ -6,8 +6,8 @@ use spacelox_core::{
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
   hooks::GcHooks,
   module::Module,
-  object::SlHashMap,
   object::{Fun, FunKind},
+  object::{SlHashMap, TryBlock},
   signature::Arity,
   value::Value,
 };
@@ -346,6 +346,10 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
         self.parser.advance();
         self.import_statement();
       }
+      TokenKind::Try => {
+        self.parser.advance();
+        self.try_block();
+      }
       TokenKind::LeftBrace => {
         self.parser.advance();
         self.begin_scope();
@@ -372,6 +376,34 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self
       .parser
       .consume(TokenKind::RightBrace, "Expect '}' after block.")
+  }
+
+  /// Parse a try catch block
+  fn try_block(&mut self) {
+    let start = self.current_chunk().instructions.len();
+    self.parser.consume(TokenKind::LeftBrace, "Expect '{' after try.");
+    
+    self.begin_scope();
+    self.block();
+    self.end_scope();
+    
+    let catch_jump = self.emit_jump(AlignedByteCode::Jump(0));
+    let end = self.current_chunk().instructions.len();
+
+    self
+      .parser
+      .consume(TokenKind::Catch, "Expect 'catch' after try block.");
+    self.parser.consume(TokenKind::LeftBrace, "Expect '{' after catch.");
+
+    self.begin_scope();
+    self.block();
+    self.end_scope();
+
+    self.patch_jump(catch_jump);
+
+    self
+      .fun
+      .add_try(TryBlock::new(start as u16, end as u16));
   }
 
   /// Parse a class declaration
@@ -450,6 +482,25 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     global
   }
 
+  /// Parse a variable declaration
+  fn var_declaration(&mut self) -> u16 {
+    let variable = self.parse_variable("Expect variable name.");
+
+    if self.parser.match_kind(TokenKind::Equal) {
+      self.expression();
+    } else {
+      self.emit_byte(AlignedByteCode::Nil);
+    }
+
+    self.parser.consume(
+      TokenKind::Semicolon,
+      "Expect ';' after variable declaration.",
+    );
+
+    self.define_variable(variable);
+    variable
+  }
+
   /// Parse a function declaration and body
   fn function(&mut self, fun_kind: FunKind) {
     let name = self
@@ -490,6 +541,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(*upvalue)));
   }
 
+  /// Parse a method declaration and body
   fn method(&mut self) {
     self
       .parser
@@ -504,25 +556,6 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self.function(fun_kind);
     self.emit_byte(AlignedByteCode::Method(constant));
-  }
-
-  /// Parse a variable declaration
-  fn var_declaration(&mut self) -> u16 {
-    let variable = self.parse_variable("Expect variable name.");
-
-    if self.parser.match_kind(TokenKind::Equal) {
-      self.expression();
-    } else {
-      self.emit_byte(AlignedByteCode::Nil);
-    }
-
-    self.parser.consume(
-      TokenKind::Semicolon,
-      "Expect ';' after variable declaration.",
-    );
-
-    self.define_variable(variable);
-    variable
   }
 
   /// Parse an expression statement
@@ -797,6 +830,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self.emit_byte(AlignedByteCode::Print)
   }
 
+  /// Parse a return statement
   fn return_statement(&mut self) {
     if self.fun_kind == FunKind::Script {
       self.parser.error("Cannot return from top-level code.");
@@ -1578,7 +1612,7 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 48] = [
+const RULES_TABLE: [ParseRule; 50] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
@@ -1671,6 +1705,10 @@ const RULES_TABLE: [ParseRule; 48] = [
   // TOKEN_VAR
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_WHILE
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_TRY
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_CATCH
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_ERROR
   ParseRule::new(None, None, Precedence::None),
@@ -2135,6 +2173,113 @@ mod test {
   }
 
   #[test]
+  fn empty_try_catch() {
+    let example = "
+      try {
+
+      } catch {
+
+      }
+    "
+    .to_string();
+
+    let mut gc = Gc::default();
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Jump(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+
+    assert_eq!(fun.has_catch_jump(0), Some(3));
+  }
+
+  #[test]
+  fn filled_try_catch() {
+    let example = r#"
+      try {
+        var empty = {};
+        empty["missing"];
+      } catch {
+        print "no!";
+      }
+    "#
+    .to_string();
+
+    let mut gc = Gc::default();
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Map,          // 0
+        AlignedByteCode::GetLocal(1),  // 1
+        AlignedByteCode::Constant(0),  // 3
+        AlignedByteCode::GetIndex,     // 5
+        AlignedByteCode::Drop,         // 6
+        AlignedByteCode::Drop,         // 7
+        AlignedByteCode::Jump(3),      // 8
+        AlignedByteCode::Constant(1),  // 11
+        AlignedByteCode::Print,        // 13
+        AlignedByteCode::Nil,          // 14
+        AlignedByteCode::Return,       // 15
+      ],
+    );
+
+    assert_eq!(fun.has_catch_jump(0), Some(11));
+  }
+
+  #[test]
+  fn nested_try_catch() {
+    let example = r#"
+      try {
+        [][3];
+        try {
+          [][1];
+        } catch {
+          print "woops!";
+        }
+      } catch {
+        print "no!";
+      }
+    "#
+    .to_string();
+
+    let mut gc = Gc::default();
+    let fun = test_compile(example, &mut gc);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::List,          // 0
+        AlignedByteCode::Constant(0),   // 1
+        AlignedByteCode::GetIndex,      // 3
+        AlignedByteCode::Drop,          // 4
+        AlignedByteCode::List,          // 5
+        AlignedByteCode::Constant(1),   // 6
+        AlignedByteCode::GetIndex,      // 8
+        AlignedByteCode::Drop,          // 9
+        AlignedByteCode::Jump(3),       // 10
+        AlignedByteCode::Constant(2),   // 13
+        AlignedByteCode::Print,         // 15
+        AlignedByteCode::Jump(3),       // 16
+        AlignedByteCode::Constant(3),   // 19
+        AlignedByteCode::Print,         // 21
+        AlignedByteCode::Nil,           // 22
+        AlignedByteCode::Return,        // 23
+      ],
+    );
+
+    assert_eq!(fun.has_catch_jump(0), Some(19));
+    assert_eq!(fun.has_catch_jump(13), Some(19));
+    assert_eq!(fun.has_catch_jump(5), Some(13));
+  }
+
+  #[test]
   fn class_empty() {
     let example = "
       class A {}
@@ -2336,7 +2481,7 @@ mod test {
   }
 
   #[test]
-  fn map_intializer() {
+  fn map_initializer() {
     let example = "
       var a = {
         \"key1\": 10,

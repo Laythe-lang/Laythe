@@ -272,10 +272,10 @@ impl<'a> Scanner<'a> {
           Some(c2) => match c2 {
             "a" => self.check_keyword(2, "tch", TokenKind::Catch),
             "l" => self.check_keyword(2, "ass", TokenKind::Class),
-            _ => TokenKind::Identifier
-          }
-          None => TokenKind::Identifier
-        }
+            _ => TokenKind::Identifier,
+          },
+          None => TokenKind::Identifier,
+        },
         "e" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "l" => self.check_keyword(2, "se", TokenKind::Else),
@@ -315,10 +315,10 @@ impl<'a> Scanner<'a> {
               Some(c3) => match c3 {
                 "u" => self.check_keyword(3, "e", TokenKind::True),
                 "y" => TokenKind::Try,
-                _ => TokenKind::Identifier
-              }
+                _ => TokenKind::Identifier,
+              },
               None => TokenKind::Identifier,
-            }
+            },
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,

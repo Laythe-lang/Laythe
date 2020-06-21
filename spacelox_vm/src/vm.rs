@@ -1615,7 +1615,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     match execute_result {
       ExecuteResult::FunResult(value) => Ok(value),
       ExecuteResult::Ok => self.internal_error("Accidental early exit in hook call."),
-      ExecuteResult::CompileError => self.internal_error("Compiler error should occur before code is executed."),
+      ExecuteResult::CompileError => {
+        self.internal_error("Compiler error should occur before code is executed.")
+      }
       ExecuteResult::RuntimeError => match self.current_error.clone() {
         Some(error) => Err(error),
         None => self.internal_error("Error not set on vm executor."),
