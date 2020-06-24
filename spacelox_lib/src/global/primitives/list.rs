@@ -37,7 +37,7 @@ const LIST_POP: NativeMeta = NativeMeta::new("pop", Arity::Fixed(0), &[]);
 const LIST_PUSH: NativeMeta = NativeMeta::new(
   "push",
   Arity::Variadic(0),
-  &[Parameter::new("vals", ParameterKind::Any)],
+  &[Parameter::new("values", ParameterKind::Any)],
 );
 const LIST_REMOVE: NativeMeta = NativeMeta::new(
   "remove",

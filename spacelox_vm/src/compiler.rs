@@ -160,7 +160,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       module: unsafe { (*enclosing).module },
       current_class: unsafe { (*enclosing).current_class },
       hooks: unsafe { (*enclosing).hooks },
-      io: unsafe { (*enclosing).io },
+      io: unsafe { (*enclosing).io.clone() },
       parser: unsafe { (*enclosing).parser },
       enclosing: Some(enclosing),
       local_count: 1,
@@ -381,19 +381,23 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// Parse a try catch block
   fn try_block(&mut self) {
     let start = self.current_chunk().instructions.len();
-    self.parser.consume(TokenKind::LeftBrace, "Expect '{' after try.");
-    
+    self
+      .parser
+      .consume(TokenKind::LeftBrace, "Expect '{' after try.");
+
     self.begin_scope();
     self.block();
     self.end_scope();
-    
+
     let catch_jump = self.emit_jump(AlignedByteCode::Jump(0));
     let end = self.current_chunk().instructions.len();
 
     self
       .parser
       .consume(TokenKind::Catch, "Expect 'catch' after try block.");
-    self.parser.consume(TokenKind::LeftBrace, "Expect '{' after catch.");
+    self
+      .parser
+      .consume(TokenKind::LeftBrace, "Expect '{' after catch.");
 
     self.begin_scope();
     self.block();
@@ -401,9 +405,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self.patch_jump(catch_jump);
 
-    self
-      .fun
-      .add_try(TryBlock::new(start as u16, end as u16));
+    self.fun.add_try(TryBlock::new(start as u16, end as u16));
   }
 
   /// Parse a class declaration
@@ -2216,17 +2218,17 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Map,          // 0
-        AlignedByteCode::GetLocal(1),  // 1
-        AlignedByteCode::Constant(0),  // 3
-        AlignedByteCode::GetIndex,     // 5
-        AlignedByteCode::Drop,         // 6
-        AlignedByteCode::Drop,         // 7
-        AlignedByteCode::Jump(3),      // 8
-        AlignedByteCode::Constant(1),  // 11
-        AlignedByteCode::Print,        // 13
-        AlignedByteCode::Nil,          // 14
-        AlignedByteCode::Return,       // 15
+        AlignedByteCode::Map,         // 0
+        AlignedByteCode::GetLocal(1), // 1
+        AlignedByteCode::Constant(0), // 3
+        AlignedByteCode::GetIndex,    // 5
+        AlignedByteCode::Drop,        // 6
+        AlignedByteCode::Drop,        // 7
+        AlignedByteCode::Jump(3),     // 8
+        AlignedByteCode::Constant(1), // 11
+        AlignedByteCode::Print,       // 13
+        AlignedByteCode::Nil,         // 14
+        AlignedByteCode::Return,      // 15
       ],
     );
 
@@ -2255,22 +2257,22 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::List,          // 0
-        AlignedByteCode::Constant(0),   // 1
-        AlignedByteCode::GetIndex,      // 3
-        AlignedByteCode::Drop,          // 4
-        AlignedByteCode::List,          // 5
-        AlignedByteCode::Constant(1),   // 6
-        AlignedByteCode::GetIndex,      // 8
-        AlignedByteCode::Drop,          // 9
-        AlignedByteCode::Jump(3),       // 10
-        AlignedByteCode::Constant(2),   // 13
-        AlignedByteCode::Print,         // 15
-        AlignedByteCode::Jump(3),       // 16
-        AlignedByteCode::Constant(3),   // 19
-        AlignedByteCode::Print,         // 21
-        AlignedByteCode::Nil,           // 22
-        AlignedByteCode::Return,        // 23
+        AlignedByteCode::List,        // 0
+        AlignedByteCode::Constant(0), // 1
+        AlignedByteCode::GetIndex,    // 3
+        AlignedByteCode::Drop,        // 4
+        AlignedByteCode::List,        // 5
+        AlignedByteCode::Constant(1), // 6
+        AlignedByteCode::GetIndex,    // 8
+        AlignedByteCode::Drop,        // 9
+        AlignedByteCode::Jump(3),     // 10
+        AlignedByteCode::Constant(2), // 13
+        AlignedByteCode::Print,       // 15
+        AlignedByteCode::Jump(3),     // 16
+        AlignedByteCode::Constant(3), // 19
+        AlignedByteCode::Print,       // 21
+        AlignedByteCode::Nil,         // 22
+        AlignedByteCode::Return,      // 23
       ],
     );
 

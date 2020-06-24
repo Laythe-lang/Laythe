@@ -5,7 +5,7 @@ use crate::{
 };
 use std::fmt;
 
-pub trait Io: fmt::Debug + Default + Copy {
+pub trait Io: fmt::Debug + Default + Clone {
   type StdIo: StdIo + Clone;
   type FsIo: FsIo + Clone;
   type EnvIo: EnvIo + Clone;

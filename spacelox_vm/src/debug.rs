@@ -1,6 +1,15 @@
+use crate::call_frame::CallFrame;
 use spacelox_core::chunk::{decode_u16, AlignedByteCode, Chunk, UpvalueIndex};
 use spacelox_env::stdio::StdIo;
 use std::mem;
+
+/// Indicate where and how an exception was caught
+pub fn exception_catch<S: StdIo>(stdio: &S, frame: &CallFrame, idx: usize) {
+  stdio.println(&format!(
+    "Exception popped {:0>4} frames caught by: {}",
+    idx, frame.closure.fun.name
+  ));
+}
 
 /// Write a chunk to console
 pub fn disassemble_chunk<S: StdIo>(stdio: &S, code_chunk: &Chunk, name: &str) {

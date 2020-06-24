@@ -33,7 +33,7 @@ use std::ptr;
 use std::{path::PathBuf, ptr::NonNull};
 
 #[cfg(feature = "debug")]
-use crate::debug::disassemble_instruction;
+use crate::debug::{disassemble_instruction, exception_catch};
 
 #[derive(Debug, Clone, PartialEq)]
 enum Signal {
@@ -137,7 +137,7 @@ impl<I: Io> Vm<I> {
     let builtin = builtin_from_global_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let mut dep_manager = hooks.manage(DepManager::new(io, builtin, hooks.manage(cwd)));
+    let mut dep_manager = hooks.manage(DepManager::new(io.clone(), builtin, hooks.manage(cwd)));
     dep_manager.add_package(std_lib);
 
     Vm {
@@ -218,7 +218,7 @@ impl<I: Io> Vm<I> {
     let mut compiler_context = NoContext::new(&self.gc);
     let hooks = GcHooks::new(&mut compiler_context);
 
-    let compiler = Compiler::new(module, self.io, &mut parser, &hooks);
+    let compiler = Compiler::new(module, self.io.clone(), &mut parser, &hooks);
     compiler.compile()
   }
 
@@ -278,8 +278,11 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
       .current_dir()
       .expect("Could not obtain the current working directory.");
 
-    let mut dep_manager =
-      hooks.manage(DepManager::new(dependencies.io, builtin, hooks.manage(cwd)));
+    let mut dep_manager = hooks.manage(DepManager::new(
+      dependencies.io.clone(),
+      builtin,
+      hooks.manage(cwd),
+    ));
     dep_manager.add_package(std_lib);
 
     Vm {
@@ -511,8 +514,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
           let current_error = self.current_error.clone();
           match &current_error {
             Some(error) => {
-              self.print_error(error);
-              return ExecuteResult::RuntimeError;
+              if let Some(signal) = self.stack_unwind(error) {
+                return signal;
+              }
             }
             None => self.internal_error("Runtime error was not set."),
           }
@@ -1558,6 +1562,14 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     }
   }
 
+  /// Print debugging information for a caught exceptions
+  #[cfg(feature = "debug")]
+  fn print_exception_debug(&self, frame: &CallFrame, idx: usize) {
+    let stdio = self.io.stdio();
+
+    exception_catch(&stdio, frame, idx);
+  }
+
   /// Print debugging information for the current instruction
   #[cfg(feature = "debug")]
   fn print_debug(&self, ip: *const u8, last_ip: *const u8) {
@@ -1644,13 +1656,64 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Signal::RuntimeError
   }
 
+  /// Search for a catch block up the stack, printing the error if no catch is found
+  fn stack_unwind(&mut self, error: &SlError) -> Option<ExecuteResult> {
+    let mut popped_frames = None;
+    let mut stack_top = None;
+
+    // travel down stack frames looking for an applicable handle
+    for (idx, frame) in self.frames[1..self.frame_count]
+      .iter_mut()
+      .rev()
+      .enumerate()
+    {
+      let fun = frame.closure.fun;
+      let instructions = &*fun.chunk().instructions;
+
+      let offset = ptr_len(&instructions[0], frame.ip);
+      if let Some(offset) = fun.has_catch_jump(offset as u16) {
+        // if found set all the stack information to the correct state
+        frame.ip = &instructions[offset as usize] as *const u8;
+
+        self.frame_count -= idx;
+        self.current_frame = frame as *mut CallFrame;
+        self.current_fun = frame.closure.fun;
+
+        if let Some(top) = stack_top {
+          self.stack_top = top;
+        }
+
+        // track frames popped for debugging info
+        popped_frames = Some(idx);
+        break;
+      }
+
+      stack_top = Some(frame.slots);
+    }
+
+    match popped_frames {
+      Some(_idx) => {
+        #[cfg(feature = "debug")]
+        {
+          let frame = unsafe { &*self.current_frame };
+          self.print_exception_debug(frame, _idx);
+        }
+
+        None
+      }
+      None => {
+        self.print_error(error);
+        Some(ExecuteResult::RuntimeError)
+      }
+    }
+  }
+
   /// Print an error message and the current call stack to the user
   fn print_error(&mut self, error: &SlError) {
     let message = error.message;
 
     let stdio = self.io.stdio();
     stdio.eprintln(&*message);
-    stdio.eprintln("");
 
     for frame in self.frames[1..self.frame_count].iter().rev() {
       let closure = &frame.closure;
@@ -1659,9 +1722,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         _ => format!("{}()", closure.fun.name),
       };
 
+      let offset = ptr_len(&closure.fun.chunk().instructions[0], frame.ip);
       stdio.eprintln(&format!(
         "[line {}] in {}",
-        closure.fun.chunk().get_line(frame.ip as usize),
+        closure.fun.chunk().get_line(offset),
         location
       ));
     }
