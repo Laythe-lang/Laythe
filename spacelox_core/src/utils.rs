@@ -24,7 +24,7 @@ pub fn next_boundary(source: &str, start: usize) -> usize {
 /// Is the provided `value` falsey according to spacelox rules
 #[inline]
 pub fn is_falsey(value: Value) -> bool {
-  value.is_nil() || (value.is_bool() && !value.to_bool())
+  value.is_false() || value.is_nil() 
 }
 
 /// Copy a string from the str backing the provided token. Note this copy

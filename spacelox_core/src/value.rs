@@ -92,6 +92,14 @@ mod unboxed {
     }
 
     #[inline]
+    pub fn is_false(&self) -> bool {
+      match self {
+        Value::Bool(b) => !b,
+        _ => false,
+      }
+    }
+
+    #[inline]
     pub fn is_num(&self) -> bool {
       match self {
         Value::Number(_) => true,
@@ -968,6 +976,11 @@ mod boxed {
     #[inline]
     pub fn is_bool(&self) -> bool {
       self.0 == VALUE_FALSE.0 || self.0 == VALUE_TRUE.0
+    }
+
+    #[inline]
+    pub fn is_false(&self) -> bool {
+      self.0 == VALUE_FALSE.0
     }
 
     #[inline]
