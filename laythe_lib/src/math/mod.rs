@@ -5,7 +5,7 @@ use laythe_env::managed::Managed;
 use std::path::PathBuf;
 use utils::{declare_math_module, define_math_module};
 
-const MATH_PATH: &str = "std/math.lox";
+const MATH_PATH: &str = "std/math.ly";
 
 pub fn create_math(hooks: &GcHooks, _std: Managed<Package>) -> ModuleResult<Managed<Module>> {
   let module = match Module::from_path(&hooks, hooks.manage(PathBuf::from(MATH_PATH))) {

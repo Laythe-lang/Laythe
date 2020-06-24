@@ -40,7 +40,7 @@ impl Module {
   /// use std::path::PathBuf;
   ///
   /// let gc = Gc::default();
-  /// let path = PathBuf::from("self/path.lox");
+  /// let path = PathBuf::from("self/path.ly");
   /// let module = Module::new(
   ///   gc.manage_str("example".to_string(), &NO_GC),
   ///   gc.manage(path, &NO_GC)
@@ -69,7 +69,7 @@ impl Module {
   /// let mut context = NoContext::new(&gc);
   /// let hooks = GcHooks::new(&mut context);
   ///
-  /// let path = hooks.manage(PathBuf::from("self/path.lox"));
+  /// let path = hooks.manage(PathBuf::from("self/path.ly"));
   /// let module = Module::from_path(
   ///   &hooks,
   ///   path,
@@ -108,7 +108,7 @@ impl Module {
   ///
   /// let mut module = Module::new(
   ///   hooks.manage_str("module".to_string()),
-  ///   hooks.manage(PathBuf::from("self/module.lox")),
+  ///   hooks.manage(PathBuf::from("self/module.ly")),
   /// );
   ///
   /// let export_name = hooks.manage_str("exported".to_string());
@@ -148,7 +148,7 @@ impl Module {
   ///
   /// let mut module = Module::new(
   ///   hooks.manage_str("module".to_string()),
-  ///   hooks.manage(PathBuf::from("self/module.lox"))
+  ///   hooks.manage(PathBuf::from("self/module.ly"))
   /// );
   ///
   /// let export_name = hooks.manage_str("exported".to_string());
@@ -204,7 +204,7 @@ impl Module {
   ///
   /// let mut module = Module::new(
   ///   hooks.manage_str("module".to_string()),
-  ///   hooks.manage(PathBuf::from("self/module.lox"))
+  ///   hooks.manage(PathBuf::from("self/module.ly"))
   /// );
   ///
   /// let name = hooks.manage_str("exported".to_string());
@@ -243,7 +243,7 @@ impl Module {
   ///
   /// let mut module = Module::new(
   ///   hooks.manage_str("module".to_string()),
-  ///   hooks.manage(PathBuf::from("self/module.lox")),
+  ///   hooks.manage(PathBuf::from("self/module.ly")),
   /// );
   ///
   /// let name = hooks.manage_str("exported".to_string());

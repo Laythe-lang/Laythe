@@ -214,7 +214,7 @@ mod test {
   pub fn fun_from_hooks(hooks: &GcHooks, name: String, module_name: &str) -> Managed<Fun> {
     let module = match Module::from_path(
       &hooks,
-      hooks.manage(PathBuf::from(format!("path/{}.lox", module_name))),
+      hooks.manage(PathBuf::from(format!("path/{}.ly", module_name))),
     ) {
       Some(module) => module,
       None => unreachable!(),

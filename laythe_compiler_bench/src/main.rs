@@ -32,7 +32,7 @@ fn main() {
         let io = NativeIo::default();
         let mut parser = Parser::new(io.stdio(), &source);
         let module =
-          Module::from_path(&hooks, hooks.manage(PathBuf::from("/Benchmark.lox"))).unwrap();
+          Module::from_path(&hooks, hooks.manage(PathBuf::from("/Benchmark.ly"))).unwrap();
         let module = hooks.manage(module);
         let compiler = Compiler::new(module, io, &mut parser, &hooks);
         compiler.compile().unwrap();

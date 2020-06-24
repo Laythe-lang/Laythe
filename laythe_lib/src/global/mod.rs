@@ -27,7 +27,7 @@ use laythe_env::managed::Managed;
 use std::path::PathBuf;
 use time::create_clock_funs;
 
-const GLOBAL_PATH: &str = "std/global.lox";
+const GLOBAL_PATH: &str = "std/global.ly";
 
 pub fn create_global(hooks: &GcHooks, std: Managed<Package>) -> ModuleResult<Managed<Module>> {
   let module = match Module::from_path(&hooks, hooks.manage(PathBuf::from(GLOBAL_PATH))) {

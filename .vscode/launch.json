@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "benchmark/list2.lox",
+        "benchmark/list2.ly",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",

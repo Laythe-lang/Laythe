@@ -338,7 +338,7 @@ mod unboxed {
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.lox"))));
+    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.ly"))));
     /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
     /// let managed = hooks.manage(fun);
     ///
@@ -388,7 +388,7 @@ mod unboxed {
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.lox"))));
+    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.ly"))));
     /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
     /// let managed_fun = hooks.manage(fun);
     ///
@@ -422,7 +422,7 @@ mod unboxed {
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.lox"))));
+    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.ly"))));
     /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
     /// let managed_fun = hooks.manage(fun);
     ///
@@ -1473,7 +1473,7 @@ mod test {
   }
 
   fn test_path() -> (Allocs, Managed<PathBuf>) {
-    let path = PathBuf::from("test/sup.lox");
+    let path = PathBuf::from("test/sup.ly");
     let mut alloc = Box::new(Allocation::new(path));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 

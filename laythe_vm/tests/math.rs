@@ -14,10 +14,10 @@ const FILE_PATH: &str = file!();
 fn utils() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/math/utils/abs.lox",
-      "std_lib/math/utils/cos.lox",
-      "std_lib/math/utils/ln.lox",
-      "std_lib/math/utils/sin.lox",
+      "std_lib/math/utils/abs.ly",
+      "std_lib/math/utils/cos.ly",
+      "std_lib/math/utils/ln.ly",
+      "std_lib/math/utils/sin.ly",
     ],
     ExecuteResult::Ok,
   )?;

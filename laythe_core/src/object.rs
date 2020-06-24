@@ -639,7 +639,7 @@ impl Closure {
   ///
   /// let module = hooks.manage(Module::new(
   ///   hooks.manage_str("module".to_string()),
-  ///   hooks.manage(PathBuf::from("self/module.lox")),
+  ///   hooks.manage(PathBuf::from("self/module.ly")),
   /// ));
   /// let mut fun = Fun::new(hooks.manage_str("example".to_string()), module);
   /// let managed_fun = hooks.manage(fun);

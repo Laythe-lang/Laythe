@@ -12,7 +12,7 @@ const FILE_PATH: &str = file!();
 
 #[test]
 fn bool() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/builtin/bool/str.lox"], ExecuteResult::Ok)?;
+  test_files(&vec!["std_lib/builtin/bool/str.ly"], ExecuteResult::Ok)?;
 
   test_files(&vec![], ExecuteResult::CompileError)?;
 
@@ -21,7 +21,7 @@ fn bool() -> Result<(), std::io::Error> {
 
 #[test]
 fn nil() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/builtin/nil/str.lox"], ExecuteResult::Ok)?;
+  test_files(&vec!["std_lib/builtin/nil/str.ly"], ExecuteResult::Ok)?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
 }
@@ -30,18 +30,18 @@ fn nil() -> Result<(), std::io::Error> {
 fn closure() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/builtin/closure/name.lox",
-      "std_lib/builtin/closure/call.lox",
-      "std_lib/builtin/closure/size.lox",
+      "std_lib/builtin/closure/name.ly",
+      "std_lib/builtin/closure/call.ly",
+      "std_lib/builtin/closure/size.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "std_lib/builtin/closure/name_wrong_args.lox",
-      "std_lib/builtin/closure/call_wrong_args.lox",
-      "std_lib/builtin/closure/size_wrong_args.lox",
+      "std_lib/builtin/closure/name_wrong_args.ly",
+      "std_lib/builtin/closure/call_wrong_args.ly",
+      "std_lib/builtin/closure/size_wrong_args.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -51,13 +51,13 @@ fn closure() -> Result<(), std::io::Error> {
 fn iter() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/builtin/iter/each.lox",
-      "std_lib/builtin/iter/filter.lox",
-      "std_lib/builtin/iter/iter.lox",
-      "std_lib/builtin/iter/map.lox",
-      "std_lib/builtin/iter/next.lox",
-      "std_lib/builtin/iter/reduce.lox",
-      "std_lib/builtin/iter/str.lox",
+      "std_lib/builtin/iter/each.ly",
+      "std_lib/builtin/iter/filter.ly",
+      "std_lib/builtin/iter/iter.ly",
+      "std_lib/builtin/iter/map.ly",
+      "std_lib/builtin/iter/next.ly",
+      "std_lib/builtin/iter/reduce.ly",
+      "std_lib/builtin/iter/str.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -69,23 +69,23 @@ fn iter() -> Result<(), std::io::Error> {
 fn list() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/builtin/list/clear.lox",
-      "std_lib/builtin/list/has.lox",
-      "std_lib/builtin/list/insert.lox",
-      "std_lib/builtin/list/iter.lox",
-      "std_lib/builtin/list/pop.lox",
-      "std_lib/builtin/list/push.lox",
-      "std_lib/builtin/list/remove.lox",
-      "std_lib/builtin/list/size.lox",
-      "std_lib/builtin/list/str.lox",
+      "std_lib/builtin/list/clear.ly",
+      "std_lib/builtin/list/has.ly",
+      "std_lib/builtin/list/insert.ly",
+      "std_lib/builtin/list/iter.ly",
+      "std_lib/builtin/list/pop.ly",
+      "std_lib/builtin/list/push.ly",
+      "std_lib/builtin/list/remove.ly",
+      "std_lib/builtin/list/size.ly",
+      "std_lib/builtin/list/str.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
     &vec![
-      "std_lib/builtin/list/insert_out_of_bounds.lox",
-      "std_lib/builtin/list/remove_out_of_bounds.lox",
+      "std_lib/builtin/list/insert_out_of_bounds.ly",
+      "std_lib/builtin/list/remove_out_of_bounds.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -95,26 +95,26 @@ fn list() -> Result<(), std::io::Error> {
 fn map() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/builtin/map/size.lox",
-      "std_lib/builtin/map/str.lox",
-      "std_lib/builtin/map/has.lox",
-      "std_lib/builtin/map/get.lox",
-      "std_lib/builtin/map/remove.lox",
-      "std_lib/builtin/map/insert.lox",
-      "std_lib/builtin/map/iter.lox",
+      "std_lib/builtin/map/size.ly",
+      "std_lib/builtin/map/str.ly",
+      "std_lib/builtin/map/has.ly",
+      "std_lib/builtin/map/get.ly",
+      "std_lib/builtin/map/remove.ly",
+      "std_lib/builtin/map/insert.ly",
+      "std_lib/builtin/map/iter.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_files(
-    &vec!["std_lib/builtin/map/remove_missing_key.lox"],
+    &vec!["std_lib/builtin/map/remove_missing_key.ly"],
     ExecuteResult::RuntimeError,
   )
 }
 
 #[test]
 fn number() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/builtin/number/times.lox"], ExecuteResult::Ok)?;
+  test_files(&vec!["std_lib/builtin/number/times.ly"], ExecuteResult::Ok)?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
 }
@@ -123,8 +123,8 @@ fn number() -> Result<(), std::io::Error> {
 fn method() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/builtin/method/name.lox",
-      "std_lib/builtin/method/call.lox",
+      "std_lib/builtin/method/name.ly",
+      "std_lib/builtin/method/call.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -135,7 +135,7 @@ fn method() -> Result<(), std::io::Error> {
 #[test]
 fn str() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["std_lib/builtin/str/str.lox", "std_lib/builtin/str/has.lox"],
+    &vec!["std_lib/builtin/str/str.ly", "std_lib/builtin/str/has.ly"],
     ExecuteResult::Ok,
   )?;
 

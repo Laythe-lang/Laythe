@@ -24,16 +24,16 @@ fn load_source(path: &PathBuf) -> String {
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-  let binary_trees_path = fixture_path("binary_trees.lox").expect("Unable to load benchmark file.");
-  let equality_path = fixture_path("equality.lox").expect("Unable to load benchmark file.");
-  let fib_path = fixture_path("fib.lox").expect("Unable to load benchmark file.");
+  let binary_trees_path = fixture_path("binary_trees.ly").expect("Unable to load benchmark file.");
+  let equality_path = fixture_path("equality.ly").expect("Unable to load benchmark file.");
+  let fib_path = fixture_path("fib.ly").expect("Unable to load benchmark file.");
   let instantiation_path =
-    fixture_path("instantiation.lox").expect("Unable to load benchmark file.");
-  let invocation_path = fixture_path("invocation.lox").expect("Unable to load benchmark file.");
-  let method_call_path = fixture_path("method_call.lox").expect("Unable to load benchmark file.");
-  let properties_path = fixture_path("properties.lox").expect("Unable to load benchmark file.");
-  let trees_path = fixture_path("trees.lox").expect("Unable to load benchmark file.");
-  let zoo_path = fixture_path("zoo.lox").expect("Unable to load benchmark file.");
+    fixture_path("instantiation.ly").expect("Unable to load benchmark file.");
+  let invocation_path = fixture_path("invocation.ly").expect("Unable to load benchmark file.");
+  let method_call_path = fixture_path("method_call.ly").expect("Unable to load benchmark file.");
+  let properties_path = fixture_path("properties.ly").expect("Unable to load benchmark file.");
+  let trees_path = fixture_path("trees.ly").expect("Unable to load benchmark file.");
+  let zoo_path = fixture_path("zoo.ly").expect("Unable to load benchmark file.");
 
   let binary_trees = load_source(&binary_trees_path);
   let equality = load_source(&equality_path);

@@ -29,26 +29,26 @@ fn build() {
 fn assignment() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/assignment/associativity.lox",
-      "language/assignment/global.lox",
-      "language/assignment/local.lox",
-      "language/assignment/syntax.lox",
+      "language/assignment/associativity.ly",
+      "language/assignment/global.ly",
+      "language/assignment/local.ly",
+      "language/assignment/syntax.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/assignment/grouping.lox",
-      "language/assignment/infix_operator.lox",
-      "language/assignment/prefix_operator.lox",
-      "language/assignment/to_this.lox",
+      "language/assignment/grouping.ly",
+      "language/assignment/infix_operator.ly",
+      "language/assignment/prefix_operator.ly",
+      "language/assignment/to_this.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/assignment/undefined.lox"],
+    &vec!["language/assignment/undefined.ly"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -56,7 +56,7 @@ fn assignment() -> Result<(), std::io::Error> {
 #[test]
 fn block() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/block/empty.lox", "language/block/empty.lox"],
+    &vec!["language/block/empty.ly", "language/block/empty.ly"],
     ExecuteResult::Ok,
   )
 }
@@ -64,7 +64,7 @@ fn block() -> Result<(), std::io::Error> {
 #[test]
 fn bool() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/bool/equality.lox", "language/bool/not.lox"],
+    &vec!["language/bool/equality.ly", "language/bool/not.ly"],
     ExecuteResult::Ok,
   )
 }
@@ -73,11 +73,11 @@ fn bool() -> Result<(), std::io::Error> {
 fn call() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/call/bool.lox",
-      "language/call/nil.lox",
-      "language/call/num.lox",
-      "language/call/object.lox",
-      "language/call/string.lox",
+      "language/call/bool.ly",
+      "language/call/nil.ly",
+      "language/call/num.ly",
+      "language/call/object.ly",
+      "language/call/string.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -87,19 +87,19 @@ fn call() -> Result<(), std::io::Error> {
 fn class() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/class/empty.lox",
-      "language/class/inherited_method.lox",
-      "language/class/local_inherit_other.lox",
-      "language/class/local_reference_self.lox",
-      "language/class/reference_self.lox",
+      "language/class/empty.ly",
+      "language/class/inherited_method.ly",
+      "language/class/local_inherit_other.ly",
+      "language/class/local_reference_self.ly",
+      "language/class/reference_self.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/class/inherit_self.lox",
-      "language/class/local_inherit_self.lox",
+      "language/class/inherit_self.ly",
+      "language/class/local_inherit_self.ly",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -111,19 +111,19 @@ fn class() -> Result<(), std::io::Error> {
 fn closure() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/closure/assign_to_closure.lox",
-      "language/closure/assign_to_shadowed_later.lox",
-      "language/closure/close_over_function_parameter.lox",
-      "language/closure/close_over_later_variable.lox",
-      "language/closure/close_over_method_parameter.lox",
-      "language/closure/closed_closure_in_function.lox",
-      "language/closure/nested_closure.lox",
-      "language/closure/open_closure_in_function.lox",
-      "language/closure/reference_closure_multiple_times.lox",
-      "language/closure/reuse_closure_slot.lox",
-      "language/closure/shadow_closure_with_local.lox",
-      "language/closure/unused_closure.lox",
-      "language/closure/unused_later_closure.lox",
+      "language/closure/assign_to_closure.ly",
+      "language/closure/assign_to_shadowed_later.ly",
+      "language/closure/close_over_function_parameter.ly",
+      "language/closure/close_over_later_variable.ly",
+      "language/closure/close_over_method_parameter.ly",
+      "language/closure/closed_closure_in_function.ly",
+      "language/closure/nested_closure.ly",
+      "language/closure/open_closure_in_function.ly",
+      "language/closure/reference_closure_multiple_times.ly",
+      "language/closure/reuse_closure_slot.ly",
+      "language/closure/shadow_closure_with_local.ly",
+      "language/closure/unused_closure.ly",
+      "language/closure/unused_later_closure.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -137,10 +137,10 @@ fn closure() -> Result<(), std::io::Error> {
 fn comments() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/comments/line_at_eof.lox",
-      "language/comments/only_line_comment_and_line.lox",
-      "language/comments/only_line_comment.lox",
-      "language/comments/unicode.lox",
+      "language/comments/line_at_eof.ly",
+      "language/comments/only_line_comment_and_line.ly",
+      "language/comments/only_line_comment.ly",
+      "language/comments/unicode.ly",
     ],
     ExecuteResult::Ok,
   )
@@ -150,26 +150,26 @@ fn comments() -> Result<(), std::io::Error> {
 fn constructor() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/constructor/arguments.lox",
-      "language/constructor/call_init_early_return.lox",
-      "language/constructor/call_init_explicitly.lox",
-      "language/constructor/default.lox",
-      "language/constructor/early_return.lox",
-      "language/constructor/return_in_nested_function.lox",
+      "language/constructor/arguments.ly",
+      "language/constructor/call_init_early_return.ly",
+      "language/constructor/call_init_explicitly.ly",
+      "language/constructor/default.ly",
+      "language/constructor/early_return.ly",
+      "language/constructor/return_in_nested_function.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
-    &vec!["language/constructor/return_value.lox"],
+    &vec!["language/constructor/return_value.ly"],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/constructor/default_arguments.lox",
-      "language/constructor/extra_arguments.lox",
-      "language/constructor/missing_arguments.lox",
+      "language/constructor/default_arguments.ly",
+      "language/constructor/extra_arguments.ly",
+      "language/constructor/missing_arguments.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -179,25 +179,25 @@ fn constructor() -> Result<(), std::io::Error> {
 fn exception() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/exception/top_level_catch.lox",
-      "language/exception/one_deep_catch.lox",
-      "language/exception/two_deep_catch.lox",
-      "language/exception/top_level_catch_thrown.lox",
+      "language/exception/top_level_catch.ly",
+      "language/exception/one_deep_catch.ly",
+      "language/exception/two_deep_catch.ly",
+      "language/exception/top_level_catch_thrown.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/exception/catch_no_block.lox",
-      "language/exception/try_no_block.lox",
-      "language/exception/try_no_catch.lox",
+      "language/exception/catch_no_block.ly",
+      "language/exception/try_no_block.ly",
+      "language/exception/try_no_catch.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_with_stdio(
-    "language/exception/top_level_thrown.lox",
+    "language/exception/top_level_thrown.ly",
     None,
     Some(vec![
       "Index out of bounds. list was length 0 but attempted to index with 1.",
@@ -207,7 +207,7 @@ fn exception() -> Result<(), std::io::Error> {
   )?;
 
   test_file_with_stdio(
-    "language/exception/one_deep_thrown.lox",
+    "language/exception/one_deep_thrown.ly",
     None,
     Some(vec![
       "Index out of bounds. list was length 0 but attempted to index with 1.",
@@ -218,7 +218,7 @@ fn exception() -> Result<(), std::io::Error> {
   )?;
 
   test_file_with_stdio(
-    "language/exception/two_deep_thrown.lox",
+    "language/exception/two_deep_thrown.ly",
     None,
     Some(vec![
       "Index out of bounds. list was length 0 but attempted to index with 1.",
@@ -236,11 +236,11 @@ fn export() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/export/literal.lox",
-      "language/export/local.lox",
-      "language/export/non_declaration_class.lox",
-      "language/export/non_declaration_fun.lox",
-      "language/export/non_declaration_var.lox",
+      "language/export/literal.ly",
+      "language/export/local.ly",
+      "language/export/non_declaration_class.ly",
+      "language/export/non_declaration_fun.ly",
+      "language/export/non_declaration_var.ly",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -251,7 +251,7 @@ fn export() -> Result<(), std::io::Error> {
 #[test]
 fn expressions() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/expressions/evaluate.lox"],
+    &vec!["language/expressions/evaluate.ly"],
     ExecuteResult::Ok,
   )?;
 
@@ -264,12 +264,12 @@ fn expressions() -> Result<(), std::io::Error> {
 fn field() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/field/call_function_field.lox",
-      "language/field/get_and_set_method.lox",
-      "language/field/many.lox",
-      "language/field/method_binds_this.lox",
-      "language/field/method.lox",
-      "language/field/on_instance.lox",
+      "language/field/call_function_field.ly",
+      "language/field/get_and_set_method.ly",
+      "language/field/many.ly",
+      "language/field/method_binds_this.ly",
+      "language/field/method.ly",
+      "language/field/on_instance.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -278,21 +278,21 @@ fn field() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/field/call_nonfunction_field.lox",
-      "language/field/get_on_bool.lox",
-      "language/field/get_on_class.lox",
-      "language/field/get_on_function.lox",
-      "language/field/get_on_nil.lox",
-      "language/field/get_on_num.lox",
-      "language/field/get_on_string.lox",
-      "language/field/set_evaluation_order.lox",
-      "language/field/set_on_bool.lox",
-      "language/field/set_on_class.lox",
-      "language/field/set_on_function.lox",
-      "language/field/set_on_nil.lox",
-      "language/field/set_on_num.lox",
-      "language/field/set_on_string.lox",
-      "language/field/undefined.lox",
+      "language/field/call_nonfunction_field.ly",
+      "language/field/get_on_bool.ly",
+      "language/field/get_on_class.ly",
+      "language/field/get_on_function.ly",
+      "language/field/get_on_nil.ly",
+      "language/field/get_on_num.ly",
+      "language/field/get_on_string.ly",
+      "language/field/set_evaluation_order.ly",
+      "language/field/set_on_bool.ly",
+      "language/field/set_on_class.ly",
+      "language/field/set_on_function.ly",
+      "language/field/set_on_nil.ly",
+      "language/field/set_on_num.ly",
+      "language/field/set_on_string.ly",
+      "language/field/undefined.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -302,22 +302,22 @@ fn field() -> Result<(), std::io::Error> {
 fn for_loop() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/for/return_inside.lox",
-      "language/for/scope.lox",
-      "language/for/syntax.lox",
-      "language/for/closure_in_body.lox",
+      "language/for/return_inside.ly",
+      "language/for/scope.ly",
+      "language/for/syntax.ly",
+      "language/for/closure_in_body.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/for/class_in_body.lox",
-      "language/for/fun_in_body.lox",
-      "language/for/statement_condition.lox",
-      "language/for/statement_increment.lox",
-      "language/for/statement_initializer.lox",
-      "language/for/var_in_body.lox",
+      "language/for/class_in_body.ly",
+      "language/for/fun_in_body.ly",
+      "language/for/statement_condition.ly",
+      "language/for/statement_increment.ly",
+      "language/for/statement_initializer.ly",
+      "language/for/var_in_body.ly",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -329,19 +329,19 @@ fn for_loop() -> Result<(), std::io::Error> {
 fn for_range_loop() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/for_range/return_inside.lox",
-      "language/for_range/scope.lox",
-      "language/for_range/closure_in_body.lox",
+      "language/for_range/return_inside.ly",
+      "language/for_range/scope.ly",
+      "language/for_range/closure_in_body.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/for_range/class_in_body.lox",
-      "language/for_range/fun_in_body.lox",
-      "language/for_range/var_in_body.lox",
-      "language/for_range/statement_iterator.lox",
+      "language/for_range/class_in_body.ly",
+      "language/for_range/fun_in_body.ly",
+      "language/for_range/var_in_body.ly",
+      "language/for_range/statement_iterator.ly",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -353,31 +353,31 @@ fn for_range_loop() -> Result<(), std::io::Error> {
 fn function() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/function/empty_body.lox",
-      "language/function/local_recursion.lox",
-      "language/function/mutual_recursion.lox",
-      "language/function/parameters.lox",
-      "language/function/print.lox",
-      "language/function/recursion.lox",
+      "language/function/empty_body.ly",
+      "language/function/local_recursion.ly",
+      "language/function/mutual_recursion.ly",
+      "language/function/parameters.ly",
+      "language/function/print.ly",
+      "language/function/recursion.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/function/body_must_be_block.lox",
-      "language/function/missing_comma_in_parameters.lox",
-      "language/function/too_many_arguments.lox",
-      "language/function/too_many_parameters.lox",
+      "language/function/body_must_be_block.ly",
+      "language/function/missing_comma_in_parameters.ly",
+      "language/function/too_many_arguments.ly",
+      "language/function/too_many_parameters.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/function/extra_arguments.lox",
-      "language/function/local_mutual_recursion.lox",
-      "language/function/missing_arguments.lox",
+      "language/function/extra_arguments.ly",
+      "language/function/local_mutual_recursion.ly",
+      "language/function/missing_arguments.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -387,10 +387,10 @@ fn function() -> Result<(), std::io::Error> {
 fn hooks() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/hooks/call_native.lox",
-      "language/hooks/call_sl_function.lox",
-      "language/hooks/call_sl_closure.lox",
-      "language/hooks/call_sl_instance.lox",
+      "language/hooks/call_native.ly",
+      "language/hooks/call_sl_function.ly",
+      "language/hooks/call_sl_closure.ly",
+      "language/hooks/call_sl_instance.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -399,10 +399,10 @@ fn hooks() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/hooks/pass_error_native.lox",
-      "language/hooks/pass_error_sl_function.lox",
-      "language/hooks/pass_error_sl_closure.lox",
-      "language/hooks/pass_error_sl_instance.lox",
+      "language/hooks/pass_error_native.ly",
+      "language/hooks/pass_error_sl_function.ly",
+      "language/hooks/pass_error_sl_closure.ly",
+      "language/hooks/pass_error_sl_instance.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -412,22 +412,22 @@ fn hooks() -> Result<(), std::io::Error> {
 fn if_stmt() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/if/dangling_else.lox",
-      "language/if/else.lox",
-      "language/if/if.lox",
-      "language/if/truth.lox",
+      "language/if/dangling_else.ly",
+      "language/if/else.ly",
+      "language/if/if.ly",
+      "language/if/truth.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/if/class_in_else.lox",
-      "language/if/class_in_then.lox",
-      "language/if/fun_in_else.lox",
-      "language/if/fun_in_then.lox",
-      "language/if/var_in_then.lox",
-      "language/if/var_in_then.lox",
+      "language/if/class_in_else.ly",
+      "language/if/class_in_then.ly",
+      "language/if/fun_in_else.ly",
+      "language/if/fun_in_then.ly",
+      "language/if/var_in_then.ly",
+      "language/if/var_in_then.ly",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -441,17 +441,17 @@ fn import() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/import/missing_name.lox",
-      "language/import/missing_semicolon.lox",
-      "language/import/non_identifier_name.lox",
-      "language/import/non_string_literal.lox",
-      "language/import/non_string_path.lox",
+      "language/import/missing_name.ly",
+      "language/import/missing_semicolon.ly",
+      "language/import/non_identifier_name.ly",
+      "language/import/non_string_literal.ly",
+      "language/import/non_string_path.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/import/std_lib_not_real.lox"],
+    &vec!["language/import/std_lib_not_real.ly"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -460,14 +460,14 @@ fn import() -> Result<(), std::io::Error> {
 fn indexing() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/indexing/list_get.lox",
-      "language/indexing/list_set.lox",
-      "language/indexing/list_nested_get.lox",
-      "language/indexing/list_nested_set.lox",
-      "language/indexing/map_na_get.lox",
-      "language/indexing/map_ref_equal_get.lox",
-      "language/indexing/map_nested_get.lox",
-      "language/indexing/map_nested_set.lox",
+      "language/indexing/list_get.ly",
+      "language/indexing/list_set.ly",
+      "language/indexing/list_nested_get.ly",
+      "language/indexing/list_nested_set.ly",
+      "language/indexing/map_na_get.ly",
+      "language/indexing/map_ref_equal_get.ly",
+      "language/indexing/map_nested_get.ly",
+      "language/indexing/map_nested_set.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -476,8 +476,8 @@ fn indexing() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/indexing/list_out_of_range.lox",
-      "language/indexing/map_key_not_found.lox",
+      "language/indexing/list_out_of_range.ly",
+      "language/indexing/map_key_not_found.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -487,23 +487,23 @@ fn indexing() -> Result<(), std::io::Error> {
 fn inheritance() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/inheritance/constructor.lox",
-      "language/inheritance/inherit_methods.lox",
-      "language/inheritance/set_fields_from_base_class.lox",
+      "language/inheritance/constructor.ly",
+      "language/inheritance/inherit_methods.ly",
+      "language/inheritance/set_fields_from_base_class.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
-    &vec!["language/inheritance/parenthesized_superclass.lox"],
+    &vec!["language/inheritance/parenthesized_superclass.ly"],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/inheritance/inherit_from_function.lox",
-      "language/inheritance/inherit_from_nil.lox",
-      "language/inheritance/inherit_from_number.lox",
+      "language/inheritance/inherit_from_function.ly",
+      "language/inheritance/inherit_from_nil.ly",
+      "language/inheritance/inherit_from_number.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -513,8 +513,8 @@ fn inheritance() -> Result<(), std::io::Error> {
 fn iterator() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/iterator/equality.lox",
-      "language/iterator/assign_iter_keep_state.lox",
+      "language/iterator/equality.ly",
+      "language/iterator/assign_iter_keep_state.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -522,7 +522,7 @@ fn iterator() -> Result<(), std::io::Error> {
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
   test_file_exits(
-    &vec!["language/iterator/cannot_set_current.lox"],
+    &vec!["language/iterator/cannot_set_current.ly"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -530,22 +530,22 @@ fn iterator() -> Result<(), std::io::Error> {
 #[test]
 fn limit() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/limit/reuse_constants.lox"],
+    &vec!["language/limit/reuse_constants.ly"],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/limit/loop_too_large.lox",
-      "language/limit/too_many_constants.lox",
-      "language/limit/too_many_locals.lox",
-      "language/limit/too_many_upvalues.lox",
+      "language/limit/loop_too_large.ly",
+      "language/limit/too_many_constants.ly",
+      "language/limit/too_many_locals.ly",
+      "language/limit/too_many_upvalues.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/limit/stack_overflow.lox"],
+    &vec!["language/limit/stack_overflow.ly"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -554,32 +554,32 @@ fn limit() -> Result<(), std::io::Error> {
 fn lambda() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/lambda/expression_body.lox",
-      "language/lambda/empty_body.lox",
-      "language/lambda/mutual_recursion.lox",
-      "language/lambda/recursion.lox",
-      "language/lambda/parameters.lox",
-      "language/lambda/print.lox",
+      "language/lambda/expression_body.ly",
+      "language/lambda/empty_body.ly",
+      "language/lambda/mutual_recursion.ly",
+      "language/lambda/recursion.ly",
+      "language/lambda/parameters.ly",
+      "language/lambda/print.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/lambda/local_recursion.lox",
-      "language/lambda/local_mutual_recursion.lox",
-      "language/lambda/body_must_be_block_or_expr.lox",
-      "language/lambda/missing_comma_in_parameters.lox",
-      "language/lambda/too_many_parameters.lox",
-      "language/lambda/too_many_arguments.lox",
+      "language/lambda/local_recursion.ly",
+      "language/lambda/local_mutual_recursion.ly",
+      "language/lambda/body_must_be_block_or_expr.ly",
+      "language/lambda/missing_comma_in_parameters.ly",
+      "language/lambda/too_many_parameters.ly",
+      "language/lambda/too_many_arguments.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/lambda/extra_arguments.lox",
-      "language/lambda/missing_arguments.lox",
+      "language/lambda/extra_arguments.ly",
+      "language/lambda/missing_arguments.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -589,17 +589,17 @@ fn lambda() -> Result<(), std::io::Error> {
 fn list() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/list/empty.lox",
-      "language/list/homogeneous.lox",
-      "language/list/mixed.lox",
+      "language/list/empty.ly",
+      "language/list/homogeneous.ly",
+      "language/list/mixed.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/list/missing_comma_in_initializer.lox",
-      "language/list/missing_closing_bracket.lox",
+      "language/list/missing_comma_in_initializer.ly",
+      "language/list/missing_closing_bracket.ly",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -611,10 +611,10 @@ fn list() -> Result<(), std::io::Error> {
 fn logical_operator() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/logical_operator/and_truth.lox",
-      "language/logical_operator/and.lox",
-      "language/logical_operator/or_truth.lox",
-      "language/logical_operator/or.lox",
+      "language/logical_operator/and_truth.ly",
+      "language/logical_operator/and.ly",
+      "language/logical_operator/or_truth.ly",
+      "language/logical_operator/or.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -628,19 +628,19 @@ fn logical_operator() -> Result<(), std::io::Error> {
 fn map() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/map/empty.lox",
-      "language/map/homogeneous.lox",
-      "language/map/mixed.lox",
+      "language/map/empty.ly",
+      "language/map/homogeneous.ly",
+      "language/map/mixed.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/map/missing_closing_curly.lox",
-      "language/map/missing_colon.lox",
-      "language/map/statement_key.lox",
-      "language/map/statement_value.lox",
+      "language/map/missing_closing_curly.ly",
+      "language/map/missing_colon.ly",
+      "language/map/statement_key.ly",
+      "language/map/statement_value.ly",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -652,27 +652,27 @@ fn map() -> Result<(), std::io::Error> {
 fn method() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/method/arity.lox",
-      "language/method/empty_block.lox",
-      "language/method/print_bound_method.lox",
+      "language/method/arity.ly",
+      "language/method/empty_block.ly",
+      "language/method/print_bound_method.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/method/too_many_arguments.lox",
-      "language/method/too_many_parameters.lox",
+      "language/method/too_many_arguments.ly",
+      "language/method/too_many_parameters.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/method/extra_arguments.lox",
-      "language/method/missing_arguments.lox",
-      "language/method/not_found.lox",
-      "language/method/refer_to_name.lox",
+      "language/method/extra_arguments.ly",
+      "language/method/missing_arguments.ly",
+      "language/method/not_found.ly",
+      "language/method/refer_to_name.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -682,12 +682,12 @@ fn method() -> Result<(), std::io::Error> {
 fn native() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/native/assert.lox",
-      "language/native/assert_eq.lox",
-      "language/native/assert_ne.lox",
-      "language/native/clock.lox",
-      "language/native/signature_fixed_arity.lox",
-      "language/native/signature_type.lox",
+      "language/native/assert.ly",
+      "language/native/assert_eq.ly",
+      "language/native/assert_ne.ly",
+      "language/native/clock.ly",
+      "language/native/signature_fixed_arity.ly",
+      "language/native/signature_type.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -699,7 +699,7 @@ fn native() -> Result<(), std::io::Error> {
 
 #[test]
 fn nil() -> Result<(), std::io::Error> {
-  test_file_exits(&vec!["language/nil/literal.lox"], ExecuteResult::Ok)?;
+  test_file_exits(&vec!["language/nil/literal.ly"], ExecuteResult::Ok)?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
@@ -708,13 +708,13 @@ fn nil() -> Result<(), std::io::Error> {
 
 #[test]
 fn number() -> Result<(), std::io::Error> {
-  test_file_exits(&vec!["language/number/literals.lox"], ExecuteResult::Ok)?;
+  test_file_exits(&vec!["language/number/literals.ly"], ExecuteResult::Ok)?;
 
   test_file_exits(
     &vec![
-      "language/number/decimal_point_at_eof.lox",
-      "language/number/leading_dot.lox",
-      "language/number/trailing_dot.lox",
+      "language/number/decimal_point_at_eof.ly",
+      "language/number/leading_dot.ly",
+      "language/number/trailing_dot.ly",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -726,18 +726,18 @@ fn number() -> Result<(), std::io::Error> {
 fn operator() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/operator/add.lox",
-      "language/operator/comparison.lox",
-      "language/operator/divide.lox",
-      "language/operator/equals_class.lox",
-      "language/operator/equals_method.lox",
-      "language/operator/equals.lox",
-      "language/operator/multiply.lox",
-      "language/operator/negate.lox",
-      "language/operator/not_class.lox",
-      "language/operator/not_equals.lox",
-      "language/operator/not.lox",
-      "language/operator/subtract.lox",
+      "language/operator/add.ly",
+      "language/operator/comparison.ly",
+      "language/operator/divide.ly",
+      "language/operator/equals_class.ly",
+      "language/operator/equals_method.ly",
+      "language/operator/equals.ly",
+      "language/operator/multiply.ly",
+      "language/operator/negate.ly",
+      "language/operator/not_class.ly",
+      "language/operator/not_equals.ly",
+      "language/operator/not.ly",
+      "language/operator/subtract.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -746,27 +746,27 @@ fn operator() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/operator/add_bool_nil.lox",
-      "language/operator/add_bool_num.lox",
-      "language/operator/add_bool_string.lox",
-      "language/operator/add_nil_nil.lox",
-      "language/operator/add_num_nil.lox",
-      "language/operator/add_string_nil.lox",
-      "language/operator/divide_nonnum_num.lox",
-      "language/operator/divide_num_nonnum.lox",
-      "language/operator/greater_nonnum_num.lox",
-      "language/operator/greater_num_nonnum.lox",
-      "language/operator/greater_or_equal_nonnum_num.lox",
-      "language/operator/greater_or_equal_num_nonnum.lox",
-      "language/operator/less_nonnum_num.lox",
-      "language/operator/less_num_nonnum.lox",
-      "language/operator/less_or_equal_nonnum_num.lox",
-      "language/operator/less_or_equal_num_nonnum.lox",
-      "language/operator/multiply_nonnum_num.lox",
-      "language/operator/multiply_num_nonnum.lox",
-      "language/operator/negate_nonnum.lox",
-      "language/operator/subtract_nonnum_num.lox",
-      "language/operator/subtract_num_nonnum.lox",
+      "language/operator/add_bool_nil.ly",
+      "language/operator/add_bool_num.ly",
+      "language/operator/add_bool_string.ly",
+      "language/operator/add_nil_nil.ly",
+      "language/operator/add_num_nil.ly",
+      "language/operator/add_string_nil.ly",
+      "language/operator/divide_nonnum_num.ly",
+      "language/operator/divide_num_nonnum.ly",
+      "language/operator/greater_nonnum_num.ly",
+      "language/operator/greater_num_nonnum.ly",
+      "language/operator/greater_or_equal_nonnum_num.ly",
+      "language/operator/greater_or_equal_num_nonnum.ly",
+      "language/operator/less_nonnum_num.ly",
+      "language/operator/less_num_nonnum.ly",
+      "language/operator/less_or_equal_nonnum_num.ly",
+      "language/operator/less_or_equal_num_nonnum.ly",
+      "language/operator/multiply_nonnum_num.ly",
+      "language/operator/multiply_num_nonnum.ly",
+      "language/operator/negate_nonnum.ly",
+      "language/operator/subtract_nonnum_num.ly",
+      "language/operator/subtract_num_nonnum.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -777,7 +777,7 @@ fn print() -> Result<(), std::io::Error> {
   test_file_exits(&vec![], ExecuteResult::Ok)?;
 
   test_file_exits(
-    &vec!["language/print/missing_argument.lox"],
+    &vec!["language/print/missing_argument.ly"],
     ExecuteResult::CompileError,
   )?;
 
@@ -787,7 +787,7 @@ fn print() -> Result<(), std::io::Error> {
 #[test]
 fn regression() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/regression/40.lox", "language/regression/394.lox"],
+    &vec!["language/regression/40.ly", "language/regression/394.ly"],
     ExecuteResult::Ok,
   )
 }
@@ -796,18 +796,18 @@ fn regression() -> Result<(), std::io::Error> {
 fn return_test() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/return/after_else.lox",
-      "language/return/after_if.lox",
-      "language/return/after_while.lox",
-      "language/return/in_function.lox",
-      "language/return/return_nil_if_no_value.lox",
-      "language/return/return_nil_if_no_value.lox",
+      "language/return/after_else.ly",
+      "language/return/after_if.ly",
+      "language/return/after_while.ly",
+      "language/return/in_function.ly",
+      "language/return/return_nil_if_no_value.ly",
+      "language/return/return_nil_if_no_value.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
-    &vec!["language/return/at_top_level.lox"],
+    &vec!["language/return/at_top_level.ly"],
     ExecuteResult::CompileError,
   )?;
 
@@ -818,22 +818,22 @@ fn return_test() -> Result<(), std::io::Error> {
 fn string() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/string/literals.lox",
-      "language/string/multiline.lox",
+      "language/string/literals.ly",
+      "language/string/multiline.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/string/unterminated_double.lox",
-      "language/string/unterminated_single.lox",
+      "language/string/unterminated_double.ly",
+      "language/string/unterminated_single.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/string/error_after_multiline.lox"],
+    &vec!["language/string/error_after_multiline.ly"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -842,37 +842,37 @@ fn string() -> Result<(), std::io::Error> {
 fn super_() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/super/bound_method.lox",
-      "language/super/call_other_method.lox",
-      "language/super/call_same_method.lox",
-      "language/super/closure.lox",
-      "language/super/constructor.lox",
-      "language/super/indirectly_inherited.lox",
-      "language/super/reassign_superclass.lox",
-      "language/super/super_in_closure_in_inherited_method.lox",
-      "language/super/super_in_inherited_method.lox",
+      "language/super/bound_method.ly",
+      "language/super/call_other_method.ly",
+      "language/super/call_same_method.ly",
+      "language/super/closure.ly",
+      "language/super/constructor.ly",
+      "language/super/indirectly_inherited.ly",
+      "language/super/reassign_superclass.ly",
+      "language/super/super_in_closure_in_inherited_method.ly",
+      "language/super/super_in_inherited_method.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/super/no_superclass_bind.lox",
-      "language/super/no_superclass_call.lox",
-      "language/super/parenthesized.lox",
-      "language/super/super_at_top_level.lox",
-      "language/super/super_in_top_level_function.lox",
-      "language/super/super_without_dot.lox",
-      "language/super/super_without_name.lox",
+      "language/super/no_superclass_bind.ly",
+      "language/super/no_superclass_call.ly",
+      "language/super/parenthesized.ly",
+      "language/super/super_at_top_level.ly",
+      "language/super/super_in_top_level_function.ly",
+      "language/super/super_without_dot.ly",
+      "language/super/super_without_name.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/super/extra_arguments.lox",
-      "language/super/missing_arguments.lox",
-      "language/super/no_superclass_method.lox",
+      "language/super/extra_arguments.ly",
+      "language/super/missing_arguments.ly",
+      "language/super/no_superclass_method.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -882,41 +882,41 @@ fn super_() -> Result<(), std::io::Error> {
 fn variable() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/variable/early_bound.lox",
-      "language/variable/in_middle_of_block.lox",
-      "language/variable/in_nested_block.lox",
-      "language/variable/local_from_method.lox",
-      "language/variable/redeclare_global.lox",
-      "language/variable/redefine_global.lox",
-      "language/variable/scope_reuse_in_different_blocks.lox",
-      "language/variable/shadow_and_local.lox",
-      "language/variable/shadow_global.lox",
-      "language/variable/shadow_local.lox",
-      "language/variable/uninitialized.lox",
-      "language/variable/unreached_undefined.lox",
-      "language/variable/use_global_in_initializer.lox",
+      "language/variable/early_bound.ly",
+      "language/variable/in_middle_of_block.ly",
+      "language/variable/in_nested_block.ly",
+      "language/variable/local_from_method.ly",
+      "language/variable/redeclare_global.ly",
+      "language/variable/redefine_global.ly",
+      "language/variable/scope_reuse_in_different_blocks.ly",
+      "language/variable/shadow_and_local.ly",
+      "language/variable/shadow_global.ly",
+      "language/variable/shadow_local.ly",
+      "language/variable/uninitialized.ly",
+      "language/variable/unreached_undefined.ly",
+      "language/variable/use_global_in_initializer.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/variable/collide_with_parameter.lox",
-      "language/variable/duplicate_local.lox",
-      "language/variable/duplicate_parameter.lox",
-      "language/variable/use_false_as_var.lox",
-      "language/variable/use_local_in_initializer.lox",
-      "language/variable/use_nil_as_var.lox",
-      "language/variable/use_this_as_var.lox",
+      "language/variable/collide_with_parameter.ly",
+      "language/variable/duplicate_local.ly",
+      "language/variable/duplicate_parameter.ly",
+      "language/variable/use_false_as_var.ly",
+      "language/variable/use_local_in_initializer.ly",
+      "language/variable/use_nil_as_var.ly",
+      "language/variable/use_this_as_var.ly",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/variable/undefined_global.lox",
-      "language/variable/undefined_local.lox",
-      "language/variable/undefined_local.lox",
+      "language/variable/undefined_global.ly",
+      "language/variable/undefined_local.ly",
+      "language/variable/undefined_local.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -926,19 +926,19 @@ fn variable() -> Result<(), std::io::Error> {
 fn while_test() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/while/closure_in_body.lox",
-      "language/while/return_closure.lox",
-      "language/while/return_inside.lox",
-      "language/while/syntax.lox",
+      "language/while/closure_in_body.ly",
+      "language/while/return_closure.ly",
+      "language/while/return_inside.ly",
+      "language/while/syntax.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/while/class_in_body.lox",
-      "language/while/fun_in_body.lox",
-      "language/while/var_in_body.lox",
+      "language/while/class_in_body.ly",
+      "language/while/fun_in_body.ly",
+      "language/while/var_in_body.ly",
     ],
     ExecuteResult::CompileError,
   )?;

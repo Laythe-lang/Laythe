@@ -112,7 +112,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut parser = Parser::new(NativeStdIo(), &source);
   /// let module = hooks.manage(Module::new(
   ///  hooks.manage_str("module".to_string()),
-  ///  hooks.manage(PathBuf::from("./module.lox"))
+  ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///
   /// let compiler = Compiler::new(module, NativeIo::default(), &mut parser, &mut hooks);
@@ -206,7 +206,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut parser = Parser::new(NativeStdIo(), &source);
   /// let module = hooks.manage(Module::new(
   ///  hooks.manage_str("module".to_string()),
-  ///  hooks.manage(PathBuf::from("./module.lox"))
+  ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///
   /// let compiler = Compiler::new(module, NativeIo::default(), &mut parser, &mut hooks);
@@ -1971,7 +1971,7 @@ mod test {
     let hooks = &GcHooks::new(&mut context);
 
     let module = hooks
-      .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("path/module.lox"))).unwrap());
+      .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("path/module.ly"))).unwrap());
     let compiler = Compiler::new(module, io, &mut parser, &hooks);
     let result = compiler.compile();
     assert_eq!(result.is_ok(), true);

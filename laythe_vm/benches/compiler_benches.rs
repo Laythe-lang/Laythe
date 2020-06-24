@@ -35,7 +35,7 @@ fn compile_source(source: &str) {
   let mut context = NoContext::new(&gc);
   let hooks = GcHooks::new(&mut context);
   let module = hooks
-    .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("./Benchmark.lox"))).unwrap());
+    .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("./Benchmark.ly"))).unwrap());
   let io = NativeIo::default();
   let mut parser = Parser::new(io.stdio(), source);
   let compiler = Compiler::new(module, io, &mut parser, &hooks);
@@ -43,15 +43,15 @@ fn compile_source(source: &str) {
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-  let binary_trees = load_source("binary_trees.lox");
-  let equality = load_source("equality.lox");
-  let fib = load_source("fib.lox");
-  let instantiation = load_source("instantiation.lox");
-  let invocation = load_source("invocation.lox");
-  let method_call = load_source("method_call.lox");
-  let properties = load_source("properties.lox");
-  let trees = load_source("trees.lox");
-  let zoo = load_source("zoo.lox");
+  let binary_trees = load_source("binary_trees.ly");
+  let equality = load_source("equality.ly");
+  let fib = load_source("fib.ly");
+  let instantiation = load_source("instantiation.ly");
+  let invocation = load_source("invocation.ly");
+  let method_call = load_source("method_call.ly");
+  let properties = load_source("properties.ly");
+  let trees = load_source("trees.ly");
+  let zoo = load_source("zoo.ly");
 
   c.bench_with_input(
     BenchmarkId::new("compile binary_trees", 201),
