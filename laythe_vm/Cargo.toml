@@ -1,0 +1,30 @@
+[package]
+name = "laythe_vm"
+version = "0.1.0"
+authors = ["John Chabot <johnchabot2013@gmail.com>"]
+edition = "2018"
+
+[features]
+debug = []
+debug_upvalue = []
+
+[lib]
+name = "laythe_vm"
+path = "src/lib.rs"
+
+[dependencies]
+laythe_core = { path = "../laythe_core", features = ["nan_boxing"]  } # 
+laythe_lib = { path = "../laythe_lib" }
+laythe_env = { path = "../laythe_env" }
+fnv = "1.0.3"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "vm_benches"
+harness = false
+
+[[bench]]
+name = "compiler_benches"
+harness = false

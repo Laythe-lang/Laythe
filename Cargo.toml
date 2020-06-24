@@ -1,23 +1,23 @@
 [workspace]
 members = [
-  "spacelox_compiler_bench",
-  "spacelox_core",
-  "spacelox_lib",
-  "spacelox_macro",
-  "spacelox_env",
-  "spacelox_vm",
-  "spacelox_wasm",
-  "spacelox",
+  "laythe_compiler_bench",
+  "laythe_core",
+  "laythe_lib",
+  "laythe_macro",
+  "laythe_env",
+  "laythe_vm",
+  "laythe_wasm",
+  "laythe",
 ]
 
 default-members = [
-  "spacelox_core",
-  "spacelox_lib",
-  "spacelox_macro",
-  "spacelox_env",
-  "spacelox_vm",
-  "spacelox_wasm",
-  "spacelox",
+  "laythe_core",
+  "laythe_lib",
+  "laythe_macro",
+  "laythe_env",
+  "laythe_vm",
+  "laythe_wasm",
+  "laythe",
 ]
 
 [profile.dev]

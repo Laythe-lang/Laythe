@@ -1,0 +1,17 @@
+[package]
+name = "laythe_env"
+version = "0.1.0"
+authors = ["John Chabot <johnchabot2013@gmail.com>"]
+edition = "2018"
+
+[lib]
+name = "laythe_env"
+path = "src/lib.rs"
+
+[features]
+debug_gc = []
+debug_stress_gc = []
+
+[dependencies]
+laythe_macro = { path = "../laythe_macro" }
+hashbrown = "0.7.2"

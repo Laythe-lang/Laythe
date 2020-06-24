@@ -7,95 +7,95 @@
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit tests in 'spacelox_core'",
+      "name": "Debug unit tests in 'laythe_core'",
       "cargo": {
         "args": [
           "test",
           "--no-run",
           "--lib",
-          "--package=spacelox_core",
+          "--package=laythe_core",
           "--test-threads=1",
         ],
         "filter": {
-          "name": "spacelox_core",
+          "name": "laythe_core",
           "kind": "lib"
         }
       },
       "args": [],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}/spacelox_core"
+      "cwd": "${workspaceFolder}/laythe_core"
     },
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit test in 'spacelox_vm'",
+      "name": "Debug unit test in 'laythe_vm'",
       "cargo": {
         "args": [
           "test",
           "--no-run",
           "--lib",
-          "--package=spacelox_vm",
+          "--package=laythe_vm",
         ],
         "filter": {
-          "name": "spacelox_vm",
+          "name": "laythe_vm",
           "kind": "lib"
         }
       },
       "args": ["--test-threads=1"],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}/spacelox_vm"
+      "cwd": "${workspaceFolder}/laythe_vm"
     },
     {
       "type": "lldb",
       "request": "launch",
-      "name": "Debug unit test in 'spacelox_lib'",
+      "name": "Debug unit test in 'laythe_lib'",
       "cargo": {
         "args": [
           "test",
           "--no-run",
           "--lib",
-          "--package=spacelox_lib",
+          "--package=laythe_lib",
         ],
         "filter": {
-          "name": "spacelox_lib",
+          "name": "laythe_lib",
           "kind": "lib"
         }
       },
       "args": ["--test-threads=1"],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}/spacelox_lib"
+      "cwd": "${workspaceFolder}/laythe_lib"
     },
     {
       "type": "lldb",
       "request": "launch",
-      "name": "spacelox repl",
+      "name": "laythe repl",
       "cargo": {
         "args": [
           "build",
-          "--bin=spacelox",
-          "--package=spacelox"
+          "--bin=laythe",
+          "--package=laythe"
         ],
         "filter": {
-          "name": "spacelox",
+          "name": "laythe",
           "kind": "bin"
         }
       },
       "args": [],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}/spacelox"
+      "cwd": "${workspaceFolder}/laythe"
     },
     {
       "type": "lldb",
       "request": "launch",
-      "name": "spacelox script",
+      "name": "laythe script",
       "cargo": {
         "args": [
           "build",
-          "--bin=spacelox",
-          "--package=spacelox"
+          "--bin=laythe",
+          "--package=laythe"
         ],
         "filter": {
-          "name": "spacelox",
+          "name": "laythe",
           "kind": "bin"
         }
       },
@@ -103,8 +103,8 @@
         "benchmark/list2.lox",
       ],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}/spacelox_vm/fixture",
-      "preLaunchTask": "spacelox build"
+      "cwd": "${workspaceFolder}/laythe_vm/fixture",
+      "preLaunchTask": "laythe build"
     }
   ]
 }

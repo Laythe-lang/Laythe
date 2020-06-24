@@ -1,4 +1,4 @@
-# SpaceLox
+# Laythe
 
 A rust implementation of lox from the 2nd book of [Crafting Interpreters](https://craftinginterpreters.com/). The implementation is complete in the sense that it currently passes all tests in the original clox implementation.
 
@@ -32,7 +32,7 @@ cargo bench
 If you have the the flamegraph cargo subcommand you can profile a script by the following.
 
 ```
-cargo flamegraph --bin=spacelox [filepath]
+cargo flamegraph --bin=laythe [filepath]
 ```
 
 To run the repl use.
@@ -52,7 +52,7 @@ I've continued to work on the language with a few extensions. Below are some of 
 
 ### Added
 
-**Built in Classes**: Spacelox now has machinery to give all types methods. Some simple examples include `.str()` methods to get a string representation of each type.
+**Built in Classes**: Laythe now has machinery to give all types methods. Some simple examples include `.str()` methods to get a string representation of each type.
 
 ```lox
 > var x = true;
@@ -71,7 +71,7 @@ I've continued to work on the language with a few extensions. Below are some of 
 hi! john
 ```
 
-**New Collection Types**: Spacelox now has lists and maps as part of the language both supporting literals.
+**New Collection Types**: Laythe now has lists and maps as part of the language both supporting literals.
 
 ```lox
 > var list = [1, false, nil, 3, clock];
@@ -93,12 +93,12 @@ In the whole performance is unfortunately only about 50~60% that of clox. For th
 
 Running the original benchmark suite on a 2015 dell xps we have
 
-|benchmark|clox|spacelox|relative speed|notes|
+|benchmark|clox|Laythe|relative speed|notes|
 |--|--|--|--|--|
 |binary_tress.lox|total: 0.781831|total: 0.7417039|1.05|This likely due to the small number of properties and the init optimization. We essentially avoid hashing altogether in this bench|
 |equality.lox|loop: 2.42498 elapsed: 2.70574|loop: 2.632479 elapsed: 2.936534|0.92|Similar to above we have essentially zero hashing and again perform pretty equal to clox|
 |fib.lox|total: 1.43954|total: 2.613307|0.55|Here we have some hashing from the `fib` lookup but even making this local shows a difference. It appears there is still some performance difference in function calling here|
-|instantiation.lox|total: 0.904372|total: 1.75085|0.51|Again localizing this gives a decent speedup but hashing and function calls still seem to slow spacelox down|
+|instantiation.lox|total: 0.904372|total: 1.75085|0.51|Again localizing this gives a decent speedup but hashing and function calls still seem to slow Laythe down|
 |invocation.lox|total: 0.433293|total: 1.181278|0.366|Now the hashing speed difference is quite apparent|
 |method_call.lox|total: 0.286027|total: 0.531728|0.53|Same as above|
 |properties.lox|total: 0.732466|total: 1.725661|0.42|Same as above|

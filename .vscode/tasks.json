@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "spacelox build",
+      "label": "laythe build",
       "type": "shell",
       "command": "cargo build"
     }

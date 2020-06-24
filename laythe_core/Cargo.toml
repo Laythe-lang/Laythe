@@ -1,0 +1,18 @@
+[package]
+name = "laythe_core"
+version = "0.1.0"
+authors = ["John Chabot <johnchabot2013@gmail.com>"]
+edition = "2018"
+
+[features]
+nan_boxing = []
+
+[lib]
+name = "laythe_core"
+path = "src/lib.rs"
+
+[dependencies]
+laythe_env = { path = "../laythe_env" }
+fnv = "1.0.3"
+linear-map = "1.2.0"
+hashbrown = "0.7.2"
