@@ -263,13 +263,13 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
         self.parser.advance();
         self.class_declaration();
       }
-      TokenKind::Fun => {
+      TokenKind::Fn => {
         self.parser.advance();
         self.fun_declaration();
       }
-      TokenKind::Var => {
+      TokenKind::Let => {
         self.parser.advance();
-        self.var_declaration();
+        self.let_declaration();
       }
       TokenKind::Export => {
         self.parser.advance();
@@ -292,13 +292,13 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
         self.parser.advance();
         Some(self.class_declaration())
       }
-      TokenKind::Fun => {
+      TokenKind::Fn => {
         self.parser.advance();
         Some(self.fun_declaration())
       }
-      TokenKind::Var => {
+      TokenKind::Let => {
         self.parser.advance();
-        Some(self.var_declaration())
+        Some(self.let_declaration())
       }
       _ => None,
     };
@@ -485,7 +485,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Parse a variable declaration
-  fn var_declaration(&mut self) -> u16 {
+  fn let_declaration(&mut self) -> u16 {
     let variable = self.parse_variable("Expect variable name.");
 
     if self.parser.match_kind(TokenKind::Equal) {
@@ -579,7 +579,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     // parse an initializer
     let style: ForLoop = if self.parser.match_kind(TokenKind::Semicolon) {
       ForLoop::CStyle
-    } else if self.parser.match_kind(TokenKind::Var) {
+    } else if self.parser.match_kind(TokenKind::Let) {
       self.for_var_declaration()
     } else {
       self.expression_statement();
@@ -866,8 +866,8 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
       match self.parser.current.kind {
         TokenKind::Class
-        | TokenKind::Fun
-        | TokenKind::Var
+        | TokenKind::Fn
+        | TokenKind::Let
         | TokenKind::For
         | TokenKind::If
         | TokenKind::While
@@ -1423,7 +1423,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
       if let Some(local_name) = &local.name {
         if &name.lexeme == local_name {
-          // handle the case were `var a = a;`
+          // handle the case were `let a = a;`
           if local.depth == UNINITIALIZED {
             self
               .parser
@@ -2103,7 +2103,7 @@ mod test {
   #[test]
   fn export_variable() {
     let example = "
-      export var x = 10;
+      export let x = 10;
     "
     .to_string();
 
@@ -2125,7 +2125,7 @@ mod test {
   #[test]
   fn export_fun() {
     let example = "
-      export fun example() {}
+      export fn example() {}
     "
     .to_string();
 
@@ -2204,7 +2204,7 @@ mod test {
   fn filled_try_catch() {
     let example = r#"
       try {
-        var empty = {};
+        let empty = {};
         empty["missing"];
       } catch {
         print "no!";
@@ -2376,7 +2376,7 @@ mod test {
   #[test]
   fn list_index_set() {
     let example = "
-      var a = [clock, clock, clock];
+      let a = [clock, clock, clock];
       a[1] = 5;
     "
     .to_string();
@@ -2407,7 +2407,7 @@ mod test {
   #[test]
   fn list_index_get() {
     let example = "
-      var a = [\"john\", \"joe\", \"jim\"];
+      let a = [\"john\", \"joe\", \"jim\"];
       print a[1];
     "
     .to_string();
@@ -2437,7 +2437,7 @@ mod test {
   #[test]
   fn list_initializer() {
     let example = "
-      var a = [1, 2, nil, false, \"cat\"];
+      let a = [1, 2, nil, false, \"cat\"];
     "
     .to_string();
 
@@ -2464,7 +2464,7 @@ mod test {
   #[test]
   fn list_empty() {
     let example = "
-      var a = [];
+      let a = [];
     "
     .to_string();
 
@@ -2485,7 +2485,7 @@ mod test {
   #[test]
   fn map_initializer() {
     let example = "
-      var a = {
+      let a = {
         \"key1\": 10,
         \"key2\": nil,
       };
@@ -2514,7 +2514,7 @@ mod test {
   #[test]
   fn map_empty() {
     let example = "
-      var a = {};
+      let a = {};
     "
     .to_string();
 
@@ -2535,7 +2535,7 @@ mod test {
   #[test]
   fn lambda_expression_body() {
     let example = "
-    var example = || 10;
+    let example = || 10;
     example();
     "
     .to_string();
@@ -2568,7 +2568,7 @@ mod test {
   #[test]
   fn lambda_block_body() {
     let example = "
-    var example = || { return 10; };
+    let example = || { return 10; };
     example();
     "
     .to_string();
@@ -2601,10 +2601,10 @@ mod test {
   #[test]
   fn open_upvalue() {
     let example = "
-    fun example() {
-      var x = 0;
-      fun middle() {
-        fun inner() {
+    fn example() {
+      let x = 0;
+      fn middle() {
+        fn inner() {
           return x;
         }
 
@@ -2670,14 +2670,14 @@ mod test {
   #[test]
   fn close_upvalue() {
     let example = "
-    fun example() {
-      var a = 10;
-      fun inner() {
+    fn example() {
+      let a = 10;
+      fn inner() {
         return a;
       }
       return inner;
     }
-    var inner = example();
+    let inner = example();
     inner();
     "
     .to_string();
@@ -2722,7 +2722,7 @@ mod test {
 
   #[test]
   fn empty_fun() {
-    let example = "fun example() {} example();".to_string();
+    let example = "fn example() {} example();".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -2749,10 +2749,10 @@ mod test {
   #[test]
   fn param_fun() {
     let example = "
-    fun example(a) {
+    fn example(a) {
       return a;
     }
-    var a = 1;
+    let a = 1;
     example(a);
     "
     .to_string();
@@ -2786,7 +2786,7 @@ mod test {
 
   #[test]
   fn empty_fun_basic() {
-    let example = "fun example() { var a = 10; return a; } example();".to_string();
+    let example = "fn example() { let a = 10; return a; } example();".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -2815,7 +2815,7 @@ mod test {
 
   #[test]
   fn map() {
-    let example = "var a = { \"cat\": \"bat\", 10: nil };".to_string();
+    let example = "let a = { \"cat\": \"bat\", 10: nil };".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -2838,7 +2838,7 @@ mod test {
 
   #[test]
   fn list() {
-    let example = "var a = [1, 2, 3, \"cat\"];".to_string();
+    let example = "let a = [1, 2, 3, \"cat\"];".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -2861,7 +2861,7 @@ mod test {
 
   #[test]
   fn for_loop() {
-    let example = "for (var x = 0; x < 10; x = x + 1) { print(x); }".to_string();
+    let example = "for (let x = 0; x < 10; x = x + 1) { print(x); }".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -2895,7 +2895,7 @@ mod test {
 
   #[test]
   fn for_range_loop() {
-    let example = "for (var x in [1, 2, 3]) { print x; }".to_string();
+    let example = "for (let x in [1, 2, 3]) { print x; }".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -3027,7 +3027,7 @@ mod test {
 
   #[test]
   fn declare_local() {
-    let example = "{ var x = 10; }".to_string();
+    let example = "{ let x = 10; }".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -3044,7 +3044,7 @@ mod test {
 
   #[test]
   fn op_get_local() {
-    let example = "{ var x = 10; print(x); }".to_string();
+    let example = "{ let x = 10; print(x); }".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -3063,7 +3063,7 @@ mod test {
 
   #[test]
   fn op_set_local() {
-    let example = "{ var x = 10; x = 5; }".to_string();
+    let example = "{ let x = 10; x = 5; }".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -3084,7 +3084,7 @@ mod test {
 
   #[test]
   fn op_define_global_nil() {
-    let example = "var x;".to_string();
+    let example = "let x;".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
@@ -3102,7 +3102,7 @@ mod test {
 
   #[test]
   fn op_define_global_val() {
-    let example = "var x = 10;".to_string();
+    let example = "let x = 10;".to_string();
 
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);

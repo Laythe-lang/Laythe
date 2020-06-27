@@ -1,9 +1,9 @@
-fun greeter(name) {
+fn greeter(name) {
   print "hi! " + name.str();
 }
 
-var x = ["cat", "dog", greeter, false, [10]];
-var iter = x.iter();
+let x = ["cat", "dog", greeter, false, [10]];
+let iter = x.iter();
 
 assertEq(iter.current, nil);
 

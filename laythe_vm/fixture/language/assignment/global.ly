@@ -1,4 +1,4 @@
-var a = "before";
+let a = "before";
 assertEq(a, "before"); // expect: before
 
 a = "after";

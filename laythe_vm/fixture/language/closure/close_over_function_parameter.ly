@@ -1,7 +1,7 @@
-var f;
+let f;
 
-fun foo(param) {
-  fun f_() {
+fn foo(param) {
+  fn f_() {
     assertEq(param, "param");
   }
   f = f_;

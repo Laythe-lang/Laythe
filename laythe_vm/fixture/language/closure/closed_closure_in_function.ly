@@ -1,8 +1,8 @@
-var f;
+let f;
 
 {
-  var local = "local";
-  fun f_() {
+  let local = "local";
+  fn f_() {
     assertEq(local, "local");
   }
   f = f_;

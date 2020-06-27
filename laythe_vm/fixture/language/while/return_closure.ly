@@ -1,10 +1,10 @@
-fun f() {
+fn f() {
   while (true) {
-    var i = "i";
-    fun g() { return i; }
+    let i = "i";
+    fn g() { return i; }
     return g;
   }
 }
 
-var h = f();
+let h = f();
 assertEq(h(), "i"); // expect: i

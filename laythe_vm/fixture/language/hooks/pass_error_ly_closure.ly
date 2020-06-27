@@ -1,5 +1,5 @@
-fun outer() {
-  fun inner() {
+fn outer() {
+  fn inner() {
     return nil + false;
   }
 

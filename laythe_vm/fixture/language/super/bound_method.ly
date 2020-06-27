@@ -15,5 +15,5 @@ class B < A {
 }
 
 
-var closure = B().getClosure();
+let closure = B().getClosure();
 assertEq(closure("arg"), "A.method(arg)"); // expect: A.method(arg)

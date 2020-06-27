@@ -1,4 +1,4 @@
-var results = [0, 1, 2, 3, 4].iter();
+let results = [0, 1, 2, 3, 4].iter();
 
 5.times().each(|i| {
   results.next();

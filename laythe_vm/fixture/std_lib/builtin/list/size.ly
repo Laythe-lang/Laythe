@@ -1,8 +1,8 @@
 assertEq([].size(), 0);
 assertEq([1, 2, 3].size(), 3);
 
-var x1 = [];
-var x2 = [1, 2, 3];
+let x1 = [];
+let x2 = [1, 2, 3];
 assertEq(x1.size(), 0);
 assertEq(x2.size(), 3);
 

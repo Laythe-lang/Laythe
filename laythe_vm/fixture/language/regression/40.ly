@@ -1,16 +1,16 @@
-fun caller(g) {
+fn caller(g) {
   g();
   // g should be a function, not nil.
   assertEq(g == nil, false); // expect: false
 }
 
-fun callCaller() {
-  var capturedVar = "before";
-  var a = "a";
+fn callCaller() {
+  let capturedlet = "before";
+  let a = "a";
 
-  fun f() {
+  fn f() {
     // Commenting the next line out prevents the bug!
-    capturedVar = "after";
+    capturedlet = "after";
 
     // Returning anything also fixes it, even nil:
     //return nil;

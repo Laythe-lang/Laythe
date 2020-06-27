@@ -16,7 +16,7 @@ class Baz < Bar {
   }
 }
 
-var baz = Baz();
+let baz = Baz();
 assertEq(baz.inFoo(), "in foo"); // expect: in foo
 assertEq(baz.inBar(), "in bar"); // expect: in bar
 assertEq(baz.inBaz(), "in baz"); // expect: in baz

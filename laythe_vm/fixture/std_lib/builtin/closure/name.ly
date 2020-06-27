@@ -1,7 +1,7 @@
-fun first() {}
-fun second() {}
+fn first() {}
+fn second() {}
 
-var assigned = first;
+let assigned = first;
 
 assertEq(first.name(), "first");
 assertEq(second.name(), "second");

@@ -1,4 +1,4 @@
-var example = "four score and seven years ago";
+let example = "four score and seven years ago";
 
 assert(example.has("four"));
 assert(example.has("n years"));

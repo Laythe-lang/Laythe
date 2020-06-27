@@ -1,4 +1,4 @@
-var list = [[1, 2, 3], ["cat", "dog"]];
+let list = [[1, 2, 3], ["cat", "dog"]];
 
 list[0][2] = 20;
 assertEq(list[0][0], 1);

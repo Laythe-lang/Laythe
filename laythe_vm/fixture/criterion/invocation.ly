@@ -33,8 +33,8 @@ class Foo {
   method29() {}
 }
 
-var foo = Foo();
-var i = 0;
+let foo = Foo();
+let i = 0;
 while (i < 1000) {
   foo.method0();
   foo.method1();

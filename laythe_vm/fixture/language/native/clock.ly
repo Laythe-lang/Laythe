@@ -1,2 +1,2 @@
-var start = clock();
+let start = clock();
 assert(clock() - start > 0);

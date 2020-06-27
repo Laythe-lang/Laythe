@@ -1,5 +1,5 @@
-var x1 = true;
-var x2 = false;
+let x1 = true;
+let x2 = false;
 
 assertEq(true.str(), "true");
 assertEq(false.str(), "false");

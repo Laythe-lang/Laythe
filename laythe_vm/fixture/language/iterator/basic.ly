@@ -26,14 +26,14 @@ class FooIter < Iterator {
   }
 }
 
-for (var i in Foo()) {
+for (let i in Foo()) {
   print i;
 }
 
 {
-  var $iter = Foo().iter();
+  let $iter = Foo().iter();
   while ($iter.next()) {
-    var i = $iter.current; 
+    let i = $iter.current; 
     {
       print i;
     }

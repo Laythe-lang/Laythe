@@ -1,4 +1,4 @@
-var f = |a, b| {
+let f = |a, b| {
   print a;
   print b;
 };

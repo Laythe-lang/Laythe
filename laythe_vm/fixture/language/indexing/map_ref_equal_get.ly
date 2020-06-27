@@ -1,8 +1,8 @@
 class Example {}
-var e1 = Example();
-var e2 = Example();
+let e1 = Example();
+let e2 = Example();
 
-var map = {
+let map = {
   "key1": "value1",
   "key2": "value2",
   "key3": "value3",

@@ -1,6 +1,6 @@
-var i = 0;
+let i = 0;
 
-var loopStart = clock();
+let loopStart = clock();
 
 while (i < 10000000) {
   i = i + 1;
@@ -11,9 +11,9 @@ while (i < 10000000) {
   "str"; "str"; "str"; "stru"; "str"; 1; "str"; nil; "str"; true;
 }
 
-var loopTime = clock() - loopStart;
+let loopTime = clock() - loopStart;
 
-var start = clock();
+let start = clock();
 
 i = 0;
 while (i < 10000000) {
@@ -25,7 +25,7 @@ while (i < 10000000) {
   "str" == "str"; "str" == "stru"; "str" == 1; "str" == nil; "str" == true;
 }
 
-var elapsed = clock() - start;
+let elapsed = clock() - start;
 print "loop";
 print loopTime;
 print "elapsed";

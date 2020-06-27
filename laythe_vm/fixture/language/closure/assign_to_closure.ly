@@ -1,16 +1,16 @@
-var f;
-var g;
+let f;
+let g;
 
 {
-  var local = "local";
-  fun f_() {
+  let local = "local";
+  fn f_() {
     assertEq(local, "local");
     local = "after f";
     assertEq(local, "after f");
   }
   f = f_;
 
-  fun g_() {
+  fn g_() {
     assertEq(local, "after f");
     local = "after g";
     assertEq(local, "after g");

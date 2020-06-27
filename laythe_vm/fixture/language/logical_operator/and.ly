@@ -10,8 +10,8 @@ assertEq(1 and true, true); // expect: true
 assertEq(1 and 2 and 3, 3); // expect: 3
 
 // Short-circuit at the first false argument.
-var a = "before";
-var b = "before";
+let a = "before";
+let b = "before";
 (a = true) and
     (b = false) and
     (a = "bad");

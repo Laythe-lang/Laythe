@@ -16,7 +16,7 @@ class OtherBase {
   }
 }
 
-var derived = Derived();
+let derived = Derived();
 assertEq(derived.method(), "Base.method()"); // expect: Base.method()
 Base = OtherBase;
 assertEq(derived.method(), "Base.method()"); // expect: Base.method()

@@ -1,8 +1,8 @@
-fun inner(value) {
+fn inner(value) {
   return value * 2;
 }
 
-fun outer(name) {
+fn outer(name) {
   print name;
   return inner;
 }

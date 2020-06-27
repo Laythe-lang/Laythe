@@ -3,9 +3,9 @@
 // the closure was not executed.
 
 {
-  var a = "a";
+  let a = "a";
   if (false) {
-    fun foo() { a; }
+    fn foo() { a; }
   }
 }
 

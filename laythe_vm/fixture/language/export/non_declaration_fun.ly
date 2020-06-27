@@ -1,2 +1,2 @@
-fun example() {}
+fn example() {}
 export example;

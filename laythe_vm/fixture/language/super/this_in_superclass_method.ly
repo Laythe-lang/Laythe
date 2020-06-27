@@ -11,6 +11,6 @@ class Derived < Base {
   }
 }
 
-var derived = Derived("a", "b");
+let derived = Derived("a", "b");
 assertEq(derived.a, "a"); // expect: a
 assertEq(derived.b, "b"); // expect: b

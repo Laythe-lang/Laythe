@@ -1,4 +1,4 @@
-fun example(parameter) {
+fn example(parameter) {
   return parameter;
 }
 

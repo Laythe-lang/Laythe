@@ -1,4 +1,4 @@
-var map = {
+let map = {
   10 / 0: true
 };
 

@@ -1,4 +1,4 @@
-fun thrower() {
+fn thrower() {
   [][1];
 }
 

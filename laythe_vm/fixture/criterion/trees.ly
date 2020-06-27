@@ -21,8 +21,8 @@ class Tree {
   }
 }
 
-var tree = Tree(5);
+let tree = Tree(5);
 
-for (var i = 0; i < 3; i = i + 1) {
+for (let i = 0; i < 3; i = i + 1) {
   tree.walk();
 }

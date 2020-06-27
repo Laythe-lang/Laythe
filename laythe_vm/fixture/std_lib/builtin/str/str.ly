@@ -1,2 +1,2 @@
-var cat = "cat";
+let cat = "cat";
 assertEq(cat, cat.str());

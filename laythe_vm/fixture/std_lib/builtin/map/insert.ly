@@ -1,4 +1,4 @@
-var map = {};
+let map = {};
 assertEq(map.insert(1, false), nil);
 assertEq(map.insert(1, true), false);
 assertEq(map.insert("dude", 10), nil);

@@ -1,4 +1,4 @@
-var list = [];
+let list = [];
 list.push.call(1, 2, 3);
 list.remove.call(1);
 

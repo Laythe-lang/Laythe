@@ -1,10 +1,10 @@
-fun f() {
+fn f() {
   for (;;) {
-    var i = "i";
-    fun g() { print i; }
+    let i = "i";
+    fn g() { print i; }
     return g;
   }
 }
 
-var h = f();
+let h = f();
 h(); // expect: i

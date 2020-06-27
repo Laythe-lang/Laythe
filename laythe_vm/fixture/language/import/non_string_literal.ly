@@ -1,2 +1,2 @@
-var path = "std/time";
+let path = "std/time";
 import time from path;

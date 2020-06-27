@@ -1,13 +1,13 @@
 class Zoo {
   init() {
-    this.aarvark  = 1;
+    this.aarletk  = 1;
     this.baboon   = 1;
     this.cat      = 1;
     this.donkey   = 1;
     this.elephant = 1;
     this.fox      = 1;
   }
-  ant()    { return this.aarvark; }
+  ant()    { return this.aarletk; }
   banana() { return this.baboon; }
   tuna()   { return this.cat; }
   hay()    { return this.donkey; }
@@ -15,9 +15,9 @@ class Zoo {
   mouse()  { return this.fox; }
 }
 
-var zoo = Zoo();
-var sum = 0;
-var start = clock();
+let zoo = Zoo();
+let sum = 0;
+let start = clock();
 while (sum < 10000000) {
   sum = sum + zoo.ant()
             + zoo.banana()

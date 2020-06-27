@@ -1,8 +1,8 @@
-var f;
+let f;
 
 {
-  var a = "a";
-  fun f_() {
+  let a = "a";
+  fn f_() {
     assertEq(a, "a");
     assertEq(a, "a");
   }

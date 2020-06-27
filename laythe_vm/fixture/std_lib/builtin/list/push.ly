@@ -1,4 +1,4 @@
-var a = [1, 2];
+let a = [1, 2];
 a.push(nil);
 assertEq(a.size(), 3);
 assertEq(a.str(), "[1, 2, nil]");

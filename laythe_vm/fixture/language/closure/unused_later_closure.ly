@@ -4,21 +4,21 @@
 // Here we create two locals that can be closed over, but only the first one
 // actually is. When "b" goes out of scope, we need to make sure we don't
 // prematurely close "a".
-var closure;
+let closure;
 
 {
-  var a = "a";
+  let a = "a";
 
   {
-    var b = "b";
-    fun returnA() {
+    let b = "b";
+    fn returnA() {
       return a;
     }
 
     closure = returnA;
 
     if (false) {
-      fun returnB() {
+      fn returnB() {
         return b;
       }
     }

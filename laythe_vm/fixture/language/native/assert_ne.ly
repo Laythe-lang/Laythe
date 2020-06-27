@@ -2,8 +2,8 @@ assertNe(true, false);
 assertNe(10, 3);
 assertNe("cat", "cats");
 
-fun a() {}
-fun b() {}
+fn a() {}
+fn b() {}
 assertNe(a, b);
 
 assertNe(true, 10);

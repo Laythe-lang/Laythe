@@ -1,11 +1,11 @@
-var f1;
-var f2;
-var f3;
+let f1;
+let f2;
+let f3;
 
-var i = 1;
+let i = 1;
 while (i < 4) {
-  var j = i;
-  fun f() { return j; }
+  let j = i;
+  fn f() { return j; }
 
   if (j == 1) f1 = f;
   else if (j == 2) f2 = f;

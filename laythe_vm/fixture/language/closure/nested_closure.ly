@@ -1,12 +1,12 @@
-var f;
+let f;
 
-fun f1() {
-  var a = "a";
-  fun f2() {
-    var b = "b";
-    fun f3() {
-      var c = "c";
-      fun f4() {
+fn f1() {
+  let a = "a";
+  fn f2() {
+    let b = "b";
+    fn f3() {
+      let c = "c";
+      fn f4() {
         assertEq(a, "a");
         assertEq(b, "b");
         assertEq(c, "c");

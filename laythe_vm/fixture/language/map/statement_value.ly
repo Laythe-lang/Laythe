@@ -1,3 +1,3 @@
-var a = {
+let a = {
   "first": class A {}
 }

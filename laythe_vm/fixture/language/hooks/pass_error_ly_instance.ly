@@ -4,5 +4,5 @@ class A {
   }
 }
 
-var a = A();
+let a = A();
 a.example.call();

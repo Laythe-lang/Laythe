@@ -9,5 +9,5 @@ assert(!nil);     // expect: true
 
 assertEq(!"", false);       // expect: false
 
-fun foo() {}
+fn foo() {}
 assertEq(!foo, false);      // expect: false

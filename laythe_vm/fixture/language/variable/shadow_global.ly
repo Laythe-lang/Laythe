@@ -1,6 +1,6 @@
-var a = "global";
+let a = "global";
 {
-  var a = "shadow";
+  let a = "shadow";
   assertEq(a, "shadow"); // expect: shadow
 }
 assertEq(a, "global"); // expect: global

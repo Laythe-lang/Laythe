@@ -388,9 +388,9 @@ fn hooks() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/hooks/call_native.ly",
-      "language/hooks/call_sl_function.ly",
-      "language/hooks/call_sl_closure.ly",
-      "language/hooks/call_sl_instance.ly",
+      "language/hooks/call_ly_function.ly",
+      "language/hooks/call_ly_closure.ly",
+      "language/hooks/call_ly_instance.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -400,9 +400,9 @@ fn hooks() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/hooks/pass_error_native.ly",
-      "language/hooks/pass_error_sl_function.ly",
-      "language/hooks/pass_error_sl_closure.ly",
-      "language/hooks/pass_error_sl_instance.ly",
+      "language/hooks/pass_error_ly_function.ly",
+      "language/hooks/pass_error_ly_closure.ly",
+      "language/hooks/pass_error_ly_instance.ly",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -567,7 +567,6 @@ fn lambda() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/lambda/local_recursion.ly",
-      "language/lambda/local_mutual_recursion.ly",
       "language/lambda/body_must_be_block_or_expr.ly",
       "language/lambda/missing_comma_in_parameters.ly",
       "language/lambda/too_many_parameters.ly",
@@ -580,6 +579,7 @@ fn lambda() -> Result<(), std::io::Error> {
     &vec![
       "language/lambda/extra_arguments.ly",
       "language/lambda/missing_arguments.ly",
+      "language/lambda/local_mutual_recursion.ly",
     ],
     ExecuteResult::RuntimeError,
   )

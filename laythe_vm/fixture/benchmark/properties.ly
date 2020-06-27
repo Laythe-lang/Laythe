@@ -66,9 +66,9 @@ class Foo {
   method29() { return this.field29; }
 }
 
-var foo = Foo();
-var start = clock();
-var i = 0;
+let foo = Foo();
+let start = clock();
+let i = 0;
 while (i < 500000) {
   foo.method0();
   foo.method1();

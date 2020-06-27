@@ -1,3 +1,3 @@
-fun foo(a) {
-  var a; // Error at 'a': Variable with this name already declared in this scope.
+fn foo(a) {
+  let a; // Error at 'a': variable with this name already declared in this scope.
 }

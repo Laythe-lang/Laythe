@@ -1,4 +1,4 @@
-fun example(x) {
+fn example(x) {
   return x;
 }
 

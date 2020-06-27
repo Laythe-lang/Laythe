@@ -8,7 +8,7 @@ class Bar < Foo {
   override() { return "bar"; }
 }
 
-var bar = Bar();
+let bar = Bar();
 assertEq(bar.methodOnFoo(), "foo"); // expect: foo
 assertEq(bar.methodOnBar(), "bar"); // expect: bar
 assertEq(bar.override(), "bar"); // expect: bar

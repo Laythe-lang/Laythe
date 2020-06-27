@@ -1,10 +1,10 @@
-var list = [1, 2, 3, 4];
-var iter1 = list.iter();
+let list = [1, 2, 3, 4];
+let iter1 = list.iter();
 
 iter1.next();
 iter1.next();
 
-var iter2 = iter1;
+let iter2 = iter1;
 iter2.next();
 iter2.next();
 

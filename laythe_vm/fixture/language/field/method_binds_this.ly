@@ -5,15 +5,15 @@ class Foo {
   }
 }
 
-var foo1 = Foo();
+let foo1 = Foo();
 foo1.name = "foo1";
 
-var foo2 = Foo();
+let foo2 = Foo();
 foo2.name = "foo2";
 
 // Store the method reference on another object.
-foo2.fn = foo1.sayName;
+foo2.f = foo1.sayName;
 // Still retains original receiver.
-foo2.fn(1);
+foo2.f(1);
 // expect: foo1
 // expect: 1

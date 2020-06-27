@@ -1,6 +1,6 @@
 class Foo {
   getClosure() {
-    fun closure() {
+    fn closure() {
       return this.toString();
     }
     return closure;
@@ -9,5 +9,5 @@ class Foo {
   toString() { return "Foo"; }
 }
 
-var closure = Foo().getClosure();
+let closure = Foo().getClosure();
 print closure(); // expect: Foo

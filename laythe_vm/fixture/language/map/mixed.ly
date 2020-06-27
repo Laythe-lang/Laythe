@@ -1,12 +1,12 @@
-fun fn() {}
+fn f() {}
 class A {}
 
-var map = {
+let map = {
   10: 5,
   nil: true,
   false: {},
-  []: fn,
-  fn: "cat",
+  []: f,
+  f: "cat",
   "key": "value",
   A(): 15.3,
   {}: nil,

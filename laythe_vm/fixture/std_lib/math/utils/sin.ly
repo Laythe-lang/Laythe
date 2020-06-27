@@ -1,6 +1,6 @@
 import Math from 'std/math';
 
-fun almost(actual, expect) {
+fn almost(actual, expect) {
   assert(Math.abs((actual - expect)) < 0.0000001);
 }
 

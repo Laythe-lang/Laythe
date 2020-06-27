@@ -1,4 +1,4 @@
-var x = {
+let x = {
   "10": [1, 2, 3],
   false: {
     5: false,
@@ -7,7 +7,7 @@ var x = {
   true: "sup",
 };
 
-var str = x.str();
+let str = x.str();
 
 assert(str.has("true: 'sup'"));
 assert(str.has("'10': [1, 2, 3]"));

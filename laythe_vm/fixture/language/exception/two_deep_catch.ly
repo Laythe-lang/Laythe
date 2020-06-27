@@ -1,8 +1,8 @@
-fun outer(something) {
+fn outer(something) {
   thrower();
 }
 
-fun thrower() {
+fn thrower() {
   [][1];
 }
 

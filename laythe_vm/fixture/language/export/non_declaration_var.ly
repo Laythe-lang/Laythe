@@ -1,2 +1,2 @@
-var a = 10;
+let a = 10;
 export a;

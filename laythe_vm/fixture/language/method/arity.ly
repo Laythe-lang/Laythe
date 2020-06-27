@@ -10,7 +10,7 @@ class Foo {
   method8(a, b, c, d, e, f, g, h) { return a + b + c + d + e + f + g + h; }
 }
 
-var foo = Foo();
+let foo = Foo();
 assertEq(foo.method0(), "no args"); // expect: no args
 assertEq(foo.method1(1), 1); // expect: 1
 assertEq(foo.method2(1, 2), 3); // expect: 3

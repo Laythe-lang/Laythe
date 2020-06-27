@@ -1,2 +1,2 @@
-var a = {
+let a = {
   10: true

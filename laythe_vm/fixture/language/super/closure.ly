@@ -4,7 +4,7 @@ class Base {
 
 class Derived < Base {
   getClosure() {
-    fun closure() {
+    fn closure() {
       return super.toString();
     }
     return closure;
@@ -13,5 +13,5 @@ class Derived < Base {
   toString() { return "Derived"; }
 }
 
-var closure = Derived().getClosure();
+let closure = Derived().getClosure();
 assertEq(closure(), "Base"); // expect: Base

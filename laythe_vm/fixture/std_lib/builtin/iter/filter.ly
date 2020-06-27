@@ -1,4 +1,4 @@
-var iter = {
+let iter = {
   "key": 10,
   "bad key": 5,
 }.iter().filter(|x| x[0] == "key");

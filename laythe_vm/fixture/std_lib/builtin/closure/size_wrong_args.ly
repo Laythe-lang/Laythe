@@ -1,4 +1,4 @@
-fun f(x) {
+fn f(x) {
   print x;
 }
 

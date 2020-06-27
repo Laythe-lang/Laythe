@@ -1,5 +1,5 @@
 {
-  var a = "outer";
+  let a = "outer";
   {
     assertEq(a, "outer"); // expect: outer
   }

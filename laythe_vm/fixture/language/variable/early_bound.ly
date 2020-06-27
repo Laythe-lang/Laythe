@@ -1,10 +1,10 @@
-var a = "outer";
+let a = "outer";
 {
-  fun foo() {
+  fn foo() {
     return a;
   }
 
   assertEq(foo(), "outer"); // expect: outer
-  var a = "inner";
+  let a = "inner";
   assertEq(foo(), "outer"); // expect: outer
 }

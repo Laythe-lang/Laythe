@@ -9,3 +9,9 @@ try {
     assert(true);
   }
 }
+
+if (true) {
+
+} else {
+
+}

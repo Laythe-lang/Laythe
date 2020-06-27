@@ -1,12 +1,12 @@
 class Foo {}
 
-fun bar(a, b) {
+fn bar(a, b) {
   print "bar";
   print a;
   print b;
 }
 
-var foo = Foo();
+let foo = Foo();
 foo.bar = bar;
 
 foo.bar(1, 2);

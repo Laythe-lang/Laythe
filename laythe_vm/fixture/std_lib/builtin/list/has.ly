@@ -1,4 +1,4 @@
-var x = [1, 2, nil, false, "example"];
+let x = [1, 2, nil, false, "example"];
 
 assertEq(x.has(2), true);
 assertEq(x.has("example"), true);

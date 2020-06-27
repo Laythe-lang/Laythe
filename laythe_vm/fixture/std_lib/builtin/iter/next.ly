@@ -1,4 +1,4 @@
-var iter = [1, 2, 3, "false"].iter();
+let iter = [1, 2, 3, "false"].iter();
 
 assertEq(iter.next(), true);
 assertEq(iter.current, 1);

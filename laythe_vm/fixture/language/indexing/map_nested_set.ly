@@ -1,4 +1,4 @@
-var map = {
+let map = {
   "inner1": {
     "first": 1,
     "second": 2,

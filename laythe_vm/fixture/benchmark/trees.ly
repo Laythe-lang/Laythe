@@ -21,9 +21,9 @@ class Tree {
   }
 }
 
-var tree = Tree(8);
-var start = clock();
-for (var i = 0; i < 100; i = i + 1) {
+let tree = Tree(8);
+let start = clock();
+for (let i = 0; i < 100; i = i + 1) {
   if (tree.walk() != 122068) print "Error";
 }
 print clock() - start;

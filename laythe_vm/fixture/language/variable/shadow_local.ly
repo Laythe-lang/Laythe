@@ -1,7 +1,7 @@
 {
-  var a = "local";
+  let a = "local";
   {
-    var a = "shadow";
+    let a = "shadow";
     assertEq(a, "shadow"); // expect: shadow
   }
   assertEq(a, "local"); // expect: local

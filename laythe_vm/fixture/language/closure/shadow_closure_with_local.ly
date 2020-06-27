@@ -1,9 +1,9 @@
 {
-  var foo = "closure";
-  fun f() {
+  let foo = "closure";
+  fn f() {
     {
       assertEq(foo, "closure"); // expect: closure
-      var foo = "shadow";
+      let foo = "shadow";
       assertEq(foo, "shadow"); // expect: shadow
     }
     assertEq(foo, "closure"); // expect: closure

@@ -1,6 +1,6 @@
 assertEq({"hi": 10}.size(), 1);
 
-var x = {
+let x = {
   1: 1,
   2: 2,
   3: 3,

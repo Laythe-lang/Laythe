@@ -1,4 +1,4 @@
 {
-  var a = "value";
-  var a = "other"; // Error at 'a': Variable with this name already declared in this scope.
+  let a = "value";
+  let a = "other"; // Error at 'a': variable with this name already declared in this scope.
 }

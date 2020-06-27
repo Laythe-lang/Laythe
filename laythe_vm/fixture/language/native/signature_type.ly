@@ -1,4 +1,4 @@
-var list = [];
+let list = [];
 
 try {
   list.insert(true, 10);

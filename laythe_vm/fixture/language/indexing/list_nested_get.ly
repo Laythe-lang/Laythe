@@ -1,4 +1,4 @@
-var list = [[1, 2, 3], ["cat", "dog"]];
+let list = [[1, 2, 3], ["cat", "dog"]];
 
 assertEq(list[0][0], 1);
 assertEq(list[0][1], 2);

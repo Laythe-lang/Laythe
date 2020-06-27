@@ -2,5 +2,5 @@ assertEq(true, true);
 assertEq(10, 10);
 assertEq("cat", "cat");
 
-fun a() {}
+fn a() {}
 assertEq(a, a);

@@ -1,6 +1,6 @@
-fun f() {
+fn f() {
   while (true) {
-    var i = "i";
+    let i = "i";
     return i;
   }
 }

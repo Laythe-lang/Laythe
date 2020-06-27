@@ -1,4 +1,4 @@
-var x = [];
+let x = [];
 x.insert(0, "false");
 
 assertEq(x.size(), 1);

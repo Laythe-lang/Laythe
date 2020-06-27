@@ -1,10 +1,10 @@
-fun f1(x1, x2, x3) {
+fn f1(x1, x2, x3) {
   print x1;
   print x2;
   print x3;
 }
 
-fun f2(x) {
+fn f2(x) {
   print x;
 }
 

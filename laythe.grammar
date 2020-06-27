@@ -6,12 +6,12 @@ exportDecl     → "export" symbolDecl;
 
 symbolDecl     → classDecl
                | funDecl
-               | varDecl
+               | letDecl
 
 classDecl      → "class" IDENTIFIER ( "<" IDENTIFIER )?
                  "{" function* "}" ;
-funDecl        → "fun" function ;
-varDecl        → "var" IDENTIFIER ( "=" expression )? ";" ;
+funDecl        → "fn" function ;
+letDecl        → "let" IDENTIFIER ( "=" expression )? ";" ;
 statement      → exprStmt
                | importStmt
                | forStmt
@@ -30,7 +30,7 @@ exprStmt       → expression ";" ;
 importStmt     → "import" imports "from" STRING
 imports        → ( IDENTIFIER | "{" importSymbol ( "," importSymbol )* "}" )
 importSymbol   → ( IDENTIFIER (":" IDENTIFIER)? )
-forStmt        → "for" "(" ( varDecl | exprStmt | ";" )
+forStmt        → "for" "(" ( letDecl | exprStmt | ";" )
                            expression? ";"
                            expression? ")" statement ;
 ifStmt         → "if" "(" expression ")" statement ( "else" statement )? ;
@@ -51,7 +51,7 @@ comparison     → addition ( ( ">" | ">=" | "<" | "<=" ) addition )* ;
 addition       → multiplication ( ( "-" | "+" ) multiplication )* ;
 multiplication → unary ( ( "/" | "*" ) unary )* ;
 
-unary          → ( "!" | "-" ) unary | call | map ;
+unary          → ( "!" | "-" ) unary | call | map | list ;
 list           → "[" ( expression ( "," expression )* ","? )? "]"
 map            → "{" ( mapEntry ( "," mapEntry )* ","? )? "}"
 mapEntry       → expression ":" expression

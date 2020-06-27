@@ -1,6 +1,6 @@
-fun foo() {}
+fn foo() {}
 {
-  var a = 1;
+  let a = 1;
   foo(
      a, // 1
      a, // 2

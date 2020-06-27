@@ -1,5 +1,5 @@
-fun outer(parameter) {
-  fun inner() {
+fn outer(parameter) {
+  fn inner() {
     return parameter;
   }
 

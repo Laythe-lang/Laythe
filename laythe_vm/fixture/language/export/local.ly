@@ -1,3 +1,3 @@
 {
-  export var a = 10;
+  export let a = 10;
 }

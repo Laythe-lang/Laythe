@@ -1,4 +1,4 @@
-fun error() {
+fn error() {
   return nil + false;
 }
 

@@ -1,5 +1,5 @@
 assertEq((|x| x)(10), 10);
 
-var result = "result";
+let result = "result";
 assertEq((|| result)(), "result");
 assertEq((|| || || result)()()(), "result");

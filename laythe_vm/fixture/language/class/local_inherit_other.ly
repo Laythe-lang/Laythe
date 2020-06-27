@@ -1,6 +1,6 @@
-class A {}
+export class A {}
 
-fun f() {
+fn f() {
   class B < A {}
   return B;
 }

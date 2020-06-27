@@ -1,4 +1,4 @@
-var x = [1, 2, 3];
+let x = [1, 2, 3];
 
 assertEq(x.pop(), 3);
 assertEq(x.pop(), 2);

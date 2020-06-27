@@ -1,5 +1,5 @@
 // Assignment on RHS of variable.
-var a = "before";
-var c = a = "var";
-assertEq(a, "var"); // expect: var
-assertEq(c, "var"); // expect: var
+let a = "before";
+let c = a = "let";
+assertEq(a, "let"); // expect: let
+assertEq(c, "let"); // expect: let

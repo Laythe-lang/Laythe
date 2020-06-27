@@ -289,7 +289,7 @@ impl<'a> Scanner<'a> {
             "a" => self.check_keyword(2, "lse", TokenKind::False),
             "o" => self.check_keyword(2, "r", TokenKind::For),
             "r" => self.check_keyword(2, "om", TokenKind::From),
-            "u" => self.check_keyword(2, "n", TokenKind::Fun),
+            "n" => TokenKind::Fn,
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
@@ -303,6 +303,7 @@ impl<'a> Scanner<'a> {
           },
           None => TokenKind::Identifier,
         },
+        "l" => self.check_keyword(1, "et", TokenKind::Let),
         "n" => self.check_keyword(1, "il", TokenKind::Nil),
         "o" => self.check_keyword(1, "r", TokenKind::Or),
         "p" => self.check_keyword(1, "rint", TokenKind::Print),
@@ -323,7 +324,6 @@ impl<'a> Scanner<'a> {
           },
           None => TokenKind::Identifier,
         },
-        "v" => self.check_keyword(1, "ar", TokenKind::Var),
         "w" => self.check_keyword(1, "hile", TokenKind::While),
         _ => TokenKind::Identifier,
       },
@@ -596,8 +596,8 @@ mod test {
       TokenGen::ALpha(Box::new(|| "from".to_string())),
     );
     map.insert(
-      TokenKind::Fun,
-      TokenGen::ALpha(Box::new(|| "fun".to_string())),
+      TokenKind::Fn,
+      TokenGen::ALpha(Box::new(|| "fn".to_string())),
     );
     map.insert(
       TokenKind::If,
@@ -644,8 +644,8 @@ mod test {
       TokenGen::ALpha(Box::new(|| "try".to_string())),
     );
     map.insert(
-      TokenKind::Var,
-      TokenGen::ALpha(Box::new(|| "var".to_string())),
+      TokenKind::Let,
+      TokenGen::ALpha(Box::new(|| "let".to_string())),
     );
     map.insert(
       TokenKind::While,

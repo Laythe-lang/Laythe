@@ -1,4 +1,4 @@
-fun f(x1, x2, x3) {
+fn f(x1, x2, x3) {
   print x1;
   print x2;
   print x3;

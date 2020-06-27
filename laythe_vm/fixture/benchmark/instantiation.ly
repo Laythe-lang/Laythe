@@ -4,8 +4,8 @@ class Foo {
   init() {}
 }
 
-var start = clock();
-var i = 0;
+let start = clock();
+let i = 0;
 while (i < 500000) {
   Foo();
   Foo();

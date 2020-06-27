@@ -1,6 +1,6 @@
-fun f() {
-  for (var i in [1]) {
-    var i = "i";
+fn f() {
+  for (let i in [1]) {
+    let i = "i";
     return i;
   }
 }

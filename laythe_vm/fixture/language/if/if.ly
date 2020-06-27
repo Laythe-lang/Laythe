@@ -6,5 +6,5 @@ if (false) assert(false);
 if (true) { assert(true); } // expect: block
 
 // Assignment in if condition.
-var a = false;
+let a = false;
 if (a = true) assertEq(a, true); // expect: true

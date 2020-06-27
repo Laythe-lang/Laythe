@@ -3,10 +3,10 @@
 // would crash because it walked to the end of the upvalue list (correct), but
 // then didn't handle not finding the variable.
 
-fun f() {
-  var a = "a";
-  var b = "b";
-  fun g() {
+fn f() {
+  let a = "a";
+  let b = "b";
+  fn g() {
     assertEq(b, "b"); // expect: b
     assertEq(a, "a"); // expect: a
   }

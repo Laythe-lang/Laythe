@@ -1,11 +1,11 @@
-var a = "global";
+let a = "global";
 
 {
-  fun assign() {
+  fn assign() {
     a = "assigned";
   }
 
-  var a = "inner";
+  let a = "inner";
   assign();
   assertEq(a, "inner"); // expect: inner
 }

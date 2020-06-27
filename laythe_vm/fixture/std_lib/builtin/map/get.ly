@@ -1,6 +1,6 @@
-fun example() {}
+fn example() {}
 
-var map = {
+let map = {
   "cat": true,
   "dog": true,
   "parrot": true,

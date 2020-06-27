@@ -29,12 +29,12 @@ class NthToggle < Toggle {
   }
 }
 
-var start = clock();
-var n = 1000000;
-var val = true;
-var toggle = Toggle(val);
+let start = clock();
+let n = 1000000;
+let val = true;
+let toggle = Toggle(val);
 
-for (var i = 0; i < n; i = i + 1) {
+for (let i = 0; i < n; i = i + 1) {
   val = toggle.activate().value();
   val = toggle.activate().value();
   val = toggle.activate().value();
@@ -50,9 +50,9 @@ for (var i = 0; i < n; i = i + 1) {
 print toggle.value();
 
 val = true;
-var ntoggle = NthToggle(val, 3);
+let ntoggle = NthToggle(val, 3);
 
-for (var i = 0; i < n; i = i + 1) {
+for (let i = 0; i < n; i = i + 1) {
   val = ntoggle.activate().value();
   val = ntoggle.activate().value();
   val = ntoggle.activate().value();

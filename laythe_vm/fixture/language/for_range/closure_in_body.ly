@@ -1,10 +1,10 @@
-var f1;
-var f2;
-var f3;
+let f1;
+let f2;
+let f3;
 
-for (var i in [1, 2, 3]) {
-  var j = i;
-  fun f() {
+for (let i in [1, 2, 3]) {
+  let j = i;
+  fn f() {
     print i;
     print j;
   }

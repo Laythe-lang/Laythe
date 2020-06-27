@@ -1,8 +1,8 @@
-var f;
+let f;
 
 class Foo {
   method(param) {
-    fun f_() {
+    fn f_() {
       assertEq(param, "param");
     }
     f = f_;

@@ -1,10 +1,10 @@
 // Tests that we correctly track the line info across multiline strings.
-var a = "1
+let a = "1
 2
 3
 ";
 
-var b = '1
+let b = '1
 2
 3
 ';
