@@ -34,17 +34,17 @@ impl<'a> Scanner<'a> {
   /// use laythe_core::token::TokenKind;
   ///
   /// let source = String::from("
-  /// var x = \"something\";
-  /// if not x == \"something\" {
-  ///   print(x);
+  /// let x = \"something\";
+  /// if x != \"something\" {
+  ///   print x;
   /// }
   /// ");
   ///
   /// let mut scanner = Scanner::new(&source);
   /// let token = scanner.scan_token();
   /// assert_eq!(token.line, 1);
-  /// assert_eq!(token.kind, TokenKind::Var);
-  /// assert_eq!(token.lexeme, "var");
+  /// assert_eq!(token.kind, TokenKind::Let);
+  /// assert_eq!(token.lexeme, "let");
   /// ```
   pub fn new(source: &'a str) -> Scanner<'a> {
     let current = next_boundary(&source, 0);
@@ -69,17 +69,17 @@ impl<'a> Scanner<'a> {
   /// use laythe_core::token::TokenKind;
   ///
   /// let source = String::from("
-  /// var x = \"something\";
-  /// if not x == \"something\" {
-  ///   print(x);
+  /// let x = \"something\";
+  /// if x != \"something\" {
+  ///   print x;
   /// }
   /// ");
   ///
   /// let mut scanner = Scanner::new(&source);
   /// let mut token = scanner.scan_token();
   /// assert_eq!(token.line, 1);
-  /// assert_eq!(token.kind, TokenKind::Var);
-  /// assert_eq!(token.lexeme, "var");
+  /// assert_eq!(token.kind, TokenKind::Let);
+  /// assert_eq!(token.lexeme, "let");
   ///
   /// token = scanner.scan_token();
   /// assert_eq!(token.line, 1);
