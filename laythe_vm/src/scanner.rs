@@ -312,6 +312,7 @@ impl<'a> Scanner<'a> {
           Some(c2) => match c2 {
             "e" => self.check_keyword(2, "lf", TokenKind::Self_),
             "u" => self.check_keyword(2, "per", TokenKind::Super),
+            "t" => self.check_keyword(2, "atic", TokenKind::Static),
             _ => TokenKind::Identifier,
           }
           None => TokenKind::Identifier,
@@ -640,6 +641,10 @@ mod test {
     map.insert(
       TokenKind::Self_,
       TokenGen::ALpha(Box::new(|| "self".to_string())),
+    );
+    map.insert(
+      TokenKind::Static,
+      TokenGen::ALpha(Box::new(|| "static".to_string())),
     );
     map.insert(
       TokenKind::True,

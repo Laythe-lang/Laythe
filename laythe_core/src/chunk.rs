@@ -129,6 +129,9 @@ pub enum AlignedByteCode {
   /// Create a method
   Method(u16),
 
+  /// Create a static method
+  StaticMethod(u16),
+
   /// Create a class
   Class(u16),
 
@@ -204,6 +207,7 @@ impl AlignedByteCode {
       }
       Self::Closure(slot) => push_op_u16(code, ByteCode::Closure, slot),
       Self::Method(slot) => push_op_u16(code, ByteCode::Method, slot),
+      Self::StaticMethod(slot) => push_op_u16(code, ByteCode::StaticMethod, slot),
       Self::Class(slot) => push_op_u16(code, ByteCode::Class, slot),
       Self::GetSuper(slot) => push_op_u16(code, ByteCode::GetSuper, slot),
       Self::Inherit => push_op(code, ByteCode::Inherit),
@@ -323,6 +327,10 @@ impl AlignedByteCode {
       ),
       ByteCode::Method => (
         AlignedByteCode::Method(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::StaticMethod => (
+        AlignedByteCode::StaticMethod(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::Class => (
@@ -467,6 +475,9 @@ pub enum ByteCode {
 
   /// Create a method
   Method,
+
+  /// Create a static method
+  StaticMethod,
 
   /// Create a class
   Class,
@@ -753,6 +764,7 @@ mod test {
         (4, AlignedByteCode::SuperInvoke((2105, 15))),
         (3, AlignedByteCode::Closure(3638)),
         (3, AlignedByteCode::Method(188)),
+        (3, AlignedByteCode::StaticMethod(4912)),
         (3, AlignedByteCode::Class(64136)),
         (3, AlignedByteCode::GetSuper(24)),
         (1, AlignedByteCode::Inherit),

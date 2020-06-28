@@ -90,6 +90,9 @@ pub fn disassemble_instruction<S: StdIo>(
     AlignedByteCode::Method(constant) => {
       constant_instruction(stdio, "Method", chunk, constant, offset)
     }
+    AlignedByteCode::StaticMethod(constant) => {
+      constant_instruction(stdio, "StaticMethod", chunk, constant, offset)
+    }
     AlignedByteCode::CloseUpvalue => simple_instruction(stdio, "CloseUpvalue", offset),
     AlignedByteCode::UpvalueIndex(_) => {
       simple_instruction(stdio, "!=== UpValueIndex - Invalid ===!", offset)

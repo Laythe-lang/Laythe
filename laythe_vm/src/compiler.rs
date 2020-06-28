@@ -518,7 +518,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     // parse function parameters
     if !fun_compiler.parser.check(TokenKind::RightParen) {
-      fun_compiler.function_arity();
+      fun_compiler.function_signature();
     }
 
     fun_compiler
@@ -545,6 +545,8 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a method declaration and body
   fn method(&mut self) {
+    let static_method = self.parser.match_kind(TokenKind::Static);
+
     self
       .parser
       .consume(TokenKind::Identifier, "Expected method name.");
@@ -557,7 +559,12 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     };
 
     self.function(fun_kind);
-    self.emit_byte(AlignedByteCode::Method(constant));
+
+    if static_method {
+      self.emit_byte(AlignedByteCode::StaticMethod(constant));
+    } else {
+      self.emit_byte(AlignedByteCode::Method(constant));
+    }
   }
 
   /// Parse an expression statement
@@ -1202,7 +1209,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Parse the current functions arity
-  fn function_arity(&mut self) {
+  fn function_signature(&mut self) {
     let mut arity: u16 = 0;
 
     loop {
@@ -1506,7 +1513,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       Act::Or => self.or(),
       Act::String => self.string(),
       Act::Super => self.super_(),
-      Act::This => self.self_(),
+      Act::Self_ => self.self_(),
       Act::Unary => self.unary(),
       Act::Variable => self.variable(can_assign),
     }
@@ -1617,7 +1624,7 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 50] = [
+const RULES_TABLE: [ParseRule; 51] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
@@ -1702,8 +1709,10 @@ const RULES_TABLE: [ParseRule; 50] = [
   // TOKEN_RETURN
   ParseRule::new(Some(Act::Super), None, Precedence::None),
   // TOKEN_SUPER
-  ParseRule::new(Some(Act::This), None, Precedence::None),
-  // TOKEN_THIS
+  ParseRule::new(Some(Act::Self_), None, Precedence::None),
+  // TOKEN_SELF
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_STATIC
   ParseRule::new(Some(Act::Literal), None, Precedence::None),
   // TOKEN_TRUE
   ParseRule::new(None, None, Precedence::None),
@@ -1947,7 +1956,7 @@ enum Act {
   Or,
   String,
   Super,
-  This,
+  Self_,
   Unary,
   Variable,
 }
