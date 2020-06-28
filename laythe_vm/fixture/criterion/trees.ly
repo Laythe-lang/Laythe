@@ -1,23 +1,23 @@
 class Tree {
   init(depth) {
-    this.depth = depth;
+    self.depth = depth;
     if (depth > 0) {
-      this.a = Tree(depth - 1);
-      this.b = Tree(depth - 1);
-      this.c = Tree(depth - 1);
-      this.d = Tree(depth - 1);
-      this.e = Tree(depth - 1);
+      self.a = Tree(depth - 1);
+      self.b = Tree(depth - 1);
+      self.c = Tree(depth - 1);
+      self.d = Tree(depth - 1);
+      self.e = Tree(depth - 1);
     }
   }
 
   walk() {
-    if (this.depth == 0) return 0;
-    return this.depth 
-        + this.a.walk()
-        + this.b.walk()
-        + this.c.walk()
-        + this.d.walk()
-        + this.e.walk();
+    if (self.depth == 0) return 0;
+    return self.depth 
+        + self.a.walk()
+        + self.b.walk()
+        + self.c.walk()
+        + self.d.walk()
+        + self.e.walk();
   }
 }
 

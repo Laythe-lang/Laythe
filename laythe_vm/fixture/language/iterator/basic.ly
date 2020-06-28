@@ -1,28 +1,28 @@
 class Foo {
   init() {
-    this.list = [1, 2, 3]
+    self.list = [1, 2, 3]
   }
 
   iter() {
-    return FooIter(this);
+    return FooIter(self);
   }
 
   str() {
-    return "[" + this.list.iter().join(",") + "]";
+    return "[" + self.list.iter().join(",") + "]";
   }
 }
 
 class FooIter < Iterator {
   init(foo) {
-    this.foo = foo
-    this.idx = -1
-    this.current = nil
+    self.foo = foo
+    self.idx = -1
+    self.current = nil
   }
 
   next() {
-    this.idx = this.idx + 1;
-    this.current = this.food.list[this.idx];
-    return this.foo.list.len() < this.idx;
+    self.idx = self.idx + 1;
+    self.current = self.food.list[self.idx];
+    return self.foo.list.len() < self.idx;
   }
 }
 

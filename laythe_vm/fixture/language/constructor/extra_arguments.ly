@@ -1,7 +1,7 @@
 class Foo {
   init(a, b) {
-    this.a = a;
-    this.b = b;
+    self.a = a;
+    self.b = b;
   }
 }
 

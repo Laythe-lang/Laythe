@@ -64,7 +64,7 @@ pub enum TokenKind {
   Print,
   Return,
   Super,
-  This,
+  Self_,
   True,
   Let,
   While,

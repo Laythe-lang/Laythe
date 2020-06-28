@@ -3,7 +3,7 @@ use laythe_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use laythe_core::token::{Token, TokenKind};
 use laythe_core::utils::{copy_string, do_if_some};
 use laythe_core::{
-  constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
+  constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, SELF},
   hooks::GcHooks,
   module::Module,
   object::{Fun, FunKind},
@@ -1288,9 +1288,9 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Parse a class's this identifier
-  fn this(&mut self) {
+  fn self_(&mut self) {
     if self.current_class.is_none() {
-      self.parser.error("Cannot use 'this' outside of class.");
+      self.parser.error("Cannot use 'self' outside of class.");
       return;
     }
 
@@ -1319,8 +1319,8 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self.named_variable(
       Token {
-        lexeme: THIS.to_string(),
-        kind: TokenKind::This,
+        lexeme: SELF.to_string(),
+        kind: TokenKind::Self_,
         line: self.parser.previous.line,
       },
       false,
@@ -1503,7 +1503,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       Act::Or => self.or(),
       Act::String => self.string(),
       Act::Super => self.super_(),
-      Act::This => self.this(),
+      Act::This => self.self_(),
       Act::Unary => self.unary(),
       Act::Variable => self.variable(can_assign),
     }
@@ -1606,7 +1606,7 @@ fn first_local(fun_kind: FunKind) -> Local {
       is_captured: false,
     },
     _ => Local {
-      name: Some("this".to_string()),
+      name: Some("self".to_string()),
       depth: 0,
       is_captured: false,
     },
@@ -2309,15 +2309,15 @@ mod test {
     let example = "
       class A {
         init() {
-          this.field = true;
+          self.field = true;
         }
 
         getField() {
-          return this.field;
+          return self.field;
         }
 
         getGetField() {
-          return this.getField();
+          return self.getField();
         }
       }
     "

@@ -1,8 +1,8 @@
 class Foo {
   init(a, b) {
     print "init"; // expect: init
-    this.a = a;
-    this.b = b;
+    self.a = a;
+    self.b = b;
   }
 }
 

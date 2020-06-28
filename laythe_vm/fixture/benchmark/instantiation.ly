@@ -1,4 +1,4 @@
-// This benchmark stresses instance creation and initializer calling.
+// self benchmark stresses instance creation and initializer calling.
 
 class Foo {
   init() {}

@@ -1,3 +1,3 @@
 fn foo() {
-  this; // Error at 'this': Cannot use 'this' outside of a class.
+  self; // Error at 'self': Cannot use 'self' outside of a class.
 }

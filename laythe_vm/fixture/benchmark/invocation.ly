@@ -1,4 +1,4 @@
-// This benchmark stresses just method invocation.
+// self benchmark stresses just method invocation.
 
 class Foo {
   method0() {}

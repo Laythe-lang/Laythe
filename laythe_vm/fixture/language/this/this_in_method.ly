@@ -1,5 +1,5 @@
 class Foo {
-  bar() { return this; }
+  bar() { return self; }
   baz() { return "baz"; }
 }
 
