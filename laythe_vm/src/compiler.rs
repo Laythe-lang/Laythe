@@ -375,7 +375,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self
       .parser
-      .consume(TokenKind::RightBrace, "Expect '}' after block.")
+      .consume(TokenKind::RightBrace, "Expected '}' after block.")
   }
 
   /// Parse a try catch block
@@ -383,7 +383,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let start = self.current_chunk().instructions.len();
     self
       .parser
-      .consume(TokenKind::LeftBrace, "Expect '{' after try.");
+      .consume(TokenKind::LeftBrace, "Expected '{' after try.");
 
     self.begin_scope();
     self.block();
@@ -394,10 +394,10 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self
       .parser
-      .consume(TokenKind::Catch, "Expect 'catch' after try block.");
+      .consume(TokenKind::Catch, "Expected 'catch' after try block.");
     self
       .parser
-      .consume(TokenKind::LeftBrace, "Expect '{' after catch.");
+      .consume(TokenKind::LeftBrace, "Expected '{' after catch.");
 
     self.begin_scope();
     self.block();
@@ -412,7 +412,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   fn class_declaration(&mut self) -> u16 {
     self
       .parser
-      .consume(TokenKind::Identifier, "Expect class name.");
+      .consume(TokenKind::Identifier, "Expected class name.");
 
     let class_name = self.parser.previous.clone();
     let name_constant = self.identifer_constant(self.parser.previous.clone());
@@ -431,7 +431,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     if self.parser.match_kind(TokenKind::Less) {
       self
         .parser
-        .consume(TokenKind::Identifier, "Expect superclass name.");
+        .consume(TokenKind::Identifier, "Expected superclass name.");
       self.variable(false);
 
       if class_name.lexeme == self.parser.previous.lexeme {
@@ -456,14 +456,14 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self
       .parser
-      .consume(TokenKind::LeftBrace, "Expect '{' before class body.");
+      .consume(TokenKind::LeftBrace, "Expected '{' before class body.");
     while !self.parser.check(TokenKind::RightBrace) && !self.parser.check(TokenKind::Eof) {
       self.method();
     }
 
     self
       .parser
-      .consume(TokenKind::RightBrace, "Expect '}' after class body.");
+      .consume(TokenKind::RightBrace, "Expected '}' after class body.");
     self.emit_byte(AlignedByteCode::Drop);
 
     if class_compiler.has_super_class {
@@ -476,7 +476,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a function declaration
   fn fun_declaration(&mut self) -> u16 {
-    let global = self.parse_variable("Expect variable name.");
+    let global = self.parse_variable("Expected variable name.");
 
     self.mark_initialized();
     self.function(FunKind::Fun);
@@ -486,7 +486,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a variable declaration
   fn let_declaration(&mut self) -> u16 {
-    let variable = self.parse_variable("Expect variable name.");
+    let variable = self.parse_variable("Expected variable name.");
 
     if self.parser.match_kind(TokenKind::Equal) {
       self.expression();
@@ -496,7 +496,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self.parser.consume(
       TokenKind::Semicolon,
-      "Expect ';' after variable declaration.",
+      "Expected ';' after variable declaration.",
     );
 
     self.define_variable(variable);
@@ -514,7 +514,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     fun_compiler
       .parser
-      .consume(TokenKind::LeftParen, "Expect '(' after function name.");
+      .consume(TokenKind::LeftParen, "Expected '(' after function name.");
 
     // parse function parameters
     if !fun_compiler.parser.check(TokenKind::RightParen) {
@@ -523,11 +523,11 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     fun_compiler
       .parser
-      .consume(TokenKind::RightParen, "Expect ')' after parameters.");
+      .consume(TokenKind::RightParen, "Expected ')' after parameters.");
 
     fun_compiler
       .parser
-      .consume(TokenKind::LeftBrace, "Expect '{' before function body.");
+      .consume(TokenKind::LeftBrace, "Expected '{' before function body.");
     fun_compiler.block();
 
     // end compilation of function chunk
@@ -547,7 +547,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   fn method(&mut self) {
     self
       .parser
-      .consume(TokenKind::Identifier, "Expect method name.");
+      .consume(TokenKind::Identifier, "Expected method name.");
     let constant = self.identifer_constant(self.parser.previous.clone());
 
     let fun_kind = if INIT == self.parser.previous.lexeme {
@@ -596,7 +596,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a variable declaration in a for loop
   fn for_var_declaration(&mut self) -> ForLoop {
-    let variable = self.parse_variable("Expect variable name.");
+    let variable = self.parse_variable("Expected variable name.");
     let variable_token = self.parser.previous.clone();
 
     let style = if self.parser.match_kind(TokenKind::Equal) {
@@ -617,7 +617,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     if let ForLoop::CStyle = style {
       self.parser.consume(
         TokenKind::Semicolon,
-        "Expect ';' after variable declaration.",
+        "Expected ';' after variable declaration.",
       );
     }
 
@@ -649,7 +649,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       self.emit_byte(AlignedByteCode::Drop);
       self
         .parser
-        .consume(TokenKind::RightParen, "Expect ')' after for clauses.");
+        .consume(TokenKind::RightParen, "Expected ')' after for clauses.");
 
       self.emit_loop(loop_start);
       loop_start = increment_start;
@@ -811,7 +811,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let path = self.make_constant(value);
     self
       .parser
-      .consume(TokenKind::Semicolon, "Expect ';' after value.");
+      .consume(TokenKind::Semicolon, "Expected ';' after value.");
 
     if self.scope_depth == 0 {
       self.emit_byte(AlignedByteCode::Import(path));
@@ -828,7 +828,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self.expression();
     self
       .parser
-      .consume(TokenKind::Semicolon, "Expect ';' after value.");
+      .consume(TokenKind::Semicolon, "Expected ';' after value.");
     self.emit_byte(AlignedByteCode::Print)
   }
 
@@ -850,7 +850,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       self.expression();
       self
         .parser
-        .consume(TokenKind::Semicolon, "Expect ',' after return value.");
+        .consume(TokenKind::Semicolon, "Expected ',' after return value.");
       self.emit_byte(AlignedByteCode::Return);
     }
   }
@@ -1020,12 +1020,12 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     // parse function parameters
     if !fun_compiler.parser.check(TokenKind::Pipe) {
-      fun_compiler.function_arity();
+      fun_compiler.function_signature();
     }
 
     fun_compiler
       .parser
-      .consume(TokenKind::Pipe, "Expect '|' after lambda parameters.");
+      .consume(TokenKind::Pipe, "Expected '|' after lambda parameters.");
 
     if fun_compiler.parser.match_kind(TokenKind::LeftBrace) {
       fun_compiler.block();
@@ -1053,7 +1053,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   fn dot(&mut self, can_assign: bool) {
     self
       .parser
-      .consume(TokenKind::Identifier, "Expect property name after '.'.");
+      .consume(TokenKind::Identifier, "Expected property name after '.'.");
     let name = self.identifer_constant(self.parser.previous.clone());
 
     if can_assign && self.parser.match_kind(TokenKind::Equal) {
@@ -1213,7 +1213,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
           .error_at_current("Cannot have more than 255 parameters.");
       }
 
-      let param_constant = self.parse_variable("Expect parameter name.");
+      let param_constant = self.parse_variable("Expected parameter name.");
       self.define_variable(param_constant);
 
       if !self.parser.match_kind(TokenKind::Comma) {
@@ -1229,7 +1229,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let arg_count = self.consume_arguments(TokenKind::RightParen, std::u8::MAX as usize);
     self
       .parser
-      .consume(TokenKind::RightParen, "Expect ')' after arguments");
+      .consume(TokenKind::RightParen, "Expected ')' after arguments");
     arg_count as u8
   }
 
@@ -1238,7 +1238,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let arg_count = self.consume_arguments(TokenKind::RightBracket, std::u16::MAX as usize);
     self
       .parser
-      .consume(TokenKind::RightBracket, "Expect ']' after arguments");
+      .consume(TokenKind::RightBracket, "Expected ']' after arguments");
     arg_count as u16
   }
 
@@ -1287,7 +1287,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self.patch_jump(end_jump);
   }
 
-  /// Parse a class's this identifier
+  /// Parse a class's self identifier
   fn self_(&mut self) {
     if self.current_class.is_none() {
       self.parser.error("Cannot use 'self' outside of class.");
@@ -1297,6 +1297,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self.variable(false);
   }
 
+  /// Parse a class' super identifer
   fn super_(&mut self) {
     match self.current_class {
       None => self.parser.error("Cannot use 'super' outside of a class."),
@@ -1311,12 +1312,13 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self
       .parser
-      .consume(TokenKind::Dot, "Expect '.' after 'super'.");
+      .consume(TokenKind::Dot, "Expected '.' after 'super'.");
     self
       .parser
-      .consume(TokenKind::Identifier, "Expect superclass method name.");
+      .consume(TokenKind::Identifier, "Expected superclass method name.");
     let name = self.identifer_constant(self.parser.previous.clone());
 
+    // load self on top of stack
     self.named_variable(
       Token {
         lexeme: SELF.to_string(),
@@ -1326,6 +1328,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       false,
     );
 
+    // check if we immediately invoke super
     if self.parser.match_kind(TokenKind::LeftParen) {
       let arg_count = self.call_arguments();
       self.named_variable(
