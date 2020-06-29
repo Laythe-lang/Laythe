@@ -167,7 +167,7 @@ impl Module {
     let class = match self.module_class {
       Some(class) => class,
       None => {
-        let class = hooks.manage(Class::new(self.name));
+        let class = hooks.manage(Class::bare(self.name));
         class
       }
     };

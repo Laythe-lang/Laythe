@@ -1,8 +1,8 @@
 pub mod module;
 
-use module::{declare_module_class, define_module_class};
 use laythe_core::{hooks::GcHooks, module::Module, package::Package, ModuleResult};
 use laythe_env::managed::Managed;
+use module::{declare_module_class, define_module_class};
 
 pub(crate) fn create_dependency_classes(
   hooks: &GcHooks,

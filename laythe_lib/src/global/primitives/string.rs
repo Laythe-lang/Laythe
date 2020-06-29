@@ -21,7 +21,7 @@ const STRING_HAS: NativeMeta = NativeMeta::new(
 
 pub fn declare_string_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(STRING_CLASS_NAME));
-  let class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::bare(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }

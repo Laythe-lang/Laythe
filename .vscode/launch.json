@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "benchmark/list2.ly",
+        "benchmark/binary_trees.ly",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",

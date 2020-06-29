@@ -1,5 +1,5 @@
 use laythe_core::{
-  hooks::GcHooks, module::Module, native::NativeMethod, value::Value, ModuleResult,
+  hooks::GcHooks, module::Module, native::NativeMethod, value::Value, ModuleResult, object::Class,
 };
 use laythe_env::managed::Managed;
 
@@ -8,6 +8,36 @@ pub fn to_dyn_method<T: 'static + NativeMethod>(
   method: T,
 ) -> Managed<Box<dyn NativeMethod>> {
   hooks.manage(Box::new(method) as Box<dyn NativeMethod>)
+}
+
+pub fn create_meta_class(
+  hooks: &GcHooks,
+  name: Managed<String>,
+  class_class: Managed<Class>
+) -> Managed<Class> {
+  hooks.manage(Class::new(
+    hooks.manage_str(format!("{} metaClass", name)), 
+    class_class
+  ))
+}
+
+pub fn get_class_from_module(
+  hooks: &GcHooks,
+  module: &Module,
+  name: Managed<String>
+) -> ModuleResult<Managed<Class>> {
+  match module.import(hooks).get_field(&name) {
+    Some(symbol) => {
+      if symbol.is_class() {
+        Ok(symbol.to_class())
+      } else {
+        Err(hooks.make_error(format!("Symbol {} is not a class.", name)))
+      }
+    }
+    None => {
+      Err(hooks.make_error(format!("Could not find symbol {} in module {}.", name, module.name)))
+    }
+  }
 }
 
 pub fn export_and_insert(
@@ -31,7 +61,7 @@ mod test {
     object::Fun,
     signature::Arity,
     value::{Value, ValueVariant},
-    CallResult, SlError,
+    CallResult, LyError,
   };
   use laythe_env::{
     managed::{Managed, Trace},
@@ -82,7 +112,7 @@ mod test {
         ValueVariant::NativeFun => callable.to_native_fun().meta().signature.arity,
         ValueVariant::NativeMethod => callable.to_native_method().meta().signature.arity,
         _ => {
-          return Err(SlError::new(
+          return Err(LyError::new(
             self.gc.manage_str("Not callable".to_string(), &NO_GC),
           ));
         }
@@ -91,7 +121,7 @@ mod test {
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
-          return Err(SlError::new(
+          return Err(LyError::new(
             self
               .gc
               .manage_str("Incorrect function arity".to_string(), &NO_GC),
@@ -105,7 +135,7 @@ mod test {
         return Ok(response);
       }
 
-      Err(SlError::new(
+      Err(LyError::new(
         self.gc.manage_str("No mocked results".to_string(), &NO_GC),
       ))
     }
@@ -117,7 +147,7 @@ mod test {
         ValueVariant::NativeFun => method.to_native_fun().meta().signature.arity,
         ValueVariant::NativeMethod => method.to_native_method().meta().signature.arity,
         _ => {
-          return Err(SlError::new(
+          return Err(LyError::new(
             self.gc.manage_str("Not callable".to_string(), &NO_GC),
           ));
         }
@@ -126,7 +156,7 @@ mod test {
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
-          return Err(SlError::new(
+          return Err(LyError::new(
             self
               .gc
               .manage_str("Incorrect function arity".to_string(), &NO_GC),
@@ -140,7 +170,7 @@ mod test {
         return Ok(response);
       }
 
-      Err(SlError::new(
+      Err(LyError::new(
         self.gc.manage_str("No mocked results".to_string(), &NO_GC),
       ))
     }
@@ -164,7 +194,7 @@ mod test {
             }
           }
           None => {
-            return Err(SlError::new(self.gc.manage_str(
+            return Err(LyError::new(self.gc.manage_str(
               format!("No method {} exists on {:?}.", method_name, instance),
               &NO_GC,
             )));
@@ -177,7 +207,7 @@ mod test {
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
-          return Err(SlError::new(
+          return Err(LyError::new(
             self
               .gc
               .manage_str("Incorrect method arity".to_string(), &NO_GC),
@@ -191,7 +221,7 @@ mod test {
         return Ok(response);
       }
 
-      Err(SlError::new(
+      Err(LyError::new(
         self.gc.manage_str("No mocked results".to_string(), &NO_GC),
       ))
     }

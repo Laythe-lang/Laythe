@@ -23,7 +23,7 @@ const CLOSURE_CALL: NativeMeta = NativeMeta::new(
 
 pub fn declare_closure_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(CLOSURE_CLASS_NAME));
-  let class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::bare(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }

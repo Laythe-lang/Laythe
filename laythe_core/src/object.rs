@@ -5,18 +5,17 @@ use crate::{
   hooks::GcHooks,
   module::Module,
   signature::Arity,
-  utils::do_if_some,
   value::{Value, ValueVariant},
 };
 use core::slice;
 use fnv::FnvBuildHasher;
 use hash_map::Entry;
 use hashbrown::{hash_map, HashMap};
-use slice::SliceIndex;
 use laythe_env::{
   managed::{Manage, Managed, Trace},
   stdio::StdIo,
 };
+use slice::SliceIndex;
 use std::{
   fmt,
   hash::Hash,
@@ -707,15 +706,42 @@ pub struct Class {
   pub name: Managed<String>,
   pub init: Option<Value>,
   methods: DynamicMap<Managed<String>, Value>,
+  meta_class: Option<Managed<Class>>,
+  super_class: Option<Managed<Class>>,
 }
 
 impl Class {
-  pub fn new(name: Managed<String>) -> Self {
+  pub fn new(name: Managed<String>, meta_class: Managed<Class>) -> Self {
     Class {
       name,
       init: None,
       methods: DynamicMap::new(),
+      meta_class: Some(meta_class),
+      super_class: None,
     }
+  }
+
+  pub fn bare(name: Managed<String>) -> Self {
+    Class {
+      name,
+      init: None,
+      methods: DynamicMap::new(),
+      meta_class: None,
+      super_class: None,
+    }
+  }
+
+  pub fn meta(&mut self) -> &Option<Managed<Class>> {
+    &self.meta_class
+  }
+
+  pub fn set_meta(&mut self, meta_class: Managed<Class>) -> &mut Self {
+    if self.meta_class.is_some() {
+      panic!("Meta class already set!");
+    }
+
+    self.meta_class = Some(meta_class);
+    self
   }
 
   pub fn add_method(&mut self, hooks: &GcHooks, name: Managed<String>, method: Value) {
@@ -728,20 +754,24 @@ impl Class {
     });
   }
 
-  pub fn get_method(&self, name: &Managed<String>) -> Option<&Value> {
-    self.methods.get(name)
+  pub fn get_method(&self, name: &Managed<String>) -> Option<Value> {
+    self.methods.get(name).map(|v| *v)
   }
 
   pub fn inherit(&mut self, hooks: &GcHooks, super_class: Managed<Class>) {
+    if self.super_class.is_some() {
+      panic!("Super class already set!");
+    }
+
     hooks.grow(self, |class| {
       super_class.methods.for_each(|(key, value)| {
-        match class.methods.get(&*key) {
-          None => class.methods.insert(*key, *value),
-          _ => None,
-        };
+        if let None = class.methods.get(&*key) {
+          class.methods.insert(*key, *value);
+        }
       });
     });
 
+    self.super_class = Some(super_class);
     self.init = self.init.or(super_class.init);
   }
 }
@@ -759,28 +789,30 @@ impl fmt::Debug for Class {
 impl Trace for Class {
   fn trace(&self) -> bool {
     self.name.trace();
-    do_if_some(self.init, |init| {
-      init.trace();
-    });
+    self.init.map(|init| init.trace());
 
     self.methods.for_each(|(key, val)| {
       key.trace();
       val.trace();
     });
 
+    self.super_class.map(|class| class.trace());
+    self.meta_class.map(|class| class.trace());
+
     true
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.name.trace_debug(stdio);
-    do_if_some(self.init, |init| {
-      init.trace_debug(stdio);
-    });
+    self.init.map(|init| init.trace_debug(stdio));
 
     self.methods.for_each(|(key, val)| {
       key.trace_debug(stdio);
       val.trace_debug(stdio);
     });
+
+    self.super_class.map(|class| class.trace_debug(stdio));
+    self.meta_class.map(|class| class.trace_debug(stdio));
 
     true
   }

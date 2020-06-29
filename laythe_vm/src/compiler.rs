@@ -1,9 +1,9 @@
 use crate::scanner::Scanner;
 use laythe_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use laythe_core::token::{Token, TokenKind};
-use laythe_core::utils::{copy_string, do_if_some};
+use laythe_core::utils::{copy_string};
 use laythe_core::{
-  constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, SELF},
+  constants::{INIT, ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::GcHooks,
   module::Module,
   object::{Fun, FunKind},
@@ -1743,14 +1743,14 @@ pub struct ClassCompiler {
 
 impl Trace for ClassCompiler {
   fn trace(&self) -> bool {
-    do_if_some(self.enclosing, |enclosing| {
+    self.enclosing.map(|enclosing| {
       enclosing.trace();
     });
     true
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    do_if_some(self.enclosing, |enclosing| {
+    self.enclosing.map(|enclosing| {
       enclosing.trace_debug(stdio);
     });
     true

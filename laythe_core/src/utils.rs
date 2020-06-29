@@ -24,7 +24,7 @@ pub fn next_boundary(source: &str, start: usize) -> usize {
 /// Is the provided `value` falsey according to laythe rules
 #[inline]
 pub fn is_falsey(value: Value) -> bool {
-  value.is_false() || value.is_nil() 
+  value.is_false() || value.is_nil()
 }
 
 /// Copy a string from the str backing the provided token. Note this copy
@@ -51,12 +51,6 @@ pub fn copy_string(token: &Token) -> String {
   let end = previous_boundary(&token.lexeme, token.lexeme.len());
 
   token.lexeme[start..end].to_string()
-}
-
-pub fn do_if_some<T, F: FnOnce(T)>(val: Option<T>, op: F) {
-  if let Some(some) = val {
-    op(some);
-  }
 }
 
 pub fn ptr_len<T>(start: *const T, end: *const T) -> usize {

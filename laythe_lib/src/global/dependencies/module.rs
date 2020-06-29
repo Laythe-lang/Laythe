@@ -7,7 +7,7 @@ pub const MODULE_CLASS_NAME: &str = "Module";
 
 pub fn declare_module_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(MODULE_CLASS_NAME));
-  let class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::bare(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }

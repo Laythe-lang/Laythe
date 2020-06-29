@@ -250,10 +250,7 @@ fn export() -> Result<(), std::io::Error> {
 
 #[test]
 fn expressions() -> Result<(), std::io::Error> {
-  test_file_exits(
-    &vec!["language/expressions/evaluate.ly"],
-    ExecuteResult::Ok,
-  )?;
+  test_file_exits(&vec!["language/expressions/evaluate.ly"], ExecuteResult::Ok)?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 

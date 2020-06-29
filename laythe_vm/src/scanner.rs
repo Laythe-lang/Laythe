@@ -314,9 +314,9 @@ impl<'a> Scanner<'a> {
             "u" => self.check_keyword(2, "per", TokenKind::Super),
             "t" => self.check_keyword(2, "atic", TokenKind::Static),
             _ => TokenKind::Identifier,
-          }
+          },
           None => TokenKind::Identifier,
-        }
+        },
         "t" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "r" => match self.nth_char_from(self.start, 2) {

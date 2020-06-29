@@ -32,7 +32,7 @@ mod unboxed {
   use crate::{
     iterator::SlIterator,
     native::{NativeFun, NativeMethod},
-    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, Method, LyHashMap, LyVec, Upvalue},
+    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Managed, Trace},
@@ -908,7 +908,7 @@ mod boxed {
   use crate::{
     iterator::SlIterator,
     native::{NativeFun, NativeMethod},
-    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, Method, LyHashMap, LyVec, Upvalue},
+    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Allocation, Manage, Managed, Trace},
@@ -1527,7 +1527,7 @@ mod test {
   fn test_class() -> (Allocs, Managed<Class>) {
     let (allocs_string, string) = test_string();
 
-    let class = Class::new(string);
+    let class = Class::bare(string);
     let mut alloc = Box::new(Allocation::new(class));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 

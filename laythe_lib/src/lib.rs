@@ -4,9 +4,9 @@ mod math;
 mod support;
 
 use global::create_global;
-use math::create_math;
 use laythe_core::{hooks::GcHooks, package::Package, PackageResult};
 use laythe_env::managed::Managed;
+use math::create_math;
 
 pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";

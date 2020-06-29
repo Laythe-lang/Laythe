@@ -25,7 +25,7 @@ const METHOD_CALL: NativeMeta = NativeMeta::new(
 
 pub fn declare_method_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(METHOD_CLASS_NAME));
-  let class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::bare(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }
@@ -127,7 +127,7 @@ mod test {
       let method_name = MethodName::new(hooks.manage_str("name".to_string()));
 
       let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
-      let class = hooks.manage(Class::new(hooks.manage_str("exampleClass".to_string())));
+      let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(Value::from(instance), Value::from(closure)));
@@ -166,7 +166,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
-      let class = hooks.manage(Class::new(hooks.manage_str("exampleClass".to_string())));
+      let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(Value::from(instance), Value::from(closure)));

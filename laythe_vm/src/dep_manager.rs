@@ -9,7 +9,8 @@ use laythe_core::{
 use laythe_env::{
   fs::FsIo,
   io::Io,
-  managed::{Manage, Managed, Trace}, stdio::StdIo,
+  managed::{Manage, Managed, Trace},
+  stdio::StdIo,
 };
 use std::{fmt, mem, path::PathBuf};
 

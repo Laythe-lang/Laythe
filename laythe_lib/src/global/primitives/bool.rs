@@ -1,4 +1,4 @@
-use crate::support::{export_and_insert, to_dyn_method};
+use crate::support::{export_and_insert, to_dyn_method, get_class_from_module};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
@@ -16,24 +16,22 @@ const BOOL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 
 pub fn declare_bool_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(BOOL_CLASS_NAME));
-  let class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::bare(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }
 
-pub fn define_bool_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
+pub fn define_bool_class(hooks: &GcHooks, self_module: &Module, _: &Package) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(BOOL_CLASS_NAME));
-  let mut class = self_module
-    .import(hooks)
-    .get_field(&name)
-    .unwrap()
-    .to_class();
+  let mut class = get_class_from_module(hooks, self_module, name)?;
 
   class.add_method(
     &hooks,
     hooks.manage_str(String::from(BOOL_STR.name)),
     Value::from(to_dyn_method(hooks, BoolStr())),
   );
+
+  Ok(())
 }
 
 #[derive(Clone, Debug, Trace)]

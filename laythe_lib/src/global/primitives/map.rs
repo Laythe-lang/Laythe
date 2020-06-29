@@ -9,7 +9,7 @@ use laythe_core::{
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
-  CallResult, ModuleResult, SlError,
+  CallResult, ModuleResult, LyError,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -49,7 +49,7 @@ const MAP_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0), &[]);
 
 pub fn declare_map_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
   let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
-  let class = hooks.manage(Class::new(name));
+  let class = hooks.manage(Class::bare(name));
 
   export_and_insert(hooks, self_module, name, Value::from(class))
 }
@@ -151,7 +151,7 @@ fn format_map_entry(
   method_name: Managed<String>,
   buffer: &mut String,
   hooks: &mut Hooks,
-) -> Result<(), SlError> {
+) -> Result<(), LyError> {
   // if already string quote and add to temps
   if item.is_str() {
     buffer.push_str(&format!("'{}'", item.to_str()));
