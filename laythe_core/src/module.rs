@@ -308,6 +308,7 @@ impl fmt::Debug for Module {
 impl Trace for Module {
   fn trace(&self) -> bool {
     self.name.trace();
+    self.path.trace();
 
     self.exports.iter().for_each(|key| {
       key.trace();
@@ -321,6 +322,7 @@ impl Trace for Module {
   }
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.name.trace_debug(stdio);
+    self.path.trace_debug(stdio);
 
     self.exports.iter().for_each(|key| {
       key.trace_debug(stdio);

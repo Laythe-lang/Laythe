@@ -126,6 +126,7 @@ impl<I: Io> fmt::Debug for DepManager<I> {
 
 impl<I: Io> Trace for DepManager<I> {
   fn trace(&self) -> bool {
+    self.src_dir.trace();
     self.packages.iter().for_each(|(key, value)| {
       key.trace();
       value.trace();
@@ -135,6 +136,7 @@ impl<I: Io> Trace for DepManager<I> {
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.src_dir.trace_debug(stdio);
     self.packages.iter().for_each(|(key, value)| {
       key.trace_debug(stdio);
       value.trace_debug(stdio);

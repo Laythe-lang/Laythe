@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 laythe_core = { path = "../laythe_core", features=["nan_boxing"] }
 laythe_vm = { path = "../laythe_vm", features=["debug"] }
+laythe_env = { path = "../laythe_env", features=["debug_stress_gc", "debug_gc"] }
 
 # laythe_vm features
 # debug

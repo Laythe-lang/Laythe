@@ -218,6 +218,7 @@ name = "laythe"
 version = "0.1.0"
 dependencies = [
  "laythe_core 0.1.0",
+ "laythe_env 0.1.0",
  "laythe_vm 0.1.0",
 ]
 
