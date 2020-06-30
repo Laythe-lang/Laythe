@@ -1,7 +1,7 @@
 use crate::scanner::Scanner;
 use laythe_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use laythe_core::token::{Token, TokenKind};
-use laythe_core::utils::{copy_string};
+use laythe_core::utils::copy_string;
 use laythe_core::{
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::GcHooks,

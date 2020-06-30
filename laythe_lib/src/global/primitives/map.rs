@@ -1,15 +1,17 @@
-use crate::support::{export_and_insert, to_dyn_method};
+use crate::support::{
+  default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_method,
+};
 use hashbrown::hash_map::Iter;
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  object::{Class, LyHashMap, LyVec},
+  object::{LyHashMap, LyVec},
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
-  CallResult, ModuleResult, LyError,
+  CallResult, LyError, LyResult,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -47,20 +49,13 @@ const MAP_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
 const MAP_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 const MAP_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0), &[]);
 
-pub fn declare_map_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
-  let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
-  let class = hooks.manage(Class::bare(name));
-
-  export_and_insert(hooks, self_module, name, Value::from(class))
+pub fn declare_map_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
+  let class = default_class_inheritance(hooks, package, MAP_CLASS_NAME)?;
+  export_and_insert(hooks, module, class.name, Value::from(class))
 }
 
-pub fn define_map_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
-  let name = hooks.manage_str(String::from(MAP_CLASS_NAME));
-  let mut class = self_module
-    .import(hooks)
-    .get_field(&name)
-    .unwrap()
-    .to_class();
+pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+  let mut class = load_class_from_module(hooks, module, MAP_CLASS_NAME)?;
 
   class.add_method(
     hooks,
@@ -106,6 +101,8 @@ pub fn define_map_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
     hooks.manage_str(String::from(MAP_ITER.name)),
     Value::from(to_dyn_method(hooks, MapIter())),
   );
+
+  Ok(())
 }
 
 #[derive(Clone, Debug)]

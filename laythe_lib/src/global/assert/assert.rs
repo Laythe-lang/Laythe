@@ -5,7 +5,7 @@ use laythe_core::{
   native::{NativeFun, NativeMeta},
   signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
-  CallResult, ModuleResult,
+  CallResult, LyResult,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -34,7 +34,7 @@ const ASSERTNE_META: NativeMeta = NativeMeta::new(
   ],
 );
 
-pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   let str_name = hooks.manage_str("str".to_string());
 
   export_and_insert(

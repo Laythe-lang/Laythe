@@ -3,23 +3,20 @@ pub mod global;
 mod math;
 mod support;
 
-use global::create_global;
-use laythe_core::{hooks::GcHooks, package::Package, PackageResult};
+use global::add_global;
+use laythe_core::{hooks::GcHooks, package::Package, LyResult};
 use laythe_env::managed::Managed;
-use math::create_math;
+use math::add_math;
 
 pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 pub const GLOBAL_PATH: &str = "std/global.ly";
 
-pub fn create_std_lib(hooks: &GcHooks) -> PackageResult<Managed<Package>> {
-  let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
+pub fn create_std_lib(hooks: &GcHooks) -> LyResult<Managed<Package>> {
+  let std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
 
-  let global = create_global(hooks, std)?;
-  let math = create_math(hooks, std)?;
-
-  std.add_module(hooks, global)?;
-  std.add_module(hooks, math)?;
+  add_global(hooks, std)?;
+  add_math(hooks, std)?;
 
   Ok(std)
 }

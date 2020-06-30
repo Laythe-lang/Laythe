@@ -5,7 +5,7 @@ use laythe_core::{
   native::{NativeFun, NativeMeta},
   signature::{Arity, Parameter, ParameterKind},
   value::Value,
-  CallResult, ModuleResult,
+  CallResult, LyResult,
 };
 use laythe_env::{managed::Trace, stdio::StdIo};
 
@@ -33,7 +33,7 @@ const ABS_META: NativeMeta = NativeMeta::new(
   &[Parameter::new("val", ParameterKind::Number)],
 );
 
-pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   export_and_insert(
     hooks,
     self_module,
@@ -77,7 +77,7 @@ pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> ModuleR
   )
 }
 
-pub fn define_math_module(_: &GcHooks, _: &mut Module) -> ModuleResult<()> {
+pub fn define_math_module(_: &GcHooks, _: &mut Module) -> LyResult<()> {
   Ok(())
 }
 

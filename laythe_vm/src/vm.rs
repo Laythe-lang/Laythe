@@ -1250,7 +1250,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let method = self.peek(0);
 
     if class.is_class() && method.is_closure() {
-      class.to_class().meta(&GcHooks::new(self), name, method);
+      match class.to_class().meta() {
+        Some(mut meta) => {
+          meta.add_method(&GcHooks::new(self), name, method);
+        }
+        None => self.internal_error(&format!("{} meta class not set.", class.to_class().name)),
+      }
     } else {
       self.internal_error("Invalid Stack for op_static_method.");
     }
@@ -1504,7 +1509,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn bind_method(&mut self, class: Managed<Class>, name: Managed<String>) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
-        let bound = self.gc.manage(Method::new(self.peek(0), *method), self);
+        let bound = self.gc.manage(Method::new(self.peek(0), method), self);
         self.set_val(-1, Value::from(bound));
         Signal::Ok
       }
@@ -1520,7 +1525,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     arg_count: u8,
   ) -> Signal {
     match class.get_method(&method_name) {
-      Some(method) => self.resolve_call(*method, arg_count),
+      Some(method) => self.resolve_call(method, arg_count),
       None => self.runtime_error(&format!("Undefined property {}.", method_name.as_str())),
     }
   }

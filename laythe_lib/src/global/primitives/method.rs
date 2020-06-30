@@ -1,13 +1,14 @@
-use crate::support::{export_and_insert, to_dyn_method};
+use crate::support::{
+  default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_method,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  object::Class,
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
   value::Value,
-  CallResult, ModuleResult,
+  CallResult, LyResult,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -23,20 +24,17 @@ const METHOD_CALL: NativeMeta = NativeMeta::new(
   &[Parameter::new("args", ParameterKind::Any)],
 );
 
-pub fn declare_method_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
-  let name = hooks.manage_str(String::from(METHOD_CLASS_NAME));
-  let class = hooks.manage(Class::bare(name));
-
-  export_and_insert(hooks, self_module, name, Value::from(class))
+pub fn declare_method_class(
+  hooks: &GcHooks,
+  module: &mut Module,
+  package: &Package,
+) -> LyResult<()> {
+  let method_class = default_class_inheritance(hooks, package, METHOD_CLASS_NAME)?;
+  export_and_insert(hooks, module, method_class.name, Value::from(method_class))
 }
 
-pub fn define_method_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
-  let name = hooks.manage_str(String::from(METHOD_CLASS_NAME));
-  let mut class = self_module
-    .import(hooks)
-    .get_field(&name)
-    .unwrap()
-    .to_class();
+pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+  let mut class = load_class_from_module(hooks, module, METHOD_CLASS_NAME)?;
 
   class.add_method(
     hooks,
@@ -52,6 +50,8 @@ pub fn define_method_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
     hooks.manage_str(String::from(METHOD_CALL.name)),
     Value::from(to_dyn_method(hooks, MethodCall())),
   );
+
+  Ok(())
 }
 
 #[derive(Clone, Debug, Trace)]
@@ -104,7 +104,7 @@ mod test {
   mod name {
     use super::*;
     use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
-    use laythe_core::object::{Closure, Instance, Method};
+    use laythe_core::object::{Class, Closure, Instance, Method};
     use laythe_env::memory::NO_GC;
 
     #[test]
@@ -144,7 +144,7 @@ mod test {
   mod call {
     use super::*;
     use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
-    use laythe_core::object::{Closure, Instance, Method};
+    use laythe_core::object::{Class, Closure, Instance, Method};
 
     #[test]
     fn new() {

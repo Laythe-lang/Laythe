@@ -13,9 +13,8 @@ pub mod token;
 pub mod utils;
 pub mod value;
 
-pub type CallResult = Result<value::Value, LyError>;
-pub type ModuleResult<T> = Result<T, LyError>;
-pub type PackageResult<T> = Result<T, LyError>;
+pub type LyResult<T> = Result<T, LyError>;
+pub type CallResult = LyResult<value::Value>;
 pub type SlHashSet<K> = HashSet<K, FnvBuildHasher>;
 
 use fnv::FnvBuildHasher;

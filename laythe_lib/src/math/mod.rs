@@ -1,13 +1,13 @@
 mod utils;
 
-use laythe_core::{hooks::GcHooks, module::Module, package::Package, ModuleResult};
+use laythe_core::{hooks::GcHooks, module::Module, package::Package, LyResult};
 use laythe_env::managed::Managed;
 use std::path::PathBuf;
 use utils::{declare_math_module, define_math_module};
 
 const MATH_PATH: &str = "std/math.ly";
 
-pub fn create_math(hooks: &GcHooks, _std: Managed<Package>) -> ModuleResult<Managed<Module>> {
+pub fn add_math(hooks: &GcHooks, mut std: Managed<Package>) -> LyResult<()> {
   let module = match Module::from_path(&hooks, hooks.manage(PathBuf::from(MATH_PATH))) {
     Some(module) => module,
     None => {
@@ -15,10 +15,11 @@ pub fn create_math(hooks: &GcHooks, _std: Managed<Package>) -> ModuleResult<Mana
     }
   };
 
-  let mut math = hooks.manage(module);
+  let mut module = hooks.manage(module);
+  std.add_module(hooks, module)?;
 
-  declare_math_module(hooks, &mut math)?;
-  define_math_module(hooks, &mut math)?;
+  declare_math_module(hooks, &mut module)?;
+  define_math_module(hooks, &mut module)?;
 
-  Ok(math)
+  Ok(())
 }

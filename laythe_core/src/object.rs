@@ -711,18 +711,26 @@ pub struct Class {
 }
 
 impl Class {
-  pub fn new(name: Managed<String>, meta_class: Managed<Class>) -> Self {
-    Class {
+  pub fn new(
+    hooks: &GcHooks,
+    name: Managed<String>,
+    meta_class: Managed<Class>,
+    super_class: Managed<Class>,
+  ) -> Self {
+    let mut class = Self {
       name,
       init: None,
       methods: DynamicMap::new(),
       meta_class: Some(meta_class),
       super_class: None,
-    }
+    };
+
+    class.inherit(hooks, super_class);
+    class
   }
 
   pub fn bare(name: Managed<String>) -> Self {
-    Class {
+    Self {
       name,
       init: None,
       methods: DynamicMap::new(),

@@ -6,6 +6,7 @@ mod time;
 #[cfg(test)]
 mod support;
 
+use crate::GLOBAL_PATH;
 use assert::create_assert_funs;
 use dependencies::create_dependency_classes;
 use dependencies::module::MODULE_CLASS_NAME;
@@ -14,7 +15,7 @@ use laythe_core::{
   module::Module,
   object::{BuiltIn, BuiltInDependencies, BuiltinPrimitives},
   package::Package,
-  ModuleResult,
+  LyResult,
 };
 use laythe_env::managed::Managed;
 use primitives::{
@@ -27,9 +28,7 @@ use primitives::{
 use std::path::PathBuf;
 use time::create_clock_funs;
 
-const GLOBAL_PATH: &str = "std/global.ly";
-
-pub fn create_global(hooks: &GcHooks, std: Managed<Package>) -> ModuleResult<Managed<Module>> {
+pub fn add_global(hooks: &GcHooks, mut std: Managed<Package>) -> LyResult<()> {
   let module = match Module::from_path(&hooks, hooks.manage(PathBuf::from(GLOBAL_PATH))) {
     Some(module) => module,
     None => {
@@ -37,14 +36,15 @@ pub fn create_global(hooks: &GcHooks, std: Managed<Package>) -> ModuleResult<Man
     }
   };
 
-  let global = hooks.manage(module);
+  let module = hooks.manage(module);
+  std.add_module(hooks, module)?;
 
-  create_primitive_classes(hooks, global, std)?;
-  create_dependency_classes(hooks, global, std)?;
-  create_assert_funs(hooks, global, std)?;
-  create_clock_funs(hooks, global, std)?;
+  create_primitive_classes(hooks, module, std)?;
+  create_dependency_classes(hooks, module, std)?;
+  create_assert_funs(hooks, module, std)?;
+  create_clock_funs(hooks, module, std)?;
 
-  Ok(global)
+  Ok(())
 }
 
 pub fn builtin_from_global_module(hooks: &GcHooks, module: &Module) -> Option<BuiltIn> {

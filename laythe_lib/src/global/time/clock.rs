@@ -5,17 +5,17 @@ use laythe_core::{
   native::{NativeFun, NativeMeta},
   signature::Arity,
   value::Value,
-  CallResult, ModuleResult,
+  CallResult, LyResult,
 };
 use laythe_env::{managed::Trace, stdio::StdIo};
 use std::time::SystemTime;
 
 const CLOCK_META: NativeMeta = NativeMeta::new("clock", Arity::Fixed(0), &[]);
 
-pub fn declare_clock_funs(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> LyResult<()> {
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(CLOCK_META.name.to_string()),
     Value::from(hooks.manage(Box::new(Clock::new()) as Box<dyn NativeFun>)),
   )

@@ -4,7 +4,7 @@ use laythe_core::{
   module::Module,
   object::{BuiltIn, BuiltInDependencies, BuiltinPrimitives, LyHashMap},
   package::{Import, Package},
-  ModuleResult,
+  LyResult,
 };
 use laythe_env::{
   fs::FsIo,
@@ -59,7 +59,7 @@ impl<I: Io> DepManager<I> {
     hooks: &GcHooks,
     module: Managed<Module>,
     path: Managed<String>,
-  ) -> ModuleResult<Managed<Module>> {
+  ) -> LyResult<Managed<Module>> {
     let mut module_dir = (*module.path).clone();
     module_dir.pop();
 

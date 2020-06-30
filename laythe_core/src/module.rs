@@ -2,7 +2,7 @@ use crate::{
   hooks::GcHooks,
   object::{Class, Instance, LyHashMap},
   value::Value,
-  ModuleResult, SlHashSet,
+  LyResult, SlHashSet,
 };
 use laythe_env::{
   managed::{Manage, Managed, Trace},
@@ -120,7 +120,7 @@ impl Module {
   /// assert_eq!(result1.is_ok(), true);
   /// assert_eq!(result2.is_err(), true);
   /// ```
-  pub fn export_symbol(&mut self, hooks: &GcHooks, name: Managed<String>) -> ModuleResult<()> {
+  pub fn export_symbol(&mut self, hooks: &GcHooks, name: Managed<String>) -> LyResult<()> {
     if self.exports.contains(&name) {
       Err(hooks.make_error(format!(
         "{} has already been exported from {}",
@@ -279,7 +279,7 @@ impl Module {
   }
 
   /// Transfer the export symbols to another module
-  pub fn transfer_exported(&self, hooks: &GcHooks, other: &mut Module) -> ModuleResult<()> {
+  pub fn transfer_exported(&self, hooks: &GcHooks, other: &mut Module) -> LyResult<()> {
     for export in &self.exports {
       other.insert_symbol(
         hooks,

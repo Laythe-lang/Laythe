@@ -328,7 +328,6 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::Fun;
     /// use laythe_core::module::Module;
-    /// use laythe_core::arity::ArityKind;
     /// use laythe_core::chunk::Chunk;
     /// use laythe_core::hooks::{Hooks, NoContext};
     /// use laythe_env::memory::Gc;
@@ -377,7 +376,6 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Fun};
-    /// use laythe_core::arity::ArityKind;
     /// use laythe_env::memory::{Gc, NO_GC};
     /// use laythe_core::module::Module;
     /// use laythe_core::chunk::Chunk;
@@ -411,7 +409,6 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Method, Fun};
-    /// use laythe_core::arity::ArityKind;
     /// use laythe_core::module::Module;
     /// use laythe_env::memory::{Gc, NO_GC};
     /// use laythe_core::chunk::Chunk;
@@ -478,7 +475,7 @@ mod unboxed {
     /// use laythe_env::managed::{Managed, Allocation, make_managed};
     ///
     /// let (name, name_alloc) = make_managed("example".to_string());
-    /// let (class, class_alloc) = make_managed(Class::new(name));
+    /// let (class, class_alloc) = make_managed(Class::bare(name));
     ///
     /// let value = Value::Class(class);
     /// assert_eq!(value.to_class().name, name);
@@ -499,7 +496,7 @@ mod unboxed {
     /// use laythe_env::managed::{Managed, Allocation, make_managed};
     ///
     /// let (name, name_alloc) = make_managed("example".to_string());
-    /// let (class, class_alloc) = make_managed(Class::new(name));
+    /// let (class, class_alloc) = make_managed(Class::bare(name));
     /// let (instance, instance_alloc) = make_managed(Instance::new(class));
     ///
     /// let value = Value::Instance(instance);

@@ -1,5 +1,11 @@
 use laythe_core::{
-  hooks::GcHooks, module::Module, native::NativeMethod, value::Value, ModuleResult, object::Class,
+  hooks::GcHooks,
+  module::Module,
+  native::NativeMethod,
+  object::Class,
+  package::{Import, Package},
+  value::Value,
+  LyResult,
 };
 use laythe_env::managed::Managed;
 
@@ -13,19 +19,40 @@ pub fn to_dyn_method<T: 'static + NativeMethod>(
 pub fn create_meta_class(
   hooks: &GcHooks,
   name: Managed<String>,
-  class_class: Managed<Class>
+  class_class: Managed<Class>,
 ) -> Managed<Class> {
   hooks.manage(Class::new(
-    hooks.manage_str(format!("{} metaClass", name)), 
-    class_class
+    hooks,
+    hooks.manage_str(format!("{} metaClass", name)),
+    class_class,
+    class_class,
   ))
 }
 
-pub fn get_class_from_module(
+pub fn default_class_inheritance(
+  hooks: &GcHooks,
+  package: &Package,
+  class_name: &str,
+) -> LyResult<Managed<Class>> {
+  let name = hooks.manage_str(class_name.to_string());
+
+  let import = Import::from_str(hooks, GLOBAL_PATH);
+  let module = package.import(hooks, import)?;
+
+  let object_class = load_class_from_module(hooks, &*module, "Object")?;
+  let class_class = load_class_from_module(hooks, &*module, "Class")?;
+
+  let meta = create_meta_class(hooks, name, class_class);
+
+  Ok(hooks.manage(Class::new(hooks, name, meta, object_class)))
+}
+
+pub fn load_class_from_module(
   hooks: &GcHooks,
   module: &Module,
-  name: Managed<String>
-) -> ModuleResult<Managed<Class>> {
+  name: &str,
+) -> LyResult<Managed<Class>> {
+  let name = hooks.manage_str(name.to_string());
   match module.import(hooks).get_field(&name) {
     Some(symbol) => {
       if symbol.is_class() {
@@ -34,9 +61,10 @@ pub fn get_class_from_module(
         Err(hooks.make_error(format!("Symbol {} is not a class.", name)))
       }
     }
-    None => {
-      Err(hooks.make_error(format!("Could not find symbol {} in module {}.", name, module.name)))
-    }
+    None => Err(hooks.make_error(format!(
+      "Could not find symbol {} in module {}.",
+      name, module.name
+    ))),
   }
 }
 
@@ -45,13 +73,14 @@ pub fn export_and_insert(
   module: &mut Module,
   name: Managed<String>,
   symbol: Value,
-) -> ModuleResult<()> {
+) -> LyResult<()> {
   module.insert_symbol(hooks, name, symbol);
   module.export_symbol(hooks, name)
 }
 
 #[cfg(test)]
 pub use self::test::*;
+use crate::GLOBAL_PATH;
 
 #[cfg(test)]
 mod test {
