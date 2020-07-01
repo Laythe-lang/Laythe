@@ -20,10 +20,19 @@ fn bool() -> Result<(), std::io::Error> {
 }
 
 #[test]
-fn nil() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/builtin/nil/str.ly"], ExecuteResult::Ok)?;
+fn class() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "std_lib/builtin/class/superClass.ly",
+    ],
+    ExecuteResult::Ok,
+  )?;
 
-  test_files(&vec![], ExecuteResult::RuntimeError)
+  test_files(
+    &vec![
+    ],
+    ExecuteResult::RuntimeError,
+  )
 }
 
 #[test]
@@ -113,13 +122,6 @@ fn map() -> Result<(), std::io::Error> {
 }
 
 #[test]
-fn number() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/builtin/number/times.ly"], ExecuteResult::Ok)?;
-
-  test_files(&vec![], ExecuteResult::RuntimeError)
-}
-
-#[test]
 fn method() -> Result<(), std::io::Error> {
   test_files(
     &vec![
@@ -128,6 +130,20 @@ fn method() -> Result<(), std::io::Error> {
     ],
     ExecuteResult::Ok,
   )?;
+
+  test_files(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
+fn nil() -> Result<(), std::io::Error> {
+  test_files(&vec!["std_lib/builtin/nil/str.ly"], ExecuteResult::Ok)?;
+
+  test_files(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
+fn number() -> Result<(), std::io::Error> {
+  test_files(&vec!["std_lib/builtin/number/times.ly"], ExecuteResult::Ok)?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
 }
