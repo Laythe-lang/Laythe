@@ -416,7 +416,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     method_name: Managed<String>,
     args: &[Value],
   ) -> ExecuteResult {
-    let class = this.value_class(self.dep_manager.primitive_classes());
+    let class = self.dep_manager.primitive_classes().for_value(this, this.kind());
 
     self.push(this);
     for arg in args {
@@ -673,7 +673,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Signal::Ok
   }
 
-  /// create a list from a list literal
+  /// create a map from a map literal
   fn op_map(&mut self) -> Signal {
     let arg_count = self.read_short();
     let mut map = self.peek(arg_count as isize * 2).to_map();
@@ -756,7 +756,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       }
     }
 
-    let class = receiver.value_class(&self.dep_manager.primitive_classes());
+    let class = self.dep_manager.primitive_classes().for_value(receiver, receiver.kind());
     self.invoke_from_class(class, method_name, arg_count)
   }
 
@@ -1077,7 +1077,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let class = self
       .dep_manager
       .primitive_classes()
-      .for_variant(value, kind);
+      .for_value(value, kind);
+
     self.bind_method(class, name)
   }
 

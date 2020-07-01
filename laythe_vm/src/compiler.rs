@@ -1302,17 +1302,22 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a class's self identifier
   fn self_(&mut self) {
-    self.current_class
+    self
+      .current_class
       .map(|class_compiler| class_compiler.fun_kind)
-      .and_then(|fun_kind| fun_kind.and_then(|fun_kind| match fun_kind {
-        FunKind::Method | FunKind::Initializer => {
-          self.variable(false);
-          Some(())
-        }
-        _ => None
-      }))
+      .and_then(|fun_kind| {
+        fun_kind.and_then(|fun_kind| match fun_kind {
+          FunKind::Method | FunKind::Initializer => {
+            self.variable(false);
+            Some(())
+          }
+          _ => None,
+        })
+      })
       .or_else(|| {
-        self.parser.error("Cannot use 'self' outside of class instance methods.");
+        self
+          .parser
+          .error("Cannot use 'self' outside of class instance methods.");
         None
       });
   }
@@ -2414,7 +2419,6 @@ mod test {
     "
     .to_string();
 
-        
     let mut gc = Gc::new(Box::new(NativeStdIo()));
     let fun = test_compile(example, &mut gc);
 

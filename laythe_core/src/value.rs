@@ -32,7 +32,7 @@ mod unboxed {
   use crate::{
     iterator::SlIterator,
     native::{NativeFun, NativeMethod},
-    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
+    object::{Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Managed, Trace},
@@ -543,27 +543,6 @@ mod unboxed {
       }
     }
 
-    /// Get the class associated with this value
-    pub fn value_class(&self, builtin: &BuiltinPrimitives) -> Managed<Class> {
-      match self {
-        Value::Nil => builtin.nil,
-        Value::Bool(_) => builtin.bool,
-        Value::Number(_) => builtin.number,
-        Value::String(_) => builtin.string,
-        Value::List(_) => builtin.list,
-        Value::Map(_) => builtin.map,
-        Value::Fun(_) => panic!("TODO"),
-        Value::Closure(_) => builtin.closure,
-        Value::Method(_) => builtin.method,
-        Value::Class(_) => panic!("TODO"),
-        Value::Instance(instance) => instance.class,
-        Value::Iter(_) => builtin.iter,
-        Value::Upvalue(upvalue) => upvalue.value().value_class(builtin),
-        Value::NativeFun(_) => builtin.native_fun,
-        Value::NativeMethod(_) => builtin.native_method,
-      }
-    }
-
     pub fn kind(&self) -> ValueVariant {
       match self {
         Value::Nil => ValueVariant::Nil,
@@ -905,7 +884,7 @@ mod boxed {
   use crate::{
     iterator::SlIterator,
     native::{NativeFun, NativeMethod},
-    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
+    object::{Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Allocation, Manage, Managed, Trace},
@@ -1195,27 +1174,6 @@ mod boxed {
         ValueVariant::Upvalue => "upvalue".to_string(),
         ValueVariant::NativeFun => "native function".to_string(),
         ValueVariant::NativeMethod => "native method".to_string(),
-      }
-    }
-
-    /// Get the class associated with this value
-    pub fn value_class(&self, builtin: &BuiltinPrimitives) -> Managed<Class> {
-      match self.kind() {
-        ValueVariant::Nil => builtin.nil,
-        ValueVariant::Bool => builtin.bool,
-        ValueVariant::Number => builtin.number,
-        ValueVariant::String => builtin.string,
-        ValueVariant::List => builtin.list,
-        ValueVariant::Map => builtin.map,
-        ValueVariant::Fun => panic!("TODO"),
-        ValueVariant::Closure => builtin.closure,
-        ValueVariant::Method => builtin.method,
-        ValueVariant::Class => builtin.class,
-        ValueVariant::Instance => self.to_instance().class,
-        ValueVariant::Iter => builtin.iter,
-        ValueVariant::Upvalue => self.to_upvalue().value().value_class(builtin),
-        ValueVariant::NativeFun => builtin.native_fun,
-        ValueVariant::NativeMethod => builtin.native_method,
       }
     }
   }

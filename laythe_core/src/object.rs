@@ -86,8 +86,8 @@ pub struct BuiltinPrimitives {
 }
 
 impl BuiltinPrimitives {
-  pub fn for_variant(&self, value: Value, variant: ValueVariant) -> Managed<Class> {
-    match variant {
+  pub fn for_value(&self, value: Value, kind: ValueVariant) -> Managed<Class> {
+    match kind {
       ValueVariant::Bool => self.bool,
       ValueVariant::Nil => self.nil,
       ValueVariant::Number => self.number,
@@ -96,13 +96,16 @@ impl BuiltinPrimitives {
       ValueVariant::Map => self.map,
       ValueVariant::Fun => panic!(),
       ValueVariant::Closure => self.closure,
-      ValueVariant::Class => self.class,
+      ValueVariant::Class => value.to_class().meta().expect("Meta class not set."),
       ValueVariant::Instance => value.to_instance().class,
       ValueVariant::Iter => self.iter,
       ValueVariant::Method => self.method,
       ValueVariant::NativeFun => self.native_fun,
       ValueVariant::NativeMethod => self.native_method,
-      ValueVariant::Upvalue => value.to_upvalue().value().value_class(self),
+      ValueVariant::Upvalue => {
+        let value = value.to_upvalue().value();
+        self.for_value(value, value.kind())
+      }
     }
   }
 }
@@ -718,6 +721,12 @@ pub struct Class {
   super_class: Option<Managed<Class>>,
 }
 
+impl fmt::Display for Class {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "<cls {}>", self.name)
+  }
+}
+
 impl Class {
   pub fn new(
     hooks: &GcHooks,
@@ -749,6 +758,10 @@ impl Class {
 
   pub fn meta(&mut self) -> &Option<Managed<Class>> {
     &self.meta_class
+  }
+
+  pub fn super_class(&mut self) -> &Option<Managed<Class>> {
+    &self.super_class
   }
 
   pub fn set_meta(&mut self, meta_class: Managed<Class>) -> &mut Self {
@@ -783,7 +796,10 @@ impl Class {
       });
     });
 
-    debug_assert!(self.super_class.map(|super_class| &*super_class.name == "Object").unwrap_or(true));
+    debug_assert!(self
+      .super_class
+      .map(|super_class| &*super_class.name == "Object")
+      .unwrap_or(true));
 
     self.super_class = Some(super_class);
     self.init = self.init.or(super_class.init);
