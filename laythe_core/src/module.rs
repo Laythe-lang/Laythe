@@ -2,7 +2,7 @@ use crate::{
   hooks::GcHooks,
   object::{Class, Instance, LyHashMap},
   value::Value,
-  LyResult, SlHashSet,
+  LyResult, LyHashSet,
 };
 use laythe_env::{
   managed::{Manage, Managed, Trace},
@@ -24,7 +24,7 @@ pub struct Module {
   module_class: Option<Managed<Class>>,
 
   /// A key value set of named exports from the provided modules
-  exports: SlHashSet<Managed<String>>,
+  exports: LyHashSet<Managed<String>>,
 
   /// All of the top level symbols in this module
   symbols: LyHashMap<Managed<String>, Value>,
@@ -50,8 +50,7 @@ impl Module {
     Module {
       name,
       path,
-      module_class: None,
-      exports: SlHashSet::default(),
+      exports: LyHashSet::default(),
       symbols: LyHashMap::default(),
     }
   }
@@ -86,8 +85,7 @@ impl Module {
     Some(Self {
       name,
       path,
-      module_class: None,
-      exports: SlHashSet::default(),
+      exports: LyHashSet::default(),
       symbols: LyHashMap::default(),
     })
   }

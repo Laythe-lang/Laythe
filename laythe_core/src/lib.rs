@@ -15,7 +15,7 @@ pub mod value;
 
 pub type LyResult<T> = Result<T, LyError>;
 pub type CallResult = LyResult<value::Value>;
-pub type SlHashSet<K> = HashSet<K, FnvBuildHasher>;
+pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;
 
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
