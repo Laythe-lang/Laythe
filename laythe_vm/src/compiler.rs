@@ -97,6 +97,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// ```
   /// use laythe_vm::compiler::{Compiler, Parser};
   /// use laythe_core::module::Module;
+  /// use laythe_core::object::Class;
   /// use laythe_core::hooks::{GcHooks, NoContext};
   /// use laythe_env::io::NativeIo;
   /// use laythe_env::stdio::NativeStdIo;
@@ -111,7 +112,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut hooks = GcHooks::new(&mut context);
   /// let mut parser = Parser::new(NativeStdIo(), &source);
   /// let module = hooks.manage(Module::new(
-  ///  hooks.manage_str("module".to_string()),
+  ///  hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
   ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///
@@ -191,6 +192,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// ```
   /// use laythe_vm::compiler::{Compiler, Parser};
   /// use laythe_core::module::Module;
+  /// use laythe_core::object::Class;
   /// use laythe_core::hooks::{GcHooks, NoContext};
   /// use laythe_env::io::NativeIo;
   /// use laythe_env::stdio::NativeStdIo;
@@ -205,7 +207,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut hooks = GcHooks::new(&mut context);
   /// let mut parser = Parser::new(NativeStdIo(), &source);
   /// let module = hooks.manage(Module::new(
-  ///  hooks.manage_str("module".to_string()),
+  ///  hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
   ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///

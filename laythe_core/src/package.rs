@@ -77,10 +77,10 @@ impl Package {
 
   /// Add a module to this package
   pub fn add_module(&mut self, hooks: &GcHooks, module: Managed<Module>) -> LyResult<()> {
-    match self.entities.entry(module.name) {
+    match self.entities.entry(module.name()) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
         "Cannot add module {} to package {}",
-        module.name, self.name
+        module.name(), self.name
       ))),
       Entry::Vacant(entry) => {
         entry.insert(PackageEntity::Module(module));
@@ -200,6 +200,8 @@ impl Manage for Package {
 
 #[cfg(test)]
 mod test {
+  use crate::object::Class;
+
   #[test]
   fn new() {
     use crate::package::Package;
@@ -234,7 +236,7 @@ mod test {
 
     let mut package = Package::new(hooks.manage_str("package".to_string()));
     let module = hooks.manage(Module::new(
-      hooks.manage_str("module".to_string()),
+      hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
       hooks.manage(PathBuf::from("self/module.ly")),
     ));
 

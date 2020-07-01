@@ -624,7 +624,7 @@ impl Closure {
   ///
   /// # Example
   /// ```
-  /// use laythe_core::object::{Closure, Fun};
+  /// use laythe_core::object::{Closure, Class, Fun};
   /// use laythe_core::signature::Arity;
   /// use laythe_env::memory::{Gc, NO_GC};
   /// use laythe_core::module::Module;
@@ -637,7 +637,7 @@ impl Closure {
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
-  ///   hooks.manage_str("module".to_string()),
+  ///   hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
   ///   hooks.manage(PathBuf::from("self/module.ly")),
   /// ));
   /// let mut fun = Fun::new(hooks.manage_str("example".to_string()), module);

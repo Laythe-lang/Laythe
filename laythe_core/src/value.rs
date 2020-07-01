@@ -1479,14 +1479,14 @@ mod test {
   }
 
   fn test_module() -> (Allocs, Managed<Module>) {
-    let (allocs_string, name) = test_string();
+    let (allocs_class, class) = test_class();
     let (allocs_path, path) = test_path();
-    let mut alloc = Box::new(Allocation::new(Module::new(name, path)));
+    let mut alloc = Box::new(Allocation::new(Module::new(class, path)));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
     let mut allocs: Allocs = vec![alloc];
-    allocs.extend(allocs_string);
+    allocs.extend(allocs_class);
     allocs.extend(allocs_path);
     (allocs, managed)
   }

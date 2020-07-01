@@ -112,7 +112,7 @@ impl<I: Io> Vm<I> {
       .expect("Could not obtain the current working directory.");
 
     let module = hooks.manage(Module::new(
-      hooks.manage_str(PLACEHOLDER_NAME.to_string()),
+      hooks.manage(Class::bare(hooks.manage_str(PLACEHOLDER_NAME.to_string()))),
       hooks.manage(PathBuf::from(PLACEHOLDER_NAME)),
     ));
     let fun = Fun::new(hooks.manage_str(String::from(PLACEHOLDER_NAME)), module);
