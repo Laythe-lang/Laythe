@@ -527,7 +527,9 @@ fn iterator() -> Result<(), std::io::Error> {
 #[test]
 fn limit() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/limit/reuse_constants.ly"],
+    &vec![
+      "language/limit/reuse_constants.ly"
+    ],
     ExecuteResult::Ok,
   )?;
 
@@ -542,7 +544,9 @@ fn limit() -> Result<(), std::io::Error> {
   )?;
 
   test_file_exits(
-    &vec!["language/limit/stack_overflow.ly"],
+    &vec![
+      "language/limit/stack_overflow.ly"
+    ],
     ExecuteResult::RuntimeError,
   )
 }

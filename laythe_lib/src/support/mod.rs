@@ -63,7 +63,7 @@ pub fn load_class_from_module(
     }
     None => Err(hooks.make_error(format!(
       "Could not find symbol {} in module {}.",
-      name, module.name
+      name, module.name()
     ))),
   }
 }

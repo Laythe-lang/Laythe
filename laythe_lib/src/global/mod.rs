@@ -23,7 +23,7 @@ use primitives::{
   create_primitive_classes, iter::ITER_CLASS_NAME, list::LIST_CLASS_NAME, map::MAP_CLASS_NAME,
   method::METHOD_CLASS_NAME, native_fun::NATIVE_FUN_CLASS_NAME,
   native_method::NATIVE_METHOD_CLASS_NAME, nil::NIL_CLASS_NAME, number::NUMBER_CLASS_NAME,
-  string::STRING_CLASS_NAME,
+  string::STRING_CLASS_NAME, object::OBJECT_CLASS_NAME,
 };
 use std::path::PathBuf;
 use time::create_clock_funs;
@@ -50,6 +50,9 @@ pub fn add_global(hooks: &GcHooks, mut std: Managed<Package>) -> LyResult<()> {
 pub fn builtin_from_global_module(hooks: &GcHooks, module: &Module) -> Option<BuiltIn> {
   Some(BuiltIn {
     primitives: BuiltinPrimitives {
+      object: module
+        .get_symbol(hooks.manage_str(OBJECT_CLASS_NAME.to_string()))?
+        .to_class(),
       nil: module
         .get_symbol(hooks.manage_str(NIL_CLASS_NAME.to_string()))?
         .to_class(),

@@ -45,37 +45,40 @@ pub struct BuiltInDependencies {
 }
 
 pub struct BuiltinPrimitives {
-  // the Nil class
+  /// The base Object class
+  pub object: Managed<Class>,
+
+  /// the Nil class
   pub nil: Managed<Class>,
 
-  // the Bool class
+  /// the Bool class
   pub bool: Managed<Class>,
 
-  // the Class class
+  /// the Class class
   pub class: Managed<Class>,
 
-  // the Number class
+  /// the Number class
   pub number: Managed<Class>,
 
-  // the String class
+  /// the String class
   pub string: Managed<Class>,
 
-  // the List class
+  /// the List class
   pub list: Managed<Class>,
 
-  // the Map class
+  /// the Map class
   pub map: Managed<Class>,
 
-  // the Iter class
+  /// the Iter class
   pub iter: Managed<Class>,
 
-  // the Closure class
+  /// the Closure class
   pub closure: Managed<Class>,
 
-  // the method class
+  /// the method class
   pub method: Managed<Class>,
 
-  // the NativeFun class
+  /// the NativeFun class
   pub native_fun: Managed<Class>,
 
   // the NativeMethod class
@@ -108,9 +111,11 @@ impl Trace for BuiltinPrimitives {
   fn trace(&self) -> bool {
     self.bool.trace();
     self.nil.trace();
+    self.class.trace();
     self.number.trace();
     self.string.trace();
     self.list.trace();
+    self.iter.trace();
     self.map.trace();
     self.closure.trace();
     self.method.trace();
@@ -123,9 +128,11 @@ impl Trace for BuiltinPrimitives {
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.bool.trace_debug(stdio);
     self.nil.trace_debug(stdio);
+    self.class.trace_debug(stdio);
     self.number.trace_debug(stdio);
     self.string.trace_debug(stdio);
     self.list.trace_debug(stdio);
+    self.iter.trace_debug(stdio);
     self.map.trace_debug(stdio);
     self.closure.trace_debug(stdio);
     self.method.trace_debug(stdio);

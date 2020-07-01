@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "std_lib/math/utils/abs.ly",
+        "language/exception/top_level_thrown.ly",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",

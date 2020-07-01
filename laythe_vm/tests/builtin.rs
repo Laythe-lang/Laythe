@@ -107,14 +107,18 @@ fn map() -> Result<(), std::io::Error> {
   )?;
 
   test_files(
-    &vec!["std_lib/builtin/map/remove_missing_key.ly"],
+    &vec![
+      "std_lib/builtin/map/remove_missing_key.ly"
+    ],
     ExecuteResult::RuntimeError,
   )
 }
 
 #[test]
 fn number() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/builtin/number/times.ly"], ExecuteResult::Ok)?;
+  test_files(&vec![
+    "std_lib/builtin/number/times.ly"
+  ], ExecuteResult::Ok)?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
 }
@@ -135,7 +139,9 @@ fn method() -> Result<(), std::io::Error> {
 #[test]
 fn str() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["std_lib/builtin/str/str.ly", "std_lib/builtin/str/has.ly"],
+    &vec![
+      "std_lib/builtin/str/str.ly", "std_lib/builtin/str/has.ly"
+    ],
     ExecuteResult::Ok,
   )?;
 
