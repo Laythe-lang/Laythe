@@ -425,6 +425,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     let mut class_compiler = self.hooks.manage(ClassCompiler {
       name: self.parser.previous.clone(),
+      fun_kind: None,
       has_super_class: false,
       enclosing: self.current_class,
     });
@@ -554,12 +555,15 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       .consume(TokenKind::Identifier, "Expected method name.");
     let constant = self.identifer_constant(self.parser.previous.clone());
 
-    let fun_kind = if INIT == self.parser.previous.lexeme {
+    let fun_kind = if static_method {
+      FunKind::StaticMethod
+    } else if INIT == self.parser.previous.lexeme {
       FunKind::Initializer
     } else {
       FunKind::Method
     };
 
+    self.current_class.expect("Class compiler not set").fun_kind = Some(fun_kind);
     self.function(fun_kind);
 
     if static_method {
@@ -1298,12 +1302,19 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a class's self identifier
   fn self_(&mut self) {
-    if self.current_class.is_none() {
-      self.parser.error("Cannot use 'self' outside of class.");
-      return;
-    }
-
-    self.variable(false);
+    self.current_class
+      .map(|class_compiler| class_compiler.fun_kind)
+      .and_then(|fun_kind| fun_kind.and_then(|fun_kind| match fun_kind {
+        FunKind::Method | FunKind::Initializer => {
+          self.variable(false);
+          Some(())
+        }
+        _ => None
+      }))
+      .or_else(|| {
+        self.parser.error("Cannot use 'self' outside of class instance methods.");
+        None
+      });
   }
 
   /// Parse a class' super identifer
@@ -1612,12 +1623,12 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 /// Get the first local for a given function kind
 fn first_local(fun_kind: FunKind) -> Local {
   match fun_kind {
-    FunKind::Fun => Local {
+    FunKind::Fun | FunKind::StaticMethod | FunKind::Script => Local {
       name: Option::None,
       depth: 0,
       is_captured: false,
     },
-    _ => Local {
+    FunKind::Method | FunKind::Initializer => Local {
       name: Some("self".to_string()),
       depth: 0,
       is_captured: false,
@@ -1739,6 +1750,7 @@ const fn get_rule(kind: TokenKind) -> &'static ParseRule {
 #[derive(Debug, Clone)]
 pub struct ClassCompiler {
   enclosing: Option<Managed<ClassCompiler>>,
+  fun_kind: Option<FunKind>,
   has_super_class: bool,
   name: Token,
 }
@@ -2380,6 +2392,58 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(5)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn class_with_static_methods() {
+    let example = "
+      class A {
+        static sayHi() {
+          return 'hi';
+        }
+
+        static sayBye() {
+          return 'bye';
+        }
+      }
+    "
+    .to_string();
+
+        
+    let mut gc = Gc::new(Box::new(NativeStdIo()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Fun((
+          2,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::StaticMethod(1)),
+        ByteCodeTest::Fun((
+          4,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::StaticMethod(3)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),

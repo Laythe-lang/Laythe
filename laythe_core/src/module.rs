@@ -2,7 +2,7 @@ use crate::{
   hooks::GcHooks,
   object::{Class, Instance, LyHashMap},
   value::Value,
-  LyResult, LyHashSet,
+  LyHashSet, LyResult,
 };
 use laythe_env::{
   managed::{Manage, Managed, Trace},
@@ -65,7 +65,8 @@ impl Module {
     if self.exports.contains(&name) {
       Err(hooks.make_error(format!(
         "{} has already been exported from {}",
-        name, self.name()
+        name,
+        self.name()
       )))
     } else {
       hooks.grow(self, |module| module.exports.insert(name));
@@ -207,7 +208,10 @@ impl Manage for Module {
 
 #[cfg(test)]
 mod test {
-  use crate::{hooks::{GcHooks, NoContext}, object::Class};
+  use crate::{
+    hooks::{GcHooks, NoContext},
+    object::Class,
+  };
 
   #[test]
   fn new() {
@@ -231,20 +235,17 @@ mod test {
 
   #[test]
   fn from_path() {
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use laythe_env::memory::Gc;
-    use crate::hooks::{NoContext, GcHooks};
     use std::path::PathBuf;
-  
+
     let gc = Gc::default();
     let mut context = NoContext::new(&gc);
     let hooks = GcHooks::new(&mut context);
-  
+
     let path = hooks.manage(PathBuf::from("self/path.ly"));
-    let module = Module::from_path(
-      &hooks,
-      path,
-    );
+    let module = Module::from_path(&hooks, path);
 
     assert!(module.is_some());
     assert_eq!(&*module.unwrap().name(), "path");
@@ -252,54 +253,54 @@ mod test {
 
   #[test]
   fn export_symbol() {
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
-    use laythe_env::memory::{Gc};
     use crate::value::Value;
-    use crate::hooks::{NoContext, GcHooks};
+    use laythe_env::memory::Gc;
     use std::path::PathBuf;
-  
+
     let gc = Gc::default();
     let mut context = NoContext::new(&gc);
     let hooks = GcHooks::new(&mut context);
-  
+
     let mut module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
       hooks.manage(PathBuf::from("self/module.ly")),
     );
-  
+
     let export_name = hooks.manage_str("exported".to_string());
-  
+
     module.insert_symbol(&hooks, export_name, Value::from(true));
     let result1 = module.export_symbol(&hooks, export_name);
     let result2 = module.export_symbol(&hooks, export_name);
-  
+
     assert_eq!(result1.is_ok(), true);
     assert_eq!(result2.is_err(), true);
   }
 
   #[test]
   fn import() {
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
-    use laythe_env::memory::{Gc};
     use crate::value::Value;
-    use crate::hooks::{NoContext, GcHooks};
+    use laythe_env::memory::Gc;
     use std::path::PathBuf;
-  
+
     let gc = Gc::default();
     let mut context = NoContext::new(&gc);
     let hooks = GcHooks::new(&mut context);
-  
+
     let mut module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
-      hooks.manage(PathBuf::from("self/module.ly"))
+      hooks.manage(PathBuf::from("self/module.ly")),
     );
-  
+
     let export_name = hooks.manage_str("exported".to_string());
     module.insert_symbol(&hooks, export_name, Value::from(true));
     assert!(module.export_symbol(&hooks, export_name).is_ok());
-  
+
     let symbols = module.import(&hooks);
-  
+
     if let Some(result) = symbols.get_field(&export_name) {
       assert_eq!(*result, Value::from(true));
     } else {
@@ -309,26 +310,26 @@ mod test {
 
   #[test]
   fn insert_symbol() {
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
-    use laythe_env::memory::{Gc};
     use crate::value::Value;
-    use crate::hooks::{NoContext, GcHooks};
+    use laythe_env::memory::Gc;
     use std::path::PathBuf;
-  
+
     let gc = Gc::default();
     let mut context = NoContext::new(&gc);
     let hooks = GcHooks::new(&mut context);
-  
+
     let mut module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
-      hooks.manage(PathBuf::from("self/module.ly"))
+      hooks.manage(PathBuf::from("self/module.ly")),
     );
-  
+
     let name = hooks.manage_str("exported".to_string());
     module.insert_symbol(&hooks, name, Value::from(true));
-  
+
     let symbol = module.get_symbol(name);
-  
+
     if let Some(result) = symbol {
       assert_eq!(*result, Value::from(true));
     } else {
@@ -338,23 +339,23 @@ mod test {
 
   #[test]
   fn get_symbol() {
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use laythe_env::memory::Gc;
-    use crate::hooks::{NoContext, GcHooks};
     use std::path::PathBuf;
-  
+
     let gc = Gc::default();
     let mut context = NoContext::new(&gc);
     let hooks = GcHooks::new(&mut context);
-  
+
     let module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
       hooks.manage(PathBuf::from("self/module.ly")),
     );
-  
+
     let name = hooks.manage_str("exported".to_string());
     let symbol = module.get_symbol(name);
-  
+
     if let Some(_) = symbol {
       assert!(false);
     } else {
@@ -362,4 +363,3 @@ mod test {
     }
   }
 }
-

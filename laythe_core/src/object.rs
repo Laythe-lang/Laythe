@@ -244,10 +244,11 @@ impl Manage for Upvalue {
   }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FunKind {
   Fun,
   Method,
+  StaticMethod,
   Initializer,
   Script,
 }
@@ -774,10 +775,6 @@ impl Class {
   }
 
   pub fn inherit(&mut self, hooks: &GcHooks, super_class: Managed<Class>) {
-    if self.super_class.is_some() {
-      panic!("Super class already set!");
-    }
-
     hooks.grow(self, |class| {
       super_class.methods.for_each(|(key, value)| {
         if let None = class.methods.get(&*key) {
@@ -785,6 +782,8 @@ impl Class {
         }
       });
     });
+
+    debug_assert!(self.super_class.map(|super_class| &*super_class.name == "Object").unwrap_or(true));
 
     self.super_class = Some(super_class);
     self.init = self.init.or(super_class.init);

@@ -775,12 +775,15 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_class(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
-    let class = Value::from(self.gc.manage(Class::new(
-      &GcHooks::new(self),
-      name,
-      self.dep_manager.primitive_classes().class,
-      self.dep_manager.primitive_classes().object,
-    ), self));
+    let class = Value::from(self.gc.manage(
+      Class::new(
+        &GcHooks::new(self),
+        name,
+        self.dep_manager.primitive_classes().class,
+        self.dep_manager.primitive_classes().object,
+      ),
+      self,
+    ));
     self.push(class);
     Signal::Ok
   }
@@ -1087,9 +1090,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     match dep_manager.import(&GcHooks::new(self), current_module, path) {
       Ok(module) => {
-        self.push(Value::from(
-          module.import(&GcHooks::new(self)),
-        ));
+        self.push(Value::from(module.import(&GcHooks::new(self))));
         Signal::Ok
       }
       Err(error) => self.set_error(error),

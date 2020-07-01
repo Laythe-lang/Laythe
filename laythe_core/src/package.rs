@@ -80,7 +80,8 @@ impl Package {
     match self.entities.entry(module.name()) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
         "Cannot add module {} to package {}",
-        module.name(), self.name
+        module.name(),
+        self.name
       ))),
       Entry::Vacant(entry) => {
         entry.insert(PackageEntity::Module(module));
