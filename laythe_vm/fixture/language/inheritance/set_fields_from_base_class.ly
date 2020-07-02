@@ -1,24 +1,24 @@
 class Foo {
   foo(a, b) {
-    this.field1 = a;
-    this.field2 = b;
+    self.field1 = a;
+    self.field2 = b;
   }
 
   fooPrint() {
-    print this.field1;
-    print this.field2;
+    print self.field1;
+    print self.field2;
   }
 }
 
 class Bar < Foo {
   bar(a, b) {
-    this.field1 = a;
-    this.field2 = b;
+    self.field1 = a;
+    self.field2 = b;
   }
 
   barPrint() {
-    print this.field1;
-    print this.field2;
+    print self.field1;
+    print self.field2;
   }
 }
 

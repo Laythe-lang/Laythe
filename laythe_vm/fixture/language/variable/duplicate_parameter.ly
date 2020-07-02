@@ -1,4 +1,4 @@
 fn foo(arg,
-        arg) { // Error at 'arg': variable with this name already declared in this scope.
+        arg) { // Error at 'arg': variable with self name already declared in self scope.
   "body";
 }

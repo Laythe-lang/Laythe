@@ -13,7 +13,7 @@ name = "laythe_vm"
 path = "src/lib.rs"
 
 [dependencies]
-laythe_core = { path = "../laythe_core", features = ["nan_boxing"]  } # 
+laythe_core = { path = "../laythe_core", features = ["nan_boxing"]  }
 laythe_lib = { path = "../laythe_lib" }
 laythe_env = { path = "../laythe_env" }
 fnv = "1.0.3"

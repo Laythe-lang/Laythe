@@ -1,31 +1,31 @@
 class Toggle {
   init(startState) {
-    this.state = startState;
+    self.state = startState;
   }
 
-  value() { return this.state; }
+  value() { return self.state; }
 
   activate() {
-    this.state = !this.state;
-    return this;
+    self.state = !self.state;
+    return self;
   }
 }
 
 class NthToggle < Toggle {
   init(startState, maxCounter) {
     super.init(startState);
-    this.countMax = maxCounter;
-    this.count = 0;
+    self.countMax = maxCounter;
+    self.count = 0;
   }
 
   activate() {
-    this.count = this.count + 1;
-    if (this.count >= this.countMax) {
+    self.count = self.count + 1;
+    if (self.count >= self.countMax) {
       super.activate();
-      this.count = 0;
+      self.count = 0;
     }
 
-    return this;
+    return self;
   }
 }
 

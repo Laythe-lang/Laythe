@@ -1,24 +1,24 @@
 class Tree {
   init(item, depth) {
-    this.item = item;
-    this.depth = depth;
+    self.item = item;
+    self.depth = depth;
     if (depth > 0) {
       let item2 = item + item;
       depth = depth - 1;
-      this.left = Tree(item2 - 1, depth);
-      this.right = Tree(item2, depth);
+      self.left = Tree(item2 - 1, depth);
+      self.right = Tree(item2, depth);
     } else {
-      this.left = nil;
-      this.right = nil;
+      self.left = nil;
+      self.right = nil;
     }
   }
 
   check() {
-    if (this.left == nil) {
-      return this.item;
+    if (self.left == nil) {
+      return self.item;
     }
 
-    return this.item + this.left.check() - this.right.check();
+    return self.item + self.left.check() - self.right.check();
   }
 }
 

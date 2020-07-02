@@ -6,30 +6,29 @@ mod time;
 #[cfg(test)]
 mod support;
 
+use crate::GLOBAL_PATH;
 use assert::create_assert_funs;
 use dependencies::create_dependency_classes;
 use dependencies::module::MODULE_CLASS_NAME;
-use primitives::{
-  bool::BOOL_CLASS_NAME, class::CLASS_CLASS_NAME, closure::CLOSURE_CLASS_NAME,
-  create_primitive_classes, iter::ITER_CLASS_NAME, list::LIST_CLASS_NAME, map::MAP_CLASS_NAME,
-  method::METHOD_CLASS_NAME, native_fun::NATIVE_FUN_CLASS_NAME,
-  native_method::NATIVE_METHOD_CLASS_NAME, nil::NIL_CLASS_NAME, number::NUMBER_CLASS_NAME,
-  string::STRING_CLASS_NAME,
-};
 use laythe_core::{
   hooks::GcHooks,
   module::Module,
   object::{BuiltIn, BuiltInDependencies, BuiltinPrimitives},
   package::Package,
-  ModuleResult,
+  LyResult,
 };
 use laythe_env::managed::Managed;
+use primitives::{
+  bool::BOOL_CLASS_NAME, class::CLASS_CLASS_NAME, closure::CLOSURE_CLASS_NAME,
+  create_primitive_classes, iter::ITER_CLASS_NAME, list::LIST_CLASS_NAME, map::MAP_CLASS_NAME,
+  method::METHOD_CLASS_NAME, native_fun::NATIVE_FUN_CLASS_NAME,
+  native_method::NATIVE_METHOD_CLASS_NAME, nil::NIL_CLASS_NAME, number::NUMBER_CLASS_NAME,
+  object::OBJECT_CLASS_NAME, string::STRING_CLASS_NAME,
+};
 use std::path::PathBuf;
 use time::create_clock_funs;
 
-const GLOBAL_PATH: &str = "std/global.ly";
-
-pub fn create_global(hooks: &GcHooks, std: Managed<Package>) -> ModuleResult<Managed<Module>> {
+pub fn add_global(hooks: &GcHooks, mut std: Managed<Package>) -> LyResult<()> {
   let module = match Module::from_path(&hooks, hooks.manage(PathBuf::from(GLOBAL_PATH))) {
     Some(module) => module,
     None => {
@@ -37,19 +36,23 @@ pub fn create_global(hooks: &GcHooks, std: Managed<Package>) -> ModuleResult<Man
     }
   };
 
-  let global = hooks.manage(module);
+  let module = hooks.manage(module);
+  std.add_module(hooks, module)?;
 
-  create_primitive_classes(hooks, global, std)?;
-  create_dependency_classes(hooks, global, std)?;
-  create_assert_funs(hooks, global, std)?;
-  create_clock_funs(hooks, global, std)?;
+  create_primitive_classes(hooks, module, std)?;
+  create_dependency_classes(hooks, module, std)?;
+  create_assert_funs(hooks, module, std)?;
+  create_clock_funs(hooks, module, std)?;
 
-  Ok(global)
+  Ok(())
 }
 
 pub fn builtin_from_global_module(hooks: &GcHooks, module: &Module) -> Option<BuiltIn> {
   Some(BuiltIn {
     primitives: BuiltinPrimitives {
+      object: module
+        .get_symbol(hooks.manage_str(OBJECT_CLASS_NAME.to_string()))?
+        .to_class(),
       nil: module
         .get_symbol(hooks.manage_str(NIL_CLASS_NAME.to_string()))?
         .to_class(),

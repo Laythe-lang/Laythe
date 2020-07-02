@@ -5,18 +5,17 @@ use crate::{
   hooks::GcHooks,
   module::Module,
   signature::Arity,
-  utils::do_if_some,
   value::{Value, ValueVariant},
 };
 use core::slice;
 use fnv::FnvBuildHasher;
 use hash_map::Entry;
 use hashbrown::{hash_map, HashMap};
-use slice::SliceIndex;
 use laythe_env::{
   managed::{Manage, Managed, Trace},
   stdio::StdIo,
 };
+use slice::SliceIndex;
 use std::{
   fmt,
   hash::Hash,
@@ -46,37 +45,40 @@ pub struct BuiltInDependencies {
 }
 
 pub struct BuiltinPrimitives {
-  // the Nil class
+  /// The base Object class
+  pub object: Managed<Class>,
+
+  /// the Nil class
   pub nil: Managed<Class>,
 
-  // the Bool class
+  /// the Bool class
   pub bool: Managed<Class>,
 
-  // the Class class
+  /// the Class class
   pub class: Managed<Class>,
 
-  // the Number class
+  /// the Number class
   pub number: Managed<Class>,
 
-  // the String class
+  /// the String class
   pub string: Managed<Class>,
 
-  // the List class
+  /// the List class
   pub list: Managed<Class>,
 
-  // the Map class
+  /// the Map class
   pub map: Managed<Class>,
 
-  // the Iter class
+  /// the Iter class
   pub iter: Managed<Class>,
 
-  // the Closure class
+  /// the Closure class
   pub closure: Managed<Class>,
 
-  // the method class
+  /// the method class
   pub method: Managed<Class>,
 
-  // the NativeFun class
+  /// the NativeFun class
   pub native_fun: Managed<Class>,
 
   // the NativeMethod class
@@ -84,8 +86,8 @@ pub struct BuiltinPrimitives {
 }
 
 impl BuiltinPrimitives {
-  pub fn for_variant(&self, value: Value, variant: ValueVariant) -> Managed<Class> {
-    match variant {
+  pub fn for_value(&self, value: Value, kind: ValueVariant) -> Managed<Class> {
+    match kind {
       ValueVariant::Bool => self.bool,
       ValueVariant::Nil => self.nil,
       ValueVariant::Number => self.number,
@@ -94,13 +96,16 @@ impl BuiltinPrimitives {
       ValueVariant::Map => self.map,
       ValueVariant::Fun => panic!(),
       ValueVariant::Closure => self.closure,
-      ValueVariant::Class => self.class,
+      ValueVariant::Class => value.to_class().meta().expect("Meta class not set."),
       ValueVariant::Instance => value.to_instance().class,
       ValueVariant::Iter => self.iter,
       ValueVariant::Method => self.method,
       ValueVariant::NativeFun => self.native_fun,
       ValueVariant::NativeMethod => self.native_method,
-      ValueVariant::Upvalue => value.to_upvalue().value().value_class(self),
+      ValueVariant::Upvalue => {
+        let value = value.to_upvalue().value();
+        self.for_value(value, value.kind())
+      }
     }
   }
 }
@@ -109,9 +114,11 @@ impl Trace for BuiltinPrimitives {
   fn trace(&self) -> bool {
     self.bool.trace();
     self.nil.trace();
+    self.class.trace();
     self.number.trace();
     self.string.trace();
     self.list.trace();
+    self.iter.trace();
     self.map.trace();
     self.closure.trace();
     self.method.trace();
@@ -124,9 +131,11 @@ impl Trace for BuiltinPrimitives {
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.bool.trace_debug(stdio);
     self.nil.trace_debug(stdio);
+    self.class.trace_debug(stdio);
     self.number.trace_debug(stdio);
     self.string.trace_debug(stdio);
     self.list.trace_debug(stdio);
+    self.iter.trace_debug(stdio);
     self.map.trace_debug(stdio);
     self.closure.trace_debug(stdio);
     self.method.trace_debug(stdio);
@@ -238,10 +247,11 @@ impl Manage for Upvalue {
   }
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FunKind {
   Fun,
   Method,
+  StaticMethod,
   Initializer,
   Script,
 }
@@ -625,7 +635,7 @@ impl Closure {
   ///
   /// # Example
   /// ```
-  /// use laythe_core::object::{Closure, Fun};
+  /// use laythe_core::object::{Closure, Class, Fun};
   /// use laythe_core::signature::Arity;
   /// use laythe_env::memory::{Gc, NO_GC};
   /// use laythe_core::module::Module;
@@ -638,7 +648,7 @@ impl Closure {
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
-  ///   hooks.manage_str("module".to_string()),
+  ///   hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
   ///   hooks.manage(PathBuf::from("self/module.ly")),
   /// ));
   /// let mut fun = Fun::new(hooks.manage_str("example".to_string()), module);
@@ -707,15 +717,60 @@ pub struct Class {
   pub name: Managed<String>,
   pub init: Option<Value>,
   methods: DynamicMap<Managed<String>, Value>,
+  meta_class: Option<Managed<Class>>,
+  super_class: Option<Managed<Class>>,
+}
+
+impl fmt::Display for Class {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "<cls {}>", self.name)
+  }
 }
 
 impl Class {
-  pub fn new(name: Managed<String>) -> Self {
-    Class {
+  pub fn new(
+    hooks: &GcHooks,
+    name: Managed<String>,
+    meta_class: Managed<Class>,
+    super_class: Managed<Class>,
+  ) -> Self {
+    let mut class = Self {
       name,
       init: None,
       methods: DynamicMap::new(),
+      meta_class: Some(meta_class),
+      super_class: None,
+    };
+
+    class.inherit(hooks, super_class);
+    class
+  }
+
+  pub fn bare(name: Managed<String>) -> Self {
+    Self {
+      name,
+      init: None,
+      methods: DynamicMap::new(),
+      meta_class: None,
+      super_class: None,
     }
+  }
+
+  pub fn meta(&mut self) -> &Option<Managed<Class>> {
+    &self.meta_class
+  }
+
+  pub fn super_class(&mut self) -> &Option<Managed<Class>> {
+    &self.super_class
+  }
+
+  pub fn set_meta(&mut self, meta_class: Managed<Class>) -> &mut Self {
+    if self.meta_class.is_some() {
+      panic!("Meta class already set!");
+    }
+
+    self.meta_class = Some(meta_class);
+    self
   }
 
   pub fn add_method(&mut self, hooks: &GcHooks, name: Managed<String>, method: Value) {
@@ -728,20 +783,25 @@ impl Class {
     });
   }
 
-  pub fn get_method(&self, name: &Managed<String>) -> Option<&Value> {
-    self.methods.get(name)
+  pub fn get_method(&self, name: &Managed<String>) -> Option<Value> {
+    self.methods.get(name).map(|v| *v)
   }
 
   pub fn inherit(&mut self, hooks: &GcHooks, super_class: Managed<Class>) {
     hooks.grow(self, |class| {
       super_class.methods.for_each(|(key, value)| {
-        match class.methods.get(&*key) {
-          None => class.methods.insert(*key, *value),
-          _ => None,
-        };
+        if let None = class.methods.get(&*key) {
+          class.methods.insert(*key, *value);
+        }
       });
     });
 
+    debug_assert!(self
+      .super_class
+      .map(|super_class| &*super_class.name == "Object")
+      .unwrap_or(true));
+
+    self.super_class = Some(super_class);
     self.init = self.init.or(super_class.init);
   }
 }
@@ -759,28 +819,30 @@ impl fmt::Debug for Class {
 impl Trace for Class {
   fn trace(&self) -> bool {
     self.name.trace();
-    do_if_some(self.init, |init| {
-      init.trace();
-    });
+    self.init.map(|init| init.trace());
 
     self.methods.for_each(|(key, val)| {
       key.trace();
       val.trace();
     });
 
+    self.super_class.map(|class| class.trace());
+    self.meta_class.map(|class| class.trace());
+
     true
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
     self.name.trace_debug(stdio);
-    do_if_some(self.init, |init| {
-      init.trace_debug(stdio);
-    });
+    self.init.map(|init| init.trace_debug(stdio));
 
     self.methods.for_each(|(key, val)| {
       key.trace_debug(stdio);
       val.trace_debug(stdio);
     });
+
+    self.super_class.map(|class| class.trace_debug(stdio));
+    self.meta_class.map(|class| class.trace_debug(stdio));
 
     true
   }

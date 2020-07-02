@@ -34,8 +34,8 @@ fn compile_source(source: &str) {
   let gc = Gc::default();
   let mut context = NoContext::new(&gc);
   let hooks = GcHooks::new(&mut context);
-  let module = hooks
-    .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("./Benchmark.ly"))).unwrap());
+  let module =
+    hooks.manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("./Benchmark.ly"))).unwrap());
   let io = NativeIo::default();
   let mut parser = Parser::new(io.stdio(), source);
   let compiler = Compiler::new(module, io, &mut parser, &hooks);

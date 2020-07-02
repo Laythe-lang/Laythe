@@ -11,12 +11,12 @@ use laythe_core::{
   module::Module,
   native::{NativeFun, NativeMeta, NativeMethod},
   object::LyHashMap,
-  object::{Class, Closure, Fun, Instance, Method, LyVec, Upvalue},
+  object::{Class, Closure, Fun, Instance, LyVec, Method, Upvalue},
   package::{Import, Package},
   signature::{ArityError, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
   value::{Value, ValueVariant, VALUE_NIL},
-  CallResult, SlError,
+  CallResult, LyError,
 };
 use laythe_env::{
   env::EnvIo,
@@ -112,7 +112,7 @@ impl<I: Io> Vm<I> {
       .expect("Could not obtain the current working directory.");
 
     let module = hooks.manage(Module::new(
-      hooks.manage_str(PLACEHOLDER_NAME.to_string()),
+      hooks.manage(Class::bare(hooks.manage_str(PLACEHOLDER_NAME.to_string()))),
       hooks.manage(PathBuf::from(PLACEHOLDER_NAME)),
     ));
     let fun = Fun::new(hooks.manage_str(String::from(PLACEHOLDER_NAME)), module);
@@ -328,7 +328,7 @@ struct VmExecutor<'a, I: Io + 'static> {
   current_frame: *mut CallFrame,
 
   /// The current error if one is active
-  current_error: Option<SlError>,
+  current_error: Option<LyError>,
 
   /// index to the top of the value stack
   stack_top: *mut Value,
@@ -416,7 +416,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     method_name: Managed<String>,
     args: &[Value],
   ) -> ExecuteResult {
-    let class = this.value_class(self.dep_manager.primitive_classes());
+    let class = self.dep_manager.primitive_classes().for_value(this, this.kind());
 
     self.push(this);
     for arg in args {
@@ -494,6 +494,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         ByteCode::SuperInvoke => self.op_super_invoke(),
         ByteCode::Closure => self.op_closure(),
         ByteCode::Method => self.op_method(),
+        ByteCode::StaticMethod => self.op_static_method(),
         ByteCode::Class => self.op_class(),
         ByteCode::Inherit => self.op_inherit(),
         ByteCode::GetSuper => self.op_get_super(),
@@ -672,7 +673,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     Signal::Ok
   }
 
-  /// create a list from a list literal
+  /// create a map from a map literal
   fn op_map(&mut self) -> Signal {
     let arg_count = self.read_short();
     let mut map = self.peek(arg_count as isize * 2).to_map();
@@ -755,7 +756,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       }
     }
 
-    let class = receiver.value_class(&self.dep_manager.primitive_classes());
+    let class = self.dep_manager.primitive_classes().for_value(receiver, receiver.kind());
     self.invoke_from_class(class, method_name, arg_count)
   }
 
@@ -774,7 +775,15 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn op_class(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
-    let class = Value::from(self.gc.manage(Class::new(name), self));
+    let class = Value::from(self.gc.manage(
+      Class::new(
+        &GcHooks::new(self),
+        name,
+        self.dep_manager.primitive_classes().class,
+        self.dep_manager.primitive_classes().object,
+      ),
+      self,
+    ));
     self.push(class);
     Signal::Ok
   }
@@ -1068,7 +1077,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     let class = self
       .dep_manager
       .primitive_classes()
-      .for_variant(value, kind);
+      .for_value(value, kind);
+
     self.bind_method(class, name)
   }
 
@@ -1081,9 +1091,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
     match dep_manager.import(&GcHooks::new(self), current_module, path) {
       Ok(module) => {
-        self.push(Value::from(
-          self.gc.manage(module.import(&GcHooks::new(self)), self),
-        ));
+        self.push(Value::from(module.import(&GcHooks::new(self))));
         Signal::Ok
       }
       Err(error) => self.set_error(error),
@@ -1235,6 +1243,28 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         .add_method(&GcHooks::new(self), name, method);
     } else {
       self.internal_error("Invalid Stack for op_method.");
+    }
+
+    self.drop();
+    Signal::Ok
+  }
+
+  fn op_static_method(&mut self) -> Signal {
+    let slot = self.read_short();
+    let name = self.read_string(slot);
+
+    let class = self.peek(1);
+    let method = self.peek(0);
+
+    if class.is_class() && method.is_closure() {
+      match class.to_class().meta() {
+        Some(mut meta) => {
+          meta.add_method(&GcHooks::new(self), name, method);
+        }
+        None => self.internal_error(&format!("{} meta class not set.", class.to_class().name)),
+      }
+    } else {
+      self.internal_error("Invalid Stack for op_static_method.");
     }
 
     self.drop();
@@ -1441,47 +1471,37 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     match native_meta.signature.check(args) {
       Ok(()) => None,
       Err(err) => match err {
-        SignatureError::LengthFixed(expected) => {
-          Some(self.runtime_error(&format!(
-            "{} expected {} argument(s) but received {}.",
-            native_meta.name,
-            expected,
-            args.len(),
-          )))
-        }
-        SignatureError::LengthVariadic(expected) => {
-          Some(self.runtime_error(&format!(
-            "{} expected at least {} argument(s) but received {}.",
-            native_meta.name,
-            expected,
-            args.len(),
-          )))
-        }
-        SignatureError::LengthDefaultLow(expected) => {
-          Some(self.runtime_error(&format!(
-            "{} expected at least {} argument(s) but received {}.",
-            native_meta.name,
-            expected,
-            args.len(),
-          )))
-        }
-        SignatureError::LengthDefaultHigh(expected) => {
-          Some(self.runtime_error(&format!(
-            "{} expected at most {} argument(s) but received {}.",
-            native_meta.name,
-            expected,
-            args.len(),
-          )))
-        }
-        SignatureError::TypeWrong(parameter) => {
-          Some(self.runtime_error(&format!(
-            "{} parameter {} must be a {} not a {}.",
-            native_meta.name,
-            native_meta.signature.parameters[parameter as usize].name,
-            native_meta.signature.parameters[parameter as usize].kind,
-            ParameterKind::from(args[parameter as usize])
-          )))
-        }
+        SignatureError::LengthFixed(expected) => Some(self.runtime_error(&format!(
+          "{} expected {} argument(s) but received {}.",
+          native_meta.name,
+          expected,
+          args.len(),
+        ))),
+        SignatureError::LengthVariadic(expected) => Some(self.runtime_error(&format!(
+          "{} expected at least {} argument(s) but received {}.",
+          native_meta.name,
+          expected,
+          args.len(),
+        ))),
+        SignatureError::LengthDefaultLow(expected) => Some(self.runtime_error(&format!(
+          "{} expected at least {} argument(s) but received {}.",
+          native_meta.name,
+          expected,
+          args.len(),
+        ))),
+        SignatureError::LengthDefaultHigh(expected) => Some(self.runtime_error(&format!(
+          "{} expected at most {} argument(s) but received {}.",
+          native_meta.name,
+          expected,
+          args.len(),
+        ))),
+        SignatureError::TypeWrong(parameter) => Some(self.runtime_error(&format!(
+          "{} parameter {} must be a {} not a {}.",
+          native_meta.name,
+          native_meta.signature.parameters[parameter as usize].name,
+          native_meta.signature.parameters[parameter as usize].kind,
+          ParameterKind::from(args[parameter as usize])
+        ))),
       },
     }
   }
@@ -1496,7 +1516,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn bind_method(&mut self, class: Managed<Class>, name: Managed<String>) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
-        let bound = self.gc.manage(Method::new(self.peek(0), *method), self);
+        let bound = self.gc.manage(Method::new(self.peek(0), method), self);
         self.set_val(-1, Value::from(bound));
         Signal::Ok
       }
@@ -1512,7 +1532,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     arg_count: u8,
   ) -> Signal {
     match class.get_method(&method_name) {
-      Some(method) => self.resolve_call(*method, arg_count),
+      Some(method) => self.resolve_call(method, arg_count),
       None => self.runtime_error(&format!("Undefined property {}.", method_name.as_str())),
     }
   }
@@ -1644,20 +1664,20 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// Report a known laythe runtime error to the user
   fn runtime_error(&mut self, message: &str) -> Signal {
-    self.set_error(SlError::new(
+    self.set_error(LyError::new(
       self.gc.manage_str(String::from(message), self),
     ));
     Signal::RuntimeError
   }
 
   /// Set the current error place the vm signal a runtime error
-  fn set_error(&mut self, error: SlError) -> Signal {
+  fn set_error(&mut self, error: LyError) -> Signal {
     self.current_error = Some(error);
     Signal::RuntimeError
   }
 
   /// Search for a catch block up the stack, printing the error if no catch is found
-  fn stack_unwind(&mut self, error: &SlError) -> Option<ExecuteResult> {
+  fn stack_unwind(&mut self, error: &LyError) -> Option<ExecuteResult> {
     let mut popped_frames = None;
     let mut stack_top = None;
 
@@ -1709,7 +1729,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   /// Print an error message and the current call stack to the user
-  fn print_error(&mut self, error: &SlError) {
+  fn print_error(&mut self, error: &LyError) {
     let message = error.message;
 
     let stdio = self.io.stdio();

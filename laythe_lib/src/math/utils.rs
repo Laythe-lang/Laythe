@@ -5,7 +5,7 @@ use laythe_core::{
   native::{NativeFun, NativeMeta},
   signature::{Arity, Parameter, ParameterKind},
   value::Value,
-  CallResult, ModuleResult,
+  CallResult, LyResult,
 };
 use laythe_env::{managed::Trace, stdio::StdIo};
 
@@ -32,8 +32,16 @@ const ABS_META: NativeMeta = NativeMeta::new(
   Arity::Fixed(1),
   &[Parameter::new("val", ParameterKind::Number)],
 );
+const REM_META: NativeMeta = NativeMeta::new(
+  "rem",
+  Arity::Fixed(2),
+  &[
+    Parameter::new("val", ParameterKind::Number),
+    Parameter::new("divisor", ParameterKind::Number)
+  ],
+);
 
-pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   export_and_insert(
     hooks,
     self_module,
@@ -74,10 +82,17 @@ pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> ModuleR
     self_module,
     hooks.manage_str(ABS_META.name.to_string()),
     Value::from(hooks.manage(Box::new(Abs()) as Box<dyn NativeFun>)),
+  )?;
+
+  export_and_insert(
+    hooks,
+    self_module,
+    hooks.manage_str(REM_META.name.to_string()),
+    Value::from(hooks.manage(Box::new(Rem()) as Box<dyn NativeFun>)),
   )
 }
 
-pub fn define_math_module(_: &GcHooks, _: &mut Module) -> ModuleResult<()> {
+pub fn define_math_module(_: &GcHooks, _: &mut Module) -> LyResult<()> {
   Ok(())
 }
 
@@ -133,10 +148,23 @@ impl NativeFun for Abs {
   }
 }
 
+#[derive(Clone, Debug, Trace)]
+pub struct Rem();
+
+impl NativeFun for Rem {
+  fn meta(&self) -> &NativeMeta {
+    &REM_META
+  }
+
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
+    Ok(Value::from(args[0].to_num() % args[1].to_num()))
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_native_dependencies, TestContext};
+  use crate::support::{test_native_dependencies, MockedContext};
 
   #[cfg(test)]
   mod sin {
@@ -157,7 +185,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let sin = Sin();
@@ -188,7 +216,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let cos = Cos();
@@ -219,7 +247,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let ln = Ln();

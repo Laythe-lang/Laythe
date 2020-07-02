@@ -1,14 +1,17 @@
-use crate::support::{export_and_insert, to_dyn_method};
+use crate::support::{
+  default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_fun, to_dyn_method,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   iterator::{SlIter, SlIterator},
   module::Module,
-  native::{NativeMeta, NativeMethod},
-  object::{Class, LyVec},
+  native::{NativeFun, NativeMeta, NativeMethod},
+  object::LyVec,
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
+  utils::is_falsey,
   value::{Value, VALUE_NIL},
-  CallResult, ModuleResult,
+  CallResult, LyResult,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -47,16 +50,19 @@ const LIST_REMOVE: NativeMeta = NativeMeta::new(
 const LIST_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
 const LIST_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 
-pub fn declare_list_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
-  let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
-  let class = hooks.manage(Class::new(name));
+const LIST_COLLECT: NativeMeta = NativeMeta::new(
+  "collect",
+  Arity::Fixed(1),
+  &[Parameter::new("iter", ParameterKind::Iter)],
+);
 
-  export_and_insert(hooks, self_module, name, Value::from(class))
+pub fn declare_list_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
+  let class = default_class_inheritance(hooks, package, LIST_CLASS_NAME)?;
+  export_and_insert(hooks, module, class.name, Value::from(class))
 }
 
-pub fn define_list_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
-  let name = hooks.manage_str(String::from(LIST_CLASS_NAME));
-  let mut class = self_module.get_symbol(name).unwrap().to_class();
+pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+  let mut class = load_class_from_module(hooks, module, LIST_CLASS_NAME)?;
 
   class.add_method(
     hooks,
@@ -106,14 +112,22 @@ pub fn define_list_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_HAS.name)),
-    Value::from(to_dyn_method(hooks, ListHas::new())),
+    Value::from(to_dyn_method(hooks, ListHas())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_ITER.name)),
     Value::from(to_dyn_method(hooks, ListIter())),
-  )
+  );
+
+  class.meta().expect("Meta class not set.").add_method(
+    hooks,
+    hooks.manage_str(String::from(LIST_COLLECT.name)),
+    Value::from(to_dyn_fun(hooks, ListCollect())),
+  );
+
+  Ok(())
 }
 
 #[derive(Clone, Debug, Trace)]
@@ -344,19 +358,11 @@ impl NativeMethod for ListClear {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ListHas {
-  meta: &'static NativeMeta,
-}
-
-impl ListHas {
-  fn new() -> Self {
-    Self { meta: &LIST_HAS }
-  }
-}
+struct ListHas();
 
 impl NativeMethod for ListHas {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &LIST_HAS
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
@@ -378,6 +384,27 @@ impl NativeMethod for ListIter {
     let iter = hooks.manage(iter);
 
     Ok(Value::from(iter))
+  }
+}
+
+#[derive(Clone, Debug, Trace)]
+struct ListCollect();
+
+impl NativeFun for ListCollect {
+  fn meta(&self) -> &NativeMeta {
+    &LIST_COLLECT
+  }
+
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
+    let mut iter = args[0].to_iter();
+    let mut list = LyVec::new(&[]);
+
+    while !is_falsey(iter.next(hooks)?) {
+      let current = iter.current();
+      list.push(current);
+    }
+
+    Ok(Value::from(hooks.manage(list)))
   }
 }
 
@@ -443,13 +470,13 @@ mod test {
 
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
     use laythe_env::memory::NO_GC;
 
     #[test]
     fn new() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let hooks = Hooks::new(&mut context);
 
       let list_str = ListStr::new(hooks.manage_str("str".to_string()));
@@ -461,7 +488,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(
+      let mut context = MockedContext::new(
         &gc,
         &[
           Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
@@ -491,7 +518,7 @@ mod test {
 
   mod size {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
     use laythe_core::hooks::Hooks;
 
     #[test]
@@ -506,7 +533,7 @@ mod test {
     fn call() {
       let list_size = ListSize::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let values = &[];
@@ -524,7 +551,7 @@ mod test {
 
   mod push {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -542,7 +569,7 @@ mod test {
     fn call() {
       let list_push = ListPush::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::from(vec![VALUE_NIL, Value::from(10.0)]);
@@ -578,7 +605,7 @@ mod test {
 
   mod pop {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -592,7 +619,7 @@ mod test {
     fn call() {
       let list_pop = ListPop::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::from(vec![Value::from(true)]);
@@ -621,7 +648,7 @@ mod test {
 
   mod remove {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -639,7 +666,7 @@ mod test {
     fn call() {
       let list_remove = ListRemove::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
@@ -671,7 +698,7 @@ mod test {
 
   mod insert {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -693,7 +720,7 @@ mod test {
     fn call() {
       let list_insert = ListInsert::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
@@ -730,7 +757,7 @@ mod test {
 
   mod clear {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -744,7 +771,7 @@ mod test {
     fn call() {
       let list_clear = ListClear::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
@@ -773,21 +800,22 @@ mod test {
 
   mod has {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
-      let list_has = ListHas::new();
+      let list_has = ListHas();
 
-      assert_eq!(list_has.meta.name, "has");
-      assert_eq!(list_has.meta.signature.arity, Arity::Fixed(1));
+      assert_eq!(list_has.meta().name, "has");
+      assert_eq!(list_has.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(list_has.meta().signature.parameters[0].kind, ParameterKind::Any);
     }
 
     #[test]
     fn call() {
-      let list_has = ListHas::new();
+      let list_has = ListHas();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
@@ -814,7 +842,7 @@ mod test {
 
   mod iter {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -827,7 +855,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
       let list_iter = ListIter();
 
@@ -842,6 +870,40 @@ mod test {
           assert_eq!(iter.current(), VALUE_NIL);
           assert_eq!(iter.next(&mut hooks).unwrap(), Value::from(true));
           assert_eq!(iter.current(), VALUE_NIL);
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod collect {
+    use super::*;
+    use crate::support::{test_native_dependencies, MockedContext, test_iter};
+
+    #[test]
+    fn new() {
+      let list_iter = ListCollect();
+
+      assert_eq!(list_iter.meta().name, "collect");
+      assert_eq!(list_iter.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(list_iter.meta().signature.parameters[0].kind, ParameterKind::Iter);
+    }
+
+    #[test]
+    fn call() {
+      let gc = test_native_dependencies();
+      let mut context = MockedContext::new(&gc, &[]);
+      let mut hooks = Hooks::new(&mut context);
+      let list_iter = ListCollect();
+
+      let iter = test_iter();
+      let iter_value = Value::from(hooks.manage(SlIterator::new(iter)));
+
+      let result = list_iter.call(&mut hooks, &[iter_value]);
+      match result {
+        Ok(r) => {
+          let list = r.to_list();
+          assert_eq!(list.len(), 5);
         }
         Err(_) => assert!(false),
       }

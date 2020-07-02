@@ -4,12 +4,13 @@ use laythe_core::{
   module::Module,
   object::{BuiltIn, BuiltInDependencies, BuiltinPrimitives, LyHashMap},
   package::{Import, Package},
-  ModuleResult,
+  LyResult,
 };
 use laythe_env::{
   fs::FsIo,
   io::Io,
-  managed::{Manage, Managed, Trace}, stdio::StdIo,
+  managed::{Manage, Managed, Trace},
+  stdio::StdIo,
 };
 use std::{fmt, mem, path::PathBuf};
 
@@ -58,7 +59,7 @@ impl<I: Io> DepManager<I> {
     hooks: &GcHooks,
     module: Managed<Module>,
     path: Managed<String>,
-  ) -> ModuleResult<Managed<Module>> {
+  ) -> LyResult<Managed<Module>> {
     let mut module_dir = (*module.path).clone();
     module_dir.pop();
 
@@ -125,6 +126,7 @@ impl<I: Io> fmt::Debug for DepManager<I> {
 
 impl<I: Io> Trace for DepManager<I> {
   fn trace(&self) -> bool {
+    self.src_dir.trace();
     self.packages.iter().for_each(|(key, value)| {
       key.trace();
       value.trace();
@@ -134,6 +136,7 @@ impl<I: Io> Trace for DepManager<I> {
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    self.src_dir.trace_debug(stdio);
     self.packages.iter().for_each(|(key, value)| {
       key.trace_debug(stdio);
       value.trace_debug(stdio);

@@ -13,10 +13,9 @@ pub mod token;
 pub mod utils;
 pub mod value;
 
-pub type CallResult = Result<value::Value, SlError>;
-pub type ModuleResult<T> = Result<T, SlError>;
-pub type PackageResult<T> = Result<T, SlError>;
-pub type SlHashSet<K> = HashSet<K, FnvBuildHasher>;
+pub type LyResult<T> = Result<T, LyError>;
+pub type CallResult = LyResult<value::Value>;
+pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;
 
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
@@ -24,12 +23,12 @@ use laythe_env::managed::Managed;
 use std::fmt;
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct SlError {
+pub struct LyError {
   pub message: Managed<String>,
-  inner: Option<Box<SlError>>,
+  inner: Option<Box<LyError>>,
 }
 
-impl SlError {
+impl LyError {
   pub fn new(message: Managed<String>) -> Self {
     Self {
       message,
@@ -38,7 +37,7 @@ impl SlError {
   }
 }
 
-impl fmt::Display for SlError {
+impl fmt::Display for LyError {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "{}", self.message)
   }

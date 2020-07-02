@@ -250,10 +250,7 @@ fn export() -> Result<(), std::io::Error> {
 
 #[test]
 fn expressions() -> Result<(), std::io::Error> {
-  test_file_exits(
-    &vec!["language/expressions/evaluate.ly"],
-    ExecuteResult::Ok,
-  )?;
+  test_file_exits(&vec!["language/expressions/evaluate.ly"], ExecuteResult::Ok)?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
@@ -812,6 +809,38 @@ fn return_test() -> Result<(), std::io::Error> {
   )?;
 
   test_file_exits(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
+fn static_method() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/static_method/arity.ly",
+      "language/static_method/call_bound.ly",
+      "language/static_method/empty_block.ly",
+      "language/static_method/print_bound_method.ly",
+    ],
+    ExecuteResult::Ok,
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/static_method/no_self.ly",
+      "language/static_method/too_many_arguments.ly",
+      "language/static_method/too_many_parameters.ly",
+    ],
+    ExecuteResult::CompileError,
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/static_method/extra_arguments.ly",
+      "language/static_method/missing_arguments.ly",
+      "language/static_method/not_found.ly",
+      "language/static_method/refer_to_name.ly",
+    ],
+    ExecuteResult::RuntimeError,
+  )
 }
 
 #[test]

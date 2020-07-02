@@ -1,18 +1,18 @@
 class Zoo {
   init() {
-    this.aarletk  = 1;
-    this.baboon   = 1;
-    this.cat      = 1;
-    this.donkey   = 1;
-    this.elephant = 1;
-    this.fox      = 1;
+    self.aarletk  = 1;
+    self.baboon   = 1;
+    self.cat      = 1;
+    self.donkey   = 1;
+    self.elephant = 1;
+    self.fox      = 1;
   }
-  ant()    { return this.aarletk; }
-  banana() { return this.baboon; }
-  tuna()   { return this.cat; }
-  hay()    { return this.donkey; }
-  grass()  { return this.elephant; }
-  mouse()  { return this.fox; }
+  ant()    { return self.aarletk; }
+  banana() { return self.baboon; }
+  tuna()   { return self.cat; }
+  hay()    { return self.donkey; }
+  grass()  { return self.elephant; }
+  mouse()  { return self.fox; }
 }
 
 let zoo = Zoo();

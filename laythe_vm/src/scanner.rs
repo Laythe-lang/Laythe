@@ -308,10 +308,17 @@ impl<'a> Scanner<'a> {
         "o" => self.check_keyword(1, "r", TokenKind::Or),
         "p" => self.check_keyword(1, "rint", TokenKind::Print),
         "r" => self.check_keyword(1, "eturn", TokenKind::Return),
-        "s" => self.check_keyword(1, "uper", TokenKind::Super),
+        "s" => match self.nth_char_from(self.start, 1) {
+          Some(c2) => match c2 {
+            "e" => self.check_keyword(2, "lf", TokenKind::Self_),
+            "u" => self.check_keyword(2, "per", TokenKind::Super),
+            "t" => self.check_keyword(2, "atic", TokenKind::Static),
+            _ => TokenKind::Identifier,
+          },
+          None => TokenKind::Identifier,
+        },
         "t" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
-            "h" => self.check_keyword(2, "is", TokenKind::This),
             "r" => match self.nth_char_from(self.start, 2) {
               Some(c3) => match c3 {
                 "u" => self.check_keyword(3, "e", TokenKind::True),
@@ -632,8 +639,12 @@ mod test {
       TokenGen::ALpha(Box::new(|| "super".to_string())),
     );
     map.insert(
-      TokenKind::This,
-      TokenGen::ALpha(Box::new(|| "this".to_string())),
+      TokenKind::Self_,
+      TokenGen::ALpha(Box::new(|| "self".to_string())),
+    );
+    map.insert(
+      TokenKind::Static,
+      TokenGen::ALpha(Box::new(|| "static".to_string())),
     );
     map.insert(
       TokenKind::True,

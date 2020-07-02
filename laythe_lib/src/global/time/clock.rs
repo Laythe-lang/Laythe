@@ -5,17 +5,17 @@ use laythe_core::{
   native::{NativeFun, NativeMeta},
   signature::Arity,
   value::Value,
-  CallResult, ModuleResult,
+  CallResult, LyResult,
 };
 use laythe_env::{managed::Trace, stdio::StdIo};
 use std::time::SystemTime;
 
 const CLOCK_META: NativeMeta = NativeMeta::new("clock", Arity::Fixed(0), &[]);
 
-pub fn declare_clock_funs(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> LyResult<()> {
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(CLOCK_META.name.to_string()),
     Value::from(hooks.manage(Box::new(Clock::new()) as Box<dyn NativeFun>)),
   )
@@ -56,7 +56,7 @@ impl NativeFun for Clock {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_native_dependencies, TestContext};
+  use crate::support::{test_native_dependencies, MockedContext};
 
   #[test]
   fn new() {
@@ -70,7 +70,7 @@ mod test {
   fn call() {
     let clock = Clock::new();
     let gc = test_native_dependencies();
-    let mut context = TestContext::new(&gc, &[]);
+    let mut context = MockedContext::new(&gc, &[]);
     let mut hooks = Hooks::new(&mut context);
 
     let values = &[];

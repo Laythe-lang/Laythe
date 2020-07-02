@@ -1,9 +1,9 @@
 use crate::scanner::Scanner;
 use laythe_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use laythe_core::token::{Token, TokenKind};
-use laythe_core::utils::{copy_string, do_if_some};
+use laythe_core::utils::copy_string;
 use laythe_core::{
-  constants::{INIT, ITER, ITER_VAR, SCRIPT, SUPER, THIS},
+  constants::{INIT, ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::GcHooks,
   module::Module,
   object::{Fun, FunKind},
@@ -97,6 +97,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// ```
   /// use laythe_vm::compiler::{Compiler, Parser};
   /// use laythe_core::module::Module;
+  /// use laythe_core::object::Class;
   /// use laythe_core::hooks::{GcHooks, NoContext};
   /// use laythe_env::io::NativeIo;
   /// use laythe_env::stdio::NativeStdIo;
@@ -111,7 +112,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut hooks = GcHooks::new(&mut context);
   /// let mut parser = Parser::new(NativeStdIo(), &source);
   /// let module = hooks.manage(Module::new(
-  ///  hooks.manage_str("module".to_string()),
+  ///  hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
   ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///
@@ -191,6 +192,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// ```
   /// use laythe_vm::compiler::{Compiler, Parser};
   /// use laythe_core::module::Module;
+  /// use laythe_core::object::Class;
   /// use laythe_core::hooks::{GcHooks, NoContext};
   /// use laythe_env::io::NativeIo;
   /// use laythe_env::stdio::NativeStdIo;
@@ -205,7 +207,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   /// let mut hooks = GcHooks::new(&mut context);
   /// let mut parser = Parser::new(NativeStdIo(), &source);
   /// let module = hooks.manage(Module::new(
-  ///  hooks.manage_str("module".to_string()),
+  ///  hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
   ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///
@@ -375,7 +377,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self
       .parser
-      .consume(TokenKind::RightBrace, "Expect '}' after block.")
+      .consume(TokenKind::RightBrace, "Expected '}' after block.")
   }
 
   /// Parse a try catch block
@@ -383,7 +385,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let start = self.current_chunk().instructions.len();
     self
       .parser
-      .consume(TokenKind::LeftBrace, "Expect '{' after try.");
+      .consume(TokenKind::LeftBrace, "Expected '{' after try.");
 
     self.begin_scope();
     self.block();
@@ -394,10 +396,10 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self
       .parser
-      .consume(TokenKind::Catch, "Expect 'catch' after try block.");
+      .consume(TokenKind::Catch, "Expected 'catch' after try block.");
     self
       .parser
-      .consume(TokenKind::LeftBrace, "Expect '{' after catch.");
+      .consume(TokenKind::LeftBrace, "Expected '{' after catch.");
 
     self.begin_scope();
     self.block();
@@ -412,7 +414,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   fn class_declaration(&mut self) -> u16 {
     self
       .parser
-      .consume(TokenKind::Identifier, "Expect class name.");
+      .consume(TokenKind::Identifier, "Expected class name.");
 
     let class_name = self.parser.previous.clone();
     let name_constant = self.identifer_constant(self.parser.previous.clone());
@@ -423,6 +425,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     let mut class_compiler = self.hooks.manage(ClassCompiler {
       name: self.parser.previous.clone(),
+      fun_kind: None,
       has_super_class: false,
       enclosing: self.current_class,
     });
@@ -431,7 +434,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     if self.parser.match_kind(TokenKind::Less) {
       self
         .parser
-        .consume(TokenKind::Identifier, "Expect superclass name.");
+        .consume(TokenKind::Identifier, "Expected superclass name.");
       self.variable(false);
 
       if class_name.lexeme == self.parser.previous.lexeme {
@@ -456,14 +459,14 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self
       .parser
-      .consume(TokenKind::LeftBrace, "Expect '{' before class body.");
+      .consume(TokenKind::LeftBrace, "Expected '{' before class body.");
     while !self.parser.check(TokenKind::RightBrace) && !self.parser.check(TokenKind::Eof) {
       self.method();
     }
 
     self
       .parser
-      .consume(TokenKind::RightBrace, "Expect '}' after class body.");
+      .consume(TokenKind::RightBrace, "Expected '}' after class body.");
     self.emit_byte(AlignedByteCode::Drop);
 
     if class_compiler.has_super_class {
@@ -476,7 +479,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a function declaration
   fn fun_declaration(&mut self) -> u16 {
-    let global = self.parse_variable("Expect variable name.");
+    let global = self.parse_variable("Expected variable name.");
 
     self.mark_initialized();
     self.function(FunKind::Fun);
@@ -486,7 +489,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a variable declaration
   fn let_declaration(&mut self) -> u16 {
-    let variable = self.parse_variable("Expect variable name.");
+    let variable = self.parse_variable("Expected variable name.");
 
     if self.parser.match_kind(TokenKind::Equal) {
       self.expression();
@@ -496,7 +499,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self.parser.consume(
       TokenKind::Semicolon,
-      "Expect ';' after variable declaration.",
+      "Expected ';' after variable declaration.",
     );
 
     self.define_variable(variable);
@@ -514,20 +517,20 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     fun_compiler
       .parser
-      .consume(TokenKind::LeftParen, "Expect '(' after function name.");
+      .consume(TokenKind::LeftParen, "Expected '(' after function name.");
 
     // parse function parameters
     if !fun_compiler.parser.check(TokenKind::RightParen) {
-      fun_compiler.function_arity();
+      fun_compiler.function_signature();
     }
 
     fun_compiler
       .parser
-      .consume(TokenKind::RightParen, "Expect ')' after parameters.");
+      .consume(TokenKind::RightParen, "Expected ')' after parameters.");
 
     fun_compiler
       .parser
-      .consume(TokenKind::LeftBrace, "Expect '{' before function body.");
+      .consume(TokenKind::LeftBrace, "Expected '{' before function body.");
     fun_compiler.block();
 
     // end compilation of function chunk
@@ -545,19 +548,29 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a method declaration and body
   fn method(&mut self) {
+    let static_method = self.parser.match_kind(TokenKind::Static);
+
     self
       .parser
-      .consume(TokenKind::Identifier, "Expect method name.");
+      .consume(TokenKind::Identifier, "Expected method name.");
     let constant = self.identifer_constant(self.parser.previous.clone());
 
-    let fun_kind = if INIT == self.parser.previous.lexeme {
+    let fun_kind = if static_method {
+      FunKind::StaticMethod
+    } else if INIT == self.parser.previous.lexeme {
       FunKind::Initializer
     } else {
       FunKind::Method
     };
 
+    self.current_class.expect("Class compiler not set").fun_kind = Some(fun_kind);
     self.function(fun_kind);
-    self.emit_byte(AlignedByteCode::Method(constant));
+
+    if static_method {
+      self.emit_byte(AlignedByteCode::StaticMethod(constant));
+    } else {
+      self.emit_byte(AlignedByteCode::Method(constant));
+    }
   }
 
   /// Parse an expression statement
@@ -596,7 +609,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
   /// Parse a variable declaration in a for loop
   fn for_var_declaration(&mut self) -> ForLoop {
-    let variable = self.parse_variable("Expect variable name.");
+    let variable = self.parse_variable("Expected variable name.");
     let variable_token = self.parser.previous.clone();
 
     let style = if self.parser.match_kind(TokenKind::Equal) {
@@ -617,7 +630,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     if let ForLoop::CStyle = style {
       self.parser.consume(
         TokenKind::Semicolon,
-        "Expect ';' after variable declaration.",
+        "Expected ';' after variable declaration.",
       );
     }
 
@@ -649,7 +662,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       self.emit_byte(AlignedByteCode::Drop);
       self
         .parser
-        .consume(TokenKind::RightParen, "Expect ')' after for clauses.");
+        .consume(TokenKind::RightParen, "Expected ')' after for clauses.");
 
       self.emit_loop(loop_start);
       loop_start = increment_start;
@@ -811,7 +824,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let path = self.make_constant(value);
     self
       .parser
-      .consume(TokenKind::Semicolon, "Expect ';' after value.");
+      .consume(TokenKind::Semicolon, "Expected ';' after value.");
 
     if self.scope_depth == 0 {
       self.emit_byte(AlignedByteCode::Import(path));
@@ -828,7 +841,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self.expression();
     self
       .parser
-      .consume(TokenKind::Semicolon, "Expect ';' after value.");
+      .consume(TokenKind::Semicolon, "Expected ';' after value.");
     self.emit_byte(AlignedByteCode::Print)
   }
 
@@ -850,7 +863,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       self.expression();
       self
         .parser
-        .consume(TokenKind::Semicolon, "Expect ',' after return value.");
+        .consume(TokenKind::Semicolon, "Expected ',' after return value.");
       self.emit_byte(AlignedByteCode::Return);
     }
   }
@@ -1020,12 +1033,12 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     // parse function parameters
     if !fun_compiler.parser.check(TokenKind::Pipe) {
-      fun_compiler.function_arity();
+      fun_compiler.function_signature();
     }
 
     fun_compiler
       .parser
-      .consume(TokenKind::Pipe, "Expect '|' after lambda parameters.");
+      .consume(TokenKind::Pipe, "Expected '|' after lambda parameters.");
 
     if fun_compiler.parser.match_kind(TokenKind::LeftBrace) {
       fun_compiler.block();
@@ -1053,7 +1066,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   fn dot(&mut self, can_assign: bool) {
     self
       .parser
-      .consume(TokenKind::Identifier, "Expect property name after '.'.");
+      .consume(TokenKind::Identifier, "Expected property name after '.'.");
     let name = self.identifer_constant(self.parser.previous.clone());
 
     if can_assign && self.parser.match_kind(TokenKind::Equal) {
@@ -1202,7 +1215,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
   }
 
   /// Parse the current functions arity
-  fn function_arity(&mut self) {
+  fn function_signature(&mut self) {
     let mut arity: u16 = 0;
 
     loop {
@@ -1213,7 +1226,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
           .error_at_current("Cannot have more than 255 parameters.");
       }
 
-      let param_constant = self.parse_variable("Expect parameter name.");
+      let param_constant = self.parse_variable("Expected parameter name.");
       self.define_variable(param_constant);
 
       if !self.parser.match_kind(TokenKind::Comma) {
@@ -1229,7 +1242,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let arg_count = self.consume_arguments(TokenKind::RightParen, std::u8::MAX as usize);
     self
       .parser
-      .consume(TokenKind::RightParen, "Expect ')' after arguments");
+      .consume(TokenKind::RightParen, "Expected ')' after arguments");
     arg_count as u8
   }
 
@@ -1238,7 +1251,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     let arg_count = self.consume_arguments(TokenKind::RightBracket, std::u16::MAX as usize);
     self
       .parser
-      .consume(TokenKind::RightBracket, "Expect ']' after arguments");
+      .consume(TokenKind::RightBracket, "Expected ']' after arguments");
     arg_count as u16
   }
 
@@ -1287,16 +1300,29 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
     self.patch_jump(end_jump);
   }
 
-  /// Parse a class's this identifier
-  fn this(&mut self) {
-    if self.current_class.is_none() {
-      self.parser.error("Cannot use 'this' outside of class.");
-      return;
-    }
-
-    self.variable(false);
+  /// Parse a class's self identifier
+  fn self_(&mut self) {
+    self
+      .current_class
+      .map(|class_compiler| class_compiler.fun_kind)
+      .and_then(|fun_kind| {
+        fun_kind.and_then(|fun_kind| match fun_kind {
+          FunKind::Method | FunKind::Initializer => {
+            self.variable(false);
+            Some(())
+          }
+          _ => None,
+        })
+      })
+      .or_else(|| {
+        self
+          .parser
+          .error("Cannot use 'self' outside of class instance methods.");
+        None
+      });
   }
 
+  /// Parse a class' super identifer
   fn super_(&mut self) {
     match self.current_class {
       None => self.parser.error("Cannot use 'super' outside of a class."),
@@ -1311,21 +1337,23 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 
     self
       .parser
-      .consume(TokenKind::Dot, "Expect '.' after 'super'.");
+      .consume(TokenKind::Dot, "Expected '.' after 'super'.");
     self
       .parser
-      .consume(TokenKind::Identifier, "Expect superclass method name.");
+      .consume(TokenKind::Identifier, "Expected superclass method name.");
     let name = self.identifer_constant(self.parser.previous.clone());
 
+    // load self on top of stack
     self.named_variable(
       Token {
-        lexeme: THIS.to_string(),
-        kind: TokenKind::This,
+        lexeme: SELF.to_string(),
+        kind: TokenKind::Self_,
         line: self.parser.previous.line,
       },
       false,
     );
 
+    // check if we immediately invoke super
     if self.parser.match_kind(TokenKind::LeftParen) {
       let arg_count = self.call_arguments();
       self.named_variable(
@@ -1503,7 +1531,7 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
       Act::Or => self.or(),
       Act::String => self.string(),
       Act::Super => self.super_(),
-      Act::This => self.this(),
+      Act::Self_ => self.self_(),
       Act::Unary => self.unary(),
       Act::Variable => self.variable(can_assign),
     }
@@ -1600,13 +1628,13 @@ impl<'a, 's, I: Io + Clone> Compiler<'a, 's, I> {
 /// Get the first local for a given function kind
 fn first_local(fun_kind: FunKind) -> Local {
   match fun_kind {
-    FunKind::Fun => Local {
+    FunKind::Fun | FunKind::StaticMethod | FunKind::Script => Local {
       name: Option::None,
       depth: 0,
       is_captured: false,
     },
-    _ => Local {
-      name: Some("this".to_string()),
+    FunKind::Method | FunKind::Initializer => Local {
+      name: Some("self".to_string()),
       depth: 0,
       is_captured: false,
     },
@@ -1614,7 +1642,7 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 50] = [
+const RULES_TABLE: [ParseRule; 51] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
@@ -1699,8 +1727,10 @@ const RULES_TABLE: [ParseRule; 50] = [
   // TOKEN_RETURN
   ParseRule::new(Some(Act::Super), None, Precedence::None),
   // TOKEN_SUPER
-  ParseRule::new(Some(Act::This), None, Precedence::None),
-  // TOKEN_THIS
+  ParseRule::new(Some(Act::Self_), None, Precedence::None),
+  // TOKEN_SELF
+  ParseRule::new(None, None, Precedence::None),
+  // TOKEN_STATIC
   ParseRule::new(Some(Act::Literal), None, Precedence::None),
   // TOKEN_TRUE
   ParseRule::new(None, None, Precedence::None),
@@ -1725,20 +1755,21 @@ const fn get_rule(kind: TokenKind) -> &'static ParseRule {
 #[derive(Debug, Clone)]
 pub struct ClassCompiler {
   enclosing: Option<Managed<ClassCompiler>>,
+  fun_kind: Option<FunKind>,
   has_super_class: bool,
   name: Token,
 }
 
 impl Trace for ClassCompiler {
   fn trace(&self) -> bool {
-    do_if_some(self.enclosing, |enclosing| {
+    self.enclosing.map(|enclosing| {
       enclosing.trace();
     });
     true
   }
 
   fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
-    do_if_some(self.enclosing, |enclosing| {
+    self.enclosing.map(|enclosing| {
       enclosing.trace_debug(stdio);
     });
     true
@@ -1944,7 +1975,7 @@ enum Act {
   Or,
   String,
   Super,
-  This,
+  Self_,
   Unary,
   Variable,
 }
@@ -2309,15 +2340,15 @@ mod test {
     let example = "
       class A {
         init() {
-          this.field = true;
+          self.field = true;
         }
 
         getField() {
-          return this.field;
+          return self.field;
         }
 
         getGetField() {
-          return this.getField();
+          return self.getField();
         }
       }
     "
@@ -2366,6 +2397,57 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(5)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn class_with_static_methods() {
+    let example = "
+      class A {
+        static sayHi() {
+          return 'hi';
+        }
+
+        static sayBye() {
+          return 'bye';
+        }
+      }
+    "
+    .to_string();
+
+    let mut gc = Gc::new(Box::new(NativeStdIo()));
+    let fun = test_compile(example, &mut gc);
+
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Fun((
+          2,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::StaticMethod(1)),
+        ByteCodeTest::Fun((
+          4,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::StaticMethod(3)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),

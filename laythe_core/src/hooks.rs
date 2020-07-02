@@ -1,6 +1,6 @@
 use crate::{
   value::{Value, VALUE_NIL},
-  CallResult, SlError,
+  CallResult, LyError,
 };
 use laythe_env::{
   managed::{Manage, Managed, Trace},
@@ -73,12 +73,12 @@ impl<'a> Hooks<'a> {
 
   /// Request a laythe error object be generated with the provided message
   pub fn error(&self, message: String) -> CallResult {
-    Err(SlError::new(self.manage_str(message)))
+    Err(LyError::new(self.manage_str(message)))
   }
 
   /// Request a laythe error object be generated with the provided message
-  pub fn make_error(&self, message: String) -> SlError {
-    SlError::new(self.manage_str(message))
+  pub fn make_error(&self, message: String) -> LyError {
+    LyError::new(self.manage_str(message))
   }
 
   /// Request an object be managed by the context's garbage collector
@@ -149,12 +149,12 @@ impl<'a> GcHooks<'a> {
 
   /// Request a laythe error object be generated with the provided message
   pub fn error(&self, message: String) -> CallResult {
-    Err(SlError::new(self.manage_str(message)))
+    Err(LyError::new(self.manage_str(message)))
   }
 
   /// Request a laythe error object be generated with the provided message
-  pub fn make_error(&self, message: String) -> SlError {
-    SlError::new(self.manage_str(message))
+  pub fn make_error(&self, message: String) -> LyError {
+    LyError::new(self.manage_str(message))
   }
 
   /// Request an object be managed by the context's garbage collector

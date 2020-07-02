@@ -1,39 +1,35 @@
-use crate::support::{export_and_insert, to_dyn_method};
+use crate::support::{
+  default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_method,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  object::Class,
   package::Package,
   signature::Arity,
   value::{Value, VALUE_TRUE},
-  CallResult, ModuleResult,
+  CallResult, LyResult,
 };
 use laythe_env::{managed::Trace, stdio::StdIo};
 
 pub const BOOL_CLASS_NAME: &'static str = "Bool";
 const BOOL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 
-pub fn declare_bool_class(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
-  let name = hooks.manage_str(String::from(BOOL_CLASS_NAME));
-  let class = hooks.manage(Class::new(name));
-
-  export_and_insert(hooks, self_module, name, Value::from(class))
+pub fn declare_bool_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
+  let bool_class = default_class_inheritance(hooks, package, BOOL_CLASS_NAME)?;
+  export_and_insert(hooks, module, bool_class.name, Value::from(bool_class))
 }
 
-pub fn define_bool_class(hooks: &GcHooks, self_module: &Module, _: &Package) {
-  let name = hooks.manage_str(String::from(BOOL_CLASS_NAME));
-  let mut class = self_module
-    .import(hooks)
-    .get_field(&name)
-    .unwrap()
-    .to_class();
+pub fn define_bool_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+  let mut bool_class = load_class_from_module(hooks, module, BOOL_CLASS_NAME)?;
 
-  class.add_method(
+  bool_class.add_method(
     &hooks,
     hooks.manage_str(String::from(BOOL_STR.name)),
     Value::from(to_dyn_method(hooks, BoolStr())),
   );
+
+  Ok(())
 }
 
 #[derive(Clone, Debug, Trace)]
@@ -59,7 +55,7 @@ mod test {
 
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -73,7 +69,7 @@ mod test {
     fn call() {
       let bool_str = BoolStr();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let b_true = Value::from(true);

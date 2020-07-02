@@ -32,7 +32,7 @@ mod unboxed {
   use crate::{
     iterator::SlIterator,
     native::{NativeFun, NativeMethod},
-    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, Method, LyHashMap, LyVec, Upvalue},
+    object::{Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Managed, Trace},
@@ -328,7 +328,6 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::Fun;
     /// use laythe_core::module::Module;
-    /// use laythe_core::arity::ArityKind;
     /// use laythe_core::chunk::Chunk;
     /// use laythe_core::hooks::{Hooks, NoContext};
     /// use laythe_env::memory::Gc;
@@ -377,7 +376,6 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Fun};
-    /// use laythe_core::arity::ArityKind;
     /// use laythe_env::memory::{Gc, NO_GC};
     /// use laythe_core::module::Module;
     /// use laythe_core::chunk::Chunk;
@@ -411,7 +409,6 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Method, Fun};
-    /// use laythe_core::arity::ArityKind;
     /// use laythe_core::module::Module;
     /// use laythe_env::memory::{Gc, NO_GC};
     /// use laythe_core::chunk::Chunk;
@@ -478,7 +475,7 @@ mod unboxed {
     /// use laythe_env::managed::{Managed, Allocation, make_managed};
     ///
     /// let (name, name_alloc) = make_managed("example".to_string());
-    /// let (class, class_alloc) = make_managed(Class::new(name));
+    /// let (class, class_alloc) = make_managed(Class::bare(name));
     ///
     /// let value = Value::Class(class);
     /// assert_eq!(value.to_class().name, name);
@@ -499,7 +496,7 @@ mod unboxed {
     /// use laythe_env::managed::{Managed, Allocation, make_managed};
     ///
     /// let (name, name_alloc) = make_managed("example".to_string());
-    /// let (class, class_alloc) = make_managed(Class::new(name));
+    /// let (class, class_alloc) = make_managed(Class::bare(name));
     /// let (instance, instance_alloc) = make_managed(Instance::new(class));
     ///
     /// let value = Value::Instance(instance);
@@ -543,27 +540,6 @@ mod unboxed {
         Value::Upvalue(_) => "upvalue".to_string(),
         Value::NativeFun(_) => "native function".to_string(),
         Value::NativeMethod(_) => "native method".to_string(),
-      }
-    }
-
-    /// Get the class associated with this value
-    pub fn value_class(&self, builtin: &BuiltinPrimitives) -> Managed<Class> {
-      match self {
-        Value::Nil => builtin.nil,
-        Value::Bool(_) => builtin.bool,
-        Value::Number(_) => builtin.number,
-        Value::String(_) => builtin.string,
-        Value::List(_) => builtin.list,
-        Value::Map(_) => builtin.map,
-        Value::Fun(_) => panic!("TODO"),
-        Value::Closure(_) => builtin.closure,
-        Value::Method(_) => builtin.method,
-        Value::Class(_) => panic!("TODO"),
-        Value::Instance(instance) => instance.class,
-        Value::Iter(_) => builtin.iter,
-        Value::Upvalue(upvalue) => upvalue.value().value_class(builtin),
-        Value::NativeFun(_) => builtin.native_fun,
-        Value::NativeMethod(_) => builtin.native_method,
       }
     }
 
@@ -908,7 +884,7 @@ mod boxed {
   use crate::{
     iterator::SlIterator,
     native::{NativeFun, NativeMethod},
-    object::{BuiltinPrimitives, Class, Closure, Fun, Instance, Method, LyHashMap, LyVec, Upvalue},
+    object::{Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Allocation, Manage, Managed, Trace},
@@ -1200,27 +1176,6 @@ mod boxed {
         ValueVariant::NativeMethod => "native method".to_string(),
       }
     }
-
-    /// Get the class associated with this value
-    pub fn value_class(&self, builtin: &BuiltinPrimitives) -> Managed<Class> {
-      match self.kind() {
-        ValueVariant::Nil => builtin.nil,
-        ValueVariant::Bool => builtin.bool,
-        ValueVariant::Number => builtin.number,
-        ValueVariant::String => builtin.string,
-        ValueVariant::List => builtin.list,
-        ValueVariant::Map => builtin.map,
-        ValueVariant::Fun => panic!("TODO"),
-        ValueVariant::Closure => builtin.closure,
-        ValueVariant::Method => builtin.method,
-        ValueVariant::Class => builtin.class,
-        ValueVariant::Instance => self.to_instance().class,
-        ValueVariant::Iter => builtin.iter,
-        ValueVariant::Upvalue => self.to_upvalue().value().value_class(builtin),
-        ValueVariant::NativeFun => builtin.native_fun,
-        ValueVariant::NativeMethod => builtin.native_method,
-      }
-    }
   }
 
   impl Trace for Value {
@@ -1482,14 +1437,14 @@ mod test {
   }
 
   fn test_module() -> (Allocs, Managed<Module>) {
-    let (allocs_string, name) = test_string();
+    let (allocs_class, class) = test_class();
     let (allocs_path, path) = test_path();
-    let mut alloc = Box::new(Allocation::new(Module::new(name, path)));
+    let mut alloc = Box::new(Allocation::new(Module::new(class, path)));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
     let mut allocs: Allocs = vec![alloc];
-    allocs.extend(allocs_string);
+    allocs.extend(allocs_class);
     allocs.extend(allocs_path);
     (allocs, managed)
   }
@@ -1527,7 +1482,7 @@ mod test {
   fn test_class() -> (Allocs, Managed<Class>) {
     let (allocs_string, string) = test_string();
 
-    let class = Class::new(string);
+    let class = Class::bare(string);
     let mut alloc = Box::new(Allocation::new(class));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 

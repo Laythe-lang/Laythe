@@ -1,6 +1,6 @@
 class Foo {
   sayName(a) {
-    print this.name;
+    print self.name;
     print a;
   }
 }

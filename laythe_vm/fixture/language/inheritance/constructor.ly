@@ -1,10 +1,10 @@
 class A {
   init(param) {
-    this.field = param;
+    self.field = param;
   }
 
   test() {
-    return this.field;
+    return self.field;
   }
 }
 

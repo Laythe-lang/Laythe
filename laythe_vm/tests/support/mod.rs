@@ -51,6 +51,8 @@ pub fn assert_files_exit<I: Io + 'static>(
   Ok(())
 }
 
+// this seems like a compiler bug? this is used in language.rs
+#[allow(dead_code)]
 pub fn assert_file_exit_and_stdio(
   path: &str,
   file_path: &str,

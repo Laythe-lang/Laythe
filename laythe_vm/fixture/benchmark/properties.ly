@@ -1,69 +1,69 @@
-// This benchmark stresses both field and method lookup.
+// self benchmark stresses both field and method lookup.
 
 class Foo {
   init() {
-    this.field0 = 1;
-    this.field1 = 1;
-    this.field2 = 1;
-    this.field3 = 1;
-    this.field4 = 1;
-    this.field5 = 1;
-    this.field6 = 1;
-    this.field7 = 1;
-    this.field8 = 1;
-    this.field9 = 1;
-    this.field10 = 1;
-    this.field11 = 1;
-    this.field12 = 1;
-    this.field13 = 1;
-    this.field14 = 1;
-    this.field15 = 1;
-    this.field16 = 1;
-    this.field17 = 1;
-    this.field18 = 1;
-    this.field19 = 1;
-    this.field20 = 1;
-    this.field21 = 1;
-    this.field22 = 1;
-    this.field23 = 1;
-    this.field24 = 1;
-    this.field25 = 1;
-    this.field26 = 1;
-    this.field27 = 1;
-    this.field28 = 1;
-    this.field29 = 1;
+    self.field0 = 1;
+    self.field1 = 1;
+    self.field2 = 1;
+    self.field3 = 1;
+    self.field4 = 1;
+    self.field5 = 1;
+    self.field6 = 1;
+    self.field7 = 1;
+    self.field8 = 1;
+    self.field9 = 1;
+    self.field10 = 1;
+    self.field11 = 1;
+    self.field12 = 1;
+    self.field13 = 1;
+    self.field14 = 1;
+    self.field15 = 1;
+    self.field16 = 1;
+    self.field17 = 1;
+    self.field18 = 1;
+    self.field19 = 1;
+    self.field20 = 1;
+    self.field21 = 1;
+    self.field22 = 1;
+    self.field23 = 1;
+    self.field24 = 1;
+    self.field25 = 1;
+    self.field26 = 1;
+    self.field27 = 1;
+    self.field28 = 1;
+    self.field29 = 1;
   }
 
-  method0() { return this.field0; }
-  method1() { return this.field1; }
-  method2() { return this.field2; }
-  method3() { return this.field3; }
-  method4() { return this.field4; }
-  method5() { return this.field5; }
-  method6() { return this.field6; }
-  method7() { return this.field7; }
-  method8() { return this.field8; }
-  method9() { return this.field9; }
-  method10() { return this.field10; }
-  method11() { return this.field11; }
-  method12() { return this.field12; }
-  method13() { return this.field13; }
-  method14() { return this.field14; }
-  method15() { return this.field15; }
-  method16() { return this.field16; }
-  method17() { return this.field17; }
-  method18() { return this.field18; }
-  method19() { return this.field19; }
-  method20() { return this.field20; }
-  method21() { return this.field21; }
-  method22() { return this.field22; }
-  method23() { return this.field23; }
-  method24() { return this.field24; }
-  method25() { return this.field25; }
-  method26() { return this.field26; }
-  method27() { return this.field27; }
-  method28() { return this.field28; }
-  method29() { return this.field29; }
+  method0() { return self.field0; }
+  method1() { return self.field1; }
+  method2() { return self.field2; }
+  method3() { return self.field3; }
+  method4() { return self.field4; }
+  method5() { return self.field5; }
+  method6() { return self.field6; }
+  method7() { return self.field7; }
+  method8() { return self.field8; }
+  method9() { return self.field9; }
+  method10() { return self.field10; }
+  method11() { return self.field11; }
+  method12() { return self.field12; }
+  method13() { return self.field13; }
+  method14() { return self.field14; }
+  method15() { return self.field15; }
+  method16() { return self.field16; }
+  method17() { return self.field17; }
+  method18() { return self.field18; }
+  method19() { return self.field19; }
+  method20() { return self.field20; }
+  method21() { return self.field21; }
+  method22() { return self.field22; }
+  method23() { return self.field23; }
+  method24() { return self.field24; }
+  method25() { return self.field25; }
+  method26() { return self.field26; }
+  method27() { return self.field27; }
+  method28() { return self.field28; }
+  method29() { return self.field29; }
 }
 
 let foo = Foo();

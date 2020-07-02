@@ -1,4 +1,4 @@
-use crate::{hooks::GcHooks, module::Module, object::LyHashMap, PackageResult};
+use crate::{hooks::GcHooks, module::Module, object::LyHashMap, LyResult};
 use hashbrown::hash_map::{Entry, Iter};
 use laythe_env::{
   managed::{Manage, Managed, Trace},
@@ -21,8 +21,9 @@ impl Import {
     self.0.first().copied()
   }
 
-  pub fn from_strs(hooks: &GcHooks, path: &str) -> Self {
+  pub fn from_str(hooks: &GcHooks, path: &str) -> Self {
     let path = path
+      .trim_end_matches(".ly")
       .split('/')
       .map(|segment| hooks.manage_str(String::from(segment)))
       .collect();
@@ -75,11 +76,12 @@ impl Package {
   }
 
   /// Add a module to this package
-  pub fn add_module(&mut self, hooks: &GcHooks, module: Managed<Module>) -> PackageResult<()> {
-    match self.entities.entry(module.name) {
+  pub fn add_module(&mut self, hooks: &GcHooks, module: Managed<Module>) -> LyResult<()> {
+    match self.entities.entry(module.name()) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
         "Cannot add module {} to package {}",
-        module.name, self.name
+        module.name(),
+        self.name
       ))),
       Entry::Vacant(entry) => {
         entry.insert(PackageEntity::Module(module));
@@ -89,11 +91,7 @@ impl Package {
   }
 
   /// Add a sub package to this package
-  pub fn add_package(
-    &mut self,
-    hooks: &GcHooks,
-    sub_package: Managed<Package>,
-  ) -> PackageResult<()> {
+  pub fn add_package(&mut self, hooks: &GcHooks, sub_package: Managed<Package>) -> LyResult<()> {
     match self.entities.entry(sub_package.name) {
       Entry::Occupied(_) => Err(hooks.make_error(format!(
         "Cannot add sub package {} to package {}",
@@ -113,7 +111,7 @@ impl Package {
 
   /// Get a set of symbols from this package using a requested import. This
   /// operation can fail if some or all of the symbols are not found.
-  pub fn import(&self, hooks: &GcHooks, import: Import) -> PackageResult<Managed<Module>> {
+  pub fn import(&self, hooks: &GcHooks, import: Import) -> LyResult<Managed<Module>> {
     if import.0.is_empty() {
       panic!("No path in import");
     }
@@ -127,12 +125,7 @@ impl Package {
 
   /// Get a set of symbols from this packages using a requested. This method
   /// is used internally to track how far down the import path has currently been resolved
-  fn _import(
-    &self,
-    hooks: &GcHooks,
-    depth: usize,
-    import: Import,
-  ) -> PackageResult<Managed<Module>> {
+  fn _import(&self, hooks: &GcHooks, depth: usize, import: Import) -> LyResult<Managed<Module>> {
     if depth >= import.0.len() {
       return Err(hooks.make_error(format!("Could not resolve module {}", import.path_str())));
     }
@@ -208,6 +201,8 @@ impl Manage for Package {
 
 #[cfg(test)]
 mod test {
+  use crate::object::Class;
+
   #[test]
   fn new() {
     use crate::package::Package;
@@ -242,7 +237,7 @@ mod test {
 
     let mut package = Package::new(hooks.manage_str("package".to_string()));
     let module = hooks.manage(Module::new(
-      hooks.manage_str("module".to_string()),
+      hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
       hooks.manage(PathBuf::from("self/module.ly")),
     ));
 
@@ -300,8 +295,8 @@ mod test {
     let mut package = Package::new(hooks.manage_str("my_package".to_string()));
     assert!(package.add_module(&hooks, module).is_ok());
 
-    let successful = Import::from_strs(&hooks, "my_package/my_module");
-    let failing = Import::from_strs(&hooks, "my_package/not_my_module");
+    let successful = Import::from_str(&hooks, "my_package/my_module");
+    let failing = Import::from_str(&hooks, "my_package/not_my_module");
 
     let symbols1 = package.import(&hooks, successful);
     let symbols2 = package.import(&hooks, failing);

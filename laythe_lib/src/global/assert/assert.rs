@@ -5,7 +5,7 @@ use laythe_core::{
   native::{NativeFun, NativeMeta},
   signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
-  CallResult, ModuleResult,
+  CallResult, LyResult,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -34,7 +34,7 @@ const ASSERTNE_META: NativeMeta = NativeMeta::new(
   ],
 );
 
-pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> ModuleResult<()> {
+pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   let str_name = hooks.manage_str("str".to_string());
 
   export_and_insert(
@@ -165,7 +165,7 @@ impl NativeFun for AssertNe {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_native_dependencies, TestContext};
+  use crate::support::{test_native_dependencies, MockedContext};
   use laythe_env::memory::NO_GC;
 
   #[cfg(test)]
@@ -188,7 +188,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let assert = Assert::new(hooks.manage_str("str".to_string()));
@@ -227,7 +227,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
       let assert_eq = AssertEq::new(hooks.manage_str("str".to_string()));
 
@@ -266,7 +266,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
       let assert_eq = AssertNe::new(hooks.manage_str("str".to_string()));
 
