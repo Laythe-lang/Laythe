@@ -1,4 +1,4 @@
-use crate::value::{Value, ValueVariant};
+use crate::value::{Value, ValueKind};
 use std::fmt::Display;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -96,18 +96,18 @@ impl ParameterKind {
     }
 
     match (self, value.kind()) {
-      (ParameterKind::Bool, ValueVariant::Bool) => true,
-      (ParameterKind::Number, ValueVariant::Number) => true,
-      (ParameterKind::String, ValueVariant::String) => true,
-      (ParameterKind::List, ValueVariant::List) => true,
-      (ParameterKind::Map, ValueVariant::Map) => true,
-      (ParameterKind::Class, ValueVariant::Class) => true,
-      (ParameterKind::Instance, ValueVariant::Instance) => true,
-      (ParameterKind::Iter, ValueVariant::Iter) => true,
-      (ParameterKind::Fun, ValueVariant::Closure) => true,
-      (ParameterKind::Fun, ValueVariant::Method) => true,
-      (ParameterKind::Fun, ValueVariant::NativeFun) => true,
-      (ParameterKind::Fun, ValueVariant::NativeMethod) => true,
+      (ParameterKind::Bool, ValueKind::Bool) => true,
+      (ParameterKind::Number, ValueKind::Number) => true,
+      (ParameterKind::String, ValueKind::String) => true,
+      (ParameterKind::List, ValueKind::List) => true,
+      (ParameterKind::Map, ValueKind::Map) => true,
+      (ParameterKind::Class, ValueKind::Class) => true,
+      (ParameterKind::Instance, ValueKind::Instance) => true,
+      (ParameterKind::Iter, ValueKind::Iter) => true,
+      (ParameterKind::Fun, ValueKind::Closure) => true,
+      (ParameterKind::Fun, ValueKind::Method) => true,
+      (ParameterKind::Fun, ValueKind::NativeFun) => true,
+      (ParameterKind::Fun, ValueKind::NativeMethod) => true,
       _ => false,
     }
   }
@@ -116,21 +116,21 @@ impl ParameterKind {
 impl From<Value> for ParameterKind {
   fn from(value: Value) -> Self {
     match value.kind() {
-      ValueVariant::Bool => ParameterKind::Bool,
-      ValueVariant::Nil => ParameterKind::Nil,
-      ValueVariant::Number => ParameterKind::Number,
-      ValueVariant::String => ParameterKind::String,
-      ValueVariant::List => ParameterKind::List,
-      ValueVariant::Map => ParameterKind::Map,
-      ValueVariant::Fun => ParameterKind::Fun,
-      ValueVariant::Closure => ParameterKind::Fun,
-      ValueVariant::Class => ParameterKind::Class,
-      ValueVariant::Instance => ParameterKind::Instance,
-      ValueVariant::Iter => ParameterKind::Iter,
-      ValueVariant::Method => ParameterKind::Fun,
-      ValueVariant::NativeFun => ParameterKind::Fun,
-      ValueVariant::NativeMethod => ParameterKind::Fun,
-      ValueVariant::Upvalue => panic!("Should not pass in upvalue directly"),
+      ValueKind::Bool => ParameterKind::Bool,
+      ValueKind::Nil => ParameterKind::Nil,
+      ValueKind::Number => ParameterKind::Number,
+      ValueKind::String => ParameterKind::String,
+      ValueKind::List => ParameterKind::List,
+      ValueKind::Map => ParameterKind::Map,
+      ValueKind::Fun => ParameterKind::Fun,
+      ValueKind::Closure => ParameterKind::Fun,
+      ValueKind::Class => ParameterKind::Class,
+      ValueKind::Instance => ParameterKind::Instance,
+      ValueKind::Iter => ParameterKind::Iter,
+      ValueKind::Method => ParameterKind::Fun,
+      ValueKind::NativeFun => ParameterKind::Fun,
+      ValueKind::NativeMethod => ParameterKind::Fun,
+      ValueKind::Upvalue => panic!("Should not pass in upvalue directly"),
     }
   }
 }

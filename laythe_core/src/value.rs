@@ -2,7 +2,7 @@ pub struct Nil();
 
 /// Enum of value types in laythe
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
-pub enum ValueVariant {
+pub enum ValueKind {
   Bool,
   Nil,
   Number,
@@ -880,7 +880,7 @@ mod unboxed {
 
 #[cfg(feature = "nan_boxing")]
 mod boxed {
-  use super::ValueVariant;
+  use super::ValueKind;
   use crate::{
     iterator::SlIterator,
     native::{NativeFun, NativeMethod},
@@ -1108,35 +1108,35 @@ mod boxed {
     }
 
     #[inline]
-    pub fn kind(&self) -> ValueVariant {
+    pub fn kind(&self) -> ValueKind {
       if self.is_num() {
-        return ValueVariant::Number;
+        return ValueKind::Number;
       }
 
-      let top_bit = (self.0 >> 63) as u8;
-      let lower_byte = self.0 as u8;
+      let top_bit = self.0 < BIT_SIGN;
+      let lower_byte = self.0 as u8 & 0x7;
 
-      if top_bit == 0 {
-        match lower_byte & 0x07 {
-          1 => ValueVariant::Nil,
-          2 => ValueVariant::Bool,
-          3 => ValueVariant::Bool,
-          4 => ValueVariant::String,
-          5 => ValueVariant::List,
-          6 => ValueVariant::Map,
-          7 => ValueVariant::Closure,
+      if top_bit {
+        match lower_byte {
+          1 => ValueKind::Nil,
+          2 => ValueKind::Bool,
+          3 => ValueKind::Bool,
+          4 => ValueKind::String,
+          5 => ValueKind::List,
+          6 => ValueKind::Map,
+          7 => ValueKind::Closure,
           _ => panic!("value kind failed."),
         }
       } else {
-        match lower_byte & 0x07 {
-          0 => ValueVariant::Fun,
-          1 => ValueVariant::Class,
-          2 => ValueVariant::Instance,
-          3 => ValueVariant::Method,
-          4 => ValueVariant::Iter,
-          5 => ValueVariant::NativeFun,
-          6 => ValueVariant::NativeMethod,
-          7 => ValueVariant::Upvalue,
+        match lower_byte {
+          0 => ValueKind::Fun,
+          1 => ValueKind::Class,
+          2 => ValueKind::Instance,
+          3 => ValueKind::Method,
+          4 => ValueKind::Iter,
+          5 => ValueKind::NativeFun,
+          6 => ValueKind::NativeMethod,
+          7 => ValueKind::Upvalue,
           _ => panic!("value kind failed."),
         }
       }
@@ -1159,21 +1159,21 @@ mod boxed {
     /// assert_eq!(string.value_type(), "string");
     pub fn value_type(&self) -> String {
       match self.kind() {
-        ValueVariant::Nil => "nil".to_string(),
-        ValueVariant::Bool => "bool".to_string(),
-        ValueVariant::Number => "number".to_string(),
-        ValueVariant::String => "string".to_string(),
-        ValueVariant::List => "list".to_string(),
-        ValueVariant::Map => "map".to_string(),
-        ValueVariant::Fun => "function".to_string(),
-        ValueVariant::Closure => "closure".to_string(),
-        ValueVariant::Method => "method".to_string(),
-        ValueVariant::Class => "class".to_string(),
-        ValueVariant::Instance => "instance".to_string(),
-        ValueVariant::Iter => "iterator".to_string(),
-        ValueVariant::Upvalue => "upvalue".to_string(),
-        ValueVariant::NativeFun => "native function".to_string(),
-        ValueVariant::NativeMethod => "native method".to_string(),
+        ValueKind::Nil => "nil".to_string(),
+        ValueKind::Bool => "bool".to_string(),
+        ValueKind::Number => "number".to_string(),
+        ValueKind::String => "string".to_string(),
+        ValueKind::List => "list".to_string(),
+        ValueKind::Map => "map".to_string(),
+        ValueKind::Fun => "function".to_string(),
+        ValueKind::Closure => "closure".to_string(),
+        ValueKind::Method => "method".to_string(),
+        ValueKind::Class => "class".to_string(),
+        ValueKind::Instance => "instance".to_string(),
+        ValueKind::Iter => "iterator".to_string(),
+        ValueKind::Upvalue => "upvalue".to_string(),
+        ValueKind::NativeFun => "native function".to_string(),
+        ValueKind::NativeMethod => "native method".to_string(),
       }
     }
   }
@@ -1181,35 +1181,35 @@ mod boxed {
   impl Trace for Value {
     fn trace(&self) -> bool {
       match self.kind() {
-        ValueVariant::String => self.to_str().trace(),
-        ValueVariant::List => self.to_list().trace(),
-        ValueVariant::Map => self.to_map().trace(),
-        ValueVariant::Fun => self.to_fun().trace(),
-        ValueVariant::Closure => self.to_closure().trace(),
-        ValueVariant::Method => self.to_method().trace(),
-        ValueVariant::Class => self.to_class().trace(),
-        ValueVariant::Instance => self.to_instance().trace(),
-        ValueVariant::Iter => self.to_iter().trace(),
-        ValueVariant::Upvalue => self.to_upvalue().trace(),
-        ValueVariant::NativeFun => self.to_native_fun().trace(),
-        ValueVariant::NativeMethod => self.to_native_method().trace(),
+        ValueKind::String => self.to_str().trace(),
+        ValueKind::List => self.to_list().trace(),
+        ValueKind::Map => self.to_map().trace(),
+        ValueKind::Fun => self.to_fun().trace(),
+        ValueKind::Closure => self.to_closure().trace(),
+        ValueKind::Method => self.to_method().trace(),
+        ValueKind::Class => self.to_class().trace(),
+        ValueKind::Instance => self.to_instance().trace(),
+        ValueKind::Iter => self.to_iter().trace(),
+        ValueKind::Upvalue => self.to_upvalue().trace(),
+        ValueKind::NativeFun => self.to_native_fun().trace(),
+        ValueKind::NativeMethod => self.to_native_method().trace(),
         _ => true,
       }
     }
     fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
       match self.kind() {
-        ValueVariant::String => self.to_str().trace_debug(stdio),
-        ValueVariant::List => self.to_list().trace_debug(stdio),
-        ValueVariant::Map => self.to_map().trace_debug(stdio),
-        ValueVariant::Fun => self.to_fun().trace_debug(stdio),
-        ValueVariant::Closure => self.to_closure().trace_debug(stdio),
-        ValueVariant::Method => self.to_method().trace_debug(stdio),
-        ValueVariant::Class => self.to_class().trace_debug(stdio),
-        ValueVariant::Instance => self.to_instance().trace_debug(stdio),
-        ValueVariant::Iter => self.to_iter().trace_debug(stdio),
-        ValueVariant::Upvalue => self.to_upvalue().trace_debug(stdio),
-        ValueVariant::NativeFun => self.to_native_fun().trace_debug(stdio),
-        ValueVariant::NativeMethod => self.to_native_method().trace_debug(stdio),
+        ValueKind::String => self.to_str().trace_debug(stdio),
+        ValueKind::List => self.to_list().trace_debug(stdio),
+        ValueKind::Map => self.to_map().trace_debug(stdio),
+        ValueKind::Fun => self.to_fun().trace_debug(stdio),
+        ValueKind::Closure => self.to_closure().trace_debug(stdio),
+        ValueKind::Method => self.to_method().trace_debug(stdio),
+        ValueKind::Class => self.to_class().trace_debug(stdio),
+        ValueKind::Instance => self.to_instance().trace_debug(stdio),
+        ValueKind::Iter => self.to_iter().trace_debug(stdio),
+        ValueKind::Upvalue => self.to_upvalue().trace_debug(stdio),
+        ValueKind::NativeFun => self.to_native_fun().trace_debug(stdio),
+        ValueKind::NativeMethod => self.to_native_method().trace_debug(stdio),
         _ => true,
       }
     }
@@ -1316,11 +1316,11 @@ mod boxed {
     /// Implement display for value in laythe
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
       match self.kind() {
-        ValueVariant::Number => write!(f, "{}", self.to_num()),
-        ValueVariant::Bool => write!(f, "{}", self.to_bool()),
-        ValueVariant::Nil => write!(f, "nil"),
-        ValueVariant::String => write!(f, "'{}'", self.to_str()),
-        ValueVariant::List => {
+        ValueKind::Number => write!(f, "{}", self.to_num()),
+        ValueKind::Bool => write!(f, "{}", self.to_bool()),
+        ValueKind::Nil => write!(f, "nil"),
+        ValueKind::String => write!(f, "'{}'", self.to_str()),
+        ValueKind::List => {
           let list = self.to_list();
           let mut strings: Vec<String> = Vec::with_capacity(list.len());
           for item in list.iter() {
@@ -1329,7 +1329,7 @@ mod boxed {
 
           write!(f, "[{}]", strings.join(", "))
         }
-        ValueVariant::Map => {
+        ValueKind::Map => {
           let map = self.to_map();
           let strings: Vec<String> = map
             .iter()
@@ -1337,21 +1337,21 @@ mod boxed {
             .collect();
           write!(f, "{{ {} }}", strings.join(", "))
         }
-        ValueVariant::Fun => write!(f, "{}", self.to_fun()),
-        ValueVariant::Upvalue => match &*self.to_upvalue() {
+        ValueKind::Fun => write!(f, "{}", self.to_fun()),
+        ValueKind::Upvalue => match &*self.to_upvalue() {
           Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
           Upvalue::Closed(store) => write!(f, "{}", store),
         },
-        ValueVariant::Closure => write!(f, "{}", *self.to_closure().fun),
-        ValueVariant::Method => {
+        ValueKind::Closure => write!(f, "{}", *self.to_closure().fun),
+        ValueKind::Method => {
           let bound = self.to_method();
           write!(f, "{}.{}", bound.receiver, bound.method)
         }
-        ValueVariant::Class => write!(f, "{}", &self.to_class().name.as_str()),
-        ValueVariant::Instance => write!(f, "{} instance", &self.to_instance().class.name),
-        ValueVariant::Iter => write!(f, "{}", &self.to_iter().name()),
-        ValueVariant::NativeFun => write!(f, "<native fun {}>", self.to_native_fun().meta().name),
-        ValueVariant::NativeMethod => {
+        ValueKind::Class => write!(f, "{}", &self.to_class().name.as_str()),
+        ValueKind::Instance => write!(f, "{} instance", &self.to_instance().class.name),
+        ValueKind::Iter => write!(f, "{}", &self.to_iter().name()),
+        ValueKind::NativeFun => write!(f, "<native fun {}>", self.to_native_fun().meta().name),
+        ValueKind::NativeMethod => {
           write!(f, "<native method {}>", self.to_native_method().meta().name)
         }
       }
@@ -1370,45 +1370,45 @@ mod test {
   use std::{path::PathBuf, ptr::NonNull};
   type Allocs = Vec<Box<Allocation<dyn Manage>>>;
 
-  const VARIANTS: [ValueVariant; 15] = [
-    ValueVariant::Bool,
-    ValueVariant::Nil,
-    ValueVariant::Number,
-    ValueVariant::String,
-    ValueVariant::List,
-    ValueVariant::Map,
-    ValueVariant::Fun,
-    ValueVariant::Closure,
-    ValueVariant::Class,
-    ValueVariant::Instance,
-    ValueVariant::Iter,
-    ValueVariant::Method,
-    ValueVariant::NativeFun,
-    ValueVariant::NativeMethod,
-    ValueVariant::Upvalue,
+  const VARIANTS: [ValueKind; 15] = [
+    ValueKind::Bool,
+    ValueKind::Nil,
+    ValueKind::Number,
+    ValueKind::String,
+    ValueKind::List,
+    ValueKind::Map,
+    ValueKind::Fun,
+    ValueKind::Closure,
+    ValueKind::Class,
+    ValueKind::Instance,
+    ValueKind::Iter,
+    ValueKind::Method,
+    ValueKind::NativeFun,
+    ValueKind::NativeMethod,
+    ValueKind::Upvalue,
   ];
 
-  fn is_type(val: Value, variant: ValueVariant) -> bool {
+  fn is_type(val: Value, variant: ValueKind) -> bool {
     match variant {
-      ValueVariant::Bool => val.is_bool(),
-      ValueVariant::Nil => val.is_nil(),
-      ValueVariant::Number => val.is_num(),
-      ValueVariant::String => val.is_str(),
-      ValueVariant::List => val.is_list(),
-      ValueVariant::Map => val.is_map(),
-      ValueVariant::Fun => val.is_fun(),
-      ValueVariant::Closure => val.is_closure(),
-      ValueVariant::Class => val.is_class(),
-      ValueVariant::Instance => val.is_instance(),
-      ValueVariant::Iter => val.is_iter(),
-      ValueVariant::Method => val.is_method(),
-      ValueVariant::NativeFun => val.is_native_fun(),
-      ValueVariant::NativeMethod => val.is_native_method(),
-      ValueVariant::Upvalue => val.is_upvalue(),
+      ValueKind::Bool => val.is_bool(),
+      ValueKind::Nil => val.is_nil(),
+      ValueKind::Number => val.is_num(),
+      ValueKind::String => val.is_str(),
+      ValueKind::List => val.is_list(),
+      ValueKind::Map => val.is_map(),
+      ValueKind::Fun => val.is_fun(),
+      ValueKind::Closure => val.is_closure(),
+      ValueKind::Class => val.is_class(),
+      ValueKind::Instance => val.is_instance(),
+      ValueKind::Iter => val.is_iter(),
+      ValueKind::Method => val.is_method(),
+      ValueKind::NativeFun => val.is_native_fun(),
+      ValueKind::NativeMethod => val.is_native_method(),
+      ValueKind::Upvalue => val.is_upvalue(),
     }
   }
 
-  fn assert_type(val: Value, target: ValueVariant) {
+  fn assert_type(val: Value, target: ValueKind) {
     VARIANTS.iter().for_each(|variant| {
       if target == *variant {
         assert!(is_type(val, *variant), "Expected to be {:?}", *variant);
@@ -1507,8 +1507,8 @@ mod test {
     let val_true = Value::from(true);
     let val_false = Value::from(false);
 
-    assert_type(val_true, ValueVariant::Bool);
-    assert_type(val_false, ValueVariant::Bool);
+    assert_type(val_true, ValueKind::Bool);
+    assert_type(val_false, ValueKind::Bool);
 
     assert_eq!(val_true.to_bool(), true);
     assert_eq!(val_false.to_bool(), false);
@@ -1521,10 +1521,10 @@ mod test {
     let val_neg_infinity = Value::from(f64::NEG_INFINITY);
     let val_normal = Value::from(5.3);
 
-    assert_type(val_div_zero, ValueVariant::Number);
-    assert_type(val_nan, ValueVariant::Number);
-    assert_type(val_neg_infinity, ValueVariant::Number);
-    assert_type(val_normal, ValueVariant::Number);
+    assert_type(val_div_zero, ValueKind::Number);
+    assert_type(val_nan, ValueKind::Number);
+    assert_type(val_neg_infinity, ValueKind::Number);
+    assert_type(val_normal, ValueKind::Number);
 
     assert_eq!(val_div_zero.to_num(), 1.0 / 0.0);
     assert!(val_nan.to_num().is_nan());
@@ -1542,7 +1542,7 @@ mod test {
     let value = Value::from(managed);
     let managed2: Managed<String> = value.to_str();
 
-    assert_type(value, ValueVariant::String);
+    assert_type(value, ValueKind::String);
 
     assert_eq!(&*managed, &*managed2);
     assert_eq!(managed, managed2);
@@ -1558,7 +1558,7 @@ mod test {
     let value = Value::from(managed);
     let managed2 = value.to_list();
 
-    assert_type(value, ValueVariant::List);
+    assert_type(value, ValueKind::List);
 
     assert_eq!(managed.len(), managed2.len());
     assert_eq!(managed[0], managed2[0]);
@@ -1580,7 +1580,7 @@ mod test {
     let value = Value::from(managed);
     let managed2 = value.to_map();
 
-    assert_type(value, ValueVariant::Map);
+    assert_type(value, ValueKind::Map);
 
     assert_eq!(managed.len(), managed2.len());
     assert_eq!(managed.get(&VALUE_NIL), managed2.get(&VALUE_NIL));
@@ -1596,7 +1596,7 @@ mod test {
     let value = Value::from(managed);
     let managed2 = value.to_fun();
 
-    assert_type(value, ValueVariant::Fun);
+    assert_type(value, ValueKind::Fun);
 
     assert_eq!(managed.name, managed2.name);
     assert_eq!(managed.arity, managed2.arity);
@@ -1609,7 +1609,7 @@ mod test {
     let value = Value::from(managed);
     let managed2 = value.to_closure();
 
-    assert_type(value, ValueVariant::Closure);
+    assert_type(value, ValueKind::Closure);
 
     assert_eq!(managed.fun, managed2.fun);
     assert_eq!(managed.upvalues.len(), managed2.upvalues.len());
@@ -1622,7 +1622,7 @@ mod test {
     let value = Value::from(managed);
     let managed2 = value.to_class();
 
-    assert_type(value, ValueVariant::Class);
+    assert_type(value, ValueKind::Class);
 
     assert_eq!(managed.name, managed2.name);
   }

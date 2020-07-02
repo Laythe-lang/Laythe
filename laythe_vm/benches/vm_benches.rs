@@ -34,6 +34,7 @@ fn criterion_benchmark(c: &mut Criterion) {
   let properties_path = fixture_path("properties.ly").expect("Unable to load benchmark file.");
   let trees_path = fixture_path("trees.ly").expect("Unable to load benchmark file.");
   let zoo_path = fixture_path("zoo.ly").expect("Unable to load benchmark file.");
+  let fluent_path = fixture_path("fluent.ly").expect("Unable to load benchmark file.");
 
   let binary_trees = load_source(&binary_trees_path);
   let equality = load_source(&equality_path);
@@ -44,6 +45,7 @@ fn criterion_benchmark(c: &mut Criterion) {
   let properties = load_source(&properties_path);
   let trees = load_source(&trees_path);
   let zoo = load_source(&zoo_path);
+  let fluent = load_source(&fluent_path);
 
   c.bench_with_input(
     BenchmarkId::new("run binary_trees", 1),
@@ -100,6 +102,10 @@ fn criterion_benchmark(c: &mut Criterion) {
   c.bench_with_input(BenchmarkId::new("run zoo", 9), &zoo, |b, s| {
     let mut vm = default_native_vm();
     b.iter(|| vm.run(zoo_path.clone(), &s));
+  });
+  c.bench_with_input(BenchmarkId::new("run fluent", 10), &fluent, |b, s| {
+    let mut vm = default_native_vm();
+    b.iter(|| vm.run(fluent_path.clone(), &s));
   });
 }
 

@@ -97,7 +97,7 @@ mod test {
     module::Module,
     object::Fun,
     signature::Arity,
-    value::{Value, ValueVariant},
+    value::{Value, ValueKind},
     CallResult, LyError, iterator::SlIter,
   };
   use laythe_env::{
@@ -144,10 +144,10 @@ mod test {
   impl<'a> CallContext for MockedContext<'a> {
     fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
       let arity = match callable.kind() {
-        ValueVariant::Closure => callable.to_closure().fun.arity,
-        ValueVariant::Method => callable.to_method().method.to_closure().fun.arity,
-        ValueVariant::NativeFun => callable.to_native_fun().meta().signature.arity,
-        ValueVariant::NativeMethod => callable.to_native_method().meta().signature.arity,
+        ValueKind::Closure => callable.to_closure().fun.arity,
+        ValueKind::Method => callable.to_method().method.to_closure().fun.arity,
+        ValueKind::NativeFun => callable.to_native_fun().meta().signature.arity,
+        ValueKind::NativeMethod => callable.to_native_method().meta().signature.arity,
         _ => {
           return Err(LyError::new(
             self.gc.manage_str("Not callable".to_string(), &NO_GC),
@@ -179,10 +179,10 @@ mod test {
 
     fn call_method(&mut self, _this: Value, method: Value, args: &[Value]) -> CallResult {
       let arity = match method.kind() {
-        ValueVariant::Closure => method.to_closure().fun.arity,
-        ValueVariant::Method => method.to_method().method.to_closure().fun.arity,
-        ValueVariant::NativeFun => method.to_native_fun().meta().signature.arity,
-        ValueVariant::NativeMethod => method.to_native_method().meta().signature.arity,
+        ValueKind::Closure => method.to_closure().fun.arity,
+        ValueKind::Method => method.to_method().method.to_closure().fun.arity,
+        ValueKind::NativeFun => method.to_native_fun().meta().signature.arity,
+        ValueKind::NativeMethod => method.to_native_method().meta().signature.arity,
         _ => {
           return Err(LyError::new(
             self.gc.manage_str("Not callable".to_string(), &NO_GC),

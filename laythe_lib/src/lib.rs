@@ -25,7 +25,7 @@ pub fn create_std_lib(hooks: &GcHooks) -> LyResult<Managed<Package>> {
 mod test {
   use super::*;
   use crate::support::{test_native_dependencies, MockedContext};
-  use laythe_core::{package::PackageEntity, signature::Arity, value::ValueVariant};
+  use laythe_core::{package::PackageEntity, signature::Arity, value::ValueKind};
 
   fn check_inner(hooks: &GcHooks, package: Managed<Package>) {
     package.entities().for_each(|(_key, entity)| match entity {
@@ -33,8 +33,8 @@ mod test {
         let import = module.import(hooks);
         import.fields().for_each(|(_key, symbol)| {
           let option = match symbol.clone().kind() {
-            ValueVariant::NativeFun => Some(symbol.to_native_fun().meta().clone()),
-            ValueVariant::NativeMethod => Some(symbol.to_native_method().meta().clone()),
+            ValueKind::NativeFun => Some(symbol.to_native_fun().meta().clone()),
+            ValueKind::NativeMethod => Some(symbol.to_native_method().meta().clone()),
             _ => None,
           };
 

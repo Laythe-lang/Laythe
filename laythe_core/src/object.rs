@@ -5,7 +5,7 @@ use crate::{
   hooks::GcHooks,
   module::Module,
   signature::Arity,
-  value::{Value, ValueVariant},
+  value::{Value, ValueKind},
 };
 use core::slice;
 use fnv::FnvBuildHasher;
@@ -86,23 +86,23 @@ pub struct BuiltinPrimitives {
 }
 
 impl BuiltinPrimitives {
-  pub fn for_value(&self, value: Value, kind: ValueVariant) -> Managed<Class> {
+  pub fn for_value(&self, value: Value, kind: ValueKind) -> Managed<Class> {
     match kind {
-      ValueVariant::Bool => self.bool,
-      ValueVariant::Nil => self.nil,
-      ValueVariant::Number => self.number,
-      ValueVariant::String => self.string,
-      ValueVariant::List => self.list,
-      ValueVariant::Map => self.map,
-      ValueVariant::Fun => panic!(),
-      ValueVariant::Closure => self.closure,
-      ValueVariant::Class => value.to_class().meta().expect("Meta class not set."),
-      ValueVariant::Instance => value.to_instance().class,
-      ValueVariant::Iter => self.iter,
-      ValueVariant::Method => self.method,
-      ValueVariant::NativeFun => self.native_fun,
-      ValueVariant::NativeMethod => self.native_method,
-      ValueVariant::Upvalue => {
+      ValueKind::Bool => self.bool,
+      ValueKind::Nil => self.nil,
+      ValueKind::Number => self.number,
+      ValueKind::String => self.string,
+      ValueKind::List => self.list,
+      ValueKind::Map => self.map,
+      ValueKind::Fun => panic!(),
+      ValueKind::Closure => self.closure,
+      ValueKind::Class => value.to_class().meta().expect("Meta class not set."),
+      ValueKind::Instance => value.to_instance().class,
+      ValueKind::Iter => self.iter,
+      ValueKind::Method => self.method,
+      ValueKind::NativeFun => self.native_fun,
+      ValueKind::NativeMethod => self.native_method,
+      ValueKind::Upvalue => {
         let value = value.to_upvalue().value();
         self.for_value(value, value.kind())
       }
