@@ -94,7 +94,7 @@ fn bootstrap_classes(
 
   // inherit from object
   class_class.inherit(hooks, object_class);
-  define_class_class(hooks, &module, &package);
+  define_class_class(hooks, &module, &package)?;
 
   // create object's meta class
   let object_meta_class = create_meta_class(hooks, object_class.name, class_class);

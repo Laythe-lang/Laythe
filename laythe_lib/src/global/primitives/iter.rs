@@ -46,6 +46,12 @@ const ITER_EACH: NativeMeta = NativeMeta::new(
   &[Parameter::new("fun", ParameterKind::Fun)],
 );
 
+const ITER_INTO: NativeMeta = NativeMeta::new(
+  "into",
+  Arity::Fixed(1),
+  &[Parameter::new("fun", ParameterKind::Fun)],
+);
+
 pub fn declare_iter_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, ITER_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name, Value::from(class))
@@ -94,6 +100,12 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
     hooks,
     hooks.manage_str(String::from(ITER_EACH.name)),
     Value::from(to_dyn_method(hooks, IterEach())),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(String::from(ITER_INTO.name)),
+    Value::from(to_dyn_method(hooks, IterInto())),
   );
 
   Ok(())
@@ -335,54 +347,31 @@ impl NativeMethod for IterEach {
   }
 }
 
+
+#[derive(Trace)]
+struct IterInto();
+
+impl NativeMethod for IterInto {
+  fn meta(&self) -> &NativeMeta {
+    &ITER_INTO
+  }
+
+  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    let callable = args[0];
+    hooks.call(callable, &[this])
+  }
+}
+
+
 #[cfg(test)]
 mod test {
   use super::*;
-  use laythe_core::iterator::SlIter;
-
-  #[derive(Trace, Debug)]
-  struct TestIterator {
-    current: usize,
-  }
-
-  impl TestIterator {
-    fn new() -> Self {
-      Self { current: 0 }
-    }
-  }
-
-  impl SlIter for TestIterator {
-    fn name(&self) -> &str {
-      "Test Iterator"
-    }
-
-    fn current(&self) -> Value {
-      Value::from(self.current as f64)
-    }
-
-    fn next(&mut self, _hooks: &mut Hooks) -> CallResult {
-      if self.current > 4 {
-        return Ok(Value::from(false));
-      }
-
-      self.current += 1;
-      Ok(Value::from(true))
-    }
-
-    fn size(&self) -> usize {
-      8
-    }
-  }
-
-  fn test_input() -> Box<dyn SlIter> {
-    Box::new(TestIterator::new())
-  }
+  use crate::support::{test_native_dependencies, MockedContext, test_iter};
+  use laythe_core::iterator::SlIterator;
 
   #[cfg(test)]
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use laythe_core::iterator::SlIterator;
 
     #[test]
     fn new() {
@@ -396,10 +385,10 @@ mod test {
     fn call() {
       let iter_str = IterStr();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let iter = test_input();
+      let iter = test_iter();
       let this = hooks.manage(SlIterator::new(iter));
 
       let result = iter_str.call(&mut hooks, Value::from(this), &[]);
@@ -413,8 +402,6 @@ mod test {
   #[cfg(test)]
   mod next {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use laythe_core::iterator::SlIterator;
 
     #[test]
     fn new() {
@@ -428,10 +415,10 @@ mod test {
     fn call() {
       let iter_next = IterNext();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let iter = test_input();
+      let iter = test_iter();
       let this = hooks.manage(SlIterator::new(iter));
 
       let result = iter_next.call(&mut hooks, Value::from(this), &[]);
@@ -444,8 +431,6 @@ mod test {
   #[cfg(test)]
   mod iter {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
-    use laythe_core::iterator::SlIterator;
 
     #[test]
     fn new() {
@@ -459,10 +444,10 @@ mod test {
     fn call() {
       let iter_iter = IterIter();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let iter = test_input();
+      let iter = test_iter();
       let managed = hooks.manage(SlIterator::new(iter));
       let this = Value::from(managed);
 
@@ -477,8 +462,8 @@ mod test {
   #[cfg(test)]
   mod map {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
-    use laythe_core::{iterator::SlIterator, object::Closure};
+    use crate::support::{fun_from_hooks};
+    use laythe_core::object::Closure;
 
     #[test]
     fn new() {
@@ -495,11 +480,11 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[Value::from(5.0)]);
+      let mut context = MockedContext::new(&gc, &[Value::from(5.0)]);
       let mut hooks = Hooks::new(&mut context);
       let iter_map = IterMap();
 
-      let iter = test_input();
+      let iter = test_iter();
       let managed = hooks.manage(SlIterator::new(iter));
       let this = Value::from(managed);
       let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
@@ -524,7 +509,7 @@ mod test {
 
   mod filter {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
     use laythe_core::{iterator::SlIterator, object::Closure};
 
     #[test]
@@ -542,14 +527,14 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(
+      let mut context = MockedContext::new(
         &gc,
         &[Value::from(false), Value::from(true), Value::from(true)],
       );
       let mut hooks = Hooks::new(&mut context);
       let iter_filter = IterFilter();
 
-      let iter = test_input();
+      let iter = test_iter();
       let managed = hooks.manage(SlIterator::new(iter));
       let this = Value::from(managed);
       let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
@@ -576,7 +561,7 @@ mod test {
 
   mod reduce {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
     use laythe_core::{iterator::SlIterator, object::Closure};
 
     #[test]
@@ -598,7 +583,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(
+      let mut context = MockedContext::new(
         &gc,
         &[
           Value::from(false),
@@ -611,7 +596,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let iter_reduce = IterReduce();
 
-      let iter = test_input();
+      let iter = test_iter();
       let managed = hooks.manage(SlIterator::new(iter));
       let this = Value::from(managed);
       let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
@@ -635,7 +620,7 @@ mod test {
 
   mod each {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
     use laythe_core::{iterator::SlIterator, object::Closure};
 
     #[test]
@@ -653,11 +638,11 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[Value::from(false); 5]);
+      let mut context = MockedContext::new(&gc, &[Value::from(false); 5]);
       let mut hooks = Hooks::new(&mut context);
       let iter_reduce = IterEach();
 
-      let iter = test_input();
+      let iter = test_iter();
       let managed = hooks.manage(SlIterator::new(iter));
       let this = Value::from(managed);
       let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
@@ -671,6 +656,58 @@ mod test {
       let result = iter_reduce.call(&mut hooks, this, &[fun]);
       match result {
         Ok(r) => assert!(r.is_nil()),
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod into {
+    use super::*;
+    use crate::support::{test_native_dependencies, MockedContext};
+    use laythe_core::{iterator::SlIterator, native::NativeFun};
+
+    const M: NativeMeta = NativeMeta::new("", Arity::Fixed(1), &[Parameter::new("", ParameterKind::Any)]);
+
+    #[derive(Trace)]
+    struct EchoFun();
+
+    impl NativeFun for EchoFun {
+      fn meta(&self) -> &NativeMeta {
+        &M
+      }
+
+      fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
+        Ok(args[0])
+      }
+    }
+
+    #[test]
+    fn new() {
+      let iter_into = IterInto();
+
+      assert_eq!(iter_into.meta().name, "into");
+      assert_eq!(iter_into.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        iter_into.meta().signature.parameters[0].kind,
+        ParameterKind::Fun
+      );
+    }
+
+    #[test]
+    fn call() {
+      let gc = test_native_dependencies();
+      let mut context = MockedContext::new(&gc, &[Value::from(true); 5]);
+      let mut hooks = Hooks::new(&mut context);
+      let iter_into = IterInto();
+
+      let iter = test_iter();
+      let managed = hooks.manage(SlIterator::new(iter));
+      let this = Value::from(managed);
+      let echo = Value::from(hooks.manage(Box::new(EchoFun()) as Box<dyn NativeFun>));
+
+      let result = iter_into.call(&mut hooks, this, &[echo]);
+      match result {
+        Ok(r) => assert_eq!(r.to_bool(), true),
         Err(_) => assert!(false),
       }
     }

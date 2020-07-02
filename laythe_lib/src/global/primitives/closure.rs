@@ -106,7 +106,7 @@ mod test {
 
   mod name {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
     use laythe_core::object::Closure;
 
     #[test]
@@ -121,7 +121,7 @@ mod test {
     fn call() {
       let closure_name = ClosureName();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
@@ -138,7 +138,7 @@ mod test {
 
   mod size {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
     use laythe_core::object::Closure;
 
     #[test]
@@ -153,7 +153,7 @@ mod test {
     fn call() {
       let closure_name = ClosureSize();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
@@ -185,7 +185,7 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, TestContext};
+    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
     use laythe_core::object::Closure;
 
     #[test]
@@ -204,7 +204,7 @@ mod test {
     fn call() {
       let closure_call = ClosureCall();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[Value::from(4.3)]);
+      let mut context = MockedContext::new(&gc, &[Value::from(4.3)]);
       let mut hooks = Hooks::new(&mut context);
 
       let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");

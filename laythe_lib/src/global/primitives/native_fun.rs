@@ -81,7 +81,7 @@ mod test {
   use super::*;
   use crate::{
     global::support::TestNative,
-    support::{test_native_dependencies, TestContext},
+    support::{test_native_dependencies, MockedContext},
   };
   use laythe_env::managed::Managed;
 
@@ -101,7 +101,7 @@ mod test {
     fn call() {
       let native_fun_name = NativeFunName();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let managed: Managed<Box<dyn NativeFun>> = hooks.manage(Box::new(TestNative()));
@@ -117,7 +117,7 @@ mod test {
     use super::*;
     use crate::{
       global::support::TestNative,
-      support::{test_native_dependencies, TestContext},
+      support::{test_native_dependencies, MockedContext},
     };
     use laythe_core::{native::NativeFun, value::VALUE_NIL};
 
@@ -137,7 +137,7 @@ mod test {
     fn call() {
       let native_fun_call = NativeFunCall();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[VALUE_NIL]);
+      let mut context = MockedContext::new(&gc, &[VALUE_NIL]);
       let mut hooks = Hooks::new(&mut context);
 
       let managed: Managed<Box<dyn NativeFun>> = hooks.manage(Box::new(TestNative()));

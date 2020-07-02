@@ -62,6 +62,7 @@ fn iter() -> Result<(), std::io::Error> {
     &vec![
       "std_lib/builtin/iter/each.ly",
       "std_lib/builtin/iter/filter.ly",
+      "std_lib/builtin/iter/into.ly",
       "std_lib/builtin/iter/iter.ly",
       "std_lib/builtin/iter/map.ly",
       "std_lib/builtin/iter/next.ly",
@@ -79,6 +80,7 @@ fn list() -> Result<(), std::io::Error> {
   test_files(
     &vec![
       "std_lib/builtin/list/clear.ly",
+      "std_lib/builtin/list/collect.ly",
       "std_lib/builtin/list/has.ly",
       "std_lib/builtin/list/insert.ly",
       "std_lib/builtin/list/iter.ly",

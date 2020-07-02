@@ -59,7 +59,7 @@ mod test {
 
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
     use laythe_core::value::VALUE_NIL;
 
     #[test]
@@ -74,7 +74,7 @@ mod test {
     fn call() {
       let nil_str = NilStr::new();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let result = nil_str.call(&mut hooks, VALUE_NIL, &[]);

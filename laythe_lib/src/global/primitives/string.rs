@@ -80,7 +80,7 @@ mod test {
 
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -94,7 +94,7 @@ mod test {
     fn call() {
       let string_str = StringStr();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let this = Value::from(hooks.manage_str("test".to_string()));
@@ -108,7 +108,7 @@ mod test {
 
   mod has {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -122,7 +122,7 @@ mod test {
     fn call() {
       let string_str = StringHas();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let this = Value::from(hooks.manage_str("some string".to_string()));

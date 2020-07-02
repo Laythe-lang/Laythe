@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "language/exception/top_level_thrown.ly",
+        "std_lib/builtin/iter/into.ly",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",

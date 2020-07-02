@@ -24,7 +24,7 @@ pub fn create_std_lib(hooks: &GcHooks) -> LyResult<Managed<Package>> {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_native_dependencies, TestContext};
+  use crate::support::{test_native_dependencies, MockedContext};
   use laythe_core::{package::PackageEntity, signature::Arity, value::ValueVariant};
 
   fn check_inner(hooks: &GcHooks, package: Managed<Package>) {
@@ -62,7 +62,7 @@ mod test {
   #[test]
   fn new() {
     let gc = test_native_dependencies();
-    let mut context = TestContext::new(&gc, &[]);
+    let mut context = MockedContext::new(&gc, &[]);
     let hooks = GcHooks::new(&mut context);
 
     let std_lib = create_std_lib(&hooks);

@@ -1,7 +1,7 @@
 use laythe_core::{
   hooks::GcHooks,
   module::Module,
-  native::NativeMethod,
+  native::{NativeFun, NativeMethod},
   object::Class,
   package::{Import, Package},
   value::Value,
@@ -14,6 +14,13 @@ pub fn to_dyn_method<T: 'static + NativeMethod>(
   method: T,
 ) -> Managed<Box<dyn NativeMethod>> {
   hooks.manage(Box::new(method) as Box<dyn NativeMethod>)
+}
+
+pub fn to_dyn_fun<T: 'static + NativeFun>(
+  hooks: &GcHooks,
+  method: T,
+) -> Managed<Box<dyn NativeFun>> {
+  hooks.manage(Box::new(method) as Box<dyn NativeFun>)
 }
 
 pub fn create_meta_class(
@@ -86,12 +93,12 @@ use crate::GLOBAL_PATH;
 #[cfg(test)]
 mod test {
   use laythe_core::{
-    hooks::{CallContext, GcContext, GcHooks, HookContext},
+    hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks},
     module::Module,
     object::Fun,
     signature::Arity,
     value::{Value, ValueVariant},
-    CallResult, LyError,
+    CallResult, LyError, iterator::SlIter,
   };
   use laythe_env::{
     managed::{Managed, Trace},
@@ -100,14 +107,14 @@ mod test {
   };
   use std::path::PathBuf;
 
-  pub struct TestContext<'a> {
+  pub struct MockedContext<'a> {
     gc: &'a Gc,
     no_gc: NoGc,
     responses: Vec<Value>,
     response_count: usize,
   }
 
-  impl<'a> TestContext<'a> {
+  impl<'a> MockedContext<'a> {
     pub fn new(gc: &'a Gc, responses: &[Value]) -> Self {
       Self {
         gc,
@@ -118,7 +125,7 @@ mod test {
     }
   }
 
-  impl<'a> HookContext for TestContext<'a> {
+  impl<'a> HookContext for MockedContext<'a> {
     fn gc_context(&self) -> &dyn GcContext {
       self
     }
@@ -128,13 +135,13 @@ mod test {
     }
   }
 
-  impl<'a> GcContext for TestContext<'a> {
+  impl<'a> GcContext for MockedContext<'a> {
     fn gc(&self) -> &Gc {
       self.gc
     }
   }
 
-  impl<'a> CallContext for TestContext<'a> {
+  impl<'a> CallContext for MockedContext<'a> {
     fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
       let arity = match callable.kind() {
         ValueVariant::Closure => callable.to_closure().fun.arity,
@@ -257,7 +264,7 @@ mod test {
     }
   }
 
-  impl<'a> Trace for TestContext<'a> {
+  impl<'a> Trace for MockedContext<'a> {
     fn trace(&self) -> bool {
       self.no_gc.trace()
     }
@@ -269,6 +276,45 @@ mod test {
 
   pub fn test_native_dependencies() -> Box<Gc> {
     Box::new(Gc::default())
+  }
+
+
+  #[derive(Trace, Debug)]
+  pub struct TestIterator {
+    current: usize,
+  }
+
+  impl TestIterator {
+    fn new() -> Self {
+      Self { current: 0 }
+    }
+  }
+
+  impl SlIter for TestIterator {
+    fn name(&self) -> &str {
+      "Test Iterator"
+    }
+
+    fn current(&self) -> Value {
+      Value::from(self.current as f64)
+    }
+
+    fn next(&mut self, _hooks: &mut Hooks) -> CallResult {
+      if self.current > 4 {
+        return Ok(Value::from(false));
+      }
+      
+      self.current += 1;
+      Ok(Value::from(true))
+    }
+
+    fn size(&self) -> usize {
+      8
+    }
+  }
+
+  pub fn test_iter() -> Box<dyn SlIter> {
+    Box::new(TestIterator::new())
   }
 
   pub fn fun_from_hooks(hooks: &GcHooks, name: String, module_name: &str) -> Managed<Fun> {

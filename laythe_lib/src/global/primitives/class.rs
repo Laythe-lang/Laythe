@@ -51,7 +51,7 @@ mod test {
 
   mod super_class {
     use super::*;
-    use crate::support::{test_native_dependencies, TestContext};
+    use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -65,7 +65,7 @@ mod test {
     fn call() {
       let class_super_class = ClassSuperClass();
       let gc = test_native_dependencies();
-      let mut context = TestContext::new(&gc, &[]);
+      let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
       let mut class = hooks.manage(Class::bare(
