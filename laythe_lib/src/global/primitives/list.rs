@@ -397,7 +397,10 @@ impl NativeFun for ListCollect {
 
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
     let mut iter = args[0].to_iter();
-    let mut list = LyVec::new(&[]);
+    let mut list = match iter.size_hint() {
+      Some(size) => LyVec::with_capacity(size),
+      None => LyVec::new()
+    };
 
     while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
@@ -447,6 +450,10 @@ impl SlIter for ListIterator {
         Ok(Value::from(false))
       }
     }
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    Some(self.list.len())
   }
 
   fn size(&self) -> usize {
@@ -669,7 +676,7 @@ mod test {
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = LyVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
+      let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -723,7 +730,7 @@ mod test {
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = LyVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
+      let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -774,7 +781,7 @@ mod test {
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = LyVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
+      let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -818,7 +825,7 @@ mod test {
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let list = LyVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
+      let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 
@@ -859,7 +866,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let list_iter = ListIter();
 
-      let list = LyVec::new(&[VALUE_NIL, Value::from(10.0), Value::from(true)]);
+      let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
       let this = hooks.manage(list);
       let list_value = Value::from(this);
 

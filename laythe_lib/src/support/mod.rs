@@ -308,6 +308,10 @@ mod test {
       Ok(Value::from(true))
     }
 
+    fn size_hint(&self) -> Option<usize> {
+      Some(4)
+    }
+
     fn size(&self) -> usize {
       8
     }

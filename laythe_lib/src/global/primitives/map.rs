@@ -298,7 +298,7 @@ impl SlIter for MapIterator {
   fn next(&mut self, hooks: &mut Hooks) -> CallResult {
     match self.iter.next() {
       Some(next) => {
-        self.current = Value::from(hooks.manage(LyVec::new(&[*next.0, *next.1])));
+        self.current = Value::from(hooks.manage(LyVec::from(&[*next.0, *next.1] as &[Value])));
         Ok(Value::from(true))
       }
       None => {
@@ -306,6 +306,10 @@ impl SlIter for MapIterator {
         Ok(Value::from(false))
       }
     }
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    Some(self.map.len())
   }
 
   fn size(&self) -> usize {
