@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "std_lib/builtin/iter/into.ly",
+        "benchmark/fluent.ly",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",
