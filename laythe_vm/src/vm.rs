@@ -15,7 +15,7 @@ use laythe_core::{
   package::{Import, Package},
   signature::{ArityError, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
-  value::{Value, ValueVariant, VALUE_NIL},
+  value::{Value, ValueKind, VALUE_NIL},
   CallResult, LyError,
 };
 use laythe_env::{
@@ -1055,7 +1055,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn get_property(&mut self, value: Value, name: Managed<String>) -> Signal {
     let kind = value.kind();
     match kind {
-      ValueVariant::Instance => {
+      ValueKind::Instance => {
         let instance = value.to_instance();
 
         if let Some(value) = instance.get_field(&name) {
@@ -1063,7 +1063,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
           return Signal::Ok;
         }
       }
-      ValueVariant::Iter => {
+      ValueKind::Iter => {
         let iter = value.to_iter();
 
         if let Some(value) = iter.get_field(&name) {
@@ -1327,12 +1327,12 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   fn resolve_call(&mut self, callee: Value, arg_count: u8) -> Signal {
     match callee.kind() {
-      ValueVariant::Closure => self.call(callee.to_closure(), arg_count),
-      ValueVariant::Method => self.call_method(callee.to_method(), arg_count),
-      ValueVariant::NativeFun => self.call_native_fun(callee.to_native_fun(), arg_count),
-      ValueVariant::NativeMethod => self.call_native_method(callee.to_native_method(), arg_count),
-      ValueVariant::Class => self.call_class(callee.to_class(), arg_count),
-      ValueVariant::Fun => self.internal_error(&format!(
+      ValueKind::Closure => self.call(callee.to_closure(), arg_count),
+      ValueKind::Method => self.call_method(callee.to_method(), arg_count),
+      ValueKind::NativeFun => self.call_native_fun(callee.to_native_fun(), arg_count),
+      ValueKind::NativeMethod => self.call_native_method(callee.to_native_method(), arg_count),
+      ValueKind::Class => self.call_class(callee.to_class(), arg_count),
+      ValueKind::Fun => self.internal_error(&format!(
         "Function {} was not wrapped in a closure.",
         callee.to_fun().name
       )),
