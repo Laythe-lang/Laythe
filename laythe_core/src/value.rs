@@ -1113,7 +1113,7 @@ mod boxed {
         return ValueKind::Number;
       }
 
-      let top_bit = (self.0 >> 63) as u8 == 0;
+      let top_bit = self.0 < BIT_SIGN;
       let lower_byte = self.0 as u8 & 0x7;
 
       if top_bit {
