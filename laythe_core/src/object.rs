@@ -466,10 +466,12 @@ impl<T> Default for LyVec<T> {
 }
 
 impl<T: Clone> LyVec<T> {
-  pub fn new(values: &[T]) -> Self {
-    let mut vec = Self(Vec::new());
-    vec.0.extend_from_slice(values);
-    vec
+  pub fn new() -> Self {
+    Self(Vec::new())
+  }
+
+  pub fn with_capacity(capacity: usize) -> Self {
+    Self(Vec::with_capacity(capacity))
   }
 
   pub fn extend_from_slice(&mut self, other: &[T]) {
@@ -496,6 +498,13 @@ impl<T> From<Vec<T>> for LyVec<T> {
     LyVec(vec)
   }
 }
+
+impl<T: Clone> From<&[T]> for LyVec<T> {
+  fn from(slice: &[T]) -> Self {
+    LyVec(Vec::from(slice))
+  }
+}
+
 
 impl<T: 'static + Trace> Trace for LyVec<T> {
   fn trace(&self) -> bool {

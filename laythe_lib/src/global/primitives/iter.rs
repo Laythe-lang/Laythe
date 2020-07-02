@@ -205,6 +205,10 @@ impl SlIter for MapIterator {
     }
   }
 
+  fn size_hint(&self) -> Option<usize> {
+    self.iter.size_hint()
+  }
+
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }
@@ -281,6 +285,10 @@ impl SlIter for FilterIterator {
     }
 
     Ok(Value::from(false))
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    None
   }
 
   fn size(&self) -> usize {

@@ -57,6 +57,10 @@ impl SlIterator {
   pub fn current(&self) -> Value {
     self.current
   }
+
+  pub fn size_hint(&self) -> Option<usize> {
+    self.iterator.size_hint()
+  }
 }
 
 impl Trace for SlIterator {
@@ -102,6 +106,9 @@ pub trait SlIter: Trace + fmt::Debug {
 
   /// Get the next value indicating if the iterator has reached the end
   fn next(&mut self, hooks: &mut Hooks) -> CallResult;
+
+  /// If known how many elements will this iterator produce
+  fn size_hint(&self) -> Option<usize>;
 
   /// What is the size of this iterator
   fn size(&self) -> usize;

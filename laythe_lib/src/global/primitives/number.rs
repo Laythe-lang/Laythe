@@ -113,6 +113,10 @@ impl SlIter for TimesIterator {
     }
   }
 
+  fn size_hint(&self) -> Option<usize> {
+    Some(self.max as usize)
+  }
+
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }
