@@ -3,7 +3,7 @@ use crate::support::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  iterator::{SlIter, SlIterator},
+  iterator::{LyIter, LyIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
@@ -11,7 +11,7 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::StdIo};
+use laythe_env::{managed::Trace, stdio::Stdio};
 use std::mem;
 
 pub const NUMBER_CLASS_NAME: &'static str = "Number";
@@ -72,8 +72,8 @@ impl NativeMethod for NumberTimes {
       return Err(hooks.make_error("times requires a positive number.".to_string()));
     }
 
-    let inner_iter: Box<dyn SlIter> = Box::new(TimesIterator::new(max));
-    let iter = SlIterator::new(inner_iter);
+    let inner_iter: Box<dyn LyIter> = Box::new(TimesIterator::new(max));
+    let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
     Ok(Value::from(iter))
@@ -95,7 +95,7 @@ impl TimesIterator {
   }
 }
 
-impl SlIter for TimesIterator {
+impl LyIter for TimesIterator {
   fn name(&self) -> &str {
     "Times Iterator"
   }

@@ -2,7 +2,7 @@ use laythe_core::{
   hooks::GcHooks,
   module::Module,
   native::{NativeFun, NativeMethod},
-  object::Class,
+  object::{Class, Instance},
   package::{Import, Package},
   value::Value,
   LyResult,
@@ -76,6 +76,28 @@ pub fn load_class_from_module(
   }
 }
 
+pub fn load_instance_from_module(
+  hooks: &GcHooks,
+  module: &Module,
+  name: &str,
+) -> LyResult<Managed<Instance>> {
+  let name = hooks.manage_str(name.to_string());
+  match module.import(hooks).get_field(&name) {
+    Some(symbol) => {
+      if symbol.is_instance() {
+        Ok(symbol.to_instance())
+      } else {
+        Err(hooks.make_error(format!("Symbol {} is not a instance.", name)))
+      }
+    }
+    None => Err(hooks.make_error(format!(
+      "Could not find symbol {} in module {}.",
+      name,
+      module.name()
+    ))),
+  }
+}
+
 pub fn export_and_insert(
   hooks: &GcHooks,
   module: &mut Module,
@@ -94,16 +116,18 @@ use crate::GLOBAL_PATH;
 mod test {
   use laythe_core::{
     hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks},
+    iterator::LyIter,
     module::Module,
     object::Fun,
     signature::Arity,
     value::{Value, ValueKind},
-    CallResult, LyError, iterator::SlIter,
+    CallResult, LyError,
   };
   use laythe_env::{
+    io::Io,
     managed::{Managed, Trace},
     memory::{Gc, NoGc, NO_GC},
-    stdio::StdIo,
+    stdio::Stdio,
   };
   use std::path::PathBuf;
 
@@ -132,6 +156,10 @@ mod test {
 
     fn call_context(&mut self) -> &mut dyn CallContext {
       self
+    }
+
+    fn io(&mut self) -> Io {
+      Io::default()
     }
   }
 
@@ -269,7 +297,7 @@ mod test {
       self.no_gc.trace()
     }
 
-    fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    fn trace_debug(&self, stdio: &mut Stdio) -> bool {
       self.no_gc.trace_debug(stdio)
     }
   }
@@ -277,7 +305,6 @@ mod test {
   pub fn test_native_dependencies() -> Box<Gc> {
     Box::new(Gc::default())
   }
-
 
   #[derive(Trace, Debug)]
   pub struct TestIterator {
@@ -290,7 +317,7 @@ mod test {
     }
   }
 
-  impl SlIter for TestIterator {
+  impl LyIter for TestIterator {
     fn name(&self) -> &str {
       "Test Iterator"
     }
@@ -303,7 +330,7 @@ mod test {
       if self.current > 4 {
         return Ok(Value::from(false));
       }
-      
+
       self.current += 1;
       Ok(Value::from(true))
     }
@@ -317,18 +344,16 @@ mod test {
     }
   }
 
-  pub fn test_iter() -> Box<dyn SlIter> {
+  pub fn test_iter() -> Box<dyn LyIter> {
     Box::new(TestIterator::new())
   }
 
   pub fn fun_from_hooks(hooks: &GcHooks, name: String, module_name: &str) -> Managed<Fun> {
-    let module = match Module::from_path(
+    let module = Module::from_path(
       &hooks,
       hooks.manage(PathBuf::from(format!("path/{}.ly", module_name))),
-    ) {
-      Some(module) => module,
-      None => unreachable!(),
-    };
+    )
+    .expect("TODO");
 
     let module = hooks.manage(module);
     hooks.manage(Fun::new(hooks.manage_str(name), module))

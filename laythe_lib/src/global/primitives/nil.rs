@@ -10,7 +10,7 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::StdIo};
+use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const NIL_CLASS_NAME: &'static str = "Nil";
 const NIL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);

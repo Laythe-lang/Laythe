@@ -83,6 +83,7 @@ fn list() -> Result<(), std::io::Error> {
       "std_lib/builtin/list/collect.ly",
       "std_lib/builtin/list/has.ly",
       "std_lib/builtin/list/insert.ly",
+      "std_lib/builtin/list/index.ly",
       "std_lib/builtin/list/iter.ly",
       "std_lib/builtin/list/pop.ly",
       "std_lib/builtin/list/push.ly",

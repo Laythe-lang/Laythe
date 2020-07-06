@@ -10,7 +10,7 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::StdIo};
+use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const NATIVE_FUN_CLASS_NAME: &'static str = "Native Fun";
 

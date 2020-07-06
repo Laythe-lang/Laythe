@@ -9,7 +9,7 @@ use laythe_core::{
 };
 use laythe_env::{
   managed::{Managed, Trace},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 
 const ASSERT_META: NativeMeta = NativeMeta::new(

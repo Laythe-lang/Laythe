@@ -1,8 +1,15 @@
-use crate::support::{load_class_from_module, export_and_insert, to_dyn_method};
+use crate::support::{export_and_insert, load_class_from_module, to_dyn_method};
 use laythe_core::{
-  hooks::{Hooks, GcHooks}, module::Module, object::Class, package::Package, value::{VALUE_NIL, Value}, LyResult, native::{NativeMethod, NativeMeta}, signature::Arity, CallResult,
+  hooks::{GcHooks, Hooks},
+  module::Module,
+  native::{NativeMeta, NativeMethod},
+  object::Class,
+  package::Package,
+  signature::Arity,
+  value::{Value, VALUE_NIL},
+  CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::StdIo};
+use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const CLASS_CLASS_NAME: &'static str = "Class";
 
@@ -15,7 +22,7 @@ pub fn declare_class_class(hooks: &GcHooks, module: &mut Module) -> LyResult<()>
   export_and_insert(hooks, module, name, Value::from(class))
 }
 
-pub fn define_class_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()>  {
+pub fn define_class_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
   let mut class_class = load_class_from_module(hooks, module, CLASS_CLASS_NAME)?;
 
   class_class.add_method(
@@ -36,7 +43,8 @@ impl NativeMethod for ClassSuperClass {
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    let super_class = this.to_class()
+    let super_class = this
+      .to_class()
       .super_class()
       .map(|super_class| Value::from(super_class))
       .unwrap_or(VALUE_NIL);
@@ -68,16 +76,11 @@ mod test {
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
 
-      let mut class = hooks.manage(Class::bare(
-        hooks.manage_str("someClass".to_string())
-      ));
+      let mut class = hooks.manage(Class::bare(hooks.manage_str("someClass".to_string())));
 
-      let super_class = hooks.manage(Class::bare(
-        hooks.manage_str("someSuperClass".to_string())
-      ));
+      let super_class = hooks.manage(Class::bare(hooks.manage_str("someSuperClass".to_string())));
 
       class.inherit(&hooks.to_gc(), super_class);
-
 
       let class_value = Value::from(class);
       let super_class_value = Value::from(super_class);

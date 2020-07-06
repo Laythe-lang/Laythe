@@ -3,7 +3,7 @@ use crate::support::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  iterator::{SlIter, SlIterator},
+  iterator::{LyIter, LyIterator},
   module::Module,
   native::{NativeFun, NativeMeta, NativeMethod},
   object::LyVec,
@@ -15,7 +15,7 @@ use laythe_core::{
 };
 use laythe_env::{
   managed::{Managed, Trace},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 use std::{mem, slice::Iter};
 
@@ -47,6 +47,11 @@ const LIST_REMOVE: NativeMeta = NativeMeta::new(
   Arity::Fixed(1),
   &[Parameter::new("index", ParameterKind::Number)],
 );
+const LIST_INDEX: NativeMeta = NativeMeta::new(
+  "index",
+  Arity::Fixed(1),
+  &[Parameter::new("value", ParameterKind::Any)],
+);
 const LIST_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
 const LIST_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 
@@ -67,31 +72,37 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_SIZE.name)),
-    Value::from(to_dyn_method(hooks, ListSize::new())),
+    Value::from(to_dyn_method(hooks, ListSize())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_PUSH.name)),
-    Value::from(to_dyn_method(hooks, ListPush::new())),
+    Value::from(to_dyn_method(hooks, ListPush())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_POP.name)),
-    Value::from(to_dyn_method(hooks, ListPop::new())),
+    Value::from(to_dyn_method(hooks, ListPop())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_REMOVE.name)),
-    Value::from(to_dyn_method(hooks, ListRemove::new())),
+    Value::from(to_dyn_method(hooks, ListRemove())),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(String::from(LIST_INDEX.name)),
+    Value::from(to_dyn_method(hooks, ListIndex())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_INSERT.name)),
-    Value::from(to_dyn_method(hooks, ListInsert::new())),
+    Value::from(to_dyn_method(hooks, ListInsert())),
   );
 
   class.add_method(
@@ -106,7 +117,7 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
   class.add_method(
     hooks,
     hooks.manage_str(String::from(LIST_CLEAR.name)),
-    Value::from(to_dyn_method(hooks, ListClear::new())),
+    Value::from(to_dyn_method(hooks, ListClear())),
   );
 
   class.add_method(
@@ -132,22 +143,18 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 
 #[derive(Clone, Debug, Trace)]
 struct ListStr {
-  meta: &'static NativeMeta,
   method_name: Managed<String>,
 }
 
 impl ListStr {
   fn new(method_name: Managed<String>) -> Self {
-    Self {
-      meta: &LIST_STR,
-      method_name,
-    }
+    Self { method_name }
   }
 }
 
 impl NativeMethod for ListStr {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &LIST_STR
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -195,19 +202,11 @@ impl NativeMethod for ListStr {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ListSize {
-  meta: &'static NativeMeta,
-}
-
-impl ListSize {
-  fn new() -> Self {
-    Self { meta: &LIST_SIZE }
-  }
-}
+struct ListSize();
 
 impl NativeMethod for ListSize {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &LIST_SIZE
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -216,19 +215,11 @@ impl NativeMethod for ListSize {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ListPush {
-  meta: &'static NativeMeta,
-}
-
-impl ListPush {
-  fn new() -> Self {
-    Self { meta: &LIST_PUSH }
-  }
-}
+struct ListPush();
 
 impl NativeMethod for ListPush {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &LIST_PUSH
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
@@ -238,19 +229,11 @@ impl NativeMethod for ListPush {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ListPop {
-  meta: &'static NativeMeta,
-}
-
-impl ListPop {
-  fn new() -> Self {
-    Self { meta: &LIST_POP }
-  }
-}
+struct ListPop();
 
 impl NativeMethod for ListPop {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &LIST_POP
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -262,19 +245,11 @@ impl NativeMethod for ListPop {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ListRemove {
-  meta: &'static NativeMeta,
-}
-
-impl ListRemove {
-  fn new() -> Self {
-    Self { meta: &LIST_REMOVE }
-  }
-}
+struct ListRemove();
 
 impl NativeMethod for ListRemove {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &LIST_REMOVE
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
@@ -299,19 +274,27 @@ impl NativeMethod for ListRemove {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ListInsert {
-  meta: &'static NativeMeta,
-}
+struct ListIndex();
 
-impl ListInsert {
-  fn new() -> Self {
-    Self { meta: &LIST_INSERT }
+impl NativeMethod for ListIndex {
+  fn meta(&self) -> &NativeMeta {
+    &LIST_INDEX
+  }
+
+  fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    let item = args[0];
+    let index = this.to_list().iter().position(|x| *x == item);
+
+    Ok(index.map(|i| Value::from(i as f64)).unwrap_or(VALUE_NIL))
   }
 }
 
+#[derive(Clone, Debug, Trace)]
+struct ListInsert();
+
 impl NativeMethod for ListInsert {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &LIST_INSERT
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
@@ -336,19 +319,11 @@ impl NativeMethod for ListInsert {
 }
 
 #[derive(Clone, Debug, Trace)]
-struct ListClear {
-  meta: &'static NativeMeta,
-}
-
-impl ListClear {
-  fn new() -> Self {
-    Self { meta: &LIST_CLEAR }
-  }
-}
+struct ListClear();
 
 impl NativeMethod for ListClear {
   fn meta(&self) -> &NativeMeta {
-    &self.meta
+    &LIST_CLEAR
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
@@ -379,8 +354,8 @@ impl NativeMethod for ListIter {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    let inner_iter: Box<dyn SlIter> = Box::new(ListIterator::new(this.to_list()));
-    let iter = SlIterator::new(inner_iter);
+    let inner_iter: Box<dyn LyIter> = Box::new(ListIterator::new(this.to_list()));
+    let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
     Ok(Value::from(iter))
@@ -399,7 +374,7 @@ impl NativeFun for ListCollect {
     let mut iter = args[0].to_iter();
     let mut list = match iter.size_hint() {
       Some(size) => LyVec::with_capacity(size),
-      None => LyVec::new()
+      None => LyVec::new(),
     };
 
     while !is_falsey(iter.next(hooks)?) {
@@ -430,7 +405,7 @@ impl ListIterator {
   }
 }
 
-impl SlIter for ListIterator {
+impl LyIter for ListIterator {
   fn name(&self) -> &str {
     "List Iterator"
   }
@@ -466,7 +441,7 @@ impl Trace for ListIterator {
     self.list.trace()
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.list.trace_debug(stdio)
   }
 }
@@ -488,8 +463,8 @@ mod test {
 
       let list_str = ListStr::new(hooks.manage_str("str".to_string()));
 
-      assert_eq!(list_str.meta.name, "str");
-      assert_eq!(list_str.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(list_str.meta().name, "str");
+      assert_eq!(list_str.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -530,15 +505,15 @@ mod test {
 
     #[test]
     fn new() {
-      let list_size = ListSize::new();
+      let list_size = ListSize();
 
-      assert_eq!(list_size.meta.name, "size");
-      assert_eq!(list_size.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(list_size.meta().name, "size");
+      assert_eq!(list_size.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let list_size = ListSize::new();
+      let list_size = ListSize();
       let gc = test_native_dependencies();
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -562,19 +537,19 @@ mod test {
 
     #[test]
     fn new() {
-      let list_push = ListPush::new();
+      let list_push = ListPush();
 
-      assert_eq!(list_push.meta.name, "push");
-      assert_eq!(list_push.meta.signature.arity, Arity::Variadic(0));
+      assert_eq!(list_push.meta().name, "push");
+      assert_eq!(list_push.meta().signature.arity, Arity::Variadic(0));
       assert_eq!(
-        list_push.meta.signature.parameters[0].kind,
+        list_push.meta().signature.parameters[0].kind,
         ParameterKind::Any
       );
     }
 
     #[test]
     fn call() {
-      let list_push = ListPush::new();
+      let list_push = ListPush();
       let gc = test_native_dependencies();
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -616,15 +591,15 @@ mod test {
 
     #[test]
     fn new() {
-      let list_pop = ListPop::new();
+      let list_pop = ListPop();
 
-      assert_eq!(list_pop.meta.name, "pop");
-      assert_eq!(list_pop.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(list_pop.meta().name, "pop");
+      assert_eq!(list_pop.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let list_pop = ListPop::new();
+      let list_pop = ListPop();
       let gc = test_native_dependencies();
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -659,19 +634,19 @@ mod test {
 
     #[test]
     fn new() {
-      let list_remove = ListRemove::new();
+      let list_remove = ListRemove();
 
-      assert_eq!(list_remove.meta.name, "remove");
-      assert_eq!(list_remove.meta.signature.arity, Arity::Fixed(1));
+      assert_eq!(list_remove.meta().name, "remove");
+      assert_eq!(list_remove.meta().signature.arity, Arity::Fixed(1));
       assert_eq!(
-        list_remove.meta.signature.parameters[0].kind,
+        list_remove.meta().signature.parameters[0].kind,
         ParameterKind::Number
       );
     }
 
     #[test]
     fn call() {
-      let list_remove = ListRemove::new();
+      let list_remove = ListRemove();
       let gc = test_native_dependencies();
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -703,29 +678,66 @@ mod test {
     }
   }
 
-  mod insert {
+  mod index {
     use super::*;
     use crate::support::{test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
-      let list_insert = ListInsert::new();
+      let list_index = ListIndex();
 
-      assert_eq!(list_insert.meta.name, "insert");
-      assert_eq!(list_insert.meta.signature.arity, Arity::Fixed(2));
+      assert_eq!(list_index.meta().name, "index");
+      assert_eq!(list_index.meta().signature.arity, Arity::Fixed(1));
       assert_eq!(
-        list_insert.meta.signature.parameters[0].kind,
-        ParameterKind::Number
-      );
-      assert_eq!(
-        list_insert.meta.signature.parameters[1].kind,
+        list_index.meta().signature.parameters[0].kind,
         ParameterKind::Any
       );
     }
 
     #[test]
     fn call() {
-      let list_insert = ListInsert::new();
+      let list_index = ListIndex();
+      let gc = test_native_dependencies();
+      let mut context = MockedContext::new(&gc, &[]);
+      let mut hooks = Hooks::new(&mut context);
+
+      let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
+      let this = hooks.manage(list);
+      let list_value = Value::from(this);
+
+      let result = list_index.call(&mut hooks, list_value, &[Value::from(10.0)]);
+      match result {
+        Ok(r) => {
+          assert_eq!(r.to_num(), 1.0);
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod insert {
+    use super::*;
+    use crate::support::{test_native_dependencies, MockedContext};
+
+    #[test]
+    fn new() {
+      let list_insert = ListInsert();
+
+      assert_eq!(list_insert.meta().name, "insert");
+      assert_eq!(list_insert.meta().signature.arity, Arity::Fixed(2));
+      assert_eq!(
+        list_insert.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+      assert_eq!(
+        list_insert.meta().signature.parameters[1].kind,
+        ParameterKind::Any
+      );
+    }
+
+    #[test]
+    fn call() {
+      let list_insert = ListInsert();
       let gc = test_native_dependencies();
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -768,15 +780,15 @@ mod test {
 
     #[test]
     fn new() {
-      let list_clear = ListClear::new();
+      let list_clear = ListClear();
 
-      assert_eq!(list_clear.meta.name, "clear");
-      assert_eq!(list_clear.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(list_clear.meta().name, "clear");
+      assert_eq!(list_clear.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
-      let list_clear = ListClear::new();
+      let list_clear = ListClear();
       let gc = test_native_dependencies();
       let mut context = MockedContext::new(&gc, &[]);
       let mut hooks = Hooks::new(&mut context);
@@ -815,7 +827,10 @@ mod test {
 
       assert_eq!(list_has.meta().name, "has");
       assert_eq!(list_has.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(list_has.meta().signature.parameters[0].kind, ParameterKind::Any);
+      assert_eq!(
+        list_has.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
     }
 
     #[test]
@@ -885,7 +900,7 @@ mod test {
 
   mod collect {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext, test_iter};
+    use crate::support::{test_iter, test_native_dependencies, MockedContext};
 
     #[test]
     fn new() {
@@ -893,7 +908,10 @@ mod test {
 
       assert_eq!(list_iter.meta().name, "collect");
       assert_eq!(list_iter.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(list_iter.meta().signature.parameters[0].kind, ParameterKind::Iter);
+      assert_eq!(
+        list_iter.meta().signature.parameters[0].kind,
+        ParameterKind::Iter
+      );
     }
 
     #[test]
@@ -904,7 +922,7 @@ mod test {
       let list_iter = ListCollect();
 
       let iter = test_iter();
-      let iter_value = Value::from(hooks.manage(SlIterator::new(iter)));
+      let iter_value = Value::from(hooks.manage(LyIterator::new(iter)));
 
       let result = list_iter.call(&mut hooks, &[iter_value]);
       match result {

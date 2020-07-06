@@ -29,7 +29,7 @@ use number::{declare_number_class, define_number_class};
 use object::{declare_object_class, define_object_class, OBJECT_CLASS_NAME};
 use string::{declare_string_class, define_string_class};
 
-pub(crate) fn create_primitive_classes(
+pub(crate) fn add_primitive_classes(
   hooks: &GcHooks,
   mut module: Managed<Module>,
   package: Managed<Package>,

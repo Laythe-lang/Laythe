@@ -36,7 +36,7 @@ mod unboxed {
   };
   use laythe_env::{
     managed::{Managed, Trace},
-    stdio::StdioWrapper,
+    stdio::Stdio,
   };
 
   use std::fmt;
@@ -820,7 +820,7 @@ mod unboxed {
       }
     }
 
-    fn trace_debug(&self, stdio: &mut StdioWrapper) -> bool {
+    fn trace_debug(&self, stdio: &mut Stdio) -> bool {
       match self {
         Value::Nil => true,
         Value::Bool(_) => true,

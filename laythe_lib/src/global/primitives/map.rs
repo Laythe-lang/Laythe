@@ -4,7 +4,7 @@ use crate::support::{
 use hashbrown::hash_map::Iter;
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  iterator::{SlIter, SlIterator},
+  iterator::{LyIter, LyIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::{LyHashMap, LyVec},
@@ -15,7 +15,7 @@ use laythe_core::{
 };
 use laythe_env::{
   managed::{Managed, Trace},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 use std::fmt;
 use std::mem;
@@ -26,6 +26,14 @@ const MAP_GET: NativeMeta = NativeMeta::new(
   "get",
   Arity::Fixed(1),
   &[Parameter::new("key", ParameterKind::Any)],
+);
+const MAP_SET: NativeMeta = NativeMeta::new(
+  "set",
+  Arity::Fixed(2),
+  &[
+    Parameter::new("key", ParameterKind::Any),
+    Parameter::new("value", ParameterKind::Any),
+  ],
 );
 const MAP_HAS: NativeMeta = NativeMeta::new(
   "has",
@@ -172,7 +180,7 @@ impl Trace for MapStr {
     self.method_name.trace()
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.method_name.trace_debug(stdio)
   }
 }
@@ -260,8 +268,8 @@ impl NativeMethod for MapIter {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    let inner_iter: Box<dyn SlIter> = Box::new(MapIterator::new(this.to_map()));
-    let iter = SlIterator::new(inner_iter);
+    let inner_iter: Box<dyn LyIter> = Box::new(MapIterator::new(this.to_map()));
+    let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
     Ok(Value::from(iter))
@@ -286,7 +294,7 @@ impl MapIterator {
   }
 }
 
-impl SlIter for MapIterator {
+impl LyIter for MapIterator {
   fn name(&self) -> &str {
     "Map Iterator"
   }
@@ -322,7 +330,7 @@ impl Trace for MapIterator {
     self.map.trace()
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.map.trace_debug(stdio)
   }
 }

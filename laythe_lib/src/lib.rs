@@ -1,22 +1,29 @@
 #![deny(clippy::all)]
 pub mod global;
+mod io;
 mod math;
 mod support;
 
-use global::add_global;
+use global::add_global_module;
+use io::io_package;
 use laythe_core::{hooks::GcHooks, package::Package, LyResult};
 use laythe_env::managed::Managed;
-use math::add_math;
+use math::math_module;
 
 pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 pub const GLOBAL_PATH: &str = "std/global.ly";
 
 pub fn create_std_lib(hooks: &GcHooks) -> LyResult<Managed<Package>> {
-  let std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
+  let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
 
-  add_global(hooks, std)?;
-  add_math(hooks, std)?;
+  add_global_module(hooks, std)?;
+
+  let math = math_module(hooks, std)?;
+  let io = io_package(hooks, std)?;
+
+  std.add_module(hooks, math)?;
+  std.add_package(hooks, io)?;
 
   Ok(std)
 }

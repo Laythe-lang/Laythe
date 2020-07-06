@@ -1,7 +1,7 @@
 use crate::{
   env::{Env, EnvMock},
   fs::{Fs, FsMock},
-  stdio::{Stdio, StdioMock},
+  stdio::{Stdio},
 };
 use std::fmt;
 
