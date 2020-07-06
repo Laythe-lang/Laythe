@@ -1,6 +1,6 @@
 extern crate proc_macro;
 
-use crate::stdio::StdIo;
+use crate::stdio::Stdio;
 pub use laythe_macro::*;
 use std::{
   cell::Cell,
@@ -18,7 +18,7 @@ pub trait Trace {
 
   /// Mark all objects that are reachable printing debugging information
   /// for each object
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool;
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool;
 }
 
 /// An entity that can be managed and collected by the garbage collector.
@@ -143,12 +143,19 @@ impl<T: 'static + Manage> Trace for Managed<T> {
     true
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     if self.obj().mark() {
       return true;
     }
 
-    stdio.println(&format!("{:p} mark {}", &*self.obj(), self.debug()));
+    let stdout = stdio.stdout();
+    stdout
+      .write(&format!("{:p} mark {}", &*self.obj(), self.debug()).as_bytes())
+      .expect("unable to write to stdout");
+    stdout
+      .write("\n".as_bytes())
+      .expect("unable to write to stdout");
+    stdout.flush().expect("unable to flush stdout");
 
     self.obj().data.trace_debug(stdio);
     true
@@ -183,12 +190,19 @@ impl Trace for Managed<dyn Manage> {
     true
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     if self.obj().mark() {
       return true;
     }
 
-    stdio.println(&format!("{:p} mark {}", &*self.obj(), self.debug()));
+    let stdout = stdio.stdout();
+    stdout
+      .write(&format!("{:p} mark {}", &*self.obj(), self.debug()).as_bytes())
+      .expect("unable to write to stdout");
+    stdout
+      .write("\n".as_bytes())
+      .expect("unable to write to stdout");
+    stdout.flush().expect("unable to flush stdout");
 
     self.obj().data.trace_debug(stdio);
     true

@@ -1,51 +1,63 @@
-use crate::{Error, SlIoError};
+use crate::LyIoError;
 use std::{
-  fs::{canonicalize, read_to_string},
   io,
   path::{Path, PathBuf},
 };
 
-pub trait FsIo {
-  fn read_file(&self, path: &Path) -> Result<String, SlIoError>;
+/// A wrapper around file system facilities provided to Laythe
+pub struct Fs {
+  fs: Box<dyn FsImpl>,
+}
+
+impl Fs {
+  /// Create a new file system wrapper
+  pub fn new(fs: Box<dyn FsImpl>) -> Self {
+    Self { fs }
+  }
+
+  /// Read a file into String
+  pub fn read_to_string(&self, path: &Path) -> io::Result<String> {
+    self.fs.read_to_string(path)
+  }
+
+  /// Read a directory for files and sub directories
+  pub fn read_directory(&self, path: &Path) -> io::Result<SlDirEntry> {
+    self.fs.read_directory(path)
+  }
+
+  /// Canonicalize a provided filepath
+  pub fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+    self.fs.canonicalize(path)
+  }
+
+  /// Get a relative path from a base
+  pub fn relative_path(&self, base: &PathBuf, import: &Path) -> Result<PathBuf, LyIoError> {
+    self.fs.relative_path(base, import)
+  }
+}
+
+pub struct SlDirEntry();
+
+pub trait FsImpl {
+  fn read_to_string(&self, path: &Path) -> io::Result<String>;
   fn read_directory(&self, path: &Path) -> io::Result<SlDirEntry>;
-  fn canonicalize(&self, path: &Path) -> Result<PathBuf, SlIoError>;
-  fn relative_path(&self, base: &PathBuf, import: &Path) -> Result<PathBuf, SlIoError>;
+  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
+  fn relative_path(&self, base: &PathBuf, import: &Path) -> Result<PathBuf, LyIoError>;
 }
 
-pub struct SlDirEntry {}
+pub struct FsMock();
 
-#[derive(Clone)]
-pub struct NativeFsIo();
-
-impl Default for NativeFsIo {
-  fn default() -> Self {
-    Self()
+impl FsImpl for FsMock {
+  fn read_to_string(&self, _path: &Path) -> io::Result<String> {
+    Ok("let x = 10;".to_string())
   }
-}
-
-impl FsIo for NativeFsIo {
-  fn read_file(&self, path: &Path) -> Result<String, SlIoError> {
-    match read_to_string(path) {
-      Ok(file_contents) => Ok(file_contents),
-      Err(_) => panic!(),
-    }
-  }
-
-  fn canonicalize(&self, path: &Path) -> Result<PathBuf, SlIoError> {
-    canonicalize(path).map_err(|_| SlIoError::new(Error::InvalidPath, format!("failed {:?}", path)))
-  }
-
   fn read_directory(&self, _path: &Path) -> io::Result<SlDirEntry> {
-    todo!()
+    Ok(SlDirEntry())
   }
-
-  fn relative_path(&self, base: &PathBuf, import: &Path) -> Result<PathBuf, SlIoError> {
-    match import.strip_prefix(base) {
-      Ok(relative) => Ok(PathBuf::from(relative)),
-      Err(_) => Err(SlIoError::new(
-        Error::InvalidPath,
-        "Import was not a child of the base path".to_string(),
-      )),
-    }
+  fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
+    Ok(path.to_path_buf())
+  }
+  fn relative_path(&self, _base: &PathBuf, import: &Path) -> Result<PathBuf, LyIoError> {
+    Ok(import.to_path_buf())
   }
 }
