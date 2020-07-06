@@ -30,14 +30,15 @@ pub use self::boxed::*;
 mod unboxed {
   use super::*;
   use crate::{
-    iterator::SlIterator,
+    iterator::LyIterator,
     native::{NativeFun, NativeMethod},
     object::{Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Managed, Trace},
-    stdio::StdIo,
+    stdio::StdioWrapper,
   };
+
   use std::fmt;
   use std::hash::Hash;
 
@@ -59,7 +60,7 @@ mod unboxed {
     Class(Managed<Class>),
     Instance(Managed<Instance>),
     Method(Managed<Method>),
-    Iter(Managed<SlIterator>),
+    Iter(Managed<LyIterator>),
     NativeFun(Managed<Box<dyn NativeFun>>),
     NativeMethod(Managed<Box<dyn NativeMethod>>),
     Upvalue(Managed<Upvalue>),
@@ -314,7 +315,7 @@ mod unboxed {
 
     /// Unwrap and reference a laythe iterator, panics if not a iterator
     #[inline]
-    pub fn to_iter(&self) -> Managed<SlIterator> {
+    pub fn to_iter(&self) -> Managed<LyIterator> {
       match self {
         Self::Iter(iter) => *iter,
         _ => panic!("Expected iterator."),
@@ -543,23 +544,23 @@ mod unboxed {
       }
     }
 
-    pub fn kind(&self) -> ValueVariant {
+    pub fn kind(&self) -> ValueKind {
       match self {
-        Value::Nil => ValueVariant::Nil,
-        Value::Bool(_) => ValueVariant::Bool,
-        Value::Number(_) => ValueVariant::Number,
-        Value::String(_) => ValueVariant::String,
-        Value::List(_) => ValueVariant::List,
-        Value::Map(_) => ValueVariant::Map,
-        Value::Fun(_) => ValueVariant::Fun,
-        Value::Closure(_) => ValueVariant::Closure,
-        Value::Method(_) => ValueVariant::Method,
-        Value::Class(_) => ValueVariant::Class,
-        Value::Instance(_) => ValueVariant::Instance,
-        Value::Iter(_) => ValueVariant::Iter,
-        Value::Upvalue(_) => ValueVariant::Upvalue,
-        Value::NativeFun(_) => ValueVariant::NativeFun,
-        Value::NativeMethod(_) => ValueVariant::NativeMethod,
+        Value::Nil => ValueKind::Nil,
+        Value::Bool(_) => ValueKind::Bool,
+        Value::Number(_) => ValueKind::Number,
+        Value::String(_) => ValueKind::String,
+        Value::List(_) => ValueKind::List,
+        Value::Map(_) => ValueKind::Map,
+        Value::Fun(_) => ValueKind::Fun,
+        Value::Closure(_) => ValueKind::Closure,
+        Value::Method(_) => ValueKind::Method,
+        Value::Class(_) => ValueKind::Class,
+        Value::Instance(_) => ValueKind::Instance,
+        Value::Iter(_) => ValueKind::Iter,
+        Value::Upvalue(_) => ValueKind::Upvalue,
+        Value::NativeFun(_) => ValueKind::NativeFun,
+        Value::NativeMethod(_) => ValueKind::NativeMethod,
       }
     }
   }
@@ -600,8 +601,8 @@ mod unboxed {
     }
   }
 
-  impl From<Managed<SlIterator>> for Value {
-    fn from(managed: Managed<SlIterator>) -> Value {
+  impl From<Managed<LyIterator>> for Value {
+    fn from(managed: Managed<LyIterator>) -> Value {
       Value::Iter(managed)
     }
   }
@@ -738,60 +739,60 @@ mod unboxed {
       // check the the variants have the same value
       match self {
         Self::Number(num) => {
-          ValueVariant::Number.hash(state);
+          ValueKind::Number.hash(state);
           (*num as u64).hash(state);
         }
         Self::Bool(b) => {
-          ValueVariant::Bool.hash(state);
+          ValueKind::Bool.hash(state);
           b.hash(state);
         }
-        Self::Nil => ValueVariant::Nil.hash(state),
+        Self::Nil => ValueKind::Nil.hash(state),
         Self::String(string) => {
-          ValueVariant::String.hash(state);
+          ValueKind::String.hash(state);
           string.hash(state);
         }
         Self::List(list) => {
-          ValueVariant::List.hash(state);
+          ValueKind::List.hash(state);
           list.hash(state);
         }
         Self::Map(map) => {
-          ValueVariant::Map.hash(state);
+          ValueKind::Map.hash(state);
           map.hash(state);
         }
         Self::Fun(fun) => {
-          ValueVariant::Fun.hash(state);
+          ValueKind::Fun.hash(state);
           fun.hash(state);
         }
         Self::Closure(closure) => {
-          ValueVariant::Closure.hash(state);
+          ValueKind::Closure.hash(state);
           closure.hash(state);
         }
         Self::Method(method) => {
-          ValueVariant::Method.hash(state);
+          ValueKind::Method.hash(state);
           method.hash(state);
         }
         Self::NativeFun(native) => {
-          ValueVariant::NativeFun.hash(state);
+          ValueKind::NativeFun.hash(state);
           native.hash(state);
         }
         Self::NativeMethod(native) => {
-          ValueVariant::NativeMethod.hash(state);
+          ValueKind::NativeMethod.hash(state);
           native.hash(state);
         }
         Self::Upvalue(upvalue) => {
-          ValueVariant::Upvalue.hash(state);
+          ValueKind::Upvalue.hash(state);
           upvalue.hash(state);
         }
         Self::Class(class) => {
-          ValueVariant::Class.hash(state);
+          ValueKind::Class.hash(state);
           class.hash(state);
         }
         Self::Instance(instance) => {
-          ValueVariant::Instance.hash(state);
+          ValueKind::Instance.hash(state);
           instance.hash(state);
         }
         Self::Iter(iter) => {
-          ValueVariant::Iter.hash(state);
+          ValueKind::Iter.hash(state);
           iter.hash(state);
         }
       };
@@ -819,7 +820,7 @@ mod unboxed {
       }
     }
 
-    fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    fn trace_debug(&self, stdio: &mut StdioWrapper) -> bool {
       match self {
         Value::Nil => true,
         Value::Bool(_) => true,
@@ -882,13 +883,13 @@ mod unboxed {
 mod boxed {
   use super::ValueKind;
   use crate::{
-    iterator::SlIterator,
+    iterator::LyIterator,
     native::{NativeFun, NativeMethod},
     object::{Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Allocation, Manage, Managed, Trace},
-    stdio::StdIo,
+    stdio::Stdio,
   };
 
   use std::fmt;
@@ -1063,7 +1064,7 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_iter(&self) -> Managed<SlIterator> {
+    pub fn to_iter(&self) -> Managed<LyIterator> {
       self.to_obj_tag(TAG_ITER)
     }
 
@@ -1196,7 +1197,7 @@ mod boxed {
         _ => true,
       }
     }
-    fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+    fn trace_debug(&self, stdio: &mut Stdio) -> bool {
       match self.kind() {
         ValueKind::String => self.to_str().trace_debug(stdio),
         ValueKind::List => self.to_list().trace_debug(stdio),
@@ -1258,8 +1259,8 @@ mod boxed {
     }
   }
 
-  impl From<Managed<SlIterator>> for Value {
-    fn from(managed: Managed<SlIterator>) -> Value {
+  impl From<Managed<LyIterator>> for Value {
+    fn from(managed: Managed<LyIterator>) -> Value {
       Self(managed.to_usize() as u64 | TAG_ITER)
     }
   }
@@ -1497,7 +1498,7 @@ mod test {
   // Class(Managed<Class>),
   // Instance(Managed<Instance>),
   // Method(Managed<Method>),
-  // Iter(Managed<SlIterator>),
+  // Iter(Managed<LyIterator>),
   // NativeFun(Managed<Box<dyn NativeFun>>),
   // NativeMethod(Managed<Box<dyn NativeMethod>>),
   // Upvalue(Managed<Upvalue>),

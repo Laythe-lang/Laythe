@@ -5,7 +5,7 @@ use crate::{
 };
 use laythe_env::{
   managed::{Manage, Managed, Trace},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 use std::fmt;
 use std::mem;
@@ -15,17 +15,17 @@ use std::mem;
 /// the need for hashing when the special IterCurrent and IterNext
 /// bytecodes are used
 #[derive(Debug)]
-pub struct SlIterator {
+pub struct LyIterator {
   /// The underlying iterator
-  iterator: Box<dyn SlIter>,
+  iterator: Box<dyn LyIter>,
 
   /// The current value of the iterator
   current: Value,
 }
 
-impl SlIterator {
+impl LyIterator {
   /// Create a new iterator container
-  pub fn new(iterator: Box<dyn SlIter>) -> Self {
+  pub fn new(iterator: Box<dyn LyIter>) -> Self {
     Self {
       iterator,
       current: VALUE_NIL,
@@ -63,7 +63,7 @@ impl SlIterator {
   }
 }
 
-impl Trace for SlIterator {
+impl Trace for LyIterator {
   fn trace(&self) -> bool {
     self.current.trace();
     self.iterator.trace();
@@ -71,7 +71,7 @@ impl Trace for SlIterator {
     true
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.current.trace_debug(stdio);
     self.iterator.trace_debug(stdio);
 
@@ -79,7 +79,7 @@ impl Trace for SlIterator {
   }
 }
 
-impl Manage for SlIterator {
+impl Manage for LyIterator {
   fn alloc_type(&self) -> &str {
     "iterator"
   }
@@ -93,11 +93,11 @@ impl Manage for SlIterator {
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<SlIterator>() + self.iterator.size()
+    mem::size_of::<LyIterator>() + self.iterator.size()
   }
 }
 
-pub trait SlIter: Trace + fmt::Debug {
+pub trait LyIter: Trace + fmt::Debug {
   /// The name of the iterator mostly for debugging purposes
   fn name(&self) -> &str;
 

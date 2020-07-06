@@ -3,9 +3,10 @@ use crate::{
   CallResult, LyError,
 };
 use laythe_env::{
+  io::{Io, MockIo},
   managed::{Manage, Managed, Trace},
   memory::Gc,
-  stdio::StdIo,
+  stdio::Stdio,
 };
 
 /// A set of commands that a native function to request from it's surrounding
@@ -46,6 +47,11 @@ impl<'a> Hooks<'a> {
   #[inline]
   pub fn to_call(&mut self) -> CallHooks {
     CallHooks::new(self.context.call_context())
+  }
+
+  /// Get a handle to the current io
+  pub fn to_io(&mut self) -> Io {
+    self.context.io()
   }
 
   /// Provide a function for the surround context to execute
@@ -250,6 +256,7 @@ impl<'a> CallHooks<'a> {
 pub trait HookContext {
   fn gc_context(&self) -> &dyn GcContext;
   fn call_context(&mut self) -> &mut dyn CallContext;
+  fn io(&mut self) -> Io;
 }
 
 /// A set of functions related to calling laythe values
@@ -275,7 +282,7 @@ pub trait GcContext: Trace {
   fn gc(&self) -> &Gc;
 }
 
-/// A placeholder context that does not gc and does not call functionsself.context)
+/// A placeholder context that does not gc and does not call functions
 pub struct NoContext<'a> {
   /// A reference to a gc just to allocate
   gc: &'a Gc,
@@ -292,7 +299,8 @@ impl<'a> Trace for NoContext<'a> {
   fn trace(&self) -> bool {
     false
   }
-  fn trace_debug(&self, _stdio: &dyn StdIo) -> bool {
+
+  fn trace_debug(&self, _stdio: &mut Stdio) -> bool {
     false
   }
 }
@@ -304,6 +312,10 @@ impl<'a> HookContext for NoContext<'a> {
 
   fn call_context(&mut self) -> &mut dyn CallContext {
     self
+  }
+
+  fn io(&mut self) -> Io {
+    Io::new(Box::new(MockIo()))
   }
 }
 

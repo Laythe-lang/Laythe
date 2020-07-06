@@ -6,7 +6,7 @@ use crate::{
 };
 use laythe_env::{
   managed::{Manage, Trace},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 use std::fmt;
 use std::{mem, ptr};
@@ -67,7 +67,7 @@ impl Trace for Box<dyn NativeFun> {
     inner.trace()
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     let inner: &dyn NativeFun = &**self;
     inner.trace_debug(stdio)
   }
@@ -128,7 +128,7 @@ impl Trace for Box<dyn NativeMethod> {
     inner.trace()
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     let inner: &dyn NativeMethod = &**self;
     inner.trace_debug(stdio)
   }

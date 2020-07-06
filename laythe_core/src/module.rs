@@ -6,7 +6,7 @@ use crate::{
 };
 use laythe_env::{
   managed::{Manage, Managed, Trace},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 use std::fmt;
 use std::{mem, path::PathBuf};
@@ -44,15 +44,25 @@ impl Module {
   }
 
   /// Create a module from a filepath
-  pub fn from_path(hooks: &GcHooks, path: Managed<PathBuf>) -> Option<Self> {
+  pub fn from_path(hooks: &GcHooks, path: Managed<PathBuf>) -> LyResult<Self> {
     let module_name = path
       .file_stem()
       .and_then(|m| m.to_str())
-      .map(|m| m.to_string())?;
+      .map(|m| m.to_string());
+
+    let module_name = match module_name {
+      Some(module_name) => module_name,
+      None => {
+        return Err(hooks.make_error(format!(
+          "Could not create module from {}, path malformed.",
+          path.to_str().unwrap_or("invalid path")
+        )))
+      }
+    };
 
     let name = hooks.manage_str(module_name);
 
-    Some(Self {
+    Ok(Self {
       path,
       module_class: hooks.manage(Class::bare(name)),
       exports: LyHashSet::default(),
@@ -172,7 +182,7 @@ impl Trace for Module {
 
     true
   }
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.module_class.trace();
     self.path.trace_debug(stdio);
 
@@ -247,7 +257,7 @@ mod test {
     let path = hooks.manage(PathBuf::from("self/path.ly"));
     let module = Module::from_path(&hooks, path);
 
-    assert!(module.is_some());
+    assert!(module.is_ok());
     assert_eq!(&*module.unwrap().name(), "path");
   }
 
