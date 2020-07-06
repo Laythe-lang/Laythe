@@ -109,6 +109,12 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 
   class.add_method(
     hooks,
+    hooks.manage_str(String::from(ITER_ZIP.name)),
+    Value::from(to_dyn_method(hooks, IterZip())),
+  );
+
+  class.add_method(
+    hooks,
     hooks.manage_str(String::from(ITER_INTO.name)),
     Value::from(to_dyn_method(hooks, IterInto())),
   );
@@ -360,6 +366,99 @@ impl NativeMethod for IterEach {
   }
 }
 
+#[derive(Trace)]
+struct IterZip();
+
+impl NativeMethod for IterZip {
+  fn meta(&self) -> &NativeMeta {
+    &ITER_ZIP
+  }
+
+  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    let iters: Vec<Managed<LyIterator>> = [this]
+      .iter()
+      .chain(args.iter())
+      .map(|arg| arg.to_iter())
+      .collect();
+
+    let inner_iter: Box<dyn LyIter> = Box::new(ZipIterator::new(iters));
+    let iter = LyIterator::new(inner_iter);
+    let iter = hooks.manage(iter);
+
+    Ok(Value::from(iter))
+  }
+}
+
+#[derive(Debug)]
+struct ZipIterator {
+  current: Value,
+  iters: Vec<Managed<LyIterator>>,
+}
+
+impl ZipIterator {
+  fn new(iters: Vec<Managed<LyIterator>>) -> Self {
+    Self {
+      current: VALUE_NIL,
+      iters,
+    }
+  }
+}
+
+impl LyIter for ZipIterator {
+  fn name(&self) -> &str {
+    "Zip Iterator"
+  }
+
+  fn current(&self) -> Value {
+    self.current
+  }
+
+  fn next(&mut self, hooks: &mut Hooks) -> CallResult {
+    let mut results = hooks.manage(LyVec::with_capacity(self.iters.len()));
+
+    for iter in &mut self.iters {
+      let next = iter.next(hooks)?;
+      if is_falsey(next) {
+        return Ok(Value::from(false));
+      }
+
+      results.push(iter.current());
+    }
+
+    self.current = Value::from(results);
+    Ok(Value::from(true))
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    use std::cmp;
+
+    self.iters.iter().fold(Some(std::usize::MAX), |acc, curr| {
+      acc.and_then(|acc| curr.size_hint().map(|curr| cmp::min(acc, curr)))
+    })
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+}
+
+impl Trace for ZipIterator {
+  fn trace(&self) -> bool {
+    self.current.trace();
+    self.iters.iter().for_each(|iter| {
+      iter.trace();
+    });
+    true
+  }
+
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+    self.current.trace_debug(stdio);
+    self.iters.iter().for_each(|iter| {
+      iter.trace_debug(stdio);
+    });
+    true
+  }
+}
 
 #[derive(Trace)]
 struct IterInto();
@@ -670,6 +769,53 @@ mod test {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),
       }
+    }
+  }
+
+  mod zip {
+    use super::*;
+    use crate::support::{test_native_dependencies, MockedContext};
+    use laythe_core::{iterator::LyIterator};
+
+    #[test]
+    fn new() {
+      let iter_zip = IterZip();
+
+      assert_eq!(iter_zip.meta().name, "zip");
+      assert_eq!(iter_zip.meta().signature.arity, Arity::Variadic(0));
+      assert_eq!(
+        iter_zip.meta().signature.parameters[0].kind,
+        ParameterKind::Iter,
+      );
+    }
+
+    #[test]
+    fn call() {
+      let gc = test_native_dependencies();
+      let mut context = MockedContext::new(&gc, &[Value::from(1.0); 10]);
+      let mut hooks = Hooks::new(&mut context);
+      let iter_zip = IterZip();
+
+      let iter = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter));
+      let this = Value::from(managed);
+     
+      let iter2 = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter2));
+      let arg = Value::from(managed);
+
+      let result = iter_zip.call(&mut hooks, this, &[arg]);
+      match result {
+        Ok(r) => assert!(r.is_iter()),
+        Err(_) => assert!(false),
+      }
+
+      let mut zip = result.unwrap().to_iter();
+      assert!(zip.next(&mut hooks).unwrap().to_bool());
+      assert!(zip.current().is_list());
+      assert_eq!(zip.current().to_list().len(), 2);
+      assert_eq!(zip.current().to_list()[0].to_num(), 1.0);
+      assert_eq!(zip.current().to_list()[1].to_num(), 1.0);
     }
   }
 

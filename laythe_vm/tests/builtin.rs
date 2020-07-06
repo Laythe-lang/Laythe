@@ -68,6 +68,7 @@ fn iter() -> Result<(), std::io::Error> {
       "std_lib/builtin/iter/next.ly",
       "std_lib/builtin/iter/reduce.ly",
       "std_lib/builtin/iter/str.ly",
+      "std_lib/builtin/iter/zip.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -107,13 +108,14 @@ fn list() -> Result<(), std::io::Error> {
 fn map() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/builtin/map/size.ly",
-      "std_lib/builtin/map/str.ly",
-      "std_lib/builtin/map/has.ly",
       "std_lib/builtin/map/get.ly",
-      "std_lib/builtin/map/remove.ly",
+      "std_lib/builtin/map/has.ly",
       "std_lib/builtin/map/insert.ly",
       "std_lib/builtin/map/iter.ly",
+      "std_lib/builtin/map/remove.ly",
+      "std_lib/builtin/map/set.ly",
+      "std_lib/builtin/map/size.ly",
+      "std_lib/builtin/map/str.ly",
     ],
     ExecuteResult::Ok,
   )?;

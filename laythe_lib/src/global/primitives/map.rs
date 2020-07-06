@@ -94,6 +94,12 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
 
   class.add_method(
     hooks,
+    hooks.manage_str(String::from(MAP_SET.name)),
+    Value::from(to_dyn_method(hooks, MapSet())),
+  );
+
+  class.add_method(
+    hooks,
     hooks.manage_str(String::from(MAP_REMOVE.name)),
     Value::from(to_dyn_method(hooks, MapRemove())),
   );
@@ -224,6 +230,19 @@ impl NativeMethod for MapGet {
       Some(value) => Ok(*value),
       None => Ok(VALUE_NIL),
     }
+  }
+}
+
+#[derive(Clone, Debug, Trace)]
+struct MapSet();
+
+impl NativeMethod for MapSet {
+  fn meta(&self) -> &NativeMeta {
+    &MAP_SET
+  }
+
+  fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    Ok(this.to_map().insert(args[0], args[1]).unwrap_or(VALUE_NIL))
   }
 }
 
@@ -505,6 +524,65 @@ mod test {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),
       }
+    }
+  }
+
+  #[cfg(test)]
+  mod set {
+    use super::*;
+    use crate::support::{test_native_dependencies, MockedContext};
+
+    #[test]
+    fn new() {
+      let map_set = MapSet();
+
+      assert_eq!(map_set.meta().name, "set");
+      assert_eq!(map_set.meta().signature.arity, Arity::Fixed(2));
+      assert_eq!(
+        map_set.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+      assert_eq!(
+        map_set.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+    }
+
+    #[test]
+    fn call() {
+      let map_set = MapSet();
+      let gc = test_native_dependencies();
+      let mut context = MockedContext::new(&gc, &[]);
+      let mut hooks = Hooks::new(&mut context);
+
+      let map = LyHashMap::default();
+      let this = hooks.manage(map);
+
+      let result = map_set.call(
+        &mut hooks,
+        Value::from(this),
+        &[Value::from(true), Value::from(10.0)],
+      );
+      match result {
+        Ok(r) => assert!(r.is_nil()),
+        Err(_) => assert!(false),
+      }
+
+      assert_eq!(this.len(), 1);
+      assert_eq!(*this.get(&Value::from(true)).unwrap(), Value::from(10.0));
+
+      let result = map_set.call(
+        &mut hooks,
+        Value::from(this),
+        &[Value::from(true), Value::from(false)],
+      );
+      match result {
+        Ok(r) => assert_eq!(r.to_num(), 10.0),
+        Err(_) => assert!(false),
+      }
+
+      assert_eq!(this.len(), 1);
+      assert_eq!(*this.get(&Value::from(true)).unwrap(), Value::from(false));
     }
   }
 

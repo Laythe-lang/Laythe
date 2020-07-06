@@ -1,0 +1,19 @@
+let l1 = [1, 2, 3, 4];
+let l2 = ["cat", "dog", "parrot"];
+
+let zipped = l1.iter().zip(l2.iter());
+
+assertEq(zipped.current, nil);
+assertEq(zipped.next(), true);
+
+assertEq(zipped.current[0], 1);
+assertEq(zipped.current[1], "cat");
+assertEq(zipped.next(), true);
+
+assertEq(zipped.current[0], 2);
+assertEq(zipped.current[1], "dog");
+assertEq(zipped.next(), true);
+
+assertEq(zipped.current[0], 3);
+assertEq(zipped.current[1], "parrot");
+assertEq(zipped.next(), false);
