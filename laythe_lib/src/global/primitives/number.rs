@@ -3,7 +3,7 @@ use crate::support::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  iterator::{SlIter, SlIterator},
+  iterator::{LyIter, LyIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
   package::Package,
@@ -11,7 +11,7 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::StdIo};
+use laythe_env::{managed::Trace, stdio::Stdio};
 use std::mem;
 
 pub const NUMBER_CLASS_NAME: &'static str = "Number";
@@ -72,8 +72,8 @@ impl NativeMethod for NumberTimes {
       return Err(hooks.make_error("times requires a positive number.".to_string()));
     }
 
-    let inner_iter: Box<dyn SlIter> = Box::new(TimesIterator::new(max));
-    let iter = SlIterator::new(inner_iter);
+    let inner_iter: Box<dyn LyIter> = Box::new(TimesIterator::new(max));
+    let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
     Ok(Value::from(iter))
@@ -95,7 +95,7 @@ impl TimesIterator {
   }
 }
 
-impl SlIter for TimesIterator {
+impl LyIter for TimesIterator {
   fn name(&self) -> &str {
     "Times Iterator"
   }
@@ -128,7 +128,7 @@ mod test {
 
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -141,8 +141,7 @@ mod test {
     #[test]
     fn call() {
       let number_str = NumberStr();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let result = number_str.call(&mut hooks, Value::from(10.0), &[]);
@@ -155,7 +154,7 @@ mod test {
 
   mod times {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -167,8 +166,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[Value::from(5.0)]);
+      let mut context = MockedContext::new(&[Value::from(5.0)]);
       let mut hooks = Hooks::new(&mut context);
       let number_times = NumberTimes();
 

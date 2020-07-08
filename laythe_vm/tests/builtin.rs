@@ -1,11 +1,10 @@
-use laythe_env::io::NativeIo;
 use laythe_vm::vm::ExecuteResult;
 use support::assert_files_exit;
 
 mod support;
 
 fn test_files(paths: &[&str], result: ExecuteResult) -> Result<(), std::io::Error> {
-  assert_files_exit(paths, FILE_PATH, NativeIo(), result)
+  assert_files_exit(paths, FILE_PATH, result)
 }
 
 const FILE_PATH: &str = file!();
@@ -22,17 +21,11 @@ fn bool() -> Result<(), std::io::Error> {
 #[test]
 fn class() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/builtin/class/superClass.ly",
-    ],
+    &vec!["std_lib/builtin/class/superClass.ly"],
     ExecuteResult::Ok,
   )?;
 
-  test_files(
-    &vec![
-    ],
-    ExecuteResult::RuntimeError,
-  )
+  test_files(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
@@ -68,6 +61,7 @@ fn iter() -> Result<(), std::io::Error> {
       "std_lib/builtin/iter/next.ly",
       "std_lib/builtin/iter/reduce.ly",
       "std_lib/builtin/iter/str.ly",
+      "std_lib/builtin/iter/zip.ly",
     ],
     ExecuteResult::Ok,
   )?;
@@ -83,6 +77,7 @@ fn list() -> Result<(), std::io::Error> {
       "std_lib/builtin/list/collect.ly",
       "std_lib/builtin/list/has.ly",
       "std_lib/builtin/list/insert.ly",
+      "std_lib/builtin/list/index.ly",
       "std_lib/builtin/list/iter.ly",
       "std_lib/builtin/list/pop.ly",
       "std_lib/builtin/list/push.ly",
@@ -106,13 +101,14 @@ fn list() -> Result<(), std::io::Error> {
 fn map() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/builtin/map/size.ly",
-      "std_lib/builtin/map/str.ly",
-      "std_lib/builtin/map/has.ly",
       "std_lib/builtin/map/get.ly",
-      "std_lib/builtin/map/remove.ly",
+      "std_lib/builtin/map/has.ly",
       "std_lib/builtin/map/insert.ly",
       "std_lib/builtin/map/iter.ly",
+      "std_lib/builtin/map/remove.ly",
+      "std_lib/builtin/map/set.ly",
+      "std_lib/builtin/map/size.ly",
+      "std_lib/builtin/map/str.ly",
     ],
     ExecuteResult::Ok,
   )?;

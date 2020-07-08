@@ -1,20 +1,19 @@
-use laythe_env::io::NativeIo;
 use laythe_vm::vm::{default_native_vm, ExecuteResult};
 use support::{assert_file_exit_and_stdio, assert_files_exit};
 
 mod support;
 
 fn test_file_exits(paths: &[&str], result: ExecuteResult) -> Result<(), std::io::Error> {
-  assert_files_exit(paths, FILE_PATH, NativeIo(), result)
+  assert_files_exit(paths, FILE_PATH, result)
 }
 
 fn test_file_with_stdio(
   path: &str,
   stdout: Option<Vec<&str>>,
-  errout: Option<Vec<&str>>,
+  stderr: Option<Vec<&str>>,
   result: ExecuteResult,
 ) -> Result<(), std::io::Error> {
-  assert_file_exit_and_stdio(path, FILE_PATH, stdout, errout, result)
+  assert_file_exit_and_stdio(path, FILE_PATH, None, None, stdout, stderr, result)
 }
 
 const FILE_PATH: &str = file!();

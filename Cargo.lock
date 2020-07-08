@@ -270,6 +270,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "laythe_native"
+version = "0.1.0"
+dependencies = [
+ "laythe_env 0.1.0",
+]
+
+[[package]]
 name = "laythe_vm"
 version = "0.1.0"
 dependencies = [
@@ -278,6 +285,7 @@ dependencies = [
  "laythe_core 0.1.0",
  "laythe_env 0.1.0",
  "laythe_lib 0.1.0",
+ "laythe_native 0.1.0",
 ]
 
 [[package]]

@@ -9,7 +9,7 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::StdIo};
+use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const OBJECT_CLASS_NAME: &'static str = "Object";
 
@@ -57,7 +57,7 @@ mod test {
 
   mod equals {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -74,8 +74,7 @@ mod test {
     #[test]
     fn call() {
       let bool_str = ObjectEquals();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let ten_1 = Value::from(10.0);

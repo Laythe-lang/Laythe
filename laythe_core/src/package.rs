@@ -2,7 +2,7 @@ use crate::{hooks::GcHooks, module::Module, object::LyHashMap, LyResult};
 use hashbrown::hash_map::{Entry, Iter};
 use laythe_env::{
   managed::{Manage, Managed, Trace},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 use std::fmt;
 use std::mem;
@@ -165,7 +165,7 @@ impl Trace for Package {
 
     true
   }
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.name.trace_debug(stdio);
 
     self.entities.iter().for_each(|(key, value)| {

@@ -1,9 +1,6 @@
 use laythe_core::hooks::{GcHooks, NoContext};
 use laythe_core::module::Module;
-use laythe_env::{
-  io::{Io, NativeIo},
-  memory::Gc,
-};
+use laythe_env::{memory::Gc, stdio::Stdio};
 use laythe_vm::compiler::{Compiler, Parser};
 use std::env;
 use std::fs::File;
@@ -29,12 +26,11 @@ fn main() {
         let gc = Gc::default();
         let mut context = NoContext::new(&gc);
         let hooks = GcHooks::new(&mut context);
-        let io = NativeIo::default();
-        let mut parser = Parser::new(io.stdio(), &source);
+        let mut parser = Parser::new(Stdio::default(), &source);
         let module =
           Module::from_path(&hooks, hooks.manage(PathBuf::from("/Benchmark.ly"))).unwrap();
         let module = hooks.manage(module);
-        let compiler = Compiler::new(module, io, &mut parser, &hooks);
+        let compiler = Compiler::new(module, &mut parser, &hooks);
         compiler.compile().unwrap();
       }
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));

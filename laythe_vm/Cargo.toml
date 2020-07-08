@@ -16,6 +16,7 @@ path = "src/lib.rs"
 laythe_core = { path = "../laythe_core", features = ["nan_boxing"]  }
 laythe_lib = { path = "../laythe_lib" }
 laythe_env = { path = "../laythe_env" }
+laythe_native = { path = "../laythe_native" }
 fnv = "1.0.3"
 
 [dev-dependencies]

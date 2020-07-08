@@ -7,8 +7,8 @@ mod time;
 mod support;
 
 use crate::GLOBAL_PATH;
-use assert::create_assert_funs;
-use dependencies::create_dependency_classes;
+use assert::add_assert_funs;
+use dependencies::add_dependency_classes;
 use dependencies::module::MODULE_CLASS_NAME;
 use laythe_core::{
   hooks::GcHooks,
@@ -19,30 +19,26 @@ use laythe_core::{
 };
 use laythe_env::managed::Managed;
 use primitives::{
-  bool::BOOL_CLASS_NAME, class::CLASS_CLASS_NAME, closure::CLOSURE_CLASS_NAME,
-  create_primitive_classes, iter::ITER_CLASS_NAME, list::LIST_CLASS_NAME, map::MAP_CLASS_NAME,
+  add_primitive_classes, bool::BOOL_CLASS_NAME, class::CLASS_CLASS_NAME,
+  closure::CLOSURE_CLASS_NAME, iter::ITER_CLASS_NAME, list::LIST_CLASS_NAME, map::MAP_CLASS_NAME,
   method::METHOD_CLASS_NAME, native_fun::NATIVE_FUN_CLASS_NAME,
   native_method::NATIVE_METHOD_CLASS_NAME, nil::NIL_CLASS_NAME, number::NUMBER_CLASS_NAME,
   object::OBJECT_CLASS_NAME, string::STRING_CLASS_NAME,
 };
 use std::path::PathBuf;
-use time::create_clock_funs;
+use time::add_clock_funs;
 
-pub fn add_global(hooks: &GcHooks, mut std: Managed<Package>) -> LyResult<()> {
-  let module = match Module::from_path(&hooks, hooks.manage(PathBuf::from(GLOBAL_PATH))) {
-    Some(module) => module,
-    None => {
-      return Err(hooks.make_error("Could not create global module, path malformed.".to_string()));
-    }
-  };
-
-  let module = hooks.manage(module);
+pub fn add_global_module(hooks: &GcHooks, mut std: Managed<Package>) -> LyResult<()> {
+  let module = hooks.manage(Module::from_path(
+    &hooks,
+    hooks.manage(PathBuf::from(GLOBAL_PATH)),
+  )?);
   std.add_module(hooks, module)?;
 
-  create_primitive_classes(hooks, module, std)?;
-  create_dependency_classes(hooks, module, std)?;
-  create_assert_funs(hooks, module, std)?;
-  create_clock_funs(hooks, module, std)?;
+  add_primitive_classes(hooks, module, std)?;
+  add_dependency_classes(hooks, module, std)?;
+  add_assert_funs(hooks, module, std)?;
+  add_clock_funs(hooks, module, std)?;
 
   Ok(())
 }

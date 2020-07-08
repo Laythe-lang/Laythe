@@ -5,7 +5,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult,
 };
-use laythe_env::{managed::Trace, stdio::StdIo};
+use laythe_env::{managed::Trace, stdio::Stdio};
 
 const TEST_META: NativeMeta = NativeMeta::new("test", Arity::Fixed(0), &[]);
 

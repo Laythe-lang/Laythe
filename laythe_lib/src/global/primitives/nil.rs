@@ -10,7 +10,7 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::StdIo};
+use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const NIL_CLASS_NAME: &'static str = "Nil";
 const NIL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
@@ -59,7 +59,7 @@ mod test {
 
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
     use laythe_core::value::VALUE_NIL;
 
     #[test]
@@ -73,8 +73,7 @@ mod test {
     #[test]
     fn call() {
       let nil_str = NilStr::new();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let result = nil_str.call(&mut hooks, VALUE_NIL, &[]);

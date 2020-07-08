@@ -4,7 +4,7 @@ use crate::support::{
 use hashbrown::hash_map::Iter;
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  iterator::{SlIter, SlIterator},
+  iterator::{LyIter, LyIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
   object::{LyHashMap, LyVec},
@@ -15,7 +15,7 @@ use laythe_core::{
 };
 use laythe_env::{
   managed::{Managed, Trace},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 use std::fmt;
 use std::mem;
@@ -26,6 +26,14 @@ const MAP_GET: NativeMeta = NativeMeta::new(
   "get",
   Arity::Fixed(1),
   &[Parameter::new("key", ParameterKind::Any)],
+);
+const MAP_SET: NativeMeta = NativeMeta::new(
+  "set",
+  Arity::Fixed(2),
+  &[
+    Parameter::new("key", ParameterKind::Any),
+    Parameter::new("value", ParameterKind::Any),
+  ],
 );
 const MAP_HAS: NativeMeta = NativeMeta::new(
   "has",
@@ -82,6 +90,12 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
     hooks,
     hooks.manage_str(String::from(MAP_GET.name)),
     Value::from(to_dyn_method(hooks, MapGet())),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(String::from(MAP_SET.name)),
+    Value::from(to_dyn_method(hooks, MapSet())),
   );
 
   class.add_method(
@@ -172,7 +186,7 @@ impl Trace for MapStr {
     self.method_name.trace()
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.method_name.trace_debug(stdio)
   }
 }
@@ -220,6 +234,19 @@ impl NativeMethod for MapGet {
 }
 
 #[derive(Clone, Debug, Trace)]
+struct MapSet();
+
+impl NativeMethod for MapSet {
+  fn meta(&self) -> &NativeMeta {
+    &MAP_SET
+  }
+
+  fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
+    Ok(this.to_map().insert(args[0], args[1]).unwrap_or(VALUE_NIL))
+  }
+}
+
+#[derive(Clone, Debug, Trace)]
 struct MapInsert();
 
 impl NativeMethod for MapInsert {
@@ -260,8 +287,8 @@ impl NativeMethod for MapIter {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    let inner_iter: Box<dyn SlIter> = Box::new(MapIterator::new(this.to_map()));
-    let iter = SlIterator::new(inner_iter);
+    let inner_iter: Box<dyn LyIter> = Box::new(MapIterator::new(this.to_map()));
+    let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
     Ok(Value::from(iter))
@@ -286,7 +313,7 @@ impl MapIterator {
   }
 }
 
-impl SlIter for MapIterator {
+impl LyIter for MapIterator {
   fn name(&self) -> &str {
     "Map Iterator"
   }
@@ -322,7 +349,7 @@ impl Trace for MapIterator {
     self.map.trace()
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.map.trace_debug(stdio)
   }
 }
@@ -346,12 +373,11 @@ mod test {
   #[cfg(test)]
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let hooks = Hooks::new(&mut context);
       let map_str = MapStr::new(hooks.manage_str("str".to_string()));
 
@@ -361,14 +387,13 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(
-        &gc,
-        &[
-          Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
-          Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
-        ],
-      );
+      let mut context = MockedContext::default();
+      let response = &[
+        Value::from(context.gc.manage_str("nil".to_string(), &NO_GC)),
+        Value::from(context.gc.manage_str("nil".to_string(), &NO_GC)),
+      ];
+      context.responses.extend_from_slice(response);
+
       let mut hooks = Hooks::new(&mut context);
       let map_str = MapStr::new(hooks.manage_str("str".to_string()));
 
@@ -389,7 +414,7 @@ mod test {
   #[cfg(test)]
   mod size {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -402,8 +427,7 @@ mod test {
     #[test]
     fn call() {
       let map_str = MapSize();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let values = &[];
@@ -423,7 +447,7 @@ mod test {
   #[cfg(test)]
   mod has {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -436,8 +460,7 @@ mod test {
     #[test]
     fn call() {
       let map_has = MapHas();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = LyHashMap::default();
@@ -461,7 +484,7 @@ mod test {
   #[cfg(test)]
   mod get {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -478,8 +501,7 @@ mod test {
     #[test]
     fn call() {
       let map_get = MapGet();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = LyHashMap::default();
@@ -501,9 +523,67 @@ mod test {
   }
 
   #[cfg(test)]
+  mod set {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let map_set = MapSet();
+
+      assert_eq!(map_set.meta().name, "set");
+      assert_eq!(map_set.meta().signature.arity, Arity::Fixed(2));
+      assert_eq!(
+        map_set.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+      assert_eq!(
+        map_set.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+    }
+
+    #[test]
+    fn call() {
+      let map_set = MapSet();
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let map = LyHashMap::default();
+      let this = hooks.manage(map);
+
+      let result = map_set.call(
+        &mut hooks,
+        Value::from(this),
+        &[Value::from(true), Value::from(10.0)],
+      );
+      match result {
+        Ok(r) => assert!(r.is_nil()),
+        Err(_) => assert!(false),
+      }
+
+      assert_eq!(this.len(), 1);
+      assert_eq!(*this.get(&Value::from(true)).unwrap(), Value::from(10.0));
+
+      let result = map_set.call(
+        &mut hooks,
+        Value::from(this),
+        &[Value::from(true), Value::from(false)],
+      );
+      match result {
+        Ok(r) => assert_eq!(r.to_num(), 10.0),
+        Err(_) => assert!(false),
+      }
+
+      assert_eq!(this.len(), 1);
+      assert_eq!(*this.get(&Value::from(true)).unwrap(), Value::from(false));
+    }
+  }
+
+  #[cfg(test)]
   mod insert {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -524,8 +604,7 @@ mod test {
     #[test]
     fn call() {
       let map_insert = MapInsert();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = LyHashMap::default();
@@ -557,7 +636,7 @@ mod test {
   #[cfg(test)]
   mod remove {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -574,8 +653,7 @@ mod test {
     #[test]
     fn call() {
       let map_remove = MapRemove();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = LyHashMap::default();

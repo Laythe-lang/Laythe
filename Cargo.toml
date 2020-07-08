@@ -1,6 +1,7 @@
 [workspace]
 members = [
   "laythe_compiler_bench",
+  "laythe_native",
   "laythe_core",
   "laythe_lib",
   "laythe_macro",
@@ -12,6 +13,7 @@ members = [
 
 default-members = [
   "laythe_core",
+  "laythe_native",
   "laythe_lib",
   "laythe_macro",
   "laythe_env",

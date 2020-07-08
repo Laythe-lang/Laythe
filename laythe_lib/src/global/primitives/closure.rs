@@ -10,7 +10,7 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::StdIo};
+use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const CLOSURE_CLASS_NAME: &'static str = "Fun";
 
@@ -106,7 +106,7 @@ mod test {
 
   mod name {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
+    use crate::support::{fun_from_hooks, MockedContext};
     use laythe_core::object::Closure;
 
     #[test]
@@ -120,8 +120,7 @@ mod test {
     #[test]
     fn call() {
       let closure_name = ClosureName();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
@@ -138,7 +137,7 @@ mod test {
 
   mod size {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
+    use crate::support::{fun_from_hooks, MockedContext};
     use laythe_core::object::Closure;
 
     #[test]
@@ -152,8 +151,7 @@ mod test {
     #[test]
     fn call() {
       let closure_name = ClosureSize();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
@@ -185,7 +183,7 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
+    use crate::support::{fun_from_hooks, MockedContext};
     use laythe_core::object::Closure;
 
     #[test]
@@ -203,8 +201,7 @@ mod test {
     #[test]
     fn call() {
       let closure_call = ClosureCall();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[Value::from(4.3)]);
+      let mut context = MockedContext::new(&[Value::from(4.3)]);
       let mut hooks = Hooks::new(&mut context);
 
       let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
