@@ -22,6 +22,7 @@ fn main() {
           ExecuteResult::FunResult(_) => panic!("Fun result should only be returned internally"),
           ExecuteResult::CompileError => process::exit(2),
           ExecuteResult::RuntimeError => process::exit(3),
+          ExecuteResult::InternalError => process::exit(4),
         },
         Err(e) => {
           eprintln!("{}", e);

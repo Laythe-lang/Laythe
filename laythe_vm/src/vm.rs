@@ -19,14 +19,13 @@ use laythe_core::{
   CallResult, LyError,
 };
 use laythe_env::{
-  env::EnvIo,
-  fs::FsIo,
-  io::{Io, NativeIo},
+  io::Io,
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 use laythe_lib::{create_std_lib, global::builtin_from_global_module, GLOBAL, STD};
+use laythe_native::io::NativeIo;
 use std::convert::TryInto;
 use std::mem;
 use std::ptr;
@@ -34,6 +33,12 @@ use std::{path::PathBuf, ptr::NonNull};
 
 #[cfg(feature = "debug")]
 use crate::debug::{disassemble_instruction, exception_catch};
+
+#[cfg(feature = "debug")]
+use std::io;
+
+#[cfg(feature = "debug_upvalues")]
+use std::io;
 
 #[derive(Debug, Clone, PartialEq)]
 enum Signal {
@@ -47,6 +52,7 @@ enum Signal {
 pub enum ExecuteResult {
   Ok,
   FunResult(Value),
+  InternalError,
   RuntimeError,
   CompileError,
 }
@@ -56,15 +62,15 @@ pub enum RunMode {
   CallFunction(usize),
 }
 
-pub fn default_native_vm() -> Vm<NativeIo> {
-  let io = NativeIo();
+pub fn default_native_vm() -> Vm {
+  let io = Io::new(Box::new(NativeIo::default()));
   Vm::new(io)
 }
 
 /// A set of dependencies needed by the virtual machine
-pub struct VmDependencies<I: Io + 'static> {
+pub struct VmDependencies {
   /// access to the environments io
-  io: I,
+  io: Io,
 
   /// The garbage collector
   gc: Gc,
@@ -80,7 +86,7 @@ pub struct VmDependencies<I: Io + 'static> {
 }
 
 /// The virtual machine for the laythe programming language
-pub struct Vm<I: Io + 'static> {
+pub struct Vm {
   /// A stack holding all local variable currently in use
   stack: Vec<Value>,
 
@@ -91,18 +97,18 @@ pub struct Vm<I: Io + 'static> {
   gc: Gc,
 
   /// The environments io access
-  io: I,
+  io: Io,
 
   /// an object to manage the current dependencies
-  dep_manager: Managed<DepManager<I>>,
+  dep_manager: Managed<DepManager>,
 
   /// The global module
   global: Managed<Module>,
 }
 
-impl<I: Io> Vm<I> {
-  pub fn new(io: I) -> Vm<I> {
-    let gc = Gc::new(Box::new(io.stdio()));
+impl Vm {
+  pub fn new(io: Io) -> Vm {
+    let gc = Gc::new(io.stdio());
     let mut no_gc_context = NoContext::new(&gc);
     let hooks = GcHooks::new(&mut no_gc_context);
 
@@ -151,8 +157,8 @@ impl<I: Io> Vm<I> {
   }
 
   /// Start the interactive repl
-  pub fn repl(&mut self) {
-    let stdio = self.io.stdio();
+  pub fn repl(&mut self) -> ExecuteResult {
+    let mut stdio = self.io.stdio();
 
     let main_module = self
       .main_module(self.dep_manager.src_dir.join(PathBuf::from(REPL_MODULE)))
@@ -161,8 +167,10 @@ impl<I: Io> Vm<I> {
     loop {
       let mut buffer = String::new();
 
-      stdio.print("> ");
-      stdio.flush().expect("Could not write to stdout");
+      if let Err(_) = write!(stdio.stdout(), "> ") {
+        return ExecuteResult::InternalError;
+      }
+      stdio.stdout().flush().expect("Could not write to stdout");
 
       match stdio.read_line(&mut buffer) {
         Ok(_) => {
@@ -191,7 +199,8 @@ impl<I: Io> Vm<I> {
         self.interpret(main_module, source)
       }
       Err(err) => {
-        self.io.stdio().println(&err.message);
+        writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
+          .expect("Unable to write to stderr");
         ExecuteResult::RuntimeError
       }
     }
@@ -218,7 +227,7 @@ impl<I: Io> Vm<I> {
     let mut compiler_context = NoContext::new(&self.gc);
     let hooks = GcHooks::new(&mut compiler_context);
 
-    let compiler = Compiler::new(module, self.io.clone(), &mut parser, &hooks);
+    let compiler = Compiler::new(module, &mut parser, &hooks);
     compiler.compile()
   }
 
@@ -226,13 +235,13 @@ impl<I: Io> Vm<I> {
     let no_gc_context = NoContext::new(&self.gc);
     let hooks = GcHooks::new(&no_gc_context);
 
+    let mut stdio = self.io.stdio();
+    let stderr = stdio.stderr();
+
     let module = match Module::from_path(&hooks, hooks.manage(module_path)) {
-      Some(module) => module,
-      None => {
-        self
-          .io
-          .stdio()
-          .println("Unable to extract filename from script path.");
+      Ok(module) => module,
+      Err(err) => {
+        writeln!(stderr, "{}", &*err.message).expect("Unable to write to stderr");
         return Err(ExecuteResult::RuntimeError);
       }
     };
@@ -241,7 +250,7 @@ impl<I: Io> Vm<I> {
     match self.global.transfer_exported(&hooks, &mut module) {
       Ok(_) => {}
       Err(_) => {
-        self.io.stdio().println("Transfer global module failed.");
+        writeln!(stderr, "Transfer global module failed.").expect("Unable to write to stderr");
         return Err(ExecuteResult::RuntimeError);
       }
     }
@@ -250,10 +259,10 @@ impl<I: Io> Vm<I> {
   }
 }
 
-impl<I: Io> From<VmDependencies<I>> for Vm<I> {
+impl From<VmDependencies> for Vm {
   /// Construct a vm from a set of dependencies. This is meant to be used when targeting
   /// different environments
-  fn from(dependencies: VmDependencies<I>) -> Self {
+  fn from(dependencies: VmDependencies) -> Self {
     let gc = dependencies.gc;
     let mut no_gc_context = NoContext::new(&gc);
     let hooks = GcHooks::new(&mut no_gc_context);
@@ -296,7 +305,7 @@ impl<I: Io> From<VmDependencies<I>> for Vm<I> {
   }
 }
 
-struct VmExecutor<'a, I: Io + 'static> {
+struct VmExecutor<'a> {
   /// A stack of call frames for the current execution
   frames: &'a mut Vec<CallFrame>,
 
@@ -307,13 +316,13 @@ struct VmExecutor<'a, I: Io + 'static> {
   global: Managed<Module>,
 
   /// the standard lib package
-  dep_manager: Managed<DepManager<I>>,
+  dep_manager: Managed<DepManager>,
 
   /// A reference to a object currently in the vm
   gc: &'a mut Gc,
 
   /// The environments io access
-  io: &'a I,
+  io: &'a Io,
 
   /// A collection of currently available upvalues
   open_upvalues: Vec<Managed<Upvalue>>,
@@ -337,9 +346,9 @@ struct VmExecutor<'a, I: Io + 'static> {
   frame_count: usize,
 }
 
-impl<'a, I: Io> VmExecutor<'a, I> {
+impl<'a> VmExecutor<'a> {
   /// Create an instance of the vm executor that can execute the provided script.
-  pub fn new(vm: &'a mut Vm<I>, script: Value) -> VmExecutor<'a, I> {
+  pub fn new(vm: &'a mut Vm, script: Value) -> VmExecutor<'a> {
     let current_frame = { &mut vm.frames[0] };
     let current_fun = current_frame.closure.fun;
     let stack_top = &mut vm.stack[1] as *mut Value;
@@ -416,7 +425,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
     method_name: Managed<String>,
     args: &[Value],
   ) -> ExecuteResult {
-    let class = self.dep_manager.primitive_classes().for_value(this, this.kind());
+    let class = self
+      .dep_manager
+      .primitive_classes()
+      .for_value(this, this.kind());
 
     self.push(this);
     for arg in args {
@@ -445,7 +457,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       #[cfg(feature = "debug")]
       {
         let ip = unsafe { self.ip().offset(-1) };
-        self.print_debug(ip, last_ip);
+        if let Err(_) = self.print_debug(ip, last_ip) {
+          return ExecuteResult::InternalError;
+        }
         last_ip = ip;
       }
 
@@ -756,7 +770,10 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       }
     }
 
-    let class = self.dep_manager.primitive_classes().for_value(receiver, receiver.kind());
+    let class = self
+      .dep_manager
+      .primitive_classes()
+      .for_value(receiver, receiver.kind());
     self.invoke_from_class(class, method_name, arg_count)
   }
 
@@ -1074,10 +1091,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       _ => (),
     }
 
-    let class = self
-      .dep_manager
-      .primitive_classes()
-      .for_value(value, kind);
+    let class = self.dep_manager.primitive_classes().for_value(value, kind);
 
     self.bind_method(class, name)
   }
@@ -1305,7 +1319,8 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   }
 
   fn op_print(&mut self) -> Signal {
-    self.io.stdio().println(&format!("{}", self.pop()));
+    let mut stdio = self.io.stdio();
+    writeln!(stdio.stdout(), "{}", self.pop()).expect("Unable to write to stdout");
     Signal::Ok
   }
 
@@ -1584,32 +1599,34 @@ impl<'a, I: Io> VmExecutor<'a, I> {
 
   /// Print debugging information for a caught exceptions
   #[cfg(feature = "debug")]
-  fn print_exception_debug(&self, frame: &CallFrame, idx: usize) {
-    let stdio = self.io.stdio();
+  fn print_exception_debug(&self, frame: &CallFrame, idx: usize) -> io::Result<()> {
+    let mut stdio = self.io.stdio();
+    let mut stdout = stdio.stdout();
 
-    exception_catch(&stdio, frame, idx);
+    exception_catch(&mut stdout, frame, idx)
   }
 
   /// Print debugging information for the current instruction
   #[cfg(feature = "debug")]
-  fn print_debug(&self, ip: *const u8, last_ip: *const u8) {
-    let stdio = self.io.stdio();
+  fn print_debug(&self, ip: *const u8, last_ip: *const u8) -> io::Result<usize> {
+    let mut stdio = self.io.stdio();
 
-    self.print_stack_debug(&stdio);
+    self.print_stack_debug(&mut stdio)?;
 
     #[cfg(feature = "debug_upvalue")]
-    self.print_upvalue_debug(&stdio);
+    self.print_upvalue_debug(&mut stdio)?;
 
     let start = &self.current_fun.chunk().instructions[0] as *const u8;
     let offset = ptr_len(start, ip);
     let last_offset = ptr_len(start, last_ip);
-    disassemble_instruction(&stdio, &self.current_fun.chunk(), offset, last_offset);
+    disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, last_offset)
   }
 
   /// Print the current stack
   #[cfg(feature = "debug")]
-  fn print_stack_debug(&self, stdio: &I::StdIo) {
-    stdio.print("Stack:        ");
+  fn print_stack_debug(&self, stdio: &mut Stdio) -> io::Result<()> {
+    let stdout = stdio.stdout();
+    write!(stdout, "Stack:        ")?;
 
     unsafe {
       let start = &self.stack[1] as *const Value;
@@ -1617,29 +1634,31 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       let slice = std::slice::from_raw_parts(start, len);
 
       for value in slice {
-        stdio.print(&format!("[ {} ]", *value));
+        write!(stdout, "[ {} ]", *value)?;
       }
     }
 
-    stdio.println("");
+    writeln!(stdout, "")
   }
 
   /// Print the current upvalues
   #[cfg(feature = "debug_upvalue")]
-  fn print_upvalue_debug(&self, stdio: &I::StdIo) {
-    stdio.print("Open UpVal:   ");
-    self
-      .open_upvalues
-      .iter()
-      .for_each(|upvalue| match &**upvalue {
+  fn print_upvalue_debug(&self, stdio: &mut Stdio) -> io::Result<()> {
+    let stdout = stdio.stdout();
+
+    write!(stdout, "Open UpVal:   ")?;
+    for upvalue in &self.open_upvalues {
+      match &**upvalue {
         Upvalue::Open(stack_ptr) => {
-          stdio.print(&format!("[ stack {} ]", unsafe { *stack_ptr.as_ref() }));
+          write!(stdout, "[ stack {} ]", unsafe { *stack_ptr.as_ref() })?;
         }
         Upvalue::Closed(closed) => {
-          stdio.print(&format!("[ heap {} ]", closed));
+          write!(stdout, "[ heap {} ]", closed)?;
         }
-      });
-    stdio.println("");
+      }
+    }
+
+    writeln!(stdout, "")
   }
 
   /// Convert an execute result to a call result
@@ -1654,6 +1673,7 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         Some(error) => Err(error),
         None => self.internal_error("Error not set on vm executor."),
       },
+      ExecuteResult::InternalError => self.internal_error("Internal error encountered"),
     }
   }
 
@@ -1716,7 +1736,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
         #[cfg(feature = "debug")]
         {
           let frame = unsafe { &*self.current_frame };
-          self.print_exception_debug(frame, _idx);
+          if let Err(_) = self.print_exception_debug(frame, _idx) {
+            return Some(ExecuteResult::InternalError);
+          }
         }
 
         None
@@ -1732,8 +1754,9 @@ impl<'a, I: Io> VmExecutor<'a, I> {
   fn print_error(&mut self, error: &LyError) {
     let message = error.message;
 
-    let stdio = self.io.stdio();
-    stdio.eprintln(&*message);
+    let mut stdio = self.io.stdio();
+    let stderr = stdio.stderr();
+    writeln!(stderr, "{}", &*message).expect("Unable to write to stderr");
 
     for frame in self.frames[1..self.frame_count].iter().rev() {
       let closure = &frame.closure;
@@ -1743,18 +1766,20 @@ impl<'a, I: Io> VmExecutor<'a, I> {
       };
 
       let offset = ptr_len(&closure.fun.chunk().instructions[0], frame.ip);
-      stdio.eprintln(&format!(
+      writeln!(
+        stderr,
         "[line {}] in {}",
         closure.fun.chunk().get_line(offset),
         location
-      ));
+      )
+      .expect("Unable to write to stderr");
     }
 
     self.reset_stack();
   }
 }
 
-impl<'a, I: Io> Trace for VmExecutor<'a, I> {
+impl<'a> Trace for VmExecutor<'a> {
   fn trace(&self) -> bool {
     self.script.trace();
 
@@ -1782,7 +1807,7 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
     true
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.script.trace_debug(stdio);
 
     unsafe {
@@ -1810,7 +1835,7 @@ impl<'a, I: Io> Trace for VmExecutor<'a, I> {
   }
 }
 
-impl<'a, I: Io> HookContext for VmExecutor<'a, I> {
+impl<'a> HookContext for VmExecutor<'a> {
   fn gc_context(&self) -> &dyn GcContext {
     self
   }
@@ -1818,15 +1843,19 @@ impl<'a, I: Io> HookContext for VmExecutor<'a, I> {
   fn call_context(&mut self) -> &mut dyn CallContext {
     self
   }
+
+  fn io(&mut self) -> Io {
+    self.io.clone()
+  }
 }
 
-impl<'a, I: Io> GcContext for VmExecutor<'a, I> {
+impl<'a> GcContext for VmExecutor<'a> {
   fn gc(&self) -> &Gc {
     self.gc
   }
 }
 
-impl<'a, I: Io> CallContext for VmExecutor<'a, I> {
+impl<'a> CallContext for VmExecutor<'a> {
   fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
     let result = self.run_fun(callable, args);
     self.to_call_result(result)

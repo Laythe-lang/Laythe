@@ -7,19 +7,18 @@ use laythe_core::{
   LyResult,
 };
 use laythe_env::{
-  fs::FsIo,
   io::Io,
   managed::{Manage, Managed, Trace},
-  stdio::StdIo,
+  stdio::Stdio,
 };
 use std::{fmt, mem, path::PathBuf};
 
-pub struct DepManager<I: Io> {
+pub struct DepManager {
   /// The directory of the entry point
   pub src_dir: Managed<PathBuf>,
 
   /// interface to the current environments io
-  io: I,
+  io: Io,
 
   /// A collection of builtin in classes, values and functions
   builtin: BuiltIn,
@@ -31,9 +30,9 @@ pub struct DepManager<I: Io> {
   cache: LyHashMap<Managed<String>, Managed<Module>>,
 }
 
-impl<I: Io> DepManager<I> {
+impl DepManager {
   /// Create a new dependency manager
-  pub fn new(io: I, builtin: BuiltIn, src_dir: Managed<PathBuf>) -> Self {
+  pub fn new(io: Io, builtin: BuiltIn, src_dir: Managed<PathBuf>) -> Self {
     Self {
       io,
       src_dir,
@@ -77,11 +76,22 @@ impl<I: Io> DepManager<I> {
       .collect();
 
     // split import into segments and join to relative path
-    let resolved_segments: Vec<String> = relative
-      .into_iter()
-      .rev()
-      .chain(path.split(IMPORT_SEPARATOR).map(|s| s.to_string()))
-      .collect();
+    let resolved_segments: Vec<String> = if &path[..1] == "." {
+      relative
+        .into_iter()
+        .rev()
+        .chain(path.split(IMPORT_SEPARATOR).map(|s| s.to_string()))
+        .collect()
+    } else {
+      path.split(IMPORT_SEPARATOR).map(|s| s.to_string())
+        .collect()
+    };
+
+    // let resolved_segments: Vec<String> = relative
+    //   .into_iter()
+    //   .rev()
+    //   .chain(path.split(IMPORT_SEPARATOR).map(|s| s.to_string()))
+    //   .collect();
 
     // check if fully resolved module has already been loaded
     let resolved = hooks.manage_str(resolved_segments.join("/"));
@@ -113,7 +123,7 @@ impl<I: Io> DepManager<I> {
   }
 }
 
-impl<I: Io> fmt::Debug for DepManager<I> {
+impl fmt::Debug for DepManager {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_struct("DepManager")
       .field("io", &self.io)
@@ -124,7 +134,7 @@ impl<I: Io> fmt::Debug for DepManager<I> {
   }
 }
 
-impl<I: Io> Trace for DepManager<I> {
+impl Trace for DepManager {
   fn trace(&self) -> bool {
     self.src_dir.trace();
     self.packages.iter().for_each(|(key, value)| {
@@ -135,7 +145,7 @@ impl<I: Io> Trace for DepManager<I> {
     true
   }
 
-  fn trace_debug(&self, stdio: &dyn StdIo) -> bool {
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.src_dir.trace_debug(stdio);
     self.packages.iter().for_each(|(key, value)| {
       key.trace_debug(stdio);
@@ -146,7 +156,7 @@ impl<I: Io> Trace for DepManager<I> {
   }
 }
 
-impl<I: Io> Manage for DepManager<I> {
+impl Manage for DepManager {
   fn alloc_type(&self) -> &str {
     "Dependency Manager"
   }
