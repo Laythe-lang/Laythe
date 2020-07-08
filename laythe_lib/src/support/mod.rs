@@ -124,32 +124,56 @@ mod test {
     CallResult, LyError,
   };
   use laythe_env::{
-    io::Io,
+    io::{support::IoTest, Io},
     managed::{Managed, Trace},
     memory::{Gc, NoGc, NO_GC},
-    stdio::Stdio,
+    stdio::{support::StdioTestContainer, Stdio},
   };
   use std::path::PathBuf;
 
-  pub struct MockedContext<'a> {
-    gc: &'a Gc,
+  pub struct MockedContext {
+    pub gc: Gc,
+    io: Io,
     no_gc: NoGc,
-    responses: Vec<Value>,
+    pub responses: Vec<Value>,
     response_count: usize,
   }
 
-  impl<'a> MockedContext<'a> {
-    pub fn new(gc: &'a Gc, responses: &[Value]) -> Self {
+  impl Default for MockedContext {
+    fn default() -> Self {
       Self {
-        gc,
+        gc: Gc::default(),
         no_gc: NoGc(),
-        responses: Vec::from(responses),
+        responses: vec![],
+        io: Io::default(),
         response_count: 0,
       }
     }
   }
 
-  impl<'a> HookContext for MockedContext<'a> {
+  impl MockedContext {
+    pub fn new(responses: &[Value]) -> Self {
+      Self {
+        gc: Gc::default(),
+        no_gc: NoGc(),
+        responses: Vec::from(responses),
+        io: Io::default(),
+        response_count: 0,
+      }
+    }
+
+    pub fn new_with_io(stdio_container: &mut StdioTestContainer) -> Self {
+      Self {
+        gc: Gc::default(),
+        no_gc: NoGc(),
+        responses: Vec::from(vec![]),
+        io: Io::new(Box::new(IoTest::new(stdio_container))),
+        response_count: 0,
+      }
+    }
+  }
+
+  impl HookContext for MockedContext {
     fn gc_context(&self) -> &dyn GcContext {
       self
     }
@@ -159,17 +183,17 @@ mod test {
     }
 
     fn io(&mut self) -> Io {
-      Io::default()
+      self.io.clone()
     }
   }
 
-  impl<'a> GcContext for MockedContext<'a> {
+  impl GcContext for MockedContext {
     fn gc(&self) -> &Gc {
-      self.gc
+      &self.gc
     }
   }
 
-  impl<'a> CallContext for MockedContext<'a> {
+  impl CallContext for MockedContext {
     fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
       let arity = match callable.kind() {
         ValueKind::Closure => callable.to_closure().fun.arity,
@@ -292,7 +316,7 @@ mod test {
     }
   }
 
-  impl<'a> Trace for MockedContext<'a> {
+  impl Trace for MockedContext {
     fn trace(&self) -> bool {
       self.no_gc.trace()
     }

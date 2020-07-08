@@ -373,12 +373,11 @@ mod test {
   #[cfg(test)]
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let hooks = Hooks::new(&mut context);
       let map_str = MapStr::new(hooks.manage_str("str".to_string()));
 
@@ -388,14 +387,13 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(
-        &gc,
-        &[
-          Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
-          Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
-        ],
-      );
+      let mut context = MockedContext::default();
+      let response = &[
+        Value::from(context.gc.manage_str("nil".to_string(), &NO_GC)),
+        Value::from(context.gc.manage_str("nil".to_string(), &NO_GC)),
+      ];
+      context.responses.extend_from_slice(response);
+
       let mut hooks = Hooks::new(&mut context);
       let map_str = MapStr::new(hooks.manage_str("str".to_string()));
 
@@ -416,7 +414,7 @@ mod test {
   #[cfg(test)]
   mod size {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -429,8 +427,7 @@ mod test {
     #[test]
     fn call() {
       let map_str = MapSize();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let values = &[];
@@ -450,7 +447,7 @@ mod test {
   #[cfg(test)]
   mod has {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -463,8 +460,7 @@ mod test {
     #[test]
     fn call() {
       let map_has = MapHas();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = LyHashMap::default();
@@ -488,7 +484,7 @@ mod test {
   #[cfg(test)]
   mod get {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -505,8 +501,7 @@ mod test {
     #[test]
     fn call() {
       let map_get = MapGet();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = LyHashMap::default();
@@ -530,7 +525,7 @@ mod test {
   #[cfg(test)]
   mod set {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -551,8 +546,7 @@ mod test {
     #[test]
     fn call() {
       let map_set = MapSet();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let map = LyHashMap::default();
@@ -589,7 +583,7 @@ mod test {
   #[cfg(test)]
   mod insert {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -610,8 +604,7 @@ mod test {
     #[test]
     fn call() {
       let map_insert = MapInsert();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = LyHashMap::default();
@@ -643,7 +636,7 @@ mod test {
   #[cfg(test)]
   mod remove {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -660,8 +653,7 @@ mod test {
     #[test]
     fn call() {
       let map_remove = MapRemove();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let mut map = LyHashMap::default();

@@ -55,7 +55,7 @@ mod test {
 
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -68,8 +68,7 @@ mod test {
     #[test]
     fn call() {
       let bool_str = BoolStr();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let b_true = Value::from(true);

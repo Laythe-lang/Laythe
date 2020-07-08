@@ -1,7 +1,7 @@
 use crate::{
   env::{Env, EnvMock},
   fs::{Fs, FsMock},
-  stdio::{Stdio},
+  stdio::Stdio,
 };
 use std::fmt;
 
@@ -78,5 +78,42 @@ impl IoImpl for MockIo {
   }
   fn clone_box(&self) -> Box<dyn IoImpl> {
     Box::new(MockIo())
+  }
+}
+
+pub mod support {
+  use super::*;
+  use crate::stdio::support::{StdioTest, StdioTestContainer};
+
+  #[derive(Debug, Clone)]
+  /// A mock implementation of the io systems
+  pub struct IoTest {
+    pub stdio: StdioTest,
+  }
+
+  impl IoTest {
+    pub fn new(stdio_container: &mut StdioTestContainer) -> Self {
+      Self {
+        stdio: stdio_container.make_stdio(),
+      }
+    }
+  }
+
+  impl IoImpl for IoTest {
+    fn stdio(&self) -> Stdio {
+      Stdio::new(Box::new(self.stdio.clone()))
+    }
+
+    fn fsio(&self) -> Fs {
+      Fs::new(Box::new(FsMock()))
+    }
+
+    fn envio(&self) -> Env {
+      Env::new(Box::new(EnvMock()))
+    }
+
+    fn clone_box(&self) -> Box<dyn IoImpl> {
+      Box::new(self.clone())
+    }
   }
 }

@@ -164,7 +164,7 @@ impl NativeFun for Rem {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_native_dependencies, MockedContext};
+  use crate::support::MockedContext;
 
   #[cfg(test)]
   mod sin {
@@ -184,8 +184,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let sin = Sin();
@@ -215,8 +214,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let cos = Cos();
@@ -246,8 +244,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let ln = Ln();

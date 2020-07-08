@@ -56,7 +56,7 @@ impl NativeFun for Clock {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_native_dependencies, MockedContext};
+  use crate::support::MockedContext;
 
   #[test]
   fn new() {
@@ -69,8 +69,7 @@ mod test {
   #[test]
   fn call() {
     let clock = Clock::new();
-    let gc = test_native_dependencies();
-    let mut context = MockedContext::new(&gc, &[]);
+    let mut context = MockedContext::default();
     let mut hooks = Hooks::new(&mut context);
 
     let values = &[];

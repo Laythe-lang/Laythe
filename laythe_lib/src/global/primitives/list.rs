@@ -457,8 +457,7 @@ mod test {
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let hooks = Hooks::new(&mut context);
 
       let list_str = ListStr::new(hooks.manage_str("str".to_string()));
@@ -470,14 +469,11 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = MockedContext::new(
-        &gc,
-        &[
-          Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
-          Value::from(gc.manage_str("10".to_string(), &NO_GC)),
-          Value::from(gc.manage_str("[5]".to_string(), &NO_GC)),
-        ],
-      );
+      let mut context = MockedContext::new(&[
+        Value::from(gc.manage_str("nil".to_string(), &NO_GC)),
+        Value::from(gc.manage_str("10".to_string(), &NO_GC)),
+        Value::from(gc.manage_str("[5]".to_string(), &NO_GC)),
+      ]);
       let mut hooks = Hooks::new(&mut context);
       let list_str = ListStr::new(hooks.manage_str("str".to_string()));
 
@@ -500,7 +496,7 @@ mod test {
 
   mod size {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
     use laythe_core::hooks::Hooks;
 
     #[test]
@@ -514,8 +510,7 @@ mod test {
     #[test]
     fn call() {
       let list_size = ListSize();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let values = &[];
@@ -533,7 +528,7 @@ mod test {
 
   mod push {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -550,8 +545,7 @@ mod test {
     #[test]
     fn call() {
       let list_push = ListPush();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::from(vec![VALUE_NIL, Value::from(10.0)]);
@@ -587,7 +581,7 @@ mod test {
 
   mod pop {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -600,8 +594,7 @@ mod test {
     #[test]
     fn call() {
       let list_pop = ListPop();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::from(vec![Value::from(true)]);
@@ -630,7 +623,7 @@ mod test {
 
   mod remove {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -647,8 +640,7 @@ mod test {
     #[test]
     fn call() {
       let list_remove = ListRemove();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
@@ -680,7 +672,7 @@ mod test {
 
   mod index {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -697,8 +689,7 @@ mod test {
     #[test]
     fn call() {
       let list_index = ListIndex();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
@@ -717,7 +708,7 @@ mod test {
 
   mod insert {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -738,8 +729,7 @@ mod test {
     #[test]
     fn call() {
       let list_insert = ListInsert();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
@@ -776,7 +766,7 @@ mod test {
 
   mod clear {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -789,8 +779,7 @@ mod test {
     #[test]
     fn call() {
       let list_clear = ListClear();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
@@ -819,7 +808,7 @@ mod test {
 
   mod has {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -836,8 +825,7 @@ mod test {
     #[test]
     fn call() {
       let list_has = ListHas();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list = LyVec::from(&[VALUE_NIL, Value::from(10.0), Value::from(true)] as &[Value]);
@@ -864,7 +852,7 @@ mod test {
 
   mod iter {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -876,8 +864,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let list_iter = ListIter();
 
@@ -900,7 +887,7 @@ mod test {
 
   mod collect {
     use super::*;
-    use crate::support::{test_iter, test_native_dependencies, MockedContext};
+    use crate::support::{test_iter, MockedContext};
 
     #[test]
     fn new() {
@@ -916,8 +903,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let list_iter = ListCollect();
 

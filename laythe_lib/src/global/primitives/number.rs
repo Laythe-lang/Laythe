@@ -128,7 +128,7 @@ mod test {
 
   mod str {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -141,8 +141,7 @@ mod test {
     #[test]
     fn call() {
       let number_str = NumberStr();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[]);
+      let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let result = number_str.call(&mut hooks, Value::from(10.0), &[]);
@@ -155,7 +154,7 @@ mod test {
 
   mod times {
     use super::*;
-    use crate::support::{test_native_dependencies, MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {
@@ -167,8 +166,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[Value::from(5.0)]);
+      let mut context = MockedContext::new(&[Value::from(5.0)]);
       let mut hooks = Hooks::new(&mut context);
       let number_times = NumberTimes();
 

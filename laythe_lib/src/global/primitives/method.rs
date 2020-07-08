@@ -118,11 +118,12 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(
-        &gc,
-        &[Value::from(gc.manage_str("example".to_string(), &NO_GC))],
-      );
+      let mut context = MockedContext::default();
+      let responses = &[Value::from(
+        context.gc.manage_str("example".to_string(), &NO_GC),
+      )];
+      context.responses.extend_from_slice(responses);
+
       let mut hooks = Hooks::new(&mut context);
       let method_name = MethodName::new(hooks.manage_str("name".to_string()));
 
@@ -143,7 +144,7 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
+    use crate::support::{fun_from_hooks, MockedContext};
     use laythe_core::object::{Class, Closure, Instance, Method};
 
     #[test]
@@ -161,8 +162,7 @@ mod test {
     #[test]
     fn call() {
       let method_call = MethodCall();
-      let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&gc, &[Value::from(14.3)]);
+      let mut context = MockedContext::new(&[Value::from(14.3)]);
       let mut hooks = Hooks::new(&mut context);
 
       let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
