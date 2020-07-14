@@ -1,16 +1,28 @@
-use laythe_env::env::EnvImpl;
+use laythe_env::{
+  env::{Env, EnvImpl},
+  io::IoImpl,
+};
 use std::{env, io, path::PathBuf};
 
-#[derive(Clone)]
-pub struct NativeEnvio();
+#[derive(Debug)]
+pub struct IoEnvNative();
 
-impl Default for NativeEnvio {
+impl IoImpl<Env> for IoEnvNative {
+  fn make(&self) -> Env {
+    Env::new(Box::new(EnvNative()))
+  }
+}
+
+#[derive(Clone)]
+pub struct EnvNative();
+
+impl Default for EnvNative {
   fn default() -> Self {
     Self()
   }
 }
 
-impl EnvImpl for NativeEnvio {
+impl EnvImpl for EnvNative {
   fn current_dir(&self) -> io::Result<PathBuf> {
     env::current_dir()
   }
