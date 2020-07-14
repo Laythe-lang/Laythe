@@ -1,8 +1,17 @@
+use crate::io::IoImpl;
 use std::{io, path::PathBuf};
 
 /// A wrapper around environmental facilities provided to Laythe
 pub struct Env {
   env: Box<dyn EnvImpl>,
+}
+
+impl Default for Env {
+  fn default() -> Self {
+    Self {
+      env: Box::new(EnvMock()),
+    }
+  }
 }
 
 impl Env {
@@ -25,6 +34,15 @@ impl Env {
 pub trait EnvImpl {
   fn current_dir(&self) -> io::Result<PathBuf>;
   fn args(&self) -> Vec<String>;
+}
+
+#[derive(Debug)]
+pub struct IoEnvMock();
+
+impl IoImpl<Env> for IoEnvMock {
+  fn make(&self) -> Env {
+    Env::new(Box::new(EnvMock()))
+  }
 }
 
 pub struct EnvMock();

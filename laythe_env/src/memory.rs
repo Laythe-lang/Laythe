@@ -2,7 +2,6 @@ use crate::managed::{Allocation, Manage, Managed, Trace};
 use crate::stdio::Stdio;
 use hashbrown::HashMap;
 use std::cell::{Cell, RefCell};
-use std::fmt;
 use std::ptr::NonNull;
 
 /// The garbage collector and memory manager for laythe. Currently this is implemented a very crude
@@ -60,6 +59,7 @@ impl<'a> Gc {
     }
   }
 
+  /// Get the number of bytes allocated
   pub fn allocated(&self) -> usize {
     self.bytes_allocated.get()
   }
@@ -417,12 +417,6 @@ impl<'a> Default for Gc {
   }
 }
 pub struct NoGc();
-
-impl fmt::Display for NoGc {
-  fn fmt(&self, _: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-    unreachable!()
-  }
-}
 
 impl Trace for NoGc {
   fn trace(&self) -> bool {

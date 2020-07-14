@@ -1,119 +1,121 @@
 use crate::{
-  env::{Env, EnvMock},
-  fs::{Fs, FsMock},
-  stdio::Stdio,
+  env::{Env, IoEnvMock},
+  fs::{Fs, IoFsMock},
+  stdio::{IoStdioMock, Stdio},
+  time::{IoTimeMock, Time},
 };
-use std::fmt;
+use std::{fmt, rc::Rc};
+
+// type IoImpl<T> = Rc<dyn Fn() -> T>;
 
 #[derive(Debug)]
 /// A struct wrapping the externally provided io to Laythe
 pub struct Io {
-  io: Box<dyn IoImpl>,
+  stdio_impl: Rc<dyn IoImpl<Stdio>>,
+  fs_impl: Rc<dyn IoImpl<Fs>>,
+  env_impl: Rc<dyn IoImpl<Env>>,
+  time_impl: Rc<dyn IoImpl<Time>>,
 }
 
 impl Default for Io {
   fn default() -> Self {
-    Self::new(Box::new(MockIo()))
+    Self {
+      stdio_impl: Rc::new(IoStdioMock()),
+      fs_impl: Rc::new(IoFsMock()),
+      env_impl: Rc::new(IoEnvMock()),
+      time_impl: Rc::new(IoTimeMock()),
+    }
   }
 }
 
 impl Io {
   /// Create a new io wrapper uses the provided io impl
-  pub fn new(io: Box<dyn IoImpl>) -> Self {
-    Self { io }
+  pub fn new(
+    stdio_impl: Rc<dyn IoImpl<Stdio>>,
+    fs_impl: Rc<dyn IoImpl<Fs>>,
+    env_impl: Rc<dyn IoImpl<Env>>,
+    time_impl: Rc<dyn IoImpl<Time>>,
+  ) -> Self {
+    Self {
+      stdio_impl,
+      fs_impl,
+      env_impl,
+      time_impl,
+    }
+  }
+
+  /// Replace this stdio implementation
+  pub fn with_stdio(self, stdio_impl: Rc<dyn IoImpl<Stdio>>) -> Self {
+    Self {
+      stdio_impl,
+      fs_impl: self.fs_impl,
+      env_impl: self.env_impl,
+      time_impl: self.time_impl,
+    }
+  }
+
+  /// Replace this fs implementation
+  pub fn with_fs(self, fs_impl: Rc<dyn IoImpl<Fs>>) -> Self {
+    Self {
+      stdio_impl: self.stdio_impl,
+      fs_impl: fs_impl,
+      env_impl: self.env_impl,
+      time_impl: self.time_impl,
+    }
+  }
+
+  /// Replace this env implementation
+  pub fn with_env(self, env_impl: Rc<dyn IoImpl<Env>>) -> Self {
+    Self {
+      stdio_impl: self.stdio_impl,
+      fs_impl: self.fs_impl,
+      env_impl,
+      time_impl: self.time_impl,
+    }
+  }
+
+  /// Replace this env implementation
+  pub fn with_time(self, time_impl: Rc<dyn IoImpl<Time>>) -> Self {
+    Self {
+      stdio_impl: self.stdio_impl,
+      fs_impl: self.fs_impl,
+      env_impl: self.env_impl,
+      time_impl,
+    }
   }
 
   /// Generate a wrapper to stdio facilities
   pub fn stdio(&self) -> Stdio {
-    self.io.stdio()
+    self.stdio_impl.make()
   }
 
   /// Generate a wrapper to file system facilities
-  pub fn fsio(&self) -> Fs {
-    self.io.fsio()
+  pub fn fs(&self) -> Fs {
+    self.fs_impl.make()
   }
 
   /// Generate a wrapper to environment facilities
-  pub fn envio(&self) -> Env {
-    self.io.envio()
+  pub fn env(&self) -> Env {
+    self.env_impl.make()
+  }
+
+  /// Generate a wrapper to time facilities
+  pub fn time(&self) -> Time {
+    self.time_impl.make()
   }
 }
 
 impl Clone for Io {
   fn clone(&self) -> Self {
-    Io::new(self.io.clone_box())
+    Io::new(
+      Rc::clone(&self.stdio_impl),
+      Rc::clone(&self.fs_impl),
+      Rc::clone(&self.env_impl),
+      Rc::clone(&self.time_impl),
+    )
   }
 }
 
-/// A trait defining what facilities need to be provided
-/// to Laythe in terms of io
-pub trait IoImpl: fmt::Debug {
-  /// homebrew clone as trait objects can't be cloned. Trait objects
-  /// are unsized and clone requires Sized trait
-  fn clone_box(&self) -> Box<dyn IoImpl>;
-
-  /// Create a handle to stdio facilities
-  fn stdio(&self) -> Stdio;
-
-  /// Create a handle to file system facilities
-  fn fsio(&self) -> Fs;
-
-  /// Create a handle to environment facilities
-  fn envio(&self) -> Env;
-}
-
-#[derive(Debug)]
-/// A mock implementation of the io systems
-pub struct MockIo();
-
-impl IoImpl for MockIo {
-  fn stdio(&self) -> Stdio {
-    Stdio::default()
-  }
-  fn fsio(&self) -> Fs {
-    Fs::new(Box::new(FsMock()))
-  }
-  fn envio(&self) -> Env {
-    Env::new(Box::new(EnvMock()))
-  }
-  fn clone_box(&self) -> Box<dyn IoImpl> {
-    Box::new(MockIo())
-  }
-}
-
-pub mod support {
-  use super::*;
-  use crate::stdio::support::{StdioTest, StdioTestContainer};
-
-  #[derive(Debug, Clone)]
-  /// A mock implementation of the io systems
-  pub struct IoTest {
-    pub stdio: StdioTest,
-  }
-
-  impl IoTest {
-    pub fn new(stdio_container: &mut StdioTestContainer) -> Self {
-      Self {
-        stdio: stdio_container.make_stdio(),
-      }
-    }
-  }
-
-  impl IoImpl for IoTest {
-    fn stdio(&self) -> Stdio {
-      Stdio::new(Box::new(self.stdio.clone()))
-    }
-
-    fn fsio(&self) -> Fs {
-      Fs::new(Box::new(FsMock()))
-    }
-
-    fn envio(&self) -> Env {
-      Env::new(Box::new(EnvMock()))
-    }
-
-    fn clone_box(&self) -> Box<dyn IoImpl> {
-      Box::new(self.clone())
-    }
-  }
+pub trait IoImpl<T>: fmt::Debug {
+  fn make(&self) -> T;
 }
