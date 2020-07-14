@@ -16,6 +16,8 @@ fn utils() -> Result<(), std::io::Error> {
       "std_lib/math/utils/abs.ly",
       "std_lib/math/utils/cos.ly",
       "std_lib/math/utils/ln.ly",
+      "std_lib/math/utils/rand.ly",
+      "std_lib/math/utils/rem.ly",
       "std_lib/math/utils/sin.ly",
     ],
     ExecuteResult::Ok,

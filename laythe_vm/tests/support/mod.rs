@@ -1,14 +1,15 @@
 use laythe_env::{
-  io::{support::IoTest, Io},
-  stdio::support::StdioTestContainer,
+  io::Io,
+  stdio::support::{IoStdioTest, StdioTestContainer},
 };
+use laythe_native::time::IoTimeNative;
 use laythe_vm::vm::{ExecuteResult, Vm};
+use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
-use std::io::{Cursor, self};
+use std::io::{self, Cursor};
 use std::path::{Path, PathBuf};
-use std::str;
-use std::fmt;
+use std::{rc::Rc, str};
 
 pub fn fixture_path_inner(fixture_path: &str, test_file_path: &str) -> Option<PathBuf> {
   let test_path = Path::new(test_file_path);
@@ -20,21 +21,31 @@ pub fn fixture_path_inner(fixture_path: &str, test_file_path: &str) -> Option<Pa
     .and_then(|path| Some(path.join("fixture").join(fixture_path)))
 }
 
+#[allow(dead_code)]
 pub fn assert_files_exit(
   paths: &[&str],
   test_file_path: &str,
   result: ExecuteResult,
 ) -> io::Result<()> {
   for path in paths {
-    let mut stdio_container = StdioTestContainer::default();
-    let io_test = Box::new(IoTest::new(&mut stdio_container));
+    let mut stdio_container = Rc::new(StdioTestContainer::default());
+    let stdio = Rc::new(IoStdioTest::new(&mut stdio_container));
+    let time = Rc::new(IoTimeNative::default());
 
     {
-      let io = Io::new(io_test);
-  
+      let io = Io::default()
+        .with_stdio(stdio)
+        .with_time(time);
+
       if let Err(err) = assert_files_exit_inner(path, test_file_path, io, result.clone()) {
-        eprintln!("{}", str::from_utf8(&*stdio_container.stdout).expect("Could not unwrap stdout"));
-        eprintln!("{}", str::from_utf8(&*stdio_container.stderr).expect("Could not unwrap stderr"));
+        eprintln!(
+          "{}",
+          str::from_utf8(&*stdio_container.stdout).expect("Could not unwrap stdout")
+        );
+        eprintln!(
+          "{}",
+          str::from_utf8(&*stdio_container.stderr).expect("Could not unwrap stderr")
+        );
         return Err(err);
       }
     }
@@ -54,7 +65,7 @@ pub fn assert_file_exit_and_stdio(
   stderr: Option<Vec<&str>>,
   result: ExecuteResult,
 ) -> io::Result<()> {
-  let mut stdio_container = StdioTestContainer {
+  let stdio_container = Rc::new(StdioTestContainer {
     stdout: Box::new(vec![]),
     stderr: Box::new(vec![]),
     stdin: Box::new(Cursor::new(Vec::from(
@@ -62,11 +73,11 @@ pub fn assert_file_exit_and_stdio(
     ))),
     lines: Box::new(lines.unwrap_or(vec![])),
     line_index: Box::new(0),
-  };
-  let io_test = Box::new(IoTest::new(&mut stdio_container));
+  });
+  let stdio = Rc::new(IoStdioTest::new(&stdio_container));
 
   {
-    let io = Io::new(io_test);
+    let io = Io::default().with_stdio(stdio);
 
     if let Err(err) = assert_files_exit_inner(path, file_path, io, result) {
       stdio_container.log_stdio();
@@ -91,12 +102,7 @@ pub fn assert_file_exit_and_stdio(
         assert_eq!(actual, expected);
       });
 
-
-    if let Err(err) = ly_assert_eq(
-      &stdout_lines.len(), 
-      &stdout.len(), 
-      None) {
-
+    if let Err(err) = ly_assert_eq(&stdout_lines.len(), &stdout.len(), None) {
       stdio_container.log_stdio();
       panic!(err.to_string())
     }
@@ -119,11 +125,7 @@ pub fn assert_file_exit_and_stdio(
         assert_eq!(actual, expected);
       });
 
-    if let Err(err) = ly_assert_eq(
-      &stderr_lines.len(), 
-      &stderr.len(), 
-      None) {
-
+    if let Err(err) = ly_assert_eq(&stderr_lines.len(), &stderr.len(), None) {
       stdio_container.log_stdio();
       panic!(err.to_string())
     }
@@ -156,24 +158,25 @@ fn assert_files_exit_inner(
   ly_assert_eq(
     &vm.run(test_path, &source),
     &result,
-    Some(format!(
-      "Failing file {:?}",
-      debug_path
-    ))
+    Some(format!("Failing file {:?}", debug_path)),
   )?;
 
   Ok(())
 }
 
 /// Assert equal returning a result so debug information has a chance to be captured and displayed
-fn ly_assert_eq<T: PartialEq + fmt::Debug>(expected: &T, received: &T, message: Option<String>) -> io::Result<()> {
+fn ly_assert_eq<T: PartialEq + fmt::Debug>(
+  expected: &T,
+  received: &T,
+  message: Option<String>,
+) -> io::Result<()> {
   if expected == received {
-    return Ok(())
+    return Ok(());
   }
 
   // should consider mapping io errors to something else
   Err(io::Error::new(
-    io::ErrorKind::Other, 
-    message.unwrap_or(format!("Expected {:?} Received {:?}", expected, received))
+    io::ErrorKind::Other,
+    message.unwrap_or(format!("Expected {:?} Received {:?}", expected, received)),
   ))
 }

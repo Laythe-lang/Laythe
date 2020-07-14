@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use laythe_core::hooks::{GcHooks, NoContext};
+use laythe_core::hooks::{support::TestContext, GcHooks};
 use laythe_core::module::Module;
-use laythe_env::{memory::Gc, stdio::Stdio};
+use laythe_env::{stdio::Stdio};
 use laythe_vm::compiler::{Compiler, Parser};
 use std::fs::File;
 use std::io::prelude::*;
@@ -28,8 +28,7 @@ fn load_source(dir: &str) -> String {
 }
 
 fn compile_source(source: &str) {
-  let gc = Gc::default();
-  let mut context = NoContext::new(&gc);
+  let mut context = TestContext::default();
   let hooks = GcHooks::new(&mut context);
   let module =
     hooks.manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("./Benchmark.ly"))).unwrap());
