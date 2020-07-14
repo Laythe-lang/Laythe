@@ -4,6 +4,9 @@ version = "0.1.0"
 authors = ["John Chabot <johnchabot2013@gmail.com>"]
 edition = "2018"
 
+[features]
+wasm = ["js-sys"]
+
 [lib]
 name = "laythe_lib"
 path = "src/lib.rs"
@@ -12,7 +15,9 @@ path = "src/lib.rs"
 laythe_core = { path = "../laythe_core" } # , features = ["nan_boxing"]
 laythe_env = { path = "../laythe_env" }
 hashbrown = "0.7.2"
+js-sys = { version = "0.3.41", optional = true }
 fnv = "1.0.3"
+rand = "0.7.3"
 
 [dev-dependencies]
 criterion = "0.3"

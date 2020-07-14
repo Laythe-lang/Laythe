@@ -6,7 +6,7 @@ use laythe_core::{
   iterator::{LyIter, LyIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  object::LyVec,
+  object::List,
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
   utils::is_falsey,
@@ -414,7 +414,7 @@ impl LyIter for ZipIterator {
   }
 
   fn next(&mut self, hooks: &mut Hooks) -> CallResult {
-    let mut results = hooks.manage(LyVec::with_capacity(self.iters.len()));
+    let mut results = hooks.manage(List::with_capacity(self.iters.len()));
 
     for iter in &mut self.iters {
       let next = iter.next(hooks)?;

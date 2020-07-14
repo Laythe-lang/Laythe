@@ -106,6 +106,7 @@ mod test {
     use crate::support::MockedContext;
     use laythe_core::value::VALUE_NIL;
     use laythe_env::stdio::support::StdioTestContainer;
+    use std::rc::Rc;
 
     #[test]
     fn new() {
@@ -118,9 +119,9 @@ mod test {
     #[test]
     fn call() {
       let stdin_read = StdinRead();
-      let mut stdio_container = StdioTestContainer::with_stdin(&"dude".as_bytes());
+      let stdio_container = Rc::new(StdioTestContainer::with_stdin(&"dude".as_bytes()));
 
-      let mut context = MockedContext::new_with_io(&mut stdio_container);
+      let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
 
       let result = stdin_read.call(&mut hooks, VALUE_NIL, &[]);
@@ -138,6 +139,7 @@ mod test {
     use crate::support::MockedContext;
     use laythe_core::value::VALUE_NIL;
     use laythe_env::stdio::support::StdioTestContainer;
+    use std::rc::Rc;
 
     #[test]
     fn new() {
@@ -150,10 +152,12 @@ mod test {
     #[test]
     fn call() {
       let stdin_readline = StdinReadLine();
-      let mut stdio_container =
-        StdioTestContainer::with_lines(vec!["dude".to_string(), "sup".to_string()]);
+      let stdio_container = Rc::new(StdioTestContainer::with_lines(vec![
+        "dude".to_string(),
+        "sup".to_string(),
+      ]));
 
-      let mut context = MockedContext::new_with_io(&mut stdio_container);
+      let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
 
       let result = stdin_readline.call(&mut hooks, VALUE_NIL, &[]);
