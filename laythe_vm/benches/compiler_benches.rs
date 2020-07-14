@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use laythe_core::hooks::{support::TestContext, GcHooks};
 use laythe_core::module::Module;
-use laythe_env::{stdio::Stdio};
+use laythe_env::stdio::Stdio;
 use laythe_vm::compiler::{Compiler, Parser};
 use std::fs::File;
 use std::io::prelude::*;

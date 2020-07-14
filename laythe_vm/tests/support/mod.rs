@@ -33,9 +33,7 @@ pub fn assert_files_exit(
     let time = Rc::new(IoTimeNative::default());
 
     {
-      let io = Io::default()
-        .with_stdio(stdio)
-        .with_time(time);
+      let io = Io::default().with_stdio(stdio).with_time(time);
 
       if let Err(err) = assert_files_exit_inner(path, test_file_path, io, result.clone()) {
         eprintln!(

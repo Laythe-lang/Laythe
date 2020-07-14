@@ -7,7 +7,7 @@ use laythe_core::{
   iterator::{LyIter, LyIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  object::{Map, List},
+  object::{List, Map},
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
