@@ -9,6 +9,7 @@ use laythe_core::{
   signature::{Arity, Parameter, ParameterKind},
   value::Value,
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -26,7 +27,7 @@ pub fn declare_string_class(
   package: &Package,
 ) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, STRING_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, Value::from(class))
+  export_and_insert(hooks, module, class.name, val!(class))
 }
 
 pub fn define_string_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -35,13 +36,13 @@ pub fn define_string_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
   class.add_method(
     hooks,
     hooks.manage_str(String::from(STRING_STR.name)),
-    Value::from(to_dyn_method(hooks, StringStr())),
+    val!(to_dyn_method(hooks, StringStr())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(STRING_HAS.name)),
-    Value::from(to_dyn_method(hooks, StringHas())),
+    val!(to_dyn_method(hooks, StringHas())),
   );
 
   Ok(())
@@ -70,7 +71,7 @@ impl NativeMethod for StringHas {
 
   fn call(&self, _vhooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
     let str = this.to_str();
-    Ok(Value::from(str.contains(&*args[0].to_str())))
+    Ok(val!(str.contains(&*args[0].to_str())))
   }
 }
 
@@ -96,7 +97,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let this = Value::from(hooks.manage_str("test".to_string()));
+      let this = val!(hooks.manage_str("test".to_string()));
       let result = string_str.call(&mut hooks, this, &[]);
       match result {
         Ok(r) => assert_eq!(*r.to_str(), "test".to_string()),
@@ -123,9 +124,9 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let this = Value::from(hooks.manage_str("some string".to_string()));
-      let contained = Value::from(hooks.manage_str("ome".to_string()));
-      let not_contained = Value::from(hooks.manage_str("other".to_string()));
+      let this = val!(hooks.manage_str("some string".to_string()));
+      let contained = val!(hooks.manage_str("ome".to_string()));
+      let not_contained = val!(hooks.manage_str("other".to_string()));
 
       let result = string_str.call(&mut hooks, this, &[contained]);
       match result {

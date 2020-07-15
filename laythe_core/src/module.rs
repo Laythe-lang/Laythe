@@ -221,6 +221,7 @@ mod test {
   use crate::{
     hooks::{support::TestContext, GcHooks},
     object::Class,
+    val,
   };
 
   #[test]
@@ -274,7 +275,7 @@ mod test {
 
     let export_name = hooks.manage_str("exported".to_string());
 
-    module.insert_symbol(&hooks, export_name, Value::from(true));
+    module.insert_symbol(&hooks, export_name, val!(true));
     let result1 = module.export_symbol(&hooks, export_name);
     let result2 = module.export_symbol(&hooks, export_name);
 
@@ -298,13 +299,13 @@ mod test {
     );
 
     let export_name = hooks.manage_str("exported".to_string());
-    module.insert_symbol(&hooks, export_name, Value::from(true));
+    module.insert_symbol(&hooks, export_name, val!(true));
     assert!(module.export_symbol(&hooks, export_name).is_ok());
 
     let symbols = module.import(&hooks);
 
     if let Some(result) = symbols.get_field(&export_name) {
-      assert_eq!(*result, Value::from(true));
+      assert_eq!(*result, val!(true));
     } else {
       assert!(false);
     }
@@ -326,12 +327,12 @@ mod test {
     );
 
     let name = hooks.manage_str("exported".to_string());
-    module.insert_symbol(&hooks, name, Value::from(true));
+    module.insert_symbol(&hooks, name, val!(true));
 
     let symbol = module.get_symbol(name);
 
     if let Some(result) = symbol {
-      assert_eq!(*result, Value::from(true));
+      assert_eq!(*result, val!(true));
     } else {
       assert!(false);
     }

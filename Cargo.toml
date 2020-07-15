@@ -18,7 +18,6 @@ default-members = [
   "laythe_macro",
   "laythe_env",
   "laythe_vm",
-  "laythe_wasm",
   "laythe",
 ]
 

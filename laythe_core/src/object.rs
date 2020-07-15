@@ -157,18 +157,19 @@ impl Upvalue {
   ///
   /// # Examples
   /// ```
+  /// use laythe_core::val;
   /// use laythe_core::value::Value;
   /// use laythe_core::object::Upvalue;
   /// use std::rc::Rc;
   /// use std::ptr::NonNull;
   ///
-  /// let value = Value::from(10.0);
+  /// let value = val!(10.0);
   ///
   /// let mut upvalue = Upvalue::Open(NonNull::from(&value));
   /// upvalue.hoist();
   ///
   /// match upvalue {
-  ///   Upvalue::Closed(store) => assert_eq!(*store, Value::from(10.0)),
+  ///   Upvalue::Closed(store) => assert_eq!(*store, val!(10.0)),
   ///   Upvalue::Open(_) => assert!(false),
   /// };
   /// ```

@@ -279,6 +279,7 @@ mod test {
 
   mod signature {
     use super::*;
+    use crate::val;
 
     const PARAMETERS_FIXED: [Parameter; 2] = [
       Parameter::new("index", ParameterKind::Number),
@@ -294,15 +295,15 @@ mod test {
         Err(SignatureError::LengthFixed(2))
       );
       assert_eq!(
-        fixed_signature.check(&[Value::from(10.0), Value::from(true), Value::from(false)]),
+        fixed_signature.check(&[val!(10.0), val!(true), val!(false)]),
         Err(SignatureError::LengthFixed(2))
       );
       assert_eq!(
-        fixed_signature.check(&[Value::from(true), Value::from(true)]),
+        fixed_signature.check(&[val!(true), val!(true)]),
         Err(SignatureError::TypeWrong(0))
       );
       assert_eq!(
-        fixed_signature.check(&[Value::from(10.0), Value::from(true)]),
+        fixed_signature.check(&[val!(10.0), val!(true)]),
         Ok(())
       );
     }
@@ -321,20 +322,20 @@ mod test {
         Err(SignatureError::LengthVariadic(1))
       );
       assert_eq!(
-        fixed_signature.check(&[Value::from(10.0), Value::from(10.0)]),
+        fixed_signature.check(&[val!(10.0), val!(10.0)]),
         Err(SignatureError::TypeWrong(0))
       );
       assert_eq!(
-        fixed_signature.check(&[Value::from(true), Value::from(false)]),
+        fixed_signature.check(&[val!(true), val!(false)]),
         Err(SignatureError::TypeWrong(1))
       );
       assert_eq!(
-        fixed_signature.check(&[Value::from(true), Value::from(10.0), Value::from(false)]),
+        fixed_signature.check(&[val!(true), val!(10.0), val!(false)]),
         Err(SignatureError::TypeWrong(2))
       );
-      assert_eq!(fixed_signature.check(&[Value::from(true)]), Ok(()));
+      assert_eq!(fixed_signature.check(&[val!(true)]), Ok(()));
       assert_eq!(
-        fixed_signature.check(&[Value::from(true), Value::from(10.0), Value::from(10.0)]),
+        fixed_signature.check(&[val!(true), val!(10.0), val!(10.0)]),
         Ok(())
       );
     }
@@ -353,20 +354,20 @@ mod test {
         Err(SignatureError::LengthDefaultLow(1))
       );
       assert_eq!(
-        fixed_signature.check(&[Value::from(10.0), Value::from(10.0), Value::from(10.0)]),
+        fixed_signature.check(&[val!(10.0), val!(10.0), val!(10.0)]),
         Err(SignatureError::LengthDefaultHigh(2))
       );
       assert_eq!(
-        fixed_signature.check(&[Value::from(10.0)]),
+        fixed_signature.check(&[val!(10.0)]),
         Err(SignatureError::TypeWrong(0))
       );
       assert_eq!(
-        fixed_signature.check(&[Value::from(false), Value::from(true)]),
+        fixed_signature.check(&[val!(false), val!(true)]),
         Err(SignatureError::TypeWrong(1))
       );
-      assert_eq!(fixed_signature.check(&[Value::from(true)]), Ok(()));
+      assert_eq!(fixed_signature.check(&[val!(true)]), Ok(()));
       assert_eq!(
-        fixed_signature.check(&[Value::from(true), Value::from(10.0)]),
+        fixed_signature.check(&[val!(true), val!(10.0)]),
         Ok(())
       );
     }

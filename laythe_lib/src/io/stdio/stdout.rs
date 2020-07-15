@@ -10,6 +10,7 @@ use laythe_core::{
   signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -38,7 +39,7 @@ pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> Ly
     hooks,
     module,
     hooks.manage_str(STDOUT_INSTANCE_NAME.to_string()),
-    Value::from(instance),
+    val!(instance),
   )
 }
 
@@ -49,19 +50,19 @@ pub fn define_stdout(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<
   class.add_method(
     hooks,
     hooks.manage_str(String::from(STDOUT_WRITE.name)),
-    Value::from(to_dyn_method(hooks, StdoutWrite())),
+    val!(to_dyn_method(hooks, StdoutWrite())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(STDOUT_WRITELN.name)),
-    Value::from(to_dyn_method(hooks, StdoutWriteln())),
+    val!(to_dyn_method(hooks, StdoutWriteln())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(STDOUT_FLUSH.name)),
-    Value::from(to_dyn_method(hooks, StdoutFlush())),
+    val!(to_dyn_method(hooks, StdoutFlush())),
   );
 
   Ok(())
@@ -156,7 +157,7 @@ mod test {
       let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
 
-      let string = Value::from(hooks.manage_str("some string".to_string()));
+      let string = val!(hooks.manage_str("some string".to_string()));
       let result = stdout_write.call(&mut hooks, VALUE_NIL, &[string]);
 
       assert!(result.is_ok());
@@ -194,7 +195,7 @@ mod test {
       let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
 
-      let string = Value::from(hooks.manage_str("some string".to_string()));
+      let string = val!(hooks.manage_str("some string".to_string()));
       let result = stdout_write.call(&mut hooks, VALUE_NIL, &[string]);
 
       assert!(result.is_ok());

@@ -12,6 +12,7 @@ use laythe_core::{
   utils::is_falsey,
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
+  val,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -59,7 +60,7 @@ const ITER_INTO: NativeMeta = NativeMeta::new(
 
 pub fn declare_iter_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, ITER_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, Value::from(class))
+  export_and_insert(hooks, module, class.name, val!(class))
 }
 
 pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -68,55 +69,55 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_STR.name)),
-    Value::from(to_dyn_method(hooks, IterStr())),
+    val!(to_dyn_method(hooks, IterStr())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_NEXT.name)),
-    Value::from(to_dyn_method(hooks, IterNext())),
+    val!(to_dyn_method(hooks, IterNext())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_ITER.name)),
-    Value::from(to_dyn_method(hooks, IterIter())),
+    val!(to_dyn_method(hooks, IterIter())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_MAP.name)),
-    Value::from(to_dyn_method(hooks, IterMap())),
+    val!(to_dyn_method(hooks, IterMap())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_FILTER.name)),
-    Value::from(to_dyn_method(hooks, IterFilter())),
+    val!(to_dyn_method(hooks, IterFilter())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_REDUCE.name)),
-    Value::from(to_dyn_method(hooks, IterReduce())),
+    val!(to_dyn_method(hooks, IterReduce())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_EACH.name)),
-    Value::from(to_dyn_method(hooks, IterEach())),
+    val!(to_dyn_method(hooks, IterEach())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_ZIP.name)),
-    Value::from(to_dyn_method(hooks, IterZip())),
+    val!(to_dyn_method(hooks, IterZip())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(ITER_INTO.name)),
-    Value::from(to_dyn_method(hooks, IterInto())),
+    val!(to_dyn_method(hooks, IterInto())),
   );
 
   Ok(())
@@ -131,8 +132,8 @@ impl NativeMethod for IterStr {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::from(
-      hooks.manage_str(this.to_iter().name().to_string()),
+    Ok(val!(
+      hooks.manage_str(this.to_iter().name().to_string())
     ))
   }
 }
@@ -176,7 +177,7 @@ impl NativeMethod for IterMap {
     let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
-    Ok(Value::from(iter))
+    Ok(val!(iter))
   }
 }
 
@@ -208,11 +209,11 @@ impl LyIter for MapIterator {
 
   fn next(&mut self, hooks: &mut Hooks) -> CallResult {
     if is_falsey(self.iter.next(hooks)?) {
-      Ok(Value::from(false))
+      Ok(val!(false))
     } else {
       let current = self.iter.current();
       self.current = hooks.call(self.callable, &[current])?;
-      Ok(Value::from(true))
+      Ok(val!(true))
     }
   }
 
@@ -254,7 +255,7 @@ impl NativeMethod for IterFilter {
     let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
-    Ok(Value::from(iter))
+    Ok(val!(iter))
   }
 }
 
@@ -291,11 +292,11 @@ impl LyIter for FilterIterator {
 
       if !is_falsey(should_keep) {
         self.current = current;
-        return Ok(Value::from(true));
+        return Ok(val!(true));
       }
     }
 
-    Ok(Value::from(false))
+    Ok(val!(false))
   }
 
   fn size_hint(&self) -> Option<usize> {
@@ -385,7 +386,7 @@ impl NativeMethod for IterZip {
     let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
-    Ok(Value::from(iter))
+    Ok(val!(iter))
   }
 }
 
@@ -419,14 +420,14 @@ impl LyIter for ZipIterator {
     for iter in &mut self.iters {
       let next = iter.next(hooks)?;
       if is_falsey(next) {
-        return Ok(Value::from(false));
+        return Ok(val!(false));
       }
 
       results.push(iter.current());
     }
 
-    self.current = Value::from(results);
-    Ok(Value::from(true))
+    self.current = val!(results);
+    Ok(val!(true))
   }
 
   fn size_hint(&self) -> Option<usize> {
@@ -501,7 +502,7 @@ mod test {
       let iter = test_iter();
       let this = hooks.manage(LyIterator::new(iter));
 
-      let result = iter_str.call(&mut hooks, Value::from(this), &[]);
+      let result = iter_str.call(&mut hooks, val!(this), &[]);
       match result {
         Ok(r) => assert_eq!(&*r.to_str(), "Test Iterator"),
         Err(_) => assert!(false),
@@ -530,7 +531,7 @@ mod test {
       let iter = test_iter();
       let this = hooks.manage(LyIterator::new(iter));
 
-      let result = iter_next.call(&mut hooks, Value::from(this), &[]);
+      let result = iter_next.call(&mut hooks, val!(this), &[]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), true),
         Err(_) => assert!(false),
@@ -557,7 +558,7 @@ mod test {
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
-      let this = Value::from(managed);
+      let this = val!(managed);
 
       let result = iter_iter.call(&mut hooks, this, &[]);
       match result {
@@ -587,14 +588,14 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::new(&[Value::from(5.0)]);
+      let mut context = MockedContext::new(&[val!(5.0)]);
       let mut hooks = Hooks::new(&mut context);
       let iter_map = IterMap();
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
-      let this = Value::from(managed);
-      let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
+      let this = val!(managed);
+      let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
         "example".to_string(),
         "module",
@@ -606,8 +607,8 @@ mod test {
       match result {
         Ok(r) => {
           let mut map_iter = r.to_iter();
-          assert_eq!(map_iter.next(&mut hooks).unwrap(), Value::from(true));
-          assert_eq!(map_iter.current(), Value::from(5.0));
+          assert_eq!(map_iter.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(map_iter.current(), val!(5.0));
         }
         Err(_) => assert!(false),
       }
@@ -634,14 +635,14 @@ mod test {
     #[test]
     fn call() {
       let mut context =
-        MockedContext::new(&[Value::from(false), Value::from(true), Value::from(true)]);
+        MockedContext::new(&[val!(false), val!(true), val!(true)]);
       let mut hooks = Hooks::new(&mut context);
       let iter_filter = IterFilter();
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
-      let this = Value::from(managed);
-      let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
+      let this = val!(managed);
+      let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
         "example".to_string(),
         "module",
@@ -653,10 +654,10 @@ mod test {
       match result {
         Ok(r) => {
           let mut filter_iter = r.to_iter();
-          assert_eq!(filter_iter.next(&mut hooks).unwrap(), Value::from(true));
-          assert_eq!(filter_iter.current(), Value::from(2.0));
-          assert_eq!(filter_iter.next(&mut hooks).unwrap(), Value::from(true));
-          assert_eq!(filter_iter.current(), Value::from(3.0));
+          assert_eq!(filter_iter.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(filter_iter.current(), val!(2.0));
+          assert_eq!(filter_iter.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(filter_iter.current(), val!(3.0));
         }
         Err(_) => assert!(false),
       }
@@ -687,19 +688,19 @@ mod test {
     #[test]
     fn call() {
       let mut context = MockedContext::new(&[
-        Value::from(false),
-        Value::from(false),
-        Value::from(false),
-        Value::from(false),
-        Value::from(10.1),
+        val!(false),
+        val!(false),
+        val!(false),
+        val!(false),
+        val!(10.1),
       ]);
       let mut hooks = Hooks::new(&mut context);
       let iter_reduce = IterReduce();
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
-      let this = Value::from(managed);
-      let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
+      let this = val!(managed);
+      let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
         "example".to_string(),
         "module",
@@ -707,7 +708,7 @@ mod test {
 
       fun.to_closure().fun.arity = Arity::Fixed(2);
 
-      let result = iter_reduce.call(&mut hooks, this, &[Value::from(0.0), fun]);
+      let result = iter_reduce.call(&mut hooks, this, &[val!(0.0), fun]);
       match result {
         Ok(r) => {
           assert!(r.is_num());
@@ -737,14 +738,14 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::new(&[Value::from(false); 5]);
+      let mut context = MockedContext::new(&[val!(false); 5]);
       let mut hooks = Hooks::new(&mut context);
       let iter_each = IterEach();
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
-      let this = Value::from(managed);
-      let fun = Value::from(hooks.manage(Closure::new(fun_from_hooks(
+      let this = val!(managed);
+      let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
         "example".to_string(),
         "module",
@@ -779,17 +780,17 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::new(&[Value::from(1.0); 10]);
+      let mut context = MockedContext::new(&[val!(1.0); 10]);
       let mut hooks = Hooks::new(&mut context);
       let iter_zip = IterZip();
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
-      let this = Value::from(managed);
+      let this = val!(managed);
 
       let iter2 = test_iter();
       let managed = hooks.manage(LyIterator::new(iter2));
-      let arg = Value::from(managed);
+      let arg = val!(managed);
 
       let result = iter_zip.call(&mut hooks, this, &[arg]);
       match result {
@@ -844,14 +845,14 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::new(&[Value::from(true); 5]);
+      let mut context = MockedContext::new(&[val!(true); 5]);
       let mut hooks = Hooks::new(&mut context);
       let iter_into = IterInto();
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
-      let this = Value::from(managed);
-      let echo = Value::from(hooks.manage(Box::new(EchoFun()) as Box<dyn NativeFun>));
+      let this = val!(managed);
+      let echo = val!(hooks.manage(Box::new(EchoFun()) as Box<dyn NativeFun>));
 
       let result = iter_into.call(&mut hooks, this, &[echo]);
       match result {

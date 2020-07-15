@@ -6,6 +6,7 @@ use laythe_core::{
   signature::Arity,
   value::Value,
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -16,7 +17,7 @@ pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> LyResult<()> 
     hooks,
     module,
     hooks.manage_str(CLOCK_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(Clock()) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(Clock()) as Box<dyn NativeFun>)),
   )
 }
 
@@ -33,7 +34,7 @@ impl NativeFun for Clock {
     let time = io.time();
 
     match time.elapsed() {
-      Ok(elapsed) => Ok(Value::from((elapsed.as_micros() as f64) / 1000000.0)),
+      Ok(elapsed) => Ok(val!((elapsed.as_micros() as f64) / 1000000.0)),
       Err(e) => hooks.error(format!("clock failed {}", e)),
     }
   }

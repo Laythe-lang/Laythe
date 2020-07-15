@@ -634,18 +634,19 @@ impl Chunk {
   ///
   /// # Examples
   /// ```
+  /// use laythe_core::val;
   /// use laythe_core::chunk::Chunk;
   /// use laythe_core::value::Value;
   ///
   /// let mut chunk = Chunk::default();
-  /// let index_1 = chunk.add_constant(Value::from(10.4));
-  /// let index_2 = chunk.add_constant(Value::from(5.2));
+  /// let index_1 = chunk.add_constant(val!(10.4));
+  /// let index_2 = chunk.add_constant(val!(5.2));
   ///
   /// assert_eq!(index_1, 0);
   /// assert_eq!(index_2, 1);
   ///
-  /// assert_eq!(chunk.constants[index_1], Value::from(10.4));
-  /// assert_eq!(chunk.constants[index_2], Value::from(5.2));
+  /// assert_eq!(chunk.constants[index_1], val!(10.4));
+  /// assert_eq!(chunk.constants[index_2], val!(5.2));
   /// ```
   pub fn add_constant(&mut self, value: Value) -> usize {
     self.constants.push(value);

@@ -9,6 +9,7 @@ use laythe_core::{
   signature::{Arity, Parameter, ParameterKind},
   value::Value,
   CallResult, LyResult,
+  val,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -30,7 +31,7 @@ pub fn declare_method_class(
   package: &Package,
 ) -> LyResult<()> {
   let method_class = default_class_inheritance(hooks, package, METHOD_CLASS_NAME)?;
-  export_and_insert(hooks, module, method_class.name, Value::from(method_class))
+  export_and_insert(hooks, module, method_class.name, val!(method_class))
 }
 
 pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -39,7 +40,7 @@ pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
   class.add_method(
     hooks,
     hooks.manage_str(String::from(METHOD_NAME.name)),
-    Value::from(to_dyn_method(
+    val!(to_dyn_method(
       hooks,
       MethodName::new(hooks.manage_str(String::from(METHOD_NAME.name))),
     )),
@@ -48,7 +49,7 @@ pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
   class.add_method(
     hooks,
     hooks.manage_str(String::from(METHOD_CALL.name)),
-    Value::from(to_dyn_method(hooks, MethodCall())),
+    val!(to_dyn_method(hooks, MethodCall())),
   );
 
   Ok(())
@@ -119,8 +120,8 @@ mod test {
     #[test]
     fn call() {
       let mut context = MockedContext::default();
-      let responses = &[Value::from(
-        context.gc.manage_str("example".to_string(), &NO_GC),
+      let responses = &[val!(
+        context.gc.manage_str("example".to_string(), &NO_GC)
       )];
       context.responses.extend_from_slice(responses);
 
@@ -131,9 +132,9 @@ mod test {
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
-      let method = hooks.manage(Method::new(Value::from(instance), Value::from(closure)));
+      let method = hooks.manage(Method::new(val!(instance), val!(closure)));
 
-      let result1 = method_name.call(&mut hooks, Value::from(method), &[]);
+      let result1 = method_name.call(&mut hooks, val!(method), &[]);
 
       match result1 {
         Ok(r) => assert_eq!(&*r.to_str(), "example"),
@@ -162,16 +163,16 @@ mod test {
     #[test]
     fn call() {
       let method_call = MethodCall();
-      let mut context = MockedContext::new(&[Value::from(14.3)]);
+      let mut context = MockedContext::new(&[val!(14.3)]);
       let mut hooks = Hooks::new(&mut context);
 
       let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
-      let method = hooks.manage(Method::new(Value::from(instance), Value::from(closure)));
+      let method = hooks.manage(Method::new(val!(instance), val!(closure)));
 
-      let result1 = method_call.call(&mut hooks, Value::from(method), &[]);
+      let result1 = method_call.call(&mut hooks, val!(method), &[]);
 
       match result1 {
         Ok(r) => assert_eq!(r.to_num(), 14.3),

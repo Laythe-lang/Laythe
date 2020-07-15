@@ -9,7 +9,7 @@ use laythe_core::{
   object::{Fun, FunKind},
   object::{Map, TryBlock},
   signature::Arity,
-  value::Value,
+  value::Value, val
 };
 use laythe_env::{
   managed::{Manage, Managed, Trace},
@@ -524,7 +524,7 @@ impl<'a, 's> Compiler<'a, 's> {
     fun_compiler.end_compiler();
     let upvalue_count = fun_compiler.fun.upvalue_count;
 
-    let index = self.make_constant(Value::from(fun_compiler.fun));
+    let index = self.make_constant(val!(fun_compiler.fun));
     self.emit_byte(AlignedByteCode::Closure(index));
 
     // emit upvalue index instructions
@@ -807,7 +807,7 @@ impl<'a, 's> Compiler<'a, 's> {
       .parser
       .consume(TokenKind::String, "Expected path string after 'from'.");
     let string = self.hooks.manage_str(copy_string(&self.parser.previous));
-    let value = Value::from(string);
+    let value = val!(string);
     let path = self.make_constant(value);
     self
       .parser
@@ -1043,7 +1043,7 @@ impl<'a, 's> Compiler<'a, 's> {
     let upvalue_count = fun_compiler.fun.upvalue_count;
     // let boxed_fun = Box::new(fun_compiler.fun);
 
-    let index = self.make_constant(Value::from(fun_compiler.fun));
+    let index = self.make_constant(val!(fun_compiler.fun));
     self.emit_byte(AlignedByteCode::Closure(index));
 
     // emit upvalue index instructions
@@ -1099,13 +1099,13 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Compile a number literal
   fn number(&mut self) {
-    let value = Value::from(
+    let value = val!(
       self
         .parser
         .previous
         .lexeme
         .parse::<f64>()
-        .expect("Unable to parse float"),
+        .expect("Unable to parse float")
     );
     self.emit_constant(value);
   }
@@ -1118,7 +1118,7 @@ impl<'a, 's> Compiler<'a, 's> {
   /// Compile a string literal
   fn string(&mut self) {
     let string = self.hooks.manage_str(copy_string(&self.parser.previous));
-    let value = Value::from(string);
+    let value = val!(string);
     self.emit_constant(value)
   }
 
@@ -1390,7 +1390,7 @@ impl<'a, 's> Compiler<'a, 's> {
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u16 {
     let identifer = self.hooks.manage_str(name.lexeme);
-    self.make_constant(Value::from(identifer))
+    self.make_constant(val!(identifer))
   }
 
   fn add_local(&mut self, name: Token) {

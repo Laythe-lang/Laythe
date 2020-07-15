@@ -20,6 +20,13 @@ pub enum ValueKind {
   Upvalue,
 }
 
+#[macro_export]
+macro_rules! val {
+  ( $x:expr ) => {
+    Value::from($x)
+  };
+}
+
 #[cfg(not(feature = "nan_boxing"))]
 pub use self::unboxed::*;
 
@@ -881,7 +888,7 @@ mod unboxed {
 
 #[cfg(feature = "nan_boxing")]
 mod boxed {
-  use super::ValueKind;
+  use super::{Nil, ValueKind};
   use crate::{
     iterator::LyIterator,
     native::{NativeFun, NativeMethod},
@@ -1216,8 +1223,6 @@ mod boxed {
     }
   }
 
-  pub struct Nil();
-
   impl From<Nil> for Value {
     fn from(_: Nil) -> Self {
       VALUE_NIL
@@ -1505,8 +1510,8 @@ mod test {
 
   #[test]
   fn bool() {
-    let val_true = Value::from(true);
-    let val_false = Value::from(false);
+    let val_true = val!(true);
+    let val_false = val!(false);
 
     assert_type(val_true, ValueKind::Bool);
     assert_type(val_false, ValueKind::Bool);
@@ -1517,10 +1522,10 @@ mod test {
 
   #[test]
   fn num() {
-    let val_div_zero = Value::from(1.0 / 0.0);
-    let val_nan = Value::from(f64::NAN);
-    let val_neg_infinity = Value::from(f64::NEG_INFINITY);
-    let val_normal = Value::from(5.3);
+    let val_div_zero = val!(1.0 / 0.0);
+    let val_nan = val!(f64::NAN);
+    let val_neg_infinity = val!(f64::NEG_INFINITY);
+    let val_normal = val!(5.3);
 
     assert_type(val_div_zero, ValueKind::Number);
     assert_type(val_nan, ValueKind::Number);
@@ -1540,7 +1545,7 @@ mod test {
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
-    let value = Value::from(managed);
+    let value = val!(managed);
     let managed2: Managed<String> = value.to_str();
 
     assert_type(value, ValueKind::String);
@@ -1556,7 +1561,7 @@ mod test {
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
-    let value = Value::from(managed);
+    let value = val!(managed);
     let managed2 = value.to_list();
 
     assert_type(value, ValueKind::List);
@@ -1572,29 +1577,26 @@ mod test {
   fn map() {
     let mut map: Map<Value, Value> = Map::default();
     map.insert(VALUE_NIL, VALUE_TRUE);
-    map.insert(Value::from(10.0), VALUE_FALSE);
+    map.insert(val!(10.0), VALUE_FALSE);
 
     let mut alloc = Box::new(Allocation::new(map));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
-    let value = Value::from(managed);
+    let value = val!(managed);
     let managed2 = value.to_map();
 
     assert_type(value, ValueKind::Map);
 
     assert_eq!(managed.len(), managed2.len());
     assert_eq!(managed.get(&VALUE_NIL), managed2.get(&VALUE_NIL));
-    assert_eq!(
-      managed.get(&Value::from(10.0)),
-      managed2.get(&Value::from(10.0))
-    );
+    assert_eq!(managed.get(&val!(10.0)), managed2.get(&val!(10.0)));
   }
 
   #[test]
   fn fun() {
     let (_, managed) = test_fun();
-    let value = Value::from(managed);
+    let value = val!(managed);
     let managed2 = value.to_fun();
 
     assert_type(value, ValueKind::Fun);
@@ -1607,7 +1609,7 @@ mod test {
   fn closure() {
     let (_, managed) = test_closure();
 
-    let value = Value::from(managed);
+    let value = val!(managed);
     let managed2 = value.to_closure();
 
     assert_type(value, ValueKind::Closure);
@@ -1620,7 +1622,7 @@ mod test {
   fn class() {
     let (_, managed) = test_class();
 
-    let value = Value::from(managed);
+    let value = val!(managed);
     let managed2 = value.to_class();
 
     assert_type(value, ValueKind::Class);

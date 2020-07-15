@@ -121,7 +121,7 @@ mod test {
     object::Fun,
     signature::Arity,
     value::{Value, ValueKind},
-    CallResult, LyError,
+    CallResult, LyError, val,
   };
   use laythe_env::{
     io::Io,
@@ -350,16 +350,16 @@ mod test {
     }
 
     fn current(&self) -> Value {
-      Value::from(self.current as f64)
+      val!(self.current as f64)
     }
 
     fn next(&mut self, _hooks: &mut Hooks) -> CallResult {
       if self.current > 4 {
-        return Ok(Value::from(false));
+        return Ok(val!(false));
       }
 
       self.current += 1;
-      Ok(Value::from(true))
+      Ok(val!(true))
     }
 
     fn size_hint(&self) -> Option<usize> {

@@ -10,6 +10,7 @@ use laythe_core::{
   signature::Arity,
   value::Value,
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -27,7 +28,7 @@ pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> LyR
     hooks,
     module,
     hooks.manage_str(STDIN_INSTANCE_NAME.to_string()),
-    Value::from(instance),
+    val!(instance),
   )
 }
 
@@ -38,13 +39,13 @@ pub fn define_stdin(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<(
   class.add_method(
     hooks,
     hooks.manage_str(String::from(STDIN_READ.name)),
-    Value::from(to_dyn_method(hooks, StdinRead())),
+    val!(to_dyn_method(hooks, StdinRead())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(STDIN_READ_LINE.name)),
-    Value::from(to_dyn_method(hooks, StdinReadLine())),
+    val!(to_dyn_method(hooks, StdinReadLine())),
   );
 
   Ok(())
@@ -65,7 +66,7 @@ impl NativeMethod for StdinRead {
 
     let mut buf = String::new();
     match stdin.read_to_string(&mut buf) {
-      Ok(_) => Ok(Value::from(hooks.manage_str(buf))),
+      Ok(_) => Ok(val!(hooks.manage_str(buf))),
       Err(err) => Err(hooks.make_error(err.to_string())),
     }
   }
@@ -90,7 +91,7 @@ impl NativeMethod for StdinReadLine {
         if buf.ends_with('\n') {
           buf.pop();
         }
-        Ok(Value::from(hooks.manage_str(buf)))
+        Ok(val!(hooks.manage_str(buf)))
       }
       Err(err) => Err(hooks.make_error(err.to_string())),
     }

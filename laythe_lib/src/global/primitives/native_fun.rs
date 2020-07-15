@@ -9,6 +9,7 @@ use laythe_core::{
   signature::{Arity, Parameter, ParameterKind},
   value::Value,
   CallResult, LyResult,
+  val,
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -27,7 +28,7 @@ pub fn declare_native_fun_class(
   package: &Package,
 ) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, NATIVE_FUN_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, Value::from(class))
+  export_and_insert(hooks, module, class.name, val!(class))
 }
 
 pub fn define_native_fun_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -36,13 +37,13 @@ pub fn define_native_fun_class(hooks: &GcHooks, module: &Module, _: &Package) ->
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NATIVE_FUN_NAME.name)),
-    Value::from(to_dyn_method(hooks, NativeFunName())),
+    val!(to_dyn_method(hooks, NativeFunName())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NATIVE_FUN_CALL.name)),
-    Value::from(to_dyn_method(hooks, NativeFunCall())),
+    val!(to_dyn_method(hooks, NativeFunCall())),
   );
 
   Ok(())
@@ -57,8 +58,8 @@ impl NativeMethod for NativeFunName {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::from(
-      hooks.manage_str(String::from(this.to_native_fun().meta().name)),
+    Ok(val!(
+      hooks.manage_str(String::from(this.to_native_fun().meta().name))
     ))
   }
 }
@@ -101,7 +102,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let managed: Managed<Box<dyn NativeFun>> = hooks.manage(Box::new(TestNative()));
-      let result = native_fun_name.call(&mut hooks, Value::from(managed), &[]);
+      let result = native_fun_name.call(&mut hooks, val!(managed), &[]);
       match result {
         Ok(r) => assert_eq!(*r.to_str(), "test".to_string()),
         Err(_) => assert!(false),
@@ -133,7 +134,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let managed: Managed<Box<dyn NativeFun>> = hooks.manage(Box::new(TestNative()));
-      let result = native_fun_call.call(&mut hooks, Value::from(managed), &[]);
+      let result = native_fun_call.call(&mut hooks, val!(managed), &[]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),
