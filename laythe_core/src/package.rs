@@ -1,4 +1,4 @@
-use crate::{hooks::GcHooks, module::Module, object::LyHashMap, LyResult};
+use crate::{hooks::GcHooks, module::Module, object::Map, LyResult};
 use hashbrown::hash_map::{Entry, Iter};
 use laythe_env::{
   managed::{Manage, Managed, Trace},
@@ -58,7 +58,7 @@ pub struct Package {
   name: Managed<String>,
 
   /// A hash of names to sub packages and modules
-  entities: LyHashMap<Managed<String>, PackageEntity>,
+  entities: Map<Managed<String>, PackageEntity>,
 }
 
 impl Package {
@@ -66,7 +66,7 @@ impl Package {
   pub fn new(name: Managed<String>) -> Self {
     Self {
       name,
-      entities: LyHashMap::default(),
+      entities: Map::default(),
     }
   }
 
@@ -225,14 +225,12 @@ mod test {
 
   #[test]
   fn add_module() {
-    use crate::hooks::{GcHooks, NoContext};
+    use crate::hooks::{support::TestContext, GcHooks};
     use crate::module::Module;
     use crate::package::Package;
-    use laythe_env::memory::Gc;
     use std::path::PathBuf;
 
-    let gc = Gc::default();
-    let mut context = NoContext::new(&gc);
+    let mut context = TestContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut package = Package::new(hooks.manage_str("package".to_string()));
@@ -250,12 +248,10 @@ mod test {
 
   #[test]
   fn add_package() {
-    use crate::hooks::{GcHooks, NoContext};
+    use crate::hooks::{support::TestContext, GcHooks};
     use crate::package::Package;
-    use laythe_env::memory::Gc;
 
-    let gc = Gc::default();
-    let mut context = NoContext::new(&gc);
+    let mut context = TestContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut package = Package::new(hooks.manage_str("package".to_string()));
@@ -270,15 +266,13 @@ mod test {
 
   #[test]
   fn import() {
-    use crate::hooks::{GcHooks, NoContext};
+    use crate::hooks::{support::TestContext, GcHooks};
     use crate::module::Module;
     use crate::package::{Import, Package};
     use crate::value::Value;
-    use laythe_env::memory::Gc;
     use std::path::PathBuf;
 
-    let gc = Gc::default();
-    let mut context = NoContext::new(&gc);
+    let mut context = TestContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = hooks.manage(

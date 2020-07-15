@@ -28,11 +28,7 @@ const STDOUT_WRITELN: NativeMeta = NativeMeta::new(
   &[Parameter::new("string", ParameterKind::String)],
 );
 
-const STDOUT_FLUSH: NativeMeta = NativeMeta::new(
-  "flush",
-  Arity::Fixed(0),
-  &[],
-);
+const STDOUT_FLUSH: NativeMeta = NativeMeta::new("flush", Arity::Fixed(0), &[]);
 
 pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, std, STDOUT_CLASS_NAME)?;
@@ -138,7 +134,7 @@ mod test {
     use super::*;
     use crate::support::MockedContext;
     use laythe_env::stdio::support::StdioTestContainer;
-    use std::str;
+    use std::{rc::Rc, str};
 
     #[test]
     fn new() {
@@ -155,9 +151,9 @@ mod test {
     #[test]
     fn call() {
       let stdout_write = StdoutWrite();
-      let mut stdio_container = StdioTestContainer::default();
+      let stdio_container = Rc::new(StdioTestContainer::default());
 
-      let mut context = MockedContext::new_with_io(&mut stdio_container);
+      let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
 
       let string = Value::from(hooks.manage_str("some string".to_string()));
@@ -176,7 +172,7 @@ mod test {
     use super::*;
     use crate::support::MockedContext;
     use laythe_env::stdio::support::StdioTestContainer;
-    use std::str;
+    use std::{rc::Rc, str};
 
     #[test]
     fn new() {
@@ -193,9 +189,9 @@ mod test {
     #[test]
     fn call() {
       let stdout_write = StdoutWriteln();
-      let mut stdio_container = StdioTestContainer::default();
+      let stdio_container = Rc::new(StdioTestContainer::default());
 
-      let mut context = MockedContext::new_with_io(&mut stdio_container);
+      let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
 
       let string = Value::from(hooks.manage_str("some string".to_string()));

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Laythe Demo</title>
+    <link rel="stylesheet" href="node_modules/xterm/css/xterm.css" />
+    <style>
+      body {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        margin: 0;
+      }
+      #header {
+        height: 50px;
+        width: 100%;
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        border-bottom: 3px solid gray;
+        background-color :darkcyan;
+      }
+      #footer {
+        width: 100%;
+        height: 40px;
+        border-top: 3px solid gray;
+        background-color :darkcyan;
+      }
+      #container {
+        width: 100%;
+        flex-grow: 1;
+        display: flex;
+        flex-direction: row;
+      }
+      #title {
+        font-family: Arial, Helvetica, sans-serif;
+        color: #FFFFFF;
+      }
+      .header-item {
+        margin-left: 10px;
+        margin-right: 10px;
+      }
+      .command-button {
+        display: inline-block;
+        cursor: pointer;
+        padding: 0.35em 1.2em;
+        border: 0.1em solid #FFFFFF;
+        border-radius: 0.12em;
+        box-sizing: border-box;
+        text-decoration: none;
+        font-family: 'Roboto',sans-serif;
+        font-weight: 300;
+        color: #FFFFFF;
+        text-align: center;
+        transition: all 0.2s;
+      }
+      .command-button:hover{
+        color:#000000;
+        background-color:#FFFFFF;
+      }
+      @media all and (max-width:30em){
+        .command-button {
+          display:block;
+          margin:0.4em auto;
+        }
+      }
+      .editor-component {
+        width: 50%;
+        height: 100%;
+        border-left: 3px solid darkcyan;
+        border-right: 3px solid darkcyan;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="header">
+      <h1 class="header-item" id="title">Laythe</h1>
+      <a id="run" class="header-item command-button" target="_blank" rel="nofollow noopener">
+        Run
+      </a>
+      <a id="repl" class="header-item command-button" target="_blank" rel="nofollow noopener">
+        Repl
+      </a>
+    </div>
+    <div id="container">
+      <div id="editor" class="editor-component"></div>
+      <div id="terminal" class="editor-component"></div>
+    </div>
+    <div id="footer">
+
+    </div>
+    <noscript>This page contains webassembly and javascript content, please enable javascript in your browser.</noscript>
+    <script src="./bootstrap.js"></script>
+  </body>
+</html>

@@ -7,7 +7,7 @@ use laythe_core::{
   hooks::GcHooks,
   module::Module,
   object::{Fun, FunKind},
-  object::{LyHashMap, TryBlock},
+  object::{Map, TryBlock},
   signature::Arity,
   value::Value,
 };
@@ -81,7 +81,7 @@ pub struct Compiler<'a, 's> {
   upvalues: Vec<UpvalueIndex>,
 
   /// A set of constants used in the current function
-  constants: LyHashMap<Value, usize>,
+  constants: Map<Value, usize>,
 }
 
 impl<'a, 's> Compiler<'a, 's> {
@@ -135,7 +135,7 @@ impl<'a, 's> Compiler<'a, 's> {
         std::u8::MAX as usize
       ],
       upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
-      constants: LyHashMap::default(),
+      constants: Map::default(),
     };
 
     compiler.locals[0] = first_local(FunKind::Script);
@@ -163,7 +163,7 @@ impl<'a, 's> Compiler<'a, 's> {
         std::u8::MAX as usize
       ],
       upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
-      constants: LyHashMap::default(),
+      constants: Map::default(),
     };
 
     child.fun = child.hooks.manage(Fun::new(name, child.module));
@@ -1981,46 +1981,45 @@ mod test {
   use super::*;
   use crate::debug::disassemble_chunk;
   use laythe_core::chunk::decode_u16;
-  use laythe_core::hooks::NoContext;
-  use laythe_env::{stdio::support::StdioTestContainer, memory::Gc};
+  use laythe_core::hooks::{support::TestContext, GcContext};
+  use laythe_env::stdio::support::StdioTestContainer;
+  use laythe_native::stdio::StdioNative;
   use std::path::PathBuf;
-  use std::io;
 
   /// Assert equal returning a result so debug information has a chance to be captured and displayed
-  fn ly_assert_eq<T: PartialEq>(expected: &T, received: &T, message: Option<String>) -> io::Result<()> {
-    if expected == received {
-      return Ok(())
-    }
+  // fn ly_assert_eq<T: PartialEq>(
+  //   expected: &T,
+  //   received: &T,
+  //   message: Option<String>,
+  // ) -> io::Result<()> {
+  //   if expected == received {
+  //     return Ok(());
+  //   }
 
-    // should consider mapping io errors to something else
-    Err(io::Error::new(io::ErrorKind::Other, message.unwrap_or("".to_string())))
-  }
+  //   // should consider mapping io errors to something else
+  //   Err(io::Error::new(
+  //     io::ErrorKind::Other,
+  //     message.unwrap_or("".to_string()),
+  //   ))
+  // }
 
   enum ByteCodeTest {
     Code(AlignedByteCode),
     Fun((u16, Vec<ByteCodeTest>)),
   }
 
-  fn test_compile<'a>(src: String, gc: &mut Gc) -> Managed<Fun> {
-    let mut stdio_container = StdioTestContainer::default();
-
-    let stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
+  fn test_compile<'a>(src: String, context: &dyn GcContext) -> Managed<Fun> {
+    let stdio = Stdio::new(Box::new(StdioNative::default()));
     let mut parser = Parser::new(stdio, &src);
 
-    let mut context = NoContext::new(gc);
-    let hooks = &GcHooks::new(&mut context);
+    let hooks = &GcHooks::new(context);
 
     let module = hooks
       .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("path/module.ly"))).unwrap());
     let compiler = Compiler::new(module, &mut parser, &hooks);
     let result = compiler.compile();
-    
-    if let Err(_) = result {
-      stdio_container.log_stdio();
-      assert!(false);
-    }
-    assert_eq!(result.is_ok(), true);
 
+    assert_eq!(result.is_ok(), true);
     result.unwrap()
   }
 
@@ -2069,9 +2068,10 @@ mod test {
   }
 
   fn assert_simple_bytecode(fun: Managed<Fun>, code: &[AlignedByteCode]) {
-    let mut stdio_container = StdioTestContainer::default();
+    let stdio_container = StdioTestContainer::default();
 
     let mut stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
+
     if let Err(_) = disassemble_chunk(&mut stdio, &fun.chunk(), "test") {
       stdio_container.log_stdio();
       assert!(false)
@@ -2119,8 +2119,8 @@ mod test {
   fn op_print() {
     let example = "print 10;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -2139,8 +2139,8 @@ mod test {
     "#
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2160,8 +2160,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2182,8 +2182,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
       fun,
@@ -2210,8 +2210,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2238,8 +2238,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2265,8 +2265,8 @@ mod test {
     "#
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2304,8 +2304,8 @@ mod test {
     "#
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2341,8 +2341,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2376,8 +2376,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
       fun,
@@ -2441,8 +2441,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
       fun,
@@ -2485,8 +2485,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2516,8 +2516,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2545,8 +2545,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2572,8 +2572,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2596,8 +2596,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2622,8 +2622,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2644,8 +2644,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
       &vec![
@@ -2677,8 +2677,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
       &vec![
@@ -2721,8 +2721,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
       &vec![
@@ -2786,8 +2786,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
       &vec![
@@ -2828,8 +2828,8 @@ mod test {
   fn empty_fun() {
     let example = "fn example() {} example();".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
       &vec![
@@ -2861,8 +2861,8 @@ mod test {
     "
     .to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
       &vec![
@@ -2892,8 +2892,8 @@ mod test {
   fn empty_fun_basic() {
     let example = "fn example() { let a = 10; return a; } example();".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
       &vec![
@@ -2921,8 +2921,8 @@ mod test {
   fn map() {
     let example = "let a = { \"cat\": \"bat\", 10: nil };".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2944,8 +2944,8 @@ mod test {
   fn list() {
     let example = "let a = [1, 2, 3, \"cat\"];".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -2967,8 +2967,8 @@ mod test {
   fn for_loop() {
     let example = "for (let x = 0; x < 10; x = x + 1) { print(x); }".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -3001,8 +3001,8 @@ mod test {
   fn for_range_loop() {
     let example = "for (let x in [1, 2, 3]) { print x; }".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -3037,8 +3037,8 @@ mod test {
   #[test]
   fn while_loop() {
     let example = "while (true) { print 10; }".to_string();
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -3059,8 +3059,8 @@ mod test {
   #[test]
   fn or_operator() {
     let example = "print false or true;".to_string();
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -3081,8 +3081,8 @@ mod test {
   fn if_condition() {
     let example = "if (3 < 10) { print \"hi\"; }".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -3106,8 +3106,8 @@ mod test {
   fn if_else_condition() {
     let example = "if (3 < 10) { print \"hi\"; } else { print \"bye\"; }".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -3133,8 +3133,8 @@ mod test {
   fn declare_local() {
     let example = "{ let x = 10; }".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3150,8 +3150,8 @@ mod test {
   fn op_get_local() {
     let example = "{ let x = 10; print(x); }".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3169,8 +3169,8 @@ mod test {
   fn op_set_local() {
     let example = "{ let x = 10; x = 5; }".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -3190,8 +3190,8 @@ mod test {
   fn op_define_global_nil() {
     let example = "let x;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -3208,8 +3208,8 @@ mod test {
   fn op_define_global_val() {
     let example = "let x = 10;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
@@ -3226,8 +3226,8 @@ mod test {
   fn op_get_global() {
     let example = "print x;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3243,8 +3243,8 @@ mod test {
   fn op_set_global() {
     let example = "x = \"cat\";".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3261,8 +3261,8 @@ mod test {
   fn op_pop() {
     let example = "false;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3278,8 +3278,8 @@ mod test {
   fn op_return() {
     let example = "".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(fun, &vec![AlignedByteCode::Nil, AlignedByteCode::Return]);
   }
 
@@ -3287,8 +3287,8 @@ mod test {
   fn op_number() {
     let example = "5.18;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3304,8 +3304,8 @@ mod test {
   fn op_string() {
     let example = "\"example\";".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3321,8 +3321,8 @@ mod test {
   fn op_false() {
     let example = "false;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3338,8 +3338,8 @@ mod test {
   fn op_true() {
     let example = "true;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3355,8 +3355,8 @@ mod test {
   fn op_nil() {
     let example = "nil;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3372,8 +3372,8 @@ mod test {
   fn op_not() {
     let example = "!false;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3390,8 +3390,8 @@ mod test {
   fn op_negate() {
     let example = "-15;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3408,8 +3408,8 @@ mod test {
   fn op_add() {
     let example = "10 + 4;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3427,8 +3427,8 @@ mod test {
   fn op_subtract() {
     let example = "10 - 4;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3446,8 +3446,8 @@ mod test {
   fn op_divide() {
     let example = "10 / 4;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3465,8 +3465,8 @@ mod test {
   fn op_multi() {
     let example = "10 * 4;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3484,8 +3484,8 @@ mod test {
   fn op_equal() {
     let example = "true == nil;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3503,8 +3503,8 @@ mod test {
   fn op_not_equal() {
     let example = "true != nil;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3523,8 +3523,8 @@ mod test {
   fn op_less() {
     let example = "3 < 5;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3542,8 +3542,8 @@ mod test {
   fn op_less_equal() {
     let example = "3 <= 5;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3562,8 +3562,8 @@ mod test {
   fn op_greater() {
     let example = "3 > 5;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
@@ -3581,8 +3581,8 @@ mod test {
   fn op_greater_equal() {
     let example = "3 >= 5;".to_string();
 
-    let mut gc = Gc::default();
-    let fun = test_compile(example, &mut gc);
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![

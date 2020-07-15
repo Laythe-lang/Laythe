@@ -1,3 +1,4 @@
+use crate::io::IoImpl;
 use io::{Read, Write};
 use std::io;
 
@@ -47,6 +48,15 @@ pub trait StdioImpl {
   fn stdin(&mut self) -> &mut dyn Read;
 
   fn read_line(&self, buffer: &mut String) -> io::Result<usize>;
+}
+
+#[derive(Debug)]
+pub struct IoStdioMock();
+
+impl IoImpl<Stdio> for IoStdioMock {
+  fn make(&self) -> Stdio {
+    Stdio::new(Box::new(StdioMock::default()))
+  }
 }
 
 pub struct StdioMock {
@@ -101,9 +111,36 @@ impl Read for MockRead {
 }
 
 pub mod support {
-  use super::StdioImpl;
+  use super::*;
   use std::io::{Cursor, Write};
-  use std::str;
+  use std::{rc::Rc, str};
+
+  #[derive(Debug)]
+  pub struct IoStdioTest {
+    stdio_container: Rc<StdioTestContainer>,
+  }
+
+  impl Default for IoStdioTest {
+    fn default() -> Self {
+      Self {
+        stdio_container: Rc::new(StdioTestContainer::default()),
+      }
+    }
+  }
+
+  impl IoStdioTest {
+    pub fn new(stdio_container: &Rc<StdioTestContainer>) -> Self {
+      Self {
+        stdio_container: Rc::clone(stdio_container),
+      }
+    }
+  }
+
+  impl IoImpl<Stdio> for IoStdioTest {
+    fn make(&self) -> Stdio {
+      Stdio::new(Box::new(self.stdio_container.make_stdio()))
+    }
+  }
 
   #[derive(Debug)]
   pub struct StdioTestContainer {
@@ -147,19 +184,27 @@ pub mod support {
       }
     }
 
-    pub fn make_stdio(&mut self) -> StdioTest {
+    /// Note this should NEVER be used in the actual vm. This deliberately
+    /// perverts the rust safety checks
+    pub fn make_stdio(&self) -> StdioTest {
       StdioTest {
-        stdout: &mut *self.stdout,
-        stdin: &mut *self.stdin,
-        stderr: &mut *self.stderr,
-        lines: &mut *self.lines,
-        line_index: &mut *self.line_index,
+        stdout: &*self.stdout as *const Vec<u8> as *mut Vec<u8>,
+        stdin: &*self.stdin as *const Cursor<Vec<u8>> as *mut Cursor<Vec<u8>>,
+        stderr: &*self.stderr as *const Vec<u8> as *mut Vec<u8>,
+        lines: &*self.lines as *const Vec<String> as *mut Vec<String>,
+        line_index: &*self.line_index as *const usize as *mut usize,
       }
     }
 
     pub fn log_stdio(&self) {
-      eprintln!("{}", str::from_utf8(&*self.stdout).expect("Could not unwrap stdout"));
-      eprintln!("{}", str::from_utf8(&*self.stderr).expect("Could not unwrap stderr"));
+      eprintln!(
+        "{}",
+        str::from_utf8(&*self.stdout).expect("Could not unwrap stdout")
+      );
+      eprintln!(
+        "{}",
+        str::from_utf8(&*self.stderr).expect("Could not unwrap stderr")
+      );
     }
   }
 

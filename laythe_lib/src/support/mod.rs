@@ -124,12 +124,15 @@ mod test {
     CallResult, LyError,
   };
   use laythe_env::{
-    io::{support::IoTest, Io},
+    io::Io,
     managed::{Managed, Trace},
     memory::{Gc, NoGc, NO_GC},
-    stdio::{support::StdioTestContainer, Stdio},
+    stdio::{
+      support::{IoStdioTest, StdioTestContainer},
+      Stdio,
+    },
   };
-  use std::path::PathBuf;
+  use std::{path::PathBuf, rc::Rc};
 
   pub struct MockedContext {
     pub gc: Gc,
@@ -162,12 +165,12 @@ mod test {
       }
     }
 
-    pub fn new_with_io(stdio_container: &mut StdioTestContainer) -> Self {
+    pub fn new_with_io(stdio_container: &Rc<StdioTestContainer>) -> Self {
       Self {
         gc: Gc::default(),
         no_gc: NoGc(),
         responses: Vec::from(vec![]),
-        io: Io::new(Box::new(IoTest::new(stdio_container))),
+        io: Io::default().with_stdio(Rc::new(IoStdioTest::new(stdio_container))),
         response_count: 0,
       }
     }

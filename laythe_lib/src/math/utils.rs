@@ -40,6 +40,7 @@ const REM_META: NativeMeta = NativeMeta::new(
     Parameter::new("divisor", ParameterKind::Number),
   ],
 );
+const RAND_META: NativeMeta = NativeMeta::new("rand", Arity::Fixed(0), &[]);
 
 pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   export_and_insert(
@@ -89,6 +90,13 @@ pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> LyResul
     self_module,
     hooks.manage_str(REM_META.name.to_string()),
     Value::from(hooks.manage(Box::new(Rem()) as Box<dyn NativeFun>)),
+  )?;
+
+  export_and_insert(
+    hooks,
+    self_module,
+    hooks.manage_str(RAND_META.name.to_string()),
+    Value::from(hooks.manage(Box::new(Rand()) as Box<dyn NativeFun>)),
   )
 }
 
@@ -104,8 +112,15 @@ impl NativeFun for Sin {
     &SIN_META
   }
 
+  #[cfg(not(feature = "wasm"))]
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
     Ok(Value::from(args[0].to_num().sin()))
+  }
+
+  #[cfg(feature = "wasm")]
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
+    use js_sys::Math::sin;
+    Ok(Value::from(sin(args[0].to_num())))
   }
 }
 
@@ -117,8 +132,15 @@ impl NativeFun for Cos {
     &COS_META
   }
 
+  #[cfg(not(feature = "wasm"))]
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
     Ok(Value::from(args[0].to_num().cos()))
+  }
+
+  #[cfg(feature = "wasm")]
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
+    use js_sys::Math::cos;
+    Ok(Value::from(cos(args[0].to_num())))
   }
 }
 
@@ -161,12 +183,116 @@ impl NativeFun for Rem {
   }
 }
 
+#[derive(Clone, Debug, Trace)]
+pub struct Rand();
+
+impl NativeFun for Rand {
+  fn meta(&self) -> &NativeMeta {
+    &RAND_META
+  }
+
+  #[cfg(not(feature = "wasm"))]
+  fn call(&self, _hooks: &mut Hooks, _args: &[Value]) -> CallResult {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    let val: f64 = rng.gen_range(0.0, 1.0);
+    Ok(Value::from(val))
+  }
+
+  #[cfg(feature = "wasm")]
+  fn call(&self, _hooks: &mut Hooks, _args: &[Value]) -> CallResult {
+    use js_sys::Math::random;
+    Ok(Value::from(random()))
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
   use crate::support::MockedContext;
 
-  #[cfg(test)]
+  mod abs {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let ln = Abs();
+
+      assert_eq!(ln.meta().name, "abs");
+      assert_eq!(ln.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        ln.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let abs = Abs();
+
+      match abs.call(&mut hooks, &[Value::from(-2.0)]) {
+        Ok(res) => assert_eq!(res.to_num(), 2.0),
+        Err(_) => panic!(),
+      };
+
+      match abs.call(&mut hooks, &[Value::from(2.0)]) {
+        Ok(res) => assert_eq!(res.to_num(), 2.0),
+        Err(_) => panic!(),
+      };
+    }
+  }
+
+  mod rem {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let rem = Rem();
+
+      assert_eq!(rem.meta().name, "rem");
+      assert_eq!(rem.meta().signature.arity, Arity::Fixed(2));
+      assert_eq!(
+        rem.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+      assert_eq!(
+        rem.meta().signature.parameters[1].kind,
+        ParameterKind::Number
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let rem = Rem();
+      let values = &[Value::from(3.0), Value::from(2.0)];
+
+      match rem.call(&mut hooks, values) {
+        Ok(res) => assert_eq!(res.to_num(), 1.0),
+        Err(_) => panic!(),
+      };
+
+      let values = &[Value::from(-3.0), Value::from(2.0)];
+
+      match rem.call(&mut hooks, values) {
+        Ok(res) => assert_eq!(res.to_num(), -1.0),
+        Err(_) => panic!(),
+      };
+
+      let values = &[Value::from(3.0), Value::from(-2.0)];
+
+      match rem.call(&mut hooks, values) {
+        Ok(res) => assert_eq!(res.to_num(), 1.0),
+        Err(_) => panic!(),
+      };
+    }
+  }
+
   mod sin {
     use super::*;
 
@@ -254,6 +380,36 @@ mod test {
         Ok(res) => assert!((res.to_num() - 1.0).abs() < 0.0000001),
         Err(_) => panic!(),
       };
+    }
+  }
+
+  mod rand {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let rand = Rand();
+
+      assert_eq!(rand.meta().name, "rand");
+      assert_eq!(rand.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let rand = Rand();
+
+      for _ in 0..10 {
+        match rand.call(&mut hooks, &[]) {
+          Ok(res) => {
+            let num = res.to_num();
+            assert!(num >= 0.0 && num < 1.0);
+          }
+          Err(_) => panic!(),
+        };
+      }
     }
   }
 }

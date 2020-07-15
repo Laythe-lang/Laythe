@@ -1,15 +1,27 @@
 use io::{Stderr, Stdin, Stdout};
-use laythe_env::stdio::StdioImpl;
+use laythe_env::{
+  io::IoImpl,
+  stdio::{Stdio, StdioImpl},
+};
 use std::io::{self, stderr, stdin, stdout};
 
 #[derive(Debug)]
-pub struct NativeStdio {
+pub struct IoStdioNative();
+
+impl IoImpl<Stdio> for IoStdioNative {
+  fn make(&self) -> Stdio {
+    Stdio::new(Box::new(StdioNative::default()))
+  }
+}
+
+#[derive(Debug)]
+pub struct StdioNative {
   stdout: Stdout,
   stderr: Stderr,
   stdin: Stdin,
 }
 
-impl Default for NativeStdio {
+impl Default for StdioNative {
   fn default() -> Self {
     Self {
       stdout: stdout(),
@@ -19,7 +31,7 @@ impl Default for NativeStdio {
   }
 }
 
-impl StdioImpl for NativeStdio {
+impl StdioImpl for StdioNative {
   fn stdout(&mut self) -> &mut dyn std::io::Write {
     &mut self.stdout
   }

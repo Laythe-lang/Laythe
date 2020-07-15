@@ -1,6 +1,6 @@
-use laythe_core::hooks::{GcHooks, NoContext};
+use laythe_core::hooks::{support::TestContext, GcHooks};
 use laythe_core::module::Module;
-use laythe_env::{memory::Gc, stdio::Stdio};
+use laythe_env::stdio::Stdio;
 use laythe_vm::compiler::{Compiler, Parser};
 use std::env;
 use std::fs::File;
@@ -23,8 +23,7 @@ fn main() {
       let now = Instant::now();
 
       for _ in 0..1000000 {
-        let gc = Gc::default();
-        let mut context = NoContext::new(&gc);
+        let mut context = TestContext::default();
         let hooks = GcHooks::new(&mut context);
         let mut parser = Parser::new(Stdio::default(), &source);
         let module =

@@ -1,6 +1,6 @@
 use crate::{
   hooks::GcHooks,
-  object::{Class, Instance, LyHashMap},
+  object::{Class, Instance, Map},
   value::Value,
   LyHashSet, LyResult,
 };
@@ -24,7 +24,7 @@ pub struct Module {
   exports: LyHashSet<Managed<String>>,
 
   /// All of the top level symbols in this module
-  symbols: LyHashMap<Managed<String>, Value>,
+  symbols: Map<Managed<String>, Value>,
 }
 
 impl Module {
@@ -34,7 +34,7 @@ impl Module {
       path,
       module_class,
       exports: LyHashSet::default(),
-      symbols: LyHashMap::default(),
+      symbols: Map::default(),
     }
   }
 
@@ -66,7 +66,7 @@ impl Module {
       path,
       module_class: hooks.manage(Class::bare(name)),
       exports: LyHashSet::default(),
-      symbols: LyHashMap::default(),
+      symbols: Map::default(),
     })
   }
 
@@ -219,18 +219,16 @@ impl Manage for Module {
 #[cfg(test)]
 mod test {
   use crate::{
-    hooks::{GcHooks, NoContext},
+    hooks::{support::TestContext, GcHooks},
     object::Class,
   };
 
   #[test]
   fn new() {
     use crate::module::Module;
-    use laythe_env::memory::Gc;
     use std::path::PathBuf;
 
-    let gc = Gc::default();
-    let mut context = NoContext::new(&gc);
+    let mut context = TestContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self/path.ly");
@@ -245,13 +243,11 @@ mod test {
 
   #[test]
   fn from_path() {
-    use crate::hooks::{GcHooks, NoContext};
+    use crate::hooks::{support::TestContext, GcHooks};
     use crate::module::Module;
-    use laythe_env::memory::Gc;
     use std::path::PathBuf;
 
-    let gc = Gc::default();
-    let mut context = NoContext::new(&gc);
+    let mut context = TestContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let path = hooks.manage(PathBuf::from("self/path.ly"));
@@ -263,14 +259,12 @@ mod test {
 
   #[test]
   fn export_symbol() {
-    use crate::hooks::{GcHooks, NoContext};
+    use crate::hooks::{support::TestContext, GcHooks};
     use crate::module::Module;
     use crate::value::Value;
-    use laythe_env::memory::Gc;
     use std::path::PathBuf;
 
-    let gc = Gc::default();
-    let mut context = NoContext::new(&gc);
+    let mut context = TestContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
@@ -290,14 +284,12 @@ mod test {
 
   #[test]
   fn import() {
-    use crate::hooks::{GcHooks, NoContext};
+    use crate::hooks::{support::TestContext, GcHooks};
     use crate::module::Module;
     use crate::value::Value;
-    use laythe_env::memory::Gc;
     use std::path::PathBuf;
 
-    let gc = Gc::default();
-    let mut context = NoContext::new(&gc);
+    let mut context = TestContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
@@ -320,14 +312,12 @@ mod test {
 
   #[test]
   fn insert_symbol() {
-    use crate::hooks::{GcHooks, NoContext};
+    use crate::hooks::{support::TestContext, GcHooks};
     use crate::module::Module;
     use crate::value::Value;
-    use laythe_env::memory::Gc;
     use std::path::PathBuf;
 
-    let gc = Gc::default();
-    let mut context = NoContext::new(&gc);
+    let mut context = TestContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
@@ -349,13 +339,11 @@ mod test {
 
   #[test]
   fn get_symbol() {
-    use crate::hooks::{GcHooks, NoContext};
+    use crate::hooks::{support::TestContext, GcHooks};
     use crate::module::Module;
-    use laythe_env::memory::Gc;
     use std::path::PathBuf;
 
-    let gc = Gc::default();
-    let mut context = NoContext::new(&gc);
+    let mut context = TestContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let module = Module::new(

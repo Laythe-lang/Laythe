@@ -2,7 +2,7 @@ use crate::constants::IMPORT_SEPARATOR;
 use laythe_core::{
   hooks::GcHooks,
   module::Module,
-  object::{BuiltIn, BuiltInDependencies, BuiltinPrimitives, LyHashMap},
+  object::{BuiltIn, BuiltInDependencies, BuiltinPrimitives, Map},
   package::{Import, Package},
   LyResult,
 };
@@ -24,10 +24,10 @@ pub struct DepManager {
   builtin: BuiltIn,
 
   /// A collection of packages that have already been loaded
-  packages: LyHashMap<Managed<String>, Managed<Package>>,
+  packages: Map<Managed<String>, Managed<Package>>,
 
   /// A cache for full filepath to individual modules
-  cache: LyHashMap<Managed<String>, Managed<Module>>,
+  cache: Map<Managed<String>, Managed<Module>>,
 }
 
 impl DepManager {
@@ -37,8 +37,8 @@ impl DepManager {
       io,
       src_dir,
       builtin,
-      packages: LyHashMap::default(),
-      cache: LyHashMap::default(),
+      packages: Map::default(),
+      cache: Map::default(),
     }
   }
 
@@ -63,9 +63,9 @@ impl DepManager {
     module_dir.pop();
 
     // determine relative position of module relative to the src directory
-    let relative = match self.io.fsio().relative_path(&*self.src_dir, &module_dir) {
+    let relative = match self.io.fs().relative_path(&*self.src_dir, &module_dir) {
       Ok(relative) => relative,
-      Err(err) => return Err(hooks.make_error(err.message)),
+      Err(err) => return Err(hooks.make_error(err.to_string())),
     };
 
     // split path into segments
@@ -83,7 +83,9 @@ impl DepManager {
         .chain(path.split(IMPORT_SEPARATOR).map(|s| s.to_string()))
         .collect()
     } else {
-      path.split(IMPORT_SEPARATOR).map(|s| s.to_string())
+      path
+        .split(IMPORT_SEPARATOR)
+        .map(|s| s.to_string())
         .collect()
     };
 

@@ -10,8 +10,8 @@ use laythe_core::{
   hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks, NoContext},
   module::Module,
   native::{NativeFun, NativeMeta, NativeMethod},
-  object::LyHashMap,
-  object::{Class, Closure, Fun, Instance, LyVec, Method, Upvalue},
+  object::Map,
+  object::{Class, Closure, Fun, Instance, List, Method, Upvalue},
   package::{Import, Package},
   signature::{ArityError, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
@@ -25,7 +25,7 @@ use laythe_env::{
   stdio::Stdio,
 };
 use laythe_lib::{create_std_lib, global::builtin_from_global_module, GLOBAL, STD};
-use laythe_native::io::NativeIo;
+use laythe_native::io::io_native;
 use std::convert::TryInto;
 use std::mem;
 use std::ptr;
@@ -39,6 +39,8 @@ use std::io;
 
 #[cfg(feature = "debug_upvalues")]
 use std::io;
+
+const VERSION: &str = "0.1.0";
 
 #[derive(Debug, Clone, PartialEq)]
 enum Signal {
@@ -63,8 +65,7 @@ pub enum RunMode {
 }
 
 pub fn default_native_vm() -> Vm {
-  let io = Io::new(Box::new(NativeIo::default()));
-  Vm::new(io)
+  Vm::new(io_native())
 }
 
 /// A set of dependencies needed by the virtual machine
@@ -113,7 +114,7 @@ impl Vm {
     let hooks = GcHooks::new(&mut no_gc_context);
 
     let cwd = io
-      .envio()
+      .env()
       .current_dir()
       .expect("Could not obtain the current working directory.");
 
@@ -156,6 +157,11 @@ impl Vm {
     }
   }
 
+  /// The current version of the virtual machine
+  pub fn version() -> &'static str {
+    VERSION
+  }
+
   /// Start the interactive repl
   pub fn repl(&mut self) -> ExecuteResult {
     let mut stdio = self.io.stdio();
@@ -183,7 +189,7 @@ impl Vm {
 
   /// Run the provided source file
   pub fn run(&mut self, module_path: PathBuf, source: &str) -> ExecuteResult {
-    match self.io.fsio().canonicalize(&module_path) {
+    match self.io.fs().canonicalize(&module_path) {
       Ok(module_path) => {
         let mut directory = module_path.clone();
         directory.pop();
@@ -231,6 +237,7 @@ impl Vm {
     compiler.compile()
   }
 
+  /// Prepare the main module for use
   fn main_module(&self, module_path: PathBuf) -> Result<Managed<Module>, ExecuteResult> {
     let no_gc_context = NoContext::new(&self.gc);
     let hooks = GcHooks::new(&no_gc_context);
@@ -238,6 +245,7 @@ impl Vm {
     let mut stdio = self.io.stdio();
     let stderr = stdio.stderr();
 
+    // resolve the main module from the provided path
     let module = match Module::from_path(&hooks, hooks.manage(module_path)) {
       Ok(module) => module,
       Err(err) => {
@@ -247,6 +255,7 @@ impl Vm {
     };
     let mut module = hooks.manage(module);
 
+    // transfer the symbols from the global module into the main module
     match self.global.transfer_exported(&hooks, &mut module) {
       Ok(_) => {}
       Err(_) => {
@@ -283,7 +292,7 @@ impl From<VmDependencies> for Vm {
 
     let cwd = dependencies
       .io
-      .envio()
+      .env()
       .current_dir()
       .expect("Could not obtain the current working directory.");
 
@@ -494,9 +503,9 @@ impl<'a> VmExecutor<'a> {
         ByteCode::Nil => self.op_literal(VALUE_NIL),
         ByteCode::True => self.op_literal(Value::from(true)),
         ByteCode::False => self.op_literal(Value::from(false)),
-        ByteCode::List => self.op_literal(Value::from(self.gc.manage(LyVec::default(), self))),
+        ByteCode::List => self.op_literal(Value::from(self.gc.manage(List::default(), self))),
         ByteCode::ListInit => self.op_list(),
-        ByteCode::Map => self.op_literal(Value::from(self.gc.manage(LyHashMap::default(), self))),
+        ByteCode::Map => self.op_literal(Value::from(self.gc.manage(Map::default(), self))),
         ByteCode::MapInit => self.op_map(),
         ByteCode::IterNext => self.op_iter_next(),
         ByteCode::IterCurrent => self.op_iter_current(),

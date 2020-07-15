@@ -1,4 +1,4 @@
-use crate::LyIoError;
+use crate::io::IoImpl;
 use std::{
   io,
   path::{Path, PathBuf},
@@ -7,6 +7,14 @@ use std::{
 /// A wrapper around file system facilities provided to Laythe
 pub struct Fs {
   fs: Box<dyn FsImpl>,
+}
+
+impl Default for Fs {
+  fn default() -> Self {
+    Self {
+      fs: Box::new(FsMock()),
+    }
+  }
 }
 
 impl Fs {
@@ -31,7 +39,7 @@ impl Fs {
   }
 
   /// Get a relative path from a base
-  pub fn relative_path(&self, base: &PathBuf, import: &Path) -> Result<PathBuf, LyIoError> {
+  pub fn relative_path(&self, base: &PathBuf, import: &Path) -> io::Result<PathBuf> {
     self.fs.relative_path(base, import)
   }
 }
@@ -42,7 +50,16 @@ pub trait FsImpl {
   fn read_to_string(&self, path: &Path) -> io::Result<String>;
   fn read_directory(&self, path: &Path) -> io::Result<SlDirEntry>;
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
-  fn relative_path(&self, base: &PathBuf, import: &Path) -> Result<PathBuf, LyIoError>;
+  fn relative_path(&self, base: &PathBuf, import: &Path) -> io::Result<PathBuf>;
+}
+
+#[derive(Debug)]
+pub struct IoFsMock();
+
+impl IoImpl<Fs> for IoFsMock {
+  fn make(&self) -> Fs {
+    Fs::new(Box::new(FsMock()))
+  }
 }
 
 pub struct FsMock();
@@ -57,7 +74,7 @@ impl FsImpl for FsMock {
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
     Ok(path.to_path_buf())
   }
-  fn relative_path(&self, _base: &PathBuf, import: &Path) -> Result<PathBuf, LyIoError> {
+  fn relative_path(&self, _base: &PathBuf, import: &Path) -> io::Result<PathBuf> {
     Ok(import.to_path_buf())
   }
 }

@@ -413,9 +413,9 @@ impl Manage for Fun {
   }
 }
 #[derive(Clone, Debug)]
-pub struct LyVec<T>(Vec<T>);
+pub struct List<T>(Vec<T>);
 
-impl<T> LyVec<T> {
+impl<T> List<T> {
   pub fn iter(&self) -> slice::Iter<'_, T> {
     self.0.iter()
   }
@@ -453,19 +453,19 @@ impl<T> LyVec<T> {
   }
 }
 
-impl<T: PartialEq> LyVec<T> {
+impl<T: PartialEq> List<T> {
   pub fn contains(&mut self, value: &T) -> bool {
     self.0.contains(value)
   }
 }
 
-impl<T> Default for LyVec<T> {
+impl<T> Default for List<T> {
   fn default() -> Self {
     Self(Vec::new())
   }
 }
 
-impl<T: Clone> LyVec<T> {
+impl<T: Clone> List<T> {
   pub fn new() -> Self {
     Self(Vec::new())
   }
@@ -479,7 +479,7 @@ impl<T: Clone> LyVec<T> {
   }
 }
 
-impl<T, I: SliceIndex<[T]>> Index<I> for LyVec<T> {
+impl<T, I: SliceIndex<[T]>> Index<I> for List<T> {
   type Output = <I as SliceIndex<[T]>>::Output;
 
   fn index(&self, index: I) -> &<Vec<T> as Index<I>>::Output {
@@ -487,25 +487,25 @@ impl<T, I: SliceIndex<[T]>> Index<I> for LyVec<T> {
   }
 }
 
-impl<T, I: SliceIndex<[T]>> IndexMut<I> for LyVec<T> {
+impl<T, I: SliceIndex<[T]>> IndexMut<I> for List<T> {
   fn index_mut(&mut self, index: I) -> &mut <Vec<T> as Index<I>>::Output {
     &mut self.0[index]
   }
 }
 
-impl<T> From<Vec<T>> for LyVec<T> {
+impl<T> From<Vec<T>> for List<T> {
   fn from(vec: Vec<T>) -> Self {
-    LyVec(vec)
+    List(vec)
   }
 }
 
-impl<T: Clone> From<&[T]> for LyVec<T> {
+impl<T: Clone> From<&[T]> for List<T> {
   fn from(slice: &[T]) -> Self {
-    LyVec(Vec::from(slice))
+    List(Vec::from(slice))
   }
 }
 
-impl<T: 'static + Trace> Trace for LyVec<T> {
+impl<T: 'static + Trace> Trace for List<T> {
   fn trace(&self) -> bool {
     self.iter().for_each(|value| {
       value.trace();
@@ -523,7 +523,7 @@ impl<T: 'static + Trace> Trace for LyVec<T> {
   }
 }
 
-impl<T: 'static + Trace + fmt::Debug> Manage for LyVec<T> {
+impl<T: 'static + Trace + fmt::Debug> Manage for List<T> {
   fn alloc_type(&self) -> &str {
     "list"
   }
@@ -542,9 +542,9 @@ impl<T: 'static + Trace + fmt::Debug> Manage for LyVec<T> {
 }
 
 #[derive(Clone, Debug)]
-pub struct LyHashMap<K, V>(HashMap<K, V, FnvBuildHasher>);
+pub struct Map<K, V>(HashMap<K, V, FnvBuildHasher>);
 
-impl<K, V> LyHashMap<K, V> {
+impl<K, V> Map<K, V> {
   pub fn len(&self) -> usize {
     self.0.len()
   }
@@ -562,7 +562,7 @@ impl<K, V> LyHashMap<K, V> {
   }
 }
 
-impl<K: Eq + Hash, V> LyHashMap<K, V> {
+impl<K: Eq + Hash, V> Map<K, V> {
   pub fn reserve(&mut self, additional: usize) {
     self.0.reserve(additional)
   }
@@ -588,13 +588,13 @@ impl<K: Eq + Hash, V> LyHashMap<K, V> {
   }
 }
 
-impl<K, V> Default for LyHashMap<K, V> {
+impl<K, V> Default for Map<K, V> {
   fn default() -> Self {
-    LyHashMap(HashMap::default())
+    Map(HashMap::default())
   }
 }
 
-impl<T: 'static + Trace> Trace for LyHashMap<T, T> {
+impl<T: 'static + Trace> Trace for Map<T, T> {
   fn trace(&self) -> bool {
     self.iter().for_each(|(key, value)| {
       key.trace();
@@ -614,7 +614,7 @@ impl<T: 'static + Trace> Trace for LyHashMap<T, T> {
   }
 }
 
-impl<T: 'static + Trace + fmt::Debug> Manage for LyHashMap<T, T> {
+impl<T: 'static + Trace + fmt::Debug> Manage for Map<T, T> {
   fn alloc_type(&self) -> &str {
     "map"
   }
@@ -628,7 +628,7 @@ impl<T: 'static + Trace + fmt::Debug> Manage for LyHashMap<T, T> {
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<LyHashMap<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
+    mem::size_of::<Map<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
   }
 }
 

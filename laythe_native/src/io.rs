@@ -1,23 +1,12 @@
-use crate::{env::NativeEnvio, fs::NativeFsio, stdio::NativeStdio};
-use laythe_env::{env::Env, fs::Fs, io::IoImpl, stdio::Stdio};
+use crate::{env::IoEnvNative, fs::IoFsNative, stdio::IoStdioNative, time::IoTimeNative};
+use laythe_env::io::Io;
+use std::rc::Rc;
 
-#[derive(Debug, Default)]
-pub struct NativeIo();
-
-impl IoImpl for NativeIo {
-  fn stdio(&self) -> Stdio {
-    Stdio::new(Box::new(NativeStdio::default()))
-  }
-
-  fn fsio(&self) -> Fs {
-    Fs::new(Box::new(NativeFsio()))
-  }
-
-  fn envio(&self) -> Env {
-    Env::new(Box::new(NativeEnvio()))
-  }
-
-  fn clone_box(&self) -> Box<dyn IoImpl> {
-    Box::new(NativeIo())
-  }
+pub fn io_native() -> Io {
+  Io::new(
+    Rc::new(IoStdioNative()),
+    Rc::new(IoFsNative()),
+    Rc::new(IoEnvNative()),
+    Rc::new(IoTimeNative::default()),
+  )
 }

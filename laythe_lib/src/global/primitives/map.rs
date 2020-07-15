@@ -7,7 +7,7 @@ use laythe_core::{
   iterator::{LyIter, LyIterator},
   module::Module,
   native::{NativeMeta, NativeMethod},
-  object::{LyHashMap, LyVec},
+  object::{List, Map},
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
@@ -296,13 +296,13 @@ impl NativeMethod for MapIter {
 }
 
 struct MapIterator {
-  map: Managed<LyHashMap<Value, Value>>,
+  map: Managed<Map<Value, Value>>,
   iter: Iter<'static, Value, Value>,
   current: Value,
 }
 
 impl MapIterator {
-  fn new(map: Managed<LyHashMap<Value, Value>>) -> Self {
+  fn new(map: Managed<Map<Value, Value>>) -> Self {
     let iter = unsafe { map.deref_static().iter() };
 
     Self {
@@ -325,7 +325,7 @@ impl LyIter for MapIterator {
   fn next(&mut self, hooks: &mut Hooks) -> CallResult {
     match self.iter.next() {
       Some(next) => {
-        self.current = Value::from(hooks.manage(LyVec::from(&[*next.0, *next.1] as &[Value])));
+        self.current = Value::from(hooks.manage(List::from(&[*next.0, *next.1] as &[Value])));
         Ok(Value::from(true))
       }
       None => {
@@ -367,7 +367,7 @@ impl fmt::Debug for MapIterator {
 #[cfg(test)]
 mod test {
   use super::*;
-  use laythe_core::object::LyHashMap;
+  use laythe_core::object::Map;
   use laythe_env::memory::NO_GC;
 
   #[cfg(test)]
@@ -399,7 +399,7 @@ mod test {
 
       let values = &[];
 
-      let mut map = LyHashMap::default();
+      let mut map = Map::default();
       map.insert(VALUE_NIL, VALUE_NIL);
       let this = hooks.manage(map);
 
@@ -432,7 +432,7 @@ mod test {
 
       let values = &[];
 
-      let mut map = LyHashMap::default();
+      let mut map = Map::default();
       map.insert(VALUE_NIL, VALUE_NIL);
       let this = hooks.manage(map);
 
@@ -463,7 +463,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let mut map = LyHashMap::default();
+      let mut map = Map::default();
       map.insert(VALUE_NIL, VALUE_NIL);
       let this = hooks.manage(map);
 
@@ -504,7 +504,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let mut map = LyHashMap::default();
+      let mut map = Map::default();
       map.insert(VALUE_NIL, Value::from(false));
       let this = hooks.manage(map);
 
@@ -549,7 +549,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let map = LyHashMap::default();
+      let map = Map::default();
       let this = hooks.manage(map);
 
       let result = map_set.call(
@@ -607,7 +607,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let mut map = LyHashMap::default();
+      let mut map = Map::default();
       map.insert(VALUE_NIL, Value::from(false));
       let this = hooks.manage(map);
 
@@ -656,7 +656,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let mut map = LyHashMap::default();
+      let mut map = Map::default();
       map.insert(VALUE_NIL, Value::from(false));
       let this = hooks.manage(map);
 

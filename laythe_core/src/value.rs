@@ -32,7 +32,7 @@ mod unboxed {
   use crate::{
     iterator::LyIterator,
     native::{NativeFun, NativeMethod},
-    object::{Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
+    object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Managed, Trace},
@@ -53,8 +53,8 @@ mod unboxed {
     Nil,
     Number(f64),
     String(Managed<String>),
-    List(Managed<LyVec<Value>>),
-    Map(Managed<LyHashMap<Value, Value>>),
+    List(Managed<List<Value>>),
+    Map(Managed<Map<Value, Value>>),
     Fun(Managed<Fun>),
     Closure(Managed<Closure>),
     Class(Managed<Class>),
@@ -281,7 +281,7 @@ mod unboxed {
     /// assert_eq!(value.to_list()[0], Value::Nil)
     /// ```
     #[inline]
-    pub fn to_list(&self) -> Managed<LyVec<Value>> {
+    pub fn to_list(&self) -> Managed<List<Value>> {
       match self {
         Self::List(list) => *list,
         _ => panic!("Expected list."),
@@ -306,7 +306,7 @@ mod unboxed {
     /// assert_eq!(value.to_map().len(), 0)
     /// ```
     #[inline]
-    pub fn to_map(&self) -> Managed<LyHashMap<Value, Value>> {
+    pub fn to_map(&self) -> Managed<Map<Value, Value>> {
       match self {
         Self::Map(map) => *map,
         _ => panic!("Expected list."),
@@ -589,14 +589,14 @@ mod unboxed {
     }
   }
 
-  impl From<Managed<LyVec<Value>>> for Value {
-    fn from(managed: Managed<LyVec<Value>>) -> Value {
+  impl From<Managed<List<Value>>> for Value {
+    fn from(managed: Managed<List<Value>>) -> Value {
       Value::List(managed)
     }
   }
 
-  impl From<Managed<LyHashMap<Value, Value>>> for Value {
-    fn from(managed: Managed<LyHashMap<Value, Value>>) -> Value {
+  impl From<Managed<Map<Value, Value>>> for Value {
+    fn from(managed: Managed<Map<Value, Value>>) -> Value {
       Value::Map(managed)
     }
   }
@@ -885,7 +885,7 @@ mod boxed {
   use crate::{
     iterator::LyIterator,
     native::{NativeFun, NativeMethod},
-    object::{Class, Closure, Fun, Instance, LyHashMap, LyVec, Method, Upvalue},
+    object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
   use laythe_env::{
     managed::{Allocation, Manage, Managed, Trace},
@@ -1054,12 +1054,12 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_list(&self) -> Managed<LyVec<Value>> {
+    pub fn to_list(&self) -> Managed<List<Value>> {
       self.to_obj_tag(TAG_LIST)
     }
 
     #[inline]
-    pub fn to_map(&self) -> Managed<LyHashMap<Value, Value>> {
+    pub fn to_map(&self) -> Managed<Map<Value, Value>> {
       self.to_obj_tag(TAG_MAP)
     }
 
@@ -1247,14 +1247,14 @@ mod boxed {
     }
   }
 
-  impl From<Managed<LyVec<Value>>> for Value {
-    fn from(managed: Managed<LyVec<Value>>) -> Value {
+  impl From<Managed<List<Value>>> for Value {
+    fn from(managed: Managed<List<Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_LIST)
     }
   }
 
-  impl From<Managed<LyHashMap<Value, Value>>> for Value {
-    fn from(managed: Managed<LyHashMap<Value, Value>>) -> Value {
+  impl From<Managed<Map<Value, Value>>> for Value {
+    fn from(managed: Managed<Map<Value, Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_MAP)
     }
   }
@@ -1365,7 +1365,7 @@ mod test {
   use super::*;
   use crate::{
     module::Module,
-    object::{Class, Closure, Fun, LyHashMap, LyVec},
+    object::{Class, Closure, Fun, List, Map},
   };
   use laythe_env::managed::{Allocation, Manage, Managed};
   use std::{path::PathBuf, ptr::NonNull};
@@ -1551,7 +1551,7 @@ mod test {
 
   #[test]
   fn list() {
-    let list = LyVec::from(vec![VALUE_NIL, VALUE_TRUE, VALUE_FALSE]);
+    let list = List::from(vec![VALUE_NIL, VALUE_TRUE, VALUE_FALSE]);
     let mut alloc = Box::new(Allocation::new(list));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
@@ -1570,7 +1570,7 @@ mod test {
 
   #[test]
   fn map() {
-    let mut map: LyHashMap<Value, Value> = LyHashMap::default();
+    let mut map: Map<Value, Value> = Map::default();
     map.insert(VALUE_NIL, VALUE_TRUE);
     map.insert(Value::from(10.0), VALUE_FALSE);
 

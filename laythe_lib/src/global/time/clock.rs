@@ -8,7 +8,6 @@ use laythe_core::{
   CallResult, LyResult,
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
-use std::time::SystemTime;
 
 const CLOCK_META: NativeMeta = NativeMeta::new("clock", Arity::Fixed(0), &[]);
 
@@ -17,28 +16,12 @@ pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> LyResult<()> 
     hooks,
     module,
     hooks.manage_str(CLOCK_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(Clock::new()) as Box<dyn NativeFun>)),
+    Value::from(hooks.manage(Box::new(Clock()) as Box<dyn NativeFun>)),
   )
 }
 
 #[derive(Clone, Debug, Trace)]
-pub struct Clock {
-  start: SystemTime,
-}
-
-impl Default for Clock {
-  fn default() -> Self {
-    Self::new()
-  }
-}
-
-impl Clock {
-  pub fn new() -> Self {
-    Self {
-      start: SystemTime::now(),
-    }
-  }
-}
+pub struct Clock();
 
 impl NativeFun for Clock {
   fn meta(&self) -> &NativeMeta {
@@ -46,7 +29,10 @@ impl NativeFun for Clock {
   }
 
   fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> CallResult {
-    match self.start.elapsed() {
+    let io = hooks.to_io();
+    let time = io.time();
+
+    match time.elapsed() {
       Ok(elapsed) => Ok(Value::from((elapsed.as_micros() as f64) / 1000000.0)),
       Err(e) => hooks.error(format!("clock failed {}", e)),
     }
@@ -60,7 +46,7 @@ mod test {
 
   #[test]
   fn new() {
-    let clock = Clock::new();
+    let clock = Clock();
 
     assert_eq!(clock.meta().name, "clock");
     assert_eq!(clock.meta().signature.arity, Arity::Fixed(0));
@@ -68,7 +54,7 @@ mod test {
 
   #[test]
   fn call() {
-    let clock = Clock::new();
+    let clock = Clock();
     let mut context = MockedContext::default();
     let mut hooks = Hooks::new(&mut context);
 

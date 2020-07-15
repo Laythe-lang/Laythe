@@ -3,7 +3,7 @@ use crate::{
   CallResult, LyError,
 };
 use laythe_env::{
-  io::{Io, MockIo},
+  io::Io,
   managed::{Manage, Managed, Trace},
   memory::Gc,
   stdio::Stdio,
@@ -282,7 +282,6 @@ pub trait GcContext: Trace {
   fn gc(&self) -> &Gc;
 }
 
-/// A placeholder context that does not gc and does not call functions
 pub struct NoContext<'a> {
   /// A reference to a gc just to allocate
   gc: &'a Gc,
@@ -315,13 +314,13 @@ impl<'a> HookContext for NoContext<'a> {
   }
 
   fn io(&mut self) -> Io {
-    Io::new(Box::new(MockIo()))
+    Io::default()
   }
 }
 
 impl<'a> GcContext for NoContext<'a> {
   fn gc(&self) -> &Gc {
-    self.gc
+    &self.gc
   }
 }
 
@@ -341,5 +340,72 @@ impl<'a> CallContext for NoContext<'a> {
     _args: &[Value],
   ) -> CallResult {
     Ok(VALUE_NIL)
+  }
+}
+
+pub mod support {
+  use super::*;
+
+  /// A placeholder context that does not gc and does not call functions
+  #[derive(Default)]
+  pub struct TestContext {
+    /// A reference to a gc just to allocate
+    gc: Gc,
+  }
+
+  impl TestContext {
+    /// Create a new instance of no context
+    pub fn new(gc: Gc) -> Self {
+      Self { gc }
+    }
+  }
+
+  impl Trace for TestContext {
+    fn trace(&self) -> bool {
+      false
+    }
+
+    fn trace_debug(&self, _stdio: &mut Stdio) -> bool {
+      false
+    }
+  }
+
+  impl HookContext for TestContext {
+    fn gc_context(&self) -> &dyn GcContext {
+      self
+    }
+
+    fn call_context(&mut self) -> &mut dyn CallContext {
+      self
+    }
+
+    fn io(&mut self) -> Io {
+      Io::default()
+    }
+  }
+
+  impl GcContext for TestContext {
+    fn gc(&self) -> &Gc {
+      &self.gc
+    }
+  }
+
+  impl CallContext for TestContext {
+    fn call(&mut self, _callable: Value, _args: &[Value]) -> CallResult {
+      Ok(VALUE_NIL)
+    }
+
+    fn call_method(&mut self, _this: Value, _method: Value, _args: &[Value]) -> CallResult {
+      Ok(VALUE_NIL)
+    }
+
+    fn call_method_by_name(
+      &mut self,
+      _this: Value,
+      _method_name: Managed<String>,
+      _args: &[Value],
+    ) -> CallResult {
+      Ok(VALUE_NIL)
+    }
   }
 }

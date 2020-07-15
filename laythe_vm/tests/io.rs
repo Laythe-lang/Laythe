@@ -1,5 +1,5 @@
 use laythe_vm::vm::ExecuteResult;
-use support::{assert_file_exit_and_stdio};
+use support::assert_file_exit_and_stdio;
 
 mod support;
 
@@ -33,33 +33,25 @@ const FILE_PATH: &str = file!();
 fn stdio() -> Result<(), std::io::Error> {
   test_file_with_stdout(
     "std_lib/io/stdio/stdout/write.ly",
-    vec![
-      "expected 1 expected 2"
-    ],
-    ExecuteResult::Ok
+    vec!["expected 1 expected 2"],
+    ExecuteResult::Ok,
   )?;
 
   test_file_with_stdout(
     "std_lib/io/stdio/stdout/writeln.ly",
-    vec![
-      "expected 1",
-      "expected 2",
-    ],
-    ExecuteResult::Ok
+    vec!["expected 1", "expected 2"],
+    ExecuteResult::Ok,
   )?;
 
   test_file_with_stdin(
     "std_lib/io/stdio/stdin/read.ly",
     "expected".to_string(),
-    ExecuteResult::Ok
+    ExecuteResult::Ok,
   )?;
 
   test_file_with_stdin_lines(
     "std_lib/io/stdio/stdin/readline.ly",
-    vec![
-      "expected 1".to_string(),
-      "expected 2".to_string(),
-    ],
-    ExecuteResult::Ok
+    vec!["expected 1".to_string(), "expected 2".to_string()],
+    ExecuteResult::Ok,
   )
 }
