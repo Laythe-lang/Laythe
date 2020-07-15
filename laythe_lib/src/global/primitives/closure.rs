@@ -9,6 +9,7 @@ use laythe_core::{
   signature::{Arity, Parameter, ParameterKind},
   value::Value,
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -28,7 +29,7 @@ pub fn declare_closure_class(
   package: &Package,
 ) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, CLOSURE_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, Value::from(class))
+  export_and_insert(hooks, module, class.name, val!(class))
 }
 
 pub fn define_closure_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -37,19 +38,19 @@ pub fn define_closure_class(hooks: &GcHooks, module: &Module, _: &Package) -> Ly
   class.add_method(
     hooks,
     hooks.manage_str(String::from(CLOSURE_NAME.name)),
-    Value::from(to_dyn_method(hooks, ClosureName())),
+    val!(to_dyn_method(hooks, ClosureName())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(CLOSURE_SIZE.name)),
-    Value::from(to_dyn_method(hooks, ClosureSize())),
+    val!(to_dyn_method(hooks, ClosureSize())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(CLOSURE_CALL.name)),
-    Value::from(to_dyn_method(hooks, ClosureCall())),
+    val!(to_dyn_method(hooks, ClosureCall())),
   );
 
   Ok(())
@@ -64,7 +65,7 @@ impl NativeMethod for ClosureName {
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::from(this.to_closure().fun.name))
+    Ok(val!(this.to_closure().fun.name))
   }
 }
 
@@ -83,7 +84,7 @@ impl NativeMethod for ClosureSize {
       Arity::Variadic(req) => req,
     };
 
-    Ok(Value::from(req as f64))
+    Ok(val!(req as f64))
   }
 }
 
@@ -126,7 +127,7 @@ mod test {
       let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
       let closure = hooks.manage(Closure::new(fun));
 
-      let result1 = closure_name.call(&mut hooks, Value::from(closure), &[]);
+      let result1 = closure_name.call(&mut hooks, val!(closure), &[]);
 
       match result1 {
         Ok(r) => assert_eq!(&*r.to_str(), "example"),
@@ -159,21 +160,21 @@ mod test {
 
       let closure = hooks.manage(Closure::new(fun));
 
-      let result = closure_name.call(&mut hooks, Value::from(closure), &[]);
+      let result = closure_name.call(&mut hooks, val!(closure), &[]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 4.0),
         Err(_) => assert!(false),
       }
 
       fun.arity = Arity::Default(2, 2);
-      let result = closure_name.call(&mut hooks, Value::from(closure), &[]);
+      let result = closure_name.call(&mut hooks, val!(closure), &[]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 2.0),
         Err(_) => assert!(false),
       }
 
       fun.arity = Arity::Variadic(5);
-      let result = closure_name.call(&mut hooks, Value::from(closure), &[]);
+      let result = closure_name.call(&mut hooks, val!(closure), &[]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 5.0),
         Err(_) => assert!(false),
@@ -201,7 +202,7 @@ mod test {
     #[test]
     fn call() {
       let closure_call = ClosureCall();
-      let mut context = MockedContext::new(&[Value::from(4.3)]);
+      let mut context = MockedContext::new(&[val!(4.3)]);
       let mut hooks = Hooks::new(&mut context);
 
       let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
@@ -209,8 +210,8 @@ mod test {
 
       let closure = hooks.manage(Closure::new(fun));
 
-      let args = &[Value::from(hooks.manage_str("input".to_string()))];
-      let result1 = closure_call.call(&mut hooks, Value::from(closure), args);
+      let args = &[val!(hooks.manage_str("input".to_string()))];
+      let result1 = closure_call.call(&mut hooks, val!(closure), args);
 
       match result1 {
         Ok(r) => assert_eq!(r.to_num(), 4.3),

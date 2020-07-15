@@ -9,6 +9,7 @@ use laythe_core::{
   signature::Arity,
   value::Value,
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -17,7 +18,7 @@ const NIL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 
 pub fn declare_nil_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, NIL_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, Value::from(class))
+  export_and_insert(hooks, module, class.name, val!(class))
 }
 
 pub fn define_nil_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -26,7 +27,7 @@ pub fn define_nil_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NIL_STR.name)),
-    Value::from(to_dyn_method(hooks, NilStr::new())),
+    val!(to_dyn_method(hooks, NilStr::new())),
   );
 
   Ok(())
@@ -49,7 +50,7 @@ impl NativeMethod for NilStr {
   }
 
   fn call(&self, hooks: &mut Hooks, _this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::from(hooks.manage_str("nil".to_string())))
+    Ok(val!(hooks.manage_str("nil".to_string())))
   }
 }
 

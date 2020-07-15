@@ -201,7 +201,7 @@ impl Manage for Package {
 
 #[cfg(test)]
 mod test {
-  use crate::object::Class;
+  use crate::{val, object::Class};
 
   #[test]
   fn new() {
@@ -283,7 +283,7 @@ mod test {
       .unwrap(),
     );
     let export_name = hooks.manage_str("exported".to_string());
-    module.insert_symbol(&hooks, export_name, Value::from(true));
+    module.insert_symbol(&hooks, export_name, val!(true));
     assert!(module.export_symbol(&hooks, export_name).is_ok());
 
     let mut package = Package::new(hooks.manage_str("my_package".to_string()));
@@ -300,7 +300,7 @@ mod test {
 
     if let Ok(result) = symbols1 {
       assert_eq!(result.len(), 1);
-      assert_eq!(*result.get_symbol(export_name).unwrap(), Value::from(true));
+      assert_eq!(*result.get_symbol(export_name).unwrap(), val!(true));
     }
   }
 }

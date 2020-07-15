@@ -8,6 +8,7 @@ use laythe_core::{
   signature::Arity,
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -19,7 +20,7 @@ pub fn declare_class_class(hooks: &GcHooks, module: &mut Module) -> LyResult<()>
   let name = hooks.manage_str(String::from(CLASS_CLASS_NAME));
   let class = hooks.manage(Class::bare(name));
 
-  export_and_insert(hooks, module, name, Value::from(class))
+  export_and_insert(hooks, module, name, val!(class))
 }
 
 pub fn define_class_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -28,7 +29,7 @@ pub fn define_class_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRe
   class_class.add_method(
     &hooks,
     hooks.manage_str(String::from(CLASS_SUPER_CLASS.name)),
-    Value::from(to_dyn_method(hooks, ClassSuperClass())),
+    val!(to_dyn_method(hooks, ClassSuperClass())),
   );
 
   Ok(())
@@ -46,7 +47,7 @@ impl NativeMethod for ClassSuperClass {
     let super_class = this
       .to_class()
       .super_class()
-      .map(|super_class| Value::from(super_class))
+      .map(|super_class| val!(super_class))
       .unwrap_or(VALUE_NIL);
 
     Ok(super_class)
@@ -81,8 +82,8 @@ mod test {
 
       class.inherit(&hooks.to_gc(), super_class);
 
-      let class_value = Value::from(class);
-      let super_class_value = Value::from(super_class);
+      let class_value = val!(class);
+      let super_class_value = val!(super_class);
 
       let result1 = class_super_class.call(&mut hooks, class_value, &[]);
       let result2 = class_super_class.call(&mut hooks, super_class_value, &[]);

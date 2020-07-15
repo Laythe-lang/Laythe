@@ -16,7 +16,7 @@ use laythe_core::{
   signature::{ArityError, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
   value::{Value, ValueKind, VALUE_NIL},
-  CallResult, LyError,
+  CallResult, LyError, val
 };
 use laythe_env::{
   io::Io,
@@ -217,7 +217,7 @@ impl Vm {
     match self.compile(main_module, source) {
       Ok(fun) => {
         let script_closure = self.gc.manage(Closure::new(fun), &NO_GC);
-        let script = Value::from(script_closure);
+        let script = val!(script_closure);
 
         let mut executor = VmExecutor::new(self, script);
         executor.run(RunMode::Normal)
@@ -501,11 +501,11 @@ impl<'a> VmExecutor<'a> {
         ByteCode::Export => self.op_export(),
         ByteCode::Drop => self.op_drop(),
         ByteCode::Nil => self.op_literal(VALUE_NIL),
-        ByteCode::True => self.op_literal(Value::from(true)),
-        ByteCode::False => self.op_literal(Value::from(false)),
-        ByteCode::List => self.op_literal(Value::from(self.gc.manage(List::default(), self))),
+        ByteCode::True => self.op_literal(val!(true)),
+        ByteCode::False => self.op_literal(val!(false)),
+        ByteCode::List => self.op_literal(val!(self.gc.manage(List::default(), self))),
         ByteCode::ListInit => self.op_list(),
-        ByteCode::Map => self.op_literal(Value::from(self.gc.manage(Map::default(), self))),
+        ByteCode::Map => self.op_literal(val!(self.gc.manage(Map::default(), self))),
         ByteCode::MapInit => self.op_map(),
         ByteCode::IterNext => self.op_iter_next(),
         ByteCode::IterCurrent => self.op_iter_current(),
@@ -801,7 +801,7 @@ impl<'a> VmExecutor<'a> {
   fn op_class(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
-    let class = Value::from(self.gc.manage(
+    let class = val!(self.gc.manage(
       Class::new(
         &GcHooks::new(self),
         name,
@@ -900,7 +900,7 @@ impl<'a> VmExecutor<'a> {
         let num = index.to_num();
         let value = self.pop();
         self.gc.grow(&mut map, self, |map| {
-          map.insert(Value::from(use_sentinel_nan(num)), value)
+          map.insert(val!(use_sentinel_nan(num)), value)
         });
         self.drop();
         return Signal::Ok;
@@ -1009,7 +1009,7 @@ impl<'a> VmExecutor<'a> {
 
       if index.is_num() {
         let num = index.to_num();
-        return match map.get(&Value::from(use_sentinel_nan(num))) {
+        return match map.get(&val!(use_sentinel_nan(num))) {
           Some(value) => {
             self.push(*value);
             Signal::Ok
@@ -1114,7 +1114,7 @@ impl<'a> VmExecutor<'a> {
 
     match dep_manager.import(&GcHooks::new(self), current_module, path) {
       Ok(module) => {
-        self.push(Value::from(module.import(&GcHooks::new(self))));
+        self.push(val!(module.import(&GcHooks::new(self))));
         Signal::Ok
       }
       Err(error) => self.set_error(error),
@@ -1161,7 +1161,7 @@ impl<'a> VmExecutor<'a> {
     let pop = self.pop();
 
     if pop.is_num() {
-      self.push(Value::from(-pop.to_num()));
+      self.push(val!(-pop.to_num()));
       Signal::Ok
     } else {
       self.runtime_error("Operand must be a number.")
@@ -1170,7 +1170,7 @@ impl<'a> VmExecutor<'a> {
 
   fn op_not(&mut self) -> Signal {
     let value = self.pop();
-    self.push(Value::from(is_falsey(value)));
+    self.push(val!(is_falsey(value)));
     Signal::Ok
   }
 
@@ -1178,12 +1178,12 @@ impl<'a> VmExecutor<'a> {
     let (right, left) = (self.pop(), self.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(Value::from(left.to_num() + right.to_num()));
+      self.push(val!(left.to_num() + right.to_num()));
       Signal::Ok
     } else if right.is_str() && left.is_str() {
       let result = format!("{}{}", left.to_str(), right.to_str());
       let string = self.gc.manage_str(result, self);
-      self.push(Value::from(string));
+      self.push(val!(string));
       Signal::Ok
     } else {
       self.runtime_error("Operands must be two numbers or two strings.")
@@ -1194,7 +1194,7 @@ impl<'a> VmExecutor<'a> {
     let (right, left) = (self.pop(), self.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(Value::from(left.to_num() - right.to_num()));
+      self.push(val!(left.to_num() - right.to_num()));
       return Signal::Ok;
     }
 
@@ -1205,7 +1205,7 @@ impl<'a> VmExecutor<'a> {
     let (right, left) = (self.pop(), self.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(Value::from(left.to_num() * right.to_num()));
+      self.push(val!(left.to_num() * right.to_num()));
       return Signal::Ok;
     }
 
@@ -1216,7 +1216,7 @@ impl<'a> VmExecutor<'a> {
     let (right, left) = (self.pop(), self.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(Value::from(left.to_num() / right.to_num()));
+      self.push(val!(left.to_num() / right.to_num()));
       return Signal::Ok;
     }
 
@@ -1227,7 +1227,7 @@ impl<'a> VmExecutor<'a> {
     let (right, left) = (self.pop(), self.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(Value::from(left.to_num() < right.to_num()));
+      self.push(val!(left.to_num() < right.to_num()));
       return Signal::Ok;
     }
 
@@ -1238,7 +1238,7 @@ impl<'a> VmExecutor<'a> {
     let (right, left) = (self.pop(), self.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(Value::from(left.to_num() > right.to_num()));
+      self.push(val!(left.to_num() > right.to_num()));
       return Signal::Ok;
     }
 
@@ -1249,7 +1249,7 @@ impl<'a> VmExecutor<'a> {
     let right = self.pop();
     let left = self.pop();
 
-    self.push(Value::from(left == right));
+    self.push(val!(left == right));
     Signal::Ok
   }
 
@@ -1316,7 +1316,7 @@ impl<'a> VmExecutor<'a> {
       }
     }
 
-    let closure = Value::from(self.gc.manage(closure, self));
+    let closure = val!(self.gc.manage(closure, self));
     self.push(closure);
     Signal::Ok
   }
@@ -1365,7 +1365,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn call_class(&mut self, class: Managed<Class>, arg_count: u8) -> Signal {
-    let value = Value::from(self.gc.manage(Instance::new(class), self));
+    let value = val!(self.gc.manage(Instance::new(class), self));
     self.set_val(-(arg_count as isize) - 1, value);
 
     match class.init {
@@ -1541,7 +1541,7 @@ impl<'a> VmExecutor<'a> {
     match class.get_method(&name) {
       Some(method) => {
         let bound = self.gc.manage(Method::new(self.peek(0), method), self);
-        self.set_val(-1, Value::from(bound));
+        self.set_val(-1, val!(bound));
         Signal::Ok
       }
       None => self.runtime_error(&format!("Undefined property {}", name.as_str())),
@@ -1575,7 +1575,7 @@ impl<'a> VmExecutor<'a> {
     if let Some(upvalue) = closest_upvalue {
       if let Upvalue::Open(index) = **upvalue {
         if index == local_index {
-          return Value::from(*upvalue);
+          return val!(*upvalue);
         }
       }
     }
@@ -1583,7 +1583,7 @@ impl<'a> VmExecutor<'a> {
     let created_upvalue = self.gc.manage(Upvalue::Open(local_index), self);
     self.open_upvalues.push(created_upvalue);
 
-    Value::from(created_upvalue)
+    val!(created_upvalue)
   }
 
   /// hoist all open upvalue above the last index

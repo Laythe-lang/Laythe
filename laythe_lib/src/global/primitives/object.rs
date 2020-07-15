@@ -8,6 +8,7 @@ use laythe_core::{
   signature::{Arity, Parameter, ParameterKind},
   value::Value,
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -23,7 +24,7 @@ pub fn declare_object_class(hooks: &GcHooks, self_module: &mut Module) -> LyResu
   let name = hooks.manage_str(String::from(OBJECT_CLASS_NAME));
   let class = hooks.manage(Class::bare(name));
 
-  export_and_insert(hooks, self_module, name, Value::from(class))
+  export_and_insert(hooks, self_module, name, val!(class))
 }
 
 pub fn define_object_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -32,7 +33,7 @@ pub fn define_object_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
   class.add_method(
     &hooks,
     hooks.manage_str(String::from(OBJECT_EQUALS.name)),
-    Value::from(to_dyn_method(hooks, ObjectEquals())),
+    val!(to_dyn_method(hooks, ObjectEquals())),
   );
 
   Ok(())
@@ -47,7 +48,7 @@ impl NativeMethod for ObjectEquals {
   }
 
   fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    Ok(Value::from(this == args[0]))
+    Ok(val!(this == args[0]))
   }
 }
 
@@ -77,9 +78,9 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let ten_1 = Value::from(10.0);
-      let b_false = Value::from(false);
-      let ten_2 = Value::from(10.0);
+      let ten_1 = val!(10.0);
+      let b_false = val!(false);
+      let ten_2 = val!(10.0);
 
       let result1 = bool_str.call(&mut hooks, ten_1, &[ten_2]);
       let result2 = bool_str.call(&mut hooks, ten_2, &[b_false]);

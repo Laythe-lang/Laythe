@@ -10,6 +10,7 @@ use laythe_core::{
   signature::Arity,
   value::Value,
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 use std::mem;
@@ -24,7 +25,7 @@ pub fn declare_number_class(
   package: &Package,
 ) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, NUMBER_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, Value::from(class))
+  export_and_insert(hooks, module, class.name, val!(class))
 }
 
 pub fn define_number_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -33,13 +34,13 @@ pub fn define_number_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NUMBER_STR.name)),
-    Value::from(to_dyn_method(hooks, NumberStr())),
+    val!(to_dyn_method(hooks, NumberStr())),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NUMBER_TIMES.name)),
-    Value::from(to_dyn_method(hooks, NumberTimes())),
+    val!(to_dyn_method(hooks, NumberTimes())),
   );
 
   Ok(())
@@ -54,7 +55,7 @@ impl NativeMethod for NumberStr {
   }
 
   fn call(&self, hook: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(Value::from(hook.manage_str(this.to_num().to_string())))
+    Ok(val!(hook.manage_str(this.to_num().to_string())))
   }
 }
 
@@ -76,7 +77,7 @@ impl NativeMethod for NumberTimes {
     let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
-    Ok(Value::from(iter))
+    Ok(val!(iter))
   }
 }
 
@@ -101,15 +102,15 @@ impl LyIter for TimesIterator {
   }
 
   fn current(&self) -> Value {
-    Value::from(self.current)
+    val!(self.current)
   }
 
   fn next(&mut self, _hooks: &mut Hooks) -> CallResult {
     if self.current < self.max {
       self.current = self.current + 1.0;
-      Ok(Value::from(true))
+      Ok(val!(true))
     } else {
-      Ok(Value::from(false))
+      Ok(val!(false))
     }
   }
 
@@ -144,7 +145,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let result = number_str.call(&mut hooks, Value::from(10.0), &[]);
+      let result = number_str.call(&mut hooks, val!(10.0), &[]);
       match result {
         Ok(r) => assert_eq!(*r.to_str(), "10".to_string()),
         Err(_) => assert!(false),
@@ -166,24 +167,24 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::new(&[Value::from(5.0)]);
+      let mut context = MockedContext::new(&[val!(5.0)]);
       let mut hooks = Hooks::new(&mut context);
       let number_times = NumberTimes();
 
-      let result = number_times.call(&mut hooks, Value::from(3.0), &[]);
+      let result = number_times.call(&mut hooks, val!(3.0), &[]);
       match result {
         Ok(r) => {
           let mut number_times = r.to_iter();
-          assert_eq!(number_times.next(&mut hooks).unwrap(), Value::from(true));
-          assert_eq!(number_times.current(), Value::from(0.0));
+          assert_eq!(number_times.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(number_times.current(), val!(0.0));
 
-          assert_eq!(number_times.next(&mut hooks).unwrap(), Value::from(true));
-          assert_eq!(number_times.current(), Value::from(1.0));
+          assert_eq!(number_times.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(number_times.current(), val!(1.0));
 
-          assert_eq!(number_times.next(&mut hooks).unwrap(), Value::from(true));
-          assert_eq!(number_times.current(), Value::from(2.0));
+          assert_eq!(number_times.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(number_times.current(), val!(2.0));
 
-          assert_eq!(number_times.next(&mut hooks).unwrap(), Value::from(false));
+          assert_eq!(number_times.next(&mut hooks).unwrap(), val!(false));
         }
         Err(_) => assert!(false),
       }

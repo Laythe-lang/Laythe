@@ -6,6 +6,7 @@ use laythe_core::{
   signature::{Arity, Parameter, ParameterKind},
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
+  val,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -41,21 +42,21 @@ pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResul
     hooks,
     self_module,
     hooks.manage_str(ASSERT_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(Assert::new(str_name)) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(Assert::new(str_name)) as Box<dyn NativeFun>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(ASSERTEQ_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(AssertEq::new(str_name)) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(AssertEq::new(str_name)) as Box<dyn NativeFun>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(ASSERTNE_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(AssertNe::new(str_name)) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(AssertNe::new(str_name)) as Box<dyn NativeFun>)),
   )
 }
 
@@ -191,7 +192,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let assert = Assert::new(hooks.manage_str("str".to_string()));
-      let values = &[Value::from(true)];
+      let values = &[val!(true)];
 
       let result = match assert.call(&mut hooks, values) {
         Ok(res) => res,
@@ -229,7 +230,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let assert_eq = AssertEq::new(hooks.manage_str("str".to_string()));
 
-      let values = &[Value::from(10.5), Value::from(10.5)];
+      let values = &[val!(10.5), val!(10.5)];
 
       let result = match assert_eq.call(&mut hooks, values) {
         Ok(res) => res,
@@ -267,7 +268,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let assert_eq = AssertNe::new(hooks.manage_str("str".to_string()));
 
-      let values = &[Value::from(10.5), VALUE_NIL];
+      let values = &[val!(10.5), VALUE_NIL];
 
       let result = match assert_eq.call(&mut hooks, values) {
         Ok(res) => res,

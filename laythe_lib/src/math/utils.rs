@@ -6,6 +6,7 @@ use laythe_core::{
   signature::{Arity, Parameter, ParameterKind},
   value::Value,
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -47,56 +48,56 @@ pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> LyResul
     hooks,
     self_module,
     hooks.manage_str(PI.to_string()),
-    Value::from(std::f64::consts::PI),
+    val!(std::f64::consts::PI),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(E.to_string()),
-    Value::from(std::f64::consts::E),
+    val!(std::f64::consts::E),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(SIN_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(Sin()) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(Sin()) as Box<dyn NativeFun>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(COS_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(Cos()) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(Cos()) as Box<dyn NativeFun>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(LN_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(Ln()) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(Ln()) as Box<dyn NativeFun>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(ABS_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(Abs()) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(Abs()) as Box<dyn NativeFun>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(REM_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(Rem()) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(Rem()) as Box<dyn NativeFun>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(RAND_META.name.to_string()),
-    Value::from(hooks.manage(Box::new(Rand()) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(Rand()) as Box<dyn NativeFun>)),
   )
 }
 
@@ -114,13 +115,13 @@ impl NativeFun for Sin {
 
   #[cfg(not(feature = "wasm"))]
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    Ok(Value::from(args[0].to_num().sin()))
+    Ok(val!(args[0].to_num().sin()))
   }
 
   #[cfg(feature = "wasm")]
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
     use js_sys::Math::sin;
-    Ok(Value::from(sin(args[0].to_num())))
+    Ok(val!(sin(args[0].to_num())))
   }
 }
 
@@ -134,13 +135,13 @@ impl NativeFun for Cos {
 
   #[cfg(not(feature = "wasm"))]
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    Ok(Value::from(args[0].to_num().cos()))
+    Ok(val!(args[0].to_num().cos()))
   }
 
   #[cfg(feature = "wasm")]
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
     use js_sys::Math::cos;
-    Ok(Value::from(cos(args[0].to_num())))
+    Ok(val!(cos(args[0].to_num())))
   }
 }
 
@@ -153,7 +154,7 @@ impl NativeFun for Ln {
   }
 
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    Ok(Value::from(args[0].to_num().ln()))
+    Ok(val!(args[0].to_num().ln()))
   }
 }
 
@@ -166,7 +167,7 @@ impl NativeFun for Abs {
   }
 
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    Ok(Value::from(args[0].to_num().abs()))
+    Ok(val!(args[0].to_num().abs()))
   }
 }
 
@@ -179,7 +180,7 @@ impl NativeFun for Rem {
   }
 
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> CallResult {
-    Ok(Value::from(args[0].to_num() % args[1].to_num()))
+    Ok(val!(args[0].to_num() % args[1].to_num()))
   }
 }
 
@@ -196,13 +197,13 @@ impl NativeFun for Rand {
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let val: f64 = rng.gen_range(0.0, 1.0);
-    Ok(Value::from(val))
+    Ok(val!(val))
   }
 
   #[cfg(feature = "wasm")]
   fn call(&self, _hooks: &mut Hooks, _args: &[Value]) -> CallResult {
     use js_sys::Math::random;
-    Ok(Value::from(random()))
+    Ok(val!(random()))
   }
 }
 
@@ -233,12 +234,12 @@ mod test {
 
       let abs = Abs();
 
-      match abs.call(&mut hooks, &[Value::from(-2.0)]) {
+      match abs.call(&mut hooks, &[val!(-2.0)]) {
         Ok(res) => assert_eq!(res.to_num(), 2.0),
         Err(_) => panic!(),
       };
 
-      match abs.call(&mut hooks, &[Value::from(2.0)]) {
+      match abs.call(&mut hooks, &[val!(2.0)]) {
         Ok(res) => assert_eq!(res.to_num(), 2.0),
         Err(_) => panic!(),
       };
@@ -270,21 +271,21 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let rem = Rem();
-      let values = &[Value::from(3.0), Value::from(2.0)];
+      let values = &[val!(3.0), val!(2.0)];
 
       match rem.call(&mut hooks, values) {
         Ok(res) => assert_eq!(res.to_num(), 1.0),
         Err(_) => panic!(),
       };
 
-      let values = &[Value::from(-3.0), Value::from(2.0)];
+      let values = &[val!(-3.0), val!(2.0)];
 
       match rem.call(&mut hooks, values) {
         Ok(res) => assert_eq!(res.to_num(), -1.0),
         Err(_) => panic!(),
       };
 
-      let values = &[Value::from(3.0), Value::from(-2.0)];
+      let values = &[val!(3.0), val!(-2.0)];
 
       match rem.call(&mut hooks, values) {
         Ok(res) => assert_eq!(res.to_num(), 1.0),
@@ -314,7 +315,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let sin = Sin();
-      let values = &[Value::from(std::f64::consts::PI)];
+      let values = &[val!(std::f64::consts::PI)];
 
       match sin.call(&mut hooks, values) {
         Ok(res) => assert!(res.to_num().abs() < 0.0000001),
@@ -344,7 +345,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let cos = Cos();
-      let values = &[Value::from(std::f64::consts::FRAC_PI_2)];
+      let values = &[val!(std::f64::consts::FRAC_PI_2)];
 
       match cos.call(&mut hooks, values) {
         Ok(res) => assert!(res.to_num().abs() < 0.0000001),
@@ -374,7 +375,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let ln = Ln();
-      let values = &[Value::from(std::f64::consts::E)];
+      let values = &[val!(std::f64::consts::E)];
 
       match ln.call(&mut hooks, values) {
         Ok(res) => assert!((res.to_num() - 1.0).abs() < 0.0000001),

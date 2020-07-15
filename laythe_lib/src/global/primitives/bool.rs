@@ -9,6 +9,7 @@ use laythe_core::{
   signature::Arity,
   value::{Value, VALUE_TRUE},
   CallResult, LyResult,
+  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
@@ -17,7 +18,7 @@ const BOOL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
 
 pub fn declare_bool_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let bool_class = default_class_inheritance(hooks, package, BOOL_CLASS_NAME)?;
-  export_and_insert(hooks, module, bool_class.name, Value::from(bool_class))
+  export_and_insert(hooks, module, bool_class.name, val!(bool_class))
 }
 
 pub fn define_bool_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
@@ -26,7 +27,7 @@ pub fn define_bool_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
   bool_class.add_method(
     &hooks,
     hooks.manage_str(String::from(BOOL_STR.name)),
-    Value::from(to_dyn_method(hooks, BoolStr())),
+    val!(to_dyn_method(hooks, BoolStr())),
   );
 
   Ok(())
@@ -42,9 +43,9 @@ impl NativeMethod for BoolStr {
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
     if this == VALUE_TRUE {
-      Ok(Value::from(hooks.manage_str("true".to_string())))
+      Ok(val!(hooks.manage_str("true".to_string())))
     } else {
-      Ok(Value::from(hooks.manage_str("false".to_string())))
+      Ok(val!(hooks.manage_str("false".to_string())))
     }
   }
 }
@@ -71,8 +72,8 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let b_true = Value::from(true);
-      let b_false = Value::from(false);
+      let b_true = val!(true);
+      let b_false = val!(false);
 
       let result1 = bool_str.call(&mut hooks, b_true, &[]);
       let result2 = bool_str.call(&mut hooks, b_false, &[]);
