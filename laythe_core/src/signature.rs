@@ -154,9 +154,9 @@ impl Display for ParameterKind {
 }
 
 #[derive(Clone, Debug)]
-pub struct Signature {
-  pub arity: Arity,
-  pub parameters: &'static [Parameter],
+pub enum Stack {
+  StackLess,
+  StackFul,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -170,11 +170,48 @@ pub enum SignatureError {
 
 pub type SignatureResult = Result<(), SignatureError>;
 
+const NO_PARAMETERS: &[Parameter] = &[];
+
+#[derive(Clone, Debug)]
+pub struct Signature {
+  pub arity: Arity,
+  pub parameters: &'static [Parameter],
+  pub stack: Stack,
+}
+
 impl Signature {
-  pub const fn new(arity: Arity, parameters: &'static [Parameter]) -> Self {
-    Signature { arity, parameters }
+  /// Create a new default signature with provided arity
+  pub const fn new(arity: Arity) -> Self {
+    Signature {
+      arity,
+      parameters: NO_PARAMETERS,
+      stack: Stack::StackLess,
+    }
   }
 
+  /// Indicate that this signature has a set of parameters
+  pub const fn with_params(self, parameters: &'static [Parameter]) -> Self {
+    // TODO: wait for const match to be stabilized
+    // here I think we want to use the static_assertion library
+    // to check that the parameters pass in work given the arity
+
+    Self {
+      arity: self.arity,
+      parameters,
+      stack: self.stack,
+    }
+  }
+
+  /// Indicate this signature requires the stack
+  pub const fn with_stack(self) -> Self {
+    Self {
+      arity: self.arity,
+      parameters: self.parameters,
+      stack: Stack::StackFul,
+    }
+  }
+
+  /// Check if the provides arguments are valid for this signature
   pub fn check(&self, args: &[Value]) -> SignatureResult {
     let count = args.len();
 
@@ -288,7 +325,8 @@ mod test {
 
     #[test]
     fn check_fixed() {
-      let fixed_signature = Signature::new(Arity::Fixed(2), &PARAMETERS_FIXED);
+      let fixed_signature = Signature::new(Arity::Fixed(2))
+        .with_params(&PARAMETERS_FIXED);
 
       assert_eq!(
         fixed_signature.check(&[]),
@@ -302,10 +340,7 @@ mod test {
         fixed_signature.check(&[val!(true), val!(true)]),
         Err(SignatureError::TypeWrong(0))
       );
-      assert_eq!(
-        fixed_signature.check(&[val!(10.0), val!(true)]),
-        Ok(())
-      );
+      assert_eq!(fixed_signature.check(&[val!(10.0), val!(true)]), Ok(()));
     }
 
     const PARAMETERS_VARIADIC: [Parameter; 2] = [
@@ -315,7 +350,8 @@ mod test {
 
     #[test]
     fn check_variadic() {
-      let fixed_signature = Signature::new(Arity::Variadic(1), &PARAMETERS_VARIADIC);
+      let fixed_signature = Signature::new(Arity::Variadic(1))
+        .with_params(&PARAMETERS_VARIADIC);
 
       assert_eq!(
         fixed_signature.check(&[]),
@@ -347,7 +383,8 @@ mod test {
 
     #[test]
     fn check_default() {
-      let fixed_signature = Signature::new(Arity::Default(1, 2), &PARAMETERS_DEFAULT);
+      let fixed_signature = Signature::new(Arity::Default(1, 2))
+        .with_params(&PARAMETERS_DEFAULT);
 
       assert_eq!(
         fixed_signature.check(&[]),
@@ -366,10 +403,7 @@ mod test {
         Err(SignatureError::TypeWrong(1))
       );
       assert_eq!(fixed_signature.check(&[val!(true)]), Ok(()));
-      assert_eq!(
-        fixed_signature.check(&[val!(true), val!(10.0)]),
-        Ok(())
-      );
+      assert_eq!(fixed_signature.check(&[val!(true), val!(10.0)]), Ok(()));
     }
   }
 }

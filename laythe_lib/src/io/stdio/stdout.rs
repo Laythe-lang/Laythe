@@ -8,28 +8,22 @@ use laythe_core::{
   object::Instance,
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
+  val,
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
-  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
 const STDOUT_CLASS_NAME: &str = "Stdout";
 const STDOUT_INSTANCE_NAME: &str = "stdout";
 
-const STDOUT_WRITE: NativeMeta = NativeMeta::new(
-  "write",
-  Arity::Fixed(1),
-  &[Parameter::new("string", ParameterKind::String)],
-);
+const STDOUT_WRITE: NativeMeta = NativeMeta::new("write", Arity::Fixed(1))
+  .with_params(&[Parameter::new("string", ParameterKind::String)]);
 
-const STDOUT_WRITELN: NativeMeta = NativeMeta::new(
-  "writeln",
-  Arity::Fixed(1),
-  &[Parameter::new("string", ParameterKind::String)],
-);
+const STDOUT_WRITELN: NativeMeta = NativeMeta::new("writeln", Arity::Fixed(1))
+  .with_params(&[Parameter::new("string", ParameterKind::String)]);
 
-const STDOUT_FLUSH: NativeMeta = NativeMeta::new("flush", Arity::Fixed(0), &[]);
+const STDOUT_FLUSH: NativeMeta = NativeMeta::new("flush", Arity::Fixed(0));
 
 pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, std, STDOUT_CLASS_NAME)?;

@@ -7,9 +7,9 @@ use laythe_core::{
   native::{NativeMeta, NativeMethod},
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
+  val,
   value::Value,
   CallResult, LyResult,
-  val,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -18,12 +18,11 @@ use laythe_env::{
 
 pub const METHOD_CLASS_NAME: &'static str = "Method";
 
-const METHOD_NAME: NativeMeta = NativeMeta::new("name", Arity::Fixed(0), &[]);
-const METHOD_CALL: NativeMeta = NativeMeta::new(
-  "call",
-  Arity::Variadic(0),
-  &[Parameter::new("args", ParameterKind::Any)],
-);
+const METHOD_NAME: NativeMeta = NativeMeta::new("name", Arity::Fixed(0));
+
+const METHOD_CALL: NativeMeta = NativeMeta::new("call", Arity::Variadic(0))
+  .with_params(&[Parameter::new("args", ParameterKind::Any)])
+  .with_stack();
 
 pub fn declare_method_class(
   hooks: &GcHooks,
@@ -120,9 +119,7 @@ mod test {
     #[test]
     fn call() {
       let mut context = MockedContext::default();
-      let responses = &[val!(
-        context.gc.manage_str("example".to_string(), &NO_GC)
-      )];
+      let responses = &[val!(context.gc.manage_str("example".to_string(), &NO_GC))];
       context.responses.extend_from_slice(responses);
 
       let mut hooks = Hooks::new(&mut context);

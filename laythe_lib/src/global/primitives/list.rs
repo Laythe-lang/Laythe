@@ -10,9 +10,9 @@ use laythe_core::{
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
   utils::is_falsey,
+  val,
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
-  val,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -22,45 +22,34 @@ use std::{mem, slice::Iter};
 
 pub const LIST_CLASS_NAME: &'static str = "List";
 
-const LIST_CLEAR: NativeMeta = NativeMeta::new("clear", Arity::Fixed(0), &[]);
-const LIST_HAS: NativeMeta = NativeMeta::new(
-  "has",
-  Arity::Fixed(1),
-  &[Parameter::new("val", ParameterKind::Any)],
-);
-const LIST_INSERT: NativeMeta = NativeMeta::new(
-  "insert",
-  Arity::Fixed(2),
-  &[
-    Parameter::new("index", ParameterKind::Number),
-    Parameter::new("val", ParameterKind::Any),
-  ],
-);
-const LIST_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0), &[]);
-const LIST_POP: NativeMeta = NativeMeta::new("pop", Arity::Fixed(0), &[]);
-const LIST_PUSH: NativeMeta = NativeMeta::new(
-  "push",
-  Arity::Variadic(0),
-  &[Parameter::new("values", ParameterKind::Any)],
-);
-const LIST_REMOVE: NativeMeta = NativeMeta::new(
-  "remove",
-  Arity::Fixed(1),
-  &[Parameter::new("index", ParameterKind::Number)],
-);
-const LIST_INDEX: NativeMeta = NativeMeta::new(
-  "index",
-  Arity::Fixed(1),
-  &[Parameter::new("value", ParameterKind::Any)],
-);
-const LIST_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
-const LIST_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
+const LIST_CLEAR: NativeMeta = NativeMeta::new("clear", Arity::Fixed(0));
 
-const LIST_COLLECT: NativeMeta = NativeMeta::new(
-  "collect",
-  Arity::Fixed(1),
-  &[Parameter::new("iter", ParameterKind::Iter)],
-);
+const LIST_HAS: NativeMeta =
+  NativeMeta::new("has", Arity::Fixed(1)).with_params(&[Parameter::new("val", ParameterKind::Any)]);
+
+const LIST_INSERT: NativeMeta = NativeMeta::new("insert", Arity::Fixed(2)).with_params(&[
+  Parameter::new("index", ParameterKind::Number),
+  Parameter::new("val", ParameterKind::Any),
+]);
+
+const LIST_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0));
+const LIST_POP: NativeMeta = NativeMeta::new("pop", Arity::Fixed(0));
+
+const LIST_PUSH: NativeMeta = NativeMeta::new("push", Arity::Variadic(0))
+  .with_params(&[Parameter::new("values", ParameterKind::Any)]);
+
+const LIST_REMOVE: NativeMeta = NativeMeta::new("remove", Arity::Fixed(1))
+  .with_params(&[Parameter::new("index", ParameterKind::Number)]);
+
+const LIST_INDEX: NativeMeta = NativeMeta::new("index", Arity::Fixed(1))
+  .with_params(&[Parameter::new("value", ParameterKind::Any)]);
+
+const LIST_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0));
+const LIST_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0));
+
+// this may need a stack
+const LIST_COLLECT: NativeMeta = NativeMeta::new("collect", Arity::Fixed(1))
+  .with_params(&[Parameter::new("iter", ParameterKind::Iter)]);
 
 pub fn declare_list_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, LIST_CLASS_NAME)?;
@@ -563,11 +552,7 @@ mod test {
         Err(_) => assert!(false),
       }
 
-      let result = list_push.call(
-        &mut hooks,
-        val!(this),
-        &[val!(10.3), VALUE_NIL],
-      );
+      let result = list_push.call(&mut hooks, val!(this), &[val!(10.3), VALUE_NIL]);
       match result {
         Ok(r) => {
           assert_eq!(r, VALUE_NIL);
@@ -737,11 +722,7 @@ mod test {
       let this = hooks.manage(list);
       let list_value = val!(this);
 
-      let result = list_insert.call(
-        &mut hooks,
-        list_value,
-        &[val!(1.0), val!(false)],
-      );
+      let result = list_insert.call(&mut hooks, list_value, &[val!(1.0), val!(false)]);
       match result {
         Ok(r) => {
           assert!(r.is_nil());

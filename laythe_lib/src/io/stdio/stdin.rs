@@ -17,8 +17,8 @@ use laythe_env::{managed::Trace, stdio::Stdio};
 const STDIN_CLASS_NAME: &str = "Stdin";
 const STDIN_INSTANCE_NAME: &str = "stdin";
 
-const STDIN_READ: NativeMeta = NativeMeta::new("read", Arity::Fixed(0), &[]);
-const STDIN_READ_LINE: NativeMeta = NativeMeta::new("readLine", Arity::Fixed(0), &[]);
+const STDIN_READ: NativeMeta = NativeMeta::new("read", Arity::Fixed(0));
+const STDIN_READ_LINE: NativeMeta = NativeMeta::new("readLine", Arity::Fixed(0));
 
 pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, std, STDIN_CLASS_NAME)?;

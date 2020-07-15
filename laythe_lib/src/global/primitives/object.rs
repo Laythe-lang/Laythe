@@ -6,19 +6,16 @@ use laythe_core::{
   object::Class,
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
+  val,
   value::Value,
   CallResult, LyResult,
-  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const OBJECT_CLASS_NAME: &'static str = "Object";
 
-const OBJECT_EQUALS: NativeMeta = NativeMeta::new(
-  "equals",
-  Arity::Fixed(1),
-  &[Parameter::new("other", ParameterKind::Any)],
-);
+const OBJECT_EQUALS: NativeMeta = NativeMeta::new("equals", Arity::Fixed(1))
+  .with_params(&[Parameter::new("other", ParameterKind::Any)]);
 
 pub fn declare_object_class(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   let name = hooks.manage_str(String::from(OBJECT_CLASS_NAME));

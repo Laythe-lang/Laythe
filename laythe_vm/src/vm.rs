@@ -15,8 +15,9 @@ use laythe_core::{
   package::{Import, Package},
   signature::{ArityError, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
+  val,
   value::{Value, ValueKind, VALUE_NIL},
-  CallResult, LyError, val
+  CallResult, LyError,
 };
 use laythe_env::{
   io::Io,
@@ -1136,23 +1137,13 @@ impl<'a> VmExecutor<'a> {
   fn op_return(&mut self) -> Signal {
     // get the function result close upvalues and pop frame
     let result = self.pop();
-    self.close_upvalues(NonNull::from(unsafe { &*self.slots() }));
-    self.frame_count -= 1;
 
-    // if the frame was the whole script signal an ok interrupt
-    if self.frame_count == 1 {
-      self.drop();
-      return Signal::Exit;
+    // pop a frame from the call stack return signal if provided
+    if let Some(signal) = self.pop_frame() {
+      return signal;
     }
 
-    // pull the current frame out of the stack and set the cached frame
-    unsafe {
-      self.stack_top = self.slots();
-      self.current_frame = self.current_frame.offset(-1);
-      self.current_fun = self.closure().fun;
-    }
-
-    // push the result onto the stack
+    // push result onto stack
     self.push(result);
     Signal::OkReturn
   }
@@ -1452,6 +1443,13 @@ impl<'a> VmExecutor<'a> {
       return self.runtime_error("Stack overflow.");
     }
 
+    self.push_frame(closure, arg_count);
+    Signal::Ok
+  }
+
+  /// Push a call frame onto the the call frame stack
+  #[inline]
+  fn push_frame(&mut self, closure: Managed<Closure>, arg_count: u8) {
     unsafe {
       let frame = &mut *self.current_frame.offset(1);
       frame.closure = closure;
@@ -1462,8 +1460,28 @@ impl<'a> VmExecutor<'a> {
 
     self.current_fun = closure.fun;
     self.frame_count += 1;
+  }
 
-    Signal::Ok
+  /// Pop a frame off the call stack
+  #[inline]
+  fn pop_frame(&mut self) -> Option<Signal> {
+    self.close_upvalues(NonNull::from(unsafe { &*self.slots() }));
+    self.frame_count -= 1;
+
+    // if the frame was the whole script signal an ok interrupt
+    if self.frame_count == 1 {
+      self.drop();
+      return Some(Signal::Exit);
+    }
+
+    // pull the current frame out of the stack and set the cached frame
+    unsafe {
+      self.stack_top = self.slots();
+      self.current_frame = self.current_frame.offset(-1);
+      self.current_fun = self.closure().fun;
+    }
+
+    None
   }
 
   /// check that the number of args is valid for the function arity

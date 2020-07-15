@@ -4,36 +4,27 @@ use laythe_core::{
   module::Module,
   native::{NativeFun, NativeMeta},
   signature::{Arity, Parameter, ParameterKind},
+  val,
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
-  val,
 };
 use laythe_env::{
   managed::{Managed, Trace},
   stdio::Stdio,
 };
 
-const ASSERT_META: NativeMeta = NativeMeta::new(
-  "assert",
-  Arity::Fixed(1),
-  &[Parameter::new("value", ParameterKind::Bool)],
-);
-const ASSERTEQ_META: NativeMeta = NativeMeta::new(
-  "assertEq",
-  Arity::Fixed(2),
-  &[
-    Parameter::new("actual", ParameterKind::Any),
-    Parameter::new("expected", ParameterKind::Any),
-  ],
-);
-const ASSERTNE_META: NativeMeta = NativeMeta::new(
-  "assertNe",
-  Arity::Fixed(2),
-  &[
-    Parameter::new("actual", ParameterKind::Any),
-    Parameter::new("unexpected", ParameterKind::Any),
-  ],
-);
+const ASSERT_META: NativeMeta = NativeMeta::new("assert", Arity::Fixed(1))
+  .with_params(&[Parameter::new("value", ParameterKind::Bool)]);
+
+const ASSERTEQ_META: NativeMeta = NativeMeta::new("assertEq", Arity::Fixed(2)).with_params(&[
+  Parameter::new("actual", ParameterKind::Any),
+  Parameter::new("expected", ParameterKind::Any),
+]);
+
+const ASSERTNE_META: NativeMeta = NativeMeta::new("assertNe", Arity::Fixed(2)).with_params(&[
+  Parameter::new("actual", ParameterKind::Any),
+  Parameter::new("unexpected", ParameterKind::Any),
+]);
 
 pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   let str_name = hooks.manage_str("str".to_string());

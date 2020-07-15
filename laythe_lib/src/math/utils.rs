@@ -4,44 +4,33 @@ use laythe_core::{
   module::Module,
   native::{NativeFun, NativeMeta},
   signature::{Arity, Parameter, ParameterKind},
+  val,
   value::Value,
   CallResult, LyResult,
-  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
 const PI: &str = "pi";
 const E: &str = "e";
 
-const SIN_META: NativeMeta = NativeMeta::new(
-  "sin",
-  Arity::Fixed(1),
-  &[Parameter::new("val", ParameterKind::Number)],
-);
-const COS_META: NativeMeta = NativeMeta::new(
-  "cos",
-  Arity::Fixed(1),
-  &[Parameter::new("val", ParameterKind::Number)],
-);
-const LN_META: NativeMeta = NativeMeta::new(
-  "ln",
-  Arity::Fixed(1),
-  &[Parameter::new("val", ParameterKind::Number)],
-);
-const ABS_META: NativeMeta = NativeMeta::new(
-  "abs",
-  Arity::Fixed(1),
-  &[Parameter::new("val", ParameterKind::Number)],
-);
-const REM_META: NativeMeta = NativeMeta::new(
-  "rem",
-  Arity::Fixed(2),
-  &[
-    Parameter::new("val", ParameterKind::Number),
-    Parameter::new("divisor", ParameterKind::Number),
-  ],
-);
-const RAND_META: NativeMeta = NativeMeta::new("rand", Arity::Fixed(0), &[]);
+const SIN_META: NativeMeta = NativeMeta::new("sin", Arity::Fixed(1))
+  .with_params(&[Parameter::new("val", ParameterKind::Number)]);
+
+const COS_META: NativeMeta = NativeMeta::new("cos", Arity::Fixed(1))
+  .with_params(&[Parameter::new("val", ParameterKind::Number)]);
+
+const LN_META: NativeMeta = NativeMeta::new("ln", Arity::Fixed(1))
+  .with_params(&[Parameter::new("val", ParameterKind::Number)]);
+
+const ABS_META: NativeMeta = NativeMeta::new("abs", Arity::Fixed(1))
+  .with_params(&[Parameter::new("val", ParameterKind::Number)]);
+
+const REM_META: NativeMeta = NativeMeta::new("rem", Arity::Fixed(2)).with_params(&[
+  Parameter::new("val", ParameterKind::Number),
+  Parameter::new("divisor", ParameterKind::Number),
+]);
+
+const RAND_META: NativeMeta = NativeMeta::new("rand", Arity::Fixed(0));
 
 pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   export_and_insert(

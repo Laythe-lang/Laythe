@@ -22,10 +22,26 @@ pub struct NativeMeta {
 
 impl NativeMeta {
   /// Create a new set of meta date for a native function
-  pub const fn new(name: &'static str, arity: Arity, parameters: &'static [Parameter]) -> Self {
+  pub const fn new(name: &'static str, arity: Arity, ) -> Self {
     NativeMeta {
       name,
-      signature: Signature::new(arity, parameters),
+      signature: Signature::new(arity),
+    }
+  }
+
+  /// Provide parameters this native function needs
+  pub const fn with_params(self, parameters: &'static [Parameter]) -> Self {
+    Self {
+      name: self.name,
+      signature: self.signature.with_params(parameters)
+    }
+  }
+
+  /// Indicate this native function requires the stack
+  pub const fn with_stack(self) -> Self {
+    Self {
+      name: self.name,
+      signature: self.signature.with_stack()
     }
   }
 }

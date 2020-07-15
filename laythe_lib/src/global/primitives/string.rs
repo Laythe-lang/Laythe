@@ -7,19 +7,17 @@ use laythe_core::{
   native::{NativeMeta, NativeMethod},
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
+  val,
   value::Value,
   CallResult, LyResult,
-  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const STRING_CLASS_NAME: &str = "String";
-const STRING_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
-const STRING_HAS: NativeMeta = NativeMeta::new(
-  "has",
-  Arity::Fixed(1),
-  &[Parameter::new("string", ParameterKind::String)],
-);
+const STRING_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0));
+
+const STRING_HAS: NativeMeta = NativeMeta::new("has", Arity::Fixed(1))
+  .with_params(&[Parameter::new("string", ParameterKind::String)]);
 
 pub fn declare_string_class(
   hooks: &GcHooks,

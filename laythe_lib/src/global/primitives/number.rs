@@ -16,8 +16,8 @@ use laythe_env::{managed::Trace, stdio::Stdio};
 use std::mem;
 
 pub const NUMBER_CLASS_NAME: &'static str = "Number";
-const NUMBER_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
-const NUMBER_TIMES: NativeMeta = NativeMeta::new("times", Arity::Fixed(0), &[]);
+const NUMBER_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0));
+const NUMBER_TIMES: NativeMeta = NativeMeta::new("times", Arity::Fixed(0));
 
 pub fn declare_number_class(
   hooks: &GcHooks,

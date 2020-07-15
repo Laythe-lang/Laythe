@@ -7,20 +7,19 @@ use laythe_core::{
   native::{NativeMeta, NativeMethod},
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
+  val,
   value::Value,
   CallResult, LyResult,
-  val,
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const NATIVE_METHOD_CLASS_NAME: &'static str = "Native Method";
 
-const NATIVE_METHOD_NAME: NativeMeta = NativeMeta::new("name", Arity::Fixed(0), &[]);
-const NATIVE_METHOD_CALL: NativeMeta = NativeMeta::new(
-  "call",
-  Arity::Variadic(0),
-  &[Parameter::new("args", ParameterKind::Any)],
-);
+const NATIVE_METHOD_NAME: NativeMeta = NativeMeta::new("name", Arity::Fixed(0));
+
+const NATIVE_METHOD_CALL: NativeMeta = NativeMeta::new("call", Arity::Variadic(0))
+  .with_params(&[Parameter::new("args", ParameterKind::Any)])
+  .with_stack();
 
 pub fn declare_native_method_class(
   hooks: &GcHooks,

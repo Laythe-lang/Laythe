@@ -10,9 +10,9 @@ use laythe_core::{
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
   utils::is_falsey,
+  val,
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
-  val,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -21,42 +21,36 @@ use laythe_env::{
 use std::mem;
 
 pub const ITER_CLASS_NAME: &'static str = "Iter";
-const ITER_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
-const ITER_NEXT: NativeMeta = NativeMeta::new("next", Arity::Fixed(0), &[]);
-const ITER_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0), &[]);
-const ITER_MAP: NativeMeta = NativeMeta::new(
-  "map",
-  Arity::Fixed(1),
-  &[Parameter::new("fun", ParameterKind::Fun)],
-);
-const ITER_FILTER: NativeMeta = NativeMeta::new(
-  "filter",
-  Arity::Fixed(1),
-  &[Parameter::new("fun", ParameterKind::Fun)],
-);
-const ITER_REDUCE: NativeMeta = NativeMeta::new(
-  "reduce",
-  Arity::Fixed(2),
-  &[
+const ITER_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0));
+
+/// This might need to have a stack once we implement yield or the iterator class
+const ITER_NEXT: NativeMeta = NativeMeta::new("next", Arity::Fixed(0));
+const ITER_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0));
+
+const ITER_MAP: NativeMeta = NativeMeta::new("map", Arity::Fixed(1))
+  .with_params(&[Parameter::new("fun", ParameterKind::Fun)])
+  .with_stack();
+
+const ITER_FILTER: NativeMeta = NativeMeta::new("filter", Arity::Fixed(1))
+  .with_params(&[Parameter::new("fun", ParameterKind::Fun)])
+  .with_stack();
+
+const ITER_REDUCE: NativeMeta = NativeMeta::new("reduce", Arity::Fixed(2))
+  .with_params(&[
     Parameter::new("initial", ParameterKind::Any),
     Parameter::new("fun", ParameterKind::Fun),
-  ],
-);
-const ITER_EACH: NativeMeta = NativeMeta::new(
-  "each",
-  Arity::Fixed(1),
-  &[Parameter::new("fun", ParameterKind::Fun)],
-);
-const ITER_ZIP: NativeMeta = NativeMeta::new(
-  "zip",
-  Arity::Variadic(0),
-  &[Parameter::new("iterators", ParameterKind::Iter)],
-);
-const ITER_INTO: NativeMeta = NativeMeta::new(
-  "into",
-  Arity::Fixed(1),
-  &[Parameter::new("fun", ParameterKind::Fun)],
-);
+  ])
+  .with_stack();
+
+const ITER_EACH: NativeMeta = NativeMeta::new("each", Arity::Fixed(1))
+  .with_params(&[Parameter::new("fun", ParameterKind::Fun)])
+  .with_stack();
+
+const ITER_ZIP: NativeMeta = NativeMeta::new("zip", Arity::Variadic(0))
+  .with_params(&[Parameter::new("iterators", ParameterKind::Iter)]);
+
+const ITER_INTO: NativeMeta = NativeMeta::new("into", Arity::Fixed(1))
+  .with_params(&[Parameter::new("fun", ParameterKind::Fun)]);
 
 pub fn declare_iter_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, ITER_CLASS_NAME)?;
@@ -132,9 +126,7 @@ impl NativeMethod for IterStr {
   }
 
   fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(val!(
-      hooks.manage_str(this.to_iter().name().to_string())
-    ))
+    Ok(val!(hooks.manage_str(this.to_iter().name().to_string())))
   }
 }
 
@@ -634,8 +626,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context =
-        MockedContext::new(&[val!(false), val!(true), val!(true)]);
+      let mut context = MockedContext::new(&[val!(false), val!(true), val!(true)]);
       let mut hooks = Hooks::new(&mut context);
       let iter_filter = IterFilter();
 
@@ -812,11 +803,8 @@ mod test {
     use crate::support::MockedContext;
     use laythe_core::{iterator::LyIterator, native::NativeFun};
 
-    const M: NativeMeta = NativeMeta::new(
-      "",
-      Arity::Fixed(1),
-      &[Parameter::new("", ParameterKind::Any)],
-    );
+    const M: NativeMeta =
+      NativeMeta::new("", Arity::Fixed(1)).with_params(&[Parameter::new("", ParameterKind::Any)]);
 
     #[derive(Trace)]
     struct EchoFun();

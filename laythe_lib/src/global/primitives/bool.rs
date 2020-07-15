@@ -7,14 +7,14 @@ use laythe_core::{
   native::{NativeMeta, NativeMethod},
   package::Package,
   signature::Arity,
+  val,
   value::{Value, VALUE_TRUE},
   CallResult, LyResult,
-  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const BOOL_CLASS_NAME: &'static str = "Bool";
-const BOOL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
+const BOOL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0));
 
 pub fn declare_bool_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let bool_class = default_class_inheritance(hooks, package, BOOL_CLASS_NAME)?;

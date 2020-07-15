@@ -10,9 +10,9 @@ use laythe_core::{
   object::{List, Map},
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
+  val,
   value::{Value, VALUE_NIL},
   CallResult, LyError, LyResult,
-  val,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -23,40 +23,28 @@ use std::mem;
 
 pub const MAP_CLASS_NAME: &'static str = "Map";
 
-const MAP_GET: NativeMeta = NativeMeta::new(
-  "get",
-  Arity::Fixed(1),
-  &[Parameter::new("key", ParameterKind::Any)],
-);
-const MAP_SET: NativeMeta = NativeMeta::new(
-  "set",
-  Arity::Fixed(2),
-  &[
-    Parameter::new("key", ParameterKind::Any),
-    Parameter::new("value", ParameterKind::Any),
-  ],
-);
-const MAP_HAS: NativeMeta = NativeMeta::new(
-  "has",
-  Arity::Fixed(1),
-  &[Parameter::new("key", ParameterKind::Any)],
-);
-const MAP_INSERT: NativeMeta = NativeMeta::new(
-  "insert",
-  Arity::Fixed(2),
-  &[
-    Parameter::new("key", ParameterKind::Any),
-    Parameter::new("val", ParameterKind::Any),
-  ],
-);
-const MAP_REMOVE: NativeMeta = NativeMeta::new(
-  "remove",
-  Arity::Fixed(1),
-  &[Parameter::new("key", ParameterKind::Any)],
-);
-const MAP_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
-const MAP_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
-const MAP_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0), &[]);
+const MAP_GET: NativeMeta =
+  NativeMeta::new("get", Arity::Fixed(1)).with_params(&[Parameter::new("key", ParameterKind::Any)]);
+
+const MAP_SET: NativeMeta = NativeMeta::new("set", Arity::Fixed(2)).with_params(&[
+  Parameter::new("key", ParameterKind::Any),
+  Parameter::new("value", ParameterKind::Any),
+]);
+
+const MAP_HAS: NativeMeta =
+  NativeMeta::new("has", Arity::Fixed(1)).with_params(&[Parameter::new("key", ParameterKind::Any)]);
+
+const MAP_INSERT: NativeMeta = NativeMeta::new("insert", Arity::Fixed(2)).with_params(&[
+  Parameter::new("key", ParameterKind::Any),
+  Parameter::new("val", ParameterKind::Any),
+]);
+
+const MAP_REMOVE: NativeMeta = NativeMeta::new("remove", Arity::Fixed(1))
+  .with_params(&[Parameter::new("key", ParameterKind::Any)]);
+
+const MAP_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0));
+const MAP_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0));
+const MAP_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0));
 
 pub fn declare_map_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, MAP_CLASS_NAME)?;
@@ -553,11 +541,7 @@ mod test {
       let map = Map::default();
       let this = hooks.manage(map);
 
-      let result = map_set.call(
-        &mut hooks,
-        val!(this),
-        &[val!(true), val!(10.0)],
-      );
+      let result = map_set.call(&mut hooks, val!(this), &[val!(true), val!(10.0)]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),
@@ -566,11 +550,7 @@ mod test {
       assert_eq!(this.len(), 1);
       assert_eq!(*this.get(&val!(true)).unwrap(), val!(10.0));
 
-      let result = map_set.call(
-        &mut hooks,
-        val!(this),
-        &[val!(true), val!(false)],
-      );
+      let result = map_set.call(&mut hooks, val!(this), &[val!(true), val!(false)]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 10.0),
         Err(_) => assert!(false),
@@ -612,21 +592,13 @@ mod test {
       map.insert(VALUE_NIL, val!(false));
       let this = hooks.manage(map);
 
-      let result = map_insert.call(
-        &mut hooks,
-        val!(this),
-        &[VALUE_NIL, val!(true)],
-      );
+      let result = map_insert.call(&mut hooks, val!(this), &[VALUE_NIL, val!(true)]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),
       }
 
-      let result = map_insert.call(
-        &mut hooks,
-        val!(this),
-        &[val!(15.0), val!(true)],
-      );
+      let result = map_insert.call(&mut hooks, val!(this), &[val!(15.0), val!(true)]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),

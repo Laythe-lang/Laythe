@@ -14,7 +14,7 @@ use laythe_core::{
 use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const NIL_CLASS_NAME: &'static str = "Nil";
-const NIL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
+const NIL_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0));
 
 pub fn declare_nil_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, NIL_CLASS_NAME)?;

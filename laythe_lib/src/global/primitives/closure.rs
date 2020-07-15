@@ -7,21 +7,20 @@ use laythe_core::{
   native::{NativeMeta, NativeMethod},
   package::Package,
   signature::{Arity, Parameter, ParameterKind},
+  val,
   value::Value,
   CallResult, LyResult,
-  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const CLOSURE_CLASS_NAME: &'static str = "Fun";
 
-const CLOSURE_NAME: NativeMeta = NativeMeta::new("name", Arity::Fixed(0), &[]);
-const CLOSURE_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
-const CLOSURE_CALL: NativeMeta = NativeMeta::new(
-  "call",
-  Arity::Variadic(0),
-  &[Parameter::new("args", ParameterKind::Any)],
-);
+const CLOSURE_NAME: NativeMeta = NativeMeta::new("name", Arity::Fixed(0));
+const CLOSURE_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0));
+
+const CLOSURE_CALL: NativeMeta = NativeMeta::new("call", Arity::Variadic(0))
+  .with_params(&[Parameter::new("args", ParameterKind::Any)])
+  .with_stack();
 
 pub fn declare_closure_class(
   hooks: &GcHooks,

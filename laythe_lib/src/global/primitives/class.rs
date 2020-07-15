@@ -14,7 +14,7 @@ use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const CLASS_CLASS_NAME: &'static str = "Class";
 
-const CLASS_SUPER_CLASS: NativeMeta = NativeMeta::new("superClass", Arity::Fixed(0), &[]);
+const CLASS_SUPER_CLASS: NativeMeta = NativeMeta::new("superClass", Arity::Fixed(0));
 
 pub fn declare_class_class(hooks: &GcHooks, module: &mut Module) -> LyResult<()> {
   let name = hooks.manage_str(String::from(CLASS_CLASS_NAME));

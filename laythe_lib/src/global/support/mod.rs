@@ -7,7 +7,7 @@ use laythe_core::{
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
-const TEST_META: NativeMeta = NativeMeta::new("test", Arity::Fixed(0), &[]);
+const TEST_META: NativeMeta = NativeMeta::new("test", Arity::Fixed(0));
 
 #[derive(Clone, Debug, Trace)]
 pub struct TestNative();

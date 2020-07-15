@@ -10,7 +10,7 @@ use laythe_core::{
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
-const CLOCK_META: NativeMeta = NativeMeta::new("clock", Arity::Fixed(0), &[]);
+const CLOCK_META: NativeMeta = NativeMeta::new("clock", Arity::Fixed(0));
 
 pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> LyResult<()> {
   export_and_insert(
