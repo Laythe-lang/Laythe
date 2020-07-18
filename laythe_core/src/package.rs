@@ -201,7 +201,7 @@ impl Manage for Package {
 
 #[cfg(test)]
 mod test {
-  use crate::{val, object::Class};
+  use crate::{object::Class, val};
 
   #[test]
   fn new() {

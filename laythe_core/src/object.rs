@@ -80,9 +80,6 @@ pub struct BuiltinPrimitives {
 
   /// the NativeFun class
   pub native_fun: Managed<Class>,
-
-  // the NativeMethod class
-  pub native_method: Managed<Class>,
 }
 
 impl BuiltinPrimitives {
@@ -100,8 +97,7 @@ impl BuiltinPrimitives {
       ValueKind::Instance => value.to_instance().class,
       ValueKind::Iter => self.iter,
       ValueKind::Method => self.method,
-      ValueKind::NativeFun => self.native_fun,
-      ValueKind::NativeMethod => self.native_method,
+      ValueKind::Native => self.native_fun,
       ValueKind::Upvalue => {
         let value = value.to_upvalue().value();
         self.for_value(value, value.kind())
@@ -123,7 +119,6 @@ impl Trace for BuiltinPrimitives {
     self.closure.trace();
     self.method.trace();
     self.native_fun.trace();
-    self.native_method.trace();
 
     true
   }
@@ -140,7 +135,6 @@ impl Trace for BuiltinPrimitives {
     self.closure.trace_debug(stdio);
     self.method.trace_debug(stdio);
     self.native_fun.trace_debug(stdio);
-    self.native_method.trace_debug(stdio);
 
     true
   }
@@ -296,7 +290,7 @@ pub struct Fun {
 impl Fun {
   pub fn new(name: Managed<String>, module: Managed<Module>) -> Self {
     Self {
-      arity: Arity::Fixed(0),
+      arity: Arity::default(),
       upvalue_count: 0,
       chunk: Chunk::default(),
       module,
@@ -413,6 +407,7 @@ impl Manage for Fun {
       + self.try_blocks.capacity()
   }
 }
+
 #[derive(Clone, Debug)]
 pub struct List<T>(Vec<T>);
 

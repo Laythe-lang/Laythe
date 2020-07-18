@@ -2,8 +2,8 @@ use crate::support::export_and_insert;
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeFun, NativeMeta},
-  signature::{Arity, Parameter, ParameterKind},
+  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
@@ -13,18 +13,20 @@ use laythe_env::{
   stdio::Stdio,
 };
 
-const ASSERT_META: NativeMeta = NativeMeta::new("assert", Arity::Fixed(1))
-  .with_params(&[Parameter::new("value", ParameterKind::Bool)]);
+const ASSERT_META: NativeMetaBuilder = NativeMetaBuilder::fun("assert", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("value", ParameterKind::Bool)]);
 
-const ASSERTEQ_META: NativeMeta = NativeMeta::new("assertEq", Arity::Fixed(2)).with_params(&[
-  Parameter::new("actual", ParameterKind::Any),
-  Parameter::new("expected", ParameterKind::Any),
-]);
+const ASSERTEQ_META: NativeMetaBuilder = NativeMetaBuilder::fun("assertEq", Arity::Fixed(2))
+  .with_params(&[
+    ParameterBuilder::new("actual", ParameterKind::Any),
+    ParameterBuilder::new("expected", ParameterKind::Any),
+  ]);
 
-const ASSERTNE_META: NativeMeta = NativeMeta::new("assertNe", Arity::Fixed(2)).with_params(&[
-  Parameter::new("actual", ParameterKind::Any),
-  Parameter::new("unexpected", ParameterKind::Any),
-]);
+const ASSERTNE_META: NativeMetaBuilder = NativeMetaBuilder::fun("assertNe", Arity::Fixed(2))
+  .with_params(&[
+    ParameterBuilder::new("actual", ParameterKind::Any),
+    ParameterBuilder::new("unexpected", ParameterKind::Any),
+  ]);
 
 pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   let str_name = hooks.manage_str("str".to_string());
@@ -33,21 +35,25 @@ pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResul
     hooks,
     self_module,
     hooks.manage_str(ASSERT_META.name.to_string()),
-    val!(hooks.manage(Box::new(Assert::new(str_name)) as Box<dyn NativeFun>)),
+    val!(
+      hooks.manage(Box::new(Assert::new(ASSERT_META.to_meta(hooks), str_name)) as Box<dyn Native>)
+    ),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(ASSERTEQ_META.name.to_string()),
-    val!(hooks.manage(Box::new(AssertEq::new(str_name)) as Box<dyn NativeFun>)),
+    val!(hooks
+      .manage(Box::new(AssertEq::new(ASSERTEQ_META.to_meta(hooks), str_name)) as Box<dyn Native>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(ASSERTNE_META.name.to_string()),
-    val!(hooks.manage(Box::new(AssertNe::new(str_name)) as Box<dyn NativeFun>)),
+    val!(hooks
+      .manage(Box::new(AssertNe::new(ASSERTNE_META.to_meta(hooks), str_name)) as Box<dyn Native>)),
   )
 }
 
@@ -63,26 +69,29 @@ fn to_str(hooks: &mut Hooks, value: Value) -> Managed<String> {
   hooks.manage_str(format!("{:?}", result))
 }
 
-#[derive(Clone, Debug, Trace)]
+#[derive(Debug)]
 /// A native method to assert that for a boolean true value
 pub struct Assert {
   /// reference to 'str'
   method_str: Managed<String>,
+  meta: NativeMeta,
 }
 
 impl Assert {
   /// Construct a new instance of the native assert function
-  pub fn new(method_str: Managed<String>) -> Self {
-    Self { method_str }
+  pub fn new(meta: NativeMeta, method_str: Managed<String>) -> Self {
+    Self { meta, method_str }
   }
 }
 
-impl NativeFun for Assert {
+impl MetaData for Assert {
   fn meta(&self) -> &NativeMeta {
-    &ASSERT_META
+    &self.meta
   }
+}
 
-  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
+impl Native for Assert {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
     if args[0].to_bool() {
       Ok(VALUE_NIL)
     } else {
@@ -93,24 +102,39 @@ impl NativeFun for Assert {
   }
 }
 
-#[derive(Clone, Debug, Trace)]
+impl Trace for Assert {
+  fn trace(&self) -> bool {
+    self.meta.trace();
+    self.method_str.trace()
+  }
+
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+    self.meta.trace_debug(stdio);
+    self.method_str.trace_debug(stdio)
+  }
+}
+
+#[derive(Debug, Trace)]
 pub struct AssertEq {
+  meta: NativeMeta,
   method_str: Managed<String>,
 }
 
 impl AssertEq {
   /// Construct a new instance of the native assertEq function
-  pub fn new(method_str: Managed<String>) -> Self {
-    Self { method_str }
+  pub fn new(meta: NativeMeta, method_str: Managed<String>) -> Self {
+    Self { meta, method_str }
   }
 }
 
-impl NativeFun for AssertEq {
+impl MetaData for AssertEq {
   fn meta(&self) -> &NativeMeta {
-    &ASSERTEQ_META
+    &self.meta
   }
+}
 
-  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
+impl Native for AssertEq {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
     if args[0] == args[1] {
       return Ok(VALUE_NIL);
     }
@@ -125,24 +149,27 @@ impl NativeFun for AssertEq {
   }
 }
 
-#[derive(Clone, Debug, Trace)]
+#[derive(Debug, Trace)]
 pub struct AssertNe {
+  meta: NativeMeta,
   method_str: Managed<String>,
 }
 
 impl AssertNe {
   /// Construct a new instance of the native assertNe function
-  pub fn new(method_str: Managed<String>) -> Self {
-    Self { method_str }
+  pub fn new(meta: NativeMeta, method_str: Managed<String>) -> Self {
+    Self { meta, method_str }
   }
 }
 
-impl NativeFun for AssertNe {
+impl MetaData for AssertNe {
   fn meta(&self) -> &NativeMeta {
-    &ASSERTNE_META
+    &self.meta
   }
+}
 
-  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> CallResult {
+impl Native for AssertNe {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
     if args[0] != args[1] {
       return Ok(VALUE_NIL);
     }
@@ -157,8 +184,7 @@ impl NativeFun for AssertNe {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_native_dependencies, MockedContext};
-  use laythe_env::memory::NO_GC;
+  use laythe_core::hooks::support::TestContext;
 
   #[cfg(test)]
   mod assert {
@@ -166,10 +192,14 @@ mod test {
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let assert = Assert::new(gc.manage_str("str".to_string(), &NO_GC));
+      let mut context = TestContext::default();
+      let hooks = Hooks::new(&mut context);
+      let assert = Assert::new(
+        ASSERT_META.to_meta(&hooks.to_gc()),
+        hooks.manage_str("str".to_string()),
+      );
 
-      assert_eq!(assert.meta().name, "assert");
+      assert_eq!(&*assert.meta().name, "assert");
       assert_eq!(assert.meta().signature.arity, Arity::Fixed(1));
       assert_eq!(
         assert.meta().signature.parameters[0].kind,
@@ -179,13 +209,16 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::default();
+      let mut context = TestContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let assert = Assert::new(hooks.manage_str("str".to_string()));
+      let assert = Assert::new(
+        ASSERT_META.to_meta(&hooks.to_gc()),
+        hooks.manage_str("str".to_string()),
+      );
       let values = &[val!(true)];
 
-      let result = match assert.call(&mut hooks, values) {
+      let result = match assert.call(&mut hooks, None, values) {
         Ok(res) => res,
         Err(_) => panic!(),
       };
@@ -200,10 +233,15 @@ mod test {
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let assert_eq = AssertEq::new(gc.manage_str("str".to_string(), &NO_GC));
+      let mut context = TestContext::default();
+      let hooks = Hooks::new(&mut context);
 
-      assert_eq!(assert_eq.meta().name, "assertEq");
+      let assert_eq = AssertEq::new(
+        ASSERTEQ_META.to_meta(&hooks.to_gc()),
+        hooks.manage_str("str".to_string()),
+      );
+
+      assert_eq!(&*assert_eq.meta().name, "assertEq");
       assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
       assert_eq!(
         assert_eq.meta().signature.parameters[0].kind,
@@ -217,13 +255,17 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::default();
+      let mut context = TestContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let assert_eq = AssertEq::new(hooks.manage_str("str".to_string()));
+
+      let assert_eq = AssertEq::new(
+        ASSERTEQ_META.to_meta(&hooks.to_gc()),
+        hooks.manage_str("str".to_string()),
+      );
 
       let values = &[val!(10.5), val!(10.5)];
 
-      let result = match assert_eq.call(&mut hooks, values) {
+      let result = match assert_eq.call(&mut hooks, None, values) {
         Ok(res) => res,
         Err(_) => panic!(),
       };
@@ -238,10 +280,15 @@ mod test {
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let assert_eq = AssertNe::new(gc.manage_str("str".to_string(), &NO_GC));
+      let mut context = TestContext::default();
+      let hooks = Hooks::new(&mut context);
 
-      assert_eq!(assert_eq.meta().name, "assertNe");
+      let assert_eq = AssertNe::new(
+        ASSERTNE_META.to_meta(&hooks.to_gc()),
+        hooks.manage_str("str".to_string()),
+      );
+
+      assert_eq!(&*assert_eq.meta().name, "assertNe");
       assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
       assert_eq!(
         assert_eq.meta().signature.parameters[0].kind,
@@ -255,13 +302,17 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::default();
+      let mut context = TestContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let assert_eq = AssertNe::new(hooks.manage_str("str".to_string()));
+
+      let assert_ne = AssertNe::new(
+        ASSERTNE_META.to_meta(&hooks.to_gc()),
+        hooks.manage_str("str".to_string()),
+      );
 
       let values = &[val!(10.5), VALUE_NIL];
 
-      let result = match assert_eq.call(&mut hooks, values) {
+      let result = match assert_ne.call(&mut hooks, None, values) {
         Ok(res) => res,
         Err(_) => panic!(),
       };

@@ -1,35 +1,30 @@
-use crate::support::export_and_insert;
+use crate::{native, support::export_and_insert};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeFun, NativeMeta},
+  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::Arity,
+  val,
   value::Value,
   CallResult, LyResult,
-  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
-const CLOCK_META: NativeMeta = NativeMeta::new("clock", Arity::Fixed(0));
+const CLOCK_META: NativeMetaBuilder = NativeMetaBuilder::fun("clock", Arity::Fixed(0));
 
 pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> LyResult<()> {
   export_and_insert(
     hooks,
     module,
     hooks.manage_str(CLOCK_META.name.to_string()),
-    val!(hooks.manage(Box::new(Clock()) as Box<dyn NativeFun>)),
+    val!(hooks.manage(Box::new(Clock::from(hooks)) as Box<dyn Native>)),
   )
 }
 
-#[derive(Clone, Debug, Trace)]
-pub struct Clock();
+native!(Clock, CLOCK_META);
 
-impl NativeFun for Clock {
-  fn meta(&self) -> &NativeMeta {
-    &CLOCK_META
-  }
-
-  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> CallResult {
+impl Native for Clock {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
     let io = hooks.to_io();
     let time = io.time();
 
@@ -47,7 +42,10 @@ mod test {
 
   #[test]
   fn new() {
-    let clock = Clock();
+    let mut context = MockedContext::default();
+    let hooks = GcHooks::new(&mut context);
+
+    let clock = Clock::from(&hooks);
 
     assert_eq!(clock.meta().name, "clock");
     assert_eq!(clock.meta().signature.arity, Arity::Fixed(0));
@@ -55,19 +53,19 @@ mod test {
 
   #[test]
   fn call() {
-    let clock = Clock();
     let mut context = MockedContext::default();
     let mut hooks = Hooks::new(&mut context);
+    let clock = Clock::from(&hooks);
 
     let values = &[];
 
-    let result1 = clock.call(&mut hooks, values);
+    let result1 = clock.call(&mut hooks, None, values);
     let res1 = match result1 {
       Ok(res) => res,
       Err(_) => panic!(),
     };
 
-    let result2 = clock.call(&mut hooks, values);
+    let result2 = clock.call(&mut hooks, None, values);
     let res2 = match result2 {
       Ok(res) => res,
       Err(_) => panic!(),

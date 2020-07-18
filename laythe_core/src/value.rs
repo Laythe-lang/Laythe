@@ -15,8 +15,7 @@ pub enum ValueKind {
   Instance,
   Iter,
   Method,
-  NativeFun,
-  NativeMethod,
+  Native,
   Upvalue,
 }
 
@@ -38,7 +37,7 @@ mod unboxed {
   use super::*;
   use crate::{
     iterator::LyIterator,
-    native::{NativeFun, NativeMethod},
+    native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
   use laythe_env::{
@@ -68,8 +67,7 @@ mod unboxed {
     Instance(Managed<Instance>),
     Method(Managed<Method>),
     Iter(Managed<LyIterator>),
-    NativeFun(Managed<Box<dyn NativeFun>>),
-    NativeMethod(Managed<Box<dyn NativeMethod>>),
+    Native(Managed<Box<dyn Native>>),
     Upvalue(Managed<Upvalue>),
   }
 
@@ -188,17 +186,9 @@ mod unboxed {
     }
 
     #[inline]
-    pub fn is_native_fun(&self) -> bool {
+    pub fn is_native(&self) -> bool {
       match self {
-        Value::NativeFun(_) => true,
-        _ => false,
-      }
-    }
-
-    #[inline]
-    pub fn is_native_method(&self) -> bool {
-      match self {
-        Value::NativeMethod(_) => true,
+        Value::Native(_) => true,
         _ => false,
       }
     }
@@ -362,19 +352,10 @@ mod unboxed {
 
     /// Unwrap a laythe native function, panics if not a native function
     #[inline]
-    pub fn to_native_fun(&self) -> Managed<Box<dyn NativeFun>> {
+    pub fn to_native(&self) -> Managed<Box<dyn Native>> {
       match self {
-        Self::NativeFun(native_fun) => *native_fun,
+        Self::Native(native_fun) => *native_fun,
         _ => panic!("Expected native function!"),
-      }
-    }
-
-    /// Unwrap a laythe native method, panics if not a native method
-    #[inline]
-    pub fn to_native_method(&self) -> Managed<Box<dyn NativeMethod>> {
-      match self {
-        Self::NativeMethod(native_method) => *native_method,
-        _ => panic!("Expected native method"),
       }
     }
 
@@ -546,8 +527,7 @@ mod unboxed {
         Value::Instance(_) => "instance".to_string(),
         Value::Iter(_) => "iterator".to_string(),
         Value::Upvalue(_) => "upvalue".to_string(),
-        Value::NativeFun(_) => "native function".to_string(),
-        Value::NativeMethod(_) => "native method".to_string(),
+        Value::Native(_) => "native".to_string(),
       }
     }
 
@@ -566,8 +546,7 @@ mod unboxed {
         Value::Instance(_) => ValueKind::Instance,
         Value::Iter(_) => ValueKind::Iter,
         Value::Upvalue(_) => ValueKind::Upvalue,
-        Value::NativeFun(_) => ValueKind::NativeFun,
-        Value::NativeMethod(_) => ValueKind::NativeMethod,
+        Value::Native(_) => ValueKind::Native,
       }
     }
   }
@@ -644,15 +623,9 @@ mod unboxed {
     }
   }
 
-  impl From<Managed<Box<dyn NativeFun>>> for Value {
-    fn from(managed: Managed<Box<dyn NativeFun>>) -> Value {
-      Value::NativeFun(managed)
-    }
-  }
-
-  impl From<Managed<Box<dyn NativeMethod>>> for Value {
-    fn from(managed: Managed<Box<dyn NativeMethod>>) -> Value {
-      Value::NativeMethod(managed)
+  impl From<Managed<Box<dyn Native>>> for Value {
+    fn from(managed: Managed<Box<dyn Native>>) -> Value {
+      Value::Native(managed)
     }
   }
 
@@ -695,10 +668,7 @@ mod unboxed {
         Self::Class(class) => write!(f, "{}", &class.name.as_str()),
         Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
         Self::Iter(iterator) => write!(f, "{} iterator", &iterator.name()),
-        Self::NativeFun(native_fun) => write!(f, "<native fun {}>", native_fun.meta().name),
-        Self::NativeMethod(native_method) => {
-          write!(f, "<native method {}>", native_method.meta().name)
-        }
+        Self::Native(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
       }
     }
   }
@@ -729,8 +699,7 @@ mod unboxed {
         (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
         (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,
         (Self::Method(method1), Self::Method(method2)) => method1 == method2,
-        (Self::NativeFun(native1), Self::NativeFun(native2)) => native1 == native2,
-        (Self::NativeMethod(native1), Self::NativeMethod(native2)) => native1 == native2,
+        (Self::Native(native1), Self::Native(native2)) => native1 == native2,
         (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => upvalue1 == upvalue2,
         (Self::Class(class1), Self::Class(class2)) => class1 == class2,
         (Self::Instance(instance1), Self::Instance(instance2)) => instance1 == instance2,
@@ -778,12 +747,8 @@ mod unboxed {
           ValueKind::Method.hash(state);
           method.hash(state);
         }
-        Self::NativeFun(native) => {
-          ValueKind::NativeFun.hash(state);
-          native.hash(state);
-        }
-        Self::NativeMethod(native) => {
-          ValueKind::NativeMethod.hash(state);
+        Self::Native(native) => {
+          ValueKind::Native.hash(state);
           native.hash(state);
         }
         Self::Upvalue(upvalue) => {
@@ -822,8 +787,7 @@ mod unboxed {
         Value::Instance(instance) => instance.trace(),
         Value::Iter(iter) => iter.trace(),
         Value::Upvalue(upvalue) => upvalue.trace(),
-        Value::NativeFun(native) => native.trace(),
-        Value::NativeMethod(native) => native.trace(),
+        Value::Native(native) => native.trace(),
       }
     }
 
@@ -842,8 +806,7 @@ mod unboxed {
         Value::Instance(instance) => instance.trace_debug(stdio),
         Value::Iter(iter) => iter.trace_debug(stdio),
         Value::Upvalue(upvalue) => upvalue.trace_debug(stdio),
-        Value::NativeFun(native) => native.trace_debug(stdio),
-        Value::NativeMethod(native) => native.trace_debug(stdio),
+        Value::Native(native) => native.trace_debug(stdio),
       }
     }
   }
@@ -891,7 +854,7 @@ mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
     iterator::LyIterator,
-    native::{NativeFun, NativeMethod},
+    native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
   use laythe_env::{
@@ -918,9 +881,8 @@ mod boxed {
   const TAG_INSTANCE: u64 = 2 | BIT_SIGN | QNAN;
   const TAG_METHOD: u64 = 3 | BIT_SIGN | QNAN;
   const TAG_ITER: u64 = 4 | BIT_SIGN | QNAN;
-  const TAG_NATIVE_FUN: u64 = 5 | BIT_SIGN | QNAN;
-  const TAG_NATIVE_METHOD: u64 = 6 | BIT_SIGN | QNAN;
-  const TAG_UPVALUE: u64 = 7 | BIT_SIGN | QNAN;
+  const TAG_NATIVE: u64 = 5 | BIT_SIGN | QNAN;
+  const TAG_UPVALUE: u64 = 6 | BIT_SIGN | QNAN;
 
   #[derive(Clone, Copy)]
   #[repr(C)]
@@ -1023,13 +985,8 @@ mod boxed {
     }
 
     #[inline]
-    pub fn is_native_fun(&self) -> bool {
-      self.is_obj_tag(TAG_NATIVE_FUN)
-    }
-
-    #[inline]
-    pub fn is_native_method(&self) -> bool {
-      self.is_obj_tag(TAG_NATIVE_METHOD)
+    pub fn is_native(&self) -> bool {
+      self.is_obj_tag(TAG_NATIVE)
     }
 
     #[inline]
@@ -1101,13 +1058,8 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_native_fun(&self) -> Managed<Box<dyn NativeFun>> {
-      self.to_obj_tag(TAG_NATIVE_FUN)
-    }
-
-    #[inline]
-    pub fn to_native_method(&self) -> Managed<Box<dyn NativeMethod>> {
-      self.to_obj_tag(TAG_NATIVE_METHOD)
+    pub fn to_native(&self) -> Managed<Box<dyn Native>> {
+      self.to_obj_tag(TAG_NATIVE)
     }
 
     #[inline]
@@ -1142,9 +1094,8 @@ mod boxed {
           2 => ValueKind::Instance,
           3 => ValueKind::Method,
           4 => ValueKind::Iter,
-          5 => ValueKind::NativeFun,
-          6 => ValueKind::NativeMethod,
-          7 => ValueKind::Upvalue,
+          5 => ValueKind::Native,
+          6 => ValueKind::Upvalue,
           _ => panic!("value kind failed."),
         }
       }
@@ -1180,8 +1131,7 @@ mod boxed {
         ValueKind::Instance => "instance".to_string(),
         ValueKind::Iter => "iterator".to_string(),
         ValueKind::Upvalue => "upvalue".to_string(),
-        ValueKind::NativeFun => "native function".to_string(),
-        ValueKind::NativeMethod => "native method".to_string(),
+        ValueKind::Native => "native".to_string(),
       }
     }
   }
@@ -1199,8 +1149,7 @@ mod boxed {
         ValueKind::Instance => self.to_instance().trace(),
         ValueKind::Iter => self.to_iter().trace(),
         ValueKind::Upvalue => self.to_upvalue().trace(),
-        ValueKind::NativeFun => self.to_native_fun().trace(),
-        ValueKind::NativeMethod => self.to_native_method().trace(),
+        ValueKind::Native => self.to_native().trace(),
         _ => true,
       }
     }
@@ -1216,8 +1165,7 @@ mod boxed {
         ValueKind::Instance => self.to_instance().trace_debug(stdio),
         ValueKind::Iter => self.to_iter().trace_debug(stdio),
         ValueKind::Upvalue => self.to_upvalue().trace_debug(stdio),
-        ValueKind::NativeFun => self.to_native_fun().trace_debug(stdio),
-        ValueKind::NativeMethod => self.to_native_method().trace_debug(stdio),
+        ValueKind::Native => self.to_native().trace_debug(stdio),
         _ => true,
       }
     }
@@ -1300,15 +1248,9 @@ mod boxed {
     }
   }
 
-  impl From<Managed<Box<dyn NativeFun>>> for Value {
-    fn from(managed: Managed<Box<dyn NativeFun>>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_NATIVE_FUN)
-    }
-  }
-
-  impl From<Managed<Box<dyn NativeMethod>>> for Value {
-    fn from(managed: Managed<Box<dyn NativeMethod>>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_NATIVE_METHOD)
+  impl From<Managed<Box<dyn Native>>> for Value {
+    fn from(managed: Managed<Box<dyn Native>>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_NATIVE)
     }
   }
 
@@ -1356,10 +1298,7 @@ mod boxed {
         ValueKind::Class => write!(f, "{}", &self.to_class().name.as_str()),
         ValueKind::Instance => write!(f, "{} instance", &self.to_instance().class.name),
         ValueKind::Iter => write!(f, "{}", &self.to_iter().name()),
-        ValueKind::NativeFun => write!(f, "<native fun {}>", self.to_native_fun().meta().name),
-        ValueKind::NativeMethod => {
-          write!(f, "<native method {}>", self.to_native_method().meta().name)
-        }
+        ValueKind::Native => write!(f, "<native {}>", self.to_native().meta().name),
       }
     }
   }
@@ -1376,7 +1315,7 @@ mod test {
   use std::{path::PathBuf, ptr::NonNull};
   type Allocs = Vec<Box<Allocation<dyn Manage>>>;
 
-  const VARIANTS: [ValueKind; 15] = [
+  const VARIANTS: [ValueKind; 14] = [
     ValueKind::Bool,
     ValueKind::Nil,
     ValueKind::Number,
@@ -1389,8 +1328,7 @@ mod test {
     ValueKind::Instance,
     ValueKind::Iter,
     ValueKind::Method,
-    ValueKind::NativeFun,
-    ValueKind::NativeMethod,
+    ValueKind::Native,
     ValueKind::Upvalue,
   ];
 
@@ -1408,8 +1346,7 @@ mod test {
       ValueKind::Instance => val.is_instance(),
       ValueKind::Iter => val.is_iter(),
       ValueKind::Method => val.is_method(),
-      ValueKind::NativeFun => val.is_native_fun(),
-      ValueKind::NativeMethod => val.is_native_method(),
+      ValueKind::Native => val.is_native(),
       ValueKind::Upvalue => val.is_upvalue(),
     }
   }
@@ -1498,15 +1435,6 @@ mod test {
     allocs.extend(allocs_string);
     (allocs, managed)
   }
-
-  // Closure(Managed<Closure>),
-  // Class(Managed<Class>),
-  // Instance(Managed<Instance>),
-  // Method(Managed<Method>),
-  // Iter(Managed<LyIterator>),
-  // NativeFun(Managed<Box<dyn NativeFun>>),
-  // NativeMethod(Managed<Box<dyn NativeMethod>>),
-  // Upvalue(Managed<Upvalue>),
 
   #[test]
   fn bool() {

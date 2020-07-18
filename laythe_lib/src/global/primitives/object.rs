@@ -1,11 +1,14 @@
-use crate::support::{export_and_insert, load_class_from_module, to_dyn_method};
+use crate::{
+  native,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::Class,
   package::Package,
-  signature::{Arity, Parameter, ParameterKind},
+  signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
   CallResult, LyResult,
@@ -14,8 +17,8 @@ use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const OBJECT_CLASS_NAME: &'static str = "Object";
 
-const OBJECT_EQUALS: NativeMeta = NativeMeta::new("equals", Arity::Fixed(1))
-  .with_params(&[Parameter::new("other", ParameterKind::Any)]);
+const OBJECT_EQUALS: NativeMetaBuilder = NativeMetaBuilder::method("equals", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("other", ParameterKind::Any)]);
 
 pub fn declare_object_class(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   let name = hooks.manage_str(String::from(OBJECT_CLASS_NAME));
@@ -30,22 +33,17 @@ pub fn define_object_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
   class.add_method(
     &hooks,
     hooks.manage_str(String::from(OBJECT_EQUALS.name)),
-    val!(to_dyn_method(hooks, ObjectEquals())),
+    val!(to_dyn_native(hooks, ObjectEquals::from(hooks))),
   );
 
   Ok(())
 }
 
-#[derive(Clone, Debug, Trace)]
-struct ObjectEquals();
+native!(ObjectEquals, OBJECT_EQUALS);
 
-impl NativeMethod for ObjectEquals {
-  fn meta(&self) -> &NativeMeta {
-    &OBJECT_EQUALS
-  }
-
-  fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    Ok(val!(this == args[0]))
+impl Native for ObjectEquals {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    Ok(val!(this.unwrap() == args[0]))
   }
 }
 
@@ -59,7 +57,10 @@ mod test {
 
     #[test]
     fn new() {
-      let object_equals = ObjectEquals();
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let object_equals = ObjectEquals::from(&hooks);
 
       assert_eq!(object_equals.meta().name, "equals");
       assert_eq!(object_equals.meta().signature.arity, Arity::Fixed(1));
@@ -71,16 +72,16 @@ mod test {
 
     #[test]
     fn call() {
-      let bool_str = ObjectEquals();
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
+      let bool_str = ObjectEquals::from(&hooks);
 
       let ten_1 = val!(10.0);
       let b_false = val!(false);
       let ten_2 = val!(10.0);
 
-      let result1 = bool_str.call(&mut hooks, ten_1, &[ten_2]);
-      let result2 = bool_str.call(&mut hooks, ten_2, &[b_false]);
+      let result1 = bool_str.call(&mut hooks, Some(ten_1), &[ten_2]);
+      let result2 = bool_str.call(&mut hooks, Some(ten_2), &[b_false]);
 
       match result1 {
         Ok(r) => assert_eq!(r.to_bool(), true),

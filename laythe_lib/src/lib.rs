@@ -10,6 +10,48 @@ use laythe_core::{hooks::GcHooks, package::Package, LyResult};
 use laythe_env::managed::Managed;
 use math::math_module;
 
+#[macro_export]
+macro_rules! native {
+  ( $x:ident, $y:ident ) => {
+    #[derive(Debug)]
+    pub struct $x {
+      meta: NativeMeta,
+    }
+
+    impl<'a> From<&GcHooks<'a>> for $x {
+      fn from(hooks: &GcHooks<'a>) -> Self {
+        Self {
+          meta: $y.to_meta(hooks),
+        }
+      }
+    }
+
+    impl<'a> From<&Hooks<'a>> for $x {
+      fn from(hooks: &Hooks<'a>) -> Self {
+        Self {
+          meta: $y.to_meta(&hooks.to_gc()),
+        }
+      }
+    }
+
+    impl MetaData for $x {
+      fn meta(&self) -> &NativeMeta {
+        &self.meta
+      }
+    }
+
+    impl Trace for $x {
+      fn trace(&self) -> bool {
+        self.meta.trace()
+      }
+
+      fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+        self.meta.trace_debug(stdio)
+      }
+    }
+  };
+}
+
 pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 pub const GLOBAL_PATH: &str = "std/global.ly";
@@ -39,9 +81,8 @@ mod test {
       PackageEntity::Module(module) => {
         let import = module.import(hooks);
         import.fields().for_each(|(_key, symbol)| {
-          let option = match symbol.clone().kind() {
-            ValueKind::NativeFun => Some(symbol.to_native_fun().meta().clone()),
-            ValueKind::NativeMethod => Some(symbol.to_native_method().meta().clone()),
+          let option = match symbol.kind() {
+            ValueKind::Native => Some(symbol.to_native().meta().clone()),
             _ => None,
           };
 

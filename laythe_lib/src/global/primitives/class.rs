@@ -1,20 +1,24 @@
-use crate::support::{export_and_insert, load_class_from_module, to_dyn_method};
+use crate::{
+  native,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::Class,
   package::Package,
   signature::Arity,
+  val,
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
-  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
 pub const CLASS_CLASS_NAME: &'static str = "Class";
 
-const CLASS_SUPER_CLASS: NativeMeta = NativeMeta::new("superClass", Arity::Fixed(0));
+const CLASS_SUPER_CLASS: NativeMetaBuilder =
+  NativeMetaBuilder::method("superClass", Arity::Fixed(0));
 
 pub fn declare_class_class(hooks: &GcHooks, module: &mut Module) -> LyResult<()> {
   let name = hooks.manage_str(String::from(CLASS_CLASS_NAME));
@@ -29,22 +33,18 @@ pub fn define_class_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRe
   class_class.add_method(
     &hooks,
     hooks.manage_str(String::from(CLASS_SUPER_CLASS.name)),
-    val!(to_dyn_method(hooks, ClassSuperClass())),
+    val!(to_dyn_native(hooks, ClassSuperClass::from(hooks))),
   );
 
   Ok(())
 }
 
-#[derive(Clone, Debug, Trace)]
-struct ClassSuperClass();
+native!(ClassSuperClass, CLASS_SUPER_CLASS);
 
-impl NativeMethod for ClassSuperClass {
-  fn meta(&self) -> &NativeMeta {
-    &CLASS_SUPER_CLASS
-  }
-
-  fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
+impl Native for ClassSuperClass {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     let super_class = this
+      .unwrap()
       .to_class()
       .super_class()
       .map(|super_class| val!(super_class))
@@ -57,14 +57,17 @@ impl NativeMethod for ClassSuperClass {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::support::MockedContext;
 
   mod super_class {
     use super::*;
-    use crate::support::MockedContext;
 
     #[test]
     fn new() {
-      let class_super_class = ClassSuperClass();
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let class_super_class = ClassSuperClass::from(&hooks);
 
       assert_eq!(class_super_class.meta().name, "superClass");
       assert_eq!(class_super_class.meta().signature.arity, Arity::Fixed(0));
@@ -72,9 +75,9 @@ mod test {
 
     #[test]
     fn call() {
-      let class_super_class = ClassSuperClass();
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
+      let class_super_class = ClassSuperClass::from(&hooks);
 
       let mut class = hooks.manage(Class::bare(hooks.manage_str("someClass".to_string())));
 
@@ -85,8 +88,8 @@ mod test {
       let class_value = val!(class);
       let super_class_value = val!(super_class);
 
-      let result1 = class_super_class.call(&mut hooks, class_value, &[]);
-      let result2 = class_super_class.call(&mut hooks, super_class_value, &[]);
+      let result1 = class_super_class.call(&mut hooks, Some(class_value), &[]);
+      let result2 = class_super_class.call(&mut hooks, Some(super_class_value), &[]);
 
       match result1 {
         Ok(r) => assert_eq!(r, super_class_value),

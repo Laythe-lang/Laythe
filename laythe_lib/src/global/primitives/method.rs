@@ -1,12 +1,13 @@
-use crate::support::{
-  default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_method,
+use crate::{
+  native,
+  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   package::Package,
-  signature::{Arity, Parameter, ParameterKind},
+  signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
   CallResult, LyResult,
@@ -18,10 +19,10 @@ use laythe_env::{
 
 pub const METHOD_CLASS_NAME: &'static str = "Method";
 
-const METHOD_NAME: NativeMeta = NativeMeta::new("name", Arity::Fixed(0));
+const METHOD_NAME: NativeMetaBuilder = NativeMetaBuilder::method("name", Arity::Fixed(0));
 
-const METHOD_CALL: NativeMeta = NativeMeta::new("call", Arity::Variadic(0))
-  .with_params(&[Parameter::new("args", ParameterKind::Any)])
+const METHOD_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::Variadic(0))
+  .with_params(&[ParameterBuilder::new("args", ParameterKind::Any)])
   .with_stack();
 
 pub fn declare_method_class(
@@ -39,61 +40,66 @@ pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
   class.add_method(
     hooks,
     hooks.manage_str(String::from(METHOD_NAME.name)),
-    val!(to_dyn_method(
+    val!(to_dyn_native(
       hooks,
-      MethodName::new(hooks.manage_str(String::from(METHOD_NAME.name))),
+      MethodName::new(
+        METHOD_NAME.to_meta(&hooks),
+        hooks.manage_str(String::from(METHOD_NAME.name))
+      ),
     )),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(METHOD_CALL.name)),
-    val!(to_dyn_method(hooks, MethodCall())),
+    val!(to_dyn_native(hooks, MethodCall::from(hooks))),
   );
 
   Ok(())
 }
 
-#[derive(Clone, Debug, Trace)]
+#[derive(Debug)]
 struct MethodName {
+  meta: NativeMeta,
   method_name: Managed<String>,
 }
 
 impl MethodName {
-  fn new(method_name: Managed<String>) -> Self {
-    Self { method_name }
+  fn new(meta: NativeMeta, method_name: Managed<String>) -> Self {
+    Self { meta, method_name }
   }
 }
 
-impl NativeMethod for MethodName {
+impl MetaData for MethodName {
   fn meta(&self) -> &NativeMeta {
-    &METHOD_NAME
-  }
-
-  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    hooks.call_method_by_name(this.to_method().method, self.method_name, args)
+    &self.meta
   }
 }
 
-#[derive(Clone, Debug, Trace)]
-struct MethodCall();
+impl Native for MethodName {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    hooks.call_method_by_name(this.unwrap().to_method().method, self.method_name, args)
+  }
+}
 
-impl NativeMethod for MethodCall {
-  fn meta(&self) -> &NativeMeta {
-    &METHOD_CALL
+impl Trace for MethodName {
+  fn trace(&self) -> bool {
+    self.meta.trace();
+    self.method_name.trace()
   }
 
-  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    let method = this.to_method();
-    let callable = method.method;
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+    self.meta.trace_debug(stdio);
+    self.method_name.trace_debug(stdio)
+  }
+}
 
-    if callable.is_closure() {
-      hooks.call(this, args)
-    } else if callable.is_native_method() {
-      hooks.call_method(method.receiver, method.method, args)
-    } else {
-      panic!("TODO")
-    }
+native!(MethodCall, METHOD_CALL);
+
+impl Native for MethodCall {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    let method = this.unwrap().to_method();
+    hooks.call_method(method.receiver, method.method, args)
   }
 }
 
@@ -103,14 +109,19 @@ mod test {
 
   mod name {
     use super::*;
-    use crate::support::{fun_from_hooks, test_native_dependencies, MockedContext};
+    use crate::support::{fun_from_hooks, MockedContext};
     use laythe_core::object::{Class, Closure, Instance, Method};
     use laythe_env::memory::NO_GC;
 
     #[test]
     fn new() {
-      let gc = test_native_dependencies();
-      let method_name = MethodName::new(gc.manage_str("name".to_string(), &NO_GC));
+      let context = MockedContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let method_name = MethodName::new(
+        METHOD_NAME.to_meta(&hooks),
+        hooks.manage_str("name".to_string()),
+      );
 
       assert_eq!(method_name.meta().name, "name");
       assert_eq!(method_name.meta().signature.arity, Arity::Fixed(0));
@@ -123,7 +134,10 @@ mod test {
       context.responses.extend_from_slice(responses);
 
       let mut hooks = Hooks::new(&mut context);
-      let method_name = MethodName::new(hooks.manage_str("name".to_string()));
+      let method_name = MethodName::new(
+        METHOD_NAME.to_meta(&hooks.to_gc()),
+        hooks.manage_str("name".to_string()),
+      );
 
       let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
@@ -131,7 +145,7 @@ mod test {
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(val!(instance), val!(closure)));
 
-      let result1 = method_name.call(&mut hooks, val!(method), &[]);
+      let result1 = method_name.call(&mut hooks, Some(val!(method)), &[]);
 
       match result1 {
         Ok(r) => assert_eq!(&*r.to_str(), "example"),
@@ -147,7 +161,10 @@ mod test {
 
     #[test]
     fn new() {
-      let closure_call = MethodCall();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let closure_call = MethodCall::from(&hooks);
 
       assert_eq!(closure_call.meta().name, "call");
       assert_eq!(closure_call.meta().signature.arity, Arity::Variadic(0));
@@ -159,9 +176,9 @@ mod test {
 
     #[test]
     fn call() {
-      let method_call = MethodCall();
       let mut context = MockedContext::new(&[val!(14.3)]);
       let mut hooks = Hooks::new(&mut context);
+      let method_call = MethodCall::from(&hooks);
 
       let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
@@ -169,7 +186,7 @@ mod test {
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(val!(instance), val!(closure)));
 
-      let result1 = method_call.call(&mut hooks, val!(method), &[]);
+      let result1 = method_call.call(&mut hooks, Some(val!(method)), &[]);
 
       match result1 {
         Ok(r) => assert_eq!(r.to_num(), 14.3),

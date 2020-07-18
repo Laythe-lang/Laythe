@@ -1,5 +1,5 @@
 use crate::{
-  managed::{Manage, Trace},
+  managed::{Manage, Managed, Trace},
   stdio::Stdio,
 };
 use std::{mem, path::PathBuf};
@@ -25,6 +25,12 @@ impl Manage for PathBuf {
   }
   fn size(&self) -> usize {
     mem::size_of::<Self>() // TODO add capacity once stabilized? + self.capacity()
+  }
+}
+
+impl<T: AsRef<str>> PartialEq<T> for Managed<String> {
+  fn eq(&self, other: &T) -> bool {
+    &**self == other.as_ref()
   }
 }
 

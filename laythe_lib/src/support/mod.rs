@@ -1,7 +1,7 @@
 use laythe_core::{
   hooks::GcHooks,
   module::Module,
-  native::{NativeFun, NativeMethod},
+  native::Native,
   object::{Class, Instance},
   package::{Import, Package},
   value::Value,
@@ -9,18 +9,8 @@ use laythe_core::{
 };
 use laythe_env::managed::Managed;
 
-pub fn to_dyn_method<T: 'static + NativeMethod>(
-  hooks: &GcHooks,
-  method: T,
-) -> Managed<Box<dyn NativeMethod>> {
-  hooks.manage(Box::new(method) as Box<dyn NativeMethod>)
-}
-
-pub fn to_dyn_fun<T: 'static + NativeFun>(
-  hooks: &GcHooks,
-  method: T,
-) -> Managed<Box<dyn NativeFun>> {
-  hooks.manage(Box::new(method) as Box<dyn NativeFun>)
+pub fn to_dyn_native<T: 'static + Native>(hooks: &GcHooks, method: T) -> Managed<Box<dyn Native>> {
+  hooks.manage(Box::new(method) as Box<dyn Native>)
 }
 
 pub fn create_meta_class(
@@ -120,8 +110,9 @@ mod test {
     module::Module,
     object::Fun,
     signature::Arity,
+    val,
     value::{Value, ValueKind},
-    CallResult, LyError, val,
+    CallResult, LyError,
   };
   use laythe_env::{
     io::Io,
@@ -201,8 +192,7 @@ mod test {
       let arity = match callable.kind() {
         ValueKind::Closure => callable.to_closure().fun.arity,
         ValueKind::Method => callable.to_method().method.to_closure().fun.arity,
-        ValueKind::NativeFun => callable.to_native_fun().meta().signature.arity,
-        ValueKind::NativeMethod => callable.to_native_method().meta().signature.arity,
+        ValueKind::Native => callable.to_native().meta().signature.arity,
         _ => {
           return Err(LyError::new(
             self.gc.manage_str("Not callable".to_string(), &NO_GC),
@@ -236,8 +226,7 @@ mod test {
       let arity = match method.kind() {
         ValueKind::Closure => method.to_closure().fun.arity,
         ValueKind::Method => method.to_method().method.to_closure().fun.arity,
-        ValueKind::NativeFun => method.to_native_fun().meta().signature.arity,
-        ValueKind::NativeMethod => method.to_native_method().meta().signature.arity,
+        ValueKind::Native => method.to_native().meta().signature.arity,
         _ => {
           return Err(LyError::new(
             self.gc.manage_str("Not callable".to_string(), &NO_GC),
@@ -279,8 +268,8 @@ mod test {
           Some(method) => {
             if method.is_closure() {
               method.to_closure().fun.arity
-            } else if method.is_native_method() {
-              method.to_native_fun().meta().signature.arity
+            } else if method.is_native() {
+              method.to_native().meta().signature.arity
             } else {
               panic!("Only closures and native methods should be methods on an instance")
             }

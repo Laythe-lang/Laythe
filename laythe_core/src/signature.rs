@@ -1,4 +1,8 @@
-use crate::value::{Value, ValueKind};
+use crate::{
+  hooks::GcHooks,
+  value::{Value, ValueKind},
+};
+use laythe_env::managed::{Managed, Trace};
 use std::fmt::Display;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -17,6 +21,12 @@ pub enum ArityError {
 }
 
 pub type ArityResult = Result<(), ArityError>;
+
+impl Default for Arity {
+  fn default() -> Self {
+    Self::Fixed(0)
+  }
+}
 
 impl Arity {
   /// Check that the given number of arguments is valid for this
@@ -61,15 +71,37 @@ impl Arity {
 
 /// A native parameter indicating the name and kind of the parameter
 #[derive(Copy, Clone, Debug)]
-pub struct Parameter {
+pub struct ParameterBuilder {
   pub name: &'static str,
+  pub kind: ParameterKind,
+}
+
+impl ParameterBuilder {
+  /// Create a new parameter
+  pub const fn new(name: &'static str, kind: ParameterKind) -> Self {
+    ParameterBuilder { name, kind }
+  }
+
+  /// Build a parameter from this builder
+  pub fn to_param(&self, hooks: &GcHooks) -> Parameter {
+    Parameter {
+      name: hooks.manage_str(self.name.to_string()),
+      kind: self.kind,
+    }
+  }
+}
+
+/// A native parameter indicating the name and kind of the parameter
+#[derive(Copy, Clone, Debug)]
+pub struct Parameter {
+  pub name: Managed<String>,
   pub kind: ParameterKind,
 }
 
 impl Parameter {
   /// Create a new parameter
-  pub const fn new(name: &'static str, kind: ParameterKind) -> Self {
-    Parameter { name, kind }
+  pub const fn new(name: Managed<String>, kind: ParameterKind) -> Self {
+    Self { name, kind }
   }
 }
 
@@ -106,8 +138,7 @@ impl ParameterKind {
       (ParameterKind::Iter, ValueKind::Iter) => true,
       (ParameterKind::Fun, ValueKind::Closure) => true,
       (ParameterKind::Fun, ValueKind::Method) => true,
-      (ParameterKind::Fun, ValueKind::NativeFun) => true,
-      (ParameterKind::Fun, ValueKind::NativeMethod) => true,
+      (ParameterKind::Fun, ValueKind::Native) => true,
       _ => false,
     }
   }
@@ -128,8 +159,7 @@ impl From<Value> for ParameterKind {
       ValueKind::Instance => ParameterKind::Instance,
       ValueKind::Iter => ParameterKind::Iter,
       ValueKind::Method => ParameterKind::Fun,
-      ValueKind::NativeFun => ParameterKind::Fun,
-      ValueKind::NativeMethod => ParameterKind::Fun,
+      ValueKind::Native => ParameterKind::Fun,
       ValueKind::Upvalue => panic!("Should not pass in upvalue directly"),
     }
   }
@@ -153,10 +183,10 @@ impl Display for ParameterKind {
   }
 }
 
-#[derive(Clone, Debug)]
-pub enum Stack {
+#[derive(Clone, Debug, Copy)]
+pub enum Environment {
   StackLess,
-  StackFul,
+  Normal,
 }
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -170,27 +200,25 @@ pub enum SignatureError {
 
 pub type SignatureResult = Result<(), SignatureError>;
 
-const NO_PARAMETERS: &[Parameter] = &[];
+const NO_PARAMETERS: &[ParameterBuilder] = &[];
 
 #[derive(Clone, Debug)]
-pub struct Signature {
+pub struct SignatureBuilder {
   pub arity: Arity,
-  pub parameters: &'static [Parameter],
-  pub stack: Stack,
+  pub parameters: &'static [ParameterBuilder],
 }
 
-impl Signature {
+impl SignatureBuilder {
   /// Create a new default signature with provided arity
   pub const fn new(arity: Arity) -> Self {
-    Signature {
+    Self {
       arity,
       parameters: NO_PARAMETERS,
-      stack: Stack::StackLess,
     }
   }
 
   /// Indicate that this signature has a set of parameters
-  pub const fn with_params(self, parameters: &'static [Parameter]) -> Self {
+  pub const fn with_params(self, parameters: &'static [ParameterBuilder]) -> Self {
     // TODO: wait for const match to be stabilized
     // here I think we want to use the static_assertion library
     // to check that the parameters pass in work given the arity
@@ -198,19 +226,30 @@ impl Signature {
     Self {
       arity: self.arity,
       parameters,
-      stack: self.stack,
     }
   }
 
-  /// Indicate this signature requires the stack
-  pub const fn with_stack(self) -> Self {
-    Self {
+  /// Build a full signature struct
+  pub fn to_sig(&self, hooks: &GcHooks) -> Signature {
+    Signature {
       arity: self.arity,
-      parameters: self.parameters,
-      stack: Stack::StackFul,
+      parameters: self
+        .parameters
+        .iter()
+        .map(|p| p.to_param(hooks))
+        .collect::<Vec<Parameter>>()
+        .into_boxed_slice(),
     }
   }
+}
 
+#[derive(Clone, Debug)]
+pub struct Signature {
+  pub arity: Arity,
+  pub parameters: Box<[Parameter]>,
+}
+
+impl Signature {
   /// Check if the provides arguments are valid for this signature
   pub fn check(&self, args: &[Value]) -> SignatureResult {
     let count = args.len();
@@ -222,7 +261,7 @@ impl Signature {
           return Err(SignatureError::LengthFixed(arity));
         }
 
-        for (index, (argument, parameter)) in args.iter().zip(self.parameters).enumerate() {
+        for (index, (argument, parameter)) in args.iter().zip(self.parameters.iter()).enumerate() {
           if !parameter.kind.is_valid(*argument) {
             return Err(SignatureError::TypeWrong(index as u8));
           }
@@ -268,7 +307,7 @@ impl Signature {
           return Err(SignatureError::LengthDefaultHigh(max_arity));
         }
 
-        for (index, (argument, parameter)) in args.iter().zip(self.parameters).enumerate() {
+        for (index, (argument, parameter)) in args.iter().zip(self.parameters.iter()).enumerate() {
           if !parameter.kind.is_valid(*argument) {
             return Err(SignatureError::TypeWrong(index as u8));
           }
@@ -280,6 +319,20 @@ impl Signature {
   }
 }
 
+impl Trace for Signature {
+  fn trace(&self) -> bool {
+    self.parameters.iter().for_each(|p| {
+      p.name.trace();
+    });
+    true
+  }
+  fn trace_debug(&self, stdio: &mut laythe_env::stdio::Stdio) -> bool {
+    self.parameters.iter().for_each(|p| {
+      p.name.trace_debug(stdio);
+    });
+    true
+  }
+}
 #[cfg(test)]
 mod test {
   use super::*;
@@ -316,17 +369,21 @@ mod test {
 
   mod signature {
     use super::*;
-    use crate::val;
+    use crate::{hooks::support::TestContext, val};
 
-    const PARAMETERS_FIXED: [Parameter; 2] = [
-      Parameter::new("index", ParameterKind::Number),
-      Parameter::new("val", ParameterKind::Any),
+    const PARAMETERS_FIXED: [ParameterBuilder; 2] = [
+      ParameterBuilder::new("index", ParameterKind::Number),
+      ParameterBuilder::new("val", ParameterKind::Any),
     ];
 
     #[test]
     fn check_fixed() {
-      let fixed_signature = Signature::new(Arity::Fixed(2))
-        .with_params(&PARAMETERS_FIXED);
+      let mut context = TestContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let fixed_signature = SignatureBuilder::new(Arity::Fixed(2))
+        .with_params(&PARAMETERS_FIXED)
+        .to_sig(&hooks);
 
       assert_eq!(
         fixed_signature.check(&[]),
@@ -343,15 +400,19 @@ mod test {
       assert_eq!(fixed_signature.check(&[val!(10.0), val!(true)]), Ok(()));
     }
 
-    const PARAMETERS_VARIADIC: [Parameter; 2] = [
-      Parameter::new("stuff", ParameterKind::Bool),
-      Parameter::new("values", ParameterKind::Number),
+    const PARAMETERS_VARIADIC: [ParameterBuilder; 2] = [
+      ParameterBuilder::new("stuff", ParameterKind::Bool),
+      ParameterBuilder::new("values", ParameterKind::Number),
     ];
 
     #[test]
     fn check_variadic() {
-      let fixed_signature = Signature::new(Arity::Variadic(1))
-        .with_params(&PARAMETERS_VARIADIC);
+      let mut context = TestContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let fixed_signature = SignatureBuilder::new(Arity::Variadic(1))
+        .with_params(&PARAMETERS_VARIADIC)
+        .to_sig(&hooks);
 
       assert_eq!(
         fixed_signature.check(&[]),
@@ -376,15 +437,19 @@ mod test {
       );
     }
 
-    const PARAMETERS_DEFAULT: [Parameter; 2] = [
-      Parameter::new("stuff", ParameterKind::Bool),
-      Parameter::new("values", ParameterKind::Number),
+    const PARAMETERS_DEFAULT: [ParameterBuilder; 2] = [
+      ParameterBuilder::new("stuff", ParameterKind::Bool),
+      ParameterBuilder::new("values", ParameterKind::Number),
     ];
 
     #[test]
     fn check_default() {
-      let fixed_signature = Signature::new(Arity::Default(1, 2))
-        .with_params(&PARAMETERS_DEFAULT);
+      let mut context = TestContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let fixed_signature = SignatureBuilder::new(Arity::Default(1, 2))
+        .with_params(&PARAMETERS_DEFAULT)
+        .to_sig(&hooks);
 
       assert_eq!(
         fixed_signature.check(&[]),

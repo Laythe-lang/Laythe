@@ -9,7 +9,7 @@ use laythe_core::{
   constants::{PLACEHOLDER_NAME, SCRIPT},
   hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks, NoContext},
   module::Module,
-  native::{NativeFun, NativeMeta, NativeMethod},
+  native::{Native, NativeMeta},
   object::Map,
   object::{Class, Closure, Fun, Instance, List, Method, Upvalue},
   package::{Import, Package},
@@ -1344,8 +1344,7 @@ impl<'a> VmExecutor<'a> {
     match callee.kind() {
       ValueKind::Closure => self.call(callee.to_closure(), arg_count),
       ValueKind::Method => self.call_method(callee.to_method(), arg_count),
-      ValueKind::NativeFun => self.call_native_fun(callee.to_native_fun(), arg_count),
-      ValueKind::NativeMethod => self.call_native_method(callee.to_native_method(), arg_count),
+      ValueKind::Native => self.call_native_fun(callee.to_native(), arg_count),
       ValueKind::Class => self.call_class(callee.to_class(), arg_count),
       ValueKind::Fun => self.internal_error(&format!(
         "Function {} was not wrapped in a closure.",
@@ -1372,7 +1371,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// call a native function immediately returning the result
-  fn call_native_fun(&mut self, native: Managed<Box<dyn NativeFun>>, arg_count: u8) -> Signal {
+  fn call_native_fun(&mut self, native: Managed<Box<dyn Native>>, arg_count: u8) -> Signal {
     let meta = native.meta();
 
     let args = unsafe {
@@ -1387,40 +1386,13 @@ impl<'a> VmExecutor<'a> {
       return signal;
     }
 
-    match native.call(&mut Hooks::new(self), args) {
-      Ok(value) => {
-        self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
-        self.push(value);
-
-        Signal::OkReturn
-      }
-      Err(error) => self.set_error(error),
-    }
-  }
-
-  /// call a native method immediately returning the result
-  fn call_native_method(
-    &mut self,
-    native: Managed<Box<dyn NativeMethod>>,
-    arg_count: u8,
-  ) -> Signal {
-    let meta = native.meta();
-
-    let args = unsafe {
-      std::slice::from_raw_parts(
-        self.stack_top.offset(-(arg_count as isize)),
-        arg_count as usize,
-      )
+    let this = if meta.is_method {
+      Some(self.get_val(-(arg_count as isize) - 1))
+    } else {
+      None
     };
 
-    // check that the current function is called with the right number of args and types
-    if let Some(error) = self.check_native_arity(meta, args) {
-      return error;
-    }
-
-    let this = self.get_val(-(arg_count as isize) - 1);
-
-    match native.call(&mut Hooks::new(self), this, &args) {
+    match native.call(&mut Hooks::new(self), this, args) {
       Ok(value) => {
         self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
         self.push(value);

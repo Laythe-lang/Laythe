@@ -1,6 +1,6 @@
 use crate::support::export_and_insert;
 use laythe_core::{
-  val, hooks::GcHooks, module::Module, object::Class, package::Package, value::Value, LyResult,
+  hooks::GcHooks, module::Module, object::Class, package::Package, val, value::Value, LyResult,
 };
 
 pub const MODULE_CLASS_NAME: &str = "Module";

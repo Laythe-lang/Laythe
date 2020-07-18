@@ -9,7 +9,8 @@ use laythe_core::{
   object::{Fun, FunKind},
   object::{Map, TryBlock},
   signature::Arity,
-  value::Value, val
+  val,
+  value::Value,
 };
 use laythe_env::{
   managed::{Manage, Managed, Trace},
@@ -1099,14 +1100,12 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Compile a number literal
   fn number(&mut self) {
-    let value = val!(
-      self
-        .parser
-        .previous
-        .lexeme
-        .parse::<f64>()
-        .expect("Unable to parse float")
-    );
+    let value = val!(self
+      .parser
+      .previous
+      .lexeme
+      .parse::<f64>()
+      .expect("Unable to parse float"));
     self.emit_constant(value);
   }
 

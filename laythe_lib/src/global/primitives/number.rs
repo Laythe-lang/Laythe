@@ -1,23 +1,24 @@
-use crate::support::{
-  default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_method,
+use crate::{
+  native,
+  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   package::Package,
   signature::Arity,
+  val,
   value::Value,
   CallResult, LyResult,
-  val
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 use std::mem;
 
 pub const NUMBER_CLASS_NAME: &'static str = "Number";
-const NUMBER_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0));
-const NUMBER_TIMES: NativeMeta = NativeMeta::new("times", Arity::Fixed(0));
+const NUMBER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
+const NUMBER_TIMES: NativeMetaBuilder = NativeMetaBuilder::method("times", Arity::Fixed(0));
 
 pub fn declare_number_class(
   hooks: &GcHooks,
@@ -34,41 +35,31 @@ pub fn define_number_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NUMBER_STR.name)),
-    val!(to_dyn_method(hooks, NumberStr())),
+    val!(to_dyn_native(hooks, NumberStr::from(hooks))),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(String::from(NUMBER_TIMES.name)),
-    val!(to_dyn_method(hooks, NumberTimes())),
+    val!(to_dyn_native(hooks, NumberTimes::from(hooks))),
   );
 
   Ok(())
 }
 
-#[derive(Clone, Debug, Trace)]
-struct NumberStr();
+native!(NumberStr, NUMBER_STR);
 
-impl NativeMethod for NumberStr {
-  fn meta(&self) -> &NativeMeta {
-    &NUMBER_STR
-  }
-
-  fn call(&self, hook: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(val!(hook.manage_str(this.to_num().to_string())))
+impl Native for NumberStr {
+  fn call(&self, hook: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    Ok(val!(hook.manage_str(this.unwrap().to_num().to_string())))
   }
 }
 
-#[derive(Clone, Debug, Trace)]
-struct NumberTimes();
+native!(NumberTimes, NUMBER_TIMES);
 
-impl NativeMethod for NumberTimes {
-  fn meta(&self) -> &NativeMeta {
-    &NUMBER_TIMES
-  }
-
-  fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    let max = this.to_num();
+impl Native for NumberTimes {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    let max = this.unwrap().to_num();
     if max < 0.0 {
       return Err(hooks.make_error("times requires a positive number.".to_string()));
     }
@@ -133,7 +124,10 @@ mod test {
 
     #[test]
     fn new() {
-      let number_str = NumberStr();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let number_str = NumberStr::from(&hooks);
 
       assert_eq!(number_str.meta().name, "str");
       assert_eq!(number_str.meta().signature.arity, Arity::Fixed(0));
@@ -141,11 +135,14 @@ mod test {
 
     #[test]
     fn call() {
-      let number_str = NumberStr();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let number_str = NumberStr::from(&hooks);
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let result = number_str.call(&mut hooks, val!(10.0), &[]);
+      let result = number_str.call(&mut hooks, Some(val!(10.0)), &[]);
       match result {
         Ok(r) => assert_eq!(*r.to_str(), "10".to_string()),
         Err(_) => assert!(false),
@@ -159,7 +156,10 @@ mod test {
 
     #[test]
     fn new() {
-      let number_times = NumberTimes();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let number_times = NumberTimes::from(&hooks);
 
       assert_eq!(number_times.meta().name, "times");
       assert_eq!(number_times.meta().signature.arity, Arity::Fixed(0));
@@ -169,9 +169,9 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(5.0)]);
       let mut hooks = Hooks::new(&mut context);
-      let number_times = NumberTimes();
+      let number_times = NumberTimes::from(&hooks);
 
-      let result = number_times.call(&mut hooks, val!(3.0), &[]);
+      let result = number_times.call(&mut hooks, Some(val!(3.0)), &[]);
       match result {
         Ok(r) => {
           let mut number_times = r.to_iter();
