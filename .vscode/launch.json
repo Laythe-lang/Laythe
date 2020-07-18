@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "std_lib/builtin/method/call.ly",
+        "test.ly",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",
