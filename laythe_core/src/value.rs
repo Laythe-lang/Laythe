@@ -884,6 +884,24 @@ mod boxed {
   const TAG_NATIVE: u64 = 5 | BIT_SIGN | QNAN;
   const TAG_UPVALUE: u64 = 6 | BIT_SIGN | QNAN;
 
+  const VALUE_KIND_MAP: [ValueKind; 15] = [
+    ValueKind::Number,
+    ValueKind::Nil,
+    ValueKind::Bool,
+    ValueKind::Bool,
+    ValueKind::String,
+    ValueKind::List,
+    ValueKind::Map,
+    ValueKind::Closure,
+    ValueKind::Fun,
+    ValueKind::Class,
+    ValueKind::Instance,
+    ValueKind::Method,
+    ValueKind::Iter,
+    ValueKind::Native,
+    ValueKind::Upvalue,
+  ];
+
   #[derive(Clone, Copy)]
   #[repr(C)]
   union NumberUnion {
@@ -1073,32 +1091,13 @@ mod boxed {
         return ValueKind::Number;
       }
 
-      let top_bit = self.0 < BIT_SIGN;
+      let top_bit = self.0 >= BIT_SIGN;
       let lower_byte = self.0 as u8 & 0x7;
 
-      if top_bit {
-        match lower_byte {
-          1 => ValueKind::Nil,
-          2 => ValueKind::Bool,
-          3 => ValueKind::Bool,
-          4 => ValueKind::String,
-          5 => ValueKind::List,
-          6 => ValueKind::Map,
-          7 => ValueKind::Closure,
-          _ => panic!("value kind failed."),
-        }
-      } else {
-        match lower_byte {
-          0 => ValueKind::Fun,
-          1 => ValueKind::Class,
-          2 => ValueKind::Instance,
-          3 => ValueKind::Method,
-          4 => ValueKind::Iter,
-          5 => ValueKind::Native,
-          6 => ValueKind::Upvalue,
-          _ => panic!("value kind failed."),
-        }
-      }
+      let index = lower_byte + (top_bit as u8) * 8;
+
+      debug_assert!(index > 0 && index < 15);
+      unsafe { *VALUE_KIND_MAP.get_unchecked(index as usize) }
     }
 
     /// Get a string representation of the underlying type this value representing
