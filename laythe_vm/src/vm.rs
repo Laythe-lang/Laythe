@@ -5,7 +5,7 @@ use crate::{
   dep_manager::DepManager,
 };
 use laythe_core::{
-  chunk::{ByteCode, UpvalueIndex},
+  chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT},
   hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks, NoContext},
   module::Module,
@@ -13,7 +13,7 @@ use laythe_core::{
   object::Map,
   object::{Class, Closure, Fun, Instance, List, Method, Upvalue},
   package::{Import, Package},
-  signature::{ArityError, ParameterKind, SignatureError},
+  signature::{ArityError, Environment, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
   val,
   value::{Value, ValueKind, VALUE_NIL},
@@ -352,6 +352,11 @@ struct VmExecutor<'a> {
   /// index to the top of the value stack
   stack_top: *mut Value,
 
+  /// TODO replace this. A fun to fill a call frame for higher order native functions
+  /// may want to eventually have a function rental so native functions can set name / module
+  /// for exception
+  native_fun_stub: Managed<Fun>,
+
   /// The current frame depth of the program
   frame_count: usize,
 }
@@ -364,6 +369,13 @@ impl<'a> VmExecutor<'a> {
     let stack_top = &mut vm.stack[1] as *mut Value;
 
     let current_frame = current_frame as *mut CallFrame;
+    let mut native_fun_stub = vm.gc.manage(
+      Fun::new(vm.gc.manage_str("native".to_string(), &NO_GC), vm.global),
+      &NO_GC,
+    );
+    let no_gc_context = NoContext::new(&vm.gc);
+    native_fun_stub.write_instruction(&GcHooks::new(&no_gc_context), AlignedByteCode::Nil, 0);
+
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
       frame_count: 1,
@@ -377,6 +389,7 @@ impl<'a> VmExecutor<'a> {
       stack_top,
       global: vm.global,
       dep_manager: vm.dep_manager,
+      native_fun_stub,
       open_upvalues: Vec::with_capacity(100),
     };
 
@@ -1344,7 +1357,7 @@ impl<'a> VmExecutor<'a> {
     match callee.kind() {
       ValueKind::Closure => self.call(callee.to_closure(), arg_count),
       ValueKind::Method => self.call_method(callee.to_method(), arg_count),
-      ValueKind::Native => self.call_native_fun(callee.to_native(), arg_count),
+      ValueKind::Native => self.call_native(callee.to_native(), arg_count),
       ValueKind::Class => self.call_class(callee.to_class(), arg_count),
       ValueKind::Fun => self.internal_error(&format!(
         "Function {} was not wrapped in a closure.",
@@ -1371,7 +1384,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// call a native function immediately returning the result
-  fn call_native_fun(&mut self, native: Managed<Box<dyn Native>>, arg_count: u8) -> Signal {
+  fn call_native(&mut self, native: Managed<Box<dyn Native>>, arg_count: u8) -> Signal {
     let meta = native.meta();
 
     let args = unsafe {
@@ -1392,14 +1405,30 @@ impl<'a> VmExecutor<'a> {
       None
     };
 
-    match native.call(&mut Hooks::new(self), this, args) {
-      Ok(value) => {
-        self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
-        self.push(value);
+    match meta.environment {
+      Environment::StackLess => match native.call(&mut Hooks::new(self), this, args) {
+        Ok(value) => {
+          self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
+          self.push(value);
 
-        Signal::OkReturn
+          Signal::OkReturn
+        }
+        Err(error) => self.set_error(error),
+      },
+      Environment::Normal => {
+        let native_closure = self.gc.manage(Closure::new(self.native_fun_stub), self);
+        self.push_frame(native_closure, arg_count);
+
+        match native.call(&mut Hooks::new(self), this, args) {
+          Ok(value) => {
+            self.pop_frame();
+            self.push(value);
+
+            Signal::OkReturn
+          }
+          Err(error) => self.set_error(error),
+        }
       }
-      Err(error) => self.set_error(error),
     }
   }
 
@@ -1801,6 +1830,7 @@ impl<'a> Trace for VmExecutor<'a> {
     });
 
     self.dep_manager.trace();
+    self.native_fun_stub.trace();
     self.global.trace();
 
     true
@@ -1828,6 +1858,7 @@ impl<'a> Trace for VmExecutor<'a> {
     });
 
     self.dep_manager.trace_debug(stdio);
+    self.native_fun_stub.trace_debug(stdio);
     self.global.trace_debug(stdio);
 
     true
