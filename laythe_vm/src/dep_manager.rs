@@ -11,6 +11,7 @@ use laythe_env::{
   managed::{Manage, Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::{fmt, mem, path::PathBuf};
 
 pub struct DepManager {
@@ -24,10 +25,10 @@ pub struct DepManager {
   builtin: BuiltIn,
 
   /// A collection of packages that have already been loaded
-  packages: Map<Managed<String>, Managed<Package>>,
+  packages: Map<Managed<SmolStr>, Managed<Package>>,
 
   /// A cache for full filepath to individual modules
-  cache: Map<Managed<String>, Managed<Module>>,
+  cache: Map<Managed<SmolStr>, Managed<Module>>,
 }
 
 impl DepManager {
@@ -57,7 +58,7 @@ impl DepManager {
     &mut self,
     hooks: &GcHooks,
     module: Managed<Module>,
-    path: Managed<String>,
+    path: Managed<SmolStr>,
   ) -> LyResult<Managed<Module>> {
     let mut module_dir = (*module.path).clone();
     module_dir.pop();
@@ -173,7 +174,7 @@ impl Manage for DepManager {
 
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + self.cache.capacity() * 2 * mem::size_of::<Managed<String>>()
-      + self.packages.capacity() * 2 * mem::size_of::<Managed<String>>()
+      + self.cache.capacity() * 2 * mem::size_of::<Managed<SmolStr>>()
+      + self.packages.capacity() * 2 * mem::size_of::<Managed<SmolStr>>()
   }
 }

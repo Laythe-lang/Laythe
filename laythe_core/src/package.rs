@@ -4,20 +4,21 @@ use laythe_env::{
   managed::{Manage, Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::fmt;
 use std::mem;
 
 /// An object representing an import request from a file
-pub struct Import(Vec<Managed<String>>);
+pub struct Import(Vec<Managed<SmolStr>>);
 
 impl Import {
   /// Create a new import
-  pub fn new(path: Vec<Managed<String>>) -> Self {
+  pub fn new(path: Vec<Managed<SmolStr>>) -> Self {
     Self(path)
   }
 
   /// Get the package name
-  pub fn package(&self) -> Option<Managed<String>> {
+  pub fn package(&self) -> Option<Managed<SmolStr>> {
     self.0.first().copied()
   }
 
@@ -55,15 +56,15 @@ pub enum PackageEntity {
 #[derive(Clone)]
 pub struct Package {
   /// The name of the package
-  name: Managed<String>,
+  name: Managed<SmolStr>,
 
   /// A hash of names to sub packages and modules
-  entities: Map<Managed<String>, PackageEntity>,
+  entities: Map<Managed<SmolStr>, PackageEntity>,
 }
 
 impl Package {
   /// Create a new package
-  pub fn new(name: Managed<String>) -> Self {
+  pub fn new(name: Managed<SmolStr>) -> Self {
     Self {
       name,
       entities: Map::default(),
@@ -71,7 +72,7 @@ impl Package {
   }
 
   /// Retrieve the name of this package
-  pub fn name(&self) -> Managed<String> {
+  pub fn name(&self) -> Managed<SmolStr> {
     self.name
   }
 
@@ -105,7 +106,7 @@ impl Package {
   }
 
   /// Get an iterator to the elements in this package
-  pub fn entities(&self) -> Iter<'_, Managed<String>, PackageEntity> {
+  pub fn entities(&self) -> Iter<'_, Managed<SmolStr>, PackageEntity> {
     self.entities.iter()
   }
 
@@ -194,7 +195,7 @@ impl Manage for Package {
 
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + (mem::size_of::<Managed<String>>() + mem::size_of::<PackageEntity>())
+      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<PackageEntity>())
         * (self.entities.capacity())
   }
 }

@@ -8,6 +8,7 @@ use laythe_env::{
   managed::{Manage, Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::fmt;
 use std::{mem, ptr};
 
@@ -81,7 +82,7 @@ impl NativeMetaBuilder {
 #[derive(Clone, Debug)]
 pub struct NativeMeta {
   /// The name of the native function
-  pub name: Managed<String>,
+  pub name: Managed<SmolStr>,
 
   /// Is this native function used as a method
   pub is_method: bool,

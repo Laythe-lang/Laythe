@@ -15,7 +15,7 @@ pub fn to_dyn_native<T: 'static + Native>(hooks: &GcHooks, method: T) -> Managed
 
 pub fn create_meta_class(
   hooks: &GcHooks,
-  name: Managed<String>,
+  name: Managed<SmolStr>,
   class_class: Managed<Class>,
 ) -> Managed<Class> {
   hooks.manage(Class::new(
@@ -91,7 +91,7 @@ pub fn load_instance_from_module(
 pub fn export_and_insert(
   hooks: &GcHooks,
   module: &mut Module,
-  name: Managed<String>,
+  name: Managed<SmolStr>,
   symbol: Value,
 ) -> LyResult<()> {
   module.insert_symbol(hooks, name, symbol);
@@ -101,6 +101,7 @@ pub fn export_and_insert(
 #[cfg(test)]
 pub use self::test::*;
 use crate::GLOBAL_PATH;
+use smol_str::SmolStr;
 
 #[cfg(test)]
 mod test {
@@ -123,6 +124,7 @@ mod test {
       Stdio,
     },
   };
+  use smol_str::SmolStr;
   use std::{path::PathBuf, rc::Rc};
 
   pub struct MockedContext {
@@ -259,7 +261,7 @@ mod test {
     fn call_method_by_name(
       &mut self,
       this: Value,
-      method_name: Managed<String>,
+      method_name: Managed<SmolStr>,
       args: &[Value],
     ) -> CallResult {
       let arity = if this.is_instance() {

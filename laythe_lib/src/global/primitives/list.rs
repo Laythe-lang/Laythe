@@ -19,6 +19,7 @@ use laythe_env::{
   managed::{Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::{mem, slice::Iter};
 
 pub const LIST_CLASS_NAME: &'static str = "List";
@@ -139,11 +140,11 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 #[derive(Debug, Trace)]
 struct ListStr {
   meta: NativeMeta,
-  method_name: Managed<String>,
+  method_name: Managed<SmolStr>,
 }
 
 impl ListStr {
-  fn new(meta: NativeMeta, method_name: Managed<String>) -> Self {
+  fn new(meta: NativeMeta, method_name: Managed<SmolStr>) -> Self {
     Self { meta, method_name }
   }
 }

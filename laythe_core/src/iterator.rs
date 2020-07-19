@@ -7,6 +7,7 @@ use laythe_env::{
   managed::{Manage, Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::fmt;
 use std::mem;
 
@@ -33,7 +34,7 @@ impl LyIterator {
   }
 
   /// Allow access the "current" field in the iterator
-  pub fn get_field(&self, name: &Managed<String>) -> Option<&Value> {
+  pub fn get_field(&self, name: &Managed<SmolStr>) -> Option<&Value> {
     if &***name == "current" {
       return Some(&self.current);
     }

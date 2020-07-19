@@ -45,6 +45,7 @@ mod unboxed {
     stdio::Stdio,
   };
 
+  use smol_str::SmolStr;
   use std::fmt;
   use std::hash::Hash;
 
@@ -58,7 +59,7 @@ mod unboxed {
     Bool(bool),
     Nil,
     Number(f64),
-    String(Managed<String>),
+    String(Managed<SmolStr>),
     List(Managed<List<Value>>),
     Map(Managed<Map<Value, Value>>),
     Fun(Managed<Fun>),
@@ -246,13 +247,13 @@ mod unboxed {
     /// let gc = Gc::default();
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
-    /// let managed =  hooks.manage_str("example".to_string());
+    /// let managed =  hooks.manage_str("example");
     ///
     /// let value = Value::String(managed);
     /// assert_eq!(&*value.to_str(), "example")
     /// ```
     #[inline]
-    pub fn to_str(&self) -> Managed<String> {
+    pub fn to_str(&self) -> Managed<SmolStr> {
       match self {
         Self::String(str1) => *str1,
         _ => panic!("Expected string."),
@@ -569,8 +570,8 @@ mod unboxed {
     }
   }
 
-  impl From<Managed<String>> for Value {
-    fn from(managed: Managed<String>) -> Value {
+  impl From<Managed<SmolStr>> for Value {
+    fn from(managed: Managed<SmolStr>) -> Value {
       Value::String(managed)
     }
   }
@@ -817,7 +818,7 @@ mod unboxed {
     use laythe_env::managed::Allocation;
     use std::ptr::NonNull;
 
-    fn example_each(string: Managed<String>) -> Vec<Value> {
+    fn example_each(string: Managed<SmolStr>) -> Vec<Value> {
       vec![
         Value::Bool(true),
         Value::Nil,
@@ -862,6 +863,7 @@ mod boxed {
     stdio::Stdio,
   };
 
+  use smol_str::SmolStr;
   use std::fmt;
   use std::ptr::NonNull;
 
@@ -1031,7 +1033,7 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_str(&self) -> Managed<String> {
+    pub fn to_str(&self) -> Managed<SmolStr> {
       self.to_obj_tag(TAG_STRING)
     }
 
@@ -1193,8 +1195,8 @@ mod boxed {
     }
   }
 
-  impl From<Managed<String>> for Value {
-    fn from(managed: Managed<String>) -> Value {
+  impl From<Managed<SmolStr>> for Value {
+    fn from(managed: Managed<SmolStr>) -> Value {
       Self(managed.to_usize() as u64 | TAG_STRING)
     }
   }
@@ -1311,6 +1313,7 @@ mod test {
     object::{Class, Closure, Fun, List, Map},
   };
   use laythe_env::managed::{Allocation, Manage, Managed};
+  use smol_str::SmolStr;
   use std::{path::PathBuf, ptr::NonNull};
   type Allocs = Vec<Box<Allocation<dyn Manage>>>;
 
@@ -1360,8 +1363,8 @@ mod test {
     });
   }
 
-  fn test_string() -> (Allocs, Managed<String>) {
-    let string = "sup".to_string();
+  fn test_string() -> (Allocs, Managed<SmolStr>) {
+    let string = SmolStr::from("sup");
     let mut alloc = Box::new(Allocation::new(string));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
@@ -1467,13 +1470,13 @@ mod test {
 
   #[test]
   fn string() {
-    let string = "sup".to_string();
+    let string = SmolStr::from("sup");
     let mut alloc = Box::new(Allocation::new(string));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
     let managed = Managed::from(ptr);
     let value = val!(managed);
-    let managed2: Managed<String> = value.to_str();
+    let managed2: Managed<SmolStr> = value.to_str();
 
     assert_type(value, ValueKind::String);
 

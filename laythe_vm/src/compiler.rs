@@ -21,6 +21,7 @@ use std::mem;
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_chunk;
+use smol_str::SmolStr;
 
 /// The result of a compilation
 pub type CompilerResult = Result<Managed<Fun>, ()>;
@@ -144,7 +145,7 @@ impl<'a, 's> Compiler<'a, 's> {
   }
 
   /// Construct an inner compiler used to compile functions inside of a script
-  fn child(name: Managed<String>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
+  fn child(name: Managed<SmolStr>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
     let mut child = Self {
       fun: unsafe { (*enclosing).fun },
       fun_kind: fun_kind.clone(),

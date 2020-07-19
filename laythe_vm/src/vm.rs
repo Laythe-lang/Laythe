@@ -38,6 +38,7 @@ use crate::debug::{disassemble_instruction, exception_catch};
 #[cfg(feature = "debug")]
 use std::io;
 
+use smol_str::SmolStr;
 #[cfg(feature = "debug_upvalues")]
 use std::io;
 
@@ -445,7 +446,7 @@ impl<'a> VmExecutor<'a> {
   pub fn run_method_by_name(
     &mut self,
     this: Value,
-    method_name: Managed<String>,
+    method_name: Managed<SmolStr>,
     args: &[Value],
   ) -> ExecuteResult {
     let class = self
@@ -669,7 +670,7 @@ impl<'a> VmExecutor<'a> {
 
   /// read a constant as a string from the current chunk
   #[inline]
-  fn read_string(&self, index: u16) -> Managed<String> {
+  fn read_string(&self, index: u16) -> Managed<SmolStr> {
     self.read_constant(index).to_str()
   }
 
@@ -784,7 +785,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// invoke a method
-  fn invoke(&mut self, receiver: Value, method_name: Managed<String>, arg_count: u8) -> Signal {
+  fn invoke(&mut self, receiver: Value, method_name: Managed<SmolStr>, arg_count: u8) -> Signal {
     if receiver.is_instance() {
       let instance = receiver.to_instance();
       if let Some(field) = instance.get_field(&method_name) {
@@ -1092,7 +1093,7 @@ impl<'a> VmExecutor<'a> {
     self.get_property(value, name)
   }
 
-  fn get_property(&mut self, value: Value, name: Managed<String>) -> Signal {
+  fn get_property(&mut self, value: Value, name: Managed<SmolStr>) -> Signal {
     let kind = value.kind();
     match kind {
       ValueKind::Instance => {
@@ -1556,7 +1557,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// bind a method to an instance
-  fn bind_method(&mut self, class: Managed<Class>, name: Managed<String>) -> Signal {
+  fn bind_method(&mut self, class: Managed<Class>, name: Managed<SmolStr>) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
         let bound = self.gc.manage(Method::new(self.peek(0), method), self);
@@ -1571,7 +1572,7 @@ impl<'a> VmExecutor<'a> {
   fn invoke_from_class(
     &mut self,
     class: Managed<Class>,
-    method_name: Managed<String>,
+    method_name: Managed<SmolStr>,
     arg_count: u8,
   ) -> Signal {
     match class.get_method(&method_name) {
@@ -1899,7 +1900,7 @@ impl<'a> CallContext for VmExecutor<'a> {
   fn call_method_by_name(
     &mut self,
     this: Value,
-    method_name: Managed<String>,
+    method_name: Managed<SmolStr>,
     args: &[Value],
   ) -> CallResult {
     let result = self.run_method_by_name(this, method_name, args);

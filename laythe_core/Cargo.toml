@@ -16,3 +16,4 @@ laythe_env = { path = "../laythe_env" }
 fnv = "1.0.3"
 linear-map = "1.2.0"
 hashbrown = "0.7.2"
+smol_str = "0.1.16"

@@ -1,6 +1,7 @@
 use crate::managed::{Allocation, Manage, Managed, Trace};
 use crate::stdio::Stdio;
 use hashbrown::HashMap;
+use smol_str::SmolStr;
 use std::cell::{Cell, RefCell};
 use std::ptr::NonNull;
 
@@ -25,7 +26,7 @@ pub struct Gc {
   bytes_allocated: Cell<usize>,
 
   /// The intern string cache
-  intern_cache: RefCell<HashMap<&'static str, Managed<String>>>,
+  intern_cache: RefCell<HashMap<&'static str, Managed<SmolStr>>>,
 
   /// The size in bytes of the gc before the next collection
   next_gc: Cell<usize>,
@@ -98,7 +99,12 @@ impl<'a> Gc {
   ///
   /// assert_eq!(&*str, "hi!");
   /// ```
-  pub fn manage_str<C: Trace + ?Sized>(&self, string: String, context: &C) -> Managed<String> {
+  pub fn manage_str<C: Trace + ?Sized, S: Into<String> + AsRef<str>>(
+    &self,
+    src: S,
+    context: &C,
+  ) -> Managed<SmolStr> {
+    let string = SmolStr::from(src);
     if let Some(cached) = self.intern_cache.borrow_mut().get(&*string) {
       return *cached;
     }
@@ -439,7 +445,7 @@ mod test {
     let dyn_trace: Box<dyn Trace> = Box::new(NoGc());
     let gc = Gc::default();
 
-    let dyn_manged_str = gc.manage("managed".to_string(), &*dyn_trace);
-    assert_eq!(*dyn_manged_str, "managed".to_string());
+    let dyn_manged_str = gc.manage(SmolStr::from("managed"), &*dyn_trace);
+    assert_eq!(*dyn_manged_str, SmolStr::from("managed"));
   }
 }

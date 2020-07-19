@@ -8,6 +8,7 @@ use laythe_env::{
   memory::Gc,
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 
 /// A set of commands that a native function to request from it's surrounding
 /// context
@@ -68,7 +69,7 @@ impl<'a> Hooks<'a> {
   pub fn call_method_by_name(
     &mut self,
     this: Value,
-    method_name: Managed<String>,
+    method_name: Managed<SmolStr>,
     args: &[Value],
   ) -> CallResult {
     self
@@ -93,7 +94,7 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request a string be managed by the context's garbage collector
-  pub fn manage_str(&self, string: String) -> Managed<String> {
+  pub fn manage_str(&self, string: String) -> Managed<SmolStr> {
     self.to_gc().manage_str(string)
   }
 
@@ -171,7 +172,7 @@ impl<'a> GcHooks<'a> {
 
   /// Request a string be managed by the context's garbage collector
   #[inline]
-  pub fn manage_str(&self, string: String) -> Managed<String> {
+  pub fn manage_str<S: Into<String> + AsRef<str>>(&self, string: S) -> Managed<SmolStr> {
     self.context.gc().manage_str(string, self.context)
   }
 
@@ -246,7 +247,7 @@ impl<'a> CallHooks<'a> {
   pub fn call_method_by_name(
     &mut self,
     this: Value,
-    method_name: Managed<String>,
+    method_name: Managed<SmolStr>,
     args: &[Value],
   ) -> CallResult {
     self.context.call_method_by_name(this, method_name, args)
@@ -271,7 +272,7 @@ pub trait CallContext {
   fn call_method_by_name(
     &mut self,
     this: Value,
-    method_name: Managed<String>,
+    method_name: Managed<SmolStr>,
     args: &[Value],
   ) -> CallResult;
 }
@@ -336,7 +337,7 @@ impl<'a> CallContext for NoContext<'a> {
   fn call_method_by_name(
     &mut self,
     _this: Value,
-    _method_name: Managed<String>,
+    _method_name: Managed<SmolStr>,
     _args: &[Value],
   ) -> CallResult {
     Ok(VALUE_NIL)
@@ -402,7 +403,7 @@ pub mod support {
     fn call_method_by_name(
       &mut self,
       _this: Value,
-      _method_name: Managed<String>,
+      _method_name: Managed<SmolStr>,
       _args: &[Value],
     ) -> CallResult {
       Ok(VALUE_NIL)

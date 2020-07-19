@@ -19,6 +19,7 @@ use laythe_env::{
   managed::{Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::fmt;
 use std::mem;
 
@@ -116,12 +117,12 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
 
 #[derive(Debug)]
 struct MapStr {
-  method_name: Managed<String>,
+  method_name: Managed<SmolStr>,
   meta: NativeMeta,
 }
 
 impl MapStr {
-  fn new(meta: NativeMeta, method_name: Managed<String>) -> Self {
+  fn new(meta: NativeMeta, method_name: Managed<SmolStr>) -> Self {
     Self { meta, method_name }
   }
 }
@@ -157,7 +158,7 @@ impl Native for MapStr {
 
 fn format_map_entry(
   item: &Value,
-  method_name: Managed<String>,
+  method_name: Managed<SmolStr>,
   buffer: &mut String,
   hooks: &mut Hooks,
 ) -> Result<(), LyError> {

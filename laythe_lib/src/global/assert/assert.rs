@@ -12,6 +12,7 @@ use laythe_env::{
   managed::{Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 
 const ASSERT_META: NativeMetaBuilder = NativeMetaBuilder::fun("assert", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("value", ParameterKind::Bool)]);
@@ -57,7 +58,7 @@ pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResul
   )
 }
 
-fn to_str(hooks: &mut Hooks, value: Value) -> Managed<String> {
+fn to_str(hooks: &mut Hooks, value: Value) -> Managed<SmolStr> {
   let result = hooks.call_method_by_name(value, hooks.manage_str("str".to_string()), &[]);
 
   if let Ok(ok) = result {
@@ -73,13 +74,13 @@ fn to_str(hooks: &mut Hooks, value: Value) -> Managed<String> {
 /// A native method to assert that for a boolean true value
 pub struct Assert {
   /// reference to 'str'
-  method_str: Managed<String>,
+  method_str: Managed<SmolStr>,
   meta: NativeMeta,
 }
 
 impl Assert {
   /// Construct a new instance of the native assert function
-  pub fn new(meta: NativeMeta, method_str: Managed<String>) -> Self {
+  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>) -> Self {
     Self { meta, method_str }
   }
 }
@@ -117,12 +118,12 @@ impl Trace for Assert {
 #[derive(Debug, Trace)]
 pub struct AssertEq {
   meta: NativeMeta,
-  method_str: Managed<String>,
+  method_str: Managed<SmolStr>,
 }
 
 impl AssertEq {
   /// Construct a new instance of the native assertEq function
-  pub fn new(meta: NativeMeta, method_str: Managed<String>) -> Self {
+  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>) -> Self {
     Self { meta, method_str }
   }
 }
@@ -152,12 +153,12 @@ impl Native for AssertEq {
 #[derive(Debug, Trace)]
 pub struct AssertNe {
   meta: NativeMeta,
-  method_str: Managed<String>,
+  method_str: Managed<SmolStr>,
 }
 
 impl AssertNe {
   /// Construct a new instance of the native assertNe function
-  pub fn new(meta: NativeMeta, method_str: Managed<String>) -> Self {
+  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>) -> Self {
     Self { meta, method_str }
   }
 }

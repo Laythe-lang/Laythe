@@ -3,6 +3,7 @@ use crate::{
   value::{Value, ValueKind},
 };
 use laythe_env::managed::{Managed, Trace};
+use smol_str::SmolStr;
 use std::fmt::Display;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -94,13 +95,13 @@ impl ParameterBuilder {
 /// A native parameter indicating the name and kind of the parameter
 #[derive(Copy, Clone, Debug)]
 pub struct Parameter {
-  pub name: Managed<String>,
+  pub name: Managed<SmolStr>,
   pub kind: ParameterKind,
 }
 
 impl Parameter {
   /// Create a new parameter
-  pub const fn new(name: Managed<String>, kind: ParameterKind) -> Self {
+  pub const fn new(name: Managed<SmolStr>, kind: ParameterKind) -> Self {
     Self { name, kind }
   }
 }

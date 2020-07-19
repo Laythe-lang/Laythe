@@ -60,7 +60,7 @@ native!(StringHas, STRING_HAS);
 impl Native for StringHas {
   fn call(&self, _vhooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
     let str = this.unwrap().to_str();
-    Ok(val!(str.contains(&*args[0].to_str())))
+    Ok(val!(str.contains(args[0].to_str().as_str())))
   }
 }
 

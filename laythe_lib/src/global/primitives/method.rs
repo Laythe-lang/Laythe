@@ -16,6 +16,7 @@ use laythe_env::{
   managed::{Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 
 pub const METHOD_CLASS_NAME: &'static str = "Method";
 
@@ -61,11 +62,11 @@ pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
 #[derive(Debug)]
 struct MethodName {
   meta: NativeMeta,
-  method_name: Managed<String>,
+  method_name: Managed<SmolStr>,
 }
 
 impl MethodName {
-  fn new(meta: NativeMeta, method_name: Managed<String>) -> Self {
+  fn new(meta: NativeMeta, method_name: Managed<SmolStr>) -> Self {
     Self { meta, method_name }
   }
 }

@@ -20,16 +20,17 @@ pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
 use laythe_env::managed::Managed;
+use smol_str::SmolStr;
 use std::fmt;
 
 #[derive(Clone, PartialEq, Debug)]
 pub struct LyError {
-  pub message: Managed<String>,
+  pub message: Managed<SmolStr>,
   inner: Option<Box<LyError>>,
 }
 
 impl LyError {
-  pub fn new(message: Managed<String>) -> Self {
+  pub fn new(message: Managed<SmolStr>) -> Self {
     Self {
       message,
       inner: None,
