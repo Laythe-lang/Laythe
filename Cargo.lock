@@ -258,6 +258,7 @@ dependencies = [
  "hashbrown 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "laythe_env 0.1.0",
  "linear-map 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "smol_str 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -266,6 +267,7 @@ version = "0.1.0"
 dependencies = [
  "hashbrown 0.7.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "laythe_macro 0.1.0",
+ "smol_str 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -279,6 +281,7 @@ dependencies = [
  "laythe_core 0.1.0",
  "laythe_env 0.1.0",
  "rand 0.7.3 (registry+https://github.com/rust-lang/crates.io-index)",
+ "smol_str 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -307,6 +310,7 @@ dependencies = [
  "laythe_env 0.1.0",
  "laythe_lib 0.1.0",
  "laythe_native 0.1.0",
+ "smol_str 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -562,6 +566,11 @@ dependencies = [
 ]
 
 [[package]]
+name = "smol_str"
+version = "0.1.16"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
+[[package]]
 name = "syn"
 version = "1.0.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -758,6 +767,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 "checksum serde 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)" = "e707fbbf255b8fc8c3b99abb91e7257a622caeb20a9818cbadbeeede4e0932ff"
 "checksum serde_derive 1.0.105 (registry+https://github.com/rust-lang/crates.io-index)" = "ac5d00fc561ba2724df6758a17de23df5914f20e41cb00f94d5b7ae42fffaff8"
 "checksum serde_json 1.0.48 (registry+https://github.com/rust-lang/crates.io-index)" = "9371ade75d4c2d6cb154141b9752cf3781ec9c05e0e5cf35060e1e70ee7b9c25"
+"checksum smol_str 0.1.16 (registry+https://github.com/rust-lang/crates.io-index)" = "2f7909a1d8bc166a862124d84fdc11bda0ea4ed3157ccca662296919c2972db1"
 "checksum syn 1.0.33 (registry+https://github.com/rust-lang/crates.io-index)" = "e8d5d96e8cbb005d6959f119f773bfaebb5684296108fb32600c00cde305b2cd"
 "checksum textwrap 0.11.0 (registry+https://github.com/rust-lang/crates.io-index)" = "d326610f408c7a4eb6f51c37c330e496b08506c9457c9d34287ecc38809fb060"
 "checksum tinytemplate 1.0.3 (registry+https://github.com/rust-lang/crates.io-index)" = "57a3c6667d3e65eb1bc3aed6fd14011c6cbc3a0665218ab7f5daf040b9ec371a"
