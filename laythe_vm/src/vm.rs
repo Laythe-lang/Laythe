@@ -5,18 +5,19 @@ use crate::{
   dep_manager::DepManager,
 };
 use laythe_core::{
-  chunk::{ByteCode, UpvalueIndex},
+  chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT},
   hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks, NoContext},
   module::Module,
-  native::{NativeFun, NativeMeta, NativeMethod},
+  native::{Native, NativeMeta},
   object::Map,
   object::{Class, Closure, Fun, Instance, List, Method, Upvalue},
   package::{Import, Package},
-  signature::{ArityError, ParameterKind, SignatureError},
+  signature::{ArityError, Environment, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
+  val,
   value::{Value, ValueKind, VALUE_NIL},
-  CallResult, LyError, val
+  CallResult, LyError,
 };
 use laythe_env::{
   io::Io,
@@ -37,6 +38,7 @@ use crate::debug::{disassemble_instruction, exception_catch};
 #[cfg(feature = "debug")]
 use std::io;
 
+use smol_str::SmolStr;
 #[cfg(feature = "debug_upvalues")]
 use std::io;
 
@@ -119,10 +121,10 @@ impl Vm {
       .expect("Could not obtain the current working directory.");
 
     let module = hooks.manage(Module::new(
-      hooks.manage(Class::bare(hooks.manage_str(PLACEHOLDER_NAME.to_string()))),
+      hooks.manage(Class::bare(hooks.manage_str(PLACEHOLDER_NAME))),
       hooks.manage(PathBuf::from(PLACEHOLDER_NAME)),
     ));
-    let fun = Fun::new(hooks.manage_str(String::from(PLACEHOLDER_NAME)), module);
+    let fun = Fun::new(hooks.manage_str(PLACEHOLDER_NAME), module);
 
     let managed_fun = hooks.manage(fun);
     let closure = hooks.manage(Closure::new(managed_fun));
@@ -134,10 +136,7 @@ impl Vm {
     let global = std_lib
       .import(
         &hooks,
-        Import::new(vec![
-          hooks.manage_str(STD.to_string()),
-          hooks.manage_str(GLOBAL.to_string()),
-        ]),
+        Import::new(vec![hooks.manage_str(STD), hooks.manage_str(GLOBAL)]),
       )
       .expect("Could not retrieve global module");
 
@@ -280,10 +279,7 @@ impl From<VmDependencies> for Vm {
     let global = std_lib
       .import(
         &hooks,
-        Import::new(vec![
-          hooks.manage_str(STD.to_string()),
-          hooks.manage_str(GLOBAL.to_string()),
-        ]),
+        Import::new(vec![hooks.manage_str(STD), hooks.manage_str(GLOBAL)]),
       )
       .expect("Could not retrieve global module");
 
@@ -316,7 +312,7 @@ impl From<VmDependencies> for Vm {
 
 struct VmExecutor<'a> {
   /// A stack of call frames for the current execution
-  frames: &'a mut Vec<CallFrame>,
+  frames: &'a mut [CallFrame],
 
   /// A stack holding all local variable currently in use
   stack: &'a mut [Value],
@@ -348,8 +344,16 @@ struct VmExecutor<'a> {
   /// The current error if one is active
   current_error: Option<LyError>,
 
-  /// index to the top of the value stack
+  /// pointer to the top of the value stack
   stack_top: *mut Value,
+
+  /// pointer to the current instruction
+  ip: *const u8,
+
+  /// TODO replace this. A fun to fill a call frame for higher order native functions
+  /// may want to eventually have a function rental so native functions can set name / module
+  /// for exception
+  native_fun_stub: Managed<Fun>,
 
   /// The current frame depth of the program
   frame_count: usize,
@@ -361,8 +365,16 @@ impl<'a> VmExecutor<'a> {
     let current_frame = { &mut vm.frames[0] };
     let current_fun = current_frame.closure.fun;
     let stack_top = &mut vm.stack[1] as *mut Value;
+    let ip = ptr::null();
 
     let current_frame = current_frame as *mut CallFrame;
+    let mut native_fun_stub = vm.gc.manage(
+      Fun::new(vm.gc.manage_str("native", &NO_GC), vm.global),
+      &NO_GC,
+    );
+    let no_gc_context = NoContext::new(&vm.gc);
+    native_fun_stub.write_instruction(&GcHooks::new(&no_gc_context), AlignedByteCode::Nil, 0);
+
     let mut executor = VmExecutor {
       frames: &mut vm.frames,
       frame_count: 1,
@@ -374,12 +386,14 @@ impl<'a> VmExecutor<'a> {
       gc: &mut vm.gc,
       io: &mut vm.io,
       stack_top,
+      ip,
       global: vm.global,
       dep_manager: vm.dep_manager,
+      native_fun_stub,
       open_upvalues: Vec::with_capacity(100),
     };
 
-    executor.set_ip(&executor.script.to_closure().fun.chunk().instructions[0]);
+    executor.ip = &executor.script.to_closure().fun.chunk().instructions[0];
     let result = executor.call(executor.script.to_closure(), 0);
 
     let mut current_module = executor.current_fun.module;
@@ -431,7 +445,7 @@ impl<'a> VmExecutor<'a> {
   pub fn run_method_by_name(
     &mut self,
     this: Value,
-    method_name: Managed<String>,
+    method_name: Managed<SmolStr>,
     args: &[Value],
   ) -> ExecuteResult {
     let class = self
@@ -465,7 +479,7 @@ impl<'a> VmExecutor<'a> {
 
       #[cfg(feature = "debug")]
       {
-        let ip = unsafe { self.ip().offset(-1) };
+        let ip = unsafe { self.ip.offset(-1) };
         if let Err(_) = self.print_debug(ip, last_ip) {
           return ExecuteResult::InternalError;
         }
@@ -567,15 +581,19 @@ impl<'a> VmExecutor<'a> {
   /// Update the current instruction pointer
   #[inline]
   fn update_ip(&mut self, offset: isize) {
-    unsafe {
-      self.set_ip(self.ip().offset(offset));
-    }
+    unsafe { self.ip = self.ip.offset(offset) }
   }
 
-  /// Get the current instruction
+  /// Store the ip in the current frame
   #[inline]
-  fn ip(&self) -> *const u8 {
-    unsafe { (*self.current_frame).ip }
+  fn load_ip(&mut self) {
+    unsafe { self.ip = (*self.current_frame).ip }
+  }
+
+  /// Store the ip in the current frame
+  #[inline]
+  fn store_ip(&mut self) {
+    unsafe { (*self.current_frame).ip = self.ip }
   }
 
   /// Get the current frame slots
@@ -590,16 +608,10 @@ impl<'a> VmExecutor<'a> {
     unsafe { (*self.current_frame).closure }
   }
 
-  /// Set the current
-  #[inline]
-  fn set_ip(&mut self, new_ip: *const u8) {
-    unsafe { (*self.current_frame).ip = new_ip }
-  }
-
   /// read a u8 out of the bytecode
   #[inline]
   fn read_byte(&mut self) -> u8 {
-    let byte = unsafe { *self.ip() };
+    let byte = unsafe { *self.ip };
     self.update_ip(1);
     byte
   }
@@ -607,7 +619,7 @@ impl<'a> VmExecutor<'a> {
   /// read a u16 out of the bytecode
   #[inline]
   fn read_short(&mut self) -> u16 {
-    let slice = unsafe { std::slice::from_raw_parts(self.ip(), 2) };
+    let slice = unsafe { std::slice::from_raw_parts(self.ip, 2) };
     let buffer = slice.try_into().expect("slice of incorrect length.");
     let short = u16::from_ne_bytes(buffer);
     self.update_ip(2);
@@ -655,7 +667,7 @@ impl<'a> VmExecutor<'a> {
 
   /// read a constant as a string from the current chunk
   #[inline]
-  fn read_string(&self, index: u16) -> Managed<String> {
+  fn read_string(&self, index: u16) -> Managed<SmolStr> {
     self.read_constant(index).to_str()
   }
 
@@ -770,7 +782,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// invoke a method
-  fn invoke(&mut self, receiver: Value, method_name: Managed<String>, arg_count: u8) -> Signal {
+  fn invoke(&mut self, receiver: Value, method_name: Managed<SmolStr>, arg_count: u8) -> Signal {
     if receiver.is_instance() {
       let instance = receiver.to_instance();
       if let Some(field) = instance.get_field(&method_name) {
@@ -1078,7 +1090,7 @@ impl<'a> VmExecutor<'a> {
     self.get_property(value, name)
   }
 
-  fn get_property(&mut self, value: Value, name: Managed<String>) -> Signal {
+  fn get_property(&mut self, value: Value, name: Managed<SmolStr>) -> Signal {
     let kind = value.kind();
     match kind {
       ValueKind::Instance => {
@@ -1136,23 +1148,13 @@ impl<'a> VmExecutor<'a> {
   fn op_return(&mut self) -> Signal {
     // get the function result close upvalues and pop frame
     let result = self.pop();
-    self.close_upvalues(NonNull::from(unsafe { &*self.slots() }));
-    self.frame_count -= 1;
 
-    // if the frame was the whole script signal an ok interrupt
-    if self.frame_count == 1 {
-      self.drop();
-      return Signal::Exit;
+    // pop a frame from the call stack return signal if provided
+    if let Some(signal) = self.pop_frame() {
+      return signal;
     }
 
-    // pull the current frame out of the stack and set the cached frame
-    unsafe {
-      self.stack_top = self.slots();
-      self.current_frame = self.current_frame.offset(-1);
-      self.current_fun = self.closure().fun;
-    }
-
-    // push the result onto the stack
+    // push result onto stack
     self.push(result);
     Signal::OkReturn
   }
@@ -1353,14 +1355,13 @@ impl<'a> VmExecutor<'a> {
     match callee.kind() {
       ValueKind::Closure => self.call(callee.to_closure(), arg_count),
       ValueKind::Method => self.call_method(callee.to_method(), arg_count),
-      ValueKind::NativeFun => self.call_native_fun(callee.to_native_fun(), arg_count),
-      ValueKind::NativeMethod => self.call_native_method(callee.to_native_method(), arg_count),
+      ValueKind::Native => self.call_native(callee.to_native(), arg_count),
       ValueKind::Class => self.call_class(callee.to_class(), arg_count),
       ValueKind::Fun => self.internal_error(&format!(
         "Function {} was not wrapped in a closure.",
         callee.to_fun().name
       )),
-      _ => self.runtime_error("Can only call functions and classes."),
+      _ => self.runtime_error("Can only call functions, methods and classes."),
     }
   }
 
@@ -1381,7 +1382,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// call a native function immediately returning the result
-  fn call_native_fun(&mut self, native: Managed<Box<dyn NativeFun>>, arg_count: u8) -> Signal {
+  fn call_native(&mut self, native: Managed<Box<dyn Native>>, arg_count: u8) -> Signal {
     let meta = native.meta();
 
     let args = unsafe {
@@ -1396,47 +1397,36 @@ impl<'a> VmExecutor<'a> {
       return signal;
     }
 
-    match native.call(&mut Hooks::new(self), args) {
-      Ok(value) => {
-        self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
-        self.push(value);
-
-        Signal::OkReturn
-      }
-      Err(error) => self.set_error(error),
-    }
-  }
-
-  /// call a native method immediately returning the result
-  fn call_native_method(
-    &mut self,
-    native: Managed<Box<dyn NativeMethod>>,
-    arg_count: u8,
-  ) -> Signal {
-    let meta = native.meta();
-
-    let args = unsafe {
-      std::slice::from_raw_parts(
-        self.stack_top.offset(-(arg_count as isize)),
-        arg_count as usize,
-      )
+    let this = if meta.is_method {
+      Some(self.get_val(-(arg_count as isize) - 1))
+    } else {
+      None
     };
 
-    // check that the current function is called with the right number of args and types
-    if let Some(error) = self.check_native_arity(meta, args) {
-      return error;
-    }
+    match meta.environment {
+      Environment::StackLess => match native.call(&mut Hooks::new(self), this, args) {
+        Ok(value) => {
+          self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
+          self.push(value);
 
-    let this = self.get_val(-(arg_count as isize) - 1);
+          Signal::OkReturn
+        }
+        Err(error) => self.set_error(error),
+      },
+      Environment::Normal => {
+        let native_closure = self.gc.manage(Closure::new(self.native_fun_stub), self);
+        self.push_frame(native_closure, arg_count);
 
-    match native.call(&mut Hooks::new(self), this, &args) {
-      Ok(value) => {
-        self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
-        self.push(value);
+        match native.call(&mut Hooks::new(self), this, args) {
+          Ok(value) => {
+            self.pop_frame();
+            self.push(value);
 
-        Signal::OkReturn
+            Signal::OkReturn
+          }
+          Err(error) => self.set_error(error),
+        }
       }
-      Err(error) => self.set_error(error),
     }
   }
 
@@ -1452,18 +1442,48 @@ impl<'a> VmExecutor<'a> {
       return self.runtime_error("Stack overflow.");
     }
 
+    self.push_frame(closure, arg_count);
+    Signal::Ok
+  }
+
+  /// Push a call frame onto the the call frame stack
+  #[inline]
+  fn push_frame(&mut self, closure: Managed<Closure>, arg_count: u8) {
     unsafe {
+      self.store_ip();
       let frame = &mut *self.current_frame.offset(1);
       frame.closure = closure;
       frame.ip = closure.fun.chunk().instructions.get_unchecked(0) as *const u8;
       frame.slots = self.stack_top.offset(-(arg_count as isize) - 1);
       self.current_frame = frame as *mut CallFrame;
+      self.load_ip();
     }
 
     self.current_fun = closure.fun;
     self.frame_count += 1;
+  }
 
-    Signal::Ok
+  /// Pop a frame off the call stack
+  #[inline]
+  fn pop_frame(&mut self) -> Option<Signal> {
+    self.close_upvalues(NonNull::from(unsafe { &*self.slots() }));
+    self.frame_count -= 1;
+
+    // if the frame was the whole script signal an ok interrupt
+    if self.frame_count == 1 {
+      self.drop();
+      return Some(Signal::Exit);
+    }
+
+    // pull the current frame out of the stack and set the cached frame
+    unsafe {
+      self.stack_top = self.slots();
+      self.current_frame = self.current_frame.offset(-1);
+      self.current_fun = self.closure().fun;
+      self.load_ip();
+    }
+
+    None
   }
 
   /// check that the number of args is valid for the function arity
@@ -1537,7 +1557,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// bind a method to an instance
-  fn bind_method(&mut self, class: Managed<Class>, name: Managed<String>) -> Signal {
+  fn bind_method(&mut self, class: Managed<Class>, name: Managed<SmolStr>) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
         let bound = self.gc.manage(Method::new(self.peek(0), method), self);
@@ -1552,7 +1572,7 @@ impl<'a> VmExecutor<'a> {
   fn invoke_from_class(
     &mut self,
     class: Managed<Class>,
-    method_name: Managed<String>,
+    method_name: Managed<SmolStr>,
     arg_count: u8,
   ) -> Signal {
     match class.get_method(&method_name) {
@@ -1693,9 +1713,7 @@ impl<'a> VmExecutor<'a> {
 
   /// Report a known laythe runtime error to the user
   fn runtime_error(&mut self, message: &str) -> Signal {
-    self.set_error(LyError::new(
-      self.gc.manage_str(String::from(message), self),
-    ));
+    self.set_error(LyError::new(self.gc.manage_str(message, self)));
     Signal::RuntimeError
   }
 
@@ -1709,6 +1727,7 @@ impl<'a> VmExecutor<'a> {
   fn stack_unwind(&mut self, error: &LyError) -> Option<ExecuteResult> {
     let mut popped_frames = None;
     let mut stack_top = None;
+    self.store_ip();
 
     // travel down stack frames looking for an applicable handle
     for (idx, frame) in self.frames[1..self.frame_count]
@@ -1727,6 +1746,7 @@ impl<'a> VmExecutor<'a> {
         self.frame_count -= idx;
         self.current_frame = frame as *mut CallFrame;
         self.current_fun = frame.closure.fun;
+        self.ip = frame.ip;
 
         if let Some(top) = stack_top {
           self.stack_top = top;
@@ -1811,6 +1831,7 @@ impl<'a> Trace for VmExecutor<'a> {
     });
 
     self.dep_manager.trace();
+    self.native_fun_stub.trace();
     self.global.trace();
 
     true
@@ -1838,6 +1859,7 @@ impl<'a> Trace for VmExecutor<'a> {
     });
 
     self.dep_manager.trace_debug(stdio);
+    self.native_fun_stub.trace_debug(stdio);
     self.global.trace_debug(stdio);
 
     true
@@ -1878,7 +1900,7 @@ impl<'a> CallContext for VmExecutor<'a> {
   fn call_method_by_name(
     &mut self,
     this: Value,
-    method_name: Managed<String>,
+    method_name: Managed<SmolStr>,
     args: &[Value],
   ) -> CallResult {
     let result = self.run_method_by_name(this, method_name, args);

@@ -5,8 +5,7 @@ pub mod iter;
 pub mod list;
 pub mod map;
 pub mod method;
-pub mod native_fun;
-pub mod native_method;
+pub mod native;
 pub mod nil;
 pub mod number;
 pub mod object;
@@ -17,13 +16,12 @@ use crate::support::create_meta_class;
 use class::{declare_class_class, define_class_class, CLASS_CLASS_NAME};
 use closure::{declare_closure_class, define_closure_class};
 use iter::{declare_iter_class, define_iter_class};
-use laythe_core::{hooks::GcHooks, module::Module, package::Package, LyError, LyResult};
+use laythe_core::{hooks::GcHooks, module::Module, package::Package, LyResult};
 use laythe_env::managed::Managed;
 use list::{declare_list_class, define_list_class};
 use map::{declare_map_class, define_map_class};
 use method::{declare_method_class, define_method_class};
-use native_fun::{declare_native_fun_class, define_native_fun_class};
-use native_method::{declare_native_method_class, define_native_method_class};
+use native::{declare_native_class, define_native_class};
 use nil::{declare_nil_class, define_nil_class};
 use number::{declare_number_class, define_number_class};
 use object::{declare_object_class, define_object_class, OBJECT_CLASS_NAME};
@@ -42,8 +40,7 @@ pub(crate) fn add_primitive_classes(
   declare_list_class(hooks, &mut module, &package)?;
   declare_map_class(hooks, &mut module, &package)?;
   declare_method_class(hooks, &mut module, &package)?;
-  declare_native_fun_class(hooks, &mut module, &package)?;
-  declare_native_method_class(hooks, &mut module, &package)?;
+  declare_native_class(hooks, &mut module, &package)?;
   declare_nil_class(hooks, &mut module, &package)?;
   declare_number_class(hooks, &mut module, &package)?;
   declare_string_class(hooks, &mut module, &package)?;
@@ -54,8 +51,7 @@ pub(crate) fn add_primitive_classes(
   define_list_class(hooks, &module, &package)?;
   define_map_class(hooks, &module, &package)?;
   define_method_class(hooks, &module, &package)?;
-  define_native_fun_class(hooks, &module, &package)?;
-  define_native_method_class(hooks, &module, &package)?;
+  define_native_class(hooks, &module, &package)?;
   define_nil_class(hooks, &module, &package)?;
   define_number_class(hooks, &module, &package)?;
   define_string_class(hooks, &module, &package)?;
@@ -72,12 +68,10 @@ fn bootstrap_classes(
   declare_object_class(hooks, &mut module)?;
   define_object_class(hooks, &module, &package)?;
 
-  let mut object_class = match module.get_symbol(hooks.manage_str(OBJECT_CLASS_NAME.to_string())) {
+  let mut object_class = match module.get_symbol(hooks.manage_str(OBJECT_CLASS_NAME)) {
     Some(class) => class.to_class(),
     None => {
-      return Err(LyError::new(hooks.manage_str(
-        "Could not find Laythe class object in std_lib construction.".to_string(),
-      )))
+      return Err(hooks.make_error("Could not find Laythe class object in std_lib construction."))
     }
   };
 
@@ -86,9 +80,7 @@ fn bootstrap_classes(
   let mut class_class = match module.get_symbol(hooks.manage_str(CLASS_CLASS_NAME.to_string())) {
     Some(class) => class.to_class(),
     None => {
-      return Err(LyError::new(hooks.manage_str(
-        "Could not find Laythe class class in std_lib construction.".to_string(),
-      )))
+      return Err(hooks.make_error("Could not find Laythe class class in std_lib construction."))
     }
   };
 

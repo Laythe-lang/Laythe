@@ -1,5 +1,6 @@
 use laythe_core::token::{Token, TokenKind};
 use laythe_core::utils::{next_boundary, previous_boundary};
+use smol_str::SmolStr;
 
 /// A scanner for the lox language. This struct is
 /// responsible for taking a source string and tokenizing it
@@ -454,7 +455,7 @@ fn visible_whitespace(white_space: &str) -> &str {
 
 /// Make a new token
 fn make_token(kind: TokenKind, raw: &str, line: u32) -> Token {
-  let lexeme = raw.to_string();
+  let lexeme = SmolStr::new(raw);
   Token { kind, lexeme, line }
 }
 

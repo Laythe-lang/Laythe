@@ -16,6 +16,7 @@ use laythe_env::{
   stdio::Stdio,
 };
 use slice::SliceIndex;
+use smol_str::SmolStr;
 use std::{
   fmt,
   hash::Hash,
@@ -80,9 +81,6 @@ pub struct BuiltinPrimitives {
 
   /// the NativeFun class
   pub native_fun: Managed<Class>,
-
-  // the NativeMethod class
-  pub native_method: Managed<Class>,
 }
 
 impl BuiltinPrimitives {
@@ -100,8 +98,7 @@ impl BuiltinPrimitives {
       ValueKind::Instance => value.to_instance().class,
       ValueKind::Iter => self.iter,
       ValueKind::Method => self.method,
-      ValueKind::NativeFun => self.native_fun,
-      ValueKind::NativeMethod => self.native_method,
+      ValueKind::Native => self.native_fun,
       ValueKind::Upvalue => {
         let value = value.to_upvalue().value();
         self.for_value(value, value.kind())
@@ -123,7 +120,6 @@ impl Trace for BuiltinPrimitives {
     self.closure.trace();
     self.method.trace();
     self.native_fun.trace();
-    self.native_method.trace();
 
     true
   }
@@ -140,7 +136,6 @@ impl Trace for BuiltinPrimitives {
     self.closure.trace_debug(stdio);
     self.method.trace_debug(stdio);
     self.native_fun.trace_debug(stdio);
-    self.native_method.trace_debug(stdio);
 
     true
   }
@@ -275,7 +270,7 @@ impl TryBlock {
 #[derive(Clone)]
 pub struct Fun {
   /// Name if not top-level script
-  pub name: Managed<String>,
+  pub name: Managed<SmolStr>,
 
   /// Arity of this function
   pub arity: Arity,
@@ -294,9 +289,9 @@ pub struct Fun {
 }
 
 impl Fun {
-  pub fn new(name: Managed<String>, module: Managed<Module>) -> Self {
+  pub fn new(name: Managed<SmolStr>, module: Managed<Module>) -> Self {
     Self {
-      arity: Arity::Fixed(0),
+      arity: Arity::default(),
       upvalue_count: 0,
       chunk: Chunk::default(),
       module,
@@ -413,6 +408,7 @@ impl Manage for Fun {
       + self.try_blocks.capacity()
   }
 }
+
 #[derive(Clone, Debug)]
 pub struct List<T>(Vec<T>);
 
@@ -657,10 +653,10 @@ impl Closure {
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
-  ///   hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
+  ///   hooks.manage(Class::bare(hooks.manage_str("module"))),
   ///   hooks.manage(PathBuf::from("self/module.ly")),
   /// ));
-  /// let mut fun = Fun::new(hooks.manage_str("example".to_string()), module);
+  /// let mut fun = Fun::new(hooks.manage_str("example"), module);
   /// let managed_fun = hooks.manage(fun);
   ///
   /// let closure = Closure::new(managed_fun);
@@ -723,9 +719,9 @@ impl Manage for Closure {
 
 #[derive(PartialEq, Clone)]
 pub struct Class {
-  pub name: Managed<String>,
+  pub name: Managed<SmolStr>,
   pub init: Option<Value>,
-  methods: DynamicMap<Managed<String>, Value>,
+  methods: DynamicMap<Managed<SmolStr>, Value>,
   meta_class: Option<Managed<Class>>,
   super_class: Option<Managed<Class>>,
 }
@@ -739,7 +735,7 @@ impl fmt::Display for Class {
 impl Class {
   pub fn new(
     hooks: &GcHooks,
-    name: Managed<String>,
+    name: Managed<SmolStr>,
     meta_class: Managed<Class>,
     super_class: Managed<Class>,
   ) -> Self {
@@ -755,7 +751,7 @@ impl Class {
     class
   }
 
-  pub fn bare(name: Managed<String>) -> Self {
+  pub fn bare(name: Managed<SmolStr>) -> Self {
     Self {
       name,
       init: None,
@@ -782,7 +778,7 @@ impl Class {
     self
   }
 
-  pub fn add_method(&mut self, hooks: &GcHooks, name: Managed<String>, method: Value) {
+  pub fn add_method(&mut self, hooks: &GcHooks, name: Managed<SmolStr>, method: Value) {
     if *name == INIT {
       self.init = Some(method);
     }
@@ -792,7 +788,7 @@ impl Class {
     });
   }
 
-  pub fn get_method(&self, name: &Managed<String>) -> Option<Value> {
+  pub fn get_method(&self, name: &Managed<SmolStr>) -> Option<Value> {
     self.methods.get(name).map(|v| *v)
   }
 
@@ -872,14 +868,14 @@ impl Manage for Class {
 
   fn size(&self) -> usize {
     mem::size_of::<Class>()
-      + (mem::size_of::<Managed<String>>() + mem::size_of::<Value>()) * self.methods.capacity()
+      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.methods.capacity()
   }
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Instance {
   pub class: Managed<Class>,
-  fields: DynamicMap<Managed<String>, Value>,
+  fields: DynamicMap<Managed<SmolStr>, Value>,
 }
 
 impl Instance {
@@ -890,17 +886,17 @@ impl Instance {
     }
   }
 
-  pub fn fields(&self) -> &DynamicMap<Managed<String>, Value> {
+  pub fn fields(&self) -> &DynamicMap<Managed<SmolStr>, Value> {
     &self.fields
   }
 
-  pub fn set_field(&mut self, hooks: &GcHooks, name: Managed<String>, value: Value) {
+  pub fn set_field(&mut self, hooks: &GcHooks, name: Managed<SmolStr>, value: Value) {
     hooks.grow(self, |instance: &mut Instance| {
       instance.fields.insert(name, value);
     });
   }
 
-  pub fn get_field(&self, name: &Managed<String>) -> Option<&Value> {
+  pub fn get_field(&self, name: &Managed<SmolStr>) -> Option<&Value> {
     self.fields.get(name)
   }
 }
@@ -953,7 +949,7 @@ impl Manage for Instance {
 
   fn size(&self) -> usize {
     mem::size_of::<Instance>()
-      + (mem::size_of::<Managed<String>>() + mem::size_of::<Value>()) * self.fields.capacity()
+      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.fields.capacity()
   }
 }
 

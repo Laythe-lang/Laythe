@@ -1,7 +1,8 @@
 use crate::{
-  managed::{Manage, Trace},
+  managed::{Manage, Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::{mem, path::PathBuf};
 
 impl Trace for PathBuf {
@@ -28,7 +29,13 @@ impl Manage for PathBuf {
   }
 }
 
-impl Trace for String {
+impl<T: AsRef<str>> PartialEq<T> for Managed<SmolStr> {
+  fn eq(&self, other: &T) -> bool {
+    &**self == other.as_ref()
+  }
+}
+
+impl Trace for SmolStr {
   fn trace(&self) -> bool {
     true
   }
@@ -38,7 +45,7 @@ impl Trace for String {
   }
 }
 
-impl Manage for String {
+impl Manage for SmolStr {
   fn alloc_type(&self) -> &str {
     "string"
   }
@@ -52,6 +59,10 @@ impl Manage for String {
   }
 
   fn size(&self) -> usize {
-    mem::size_of::<Self>() + self.capacity()
+    if self.is_heap_allocated() {
+      mem::size_of::<Self>() + self.len()
+    } else {
+      mem::size_of::<Self>()
+    }
   }
 }

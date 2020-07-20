@@ -1,6 +1,7 @@
 use crate::managed::{Allocation, Manage, Managed, Trace};
 use crate::stdio::Stdio;
 use hashbrown::HashMap;
+use smol_str::SmolStr;
 use std::cell::{Cell, RefCell};
 use std::ptr::NonNull;
 
@@ -25,7 +26,7 @@ pub struct Gc {
   bytes_allocated: Cell<usize>,
 
   /// The intern string cache
-  intern_cache: RefCell<HashMap<&'static str, Managed<String>>>,
+  intern_cache: RefCell<HashMap<&'static str, Managed<SmolStr>>>,
 
   /// The size in bytes of the gc before the next collection
   next_gc: Cell<usize>,
@@ -72,9 +73,10 @@ impl<'a> Gc {
   /// ```
   /// use laythe_env::memory::{Gc, NO_GC};
   /// use laythe_env::managed::Managed;
+  /// use smol_str::SmolStr;
   ///
   /// let gc = Gc::default();
-  /// let string = gc.manage("example".to_string(), &NO_GC);
+  /// let string = gc.manage(SmolStr::from("example"), &NO_GC);
   ///
   /// assert_eq!(&*string, "example");
   /// ```
@@ -91,14 +93,18 @@ impl<'a> Gc {
   /// ```
   /// use laythe_env::memory::{Gc, NO_GC};
   /// use laythe_env::managed::Managed;
-  /// use std::ptr;
   ///
   /// let gc = Gc::default();
-  /// let str = gc.manage_str("hi!".to_string(), &NO_GC);
+  /// let str = gc.manage_str("hi!", &NO_GC);
   ///
   /// assert_eq!(&*str, "hi!");
   /// ```
-  pub fn manage_str<C: Trace + ?Sized>(&self, string: String, context: &C) -> Managed<String> {
+  pub fn manage_str<C: Trace + ?Sized, S: Into<String> + AsRef<str>>(
+    &self,
+    src: S,
+    context: &C,
+  ) -> Managed<SmolStr> {
+    let string = SmolStr::from(src);
     if let Some(cached) = self.intern_cache.borrow_mut().get(&*string) {
       return *cached;
     }
@@ -107,33 +113,6 @@ impl<'a> Gc {
     let static_str: &'static str = unsafe { &*(&**managed as *const str) };
     self.intern_cache.borrow_mut().insert(&static_str, managed);
     managed
-  }
-
-  /// clone the the `Managed` data as a new heap allocation.
-  /// A `Managed` clone will simply create a new pointer to the data.
-  /// In case of a gc the `context` is used to annotate roots
-  ///
-  /// # Examples
-  /// ```
-  /// use laythe_env::memory::{Gc, NO_GC};
-  /// use laythe_env::managed::Managed;
-  /// use std::ptr;
-  ///
-  /// let gc = Gc::default();
-  ///
-  /// let string1 = gc.manage("example".to_string(), &NO_GC);
-  /// let string2 = gc.clone_managed(string1, &NO_GC);
-  ///
-  /// assert!(!ptr::eq(&*string1, &*string2));
-  /// assert_eq!(&**string1, &**string2);
-  /// ```
-  pub fn clone_managed<T: 'static + Manage + Clone, C: Trace + ?Sized>(
-    &self,
-    managed: Managed<T>,
-    context: &C,
-  ) -> Managed<T> {
-    let cloned = (*managed).clone();
-    self.allocate(cloned, context)
   }
 
   /// track events that may grow the size of the heap. If
@@ -439,7 +418,7 @@ mod test {
     let dyn_trace: Box<dyn Trace> = Box::new(NoGc());
     let gc = Gc::default();
 
-    let dyn_manged_str = gc.manage("managed".to_string(), &*dyn_trace);
-    assert_eq!(*dyn_manged_str, "managed".to_string());
+    let dyn_manged_str = gc.manage(SmolStr::from("managed"), &*dyn_trace);
+    assert_eq!(*dyn_manged_str, SmolStr::from("managed"));
   }
 }

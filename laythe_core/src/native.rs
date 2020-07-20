@@ -1,50 +1,128 @@
 use crate::{
-  hooks::Hooks,
-  signature::{Arity, Parameter, Signature},
+  hooks::{GcHooks, Hooks},
+  signature::{Arity, Environment, ParameterBuilder, Signature, SignatureBuilder},
   value::Value,
   CallResult,
 };
 use laythe_env::{
-  managed::{Manage, Trace},
+  managed::{Manage, Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::fmt;
 use std::{mem, ptr};
 
 #[derive(Clone, Debug)]
-pub struct NativeMeta {
+pub struct NativeMetaBuilder {
   /// The name of the native function
   pub name: &'static str,
+
+  /// Is this native function used as a method
+  pub is_method: bool,
+
+  /// Does this
+  pub environment: Environment,
+
+  /// The signature of this native function or method
+  pub signature: SignatureBuilder,
+}
+
+impl NativeMetaBuilder {
+  /// Create a new set of meta date for a native function
+  pub const fn fun(name: &'static str, arity: Arity) -> Self {
+    NativeMetaBuilder {
+      name,
+      is_method: false,
+      environment: Environment::StackLess,
+      signature: SignatureBuilder::new(arity),
+    }
+  }
+
+  /// Create a new set of meta date for a native function
+  pub const fn method(name: &'static str, arity: Arity) -> Self {
+    NativeMetaBuilder {
+      name,
+      is_method: true,
+      environment: Environment::StackLess,
+      signature: SignatureBuilder::new(arity),
+    }
+  }
+
+  /// Provide parameters this native function needs
+  pub const fn with_params(self, parameters: &'static [ParameterBuilder]) -> Self {
+    Self {
+      name: self.name,
+      is_method: self.is_method,
+      environment: self.environment,
+      signature: self.signature.with_params(parameters),
+    }
+  }
+
+  /// Indicate this native function requires the stack
+  pub const fn with_stack(self) -> Self {
+    Self {
+      name: self.name,
+      is_method: self.is_method,
+      environment: Environment::Normal,
+      signature: self.signature,
+    }
+  }
+
+  /// Create a native meta data struct from this builder
+  pub fn to_meta(&self, hooks: &GcHooks) -> NativeMeta {
+    NativeMeta {
+      name: hooks.manage_str(self.name),
+      is_method: self.is_method,
+      environment: self.environment,
+      signature: self.signature.to_sig(hooks),
+    }
+  }
+}
+
+#[derive(Clone, Debug)]
+pub struct NativeMeta {
+  /// The name of the native function
+  pub name: Managed<SmolStr>,
+
+  /// Is this native function used as a method
+  pub is_method: bool,
+
+  /// Does this
+  pub environment: Environment,
 
   /// The signature of this native function or method
   pub signature: Signature,
 }
 
-impl NativeMeta {
-  /// Create a new set of meta date for a native function
-  pub const fn new(name: &'static str, arity: Arity, parameters: &'static [Parameter]) -> Self {
-    NativeMeta {
-      name,
-      signature: Signature::new(arity, parameters),
-    }
+impl Trace for NativeMeta {
+  fn trace(&self) -> bool {
+    self.name.trace();
+    self.signature.trace()
+  }
+
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+    self.name.trace_debug(stdio);
+    self.signature.trace_debug(stdio)
   }
 }
 
-pub trait NativeFun: Trace {
-  /// Meta data to this native function
-  fn meta(&self) -> &NativeMeta;
-
+pub trait Native: MetaData + Trace {
   /// Call the native functions
-  fn call(&self, hooks: &mut Hooks, values: &[Value]) -> CallResult;
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, values: &[Value]) -> CallResult;
 }
 
-impl PartialEq<dyn NativeFun> for dyn NativeFun {
-  fn eq(&self, rhs: &dyn NativeFun) -> bool {
+pub trait MetaData {
+  /// Meta data to this native function
+  fn meta(&self) -> &NativeMeta;
+}
+
+impl PartialEq<dyn Native> for dyn Native {
+  fn eq(&self, rhs: &dyn Native) -> bool {
     ptr::eq(self.meta(), rhs.meta())
   }
 }
 
-impl fmt::Debug for dyn NativeFun {
+impl fmt::Debug for dyn Native {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let meta = self.meta();
     f.debug_struct("NativeFun")
@@ -54,87 +132,26 @@ impl fmt::Debug for dyn NativeFun {
   }
 }
 
-impl fmt::Display for dyn NativeFun {
+impl fmt::Display for dyn Native {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let meta = self.meta();
     write!(f, "<native {}>", meta.name)
   }
 }
 
-impl Trace for Box<dyn NativeFun> {
+impl Trace for Box<dyn Native> {
   fn trace(&self) -> bool {
-    let inner: &dyn NativeFun = &**self;
+    let inner: &dyn Native = &**self;
     inner.trace()
   }
 
   fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    let inner: &dyn NativeFun = &**self;
+    let inner: &dyn Native = &**self;
     inner.trace_debug(stdio)
   }
 }
 
-impl Manage for Box<dyn NativeFun> {
-  fn alloc_type(&self) -> &str {
-    "native"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-}
-
-pub trait NativeMethod: Trace {
-  /// Meta data to this native function
-  fn meta(&self) -> &NativeMeta;
-
-  /// Call the native functions
-  fn call(&self, hooks: &mut Hooks, this: Value, values: &[Value]) -> CallResult;
-}
-
-impl PartialEq<dyn NativeMethod> for dyn NativeMethod {
-  fn eq(&self, rhs: &dyn NativeMethod) -> bool {
-    ptr::eq(self.meta(), rhs.meta())
-  }
-}
-
-impl fmt::Debug for dyn NativeMethod {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let meta = self.meta();
-    f.debug_struct("NativeMethod")
-      .field("name", &meta.name)
-      .field("signature", &meta.signature)
-      .finish()
-  }
-}
-
-impl fmt::Display for dyn NativeMethod {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let meta = self.meta();
-    write!(f, "<native {}>", meta.name)
-  }
-}
-
-impl Trace for Box<dyn NativeMethod> {
-  fn trace(&self) -> bool {
-    let inner: &dyn NativeMethod = &**self;
-    inner.trace()
-  }
-
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    let inner: &dyn NativeMethod = &**self;
-    inner.trace_debug(stdio)
-  }
-}
-
-impl Manage for Box<dyn NativeMethod> {
+impl Manage for Box<dyn Native> {
   fn alloc_type(&self) -> &str {
     "native"
   }

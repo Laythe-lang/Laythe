@@ -7,7 +7,7 @@ use stdio::stdio_module;
 const IO_PACKAGE_NAME: &str = "io";
 
 pub fn io_package(hooks: &GcHooks, std: Managed<Package>) -> LyResult<Managed<Package>> {
-  let mut package = hooks.manage(Package::new(hooks.manage_str(IO_PACKAGE_NAME.to_string())));
+  let mut package = hooks.manage(Package::new(hooks.manage_str(IO_PACKAGE_NAME)));
 
   let stdio = stdio_module(hooks, std)?;
 

@@ -1,62 +1,54 @@
-use crate::support::{
-  default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_method,
+use crate::{
+  native,
+  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
 };
 use hashbrown::hash_map::Iter;
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
   module::Module,
-  native::{NativeMeta, NativeMethod},
+  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::{List, Map},
   package::Package,
-  signature::{Arity, Parameter, ParameterKind},
+  signature::{Arity, ParameterBuilder, ParameterKind},
+  val,
   value::{Value, VALUE_NIL},
   CallResult, LyError, LyResult,
-  val,
 };
 use laythe_env::{
   managed::{Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::fmt;
 use std::mem;
 
 pub const MAP_CLASS_NAME: &'static str = "Map";
 
-const MAP_GET: NativeMeta = NativeMeta::new(
-  "get",
-  Arity::Fixed(1),
-  &[Parameter::new("key", ParameterKind::Any)],
-);
-const MAP_SET: NativeMeta = NativeMeta::new(
-  "set",
-  Arity::Fixed(2),
-  &[
-    Parameter::new("key", ParameterKind::Any),
-    Parameter::new("value", ParameterKind::Any),
-  ],
-);
-const MAP_HAS: NativeMeta = NativeMeta::new(
-  "has",
-  Arity::Fixed(1),
-  &[Parameter::new("key", ParameterKind::Any)],
-);
-const MAP_INSERT: NativeMeta = NativeMeta::new(
-  "insert",
-  Arity::Fixed(2),
-  &[
-    Parameter::new("key", ParameterKind::Any),
-    Parameter::new("val", ParameterKind::Any),
-  ],
-);
-const MAP_REMOVE: NativeMeta = NativeMeta::new(
-  "remove",
-  Arity::Fixed(1),
-  &[Parameter::new("key", ParameterKind::Any)],
-);
-const MAP_SIZE: NativeMeta = NativeMeta::new("size", Arity::Fixed(0), &[]);
-const MAP_STR: NativeMeta = NativeMeta::new("str", Arity::Fixed(0), &[]);
-const MAP_ITER: NativeMeta = NativeMeta::new("iter", Arity::Fixed(0), &[]);
+const MAP_GET: NativeMetaBuilder = NativeMetaBuilder::method("get", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)]);
+
+const MAP_SET: NativeMetaBuilder =
+  NativeMetaBuilder::method("set", Arity::Fixed(2)).with_params(&[
+    ParameterBuilder::new("key", ParameterKind::Any),
+    ParameterBuilder::new("value", ParameterKind::Any),
+  ]);
+
+const MAP_HAS: NativeMetaBuilder = NativeMetaBuilder::method("has", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)]);
+
+const MAP_INSERT: NativeMetaBuilder = NativeMetaBuilder::method("insert", Arity::Fixed(2))
+  .with_params(&[
+    ParameterBuilder::new("key", ParameterKind::Any),
+    ParameterBuilder::new("val", ParameterKind::Any),
+  ]);
+
+const MAP_REMOVE: NativeMetaBuilder = NativeMetaBuilder::method("remove", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)]);
+
+const MAP_SIZE: NativeMetaBuilder = NativeMetaBuilder::method("size", Arity::Fixed(0));
+const MAP_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
+const MAP_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
 pub fn declare_map_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, MAP_CLASS_NAME)?;
@@ -68,76 +60,82 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_SIZE.name)),
-    val!(to_dyn_method(hooks, MapSize())),
+    hooks.manage_str(MAP_SIZE.name),
+    val!(to_dyn_native(hooks, MapSize::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_STR.name)),
-    val!(to_dyn_method(
+    hooks.manage_str(MAP_STR.name),
+    val!(to_dyn_native(
       hooks,
-      MapStr::new(hooks.manage_str(String::from(MAP_STR.name))),
+      MapStr::new(
+        MAP_STR.to_meta(hooks),
+        hooks.manage_str(MAP_STR.name)
+      ),
     )),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_HAS.name)),
-    val!(to_dyn_method(hooks, MapHas())),
+    hooks.manage_str(MAP_HAS.name),
+    val!(to_dyn_native(hooks, MapHas::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_GET.name)),
-    val!(to_dyn_method(hooks, MapGet())),
+    hooks.manage_str(MAP_GET.name),
+    val!(to_dyn_native(hooks, MapGet::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_SET.name)),
-    val!(to_dyn_method(hooks, MapSet())),
+    hooks.manage_str(MAP_SET.name),
+    val!(to_dyn_native(hooks, MapSet::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_REMOVE.name)),
-    val!(to_dyn_method(hooks, MapRemove())),
+    hooks.manage_str(MAP_REMOVE.name),
+    val!(to_dyn_native(hooks, MapRemove::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_INSERT.name)),
-    val!(to_dyn_method(hooks, MapInsert())),
+    hooks.manage_str(MAP_INSERT.name),
+    val!(to_dyn_native(hooks, MapInsert::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_ITER.name)),
-    val!(to_dyn_method(hooks, MapIter())),
+    hooks.manage_str(MAP_ITER.name),
+    val!(to_dyn_native(hooks, MapIter::from(hooks))),
   );
 
   Ok(())
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 struct MapStr {
-  method_name: Managed<String>,
+  method_name: Managed<SmolStr>,
+  meta: NativeMeta,
 }
 
 impl MapStr {
-  fn new(method_name: Managed<String>) -> Self {
-    Self { method_name }
+  fn new(meta: NativeMeta, method_name: Managed<SmolStr>) -> Self {
+    Self { meta, method_name }
   }
 }
 
-impl NativeMethod for MapStr {
+impl MetaData for MapStr {
   fn meta(&self) -> &NativeMeta {
-    &MAP_STR
+    &self.meta
   }
+}
 
-  fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    let map = this.to_map();
+impl Native for MapStr {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    let map = this.unwrap().to_map();
 
     // buffer for temporary strings
     let mut strings: Vec<String> = Vec::with_capacity(map.len());
@@ -160,7 +158,7 @@ impl NativeMethod for MapStr {
 
 fn format_map_entry(
   item: &Value,
-  method_name: Managed<String>,
+  method_name: Managed<SmolStr>,
   buffer: &mut String,
   hooks: &mut Hooks,
 ) -> Result<(), LyError> {
@@ -192,103 +190,76 @@ impl Trace for MapStr {
   }
 }
 
-#[derive(Clone, Debug, Trace)]
-struct MapSize();
+native!(MapSize, MAP_SIZE);
 
-impl NativeMethod for MapSize {
-  fn meta(&self) -> &NativeMeta {
-    &MAP_SIZE
-  }
-
-  fn call(&self, _hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    Ok(val!(this.to_map().len() as f64))
+impl Native for MapSize {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    Ok(val!(this.unwrap().to_map().len() as f64))
   }
 }
 
-#[derive(Clone, Debug, Trace)]
-struct MapHas();
+native!(MapHas, MAP_HAS);
 
-impl NativeMethod for MapHas {
-  fn meta(&self) -> &NativeMeta {
-    &MAP_HAS
-  }
-
-  fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    Ok(val!(this.to_map().contains_key(&args[0])))
+impl Native for MapHas {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    Ok(val!(this.unwrap().to_map().contains_key(&args[0])))
   }
 }
 
-#[derive(Clone, Debug, Trace)]
-struct MapGet();
+native!(MapGet, MAP_GET);
 
-impl NativeMethod for MapGet {
-  fn meta(&self) -> &NativeMeta {
-    &MAP_GET
-  }
-
-  fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    match this.to_map().get(&args[0]) {
+impl Native for MapGet {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    match this.unwrap().to_map().get(&args[0]) {
       Some(value) => Ok(*value),
       None => Ok(VALUE_NIL),
     }
   }
 }
 
-#[derive(Clone, Debug, Trace)]
-struct MapSet();
+native!(MapSet, MAP_SET);
 
-impl NativeMethod for MapSet {
-  fn meta(&self) -> &NativeMeta {
-    &MAP_SET
-  }
-
-  fn call(&self, _hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    Ok(this.to_map().insert(args[0], args[1]).unwrap_or(VALUE_NIL))
+impl Native for MapSet {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    Ok(
+      this
+        .unwrap()
+        .to_map()
+        .insert(args[0], args[1])
+        .unwrap_or(VALUE_NIL),
+    )
   }
 }
 
-#[derive(Clone, Debug, Trace)]
-struct MapInsert();
+native!(MapInsert, MAP_INSERT);
 
-impl NativeMethod for MapInsert {
-  fn meta(&self) -> &NativeMeta {
-    &MAP_INSERT
-  }
-
-  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    match hooks.grow(&mut this.to_map(), |map| map.insert(args[0], args[1])) {
+impl Native for MapInsert {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    match hooks.grow(&mut this.unwrap().to_map(), |map| {
+      map.insert(args[0], args[1])
+    }) {
       Some(value) => Ok(value),
       None => Ok(VALUE_NIL),
     }
   }
 }
 
-#[derive(Clone, Debug, Trace)]
-struct MapRemove();
+native!(MapRemove, MAP_REMOVE);
 
-impl NativeMethod for MapRemove {
-  fn meta(&self) -> &NativeMeta {
-    &MAP_REMOVE
-  }
-
-  fn call(&self, hooks: &mut Hooks, this: Value, args: &[Value]) -> CallResult {
-    match hooks.shrink(&mut this.to_map(), |map| map.remove(&args[0])) {
+impl Native for MapRemove {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    match hooks.shrink(&mut this.unwrap().to_map(), |map| map.remove(&args[0])) {
       Some(removed) => Ok(removed),
       None => Err(hooks.make_error("Key not found in map.".to_string())),
     }
   }
 }
 
-#[derive(Trace)]
-struct MapIter();
+native!(MapIter, MAP_ITER);
 
-impl NativeMethod for MapIter {
-  fn meta(&self) -> &NativeMeta {
-    &MAP_ITER
-  }
-
-  fn call(&self, hooks: &mut Hooks, this: Value, _args: &[Value]) -> CallResult {
-    let inner_iter: Box<dyn LyIter> = Box::new(MapIterator::new(this.to_map()));
+impl Native for MapIter {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    let inner_iter: Box<dyn LyIter> = Box::new(MapIterator::new(this.unwrap().to_map()));
     let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
@@ -379,8 +350,8 @@ mod test {
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
-      let map_str = MapStr::new(hooks.manage_str("str".to_string()));
+      let hooks = GcHooks::new(&mut context);
+      let map_str = MapStr::new(MAP_STR.to_meta(&hooks), hooks.manage_str("str".to_string()));
 
       assert_eq!(map_str.meta().name, "str");
       assert_eq!(map_str.meta().signature.arity, Arity::Fixed(0));
@@ -396,7 +367,10 @@ mod test {
       context.responses.extend_from_slice(response);
 
       let mut hooks = Hooks::new(&mut context);
-      let map_str = MapStr::new(hooks.manage_str("str".to_string()));
+      let map_str = MapStr::new(
+        MAP_STR.to_meta(&hooks.to_gc()),
+        hooks.manage_str("str".to_string()),
+      );
 
       let values = &[];
 
@@ -404,7 +378,7 @@ mod test {
       map.insert(VALUE_NIL, VALUE_NIL);
       let this = hooks.manage(map);
 
-      let result = map_str.call(&mut hooks, val!(this), values);
+      let result = map_str.call(&mut hooks, Some(val!(this)), values);
       match result {
         Ok(r) => assert_eq!(&*r.to_str(), "{ nil: nil }"),
         Err(_) => assert!(false),
@@ -419,7 +393,10 @@ mod test {
 
     #[test]
     fn new() {
-      let map_str = MapSize();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let map_str = MapSize::from(&hooks);
 
       assert_eq!(map_str.meta().name, "size");
       assert_eq!(map_str.meta().signature.arity, Arity::Fixed(0));
@@ -427,9 +404,9 @@ mod test {
 
     #[test]
     fn call() {
-      let map_str = MapSize();
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
+      let map_str = MapSize::from(&hooks);
 
       let values = &[];
 
@@ -437,7 +414,7 @@ mod test {
       map.insert(VALUE_NIL, VALUE_NIL);
       let this = hooks.manage(map);
 
-      let result = map_str.call(&mut hooks, val!(this), values);
+      let result = map_str.call(&mut hooks, Some(val!(this)), values);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 1.0),
         Err(_) => assert!(false),
@@ -452,7 +429,9 @@ mod test {
 
     #[test]
     fn new() {
-      let map_has = MapHas();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+      let map_has = MapHas::from(&hooks);
 
       assert_eq!(map_has.meta().name, "has");
       assert_eq!(map_has.meta().signature.arity, Arity::Fixed(1));
@@ -460,21 +439,21 @@ mod test {
 
     #[test]
     fn call() {
-      let map_has = MapHas();
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
+      let map_has = MapHas::from(&hooks);
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, VALUE_NIL);
       let this = hooks.manage(map);
 
-      let result = map_has.call(&mut hooks, val!(this), &[VALUE_NIL]);
+      let result = map_has.call(&mut hooks, Some(val!(this)), &[VALUE_NIL]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), true),
         Err(_) => assert!(false),
       }
 
-      let result = map_has.call(&mut hooks, val!(this), &[val!(false)]);
+      let result = map_has.call(&mut hooks, Some(val!(this)), &[val!(false)]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),
@@ -489,7 +468,10 @@ mod test {
 
     #[test]
     fn new() {
-      let map_get = MapGet();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let map_get = MapGet::from(&hooks);
 
       assert_eq!(map_get.meta().name, "get");
       assert_eq!(map_get.meta().signature.arity, Arity::Fixed(1));
@@ -501,21 +483,21 @@ mod test {
 
     #[test]
     fn call() {
-      let map_get = MapGet();
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
+      let map_get = MapGet::from(&hooks);
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, val!(false));
       let this = hooks.manage(map);
 
-      let result = map_get.call(&mut hooks, val!(this), &[VALUE_NIL]);
+      let result = map_get.call(&mut hooks, Some(val!(this)), &[VALUE_NIL]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),
       }
 
-      let result = map_get.call(&mut hooks, val!(this), &[val!(true)]);
+      let result = map_get.call(&mut hooks, Some(val!(this)), &[val!(true)]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),
@@ -530,7 +512,10 @@ mod test {
 
     #[test]
     fn new() {
-      let map_set = MapSet();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let map_set = MapSet::from(&hooks);
 
       assert_eq!(map_set.meta().name, "set");
       assert_eq!(map_set.meta().signature.arity, Arity::Fixed(2));
@@ -546,18 +531,14 @@ mod test {
 
     #[test]
     fn call() {
-      let map_set = MapSet();
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
+      let map_set = MapSet::from(&hooks);
 
       let map = Map::default();
       let this = hooks.manage(map);
 
-      let result = map_set.call(
-        &mut hooks,
-        val!(this),
-        &[val!(true), val!(10.0)],
-      );
+      let result = map_set.call(&mut hooks, Some(val!(this)), &[val!(true), val!(10.0)]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),
@@ -566,11 +547,7 @@ mod test {
       assert_eq!(this.len(), 1);
       assert_eq!(*this.get(&val!(true)).unwrap(), val!(10.0));
 
-      let result = map_set.call(
-        &mut hooks,
-        val!(this),
-        &[val!(true), val!(false)],
-      );
+      let result = map_set.call(&mut hooks, Some(val!(this)), &[val!(true), val!(false)]);
       match result {
         Ok(r) => assert_eq!(r.to_num(), 10.0),
         Err(_) => assert!(false),
@@ -588,7 +565,10 @@ mod test {
 
     #[test]
     fn new() {
-      let map_insert = MapInsert();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let map_insert = MapInsert::from(&hooks);
 
       assert_eq!(map_insert.meta().name, "insert");
       assert_eq!(map_insert.meta().signature.arity, Arity::Fixed(2));
@@ -604,29 +584,21 @@ mod test {
 
     #[test]
     fn call() {
-      let map_insert = MapInsert();
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
+      let map_insert = MapInsert::from(&hooks);
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, val!(false));
       let this = hooks.manage(map);
 
-      let result = map_insert.call(
-        &mut hooks,
-        val!(this),
-        &[VALUE_NIL, val!(true)],
-      );
+      let result = map_insert.call(&mut hooks, Some(val!(this)), &[VALUE_NIL, val!(true)]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),
       }
 
-      let result = map_insert.call(
-        &mut hooks,
-        val!(this),
-        &[val!(15.0), val!(true)],
-      );
+      let result = map_insert.call(&mut hooks, Some(val!(this)), &[val!(15.0), val!(true)]);
       match result {
         Ok(r) => assert!(r.is_nil()),
         Err(_) => assert!(false),
@@ -641,7 +613,10 @@ mod test {
 
     #[test]
     fn new() {
-      let map_remove = MapRemove();
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let map_remove = MapRemove::from(&hooks);
 
       assert_eq!(map_remove.meta().name, "remove");
       assert_eq!(map_remove.meta().signature.arity, Arity::Fixed(1));
@@ -653,21 +628,21 @@ mod test {
 
     #[test]
     fn call() {
-      let map_remove = MapRemove();
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
+      let map_remove = MapRemove::from(&hooks);
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, val!(false));
       let this = hooks.manage(map);
 
-      let result = map_remove.call(&mut hooks, val!(this), &[val!(10.5)]);
+      let result = map_remove.call(&mut hooks, Some(val!(this)), &[val!(10.5)]);
       match result {
         Ok(_) => assert!(false),
         Err(_) => assert!(true),
       }
 
-      let result = map_remove.call(&mut hooks, val!(this), &[VALUE_NIL]);
+      let result = map_remove.call(&mut hooks, Some(val!(this)), &[VALUE_NIL]);
       match result {
         Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),

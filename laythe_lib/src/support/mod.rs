@@ -1,7 +1,7 @@
 use laythe_core::{
   hooks::GcHooks,
   module::Module,
-  native::{NativeFun, NativeMethod},
+  native::Native,
   object::{Class, Instance},
   package::{Import, Package},
   value::Value,
@@ -9,23 +9,13 @@ use laythe_core::{
 };
 use laythe_env::managed::Managed;
 
-pub fn to_dyn_method<T: 'static + NativeMethod>(
-  hooks: &GcHooks,
-  method: T,
-) -> Managed<Box<dyn NativeMethod>> {
-  hooks.manage(Box::new(method) as Box<dyn NativeMethod>)
-}
-
-pub fn to_dyn_fun<T: 'static + NativeFun>(
-  hooks: &GcHooks,
-  method: T,
-) -> Managed<Box<dyn NativeFun>> {
-  hooks.manage(Box::new(method) as Box<dyn NativeFun>)
+pub fn to_dyn_native<T: 'static + Native>(hooks: &GcHooks, method: T) -> Managed<Box<dyn Native>> {
+  hooks.manage(Box::new(method) as Box<dyn Native>)
 }
 
 pub fn create_meta_class(
   hooks: &GcHooks,
-  name: Managed<String>,
+  name: Managed<SmolStr>,
   class_class: Managed<Class>,
 ) -> Managed<Class> {
   hooks.manage(Class::new(
@@ -41,7 +31,7 @@ pub fn default_class_inheritance(
   package: &Package,
   class_name: &str,
 ) -> LyResult<Managed<Class>> {
-  let name = hooks.manage_str(class_name.to_string());
+  let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, GLOBAL_PATH);
   let module = package.import(hooks, import)?;
@@ -59,7 +49,7 @@ pub fn load_class_from_module(
   module: &Module,
   name: &str,
 ) -> LyResult<Managed<Class>> {
-  let name = hooks.manage_str(name.to_string());
+  let name = hooks.manage_str(name);
   match module.import(hooks).get_field(&name) {
     Some(symbol) => {
       if symbol.is_class() {
@@ -81,7 +71,7 @@ pub fn load_instance_from_module(
   module: &Module,
   name: &str,
 ) -> LyResult<Managed<Instance>> {
-  let name = hooks.manage_str(name.to_string());
+  let name = hooks.manage_str(name);
   match module.import(hooks).get_field(&name) {
     Some(symbol) => {
       if symbol.is_instance() {
@@ -101,7 +91,7 @@ pub fn load_instance_from_module(
 pub fn export_and_insert(
   hooks: &GcHooks,
   module: &mut Module,
-  name: Managed<String>,
+  name: Managed<SmolStr>,
   symbol: Value,
 ) -> LyResult<()> {
   module.insert_symbol(hooks, name, symbol);
@@ -111,6 +101,7 @@ pub fn export_and_insert(
 #[cfg(test)]
 pub use self::test::*;
 use crate::GLOBAL_PATH;
+use smol_str::SmolStr;
 
 #[cfg(test)]
 mod test {
@@ -120,8 +111,9 @@ mod test {
     module::Module,
     object::Fun,
     signature::Arity,
+    val,
     value::{Value, ValueKind},
-    CallResult, LyError, val,
+    CallResult, LyError,
   };
   use laythe_env::{
     io::Io,
@@ -132,6 +124,7 @@ mod test {
       Stdio,
     },
   };
+  use smol_str::SmolStr;
   use std::{path::PathBuf, rc::Rc};
 
   pub struct MockedContext {
@@ -201,11 +194,10 @@ mod test {
       let arity = match callable.kind() {
         ValueKind::Closure => callable.to_closure().fun.arity,
         ValueKind::Method => callable.to_method().method.to_closure().fun.arity,
-        ValueKind::NativeFun => callable.to_native_fun().meta().signature.arity,
-        ValueKind::NativeMethod => callable.to_native_method().meta().signature.arity,
+        ValueKind::Native => callable.to_native().meta().signature.arity,
         _ => {
           return Err(LyError::new(
-            self.gc.manage_str("Not callable".to_string(), &NO_GC),
+            self.gc.manage_str("Not callable", &NO_GC),
           ));
         }
       };
@@ -216,7 +208,7 @@ mod test {
           return Err(LyError::new(
             self
               .gc
-              .manage_str("Incorrect function arity".to_string(), &NO_GC),
+              .manage_str("Incorrect function arity", &NO_GC),
           ))
         }
       }
@@ -228,7 +220,7 @@ mod test {
       }
 
       Err(LyError::new(
-        self.gc.manage_str("No mocked results".to_string(), &NO_GC),
+        self.gc.manage_str("No mocked results", &NO_GC),
       ))
     }
 
@@ -236,11 +228,10 @@ mod test {
       let arity = match method.kind() {
         ValueKind::Closure => method.to_closure().fun.arity,
         ValueKind::Method => method.to_method().method.to_closure().fun.arity,
-        ValueKind::NativeFun => method.to_native_fun().meta().signature.arity,
-        ValueKind::NativeMethod => method.to_native_method().meta().signature.arity,
+        ValueKind::Native => method.to_native().meta().signature.arity,
         _ => {
           return Err(LyError::new(
-            self.gc.manage_str("Not callable".to_string(), &NO_GC),
+            self.gc.manage_str("Not callable", &NO_GC),
           ));
         }
       };
@@ -251,7 +242,7 @@ mod test {
           return Err(LyError::new(
             self
               .gc
-              .manage_str("Incorrect function arity".to_string(), &NO_GC),
+              .manage_str("Incorrect function arity", &NO_GC),
           ))
         }
       }
@@ -263,14 +254,14 @@ mod test {
       }
 
       Err(LyError::new(
-        self.gc.manage_str("No mocked results".to_string(), &NO_GC),
+        self.gc.manage_str("No mocked results", &NO_GC),
       ))
     }
 
     fn call_method_by_name(
       &mut self,
       this: Value,
-      method_name: Managed<String>,
+      method_name: Managed<SmolStr>,
       args: &[Value],
     ) -> CallResult {
       let arity = if this.is_instance() {
@@ -279,8 +270,8 @@ mod test {
           Some(method) => {
             if method.is_closure() {
               method.to_closure().fun.arity
-            } else if method.is_native_method() {
-              method.to_native_fun().meta().signature.arity
+            } else if method.is_native() {
+              method.to_native().meta().signature.arity
             } else {
               panic!("Only closures and native methods should be methods on an instance")
             }
@@ -302,7 +293,7 @@ mod test {
           return Err(LyError::new(
             self
               .gc
-              .manage_str("Incorrect method arity".to_string(), &NO_GC),
+              .manage_str("Incorrect method arity", &NO_GC),
           ))
         }
       }
@@ -314,7 +305,7 @@ mod test {
       }
 
       Err(LyError::new(
-        self.gc.manage_str("No mocked results".to_string(), &NO_GC),
+        self.gc.manage_str("No mocked results", &NO_GC),
       ))
     }
   }
@@ -375,7 +366,7 @@ mod test {
     Box::new(TestIterator::new())
   }
 
-  pub fn fun_from_hooks(hooks: &GcHooks, name: String, module_name: &str) -> Managed<Fun> {
+  pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Managed<Fun> {
     let module = Module::from_path(
       &hooks,
       hooks.manage(PathBuf::from(format!("path/{}.ly", module_name))),

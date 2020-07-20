@@ -1,23 +1,19 @@
+use crate::native;
 use laythe_core::{
-  hooks::Hooks,
-  native::{NativeFun, NativeMeta},
+  hooks::{GcHooks, Hooks},
+  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::Arity,
   value::{Value, VALUE_NIL},
   CallResult,
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
-const TEST_META: NativeMeta = NativeMeta::new("test", Arity::Fixed(0), &[]);
+const TEST_META: NativeMetaBuilder = NativeMetaBuilder::fun("test", Arity::Fixed(0));
 
-#[derive(Clone, Debug, Trace)]
-pub struct TestNative();
+native!(TestNative, TEST_META);
 
-impl NativeFun for TestNative {
-  fn meta(&self) -> &NativeMeta {
-    &TEST_META
-  }
-
-  fn call(&self, _: &mut Hooks, _: &[Value]) -> CallResult {
+impl Native for TestNative {
+  fn call(&self, _: &mut Hooks, _this: Option<Value>, _: &[Value]) -> CallResult {
     Ok(VALUE_NIL)
   }
 }

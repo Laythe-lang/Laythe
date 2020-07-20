@@ -8,6 +8,7 @@ use laythe_env::{
   managed::{Manage, Managed, Trace},
   stdio::Stdio,
 };
+use smol_str::SmolStr;
 use std::fmt;
 use std::{mem, path::PathBuf};
 
@@ -21,10 +22,10 @@ pub struct Module {
   module_class: Managed<Class>,
 
   /// A key value set of named exports from the provided modules
-  exports: LyHashSet<Managed<String>>,
+  exports: LyHashSet<Managed<SmolStr>>,
 
   /// All of the top level symbols in this module
-  symbols: Map<Managed<String>, Value>,
+  symbols: Map<Managed<SmolStr>, Value>,
 }
 
 impl Module {
@@ -39,16 +40,13 @@ impl Module {
   }
 
   /// Get the name of this module
-  pub fn name(&self) -> Managed<String> {
+  pub fn name(&self) -> Managed<SmolStr> {
     self.module_class.name
   }
 
   /// Create a module from a filepath
   pub fn from_path(hooks: &GcHooks, path: Managed<PathBuf>) -> LyResult<Self> {
-    let module_name = path
-      .file_stem()
-      .and_then(|m| m.to_str())
-      .map(|m| m.to_string());
+    let module_name = path.file_stem().and_then(|m| m.to_str());
 
     let module_name = match module_name {
       Some(module_name) => module_name,
@@ -71,7 +69,7 @@ impl Module {
   }
 
   /// Add export a new symbol from this module. Exported names must be unique
-  pub fn export_symbol(&mut self, hooks: &GcHooks, name: Managed<String>) -> LyResult<()> {
+  pub fn export_symbol(&mut self, hooks: &GcHooks, name: Managed<SmolStr>) -> LyResult<()> {
     if self.exports.contains(&name) {
       Err(hooks.make_error(format!(
         "{} has already been exported from {}",
@@ -111,14 +109,14 @@ impl Module {
   pub fn insert_symbol(
     &mut self,
     hooks: &GcHooks,
-    name: Managed<String>,
+    name: Managed<SmolStr>,
     symbol: Value,
   ) -> Option<Value> {
     hooks.grow(self, |module| module.symbols.insert(name, symbol))
   }
 
   /// Get a symbol from this module's symbol table
-  pub fn get_symbol(&self, name: Managed<String>) -> Option<&Value> {
+  pub fn get_symbol(&self, name: Managed<SmolStr>) -> Option<&Value> {
     self.symbols.get(&name)
   }
 
@@ -133,7 +131,7 @@ impl Module {
   }
 
   /// Remove a symbol from this module
-  pub fn remove_symbol(&mut self, hooks: &GcHooks, name: Managed<String>) {
+  pub fn remove_symbol(&mut self, hooks: &GcHooks, name: Managed<SmolStr>) {
     hooks.shrink(self, |module| {
       module.symbols.remove(&name);
       module.exports.remove(&name);
@@ -211,7 +209,7 @@ impl Manage for Module {
 
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + (mem::size_of::<Managed<String>>() + mem::size_of::<Value>())
+      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>())
         * (self.exports.capacity() + self.symbols.capacity())
   }
 }
