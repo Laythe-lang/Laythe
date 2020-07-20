@@ -46,10 +46,7 @@ impl Module {
 
   /// Create a module from a filepath
   pub fn from_path(hooks: &GcHooks, path: Managed<PathBuf>) -> LyResult<Self> {
-    let module_name = path
-      .file_stem()
-      .and_then(|m| m.to_str())
-      .map(|m| m.to_string());
+    let module_name = path.file_stem().and_then(|m| m.to_str());
 
     let module_name = match module_name {
       Some(module_name) => module_name,

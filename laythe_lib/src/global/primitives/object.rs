@@ -21,7 +21,7 @@ const OBJECT_EQUALS: NativeMetaBuilder = NativeMetaBuilder::method("equals", Ari
   .with_params(&[ParameterBuilder::new("other", ParameterKind::Any)]);
 
 pub fn declare_object_class(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
-  let name = hooks.manage_str(String::from(OBJECT_CLASS_NAME));
+  let name = hooks.manage_str(OBJECT_CLASS_NAME);
   let class = hooks.manage(Class::bare(name));
 
   export_and_insert(hooks, self_module, name, val!(class))
@@ -32,7 +32,7 @@ pub fn define_object_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
 
   class.add_method(
     &hooks,
-    hooks.manage_str(String::from(OBJECT_EQUALS.name)),
+    hooks.manage_str(OBJECT_EQUALS.name),
     val!(to_dyn_native(hooks, ObjectEquals::from(hooks))),
   );
 

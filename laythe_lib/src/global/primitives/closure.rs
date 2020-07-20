@@ -37,19 +37,19 @@ pub fn define_closure_class(hooks: &GcHooks, module: &Module, _: &Package) -> Ly
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(CLOSURE_NAME.name)),
+    hooks.manage_str(CLOSURE_NAME.name),
     val!(to_dyn_native(hooks, ClosureName::from(hooks),)),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(CLOSURE_SIZE.name)),
+    hooks.manage_str(CLOSURE_SIZE.name),
     val!(to_dyn_native(hooks, ClosureSize::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(CLOSURE_CALL.name)),
+    hooks.manage_str(CLOSURE_CALL.name),
     val!(to_dyn_native(hooks, ClosureCall::from(hooks))),
   );
 
@@ -112,7 +112,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_name = ClosureName::from(&hooks);
 
-      let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
+      let fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
       let closure = hooks.manage(Closure::new(fun));
 
       let result1 = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
@@ -146,7 +146,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_name = ClosureSize::from(&hooks);
 
-      let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
+      let mut fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
       fun.arity = Arity::Fixed(4);
 
       let closure = hooks.manage(Closure::new(fun));
@@ -199,7 +199,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_call = ClosureCall::from(&hooks.to_gc());
 
-      let mut fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
+      let mut fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
       fun.arity = Arity::Fixed(1);
 
       let closure = hooks.manage(Closure::new(fun));

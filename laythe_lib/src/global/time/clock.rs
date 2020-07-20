@@ -16,7 +16,7 @@ pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> LyResult<()> 
   export_and_insert(
     hooks,
     module,
-    hooks.manage_str(CLOCK_META.name.to_string()),
+    hooks.manage_str(CLOCK_META.name),
     val!(hooks.manage(Box::new(Clock::from(hooks)) as Box<dyn Native>)),
   )
 }

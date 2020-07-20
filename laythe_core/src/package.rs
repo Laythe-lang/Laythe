@@ -26,7 +26,7 @@ impl Import {
     let path = path
       .trim_end_matches(".ly")
       .split('/')
-      .map(|segment| hooks.manage_str(String::from(segment)))
+      .map(|segment| hooks.manage_str(segment))
       .collect();
 
     Self(path)

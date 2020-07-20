@@ -34,13 +34,13 @@ pub fn define_number_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(NUMBER_STR.name)),
+    hooks.manage_str(NUMBER_STR.name),
     val!(to_dyn_native(hooks, NumberStr::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(NUMBER_TIMES.name)),
+    hooks.manage_str(NUMBER_TIMES.name),
     val!(to_dyn_native(hooks, NumberTimes::from(hooks))),
   );
 
@@ -61,7 +61,7 @@ impl Native for NumberTimes {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     let max = this.unwrap().to_num();
     if max < 0.0 {
-      return Err(hooks.make_error("times requires a positive number.".to_string()));
+      return Err(hooks.make_error("times requires a positive number."));
     }
 
     let inner_iter: Box<dyn LyIter> = Box::new(TimesIterator::new(max));

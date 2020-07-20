@@ -27,7 +27,7 @@ pub fn define_nil_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(NIL_STR.name)),
+    hooks.manage_str(NIL_STR.name),
     val!(to_dyn_native(hooks, NilStr::from(hooks))),
   );
 
@@ -38,7 +38,7 @@ native!(NilStr, NIL_STR);
 
 impl Native for NilStr {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
-    Ok(val!(hooks.manage_str("nil".to_string())))
+    Ok(val!(hooks.manage_str("nil")))
   }
 }
 

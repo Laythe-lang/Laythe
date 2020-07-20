@@ -63,55 +63,55 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(ITER_STR.name)),
+    hooks.manage_str(ITER_STR.name),
     val!(to_dyn_native(hooks, IterStr::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(ITER_NEXT.name)),
+    hooks.manage_str(ITER_NEXT.name),
     val!(to_dyn_native(hooks, IterNext::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(ITER_ITER.name)),
+    hooks.manage_str(ITER_ITER.name),
     val!(to_dyn_native(hooks, IterIter::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(ITER_MAP.name)),
+    hooks.manage_str(ITER_MAP.name),
     val!(to_dyn_native(hooks, IterMap::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(ITER_FILTER.name)),
+    hooks.manage_str(ITER_FILTER.name),
     val!(to_dyn_native(hooks, IterFilter::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(ITER_REDUCE.name)),
+    hooks.manage_str(ITER_REDUCE.name),
     val!(to_dyn_native(hooks, IterReduce::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(ITER_EACH.name)),
+    hooks.manage_str(ITER_EACH.name),
     val!(to_dyn_native(hooks, IterEach::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(ITER_ZIP.name)),
+    hooks.manage_str(ITER_ZIP.name),
     val!(to_dyn_native(hooks, IterZip::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(ITER_INTO.name)),
+    hooks.manage_str(ITER_INTO.name),
     val!(to_dyn_native(hooks, IterInto::from(hooks))),
   );
 
@@ -122,9 +122,7 @@ native!(IterStr, ITER_STR);
 
 impl Native for IterStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
-    Ok(val!(
-      hooks.manage_str(this.unwrap().to_iter().name().to_string())
-    ))
+    Ok(val!(hooks.manage_str(this.unwrap().to_iter().name())))
   }
 }
 
@@ -561,7 +559,7 @@ mod test {
       let this = val!(managed);
       let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
-        "example".to_string(),
+        "example",
         "module",
       ))));
 
@@ -610,7 +608,7 @@ mod test {
       let this = val!(managed);
       let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
-        "example".to_string(),
+        "example",
         "module",
       ))));
 
@@ -671,7 +669,7 @@ mod test {
       let this = val!(managed);
       let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
-        "example".to_string(),
+        "example",
         "module",
       ))));
 
@@ -719,7 +717,7 @@ mod test {
       let this = val!(managed);
       let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
         &hooks.to_gc(),
-        "example".to_string(),
+        "example",
         "module",
       ))));
 

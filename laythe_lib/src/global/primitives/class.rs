@@ -21,7 +21,7 @@ const CLASS_SUPER_CLASS: NativeMetaBuilder =
   NativeMetaBuilder::method("superClass", Arity::Fixed(0));
 
 pub fn declare_class_class(hooks: &GcHooks, module: &mut Module) -> LyResult<()> {
-  let name = hooks.manage_str(String::from(CLASS_CLASS_NAME));
+  let name = hooks.manage_str(CLASS_CLASS_NAME);
   let class = hooks.manage(Class::bare(name));
 
   export_and_insert(hooks, module, name, val!(class))
@@ -32,7 +32,7 @@ pub fn define_class_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRe
 
   class_class.add_method(
     &hooks,
-    hooks.manage_str(String::from(CLASS_SUPER_CLASS.name)),
+    hooks.manage_str(CLASS_SUPER_CLASS.name),
     val!(to_dyn_native(hooks, ClassSuperClass::from(hooks))),
   );
 

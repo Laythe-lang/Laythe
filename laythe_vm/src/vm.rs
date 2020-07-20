@@ -121,10 +121,10 @@ impl Vm {
       .expect("Could not obtain the current working directory.");
 
     let module = hooks.manage(Module::new(
-      hooks.manage(Class::bare(hooks.manage_str(PLACEHOLDER_NAME.to_string()))),
+      hooks.manage(Class::bare(hooks.manage_str(PLACEHOLDER_NAME))),
       hooks.manage(PathBuf::from(PLACEHOLDER_NAME)),
     ));
-    let fun = Fun::new(hooks.manage_str(String::from(PLACEHOLDER_NAME)), module);
+    let fun = Fun::new(hooks.manage_str(PLACEHOLDER_NAME), module);
 
     let managed_fun = hooks.manage(fun);
     let closure = hooks.manage(Closure::new(managed_fun));
@@ -136,10 +136,7 @@ impl Vm {
     let global = std_lib
       .import(
         &hooks,
-        Import::new(vec![
-          hooks.manage_str(STD.to_string()),
-          hooks.manage_str(GLOBAL.to_string()),
-        ]),
+        Import::new(vec![hooks.manage_str(STD), hooks.manage_str(GLOBAL)]),
       )
       .expect("Could not retrieve global module");
 
@@ -282,10 +279,7 @@ impl From<VmDependencies> for Vm {
     let global = std_lib
       .import(
         &hooks,
-        Import::new(vec![
-          hooks.manage_str(STD.to_string()),
-          hooks.manage_str(GLOBAL.to_string()),
-        ]),
+        Import::new(vec![hooks.manage_str(STD), hooks.manage_str(GLOBAL)]),
       )
       .expect("Could not retrieve global module");
 
@@ -318,7 +312,7 @@ impl From<VmDependencies> for Vm {
 
 struct VmExecutor<'a> {
   /// A stack of call frames for the current execution
-  frames: &'a mut Vec<CallFrame>,
+  frames: &'a mut [CallFrame],
 
   /// A stack holding all local variable currently in use
   stack: &'a mut [Value],
@@ -375,7 +369,7 @@ impl<'a> VmExecutor<'a> {
 
     let current_frame = current_frame as *mut CallFrame;
     let mut native_fun_stub = vm.gc.manage(
-      Fun::new(vm.gc.manage_str("native".to_string(), &NO_GC), vm.global),
+      Fun::new(vm.gc.manage_str("native", &NO_GC), vm.global),
       &NO_GC,
     );
     let no_gc_context = NoContext::new(&vm.gc);
@@ -1719,9 +1713,7 @@ impl<'a> VmExecutor<'a> {
 
   /// Report a known laythe runtime error to the user
   fn runtime_error(&mut self, message: &str) -> Signal {
-    self.set_error(LyError::new(
-      self.gc.manage_str(String::from(message), self),
-    ));
+    self.set_error(LyError::new(self.gc.manage_str(message, self)));
     Signal::RuntimeError
   }
 

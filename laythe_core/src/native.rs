@@ -71,7 +71,7 @@ impl NativeMetaBuilder {
   /// Create a native meta data struct from this builder
   pub fn to_meta(&self, hooks: &GcHooks) -> NativeMeta {
     NativeMeta {
-      name: hooks.manage_str(self.name.to_string()),
+      name: hooks.manage_str(self.name),
       is_method: self.is_method,
       environment: self.environment,
       signature: self.signature.to_sig(hooks),

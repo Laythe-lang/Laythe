@@ -36,13 +36,13 @@ pub fn define_native_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(NATIVE_NAME.name)),
+    hooks.manage_str(NATIVE_NAME.name),
     val!(to_dyn_native(hooks, NativeName::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(NATIVE_CALL.name)),
+    hooks.manage_str(NATIVE_CALL.name),
     val!(to_dyn_native(hooks, NativeCall::from(hooks))),
   );
 

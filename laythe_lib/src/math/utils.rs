@@ -36,56 +36,56 @@ pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> LyResul
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(PI.to_string()),
+    hooks.manage_str(PI),
     val!(std::f64::consts::PI),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(E.to_string()),
+    hooks.manage_str(E),
     val!(std::f64::consts::E),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(SIN_META.name.to_string()),
+    hooks.manage_str(SIN_META.name),
     val!(hooks.manage(Box::new(Sin::from(hooks)) as Box<dyn Native>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(COS_META.name.to_string()),
+    hooks.manage_str(COS_META.name),
     val!(hooks.manage(Box::new(Cos::from(hooks)) as Box<dyn Native>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(LN_META.name.to_string()),
+    hooks.manage_str(LN_META.name),
     val!(hooks.manage(Box::new(Ln::from(hooks)) as Box<dyn Native>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(ABS_META.name.to_string()),
+    hooks.manage_str(ABS_META.name),
     val!(hooks.manage(Box::new(Abs::from(hooks)) as Box<dyn Native>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(REM_META.name.to_string()),
+    hooks.manage_str(REM_META.name),
     val!(hooks.manage(Box::new(Rem::from(hooks)) as Box<dyn Native>)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(RAND_META.name.to_string()),
+    hooks.manage_str(RAND_META.name),
     val!(hooks.manage(Box::new(Rand::from(hooks)) as Box<dyn Native>)),
   )
 }

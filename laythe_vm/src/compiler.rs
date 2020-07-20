@@ -31,7 +31,7 @@ const UNINITIALIZED: i16 = -1;
 #[derive(Debug, Clone)]
 pub struct Local {
   /// name of the local
-  name: Option<String>,
+  name: Option<SmolStr>,
 
   /// depth of the local
   depth: i16,
@@ -109,14 +109,14 @@ impl<'a, 's> Compiler<'a, 's> {
   /// let mut hooks = GcHooks::new(&mut context);
   /// let mut parser = Parser::new(Stdio::default(), &source);
   /// let module = hooks.manage(Module::new(
-  ///  hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
+  ///  hooks.manage(Class::bare(hooks.manage_str("module"))),
   ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///
   /// let compiler = Compiler::new(module, &mut parser, &mut hooks);
   /// ```
   pub fn new(module: Managed<Module>, parser: &'a mut Parser<'s>, hooks: &'a GcHooks<'a>) -> Self {
-    let fun = hooks.manage(Fun::new(hooks.manage_str(String::from(SCRIPT)), module));
+    let fun = hooks.manage(Fun::new(hooks.manage_str(SCRIPT), module));
 
     let mut compiler = Self {
       fun,
@@ -196,7 +196,7 @@ impl<'a, 's> Compiler<'a, 's> {
   /// let mut hooks = GcHooks::new(&mut context);
   /// let mut parser = Parser::new(Stdio::default(), &source);
   /// let module = hooks.manage(Module::new(
-  ///  hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
+  ///  hooks.manage(Class::bare(hooks.manage_str("module"))),
   ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///
@@ -433,7 +433,7 @@ impl<'a, 's> Compiler<'a, 's> {
       self.begin_scope();
       self.add_local(Token {
         kind: TokenKind::Super,
-        lexeme: "super".to_string(),
+        lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
         line: class_name.line,
       });
       self.define_variable(0);
@@ -497,9 +497,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Parse a function declaration and body
   fn function(&mut self, fun_kind: FunKind) {
-    let name = self
-      .hooks
-      .manage_str(self.parser.previous.lexeme.to_string());
+    let name = self.hooks.manage_str(self.parser.previous.lexeme.as_str());
 
     let mut fun_compiler = Compiler::child(name, fun_kind, &mut *self);
     fun_compiler.begin_scope();
@@ -675,14 +673,14 @@ impl<'a, 's> Compiler<'a, 's> {
     self.expression();
 
     let iterator_token = Token {
-      lexeme: ITER_VAR.to_string(),
+      lexeme: SmolStr::new_inline_from_ascii(ITER_VAR.len(), ITER_VAR.as_bytes()),
       kind: TokenKind::Identifier,
       line: self.parser.previous.line,
     };
 
     // get constant for 'iter' method
     let iter_const = self.identifer_constant(Token {
-      lexeme: ITER.to_string(),
+      lexeme: SmolStr::new_inline_from_ascii(ITER.len(), ITER.as_bytes()),
       kind: TokenKind::Identifier,
       line: self.parser.previous.line,
     });
@@ -702,13 +700,13 @@ impl<'a, 's> Compiler<'a, 's> {
 
     // define iterator method constants
     let next_const = self.identifer_constant(Token {
-      lexeme: "next".to_string(),
+      lexeme: SmolStr::new_inline_from_ascii(4, b"next"),
       kind: TokenKind::Identifier,
       line: self.parser.previous.line,
     });
 
     let current_const = self.identifer_constant(Token {
-      lexeme: "current".to_string(),
+      lexeme: SmolStr::new_inline_from_ascii(6, b"current"),
       kind: TokenKind::Identifier,
       line: self.parser.previous.line,
     });
@@ -1018,7 +1016,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Compile a lambda expression
   fn lambda(&mut self) {
-    let name = self.hooks.manage_str("lambda".to_string());
+    let name = self.hooks.manage_str("lambda");
 
     let mut fun_compiler = Compiler::child(name, FunKind::Fun, &mut *self);
     fun_compiler.begin_scope();
@@ -1336,7 +1334,7 @@ impl<'a, 's> Compiler<'a, 's> {
     // load self on top of stack
     self.named_variable(
       Token {
-        lexeme: SELF.to_string(),
+        lexeme: SmolStr::new_inline_from_ascii(SELF.len(), SELF.as_bytes()),
         kind: TokenKind::Self_,
         line: self.parser.previous.line,
       },
@@ -1348,7 +1346,7 @@ impl<'a, 's> Compiler<'a, 's> {
       let arg_count = self.call_arguments();
       self.named_variable(
         Token {
-          lexeme: SUPER.to_string(),
+          lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
           kind: TokenKind::Super,
           line: self.parser.previous.line,
         },
@@ -1358,7 +1356,7 @@ impl<'a, 's> Compiler<'a, 's> {
     } else {
       self.named_variable(
         Token {
-          lexeme: SUPER.to_string(),
+          lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
           kind: TokenKind::Super,
           line: self.parser.previous.line,
         },
@@ -1389,7 +1387,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Generate a constant from the provided identifier token
   fn identifer_constant(&mut self, name: Token) -> u16 {
-    let identifer = self.hooks.manage_str(name.lexeme);
+    let identifer = self.hooks.manage_str(name.lexeme.as_str());
     self.make_constant(val!(identifer))
   }
 
@@ -1402,7 +1400,7 @@ impl<'a, 's> Compiler<'a, 's> {
     let local = &mut self.locals[self.local_count];
     self.local_count += 1;
 
-    local.name = Some(name.lexeme);
+    local.name = Some(SmolStr::from(name.lexeme));
     local.depth = -1;
   }
 
@@ -1624,7 +1622,7 @@ fn first_local(fun_kind: FunKind) -> Local {
       is_captured: false,
     },
     FunKind::Method | FunKind::Initializer => Local {
-      name: Some("self".to_string()),
+      name: Some(SmolStr::new_inline_from_ascii(SELF.len(), SELF.as_bytes())),
       depth: 0,
       is_captured: false,
     },
@@ -1818,12 +1816,12 @@ impl<'a> Parser<'a> {
       had_error: false,
       panic_mode: false,
       previous: Token {
-        lexeme: "error".to_string(),
+        lexeme: SmolStr::new_inline_from_ascii(5, b"error"),
         line: 0,
         kind: TokenKind::Error,
       },
       current: Token {
-        lexeme: "error".to_string(),
+        lexeme: SmolStr::new_inline_from_ascii(5, b"error"),
         line: 0,
         kind: TokenKind::Error,
       },

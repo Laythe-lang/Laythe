@@ -16,7 +16,7 @@ use crate::support::create_meta_class;
 use class::{declare_class_class, define_class_class, CLASS_CLASS_NAME};
 use closure::{declare_closure_class, define_closure_class};
 use iter::{declare_iter_class, define_iter_class};
-use laythe_core::{hooks::GcHooks, module::Module, package::Package, LyError, LyResult};
+use laythe_core::{hooks::GcHooks, module::Module, package::Package, LyResult};
 use laythe_env::managed::Managed;
 use list::{declare_list_class, define_list_class};
 use map::{declare_map_class, define_map_class};
@@ -68,12 +68,10 @@ fn bootstrap_classes(
   declare_object_class(hooks, &mut module)?;
   define_object_class(hooks, &module, &package)?;
 
-  let mut object_class = match module.get_symbol(hooks.manage_str(OBJECT_CLASS_NAME.to_string())) {
+  let mut object_class = match module.get_symbol(hooks.manage_str(OBJECT_CLASS_NAME)) {
     Some(class) => class.to_class(),
     None => {
-      return Err(LyError::new(hooks.manage_str(
-        "Could not find Laythe class object in std_lib construction.".to_string(),
-      )))
+      return Err(hooks.make_error("Could not find Laythe class object in std_lib construction."))
     }
   };
 
@@ -82,9 +80,7 @@ fn bootstrap_classes(
   let mut class_class = match module.get_symbol(hooks.manage_str(CLASS_CLASS_NAME.to_string())) {
     Some(class) => class.to_class(),
     None => {
-      return Err(LyError::new(hooks.manage_str(
-        "Could not find Laythe class class in std_lib construction.".to_string(),
-      )))
+      return Err(hooks.make_error("Could not find Laythe class class in std_lib construction."))
     }
   };
 

@@ -39,9 +39,9 @@ native!(BoolStr, BOOL_STR);
 impl Native for BoolStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     if this.unwrap() == VALUE_TRUE {
-      Ok(val!(hooks.manage_str("true".to_string())))
+      Ok(val!(hooks.manage_str("true")))
     } else {
-      Ok(val!(hooks.manage_str("false".to_string())))
+      Ok(val!(hooks.manage_str("false")))
     }
   }
 }

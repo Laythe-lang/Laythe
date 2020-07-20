@@ -31,7 +31,7 @@ impl<'a> Hooks<'a> {
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
-  /// let allocated = hooks.manage_str("example".to_string());
+  /// let allocated = hooks.manage_str("example");
   /// assert_eq!(*allocated, "example".to_string());
   /// ```
   pub fn new(context: &'a mut dyn HookContext) -> Hooks<'a> {
@@ -79,12 +79,12 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request a laythe error object be generated with the provided message
-  pub fn error(&self, message: String) -> CallResult {
+  pub fn error<S: Into<String> + AsRef<str>>(&self, message: S) -> CallResult {
     Err(LyError::new(self.manage_str(message)))
   }
 
   /// Request a laythe error object be generated with the provided message
-  pub fn make_error(&self, message: String) -> LyError {
+  pub fn make_error<S: Into<String> + AsRef<str>>(&self, message: S) -> LyError {
     LyError::new(self.manage_str(message))
   }
 
@@ -94,13 +94,8 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request a string be managed by the context's garbage collector
-  pub fn manage_str(&self, string: String) -> Managed<SmolStr> {
+  pub fn manage_str<S: Into<String> + AsRef<str>>(&self, string: S) -> Managed<SmolStr> {
     self.to_gc().manage_str(string)
-  }
-
-  /// Request an object by cloned then managed by the context's garbage collector
-  pub fn clone_managed<T: 'static + Manage + Clone>(&self, managed: Managed<T>) -> Managed<T> {
-    self.to_gc().clone_managed(managed)
   }
 
   /// Tell the context's gc that the provided managed object may grow during this operation
@@ -147,20 +142,20 @@ impl<'a> GcHooks<'a> {
   /// let mut context = NoContext::new(&gc);
   /// let hooks = GcHooks::new(&mut context);
   ///
-  /// let allocated = hooks.manage_str("example".to_string());
-  /// assert_eq!(*allocated, "example".to_string());
+  /// let allocated = hooks.manage_str("example");
+  /// assert_eq!(allocated, "example");
   /// ```
   pub fn new(context: &'a dyn GcContext) -> GcHooks<'a> {
     GcHooks { context }
   }
 
   /// Request a laythe error object be generated with the provided message
-  pub fn error(&self, message: String) -> CallResult {
+  pub fn error<S: Into<String> + AsRef<str>>(&self, message: S) -> CallResult {
     Err(LyError::new(self.manage_str(message)))
   }
 
   /// Request a laythe error object be generated with the provided message
-  pub fn make_error(&self, message: String) -> LyError {
+  pub fn make_error<S: Into<String> + AsRef<str>>(&self, message: S) -> LyError {
     LyError::new(self.manage_str(message))
   }
 
@@ -174,12 +169,6 @@ impl<'a> GcHooks<'a> {
   #[inline]
   pub fn manage_str<S: Into<String> + AsRef<str>>(&self, string: S) -> Managed<SmolStr> {
     self.context.gc().manage_str(string, self.context)
-  }
-
-  /// Request an object by cloned then managed by the context's garbage collector
-  #[inline]
-  pub fn clone_managed<T: 'static + Manage + Clone>(&self, managed: Managed<T>) -> Managed<T> {
-    self.context.gc().clone_managed(managed, self.context)
   }
 
   /// Tell the context's gc that the provided managed object may grow during this operation

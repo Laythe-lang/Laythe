@@ -35,7 +35,7 @@ pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> Ly
   export_and_insert(
     hooks,
     module,
-    hooks.manage_str(STDOUT_INSTANCE_NAME.to_string()),
+    hooks.manage_str(STDOUT_INSTANCE_NAME),
     val!(instance),
   )
 }
@@ -46,19 +46,19 @@ pub fn define_stdout(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(STDOUT_WRITE.name)),
+    hooks.manage_str(STDOUT_WRITE.name),
     val!(to_dyn_native(hooks, StdoutWrite::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(STDOUT_WRITELN.name)),
+    hooks.manage_str(STDOUT_WRITELN.name),
     val!(to_dyn_native(hooks, StdoutWriteln::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(STDOUT_FLUSH.name)),
+    hooks.manage_str(STDOUT_FLUSH.name),
     val!(to_dyn_native(hooks, StdoutFlush::from(hooks))),
   );
 

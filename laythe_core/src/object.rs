@@ -653,10 +653,10 @@ impl Closure {
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
-  ///   hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
+  ///   hooks.manage(Class::bare(hooks.manage_str("module"))),
   ///   hooks.manage(PathBuf::from("self/module.ly")),
   /// ));
-  /// let mut fun = Fun::new(hooks.manage_str("example".to_string()), module);
+  /// let mut fun = Fun::new(hooks.manage_str("example"), module);
   /// let managed_fun = hooks.manage(fun);
   ///
   /// let closure = Closure::new(managed_fun);

@@ -34,23 +34,24 @@ pub fn is_falsey(value: Value) -> bool {
 /// ```
 /// use laythe_core::utils::copy_string;
 /// use laythe_core::token::{Token, TokenKind};
+/// use smol_str::SmolStr;
 ///
 /// let token = Token {
 ///   kind: TokenKind::String,
-///   lexeme: "\"a cat in a hat\"".to_string(),
+///   lexeme: SmolStr::new("\"a cat in a hat\""),
 ///   line: 0
 /// };
 ///
 /// let copy = copy_string(&token);
-/// assert_eq!(copy, "a cat in a hat".to_string());
-/// assert_ne!(copy, "\"a cat in a hat\"".to_string());
+/// assert_eq!(copy, "a cat in a hat");
+/// assert_ne!(copy, "\"a cat in a hat\"");
 ///
 /// ```
-pub fn copy_string(token: &Token) -> String {
+pub fn copy_string<'a>(token: &'a Token) -> &'a str {
   let start = next_boundary(&token.lexeme, 0);
   let end = previous_boundary(&token.lexeme, token.lexeme.len());
 
-  token.lexeme[start..end].to_string()
+  &token.lexeme[start..end]
 }
 
 pub fn ptr_len<T>(start: *const T, end: *const T) -> usize {

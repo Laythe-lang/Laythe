@@ -40,19 +40,19 @@ pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(METHOD_NAME.name)),
+    hooks.manage_str(METHOD_NAME.name),
     val!(to_dyn_native(
       hooks,
       MethodName::new(
         METHOD_NAME.to_meta(&hooks),
-        hooks.manage_str(String::from(METHOD_NAME.name))
+        hooks.manage_str(METHOD_NAME.name)
       ),
     )),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(METHOD_CALL.name)),
+    hooks.manage_str(METHOD_CALL.name),
     val!(to_dyn_native(hooks, MethodCall::from(hooks))),
   );
 
@@ -131,7 +131,7 @@ mod test {
     #[test]
     fn call() {
       let mut context = MockedContext::default();
-      let responses = &[val!(context.gc.manage_str("example".to_string(), &NO_GC))];
+      let responses = &[val!(context.gc.manage_str("example", &NO_GC))];
       context.responses.extend_from_slice(responses);
 
       let mut hooks = Hooks::new(&mut context);
@@ -140,7 +140,7 @@ mod test {
         hooks.manage_str("name".to_string()),
       );
 
-      let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
+      let fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
@@ -181,7 +181,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let method_call = MethodCall::from(&hooks);
 
-      let fun = fun_from_hooks(&hooks.to_gc(), "example".to_string(), "module");
+      let fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));

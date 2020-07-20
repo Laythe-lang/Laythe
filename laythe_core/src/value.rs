@@ -336,8 +336,8 @@ mod unboxed {
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.ly"))));
-    /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
+    /// let module = hooks.manage(Module::new(hooks.manage_str("module"), hooks.manage(PathBuf::from("self/module.ly"))));
+    /// let fun: Fun = Fun::new(hooks.manage_str("add"), module);
     /// let managed = hooks.manage(fun);
     ///
     /// let value = Value::Fun(managed);
@@ -376,8 +376,8 @@ mod unboxed {
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.ly"))));
-    /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
+    /// let module = hooks.manage(Module::new(hooks.manage_str("module"), hooks.manage(PathBuf::from("self/module.ly"))));
+    /// let fun: Fun = Fun::new(hooks.manage_str("add"), module);
     /// let managed_fun = hooks.manage(fun);
     ///
     /// let closure = Closure::new(managed_fun);
@@ -409,8 +409,8 @@ mod unboxed {
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let module = hooks.manage(Module::new(hooks.manage_str("module".to_string()), hooks.manage(PathBuf::from("self/module.ly"))));
-    /// let fun: Fun = Fun::new(hooks.manage_str("add".to_string()), module);
+    /// let module = hooks.manage(Module::new(hooks.manage_str("module"), hooks.manage(PathBuf::from("self/module.ly"))));
+    /// let fun: Fun = Fun::new(hooks.manage_str("add"), module);
     /// let managed_fun = hooks.manage(fun);
     ///
     /// let closure = Closure::new(managed_fun);

@@ -30,12 +30,12 @@ const ASSERTNE_META: NativeMetaBuilder = NativeMetaBuilder::fun("assertNe", Arit
   ]);
 
 pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
-  let str_name = hooks.manage_str("str".to_string());
+  let str_name = hooks.manage_str("str");
 
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(ASSERT_META.name.to_string()),
+    hooks.manage_str(ASSERT_META.name),
     val!(
       hooks.manage(Box::new(Assert::new(ASSERT_META.to_meta(hooks), str_name)) as Box<dyn Native>)
     ),
@@ -44,7 +44,7 @@ pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResul
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(ASSERTEQ_META.name.to_string()),
+    hooks.manage_str(ASSERTEQ_META.name),
     val!(hooks
       .manage(Box::new(AssertEq::new(ASSERTEQ_META.to_meta(hooks), str_name)) as Box<dyn Native>)),
   )?;
@@ -52,7 +52,7 @@ pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResul
   export_and_insert(
     hooks,
     self_module,
-    hooks.manage_str(ASSERTNE_META.name.to_string()),
+    hooks.manage_str(ASSERTNE_META.name),
     val!(hooks
       .manage(Box::new(AssertNe::new(ASSERTNE_META.to_meta(hooks), str_name)) as Box<dyn Native>)),
   )

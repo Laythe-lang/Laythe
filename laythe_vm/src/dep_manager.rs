@@ -106,7 +106,7 @@ impl DepManager {
     let import = Import::new(
       resolved_segments
         .iter()
-        .map(|segment| hooks.manage_str(segment.to_string()))
+        .map(|segment| hooks.manage_str(segment))
         .collect(),
     );
 

@@ -34,13 +34,13 @@ pub fn define_string_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(STRING_STR.name)),
+    hooks.manage_str(STRING_STR.name),
     val!(to_dyn_native(hooks, StringStr::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(STRING_HAS.name)),
+    hooks.manage_str(STRING_HAS.name),
     val!(to_dyn_native(hooks, StringHas::from(hooks))),
   );
 

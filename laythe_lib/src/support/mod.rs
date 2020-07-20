@@ -31,7 +31,7 @@ pub fn default_class_inheritance(
   package: &Package,
   class_name: &str,
 ) -> LyResult<Managed<Class>> {
-  let name = hooks.manage_str(class_name.to_string());
+  let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, GLOBAL_PATH);
   let module = package.import(hooks, import)?;
@@ -49,7 +49,7 @@ pub fn load_class_from_module(
   module: &Module,
   name: &str,
 ) -> LyResult<Managed<Class>> {
-  let name = hooks.manage_str(name.to_string());
+  let name = hooks.manage_str(name);
   match module.import(hooks).get_field(&name) {
     Some(symbol) => {
       if symbol.is_class() {
@@ -71,7 +71,7 @@ pub fn load_instance_from_module(
   module: &Module,
   name: &str,
 ) -> LyResult<Managed<Instance>> {
-  let name = hooks.manage_str(name.to_string());
+  let name = hooks.manage_str(name);
   match module.import(hooks).get_field(&name) {
     Some(symbol) => {
       if symbol.is_instance() {
@@ -197,7 +197,7 @@ mod test {
         ValueKind::Native => callable.to_native().meta().signature.arity,
         _ => {
           return Err(LyError::new(
-            self.gc.manage_str("Not callable".to_string(), &NO_GC),
+            self.gc.manage_str("Not callable", &NO_GC),
           ));
         }
       };
@@ -208,7 +208,7 @@ mod test {
           return Err(LyError::new(
             self
               .gc
-              .manage_str("Incorrect function arity".to_string(), &NO_GC),
+              .manage_str("Incorrect function arity", &NO_GC),
           ))
         }
       }
@@ -220,7 +220,7 @@ mod test {
       }
 
       Err(LyError::new(
-        self.gc.manage_str("No mocked results".to_string(), &NO_GC),
+        self.gc.manage_str("No mocked results", &NO_GC),
       ))
     }
 
@@ -231,7 +231,7 @@ mod test {
         ValueKind::Native => method.to_native().meta().signature.arity,
         _ => {
           return Err(LyError::new(
-            self.gc.manage_str("Not callable".to_string(), &NO_GC),
+            self.gc.manage_str("Not callable", &NO_GC),
           ));
         }
       };
@@ -242,7 +242,7 @@ mod test {
           return Err(LyError::new(
             self
               .gc
-              .manage_str("Incorrect function arity".to_string(), &NO_GC),
+              .manage_str("Incorrect function arity", &NO_GC),
           ))
         }
       }
@@ -254,7 +254,7 @@ mod test {
       }
 
       Err(LyError::new(
-        self.gc.manage_str("No mocked results".to_string(), &NO_GC),
+        self.gc.manage_str("No mocked results", &NO_GC),
       ))
     }
 
@@ -293,7 +293,7 @@ mod test {
           return Err(LyError::new(
             self
               .gc
-              .manage_str("Incorrect method arity".to_string(), &NO_GC),
+              .manage_str("Incorrect method arity", &NO_GC),
           ))
         }
       }
@@ -305,7 +305,7 @@ mod test {
       }
 
       Err(LyError::new(
-        self.gc.manage_str("No mocked results".to_string(), &NO_GC),
+        self.gc.manage_str("No mocked results", &NO_GC),
       ))
     }
   }
@@ -366,7 +366,7 @@ mod test {
     Box::new(TestIterator::new())
   }
 
-  pub fn fun_from_hooks(hooks: &GcHooks, name: String, module_name: &str) -> Managed<Fun> {
+  pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Managed<Fun> {
     let module = Module::from_path(
       &hooks,
       hooks.manage(PathBuf::from(format!("path/{}.ly", module_name))),

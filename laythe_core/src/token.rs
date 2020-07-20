@@ -1,3 +1,5 @@
+use smol_str::SmolStr;
+
 /// A token in the space lox language
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -5,7 +7,7 @@ pub struct Token {
   pub kind: TokenKind,
 
   /// The character array of the source
-  pub lexeme: String,
+  pub lexeme: SmolStr,
 
   /// line number this token appears
   pub line: u32,

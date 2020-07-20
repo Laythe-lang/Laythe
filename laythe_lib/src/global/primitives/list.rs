@@ -64,73 +64,73 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_SIZE.name)),
+    hooks.manage_str(LIST_SIZE.name),
     val!(to_dyn_native(hooks, ListSize::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_PUSH.name)),
+    hooks.manage_str(LIST_PUSH.name),
     val!(to_dyn_native(hooks, ListPush::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_POP.name)),
+    hooks.manage_str(LIST_POP.name),
     val!(to_dyn_native(hooks, ListPop::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_REMOVE.name)),
+    hooks.manage_str(LIST_REMOVE.name),
     val!(to_dyn_native(hooks, ListRemove::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_INDEX.name)),
+    hooks.manage_str(LIST_INDEX.name),
     val!(to_dyn_native(hooks, ListIndex::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_INSERT.name)),
+    hooks.manage_str(LIST_INSERT.name),
     val!(to_dyn_native(hooks, ListInsert::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_STR.name)),
+    hooks.manage_str(LIST_STR.name),
     val!(to_dyn_native(
       hooks,
       ListStr::new(
         LIST_STR.to_meta(&hooks),
-        hooks.manage_str(String::from(LIST_STR.name))
+        hooks.manage_str(LIST_STR.name)
       ),
     )),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_CLEAR.name)),
+    hooks.manage_str(LIST_CLEAR.name),
     val!(to_dyn_native(hooks, ListClear::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_HAS.name)),
+    hooks.manage_str(LIST_HAS.name),
     val!(to_dyn_native(hooks, ListHas::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_ITER.name)),
+    hooks.manage_str(LIST_ITER.name),
     val!(to_dyn_native(hooks, ListIter::from(hooks))),
   );
 
   class.meta().expect("Meta class not set.").add_method(
     hooks,
-    hooks.manage_str(String::from(LIST_COLLECT.name)),
+    hooks.manage_str(LIST_COLLECT.name),
     val!(to_dyn_native(hooks, ListCollect::from(hooks))),
   );
 

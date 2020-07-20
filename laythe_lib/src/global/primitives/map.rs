@@ -60,55 +60,55 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_SIZE.name)),
+    hooks.manage_str(MAP_SIZE.name),
     val!(to_dyn_native(hooks, MapSize::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_STR.name)),
+    hooks.manage_str(MAP_STR.name),
     val!(to_dyn_native(
       hooks,
       MapStr::new(
         MAP_STR.to_meta(hooks),
-        hooks.manage_str(String::from(MAP_STR.name))
+        hooks.manage_str(MAP_STR.name)
       ),
     )),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_HAS.name)),
+    hooks.manage_str(MAP_HAS.name),
     val!(to_dyn_native(hooks, MapHas::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_GET.name)),
+    hooks.manage_str(MAP_GET.name),
     val!(to_dyn_native(hooks, MapGet::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_SET.name)),
+    hooks.manage_str(MAP_SET.name),
     val!(to_dyn_native(hooks, MapSet::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_REMOVE.name)),
+    hooks.manage_str(MAP_REMOVE.name),
     val!(to_dyn_native(hooks, MapRemove::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_INSERT.name)),
+    hooks.manage_str(MAP_INSERT.name),
     val!(to_dyn_native(hooks, MapInsert::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(MAP_ITER.name)),
+    hooks.manage_str(MAP_ITER.name),
     val!(to_dyn_native(hooks, MapIter::from(hooks))),
   );
 

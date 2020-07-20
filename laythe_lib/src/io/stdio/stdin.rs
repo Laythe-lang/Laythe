@@ -30,7 +30,7 @@ pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> LyR
   export_and_insert(
     hooks,
     module,
-    hooks.manage_str(STDIN_INSTANCE_NAME.to_string()),
+    hooks.manage_str(STDIN_INSTANCE_NAME),
     val!(instance),
   )
 }
@@ -41,13 +41,13 @@ pub fn define_stdin(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<(
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(STDIN_READ.name)),
+    hooks.manage_str(STDIN_READ.name),
     val!(to_dyn_native(hooks, StdinRead::from(hooks))),
   );
 
   class.add_method(
     hooks,
-    hooks.manage_str(String::from(STDIN_READ_LINE.name)),
+    hooks.manage_str(STDIN_READ_LINE.name),
     val!(to_dyn_native(hooks, StdinReadLine::from(hooks))),
   );
 
