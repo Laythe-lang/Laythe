@@ -1,4 +1,4 @@
-fn outer(something) {
+fn outer() {
   thrower();
 }
 

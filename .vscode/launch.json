@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "test.ly",
+        "language/native/signature_fixed_arity.ly",
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",

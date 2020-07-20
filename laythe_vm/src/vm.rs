@@ -350,8 +350,11 @@ struct VmExecutor<'a> {
   /// The current error if one is active
   current_error: Option<LyError>,
 
-  /// index to the top of the value stack
+  /// pointer to the top of the value stack
   stack_top: *mut Value,
+
+  /// pointer to the current instruction
+  ip: *const u8,
 
   /// TODO replace this. A fun to fill a call frame for higher order native functions
   /// may want to eventually have a function rental so native functions can set name / module
@@ -368,6 +371,7 @@ impl<'a> VmExecutor<'a> {
     let current_frame = { &mut vm.frames[0] };
     let current_fun = current_frame.closure.fun;
     let stack_top = &mut vm.stack[1] as *mut Value;
+    let ip = ptr::null();
 
     let current_frame = current_frame as *mut CallFrame;
     let mut native_fun_stub = vm.gc.manage(
@@ -388,13 +392,14 @@ impl<'a> VmExecutor<'a> {
       gc: &mut vm.gc,
       io: &mut vm.io,
       stack_top,
+      ip,
       global: vm.global,
       dep_manager: vm.dep_manager,
       native_fun_stub,
       open_upvalues: Vec::with_capacity(100),
     };
 
-    executor.set_ip(&executor.script.to_closure().fun.chunk().instructions[0]);
+    executor.ip = &executor.script.to_closure().fun.chunk().instructions[0];
     let result = executor.call(executor.script.to_closure(), 0);
 
     let mut current_module = executor.current_fun.module;
@@ -480,7 +485,7 @@ impl<'a> VmExecutor<'a> {
 
       #[cfg(feature = "debug")]
       {
-        let ip = unsafe { self.ip().offset(-1) };
+        let ip = unsafe { self.ip.offset(-1) };
         if let Err(_) = self.print_debug(ip, last_ip) {
           return ExecuteResult::InternalError;
         }
@@ -582,15 +587,19 @@ impl<'a> VmExecutor<'a> {
   /// Update the current instruction pointer
   #[inline]
   fn update_ip(&mut self, offset: isize) {
-    unsafe {
-      self.set_ip(self.ip().offset(offset));
-    }
+    unsafe { self.ip = self.ip.offset(offset) }
   }
 
-  /// Get the current instruction
+  /// Store the ip in the current frame
   #[inline]
-  fn ip(&self) -> *const u8 {
-    unsafe { (*self.current_frame).ip }
+  fn load_ip(&mut self) {
+    unsafe { self.ip = (*self.current_frame).ip }
+  }
+
+  /// Store the ip in the current frame
+  #[inline]
+  fn store_ip(&mut self) {
+    unsafe { (*self.current_frame).ip = self.ip }
   }
 
   /// Get the current frame slots
@@ -605,16 +614,10 @@ impl<'a> VmExecutor<'a> {
     unsafe { (*self.current_frame).closure }
   }
 
-  /// Set the current
-  #[inline]
-  fn set_ip(&mut self, new_ip: *const u8) {
-    unsafe { (*self.current_frame).ip = new_ip }
-  }
-
   /// read a u8 out of the bytecode
   #[inline]
   fn read_byte(&mut self) -> u8 {
-    let byte = unsafe { *self.ip() };
+    let byte = unsafe { *self.ip };
     self.update_ip(1);
     byte
   }
@@ -622,7 +625,7 @@ impl<'a> VmExecutor<'a> {
   /// read a u16 out of the bytecode
   #[inline]
   fn read_short(&mut self) -> u16 {
-    let slice = unsafe { std::slice::from_raw_parts(self.ip(), 2) };
+    let slice = unsafe { std::slice::from_raw_parts(self.ip, 2) };
     let buffer = slice.try_into().expect("slice of incorrect length.");
     let short = u16::from_ne_bytes(buffer);
     self.update_ip(2);
@@ -1364,7 +1367,7 @@ impl<'a> VmExecutor<'a> {
         "Function {} was not wrapped in a closure.",
         callee.to_fun().name
       )),
-      _ => self.runtime_error("Can only call functions and classes."),
+      _ => self.runtime_error("Can only call functions, methods and classes."),
     }
   }
 
@@ -1453,11 +1456,13 @@ impl<'a> VmExecutor<'a> {
   #[inline]
   fn push_frame(&mut self, closure: Managed<Closure>, arg_count: u8) {
     unsafe {
+      self.store_ip();
       let frame = &mut *self.current_frame.offset(1);
       frame.closure = closure;
       frame.ip = closure.fun.chunk().instructions.get_unchecked(0) as *const u8;
       frame.slots = self.stack_top.offset(-(arg_count as isize) - 1);
       self.current_frame = frame as *mut CallFrame;
+      self.load_ip();
     }
 
     self.current_fun = closure.fun;
@@ -1481,6 +1486,7 @@ impl<'a> VmExecutor<'a> {
       self.stack_top = self.slots();
       self.current_frame = self.current_frame.offset(-1);
       self.current_fun = self.closure().fun;
+      self.load_ip();
     }
 
     None
@@ -1729,6 +1735,7 @@ impl<'a> VmExecutor<'a> {
   fn stack_unwind(&mut self, error: &LyError) -> Option<ExecuteResult> {
     let mut popped_frames = None;
     let mut stack_top = None;
+    self.store_ip();
 
     // travel down stack frames looking for an applicable handle
     for (idx, frame) in self.frames[1..self.frame_count]
@@ -1747,6 +1754,7 @@ impl<'a> VmExecutor<'a> {
         self.frame_count -= idx;
         self.current_frame = frame as *mut CallFrame;
         self.current_fun = frame.closure.fun;
+        self.ip = frame.ip;
 
         if let Some(top) = stack_top {
           self.stack_top = top;

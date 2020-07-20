@@ -30,7 +30,7 @@ class NthToggle < Toggle {
 }
 
 let start = clock();
-let n = 1000000;
+let n = 100000;
 let val = true;
 let toggle = Toggle(val);
 
