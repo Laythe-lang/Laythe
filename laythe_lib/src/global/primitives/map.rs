@@ -20,7 +20,6 @@ use laythe_env::{
   stdio::Stdio,
 };
 use smol_str::SmolStr;
-use std::fmt;
 use std::mem;
 
 pub const MAP_CLASS_NAME: &'static str = "Map";
@@ -69,10 +68,7 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
     hooks.manage_str(MAP_STR.name),
     val!(to_dyn_native(
       hooks,
-      MapStr::new(
-        MAP_STR.to_meta(hooks),
-        hooks.manage_str(MAP_STR.name)
-      ),
+      MapStr::new(MAP_STR.to_meta(hooks), hooks.manage_str(MAP_STR.name)),
     )),
   );
 
@@ -267,6 +263,7 @@ impl Native for MapIter {
   }
 }
 
+#[derive(Debug)]
 struct MapIterator {
   map: Managed<Map<Value, Value>>,
   iter: Iter<'static, Value, Value>,
@@ -323,16 +320,6 @@ impl Trace for MapIterator {
 
   fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.map.trace_debug(stdio)
-  }
-}
-
-impl fmt::Debug for MapIterator {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.debug_struct("MapIterator")
-      .field("map", &self.map)
-      .field("iter", &self.iter)
-      .field("current", &self.current)
-      .finish()
   }
 }
 
