@@ -164,7 +164,7 @@ impl Upvalue {
   /// upvalue.hoist();
   ///
   /// match upvalue {
-  ///   Upvalue::Closed(store) => assert_eq!(*store, val!(10.0)),
+  ///   Upvalue::Closed(store) => assert_eq!(store, val!(10.0)),
   ///   Upvalue::Open(_) => assert!(false),
   /// };
   /// ```

@@ -60,6 +60,7 @@ fn iter() -> Result<(), std::io::Error> {
       "std_lib/builtin/iter/map.ly",
       "std_lib/builtin/iter/next.ly",
       "std_lib/builtin/iter/reduce.ly",
+      "std_lib/builtin/iter/size.ly",
       "std_lib/builtin/iter/str.ly",
       "std_lib/builtin/iter/zip.ly",
     ],

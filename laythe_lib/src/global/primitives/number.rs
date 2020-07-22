@@ -106,7 +106,7 @@ impl LyIter for TimesIterator {
   }
 
   fn size_hint(&self) -> Option<usize> {
-    Some(self.max as usize)
+    Some((self.max + 1.0) as usize)
   }
 
   fn size(&self) -> usize {
