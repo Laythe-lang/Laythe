@@ -149,7 +149,11 @@ fn number() -> Result<(), std::io::Error> {
 #[test]
 fn str() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["std_lib/builtin/str/str.ly", "std_lib/builtin/str/has.ly"],
+    &vec![
+      "std_lib/builtin/str/str.ly",
+      "std_lib/builtin/str/has.ly",
+      "std_lib/builtin/str/iter.ly",
+    ],
     ExecuteResult::Ok,
   )?;
 
