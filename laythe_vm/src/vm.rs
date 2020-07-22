@@ -986,7 +986,7 @@ impl<'a> VmExecutor<'a> {
     let open_index = match &mut *upvalue.to_upvalue() {
       Upvalue::Open(stack_ptr) => Some(*stack_ptr),
       Upvalue::Closed(store) => {
-        **store = value;
+        *store = value;
         None
       }
     };
@@ -1074,7 +1074,7 @@ impl<'a> VmExecutor<'a> {
 
     let value = match &*upvalue_value.to_upvalue() {
       Upvalue::Open(stack_ptr) => *unsafe { stack_ptr.as_ref() },
-      Upvalue::Closed(store) => **store,
+      Upvalue::Closed(store) => *store,
     };
 
     self.push(value);
