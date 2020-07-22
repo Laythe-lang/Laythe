@@ -1,7 +1,6 @@
 use crate::scanner::Scanner;
 use laythe_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use laythe_core::token::{Token, TokenKind};
-use laythe_core::utils::copy_string;
 use laythe_core::{
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::GcHooks,
@@ -806,7 +805,7 @@ impl<'a, 's> Compiler<'a, 's> {
     self
       .parser
       .consume(TokenKind::String, "Expected path string after 'from'.");
-    let string = self.hooks.manage_str(copy_string(&self.parser.previous));
+    let string = self.hooks.manage_str(self.parser.previous.lexeme.as_str());
     let value = val!(string);
     let path = self.make_constant(value);
     self
@@ -1115,7 +1114,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Compile a string literal
   fn string(&mut self) {
-    let string = self.hooks.manage_str(copy_string(&self.parser.previous));
+    let string = self.hooks.manage_str(self.parser.previous.lexeme.as_str());
     let value = val!(string);
     self.emit_constant(value)
   }

@@ -1,0 +1,3 @@
+assertEq('
+', '\n');
+assertEq('\t', '	');
