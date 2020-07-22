@@ -13,7 +13,8 @@ fn main() {
       vm.repl();
       process::exit(0);
     }
-    [_, file_path] => {
+    _ => {
+      let file_path = &args.as_slice()[1];
       let path = PathBuf::from(file_path);
 
       match read_to_string(&path) {
@@ -29,10 +30,6 @@ fn main() {
           process::exit(4)
         }
       }
-    }
-    _ => {
-      println!("Usage: laythe [path]");
-      process::exit(1);
     }
   }
 }

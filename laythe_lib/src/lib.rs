@@ -2,6 +2,7 @@
 pub mod global;
 mod io;
 mod math;
+mod env;
 mod support;
 
 use global::add_global_module;
@@ -9,6 +10,7 @@ use io::io_package;
 use laythe_core::{hooks::GcHooks, package::Package, LyResult};
 use laythe_env::managed::Managed;
 use math::math_module;
+use env::env_module;
 
 #[macro_export]
 macro_rules! native {
@@ -63,9 +65,11 @@ pub fn create_std_lib(hooks: &GcHooks) -> LyResult<Managed<Package>> {
 
   let math = math_module(hooks, std)?;
   let io = io_package(hooks, std)?;
+  let env = env_module(hooks, std)?;
 
   std.add_module(hooks, math)?;
   std.add_package(hooks, io)?;
+  std.add_module(hooks, env)?;
 
   Ok(std)
 }
