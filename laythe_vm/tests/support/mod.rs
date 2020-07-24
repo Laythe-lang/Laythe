@@ -112,9 +112,9 @@ pub fn assert_file_exit_and_stdio(
 
     assert!(stderr_result.is_ok());
     let stderr_string = stderr_result.unwrap();
+    let stderr_string = stderr_string.trim_end();
 
-    let mut stderr_lines: Vec<&str> = stderr_string.split("\n").collect();
-    stderr_lines.pop();
+    let stderr_lines: Vec<&str> = stderr_string.split("\n").collect();
 
     stderr_lines
       .iter()

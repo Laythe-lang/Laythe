@@ -11,6 +11,14 @@ fn test_file_with_stdout(
   assert_file_exit_and_stdio(path, FILE_PATH, None, None, Some(stdout), None, result)
 }
 
+fn test_file_with_stderr(
+  path: &str,
+  stderr: Vec<&str>,
+  result: ExecuteResult,
+) -> Result<(), std::io::Error> {
+  assert_file_exit_and_stdio(path, FILE_PATH, None, None, None, Some(stderr), result)
+}
+
 fn test_file_with_stdin(
   path: &str,
   stdin: String,
@@ -39,6 +47,18 @@ fn stdio() -> Result<(), std::io::Error> {
 
   test_file_with_stdout(
     "std_lib/io/stdio/stdout/writeln.ly",
+    vec!["expected 1", "expected 2"],
+    ExecuteResult::Ok,
+  )?;
+
+  test_file_with_stderr(
+    "std_lib/io/stdio/stderr/write.ly",
+    vec!["expected 1 expected 2"],
+    ExecuteResult::Ok,
+  )?;
+
+  test_file_with_stderr(
+    "std_lib/io/stdio/stderr/writeln.ly",
     vec!["expected 1", "expected 2"],
     ExecuteResult::Ok,
   )?;
