@@ -1232,6 +1232,11 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
+    if right.is_str() && left.is_str() {
+      self.push(val!(left.to_str() < right.to_str()));
+      return Signal::Ok;
+    }
+
     self.runtime_error("Operands must be numbers.")
   }
 
@@ -1240,6 +1245,11 @@ impl<'a> VmExecutor<'a> {
 
     if right.is_num() && left.is_num() {
       self.push(val!(left.to_num() > right.to_num()));
+      return Signal::Ok;
+    }
+
+    if right.is_str() && left.is_str() {
+      self.push(val!(left.to_str() > right.to_str()));
       return Signal::Ok;
     }
 
