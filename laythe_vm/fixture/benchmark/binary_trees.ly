@@ -28,10 +28,10 @@ let stretchDepth = maxDepth + 1;
 
 let start = clock();
 
-print "stretch tree of depth:";
-print stretchDepth;
-print "check:";
-print Tree(0, stretchDepth).check();
+print("stretch tree of depth:");
+print(stretchDepth);
+print("check:");
+print(Tree(0, stretchDepth).check());
 
 let longLivedTree = Tree(0, maxDepth);
 
@@ -52,20 +52,20 @@ while (depth < stretchDepth) {
     i = i + 1;
   }
 
-  print "num trees:";
-  print iterations * 2;
-  print "depth:";
-  print depth;
-  print "check:";
-  print check;
+  print("num trees:");
+  print(iterations * 2);
+  print("depth:");
+  print(depth);
+  print("check:");
+  print(check);
 
   iterations = iterations / 4;
   depth = depth + 2;
 }
 
-print "long lived tree of depth:";
-print maxDepth;
-print "check:";
-print longLivedTree.check();
-print "elapsed:";
-print clock() - start;
+print("long lived tree of depth:");
+print(maxDepth);
+print("check:");
+print(longLivedTree.check());
+print("elapsed:");
+print(clock() - start);

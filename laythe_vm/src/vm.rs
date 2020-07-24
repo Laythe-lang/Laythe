@@ -525,7 +525,6 @@ impl<'a> VmExecutor<'a> {
         ByteCode::IterCurrent => self.op_iter_current(),
         ByteCode::Constant => self.op_constant(),
         ByteCode::ConstantLong => self.op_constant_long(),
-        ByteCode::Print => self.op_print(),
         ByteCode::Call => self.op_call(),
         ByteCode::Invoke => self.op_invoke(),
         ByteCode::SuperInvoke => self.op_super_invoke(),
@@ -1326,12 +1325,6 @@ impl<'a> VmExecutor<'a> {
   fn op_close_upvalue(&mut self) -> Signal {
     self.close_upvalues(NonNull::from(unsafe { &*self.stack_top.offset(-1) }));
     self.drop();
-    Signal::Ok
-  }
-
-  fn op_print(&mut self) -> Signal {
-    let mut stdio = self.io.stdio();
-    writeln!(stdio.stdout(), "{}", self.pop()).expect("Unable to write to stdout");
     Signal::Ok
   }
 

@@ -1,7 +1,7 @@
 class Foo {
   method() {
     return "ok";
-    print "bad";
+    print("bad");
   }
 }
 

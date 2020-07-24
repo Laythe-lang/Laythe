@@ -1,1 +1,1 @@
-print []; // expect list
+print([]); // expect list

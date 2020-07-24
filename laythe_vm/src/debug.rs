@@ -48,7 +48,6 @@ pub fn disassemble_instruction(
   let (instruction, offset) = AlignedByteCode::decode(&chunk.instructions, ip as usize);
   match instruction {
     AlignedByteCode::Return => simple_instruction(stdio.stdout(), "Return", offset),
-    AlignedByteCode::Print => simple_instruction(stdio.stdout(), "Print", offset),
     AlignedByteCode::Negate => simple_instruction(stdio.stdout(), "Negate", offset),
     AlignedByteCode::Add => simple_instruction(stdio.stdout(), "Add", offset),
     AlignedByteCode::Subtract => simple_instruction(stdio.stdout(), "Subtract", offset),

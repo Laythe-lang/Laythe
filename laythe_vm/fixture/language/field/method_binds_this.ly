@@ -1,7 +1,7 @@
 class Foo {
   sayName(a) {
-    print self.name;
-    print a;
+    print(self.name);
+    print(a);
   }
 }
 

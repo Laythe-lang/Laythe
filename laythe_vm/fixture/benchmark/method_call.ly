@@ -47,7 +47,7 @@ for (let i = 0; i < n; i = i + 1) {
   val = toggle.activate().value();
 }
 
-print toggle.value();
+print(toggle.value());
 
 val = true;
 let ntoggle = NthToggle(val, 3);
@@ -65,5 +65,5 @@ for (let i = 0; i < n; i = i + 1) {
   val = ntoggle.activate().value();
 }
 
-print ntoggle.value();
-print clock() - start;
+print(ntoggle.value());
+print(clock() - start);

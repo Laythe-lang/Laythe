@@ -5,8 +5,8 @@ let f3;
 for (let i in [1, 2, 3]) {
   let j = i;
   fn f() {
-    print i;
-    print j;
+    print(i);
+    print(j);
   }
 
   if (j == 1) f1 = f;

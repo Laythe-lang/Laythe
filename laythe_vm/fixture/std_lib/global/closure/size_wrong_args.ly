@@ -1,5 +1,5 @@
 fn f(x) {
-  print x;
+  print(x);
 }
 
 f.size(10);

@@ -1,1 +1,1 @@
-print [nil, true, 10.3, "cat"];
+print([nil, true, 10.3, "cat"]);

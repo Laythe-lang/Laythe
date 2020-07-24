@@ -14,4 +14,4 @@ for (let i in 100000.times()) {
   }
 }
 
-print clock() - start;
+print(clock() - start);

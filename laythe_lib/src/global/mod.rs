@@ -1,5 +1,6 @@
 mod assert;
 mod dependencies;
+mod misc;
 mod primitives;
 mod time;
 
@@ -18,6 +19,7 @@ use laythe_core::{
   LyResult,
 };
 use laythe_env::managed::Managed;
+use misc::add_misc_funs;
 use primitives::{
   add_primitive_classes, bool::BOOL_CLASS_NAME, class::CLASS_CLASS_NAME,
   closure::CLOSURE_CLASS_NAME, iter::ITER_CLASS_NAME, list::LIST_CLASS_NAME, map::MAP_CLASS_NAME,
@@ -38,6 +40,7 @@ pub fn add_global_module(hooks: &GcHooks, mut std: Managed<Package>) -> LyResult
   add_dependency_classes(hooks, module, std)?;
   add_assert_funs(hooks, module, std)?;
   add_clock_funs(hooks, module, std)?;
+  add_misc_funs(hooks, module, std)?;
 
   Ok(())
 }

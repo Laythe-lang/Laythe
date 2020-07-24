@@ -1,6 +1,6 @@
 class Foo {
   init(a, b) {
-    print "init"; // expect: init
+    print("init"); // expect: init
     self.a = a;
     self.b = b;
   }

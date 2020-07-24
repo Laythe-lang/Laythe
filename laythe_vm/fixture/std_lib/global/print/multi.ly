@@ -1,0 +1,1 @@
+print(10, false, true, ['dog'], { 'cat': nil });

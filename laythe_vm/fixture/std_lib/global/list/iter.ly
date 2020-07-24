@@ -1,5 +1,5 @@
 fn greeter(name) {
-  print "hi! " + name.str();
+  print("hi! " + name.str());
 }
 
 let x = ["cat", "dog", greeter, false, [10]];

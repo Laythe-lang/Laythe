@@ -40,5 +40,5 @@ while (i < 500000) {
   i = i + 1;
 }
 
-print clock() - start;
+print(clock() - start);
 

@@ -1,6 +1,6 @@
 fn f() {
   return "ok";
-  print "bad";
+  print("bad");
 }
 
 assertEq(f(), "ok"); // expect: ok

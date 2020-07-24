@@ -33,7 +33,7 @@ impl<'a> Scanner<'a> {
   /// let source = String::from("
   /// let x = \"something\";
   /// if x != \"something\" {
-  ///   print x;
+  ///   print(x);
   /// }
   /// ");
   ///
@@ -68,7 +68,7 @@ impl<'a> Scanner<'a> {
   /// let source = String::from("
   /// let x = \"something\";
   /// if x != \"something\" {
-  ///   print x;
+  ///   print(x);
   /// }
   /// ");
   ///
@@ -249,14 +249,15 @@ impl<'a> Scanner<'a> {
               while !self.is_at_end() && self.peek() != quote_char && self.peek() != "}" {
                 self.advance_indices();
                 if len > 6 {
-                  return self.error_token("Unicode escape have a hexidecimal longer than length 6");
+                  return self
+                    .error_token("Unicode escape have a hexidecimal longer than length 6");
                 }
 
                 len += 1;
               }
 
               if self.peek() == quote_char {
-                return self.error_token("Expected '}' after unicode escape.")
+                return self.error_token("Expected '}' after unicode escape.");
               }
 
               if self.is_at_end() {
@@ -272,7 +273,10 @@ impl<'a> Scanner<'a> {
                   }
                 },
                 Err(_) => {
-                  return self.error_token(&format!("Invalid hexadecimal for unicode escape {}.", unicode));
+                  return self.error_token(&format!(
+                    "Invalid hexadecimal for unicode escape {}.",
+                    unicode
+                  ));
                 }
               }
             }
@@ -371,7 +375,7 @@ impl<'a> Scanner<'a> {
         "l" => self.check_keyword(1, "et", TokenKind::Let),
         "n" => self.check_keyword(1, "il", TokenKind::Nil),
         "o" => self.check_keyword(1, "r", TokenKind::Or),
-        "p" => self.check_keyword(1, "rint", TokenKind::Print),
+        // "p" => self.check_keyword(1, "rint", TokenKind::Print),
         "r" => self.check_keyword(1, "eturn", TokenKind::Return),
         "s" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
@@ -690,10 +694,6 @@ mod test {
     map.insert(
       TokenKind::Or,
       TokenGen::ALpha(Box::new(|| "or".to_string())),
-    );
-    map.insert(
-      TokenKind::Print,
-      TokenGen::ALpha(Box::new(|| "print".to_string())),
     );
     map.insert(
       TokenKind::Return,
