@@ -769,18 +769,6 @@ fn operator() -> Result<(), std::io::Error> {
 }
 
 #[test]
-fn print() -> Result<(), std::io::Error> {
-  test_file_exits(&vec![], ExecuteResult::Ok)?;
-
-  test_file_exits(
-    &vec!["language/print/missing_argument.ly"],
-    ExecuteResult::CompileError,
-  )?;
-
-  test_file_exits(&vec![], ExecuteResult::RuntimeError)
-}
-
-#[test]
 fn regression() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec!["language/regression/40.ly", "language/regression/394.ly"],
