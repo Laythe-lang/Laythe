@@ -133,6 +133,10 @@ impl Native for MapStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     let map = this.unwrap().to_map();
 
+    if map.len() == 0 {
+      return Ok(val!(hooks.manage_str("{}")));
+    }
+
     // buffer for temporary strings
     let mut strings: Vec<String> = Vec::with_capacity(map.len());
 
