@@ -1,2 +1,2 @@
 class Foo {}
-assertEq(Foo.str(), 'Foo');
+assert(Foo.str().has('Foo'));
