@@ -8,7 +8,7 @@ use laythe_core::{
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   package::Package,
-  signature::Arity,
+  signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
   CallResult, LyResult,
@@ -19,6 +19,9 @@ use std::mem;
 pub const NUMBER_CLASS_NAME: &'static str = "Number";
 const NUMBER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const NUMBER_TIMES: NativeMetaBuilder = NativeMetaBuilder::method("times", Arity::Fixed(0));
+
+const NUMBER_PARSE: NativeMetaBuilder = NativeMetaBuilder::fun("parse", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("str", ParameterKind::String)]);
 
 pub fn declare_number_class(
   hooks: &GcHooks,
@@ -44,6 +47,12 @@ pub fn define_number_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
     val!(to_dyn_native(hooks, NumberTimes::from(hooks))),
   );
 
+  class.meta().expect("Meta class not set.").add_method(
+    hooks,
+    hooks.manage_str(NUMBER_PARSE.name),
+    val!(to_dyn_native(hooks, NumberParse::from(hooks))),
+  );
+
   Ok(())
 }
 
@@ -52,6 +61,18 @@ native!(NumberStr, NUMBER_STR);
 impl Native for NumberStr {
   fn call(&self, hook: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     Ok(val!(hook.manage_str(this.unwrap().to_num().to_string())))
+  }
+}
+
+native!(NumberParse, NUMBER_PARSE);
+
+impl Native for NumberParse {
+  fn call(&self, hook: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+    let str = args[0].to_str();
+    match str.parse::<f64>() {
+      Ok(num) => Ok(val!(num)),
+      Err(_) => Err(hook.make_error(format!("Unable to parse number from {}", str))),
+    }
   }
 }
 
