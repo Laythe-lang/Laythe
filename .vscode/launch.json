@@ -100,7 +100,8 @@
         }
       },
       "args": [
-        "language/native/signature_fixed_arity.ly",
+        "lox_interpreter/lox.ly",
+        "../../../craftinginterpreters/test/benchmark/binary_trees.lox"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",

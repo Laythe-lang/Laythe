@@ -43,6 +43,8 @@ const ITER_REDUCE: NativeMetaBuilder = NativeMetaBuilder::method("reduce", Arity
   ])
   .with_stack();
 
+const ITER_SIZE: NativeMetaBuilder = NativeMetaBuilder::method("size", Arity::Fixed(0));
+
 const ITER_EACH: NativeMetaBuilder = NativeMetaBuilder::method("each", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
   .with_stack();
@@ -51,7 +53,8 @@ const ITER_ZIP: NativeMetaBuilder = NativeMetaBuilder::method("zip", Arity::Vari
   .with_params(&[ParameterBuilder::new("iterators", ParameterKind::Iter)]);
 
 const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)]);
+  .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
+  .with_stack();
 
 pub fn declare_iter_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, ITER_CLASS_NAME)?;
@@ -95,6 +98,12 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
     hooks,
     hooks.manage_str(ITER_REDUCE.name),
     val!(to_dyn_native(hooks, IterReduce::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_SIZE.name),
+    val!(to_dyn_native(hooks, IterSize::from(hooks))),
   );
 
   class.add_method(
@@ -307,6 +316,26 @@ impl Native for IterReduce {
     }
 
     Ok(accumulator)
+  }
+}
+
+native!(IterSize, ITER_SIZE);
+
+impl Native for IterSize {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    let mut iter = this.unwrap().to_iter();
+
+    match iter.size_hint() {
+      Some(size) => Ok(val!(size as f64)),
+      None => {
+        let mut size: usize = 0;
+        while !is_falsey(iter.next(hooks)?) {
+          size += 1;
+        }
+
+        Ok(val!(size as f64))
+      }
+    }
   }
 }
 
@@ -680,6 +709,40 @@ mod test {
         Ok(r) => {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 10.1);
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod size {
+    use super::*;
+    use crate::support::MockedContext;
+    use laythe_core::iterator::LyIterator;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let iter_size = IterSize::from(&hooks);
+
+      assert_eq!(iter_size.meta().name, "size");
+      assert_eq!(iter_size.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+      let iter_size = IterSize::from(&hooks);
+
+      let this = val!(hooks.manage(LyIterator::new(test_iter())));
+      let result = iter_size.call(&mut hooks, Some(this), &[]);
+      match result {
+        Ok(r) => {
+          assert!(r.is_num());
+          assert_eq!(r.to_num(), 4.0);
         }
         Err(_) => assert!(false),
       }

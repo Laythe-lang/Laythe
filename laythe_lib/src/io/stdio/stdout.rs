@@ -75,7 +75,7 @@ impl Native for StdoutWrite {
 
     match stdout.write(args[0].to_str().as_bytes()) {
       Ok(_) => Ok(VALUE_NIL),
-      Err(err) => Err(hooks.make_error(err.to_string())),
+      Err(err) => hooks.error(err.to_string()),
     }
   }
 }
@@ -90,7 +90,7 @@ impl Native for StdoutWriteln {
 
     match writeln!(stdout, "{}", args[0].to_str()) {
       Ok(_) => Ok(VALUE_NIL),
-      Err(err) => Err(hooks.make_error(err.to_string())),
+      Err(err) => hooks.error(err.to_string()),
     }
   }
 }
@@ -105,7 +105,7 @@ impl Native for StdoutFlush {
 
     match stdout.flush() {
       Ok(_) => Ok(VALUE_NIL),
-      Err(err) => Err(hooks.make_error(err.to_string())),
+      Err(err) => hooks.error(err.to_string()),
     }
   }
 }

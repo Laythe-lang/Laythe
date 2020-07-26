@@ -1,7 +1,6 @@
 use crate::scanner::Scanner;
 use laythe_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
 use laythe_core::token::{Token, TokenKind};
-use laythe_core::utils::copy_string;
 use laythe_core::{
   constants::{INIT, ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::GcHooks,
@@ -313,10 +312,6 @@ impl<'a, 's> Compiler<'a, 's> {
   /// Parse a statement
   fn statement(&mut self) {
     match self.parser.current.kind {
-      TokenKind::Print => {
-        self.parser.advance();
-        self.print_statement();
-      }
       TokenKind::For => {
         self.parser.advance();
         self.for_statement();
@@ -806,7 +801,7 @@ impl<'a, 's> Compiler<'a, 's> {
     self
       .parser
       .consume(TokenKind::String, "Expected path string after 'from'.");
-    let string = self.hooks.manage_str(copy_string(&self.parser.previous));
+    let string = self.hooks.manage_str(self.parser.previous.lexeme.as_str());
     let value = val!(string);
     let path = self.make_constant(value);
     self
@@ -824,13 +819,13 @@ impl<'a, 's> Compiler<'a, 's> {
   }
 
   /// Parse print statement
-  fn print_statement(&mut self) {
-    self.expression();
-    self
-      .parser
-      .consume(TokenKind::Semicolon, "Expected ';' after value.");
-    self.emit_byte(AlignedByteCode::Print)
-  }
+  // fn print_statement(&mut self) {
+  //   self.expression();
+  //   self
+  //     .parser
+  //     .consume(TokenKind::Semicolon, "Expected ';' after value.");
+  //   self.emit_byte(AlignedByteCode::Print)
+  // }
 
   /// Parse a return statement
   fn return_statement(&mut self) {
@@ -871,7 +866,7 @@ impl<'a, 's> Compiler<'a, 's> {
         | TokenKind::For
         | TokenKind::If
         | TokenKind::While
-        | TokenKind::Print
+        // | TokenKind::Print
         | TokenKind::Return => {
           return;
         }
@@ -1115,7 +1110,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// Compile a string literal
   fn string(&mut self) {
-    let string = self.hooks.manage_str(copy_string(&self.parser.previous));
+    let string = self.hooks.manage_str(self.parser.previous.lexeme.as_str());
     let value = val!(string);
     self.emit_constant(value)
   }
@@ -1184,7 +1179,13 @@ impl<'a, 's> Compiler<'a, 's> {
       self.parser.advance();
       let infix_fn = get_rule(self.parser.previous.kind).infix.clone();
 
-      self.execute_action(infix_fn.expect("Failure"), can_assign);
+      match infix_fn {
+        Some(infix) => self.execute_action(infix, can_assign),
+        None => {
+          self.parser.error("Expected expression.");
+          return;
+        }
+      }
     }
 
     if can_assign && self.parser.match_kind(TokenKind::Equal) {
@@ -1630,7 +1631,7 @@ fn first_local(fun_kind: FunKind) -> Local {
 }
 
 /// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 51] = [
+const RULES_TABLE: [ParseRule; 50] = [
   ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
   // TOKEN_LEFT_PAREN
   ParseRule::new(None, None, Precedence::None),
@@ -1709,8 +1710,6 @@ const RULES_TABLE: [ParseRule; 51] = [
   // TOKEN_NIL
   ParseRule::new(None, Some(Act::Or), Precedence::Or),
   // TOKEN_OR
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_PRINT
   ParseRule::new(None, None, Precedence::None),
   // TOKEN_RETURN
   ParseRule::new(Some(Act::Super), None, Precedence::None),
@@ -1984,23 +1983,6 @@ mod test {
   use laythe_native::stdio::StdioNative;
   use std::path::PathBuf;
 
-  /// Assert equal returning a result so debug information has a chance to be captured and displayed
-  // fn ly_assert_eq<T: PartialEq>(
-  //   expected: &T,
-  //   received: &T,
-  //   message: Option<String>,
-  // ) -> io::Result<()> {
-  //   if expected == received {
-  //     return Ok(());
-  //   }
-
-  //   // should consider mapping io errors to something else
-  //   Err(io::Error::new(
-  //     io::ErrorKind::Other,
-  //     message.unwrap_or("".to_string()),
-  //   ))
-  // }
-
   enum ByteCodeTest {
     Code(AlignedByteCode),
     Fun((u16, Vec<ByteCodeTest>)),
@@ -2075,12 +2057,20 @@ mod test {
       assert!(false)
     }
     let decoded_byte_code = decode_byte_code(fun);
-    assert_eq!(decoded_byte_code.len(), code.len());
 
     decoded_byte_code
       .iter()
       .zip(code.iter())
-      .for_each(|(actual, expect)| assert_eq!(actual, expect));
+      .enumerate()
+      .for_each(|(index, (actual, expected))| {
+        assert_eq!(
+          actual, expected,
+          "compiled {:?} but expected {:?} at aligned instruction {}",
+          actual, expected, index
+        )
+      });
+
+    assert_eq!(decoded_byte_code.len(), code.len());
   }
 
   fn assert_fun_bytecode(fun: Managed<Fun>, code: &[ByteCodeTest]) {
@@ -2111,23 +2101,6 @@ mod test {
         },
       }
     }
-  }
-
-  #[test]
-  fn op_print() {
-    let example = "print 10;".to_string();
-
-    let context = TestContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      fun,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Print,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
   }
 
   #[test]
@@ -2258,7 +2231,7 @@ mod test {
         let empty = {};
         empty["missing"];
       } catch {
-        print "no!";
+        print("no!");
       }
     "#
     .to_string();
@@ -2269,17 +2242,19 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Map,         // 0
-        AlignedByteCode::GetLocal(1), // 1
-        AlignedByteCode::Constant(0), // 3
-        AlignedByteCode::GetIndex,    // 5
-        AlignedByteCode::Drop,        // 6
-        AlignedByteCode::Drop,        // 7
-        AlignedByteCode::Jump(3),     // 8
-        AlignedByteCode::Constant(1), // 11
-        AlignedByteCode::Print,       // 13
-        AlignedByteCode::Nil,         // 14
-        AlignedByteCode::Return,      // 15
+        AlignedByteCode::Map,          // 0
+        AlignedByteCode::GetLocal(1),  // 1
+        AlignedByteCode::Constant(0),  // 3
+        AlignedByteCode::GetIndex,     // 5
+        AlignedByteCode::Drop,         // 6
+        AlignedByteCode::Drop,         // 7
+        AlignedByteCode::Jump(8),      // 8
+        AlignedByteCode::GetGlobal(1), // 13
+        AlignedByteCode::Constant(2),  // 11
+        AlignedByteCode::Call(1),      // 13
+        AlignedByteCode::Drop,         //
+        AlignedByteCode::Nil,          // 14
+        AlignedByteCode::Return,       // 15
       ],
     );
 
@@ -2294,10 +2269,10 @@ mod test {
         try {
           [][1];
         } catch {
-          print "woops!";
+          print("woops!");
         }
       } catch {
-        print "no!";
+        print("no!");
       }
     "#
     .to_string();
@@ -2308,27 +2283,31 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::List,        // 0
-        AlignedByteCode::Constant(0), // 1
-        AlignedByteCode::GetIndex,    // 3
-        AlignedByteCode::Drop,        // 4
-        AlignedByteCode::List,        // 5
-        AlignedByteCode::Constant(1), // 6
-        AlignedByteCode::GetIndex,    // 8
-        AlignedByteCode::Drop,        // 9
-        AlignedByteCode::Jump(3),     // 10
-        AlignedByteCode::Constant(2), // 13
-        AlignedByteCode::Print,       // 15
-        AlignedByteCode::Jump(3),     // 16
-        AlignedByteCode::Constant(3), // 19
-        AlignedByteCode::Print,       // 21
-        AlignedByteCode::Nil,         // 22
-        AlignedByteCode::Return,      // 23
+        AlignedByteCode::List,         // 0
+        AlignedByteCode::Constant(0),  // 1
+        AlignedByteCode::GetIndex,     // 3
+        AlignedByteCode::Drop,         // 4
+        AlignedByteCode::List,         // 5
+        AlignedByteCode::Constant(1),  // 6
+        AlignedByteCode::GetIndex,     // 8
+        AlignedByteCode::Drop,         // 9
+        AlignedByteCode::Jump(8),      // 10
+        AlignedByteCode::GetGlobal(2), //
+        AlignedByteCode::Constant(3),  // 13
+        AlignedByteCode::Call(1),      //
+        AlignedByteCode::Drop,
+        AlignedByteCode::Jump(8),      // 16
+        AlignedByteCode::GetGlobal(2), // 21
+        AlignedByteCode::Constant(4),  // 19
+        AlignedByteCode::Call(1),      // 21
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,    // 22
+        AlignedByteCode::Return, // 23
       ],
     );
 
-    assert_eq!(fun.has_catch_jump(0), Some(19));
-    assert_eq!(fun.has_catch_jump(13), Some(19));
+    assert_eq!(fun.has_catch_jump(0), Some(24));
+    assert_eq!(fun.has_catch_jump(13), Some(24));
     assert_eq!(fun.has_catch_jump(5), Some(13));
   }
 
@@ -2510,7 +2489,7 @@ mod test {
   fn list_index_get() {
     let example = "
       let a = [\"john\", \"joe\", \"jim\"];
-      print a[1];
+      print(a[1]);
     "
     .to_string();
 
@@ -2526,10 +2505,12 @@ mod test {
         AlignedByteCode::Constant(3),
         AlignedByteCode::ListInit(3),
         AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(4),
         AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Constant(4),
+        AlignedByteCode::Constant(5),
         AlignedByteCode::GetIndex,
-        AlignedByteCode::Print,
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2975,7 +2956,7 @@ mod test {
         AlignedByteCode::GetLocal(1),     // 2
         AlignedByteCode::Constant(1),     // 4
         AlignedByteCode::Less,            // 6
-        AlignedByteCode::JumpIfFalse(21), // 7
+        AlignedByteCode::JumpIfFalse(26), // 7
         AlignedByteCode::Drop,            // 10
         AlignedByteCode::Jump(11),        // 11
         AlignedByteCode::GetLocal(1),     // 14
@@ -2984,9 +2965,11 @@ mod test {
         AlignedByteCode::SetLocal(1),     // 19
         AlignedByteCode::Drop,            // 21
         AlignedByteCode::Loop(23),        // 22
+        AlignedByteCode::GetGlobal(3),    //
         AlignedByteCode::GetLocal(1),     // 25
-        AlignedByteCode::Print,           // 27
-        AlignedByteCode::Loop(17),        // 28
+        AlignedByteCode::Call(1),         // 27
+        AlignedByteCode::Drop,            //
+        AlignedByteCode::Loop(22),        // 28
         AlignedByteCode::Drop,            // 31
         AlignedByteCode::Drop,            // 32
         AlignedByteCode::Nil,             // 33
@@ -2997,7 +2980,7 @@ mod test {
 
   #[test]
   fn for_range_loop() {
-    let example = "for (let x in [1, 2, 3]) { print x; }".to_string();
+    let example = "for (let x in [1, 2, 3]) { print(x); }".to_string();
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3014,27 +2997,29 @@ mod test {
         AlignedByteCode::Invoke((3, 0)),  // 11  const 1 = 1
         AlignedByteCode::GetLocal(2),     // 14  const 2 = 2
         AlignedByteCode::IterNext(5),     // 16  const 3 = 3
-        AlignedByteCode::JumpIfFalse(15), // 18  const 4 = "iter"
+        AlignedByteCode::JumpIfFalse(20), // 18  const 4 = "iter"
         AlignedByteCode::Drop,            // 21  const 5 = "next"
         AlignedByteCode::GetLocal(2),     // 22
         AlignedByteCode::IterCurrent(6),  // 24  const 6 = "current"
         AlignedByteCode::SetLocal(1),     // 26
         AlignedByteCode::Drop,            // 28
-        AlignedByteCode::GetLocal(1),     // 29
-        AlignedByteCode::Print,           // 31
-        AlignedByteCode::Loop(23),        // 32
-        AlignedByteCode::Drop,            // 35
-        AlignedByteCode::Drop,            // 36
-        AlignedByteCode::Drop,            // 37
-        AlignedByteCode::Nil,             // 38
-        AlignedByteCode::Return,          // 39
+        AlignedByteCode::GetGlobal(7),
+        AlignedByteCode::GetLocal(1), // 29
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Loop(28), // 32
+        AlignedByteCode::Drop,     // 35
+        AlignedByteCode::Drop,     // 36
+        AlignedByteCode::Drop,     // 37
+        AlignedByteCode::Nil,      // 38
+        AlignedByteCode::Return,   // 39
       ],
     );
   }
 
   #[test]
   fn while_loop() {
-    let example = "while (true) { print 10; }".to_string();
+    let example = "while (true) { print(10); }".to_string();
     let context = TestContext::default();
     let fun = test_compile(example, &context);
 
@@ -3042,11 +3027,13 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(7),
+        AlignedByteCode::JumpIfFalse(12),
         AlignedByteCode::Drop,
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Print,
-        AlignedByteCode::Loop(11),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Loop(16),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3056,19 +3043,21 @@ mod test {
 
   #[test]
   fn or_operator() {
-    let example = "print false or true;".to_string();
+    let example = "print(false or true);".to_string();
     let context = TestContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
       &vec![
+        AlignedByteCode::GetGlobal(0),
         AlignedByteCode::False,
         AlignedByteCode::JumpIfFalse(3),
         AlignedByteCode::Jump(2),
         AlignedByteCode::Drop,
         AlignedByteCode::True,
-        AlignedByteCode::Print,
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3077,7 +3066,7 @@ mod test {
 
   #[test]
   fn if_condition() {
-    let example = "if (3 < 10) { print \"hi\"; }".to_string();
+    let example = "if (3 < 10) { print(\"hi\"); }".to_string();
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3088,10 +3077,12 @@ mod test {
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Less,
-        AlignedByteCode::JumpIfFalse(7),
+        AlignedByteCode::JumpIfFalse(12),
         AlignedByteCode::Drop,
-        AlignedByteCode::Constant(2),
-        AlignedByteCode::Print,
+        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::Constant(3),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::Jump(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -3102,7 +3093,7 @@ mod test {
 
   #[test]
   fn if_else_condition() {
-    let example = "if (3 < 10) { print \"hi\"; } else { print \"bye\"; }".to_string();
+    let example = "if (3 < 10) { print(\"hi\"); } else { print(\"bye\"); }".to_string();
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3110,19 +3101,23 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Constant(0),    // 0
-        AlignedByteCode::Constant(1),    // 2
-        AlignedByteCode::Less,           // 4
-        AlignedByteCode::JumpIfFalse(7), // 5
-        AlignedByteCode::Drop,           // 8
-        AlignedByteCode::Constant(2),    // 9
-        AlignedByteCode::Print,          // 11
-        AlignedByteCode::Jump(4),        // 12
-        AlignedByteCode::Drop,           // 15
-        AlignedByteCode::Constant(3),    // 17
-        AlignedByteCode::Print,          // 18
-        AlignedByteCode::Nil,            // 19
-        AlignedByteCode::Return,         // 20
+        AlignedByteCode::Constant(0),     // 0
+        AlignedByteCode::Constant(1),     // 2
+        AlignedByteCode::Less,            // 4
+        AlignedByteCode::JumpIfFalse(12), // 5
+        AlignedByteCode::Drop,            // 8
+        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::Constant(3), // 9
+        AlignedByteCode::Call(1),     // 11
+        AlignedByteCode::Drop,
+        AlignedByteCode::Jump(9), // 12
+        AlignedByteCode::Drop,    // 15
+        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::Constant(4), // 17
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,    // 19
+        AlignedByteCode::Return, // 20
       ],
     );
   }
@@ -3154,8 +3149,10 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::Constant(0),
+        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetLocal(1),
-        AlignedByteCode::Print,
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3222,7 +3219,7 @@ mod test {
 
   #[test]
   fn op_get_global() {
-    let example = "print x;".to_string();
+    let example = "print(x);".to_string();
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3230,7 +3227,9 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Print,
+        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],

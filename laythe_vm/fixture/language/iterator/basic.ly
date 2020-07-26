@@ -27,7 +27,7 @@ class FooIter < Iterator {
 }
 
 for (let i in Foo()) {
-  print i;
+  print(i);
 }
 
 {
@@ -35,7 +35,7 @@ for (let i in Foo()) {
   while ($iter.next()) {
     let i = $iter.current; 
     {
-      print i;
+      print(i);
     }
   }
 }

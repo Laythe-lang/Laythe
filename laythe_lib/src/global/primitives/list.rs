@@ -103,10 +103,7 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
     hooks.manage_str(LIST_STR.name),
     val!(to_dyn_native(
       hooks,
-      ListStr::new(
-        LIST_STR.to_meta(&hooks),
-        hooks.manage_str(LIST_STR.name)
-      ),
+      ListStr::new(LIST_STR.to_meta(&hooks), hooks.manage_str(LIST_STR.name)),
     )),
   );
 
@@ -181,7 +178,7 @@ impl Native for ListStr {
           } else {
             // if error throw away temporary strings
             hooks.pop_roots(count);
-            return Err(hooks.make_error(format!("No method str on {}", item)));
+            return hooks.error(format!("No method str on {}", item));
           }
         }
         Err(err) => {

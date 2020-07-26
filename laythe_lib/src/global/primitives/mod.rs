@@ -70,18 +70,14 @@ fn bootstrap_classes(
 
   let mut object_class = match module.get_symbol(hooks.manage_str(OBJECT_CLASS_NAME)) {
     Some(class) => class.to_class(),
-    None => {
-      return Err(hooks.make_error("Could not find Laythe class object in std_lib construction."))
-    }
+    None => return hooks.error("Could not find Laythe class object in std_lib construction."),
   };
 
   // declare class
   declare_class_class(hooks, &mut module)?;
   let mut class_class = match module.get_symbol(hooks.manage_str(CLASS_CLASS_NAME.to_string())) {
     Some(class) => class.to_class(),
-    None => {
-      return Err(hooks.make_error("Could not find Laythe class class in std_lib construction."))
-    }
+    None => return hooks.error("Could not find Laythe class class in std_lib construction."),
   };
 
   // inherit from object

@@ -1,6 +1,6 @@
 class Foo {
   init(arg) {
-    print "Foo.init(" + arg + ")";
+    print("Foo.init(" + arg + ")");
     self.field = "init";
   }
 }

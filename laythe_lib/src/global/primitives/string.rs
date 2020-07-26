@@ -4,21 +4,29 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  iterator::{LyIter, LyIterator},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
-  value::Value,
+  value::{Value, VALUE_NIL},
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::Stdio};
+use laythe_env::{
+  managed::{Managed, Trace},
+  stdio::Stdio,
+};
+use smol_str::SmolStr;
+use std::{mem, str::Chars};
 
 pub const STRING_CLASS_NAME: &str = "String";
 const STRING_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
 const STRING_HAS: NativeMetaBuilder = NativeMetaBuilder::method("has", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
+
+const STRING_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
 pub fn declare_string_class(
   hooks: &GcHooks,
@@ -44,6 +52,12 @@ pub fn define_string_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
     val!(to_dyn_native(hooks, StringHas::from(hooks))),
   );
 
+  class.add_method(
+    hooks,
+    hooks.manage_str(STRING_ITER.name),
+    val!(to_dyn_native(hooks, StringIter::from(hooks))),
+  );
+
   Ok(())
 }
 
@@ -58,9 +72,84 @@ impl Native for StringStr {
 native!(StringHas, STRING_HAS);
 
 impl Native for StringHas {
-  fn call(&self, _vhooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
     let str = this.unwrap().to_str();
     Ok(val!(str.contains(args[0].to_str().as_str())))
+  }
+}
+
+native!(StringIter, STRING_ITER);
+
+impl Native for StringIter {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    let str = this.unwrap().to_str();
+
+    let inner_iter: Box<dyn LyIter> = Box::new(StringIterator::new(str));
+    let iter = LyIterator::new(inner_iter);
+
+    Ok(val!(hooks.manage(iter)))
+  }
+}
+
+#[derive(Debug)]
+struct StringIterator {
+  string: Managed<SmolStr>,
+  iter: Chars<'static>,
+  current: Value,
+}
+
+impl StringIterator {
+  fn new(string: Managed<SmolStr>) -> Self {
+    let iter = unsafe { string.deref_static().chars() };
+
+    Self {
+      string,
+      iter,
+      current: VALUE_NIL,
+    }
+  }
+}
+
+impl LyIter for StringIterator {
+  fn name(&self) -> &str {
+    "String Iterator"
+  }
+
+  fn current(&self) -> Value {
+    self.current
+  }
+
+  fn next(&mut self, hooks: &mut Hooks) -> CallResult {
+    let s = &mut [0; 4];
+
+    match self.iter.next() {
+      Some(next) => {
+        self.current = val!(hooks.manage_str(next.encode_utf8(s)));
+        Ok(val!(true))
+      }
+      None => {
+        self.current = VALUE_NIL;
+        Ok(val!(false))
+      }
+    }
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    None
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+}
+
+impl Trace for StringIterator {
+  fn trace(&self) -> bool {
+    self.string.trace()
+  }
+
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+    self.string.trace_debug(stdio)
   }
 }
 
@@ -111,6 +200,54 @@ mod test {
 
       assert_eq!(string_str.meta().name, "has");
       assert_eq!(string_str.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        string_str.meta().signature.parameters[0].kind,
+        ParameterKind::String
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let string_iter = StringIter::from(&hooks);
+      let this = val!(hooks.manage_str("abc"));
+
+      let result = string_iter.call(&mut hooks, Some(this), &[]);
+
+      match result {
+        Ok(r) => {
+          let mut string_iter = r.to_iter();
+          assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(string_iter.current(), val!(hooks.manage_str("a")));
+
+          assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(string_iter.current(), val!(hooks.manage_str("b")));
+
+          assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(string_iter.current(), val!(hooks.manage_str("c")));
+
+          assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(false));
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod iter {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let string_iter = StringIter::from(&hooks);
+
+      assert_eq!(string_iter.meta().name, "iter");
+      assert_eq!(string_iter.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]

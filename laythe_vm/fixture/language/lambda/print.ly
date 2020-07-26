@@ -1,3 +1,3 @@
 let foo = || {};
-print foo; // expect: <fn foo>
+print(foo); // expect: <fn foo>
 

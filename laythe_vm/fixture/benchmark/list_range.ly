@@ -25,4 +25,4 @@ for (let i in large) {
   }
 }
 
-print clock() - start;
+print(clock() - start);

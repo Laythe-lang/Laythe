@@ -8,4 +8,4 @@ let start = clock();
   .map(|x| (x * 4) - 2)
   .reduce(0, |acc, curr| acc + curr);
 
-print clock() - start;
+print(clock() - start);

@@ -13,14 +13,13 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  CallResult, LyError, LyResult,
+  CallResult, LyResult,
 };
 use laythe_env::{
   managed::{Managed, Trace},
   stdio::Stdio,
 };
 use smol_str::SmolStr;
-use std::fmt;
 use std::mem;
 
 pub const MAP_CLASS_NAME: &'static str = "Map";
@@ -69,10 +68,7 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
     hooks.manage_str(MAP_STR.name),
     val!(to_dyn_native(
       hooks,
-      MapStr::new(
-        MAP_STR.to_meta(hooks),
-        hooks.manage_str(MAP_STR.name)
-      ),
+      MapStr::new(MAP_STR.to_meta(hooks), hooks.manage_str(MAP_STR.name)),
     )),
   );
 
@@ -137,6 +133,10 @@ impl Native for MapStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     let map = this.unwrap().to_map();
 
+    if map.len() == 0 {
+      return Ok(val!(hooks.manage_str("{}")));
+    }
+
     // buffer for temporary strings
     let mut strings: Vec<String> = Vec::with_capacity(map.len());
 
@@ -161,7 +161,7 @@ fn format_map_entry(
   method_name: Managed<SmolStr>,
   buffer: &mut String,
   hooks: &mut Hooks,
-) -> Result<(), LyError> {
+) -> LyResult<()> {
   // if already string quote and add to temps
   if item.is_str() {
     buffer.push_str(&format!("'{}'", item.to_str()));
@@ -176,7 +176,7 @@ fn format_map_entry(
     Ok(())
   } else {
     // if error throw away temporary strings
-    Err(hooks.make_error(format!("No method str on {}", item)))
+    hooks.error(format!("No method str on {}", item))
   }
 }
 
@@ -250,7 +250,7 @@ impl Native for MapRemove {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
     match hooks.shrink(&mut this.unwrap().to_map(), |map| map.remove(&args[0])) {
       Some(removed) => Ok(removed),
-      None => Err(hooks.make_error("Key not found in map.".to_string())),
+      None => hooks.error("Key not found in map.".to_string()),
     }
   }
 }
@@ -267,6 +267,7 @@ impl Native for MapIter {
   }
 }
 
+#[derive(Debug)]
 struct MapIterator {
   map: Managed<Map<Value, Value>>,
   iter: Iter<'static, Value, Value>,
@@ -323,16 +324,6 @@ impl Trace for MapIterator {
 
   fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.map.trace_debug(stdio)
-  }
-}
-
-impl fmt::Debug for MapIterator {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.debug_struct("MapIterator")
-      .field("map", &self.map)
-      .field("iter", &self.iter)
-      .field("current", &self.current)
-      .finish()
   }
 }
 

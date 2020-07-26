@@ -1,6 +1,6 @@
 use crate::{
   value::{Value, VALUE_NIL},
-  CallResult, LyError,
+  CallResult, LyError, LyResult,
 };
 use laythe_env::{
   io::Io,
@@ -79,13 +79,8 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request a laythe error object be generated with the provided message
-  pub fn error<S: Into<String> + AsRef<str>>(&self, message: S) -> CallResult {
-    Err(LyError::new(self.manage_str(message)))
-  }
-
-  /// Request a laythe error object be generated with the provided message
-  pub fn make_error<S: Into<String> + AsRef<str>>(&self, message: S) -> LyError {
-    LyError::new(self.manage_str(message))
+  pub fn error<T, S: Into<String> + AsRef<str>>(&self, message: S) -> LyResult<T> {
+    Err(Box::new(LyError::new(self.manage_str(message))))
   }
 
   /// Request an object be managed by the context's garbage collector
@@ -150,13 +145,8 @@ impl<'a> GcHooks<'a> {
   }
 
   /// Request a laythe error object be generated with the provided message
-  pub fn error<S: Into<String> + AsRef<str>>(&self, message: S) -> CallResult {
-    Err(LyError::new(self.manage_str(message)))
-  }
-
-  /// Request a laythe error object be generated with the provided message
-  pub fn make_error<S: Into<String> + AsRef<str>>(&self, message: S) -> LyError {
-    LyError::new(self.manage_str(message))
+  pub fn error<T, S: Into<String> + AsRef<str>>(&self, message: S) -> LyResult<T> {
+    Err(Box::new(LyError::new(self.manage_str(message))))
   }
 
   /// Request an object be managed by the context's garbage collector

@@ -20,6 +20,8 @@ pub const CLASS_CLASS_NAME: &'static str = "Class";
 const CLASS_SUPER_CLASS: NativeMetaBuilder =
   NativeMetaBuilder::method("superClass", Arity::Fixed(0));
 
+const CLASS_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
+
 pub fn declare_class_class(hooks: &GcHooks, module: &mut Module) -> LyResult<()> {
   let name = hooks.manage_str(CLASS_CLASS_NAME);
   let class = hooks.manage(Class::bare(name));
@@ -34,6 +36,12 @@ pub fn define_class_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRe
     &hooks,
     hooks.manage_str(CLASS_SUPER_CLASS.name),
     val!(to_dyn_native(hooks, ClassSuperClass::from(hooks))),
+  );
+
+  class_class.add_method(
+    &hooks,
+    hooks.manage_str(CLASS_STR.name),
+    val!(to_dyn_native(hooks, ClassStr::from(hooks))),
   );
 
   Ok(())
@@ -51,6 +59,19 @@ impl Native for ClassSuperClass {
       .unwrap_or(VALUE_NIL);
 
     Ok(super_class)
+  }
+}
+
+native!(ClassStr, CLASS_STR);
+
+impl Native for ClassStr {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    let class = this.unwrap().to_class();
+
+    Ok(val!(hooks.manage_str(&format!(
+      "<class {} {:p}>",
+      class.name, &*class
+    ))))
   }
 }
 

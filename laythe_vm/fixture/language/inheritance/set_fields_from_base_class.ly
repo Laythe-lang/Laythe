@@ -5,8 +5,8 @@ class Foo {
   }
 
   fooPrint() {
-    print self.field1;
-    print self.field2;
+    print(self.field1);
+    print(self.field2);
   }
 }
 
@@ -17,8 +17,8 @@ class Bar < Foo {
   }
 
   barPrint() {
-    print self.field1;
-    print self.field2;
+    print(self.field1);
+    print(self.field2);
   }
 }
 

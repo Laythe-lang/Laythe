@@ -27,6 +27,7 @@ use laythe_env::{
 };
 use laythe_lib::{create_std_lib, global::builtin_from_global_module, GLOBAL, STD};
 use laythe_native::io::io_native;
+use std::cmp::Ordering;
 use std::convert::TryInto;
 use std::mem;
 use std::ptr;
@@ -40,7 +41,7 @@ use std::io;
 
 use smol_str::SmolStr;
 #[cfg(feature = "debug_upvalues")]
-use std::io;
+use std::{cmp::Ordering, io};
 
 const VERSION: &str = "0.1.0";
 
@@ -172,7 +173,7 @@ impl Vm {
     loop {
       let mut buffer = String::new();
 
-      if let Err(_) = write!(stdio.stdout(), "> ") {
+      if let Err(_) = write!(stdio.stdout(), "laythe:> ") {
         return ExecuteResult::InternalError;
       }
       stdio.stdout().flush().expect("Could not write to stdout");
@@ -525,7 +526,6 @@ impl<'a> VmExecutor<'a> {
         ByteCode::IterCurrent => self.op_iter_current(),
         ByteCode::Constant => self.op_constant(),
         ByteCode::ConstantLong => self.op_constant_long(),
-        ByteCode::Print => self.op_print(),
         ByteCode::Call => self.op_call(),
         ByteCode::Invoke => self.op_invoke(),
         ByteCode::SuperInvoke => self.op_super_invoke(),
@@ -737,7 +737,7 @@ impl<'a> VmExecutor<'a> {
           self.set_val(-1, value);
           Signal::Ok
         }
-        Err(error) => self.set_error(error),
+        Err(error) => self.set_error(*error),
       }
     } else {
       let constant = self.read_short();
@@ -986,7 +986,7 @@ impl<'a> VmExecutor<'a> {
     let open_index = match &mut *upvalue.to_upvalue() {
       Upvalue::Open(stack_ptr) => Some(*stack_ptr),
       Upvalue::Closed(store) => {
-        **store = value;
+        *store = value;
         None
       }
     };
@@ -1074,7 +1074,7 @@ impl<'a> VmExecutor<'a> {
 
     let value = match &*upvalue_value.to_upvalue() {
       Upvalue::Open(stack_ptr) => *unsafe { stack_ptr.as_ref() },
-      Upvalue::Closed(store) => **store,
+      Upvalue::Closed(store) => *store,
     };
 
     self.push(value);
@@ -1129,7 +1129,7 @@ impl<'a> VmExecutor<'a> {
         self.push(val!(module.import(&GcHooks::new(self))));
         Signal::Ok
       }
-      Err(error) => self.set_error(error),
+      Err(error) => self.set_error(*error),
     }
   }
 
@@ -1140,7 +1140,7 @@ impl<'a> VmExecutor<'a> {
 
     match copy.export_symbol(&GcHooks::new(self), name) {
       Ok(_) => Signal::Ok,
-      Err(err) => self.set_error(err),
+      Err(error) => self.set_error(*error),
     }
   }
 
@@ -1233,6 +1233,13 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
+    if right.is_str() && left.is_str() {
+      self.push(val!(
+        (*left.to_str()).cmp(&right.to_str()) == Ordering::Less
+      ));
+      return Signal::Ok;
+    }
+
     self.runtime_error("Operands must be numbers.")
   }
 
@@ -1241,6 +1248,13 @@ impl<'a> VmExecutor<'a> {
 
     if right.is_num() && left.is_num() {
       self.push(val!(left.to_num() > right.to_num()));
+      return Signal::Ok;
+    }
+
+    if right.is_str() && left.is_str() {
+      self.push(val!(
+        (*left.to_str()).cmp(&right.to_str()) == Ordering::Greater
+      ));
       return Signal::Ok;
     }
 
@@ -1329,12 +1343,6 @@ impl<'a> VmExecutor<'a> {
     Signal::Ok
   }
 
-  fn op_print(&mut self) -> Signal {
-    let mut stdio = self.io.stdio();
-    writeln!(stdio.stdout(), "{}", self.pop()).expect("Unable to write to stdout");
-    Signal::Ok
-  }
-
   fn op_constant(&mut self) -> Signal {
     let slot = self.read_byte();
     let constant = self.read_constant(slot as u16);
@@ -1411,7 +1419,7 @@ impl<'a> VmExecutor<'a> {
 
           Signal::OkReturn
         }
-        Err(error) => self.set_error(error),
+        Err(error) => self.set_error(*error),
       },
       Environment::Normal => {
         let native_closure = self.gc.manage(Closure::new(self.native_fun_stub), self);
@@ -1424,7 +1432,7 @@ impl<'a> VmExecutor<'a> {
 
             Signal::OkReturn
           }
-          Err(error) => self.set_error(error),
+          Err(error) => self.set_error(*error),
         }
       }
     }
@@ -1607,22 +1615,25 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// hoist all open upvalue above the last index
-  fn close_upvalues(&mut self, last_index: NonNull<Value>) {
+  fn close_upvalues(&mut self, last_value: NonNull<Value>) {
     if self.open_upvalues.len() > 0 {
+      let mut retain = self.open_upvalues.len();
+
       for upvalue in self.open_upvalues.iter_mut().rev() {
-        let index = match **upvalue {
-          Upvalue::Open(index) => index,
+        let value = match **upvalue {
+          Upvalue::Open(value) => value,
           Upvalue::Closed(_) => self.internal_error("Unexpected closed upvalue."),
         };
 
-        if index < last_index {
+        if value < last_value {
           break;
         }
 
+        retain -= 1;
         upvalue.hoist();
       }
 
-      self.open_upvalues.retain(|upvalue| upvalue.is_open())
+      self.open_upvalues.truncate(retain)
     }
   }
 
@@ -1655,10 +1666,19 @@ impl<'a> VmExecutor<'a> {
   #[cfg(feature = "debug")]
   fn print_stack_debug(&self, stdio: &mut Stdio) -> io::Result<()> {
     let stdout = stdio.stdout();
-    write!(stdout, "Stack:        ")?;
 
+    if self.frame_count > 2 {
+      write!(stdout, "Frame Stack:  ")?;
+      for frame in self.frames[1..(self.frame_count)].iter() {
+        let fun = frame.closure.fun;
+        write!(stdout, "[ {}:{} ]", *fun.module.name(), *fun.name)?;
+      }
+      writeln!(stdout, "")?;
+    }
+
+    write!(stdout, "Local Stack:  ")?;
     unsafe {
-      let start = &self.stack[1] as *const Value;
+      let start = self.slots();
       let len = ptr_len(start, self.stack_top);
       let slice = std::slice::from_raw_parts(start, len);
 
@@ -1699,7 +1719,7 @@ impl<'a> VmExecutor<'a> {
         self.internal_error("Compiler error should occur before code is executed.")
       }
       ExecuteResult::RuntimeError => match self.current_error.clone() {
-        Some(error) => Err(error),
+        Some(error) => Err(Box::new(error)),
         None => self.internal_error("Error not set on vm executor."),
       },
       ExecuteResult::InternalError => self.internal_error("Internal error encountered"),
@@ -1719,8 +1739,14 @@ impl<'a> VmExecutor<'a> {
 
   /// Set the current error place the vm signal a runtime error
   fn set_error(&mut self, error: LyError) -> Signal {
+    let signal = if error.exit {
+      Signal::Exit
+    } else {
+      Signal::RuntimeError
+    };
+
     self.current_error = Some(error);
-    Signal::RuntimeError
+    signal
   }
 
   /// Search for a catch block up the stack, printing the error if no catch is found

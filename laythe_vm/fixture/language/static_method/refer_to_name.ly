@@ -1,6 +1,6 @@
 class Foo {
   static method() {
-    print method; // expect runtime error: Undefined variable 'method'.
+    print(method); // expect runtime error: Undefined variable 'method'.
   }
 }
 

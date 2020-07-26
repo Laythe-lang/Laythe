@@ -3,7 +3,7 @@ fn inner(value) {
 }
 
 fn outer(name) {
-  print name;
+  print(name);
   return inner;
 }
 

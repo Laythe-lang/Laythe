@@ -769,18 +769,6 @@ fn operator() -> Result<(), std::io::Error> {
 }
 
 #[test]
-fn print() -> Result<(), std::io::Error> {
-  test_file_exits(&vec![], ExecuteResult::Ok)?;
-
-  test_file_exits(
-    &vec!["language/print/missing_argument.ly"],
-    ExecuteResult::CompileError,
-  )?;
-
-  test_file_exits(&vec![], ExecuteResult::RuntimeError)
-}
-
-#[test]
 fn regression() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec!["language/regression/40.ly", "language/regression/394.ly"],
@@ -848,12 +836,20 @@ fn string() -> Result<(), std::io::Error> {
     &vec![
       "language/string/literals.ly",
       "language/string/multiline.ly",
+      "language/string/escape.ly",
+      "language/string/unicode_escape.ly",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
+      "language/string/invalid_escape.ly",
+      "language/string/invalid_unicode_hex.ly",
+      "language/string/invalid_unicode_missing_close.ly",
+      "language/string/invalid_unicode_missing_open.ly",
+      "language/string/invalid_unicode_no_hex.ly",
+      "language/string/invalid_unicode_too_long.ly",
       "language/string/unterminated_double.ly",
       "language/string/unterminated_single.ly",
     ],

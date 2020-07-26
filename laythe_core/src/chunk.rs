@@ -12,9 +12,6 @@ pub enum AlignedByteCode {
   /// Negate a value
   Negate,
 
-  /// Print a value
-  Print,
-
   /// Add the top two operands on the stack
   Add,
 
@@ -163,7 +160,6 @@ impl AlignedByteCode {
     match self {
       Self::Return => push_op(code, ByteCode::Return),
       Self::Negate => push_op(code, ByteCode::Negate),
-      Self::Print => push_op(code, ByteCode::Print),
       Self::Add => push_op(code, ByteCode::Add),
       Self::Subtract => push_op(code, ByteCode::Subtract),
       Self::Multiply => push_op(code, ByteCode::Multiply),
@@ -227,7 +223,6 @@ impl AlignedByteCode {
     match byte_code {
       ByteCode::Return => (AlignedByteCode::Return, offset + 1),
       ByteCode::Negate => (AlignedByteCode::Negate, offset + 1),
-      ByteCode::Print => (AlignedByteCode::Print, offset + 1),
       ByteCode::Add => (AlignedByteCode::Add, offset + 1),
       ByteCode::Subtract => (AlignedByteCode::Subtract, offset + 1),
       ByteCode::Multiply => (AlignedByteCode::Multiply, offset + 1),
@@ -358,9 +353,6 @@ pub enum ByteCode {
 
   /// Negate a value
   Negate,
-
-  /// Print a value
-  Print,
 
   /// Add the top two operands on the stack
   Add,
@@ -726,7 +718,6 @@ mod test {
       let code: Vec<(usize, AlignedByteCode)> = vec![
         (1, AlignedByteCode::Return),
         (1, AlignedByteCode::Negate),
-        (1, AlignedByteCode::Print),
         (1, AlignedByteCode::Add),
         (1, AlignedByteCode::Subtract),
         (1, AlignedByteCode::Multiply),
@@ -825,7 +816,7 @@ mod test {
 
       assert_eq!(chunk.instructions.len(), 1);
       match chunk.instructions[0] {
-        10 => assert!(true),
+        9 => assert!(true),
         _ => assert!(false),
       }
     }

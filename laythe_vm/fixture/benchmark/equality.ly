@@ -26,9 +26,9 @@ while (i < 10000000) {
 }
 
 let elapsed = clock() - start;
-print "loop";
-print loopTime;
-print "elapsed";
-print elapsed;
-print "equals";
-print elapsed - loopTime;
+print("loop");
+print(loopTime);
+print("elapsed");
+print(elapsed);
+print("equals");
+print(elapsed - loopTime);

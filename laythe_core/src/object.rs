@@ -144,7 +144,7 @@ impl Trace for BuiltinPrimitives {
 #[derive(PartialEq, Clone, Debug)]
 pub enum Upvalue {
   Open(NonNull<Value>),
-  Closed(Box<Value>),
+  Closed(Value),
 }
 
 impl Upvalue {
@@ -164,7 +164,7 @@ impl Upvalue {
   /// upvalue.hoist();
   ///
   /// match upvalue {
-  ///   Upvalue::Closed(store) => assert_eq!(*store, val!(10.0)),
+  ///   Upvalue::Closed(store) => assert_eq!(store, val!(10.0)),
   ///   Upvalue::Open(_) => assert!(false),
   /// };
   /// ```
@@ -172,7 +172,7 @@ impl Upvalue {
     match self {
       Upvalue::Open(stack_ptr) => {
         let value = *unsafe { stack_ptr.as_ref() };
-        *self = Upvalue::Closed(Box::new(value));
+        *self = Upvalue::Closed(value);
       }
       Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
     }
@@ -201,7 +201,7 @@ impl Upvalue {
   pub fn value(&self) -> Value {
     match self {
       Upvalue::Open(stack_ptr) => *unsafe { stack_ptr.as_ref() },
-      Upvalue::Closed(store) => **store,
+      Upvalue::Closed(store) => *store,
     }
   }
 }

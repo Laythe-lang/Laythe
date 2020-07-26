@@ -8,7 +8,7 @@ use laythe_core::{
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   package::Package,
-  signature::Arity,
+  signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
   CallResult, LyResult,
@@ -19,6 +19,9 @@ use std::mem;
 pub const NUMBER_CLASS_NAME: &'static str = "Number";
 const NUMBER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const NUMBER_TIMES: NativeMetaBuilder = NativeMetaBuilder::method("times", Arity::Fixed(0));
+
+const NUMBER_PARSE: NativeMetaBuilder = NativeMetaBuilder::fun("parse", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("str", ParameterKind::String)]);
 
 pub fn declare_number_class(
   hooks: &GcHooks,
@@ -44,6 +47,12 @@ pub fn define_number_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
     val!(to_dyn_native(hooks, NumberTimes::from(hooks))),
   );
 
+  class.meta().expect("Meta class not set.").add_method(
+    hooks,
+    hooks.manage_str(NUMBER_PARSE.name),
+    val!(to_dyn_native(hooks, NumberParse::from(hooks))),
+  );
+
   Ok(())
 }
 
@@ -55,13 +64,25 @@ impl Native for NumberStr {
   }
 }
 
+native!(NumberParse, NUMBER_PARSE);
+
+impl Native for NumberParse {
+  fn call(&self, hook: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+    let str = args[0].to_str();
+    match str.parse::<f64>() {
+      Ok(num) => Ok(val!(num)),
+      Err(_) => hook.error(format!("Unable to parse number from {}", str)),
+    }
+  }
+}
+
 native!(NumberTimes, NUMBER_TIMES);
 
 impl Native for NumberTimes {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     let max = this.unwrap().to_num();
     if max < 0.0 {
-      return Err(hooks.make_error("times requires a positive number."));
+      return hooks.error("times requires a positive number.");
     }
 
     let inner_iter: Box<dyn LyIter> = Box::new(TimesIterator::new(max));
@@ -106,7 +127,7 @@ impl LyIter for TimesIterator {
   }
 
   fn size_hint(&self) -> Option<usize> {
-    Some(self.max as usize)
+    Some((self.max + 1.0) as usize)
   }
 
   fn size(&self) -> usize {

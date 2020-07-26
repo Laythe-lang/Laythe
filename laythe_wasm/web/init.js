@@ -37,7 +37,7 @@ export function editorInit(element) {
   languages.onLanguage(id, () => languages.setLanguageConfiguration(id, conf));
 
   editor.create(element, {
-    value: ["fn hi() {", '  print "hello world";', "}", "", "hi();"].join("\n"),
+    value: ["fn hi() {", '  print("hello world");', "}", "", "hi();"].join("\n"),
     automaticLayout: true,
     language: "laythe",
   });

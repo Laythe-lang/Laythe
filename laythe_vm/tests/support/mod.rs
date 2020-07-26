@@ -2,7 +2,7 @@ use laythe_env::{
   io::Io,
   stdio::support::{IoStdioTest, StdioTestContainer},
 };
-use laythe_native::time::IoTimeNative;
+use laythe_native::{env::IoEnvNative, fs::IoFsNative, time::IoTimeNative};
 use laythe_vm::vm::{ExecuteResult, Vm};
 use std::fmt;
 use std::fs::File;
@@ -31,9 +31,15 @@ pub fn assert_files_exit(
     let mut stdio_container = Rc::new(StdioTestContainer::default());
     let stdio = Rc::new(IoStdioTest::new(&mut stdio_container));
     let time = Rc::new(IoTimeNative::default());
+    let fs = Rc::new(IoFsNative());
+    let env = Rc::new(IoEnvNative());
 
     {
-      let io = Io::default().with_stdio(stdio).with_time(time);
+      let io = Io::default()
+        .with_stdio(stdio)
+        .with_time(time)
+        .with_fs(fs)
+        .with_env(env);
 
       if let Err(err) = assert_files_exit_inner(path, test_file_path, io, result.clone()) {
         eprintln!(
@@ -112,9 +118,9 @@ pub fn assert_file_exit_and_stdio(
 
     assert!(stderr_result.is_ok());
     let stderr_string = stderr_result.unwrap();
+    let stderr_string = stderr_string.trim_end();
 
-    let mut stderr_lines: Vec<&str> = stderr_string.split("\n").collect();
-    stderr_lines.pop();
+    let stderr_lines: Vec<&str> = stderr_string.split("\n").collect();
 
     stderr_lines
       .iter()

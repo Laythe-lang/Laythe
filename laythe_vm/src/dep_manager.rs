@@ -66,7 +66,7 @@ impl DepManager {
     // determine relative position of module relative to the src directory
     let relative = match self.io.fs().relative_path(&*self.src_dir, &module_dir) {
       Ok(relative) => relative,
-      Err(err) => return Err(hooks.make_error(err.to_string())),
+      Err(err) => return hooks.error(err.to_string()),
     };
 
     // split path into segments
@@ -114,9 +114,9 @@ impl DepManager {
     match import.package() {
       Some(pkg) => match self.packages.get(&pkg) {
         Some(package) => package.import(hooks, import),
-        None => Err(hooks.make_error(format!("Package {} does not exist", pkg))),
+        None => hooks.error(format!("Package {} does not exist", pkg)),
       },
-      None => Err(hooks.make_error("Import needs to be prepended with a package name".to_string())),
+      None => hooks.error("Import needs to be prepended with a package name".to_string()),
     }
   }
 

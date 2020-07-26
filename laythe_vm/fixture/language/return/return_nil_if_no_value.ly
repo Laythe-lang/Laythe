@@ -1,6 +1,6 @@
 fn f() {
   return;
-  print "bad";
+  print("bad");
 }
 
 assertEq(f(), nil); // expect: nil

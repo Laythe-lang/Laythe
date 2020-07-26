@@ -55,14 +55,14 @@ pub fn load_class_from_module(
       if symbol.is_class() {
         Ok(symbol.to_class())
       } else {
-        Err(hooks.make_error(format!("Symbol {} is not a class.", name)))
+        hooks.error(format!("Symbol {} is not a class.", name))
       }
     }
-    None => Err(hooks.make_error(format!(
+    None => hooks.error(format!(
       "Could not find symbol {} in module {}.",
       name,
       module.name()
-    ))),
+    )),
   }
 }
 
@@ -77,14 +77,14 @@ pub fn load_instance_from_module(
       if symbol.is_instance() {
         Ok(symbol.to_instance())
       } else {
-        Err(hooks.make_error(format!("Symbol {} is not a instance.", name)))
+        hooks.error(format!("Symbol {} is not a instance.", name))
       }
     }
-    None => Err(hooks.make_error(format!(
+    None => hooks.error(format!(
       "Could not find symbol {} in module {}.",
       name,
       module.name()
-    ))),
+    )),
   }
 }
 
@@ -196,20 +196,18 @@ mod test {
         ValueKind::Method => callable.to_method().method.to_closure().fun.arity,
         ValueKind::Native => callable.to_native().meta().signature.arity,
         _ => {
-          return Err(LyError::new(
+          return Err(Box::new(LyError::new(
             self.gc.manage_str("Not callable", &NO_GC),
-          ));
+          )));
         }
       };
 
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
-          return Err(LyError::new(
-            self
-              .gc
-              .manage_str("Incorrect function arity", &NO_GC),
-          ))
+          return Err(Box::new(LyError::new(
+            self.gc.manage_str("Incorrect function arity", &NO_GC),
+          )));
         }
       }
 
@@ -219,9 +217,9 @@ mod test {
         return Ok(response);
       }
 
-      Err(LyError::new(
+      Err(Box::new(LyError::new(
         self.gc.manage_str("No mocked results", &NO_GC),
-      ))
+      )))
     }
 
     fn call_method(&mut self, _this: Value, method: Value, args: &[Value]) -> CallResult {
@@ -230,20 +228,18 @@ mod test {
         ValueKind::Method => method.to_method().method.to_closure().fun.arity,
         ValueKind::Native => method.to_native().meta().signature.arity,
         _ => {
-          return Err(LyError::new(
+          return Err(Box::new(LyError::new(
             self.gc.manage_str("Not callable", &NO_GC),
-          ));
+          )));
         }
       };
 
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
-          return Err(LyError::new(
-            self
-              .gc
-              .manage_str("Incorrect function arity", &NO_GC),
-          ))
+          return Err(Box::new(LyError::new(
+            self.gc.manage_str("Incorrect function arity", &NO_GC),
+          )))
         }
       }
 
@@ -253,9 +249,9 @@ mod test {
         return Ok(response);
       }
 
-      Err(LyError::new(
+      Err(Box::new(LyError::new(
         self.gc.manage_str("No mocked results", &NO_GC),
-      ))
+      )))
     }
 
     fn call_method_by_name(
@@ -277,10 +273,10 @@ mod test {
             }
           }
           None => {
-            return Err(LyError::new(self.gc.manage_str(
+            return Err(Box::new(LyError::new(self.gc.manage_str(
               format!("No method {} exists on {:?}.", method_name, instance),
               &NO_GC,
-            )));
+            ))));
           }
         }
       } else {
@@ -290,11 +286,9 @@ mod test {
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
-          return Err(LyError::new(
-            self
-              .gc
-              .manage_str("Incorrect method arity", &NO_GC),
-          ))
+          return Err(Box::new(LyError::new(
+            self.gc.manage_str("Incorrect method arity", &NO_GC),
+          )))
         }
       }
 
@@ -304,9 +298,9 @@ mod test {
         return Ok(response);
       }
 
-      Err(LyError::new(
+      Err(Box::new(LyError::new(
         self.gc.manage_str("No mocked results", &NO_GC),
-      ))
+      )))
     }
   }
 

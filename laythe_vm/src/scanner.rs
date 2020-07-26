@@ -21,10 +21,6 @@ pub struct Scanner<'a> {
   char_start: usize,
 }
 
-const STRING_ERROR: &str = "Unterminated string";
-const UNKNOWN_CHARACTER: &str = "Unexpected character";
-const END_OF_FILE: &str = "";
-
 impl<'a> Scanner<'a> {
   /// Create a new scanner that can be used to tokenize
   /// a lox source string
@@ -37,7 +33,7 @@ impl<'a> Scanner<'a> {
   /// let source = String::from("
   /// let x = \"something\";
   /// if x != \"something\" {
-  ///   print x;
+  ///   print(x);
   /// }
   /// ");
   ///
@@ -72,7 +68,7 @@ impl<'a> Scanner<'a> {
   /// let source = String::from("
   /// let x = \"something\";
   /// if x != \"something\" {
-  ///   print x;
+  ///   print(x);
   /// }
   /// ");
   ///
@@ -102,7 +98,7 @@ impl<'a> Scanner<'a> {
 
     // if at end return oef token
     if self.is_at_end() {
-      return make_token(TokenKind::Eof, END_OF_FILE, self.line);
+      return make_token(TokenKind::Eof, "", self.line);
     }
 
     // move scanner index and get current unicode character
@@ -169,7 +165,7 @@ impl<'a> Scanner<'a> {
           "unknown character {}",
           visible_whitespace(&self.source[char_start..current])
         );
-        self.error_token(UNKNOWN_CHARACTER)
+        self.error_token("Unexpected character")
       }
     }
   }
@@ -218,19 +214,91 @@ impl<'a> Scanner<'a> {
 
   /// Generate a string token
   fn string(&mut self, quote_char: &str) -> Token {
+    let mut buffer = String::with_capacity(8);
+
     while !self.is_at_end() && self.peek() != quote_char {
-      if self.peek() == "\n" {
-        self.line += 1;
+      match self.peek() {
+        "\n" => {
+          self.line += 1;
+          buffer.push('\n');
+        }
+        "\\" => {
+          self.advance_indices();
+
+          match self.peek() {
+            "0" => buffer.push('\0'),
+            "n" => buffer.push('\n'),
+            "t" => buffer.push('\t'),
+            "r" => buffer.push('\r'),
+            "\\" => buffer.push('\\'),
+            "'" => buffer.push('\''),
+            "\"" => buffer.push('"'),
+            "u" => {
+              self.advance_indices();
+              let start = self.current;
+
+              // assert we have opening bracket
+              if self.peek() != "{" {
+                return self.error_token("Expected '{' unicode escape '\\u'");
+              }
+              self.advance_indices();
+
+              let mut len = 0u8;
+
+              // continue until we hit ending } or we're over the valid length
+              while !self.is_at_end() && self.peek() != quote_char && self.peek() != "}" {
+                self.advance_indices();
+                if len > 6 {
+                  return self
+                    .error_token("Unicode escape have a hexidecimal longer than length 6");
+                }
+
+                len += 1;
+              }
+
+              if self.peek() == quote_char {
+                return self.error_token("Expected '}' after unicode escape.");
+              }
+
+              if self.is_at_end() {
+                return self.error_token("Unterminated string");
+              }
+              let unicode = &self.source[start..self.current - 1];
+
+              match u32::from_str_radix(unicode, 16) {
+                Ok(code_point) => match std::char::from_u32(code_point) {
+                  Some(c) => buffer.push(c),
+                  None => {
+                    return self.error_token(&format!("Invalid unicode escape {}.", unicode));
+                  }
+                },
+                Err(_) => {
+                  return self.error_token(&format!(
+                    "Invalid hexadecimal for unicode escape {}.",
+                    unicode
+                  ));
+                }
+              }
+            }
+            _ => {
+              return self.error_token(&format!(
+                "Invalid escape character '{}'.",
+                self.current_slice()
+              ));
+            }
+          }
+        }
+        c => buffer.push_str(c),
       }
       self.advance_indices();
     }
 
     if self.is_at_end() {
-      return self.error_token(&STRING_ERROR);
+      return self.error_token("Unterminated string");
     }
 
     self.advance_indices();
-    self.make_token_source(TokenKind::String)
+    make_token(TokenKind::String, &buffer, self.line)
   }
 
   /// Advance through whitespace effectively throwing it away
@@ -307,7 +375,7 @@ impl<'a> Scanner<'a> {
         "l" => self.check_keyword(1, "et", TokenKind::Let),
         "n" => self.check_keyword(1, "il", TokenKind::Nil),
         "o" => self.check_keyword(1, "r", TokenKind::Or),
-        "p" => self.check_keyword(1, "rint", TokenKind::Print),
+        // "p" => self.check_keyword(1, "rint", TokenKind::Print),
         "r" => self.check_keyword(1, "eturn", TokenKind::Return),
         "s" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
@@ -358,7 +426,7 @@ impl<'a> Scanner<'a> {
   }
 
   /// Make a new error token
-  fn error_token(&'a self, message: &'static str) -> Token {
+  fn error_token(&'a self, message: &str) -> Token {
     make_token(TokenKind::Error, message, self.line)
   }
 
@@ -628,10 +696,6 @@ mod test {
       TokenGen::ALpha(Box::new(|| "or".to_string())),
     );
     map.insert(
-      TokenKind::Print,
-      TokenGen::ALpha(Box::new(|| "print".to_string())),
-    );
-    map.insert(
       TokenKind::Return,
       TokenGen::ALpha(Box::new(|| "return".to_string())),
     );
@@ -673,7 +737,7 @@ mod test {
   }
 
   #[test]
-  fn test_empty_string() {
+  fn empty_string() {
     let empty = "".to_string();
     let mut scanner = Scanner::new(&empty);
 
@@ -683,7 +747,29 @@ mod test {
   }
 
   #[test]
-  fn test_single_token() {
+  fn string_escape_sequence() {
+    let tests = vec![
+      ("\"\\n\"", "\n"),
+      ("\"\\t\"", "\t"),
+      ("\"\\r\"", "\r"),
+      ("\"\\0\"", "\0"),
+      ("\"\\\"\"", "\""),
+      ("\"\\'\"", "'"),
+      ("\"\\\\\"", "\\"),
+      ("\"\\\\\"", "\\"),
+      ("\"\u{1F4AF}\"", "💯"),
+    ];
+
+    for (input, expected) in tests {
+      let mut scanner = Scanner::new(&input);
+      let scanned_token = scanner.scan_token().clone();
+      assert_eq!(scanned_token.kind, TokenKind::String);
+      assert_eq!(scanned_token.lexeme, expected);
+    }
+  }
+
+  #[test]
+  fn single_token() {
     for (token_kind, gen) in token_gen() {
       let example = match gen {
         TokenGen::Symbol(x) => x(),
@@ -698,7 +784,7 @@ mod test {
   }
 
   #[test]
-  fn test_multiple_tokens() {
+  fn multiple_tokens() {
     let basic = "10 + 3".to_string();
     let mut scanner = Scanner::new(&basic);
 
