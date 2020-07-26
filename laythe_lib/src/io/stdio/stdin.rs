@@ -65,7 +65,7 @@ impl Native for StdinRead {
     let mut buf = String::new();
     match stdin.read_to_string(&mut buf) {
       Ok(_) => Ok(val!(hooks.manage_str(buf))),
-      Err(err) => Err(hooks.make_error(err.to_string())),
+      Err(err) => hooks.error(err.to_string()),
     }
   }
 }
@@ -86,7 +86,7 @@ impl Native for StdinReadLine {
         }
         Ok(val!(hooks.manage_str(buf)))
       }
-      Err(err) => Err(hooks.make_error(err.to_string())),
+      Err(err) => hooks.error(err.to_string()),
     }
   }
 }

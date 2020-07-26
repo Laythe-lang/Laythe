@@ -1,4 +1,4 @@
-use crate::support::export_and_insert;
+use crate::{native, support::export_and_insert};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
@@ -7,7 +7,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  CallResult, LyResult,
+  CallResult, LyError, LyResult,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -24,7 +24,11 @@ pub fn add_misc_funs(
 }
 
 const PRINT_META: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)]);
+  .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)])
+  .with_stack();
+
+const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Default(0, 1))
+  .with_params(&[ParameterBuilder::new("code", ParameterKind::Number)]);
 
 pub fn declare_misc_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   let str_name = hooks.manage_str("str");
@@ -34,6 +38,13 @@ pub fn declare_misc_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResult<
     self_module,
     hooks.manage_str(PRINT_META.name),
     val!(hooks.manage(Box::new(Print::new(PRINT_META.to_meta(hooks), str_name)) as Box<dyn Native>)),
+  )?;
+
+  export_and_insert(
+    hooks,
+    self_module,
+    hooks.manage_str(EXIT_META.name),
+    val!(hooks.manage(Box::new(Exit::from(hooks)) as Box<dyn Native>)),
   )
 }
 
@@ -80,7 +91,7 @@ impl Native for Print {
     let mut stdio = hooks.to_io().stdio();
     match writeln!(stdio.stdout(), "{}", output) {
       Ok(_) => Ok(VALUE_NIL),
-      Err(err) => Err(hooks.make_error(err.to_string())),
+      Err(err) => hooks.error(err.to_string()),
     }
   }
 }
@@ -94,6 +105,22 @@ impl Trace for Print {
   fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.meta.trace_debug(stdio);
     self.method_str.trace_debug(stdio)
+  }
+}
+
+native!(Exit, EXIT_META);
+
+impl Native for Exit {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+    let code = if args.len() == 0 {
+      0.0
+    } else {
+      args[0].to_num() as f64
+    };
+
+    Err(Box::new(LyError::exit(
+      hooks.manage_str(&format!("Exit code {}", code)),
+    )))
   }
 }
 

@@ -51,10 +51,10 @@ impl Module {
     let module_name = match module_name {
       Some(module_name) => module_name,
       None => {
-        return Err(hooks.make_error(format!(
+        return hooks.error(format!(
           "Could not create module from {}, path malformed.",
           path.to_str().unwrap_or("invalid path")
-        )))
+        ))
       }
     };
 
@@ -71,11 +71,11 @@ impl Module {
   /// Add export a new symbol from this module. Exported names must be unique
   pub fn export_symbol(&mut self, hooks: &GcHooks, name: Managed<SmolStr>) -> LyResult<()> {
     if self.exports.contains(&name) {
-      Err(hooks.make_error(format!(
+      hooks.error(format!(
         "{} has already been exported from {}",
         name,
         self.name()
-      )))
+      ))
     } else {
       hooks.grow(self, |module| module.exports.insert(name));
       Ok(())

@@ -62,7 +62,7 @@ I've continued to work on the language with a few extensions. Below are some of 
 
 ```laythe
 > let func = |x| x * 2;
-> let withBody |name| { print "hi! " + name; };
+> let withBody |name| { print("hi! " + name); };
 > func(5)
 10
 > withBody("John")
@@ -106,15 +106,15 @@ Running the original benchmark suite on a 2015 dell xps we have.
 
 |benchmark|clox|Laythe|relative speed|notes|
 |--|--|--|--|--|
-|binary_tress.lox|total: 0.781831|total: 0.7417039|1.05|This likely due to the small number of properties and the init optimization. We essentially avoid hashing altogether in this bench|
-|equality.lox|loop: 2.42498 elapsed: 2.70574|loop: 2.632479 elapsed: 2.936534|0.92|Similar to above we have essentially zero hashing and again perform pretty equal to clox|
-|fib.lox|total: 1.43954|total: 2.613307|0.55|Here we have some hashing from the `fib` lookup but even making this local shows a difference. It appears there is still some performance difference in function calling here|
-|instantiation.lox|total: 0.904372|total: 1.75085|0.51|Again localizing this gives a decent speedup but hashing and function calls still seem to slow Laythe down|
-|invocation.lox|total: 0.433293|total: 1.181278|0.366|Now the hashing speed difference is quite apparent|
-|method_call.lox|total: 0.286027|total: 0.531728|0.53|Same as above|
-|properties.lox|total: 0.732466|total: 1.725661|0.42|Same as above|
-|trees.lox|total: 3.48647|total: 6.325482|0.55|Same as above|
-|zoo.lox|total: 0.474|total: 1.167421|0.406|Same as above|
+|binary_tress.lox|total: 0.653353|total: 0.615767|1.06|This likely due to the small number of properties and the init optimization. We essentially avoid hashing altogether in this bench|
+|equality.lox|loop: 2.23344 elapsed: 2.09234|loop: 2.650926 elapsed: 3.375722|0.61|Similar to above we have essentially zero hashing and again perform pretty equal to clox|
+|fib.lox|total: 1.34376|total: 1.958585|0.69|Here we have some hashing from the `fib` lookup but even making this local shows a difference. It appears there is still some performance difference in function calling here|
+|instantiation.lox|total: 0.800149|total: 1.505313|0.53|Again localizing this gives a decent speedup but hashing and function calls still seem to slow Laythe down|
+|invocation.lox|total: 0.425061|total: 1.046553|0.41|Now the hashing speed difference is quite apparent|
+|method_call.lox|total: 0.272629|total: 0.434426|0.63|Same as above|
+|properties.lox|total: 0.653874|total: 1.501415|0.43|Same as above|
+|trees.lox|total: 3.25011|total: 5.259737|0.62|Same as above|
+|zoo.lox|total: 0.476715|total: 0.937690|0.51|Same as above|
 
 ## Future Ideas
 

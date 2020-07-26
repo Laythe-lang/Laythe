@@ -13,7 +13,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  CallResult, LyError, LyResult,
+  CallResult, LyResult,
 };
 use laythe_env::{
   managed::{Managed, Trace},
@@ -161,7 +161,7 @@ fn format_map_entry(
   method_name: Managed<SmolStr>,
   buffer: &mut String,
   hooks: &mut Hooks,
-) -> Result<(), LyError> {
+) -> LyResult<()> {
   // if already string quote and add to temps
   if item.is_str() {
     buffer.push_str(&format!("'{}'", item.to_str()));
@@ -176,7 +176,7 @@ fn format_map_entry(
     Ok(())
   } else {
     // if error throw away temporary strings
-    Err(hooks.make_error(format!("No method str on {}", item)))
+    hooks.error(format!("No method str on {}", item))
   }
 }
 
@@ -250,7 +250,7 @@ impl Native for MapRemove {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
     match hooks.shrink(&mut this.unwrap().to_map(), |map| map.remove(&args[0])) {
       Some(removed) => Ok(removed),
-      None => Err(hooks.make_error("Key not found in map.".to_string())),
+      None => hooks.error("Key not found in map.".to_string()),
     }
   }
 }

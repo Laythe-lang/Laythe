@@ -71,7 +71,7 @@ impl Native for NumberParse {
     let str = args[0].to_str();
     match str.parse::<f64>() {
       Ok(num) => Ok(val!(num)),
-      Err(_) => Err(hook.make_error(format!("Unable to parse number from {}", str))),
+      Err(_) => hook.error(format!("Unable to parse number from {}", str)),
     }
   }
 }
@@ -82,7 +82,7 @@ impl Native for NumberTimes {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     let max = this.unwrap().to_num();
     if max < 0.0 {
-      return Err(hooks.make_error("times requires a positive number."));
+      return hooks.error("times requires a positive number.");
     }
 
     let inner_iter: Box<dyn LyIter> = Box::new(TimesIterator::new(max));

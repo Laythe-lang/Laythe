@@ -53,7 +53,8 @@ const ITER_ZIP: NativeMetaBuilder = NativeMetaBuilder::method("zip", Arity::Vari
   .with_params(&[ParameterBuilder::new("iterators", ParameterKind::Iter)]);
 
 const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)]);
+  .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
+  .with_stack();
 
 pub fn declare_iter_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
   let class = default_class_inheritance(hooks, package, ITER_CLASS_NAME)?;

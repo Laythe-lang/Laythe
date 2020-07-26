@@ -1,7 +1,11 @@
 use laythe_vm::vm::ExecuteResult;
-use support::assert_file_exit_and_stdio;
+use support::{assert_file_exit_and_stdio, assert_files_exit};
 
 mod support;
+
+fn test_files(paths: &[&str], result: ExecuteResult) -> Result<(), std::io::Error> {
+  assert_files_exit(paths, FILE_PATH, result)
+}
 
 fn test_file_with_stdout(
   path: &str,
@@ -74,4 +78,9 @@ fn stdio() -> Result<(), std::io::Error> {
     vec!["expected 1".to_string(), "expected 2".to_string()],
     ExecuteResult::Ok,
   )
+}
+
+#[test]
+fn fs() -> Result<(), std::io::Error> {
+  test_files(&["std_lib/io/fs/file/readAllText.ly"], ExecuteResult::Ok)
 }

@@ -13,7 +13,7 @@ pub mod token;
 pub mod utils;
 pub mod value;
 
-pub type LyResult<T> = Result<T, LyError>;
+pub type LyResult<T> = Result<T, Box<LyError>>;
 pub type CallResult = LyResult<value::Value>;
 pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;
 
@@ -26,6 +26,7 @@ use std::fmt;
 #[derive(Clone, PartialEq, Debug)]
 pub struct LyError {
   pub message: Managed<SmolStr>,
+  pub exit: bool,
   inner: Option<Box<LyError>>,
 }
 
@@ -33,6 +34,15 @@ impl LyError {
   pub fn new(message: Managed<SmolStr>) -> Self {
     Self {
       message,
+      exit: false,
+      inner: None,
+    }
+  }
+
+  pub fn exit(message: Managed<SmolStr>) -> Self {
+    Self {
+      message,
+      exit: true,
       inner: None,
     }
   }
