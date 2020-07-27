@@ -24,17 +24,17 @@ fn load_source(path: &PathBuf) -> String {
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-  let binary_trees_path = fixture_path("binary_trees.ly").expect("Unable to load benchmark file.");
-  let equality_path = fixture_path("equality.ly").expect("Unable to load benchmark file.");
-  let fib_path = fixture_path("fib.ly").expect("Unable to load benchmark file.");
+  let binary_trees_path = fixture_path("binary_trees.lay").expect("Unable to load benchmark file.");
+  let equality_path = fixture_path("equality.lay").expect("Unable to load benchmark file.");
+  let fib_path = fixture_path("fib.lay").expect("Unable to load benchmark file.");
   let instantiation_path =
-    fixture_path("instantiation.ly").expect("Unable to load benchmark file.");
-  let invocation_path = fixture_path("invocation.ly").expect("Unable to load benchmark file.");
-  let method_call_path = fixture_path("method_call.ly").expect("Unable to load benchmark file.");
-  let properties_path = fixture_path("properties.ly").expect("Unable to load benchmark file.");
-  let trees_path = fixture_path("trees.ly").expect("Unable to load benchmark file.");
-  let zoo_path = fixture_path("zoo.ly").expect("Unable to load benchmark file.");
-  let fluent_path = fixture_path("fluent.ly").expect("Unable to load benchmark file.");
+    fixture_path("instantiation.lay").expect("Unable to load benchmark file.");
+  let invocation_path = fixture_path("invocation.lay").expect("Unable to load benchmark file.");
+  let method_call_path = fixture_path("method_call.lay").expect("Unable to load benchmark file.");
+  let properties_path = fixture_path("properties.lay").expect("Unable to load benchmark file.");
+  let trees_path = fixture_path("trees.lay").expect("Unable to load benchmark file.");
+  let zoo_path = fixture_path("zoo.lay").expect("Unable to load benchmark file.");
+  let fluent_path = fixture_path("fluent.lay").expect("Unable to load benchmark file.");
 
   let binary_trees = load_source(&binary_trees_path);
   let equality = load_source(&equality_path);

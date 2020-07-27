@@ -31,22 +31,22 @@ fn compile_source(source: &str) {
   let mut context = TestContext::default();
   let hooks = GcHooks::new(&mut context);
   let module =
-    hooks.manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("./Benchmark.ly"))).unwrap());
+    hooks.manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("./Benchmark.lay"))).unwrap());
   let mut parser = Parser::new(Stdio::default(), source);
   let compiler = Compiler::new(module, &mut parser, &hooks);
   compiler.compile().unwrap();
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
-  let binary_trees = load_source("binary_trees.ly");
-  let equality = load_source("equality.ly");
-  let fib = load_source("fib.ly");
-  let instantiation = load_source("instantiation.ly");
-  let invocation = load_source("invocation.ly");
-  let method_call = load_source("method_call.ly");
-  let properties = load_source("properties.ly");
-  let trees = load_source("trees.ly");
-  let zoo = load_source("zoo.ly");
+  let binary_trees = load_source("binary_trees.lay");
+  let equality = load_source("equality.lay");
+  let fib = load_source("fib.lay");
+  let instantiation = load_source("instantiation.lay");
+  let invocation = load_source("invocation.lay");
+  let method_call = load_source("method_call.lay");
+  let properties = load_source("properties.lay");
+  let trees = load_source("trees.lay");
+  let zoo = load_source("zoo.lay");
 
   c.bench_with_input(
     BenchmarkId::new("compile binary_trees", 201),
