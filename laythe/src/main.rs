@@ -4,6 +4,13 @@ use std::env;
 use std::fs::read_to_string;
 use std::{path::PathBuf, process};
 
+#[cfg(feature = "jemalloc")]
+use jemallocator::Jemalloc;
+
+#[cfg(feature = "jemalloc")]
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
+
 fn main() {
   let mut vm = default_native_vm();
   let args: Vec<String> = env::args().collect();

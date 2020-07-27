@@ -13,12 +13,12 @@ const FILE_PATH: &str = file!();
 fn utils() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/math/utils/abs.ly",
-      "std_lib/math/utils/cos.ly",
-      "std_lib/math/utils/ln.ly",
-      "std_lib/math/utils/rand.ly",
-      "std_lib/math/utils/rem.ly",
-      "std_lib/math/utils/sin.ly",
+      "std_lib/math/utils/abs.lay",
+      "std_lib/math/utils/cos.lay",
+      "std_lib/math/utils/ln.lay",
+      "std_lib/math/utils/rand.lay",
+      "std_lib/math/utils/rem.lay",
+      "std_lib/math/utils/sin.lay",
     ],
     ExecuteResult::Ok,
   )?;

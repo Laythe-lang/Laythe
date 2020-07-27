@@ -28,26 +28,26 @@ fn build() {
 fn assignment() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/assignment/associativity.ly",
-      "language/assignment/global.ly",
-      "language/assignment/local.ly",
-      "language/assignment/syntax.ly",
+      "language/assignment/associativity.lay",
+      "language/assignment/global.lay",
+      "language/assignment/local.lay",
+      "language/assignment/syntax.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/assignment/grouping.ly",
-      "language/assignment/infix_operator.ly",
-      "language/assignment/prefix_operator.ly",
-      "language/assignment/to_this.ly",
+      "language/assignment/grouping.lay",
+      "language/assignment/infix_operator.lay",
+      "language/assignment/prefix_operator.lay",
+      "language/assignment/to_this.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/assignment/undefined.ly"],
+    &vec!["language/assignment/undefined.lay"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -55,7 +55,7 @@ fn assignment() -> Result<(), std::io::Error> {
 #[test]
 fn block() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/block/empty.ly", "language/block/empty.ly"],
+    &vec!["language/block/empty.lay", "language/block/empty.lay"],
     ExecuteResult::Ok,
   )
 }
@@ -63,7 +63,7 @@ fn block() -> Result<(), std::io::Error> {
 #[test]
 fn bool() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/bool/equality.ly", "language/bool/not.ly"],
+    &vec!["language/bool/equality.lay", "language/bool/not.lay"],
     ExecuteResult::Ok,
   )
 }
@@ -72,11 +72,11 @@ fn bool() -> Result<(), std::io::Error> {
 fn call() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/call/bool.ly",
-      "language/call/nil.ly",
-      "language/call/num.ly",
-      "language/call/object.ly",
-      "language/call/string.ly",
+      "language/call/bool.lay",
+      "language/call/nil.lay",
+      "language/call/num.lay",
+      "language/call/object.lay",
+      "language/call/string.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -86,19 +86,19 @@ fn call() -> Result<(), std::io::Error> {
 fn class() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/class/empty.ly",
-      "language/class/inherited_method.ly",
-      "language/class/local_inherit_other.ly",
-      "language/class/local_reference_self.ly",
-      "language/class/reference_self.ly",
+      "language/class/empty.lay",
+      "language/class/inherited_method.lay",
+      "language/class/local_inherit_other.lay",
+      "language/class/local_reference_self.lay",
+      "language/class/reference_self.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/class/inherit_self.ly",
-      "language/class/local_inherit_self.ly",
+      "language/class/inherit_self.lay",
+      "language/class/local_inherit_self.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -110,19 +110,19 @@ fn class() -> Result<(), std::io::Error> {
 fn closure() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/closure/assign_to_closure.ly",
-      "language/closure/assign_to_shadowed_later.ly",
-      "language/closure/close_over_function_parameter.ly",
-      "language/closure/close_over_later_variable.ly",
-      "language/closure/close_over_method_parameter.ly",
-      "language/closure/closed_closure_in_function.ly",
-      "language/closure/nested_closure.ly",
-      "language/closure/open_closure_in_function.ly",
-      "language/closure/reference_closure_multiple_times.ly",
-      "language/closure/reuse_closure_slot.ly",
-      "language/closure/shadow_closure_with_local.ly",
-      "language/closure/unused_closure.ly",
-      "language/closure/unused_later_closure.ly",
+      "language/closure/assign_to_closure.lay",
+      "language/closure/assign_to_shadowed_later.lay",
+      "language/closure/close_over_function_parameter.lay",
+      "language/closure/close_over_later_variable.lay",
+      "language/closure/close_over_method_parameter.lay",
+      "language/closure/closed_closure_in_function.lay",
+      "language/closure/nested_closure.lay",
+      "language/closure/open_closure_in_function.lay",
+      "language/closure/reference_closure_multiple_times.lay",
+      "language/closure/reuse_closure_slot.lay",
+      "language/closure/shadow_closure_with_local.lay",
+      "language/closure/unused_closure.lay",
+      "language/closure/unused_later_closure.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -136,10 +136,10 @@ fn closure() -> Result<(), std::io::Error> {
 fn comments() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/comments/line_at_eof.ly",
-      "language/comments/only_line_comment_and_line.ly",
-      "language/comments/only_line_comment.ly",
-      "language/comments/unicode.ly",
+      "language/comments/line_at_eof.lay",
+      "language/comments/only_line_comment_and_line.lay",
+      "language/comments/only_line_comment.lay",
+      "language/comments/unicode.lay",
     ],
     ExecuteResult::Ok,
   )
@@ -149,26 +149,26 @@ fn comments() -> Result<(), std::io::Error> {
 fn constructor() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/constructor/arguments.ly",
-      "language/constructor/call_init_early_return.ly",
-      "language/constructor/call_init_explicitly.ly",
-      "language/constructor/default.ly",
-      "language/constructor/early_return.ly",
-      "language/constructor/return_in_nested_function.ly",
+      "language/constructor/arguments.lay",
+      "language/constructor/call_init_early_return.lay",
+      "language/constructor/call_init_explicitly.lay",
+      "language/constructor/default.lay",
+      "language/constructor/early_return.lay",
+      "language/constructor/return_in_nested_function.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
-    &vec!["language/constructor/return_value.ly"],
+    &vec!["language/constructor/return_value.lay"],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/constructor/default_arguments.ly",
-      "language/constructor/extra_arguments.ly",
-      "language/constructor/missing_arguments.ly",
+      "language/constructor/default_arguments.lay",
+      "language/constructor/extra_arguments.lay",
+      "language/constructor/missing_arguments.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -178,25 +178,25 @@ fn constructor() -> Result<(), std::io::Error> {
 fn exception() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/exception/top_level_catch.ly",
-      "language/exception/one_deep_catch.ly",
-      "language/exception/two_deep_catch.ly",
-      "language/exception/top_level_catch_thrown.ly",
+      "language/exception/top_level_catch.lay",
+      "language/exception/one_deep_catch.lay",
+      "language/exception/two_deep_catch.lay",
+      "language/exception/top_level_catch_thrown.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/exception/catch_no_block.ly",
-      "language/exception/try_no_block.ly",
-      "language/exception/try_no_catch.ly",
+      "language/exception/catch_no_block.lay",
+      "language/exception/try_no_block.lay",
+      "language/exception/try_no_catch.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_with_stdio(
-    "language/exception/top_level_thrown.ly",
+    "language/exception/top_level_thrown.lay",
     None,
     Some(vec![
       "Index out of bounds. list was length 0 but attempted to index with 1.",
@@ -206,7 +206,7 @@ fn exception() -> Result<(), std::io::Error> {
   )?;
 
   test_file_with_stdio(
-    "language/exception/one_deep_thrown.ly",
+    "language/exception/one_deep_thrown.lay",
     None,
     Some(vec![
       "Index out of bounds. list was length 0 but attempted to index with 1.",
@@ -217,7 +217,7 @@ fn exception() -> Result<(), std::io::Error> {
   )?;
 
   test_file_with_stdio(
-    "language/exception/two_deep_thrown.ly",
+    "language/exception/two_deep_thrown.lay",
     None,
     Some(vec![
       "Index out of bounds. list was length 0 but attempted to index with 1.",
@@ -235,11 +235,11 @@ fn export() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/export/literal.ly",
-      "language/export/local.ly",
-      "language/export/non_declaration_class.ly",
-      "language/export/non_declaration_fun.ly",
-      "language/export/non_declaration_var.ly",
+      "language/export/literal.lay",
+      "language/export/local.lay",
+      "language/export/non_declaration_class.lay",
+      "language/export/non_declaration_fun.lay",
+      "language/export/non_declaration_var.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -249,7 +249,7 @@ fn export() -> Result<(), std::io::Error> {
 
 #[test]
 fn expressions() -> Result<(), std::io::Error> {
-  test_file_exits(&vec!["language/expressions/evaluate.ly"], ExecuteResult::Ok)?;
+  test_file_exits(&vec!["language/expressions/evaluate.lay"], ExecuteResult::Ok)?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
@@ -260,12 +260,12 @@ fn expressions() -> Result<(), std::io::Error> {
 fn field() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/field/call_function_field.ly",
-      "language/field/get_and_set_method.ly",
-      "language/field/many.ly",
-      "language/field/method_binds_this.ly",
-      "language/field/method.ly",
-      "language/field/on_instance.ly",
+      "language/field/call_function_field.lay",
+      "language/field/get_and_set_method.lay",
+      "language/field/many.lay",
+      "language/field/method_binds_this.lay",
+      "language/field/method.lay",
+      "language/field/on_instance.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -274,21 +274,21 @@ fn field() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/field/call_nonfunction_field.ly",
-      "language/field/get_on_bool.ly",
-      "language/field/get_on_class.ly",
-      "language/field/get_on_function.ly",
-      "language/field/get_on_nil.ly",
-      "language/field/get_on_num.ly",
-      "language/field/get_on_string.ly",
-      "language/field/set_evaluation_order.ly",
-      "language/field/set_on_bool.ly",
-      "language/field/set_on_class.ly",
-      "language/field/set_on_function.ly",
-      "language/field/set_on_nil.ly",
-      "language/field/set_on_num.ly",
-      "language/field/set_on_string.ly",
-      "language/field/undefined.ly",
+      "language/field/call_nonfunction_field.lay",
+      "language/field/get_on_bool.lay",
+      "language/field/get_on_class.lay",
+      "language/field/get_on_function.lay",
+      "language/field/get_on_nil.lay",
+      "language/field/get_on_num.lay",
+      "language/field/get_on_string.lay",
+      "language/field/set_evaluation_order.lay",
+      "language/field/set_on_bool.lay",
+      "language/field/set_on_class.lay",
+      "language/field/set_on_function.lay",
+      "language/field/set_on_nil.lay",
+      "language/field/set_on_num.lay",
+      "language/field/set_on_string.lay",
+      "language/field/undefined.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -298,22 +298,22 @@ fn field() -> Result<(), std::io::Error> {
 fn for_loop() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/for/return_inside.ly",
-      "language/for/scope.ly",
-      "language/for/syntax.ly",
-      "language/for/closure_in_body.ly",
+      "language/for/return_inside.lay",
+      "language/for/scope.lay",
+      "language/for/syntax.lay",
+      "language/for/closure_in_body.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/for/class_in_body.ly",
-      "language/for/fun_in_body.ly",
-      "language/for/statement_condition.ly",
-      "language/for/statement_increment.ly",
-      "language/for/statement_initializer.ly",
-      "language/for/var_in_body.ly",
+      "language/for/class_in_body.lay",
+      "language/for/fun_in_body.lay",
+      "language/for/statement_condition.lay",
+      "language/for/statement_increment.lay",
+      "language/for/statement_initializer.lay",
+      "language/for/var_in_body.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -325,19 +325,19 @@ fn for_loop() -> Result<(), std::io::Error> {
 fn for_range_loop() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/for_range/return_inside.ly",
-      "language/for_range/scope.ly",
-      "language/for_range/closure_in_body.ly",
+      "language/for_range/return_inside.lay",
+      "language/for_range/scope.lay",
+      "language/for_range/closure_in_body.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/for_range/class_in_body.ly",
-      "language/for_range/fun_in_body.ly",
-      "language/for_range/var_in_body.ly",
-      "language/for_range/statement_iterator.ly",
+      "language/for_range/class_in_body.lay",
+      "language/for_range/fun_in_body.lay",
+      "language/for_range/var_in_body.lay",
+      "language/for_range/statement_iterator.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -349,31 +349,31 @@ fn for_range_loop() -> Result<(), std::io::Error> {
 fn function() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/function/empty_body.ly",
-      "language/function/local_recursion.ly",
-      "language/function/mutual_recursion.ly",
-      "language/function/parameters.ly",
-      "language/function/print.ly",
-      "language/function/recursion.ly",
+      "language/function/empty_body.lay",
+      "language/function/local_recursion.lay",
+      "language/function/mutual_recursion.lay",
+      "language/function/parameters.lay",
+      "language/function/print.lay",
+      "language/function/recursion.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/function/body_must_be_block.ly",
-      "language/function/missing_comma_in_parameters.ly",
-      "language/function/too_many_arguments.ly",
-      "language/function/too_many_parameters.ly",
+      "language/function/body_must_be_block.lay",
+      "language/function/missing_comma_in_parameters.lay",
+      "language/function/too_many_arguments.lay",
+      "language/function/too_many_parameters.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/function/extra_arguments.ly",
-      "language/function/local_mutual_recursion.ly",
-      "language/function/missing_arguments.ly",
+      "language/function/extra_arguments.lay",
+      "language/function/local_mutual_recursion.lay",
+      "language/function/missing_arguments.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -383,10 +383,10 @@ fn function() -> Result<(), std::io::Error> {
 fn hooks() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/hooks/call_native.ly",
-      "language/hooks/call_ly_function.ly",
-      "language/hooks/call_ly_closure.ly",
-      "language/hooks/call_ly_instance.ly",
+      "language/hooks/call_native.lay",
+      "language/hooks/call_ly_function.lay",
+      "language/hooks/call_ly_closure.lay",
+      "language/hooks/call_ly_instance.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -395,10 +395,10 @@ fn hooks() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/hooks/pass_error_native.ly",
-      "language/hooks/pass_error_ly_function.ly",
-      "language/hooks/pass_error_ly_closure.ly",
-      "language/hooks/pass_error_ly_instance.ly",
+      "language/hooks/pass_error_native.lay",
+      "language/hooks/pass_error_ly_function.lay",
+      "language/hooks/pass_error_ly_closure.lay",
+      "language/hooks/pass_error_ly_instance.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -408,22 +408,22 @@ fn hooks() -> Result<(), std::io::Error> {
 fn if_stmt() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/if/dangling_else.ly",
-      "language/if/else.ly",
-      "language/if/if.ly",
-      "language/if/truth.ly",
+      "language/if/dangling_else.lay",
+      "language/if/else.lay",
+      "language/if/if.lay",
+      "language/if/truth.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/if/class_in_else.ly",
-      "language/if/class_in_then.ly",
-      "language/if/fun_in_else.ly",
-      "language/if/fun_in_then.ly",
-      "language/if/var_in_then.ly",
-      "language/if/var_in_then.ly",
+      "language/if/class_in_else.lay",
+      "language/if/class_in_then.lay",
+      "language/if/fun_in_else.lay",
+      "language/if/fun_in_then.lay",
+      "language/if/var_in_then.lay",
+      "language/if/var_in_then.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -437,17 +437,17 @@ fn import() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/import/missing_name.ly",
-      "language/import/missing_semicolon.ly",
-      "language/import/non_identifier_name.ly",
-      "language/import/non_string_literal.ly",
-      "language/import/non_string_path.ly",
+      "language/import/missing_name.lay",
+      "language/import/missing_semicolon.lay",
+      "language/import/non_identifier_name.lay",
+      "language/import/non_string_literal.lay",
+      "language/import/non_string_path.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/import/std_lib_not_real.ly"],
+    &vec!["language/import/std_lib_not_real.lay"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -456,14 +456,14 @@ fn import() -> Result<(), std::io::Error> {
 fn indexing() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/indexing/list_get.ly",
-      "language/indexing/list_set.ly",
-      "language/indexing/list_nested_get.ly",
-      "language/indexing/list_nested_set.ly",
-      "language/indexing/map_na_get.ly",
-      "language/indexing/map_ref_equal_get.ly",
-      "language/indexing/map_nested_get.ly",
-      "language/indexing/map_nested_set.ly",
+      "language/indexing/list_get.lay",
+      "language/indexing/list_set.lay",
+      "language/indexing/list_nested_get.lay",
+      "language/indexing/list_nested_set.lay",
+      "language/indexing/map_na_get.lay",
+      "language/indexing/map_ref_equal_get.lay",
+      "language/indexing/map_nested_get.lay",
+      "language/indexing/map_nested_set.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -472,8 +472,8 @@ fn indexing() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/indexing/list_out_of_range.ly",
-      "language/indexing/map_key_not_found.ly",
+      "language/indexing/list_out_of_range.lay",
+      "language/indexing/map_key_not_found.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -483,23 +483,23 @@ fn indexing() -> Result<(), std::io::Error> {
 fn inheritance() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/inheritance/constructor.ly",
-      "language/inheritance/inherit_methods.ly",
-      "language/inheritance/set_fields_from_base_class.ly",
+      "language/inheritance/constructor.lay",
+      "language/inheritance/inherit_methods.lay",
+      "language/inheritance/set_fields_from_base_class.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
-    &vec!["language/inheritance/parenthesized_superclass.ly"],
+    &vec!["language/inheritance/parenthesized_superclass.lay"],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/inheritance/inherit_from_function.ly",
-      "language/inheritance/inherit_from_nil.ly",
-      "language/inheritance/inherit_from_number.ly",
+      "language/inheritance/inherit_from_function.lay",
+      "language/inheritance/inherit_from_nil.lay",
+      "language/inheritance/inherit_from_number.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -509,8 +509,8 @@ fn inheritance() -> Result<(), std::io::Error> {
 fn iterator() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/iterator/equality.ly",
-      "language/iterator/assign_iter_keep_state.ly",
+      "language/iterator/equality.lay",
+      "language/iterator/assign_iter_keep_state.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -518,7 +518,7 @@ fn iterator() -> Result<(), std::io::Error> {
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
   test_file_exits(
-    &vec!["language/iterator/cannot_set_current.ly"],
+    &vec!["language/iterator/cannot_set_current.lay"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -526,22 +526,22 @@ fn iterator() -> Result<(), std::io::Error> {
 #[test]
 fn limit() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/limit/reuse_constants.ly"],
+    &vec!["language/limit/reuse_constants.lay"],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/limit/loop_too_large.ly",
-      "language/limit/too_many_constants.ly",
-      "language/limit/too_many_locals.ly",
-      "language/limit/too_many_upvalues.ly",
+      "language/limit/loop_too_large.lay",
+      "language/limit/too_many_constants.lay",
+      "language/limit/too_many_locals.lay",
+      "language/limit/too_many_upvalues.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/limit/stack_overflow.ly"],
+    &vec!["language/limit/stack_overflow.lay"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -550,32 +550,32 @@ fn limit() -> Result<(), std::io::Error> {
 fn lambda() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/lambda/expression_body.ly",
-      "language/lambda/empty_body.ly",
-      "language/lambda/mutual_recursion.ly",
-      "language/lambda/recursion.ly",
-      "language/lambda/parameters.ly",
-      "language/lambda/print.ly",
+      "language/lambda/expression_body.lay",
+      "language/lambda/empty_body.lay",
+      "language/lambda/mutual_recursion.lay",
+      "language/lambda/recursion.lay",
+      "language/lambda/parameters.lay",
+      "language/lambda/print.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/lambda/local_recursion.ly",
-      "language/lambda/body_must_be_block_or_expr.ly",
-      "language/lambda/missing_comma_in_parameters.ly",
-      "language/lambda/too_many_parameters.ly",
-      "language/lambda/too_many_arguments.ly",
+      "language/lambda/local_recursion.lay",
+      "language/lambda/body_must_be_block_or_expr.lay",
+      "language/lambda/missing_comma_in_parameters.lay",
+      "language/lambda/too_many_parameters.lay",
+      "language/lambda/too_many_arguments.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/lambda/extra_arguments.ly",
-      "language/lambda/missing_arguments.ly",
-      "language/lambda/local_mutual_recursion.ly",
+      "language/lambda/extra_arguments.lay",
+      "language/lambda/missing_arguments.lay",
+      "language/lambda/local_mutual_recursion.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -585,17 +585,17 @@ fn lambda() -> Result<(), std::io::Error> {
 fn list() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/list/empty.ly",
-      "language/list/homogeneous.ly",
-      "language/list/mixed.ly",
+      "language/list/empty.lay",
+      "language/list/homogeneous.lay",
+      "language/list/mixed.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/list/missing_comma_in_initializer.ly",
-      "language/list/missing_closing_bracket.ly",
+      "language/list/missing_comma_in_initializer.lay",
+      "language/list/missing_closing_bracket.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -607,10 +607,10 @@ fn list() -> Result<(), std::io::Error> {
 fn logical_operator() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/logical_operator/and_truth.ly",
-      "language/logical_operator/and.ly",
-      "language/logical_operator/or_truth.ly",
-      "language/logical_operator/or.ly",
+      "language/logical_operator/and_truth.lay",
+      "language/logical_operator/and.lay",
+      "language/logical_operator/or_truth.lay",
+      "language/logical_operator/or.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -624,19 +624,19 @@ fn logical_operator() -> Result<(), std::io::Error> {
 fn map() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/map/empty.ly",
-      "language/map/homogeneous.ly",
-      "language/map/mixed.ly",
+      "language/map/empty.lay",
+      "language/map/homogeneous.lay",
+      "language/map/mixed.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/map/missing_closing_curly.ly",
-      "language/map/missing_colon.ly",
-      "language/map/statement_key.ly",
-      "language/map/statement_value.ly",
+      "language/map/missing_closing_curly.lay",
+      "language/map/missing_colon.lay",
+      "language/map/statement_key.lay",
+      "language/map/statement_value.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -648,27 +648,27 @@ fn map() -> Result<(), std::io::Error> {
 fn method() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/method/arity.ly",
-      "language/method/empty_block.ly",
-      "language/method/print_bound_method.ly",
+      "language/method/arity.lay",
+      "language/method/empty_block.lay",
+      "language/method/print_bound_method.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/method/too_many_arguments.ly",
-      "language/method/too_many_parameters.ly",
+      "language/method/too_many_arguments.lay",
+      "language/method/too_many_parameters.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/method/extra_arguments.ly",
-      "language/method/missing_arguments.ly",
-      "language/method/not_found.ly",
-      "language/method/refer_to_name.ly",
+      "language/method/extra_arguments.lay",
+      "language/method/missing_arguments.lay",
+      "language/method/not_found.lay",
+      "language/method/refer_to_name.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -678,12 +678,12 @@ fn method() -> Result<(), std::io::Error> {
 fn native() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/native/assert.ly",
-      "language/native/assert_eq.ly",
-      "language/native/assert_ne.ly",
-      "language/native/clock.ly",
-      "language/native/signature_fixed_arity.ly",
-      "language/native/signature_type.ly",
+      "language/native/assert.lay",
+      "language/native/assert_eq.lay",
+      "language/native/assert_ne.lay",
+      "language/native/clock.lay",
+      "language/native/signature_fixed_arity.lay",
+      "language/native/signature_type.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -695,7 +695,7 @@ fn native() -> Result<(), std::io::Error> {
 
 #[test]
 fn nil() -> Result<(), std::io::Error> {
-  test_file_exits(&vec!["language/nil/literal.ly"], ExecuteResult::Ok)?;
+  test_file_exits(&vec!["language/nil/literal.lay"], ExecuteResult::Ok)?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
@@ -704,13 +704,13 @@ fn nil() -> Result<(), std::io::Error> {
 
 #[test]
 fn number() -> Result<(), std::io::Error> {
-  test_file_exits(&vec!["language/number/literals.ly"], ExecuteResult::Ok)?;
+  test_file_exits(&vec!["language/number/literals.lay"], ExecuteResult::Ok)?;
 
   test_file_exits(
     &vec![
-      "language/number/decimal_point_at_eof.ly",
-      "language/number/leading_dot.ly",
-      "language/number/trailing_dot.ly",
+      "language/number/decimal_point_at_eof.lay",
+      "language/number/leading_dot.lay",
+      "language/number/trailing_dot.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -722,18 +722,18 @@ fn number() -> Result<(), std::io::Error> {
 fn operator() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/operator/add.ly",
-      "language/operator/comparison.ly",
-      "language/operator/divide.ly",
-      "language/operator/equals_class.ly",
-      "language/operator/equals_method.ly",
-      "language/operator/equals.ly",
-      "language/operator/multiply.ly",
-      "language/operator/negate.ly",
-      "language/operator/not_class.ly",
-      "language/operator/not_equals.ly",
-      "language/operator/not.ly",
-      "language/operator/subtract.ly",
+      "language/operator/add.lay",
+      "language/operator/comparison.lay",
+      "language/operator/divide.lay",
+      "language/operator/equals_class.lay",
+      "language/operator/equals_method.lay",
+      "language/operator/equals.lay",
+      "language/operator/multiply.lay",
+      "language/operator/negate.lay",
+      "language/operator/not_class.lay",
+      "language/operator/not_equals.lay",
+      "language/operator/not.lay",
+      "language/operator/subtract.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -742,27 +742,27 @@ fn operator() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/operator/add_bool_nil.ly",
-      "language/operator/add_bool_num.ly",
-      "language/operator/add_bool_string.ly",
-      "language/operator/add_nil_nil.ly",
-      "language/operator/add_num_nil.ly",
-      "language/operator/add_string_nil.ly",
-      "language/operator/divide_nonnum_num.ly",
-      "language/operator/divide_num_nonnum.ly",
-      "language/operator/greater_nonnum_num.ly",
-      "language/operator/greater_num_nonnum.ly",
-      "language/operator/greater_or_equal_nonnum_num.ly",
-      "language/operator/greater_or_equal_num_nonnum.ly",
-      "language/operator/less_nonnum_num.ly",
-      "language/operator/less_num_nonnum.ly",
-      "language/operator/less_or_equal_nonnum_num.ly",
-      "language/operator/less_or_equal_num_nonnum.ly",
-      "language/operator/multiply_nonnum_num.ly",
-      "language/operator/multiply_num_nonnum.ly",
-      "language/operator/negate_nonnum.ly",
-      "language/operator/subtract_nonnum_num.ly",
-      "language/operator/subtract_num_nonnum.ly",
+      "language/operator/add_bool_nil.lay",
+      "language/operator/add_bool_num.lay",
+      "language/operator/add_bool_string.lay",
+      "language/operator/add_nil_nil.lay",
+      "language/operator/add_num_nil.lay",
+      "language/operator/add_string_nil.lay",
+      "language/operator/divide_nonnum_num.lay",
+      "language/operator/divide_num_nonnum.lay",
+      "language/operator/greater_nonnum_num.lay",
+      "language/operator/greater_num_nonnum.lay",
+      "language/operator/greater_or_equal_nonnum_num.lay",
+      "language/operator/greater_or_equal_num_nonnum.lay",
+      "language/operator/less_nonnum_num.lay",
+      "language/operator/less_num_nonnum.lay",
+      "language/operator/less_or_equal_nonnum_num.lay",
+      "language/operator/less_or_equal_num_nonnum.lay",
+      "language/operator/multiply_nonnum_num.lay",
+      "language/operator/multiply_num_nonnum.lay",
+      "language/operator/negate_nonnum.lay",
+      "language/operator/subtract_nonnum_num.lay",
+      "language/operator/subtract_num_nonnum.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -771,7 +771,7 @@ fn operator() -> Result<(), std::io::Error> {
 #[test]
 fn regression() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/regression/40.ly", "language/regression/394.ly"],
+    &vec!["language/regression/40.lay", "language/regression/394.lay"],
     ExecuteResult::Ok,
   )
 }
@@ -780,18 +780,18 @@ fn regression() -> Result<(), std::io::Error> {
 fn return_test() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/return/after_else.ly",
-      "language/return/after_if.ly",
-      "language/return/after_while.ly",
-      "language/return/in_function.ly",
-      "language/return/return_nil_if_no_value.ly",
-      "language/return/return_nil_if_no_value.ly",
+      "language/return/after_else.lay",
+      "language/return/after_if.lay",
+      "language/return/after_while.lay",
+      "language/return/in_function.lay",
+      "language/return/return_nil_if_no_value.lay",
+      "language/return/return_nil_if_no_value.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
-    &vec!["language/return/at_top_level.ly"],
+    &vec!["language/return/at_top_level.lay"],
     ExecuteResult::CompileError,
   )?;
 
@@ -802,29 +802,29 @@ fn return_test() -> Result<(), std::io::Error> {
 fn static_method() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/static_method/arity.ly",
-      "language/static_method/call_bound.ly",
-      "language/static_method/empty_block.ly",
-      "language/static_method/print_bound_method.ly",
+      "language/static_method/arity.lay",
+      "language/static_method/call_bound.lay",
+      "language/static_method/empty_block.lay",
+      "language/static_method/print_bound_method.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/static_method/no_self.ly",
-      "language/static_method/too_many_arguments.ly",
-      "language/static_method/too_many_parameters.ly",
+      "language/static_method/no_self.lay",
+      "language/static_method/too_many_arguments.lay",
+      "language/static_method/too_many_parameters.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/static_method/extra_arguments.ly",
-      "language/static_method/missing_arguments.ly",
-      "language/static_method/not_found.ly",
-      "language/static_method/refer_to_name.ly",
+      "language/static_method/extra_arguments.lay",
+      "language/static_method/missing_arguments.lay",
+      "language/static_method/not_found.lay",
+      "language/static_method/refer_to_name.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -834,30 +834,30 @@ fn static_method() -> Result<(), std::io::Error> {
 fn string() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/string/literals.ly",
-      "language/string/multiline.ly",
-      "language/string/escape.ly",
-      "language/string/unicode_escape.ly",
+      "language/string/literals.lay",
+      "language/string/multiline.lay",
+      "language/string/escape.lay",
+      "language/string/unicode_escape.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/string/invalid_escape.ly",
-      "language/string/invalid_unicode_hex.ly",
-      "language/string/invalid_unicode_missing_close.ly",
-      "language/string/invalid_unicode_missing_open.ly",
-      "language/string/invalid_unicode_no_hex.ly",
-      "language/string/invalid_unicode_too_long.ly",
-      "language/string/unterminated_double.ly",
-      "language/string/unterminated_single.ly",
+      "language/string/invalid_escape.lay",
+      "language/string/invalid_unicode_hex.lay",
+      "language/string/invalid_unicode_missing_close.lay",
+      "language/string/invalid_unicode_missing_open.lay",
+      "language/string/invalid_unicode_no_hex.lay",
+      "language/string/invalid_unicode_too_long.lay",
+      "language/string/unterminated_double.lay",
+      "language/string/unterminated_single.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/string/error_after_multiline.ly"],
+    &vec!["language/string/error_after_multiline.lay"],
     ExecuteResult::RuntimeError,
   )
 }
@@ -866,37 +866,37 @@ fn string() -> Result<(), std::io::Error> {
 fn super_() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/super/bound_method.ly",
-      "language/super/call_other_method.ly",
-      "language/super/call_same_method.ly",
-      "language/super/closure.ly",
-      "language/super/constructor.ly",
-      "language/super/indirectly_inherited.ly",
-      "language/super/reassign_superclass.ly",
-      "language/super/super_in_closure_in_inherited_method.ly",
-      "language/super/super_in_inherited_method.ly",
+      "language/super/bound_method.lay",
+      "language/super/call_other_method.lay",
+      "language/super/call_same_method.lay",
+      "language/super/closure.lay",
+      "language/super/constructor.lay",
+      "language/super/indirectly_inherited.lay",
+      "language/super/reassign_superclass.lay",
+      "language/super/super_in_closure_in_inherited_method.lay",
+      "language/super/super_in_inherited_method.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/super/no_superclass_bind.ly",
-      "language/super/no_superclass_call.ly",
-      "language/super/parenthesized.ly",
-      "language/super/super_at_top_level.ly",
-      "language/super/super_in_top_level_function.ly",
-      "language/super/super_without_dot.ly",
-      "language/super/super_without_name.ly",
+      "language/super/no_superclass_bind.lay",
+      "language/super/no_superclass_call.lay",
+      "language/super/parenthesized.lay",
+      "language/super/super_at_top_level.lay",
+      "language/super/super_in_top_level_function.lay",
+      "language/super/super_without_dot.lay",
+      "language/super/super_without_name.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/super/extra_arguments.ly",
-      "language/super/missing_arguments.ly",
-      "language/super/no_superclass_method.ly",
+      "language/super/extra_arguments.lay",
+      "language/super/missing_arguments.lay",
+      "language/super/no_superclass_method.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -906,41 +906,41 @@ fn super_() -> Result<(), std::io::Error> {
 fn variable() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/variable/early_bound.ly",
-      "language/variable/in_middle_of_block.ly",
-      "language/variable/in_nested_block.ly",
-      "language/variable/local_from_method.ly",
-      "language/variable/redeclare_global.ly",
-      "language/variable/redefine_global.ly",
-      "language/variable/scope_reuse_in_different_blocks.ly",
-      "language/variable/shadow_and_local.ly",
-      "language/variable/shadow_global.ly",
-      "language/variable/shadow_local.ly",
-      "language/variable/uninitialized.ly",
-      "language/variable/unreached_undefined.ly",
-      "language/variable/use_global_in_initializer.ly",
+      "language/variable/early_bound.lay",
+      "language/variable/in_middle_of_block.lay",
+      "language/variable/in_nested_block.lay",
+      "language/variable/local_from_method.lay",
+      "language/variable/redeclare_global.lay",
+      "language/variable/redefine_global.lay",
+      "language/variable/scope_reuse_in_different_blocks.lay",
+      "language/variable/shadow_and_local.lay",
+      "language/variable/shadow_global.lay",
+      "language/variable/shadow_local.lay",
+      "language/variable/uninitialized.lay",
+      "language/variable/unreached_undefined.lay",
+      "language/variable/use_global_in_initializer.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/variable/collide_with_parameter.ly",
-      "language/variable/duplicate_local.ly",
-      "language/variable/duplicate_parameter.ly",
-      "language/variable/use_false_as_var.ly",
-      "language/variable/use_local_in_initializer.ly",
-      "language/variable/use_nil_as_var.ly",
-      "language/variable/use_this_as_var.ly",
+      "language/variable/collide_with_parameter.lay",
+      "language/variable/duplicate_local.lay",
+      "language/variable/duplicate_parameter.lay",
+      "language/variable/use_false_as_var.lay",
+      "language/variable/use_local_in_initializer.lay",
+      "language/variable/use_nil_as_var.lay",
+      "language/variable/use_this_as_var.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
     &vec![
-      "language/variable/undefined_global.ly",
-      "language/variable/undefined_local.ly",
-      "language/variable/undefined_local.ly",
+      "language/variable/undefined_global.lay",
+      "language/variable/undefined_local.lay",
+      "language/variable/undefined_local.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -950,19 +950,19 @@ fn variable() -> Result<(), std::io::Error> {
 fn while_test() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/while/closure_in_body.ly",
-      "language/while/return_closure.ly",
-      "language/while/return_inside.ly",
-      "language/while/syntax.ly",
+      "language/while/closure_in_body.lay",
+      "language/while/return_closure.lay",
+      "language/while/return_inside.lay",
+      "language/while/syntax.lay",
     ],
     ExecuteResult::Ok,
   )?;
 
   test_file_exits(
     &vec![
-      "language/while/class_in_body.ly",
-      "language/while/fun_in_body.ly",
-      "language/while/var_in_body.ly",
+      "language/while/class_in_body.lay",
+      "language/while/fun_in_body.lay",
+      "language/while/var_in_body.lay",
     ],
     ExecuteResult::CompileError,
   )?;
