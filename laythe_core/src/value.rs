@@ -830,7 +830,7 @@ mod unboxed {
     #[test]
     fn test_diff_type_no_equal() {
       // let string = "example";
-      let mut string_alloc = Box::new(Allocation::new("data".to_string()));
+      let mut string_alloc = Box::new(Allocation::new(SmolStr::from("stuff")));
 
       // "blah".to_string().into_boxed_str();
       let string_ptr = unsafe { NonNull::new_unchecked(&mut *string_alloc) };

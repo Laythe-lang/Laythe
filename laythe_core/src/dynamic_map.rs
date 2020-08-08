@@ -1,11 +1,11 @@
+use crate::lin_map::LinMap;
 use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
-use linear_map::LinearMap;
 use std::hash::Hash;
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum DynamicMap<K: Ord + Hash, V> {
-  Linear(LinearMap<K, V>),
+  Linear(LinMap<K, V>),
   Hash(HashMap<K, V, FnvBuildHasher>),
 }
 
@@ -13,7 +13,7 @@ const SIZE_THRESHOLD: usize = 12;
 
 impl<K: Ord + Hash, V> DynamicMap<K, V> {
   pub fn new() -> Self {
-    Self::Linear(LinearMap::new())
+    Self::Linear(LinMap::new())
   }
 
   pub fn get(&self, key: &K) -> Option<&V> {
@@ -33,6 +33,7 @@ impl<K: Ord + Hash, V> DynamicMap<K, V> {
             std::cmp::max(SIZE_THRESHOLD * 2, cap),
             Default::default(),
           ));
+
           linear.drain().for_each(|(k, v)| {
             hash.insert(k, v);
           });

@@ -4,6 +4,7 @@ pub mod constants;
 pub mod dynamic_map;
 pub mod hooks;
 pub mod iterator;
+pub mod lin_map;
 pub mod module;
 pub mod native;
 pub mod object;
