@@ -1,0 +1,15 @@
+[package]
+name = "laythe_frontend_bench"
+version = "0.1.0"
+authors = ["John Chabot <johnchabot2013@gmail.com>"]
+edition = "2018"
+
+[[bin]]
+name = "laythe_frontend_bench"
+path = "src/main.rs"
+
+[dependencies]
+laythe_core = { path = "../laythe_core" }
+laythe_vm = { path = "../laythe_vm" }
+laythe_env = { path = "../laythe_env" }
+laythe_native = { path = "../laythe_native" }

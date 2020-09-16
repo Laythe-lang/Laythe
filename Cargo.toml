@@ -1,6 +1,6 @@
 [workspace]
 members = [
-  "laythe_compiler_bench",
+  "laythe_frontend_bench",
   "laythe_native",
   "laythe_core",
   "laythe_lib",
