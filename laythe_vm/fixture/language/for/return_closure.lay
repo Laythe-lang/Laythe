@@ -1,5 +1,5 @@
 fn f() {
-  for (;;) {
+  for x in [1] {
     let i = "i";
     fn g() { print(i); }
     return g;

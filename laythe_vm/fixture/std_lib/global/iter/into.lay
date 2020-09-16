@@ -4,7 +4,7 @@ fn makeIter() {
 
 fn sum(iter) {
   let sum = 0;
-  for (let i in iter) {
+  for i in iter {
     sum = sum + i;
   }
 

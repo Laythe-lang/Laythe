@@ -2,7 +2,7 @@ let i = 0;
 
 let loopStart = clock();
 
-while (i < 10000000) {
+while i < 10000000 {
   i = i + 1;
 
   1; 1; 1; 2; 1; nil; 1; "str"; 1; true;
@@ -16,7 +16,7 @@ let loopTime = clock() - loopStart;
 let start = clock();
 
 i = 0;
-while (i < 10000000) {
+while i < 10000000 {
   i = i + 1;
 
   1 == 1; 1 == 2; 1 == nil; 1 == "str"; 1 == true;

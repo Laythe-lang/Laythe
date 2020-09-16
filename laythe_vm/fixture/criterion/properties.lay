@@ -34,41 +34,41 @@ class Foo {
     self.field29 = 1;
   }
 
-  method0() { return self.field0; }
-  method1() { return self.field1; }
-  method2() { return self.field2; }
-  method3() { return self.field3; }
-  method4() { return self.field4; }
-  method5() { return self.field5; }
-  method6() { return self.field6; }
-  method7() { return self.field7; }
-  method8() { return self.field8; }
-  method9() { return self.field9; }
-  method10() { return self.field10; }
-  method11() { return self.field11; }
-  method12() { return self.field12; }
-  method13() { return self.field13; }
-  method14() { return self.field14; }
-  method15() { return self.field15; }
-  method16() { return self.field16; }
-  method17() { return self.field17; }
-  method18() { return self.field18; }
-  method19() { return self.field19; }
-  method20() { return self.field20; }
-  method21() { return self.field21; }
-  method22() { return self.field22; }
-  method23() { return self.field23; }
-  method24() { return self.field24; }
-  method25() { return self.field25; }
-  method26() { return self.field26; }
-  method27() { return self.field27; }
-  method28() { return self.field28; }
-  method29() { return self.field29; }
+  method0() self.field0
+  method1() self.field1
+  method2() self.field2
+  method3() self.field3
+  method4() self.field4
+  method5() self.field5
+  method6() self.field6
+  method7() self.field7
+  method8() self.field8
+  method9() self.field9
+  method10() self.field10
+  method11() self.field11
+  method12() self.field12
+  method13() self.field13
+  method14() self.field14
+  method15() self.field15
+  method16() self.field16
+  method17() self.field17
+  method18() self.field18
+  method19() self.field19
+  method20() self.field20
+  method21() self.field21
+  method22() self.field22
+  method23() self.field23
+  method24() self.field24
+  method25() self.field25
+  method26() self.field26
+  method27() self.field27
+  method28() self.field28
+  method29() self.field29
 }
 
 let foo = Foo();
 let i = 0;
-while (i < 1000) {
+while i < 1000 {
   foo.method0();
   foo.method1();
   foo.method2();

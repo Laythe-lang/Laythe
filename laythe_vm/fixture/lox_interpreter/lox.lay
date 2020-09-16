@@ -62,83 +62,83 @@ let EOF = 279;
 let INVALID = 280;
 
 class Token {
-  init(type, value, line) {
-    self.type = type;
+  init(kind, value, line) {
+    self.kind = kind;
     self.value = value;
     self.line = line;
   }
 }
 
-// Convert a token type constant back to the source string that the
+// Convert a token kind constant back to the source string that the
 // token represents.
-fn tokenTypeStr(type) {
-  if (type == LEFT_PAREN) return "(";
-  if (type == RIGHT_PAREN) return ")";
-  if (type == LEFT_BRACE) return "{";
-  if (type == RIGHT_BRACE) return "}";
-  if (type == COMMA) return ",";
-  if (type == DOT) return ".";
-  if (type == MINUS) return "-";
-  if (type == PLUS) return "+";
-  if (type == SEMICOLON) return ";";
-  if (type == SLASH) return "/";
-  if (type == STAR) return "*";
-  if (type == BANG) return "!";
-  if (type == EQUAL) return "=";
-  if (type == GREATER) return ">";
-  if (type == LESS) return "<";
+fn tokenTypeStr(kind) {
+  if kind == LEFT_PAREN { return "("; }
+  if kind == RIGHT_PAREN { return ")"; }
+  if kind == LEFT_BRACE { return "{"; }
+  if kind == RIGHT_BRACE { return "}"; }
+  if kind == COMMA { return ","; }
+  if kind == DOT { return "."; }
+  if kind == MINUS { return "-"; }
+  if kind == PLUS { return "+"; }
+  if kind == SEMICOLON { return ";"; }
+  if kind == SLASH { return "/"; }
+  if kind == STAR { return "*"; }
+  if kind == BANG { return "!"; }
+  if kind == EQUAL { return "="; }
+  if kind == GREATER { return ">"; }
+  if kind == LESS { return "<"; }
 
-  if (type == BANG_EQUAL) return "!=";
-  if (type == EQUAL_EQUAL) return "==";
-  if (type == GREATER_EQUAL) return ">=";
-  if (type == LESS_EQUAL) return "<=";
+  if kind == BANG_EQUAL { return "!="; }
+  if kind == EQUAL_EQUAL { return "=="; }
+  if kind == GREATER_EQUAL { return ">="; }
+  if kind == LESS_EQUAL { return "<="; }
 
-  if (type == IDENTIFIER) return "<identifier>";
-  if (type == STRING) return "<string>";
-  if (type == NUMBER) return "<number>";
+  if kind == IDENTIFIER { return "<identifier>"; }
+  if kind == STRING { return "<string>"; }
+  if kind == NUMBER { return "<number>"; }
 
-  if (type == AND) return "and";
-  if (type == CLASS) return "class";
-  if (type == ELSE) return "else";
-  if (type == FALSE) return "false";
-  if (type == FUN) return "fun";
-  if (type == FOR) return "for";
-  if (type == IF) return "if";
-  if (type == NIL) return "nil";
-  if (type == OR) return "or";
-  if (type == PRINT) return "print";
-  if (type == RETURN) return "return";
-  if (type == SUPER) return "super";
-  if (type == THIS) return "self";
-  if (type == TRUE) return "true";
-  if (type == VAR) return "var";
-  if (type == WHILE) return "while";
+  if kind == AND { return "and"; }
+  if kind == CLASS { return "class"; }
+  if kind == ELSE { return "else"; }
+  if kind == FALSE { return "false"; }
+  if kind == FUN { return "fun"; }
+  if kind == FOR { return "for"; }
+  if kind == IF { return "if"; }
+  if kind == NIL { return "nil"; }
+  if kind == OR { return "or"; }
+  if kind == PRINT { return "print"; }
+  if kind == RETURN { return "return"; }
+  if kind == SUPER { return "super"; }
+  if kind == THIS { return "self"; }
+  if kind == TRUE { return "true"; }
+  if kind == VAR { return "var"; }
+  if kind == WHILE { return "while"; }
 
-  if (type == EOF) return "<eof>";
-  if (type == INVALID) return "<invalid>";
+  if kind == EOF { return "<eof>"; }
+  if kind == INVALID { return "<invalid>"; }
 
   return nil;
 }
 
-// Convert a keyword string to its token type constant, or return nil
+// Convert a keyword string to its token kind constant, or return nil
 // if it's not a keyword.
 fn keywordType(name) {
-  if (name == "and") return AND;
-  if (name == "class") return CLASS;
-  if (name == "else") return ELSE;
-  if (name == "false") return FALSE;
-  if (name == "fun") return FUN;
-  if (name == "for") return FOR;
-  if (name == "if") return IF;
-  if (name == "nil") return NIL;
-  if (name == "or") return OR;
-  if (name == "print") return PRINT;
-  if (name == "return") return RETURN;
-  if (name == "super") return SUPER;
-  if (name == "self") return THIS;
-  if (name == "true") return TRUE;
-  if (name == "var") return VAR;
-  if (name == "while") return WHILE;
+  if name == "and" { return AND; }
+  if name == "class" { return CLASS; }
+  if name == "else" { return ELSE; }
+  if name == "false" { return FALSE; }
+  if name == "fun" { return FUN; }
+  if name == "for" { return FOR; }
+  if name == "if" { return IF; }
+  if name == "nil" { return NIL; }
+  if name == "or" { return OR; }
+  if name == "print" { return PRINT; }
+  if name == "return" { return RETURN; }
+  if name == "super" { return SUPER; }
+  if name == "self" { return THIS; }
+  if name == "true" { return TRUE; }
+  if name == "var" { return VAR; }
+  if name == "while" { return WHILE; }
   return nil;
 }
 
@@ -168,126 +168,126 @@ class Scanner {
 
   next() {
     // Support a one-character buffer for "123." use case to mimic Lox
-    if (self.buffered != nil) {
+    if self.buffered != nil {
       let buffered = self.buffered;
       self.buffered = nil;
       return buffered;
     }
 
-    while (self.ch) {
+    while self.ch {
       let ch = self.advance();
-      if (ch == '(') return Token(LEFT_PAREN, nil, self.line);
-      else if (ch == ')') return Token(RIGHT_PAREN, nil, self.line);
-      else if (ch == '{') return Token(LEFT_BRACE, nil, self.line);
-      else if (ch == '}') return Token(RIGHT_BRACE, nil, self.line);
-      else if (ch == ',') return Token(COMMA, nil, self.line);
-      else if (ch == '.') return Token(DOT, nil, self.line);
-      else if (ch == '-') return Token(MINUS, nil, self.line);
-      else if (ch == '+') return Token(PLUS, nil, self.line);
-      else if (ch == ';') return Token(SEMICOLON, nil, self.line);
-      else if (ch == '*') return Token(STAR, nil, self.line);
-      else if (ch == '!') {
-        if (self.ch == '=') {
+      if ch == '(' { return Token(LEFT_PAREN, nil, self.line); }
+      else if ch == ')' { return Token(RIGHT_PAREN, nil, self.line); }
+      else if ch == '{' { return Token(LEFT_BRACE, nil, self.line); }
+      else if ch == '}' { return Token(RIGHT_BRACE, nil, self.line); }
+      else if ch == ',' { return Token(COMMA, nil, self.line); }
+      else if ch == '.' { return Token(DOT, nil, self.line); }
+      else if ch == '-' { return Token(MINUS, nil, self.line); }
+      else if ch == '+' { return Token(PLUS, nil, self.line); }
+      else if ch == ';' { return Token(SEMICOLON, nil, self.line); }
+      else if ch == '*' { return Token(STAR, nil, self.line); }
+      else if ch == '!' {
+        if self.ch == '=' {
           self.advance();
           return Token(BANG_EQUAL, nil, self.line);
         }
         return Token(BANG, nil, self.line);
       }
-      else if (ch == '=') {
-        if (self.ch == '=') {
+      else if ch == '=' {
+        if self.ch == '=' {
           self.advance();
           return Token(EQUAL_EQUAL, nil, self.line);
         }
         return Token(EQUAL, nil, self.line);
       }
-      else if (ch == '<') {
-        if (self.ch == '=') {
+      else if ch == '<' {
+        if self.ch == '=' {
           self.advance();
           return Token(LESS_EQUAL, nil, self.line);
         }
         return Token(LESS, nil, self.line);
       }
-      else if (ch == '>') {
-        if (self.ch == '=') {
+      else if ch == '>' {
+        if self.ch == '=' {
           self.advance();
           return Token(GREATER_EQUAL, nil, self.line);
         }
         return Token(GREATER, nil, self.line);
       }
-      else if (ch == '/') {
-        if (self.ch != '/') return Token(SLASH, nil, self.line);
+      else if ch == '/' {
+        if self.ch != '/' { return Token(SLASH, nil, self.line); }
         // Comment till end of line
         self.advance();
 
         // TODO escape sequence
-        while (self.ch and self.ch != '\n') {
+        while self.ch and self.ch != '\n' {
           self.advance();
         }
-        if (self.ch == '\n') {
+        if self.ch == '\n' {
           self.line = self.line + 1;
         }
         self.advance();
       }
       // TODO escape sequence
-      else if (ch == ' ' or ch == '\t' or ch == '\r') {
+      else if ch == ' ' or ch == '\t' or ch == '\r' {
         // Ignore whitespace: space, tab, and carriage return
       }
-      else if (ch == '\n') {
+      else if ch == '\n' {
         // Newline
         self.line = self.line + 1;  
       }
-      else if (ch == '"') {
+      else if ch == '"' {
         // Strings (start and end with double quote)
         let line = self.line;
         let value = "";
-        while (self.ch and self.ch != '"') {
-          if (self.ch == '\n') {
+        while self.ch and self.ch != '"' {
+          if self.ch == '\n' {
             self.line = self.line + 1;
           }
           value = value + self.ch;
           self.advance();
         }
-        if (!self.ch) {
+        if !self.ch {
           return Token(INVALID, "Unterminated string.", self.line);
         }
         self.advance();
         return Token(STRING, value, line);
       }
-      else if (isDigit(ch)) {
+      else if isDigit(ch) {
         // Numbers ('0' == 48)
 
         let num = ch;
-        while (isDigit(self.ch)) {
+        while isDigit(self.ch) {
           num = num + self.ch;
           self.advance();
         }
 
         // Fractional part
-        if (self.ch == DOT) {
+        if self.ch == DOT {
           num = num + self.ch;
 
           self.advance();
-          if (!isDigit(self.ch)) {
+          if !isDigit(self.ch) {
             self.buffered = Token(DOT, nil, self.line);
             return Token(NUMBER, Number.parse(num), self.line);
           }
 
-          while (isDigit(self.ch)) {
+          while isDigit(self.ch) {
             num = num + self.ch;
             self.advance();
           }
         }
         return Token(NUMBER, Number.parse(num), self.line);
       }
-      else if (isNameStart(ch)) {
+      else if isNameStart(ch) {
         // Identifiers and keywords
         let name = ch;
-        while (isNameStart(self.ch) or isDigit(self.ch)) {
+        while isNameStart(self.ch) or isDigit(self.ch) {
           name = name + self.ch;
           self.advance();
         }
         let keyword = keywordType(name);
-        if (keyword) {
+        if keyword {
           return Token(keyword, nil, self.line);
         }
         return Token(IDENTIFIER, name, self.line);
@@ -304,20 +304,20 @@ class Scanner {
 fn testScanner() {
   let scanner = Scanner();
   let done = false;
-  while (!done) {
+  while !done {
     let token = scanner.next();
-    if (token.type == EOF) {
+    if token.kind == EOF {
       done = true;
-    } else if (token.type == INVALID) {
+    } else if token.kind == INVALID {
       done = true;
       print(token.value + " on line:");
       print(token.line);
     } else {
-      if (token.value != nil) {
-        print(tokenTypeStr(token.type));
+      if token.value != nil {
+        print(tokenTypeStr(token.kind));
         print(token.value);
       } else {
-        print(tokenTypeStr(token.type));
+        print(tokenTypeStr(token.kind));
       }
     }
   }
@@ -337,11 +337,11 @@ class Environment {
   // environments. Exit with runtime error if name not found.
   get(name) {
     let item = self.values.get(name);
-    if (item) {
+    if item {
       return item;
     }
 
-    if (self.enclosing != nil) {
+    if self.enclosing != nil {
       return self.enclosing.get(name);
     }
 
@@ -352,12 +352,12 @@ class Environment {
   // looking in enclosing environments. Exit with runtime error if
   // name not found.
   assign(name, value) {
-    if (self.values.has(name)) {
+    if self.values.has(name) {
       self.values.set(name, value);
       return;
     }
 
-    if (self.enclosing != nil) {
+    if self.enclosing != nil {
       self.enclosing.assign(name, value);
       return;
     }
@@ -371,7 +371,7 @@ class Environment {
 
   ancestor(distance) {
     let environment = self;
-    for (let i = 0; i < distance; i = i + 1) {
+    for i in range(distance) {
       environment = environment.enclosing;
     }
     return environment;
@@ -395,7 +395,7 @@ class Environment {
 
 class Assign {
   init(name, value) {
-    self.type = "Assign";
+    self.kind = "Assign";
     self.name = name;
     self.value = value;
   }
@@ -412,7 +412,7 @@ class Assign {
   evaluate(interpreter) {
     let value = self.value.evaluate(interpreter);
     let distance = interpreter.locals.get(self);
-    if (distance != nil) {
+    if distance != nil {
       interpreter.environment.assignAt(distance, self.name, value);
     } else {
       interpreter.globals.assign(self.name, value);
@@ -423,7 +423,7 @@ class Assign {
 
 class Binary {
   init(left, operator, right) {
-    self.type = "Binary";
+    self.kind = "Binary";
     self.left = left;
     self.operator = operator;
     self.right = right;
@@ -442,23 +442,23 @@ class Binary {
   evaluate(interpreter) {
     let left = self.left.evaluate(interpreter);
     let right = self.right.evaluate(interpreter);
-    if (self.operator == PLUS) return left + right;
-    if (self.operator == MINUS) return left - right;
-    if (self.operator == STAR) return left * right;
-    if (self.operator == SLASH) return left / right;
-    if (self.operator == BANG_EQUAL) return left != right;
-    if (self.operator == EQUAL_EQUAL) return left == right;
-    if (self.operator == GREATER) return left > right;
-    if (self.operator == GREATER_EQUAL) return left >= right;
-    if (self.operator == LESS) return left < right;
-    if (self.operator == LESS_EQUAL) return left <= right;
+    if self.operator == PLUS { return left + right; }
+    if self.operator == MINUS { return left - right; }
+    if self.operator == STAR { return left * right; }
+    if self.operator == SLASH { return left / right; }
+    if self.operator == BANG_EQUAL { return left != right; }
+    if self.operator == EQUAL_EQUAL { return left == right; }
+    if self.operator == GREATER { return left > right; }
+    if self.operator == GREATER_EQUAL { return left >= right; }
+    if self.operator == LESS { return left < right; }
+    if self.operator == LESS_EQUAL { return left <= right; }
     return nil; // Unreachable
   }
 }
 
 class Call {
   init(callee, arguments) {
-    self.type = "Call";
+    self.kind = "Call";
     self.callee = callee;
     self.arguments = arguments;
   }
@@ -468,7 +468,7 @@ class Call {
     return self.arguments
       .iter()
       .reduce(self.callee.str() + "(", |s, argument| {
-        if (addComma) {
+        if addComma {
           return s + ", ";
         }
         addComma = true;
@@ -491,7 +491,7 @@ class Call {
       .map(|argument| argument.evaluate(interpreter))
       .into(List.collect);
 
-    if (arguments.size() != callee.arity()) {
+    if arguments.size() != callee.arity() {
       runtimeError("Expected " + callee.arity().str() +
                    " arguments but got " + arguments.size().str() + ".");
     }
@@ -501,7 +501,7 @@ class Call {
 
 class Get {
   init(object, name) {
-    self.type = "Get";
+    self.kind = "Get";
     self.object = object;
     self.name = name;
   }
@@ -522,7 +522,7 @@ class Get {
 
 class Grouping {
   init(expr) {
-    self.type = "Grouping";
+    self.kind = "Grouping";
     self.expr = expr;
   }
 
@@ -541,26 +541,26 @@ class Grouping {
 
 class Literal {
   init(kind, value) {
-    self.type = "Literal";
+    self.kind = "Literal";
     self.kind = kind;
     self.value = value;
   }
 
   str() {
-    if (self.kind == "boolean") {
-      if (self.value) {
+    if self.kind == "boolean" {
+      if self.value {
         return "true";
       } else {
         return "false";
       }
     }
-    if (self.kind == "nil") {
+    if self.kind == "nil" {
       return "nil";
     }
-    if (self.kind == "number") {
+    if self.kind == "number" {
       return self.value.str();
     }
-    if (self.kind == "string") {
+    if self.kind == "string" {
       return '"' + self.value + '"';
     }
     return "<unexpected kind>";
@@ -576,7 +576,7 @@ class Literal {
 
 class Logical {
   init(left, operator, right) {
-    self.type = "Logical";
+    self.kind = "Logical";
     self.left = left;
     self.operator = operator;
     self.right = right;
@@ -594,7 +594,7 @@ class Logical {
 
   evaluate(interpreter) {
     let left = self.left.evaluate(interpreter);
-    if (self.operator == AND) {
+    if self.operator == AND {
       return left and self.right.evaluate(interpreter);
     } else {
       return left or self.right.evaluate(interpreter);
@@ -604,7 +604,7 @@ class Logical {
 
 class Set {
   init(object, name, value) {
-    self.type = "Set";
+    self.kind = "Set";
     self.object = object;
     self.name = name;
     self.value = value;
@@ -629,7 +629,7 @@ class Set {
 
 class Super {
   init(method) {
-    self.type = "Super";
+    self.kind = "Super";
     self.method = method;
   }
 
@@ -646,7 +646,7 @@ class Super {
     let superclass = interpreter.environment.getAt(distance, "super");
     let object = interpreter.environment.getAt(distance - 1, "this");
     let method = superclass.findMethod(object, self.method);
-    if (method == nil) {
+    if method == nil {
       runtimeError("Undefined property '" + self.method + "'.");
     }
     return method;
@@ -655,7 +655,7 @@ class Super {
 
 class This {
   init() {
-    self.type = "This";
+    self.kind = "This";
   }
 
   str() {
@@ -673,7 +673,7 @@ class This {
 
 class Unary {
   init(operator, right) {
-    self.type = "Unary";
+    self.kind = "Unary";
     self.operator = operator;
     self.right = right;
   }
@@ -688,14 +688,14 @@ class Unary {
 
   evaluate(interpreter) {
     let right = self.right.evaluate(interpreter);
-    if (self.operator == BANG) return !right;
+    if self.operator == BANG { return !right; }
     return -right;
   }
 }
 
 class Variable {
   init(name) {
-    self.type = "Variable";
+    self.kind = "Variable";
     self.name = name;
   }
 
@@ -704,7 +704,7 @@ class Variable {
   }
 
   resolve(resolver) {
-    if (resolver.scopes.size() != 0 and resolver.scopes[resolver.scopes.size() - 1].get(self.name) == false) {
+    if resolver.scopes.size() != 0 and resolver.scopes[resolver.scopes.size() - 1].get(self.name) == false {
       resolver.error("Error at '" + self.name + "': Cannot read local variable in its own initializer.");
     }
 
@@ -721,7 +721,7 @@ class Variable {
 
 class Program {
   init(statements) {
-    self.type = "Program";
+    self.kind = "Program";
     self.statements = statements;
   }
 
@@ -732,13 +732,13 @@ class Program {
   }
 
   resolve(resolver) {
-    for (let statement in self.statements) {
+    for statement in self.statements {
       statement.resolve(resolver);
     }
   }
 
   execute(interpreter) {
-    for (let statement in self.statements) {
+    for statement in self.statements {
       statement.execute(interpreter);
     }
   }
@@ -748,7 +748,7 @@ let indent = 0;
 
 class Block {
   init(statements) {
-    self.type = "Block";
+    self.kind = "Block";
     self.statements = statements;
   }
 
@@ -773,7 +773,7 @@ class Block {
 
   resolve(resolver) {
     resolver.beginScope();
-    for (let statement in self.statements) {
+    for statement in self.statements {
       statement.resolve(resolver);
     }
     resolver.endScope();
@@ -786,7 +786,7 @@ class Block {
 
 class Class {
   init(name, superclass, methods) {
-    self.type = "Class";
+    self.kind = "Class";
     self.name = name;
     self.superclass = superclass;
     self.methods = methods;
@@ -794,7 +794,7 @@ class Class {
 
   str() {
     let s = "class " + self.name + " ";
-    if (self.superclass != nil) {
+    if self.superclass != nil {
       s = s + "< " + self.superclass.name + " ";
     }
     s = s + Block(self.methods).str(); // Reuse Block.str()
@@ -803,11 +803,11 @@ class Class {
 
   resolve(resolver) {
     resolver.declare(self.name);
-    if (self.superclass != nil) {
+    if self.superclass != nil {
       self.superclass.resolve(resolver);
     }
     resolver.define(self.name);
-    if (self.superclass != nil) {
+    if self.superclass != nil {
       resolver.beginScope();
       resolver.scopes[resolver.scopes.size() - 1].set("super", true);
     }
@@ -819,21 +819,21 @@ class Class {
     });
 
     resolver.endScope();
-    if (self.superclass != nil) {
+    if self.superclass != nil {
       resolver.endScope();
     }
   }
 
   execute(interpreter) {
     let superclass;
-    if (self.superclass != nil) {
+    if self.superclass != nil {
       superclass = self.superclass.evaluate(interpreter);
       // The following will cause a runtime error if the superclass
       // is not a class
       superclass.findMethod;
     }
     interpreter.environment.define(self.name, nil);
-    if (self.superclass != nil) {
+    if self.superclass != nil {
       interpreter.environment = Environment(interpreter.environment);
       interpreter.environment.define("super", superclass);
     }
@@ -846,7 +846,7 @@ class Class {
     });
 
     let klass = LoxClass(self.name, superclass, methods);
-    if (self.superclass != nil) {
+    if self.superclass != nil {
       interpreter.environment = interpreter.environment.enclosing;
     }
     interpreter.environment.assign(self.name, klass);
@@ -855,7 +855,7 @@ class Class {
 
 class Expression {
   init(expression) {
-    self.type = "Expression";
+    self.kind = "Expression";
     self.expression = expression;
   }
 
@@ -874,7 +874,7 @@ class Expression {
 
 class Function {
   init(name, params, body) {
-    self.type = "Function";
+    self.kind = "Function";
     self.name = name;
     self.params = params;
     self.body = body;
@@ -884,7 +884,7 @@ class Function {
     let s = "fun " + self.name + "(";
     let addComma = false;
     self.params.iter().reduce(s, |s, param| {
-      if (addComma) {
+      if addComma {
         return s + ", ";
       }
       addComma = true;
@@ -910,7 +910,7 @@ class Function {
 
 class If {
   init(condition, thenBranch, elseBranch) {
-    self.type = "If";
+    self.kind = "If";
     self.condition = condition;
     self.thenBranch = thenBranch;
     self.elseBranch = elseBranch;
@@ -918,8 +918,8 @@ class If {
 
   str() {
     let s = "if (" + self.condition.str() + ") " + self.thenBranch.str();
-    if (self.elseBranch != nil) {
-      for (let i = 0; i < indent; i = i + 1) {
+    if self.elseBranch != nil {
+      for i in range(indent) {
         s = s + "  ";
       }
       s = s + "else " + self.elseBranch.str();
@@ -930,15 +930,15 @@ class If {
   resolve(resolver) {
     self.condition.resolve(resolver);
     self.thenBranch.resolve(resolver);
-    if (self.elseBranch != nil) {
+    if self.elseBranch != nil {
       self.elseBranch.resolve(resolver);
     }
   }
 
   execute(interpreter) {
-    if (self.condition.evaluate(interpreter)) {
+    if self.condition.evaluate(interpreter) {
       return self.thenBranch.execute(interpreter);
-    } else if (self.elseBranch != nil) {
+    } else if self.elseBranch != nil {
       return self.elseBranch.execute(interpreter);
     }
   }
@@ -946,7 +946,7 @@ class If {
 
 class Print {
   init(expression) {
-    self.type = "Print";
+    self.kind = "Print";
     self.expression = expression;
   }
 
@@ -971,7 +971,7 @@ class ReturnValue {
 
 class Return {
   init(value) {
-    self.type = "Return";
+    self.kind = "Return";
     self.value = value;
   }
 
@@ -980,14 +980,14 @@ class Return {
   }
 
   resolve(resolver) {
-    if (self.value != nil) {
+    if self.value != nil {
       self.value.resolve(resolver);
     }
   }
 
   execute(interpreter) {
     let value;
-    if (self.value != nil) {
+    if self.value != nil {
       value = self.value.evaluate(interpreter);
     }
     return ReturnValue(value);
@@ -996,14 +996,14 @@ class Return {
 
 class Var {
   init(name, initializer) {
-    self.type = "Var";
+    self.kind = "Var";
     self.name = name;
     self.initializer = initializer;
   }
 
   str() {
     let s = "var " + self.name;
-    if (self.initializer != nil) {
+    if self.initializer != nil {
       s = s + " = " + self.initializer.str();
     }
     s = s + ";\n";
@@ -1012,7 +1012,7 @@ class Var {
 
   resolve(resolver) {
     resolver.declare(self.name);
-    if (self.initializer != nil) {
+    if self.initializer != nil {
       self.initializer.resolve(resolver);
     }
     resolver.define(self.name);
@@ -1020,7 +1020,7 @@ class Var {
 
   execute(interpreter) {
     let value;
-    if (self.initializer != nil) {
+    if self.initializer != nil {
       value = self.initializer.evaluate(interpreter);
     }
     interpreter.environment.define(self.name, value);
@@ -1029,7 +1029,7 @@ class Var {
 
 class While {
   init(condition, body) {
-    self.type = "While";
+    self.kind = "While";
     self.condition = condition;
     self.body = body;
   }
@@ -1044,9 +1044,9 @@ class While {
   }
 
   execute(interpreter) {
-    while (self.condition.evaluate(interpreter)) {
+    while self.condition.evaluate(interpreter) {
       let ret = self.body.execute(interpreter);
-      if (ret) {
+      if ret {
         return ret;
       }
     }
@@ -1086,10 +1086,10 @@ class LoxFunction {
       });
 
     let ret = interpreter.executeBlock(self.declaration.body, environment);
-    if (self.isInitializer) {
+    if self.isInitializer {
       return self.closure.get("this");
     }
-    if (ret) {
+    if ret {
       return ret.value;
     }
     return nil;
@@ -1104,11 +1104,11 @@ class LoxInstance {
 
   get(name) {
     let field = self.fields.get(name);
-    if (field != nil) {
+    if field != nil {
       return field;
     }
     let method = self.klass.findMethod(self, name);
-    if (method != nil) {
+    if method != nil {
       return method;
     }
     runtimeError("Undefined property '" + name + "'.");
@@ -1128,10 +1128,10 @@ class LoxClass {
 
   findMethod(instance, name) {
     let method = self.methods.get(name);
-    if (method != nil) {
+    if method != nil {
       return method.bind(instance);
     }
-    if (self.superclass != nil) {
+    if self.superclass != nil {
       return self.superclass.findMethod(instance, name);
     }
     return nil;
@@ -1140,7 +1140,7 @@ class LoxClass {
   call(interpreter, arguments) {
     let instance = LoxInstance(self);
     let initializer = self.methods.get("init");
-    if (initializer != nil) {
+    if initializer != nil {
       initializer.bind(instance).call(interpreter, arguments);
     }
     return instance;
@@ -1148,7 +1148,7 @@ class LoxClass {
 
   arity() {
     let initializer = self.methods.get("init");
-    if (initializer != nil) {
+    if initializer != nil {
       return initializer.arity();
     }
     return 0;
@@ -1198,30 +1198,30 @@ class Parser {
   next() {
     self.previous = self.token;
     self.token = self.scanner.next();
-    if (self.token.type == INVALID) {
+    if self.token.kind == INVALID {
       self.error(self.token, self.token.value);
     }
   }
 
   error(token, message) {
     let at;
-    if (token.type == INVALID) {
+    if token.kind == INVALID {
       at = "Error: ";
-    } else if (token.type == EOF) {
+    } else if token.kind == EOF {
       at = "Error at end: ";
-    } else if (token.type == IDENTIFIER) {
+    } else if token.kind == IDENTIFIER {
       at = "Error at '" + token.value + "': ";
-    } else if (token.type == NUMBER) {
+    } else if token.kind == NUMBER {
       at = "Error at '" + token.value.str() + "': ";
     } else {
-      at = "Error at '" + tokenTypeStr(token.type) + "': ";
+      at = "Error at '" + tokenTypeStr(token.kind) + "': ";
     }
     stderr.writeln("[line " + self.token.line.str() + "] " + at + message);
     exit(65);
   }
 
-  match(type) {
-    if (self.token.type == type) {
+  match(kind) {
+    if self.token.kind == kind {
       let previous = self.token;
       self.next();
       return previous;
@@ -1229,9 +1229,9 @@ class Parser {
     return nil;
   }
 
-  consume(type, message) {
+  consume(kind, message) {
     let token = self.token;
-    if (self.match(type)) {
+    if self.match(kind) {
       return token;
     }
     self.error(self.token, message);
@@ -1239,7 +1239,7 @@ class Parser {
 
   parse() {
     let statements = [];
-    while (self.token.type != EOF) {
+    while self.token.kind != EOF {
       statements.push(self.declaration());
     }
     return Program(statements);
@@ -1250,16 +1250,16 @@ class Parser {
   }
 
   declaration() {
-    if (self.match(CLASS)) return self.classDeclaration();
-    if (self.match(FUN)) return self.function("function");
-    if (self.match(VAR)) return self.varDeclaration();
+    if self.match(CLASS) { return self.classDeclaration(); }
+    if self.match(FUN) { return self.function("function"); }
+    if self.match(VAR) { return self.varDeclaration(); }
     return self.statement();
   }
 
   classDeclaration() {
     let name = self.consume(IDENTIFIER, "Expect class name.");
     let superclass;
-    if (self.match(LESS)) {
+    if self.match(LESS) {
       let superName = self.consume(IDENTIFIER, "Expect superclass name.");
       superclass = Variable(superName.value);
     }
@@ -1268,7 +1268,7 @@ class Parser {
     self.hasSuperClass = superclass != nil;
     self.consume(LEFT_BRACE, "Expect '{' before class body.");
     let methods = [];
-    while (self.token.type != EOF and self.token.type != RIGHT_BRACE) {
+    while self.token.kind != EOF and self.token.kind != RIGHT_BRACE {
       methods.push(self.function("method"));
     }
     self.consume(RIGHT_BRACE, "Expect '}' after class body.");
@@ -1279,12 +1279,12 @@ class Parser {
   }
 
   statement() {
-    if (self.match(FOR)) return self.forStatement();
-    if (self.match(IF)) return self.ifStatement();
-    if (self.match(PRINT)) return self.printStatement();
-    if (self.match(RETURN)) return self.returnStatement();
-    if (self.match(WHILE)) return self.whileStatement();
-    if (self.match(LEFT_BRACE)) return Block(self.block());
+    if self.match(FOR) { return self.forStatement(); }
+    if self.match(IF) { return self.ifStatement(); }
+    if self.match(PRINT) { return self.printStatement(); }
+    if self.match(RETURN) { return self.returnStatement(); }
+    if self.match(WHILE) { return self.whileStatement(); }
+    if self.match(LEFT_BRACE) { return Block(self.block()); }
     return self.expressionStatement();
   }
 
@@ -1292,22 +1292,22 @@ class Parser {
     self.consume(LEFT_PAREN, "Expect '(' after 'for'.");
 
     let initializer;
-    if (self.match(SEMICOLON)) {
+    if self.match(SEMICOLON) {
       // No initializer
-    } else if (self.match(VAR)) {
+    } else if self.match(VAR) {
       initializer = self.varDeclaration();
     } else {
       initializer = self.expressionStatement();
     }
 
     let condition;
-    if (self.token.type != SEMICOLON) {
+    if self.token.kind != SEMICOLON {
       condition = self.expression();
     }
     self.consume(SEMICOLON, "Expect ';' after loop condition.");
 
     let increment;
-    if (self.token.type != RIGHT_PAREN) {
+    if self.token.kind != RIGHT_PAREN {
       increment = Expression(self.expression());
     }
     self.consume(RIGHT_PAREN, "Expect ')' after for clauses.");
@@ -1315,7 +1315,7 @@ class Parser {
     let body = self.statement();
 
     // Desugar increment
-    if (increment != nil) {
+    if increment != nil {
       let statements = [];
       statements.push(body);
       statements.push(increment);
@@ -1323,13 +1323,13 @@ class Parser {
     }
 
     // Desugar condition
-    if (condition == nil) {
+    if condition == nil {
       condition = Literal("boolean", true);
     }
     body = While(condition, body);
 
     // Desugar initializer
-    if (initializer != nil) {
+    if initializer != nil {
       let statements = [];
       statements.push(initializer);
       statements.push(body);
@@ -1345,7 +1345,7 @@ class Parser {
     self.consume(RIGHT_PAREN, "Expect ')' after if condition.");
     let thenBranch = self.statement();
     let elseBranch;
-    if (self.match(ELSE)) {
+    if self.match(ELSE) {
       elseBranch = self.statement();
     }
     return If(condition, thenBranch, elseBranch);
@@ -1358,12 +1358,12 @@ class Parser {
   }
 
   returnStatement() {
-    if (self.functionDepth <= 0) {
+    if self.functionDepth <= 0 {
       self.error(self.previous, "Cannot return from top-level code.");
     }
     let value;
-    if (self.token.type != SEMICOLON) {
-      if (self.inInitializer) {
+    if self.token.kind != SEMICOLON {
+      if self.inInitializer {
         self.error(self.previous, "Cannot return a value from an initializer.");
       }
       value = self.expression();
@@ -1375,7 +1375,7 @@ class Parser {
   varDeclaration() {
     let name = self.consume(IDENTIFIER, "Expect letiable name.");
     let initializer;
-    if (self.match(EQUAL)) {
+    if self.match(EQUAL) {
       initializer = self.expression();
     }
     self.consume(SEMICOLON, "Expect ';' after variable declaration.");
@@ -1401,11 +1401,11 @@ class Parser {
     self.consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
     let parameters = [];
     let n = 0;
-    while (self.token.type != RIGHT_PAREN) {
-      if (n > 0) {
+    while self.token.kind != RIGHT_PAREN {
+      if n > 0 {
         self.consume(COMMA, "Expect ')' after parameters.");
       }
-      if (n >= 8) {
+      if n >= 8 {
         self.error(self.token, "Cannot have more than 8 parameters.");
       }
       let paramName = self.consume(IDENTIFIER, "Expect parameter name.");
@@ -1426,7 +1426,7 @@ class Parser {
 
   block() {
     let statements = [];
-    while (self.token.type != EOF and self.token.type != RIGHT_BRACE) {
+    while self.token.kind != EOF and self.token.kind != RIGHT_BRACE {
       statements.push(self.declaration());
     }
     self.consume(RIGHT_BRACE, "Expect '}' after block.");
@@ -1435,13 +1435,13 @@ class Parser {
 
   assignment() {
     let expr = self.or_();
-    if (self.match(EQUAL)) {
+    if self.match(EQUAL) {
       let equals = self.previous;
       let value = self.assignment();
-      if (expr.type == "Variable") {
+      if expr.kind == "Variable" {
         return Assign(expr.name, value);
       }
-      if (expr.type == "Get") {
+      if expr.kind == "Get" {
         return Set(expr.object, expr.name, value);
       }
       self.error(equals, "Invalid assignment target.");
@@ -1451,7 +1451,7 @@ class Parser {
 
   or_() {
     let expr = self.and_();
-    while (self.match(OR)) {
+    while self.match(OR) {
       let right = self.and_();
       expr = Logical(expr, OR, right);
     }
@@ -1460,7 +1460,7 @@ class Parser {
 
   and_() {
     let expr = self.equality();
-    while (self.match(AND)) {
+    while self.match(AND) {
       let right = self.equality();
       expr = Logical(expr, AND, right);
     }
@@ -1469,8 +1469,8 @@ class Parser {
 
   equality() {
     let expr = self.comparison();
-    while (self.token.type == BANG_EQUAL or self.token.type == EQUAL_EQUAL) {
-      let operator = self.token.type;
+    while self.token.kind == BANG_EQUAL or self.token.kind == EQUAL_EQUAL {
+      let operator = self.token.kind;
       self.next();
       let right = self.comparison();
       expr = Binary(expr, operator, right);
@@ -1480,9 +1480,9 @@ class Parser {
 
   comparison() {
     let expr = self.addition();
-    while (self.token.type == GREATER or self.token.type == GREATER_EQUAL or
-           self.token.type == LESS or self.token.type == LESS_EQUAL) {
-      let operator = self.token.type;
+    while (self.token.kind == GREATER or self.token.kind == GREATER_EQUAL or
+           self.token.kind == LESS or self.token.kind == LESS_EQUAL) {
+      let operator = self.token.kind;
       self.next();
       let right = self.addition();
       expr = Binary(expr, operator, right);
@@ -1492,8 +1492,8 @@ class Parser {
 
   addition() {
     let expr = self.multiplication();
-    while (self.token.type == MINUS or self.token.type == PLUS) {
-      let operator = self.token.type;
+    while self.token.kind == MINUS or self.token.kind == PLUS {
+      let operator = self.token.kind;
       self.next();
       let right = self.multiplication();
       expr = Binary(expr, operator, right);
@@ -1503,8 +1503,8 @@ class Parser {
 
   multiplication() {
     let expr = self.unary();
-    while (self.token.type == SLASH or self.token.type == STAR) {
-      let operator = self.token.type;
+    while self.token.kind == SLASH or self.token.kind == STAR {
+      let operator = self.token.kind;
       self.next();
       let right = self.unary();
       expr = Binary(expr, operator, right);
@@ -1513,8 +1513,8 @@ class Parser {
   }
 
   unary() {
-    if (self.token.type == BANG or self.token.type == MINUS) {
-      let operator = self.token.type;
+    if self.token.kind == BANG or self.token.kind == MINUS {
+      let operator = self.token.kind;
       self.next();
       let right = self.unary();
       return Unary(operator, right);
@@ -1525,15 +1525,15 @@ class Parser {
   call() {
     let expr = self.primary();
     let loop = true;
-    while (loop) {
-      if (self.match(LEFT_PAREN)) {
+    while loop {
+      if self.match(LEFT_PAREN) {
         let arguments = [];
         let n = 0;
-        while (self.token.type != RIGHT_PAREN) {
-          if (n > 0) {
+        while self.token.kind != RIGHT_PAREN {
+          if n > 0 {
             self.consume(COMMA, "Expect ')' after arguments.");
           }
-          if (n >= 8) {
+          if n >= 8 {
             self.error(self.token, "Cannot have more than 8 arguments.");
           }
           arguments.push(self.expression());
@@ -1541,7 +1541,7 @@ class Parser {
         }
         self.consume(RIGHT_PAREN, "Expect ')' after arguments.");
         expr = Call(expr, arguments);
-      } else if (self.match(DOT)) {
+      } else if self.match(DOT) {
         let name = self.consume(IDENTIFIER, "Expect property name after '.'.");
         expr = Get(expr, name.value);
       } else {
@@ -1552,39 +1552,39 @@ class Parser {
   }
 
   primary() {
-    if (self.match(FALSE)) return Literal("boolean", false);
-    if (self.match(TRUE)) return Literal("boolean", true);
-    if (self.match(NIL)) return Literal("nil", nil);
+    if self.match(FALSE) { return Literal("boolean", false); }
+    if self.match(TRUE) { return Literal("boolean", true); }
+    if self.match(NIL) { return Literal("nil", nil); }
     let number = self.match(NUMBER);
-    if (number) {
+    if number {
       return Literal("number", number.value);
     }
     let string = self.match(STRING);
-    if (string) {
+    if string {
       return Literal("string", string.value);
     }
-    if (self.match(SUPER)) {
-      if (self.classDepth <= 0) {
+    if self.match(SUPER) {
+      if self.classDepth <= 0 {
         self.error(self.previous, "Cannot use 'super' outside of a class.");
       }
-      if (!self.hasSuperClass) {
+      if !self.hasSuperClass {
         self.error(self.previous, "Cannot use 'super' in a class with no superclass.");
       }
       self.consume(DOT, "Expect '.' after 'super'.");
       let method = self.consume(IDENTIFIER, "Expect superclass method name.");
       return Super(method.value);
     }
-    if (self.match(THIS)) {
-      if (self.classDepth <= 0) {
+    if self.match(THIS) {
+      if self.classDepth <= 0 {
         self.error(self.previous, "Cannot use 'this' outside of a class.");
       }
       return This();
     }
     let identifier = self.match(IDENTIFIER);
-    if (identifier) {
+    if identifier {
       return Variable(identifier.value);
     }
-    if (self.match(LEFT_PAREN)) {
+    if self.match(LEFT_PAREN) {
       let expr = self.expression();
       self.consume(RIGHT_PAREN, "Expect ')' after expression.");
       return Grouping(expr);
@@ -1614,12 +1614,12 @@ class Resolver {
 
   resolveFunction(function) {
     self.beginScope();
-    for (let param in function.params) {
+    for param in function.params {
       self.declare(param);
       self.define(param);
     }
 
-    for (let statement in function.body) {
+    for statement in function.body {
       statement.resolve(resolver);
     }
     self.endScope();
@@ -1634,26 +1634,26 @@ class Resolver {
   }
 
   declare(name) {
-    if (self.scopes.size() == 0) {
+    if self.scopes.size() == 0 {
       return;
     }
     let scope = self.scopes[self.scopes.size() - 1];
-    if (scope.has(name)) {
+    if scope.has(name) {
       self.error("Error at '" + name + "': Variable with this name already declared in this scope.");
     }
     scope.set(name, false);
   }
 
   define(name) {
-    if (self.scopes.size() == 0) {
+    if self.scopes.size() == 0 {
       return;
     }
     self.scopes[self.scopes.size() - 1].set(name, true);
   }
 
   resolveVar(expr, name) {
-    for (let i = self.scopes.size() - 1; i >= 0; i = i - 1) {
-      if (self.scopes[i].has(name)) {
+    for i in range(0, self.scopes.size(), -1) {
+      if self.scopes[i].has(name) {
         self.interpreter.resolve(expr, self.scopes.size() - 1 - i);
         return;
       }
@@ -1689,10 +1689,10 @@ class Interpreter {
     self.environment = environment;
     let ret;
 
-    for (let statement in statements) {
+    for statement in statements {
       // Stop early if there was "return" statement
       // TODO break statement
-      if (!ret) {
+      if !ret {
         ret = statement.execute(self);
       }
     }
@@ -1707,7 +1707,7 @@ class Interpreter {
 
   lookupVariable(name, expr) {
     let distance = self.locals.get(expr);
-    if (distance) {
+    if distance {
       return self.environment.getAt(distance, name);
     } else {
       return self.globals.get(name);
@@ -1731,10 +1731,10 @@ let resolver;
 let interpreter;
 
 
-if (false) {
+if false {
   // do repl
 
-  while (true) {
+  while true {
     stdout.write('lox:> ');
     stdout.flush();
     let line = stdin.readLine();

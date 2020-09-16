@@ -20,7 +20,7 @@ class NthToggle < Toggle {
 
   activate() {
     self.count = self.count + 1;
-    if (self.count >= self.countMax) {
+    if self.count >= self.countMax {
       super.activate();
       self.count = 0;
     }

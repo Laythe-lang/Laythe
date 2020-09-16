@@ -2,21 +2,25 @@ let f1;
 let f2;
 let f3;
 
-for (let i = 1; i < 4; i = i + 1) {
+for i in [1, 2, 3] {
   let j = i;
   fn f() {
-    print(i);
-    print(j);
+    return [i, j];
   }
 
-  if (j == 1) f1 = f;
-  else if (j == 2) f2 = f;
-  else f3 = f;
+  if j == 1 { f1 = f; }
+  else if j == 2 { f2 = f; }
+  else { f3 = f; }
 }
 
-f1(); // expect: 4
-      // expect: 1
-f2(); // expect: 4
-      // expect: 2
-f3(); // expect: 4
-      // expect: 3
+let a1 = f1();
+assertEq(a1[0], 3);
+assertEq(a1[1], 1);
+
+let a2 = f2();
+assertEq(a2[0], 3);
+assertEq(a2[1], 2);
+
+let a3 = f3();
+assertEq(a3[0], 3);
+assertEq(a3[1], 3);

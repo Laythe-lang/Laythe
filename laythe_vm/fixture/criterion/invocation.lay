@@ -35,7 +35,7 @@ class Foo {
 
 let foo = Foo();
 let i = 0;
-while (i < 1000) {
+while i < 1000 {
   foo.method0();
   foo.method1();
   foo.method2();

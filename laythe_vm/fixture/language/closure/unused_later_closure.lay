@@ -6,23 +6,19 @@
 // prematurely close "a".
 let closure;
 
-{
+:{
   let a = "a";
 
-  {
+  :{
     let b = "b";
-    fn returnA() {
-      return a;
-    }
+    fn returnA() { return a; }
 
     closure = returnA;
 
-    if (false) {
-      fn returnB() {
-        return b;
-      }
+    if false {
+      fn returnB() b
     }
-  }
+  };
 
   assertEq(closure(), "a"); // expect: a
-}
+};

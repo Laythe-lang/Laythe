@@ -5,7 +5,7 @@ class Foo {
 }
 
 let i = 0;
-while (i < 500) {
+while i < 500 {
   Foo();
   Foo();
   Foo();

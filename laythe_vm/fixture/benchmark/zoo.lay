@@ -18,7 +18,7 @@ class Zoo {
 let zoo = Zoo();
 let sum = 0;
 let start = clock();
-while (sum < 10000000) {
+while sum < 10000000 {
   sum = sum + zoo.ant()
             + zoo.banana()
             + zoo.tuna()

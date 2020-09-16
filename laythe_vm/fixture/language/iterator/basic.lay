@@ -12,7 +12,7 @@ class Foo {
   }
 }
 
-class FooIter < Iterator {
+class FooIter : Iterator {
   init(foo) {
     self.foo = foo
     self.idx = -1
@@ -32,7 +32,7 @@ for (let i in Foo()) {
 
 {
   let $iter = Foo().iter();
-  while ($iter.next()) {
+  while $iter.next() {
     let i = $iter.current; 
     {
       print(i);

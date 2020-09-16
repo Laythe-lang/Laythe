@@ -1,7 +1,7 @@
 let f;
 let g;
 
-{
+:{
   let local = "local";
   fn f_() {
     assertEq(local, "local");
@@ -16,7 +16,7 @@ let g;
     assertEq(local, "after g");
   }
   g = g_;
-}
+};
 
 f();
 // expect: local

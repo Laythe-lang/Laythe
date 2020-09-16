@@ -3,7 +3,7 @@ class Toggle {
     self.state = startState;
   }
 
-  value() { return self.state; }
+  value() self.state
 
   activate() {
     self.state = !self.state;
@@ -11,7 +11,7 @@ class Toggle {
   }
 }
 
-class NthToggle < Toggle {
+class NthToggle : Toggle {
   init(startState, maxCounter) {
     super.init(startState);
     self.countMax = maxCounter;
@@ -20,7 +20,7 @@ class NthToggle < Toggle {
 
   activate() {
     self.count = self.count + 1;
-    if (self.count >= self.countMax) {
+    if self.count >= self.countMax {
       super.activate();
       self.count = 0;
     }
@@ -34,7 +34,7 @@ let n = 500;
 let val = true;
 let toggle = Toggle(val);
 
-for (let i = 0; i < n; i = i + 1) {
+for i in n.times() {
   val = toggle.activate().value();
   val = toggle.activate().value();
   val = toggle.activate().value();
@@ -52,7 +52,7 @@ toggle.value();
 val = true;
 let ntoggle = NthToggle(val, 3);
 
-for (let i = 0; i < n; i = i + 1) {
+for i in n.times() {
   val = ntoggle.activate().value();
   val = ntoggle.activate().value();
   val = ntoggle.activate().value();

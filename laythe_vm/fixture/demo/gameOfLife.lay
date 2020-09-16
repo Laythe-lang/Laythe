@@ -29,7 +29,7 @@ class Cell {
   }
 
   render() {
-    if (self.isAlive()) {
+    if self.isAlive() {
       return '□';
     }
 
@@ -42,7 +42,7 @@ class Universe {
     let cells = (DEFAULT * DEFAULT * 2)
       .times()
       .reduce([], |list, _| {
-        if (Math.rand() > 0.5) {
+        if Math.rand() > 0.5 {
           list.push(Cell.alive());
         } else {
           list.push(Cell.dead());
@@ -68,7 +68,7 @@ class Universe {
     let count = 0;
     for (let deltaRow in [self.height - 1, 0, 1]) {
       for (let deltaCol in [self.width - 1, 0, 1]) {
-        if (deltaRow != 0 or deltaCol != 0) {
+        if deltaRow != 0 or deltaCol != 0 {
           let neighborRow = Math.rem(row + deltaRow, self.height);
           let neighborCol = Math.rem(col + deltaCol, self.width);
 
@@ -103,14 +103,14 @@ class Universe {
         let liveNeighbors = self.liveNeighbors(row, col);
 
         let nextCell = cell;
-        if (cell.isAlive()) {
-          if (liveNeighbors < 2 or liveNeighbors > 3) {
+        if cell.isAlive() {
+          if liveNeighbors < 2 or liveNeighbors > 3 {
             nextCell = Cell.dead();
           } else {
             nextCell = Cell.alive();
           }
         } else {
-          if (liveNeighbors == 3) {
+          if liveNeighbors == 3 {
             nextCell = Cell.alive();
           } else {
             nextCell = Cell.dead();
