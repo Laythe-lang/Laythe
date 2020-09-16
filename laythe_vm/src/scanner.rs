@@ -1,4 +1,4 @@
-use laythe_core::token::{Token, TokenKind};
+use crate::token::{Token, TokenKind};
 use laythe_core::utils::{next_boundary, previous_boundary};
 use smol_str::SmolStr;
 
@@ -28,7 +28,7 @@ impl<'a> Scanner<'a> {
   /// # Examples
   /// ```
   /// use laythe_vm::scanner::Scanner;
-  /// use laythe_core::token::TokenKind;
+  /// use laythe_vm::token::TokenKind;
   ///
   /// let source = String::from("
   /// let x = \"something\";
@@ -39,7 +39,7 @@ impl<'a> Scanner<'a> {
   ///
   /// let mut scanner = Scanner::new(&source);
   /// let token = scanner.scan_token();
-  /// assert_eq!(token.line, 1);
+  /// assert_eq!(token.line, 2);
   /// assert_eq!(token.kind, TokenKind::Let);
   /// assert_eq!(token.lexeme, "let");
   /// ```
@@ -53,7 +53,7 @@ impl<'a> Scanner<'a> {
       current,
       char_start: 0,
 
-      line: 0,
+      line: 1,
     }
   }
 
@@ -63,7 +63,7 @@ impl<'a> Scanner<'a> {
   /// # Examples
   /// ```
   /// use laythe_vm::scanner::{Scanner};
-  /// use laythe_core::token::TokenKind;
+  /// use laythe_vm::token::TokenKind;
   ///
   /// let source = String::from("
   /// let x = \"something\";
@@ -74,17 +74,17 @@ impl<'a> Scanner<'a> {
   ///
   /// let mut scanner = Scanner::new(&source);
   /// let mut token = scanner.scan_token();
-  /// assert_eq!(token.line, 1);
+  /// assert_eq!(token.line, 2);
   /// assert_eq!(token.kind, TokenKind::Let);
   /// assert_eq!(token.lexeme, "let");
   ///
   /// token = scanner.scan_token();
-  /// assert_eq!(token.line, 1);
+  /// assert_eq!(token.line, 2);
   /// assert_eq!(token.kind, TokenKind::Identifier);
   /// assert_eq!(token.lexeme, "x");
   ///
   /// token = scanner.scan_token();
-  /// assert_eq!(token.line, 1);
+  /// assert_eq!(token.line, 2);
   /// assert_eq!(token.kind, TokenKind::Equal);
   /// assert_eq!(token.lexeme, "=");
   /// ```
@@ -106,7 +106,8 @@ impl<'a> Scanner<'a> {
     let current = self.current;
 
     self.advance_indices();
-    match &self.source[char_start..current] {
+    let char_slice = &self.source[char_start..current];
+    match char_slice {
       "(" => self.make_token_source(TokenKind::LeftParen),
       ")" => self.make_token_source(TokenKind::RightParen),
       "{" => self.make_token_source(TokenKind::LeftBrace),
@@ -117,7 +118,14 @@ impl<'a> Scanner<'a> {
       ";" => self.make_token_source(TokenKind::Semicolon),
       "," => self.make_token_source(TokenKind::Comma),
       "." => self.make_token_source(TokenKind::Dot),
-      "-" => self.make_token_source(TokenKind::Minus),
+      "-" => {
+        if self.match_token(">") {
+          self.make_token_source(TokenKind::Arrow)
+        } else {
+          self.make_token_source(TokenKind::Minus)
+        }
+      }
+      "&" => self.make_token_source(TokenKind::Amp),
       "+" => self.make_token_source(TokenKind::Plus),
       "|" => self.make_token_source(TokenKind::Pipe),
       "/" => self.make_token_source(TokenKind::Slash),
@@ -153,18 +161,14 @@ impl<'a> Scanner<'a> {
       "\"" => self.string("\""),
       "'" => self.string("'"),
       _ => {
-        if is_digit(&self.source[char_start..current]) {
+        if is_digit(char_slice) {
           return self.number();
         }
 
-        if is_alpha(&self.source[char_start..current]) {
+        if is_alpha(char_slice) {
           return self.identifier();
         }
 
-        eprintln!(
-          "unknown character {}",
-          visible_whitespace(&self.source[char_start..current])
-        );
         self.error_token("Unexpected character")
       }
     }
@@ -358,7 +362,7 @@ impl<'a> Scanner<'a> {
             "a" => self.check_keyword(2, "lse", TokenKind::False),
             "o" => self.check_keyword(2, "r", TokenKind::For),
             "r" => self.check_keyword(2, "om", TokenKind::From),
-            "n" => TokenKind::Fn,
+            "n" => TokenKind::Fun,
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
@@ -375,7 +379,6 @@ impl<'a> Scanner<'a> {
         "l" => self.check_keyword(1, "et", TokenKind::Let),
         "n" => self.check_keyword(1, "il", TokenKind::Nil),
         "o" => self.check_keyword(1, "r", TokenKind::Or),
-        // "p" => self.check_keyword(1, "rint", TokenKind::Print),
         "r" => self.check_keyword(1, "eturn", TokenKind::Return),
         "s" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
@@ -390,12 +393,14 @@ impl<'a> Scanner<'a> {
           Some(c2) => match c2 {
             "r" => match self.nth_char_from(self.start, 2) {
               Some(c3) => match c3 {
+                "a" => self.check_keyword(3, "it", TokenKind::Trait),
                 "u" => self.check_keyword(3, "e", TokenKind::True),
                 "y" => TokenKind::Try,
                 _ => TokenKind::Identifier,
               },
               None => TokenKind::Identifier,
             },
+            "y" => self.check_keyword(2, "pe", TokenKind::Type),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
@@ -444,7 +449,7 @@ impl<'a> Scanner<'a> {
 
   /// Peek the current token
   fn peek(&self) -> &str {
-    &self.source[self.char_start..self.current]
+    unsafe { self.source.get_unchecked(self.char_start..self.current) }
   }
 
   /// Find the nth char from the current index
@@ -510,17 +515,6 @@ impl<'a> Scanner<'a> {
   }
 }
 
-fn visible_whitespace(white_space: &str) -> &str {
-  match white_space {
-    " " => "<space>",
-    "\t" => "<tab>",
-    "\r" => "<carriage return>",
-    "\n" => "<newline>",
-    "/" => "/",
-    _ => white_space,
-  }
-}
-
 /// Make a new token
 fn make_token(kind: TokenKind, raw: &str, line: u32) -> Token {
   let lexeme = SmolStr::new(raw);
@@ -578,6 +572,14 @@ mod test {
     map.insert(
       TokenKind::Minus,
       TokenGen::Symbol(Box::new(|| "-".to_string())),
+    );
+    map.insert(
+      TokenKind::Amp,
+      TokenGen::Symbol(Box::new(|| "&".to_string())),
+    );
+    map.insert(
+      TokenKind::Arrow,
+      TokenGen::Symbol(Box::new(|| "->".to_string())),
     );
     map.insert(
       TokenKind::Plus,
@@ -672,7 +674,7 @@ mod test {
       TokenGen::ALpha(Box::new(|| "from".to_string())),
     );
     map.insert(
-      TokenKind::Fn,
+      TokenKind::Fun,
       TokenGen::ALpha(Box::new(|| "fn".to_string())),
     );
     map.insert(
@@ -726,6 +728,14 @@ mod test {
     map.insert(
       TokenKind::While,
       TokenGen::ALpha(Box::new(|| "while".to_string())),
+    );
+    map.insert(
+      TokenKind::Trait,
+      TokenGen::ALpha(Box::new(|| "trait".to_string())),
+    );
+    map.insert(
+      TokenKind::Type,
+      TokenGen::ALpha(Box::new(|| "type".to_string())),
     );
     map.insert(
       TokenKind::Error,
