@@ -74,6 +74,7 @@ pub fn disassemble_instruction(
     AlignedByteCode::GetIndex => simple_instruction(stdio.stdout(), "GetIndex", offset),
     AlignedByteCode::SetIndex => simple_instruction(stdio.stdout(), "SetIndex", offset),
     AlignedByteCode::Drop => simple_instruction(stdio.stdout(), "Drop", offset),
+    AlignedByteCode::DropN(count) => byte_instruction(stdio.stdout(), "DropN", count, offset),
     AlignedByteCode::Call(arg_count) => byte_instruction(stdio.stdout(), "Call", arg_count, offset),
     AlignedByteCode::Import(path) => {
       constant_instruction(stdio.stdout(), "Import", chunk, path, offset)
@@ -245,7 +246,7 @@ fn invoke_instruction(
   arg_count: u8,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:16} {:5} ({} args) ", name, arg_count, constant)?;
+  write!(stdout, "{:16} {:5} ({} args) ", name, constant, arg_count)?;
   writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
   Ok(offset)
 }
