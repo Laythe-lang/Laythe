@@ -14,7 +14,7 @@ use laythe_core::{
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
-pub const CLOSURE_CLASS_NAME: &'static str = "Fun";
+pub const CLOSURE_CLASS_NAME: &str = "Fun";
 
 const CLOSURE_NAME: NativeMetaBuilder = NativeMetaBuilder::method("name", Arity::Fixed(0));
 const CLOSURE_SIZE: NativeMetaBuilder = NativeMetaBuilder::method("size", Arity::Fixed(0));

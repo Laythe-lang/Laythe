@@ -18,7 +18,7 @@ use laythe_env::{
 };
 use smol_str::SmolStr;
 
-pub const METHOD_CLASS_NAME: &'static str = "Method";
+pub const METHOD_CLASS_NAME: &str = "Method";
 
 const METHOD_NAME: NativeMetaBuilder = NativeMetaBuilder::method("name", Arity::Fixed(0));
 

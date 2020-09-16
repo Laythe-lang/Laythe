@@ -14,7 +14,7 @@ use laythe_core::{
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
-pub const BOOL_CLASS_NAME: &'static str = "Bool";
+pub const BOOL_CLASS_NAME: &str = "Bool";
 const BOOL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
 pub fn declare_bool_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {

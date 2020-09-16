@@ -29,7 +29,7 @@ impl Native for Clock {
     let time = io.time();
 
     match time.elapsed() {
-      Ok(elapsed) => Ok(val!((elapsed.as_micros() as f64) / 1000000.0)),
+      Ok(elapsed) => Ok(val!((elapsed.as_micros() as f64) / 1_000_000.0)),
       Err(e) => hooks.error(format!("clock failed {}", e)),
     }
   }

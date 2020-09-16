@@ -22,7 +22,7 @@ use laythe_env::{
 use smol_str::SmolStr;
 use std::{mem, slice::Iter};
 
-pub const LIST_CLASS_NAME: &'static str = "List";
+pub const LIST_CLASS_NAME: &str = "List";
 
 const LIST_CLEAR: NativeMetaBuilder = NativeMetaBuilder::method("clear", Arity::Fixed(0));
 

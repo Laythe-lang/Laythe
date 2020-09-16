@@ -14,7 +14,7 @@ use laythe_core::{
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
-pub const NATIVE_CLASS_NAME: &'static str = "Native";
+pub const NATIVE_CLASS_NAME: &str = "Native";
 
 const NATIVE_NAME: NativeMetaBuilder = NativeMetaBuilder::method("name", Arity::Fixed(0));
 
