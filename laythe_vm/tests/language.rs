@@ -200,7 +200,7 @@ fn exception() -> Result<(), std::io::Error> {
     None,
     Some(vec![
       "Index out of bounds. list was length 0 but attempted to index with 1.",
-      "[line 0] in script",
+      "[line 1] in script",
     ]),
     ExecuteResult::RuntimeError,
   )?;
@@ -210,8 +210,8 @@ fn exception() -> Result<(), std::io::Error> {
     None,
     Some(vec![
       "Index out of bounds. list was length 0 but attempted to index with 1.",
-      "[line 1] in thrower()",
-      "[line 4] in script",
+      "[line 2] in thrower()",
+      "[line 5] in script",
     ]),
     ExecuteResult::RuntimeError,
   )?;
@@ -221,9 +221,9 @@ fn exception() -> Result<(), std::io::Error> {
     None,
     Some(vec![
       "Index out of bounds. list was length 0 but attempted to index with 1.",
-      "[line 5] in thrower()",
-      "[line 1] in outer()",
-      "[line 8] in script",
+      "[line 6] in thrower()",
+      "[line 2] in outer()",
+      "[line 9] in script",
     ]),
     ExecuteResult::RuntimeError,
   )
@@ -239,7 +239,7 @@ fn export() -> Result<(), std::io::Error> {
       "language/export/local.lay",
       "language/export/non_declaration_class.lay",
       "language/export/non_declaration_fun.lay",
-      "language/export/non_declaration_var.lay",
+      "language/export/non_declaration_let.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -249,7 +249,10 @@ fn export() -> Result<(), std::io::Error> {
 
 #[test]
 fn expressions() -> Result<(), std::io::Error> {
-  test_file_exits(&vec!["language/expressions/evaluate.lay"], ExecuteResult::Ok)?;
+  test_file_exits(
+    &vec!["language/expressions/evaluate.lay"],
+    ExecuteResult::Ok,
+  )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
@@ -300,7 +303,6 @@ fn for_loop() -> Result<(), std::io::Error> {
     &vec![
       "language/for/return_inside.lay",
       "language/for/scope.lay",
-      "language/for/syntax.lay",
       "language/for/closure_in_body.lay",
     ],
     ExecuteResult::Ok,
@@ -308,36 +310,11 @@ fn for_loop() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
+      "language/for/cannot_assign_iter.lay",
       "language/for/class_in_body.lay",
-      "language/for/fun_in_body.lay",
-      "language/for/statement_condition.lay",
-      "language/for/statement_increment.lay",
-      "language/for/statement_initializer.lay",
-      "language/for/var_in_body.lay",
-    ],
-    ExecuteResult::CompileError,
-  )?;
-
-  test_file_exits(&vec![], ExecuteResult::RuntimeError)
-}
-
-#[test]
-fn for_range_loop() -> Result<(), std::io::Error> {
-  test_file_exits(
-    &vec![
-      "language/for_range/return_inside.lay",
-      "language/for_range/scope.lay",
-      "language/for_range/closure_in_body.lay",
-    ],
-    ExecuteResult::Ok,
-  )?;
-
-  test_file_exits(
-    &vec![
-      "language/for_range/class_in_body.lay",
-      "language/for_range/fun_in_body.lay",
-      "language/for_range/var_in_body.lay",
-      "language/for_range/statement_iterator.lay",
+      "language/for/fn_in_body.lay",
+      "language/for/let_in_body.lay",
+      "language/for/statement_iterator.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -422,8 +399,8 @@ fn if_stmt() -> Result<(), std::io::Error> {
       "language/if/class_in_then.lay",
       "language/if/fun_in_else.lay",
       "language/if/fun_in_then.lay",
-      "language/if/var_in_then.lay",
-      "language/if/var_in_then.lay",
+      "language/if/let_in_then.lay",
+      "language/if/let_in_then.lay",
     ],
     ExecuteResult::CompileError,
   )?;

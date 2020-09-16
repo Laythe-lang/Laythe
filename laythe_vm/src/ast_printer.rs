@@ -1,0 +1,631 @@
+use crate::ast::*;
+use crate::token::Token;
+
+#[derive(Default)]
+pub struct AstPrint {
+  depth: u16,
+  buffer: String,
+}
+
+impl AstPrint {
+  fn reset(&mut self) {
+    self.depth = 0;
+    self.buffer.clear();
+  }
+
+  fn pad(&mut self) {
+    for _ in 0..self.depth {
+      self.buffer.push_str("  ");
+    }
+  }
+
+  pub fn str(&self) -> &str {
+    &self.buffer
+  }
+}
+
+impl Visitor for AstPrint {
+  type Result = ();
+
+  fn visit(&mut self, module: &Module) -> Self::Result {
+    self.reset();
+
+    for decl in &module.decls {
+      self.visit_decl(decl);
+      self.buffer.push('\n')
+    }
+  }
+
+  fn visit_decl(&mut self, decl: &Decl) -> Self::Result {
+    match decl {
+      Decl::Symbol(symbol) => self.visit_symbol(symbol),
+      Decl::Export(export) => self.visit_export(export),
+      Decl::Stmt(stmt) => self.visit_stmt(stmt),
+      Decl::Error(error) => self.visit_error(error),
+    }
+  }
+
+  fn visit_stmt(&mut self, stmt: &Stmt) -> Self::Result {
+    match stmt {
+      Stmt::Expr(expr) => {
+        self.pad();
+        self.visit_expr(expr);
+        self.buffer.push(';');
+      }
+      Stmt::Import(import) => self.visit_import(import),
+      Stmt::For(for_) => self.visit_for(for_),
+      Stmt::If(if_) => self.visit_if(if_),
+      Stmt::Return(return_) => self.visit_return(return_),
+      Stmt::While(while_) => self.visit_while(while_),
+      Stmt::Try(try_) => self.visit_try(try_),
+    }
+  }
+
+  fn visit_expr(&mut self, expr: &Expr) -> Self::Result {
+    match expr {
+      Expr::Assign(assign) => self.visit_assign(assign),
+      Expr::Binary(binary) => self.visit_binary(binary),
+      Expr::Unary(unary) => self.visit_unary(unary),
+      Expr::Atom(atom) => self.visit_atom(atom),
+    }
+  }
+
+  fn visit_primary(&mut self, primary: &Primary) -> Self::Result {
+    match primary {
+      Primary::AssignBlock(block) => self.visit_assign_block(block),
+      Primary::True(token) => self.visit_true(token),
+      Primary::False(token) => self.visit_false(token),
+      Primary::Nil(token) => self.visit_nil(token),
+      Primary::Number(token) => self.visit_number(token),
+      Primary::Grouping(expr) => {
+        self.buffer.push('(');
+        self.visit_expr(expr);
+        self.buffer.push(')');
+      }
+      Primary::String(token) => self.visit_string(token),
+      Primary::Ident(token) => self.visit_ident(token),
+      Primary::Self_(token) => self.visit_self(token),
+      Primary::Super(token) => self.visit_super(token),
+      Primary::Lambda(fun) => self.visit_lambda(fun),
+      Primary::List(items) => self.visit_list(items),
+      Primary::Map(kvps) => self.visit_map(kvps),
+    }
+  }
+
+  fn visit_symbol(&mut self, symbol: &Symbol) -> Self::Result {
+    match symbol {
+      Symbol::Class(class) => self.visit_class(class),
+      Symbol::Fun(fun) => self.visit_fun(fun),
+      Symbol::Let(let_) => self.visit_let(let_),
+      Symbol::Trait(trait_) => self.visit_trait(trait_),
+      Symbol::TypeDecl(type_decl) => self.visit_type_decl(type_decl),
+    }
+  }
+  fn visit_export(&mut self, export: &Symbol) -> Self::Result {
+    self.buffer.push_str("export ");
+    match &export {
+      Symbol::Class(class) => self.visit_class(class),
+      Symbol::Fun(fun) => self.visit_fun(fun),
+      Symbol::Let(let_) => self.visit_let(let_),
+      Symbol::Trait(trait_) => self.visit_trait(trait_),
+      Symbol::TypeDecl(type_decl) => self.visit_type_decl(type_decl),
+    }
+  }
+
+  fn visit_error(&mut self, error: &[Token]) -> Self::Result {
+    for token in error.iter() {
+      self.buffer.push_str(&token.lexeme);
+      self.buffer.push(' ')
+    }
+  }
+
+  fn visit_class(&mut self, class: &Class) -> Self::Result {
+    self.pad();
+
+    match &class.name {
+      Some(name) => {
+        self.buffer.push_str("class ");
+        self.buffer.push_str(&name.lexeme);
+      }
+      None => self.buffer.push_str("class"),
+    }
+
+    self.buffer.push_str(" {\n");
+    self.depth += 1;
+
+    for member in &class.type_members {
+      self.visit_type_member(member);
+      self.buffer.push('\n');
+    }
+
+    if let Some(init) = &class.init {
+      self.visit_method(&init);
+      self.buffer.push('\n');
+    }
+
+    for method in &class.methods {
+      self.visit_method(&method);
+      self.buffer.push('\n');
+    }
+
+    for static_method in &class.static_methods {
+      self.visit_static_method(&static_method);
+      self.buffer.push('\n');
+    }
+
+    self.depth -= 1;
+    self.pad();
+    self.buffer.push_str("}\n")
+  }
+
+  fn visit_method(&mut self, method: &Fun) -> Self::Result {
+    self.pad();
+
+    match &method.name {
+      Some(name) => {
+        self.buffer.push_str(&name.lexeme);
+      }
+      None => unreachable!(),
+    }
+
+    self.buffer.push('(');
+    let len = method.call_sig.params.len();
+    for (idx, param) in method.call_sig.params.iter().enumerate() {
+      self.buffer.push_str(&param.name.lexeme);
+
+      if let Some(type_) = &param.type_ {
+        self.buffer.push_str(": ");
+        self.visit_type(type_);
+      }
+
+      if idx < len - 1 {
+        self.buffer.push_str(", ");
+      }
+    }
+
+    self.buffer.push_str(") ");
+    match &method.body {
+      FunBody::Block(block) => self.visit_block(&block),
+      FunBody::Expr(expr) => self.visit_expr(&expr),
+    };
+  }
+  fn visit_static_method(&mut self, static_method: &Fun) -> Self::Result {
+    self.pad();
+
+    match &static_method.name {
+      Some(name) => {
+        self.buffer.push_str("static ");
+        self.buffer.push_str(&name.lexeme);
+      }
+      None => unreachable!(),
+    }
+
+    self.buffer.push('(');
+    let len = static_method.call_sig.params.len();
+    for (idx, param) in static_method.call_sig.params.iter().enumerate() {
+      self.buffer.push_str(&param.name.lexeme);
+
+      if let Some(type_) = &param.type_ {
+        self.visit_type(type_)
+      }
+
+      if idx < len - 1 {
+        self.buffer.push_str(", ");
+      }
+    }
+
+    self.buffer.push_str(") ");
+    match &static_method.body {
+      FunBody::Block(block) => self.visit_block(&block),
+      FunBody::Expr(expr) => self.visit_expr(&expr),
+    };
+  }
+
+  fn visit_fun(&mut self, fun: &Fun) -> Self::Result {
+    self.pad();
+
+    match &fun.name {
+      Some(name) => {
+        self.buffer.push_str("fn ");
+        self.buffer.push_str(&name.lexeme);
+      }
+      None => self.buffer.push_str("fn"),
+    }
+
+    self.visit_call_sig(&fun.call_sig);
+    self.buffer.push(' ');
+
+    match &fun.body {
+      FunBody::Block(block) => self.visit_block(&block),
+      FunBody::Expr(expr) => self.visit_expr(&expr),
+    };
+  }
+  fn visit_let(&mut self, let_: &Let) -> Self::Result {
+    self.pad();
+    self.buffer.push_str("let ");
+    self.buffer.push_str(&let_.name.lexeme);
+
+    if let Some(type_) = &let_.type_ {
+      self.buffer.push_str(": ");
+      self.visit_type(type_);
+    }
+
+    match &let_.value {
+      Some(v) => {
+        self.buffer.push_str(" = ");
+        self.visit_expr(&v);
+        self.buffer.push(';');
+      }
+      None => self.buffer.push(';'),
+    }
+  }
+
+  fn visit_import(&mut self, import: &Import) -> Self::Result {
+    self.pad();
+    self.buffer.push_str("import ");
+    self.buffer.push_str(&import.imported.lexeme);
+    self.buffer.push_str(" from \"");
+    self.buffer.push_str(&import.path.lexeme);
+    self.buffer.push_str("\";");
+  }
+
+  fn visit_for(&mut self, for_: &For) -> Self::Result {
+    self.pad();
+    self.buffer.push_str("for ");
+    self.buffer.push_str(&for_.item.lexeme);
+    self.buffer.push_str(" in ");
+    self.visit_expr(&for_.iter);
+    self.visit_block(&for_.body);
+  }
+
+  fn visit_while(&mut self, while_: &While) -> Self::Result {
+    self.pad();
+    self.buffer.push_str("while ");
+    self.visit_expr(&while_.cond);
+    self.visit_block(&while_.body);
+  }
+  fn visit_if(&mut self, if_: &If) -> Self::Result {
+    self.pad();
+    self.buffer.push_str("if ");
+
+    self.visit_expr(&if_.cond);
+    self.visit_block(&if_.body);
+
+    if let Some(else_) = &if_.else_ {
+      self.buffer.push_str(" else ");
+      match else_ {
+        Else::If(if_) => self.visit_if(if_),
+        Else::Block(block) => self.visit_block(block),
+      }
+    }
+  }
+  fn visit_return(&mut self, return_: &Return) -> Self::Result {
+    self.pad();
+    match &return_.value {
+      Some(v) => {
+        self.buffer.push_str("return ");
+        self.visit_expr(&v);
+        self.buffer.push(';');
+      }
+      None => self.buffer.push_str("return;"),
+    }
+  }
+  fn visit_try(&mut self, try_: &Try) -> Self::Result {
+    self.pad();
+    self.buffer.push_str("try ");
+
+    &self.visit_block(&try_.block);
+
+    self.buffer.push_str(" catch ");
+    self.visit_block(&try_.catch);
+  }
+
+  fn visit_block(&mut self, block: &Block) -> Self::Result {
+    self.buffer.push_str("{\n");
+    self.depth += 1;
+
+    for decl in &block.decls {
+      self.visit_decl(&decl);
+      self.buffer.push('\n');
+    }
+
+    self.depth -= 1;
+    self.pad();
+    self.buffer.push_str("}");
+  }
+  fn visit_assign(&mut self, assign: &Assign) -> Self::Result {
+    self.visit_expr(&assign.lhs);
+    self.buffer.push_str(" = ");
+    self.visit_expr(&assign.rhs);
+  }
+  fn visit_binary(&mut self, binary: &Binary) -> Self::Result {
+    self.visit_expr(&binary.lhs);
+
+    self.buffer.push(' ');
+    match &binary.op {
+      BinaryOp::Add => self.buffer.push('+'),
+      BinaryOp::Sub => self.buffer.push('-'),
+      BinaryOp::Multi => self.buffer.push('*'),
+      BinaryOp::Div => self.buffer.push('/'),
+      BinaryOp::Lt => self.buffer.push('<'),
+      BinaryOp::LtEq => self.buffer.push_str("<="),
+      BinaryOp::Gt => self.buffer.push('>'),
+      BinaryOp::GtEq => self.buffer.push_str(">="),
+      BinaryOp::Eq => self.buffer.push_str("=="),
+      BinaryOp::Ne => self.buffer.push_str("!="),
+      BinaryOp::And => self.buffer.push_str("and"),
+      BinaryOp::Or => self.buffer.push_str("or"),
+    }
+    self.buffer.push(' ');
+    self.visit_expr(&binary.rhs);
+  }
+  fn visit_unary(&mut self, unary: &Unary) -> Self::Result {
+    match &unary.op {
+      UnaryOp::Not => self.buffer.push('!'),
+      UnaryOp::Negate => self.buffer.push('-'),
+    }
+
+    self.visit_expr(&unary.expr)
+  }
+  fn visit_call(&mut self, call: &Call) -> Self::Result {
+    self.buffer.push('(');
+    let len = call.args.len();
+    for (idx, arg) in call.args.iter().enumerate() {
+      self.visit_expr(&arg);
+
+      if idx < len - 1 {
+        self.buffer.push_str(", ");
+      }
+    }
+
+    self.buffer.push_str(")");
+  }
+
+  fn visit_index(&mut self, index: &Index) -> Self::Result {
+    self.buffer.push('[');
+    self.visit_expr(&index.index);
+    self.buffer.push(']');
+  }
+  fn visit_access(&mut self, access: &Access) -> Self::Result {
+    self.buffer.push('.');
+    self.buffer.push_str(&access.prop.lexeme);
+  }
+
+  fn visit_call_sig(&mut self, call_sig: &CallSignature) -> Self::Result {
+    self.visit_type_params(&call_sig.type_params);
+    self.buffer.push('(');
+    let len = call_sig.params.len();
+
+    for (idx, param) in call_sig.params.iter().enumerate() {
+      self.buffer.push_str(param.name.lexeme.as_str());
+      if let Some(type_) = &param.type_ {
+        self.buffer.push_str(": ");
+        self.visit_type(type_);
+      }
+
+      if idx < len - 1 {
+        self.buffer.push_str(", ");
+      }
+    }
+
+    self.buffer.push(')');
+    if let Some(type_) = &call_sig.return_type {
+      self.buffer.push_str(" -> ");
+      self.visit_type(type_)
+    }
+  }
+  fn visit_atom(&mut self, atom: &Atom) -> Self::Result {
+    self.visit_primary(&atom.primary);
+
+    for trailer in atom.trailers.iter() {
+      match trailer {
+        Trailer::Call(call) => self.visit_call(&call),
+        Trailer::Index(index) => self.visit_index(&index),
+        Trailer::Access(access) => self.visit_access(&access),
+      }
+    }
+  }
+  fn visit_assign_block(&mut self, block: &Block) -> Self::Result {
+    self.buffer.push(':');
+    self.visit_block(block);
+  }
+  fn visit_true(&mut self, _: &Token) -> Self::Result {
+    self.buffer.push_str("true");
+  }
+  fn visit_false(&mut self, _: &Token) -> Self::Result {
+    self.buffer.push_str("false");
+  }
+  fn visit_nil(&mut self, _: &Token) -> Self::Result {
+    self.buffer.push_str("nil");
+  }
+  fn visit_number(&mut self, token: &Token) -> Self::Result {
+    self.buffer.push_str(&token.lexeme);
+  }
+  fn visit_string(&mut self, token: &Token) -> Self::Result {
+    self.buffer.push('"');
+    self.buffer.push_str(&token.lexeme);
+    self.buffer.push('"');
+  }
+  fn visit_ident(&mut self, token: &Token) -> Self::Result {
+    self.buffer.push_str(&token.lexeme);
+  }
+  fn visit_self(&mut self, _: &Token) -> Self::Result {
+    self.buffer.push_str("self");
+  }
+  fn visit_super(&mut self, super_: &Super) -> Self::Result {
+    self.buffer.push_str("super.");
+    self.buffer.push_str(&super_.access.lexeme);
+  }
+  fn visit_lambda(&mut self, fun: &Fun) -> Self::Result {
+    self.buffer.push('|');
+    let len = fun.call_sig.params.len();
+    for (idx, param) in fun.call_sig.params.iter().enumerate() {
+      self.buffer.push_str(&param.name.lexeme);
+
+      if let Some(type_) = &param.type_ {
+        self.visit_type(type_);
+      }
+
+      if idx < len - 1 {
+        self.buffer.push_str(", ");
+      }
+    }
+
+    self.buffer.push_str("| ");
+    match &fun.body {
+      FunBody::Block(block) => self.visit_block(&block),
+      FunBody::Expr(expr) => self.visit_expr(&expr),
+    };
+  }
+  fn visit_list(&mut self, list: &List) -> Self::Result {
+    self.buffer.push('[');
+    let len = list.items.len();
+    for (idx, arg) in list.items.iter().enumerate() {
+      self.visit_expr(&arg);
+
+      if idx < len - 1 {
+        self.buffer.push_str(", ");
+      }
+    }
+
+    self.buffer.push(']');
+  }
+  fn visit_map(&mut self, map: &Map) -> Self::Result {
+    self.buffer.push('{');
+    let len = map.entries.len();
+    for (idx, (key, value)) in map.entries.iter().enumerate() {
+      self.visit_expr(&key);
+      self.buffer.push_str(": ");
+      self.visit_expr(&value);
+
+      if idx < len - 1 {
+        self.buffer.push_str(", ");
+      }
+    }
+
+    self.buffer.push('}');
+  }
+}
+
+impl TypeVisitor for AstPrint {
+  type Result = ();
+
+  fn visit_trait(&mut self, trait_: &Trait) -> Self::Result {
+    self.pad();
+
+    self.buffer.push_str("trait ");
+    self.buffer.push_str(trait_.name.lexeme.as_str());
+    self.visit_type_params(&trait_.params);
+
+    self.buffer.push_str(" {\n");
+
+    self.depth += 1;
+
+    for member in trait_.members.iter() {
+      self.visit_type_member(member);
+    }
+
+    self.depth -= 1;
+
+    self.pad();
+    self.buffer.push_str("}\n");
+  }
+
+  fn visit_type_decl(&mut self, type_decl: &TypeDecl) -> Self::Result {
+    self.pad();
+
+    self.buffer.push_str("type ");
+    self.buffer.push_str(type_decl.name.lexeme.as_str());
+    self.visit_type_params(&type_decl.type_params);
+
+    self.buffer.push_str(" = ");
+    self.visit_type(&type_decl.type_);
+  }
+
+  fn visit_type(&mut self, type_: &Type) -> Self::Result {
+    match type_ {
+      Type::Union(union) => self.visit_union(union),
+      Type::Intersection(intersection) => self.visit_intersection(intersection),
+      Type::Fun(call_sig) => self.visit_call_sig(call_sig),
+      Type::List(list_type) => self.visit_list_type(list_type),
+      Type::Ref(type_ref) => self.visit_type_ref(type_ref),
+      Type::Primitive(primitive) => self.visit_primitive(primitive),
+    }
+  }
+
+  fn visit_union(&mut self, union: &Union) -> Self::Result {
+    self.visit_type(&union.lhs);
+    self.buffer.push_str(" | ");
+    self.visit_type(&union.rhs);
+  }
+
+  fn visit_intersection(&mut self, intersection: &Intersection) -> Self::Result {
+    self.visit_type(&intersection.lhs);
+    self.buffer.push_str(" & ");
+    self.visit_type(&intersection.rhs);
+  }
+
+  fn visit_primitive(&mut self, primitive: &Primitive) -> Self::Result {
+    match primitive {
+      Primitive::Nil(_) => self.buffer.push_str("nil"),
+      Primitive::Number(_) => self.buffer.push_str("number"),
+      Primitive::Bool(_) => self.buffer.push_str("bool"),
+      Primitive::String(_) => self.buffer.push_str("string"),
+      Primitive::Any(_) => self.buffer.push_str("any"),
+    }
+  }
+
+  fn visit_type_params(&mut self, type_params: &[TypeParam]) -> Self::Result {
+    let len = type_params.len();
+    if len == 0 {
+      return;
+    }
+
+    self.buffer.push('<');
+    for (idx, type_param) in type_params.iter().enumerate() {
+      self.buffer.push_str(type_param.name.lexeme.as_str());
+      if let Some(constraint) = &type_param.constraint {
+        self.buffer.push_str(": ");
+        self.visit_type(&constraint);
+      }
+
+      if idx < len - 1 {
+        self.buffer.push_str(", ");
+      }
+    }
+
+    self.buffer.push('>');
+  }
+
+  fn visit_type_member(&mut self, type_member: &TypeMember) -> Self::Result {
+    self.pad();
+    self.buffer.push_str(type_member.name.lexeme.as_str());
+    self.buffer.push_str(": ");
+    self.visit_type(&type_member.type_);
+    self.buffer.push(';');
+  }
+
+  fn visit_type_ref(&mut self, type_ref: &TypeRef) -> Self::Result {
+    self.buffer.push_str(type_ref.name.lexeme.as_str());
+
+    if type_ref.type_args.len() > 0 {
+      self.buffer.push('<');
+      let len = type_ref.type_args.len();
+
+      for (idx, arg) in type_ref.type_args.iter().enumerate() {
+        self.visit_type(arg);
+
+        if idx < len - 1 {
+          self.buffer.push_str(", ");
+        }
+      }
+
+      self.buffer.push('>');
+    }
+  }
+
+  fn visit_list_type(&mut self, list_type: &ListType) -> Self::Result {
+    self.visit_type(&list_type.item_type);
+    self.buffer.push_str("[]");
+  }
+}

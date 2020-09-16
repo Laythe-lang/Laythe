@@ -1,5 +1,5 @@
 let a = "outer";
-{
+:{
   fn foo() {
     return a;
   }
@@ -7,4 +7,4 @@ let a = "outer";
   assertEq(foo(), "outer"); // expect: outer
   let a = "inner";
   assertEq(foo(), "outer"); // expect: outer
-}
+};

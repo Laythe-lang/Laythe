@@ -1,26 +1,29 @@
-use crate::scanner::Scanner;
-use laythe_core::chunk::{AlignedByteCode, Chunk, UpvalueIndex};
-use laythe_core::token::{Token, TokenKind};
+use crate::{
+  ast::{self, Decl, Expr, Primary, Stmt, Symbol},
+  token::{Token, TokenKind},
+};
+use ast::{BinaryOp, FunBody, List, Map, Ranged, Trailer, UnaryOp};
 use laythe_core::{
-  constants::{INIT, ITER, ITER_VAR, SCRIPT, SELF, SUPER},
+  chunk::{AlignedByteCode, Chunk, UpvalueIndex},
+  constants::{ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::GcHooks,
-  module::Module,
-  object::{Fun, FunKind},
-  object::{Map, TryBlock},
+  module, object,
+  object::FunKind,
   signature::Arity,
   val,
   value::Value,
 };
 use laythe_env::{
+  io::Io,
   managed::{Manage, Managed, Trace},
   stdio::Stdio,
 };
-use std::convert::TryInto;
-use std::mem;
+use object::{Fun, TryBlock};
+use smol_str::SmolStr;
+use std::{convert::TryInto, mem, ptr::NonNull};
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_chunk;
-use smol_str::SmolStr;
 
 /// The result of a compilation
 pub type CompilerResult = Result<Managed<Fun>, ()>;
@@ -39,13 +42,55 @@ pub struct Local {
   is_captured: bool,
 }
 
-pub enum ForLoop {
-  Range(Token),
-  CStyle,
+#[derive(Debug, Clone)]
+pub struct ClassInfo {
+  enclosing: Option<Managed<ClassInfo>>,
+  fun_kind: Option<FunKind>,
+  has_super_class: bool,
+  name: Option<Token>,
 }
 
-/// The laythe compiler for converting tokens to bytecode
-pub struct Compiler<'a, 's> {
+impl Trace for ClassInfo {
+  fn trace(&self) -> bool {
+    if let Some(enclosing) = self.enclosing {
+      enclosing.trace();
+    };
+    true
+  }
+
+  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+    if let Some(enclosing) = self.enclosing {
+      enclosing.trace_debug(stdio);
+    };
+    true
+  }
+}
+
+impl Manage for ClassInfo {
+  fn alloc_type(&self) -> &str {
+    "class compiler"
+  }
+
+  fn debug(&self) -> String {
+    format!("{:?}", self)
+  }
+
+  fn debug_free(&self) -> String {
+    format!(
+      "ClassCompiler: {{ has_super_class: {:?}, name: {:?}, enclosing: {{...}} }}",
+      self.has_super_class, self.name
+    )
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+}
+
+pub struct Compiler<'a> {
+  /// The environments io interface
+  io: &'a Io,
+
   /// The current function
   fun: Managed<Fun>,
 
@@ -53,18 +98,14 @@ pub struct Compiler<'a, 's> {
   fun_kind: FunKind,
 
   /// The current module
-  module: Managed<Module>,
+  module: Managed<module::Module>,
 
   /// The parent compiler if it exists note uses
   /// unsafe pointer
-  enclosing: Option<*mut Compiler<'a, 's>>,
-
-  /// The parser in charge incrementing the scanner and
-  /// expecting / consuming tokens
-  parser: &'a mut Parser<'s>,
+  enclosing: Option<NonNull<Compiler<'a>>>,
 
   /// The current class class compiler
-  current_class: Option<Managed<ClassCompiler>>,
+  current_class: Option<Managed<ClassInfo>>,
 
   /// hooks into the surround context. Used to allocate laythe objects
   hooks: &'a GcHooks<'a>,
@@ -82,51 +123,50 @@ pub struct Compiler<'a, 's> {
   upvalues: Vec<UpvalueIndex>,
 
   /// A set of constants used in the current function
-  constants: Map<Value, usize>,
+  constants: object::Map<Value, usize>,
+
+  /// Was an error encountered during compilation
+  had_error: bool,
 }
 
-impl<'a, 's> Compiler<'a, 's> {
-  /// Create a new instance of the laythe compiler.
-  /// The compiler write a sequence of op codes to the chunk
-  /// to be executed
+impl<'a> Compiler<'a> {
+  /// Create a new compiler at the module scope level. This struct will take a an ast
+  /// produced by the parser and emit Laythe bytecode.
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::compiler::{Compiler, Parser};
+  /// use laythe_vm::compiler::Compiler;
   /// use laythe_core::module::Module;
   /// use laythe_core::object::Class;
-  /// use laythe_core::hooks::{GcHooks, NoContext};
-  /// use laythe_env::stdio::Stdio;
+  /// use laythe_core::hooks::support::TestContext;
+  /// use laythe_core::hooks::GcHooks;
+  /// use laythe_env::io::Io;
   /// use laythe_env::memory::Gc;
   /// use std::path::PathBuf;
   ///
-  /// // an expression
-  /// let source = "10 + 3".to_string();
-  ///
-  /// let gc = Gc::default();
-  /// let mut context = NoContext::new(&gc);
-  /// let mut hooks = GcHooks::new(&mut context);
-  /// let mut parser = Parser::new(Stdio::default(), &source);
+  /// let context = TestContext::default();
+  /// let hooks = GcHooks::new(&context);
+  /// let io = Io::default();
   /// let module = hooks.manage(Module::new(
   ///  hooks.manage(Class::bare(hooks.manage_str("module"))),
   ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///
-  /// let compiler = Compiler::new(module, &mut parser, &mut hooks);
+  /// let compiler = Compiler::new(module, &io, &hooks);
   /// ```
-  pub fn new(module: Managed<Module>, parser: &'a mut Parser<'s>, hooks: &'a GcHooks<'a>) -> Self {
-    let fun = hooks.manage(Fun::new(hooks.manage_str(SCRIPT), module));
+  pub fn new(module: Managed<module::Module>, io: &'a Io, hooks: &'a GcHooks<'a>) -> Self {
+    let fun = hooks.manage(object::Fun::new(hooks.manage_str(SCRIPT), module));
 
-    let mut compiler = Self {
+    Self {
       fun,
-      fun_kind: FunKind::Script,
+      io,
       module,
+      fun_kind: FunKind::Script,
+      scope_depth: 0,
       current_class: None,
       hooks,
-      parser,
       enclosing: None,
       local_count: 1,
-      scope_depth: 0,
       locals: vec![
         Local {
           name: Option::None,
@@ -136,759 +176,91 @@ impl<'a, 's> Compiler<'a, 's> {
         std::u8::MAX as usize
       ],
       upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
-      constants: Map::default(),
-    };
-
-    compiler.locals[0] = first_local(FunKind::Script);
-    compiler
+      constants: object::Map::default(),
+      had_error: false,
+    }
   }
 
-  /// Construct an inner compiler used to compile functions inside of a script
-  fn child(name: Managed<SmolStr>, fun_kind: FunKind, enclosing: *mut Compiler<'a, 's>) -> Self {
-    let mut child = Self {
-      fun: unsafe { (*enclosing).fun },
-      fun_kind: fun_kind.clone(),
-      module: unsafe { (*enclosing).module },
-      current_class: unsafe { (*enclosing).current_class },
-      hooks: unsafe { (*enclosing).hooks },
-      parser: unsafe { (*enclosing).parser },
-      enclosing: Some(enclosing),
-      local_count: 1,
-      scope_depth: 0,
-      locals: vec![
-        Local {
-          name: Option::None,
-          depth: UNINITIALIZED,
-          is_captured: false,
-        };
-        std::u8::MAX as usize
-      ],
-      upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
-      constants: Map::default(),
-    };
-
-    child.fun = child.hooks.manage(Fun::new(name, child.module));
-
-    child.locals[0] = first_local(fun_kind);
-
-    child
-  }
-
-  /// Compile the provided source code onto the chunk
-  /// returns true if the compiler ran without parser errors
-  ///
-  /// # Examples
-  /// ```
-  /// use laythe_vm::compiler::{Compiler, Parser};
-  /// use laythe_core::module::Module;
-  /// use laythe_core::object::Class;
-  /// use laythe_core::hooks::{GcHooks, NoContext};
-  /// use laythe_env::stdio::Stdio;
-  /// use laythe_env::memory::Gc;
-  /// use std::path::PathBuf;
-  ///
-  /// // an expression
-  /// let source = "3 / 2 + 10;".to_string();
-  ///
-  /// let gc = Gc::default();
-  /// let mut context = NoContext::new(&gc);
-  /// let mut hooks = GcHooks::new(&mut context);
-  /// let mut parser = Parser::new(Stdio::default(), &source);
-  /// let module = hooks.manage(Module::new(
-  ///  hooks.manage(Class::bare(hooks.manage_str("module"))),
-  ///  hooks.manage(PathBuf::from("./module.ly"))
-  /// ));
-  ///
-  /// let compiler = Compiler::new(module, &mut parser, &mut hooks);
-  /// let result = compiler.compile();
-  /// assert_eq!(result.is_ok(), true);
-  /// ```
-  pub fn compile(mut self) -> CompilerResult {
-    self.parser.advance();
-
-    // early exit if ""
-    if let TokenKind::Eof = self.parser.current.kind {
-      self.end_compiler();
-
-      self.fun.shrink_to_fit(self.hooks);
-      return if !self.parser.had_error {
-        Ok(self.fun)
-      } else {
-        Err(())
-      };
+  /// Compile the provided ast into managed function objects that
+  /// contain the vm bytecode
+  pub fn compile(mut self, module: &ast::Module) -> CompilerResult {
+    for decl in &module.decls {
+      self.decl(decl);
     }
 
-    while !self.parser.match_kind(TokenKind::Eof) {
-      self.declaration()
-    }
-
-    self
-      .parser
-      .consume(TokenKind::Eof, "Expected end of expression.");
-
-    self.end_compiler();
-    self.fun.shrink_to_fit(self.hooks);
-
-    return if !self.parser.had_error {
+    self.end_compiler(module.end());
+    if !self.had_error {
       Ok(self.fun)
     } else {
       Err(())
-    };
-  }
-
-  /// The current chunk
-  fn current_chunk(&mut self) -> &Chunk {
-    self.fun.chunk()
-  }
-
-  /// write instruction to the current function
-  fn write_instruction(&mut self, op_code: AlignedByteCode, line: u32) {
-    self.fun.write_instruction(self.hooks, op_code, line)
-  }
-
-  /// Parse a declaration
-  fn declaration(&mut self) {
-    match self.parser.current.kind {
-      TokenKind::Class => {
-        self.parser.advance();
-        self.class_declaration();
-      }
-      TokenKind::Fn => {
-        self.parser.advance();
-        self.fun_declaration();
-      }
-      TokenKind::Let => {
-        self.parser.advance();
-        self.let_declaration();
-      }
-      TokenKind::Export => {
-        self.parser.advance();
-        self.export_declaration();
-      }
-      _ => {
-        self.statement();
-      }
-    }
-
-    if self.parser.panic_mode {
-      self.synchronize(None);
     }
   }
 
-  /// Parse a symbol declaration
-  fn export_declaration(&mut self) {
-    let symbol = match self.parser.current.kind {
-      TokenKind::Class => {
-        self.parser.advance();
-        Some(self.class_declaration())
-      }
-      TokenKind::Fn => {
-        self.parser.advance();
-        Some(self.fun_declaration())
-      }
-      TokenKind::Let => {
-        self.parser.advance();
-        Some(self.let_declaration())
-      }
-      _ => None,
+  // create a child compiler to compile a function inside the enclosing module
+  fn child(name: Managed<SmolStr>, fun_kind: FunKind, enclosing: &mut Compiler<'a>) -> Self {
+    let mut child = Self {
+      fun: enclosing.fun,
+      io: enclosing.io,
+      module: enclosing.module,
+      fun_kind,
+      scope_depth: 0,
+      current_class: enclosing.current_class,
+      hooks: enclosing.hooks,
+      enclosing: Some(NonNull::from(enclosing)),
+      local_count: 1,
+      locals: vec![
+        Local {
+          name: Option::None,
+          depth: UNINITIALIZED,
+          is_captured: false,
+        };
+        std::u8::MAX as usize
+      ],
+      upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
+      constants: object::Map::default(),
+      had_error: false,
     };
 
-    if self.scope_depth == 0 {
-      match symbol {
-        Some(valid_symbol) => {
-          self.emit_byte(AlignedByteCode::Export(valid_symbol));
-        }
-        None => self
-          .parser
-          .error_at_current("Can only export variable, function or class declarations."),
-      }
-    } else {
-      self
-        .parser
-        .error_at_current("Can only export from the module scope.")
-    }
+    child.fun = child.hooks.manage(Fun::new(name, child.module));
+    child.locals[0] = first_local(fun_kind);
+    child
   }
 
-  /// Parse a statement
-  fn statement(&mut self) {
-    match self.parser.current.kind {
-      TokenKind::For => {
-        self.parser.advance();
-        self.for_statement();
-      }
-      TokenKind::If => {
-        self.parser.advance();
-        self.if_statement();
-      }
-      TokenKind::Return => {
-        self.parser.advance();
-        self.return_statement();
-      }
-      TokenKind::While => {
-        self.parser.advance();
-        self.while_statement();
-      }
-      TokenKind::Import => {
-        self.parser.advance();
-        self.import_statement();
-      }
-      TokenKind::Try => {
-        self.parser.advance();
-        self.try_block();
-      }
-      TokenKind::LeftBrace => {
-        self.parser.advance();
-        self.begin_scope();
-        self.block();
-        self.end_scope();
-      }
-      _ => {
-        self.expression_statement();
-      }
-    }
-  }
-
-  /// Parse an expression
-  fn expression(&mut self) {
-    self.parse_precedence(Precedence::Assignment)
-  }
-
-  /// Parse a block statement
-  fn block(&mut self) {
-    while !self.parser.check(TokenKind::RightBrace) && !self.parser.check(TokenKind::Eof) {
-      self.declaration();
-    }
-
-    self
-      .parser
-      .consume(TokenKind::RightBrace, "Expected '}' after block.")
-  }
-
-  /// Parse a try catch block
-  fn try_block(&mut self) {
-    let start = self.current_chunk().instructions.len();
-    self
-      .parser
-      .consume(TokenKind::LeftBrace, "Expected '{' after try.");
-
-    self.begin_scope();
-    self.block();
-    self.end_scope();
-
-    let catch_jump = self.emit_jump(AlignedByteCode::Jump(0));
-    let end = self.current_chunk().instructions.len();
-
-    self
-      .parser
-      .consume(TokenKind::Catch, "Expected 'catch' after try block.");
-    self
-      .parser
-      .consume(TokenKind::LeftBrace, "Expected '{' after catch.");
-
-    self.begin_scope();
-    self.block();
-    self.end_scope();
-
-    self.patch_jump(catch_jump);
-
-    self.fun.add_try(TryBlock::new(start as u16, end as u16));
-  }
-
-  /// Parse a class declaration
-  fn class_declaration(&mut self) -> u16 {
-    self
-      .parser
-      .consume(TokenKind::Identifier, "Expected class name.");
-
-    let class_name = self.parser.previous.clone();
-    let name_constant = self.identifer_constant(self.parser.previous.clone());
-    self.declare_variable(self.parser.previous.clone());
-
-    self.emit_byte(AlignedByteCode::Class(name_constant));
-    self.define_variable(name_constant);
-
-    let mut class_compiler = self.hooks.manage(ClassCompiler {
-      name: self.parser.previous.clone(),
-      fun_kind: None,
-      has_super_class: false,
-      enclosing: self.current_class,
-    });
-    self.current_class = Some(class_compiler);
-
-    if self.parser.match_kind(TokenKind::Less) {
-      self
-        .parser
-        .consume(TokenKind::Identifier, "Expected superclass name.");
-      self.variable(false);
-
-      if class_name.lexeme == self.parser.previous.lexeme {
-        self.parser.error("A class cannot inherit from itself.");
-      }
-
-      self.begin_scope();
-      self.add_local(Token {
-        kind: TokenKind::Super,
-        lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
-        line: class_name.line,
-      });
-      self.define_variable(0);
-
-      self.named_variable(class_name.clone(), false);
-      self.emit_byte(AlignedByteCode::Inherit);
-
-      class_compiler.has_super_class = true;
-    }
-
-    self.named_variable(class_name, false);
-
-    self
-      .parser
-      .consume(TokenKind::LeftBrace, "Expected '{' before class body.");
-    while !self.parser.check(TokenKind::RightBrace) && !self.parser.check(TokenKind::Eof) {
-      self.method();
-    }
-
-    self
-      .parser
-      .consume(TokenKind::RightBrace, "Expected '}' after class body.");
-    self.emit_byte(AlignedByteCode::Drop);
-
-    if class_compiler.has_super_class {
-      self.end_scope();
-    }
-
-    self.current_class = class_compiler.enclosing;
-    name_constant
-  }
-
-  /// Parse a function declaration
-  fn fun_declaration(&mut self) -> u16 {
-    let global = self.parse_variable("Expected variable name.");
-
-    self.mark_initialized();
-    self.function(FunKind::Fun);
-    self.define_variable(global);
-    global
-  }
-
-  /// Parse a variable declaration
-  fn let_declaration(&mut self) -> u16 {
-    let variable = self.parse_variable("Expected variable name.");
-
-    if self.parser.match_kind(TokenKind::Equal) {
-      self.expression();
-    } else {
-      self.emit_byte(AlignedByteCode::Nil);
-    }
-
-    self.parser.consume(
-      TokenKind::Semicolon,
-      "Expected ';' after variable declaration.",
-    );
-
-    self.define_variable(variable);
-    variable
-  }
-
-  /// Parse a function declaration and body
-  fn function(&mut self, fun_kind: FunKind) {
-    let name = self.hooks.manage_str(self.parser.previous.lexeme.as_str());
-
-    let mut fun_compiler = Compiler::child(name, fun_kind, &mut *self);
-    fun_compiler.begin_scope();
-
-    fun_compiler
-      .parser
-      .consume(TokenKind::LeftParen, "Expected '(' after function name.");
-
-    // parse function parameters
-    if !fun_compiler.parser.check(TokenKind::RightParen) {
-      fun_compiler.function_signature();
-    }
-
-    fun_compiler
-      .parser
-      .consume(TokenKind::RightParen, "Expected ')' after parameters.");
-
-    fun_compiler
-      .parser
-      .consume(TokenKind::LeftBrace, "Expected '{' before function body.");
-    fun_compiler.block();
-
-    // end compilation of function chunk
-    fun_compiler.end_compiler();
-    let upvalue_count = fun_compiler.fun.upvalue_count;
-
-    let index = self.make_constant(val!(fun_compiler.fun));
-    self.emit_byte(AlignedByteCode::Closure(index));
-
-    // emit upvalue index instructions
-    fun_compiler.upvalues[0..upvalue_count]
-      .iter()
-      .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(*upvalue)));
-  }
-
-  /// Parse a method declaration and body
-  fn method(&mut self) {
-    let static_method = self.parser.match_kind(TokenKind::Static);
-
-    self
-      .parser
-      .consume(TokenKind::Identifier, "Expected method name.");
-    let constant = self.identifer_constant(self.parser.previous.clone());
-
-    let fun_kind = if static_method {
-      FunKind::StaticMethod
-    } else if INIT == self.parser.previous.lexeme {
-      FunKind::Initializer
-    } else {
-      FunKind::Method
-    };
-
-    self.current_class.expect("Class compiler not set").fun_kind = Some(fun_kind);
-    self.function(fun_kind);
-
-    if static_method {
-      self.emit_byte(AlignedByteCode::StaticMethod(constant));
-    } else {
-      self.emit_byte(AlignedByteCode::Method(constant));
-    }
-  }
-
-  /// Parse an expression statement
-  fn expression_statement(&mut self) {
-    self.expression();
-    self
-      .parser
-      .consume(TokenKind::Semicolon, "Expected ';' after expression.");
-    self.emit_byte(AlignedByteCode::Drop)
-  }
-
-  /// Parse for loop
-  fn for_statement(&mut self) {
-    self.begin_scope();
-    self
-      .parser
-      .consume(TokenKind::LeftParen, "Expected '(' after 'for'.");
-
-    // parse an initializer
-    let style: ForLoop = if self.parser.match_kind(TokenKind::Semicolon) {
-      ForLoop::CStyle
-    } else if self.parser.match_kind(TokenKind::Let) {
-      self.for_var_declaration()
-    } else {
-      self.expression_statement();
-      ForLoop::CStyle
-    };
-
-    match style {
-      ForLoop::CStyle => self.for_cstyle_body(),
-      ForLoop::Range(variable) => self.for_range_body(variable),
-    }
-
-    self.end_scope();
-  }
-
-  /// Parse a variable declaration in a for loop
-  fn for_var_declaration(&mut self) -> ForLoop {
-    let variable = self.parse_variable("Expected variable name.");
-    let variable_token = self.parser.previous.clone();
-
-    let style = if self.parser.match_kind(TokenKind::Equal) {
-      // assignment indicates a c style
-      self.expression();
-      ForLoop::CStyle
-    } else {
-      self.emit_byte(AlignedByteCode::Nil);
-
-      // the in keyword indicates a range for loop
-      if self.parser.match_kind(TokenKind::In) {
-        ForLoop::Range(variable_token)
-      } else {
-        ForLoop::CStyle
-      }
-    };
-
-    if let ForLoop::CStyle = style {
-      self.parser.consume(
-        TokenKind::Semicolon,
-        "Expected ';' after variable declaration.",
-      );
-    }
-
-    self.define_variable(variable);
-    style
-  }
-
-  /// Parse the body of a c style for loop
-  fn for_cstyle_body(&mut self) {
-    let mut loop_start = self.current_chunk().instructions.len();
-
-    // parse loop condition
-    let mut exit_jump: Option<usize> = Option::None;
-    if !self.parser.match_kind(TokenKind::Semicolon) {
-      self.expression();
-      self
-        .parser
-        .consume(TokenKind::Semicolon, "Expected ';' after loop condition");
-      exit_jump = Some(self.emit_jump(AlignedByteCode::JumpIfFalse(0)));
-      self.emit_byte(AlignedByteCode::Drop);
-    }
-
-    // parse incrementor
-    if !self.parser.match_kind(TokenKind::RightParen) {
-      let body_jump = self.emit_jump(AlignedByteCode::Jump(0));
-
-      let increment_start = self.current_chunk().instructions.len();
-      self.expression();
-      self.emit_byte(AlignedByteCode::Drop);
-      self
-        .parser
-        .consume(TokenKind::RightParen, "Expected ')' after for clauses.");
-
-      self.emit_loop(loop_start);
-      loop_start = increment_start;
-
-      self.patch_jump(body_jump);
-    }
-
-    self.statement();
-    self.emit_loop(loop_start);
-
-    // patch exit jump
-    if let Some(jump) = exit_jump {
-      self.patch_jump(jump);
-      self.emit_byte(AlignedByteCode::Drop);
-    }
-  }
-
-  /// Parse the body of a range style for loop
-  fn for_range_body(&mut self, loop_token: Token) {
-    // push collection onto stack
-    self.expression();
-
-    let iterator_token = Token {
-      lexeme: SmolStr::new_inline_from_ascii(ITER_VAR.len(), ITER_VAR.as_bytes()),
-      kind: TokenKind::Identifier,
-      line: self.parser.previous.line,
-    };
-
-    // get constant for 'iter' method
-    let iter_const = self.identifer_constant(Token {
-      lexeme: SmolStr::new_inline_from_ascii(ITER.len(), ITER.as_bytes()),
-      kind: TokenKind::Identifier,
-      line: self.parser.previous.line,
-    });
-
-    // declare the hidden local $iter variable
-    let iterator_const = self.identifer_constant(iterator_token.clone());
-    self.declare_variable(iterator_token.clone());
-    self.emit_byte(AlignedByteCode::Invoke((iter_const, 0)));
-    self.define_variable(iterator_const);
-
-    self
-      .parser
-      .consume(TokenKind::RightParen, "Expected ')' after iterable.");
-
-    // mark start of loop
-    let loop_start = self.current_chunk().instructions.len();
-
-    // define iterator method constants
-    let next_const = self.identifer_constant(Token {
-      lexeme: SmolStr::new_inline_from_ascii(4, b"next"),
-      kind: TokenKind::Identifier,
-      line: self.parser.previous.line,
-    });
-
-    let current_const = self.identifer_constant(Token {
-      lexeme: SmolStr::new_inline_from_ascii(6, b"current"),
-      kind: TokenKind::Identifier,
-      line: self.parser.previous.line,
-    });
-
-    // call next on iterator
-    let iterator_variable = self
-      .resolve_local(&iterator_token)
-      .expect("Iterator variable was not defined.");
-    self.emit_byte(AlignedByteCode::GetLocal(iterator_variable));
-    self.emit_byte(AlignedByteCode::IterNext(next_const));
-
-    // check at end of iterator
-    let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
-    self.emit_byte(AlignedByteCode::Drop);
-
-    // assign $iter.current to loop variable
-    let loop_variable = self
-      .resolve_local(&loop_token)
-      .expect("Loop variable was not defined.");
-    self.emit_byte(AlignedByteCode::GetLocal(iterator_variable));
-    self.emit_byte(AlignedByteCode::IterCurrent(current_const));
-    self.emit_byte(AlignedByteCode::SetLocal(loop_variable));
-    self.emit_byte(AlignedByteCode::Drop);
-
-    // loop body
-    self.statement();
-    self.emit_loop(loop_start);
-
-    // loop back to top
-    self.patch_jump(exit_jump);
-    self.emit_byte(AlignedByteCode::Drop);
-  }
-
-  /// Parse while statement
-  fn while_statement(&mut self) {
-    let loop_start = self.current_chunk().instructions.len();
-
-    self
-      .parser
-      .consume(TokenKind::LeftParen, "Expected '(' after 'while'.");
-    self.expression();
-    self
-      .parser
-      .consume(TokenKind::RightParen, "Expected ')' after condition.");
-
-    let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
-
-    self.emit_byte(AlignedByteCode::Drop);
-    self.statement();
-
-    self.emit_loop(loop_start);
-
-    self.patch_jump(exit_jump);
-    self.emit_byte(AlignedByteCode::Drop)
-  }
-
-  /// Compile a if statement
-  fn if_statement(&mut self) {
-    // parse condition
-    self
-      .parser
-      .consume(TokenKind::LeftParen, "Expected '(' after 'if'.");
-    self.expression();
-    self
-      .parser
-      .consume(TokenKind::RightParen, "Expected ')' after condition.");
-
-    // parse then branch
-    let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
-    self.emit_byte(AlignedByteCode::Drop);
-    self.statement();
-
-    // emit else jump
-    let else_jump = self.emit_jump(AlignedByteCode::Jump(0));
-    self.patch_jump(then_jump);
-    self.emit_byte(AlignedByteCode::Drop);
-
-    // parse else branch if it exists
-    if self.parser.match_kind(TokenKind::Else) {
-      self.statement();
-    }
-
-    self.patch_jump(else_jump);
-  }
-
-  /// Parse an import statement
-  fn import_statement(&mut self) {
-    self
-      .parser
-      .consume(TokenKind::Identifier, "Expected name following import.");
-    let name = self.identifer_constant(self.parser.previous.clone());
-
-    self
-      .parser
-      .consume(TokenKind::From, "Expected 'from' following import name.");
-
-    self
-      .parser
-      .consume(TokenKind::String, "Expected path string after 'from'.");
-    let string = self.hooks.manage_str(self.parser.previous.lexeme.as_str());
-    let value = val!(string);
-    let path = self.make_constant(value);
-    self
-      .parser
-      .consume(TokenKind::Semicolon, "Expected ';' after value.");
-
-    if self.scope_depth == 0 {
-      self.emit_byte(AlignedByteCode::Import(path));
-      self.emit_byte(AlignedByteCode::DefineGlobal(name));
-    } else {
-      self
-        .parser
-        .error_at_current("Can only import from the module scope.")
-    }
-  }
-
-  /// Parse print statement
-  // fn print_statement(&mut self) {
-  //   self.expression();
-  //   self
-  //     .parser
-  //     .consume(TokenKind::Semicolon, "Expected ';' after value.");
-  //   self.emit_byte(AlignedByteCode::Print)
-  // }
-
-  /// Parse a return statement
-  fn return_statement(&mut self) {
-    if self.fun_kind == FunKind::Script {
-      self.parser.error("Cannot return from top-level code.");
-    }
-
-    if self.parser.match_kind(TokenKind::Semicolon) {
-      self.emit_return();
-    } else {
-      if let FunKind::Initializer = self.fun_kind {
-        self
-          .parser
-          .error("Cannot return a value from an initializer.");
-      }
-
-      self.expression();
-      self
-        .parser
-        .consume(TokenKind::Semicolon, "Expected ',' after return value.");
-      self.emit_byte(AlignedByteCode::Return);
-    }
-  }
-
-  /// Synchronize the compiler to a sentinel token
-  fn synchronize(&mut self, optional_stop: Option<TokenKind>) {
-    self.parser.panic_mode = false;
-
-    while self.parser.current.kind != TokenKind::Eof {
-      if self.parser.previous.kind == TokenKind::Semicolon {
-        return;
-      }
-
-      match self.parser.current.kind {
-        TokenKind::Class
-        | TokenKind::Fn
-        | TokenKind::Let
-        | TokenKind::For
-        | TokenKind::If
-        | TokenKind::While
-        // | TokenKind::Print
-        | TokenKind::Return => {
-          return;
-        }
-        _ => {}
-      }
-
-      if let Some(stop) = optional_stop {
-        if self.parser.current.kind == stop {
-          return;
-        }
-      }
-
-      self.parser.advance();
-    }
-  }
-
-  /// End the compilation at eof
-  fn end_compiler(&mut self) {
-    self.emit_return();
+  /// End this compilers compilation emitting a final return
+  /// and shrinking the function to the correct size
+  fn end_compiler(&mut self, line: u32) {
+    self.emit_return(line);
+    self.fun.shrink_to_fit(self.hooks);
 
     #[cfg(feature = "debug")]
     self.print_chunk();
+  }
+
+  /// Print the chunk if debug and an error occurred
+  #[cfg(feature = "debug")]
+  fn print_chunk(&mut self) {
+    let mut stdio = &mut self.io.stdio();
+
+    disassemble_chunk(&mut stdio, self.current_chunk(), &self.fun.name)
+      .expect("could not write to stdio");
+  }
+
+  /// Emit byte code for a return
+  fn emit_return(&mut self, line: u32) {
+    match self.fun_kind {
+      FunKind::Initializer => self.emit_byte(AlignedByteCode::GetLocal(0), line),
+      _ => self.emit_byte(AlignedByteCode::Nil, line),
+    }
+
+    self.emit_byte(AlignedByteCode::Return, line);
+  }
+
+  /// scope the provide closure
+  fn scope<T>(&mut self, end_line: u32, cb: impl FnOnce(&mut Self) -> T) -> T {
+    self.begin_scope();
+    let result = cb(self);
+    self.end_scope(end_line);
+    result
   }
 
   /// Increase the scope depth by 1
@@ -897,226 +269,90 @@ impl<'a, 's> Compiler<'a, 's> {
   }
 
   /// Decrease the scope depth by 1
-  fn end_scope(&mut self) {
+  fn end_scope(&mut self, end_line: u32) {
     self.scope_depth -= 1;
 
+    let mut idx = self.local_count;
+    let mut no_captures = true;
+
+    while idx > 0 && self.locals[idx - 1].depth > self.scope_depth {
+      no_captures = no_captures && !self.locals[idx - 1].is_captured;
+      idx -= 1;
+    }
+
+    // if we didn't capture anything emit dropN instruction
+    if no_captures {
+      let dropped = self.local_count - idx;
+
+      match dropped {
+        0 => (),
+        1 => self.emit_byte(AlignedByteCode::Drop, end_line),
+        _ => self.emit_byte(AlignedByteCode::DropN(dropped as u8), end_line),
+      }
+
+      self.local_count = idx;
+      return;
+    }
+
+    // otherwise emit normal drop and close upvalues
     while self.local_count > 0 && self.locals[self.local_count - 1].depth > self.scope_depth {
       if self.locals[self.local_count - 1].is_captured {
-        self.emit_byte(AlignedByteCode::CloseUpvalue)
+        self.emit_byte(AlignedByteCode::CloseUpvalue, end_line)
       } else {
-        self.emit_byte(AlignedByteCode::Drop);
+        self.emit_byte(AlignedByteCode::Drop, end_line);
       }
       self.local_count -= 1;
     }
   }
 
-  /// Print the chunk if debug and an error occurred
-  #[cfg(feature = "debug")]
-  fn print_chunk(&mut self) {
-    let mut stdio = &mut self.parser.stdio;
-
-    disassemble_chunk(&mut stdio, self.fun.chunk(), &self.fun.name)
-      .expect("could not write to stdio");
-  }
-
-  /// Compiles a binary expression into it's equivalent bytecodes
-  ///
-  /// # Panics
-  /// This method will panic if an invalid binary operator is passed
-  fn binary(&mut self) {
-    // Remember the operator
-    let operator_kind = self.parser.previous.kind;
-    let precedence = get_rule(operator_kind).precedence.higher();
-    self.parse_precedence(precedence);
-
-    match operator_kind {
-      TokenKind::BangEqual => self.emit_bytes(AlignedByteCode::Equal, AlignedByteCode::Not),
-      TokenKind::EqualEqual => self.emit_byte(AlignedByteCode::Equal),
-      TokenKind::Greater => self.emit_byte(AlignedByteCode::Greater),
-      TokenKind::GreaterEqual => self.emit_bytes(AlignedByteCode::Less, AlignedByteCode::Not),
-      TokenKind::Less => self.emit_byte(AlignedByteCode::Less),
-      TokenKind::LessEqual => self.emit_bytes(AlignedByteCode::Greater, AlignedByteCode::Not),
-      TokenKind::Plus => self.emit_byte(AlignedByteCode::Add),
-      TokenKind::Minus => self.emit_byte(AlignedByteCode::Subtract),
-      TokenKind::Star => self.emit_byte(AlignedByteCode::Multiply),
-      TokenKind::Slash => self.emit_byte(AlignedByteCode::Divide),
-      _ => panic!("Invalid operator"),
+  /// Mark a variable initialized
+  fn mark_initialized(&mut self) {
+    if self.scope_depth > 0 {
+      self.locals[self.local_count - 1].depth = self.scope_depth;
     }
   }
 
-  /// Compile a call invocation
-  fn call(&mut self) {
-    let arg_count = self.call_arguments();
-    self.emit_byte(AlignedByteCode::Call(arg_count));
-  }
-
-  /// Compile a call invocation
-  fn list(&mut self) {
-    self.emit_byte(AlignedByteCode::List);
-    let arg_count = self.list_arguments();
-
-    if arg_count > 0 {
-      self.emit_byte(AlignedByteCode::ListInit(arg_count));
+  /// Add a local variable to the current scope
+  fn add_local(&mut self, name: Token) {
+    if self.local_count == std::u8::MAX as usize {
+      self.error("Too many local variables in function.");
+      return;
     }
+
+    let local = &mut self.locals[self.local_count];
+    self.local_count += 1;
+
+    local.name = Some(name.lexeme);
+    local.depth = -1;
   }
 
-  /// Compile an index
-  fn index(&mut self, can_assign: bool) {
-    self.expression();
-    self
-      .parser
-      .consume(TokenKind::RightBracket, "Expected ']' after index");
-
-    if can_assign && self.parser.match_kind(TokenKind::Equal) {
-      self.expression();
-      self.emit_byte(AlignedByteCode::SetIndex);
-    } else {
-      self.emit_byte(AlignedByteCode::GetIndex);
+  ///  declare a variable
+  fn declare_variable(&mut self, name: Token) {
+    // if global exit
+    if self.scope_depth == 0 {
+      return;
     }
-  }
 
-  /// Compile a map literal
-  fn map(&mut self) {
-    self.emit_byte(AlignedByteCode::Map);
-    let mut entries: usize = 0;
-
-    while !self.parser.check(TokenKind::RightBrace) {
-      self.expression();
-      self
-        .parser
-        .consume(TokenKind::Colon, "Expected ':' after map key");
-      self.expression();
-
-      if entries == std::u16::MAX as usize {
-        self.parser.error(&format!(
-          "Cannot have more than {} key value pairs in map literal",
-          entries
-        ));
-      }
-      entries += 1;
-
-      if !self.parser.match_kind(TokenKind::Comma) {
+    for local in self.locals[..self.local_count].iter().rev() {
+      // If we in a lower scope break
+      if local.depth != UNINITIALIZED && local.depth < self.scope_depth {
         break;
       }
+
+      // check that the same variable wasn't declared twice in the same scope
+      if let Some(local_name) = &local.name {
+        if &name.lexeme == local_name {
+          self.error("Variable with this name already declared in this scope.");
+          return;
+        }
+      }
     }
 
-    self
-      .parser
-      .consume(TokenKind::RightBrace, "Expected '}' after map");
-
-    if entries > 0 {
-      self.emit_byte(AlignedByteCode::MapInit(entries as u16))
-    }
-  }
-
-  /// Compile a lambda expression
-  fn lambda(&mut self) {
-    let name = self.hooks.manage_str("lambda");
-
-    let mut fun_compiler = Compiler::child(name, FunKind::Fun, &mut *self);
-    fun_compiler.begin_scope();
-
-    // parse function parameters
-    if !fun_compiler.parser.check(TokenKind::Pipe) {
-      fun_compiler.function_signature();
-    }
-
-    fun_compiler
-      .parser
-      .consume(TokenKind::Pipe, "Expected '|' after lambda parameters.");
-
-    if fun_compiler.parser.match_kind(TokenKind::LeftBrace) {
-      fun_compiler.block();
-    } else {
-      // implicitly return expression lambdas
-      fun_compiler.expression();
-      fun_compiler.emit_byte(AlignedByteCode::Return)
-    }
-
-    // end compilation of function chunk
-    fun_compiler.end_compiler();
-    let upvalue_count = fun_compiler.fun.upvalue_count;
-    // let boxed_fun = Box::new(fun_compiler.fun);
-
-    let index = self.make_constant(val!(fun_compiler.fun));
-    self.emit_byte(AlignedByteCode::Closure(index));
-
-    // emit upvalue index instructions
-    fun_compiler.upvalues[0..upvalue_count]
-      .iter()
-      .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(*upvalue)));
-  }
-
-  /// Compile an dot operator
-  fn dot(&mut self, can_assign: bool) {
-    self
-      .parser
-      .consume(TokenKind::Identifier, "Expected property name after '.'.");
-    let name = self.identifer_constant(self.parser.previous.clone());
-
-    if can_assign && self.parser.match_kind(TokenKind::Equal) {
-      self.expression();
-      self.emit_byte(AlignedByteCode::SetProperty(name));
-    } else if self.parser.match_kind(TokenKind::LeftParen) {
-      let arg_count = self.call_arguments();
-      self.emit_byte(AlignedByteCode::Invoke((name, arg_count)));
-    } else {
-      self.emit_byte(AlignedByteCode::GetProperty(name));
-    }
-  }
-
-  /// Compile a unary expression into it's equivalent bytecode
-  ///
-  /// # Panics
-  /// This method will panic if an invalid unary operator is attempted to compile
-  fn unary(&mut self) {
-    let operator_kind = self.parser.previous.kind;
-
-    // Compile the operand
-    self.parse_precedence(Precedence::Unary);
-
-    // Emit the operator instruction
-    match operator_kind {
-      TokenKind::Minus => self.emit_byte(AlignedByteCode::Negate),
-      TokenKind::Bang => self.emit_byte(AlignedByteCode::Not),
-      _ => panic!(),
-    }
-  }
-
-  /// Compile a grouping expression
-  fn grouping(&mut self) {
-    self.expression();
-
-    self
-      .parser
-      .consume(TokenKind::RightParen, "Expected ')' after expression")
-  }
-
-  /// Compile a number literal
-  fn number(&mut self) {
-    let value = val!(self
-      .parser
-      .previous
-      .lexeme
-      .parse::<f64>()
-      .expect("Unable to parse float"));
-    self.emit_constant(value);
-  }
-
-  /// Compile a variable statement
-  fn variable(&mut self, can_assign: bool) {
-    self.named_variable(self.parser.previous.clone(), can_assign);
-  }
-
-  /// Compile a string literal
-  fn string(&mut self) {
-    let string = self.hooks.manage_str(self.parser.previous.lexeme.as_str());
-    let value = val!(string);
-    self.emit_constant(value)
+    self.add_local(name);
   }
 
   /// retrieve a named variable from either local or global scope
-  fn named_variable(&mut self, name: Token, can_assign: bool) {
+  fn variable(&mut self, name: &Token, can_assign: bool) {
     let index = self.resolve_local(&name);
 
     let (get_byte, set_byte) = match index {
@@ -1130,7 +366,7 @@ impl<'a, 's> Compiler<'a, 's> {
           AlignedByteCode::SetUpvalue(upvalue),
         ),
         None => {
-          let global_index = self.identifer_constant(name);
+          let global_index = self.identifier_constant(&name);
           (
             AlignedByteCode::GetGlobal(global_index),
             AlignedByteCode::SetGlobal(global_index),
@@ -1139,298 +375,11 @@ impl<'a, 's> Compiler<'a, 's> {
       },
     };
 
-    if can_assign && self.parser.match_kind(TokenKind::Equal) {
-      self.expression();
-      self.emit_byte(set_byte);
+    if can_assign {
+      self.emit_byte(set_byte, name.end());
     } else {
-      self.emit_byte(get_byte);
+      self.emit_byte(get_byte, name.end());
     }
-  }
-
-  /// Compile a literal
-  fn literal(&mut self) {
-    match self.parser.previous.kind {
-      TokenKind::True => self.emit_byte(AlignedByteCode::True),
-      TokenKind::False => self.emit_byte(AlignedByteCode::False),
-      TokenKind::Nil => self.emit_byte(AlignedByteCode::Nil),
-      _ => panic!(format!(
-        "Unexpected token kind {:?}",
-        self.parser.previous.kind
-      )),
-    }
-  }
-
-  /// Compile an expression an a provided precedences
-  fn parse_precedence(&mut self, precedence: Precedence) {
-    self.parser.advance();
-
-    let can_assign = precedence <= Precedence::Assignment;
-    let prefix_fn = get_rule(self.parser.previous.kind).prefix.clone();
-
-    match prefix_fn {
-      Some(prefix) => self.execute_action(prefix, can_assign),
-      None => {
-        self.parser.error("Expected expression.");
-        return;
-      }
-    }
-
-    while precedence <= get_rule(self.parser.current.kind).precedence {
-      self.parser.advance();
-      let infix_fn = get_rule(self.parser.previous.kind).infix.clone();
-
-      match infix_fn {
-        Some(infix) => self.execute_action(infix, can_assign),
-        None => {
-          self.parser.error("Expected expression.");
-          return;
-        }
-      }
-    }
-
-    if can_assign && self.parser.match_kind(TokenKind::Equal) {
-      self.parser.error("Invalid assignment target.")
-    }
-  }
-
-  /// Define a variable
-  fn define_variable(&mut self, variable: u16) {
-    if self.scope_depth > 0 {
-      self.mark_initialized();
-      return;
-    }
-
-    self.emit_byte(AlignedByteCode::DefineGlobal(variable));
-  }
-
-  /// Parse the current functions arity
-  fn function_signature(&mut self) {
-    let mut arity: u16 = 0;
-
-    loop {
-      arity += 1;
-      if arity == std::u8::MAX as u16 {
-        self
-          .parser
-          .error_at_current("Cannot have more than 255 parameters.");
-      }
-
-      let param_constant = self.parse_variable("Expected parameter name.");
-      self.define_variable(param_constant);
-
-      if !self.parser.match_kind(TokenKind::Comma) {
-        break;
-      }
-    }
-
-    self.fun.arity = Arity::Fixed(arity as u8);
-  }
-
-  /// Parse a list of argument to a function
-  fn call_arguments(&mut self) -> u8 {
-    let arg_count = self.consume_arguments(TokenKind::RightParen, std::u8::MAX as usize);
-    self
-      .parser
-      .consume(TokenKind::RightParen, "Expected ')' after arguments");
-    arg_count as u8
-  }
-
-  /// Parse a list of argument defining a list
-  fn list_arguments(&mut self) -> u16 {
-    let arg_count = self.consume_arguments(TokenKind::RightBracket, std::u16::MAX as usize);
-    self
-      .parser
-      .consume(TokenKind::RightBracket, "Expected ']' after arguments");
-    arg_count as u16
-  }
-
-  /// Consume a comma separated set of arguments for calls and lists
-  fn consume_arguments(&mut self, stop_token: TokenKind, max: usize) -> usize {
-    let mut arg_count: usize = 0;
-
-    while !self.parser.check(stop_token) {
-      self.expression();
-
-      if arg_count == max {
-        self
-          .parser
-          .error(&format!("Cannot have more than {} arguments", max));
-        return arg_count;
-      }
-      arg_count += 1;
-
-      if !self.parser.match_kind(TokenKind::Comma) {
-        break;
-      }
-    }
-
-    arg_count
-  }
-
-  /// Emit instruction for a short circuited and
-  fn and(&mut self) {
-    let end_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
-
-    self.emit_byte(AlignedByteCode::Drop);
-    self.parse_precedence(Precedence::And);
-
-    self.patch_jump(end_jump);
-  }
-
-  /// Emit instruction for a short circuited and
-  fn or(&mut self) {
-    let else_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0));
-    let end_jump = self.emit_jump(AlignedByteCode::Jump(0));
-
-    self.patch_jump(else_jump);
-    self.emit_byte(AlignedByteCode::Drop);
-
-    self.parse_precedence(Precedence::Or);
-    self.patch_jump(end_jump);
-  }
-
-  /// Parse a class's self identifier
-  fn self_(&mut self) {
-    self
-      .current_class
-      .map(|class_compiler| class_compiler.fun_kind)
-      .and_then(|fun_kind| {
-        fun_kind.and_then(|fun_kind| match fun_kind {
-          FunKind::Method | FunKind::Initializer => {
-            self.variable(false);
-            Some(())
-          }
-          _ => None,
-        })
-      })
-      .or_else(|| {
-        self
-          .parser
-          .error("Cannot use 'self' outside of class instance methods.");
-        None
-      });
-  }
-
-  /// Parse a class' super identifer
-  fn super_(&mut self) {
-    match self.current_class {
-      None => self.parser.error("Cannot use 'super' outside of a class."),
-      Some(class) => {
-        if !class.has_super_class {
-          self
-            .parser
-            .error("Cannot use 'super' in a class with no superclass.");
-        }
-      }
-    }
-
-    self
-      .parser
-      .consume(TokenKind::Dot, "Expected '.' after 'super'.");
-    self
-      .parser
-      .consume(TokenKind::Identifier, "Expected superclass method name.");
-    let name = self.identifer_constant(self.parser.previous.clone());
-
-    // load self on top of stack
-    self.named_variable(
-      Token {
-        lexeme: SmolStr::new_inline_from_ascii(SELF.len(), SELF.as_bytes()),
-        kind: TokenKind::Self_,
-        line: self.parser.previous.line,
-      },
-      false,
-    );
-
-    // check if we immediately invoke super
-    if self.parser.match_kind(TokenKind::LeftParen) {
-      let arg_count = self.call_arguments();
-      self.named_variable(
-        Token {
-          lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
-          kind: TokenKind::Super,
-          line: self.parser.previous.line,
-        },
-        false,
-      );
-      self.emit_byte(AlignedByteCode::SuperInvoke((name, arg_count)));
-    } else {
-      self.named_variable(
-        Token {
-          lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
-          kind: TokenKind::Super,
-          line: self.parser.previous.line,
-        },
-        false,
-      );
-
-      self.emit_byte(AlignedByteCode::GetSuper(name));
-    }
-  }
-
-  /// Parse a variable from the provided token return it's new constant
-  /// identifer if an identifer was identified
-  fn parse_variable(&mut self, error_message: &str) -> u16 {
-    self.parser.consume(TokenKind::Identifier, error_message);
-    self.declare_variable(self.parser.previous.clone());
-    if self.scope_depth > 0 {
-      return 0;
-    }
-    self.identifer_constant(self.parser.previous.clone())
-  }
-
-  /// Mark a variable initialized
-  fn mark_initialized(&mut self) {
-    if self.scope_depth > 0 {
-      self.locals[self.local_count - 1].depth = self.scope_depth;
-    }
-  }
-
-  /// Generate a constant from the provided identifier token
-  fn identifer_constant(&mut self, name: Token) -> u16 {
-    let identifer = self.hooks.manage_str(name.lexeme.as_str());
-    self.make_constant(val!(identifer))
-  }
-
-  fn add_local(&mut self, name: Token) {
-    if self.local_count == std::u8::MAX as usize {
-      self.parser.error("Too many local variables in function.");
-      return;
-    }
-
-    let local = &mut self.locals[self.local_count];
-    self.local_count += 1;
-
-    local.name = Some(SmolStr::from(name.lexeme));
-    local.depth = -1;
-  }
-
-  ///  declare a variable
-  fn declare_variable(&mut self, name: Token) {
-    // if global exit
-    if self.scope_depth == 0 {
-      return;
-    }
-
-    for i in (0..self.local_count).rev() {
-      let local = &self.locals[i];
-
-      // If we in a lower scope break
-      if local.depth != UNINITIALIZED && local.depth < self.scope_depth {
-        break;
-      }
-
-      // check that the same variable wasn't declared twice in the same scope
-      if let Some(local_name) = &local.name {
-        if &name.lexeme == local_name {
-          self
-            .parser
-            .error("Variable with this name already declared in this scope.");
-        }
-      }
-    }
-
-    self.add_local(name);
   }
 
   /// resolve a token to a local if it exists
@@ -1442,9 +391,7 @@ impl<'a, 's> Compiler<'a, 's> {
         if &name.lexeme == local_name {
           // handle the case were `let a = a;`
           if local.depth == UNINITIALIZED {
-            self
-              .parser
-              .error("Cannot read local variable in its own initializer.")
+            self.error("Cannot read local variable in its own initializer.")
           }
 
           return Some(i as u8);
@@ -1458,9 +405,9 @@ impl<'a, 's> Compiler<'a, 's> {
 
   /// resolve a token to an upvalue in an enclosing scope if it exists
   fn resolve_upvalue(&mut self, name: &Token) -> Option<u8> {
-    match self.enclosing {
+    match &mut self.enclosing {
       Some(parent_ptr) => {
-        let parent = unsafe { &mut *parent_ptr };
+        let parent = unsafe { parent_ptr.as_mut() };
 
         match parent.resolve_local(name) {
           Some(local) => {
@@ -1493,7 +440,7 @@ impl<'a, 's> Compiler<'a, 's> {
 
     // prevent overflow
     if upvalue_count == std::u8::MAX as usize {
-      self.parser.error("Too many closure variable in function.");
+      self.error("Too many closure variable in function.");
       return 0;
     }
 
@@ -1503,65 +450,32 @@ impl<'a, 's> Compiler<'a, 's> {
     upvalue_count
   }
 
-  /// Execute a provided action
-  fn execute_action(&mut self, action: Act, can_assign: bool) {
-    match action {
-      Act::And => self.and(),
-      Act::Binary => self.binary(),
-      Act::Call => self.call(),
-      Act::List => self.list(),
-      Act::Map => self.map(),
-      Act::Lambda => self.lambda(),
-      Act::Index => self.index(can_assign),
-      Act::Dot => self.dot(can_assign),
-      Act::Grouping => self.grouping(),
-      Act::Literal => self.literal(),
-      Act::Number => self.number(),
-      Act::Or => self.or(),
-      Act::String => self.string(),
-      Act::Super => self.super_(),
-      Act::Self_ => self.self_(),
-      Act::Unary => self.unary(),
-      Act::Variable => self.variable(can_assign),
+  /// Define a variable
+  fn define_variable(&mut self, variable: u16, line: u32) {
+    if self.scope_depth > 0 {
+      self.mark_initialized();
+      return;
     }
+
+    self.emit_byte(AlignedByteCode::DefineGlobal(variable), line);
   }
 
-  /// Emit byte code for a return
-  fn emit_return(&mut self) {
-    match self.fun_kind {
-      FunKind::Initializer => self.emit_byte(AlignedByteCode::GetLocal(0)),
-      _ => self.emit_byte(AlignedByteCode::Nil),
-    }
-
-    self.emit_byte(AlignedByteCode::Return);
+  /// Emit two provided instruction
+  fn emit_bytes(&mut self, op_code1: AlignedByteCode, op_code2: AlignedByteCode, line: u32) {
+    self.write_instruction(op_code1, line);
+    self.write_instruction(op_code2, line);
   }
 
-  /// Add a constant to the current chunk
-  fn make_constant(&mut self, value: Value) -> u16 {
-    match self.constants.get(&value) {
-      Some(index) => *index as u16,
-      None => {
-        let index = self.fun.add_constant(&self.hooks, value);
-        if index > std::u16::MAX as usize {
-          self.parser.error("Too many constants in one chunk.");
-          return 0;
-        }
-
-        self.constants.insert(value, index);
-        index as u16
-      }
-    }
+  /// Emit a provided instruction
+  fn emit_byte(&mut self, op_code: AlignedByteCode, line: u32) {
+    self.write_instruction(op_code, line);
   }
 
-  /// Emit byte code for a constant
-  fn emit_constant(&mut self, value: Value) {
-    let index = self.make_constant(value);
+  /// Emit a jump instruction
+  fn emit_jump(&mut self, jump: AlignedByteCode, line: u32) -> usize {
+    self.emit_byte(jump, line);
 
-    if index <= std::u8::MAX as u16 {
-      self.emit_byte(AlignedByteCode::Constant(index as u8));
-    } else {
-      self.emit_byte(AlignedByteCode::ConstantLong(index));
-    }
+    self.current_chunk().instructions.len() - 2
   }
 
   /// Patch a jump instruction
@@ -1577,41 +491,874 @@ impl<'a, 's> Compiler<'a, 's> {
     let jump = self.current_chunk().instructions.len() - offset - 2;
 
     if jump > std::u16::MAX.try_into().unwrap() {
-      self.parser.error("Too much code to jump over.");
+      self.error("Too much code to jump over.");
     }
 
     jump as u16
   }
 
   /// Emit a loop instruction
-  fn emit_loop(&mut self, loop_start: usize) {
+  fn emit_loop(&mut self, loop_start: usize, line: u32) {
     let offset = self.current_chunk().instructions.len() - loop_start + 3;
     if offset > std::u16::MAX.try_into().unwrap() {
-      self.parser.error("Loop body too large.");
+      self.error("Loop body too large.");
     }
 
-    self.emit_byte(AlignedByteCode::Loop(offset as u16));
+    self.emit_byte(AlignedByteCode::Loop(offset as u16), line);
   }
 
-  /// Emit two provided instruction
-  fn emit_bytes(&mut self, op_code1: AlignedByteCode, op_code2: AlignedByteCode) {
-    let line = self.parser.previous.line;
-    self.write_instruction(op_code1, line);
-    self.write_instruction(op_code2, line);
+  /// The current chunk
+  fn current_chunk(&self) -> &Chunk {
+    self.fun.chunk()
   }
 
-  /// Emit a provided instruction
-  fn emit_byte(&mut self, op_code: AlignedByteCode) {
-    let line = self.parser.previous.line;
-    self.write_instruction(op_code, line);
+  /// write instruction to the current function
+  fn write_instruction(&mut self, op_code: AlignedByteCode, line: u32) {
+    self.fun.write_instruction(self.hooks, op_code, line)
   }
 
-  /// Emit a jump instruction
-  fn emit_jump(&mut self, jump: AlignedByteCode) -> usize {
-    self.emit_byte(jump);
-
-    self.current_chunk().instructions.len() - 2
+  /// Parse a variable from the provided token return it's new constant
+  /// identifer if an identifer was identified
+  fn make_identifier(&mut self, name: &Token) -> u16 {
+    self.declare_variable(name.clone());
+    if self.scope_depth > 0 {
+      return 0;
+    }
+    self.identifier_constant(name)
   }
+
+  /// Generate a constant from the provided identifier token
+  fn identifier_constant(&mut self, name: &Token) -> u16 {
+    let identifer = self.hooks.manage_str(name.lexeme.as_str());
+    self.make_constant(val!(identifer))
+  }
+
+  /// Add a constant to the current chunk
+  fn make_constant(&mut self, value: Value) -> u16 {
+    match self.constants.get(&value) {
+      Some(index) => *index as u16,
+      None => {
+        let index = self.fun.add_constant(&self.hooks, value);
+        if index > std::u16::MAX as usize {
+          self.error("Too many constants in one chunk.");
+          return 0;
+        }
+
+        self.constants.insert(value, index);
+        index as u16
+      }
+    }
+  }
+
+  /// Emit byte code for a constant
+  fn emit_constant(&mut self, value: Value, line: u32) {
+    let index = self.make_constant(value);
+
+    if index <= std::u8::MAX as u16 {
+      self.emit_byte(AlignedByteCode::Constant(index as u8), line);
+    } else {
+      self.emit_byte(AlignedByteCode::ConstantLong(index), line);
+    }
+  }
+
+  /// Indicate an error occurred at he current index
+  fn error_at_current(&mut self, message: &str) {
+    self.error_at(message);
+  }
+
+  /// Indicate an error occurred at the previous index
+  pub fn error(&mut self, message: &str) {
+    self.error_at(message);
+  }
+
+  /// Print an error to the console for a user to address
+  fn error_at(&mut self, message: &str) {
+    let mut stdio = self.io.stdio();
+    let stderr = stdio.stderr();
+
+    write!(stderr, "[line {}] Error", 0).expect("Unable to write to stderr.");
+    write!(stderr, " at {}", "todo").expect("Unable to write to stderr.");
+    writeln!(stderr, ": {}", message).expect("Unable to write to stderr.");
+    self.had_error = true;
+  }
+
+  /// Compile a declaration
+  fn decl(&mut self, decl: &Decl) {
+    match decl {
+      Decl::Symbol(symbol) => self.symbol(symbol),
+      Decl::Export(export) => self.export(export),
+      Decl::Stmt(stmt) => self.stmt(stmt),
+      Decl::Error(error) => self.visit_error(error),
+    }
+  }
+
+  /// Compile a statement
+  fn stmt(&mut self, stmt: &Stmt) {
+    match stmt {
+      Stmt::Expr(expr) => {
+        self.expr(expr);
+        self.emit_byte(AlignedByteCode::Drop, expr.end());
+      }
+      Stmt::Import(import) => self.import(import),
+      Stmt::For(for_) => self.for_(for_),
+      Stmt::If(if_) => self.if_(if_),
+      Stmt::Return(return_) => self.return_(return_),
+      Stmt::While(while_) => self.while_(while_),
+      Stmt::Try(try_) => self.try_(try_),
+    }
+  }
+
+  /// Compile an expression
+  fn expr(&mut self, expr: &Expr) {
+    match expr {
+      Expr::Assign(assign) => self.assign(assign),
+      Expr::Binary(binary) => self.binary(binary),
+      Expr::Unary(unary) => self.unary(unary),
+      Expr::Atom(atom) => self.atom(atom),
+    }
+  }
+
+  /// Compile a the base of an expression
+  fn primary(&mut self, primary: &Primary, trailers: &[Trailer]) -> bool {
+    match primary {
+      Primary::AssignBlock(block) => self.assign_block(block),
+      Primary::True(token) => self.true_(token),
+      Primary::False(token) => self.false_(token),
+      Primary::Nil(token) => self.nil(token),
+      Primary::Number(token) => self.number(token),
+      Primary::Grouping(expr) => {
+        self.expr(expr);
+        false
+      }
+      Primary::String(token) => self.string(token),
+      Primary::Ident(token) => self.identifier(token),
+      Primary::Self_(token) => self.self_(token),
+      Primary::Super(token) => self.super_(token, trailers),
+      Primary::Lambda(fun) => self.lambda(fun),
+      Primary::List(items) => self.list(items),
+      Primary::Map(kvps) => self.map(kvps),
+    }
+  }
+
+  /// Compile a symbol declaration
+  fn symbol(&mut self, symbol: &Symbol) {
+    match symbol {
+      Symbol::Class(class) => self.class(class),
+      Symbol::Fun(fun) => self.fun(fun),
+      Symbol::Let(let_) => self.let_(let_),
+      _ => 0,
+    };
+  }
+
+  /// Compile an export declaration
+  fn export(&mut self, export: &Symbol) {
+    let symbol = match &export {
+      Symbol::Class(class) => Some(self.class(class)),
+      Symbol::Fun(fun) => Some(self.fun(fun)),
+      Symbol::Let(let_) => Some(self.let_(let_)),
+      _ => None,
+    };
+
+    // emit error if not at module level
+    if self.scope_depth == 0 {
+      if let Some(symbol) = symbol {
+        self.emit_byte(AlignedByteCode::Export(symbol), export.end());
+      }
+    } else {
+      self.error_at_current("Can only export from the module scope.")
+    }
+  }
+
+  /// Compile a class declaration
+  fn class(&mut self, class: &ast::Class) -> u16 {
+    // declare the class by name
+    let name = class.name.clone().expect("Expected class name.");
+    let name_constant = self.identifier_constant(&name);
+    self.declare_variable(name.clone());
+
+    self.emit_byte(AlignedByteCode::Class(name_constant), name.end());
+    self.define_variable(name_constant, name.end());
+
+    // set this class as the current class compiler
+    let mut class_compiler = self.hooks.manage(ClassInfo {
+      name: class.name.clone(),
+      fun_kind: None,
+      has_super_class: false,
+      enclosing: self.current_class,
+    });
+    self.current_class = Some(class_compiler);
+
+    // handle the case where a super class exists
+    if let Some(super_class) = &class.super_class {
+      self.variable(&super_class.type_ref.name, false);
+
+      // start a new scope with the super keyword present
+      self.begin_scope();
+      self.add_local(Token {
+        kind: TokenKind::Super,
+        lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
+        line: super_class.end(),
+      });
+      self.define_variable(0, super_class.end());
+
+      self.variable(&name, false);
+      self.emit_byte(AlignedByteCode::Inherit, super_class.type_ref.start());
+
+      // indicate this class is a subclass
+      class_compiler.has_super_class = true;
+    }
+
+    self.variable(&name, false);
+
+    // process the initializer
+    if let Some(init) = &class.init {
+      self.method(&init, FunKind::Initializer);
+    }
+
+    // process methods
+    for method in &class.methods {
+      self.method(&method, FunKind::Method);
+    }
+
+    // process static methods
+    for static_method in &class.static_methods {
+      self.static_method(&static_method);
+    }
+
+    self.emit_byte(AlignedByteCode::Drop, class.end());
+
+    // if we have a super drop the extra scope with super
+    if class_compiler.has_super_class {
+      self.end_scope(class.end());
+    }
+
+    // restore the enclosing class compiler
+    self.current_class = class_compiler.enclosing;
+    name_constant
+  }
+
+  /// Compile a method
+  fn method(&mut self, method: &ast::Fun, fun_kind: FunKind) {
+    let constant = method
+      .name
+      .as_ref()
+      .map(|name| self.identifier_constant(name))
+      .expect("Expect method name");
+
+    self.current_class.expect("Class compiler not set").fun_kind = Some(fun_kind);
+
+    self.function(method, fun_kind);
+    self.emit_byte(AlignedByteCode::Method(constant), method.end());
+  }
+
+  /// Compile a static method
+  fn static_method(&mut self, static_method: &ast::Fun) {
+    let constant = static_method
+      .name
+      .as_ref()
+      .map(|name| self.make_identifier(name))
+      .expect("Expected method name.");
+
+    self.current_class.expect("Class compiler not set").fun_kind = Some(FunKind::StaticMethod);
+
+    self.function(static_method, FunKind::StaticMethod);
+    self.emit_byte(AlignedByteCode::StaticMethod(constant), static_method.end());
+  }
+
+  /// Compile a plain function
+  fn fun(&mut self, fun: &ast::Fun) -> u16 {
+    let constant = fun
+      .name
+      .as_ref()
+      .map(|name| self.make_identifier(name))
+      .expect("Expected function name");
+
+    self.mark_initialized();
+    self.function(fun, FunKind::Fun);
+    self.define_variable(constant, fun.end());
+
+    constant
+  }
+
+  /// Compile a let binding
+  fn let_(&mut self, let_: &ast::Let) -> u16 {
+    self.declare_variable(let_.name.clone());
+    let variable = self.identifier_constant(&let_.name);
+
+    match &let_.value {
+      Some(v) => self.expr(v),
+      None => self.emit_byte(AlignedByteCode::Nil, let_.name.end()),
+    }
+
+    self.define_variable(variable, let_.end());
+    variable
+  }
+
+  /// Compile a function objects that presents, functions, methods
+  /// and lambdas
+  fn function(&mut self, fun: &ast::Fun, fun_kind: FunKind) {
+    // manage name assume name "lambda" if none is provided
+    let name = fun
+      .name
+      .as_ref()
+      .map(|name| self.hooks.manage_str(name.lexeme.as_str()))
+      .unwrap_or_else(|| self.hooks.manage_str("lambda"));
+
+    // create a new child compiler for this function
+    let mut compiler = Compiler::child(name, fun_kind, &mut *self);
+    compiler.begin_scope();
+    compiler.call_sig(&fun.call_sig);
+
+    match &fun.body {
+      FunBody::Block(block) => compiler.block(&block),
+      FunBody::Expr(expr) => {
+        compiler.expr(&expr);
+        compiler.emit_byte(AlignedByteCode::Return, expr.end());
+      }
+    };
+
+    let end_line = fun.end();
+
+    // end compilation of function chunk
+    compiler.end_compiler(end_line);
+    let upvalue_count = compiler.fun.upvalue_count;
+
+    let index = self.make_constant(val!(compiler.fun));
+    self.emit_byte(AlignedByteCode::Closure(index), end_line);
+    self.had_error = self.had_error || compiler.had_error;
+
+    // emit upvalue index instructions
+    compiler.upvalues[0..upvalue_count]
+      .iter()
+      .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(*upvalue), end_line));
+  }
+
+  /// Compile an import statement
+  fn import(&mut self, import: &ast::Import) {
+    let name = self.identifier_constant(&import.imported);
+    let string = self.hooks.manage_str(import.path.lexeme.as_str());
+    let value = val!(string);
+    let path = self.make_constant(value);
+
+    // emit error if not at module level
+    if self.scope_depth == 0 {
+      self.emit_byte(AlignedByteCode::Import(path), import.imported.start());
+      self.emit_byte(AlignedByteCode::DefineGlobal(name), import.imported.start());
+    } else {
+      self.error_at_current("Can only import from the module scope.")
+    }
+  }
+
+  /// Compile a for loop
+  fn for_(&mut self, for_: &ast::For) {
+    // new scope for full loop including loop variables
+    self.scope(for_.end(), |self_| {
+      let item = self_.make_identifier(&for_.item);
+      let item_line = for_.item.end();
+
+      self_.emit_byte(AlignedByteCode::Nil, item_line);
+      self_.define_variable(item, item_line);
+      self_.expr(&for_.iter);
+
+      let expr_line = for_.iter.end();
+
+      // token for hidden $iter variable
+      let iterator_token = Token {
+        lexeme: SmolStr::new_inline_from_ascii(ITER_VAR.len(), ITER_VAR.as_bytes()),
+        kind: TokenKind::Identifier,
+        line: expr_line,
+      };
+
+      // get constant for 'iter' method
+      let iter_const = self_.identifier_constant(&Token {
+        lexeme: SmolStr::new_inline_from_ascii(ITER.len(), ITER.as_bytes()),
+        kind: TokenKind::Identifier,
+        line: expr_line,
+      });
+
+      // declare the hidden local $iter variable
+      let iterator_const = self_.identifier_constant(&iterator_token);
+      self_.declare_variable(iterator_token.clone());
+      self_.emit_byte(AlignedByteCode::Invoke((iter_const, 0)), expr_line);
+      self_.define_variable(iterator_const, expr_line);
+
+      // mark start of loop
+      let loop_start = self_.current_chunk().instructions.len();
+
+      // define iterator method constants
+      let next_const = self_.identifier_constant(&Token {
+        lexeme: SmolStr::new_inline_from_ascii(4, b"next"),
+        kind: TokenKind::Identifier,
+        line: for_.item.end(),
+      });
+
+      let current_const = self_.identifier_constant(&Token {
+        lexeme: SmolStr::new_inline_from_ascii(6, b"current"),
+        kind: TokenKind::Identifier,
+        line: for_.item.end(),
+      });
+
+      // call next on iterator
+      let iterator_variable = self_
+        .resolve_local(&iterator_token)
+        .expect("Iterator variable was not defined.");
+
+      self_.emit_byte(AlignedByteCode::GetLocal(iterator_variable), expr_line);
+      self_.emit_byte(AlignedByteCode::IterNext(next_const), expr_line);
+
+      // check at end of iterator
+      let exit_jump = self_.emit_jump(AlignedByteCode::JumpIfFalse(0), expr_line);
+      self_.emit_byte(AlignedByteCode::Drop, expr_line);
+
+      // assign $iter.current to loop variable
+      let loop_variable = self_
+        .resolve_local(&for_.item)
+        .expect("Loop variable was not defined.");
+
+      self_.emit_byte(AlignedByteCode::GetLocal(iterator_variable), expr_line);
+      self_.emit_byte(AlignedByteCode::IterCurrent(current_const), expr_line);
+      self_.emit_byte(AlignedByteCode::SetLocal(loop_variable), expr_line);
+      self_.emit_byte(AlignedByteCode::Drop, expr_line);
+
+      // loop body
+      self_.scope(for_.body.end(), |self_| self_.block(&for_.body));
+      self_.emit_loop(loop_start, for_.end());
+
+      // loop back to top
+      self_.patch_jump(exit_jump);
+      self_.emit_byte(AlignedByteCode::Drop, for_.end());
+    });
+  }
+
+  /// Compile a while loop
+  fn while_(&mut self, while_: &ast::While) {
+    let loop_start = self.current_chunk().instructions.len();
+    self.expr(&while_.cond);
+
+    let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), while_.cond.end());
+
+    self.emit_byte(AlignedByteCode::Drop, while_.cond.end());
+    self.scope(while_.end(), |self_| self_.block(&while_.body));
+
+    self.emit_loop(loop_start, while_.end());
+
+    self.patch_jump(exit_jump);
+    self.emit_byte(AlignedByteCode::Drop, while_.end())
+  }
+
+  /// Compile a if statement
+  fn if_(&mut self, if_: &ast::If) {
+    self.expr(&if_.cond);
+
+    // parse then branch
+    let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), if_.cond.end());
+    self.emit_byte(AlignedByteCode::Drop, if_.cond.end());
+
+    self.scope(if_.body.end(), |self_| self_.block(&if_.body));
+
+    // emit else jump
+    let else_jump = self.emit_jump(AlignedByteCode::Jump(0), if_.body.end());
+    self.patch_jump(then_jump);
+    self.emit_byte(AlignedByteCode::Drop, if_.body.end());
+
+    if let Some(else_) = &if_.else_ {
+      match else_ {
+        ast::Else::If(if_) => self.if_(if_),
+        ast::Else::Block(block) => self.scope(block.end(), |self_| self_.block(block)),
+      }
+    }
+
+    self.patch_jump(else_jump);
+  }
+
+  /// Compile a return statement
+  fn return_(&mut self, return_: &ast::Return) {
+    match &return_.value {
+      Some(v) => {
+        self.expr(&v);
+        self.emit_byte(AlignedByteCode::Return, v.end());
+      }
+      None => self.emit_return(return_.start()),
+    }
+  }
+
+  /// Compile a try catch block
+  fn try_(&mut self, try_: &ast::Try) {
+    let start = self.current_chunk().instructions.len();
+
+    self.scope(try_.block.end(), |self_| self_.block(&try_.block));
+
+    let catch_jump = self.emit_jump(AlignedByteCode::Jump(0), try_.block.end());
+    let end = self.current_chunk().instructions.len();
+
+    self.scope(try_.catch.end(), |self_| self_.block(&try_.catch));
+
+    self.patch_jump(catch_jump);
+    self.fun.add_try(TryBlock::new(start as u16, end as u16));
+  }
+
+  /// Compile a block
+  fn block(&mut self, block: &ast::Block) {
+    for decl in &block.decls {
+      self.decl(&decl);
+    }
+  }
+
+  /// Compile an assignment expression
+  fn assign(&mut self, assign: &ast::Assign) {
+    match &assign.lhs {
+      Expr::Atom(atom) => match atom.trailers.last() {
+        // if we have trailers compile to last trailer and emit specialized
+        // set instruction
+        Some(last) => {
+          let skip_first = self.primary(&atom.primary, &atom.trailers);
+          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+
+          match last {
+            Trailer::Index(index) => {
+              self.expr(&index.index);
+              self.expr(&assign.rhs);
+              self.emit_byte(AlignedByteCode::SetIndex, assign.rhs.end())
+            }
+            Trailer::Access(access) => {
+              let name = self.identifier_constant(&access.prop);
+
+              self.expr(&assign.rhs);
+              self.emit_byte(AlignedByteCode::SetProperty(name), access.end())
+            }
+            Trailer::Call(_) => {
+              unreachable!("Unexpected expression on left hand side of assignment.")
+            }
+          }
+        }
+        None => {
+          if let Primary::Ident(name) = &atom.primary {
+            self.expr(&assign.rhs);
+            self.variable(name, true);
+          } else {
+            unreachable!("Unexpected expression on left hand side of assignment.");
+          }
+        }
+      },
+      _ => unreachable!("Unexpected expression on left hand side of assignment."),
+    }
+  }
+
+  /// Compile a binary expression
+  fn binary(&mut self, binary: &ast::Binary) {
+    self.expr(&binary.lhs);
+
+    // emit for rhs if we're not an "and" or "or"
+    match &binary.op {
+      BinaryOp::And | BinaryOp::Or => (),
+      _ => self.expr(&binary.rhs),
+    }
+
+    // emit for binary operation
+    match &binary.op {
+      BinaryOp::Add => self.emit_byte(AlignedByteCode::Add, binary.rhs.end()),
+      BinaryOp::Sub => self.emit_byte(AlignedByteCode::Subtract, binary.rhs.end()),
+      BinaryOp::Multi => self.emit_byte(AlignedByteCode::Multiply, binary.rhs.end()),
+      BinaryOp::Div => self.emit_byte(AlignedByteCode::Divide, binary.rhs.end()),
+      BinaryOp::Lt => self.emit_byte(AlignedByteCode::Less, binary.rhs.end()),
+      BinaryOp::LtEq => self.emit_bytes(
+        AlignedByteCode::Greater,
+        AlignedByteCode::Not,
+        binary.rhs.end(),
+      ),
+      BinaryOp::Gt => self.emit_byte(AlignedByteCode::Greater, binary.rhs.end()),
+      BinaryOp::GtEq => self.emit_bytes(
+        AlignedByteCode::Less,
+        AlignedByteCode::Not,
+        binary.rhs.end(),
+      ),
+      BinaryOp::Eq => self.emit_byte(AlignedByteCode::Equal, binary.rhs.end()),
+      BinaryOp::Ne => self.emit_bytes(
+        AlignedByteCode::Equal,
+        AlignedByteCode::Not,
+        binary.rhs.end(),
+      ),
+      BinaryOp::And => {
+        let end_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), binary.lhs.end());
+
+        self.emit_byte(AlignedByteCode::Drop, binary.lhs.end());
+        self.expr(&binary.rhs);
+
+        self.patch_jump(end_jump);
+      }
+      BinaryOp::Or => {
+        let else_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), binary.lhs.end());
+        let end_jump = self.emit_jump(AlignedByteCode::Jump(0), binary.lhs.end());
+
+        self.patch_jump(else_jump);
+        self.emit_byte(AlignedByteCode::Drop, binary.lhs.end());
+
+        self.expr(&binary.rhs);
+        self.patch_jump(end_jump);
+      }
+    }
+  }
+
+  /// Compile a unary expression
+  fn unary(&mut self, unary: &ast::Unary) {
+    self.expr(&unary.expr);
+
+    match &unary.op {
+      UnaryOp::Not => self.emit_byte(AlignedByteCode::Not, unary.expr.end()),
+      UnaryOp::Negate => self.emit_byte(AlignedByteCode::Negate, unary.expr.end()),
+    }
+  }
+
+  /// Compile a call expression
+  fn call(&mut self, call: &ast::Call) -> bool {
+    for expr in &call.args {
+      self.expr(expr);
+    }
+
+    self.emit_byte(AlignedByteCode::Call(call.args.len() as u8), call.end());
+    false
+  }
+
+  /// Compile an indexing expression
+  fn index(&mut self, index: &ast::Index) -> bool {
+    self.expr(&index.index);
+    self.emit_byte(AlignedByteCode::GetIndex, index.end());
+    false
+  }
+
+  /// Compile an access expression
+  fn access(&mut self, access: &ast::Access, trailers: &[Trailer]) -> bool {
+    let name = self.identifier_constant(&access.prop);
+
+    match trailers.first() {
+      Some(trailer) => {
+        if let Trailer::Call(call) = trailer {
+          for expr in &call.args {
+            self.expr(expr);
+          }
+          self.emit_byte(
+            AlignedByteCode::Invoke((name, call.args.len() as u8)),
+            trailer.end(),
+          );
+          true
+        } else {
+          self.emit_byte(AlignedByteCode::GetProperty(name), access.prop.end());
+          false
+        }
+      }
+      None => {
+        self.emit_byte(AlignedByteCode::GetProperty(name), access.prop.end());
+        false
+      }
+    }
+  }
+
+  /// Compile an atom expression
+  fn atom(&mut self, atom: &ast::Atom) {
+    let skip_first = self.primary(&atom.primary, &atom.trailers);
+    self.apply_trailers(skip_first, &atom.trailers);
+  }
+
+  /// Compile trailers onto a base primary
+  fn apply_trailers(&mut self, skip_first: bool, trailers: &[Trailer]) {
+    let mut skip = skip_first;
+    for (idx, trailer) in trailers.iter().enumerate() {
+      if skip {
+        skip = false;
+        continue;
+      }
+
+      skip = match trailer {
+        Trailer::Call(call) => self.call(&call),
+        Trailer::Index(index) => self.index(&index),
+        Trailer::Access(access) => self.access(&access, &trailers[(idx + 1)..]),
+      }
+    }
+  }
+
+  /// Compile an assignment block
+  fn assign_block(&mut self, block: &ast::Block) -> bool {
+    self.scope(block.end(), |self_| {
+      self_.block(block);
+    });
+    self.emit_byte(AlignedByteCode::Nil, block.end());
+    false
+  }
+
+  /// Compile a true token
+  fn true_(&mut self, true_: &Token) -> bool {
+    self.emit_byte(AlignedByteCode::True, true_.end());
+    false
+  }
+
+  /// Compile a false token
+  fn false_(&mut self, false_: &Token) -> bool {
+    self.emit_byte(AlignedByteCode::False, false_.end());
+    false
+  }
+
+  /// Compile a nil token
+  fn nil(&mut self, nil: &Token) -> bool {
+    self.emit_byte(AlignedByteCode::Nil, nil.end());
+    false
+  }
+
+  /// Compile a number token
+  fn number(&mut self, token: &Token) -> bool {
+    let value = val!(token.lexeme.parse::<f64>().expect("Unable to parse float"));
+    self.emit_constant(value, token.end());
+    false
+  }
+
+  /// Compile a string token
+  fn string(&mut self, token: &Token) -> bool {
+    let value = val!(self.hooks.manage_str(token.lexeme.as_str()));
+    self.emit_constant(value, token.end());
+    false
+  }
+
+  /// Compile a identifer token
+  fn identifier(&mut self, token: &Token) -> bool {
+    self.variable(&token, false);
+    false
+  }
+
+  /// Compile the self token
+  fn self_(&mut self, self_: &Token) -> bool {
+    self
+      .current_class
+      .map(|class_compiler| class_compiler.fun_kind)
+      .and_then(|fun_kind| {
+        fun_kind.and_then(|fun_kind| match fun_kind {
+          FunKind::Method | FunKind::Initializer => {
+            self.variable(&self_, false);
+            Some(())
+          }
+          _ => None,
+        })
+      })
+      .or_else(|| {
+        self.error("Cannot use 'self' outside of class instance methods.");
+        None
+      });
+
+    false
+  }
+
+  /// Compile the super token
+  fn super_(&mut self, super_: &ast::Super, trailers: &[Trailer]) -> bool {
+    match self.current_class {
+      None => self.error("Cannot use 'super' outside of a class."),
+      Some(class) => {
+        if !class.has_super_class {
+          self.error("Cannot use 'super' in a class with no superclass.");
+        }
+      }
+    }
+
+    let name = self.identifier_constant(&super_.access);
+
+    // load self on top of stack
+    self.variable(
+      &Token {
+        lexeme: SmolStr::new_inline_from_ascii(SELF.len(), SELF.as_bytes()),
+        kind: TokenKind::Self_,
+        line: super_.end(),
+      },
+      false,
+    );
+
+    match trailers.first() {
+      Some(trailer) => match trailer {
+        Trailer::Call(call) => {
+          for arg in &call.args {
+            self.expr(arg);
+          }
+
+          self.variable(&super_.super_, false);
+          self.emit_byte(
+            AlignedByteCode::SuperInvoke((name, call.args.len() as u8)),
+            super_.access.end(),
+          );
+          true
+        }
+        _ => {
+          self.variable(&super_.super_, false);
+          self.emit_byte(AlignedByteCode::GetSuper(name), super_.end());
+          false
+        }
+      },
+      None => {
+        self.variable(
+          &Token {
+            lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
+            kind: TokenKind::Super,
+            line: super_.super_.end(),
+          },
+          false,
+        );
+
+        self.emit_byte(AlignedByteCode::GetSuper(name), super_.access.end());
+        false
+      }
+    }
+  }
+
+  /// Compile a lambda expression
+  fn lambda(&mut self, fun: &ast::Fun) -> bool {
+    self.function(fun, FunKind::Fun);
+    false
+  }
+
+  /// Compile a list literal
+  fn list(&mut self, list: &List) -> bool {
+    self.emit_byte(AlignedByteCode::List, list.start());
+
+    for item in list.items.iter() {
+      self.expr(item);
+    }
+
+    if !list.items.is_empty() {
+      self.emit_byte(
+        AlignedByteCode::ListInit(list.items.len() as u16),
+        list.end(),
+      );
+    }
+
+    false
+  }
+
+  /// Compile a map literal
+  fn map(&mut self, map: &Map) -> bool {
+    self.emit_byte(AlignedByteCode::Map, map.start());
+
+    for (key, value) in map.entries.iter() {
+      self.expr(key);
+      self.expr(value);
+    }
+
+    if !map.entries.is_empty() {
+      self.emit_byte(
+        AlignedByteCode::MapInit(map.entries.len() as u16),
+        map.end(),
+      );
+    }
+
+    false
+  }
+
+  /// Set the functions arity from the call signature
+  fn call_sig(&mut self, call_sig: &ast::CallSignature) {
+    for param in &call_sig.params {
+      let param_constant = self.make_identifier(&param.name);
+      self.define_variable(param_constant, param.name.end());
+    }
+
+    self.fun.arity = Arity::Fixed(call_sig.params.len() as u8);
+  }
+
+  /// Do nothing if we encounter an error token
+  fn visit_error(&mut self, _: &[Token]) {}
 }
 
 /// Get the first local for a given function kind
@@ -1630,374 +1377,37 @@ fn first_local(fun_kind: FunKind) -> Local {
   }
 }
 
-/// The rules for infix and prefix operators
-const RULES_TABLE: [ParseRule; 50] = [
-  ParseRule::new(Some(Act::Grouping), Some(Act::Call), Precedence::Call),
-  // TOKEN_LEFT_PAREN
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_RIGHT_PAREN
-  ParseRule::new(Some(Act::Map), None, Precedence::Call),
-  // TOKEN_LEFT_BRACE
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_RIGHT_BRACE
-  ParseRule::new(Some(Act::List), Some(Act::Index), Precedence::Call),
-  // TOKEN_LEFT_BRACKET
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_RIGHT_BRACKET
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_COMMA
-  ParseRule::new(None, Some(Act::Dot), Precedence::Call),
-  // TOKEN_DOT
-  ParseRule::new(Some(Act::Unary), Some(Act::Binary), Precedence::Term),
-  // TOKEN_MINUS
-  ParseRule::new(None, Some(Act::Binary), Precedence::Term),
-  // TOKEN_PLUS
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_COLON
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_SEMICOLON
-  ParseRule::new(Some(Act::Lambda), None, Precedence::Call),
-  // TOKEN_PIPE
-  ParseRule::new(None, Some(Act::Binary), Precedence::Factor),
-  // TOKEN_SLASH
-  ParseRule::new(None, Some(Act::Binary), Precedence::Factor),
-  // TOKEN_STAR
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_EXPORT
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_IMPORT
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_FROM
-  ParseRule::new(Some(Act::Unary), None, Precedence::None),
-  // TOKEN_BANG
-  ParseRule::new(None, Some(Act::Binary), Precedence::Equality),
-  // TOKEN_BANG_EQUAL
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_EQUAL
-  ParseRule::new(None, Some(Act::Binary), Precedence::Equality),
-  // TOKEN_EQUAL_EQUAL
-  ParseRule::new(None, Some(Act::Binary), Precedence::Comparison),
-  // TOKEN_GREATER
-  ParseRule::new(None, Some(Act::Binary), Precedence::Comparison),
-  // TOKEN_GREATER_EQUAL
-  ParseRule::new(None, Some(Act::Binary), Precedence::Comparison),
-  // TOKEN_LESS
-  ParseRule::new(None, Some(Act::Binary), Precedence::Comparison),
-  // TOKEN_LESS_EQUAL
-  ParseRule::new(Some(Act::Variable), None, Precedence::None),
-  // TOKEN_IDENTIFIER
-  ParseRule::new(Some(Act::String), None, Precedence::None),
-  // TOKEN_STRING
-  ParseRule::new(Some(Act::Number), None, Precedence::None),
-  // TOKEN_NUMBER
-  ParseRule::new(None, Some(Act::And), Precedence::And),
-  // TOKEN_AND
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_CLASS
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_ELSE
-  ParseRule::new(Some(Act::Literal), None, Precedence::None),
-  // TOKEN_FALSE
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_FOR
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_FUN
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_IF
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_IN
-  ParseRule::new(Some(Act::Literal), None, Precedence::None),
-  // TOKEN_NIL
-  ParseRule::new(None, Some(Act::Or), Precedence::Or),
-  // TOKEN_OR
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_RETURN
-  ParseRule::new(Some(Act::Super), None, Precedence::None),
-  // TOKEN_SUPER
-  ParseRule::new(Some(Act::Self_), None, Precedence::None),
-  // TOKEN_SELF
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_STATIC
-  ParseRule::new(Some(Act::Literal), None, Precedence::None),
-  // TOKEN_TRUE
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_VAR
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_WHILE
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_TRY
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_CATCH
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_ERROR
-  ParseRule::new(None, None, Precedence::None),
-  // TOKEN_EOF
-];
-
-/// Get a rule from the rules table
-const fn get_rule(kind: TokenKind) -> &'static ParseRule {
-  &RULES_TABLE[kind as usize]
-}
-
-#[derive(Debug, Clone)]
-pub struct ClassCompiler {
-  enclosing: Option<Managed<ClassCompiler>>,
-  fun_kind: Option<FunKind>,
-  has_super_class: bool,
-  name: Token,
-}
-
-impl Trace for ClassCompiler {
-  fn trace(&self) -> bool {
-    self.enclosing.map(|enclosing| {
-      enclosing.trace();
-    });
-    true
-  }
-
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.enclosing.map(|enclosing| {
-      enclosing.trace_debug(stdio);
-    });
-    true
-  }
-}
-
-impl Manage for ClassCompiler {
-  fn alloc_type(&self) -> &str {
-    "class compiler"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    format!(
-      "ClassCompiler: {{ has_super_class: {:?}, name: {:?}, enclosing: {{...}} }}",
-      self.has_super_class, self.name
-    )
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-}
-
-/// The space lox parser. This struct is responsible for
-/// advancing the scanner and checking for specific conditions
-pub struct Parser<'a> {
-  /// The current token
-  current: Token,
-
-  /// The previous token
-  previous: Token,
-
-  /// Has the parser encountered an error
-  had_error: bool,
-
-  /// Is the parser in panic mode
-  panic_mode: bool,
-
-  /// Help reference to the backing scanner
-  scanner: Scanner<'a>,
-
-  /// The environments standard io access
-  stdio: Stdio,
-}
-
-impl<'a> Parser<'a> {
-  /// Create a new instance of the parser from a source str
-  pub fn new(stdio: Stdio, source: &'a str) -> Self {
-    Self {
-      scanner: Scanner::new(source),
-      stdio,
-      had_error: false,
-      panic_mode: false,
-      previous: Token {
-        lexeme: SmolStr::new_inline_from_ascii(5, b"error"),
-        line: 0,
-        kind: TokenKind::Error,
-      },
-      current: Token {
-        lexeme: SmolStr::new_inline_from_ascii(5, b"error"),
-        line: 0,
-        kind: TokenKind::Error,
-      },
-    }
-  }
-
-  /// Does the provided token kind match if so advance the
-  /// token index
-  pub fn match_kind(&mut self, kind: TokenKind) -> bool {
-    if !self.check(kind) {
-      return false;
-    }
-    self.advance();
-    true
-  }
-
-  /// Does the provided token kind match the current kind
-  pub fn check(&self, kind: TokenKind) -> bool {
-    self.current.kind == kind
-  }
-
-  /// Advance the parser a token forward
-  pub fn advance(&mut self) {
-    self.previous = self.current.clone();
-    loop {
-      self.current = self.scanner.scan_token();
-      if self.current.kind != TokenKind::Error {
-        break;
-      }
-
-      self.error_at_current(&self.current.lexeme.to_string())
-    }
-  }
-
-  /// Consume a token and advance the current token index
-  fn consume(&mut self, kind: TokenKind, message: &str) {
-    if self.current.kind == kind {
-      self.advance();
-      return;
-    }
-
-    self.error_at_current(message)
-  }
-
-  /// Indicate an error occurred at he current index
-  fn error_at_current(&mut self, message: &str) {
-    let token = self.current.clone();
-    self.error_at(token, message);
-  }
-
-  /// Indicate an error occurred at the previous index
-  pub fn error(&mut self, message: &str) {
-    let token = self.previous.clone();
-    self.error_at(token, message);
-  }
-
-  /// Print an error to the console for a user to address
-  fn error_at(&mut self, token: Token, message: &str) {
-    if self.panic_mode {
-      return;
-    }
-
-    self.panic_mode = true;
-    let stderr = self.stdio.stderr();
-
-    write!(stderr, "[line {}] Error", token.line).expect("Unable to write to stderr.");
-
-    match token.kind {
-      TokenKind::Eof => {
-        write!(stderr, " at end").expect("Unable to write to stderr.");
-      }
-      TokenKind::Error => (),
-      _ => {
-        write!(stderr, " at {}", token.lexeme).expect("Unable to write to stderr.");
-      }
-    }
-
-    writeln!(stderr, ": {}", message).expect("Unable to write to stderr.");
-    self.had_error = true;
-  }
-}
-
-#[derive(Debug, Clone, PartialEq, PartialOrd)]
-enum Precedence {
-  None,
-  Assignment,
-  Or,
-  And,
-  Equality,
-  Comparison,
-  Term,
-  Factor,
-  Unary,
-  Call,
-  Primary,
-}
-
-impl Precedence {
-  pub fn higher(&self) -> Precedence {
-    match self {
-      Precedence::None => Precedence::Assignment,
-      Precedence::Assignment => Precedence::Or,
-      Precedence::Or => Precedence::And,
-      Precedence::And => Precedence::Equality,
-      Precedence::Equality => Precedence::Comparison,
-      Precedence::Comparison => Precedence::Term,
-      Precedence::Term => Precedence::Factor,
-      Precedence::Factor => Precedence::Unary,
-      Precedence::Unary => Precedence::Call,
-      Precedence::Call => Precedence::Primary,
-      Precedence::Primary => panic!("Primary is highest precedence"),
-    }
-  }
-}
-
-struct ParseRule {
-  prefix: Option<Act>,
-  infix: Option<Act>,
-  precedence: Precedence,
-}
-
-impl ParseRule {
-  const fn new(prefix: Option<Act>, infix: Option<Act>, precedence: Precedence) -> Self {
-    Self {
-      prefix,
-      infix,
-      precedence,
-    }
-  }
-}
-
-#[derive(Clone)]
-enum Act {
-  And,
-  Binary,
-  Call,
-  Index,
-  List,
-  Map,
-  Dot,
-  Lambda,
-  Grouping,
-  Literal,
-  Number,
-  Or,
-  String,
-  Super,
-  Self_,
-  Unary,
-  Variable,
-}
-
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::debug::disassemble_chunk;
+  use crate::{debug::disassemble_chunk, parser::Parser};
   use laythe_core::chunk::decode_u16;
   use laythe_core::hooks::{support::TestContext, GcContext};
-  use laythe_env::stdio::support::StdioTestContainer;
-  use laythe_native::stdio::StdioNative;
-  use std::path::PathBuf;
+  use laythe_env::stdio::support::{IoStdioTest, StdioTestContainer};
+  use module::Module;
+  use std::{path::PathBuf, rc::Rc};
 
   enum ByteCodeTest {
     Code(AlignedByteCode),
     Fun((u16, Vec<ByteCodeTest>)),
   }
 
-  fn test_compile<'a>(src: String, context: &dyn GcContext) -> Managed<Fun> {
-    let stdio = Stdio::new(Box::new(StdioNative::default()));
-    let mut parser = Parser::new(stdio, &src);
+  fn test_compile<'a>(src: &str, context: &dyn GcContext) -> Managed<Fun> {
+    let mut stdio_container = Rc::new(StdioTestContainer::default());
+
+    let stdio = Rc::new(IoStdioTest::new(&mut stdio_container));
+    let io = Io::default().with_stdio(stdio);
+
+    let ast = Parser::new(io.stdio(), src).parse();
+    assert!(ast.is_ok());
 
     let hooks = &GcHooks::new(context);
 
     let module = hooks
       .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("path/module.ly"))).unwrap());
-    let compiler = Compiler::new(module, &mut parser, &hooks);
-    let result = compiler.compile();
+
+    let compiler = Compiler::new(module, &io, hooks);
+    let result = compiler.compile(&ast.unwrap());
 
     assert_eq!(result.is_ok(), true);
     result.unwrap()
@@ -2049,13 +1459,13 @@ mod test {
 
   fn assert_simple_bytecode(fun: Managed<Fun>, code: &[AlignedByteCode]) {
     let stdio_container = StdioTestContainer::default();
-
     let mut stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
 
     if let Err(_) = disassemble_chunk(&mut stdio, &fun.chunk(), "test") {
       stdio_container.log_stdio();
       assert!(false)
     }
+    stdio_container.log_stdio();
     let decoded_byte_code = decode_byte_code(fun);
 
     decoded_byte_code
@@ -2074,9 +1484,12 @@ mod test {
   }
 
   fn assert_fun_bytecode(fun: Managed<Fun>, code: &[ByteCodeTest]) {
-    let mut stdio = Stdio::default();
+    let stdio_container = StdioTestContainer::default();
+    let mut stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
 
     assert!(disassemble_chunk(&mut stdio, &fun.chunk(), &*fun.name).is_ok());
+    stdio_container.log_stdio();
+
     let decoded_byte_code = decode_byte_code(fun);
     assert_eq!(decoded_byte_code.len(), code.len(), "for fun {}", fun.name);
 
@@ -2107,8 +1520,7 @@ mod test {
   fn import() {
     let example = r#"
       import time from "std/time";
-    "#
-    .to_string();
+    "#;
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2128,8 +1540,7 @@ mod test {
   fn export_variable() {
     let example = "
       export let x = 10;
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2150,8 +1561,7 @@ mod test {
   fn export_fun() {
     let example = "
       export fn example() {}
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2178,8 +1588,7 @@ mod test {
   fn export_class() {
     let example = "
       export class example {}
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2206,8 +1615,7 @@ mod test {
       } catch {
 
       }
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2233,8 +1641,7 @@ mod test {
       } catch {
         print("no!");
       }
-    "#
-    .to_string();
+    "#;
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2242,15 +1649,16 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Map,          // 0
-        AlignedByteCode::GetLocal(1),  // 1
-        AlignedByteCode::Constant(0),  // 3
-        AlignedByteCode::GetIndex,     // 5
-        AlignedByteCode::Drop,         // 6
+        AlignedByteCode::Map,         // 0
+        AlignedByteCode::GetLocal(1), // 1
+        AlignedByteCode::Constant(1), // 3
+        AlignedByteCode::GetIndex,    // 5
+        AlignedByteCode::Drop,
+        // 6
         AlignedByteCode::Drop,         // 7
         AlignedByteCode::Jump(8),      // 8
-        AlignedByteCode::GetGlobal(1), // 13
-        AlignedByteCode::Constant(2),  // 11
+        AlignedByteCode::GetGlobal(2), // 13
+        AlignedByteCode::Constant(3),  // 11
         AlignedByteCode::Call(1),      // 13
         AlignedByteCode::Drop,         //
         AlignedByteCode::Nil,          // 14
@@ -2274,8 +1682,7 @@ mod test {
       } catch {
         print("no!");
       }
-    "#
-    .to_string();
+    "#;
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2311,12 +1718,89 @@ mod test {
     assert_eq!(fun.has_catch_jump(5), Some(13));
   }
 
+  // #[test]
+  // fn test() {
+  //   let example = r#"
+  //   class Base {
+  //     foo() {
+  //       print("Base.foo()");
+  //     }
+  //   }
+
+  //   class Derived : Base {
+  //     bar() {
+  //       print("Derived.bar()");
+  //       super.foo();
+  //     }
+  //   }
+
+  //   Derived().bar();
+  //   // expect: Derived.bar()
+  //   // expect: Base.foo()
+
+  //   "#;
+
+  //   let context = TestContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     fun,
+  //     &vec![
+  //       AlignedByteCode::Class(0),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Class(1),
+  //       AlignedByteCode::DefineGlobal(1),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::Inherit,
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  #[test]
+  fn class_with_inherit() {
+    let example = "
+      class A {}
+
+      class B : A {}
+    ";
+
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Class(0),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Class(1),
+        AlignedByteCode::DefineGlobal(1),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::Inherit,
+        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
   #[test]
   fn class_empty() {
     let example = "
       class A {}
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2350,8 +1834,7 @@ mod test {
           return self.getField();
         }
       }
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2415,8 +1898,7 @@ mod test {
           return 'bye';
         }
       }
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2459,8 +1941,7 @@ mod test {
     let example = "
       let a = [clock, clock, clock];
       a[1] = 5;
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2490,8 +1971,7 @@ mod test {
     let example = "
       let a = [\"john\", \"joe\", \"jim\"];
       print(a[1]);
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2521,8 +2001,7 @@ mod test {
   fn list_initializer() {
     let example = "
       let a = [1, 2, nil, false, \"cat\"];
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2548,8 +2027,7 @@ mod test {
   fn list_empty() {
     let example = "
       let a = [];
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2572,8 +2050,7 @@ mod test {
         \"key1\": 10,
         \"key2\": nil,
       };
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2598,8 +2075,7 @@ mod test {
   fn map_empty() {
     let example = "
       let a = {};
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2620,8 +2096,7 @@ mod test {
     let example = "
     let example = || 10;
     example();
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2653,8 +2128,7 @@ mod test {
     let example = "
     let example = || { return 10; };
     example();
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2682,6 +2156,48 @@ mod test {
   }
 
   #[test]
+  fn fn_with_variables() {
+    let example = "
+    fn example(a, b, c) {
+      return a + b + c; 
+    }
+    example(1, 2, 3);
+    ";
+
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Fun((
+          // example
+          1,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
+            ByteCodeTest::Code(AlignedByteCode::Add),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(3)),
+            ByteCodeTest::Code(AlignedByteCode::Add),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Constant(2)),
+        ByteCodeTest::Code(AlignedByteCode::Constant(3)),
+        ByteCodeTest::Code(AlignedByteCode::Constant(4)),
+        ByteCodeTest::Code(AlignedByteCode::Call(3)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
   fn open_upvalue() {
     let example = "
     fn example() {
@@ -2697,8 +2213,7 @@ mod test {
       return middle();
     }
     example();
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2709,10 +2224,10 @@ mod test {
           // example
           1,
           vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Fun((
               // middle
-              1,
+              2,
               vec![
                 ByteCodeTest::Fun((
                   // inner
@@ -2732,7 +2247,7 @@ mod test {
                 ByteCodeTest::Code(AlignedByteCode::Return),
               ],
             )),
-            ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))),
+            ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))), //
             ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
             ByteCodeTest::Code(AlignedByteCode::Call(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2762,8 +2277,7 @@ mod test {
     }
     let inner = example();
     inner();
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2773,9 +2287,9 @@ mod test {
         ByteCodeTest::Fun((
           1,
           vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Fun((
-              1,
+              2,
               vec![
                 ByteCodeTest::Code(AlignedByteCode::GetUpvalue(0)),
                 ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2805,7 +2319,7 @@ mod test {
 
   #[test]
   fn empty_fun() {
-    let example = "fn example() {} example();".to_string();
+    let example = "fn example() {} example();";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2837,8 +2351,7 @@ mod test {
     }
     let a = 1;
     example(a);
-    "
-    .to_string();
+    ";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2869,7 +2382,7 @@ mod test {
 
   #[test]
   fn empty_fun_basic() {
-    let example = "fn example() { let a = 10; return a; } example();".to_string();
+    let example = "fn example() { let a = 10; return a; } example();";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2879,7 +2392,7 @@ mod test {
         ByteCodeTest::Fun((
           1,
           vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
             ByteCodeTest::Code(AlignedByteCode::Return),
             ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -2898,7 +2411,7 @@ mod test {
 
   #[test]
   fn map() {
-    let example = "let a = { \"cat\": \"bat\", 10: nil };".to_string();
+    let example = "let a = { \"cat\": \"bat\", 10: nil };";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2921,7 +2434,7 @@ mod test {
 
   #[test]
   fn list() {
-    let example = "let a = [1, 2, 3, \"cat\"];".to_string();
+    let example = "let a = [1, 2, 3, \"cat\"];";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -2944,43 +2457,7 @@ mod test {
 
   #[test]
   fn for_loop() {
-    let example = "for (let x = 0; x < 10; x = x + 1) { print(x); }".to_string();
-
-    let context = TestContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      fun,
-      &vec![
-        AlignedByteCode::Constant(0),     // 0
-        AlignedByteCode::GetLocal(1),     // 2
-        AlignedByteCode::Constant(1),     // 4
-        AlignedByteCode::Less,            // 6
-        AlignedByteCode::JumpIfFalse(26), // 7
-        AlignedByteCode::Drop,            // 10
-        AlignedByteCode::Jump(11),        // 11
-        AlignedByteCode::GetLocal(1),     // 14
-        AlignedByteCode::Constant(2),     // 16
-        AlignedByteCode::Add,             // 18
-        AlignedByteCode::SetLocal(1),     // 19
-        AlignedByteCode::Drop,            // 21
-        AlignedByteCode::Loop(23),        // 22
-        AlignedByteCode::GetGlobal(3),    //
-        AlignedByteCode::GetLocal(1),     // 25
-        AlignedByteCode::Call(1),         // 27
-        AlignedByteCode::Drop,            //
-        AlignedByteCode::Loop(22),        // 28
-        AlignedByteCode::Drop,            // 31
-        AlignedByteCode::Drop,            // 32
-        AlignedByteCode::Nil,             // 33
-        AlignedByteCode::Return,          // 34
-      ],
-    );
-  }
-
-  #[test]
-  fn for_range_loop() {
-    let example = "for (let x in [1, 2, 3]) { print(x); }".to_string();
+    let example = "for x in [1, 2, 3] { print(x); }";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3009,8 +2486,7 @@ mod test {
         AlignedByteCode::Drop,
         AlignedByteCode::Loop(28), // 32
         AlignedByteCode::Drop,     // 35
-        AlignedByteCode::Drop,     // 36
-        AlignedByteCode::Drop,     // 37
+        AlignedByteCode::DropN(2), // 36
         AlignedByteCode::Nil,      // 38
         AlignedByteCode::Return,   // 39
       ],
@@ -3019,7 +2495,7 @@ mod test {
 
   #[test]
   fn while_loop() {
-    let example = "while (true) { print(10); }".to_string();
+    let example = "while true { print(10); }";
     let context = TestContext::default();
     let fun = test_compile(example, &context);
 
@@ -3042,21 +2518,39 @@ mod test {
   }
 
   #[test]
-  fn or_operator() {
-    let example = "print(false or true);".to_string();
+  fn and_operator() {
+    let example = "true and false;";
     let context = TestContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(2),
+        AlignedByteCode::Drop,
+        AlignedByteCode::False,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn or_operator() {
+    let example = "false or true;";
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
         AlignedByteCode::False,
         AlignedByteCode::JumpIfFalse(3),
         AlignedByteCode::Jump(2),
         AlignedByteCode::Drop,
         AlignedByteCode::True,
-        AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3066,7 +2560,7 @@ mod test {
 
   #[test]
   fn if_condition() {
-    let example = "if (3 < 10) { print(\"hi\"); }".to_string();
+    let example = "if (3 < 10) { print(\"hi\"); }";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3093,7 +2587,7 @@ mod test {
 
   #[test]
   fn if_else_condition() {
-    let example = "if (3 < 10) { print(\"hi\"); } else { print(\"bye\"); }".to_string();
+    let example = "if (3 < 10) { print(\"hi\"); } else { print(\"bye\"); }";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3124,14 +2618,16 @@ mod test {
 
   #[test]
   fn declare_local() {
-    let example = "{ let x = 10; }".to_string();
+    let example = ":{ let x = 10; };";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Constant(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3141,18 +2637,20 @@ mod test {
 
   #[test]
   fn op_get_local() {
-    let example = "{ let x = 10; print(x); }".to_string();
+    let example = ":{ let x = 10; print(x); };";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::GetGlobal(2),
         AlignedByteCode::GetLocal(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3162,7 +2660,7 @@ mod test {
 
   #[test]
   fn op_set_local() {
-    let example = "{ let x = 10; x = 5; }".to_string();
+    let example = ":{ let x = 10; x = 5; };";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3170,10 +2668,12 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
         AlignedByteCode::SetLocal(1),
         AlignedByteCode::Drop,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3183,7 +2683,7 @@ mod test {
 
   #[test]
   fn op_define_global_nil() {
-    let example = "let x;".to_string();
+    let example = "let x;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3201,7 +2701,7 @@ mod test {
 
   #[test]
   fn op_define_global_val() {
-    let example = "let x = 10;".to_string();
+    let example = "let x = 10;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3219,7 +2719,7 @@ mod test {
 
   #[test]
   fn op_get_global() {
-    let example = "print(x);".to_string();
+    let example = "print(x);";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3238,15 +2738,15 @@ mod test {
 
   #[test]
   fn op_set_global() {
-    let example = "x = \"cat\";".to_string();
+    let example = "x = \"cat\";";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::SetGlobal(0),
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::SetGlobal(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3256,7 +2756,7 @@ mod test {
 
   #[test]
   fn op_pop() {
-    let example = "false;".to_string();
+    let example = "false;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3273,7 +2773,7 @@ mod test {
 
   #[test]
   fn op_return() {
-    let example = "".to_string();
+    let example = "";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3282,7 +2782,7 @@ mod test {
 
   #[test]
   fn op_number() {
-    let example = "5.18;".to_string();
+    let example = "5.18;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3299,7 +2799,7 @@ mod test {
 
   #[test]
   fn op_string() {
-    let example = "\"example\";".to_string();
+    let example = "\"example\";";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3316,7 +2816,7 @@ mod test {
 
   #[test]
   fn op_false() {
-    let example = "false;".to_string();
+    let example = "false;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3333,7 +2833,7 @@ mod test {
 
   #[test]
   fn op_true() {
-    let example = "true;".to_string();
+    let example = "true;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3350,7 +2850,7 @@ mod test {
 
   #[test]
   fn op_nil() {
-    let example = "nil;".to_string();
+    let example = "nil;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3367,7 +2867,7 @@ mod test {
 
   #[test]
   fn op_not() {
-    let example = "!false;".to_string();
+    let example = "!false;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3385,7 +2885,7 @@ mod test {
 
   #[test]
   fn op_negate() {
-    let example = "-15;".to_string();
+    let example = "-15;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3403,7 +2903,7 @@ mod test {
 
   #[test]
   fn op_add() {
-    let example = "10 + 4;".to_string();
+    let example = "10 + 4;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3422,7 +2922,7 @@ mod test {
 
   #[test]
   fn op_subtract() {
-    let example = "10 - 4;".to_string();
+    let example = "10 - 4;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3441,7 +2941,7 @@ mod test {
 
   #[test]
   fn op_divide() {
-    let example = "10 / 4;".to_string();
+    let example = "10 / 4;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3460,7 +2960,7 @@ mod test {
 
   #[test]
   fn op_multi() {
-    let example = "10 * 4;".to_string();
+    let example = "10 * 4;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3479,7 +2979,7 @@ mod test {
 
   #[test]
   fn op_equal() {
-    let example = "true == nil;".to_string();
+    let example = "true == nil;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3498,7 +2998,7 @@ mod test {
 
   #[test]
   fn op_not_equal() {
-    let example = "true != nil;".to_string();
+    let example = "true != nil;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3518,7 +3018,7 @@ mod test {
 
   #[test]
   fn op_less() {
-    let example = "3 < 5;".to_string();
+    let example = "3 < 5;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3537,7 +3037,7 @@ mod test {
 
   #[test]
   fn op_less_equal() {
-    let example = "3 <= 5;".to_string();
+    let example = "3 <= 5;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3557,7 +3057,7 @@ mod test {
 
   #[test]
   fn op_greater() {
-    let example = "3 > 5;".to_string();
+    let example = "3 > 5;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);
@@ -3576,7 +3076,7 @@ mod test {
 
   #[test]
   fn op_greater_equal() {
-    let example = "3 >= 5;".to_string();
+    let example = "3 >= 5;";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);

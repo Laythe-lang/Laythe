@@ -1,7 +1,7 @@
 class Tree {
   init(depth) {
     self.depth = depth;
-    if (depth > 0) {
+    if depth > 0 {
       self.a = Tree(depth - 1);
       self.b = Tree(depth - 1);
       self.c = Tree(depth - 1);
@@ -11,7 +11,7 @@ class Tree {
   }
 
   walk() {
-    if (self.depth == 0) return 0;
+    if self.depth == 0 { return 0; }
     return self.depth 
         + self.a.walk()
         + self.b.walk()

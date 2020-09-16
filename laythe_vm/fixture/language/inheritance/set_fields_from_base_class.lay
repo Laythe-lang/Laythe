@@ -10,7 +10,7 @@ class Foo {
   }
 }
 
-class Bar < Foo {
+class Bar : Foo {
   bar(a, b) {
     self.field1 = a;
     self.field2 = b;

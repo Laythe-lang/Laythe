@@ -30,6 +30,13 @@ const PRINT_META: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Var
 const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Default(0, 1))
   .with_params(&[ParameterBuilder::new("code", ParameterKind::Number)]);
 
+// const RANGE_META: NativeMetaBuilder = NativeMetaBuilder::fun("range", Arity::Default(2, 3))
+//   .with_params(&[
+//     ParameterBuilder::new("lower", ParameterKind::Number),
+//     ParameterBuilder::new("upper", ParameterKind::Number),
+//     ParameterBuilder::new("stide", ParameterKind::Number),
+//   ]);
+
 pub fn declare_misc_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
   let str_name = hooks.manage_str("str");
 
@@ -112,7 +119,7 @@ native!(Exit, EXIT_META);
 
 impl Native for Exit {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    let code = if args.len() == 0 {
+    let code = if args.is_empty() {
       0.0
     } else {
       args[0].to_num() as f64

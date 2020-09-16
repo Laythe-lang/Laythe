@@ -15,7 +15,7 @@ use laythe_core::{
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
-pub const OBJECT_CLASS_NAME: &'static str = "Object";
+pub const OBJECT_CLASS_NAME: &str = "Object";
 
 const OBJECT_EQUALS: NativeMetaBuilder = NativeMetaBuilder::method("equals", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("other", ParameterKind::Any)]);

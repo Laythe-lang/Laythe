@@ -21,7 +21,7 @@ use laythe_env::{
 };
 use std::mem;
 
-pub const ITER_CLASS_NAME: &'static str = "Iter";
+pub const ITER_CLASS_NAME: &str = "Iter";
 const ITER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
 /// This might need to have a stack once we implement yield or the iterator class

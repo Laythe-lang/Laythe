@@ -15,7 +15,7 @@ use laythe_core::{
 };
 use laythe_env::{managed::Trace, stdio::Stdio};
 
-pub const CLASS_CLASS_NAME: &'static str = "Class";
+pub const CLASS_CLASS_NAME: &str = "Class";
 
 const CLASS_SUPER_CLASS: NativeMetaBuilder =
   NativeMetaBuilder::method("superClass", Arity::Fixed(0));
@@ -55,7 +55,7 @@ impl Native for ClassSuperClass {
       .unwrap()
       .to_class()
       .super_class()
-      .map(|super_class| val!(super_class))
+      .map(Value::from)
       .unwrap_or(VALUE_NIL);
 
     Ok(super_class)

@@ -1,0 +1,100 @@
+Module ::= Decl* ;
+Decl ::= Symbol | Export | Stmt | Trait | TypeDecl;
+
+Export ::= "export" Symbol ;
+Symbol ::= Class | Fn | Let ;
+
+Class ::= "class" IDENTIFIER ( "<" IDENTIFIER )?
+  "{" ( TypeMember ";" | Function)* "}" ;
+Fn ::= "fn" Function ;
+Let ::= "let" IDENTIFIER ( TypeAnnotation )? ( "=" Expr )? ";" ;
+Trait ::= "trait" IDENTIFIER TypeParams? "{" TypeMember ("," TypeMember)* "}"
+TypeMember ::= IDENTIFIER TypeAnnotation ";" ;
+TypeDecl ::= "type" IDENTIFIER TypeParams? = Type ";" ;
+
+Stmt ::= ExprStmt
+  | Import
+  | For
+  | If
+  | Return
+  | While
+  | Try
+  | AssignBlock ;
+
+Function ::= IDENTIFIER CallSignature Block ;
+Params ::= IDENTIFIER ( "," IDENTIFIER )* ;
+Args ::= Expr ( "," Expr )* ;
+
+ExprStmt ::= Expr ";" ;
+Import ::= "import" Imports "from" STRING ;
+Imports ::= ( IDENTIFIER | "{" ImportSymbol ( "," ImportSymbol )* "}" ) ;
+ImportSymbol ::= ( IDENTIFIER (":" IDENTIFIER)? )
+For ::= "for" IDENTIFIER "in" expr Block ;
+If ::= "if" Expr Block ( "else" Block | If )? ;
+Return ::= "return" Expr? ";" ;
+While ::= "while" Expr Block ;
+Try ::= "try" Block "catch" Block ;
+AssignBlock ::= ":" Block ;
+Block ::= "{" Decl* "}" ;
+Expr ::= Assign ;
+
+Assign ::= ( Call "." )? IDENTIFIER "=" Assign | LogicOr;
+
+LogicOr ::= LogicAnd ( "or" LogicAnd )* ;
+LogicAnd ::= Equality ( "and" Equality )* ;
+Equality ::= Comparison ( ( "!=" | "==" ) Comparison )* ;
+Comparison ::= Addition ( ( ">" | ">=" | "<" | "<=" ) Addition )* ;
+Addition ::= Multiplication ( ( "-" | "+" ) Multiplication )* ;
+Multiplication ::= Unary ( ( "/" | "*" ) Unary )* ;
+
+Unary ::= ( "!" | "-" ) Unary | Call | Map | List ;
+List ::= "[" ( Expr ( "," Expr )* ","? )? "]"
+Map ::= "{" ( MapEntry ( "," MapEntry )* ","? )? "}"
+MapEntry ::= Expr ":" Expr
+Call ::= Primary ( "(" Args? ")" | "[" Expr "]" | "." IDENTIFIER )* ;
+
+Primary ::= "true" | "false" | "nil" | "self"
+  | NUMBER | STRING | IDENTIFIER | LAMBDA
+  | "(" Expr ")" | "[" Args? "]"
+  | "super" "." IDENTIFIER ;
+
+NUMBER ::= DIGIT+ ( "." DIGIT+ )? ;
+STRING ::= '"' <any char except '"'>* '"' | "'" <any char except "'">* "'";
+LAMBDA ::= '|' ParameterList? '|' (Block | Expr)
+IDENTIFIER ::= ALPHA ( ALPHA | DIGIT )* ;
+ALPHA ::= 'a' ... 'z' | 'A' ... 'Z' | '_' ;
+DIGIT ::= '0' ... '9' ;
+
+# placeholder name
+TypeParams ::= "<" TypeParam ("," TypeParam)* ">";
+TypeParam ::= IDENTIFIER (":" Type)?
+Type ::= TypeLiteral
+  | TypeReference
+  | TypeUnion
+  | PREDEFINED_TYPE ;
+
+TypeReference ::= IDENTIFIER TypeArgs? ;
+TypeArgs ::= '<' TypeArgsList '>' ;
+TypeArgsList ::= TypeArg (',' TypeArg)* ;
+TypeArg ::= Type ;
+
+TypeUnion ::= TypeUnion '|' TypeIntersection
+TypeIntersection ::= TypeIntersection '&' Type
+
+TypeLiteral ::= FunctionType
+  | ListType
+
+FunctionType ::= CallSignature;
+CallSignature ::= TypeParams? '(' ParameterList? ')' '->' Type ;
+ListType ::= Type '[' ']'
+ParameterList ::= RequiredParams ;
+RequiredParams ::= RequiredParam (',' RequiredParam)* ;
+RequiredParam ::= IDENTIFIER TypeAnnotation? ;
+TypeAnnotation ::= ':' Type ;
+
+PREDEFINED_TYPE = 'nil'
+  | 'number' 
+  | 'bool' 
+  | 'string' 
+  | 'any' 
+

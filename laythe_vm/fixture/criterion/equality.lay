@@ -1,6 +1,6 @@
 let i = 0;
 
-while (i < 5000) {
+while i < 5000 {
   i = i + 1;
 
   1; 1; 1; 2; 1; nil; 1; "str"; 1; true;
@@ -10,7 +10,7 @@ while (i < 5000) {
 }
 
 i = 0;
-while (i < 5000) {
+while i < 5000 {
   i = i + 1;
 
   1 == 1; 1 == 2; 1 == nil; 1 == "str"; 1 == true;

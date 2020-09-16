@@ -1,0 +1,2 @@
+// [line 2] Error at 'let': Expect expression.
+for i in [] let foo;

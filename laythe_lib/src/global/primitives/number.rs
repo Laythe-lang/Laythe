@@ -16,9 +16,14 @@ use laythe_core::{
 use laythe_env::{managed::Trace, stdio::Stdio};
 use std::mem;
 
-pub const NUMBER_CLASS_NAME: &'static str = "Number";
+pub const NUMBER_CLASS_NAME: &str = "Number";
 const NUMBER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const NUMBER_TIMES: NativeMetaBuilder = NativeMetaBuilder::method("times", Arity::Fixed(0));
+const NUMBER_UNTIL: NativeMetaBuilder = NativeMetaBuilder::method("until", Arity::Default(1, 2))
+  .with_params(&[
+    ParameterBuilder::new("upper", ParameterKind::Number),
+    ParameterBuilder::new("stride", ParameterKind::Number),
+  ]);
 
 const NUMBER_PARSE: NativeMetaBuilder = NativeMetaBuilder::fun("parse", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("str", ParameterKind::String)]);
@@ -119,7 +124,7 @@ impl LyIter for TimesIterator {
 
   fn next(&mut self, _hooks: &mut Hooks) -> CallResult {
     if self.current < self.max {
-      self.current = self.current + 1.0;
+      self.current += 1.0;
       Ok(val!(true))
     } else {
       Ok(val!(false))
@@ -128,6 +133,70 @@ impl LyIter for TimesIterator {
 
   fn size_hint(&self) -> Option<usize> {
     Some((self.max + 1.0) as usize)
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+}
+
+native!(NumberUntil, NUMBER_UNTIL);
+
+impl Native for NumberUntil {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    let min = this.unwrap().to_num();
+    let max = _args[0].to_num();
+    let stride = if _args.len() > 1 {
+      _args[1].to_num()
+    } else {
+      1.0
+    };
+
+    let inner_iter: Box<dyn LyIter> = Box::new(UntilIterator::new(min, max, stride));
+    let iter = LyIterator::new(inner_iter);
+    let iter = hooks.manage(iter);
+
+    Ok(val!(iter))
+  }
+}
+
+#[derive(Debug, Trace)]
+struct UntilIterator {
+  current: f64,
+  max: f64,
+  stride: f64,
+}
+
+impl UntilIterator {
+  fn new(min: f64, max: f64, stride: f64) -> Self {
+    Self {
+      current: min - stride,
+      max: max - stride,
+      stride,
+    }
+  }
+}
+
+impl LyIter for UntilIterator {
+  fn name(&self) -> &str {
+    "Times Iterator"
+  }
+
+  fn current(&self) -> Value {
+    val!(self.current)
+  }
+
+  fn next(&mut self, _hooks: &mut Hooks) -> CallResult {
+    if self.current < self.max {
+      self.current += self.stride;
+      Ok(val!(true))
+    } else {
+      Ok(val!(false))
+    }
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    None
   }
 
   fn size(&self) -> usize {
@@ -206,6 +275,52 @@ mod test {
           assert_eq!(number_times.current(), val!(2.0));
 
           assert_eq!(number_times.next(&mut hooks).unwrap(), val!(false));
+        }
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod until {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let number_until = NumberUntil::from(&hooks);
+
+      assert_eq!(number_until.meta().name, "until");
+      assert_eq!(number_until.meta().signature.arity, Arity::Default(1, 2));
+      assert_eq!(
+        number_until.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+      assert_eq!(
+        number_until.meta().signature.parameters[1].kind,
+        ParameterKind::Number
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::new(&[val!(5.0)]);
+      let mut hooks = Hooks::new(&mut context);
+      let number_until = NumberUntil::from(&hooks);
+
+      let result = number_until.call(&mut hooks, Some(val!(2.0)), &[val!(6.0), val!(2.0)]);
+      match result {
+        Ok(r) => {
+          let mut number_until = r.to_iter();
+          assert_eq!(number_until.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(number_until.current(), val!(2.0));
+
+          assert_eq!(number_until.next(&mut hooks).unwrap(), val!(true));
+          assert_eq!(number_until.current(), val!(4.0));
+
+          assert_eq!(number_until.next(&mut hooks).unwrap(), val!(false));
         }
         Err(_) => assert!(false),
       }

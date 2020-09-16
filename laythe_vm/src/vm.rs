@@ -1,8 +1,9 @@
 use crate::{
   call_frame::CallFrame,
-  compiler::{Compiler, CompilerResult, Parser},
+  compiler::{Compiler, CompilerResult},
   constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
   dep_manager::DepManager,
+  parser::Parser,
 };
 use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
@@ -27,6 +28,7 @@ use laythe_env::{
 };
 use laythe_lib::{create_std_lib, global::builtin_from_global_module, GLOBAL, STD};
 use laythe_native::io::io_native;
+use smol_str::SmolStr;
 use std::cmp::Ordering;
 use std::convert::TryInto;
 use std::mem;
@@ -39,7 +41,6 @@ use crate::debug::{disassemble_instruction, exception_catch};
 #[cfg(feature = "debug")]
 use std::io;
 
-use smol_str::SmolStr;
 #[cfg(feature = "debug_upvalues")]
 use std::{cmp::Ordering, io};
 
@@ -113,8 +114,8 @@ pub struct Vm {
 impl Vm {
   pub fn new(io: Io) -> Vm {
     let gc = Gc::new(io.stdio());
-    let mut no_gc_context = NoContext::new(&gc);
-    let hooks = GcHooks::new(&mut no_gc_context);
+    let no_gc_context = NoContext::new(&gc);
+    let hooks = GcHooks::new(&no_gc_context);
 
     let cwd = io
       .env()
@@ -173,7 +174,7 @@ impl Vm {
     loop {
       let mut buffer = String::new();
 
-      if let Err(_) = write!(stdio.stdout(), "laythe:> ") {
+      if write!(stdio.stdout(), "laythe:> ").is_err() {
         return ExecuteResult::InternalError;
       }
       stdio.stdout().flush().expect("Could not write to stdout");
@@ -228,13 +229,13 @@ impl Vm {
 
   /// Compile the provided laythe source into the virtual machine's bytecode
   fn compile(&mut self, module: Managed<Module>, source: &str) -> CompilerResult {
-    let mut parser = Parser::new(self.io.stdio(), source);
+    let ast = Parser::new(self.io.stdio(), &source).parse()?;
 
-    let mut compiler_context = NoContext::new(&self.gc);
-    let hooks = GcHooks::new(&mut compiler_context);
+    let compiler_context = NoContext::new(&self.gc);
+    let hooks = GcHooks::new(&compiler_context);
 
-    let compiler = Compiler::new(module, &mut parser, &hooks);
-    compiler.compile()
+    let compiler = Compiler::new(module, &self.io, &hooks);
+    compiler.compile(&ast)
   }
 
   /// Prepare the main module for use
@@ -273,8 +274,8 @@ impl From<VmDependencies> for Vm {
   /// different environments
   fn from(dependencies: VmDependencies) -> Self {
     let gc = dependencies.gc;
-    let mut no_gc_context = NoContext::new(&gc);
-    let hooks = GcHooks::new(&mut no_gc_context);
+    let no_gc_context = NoContext::new(&gc);
+    let hooks = GcHooks::new(&no_gc_context);
 
     let std_lib = dependencies.std_lib;
     let global = std_lib
@@ -399,7 +400,7 @@ impl<'a> VmExecutor<'a> {
 
     let mut current_module = executor.current_fun.module;
     vm.global
-      .transfer_exported(&GcHooks::new(&mut executor), &mut current_module)
+      .transfer_exported(&GcHooks::new(&executor), &mut current_module)
       .expect("Transfer global module failed");
 
     match result {
@@ -481,7 +482,7 @@ impl<'a> VmExecutor<'a> {
       #[cfg(feature = "debug")]
       {
         let ip = unsafe { self.ip.offset(-1) };
-        if let Err(_) = self.print_debug(ip, last_ip) {
+        if let Err(_) = self.print_state(ip, last_ip) {
           return ExecuteResult::InternalError;
         }
         last_ip = ip;
@@ -515,6 +516,7 @@ impl<'a> VmExecutor<'a> {
         ByteCode::Import => self.op_import(),
         ByteCode::Export => self.op_export(),
         ByteCode::Drop => self.op_drop(),
+        ByteCode::DropN => self.op_drop_n(),
         ByteCode::Nil => self.op_literal(VALUE_NIL),
         ByteCode::True => self.op_literal(val!(true)),
         ByteCode::False => self.op_literal(val!(false)),
@@ -637,7 +639,7 @@ impl<'a> VmExecutor<'a> {
   /// pop a value off the stack
   #[inline]
   fn pop(&mut self) -> Value {
-    self.stack_top = unsafe { self.stack_top.offset(-1) };
+    self.drop();
     self.get_val(0)
   }
 
@@ -645,6 +647,12 @@ impl<'a> VmExecutor<'a> {
   #[inline]
   fn drop(&mut self) {
     self.stack_top = unsafe { self.stack_top.offset(-1) };
+  }
+
+  /// drop a value off the stack
+  #[inline]
+  fn drop_n(&mut self, count: u8) {
+    self.stack_top = unsafe { self.stack_top.offset(-(count as isize)) };
   }
 
   /// reference a value n slots from the stack head
@@ -687,6 +695,13 @@ impl<'a> VmExecutor<'a> {
   /// drop a value off the stack
   fn op_drop(&mut self) -> Signal {
     self.drop();
+    Signal::Ok
+  }
+
+  /// drop a value off the stack
+  fn op_drop_n(&mut self) -> Signal {
+    let count = self.read_byte();
+    self.drop_n(count);
     Signal::Ok
   }
 
@@ -795,6 +810,7 @@ impl<'a> VmExecutor<'a> {
       .dep_manager
       .primitive_classes()
       .for_value(receiver, receiver.kind());
+
     self.invoke_from_class(class, method_name, arg_count)
   }
 
@@ -813,6 +829,7 @@ impl<'a> VmExecutor<'a> {
   fn op_class(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
+
     let class = val!(self.gc.manage(
       Class::new(
         &GcHooks::new(self),
@@ -1616,7 +1633,7 @@ impl<'a> VmExecutor<'a> {
 
   /// hoist all open upvalue above the last index
   fn close_upvalues(&mut self, last_value: NonNull<Value>) {
-    if self.open_upvalues.len() > 0 {
+    if !self.open_upvalues.is_empty() {
       let mut retain = self.open_upvalues.len();
 
       for upvalue in self.open_upvalues.iter_mut().rev() {
@@ -1648,7 +1665,7 @@ impl<'a> VmExecutor<'a> {
 
   /// Print debugging information for the current instruction
   #[cfg(feature = "debug")]
-  fn print_debug(&self, ip: *const u8, last_ip: *const u8) -> io::Result<usize> {
+  fn print_state(&self, ip: *const u8, last_ip: *const u8) -> io::Result<usize> {
     let mut stdio = self.io.stdio();
 
     self.print_stack_debug(&mut stdio)?;
@@ -1673,7 +1690,7 @@ impl<'a> VmExecutor<'a> {
         let fun = frame.closure.fun;
         write!(stdout, "[ {}:{} ]", *fun.module.name(), *fun.name)?;
       }
-      writeln!(stdout, "")?;
+      writeln!(stdout)?;
     }
 
     write!(stdout, "Local Stack:  ")?;
@@ -1687,7 +1704,7 @@ impl<'a> VmExecutor<'a> {
       }
     }
 
-    writeln!(stdout, "")
+    writeln!(stdout)
   }
 
   /// Print the current upvalues
@@ -1707,8 +1724,16 @@ impl<'a> VmExecutor<'a> {
       }
     }
 
-    writeln!(stdout, "")
+    writeln!(stdout)
   }
+
+  // #[cfg(feature = "debug")]
+  // fn print(&self, message: &str) {
+  //   let mut stdio = self.io.stdio();
+  //   let stdout = stdio.stdout();
+
+  //   writeln!(stdout, "{}", message).expect("Could not write to stdout");
+  // }
 
   /// Convert an execute result to a call result
   fn to_call_result(&self, execute_result: ExecuteResult) -> CallResult {

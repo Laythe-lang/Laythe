@@ -7,11 +7,11 @@ let map = {
 };
 
 let newMap = {};
-for (let kvp in map) {
+for kvp in map {
   newMap[kvp[0]] = kvp[1];
 }
 
 assertEq(newMap.size(), map.size());
-for (let kvp in newMap) {
+for kvp in newMap {
   assertEq(kvp[1], map[kvp[0]]);
 }

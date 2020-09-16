@@ -22,7 +22,7 @@ use laythe_env::{
 use smol_str::SmolStr;
 use std::mem;
 
-pub const MAP_CLASS_NAME: &'static str = "Map";
+pub const MAP_CLASS_NAME: &str = "Map";
 
 const MAP_GET: NativeMetaBuilder = NativeMetaBuilder::method("get", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)]);

@@ -17,7 +17,7 @@ class Zoo {
 
 let zoo = Zoo();
 let sum = 0;
-while (sum < 20000) {
+while sum < 20000 {
   sum = sum + zoo.ant()
             + zoo.banana()
             + zoo.tuna()
