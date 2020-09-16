@@ -1,10 +1,10 @@
-use crate::{token::Token, value::Value};
+use crate::value::Value;
 use std::mem;
 
 /// What is the previous unicode code point
 pub fn previous_boundary(source: &str, start: usize) -> usize {
   let mut current = start - 1;
-  while !source.is_char_boundary(current) && current > 0 {
+  while current > 0 && !source.is_char_boundary(current) {
     current -= 1;
   }
 
@@ -14,7 +14,7 @@ pub fn previous_boundary(source: &str, start: usize) -> usize {
 /// What is next unicode code point
 pub fn next_boundary(source: &str, start: usize) -> usize {
   let mut current = start + 1;
-  while !source.is_char_boundary(current) && current < source.len() {
+  while current < source.len() && !source.is_char_boundary(current) {
     current += 1;
   }
 
@@ -25,33 +25,6 @@ pub fn next_boundary(source: &str, start: usize) -> usize {
 #[inline]
 pub fn is_falsey(value: Value) -> bool {
   value.is_false() || value.is_nil()
-}
-
-/// Copy a string from the str backing the provided token. Note this copy
-/// emits the enclosing quotes
-///
-/// # Examples
-/// ```
-/// use laythe_core::utils::copy_string;
-/// use laythe_core::token::{Token, TokenKind};
-/// use smol_str::SmolStr;
-///
-/// let token = Token {
-///   kind: TokenKind::String,
-///   lexeme: SmolStr::new("\"a cat in a hat\""),
-///   line: 0
-/// };
-///
-/// let copy = copy_string(&token);
-/// assert_eq!(copy, "a cat in a hat");
-/// assert_ne!(copy, "\"a cat in a hat\"");
-///
-/// ```
-pub fn copy_string<'a>(token: &'a Token) -> &'a str {
-  let start = next_boundary(&token.lexeme, 0);
-  let end = previous_boundary(&token.lexeme, token.lexeme.len());
-
-  &token.lexeme[start..end]
 }
 
 pub fn ptr_len<T>(start: *const T, end: *const T) -> usize {
