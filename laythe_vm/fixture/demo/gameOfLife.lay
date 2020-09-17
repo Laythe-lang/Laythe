@@ -66,8 +66,8 @@ class Universe {
 
   liveNeighbors(row, col) {
     let count = 0;
-    for (let deltaRow in [self.height - 1, 0, 1]) {
-      for (let deltaCol in [self.width - 1, 0, 1]) {
+    for deltaRow in [self.height - 1, 0, 1] {
+      for deltaCol in [self.width - 1, 0, 1] {
         if deltaRow != 0 or deltaCol != 0 {
           let neighborRow = Math.rem(row + deltaRow, self.height);
           let neighborCol = Math.rem(col + deltaCol, self.width);
@@ -92,12 +92,12 @@ class Universe {
 
   tick() {
     let next = [];
-    for (let cell in self.cells) {
+    for cell in self.cells {
       next.push(cell);
     }
 
-    for (let row in self.height.times()) {
-      for (let col in self.width.times()) {
+    for row in self.height.times() {
+      for col in self.width.times() {
         let idx = self.getIndex(row, col);
         let cell = self.cells[idx];
         let liveNeighbors = self.liveNeighbors(row, col);
@@ -125,8 +125,8 @@ class Universe {
   }
 
   render() {
-    for (let row in self.height.times()) {
-      for (let col in self.width.times()) {
+    for row in self.height.times() {
+      for col in self.width.times() {
         let idx = self.getIndex(row, col);
         let cell = self.cells[idx];
 
