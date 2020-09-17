@@ -11,7 +11,7 @@ class Toggle {
   }
 }
 
-class NthToggle < Toggle {
+class NthToggle : Toggle {
   init(startState, maxCounter) {
     super.init(startState);
     self.countMax = maxCounter;
@@ -34,7 +34,7 @@ let n = 100000;
 let val = true;
 let toggle = Toggle(val);
 
-for (let i = 0; i < n; i = i + 1) {
+for i in n.times() {
   val = toggle.activate().value();
   val = toggle.activate().value();
   val = toggle.activate().value();
@@ -52,7 +52,7 @@ print(toggle.value());
 val = true;
 let ntoggle = NthToggle(val, 3);
 
-for (let i = 0; i < n; i = i + 1) {
+for i in n.times() {
   val = ntoggle.activate().value();
   val = ntoggle.activate().value();
   val = ntoggle.activate().value();

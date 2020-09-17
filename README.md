@@ -1,30 +1,39 @@
 # Laythe
 
-A toy programming language originall based on the 2nd book of [Crafting Interpreters](https://craftinginterpreters.com/). See git tag [v0.1.0](https://github.com/Laythe-lang/Laythe/releases/tag/v0.1.0) for a fully compliant lox implementations. Since v0.1.0 I've continued adding features and exploring what's possible to learn and do in the PL world. 
+A programming language originally based on the 2nd book of [Crafting Interpreters](https://craftinginterpreters.com/). See git tag [v0.1.0](https://github.com/Laythe-lang/Laythe/releases/tag/v0.1.0) for a fully compliant lox implementations. Since v0.1.0 I've continued adding features and exploring what's possible to learn and do in the PL world. 
 
-## Getting Started
+# Getting Started
 
 This project can be built using the typical set of cargo commands for building, testing, running and benching.
 
-#### In debug
+### Build debug
 ```
 cargo build
 ```
 
-#### In Release
+### Build Release
 ```
 cargo build --release
 ```
 
-To run the test suite run the following.
+### Run Test Suite
 ```
 cargo test
 ```
 
-A set of benchmarks have been setup using criterion. To run these again use cargo.
-
+### Run Benchmark Suite
 ```
 cargo bench
+```
+
+### Run Repl
+```
+cargo run [--release] 
+```
+
+### Run a File
+```
+cargo run [--release] [filepath]
 ```
 
 If you have the the flamegraph cargo subcommand you can profile a script by the following.
@@ -33,43 +42,37 @@ If you have the the flamegraph cargo subcommand you can profile a script by the 
 cargo flamegraph --bin=laythe [filepath]
 ```
 
-To run the repl use.
-```
-cargo run [--release] 
-```
 
-To run a script use.
-```
-cargo run [--release] [filepath]
-```
-
-## Notable differences
+# Notable differences
 
 I've continued to work on the language with a few extensions. Below are some of the differences
 
 
-### Additions
+## Additions
 
-**Built in Classes**: Laythe now has machinery to give all types methods. Some simple examples include `.str()` methods to get a string representation of each type.
+### Built in Classes
+Laythe now has machinery to give all types methods. Some simple examples include `.str()` methods to get a string representation of each type.
 
 ```laythe
-> let x = true;
-> x.str()
+laythe:> let x = true;
+laythe:> x.str()
 'true'
 ```
 
-**Lambdas**: There are now function expressions. This was actually a very minimal change to enable this as it reuses almost all the the function machinery.
+### Lambdas
+There are now function expressions. This was actually a very minimal change to enable this as it reuses almost all the the function machinery.
 
 ```laythe
-> let func = |x| x * 2;
-> let withBody |name| { print("hi! " + name); };
-> func(5)
+laythe:> let func = |x| x * 2;
+laythe:> let withBody |name| { print("hi! " + name); };
+laythe:> func(5)
 10
-> withBody("John")
+laythe:> withBody("John")
 hi! john
 ```
 
-**Static Methods**: Classes now support static methods using the `static` keyword.
+### Static Methods
+Classes now support static methods using the `static` keyword.
 
 ```laythe
 class WithStatic {
@@ -78,25 +81,121 @@ class WithStatic {
   }
 }
 
-> WithStatic.example()
+laythe:> WithStatic.example()
 'example'
 ```
 
-**New Collection Types**: Laythe now has lists and maps as part of the language both supporting literals.
+### New Collection Types
+Laythe now has lists and maps as part of the language both supporting literals.
 
 ```laythe
-> let list = [1, false, nil, 3, clock];
-> let map = { 'key1', 10, 'key2': false, 15: nil };
-> list[2];
+laythe:> let list = [1, false, nil, 3, clock];
+laythe:> let map = { 'key1', 10, 'key2': false, 15: nil };
+laythe:> list[2];
 nil
-> map[false];
+laythe:> map[false];
 15
 ```
 Map support all types with objects supported by reference equality. Since strings are interned this gives the desire value comparison results most would expect.
 
-### Modified
+**Type Annotations**: Laythe now supports a basic set of type annotations. Long term this will eventually turn into optional typing, but the parser will now ingest some Typescript like annotations.
 
-**Gc** The gc is setup quite differently from clox mostly because dealing with lifetimes in the base implementation was nearly impossible. Instead objects as of 5/8/2020 Act as a sort of smart pointer into a `Vec<Box<Value>>`. The gc takes a context for determining when should be considered roots. Gc is also explicitly turned off during compilation as values are only freed during the main loop.
+```
+// let type def
+let b: string = "example"
+
+// essentially equivalent
+let f: (a: string) -> number = |a| Number.parse(a);
+let f = |a: string| -> number Number.parse(a);
+
+// function signature
+fn adder(x: number, y: number) -> number { 
+  return x + y
+}
+
+// class type param
+class Foo<T> {
+  // field declaration
+  bar: T;
+
+  init(bar: T) { 
+    self.bar = bar;
+  }
+}
+
+// type def
+type Holder<T> = Foo<T>[];
+
+// also called interface in TS
+trait NumHolder {
+  holder: Holder<number>;
+}
+```
+
+## Modified
+
+### Gc
+The gc is setup quite differently from clox mostly because dealing with lifetimes in the base implementation was nearly impossible. Instead objects as of 5/8/2020 Act as a sort of smart pointer into a `Vec<Box<Value>>`. The gc takes a context for to specify the object roots. Gc is also explicitly turned off during compilation as values are only freed during the main loop.
+
+### Grammar
+The grammar is now different in a few ways from lox. These are changes in additions to type annotations.
+
+```
+// variable declaration
+var lox = 10;
+let laythe = 10;
+
+// function declaration
+fun loxFun (a, b, c) { // lox
+  return a + b + c
+}
+
+fn laytheFnExpressionBody (a, b, c) a + b + c
+fn laytheFnBlockBody (a, b, c) {
+  return a + b + c
+}
+
+// classes
+class LoxClass {
+  init(field1) { 
+    this.field1 = field1
+  }
+}
+
+class LaytheClass {
+  init(field1) { 
+    self.field1 = field1
+  }
+}
+
+// lox control flow
+
+// has parens around condition, any statement for body
+if (10 < 3) {
+  var y = 10;
+} else print(x);
+
+// c style look
+for (var x = 0; x < 5; x = x + 1) { }
+
+while (true) print("hi")
+
+// laythe control flow
+
+// no parens, body must be block
+if 10 < 3 {
+  let y = 10;
+} else { 
+  print(x)
+}
+
+// range style look
+for i in 100.times() {
+
+}
+
+while true { }
+```
 
 ### Performance
 
@@ -162,3 +261,6 @@ The number of instance to classes in almost every case should be relatively larg
 To accompany this we'll need to close all instances so you can no longer add field after the initializer. I think this behavior is not very desirable to begin with, plus it leads to a lot of potential in terms of gradual typing and optimization. 
 
 As a side effect of this change we should be able to emit new instruction of getting field `0-N` directly and completely avoiding the hash.
+
+### Debug an Release
+I think I'd like to strive to keep as much of the plug and play philosophy of many dynamics languages around while optionally providing some of the static. Ideally I'd like to be able to run a script without any type checking and no optimization passes. I think having a separate mode that does both type check and some basic optimization could address some short coming some dynamic project face when they become large. 
