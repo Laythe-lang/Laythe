@@ -2,7 +2,6 @@
 pub mod ast;
 pub mod call_frame;
 pub mod compiler;
-pub mod compiler_one_pass;
 pub mod constants;
 pub mod debug;
 pub mod dep_manager;
