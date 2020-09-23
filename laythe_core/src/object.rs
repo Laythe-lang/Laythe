@@ -5,6 +5,7 @@ use crate::{
   hooks::GcHooks,
   module::Module,
   signature::Arity,
+  value::VALUE_NIL,
   value::{Value, ValueKind},
 };
 use core::slice;
@@ -722,6 +723,7 @@ pub struct Class {
   pub name: Managed<SmolStr>,
   pub init: Option<Value>,
   methods: DynamicMap<Managed<SmolStr>, Value>,
+  fields: DynamicMap<Managed<SmolStr>, u16>,
   meta_class: Option<Managed<Class>>,
   super_class: Option<Managed<Class>>,
 }
@@ -743,6 +745,7 @@ impl Class {
       name,
       init: None,
       methods: DynamicMap::new(),
+      fields: DynamicMap::new(),
       meta_class: Some(meta_class),
       super_class: None,
     };
@@ -756,6 +759,7 @@ impl Class {
       name,
       init: None,
       methods: DynamicMap::new(),
+      fields: DynamicMap::new(),
       meta_class: None,
       super_class: None,
     }
@@ -778,18 +782,31 @@ impl Class {
     self
   }
 
-  pub fn add_method(&mut self, hooks: &GcHooks, name: Managed<SmolStr>, method: Value) {
+  pub fn add_field(&mut self, hooks: &GcHooks, name: Managed<SmolStr>) -> Option<u16> {
+    let len = self.fields.len();
+
+    hooks.grow(self, |class| class.fields.insert(name, len as u16))
+  }
+
+  pub fn add_method(
+    &mut self,
+    hooks: &GcHooks,
+    name: Managed<SmolStr>,
+    method: Value,
+  ) -> Option<Value> {
     if *name == INIT {
       self.init = Some(method);
     }
 
-    hooks.grow(self, |class| {
-      class.methods.insert(name, method);
-    });
+    hooks.grow(self, |class| class.methods.insert(name, method))
   }
 
   pub fn get_method(&self, name: &Managed<SmolStr>) -> Option<Value> {
     self.methods.get(name).map(|v| *v)
+  }
+
+  pub fn get_field_index(&self, name: &Managed<SmolStr>) -> Option<u16> {
+    self.fields.get(name).map(|v| *v)
   }
 
   pub fn inherit(&mut self, hooks: &GcHooks, super_class: Managed<Class>) {
@@ -799,6 +816,13 @@ impl Class {
           class.methods.insert(*key, *value);
         }
       });
+
+      super_class.fields.for_each(|(field, _index)| {
+        if let None = class.fields.get(&field) {
+          let len = class.fields.len();
+          class.fields.insert(field.clone(), len as u16);
+        }
+      })
     });
 
     debug_assert!(self
@@ -875,29 +899,36 @@ impl Manage for Class {
 #[derive(PartialEq, Clone)]
 pub struct Instance {
   pub class: Managed<Class>,
-  fields: DynamicMap<Managed<SmolStr>, Value>,
+  fields: Box<[Value]>, // fields: DynamicMap<Managed<SmolStr>, Value>,
 }
 
 impl Instance {
   pub fn new(class: Managed<Class>) -> Self {
     Instance {
       class,
-      fields: DynamicMap::new(),
+      fields: vec![VALUE_NIL; class.fields.len()].into_boxed_slice(),
     }
   }
 
-  pub fn fields(&self) -> &DynamicMap<Managed<SmolStr>, Value> {
+  pub fn fields(&self) -> &[Value] {
     &self.fields
   }
 
-  pub fn set_field(&mut self, hooks: &GcHooks, name: Managed<SmolStr>, value: Value) {
-    hooks.grow(self, |instance: &mut Instance| {
-      instance.fields.insert(name, value);
-    });
+  pub fn set_field(&mut self, name: Managed<SmolStr>, value: Value) -> bool {
+    match self.class.get_field_index(&name) {
+      Some(index) => {
+        self.fields[index as usize] = value;
+        true
+      }
+      None => false,
+    }
   }
 
   pub fn get_field(&self, name: &Managed<SmolStr>) -> Option<&Value> {
-    self.fields.get(name)
+    self
+      .class
+      .get_field_index(&name)
+      .map(|index| &self.fields[index as usize])
   }
 }
 
@@ -914,8 +945,7 @@ impl Trace for Instance {
   fn trace(&self) -> bool {
     self.class.trace();
 
-    self.fields.for_each(|(key, val)| {
-      key.trace();
+    self.fields.iter().for_each(|val| {
       val.trace();
     });
 
@@ -925,8 +955,7 @@ impl Trace for Instance {
   fn trace_debug(&self, stdio: &mut Stdio) -> bool {
     self.class.trace_debug(stdio);
 
-    self.fields.for_each(|(key, val)| {
-      key.trace_debug(stdio);
+    self.fields.iter().for_each(|val| {
       val.trace_debug(stdio);
     });
 
@@ -949,7 +978,7 @@ impl Manage for Instance {
 
   fn size(&self) -> usize {
     mem::size_of::<Instance>()
-      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.fields.capacity()
+      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.fields.len()
   }
 }
 

@@ -533,6 +533,7 @@ impl<'a> VmExecutor<'a> {
         ByteCode::SuperInvoke => self.op_super_invoke(),
         ByteCode::Closure => self.op_closure(),
         ByteCode::Method => self.op_method(),
+        ByteCode::Field => self.op_field(),
         ByteCode::StaticMethod => self.op_static_method(),
         ByteCode::Class => self.op_class(),
         ByteCode::Inherit => self.op_inherit(),
@@ -983,7 +984,7 @@ impl<'a> VmExecutor<'a> {
     if value.is_instance() {
       let mut instance = value.to_instance();
       let value = self.peek(0);
-      instance.set_field(&GcHooks::new(self), name, value);
+      instance.set_field(name, value);
 
       let popped = self.pop();
       self.drop();
@@ -1302,6 +1303,21 @@ impl<'a> VmExecutor<'a> {
     }
 
     self.drop();
+    Signal::Ok
+  }
+
+  fn op_field(&mut self) -> Signal {
+    let slot = self.read_short();
+    let name = self.read_string(slot);
+
+    let class = self.peek(0);
+
+    if class.is_class() {
+      class.to_class().add_field(&GcHooks::new(self), name);
+    } else {
+      self.internal_error("Invalid Stack for op_method.");
+    }
+
     Signal::Ok
   }
 

@@ -1,15 +1,16 @@
-class Foo {}
-
-fn bar(a, b) {
-  print("bar");
-  print(a);
-  print(b);
+class Foo {
+  init(bar) {
+    self.bar = bar;
+  }
 }
 
-let foo = Foo();
-foo.bar = bar;
+fn bar(a, b) {
+  return ["bar", a, b];
+}
 
-foo.bar(1, 2);
-// expect: bar
-// expect: 1
-// expect: 2
+let foo = Foo(bar);
+
+let result = foo.bar(1, 2);
+assertEq(result[0], "bar");
+assertEq(result[1], 1);
+assertEq(result[2], 2);

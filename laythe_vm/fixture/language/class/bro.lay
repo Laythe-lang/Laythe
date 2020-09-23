@@ -1,0 +1,9 @@
+class Dude {
+  a;
+  b;
+  c;
+
+  init() {
+    self.bro = 10;
+  }
+}

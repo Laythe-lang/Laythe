@@ -811,43 +811,6 @@ mod unboxed {
       }
     }
   }
-
-  #[cfg(test)]
-  mod test {
-    use super::*;
-    use laythe_env::managed::Allocation;
-    use std::ptr::NonNull;
-
-    fn example_each(string: Managed<SmolStr>) -> Vec<Value> {
-      vec![
-        Value::Bool(true),
-        Value::Nil,
-        Value::Number(10.0),
-        Value::String(string),
-      ]
-    }
-
-    #[test]
-    fn test_diff_type_no_equal() {
-      // let string = "example";
-      let mut string_alloc = Box::new(Allocation::new("data".to_string()));
-
-      // "blah".to_string().into_boxed_str();
-      let string_ptr = unsafe { NonNull::new_unchecked(&mut *string_alloc) };
-      let managed_string = Managed::from(string_ptr);
-
-      let examples = example_each(managed_string);
-      for i in 0..examples.len() {
-        for j in 0..examples.len() {
-          if i == j {
-            assert_eq!(examples[i] == examples[j], true);
-          } else {
-            assert_eq!(examples[i] == examples[j], false);
-          }
-        }
-      }
-    }
-  }
 }
 
 #[cfg(feature = "nan_boxing")]

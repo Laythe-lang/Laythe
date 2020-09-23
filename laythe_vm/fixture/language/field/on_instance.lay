@@ -1,4 +1,9 @@
-class Foo {}
+class Foo {
+  init() {
+    self.bar = nil;
+    self.baz = nil;
+  }
+}
 
 let foo = Foo();
 

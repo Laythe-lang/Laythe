@@ -1,16 +1,16 @@
 #![deny(clippy::all)]
+mod env;
 pub mod global;
 mod io;
 mod math;
-mod env;
 mod support;
 
+use env::env_module;
 use global::add_global_module;
 use io::io_package;
 use laythe_core::{hooks::GcHooks, package::Package, LyResult};
 use laythe_env::managed::Managed;
 use math::math_module;
-use env::env_module;
 
 #[macro_export]
 macro_rules! native {
@@ -84,7 +84,7 @@ mod test {
     package.entities().for_each(|(_key, entity)| match entity {
       PackageEntity::Module(module) => {
         let import = module.import(hooks);
-        import.fields().for_each(|(_key, symbol)| {
+        import.fields().iter().for_each(|symbol| {
           let option = match symbol.kind() {
             ValueKind::Native => Some(symbol.to_native().meta().clone()),
             _ => None,

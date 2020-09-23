@@ -106,6 +106,9 @@ pub fn disassemble_instruction(
     AlignedByteCode::Method(constant) => {
       constant_instruction(stdio.stdout(), "Method", chunk, constant, offset)
     }
+    AlignedByteCode::Field(constant) => {
+      constant_instruction(stdio.stdout(), "Field", chunk, constant, offset)
+    }
     AlignedByteCode::StaticMethod(constant) => {
       constant_instruction(stdio.stdout(), "StaticMethod", chunk, constant, offset)
     }

@@ -1,4 +1,9 @@
 class Foo {
+  init() {
+    self.name = nil;
+    self.slot = nil;
+  }
+
   sayName(a) {
     print(self.name);
     print(a);
@@ -12,8 +17,8 @@ let foo2 = Foo();
 foo2.name = "foo2";
 
 // Store the method reference on another object.
-foo2.f = foo1.sayName;
+foo2.slot = foo1.sayName;
 // Still retains original receiver.
-foo2.f(1);
+foo2.slot(1);
 // expect: foo1
 // expect: 1
