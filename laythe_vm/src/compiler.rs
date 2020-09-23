@@ -46,6 +46,7 @@ pub struct Local {
 pub struct ClassInfo {
   enclosing: Option<Managed<ClassInfo>>,
   fun_kind: Option<FunKind>,
+  fields: Vec<SmolStr>,
   has_super_class: bool,
   name: Option<Token>,
 }
@@ -683,6 +684,7 @@ impl<'a> Compiler<'a> {
     let mut class_compiler = self.hooks.manage(ClassInfo {
       name: class.name.clone(),
       fun_kind: None,
+      fields: vec![],
       has_super_class: false,
       enclosing: self.current_class,
     });
@@ -711,9 +713,14 @@ impl<'a> Compiler<'a> {
     self.variable(&name, false);
 
     // process the initializer
-    if let Some(init) = &class.init {
+    let field_line = if let Some(init) = &class.init {
       self.method(&init, FunKind::Initializer);
-    }
+      init.start()
+    } else {
+      class.start()
+    };
+
+    self.emit_fields(field_line);
 
     // process methods
     for method in &class.methods {
@@ -735,6 +742,17 @@ impl<'a> Compiler<'a> {
     // restore the enclosing class compiler
     self.current_class = class_compiler.enclosing;
     name_constant
+  }
+
+  /// Emit field instructions
+  fn emit_fields(&mut self, line: u32) {
+    let class_info = self.current_class.expect("Current class unset");
+
+    class_info.fields.iter().for_each(|f| {
+      let value = val!(self.hooks.manage_str(f.as_str()));
+      let constant = self.make_constant(value);
+      self.emit_byte(AlignedByteCode::Field(constant), line)
+    })
   }
 
   /// Compile a method
@@ -1021,6 +1039,19 @@ impl<'a> Compiler<'a> {
               self.emit_byte(AlignedByteCode::SetIndex, assign.rhs.end())
             }
             Trailer::Access(access) => {
+              if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
+                match atom.primary {
+                  Primary::Self_(_) => {
+                    let mut class_info = self.current_class.unwrap();
+
+                    if !class_info.fields.iter().any(|f| *f == access.prop.lexeme) {
+                      class_info.fields.push(access.prop.lexeme.clone());
+                    }
+                  }
+                  _ => (),
+                }
+              }
+
               let name = self.identifier_constant(&access.prop);
 
               self.expr(&assign.rhs);
@@ -1857,8 +1888,9 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(1)),
+        ByteCodeTest::Code(AlignedByteCode::Field(3)),
         ByteCodeTest::Fun((
-          4,
+          5,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
@@ -1867,9 +1899,9 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::Method(3)),
+        ByteCodeTest::Code(AlignedByteCode::Method(4)),
         ByteCodeTest::Fun((
-          6,
+          7,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
@@ -1878,7 +1910,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::Method(5)),
+        ByteCodeTest::Code(AlignedByteCode::Method(6)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),

@@ -1,4 +1,9 @@
 class Foo {
+  init() {
+    self.field1 = nil;
+    self.field2 = nil;
+  }
+
   foo(a, b) {
     self.field1 = a;
     self.field2 = b;

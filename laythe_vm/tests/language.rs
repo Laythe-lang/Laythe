@@ -266,7 +266,7 @@ fn field() -> Result<(), std::io::Error> {
       "language/field/call_function_field.lay",
       "language/field/get_and_set_method.lay",
       "language/field/many.lay",
-      "language/field/method_binds_this.lay",
+      "language/field/method_binds_self.lay",
       "language/field/method.lay",
       "language/field/on_instance.lay",
     ],

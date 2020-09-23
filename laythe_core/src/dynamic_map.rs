@@ -48,6 +48,13 @@ impl<K: Ord + Hash, V> DynamicMap<K, V> {
     }
   }
 
+  pub fn len(&self) -> usize {
+    match self {
+      Self::Linear(linear) => linear.len(),
+      Self::Hash(hash) => hash.len(),
+    }
+  }
+
   pub fn capacity(&self) -> usize {
     match self {
       Self::Linear(linear) => linear.capacity(),

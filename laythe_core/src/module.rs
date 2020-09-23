@@ -77,7 +77,10 @@ impl Module {
         self.name()
       ))
     } else {
-      hooks.grow(self, |module| module.exports.insert(name));
+      hooks.grow(self, |module| {
+        module.exports.insert(name);
+      });
+      self.module_class.add_field(hooks, name);
       Ok(())
     }
   }
@@ -91,7 +94,6 @@ impl Module {
 
     self.exports.iter().for_each(|export| {
       import.set_field(
-        hooks,
         *export,
         *self
           .symbols
