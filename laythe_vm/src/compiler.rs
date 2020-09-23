@@ -461,12 +461,6 @@ impl<'a> Compiler<'a> {
     self.emit_byte(AlignedByteCode::DefineGlobal(variable), line);
   }
 
-  /// Emit two provided instruction
-  fn emit_bytes(&mut self, op_code1: AlignedByteCode, op_code2: AlignedByteCode, line: u32) {
-    self.write_instruction(op_code1, line);
-    self.write_instruction(op_code2, line);
-  }
-
   /// Emit a provided instruction
   fn emit_byte(&mut self, op_code: AlignedByteCode, line: u32) {
     self.write_instruction(op_code, line);
@@ -1092,23 +1086,11 @@ impl<'a> Compiler<'a> {
       BinaryOp::Multi => self.emit_byte(AlignedByteCode::Multiply, binary.rhs.end()),
       BinaryOp::Div => self.emit_byte(AlignedByteCode::Divide, binary.rhs.end()),
       BinaryOp::Lt => self.emit_byte(AlignedByteCode::Less, binary.rhs.end()),
-      BinaryOp::LtEq => self.emit_bytes(
-        AlignedByteCode::Greater,
-        AlignedByteCode::Not,
-        binary.rhs.end(),
-      ),
+      BinaryOp::LtEq => self.emit_byte(AlignedByteCode::LessEqual, binary.rhs.end()),
       BinaryOp::Gt => self.emit_byte(AlignedByteCode::Greater, binary.rhs.end()),
-      BinaryOp::GtEq => self.emit_bytes(
-        AlignedByteCode::Less,
-        AlignedByteCode::Not,
-        binary.rhs.end(),
-      ),
+      BinaryOp::GtEq => self.emit_byte(AlignedByteCode::GreaterEqual, binary.rhs.end()),
       BinaryOp::Eq => self.emit_byte(AlignedByteCode::Equal, binary.rhs.end()),
-      BinaryOp::Ne => self.emit_bytes(
-        AlignedByteCode::Equal,
-        AlignedByteCode::Not,
-        binary.rhs.end(),
-      ),
+      BinaryOp::Ne => self.emit_byte(AlignedByteCode::NotEqual, binary.rhs.end()),
       BinaryOp::And => {
         let end_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), binary.lhs.end());
 
@@ -1680,12 +1662,11 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Map,         // 0
-        AlignedByteCode::GetLocal(1), // 1
-        AlignedByteCode::Constant(1), // 3
-        AlignedByteCode::GetIndex,    // 5
-        AlignedByteCode::Drop,
-        // 6
+        AlignedByteCode::Map,          // 0
+        AlignedByteCode::GetLocal(1),  // 1
+        AlignedByteCode::Constant(1),  // 3
+        AlignedByteCode::GetIndex,     // 5
+        AlignedByteCode::Drop,         // 6
         AlignedByteCode::Drop,         // 7
         AlignedByteCode::Jump(8),      // 8
         AlignedByteCode::GetGlobal(2), // 13
@@ -3039,8 +3020,7 @@ mod test {
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::Nil,
-        AlignedByteCode::Equal,
-        AlignedByteCode::Not,
+        AlignedByteCode::NotEqual,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3078,8 +3058,7 @@ mod test {
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::Greater,
-        AlignedByteCode::Not,
+        AlignedByteCode::LessEqual,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3117,8 +3096,7 @@ mod test {
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::Less,
-        AlignedByteCode::Not,
+        AlignedByteCode::GreaterEqual,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,

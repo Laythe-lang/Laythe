@@ -145,8 +145,11 @@ pub fn disassemble_instruction(
     }
     AlignedByteCode::Loop(jump) => jump_instruction(stdio.stdout(), "Loop", -1, jump, offset),
     AlignedByteCode::Equal => simple_instruction(stdio.stdout(), "Equal", offset),
+    AlignedByteCode::NotEqual => simple_instruction(stdio.stdout(), "NotEqual", offset),
     AlignedByteCode::Greater => simple_instruction(stdio.stdout(), "Greater", offset),
+    AlignedByteCode::GreaterEqual => simple_instruction(stdio.stdout(), "GreaterEqual", offset),
     AlignedByteCode::Less => simple_instruction(stdio.stdout(), "Less", offset),
+    AlignedByteCode::LessEqual => simple_instruction(stdio.stdout(), "LessEqual", offset),
     AlignedByteCode::Constant(constant) => {
       constant_instruction(stdio.stdout(), "Constant", chunk, constant as u16, offset)
     }

@@ -153,11 +153,20 @@ pub enum AlignedByteCode {
   /// Apply equality between the top two operands on the stack
   Equal,
 
+  /// Check if the top two operands on the stack are not equal
+  NotEqual,
+
   /// Apply greater between the top two operands on the stack
   Greater,
 
+  /// Check if the 2nd from the top operand is >= the top
+  GreaterEqual,
+
   /// Less greater between the top two operands on the stack
   Less,
+
+  /// Check if the 2nd from the top operand is <= the top
+  LessEqual,
 }
 
 impl AlignedByteCode {
@@ -183,8 +192,11 @@ impl AlignedByteCode {
       Self::GetIndex => push_op(code, ByteCode::GetIndex),
       Self::SetIndex => push_op(code, ByteCode::SetIndex),
       Self::Equal => push_op(code, ByteCode::Equal),
+      Self::NotEqual => push_op(code, ByteCode::NotEqual),
       Self::Greater => push_op(code, ByteCode::Greater),
+      Self::GreaterEqual => push_op(code, ByteCode::GreaterEqual),
       Self::Less => push_op(code, ByteCode::Less),
+      Self::LessEqual => push_op(code, ByteCode::LessEqual),
       Self::Drop => push_op(code, ByteCode::Drop),
       Self::DropN(slot) => push_op_u8(code, ByteCode::DropN, slot),
       Self::Constant(slot) => push_op_u8(code, ByteCode::Constant, slot),
@@ -352,8 +364,11 @@ impl AlignedByteCode {
       ByteCode::Inherit => (AlignedByteCode::Inherit, offset + 1),
       ByteCode::CloseUpvalue => (AlignedByteCode::CloseUpvalue, offset + 1),
       ByteCode::Equal => (AlignedByteCode::Equal, offset + 1),
+      ByteCode::NotEqual => (AlignedByteCode::NotEqual, offset + 1),
       ByteCode::Greater => (AlignedByteCode::Greater, offset + 1),
+      ByteCode::GreaterEqual => (AlignedByteCode::GreaterEqual, offset + 1),
       ByteCode::Less => (AlignedByteCode::Less, offset + 1),
+      ByteCode::LessEqual => (AlignedByteCode::LessEqual, offset + 1),
     }
   }
 }
@@ -505,11 +520,20 @@ pub enum ByteCode {
   /// Apply equality between the top two operands on the stack
   Equal,
 
+  /// Check if the top two operands on the stack are not equal
+  NotEqual,
+
   /// Apply greater between the top two operands on the stack
   Greater,
 
+  /// Check if the 2nd from the top operand is >= the top
+  GreaterEqual,
+
   /// Less greater between the top two operands on the stack
   Less,
+
+  /// Check if the 2nd from the top operand is <= the top
+  LessEqual,
 }
 
 impl ByteCode {
@@ -782,8 +806,10 @@ mod test {
         (1, AlignedByteCode::Inherit),
         (1, AlignedByteCode::CloseUpvalue),
         (1, AlignedByteCode::Equal),
+        (1, AlignedByteCode::NotEqual),
         (1, AlignedByteCode::Greater),
-        (1, AlignedByteCode::Less),
+        (1, AlignedByteCode::GreaterEqual),
+        (1, AlignedByteCode::LessEqual),
       ];
 
       let mut buffer: Vec<u8> = Vec::new();
