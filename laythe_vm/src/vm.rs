@@ -17,6 +17,7 @@ use laythe_core::{
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, use_sentinel_nan},
   val,
+  value::VALUE_TRUE,
   value::{Value, ValueKind, VALUE_NIL},
   CallResult, LyError,
 };
@@ -497,8 +498,11 @@ impl<'a> VmExecutor<'a> {
         ByteCode::Divide => self.op_div(),
         ByteCode::Not => self.op_not(),
         ByteCode::Equal => self.op_equal(),
+        ByteCode::NotEqual => self.op_not_equal(),
         ByteCode::Greater => self.op_greater(),
+        ByteCode::GreaterEqual => self.op_greater_equal(),
         ByteCode::Less => self.op_less(),
+        ByteCode::LessEqual => self.op_less_equal(),
         ByteCode::JumpIfFalse => self.op_jump_if_false(),
         ByteCode::Jump => self.op_jump(),
         ByteCode::Loop => self.op_loop(),
@@ -1261,6 +1265,29 @@ impl<'a> VmExecutor<'a> {
     self.runtime_error("Operands must be numbers.")
   }
 
+  fn op_less_equal(&mut self) -> Signal {
+    let (right, left) = (self.pop(), self.pop());
+
+    if right.is_num() && left.is_num() {
+      self.push(val!(left.to_num() <= right.to_num()));
+      return Signal::Ok;
+    }
+
+    if right.is_str() && left.is_str() {
+      if left == right {
+        self.push(VALUE_TRUE);
+      } else {
+        self.push(val!(
+          (*left.to_str()).cmp(&right.to_str()) == Ordering::Less
+        ));
+      }
+
+      return Signal::Ok;
+    }
+
+    self.runtime_error("Operands must be numbers.")
+  }
+
   fn op_greater(&mut self) -> Signal {
     let (right, left) = (self.pop(), self.pop());
 
@@ -1279,11 +1306,37 @@ impl<'a> VmExecutor<'a> {
     self.runtime_error("Operands must be numbers.")
   }
 
+  fn op_greater_equal(&mut self) -> Signal {
+    let (right, left) = (self.pop(), self.pop());
+
+    if right.is_num() && left.is_num() {
+      self.push(val!(left.to_num() >= right.to_num()));
+      return Signal::Ok;
+    }
+
+    if right.is_str() && left.is_str() {
+      self.push(val!(
+        (*left.to_str()).cmp(&right.to_str()) == Ordering::Greater
+      ));
+      return Signal::Ok;
+    }
+
+    self.runtime_error("Operands must be numbers.")
+  }
+
   fn op_equal(&mut self) -> Signal {
     let right = self.pop();
     let left = self.pop();
 
     self.push(val!(left == right));
+    Signal::Ok
+  }
+
+  fn op_not_equal(&mut self) -> Signal {
+    let right = self.pop();
+    let left = self.pop();
+
+    self.push(val!(left != right));
     Signal::Ok
   }
 
