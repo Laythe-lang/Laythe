@@ -26,7 +26,7 @@ native!(Clock, CLOCK_META);
 
 impl Native for Clock {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let time = io.time();
 
     match time.elapsed() {

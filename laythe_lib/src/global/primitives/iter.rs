@@ -478,7 +478,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let iter_str = IterStr::from(&hooks.to_gc());
+      let iter_str = IterStr::from(&hooks.as_gc());
 
       let iter = test_iter();
       let this = hooks.manage(LyIterator::new(iter));
@@ -510,7 +510,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let iter_next = IterNext::from(&hooks.to_gc());
+      let iter_next = IterNext::from(&hooks.as_gc());
 
       let iter = test_iter();
       let this = hooks.manage(LyIterator::new(iter));
@@ -542,7 +542,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let iter_iter = IterIter::from(&hooks.to_gc());
+      let iter_iter = IterIter::from(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -581,13 +581,13 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(5.0)]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_map = IterMap::from(&hooks.to_gc());
+      let iter_map = IterMap::from(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
       let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
-        &hooks.to_gc(),
+        &hooks.as_gc(),
         "example",
         "module",
       ))));
@@ -630,13 +630,13 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(false), val!(true), val!(true)]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_filter = IterFilter::from(&hooks.to_gc());
+      let iter_filter = IterFilter::from(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
       let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
-        &hooks.to_gc(),
+        &hooks.as_gc(),
         "example",
         "module",
       ))));
@@ -691,13 +691,13 @@ mod test {
         val!(10.1),
       ]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_reduce = IterReduce::from(&hooks.to_gc());
+      let iter_reduce = IterReduce::from(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
       let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
-        &hooks.to_gc(),
+        &hooks.as_gc(),
         "example",
         "module",
       ))));
@@ -773,13 +773,13 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(false); 5]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_each = IterEach::from(&hooks.to_gc());
+      let iter_each = IterEach::from(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
       let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
-        &hooks.to_gc(),
+        &hooks.as_gc(),
         "example",
         "module",
       ))));
@@ -818,7 +818,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(1.0); 10]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_zip = IterZip::from(&hooks.to_gc());
+      let iter_zip = IterZip::from(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));

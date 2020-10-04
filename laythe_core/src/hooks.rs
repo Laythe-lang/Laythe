@@ -41,18 +41,18 @@ impl<'a> Hooks<'a> {
 
   /// Get a GcHooks from this hooks struct
   #[inline]
-  pub fn to_gc(&self) -> GcHooks {
+  pub fn as_gc(&self) -> GcHooks {
     GcHooks::new(self.context.gc_context())
   }
 
   /// Get a CallHooks from this Hooks struct
   #[inline]
-  pub fn to_value(&mut self) -> ValueHooks {
+  pub fn as_value(&mut self) -> ValueHooks {
     ValueHooks::new(self.context.value_context())
   }
 
   /// Get a handle to the current io
-  pub fn to_io(&mut self) -> Io {
+  pub fn as_io(&mut self) -> Io {
     self.context.io()
   }
 
@@ -83,17 +83,17 @@ impl<'a> Hooks<'a> {
 
   /// Request an object be managed by the context's garbage collector
   pub fn manage<T: 'static + Manage>(&self, data: T) -> Managed<T> {
-    self.to_gc().manage(data)
+    self.as_gc().manage(data)
   }
 
   /// Request a string be managed by the context's garbage collector
   pub fn manage_str<S: Into<String> + AsRef<str>>(&self, string: S) -> Managed<SmolStr> {
-    self.to_gc().manage_str(string)
+    self.as_gc().manage_str(string)
   }
 
   /// Tell the context's gc that the provided managed object may grow during this operation
   pub fn grow<T: 'static + Manage, R, F: Fn(&mut T) -> R>(&self, managed: &mut T, action: F) -> R {
-    self.to_gc().grow(managed, action)
+    self.as_gc().grow(managed, action)
   }
 
   /// Tell the context's gc that the provided managed object may shrink during this operation
@@ -102,17 +102,17 @@ impl<'a> Hooks<'a> {
     managed: &mut T,
     action: F,
   ) -> R {
-    self.to_gc().shrink(managed, action)
+    self.as_gc().shrink(managed, action)
   }
 
   /// Push a new root onto the gc
   pub fn push_root<T: 'static + Manage>(&self, managed: T) {
-    self.to_gc().push_root(managed)
+    self.as_gc().push_root(managed)
   }
 
   /// Pop a root off the gc
   pub fn pop_roots(&self, count: usize) {
-    self.to_gc().pop_roots(count)
+    self.as_gc().pop_roots(count)
   }
 }
 

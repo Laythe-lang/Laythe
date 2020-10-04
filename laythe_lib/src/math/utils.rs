@@ -195,7 +195,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let abs = Abs::from(&hooks.to_gc());
+      let abs = Abs::from(&hooks.as_gc());
 
       match abs.call(&mut hooks, None, &[val!(-2.0)]) {
         Ok(res) => assert_eq!(res.to_num(), 2.0),

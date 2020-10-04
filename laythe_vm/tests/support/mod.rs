@@ -70,12 +70,12 @@ pub fn assert_file_exit_and_stdio(
   result: ExecuteResult,
 ) -> io::Result<()> {
   let stdio_container = Rc::new(StdioTestContainer {
-    stdout: Box::new(vec![]),
-    stderr: Box::new(vec![]),
+    stdout: vec![],
+    stderr: vec![],
     stdin: Box::new(Cursor::new(Vec::from(
       stdin.unwrap_or("".to_string()).as_bytes(),
     ))),
-    lines: Box::new(lines.unwrap_or(vec![])),
+    lines: lines.unwrap_or(vec![]),
     line_index: Box::new(0),
   });
   let stdio = Rc::new(IoStdioTest::new(&stdio_container));

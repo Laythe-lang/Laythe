@@ -836,7 +836,7 @@ mod boxed {
   const TAG_LIST: u64 = 5 | QNAN; // 101
   const TAG_MAP: u64 = 6 | QNAN; // 110
   const TAG_CLOSURE: u64 = 7 | QNAN; // 111
-  const TAG_FUN: u64 = 0 | BIT_SIGN | QNAN;
+  const TAG_FUN: u64 = BIT_SIGN | QNAN;
   const TAG_CLASS: u64 = 1 | BIT_SIGN | QNAN;
   const TAG_INSTANCE: u64 = 2 | BIT_SIGN | QNAN;
   const TAG_METHOD: u64 = 3 | BIT_SIGN | QNAN;

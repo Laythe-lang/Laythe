@@ -144,20 +144,20 @@ pub mod support {
 
   #[derive(Debug)]
   pub struct StdioTestContainer {
-    pub stdout: Box<Vec<u8>>,
-    pub stderr: Box<Vec<u8>>,
+    pub stdout: Vec<u8>,
+    pub stderr: Vec<u8>,
     pub stdin: Box<Cursor<Vec<u8>>>,
-    pub lines: Box<Vec<String>>,
+    pub lines: Vec<String>,
     pub line_index: Box<usize>,
   }
 
   impl Default for StdioTestContainer {
     fn default() -> Self {
       Self {
-        stdout: Box::new(vec![]),
-        stderr: Box::new(vec![]),
+        stdout: vec![],
+        stderr: vec![],
         stdin: Box::new(Cursor::new(vec![])),
-        lines: Box::new(vec![]),
+        lines: vec![],
         line_index: Box::new(0),
       }
     }
@@ -166,20 +166,20 @@ pub mod support {
   impl StdioTestContainer {
     pub fn with_lines(lines: Vec<String>) -> Self {
       Self {
-        stdout: Box::new(vec![]),
-        stderr: Box::new(vec![]),
+        stdout: vec![],
+        stderr: vec![],
         stdin: Box::new(Cursor::new(vec![])),
-        lines: Box::new(lines),
+        lines,
         line_index: Box::new(0),
       }
     }
 
     pub fn with_stdin(buf: &[u8]) -> Self {
       Self {
-        stdout: Box::new(vec![]),
-        stderr: Box::new(vec![]),
+        stdout: vec![],
+        stderr: vec![],
         stdin: Box::new(Cursor::new(Vec::from(buf))),
-        lines: Box::new(vec![]),
+        lines: vec![],
         line_index: Box::new(0),
       }
     }
@@ -188,10 +188,10 @@ pub mod support {
     /// perverts the rust safety checks
     pub fn make_stdio(&self) -> StdioTest {
       StdioTest {
-        stdout: &*self.stdout as *const Vec<u8> as *mut Vec<u8>,
+        stdout: &self.stdout as *const Vec<u8> as *mut Vec<u8>,
         stdin: &*self.stdin as *const Cursor<Vec<u8>> as *mut Cursor<Vec<u8>>,
-        stderr: &*self.stderr as *const Vec<u8> as *mut Vec<u8>,
-        lines: &*self.lines as *const Vec<String> as *mut Vec<String>,
+        stderr: &self.stderr as *const Vec<u8> as *mut Vec<u8>,
+        lines: &self.lines as *const Vec<String> as *mut Vec<String>,
         line_index: &*self.line_index as *const usize as *mut usize,
       }
     }
@@ -236,7 +236,7 @@ pub mod support {
 
         buffer.push_str(&line);
 
-        *self.line_index = *self.line_index + 1;
+        *self.line_index += 1;
         Ok(line.len())
       }
     }

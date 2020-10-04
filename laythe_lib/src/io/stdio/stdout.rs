@@ -70,7 +70,7 @@ native!(StdoutWrite, STDOUT_WRITE);
 
 impl Native for StdoutWrite {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 
@@ -85,7 +85,7 @@ native!(StdoutWriteln, STDOUT_WRITELN);
 
 impl Native for StdoutWriteln {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 
@@ -100,7 +100,7 @@ native!(StdoutFlush, STDOUT_FLUSH);
 
 impl Native for StdoutFlush {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 

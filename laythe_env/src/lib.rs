@@ -1,5 +1,4 @@
 #![deny(clippy::all)]
-#![deny(clippy::pedantic)]
 
 pub mod env;
 pub mod fs;

@@ -113,7 +113,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_name = ClosureName::from(&hooks);
 
-      let fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
+      let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       let closure = hooks.manage(Closure::new(fun));
 
       let result1 = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
@@ -147,7 +147,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_name = ClosureSize::from(&hooks);
 
-      let mut fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
+      let mut fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       fun.arity = Arity::Fixed(4);
 
       let closure = hooks.manage(Closure::new(fun));
@@ -198,9 +198,9 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(4.3)]);
       let mut hooks = Hooks::new(&mut context);
-      let closure_call = ClosureCall::from(&hooks.to_gc());
+      let closure_call = ClosureCall::from(&hooks.as_gc());
 
-      let mut fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
+      let mut fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       fun.arity = Arity::Fixed(1);
 
       let closure = hooks.manage(Closure::new(fun));

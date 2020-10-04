@@ -431,7 +431,7 @@ mod test {
       ]);
       let mut hooks = Hooks::new(&mut context);
       let list_str = ListStr::new(
-        LIST_STR.to_meta(&hooks.to_gc()),
+        LIST_STR.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
 

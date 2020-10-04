@@ -58,7 +58,7 @@ impl Io {
   pub fn with_fs(self, fs_impl: Rc<dyn IoImpl<Fs>>) -> Self {
     Self {
       stdio_impl: self.stdio_impl,
-      fs_impl: fs_impl,
+      fs_impl,
       env_impl: self.env_impl,
       time_impl: self.time_impl,
     }

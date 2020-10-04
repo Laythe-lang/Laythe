@@ -160,7 +160,7 @@ impl Trace for DepManager {
 
 impl DebugHeap for DepManager {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_struct("DepManager")
       .field("io", &self.io)

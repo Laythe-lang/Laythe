@@ -105,7 +105,7 @@ mod test {
 
       let super_class = hooks.manage(Class::bare(hooks.manage_str("someSuperClass".to_string())));
 
-      class.inherit(&hooks.to_gc(), super_class);
+      class.inherit(&hooks.as_gc(), super_class);
 
       let class_value = val!(class);
       let super_class_value = val!(super_class);

@@ -35,7 +35,7 @@ impl Manage for PathBuf {
 
 impl<T: AsRef<str>> PartialEq<T> for Managed<SmolStr> {
   fn eq(&self, other: &T) -> bool {
-    &**self == other.as_ref()
+    **self == other.as_ref()
   }
 }
 
@@ -75,7 +75,7 @@ impl Manage for SmolStr {
 
 impl<T: DebugHeap> DebugHeap for Option<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     match self {
       Some(v) => f.write_fmt(format_args!("Some({:?})", DebugWrap(v, depth))),
@@ -86,7 +86,7 @@ impl<T: DebugHeap> DebugHeap for Option<T> {
 
 impl<'a, T: DebugHeap> DebugHeap for &'a [T] {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_list()
       .entries(self.iter().map(|x| DebugWrap(x, depth)))
@@ -96,7 +96,7 @@ impl<'a, T: DebugHeap> DebugHeap for &'a [T] {
 
 impl<K: DebugHeap> DebugHeap for HashSet<K, FnvBuildHasher> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_set()
       .entries(self.iter().map(|x| DebugWrap(x, depth)))

@@ -138,11 +138,11 @@ mod test {
 
       let mut hooks = Hooks::new(&mut context);
       let method_name = MethodName::new(
-        METHOD_NAME.to_meta(&hooks.to_gc()),
+        METHOD_NAME.to_meta(&hooks.as_gc()),
         hooks.manage_str("name".to_string()),
       );
 
-      let fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
+      let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));
@@ -183,7 +183,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let method_call = MethodCall::from(&hooks);
 
-      let fun = fun_from_hooks(&hooks.to_gc(), "example", "module");
+      let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage(Closure::new(fun));
       let instance = hooks.manage(Instance::new(class));

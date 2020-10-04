@@ -31,7 +31,7 @@ macro_rules! native {
     impl<'a> From<&Hooks<'a>> for $x {
       fn from(hooks: &Hooks<'a>) -> Self {
         Self {
-          meta: $y.to_meta(&hooks.to_gc()),
+          meta: $y.to_meta(&hooks.as_gc()),
         }
       }
     }
