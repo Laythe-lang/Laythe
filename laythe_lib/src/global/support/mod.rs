@@ -6,7 +6,8 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult,
 };
-use laythe_env::{managed::Trace, stdio::Stdio};
+use laythe_env::managed::Trace;
+use std::io::Write;
 
 const TEST_META: NativeMetaBuilder = NativeMetaBuilder::fun("test", Arity::Fixed(0));
 

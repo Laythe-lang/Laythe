@@ -15,12 +15,11 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Manage, Managed, Trace},
-  stdio::Stdio,
+  managed::{DebugHeap, Manage, Managed, Trace},
 };
 use object::{Fun, TryBlock};
 use smol_str::SmolStr;
-use std::{convert::TryInto, mem, ptr::NonNull};
+use std::{convert::TryInto, io::Write, mem, ptr::NonNull};
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_chunk;
@@ -42,49 +41,65 @@ pub struct Local {
   is_captured: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Trace)]
 pub struct ClassInfo {
-  enclosing: Option<Managed<ClassInfo>>,
   fun_kind: Option<FunKind>,
   fields: Vec<SmolStr>,
   has_super_class: bool,
   name: Option<Token>,
 }
 
-impl Trace for ClassInfo {
-  fn trace(&self) -> bool {
-    if let Some(enclosing) = self.enclosing {
-      enclosing.trace();
-    };
-    true
-  }
-
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    if let Some(enclosing) = self.enclosing {
-      enclosing.trace_debug(stdio);
-    };
-    true
+impl DebugHeap for ClassInfo {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
+    f.debug_struct("ClassInfo")
+      .field("fun_kind", &self.fun_kind)
+      .field("fields", &self.fields)
+      .field("has_super_class", &self.has_super_class)
+      .field("name", &self.name)
+      .finish()
   }
 }
 
 impl Manage for ClassInfo {
   fn alloc_type(&self) -> &str {
-    "class compiler"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    format!(
-      "ClassCompiler: {{ has_super_class: {:?}, name: {:?}, enclosing: {{...}} }}",
-      self.has_super_class, self.name
-    )
+    "class info"
   }
 
   fn size(&self) -> usize {
     mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
+}
+
+#[derive(Debug, Clone, Trace)]
+pub struct LoopInfo {
+  start: usize,
+  breaks: Vec<usize>,
+}
+
+impl DebugHeap for LoopInfo {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
+    f.debug_struct("LoopInfo")
+      .field("start", &self.start)
+      .field("breaks", &self.breaks)
+      .finish()
+  }
+}
+
+impl Manage for LoopInfo {
+  fn alloc_type(&self) -> &str {
+    "loop info"
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -105,8 +120,11 @@ pub struct Compiler<'a> {
   /// unsafe pointer
   enclosing: Option<NonNull<Compiler<'a>>>,
 
-  /// The current class class compiler
-  current_class: Option<Managed<ClassInfo>>,
+  /// The info on the current class
+  class_info: Option<Managed<ClassInfo>>,
+
+  /// The info on the current loop
+  loop_info: Option<Managed<LoopInfo>>,
 
   /// hooks into the surround context. Used to allocate laythe objects
   hooks: &'a GcHooks<'a>,
@@ -164,7 +182,8 @@ impl<'a> Compiler<'a> {
       module,
       fun_kind: FunKind::Script,
       scope_depth: 0,
-      current_class: None,
+      class_info: None,
+      loop_info: None,
       hooks,
       enclosing: None,
       local_count: 1,
@@ -205,7 +224,8 @@ impl<'a> Compiler<'a> {
       module: enclosing.module,
       fun_kind,
       scope_depth: 0,
-      current_class: enclosing.current_class,
+      class_info: enclosing.class_info,
+      loop_info: enclosing.loop_info,
       hooks: enclosing.hooks,
       enclosing: Some(NonNull::from(enclosing)),
       local_count: 1,
@@ -242,8 +262,17 @@ impl<'a> Compiler<'a> {
   fn print_chunk(&mut self) {
     let mut stdio = &mut self.io.stdio();
 
-    disassemble_chunk(&mut stdio, self.current_chunk(), &self.fun.name)
-      .expect("could not write to stdio");
+    let name = match self.fun_kind {
+      FunKind::Script => "script.lay".to_string(),
+      FunKind::Fun => self.fun.name.to_string(),
+      FunKind::Method | FunKind::StaticMethod | FunKind::Initializer => format!(
+        "{}:{}",
+        self.class_info.unwrap().name.clone().unwrap().lexeme,
+        self.fun.name
+      ),
+    };
+
+    disassemble_chunk(&mut stdio, self.current_chunk(), &name).expect("could not write to stdio");
   }
 
   /// Emit byte code for a return
@@ -272,7 +301,10 @@ impl<'a> Compiler<'a> {
   /// Decrease the scope depth by 1
   fn end_scope(&mut self, end_line: u32) {
     self.scope_depth -= 1;
+    self.drop_locals(end_line);
+  }
 
+  fn drop_locals(&mut self, line: u32) {
     let mut idx = self.local_count;
     let mut no_captures = true;
 
@@ -287,8 +319,8 @@ impl<'a> Compiler<'a> {
 
       match dropped {
         0 => (),
-        1 => self.emit_byte(AlignedByteCode::Drop, end_line),
-        _ => self.emit_byte(AlignedByteCode::DropN(dropped as u8), end_line),
+        1 => self.emit_byte(AlignedByteCode::Drop, line),
+        _ => self.emit_byte(AlignedByteCode::DropN(dropped as u8), line),
       }
 
       self.local_count = idx;
@@ -298,9 +330,9 @@ impl<'a> Compiler<'a> {
     // otherwise emit normal drop and close upvalues
     while self.local_count > 0 && self.locals[self.local_count - 1].depth > self.scope_depth {
       if self.locals[self.local_count - 1].is_captured {
-        self.emit_byte(AlignedByteCode::CloseUpvalue, end_line)
+        self.emit_byte(AlignedByteCode::CloseUpvalue, line)
       } else {
-        self.emit_byte(AlignedByteCode::Drop, end_line);
+        self.emit_byte(AlignedByteCode::Drop, line);
       }
       self.local_count -= 1;
     }
@@ -473,6 +505,14 @@ impl<'a> Compiler<'a> {
     self.current_chunk().instructions.len() - 2
   }
 
+  /// Patch any break statements at the end of a loop
+  fn patch_breaks(&mut self) {
+    let loop_info = self.loop_info.expect("loop info not set");
+    for break_ in loop_info.breaks.iter() {
+      self.patch_jump(*break_);
+    }
+  }
+
   /// Patch a jump instruction
   fn patch_jump(&mut self, offset: usize) {
     let jump_landing = self.calc_jump(offset);
@@ -598,6 +638,8 @@ impl<'a> Compiler<'a> {
       Stmt::For(for_) => self.for_(for_),
       Stmt::If(if_) => self.if_(if_),
       Stmt::Return(return_) => self.return_(return_),
+      Stmt::Break(break_) => self.break_(break_),
+      Stmt::Continue(continue_) => self.continue_(continue_),
       Stmt::While(while_) => self.while_(while_),
       Stmt::Try(try_) => self.try_(try_),
     }
@@ -680,9 +722,8 @@ impl<'a> Compiler<'a> {
       fun_kind: None,
       fields: vec![],
       has_super_class: false,
-      enclosing: self.current_class,
     });
-    self.current_class = Some(class_compiler);
+    let enclosing_class = mem::replace(&mut self.class_info, Some(class_compiler));
 
     // handle the case where a super class exists
     if let Some(super_class) = &class.super_class {
@@ -734,13 +775,13 @@ impl<'a> Compiler<'a> {
     }
 
     // restore the enclosing class compiler
-    self.current_class = class_compiler.enclosing;
+    self.class_info = enclosing_class;
     name_constant
   }
 
   /// Emit field instructions
   fn emit_fields(&mut self, line: u32) {
-    let class_info = self.current_class.expect("Current class unset");
+    let class_info = self.class_info.expect("Current class unset");
 
     class_info.fields.iter().for_each(|f| {
       let value = val!(self.hooks.manage_str(f.as_str()));
@@ -757,7 +798,7 @@ impl<'a> Compiler<'a> {
       .map(|name| self.identifier_constant(name))
       .expect("Expect method name");
 
-    self.current_class.expect("Class compiler not set").fun_kind = Some(fun_kind);
+    self.class_info.expect("Class compiler not set").fun_kind = Some(fun_kind);
 
     self.function(method, fun_kind);
     self.emit_byte(AlignedByteCode::Method(constant), method.end());
@@ -771,7 +812,7 @@ impl<'a> Compiler<'a> {
       .map(|name| self.make_identifier(name))
       .expect("Expected method name.");
 
-    self.current_class.expect("Class compiler not set").fun_kind = Some(FunKind::StaticMethod);
+    self.class_info.expect("Class compiler not set").fun_kind = Some(FunKind::StaticMethod);
 
     self.function(static_method, FunKind::StaticMethod);
     self.emit_byte(AlignedByteCode::StaticMethod(constant), static_method.end());
@@ -897,6 +938,12 @@ impl<'a> Compiler<'a> {
       // mark start of loop
       let loop_start = self_.current_chunk().instructions.len();
 
+      let loop_info = self_.hooks.manage(LoopInfo {
+        start: loop_start,
+        breaks: vec![],
+      });
+      let enclosing_loop = mem::replace(&mut self_.loop_info, Some(loop_info));
+
       // define iterator method constants
       let next_const = self_.identifier_constant(&Token {
         lexeme: SmolStr::new_inline_from_ascii(4, b"next"),
@@ -939,12 +986,23 @@ impl<'a> Compiler<'a> {
       // loop back to top
       self_.patch_jump(exit_jump);
       self_.emit_byte(AlignedByteCode::Drop, for_.end());
+      self_.patch_breaks();
+
+      self_.loop_info = enclosing_loop;
     });
   }
 
   /// Compile a while loop
   fn while_(&mut self, while_: &ast::While) {
     let loop_start = self.current_chunk().instructions.len();
+
+    // set this class as the current class compiler
+    let loop_info = self.hooks.manage(LoopInfo {
+      start: loop_start,
+      breaks: vec![],
+    });
+    let enclosing_loop = mem::replace(&mut self.loop_info, Some(loop_info));
+
     self.expr(&while_.cond);
 
     let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), while_.cond.end());
@@ -955,7 +1013,10 @@ impl<'a> Compiler<'a> {
     self.emit_loop(loop_start, while_.end());
 
     self.patch_jump(exit_jump);
-    self.emit_byte(AlignedByteCode::Drop, while_.end())
+    self.emit_byte(AlignedByteCode::Drop, while_.end());
+    self.patch_breaks();
+
+    self.loop_info = enclosing_loop;
   }
 
   /// Compile a if statement
@@ -992,6 +1053,27 @@ impl<'a> Compiler<'a> {
       }
       None => self.emit_return(return_.start()),
     }
+  }
+
+  /// Compile a return statement
+  fn continue_(&mut self, continue_: &Token) {
+    let loop_info = self
+      .loop_info
+      .expect("Parser should have caught the loop constraint");
+
+    self.drop_locals(continue_.end());
+    self.emit_loop(loop_info.start, continue_.line)
+  }
+
+  /// Compile a return statement
+  fn break_(&mut self, break_: &Token) {
+    let mut loop_info = self
+      .loop_info
+      .expect("Parser should have caught the loop constraint");
+
+    self.drop_locals(break_.end());
+    let offset = self.emit_jump(AlignedByteCode::Jump(0), break_.line);
+    loop_info.breaks.push(offset);
   }
 
   /// Compile a try catch block
@@ -1036,7 +1118,7 @@ impl<'a> Compiler<'a> {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 match atom.primary {
                   Primary::Self_(_) => {
-                    let mut class_info = self.current_class.unwrap();
+                    let mut class_info = self.class_info.unwrap();
 
                     if !class_info.fields.iter().any(|f| *f == access.prop.lexeme) {
                       class_info.fields.push(access.prop.lexeme.clone());
@@ -1239,7 +1321,7 @@ impl<'a> Compiler<'a> {
   /// Compile the self token
   fn self_(&mut self, self_: &Token) -> bool {
     self
-      .current_class
+      .class_info
       .map(|class_compiler| class_compiler.fun_kind)
       .and_then(|fun_kind| {
         fun_kind.and_then(|fun_kind| match fun_kind {
@@ -1260,7 +1342,7 @@ impl<'a> Compiler<'a> {
 
   /// Compile the super token
   fn super_(&mut self, super_: &ast::Super, trailers: &[Trailer]) -> bool {
-    match self.current_class {
+    match self.class_info {
       None => self.error("Cannot use 'super' outside of a class."),
       Some(class) => {
         if !class.has_super_class {
@@ -1396,7 +1478,10 @@ mod test {
   use crate::{debug::disassemble_chunk, parser::Parser};
   use laythe_core::chunk::decode_u16;
   use laythe_core::hooks::{support::TestContext, GcContext};
-  use laythe_env::stdio::support::{IoStdioTest, StdioTestContainer};
+  use laythe_env::stdio::{
+    support::{IoStdioTest, StdioTestContainer},
+    Stdio,
+  };
   use module::Module;
   use std::{path::PathBuf, rc::Rc};
 
@@ -2523,6 +2608,56 @@ mod test {
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Loop(16),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn break_() {
+    let example = "while true { break; print(10); }";
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(15),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Jump(12),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Loop(19),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn continue_() {
+    let example = "while true { continue; print(10); }";
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(15),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Loop(8),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Loop(19),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,

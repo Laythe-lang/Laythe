@@ -9,11 +9,9 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult, LyError, LyResult,
 };
-use laythe_env::{
-  managed::{Managed, Trace},
-  stdio::Stdio,
-};
+use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
+use std::io::Write;
 
 pub fn add_misc_funs(
   hooks: &GcHooks,
@@ -78,21 +76,19 @@ impl MetaData for Print {
 
 impl Native for Print {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+    let str_method = hooks.get_method(args[0], self.method_str)?;
     let mut output = String::from(
       hooks
-        .call_method_by_name(args[0], self.method_str, &[])?
+        .call_method(args[0], str_method, &[])?
         .to_str()
         .as_str(),
     );
 
     for s in args.iter().skip(1) {
+      let str_method = hooks.get_method(*s, self.method_str)?;
+
       output.push(' ');
-      output.push_str(
-        hooks
-          .call_method_by_name(*s, self.method_str, &[])?
-          .to_str()
-          .as_str(),
-      )
+      output.push_str(hooks.call_method(*s, str_method, &[])?.to_str().as_str())
     }
 
     let mut stdio = hooks.to_io().stdio();
@@ -109,9 +105,9 @@ impl Trace for Print {
     self.method_str.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.meta.trace_debug(stdio);
-    self.method_str.trace_debug(stdio)
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.meta.trace_debug(stdout);
+    self.method_str.trace_debug(stdout)
   }
 }
 
@@ -167,7 +163,7 @@ mod test {
 
       let managed = Managed::from(NonNull::from(&allocation));
 
-      let mut context = MockedContext::new(&[val!(managed)]);
+      let mut context = MockedContext::with_std(&[val!(managed)]);
       let mut hooks = Hooks::new(&mut context);
 
       let print = Print::new(

@@ -12,7 +12,8 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::Stdio};
+use laythe_env::managed::Trace;
+use std::io::Write;
 
 pub const NIL_CLASS_NAME: &str = "Nil";
 const NIL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));

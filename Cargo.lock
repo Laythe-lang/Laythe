@@ -317,6 +317,7 @@ dependencies = [
 name = "laythe_env"
 version = "0.1.0"
 dependencies = [
+ "fnv",
  "hashbrown",
  "laythe_macro",
  "smol_str",

@@ -15,7 +15,8 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::Stdio};
+use laythe_env::managed::Trace;
+use std::io::Write;
 
 const STDIN_CLASS_NAME: &str = "Stdin";
 const STDIN_INSTANCE_NAME: &str = "stdin";

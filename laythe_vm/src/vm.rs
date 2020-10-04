@@ -8,7 +8,7 @@ use crate::{
 use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT},
-  hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks, NoContext},
+  hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   module::Module,
   native::{Native, NativeMeta},
   object::Map,
@@ -25,13 +25,13 @@ use laythe_env::{
   io::Io,
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
-  stdio::Stdio,
 };
 use laythe_lib::{create_std_lib, global::builtin_from_global_module, GLOBAL, STD};
 use laythe_native::io::io_native;
 use smol_str::SmolStr;
 use std::cmp::Ordering;
 use std::convert::TryInto;
+use std::io::Write;
 use std::mem;
 use std::ptr;
 use std::{path::PathBuf, ptr::NonNull};
@@ -44,6 +44,9 @@ use std::io;
 
 #[cfg(feature = "debug_upvalues")]
 use std::{cmp::Ordering, io};
+
+#[cfg(feature = "debug")]
+use laythe_env::stdio::Stdio;
 
 const VERSION: &str = "0.1.0";
 
@@ -443,31 +446,27 @@ impl<'a> VmExecutor<'a> {
     }
   }
 
-  /// Run a method on a laythe value on top of the current stack.
-  /// This acts as a hook for native function to execute laythe methods
-  pub fn run_method_by_name(
-    &mut self,
-    this: Value,
-    method_name: Managed<SmolStr>,
-    args: &[Value],
-  ) -> ExecuteResult {
+  /// Get a method for this this value with a given method name
+  pub fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> CallResult {
     let class = self
       .dep_manager
       .primitive_classes()
       .for_value(this, this.kind());
 
-    self.push(this);
-    for arg in args {
-      self.push(*arg);
-    }
+    class.get_method(&method_name).ok_or_else(|| {
+      Box::new(LyError::new(self.gc.manage_str(
+        format!("Class {} does not have method {}", class.name, method_name),
+        self,
+      )))
+    })
+  }
 
-    let mode = RunMode::CallFunction(self.frame_count);
-    match self.invoke_from_class(class, method_name, args.len() as u8) {
-      Signal::Ok => self.run(mode),
-      Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
-      Signal::RuntimeError => ExecuteResult::RuntimeError,
-      _ => self.internal_error("Unexpected signal in run_method_by_name."),
-    }
+  /// Get the class for this value
+  pub fn get_class(&mut self, this: Value) -> Value {
+    val!(self
+      .dep_manager
+      .primitive_classes()
+      .for_value(this, this.kind()))
   }
 
   /// Main virtual machine execution loop. This will run the until the program interrupts
@@ -1315,9 +1314,14 @@ impl<'a> VmExecutor<'a> {
     }
 
     if right.is_str() && left.is_str() {
-      self.push(val!(
-        (*left.to_str()).cmp(&right.to_str()) == Ordering::Greater
-      ));
+      if left == right {
+        self.push(VALUE_TRUE);
+      } else {
+        self.push(val!(
+          (*left.to_str()).cmp(&right.to_str()) == Ordering::Greater
+        ));
+      }
+
       return Signal::Ok;
     }
 
@@ -1957,8 +1961,8 @@ impl<'a> Trace for VmExecutor<'a> {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.script.trace_debug(stdio);
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.script.trace_debug(stdout);
 
     unsafe {
       let start = &self.stack[0] as *const Value;
@@ -1966,21 +1970,21 @@ impl<'a> Trace for VmExecutor<'a> {
       let slice = std::slice::from_raw_parts(start, len);
 
       slice.iter().for_each(|value| {
-        value.trace_debug(stdio);
+        value.trace_debug(stdout);
       });
     }
 
     self.frames[0..self.frame_count].iter().for_each(|frame| {
-      frame.closure.trace_debug(stdio);
+      frame.closure.trace_debug(stdout);
     });
 
     self.open_upvalues.iter().for_each(|upvalue| {
-      upvalue.trace_debug(stdio);
+      upvalue.trace_debug(stdout);
     });
 
-    self.dep_manager.trace_debug(stdio);
-    self.native_fun_stub.trace_debug(stdio);
-    self.global.trace_debug(stdio);
+    self.dep_manager.trace_debug(stdout);
+    self.native_fun_stub.trace_debug(stdout);
+    self.global.trace_debug(stdout);
 
     true
   }
@@ -1991,7 +1995,7 @@ impl<'a> HookContext for VmExecutor<'a> {
     self
   }
 
-  fn call_context(&mut self) -> &mut dyn CallContext {
+  fn value_context(&mut self) -> &mut dyn ValueContext {
     self
   }
 
@@ -2006,7 +2010,7 @@ impl<'a> GcContext for VmExecutor<'a> {
   }
 }
 
-impl<'a> CallContext for VmExecutor<'a> {
+impl<'a> ValueContext for VmExecutor<'a> {
   fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
     let result = self.run_fun(callable, args);
     self.to_call_result(result)
@@ -2017,13 +2021,11 @@ impl<'a> CallContext for VmExecutor<'a> {
     self.to_call_result(result)
   }
 
-  fn call_method_by_name(
-    &mut self,
-    this: Value,
-    method_name: Managed<SmolStr>,
-    args: &[Value],
-  ) -> CallResult {
-    let result = self.run_method_by_name(this, method_name, args);
-    self.to_call_result(result)
+  fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> CallResult {
+    self.get_method(this, method_name)
+  }
+
+  fn get_class(&mut self, this: Value) -> Value {
+    self.get_class(this)
   }
 }

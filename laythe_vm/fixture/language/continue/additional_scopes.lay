@@ -1,0 +1,33 @@
+for i in 10.times() {
+  :{
+    :{
+      :{
+        :{
+          continue;
+        };
+      };
+    };
+  };
+
+  assert(false);
+}
+
+assert(true);
+
+let i = 0;
+while i < 10 {
+  i = i + 1;
+  :{
+    :{
+      :{
+        :{
+          continue;
+        };
+      };
+    };
+  };
+
+  assert(false);
+}
+
+assert(true);

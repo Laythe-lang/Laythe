@@ -33,6 +33,9 @@ pub struct Parser<'a> {
   /// Current function kind
   fun_kind: FunKind,
 
+  /// Current loop depth
+  loop_depth: u16,
+
   /// Current scope depth
   scope_depth: u16,
 
@@ -53,6 +56,7 @@ impl<'a> Parser<'a> {
       panic_mode: false,
       fun_kind: FunKind::Script,
       scope_depth: 0,
+      loop_depth: 0,
       previous: Token {
         lexeme: SmolStr::new_inline_from_ascii(5, b"error"),
         line: 0,
@@ -171,6 +175,8 @@ impl<'a> Parser<'a> {
       TokenKind::For => self.advance().and_then(|()| self.for_()),
       TokenKind::While => self.advance().and_then(|()| self.while_()),
       TokenKind::Return => self.advance().and_then(|()| self.return_()),
+      TokenKind::Continue => self.advance().and_then(|()| self.continue_()),
+      TokenKind::Break => self.advance().and_then(|()| self.break_()),
       _ => self.expr_stmt(),
     }
   }
@@ -434,27 +440,39 @@ impl<'a> Parser<'a> {
     Ok(Stmt::If(Box::new(If::new(cond, body, else_body))))
   }
 
+  /// Increment the loop depth
+  fn loop_<T>(&mut self, cb: impl FnOnce(&mut Self) -> T) -> T {
+    self.loop_depth += 1;
+    let result = cb(self);
+    self.loop_depth -= 1;
+    result
+  }
+
   /// Parse a for loop
   fn for_(&mut self) -> ParseResult<Stmt> {
-    self.consume(TokenKind::Identifier, "Expected identifer after 'for'.")?;
-    let item = self.previous.clone();
+    self.loop_(|self_| {
+      self_.consume(TokenKind::Identifier, "Expected identifer after 'for'.")?;
+      let item = self_.previous.clone();
 
-    self.consume(TokenKind::In, "Expected 'in' following for loop variable.")?;
-    let iter = self.expr()?;
+      self_.consume(TokenKind::In, "Expected 'in' following for loop variable.")?;
+      let iter = self_.expr()?;
 
-    self
-      .consume(TokenKind::LeftBrace, "Expected '{' after iterable.")
-      .and_then(|()| self.block())
-      .map(|body| Stmt::For(Box::new(For::new(item, iter, body))))
+      self_
+        .consume(TokenKind::LeftBrace, "Expected '{' after iterable.")
+        .and_then(|()| self_.block())
+        .map(|body| Stmt::For(Box::new(For::new(item, iter, body))))
+    })
   }
 
   /// Parse while statement
   fn while_(&mut self) -> ParseResult<Stmt> {
-    let cond = self.expr()?;
-    self.consume(TokenKind::LeftBrace, "Expected '{' after while condition.")?;
+    self.loop_(|self_| {
+      let cond = self_.expr()?;
+      self_.consume(TokenKind::LeftBrace, "Expected '{' after while condition.")?;
 
-    let body = self.block()?;
-    Ok(Stmt::While(Box::new(While::new(cond, body))))
+      let body = self_.block()?;
+      Ok(Stmt::While(Box::new(While::new(cond, body))))
+    })
   }
 
   /// Parse a return statement
@@ -478,6 +496,26 @@ impl<'a> Parser<'a> {
         result
       }
     }
+  }
+
+  fn continue_(&mut self) -> ParseResult<Stmt> {
+    if self.loop_depth == 0 {
+      return self.error("Cannot continue from outside of a for or while loop.");
+    }
+
+    let continue_ = self.previous.clone();
+    self.consume(TokenKind::Semicolon, "Expected ';' after continue.")?;
+    Ok(Stmt::Continue(Box::new(continue_)))
+  }
+
+  fn break_(&mut self) -> ParseResult<Stmt> {
+    if self.loop_depth == 0 {
+      return self.error("Cannot break from outside of a for or while loop.");
+    }
+
+    let break_ = self.previous.clone();
+    self.consume(TokenKind::Semicolon, "Expected ';' after break.")?;
+    Ok(Stmt::Break(Box::new(break_)))
   }
 
   /// Parse an expression statement
@@ -1288,7 +1326,7 @@ enum TypeInfix {
 }
 
 /// The rules for infix and prefix operators
-const PREFIX_TABLE: [Rule<Prefix, Precedence>; 54] = [
+const PREFIX_TABLE: [Rule<Prefix, Precedence>; 56] = [
   Rule::new(Some(Prefix::Grouping), Precedence::Call),
   // LEFT_PAREN
   Rule::new(None, Precedence::None),
@@ -1373,6 +1411,10 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; 54] = [
   // OR
   Rule::new(None, Precedence::None),
   // RETURN
+  Rule::new(None, Precedence::None),
+  // BREAK
+  Rule::new(None, Precedence::None),
+  // CONTINUE
   Rule::new(Some(Prefix::Super), Precedence::None),
   // SUPER
   Rule::new(Some(Prefix::Self_), Precedence::None),
@@ -1400,7 +1442,7 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; 54] = [
 ];
 
 /// The rules for infix and prefix operators
-const INFIX_TABLE: [Rule<Infix, Precedence>; 54] = [
+const INFIX_TABLE: [Rule<Infix, Precedence>; 56] = [
   Rule::new(Some(Infix::Call), Precedence::Call),
   // LEFT_PAREN
   Rule::new(None, Precedence::None),
@@ -1485,6 +1527,10 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; 54] = [
   // OR
   Rule::new(None, Precedence::None),
   // RETURN
+  Rule::new(None, Precedence::None),
+  // BREAK
+  Rule::new(None, Precedence::None),
+  // CONTINUE
   Rule::new(None, Precedence::None),
   // SUPER
   Rule::new(None, Precedence::None),
@@ -2191,6 +2237,20 @@ mod test {
   #[test]
   fn while_() {
     let example = "while true { print(10); }";
+
+    test(example);
+  }
+
+  #[test]
+  fn break_() {
+    let example = "for x in [1, 2, 3] { break; }";
+
+    test(example);
+  }
+
+  #[test]
+  fn continue_() {
+    let example = "while true { continue; }";
 
     test(example);
   }

@@ -12,7 +12,8 @@ use laythe_core::{
   value::{Value, VALUE_TRUE},
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::Stdio};
+use laythe_env::{managed::Trace};
+use std::io::Write;
 
 pub const BOOL_CLASS_NAME: &str = "Bool";
 const BOOL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));

@@ -1,0 +1,17 @@
+let visited = false;
+
+for i in [1, 2, 3] {
+  for j in [1, 2, 3] {
+    continue;
+    assert(false);
+  }
+
+  if i == 3 {
+    visited = true;
+  }
+  continue;
+  assert(false);
+}
+
+assert(visited);
+

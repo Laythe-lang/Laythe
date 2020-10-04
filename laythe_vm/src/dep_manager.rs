@@ -8,11 +8,10 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Manage, Managed, Trace},
-  stdio::Stdio,
+  managed::{DebugHeap, DebugWrap, Manage, Managed, Trace},
 };
 use smol_str::SmolStr;
-use std::{fmt, mem, path::PathBuf};
+use std::{fmt, io::Write, mem, path::PathBuf};
 
 pub struct DepManager {
   /// The directory of the entry point
@@ -148,14 +147,27 @@ impl Trace for DepManager {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.src_dir.trace_debug(stdio);
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.src_dir.trace_debug(stdout);
     self.packages.iter().for_each(|(key, value)| {
-      key.trace_debug(stdio);
-      value.trace_debug(stdio);
+      key.trace_debug(stdout);
+      value.trace_debug(stdout);
     });
 
     true
+  }
+}
+
+impl DebugHeap for DepManager {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_struct("DepManager")
+      .field("io", &self.io)
+      .field("src_directory", &DebugWrap(&self.src_dir, depth))
+      .field("packages", &DebugWrap(&self.packages, depth))
+      .field("cache", &DebugWrap(&self.cache, depth))
+      .finish()
   }
 }
 
@@ -164,17 +176,13 @@ impl Manage for DepManager {
     "Dependency Manager"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    "DepManager: {{ io: {{ ... }}, src_directory: {{ ... }}, packages: {{ ... }}, cache: {{ ... }} }}".to_string()
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
       + self.cache.capacity() * 2 * mem::size_of::<Managed<SmolStr>>()
       + self.packages.capacity() * 2 * mem::size_of::<Managed<SmolStr>>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }

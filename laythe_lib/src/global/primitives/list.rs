@@ -17,9 +17,9 @@ use laythe_core::{
 };
 use laythe_env::{
   managed::{Managed, Trace},
-  stdio::Stdio,
 };
 use smol_str::SmolStr;
+use std::io::Write;
 use std::{mem, slice::Iter};
 
 pub const LIST_CLASS_NAME: &str = "List";
@@ -168,7 +168,11 @@ impl Native for ListStr {
       }
 
       // call '.str' method on each value
-      match hooks.call_method_by_name(*item, self.method_name, &[]) {
+      let str_result = hooks
+        .get_method(*item, self.method_name)
+        .and_then(|method| hooks.call_method(*item, method, &[]));
+
+      match str_result {
         Ok(result) => {
           if result.is_str() {
             let string = result.to_str();
@@ -389,8 +393,8 @@ impl Trace for ListIterator {
     self.list.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.list.trace_debug(stdio)
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.list.trace_debug(stdout)
   }
 }
 
@@ -420,7 +424,7 @@ mod test {
     #[test]
     fn call() {
       let gc = test_native_dependencies();
-      let mut context = MockedContext::new(&[
+      let mut context = MockedContext::with_std(&[
         val!(gc.manage_str("nil".to_string(), &NO_GC)),
         val!(gc.manage_str("10".to_string(), &NO_GC)),
         val!(gc.manage_str("[5]".to_string(), &NO_GC)),

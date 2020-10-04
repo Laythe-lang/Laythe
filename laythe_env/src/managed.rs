@@ -1,15 +1,37 @@
-extern crate proc_macro;
-
-use crate::stdio::Stdio;
+use io::Write;
 pub use laythe_macro::*;
 use std::{
   cell::Cell,
   cmp::Ordering,
   fmt,
   hash::{Hash, Hasher},
+  io,
   ops::{Deref, DerefMut},
   ptr::{self, NonNull},
 };
+
+pub struct DebugWrap<'a, T>(pub &'a T, pub usize);
+
+impl<'a, T: DebugHeap> fmt::Debug for DebugWrap<'a, T> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    self.0.fmt_heap(f, self.1)
+  }
+}
+
+pub struct DebugWrapDyn<'a>(pub &'a dyn DebugHeap, pub usize);
+
+impl<'a> fmt::Debug for DebugWrapDyn<'a> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    self.0.fmt_heap(f, self.1)
+  }
+}
+
+/// A utility to print debug information to a fixed depth in the Laythe heap
+pub trait DebugHeap {
+  /// A debugging string for this managed object. Typically just wrapping
+  /// wrapping fmt::Debug so we can have dyn Manage
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result;
+}
 
 /// An entity that is traceable by the garbage collector
 pub trait Trace {
@@ -18,25 +40,20 @@ pub trait Trace {
 
   /// Mark all objects that are reachable printing debugging information
   /// for each object
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool;
+  fn trace_debug(&self, log: &mut dyn Write) -> bool;
 }
 
 /// An entity that can be managed and collected by the garbage collector.
 /// This trait provided debugging capabilities and statistics for the gc.
-pub trait Manage: Trace {
+pub trait Manage: Trace + DebugHeap {
   /// What allocation type is
   fn alloc_type(&self) -> &str;
 
-  /// A debugging string for this managed object. Typically just wrapping
-  /// wrapping fmt::Debug so we can have dyn Manage
-  fn debug(&self) -> String;
-
-  /// A debugging string that doesn't use any other `Manage` objects.
-  /// This is to avoid issues where the child object has already been freed
-  fn debug_free(&self) -> String;
-
   /// What is the size of this allocation
   fn size(&self) -> usize;
+
+  /// Helper function to get a trait object for Debug Heap
+  fn as_debug(&self) -> &dyn DebugHeap;
 }
 
 /// The header of an allocation indicate meta data about the object
@@ -64,11 +81,19 @@ impl<T: 'static + Manage> Allocation<T> {
   pub fn size(&self) -> usize {
     self.data.size()
   }
+
+  pub fn as_debug(&self) -> &dyn DebugHeap {
+    self.data.as_debug()
+  }
 }
 
 impl Allocation<dyn Manage> {
   pub fn size(&self) -> usize {
     self.data.size()
+  }
+
+  pub fn as_debug(&self) -> &dyn DebugHeap {
+    self.data.as_debug()
   }
 }
 
@@ -88,13 +113,11 @@ impl<T: 'static + Manage + ?Sized> Allocation<T> {
   pub fn alloc_type(&self) -> &str {
     self.data.alloc_type()
   }
+}
 
-  pub fn debug(&self) -> String {
-    self.data.debug()
-  }
-
-  pub fn debug_free(&self) -> String {
-    self.data.debug_free()
+impl<T: 'static + Manage + ?Sized> DebugHeap for Allocation<T> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    self.data.fmt_heap(f, depth)
   }
 }
 
@@ -143,22 +166,32 @@ impl<T: 'static + Manage> Trace for Managed<T> {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
     if self.obj().mark() {
       return true;
     }
 
-    let stdout = stdio.stdout();
     stdout
-      .write(&format!("{:p} mark {}", &*self.obj(), self.debug()).as_bytes())
-      .expect("unable to write to stdout");
-    stdout
-      .write("\n".as_bytes())
+      .write_fmt(format_args!(
+        "{:p} mark {:?}\n",
+        &*self.obj(),
+        DebugWrap(self, 2)
+      ))
       .expect("unable to write to stdout");
     stdout.flush().expect("unable to flush stdout");
 
-    self.obj().data.trace_debug(stdio);
+    self.obj().data.trace_debug(stdout);
     true
+  }
+}
+
+impl<T: 'static + Manage> DebugHeap for Managed<T> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    if depth == 0 {
+      f.write_str("*{...}")
+    } else {
+      f.write_fmt(format_args!("*{:?}", DebugWrap(self.obj(), depth)))
+    }
   }
 }
 
@@ -167,16 +200,12 @@ impl<T: 'static + Manage> Manage for Managed<T> {
     self.obj().data.alloc_type()
   }
 
-  fn debug(&self) -> String {
-    self.obj().data.debug()
-  }
-
-  fn debug_free(&self) -> String {
-    self.obj().data.debug_free()
-  }
-
   fn size(&self) -> usize {
     self.obj().size()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -190,22 +219,28 @@ impl Trace for Managed<dyn Manage> {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
     if self.obj().mark() {
       return true;
     }
 
-    let stdout = stdio.stdout();
     stdout
-      .write(&format!("{:p} mark {}", &*self.obj(), self.debug()).as_bytes())
-      .expect("unable to write to stdout");
-    stdout
-      .write("\n".as_bytes())
+      .write_fmt(format_args!(
+        "{:p} mark {:?}\n",
+        &*self.obj(),
+        DebugWrap(self, 2)
+      ))
       .expect("unable to write to stdout");
     stdout.flush().expect("unable to flush stdout");
 
-    self.obj().data.trace_debug(stdio);
+    self.obj().data.trace_debug(stdout);
     true
+  }
+}
+
+impl DebugHeap for Managed<dyn Manage> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
+    f.write_str("*{...}")
   }
 }
 
@@ -214,16 +249,12 @@ impl Manage for Managed<dyn Manage> {
     self.obj().data.alloc_type()
   }
 
-  fn debug(&self) -> String {
-    self.obj().data.debug()
-  }
-
-  fn debug_free(&self) -> String {
-    self.obj().data.debug_free()
-  }
-
   fn size(&self) -> usize {
     self.obj().size()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -305,4 +336,94 @@ pub fn make_managed<T: 'static + Manage>(data: T) -> (Managed<T>, Box<Allocation
   let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
   (Managed::from(ptr), alloc)
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+  mod fmt_heap {
+    use super::*;
+
+    struct Test {
+      val: usize,
+      next: Option<Managed<Test>>,
+    }
+
+    impl Manage for Test {
+      fn alloc_type(&self) -> &str {
+        todo!()
+      }
+
+      fn size(&self) -> usize {
+        todo!()
+      }
+
+      fn as_debug(&self) -> &dyn DebugHeap {
+        todo!()
+      }
+    }
+
+    impl Trace for Test {
+      fn trace(&self) -> bool {
+        todo!()
+      }
+
+      fn trace_debug(&self, _: &mut dyn Write) -> bool {
+        todo!()
+      }
+    }
+
+    impl DebugHeap for Test {
+      fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+        f.debug_struct("Test")
+          .field("next", &DebugWrap(&self.next, depth - 1))
+          .field("val", &self.val)
+          .finish()
+      }
+    }
+
+    #[test]
+    fn managed() {
+      let inner = Test { next: None, val: 1 };
+      let mut alloc_inner = Box::new(Allocation::new(inner));
+      let managed_inner = Managed::from(unsafe { NonNull::new_unchecked(&mut *alloc_inner) });
+
+      let outer = Test {
+        next: Some(managed_inner),
+        val: 2,
+      };
+      let mut alloc_outer = Box::new(Allocation::new(outer));
+      let managed_outer = Managed::from(unsafe { NonNull::new_unchecked(&mut *alloc_outer) });
+
+      let mut output = String::new();
+      fmt::write(
+        &mut output,
+        format_args!("{:?}", DebugWrap(&managed_outer, 0)),
+      )
+      .expect("failure");
+
+      assert_eq!(output, "*{...}");
+
+      let mut output = String::new();
+      fmt::write(
+        &mut output,
+        format_args!("{:?}", DebugWrap(&managed_outer, 1)),
+      )
+      .expect("failure");
+
+      assert_eq!(output, "*Test { next: Some(*{...}), val: 2 }");
+
+      let mut output = String::new();
+      fmt::write(
+        &mut output,
+        format_args!("{:?}", DebugWrap(&managed_outer, 3)),
+      )
+      .expect("failure");
+
+      assert_eq!(
+        output,
+        "*Test { next: Some(*Test { next: None, val: 1 }), val: 2 }"
+      )
+    }
+  }
 }

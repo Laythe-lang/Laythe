@@ -1,0 +1,15 @@
+class Example {
+  test() {}
+}
+
+let example = Example();
+
+assertEq(example.cls(), Example);
+assertEq(example.test.cls(), Method);
+assertEq('test'.cls(), String);
+assertEq(10.cls(), Number);
+assertEq(false.cls(), Bool);
+assertEq([].cls(), List);
+assertEq({}.cls(), Map);
+assertEq(||{}.cls(), Fun);
+assertEq([].iter().cls(), Iter);

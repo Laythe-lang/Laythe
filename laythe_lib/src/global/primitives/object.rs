@@ -13,12 +13,15 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::Stdio};
+use laythe_env::managed::Trace;
+use std::io::Write;
 
 pub const OBJECT_CLASS_NAME: &str = "Object";
 
 const OBJECT_EQUALS: NativeMetaBuilder = NativeMetaBuilder::method("equals", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("other", ParameterKind::Any)]);
+
+const OBJECT_CLASS: NativeMetaBuilder = NativeMetaBuilder::method("cls", Arity::Fixed(0));
 
 const OBJECT_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
@@ -40,6 +43,12 @@ pub fn define_object_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
 
   class.add_method(
     &hooks,
+    hooks.manage_str(OBJECT_CLASS.name),
+    val!(to_dyn_native(hooks, ObjectClass::from(hooks))),
+  );
+
+  class.add_method(
+    &hooks,
     hooks.manage_str(OBJECT_STR.name),
     val!(to_dyn_native(hooks, ObjectStr::from(hooks))),
   );
@@ -52,6 +61,14 @@ native!(ObjectEquals, OBJECT_EQUALS);
 impl Native for ObjectEquals {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
     Ok(val!(this.unwrap() == args[0]))
+  }
+}
+
+native!(ObjectClass, OBJECT_CLASS);
+
+impl Native for ObjectClass {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+    Ok(hooks.get_class(this.unwrap()))
   }
 }
 
@@ -105,6 +122,38 @@ mod test {
       }
       match result2 {
         Ok(r) => assert_eq!(r.to_bool(), false),
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod class {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let object_equals = ObjectStr::from(&hooks);
+
+      assert_eq!(object_equals.meta().name, "str");
+      assert_eq!(object_equals.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+      let bool_str = ObjectStr::from(&hooks);
+
+      let ten = val!(10.0);
+
+      let result = bool_str.call(&mut hooks, Some(ten), &[]);
+
+      match result {
+        Ok(r) => assert_eq!(r.to_str().as_str(), "10"),
         Err(_) => assert!(false),
       }
     }

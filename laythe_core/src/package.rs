@@ -1,12 +1,9 @@
 use crate::{hooks::GcHooks, module::Module, object::Map, LyResult};
 use hashbrown::hash_map::{Entry, Iter};
-use laythe_env::{
-  managed::{Manage, Managed, Trace},
-  stdio::Stdio,
-};
+use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
 use smol_str::SmolStr;
-use std::fmt;
 use std::mem;
+use std::{fmt, io::Write};
 
 /// An object representing an import request from a file
 pub struct Import(Vec<Managed<SmolStr>>);
@@ -51,6 +48,23 @@ pub enum PackageEntity {
 
   /// A sub package in this package
   Package(Managed<Package>),
+}
+
+impl DebugHeap for PackageEntity {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    match self {
+      PackageEntity::Module(module) => f.write_fmt(format_args!(
+        "PackageEntity::Module({:?})",
+        DebugWrap(module, depth)
+      )),
+      PackageEntity::Package(package) => f.write_fmt(format_args!(
+        "PackageEntity::Package({:?})",
+        DebugWrap(package, depth)
+      )),
+    }
+  }
 }
 
 #[derive(Clone)]
@@ -166,15 +180,16 @@ impl Trace for Package {
 
     true
   }
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.name.trace_debug(stdio);
+
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.name.trace_debug(stdout);
 
     self.entities.iter().for_each(|(key, value)| {
       key.trace();
 
       match value {
-        PackageEntity::Module(module) => module.trace_debug(stdio),
-        PackageEntity::Package(package) => package.trace_debug(stdio),
+        PackageEntity::Module(module) => module.trace_debug(stdout),
+        PackageEntity::Package(package) => package.trace_debug(stdout),
       };
     });
 
@@ -182,21 +197,30 @@ impl Trace for Package {
   }
 }
 
+impl DebugHeap for Package {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_struct("Package")
+      .field("name", &DebugWrap(&self.name, depth))
+      .field("entities", &DebugWrap(&self.entities, depth))
+      .finish()
+  }
+}
+
 impl Manage for Package {
   fn alloc_type(&self) -> &str {
     "package"
-  }
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-  fn debug_free(&self) -> String {
-    "Package: {{ name: {{...}}, entities: {{...}}}}".to_string()
   }
 
   fn size(&self) -> usize {
     mem::size_of::<Self>()
       + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<PackageEntity>())
         * (self.entities.capacity())
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 

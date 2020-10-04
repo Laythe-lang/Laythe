@@ -12,7 +12,8 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::Stdio};
+use laythe_env::managed::Trace;
+use std::io::Write;
 use std::path::Path;
 
 const FILE_CLASS_NAME: &str = "File";

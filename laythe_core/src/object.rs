@@ -12,15 +12,13 @@ use core::slice;
 use fnv::FnvBuildHasher;
 use hash_map::Entry;
 use hashbrown::{hash_map, HashMap};
-use laythe_env::{
-  managed::{Manage, Managed, Trace},
-  stdio::Stdio,
-};
+use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
 use slice::SliceIndex;
 use smol_str::SmolStr;
 use std::{
   fmt,
   hash::Hash,
+  io::Write,
   mem,
   ops::{Index, IndexMut},
   ptr::NonNull,
@@ -37,7 +35,7 @@ impl Trace for BuiltIn {
     self.primitives.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.primitives.trace_debug(stdio)
   }
 }
@@ -125,7 +123,7 @@ impl Trace for BuiltinPrimitives {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.bool.trace_debug(stdio);
     self.nil.trace_debug(stdio);
     self.class.trace_debug(stdio);
@@ -215,10 +213,24 @@ impl Trace for Upvalue {
     }
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     match self {
       Upvalue::Closed(upvalue) => upvalue.trace_debug(stdio),
       _ => true,
+    }
+  }
+}
+
+impl DebugHeap for Upvalue {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    match self {
+      Self::Open(v) => f.write_fmt(format_args!(
+        "Upvalue::Open(*{:?})",
+        &DebugWrap(unsafe { v.as_ref() }, depth)
+      )),
+      Self::Closed(v) => f.write_fmt(format_args!("Upvalue::Closed({:?})", &DebugWrap(v, depth))),
     }
   }
 }
@@ -228,19 +240,12 @@ impl Manage for Upvalue {
     "upvalue"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    match self {
-      Self::Open(_) => "Upvalue::Open({{ ... }})".to_string(),
-      Self::Closed(_) => "Upvalue::Closed({{ ... }})".to_string(),
-    }
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -357,13 +362,7 @@ impl fmt::Display for Fun {
 
 impl fmt::Debug for Fun {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Fun")
-      .field("name", &"Managed(String {...})")
-      .field("arity", &self.arity)
-      .field("upvalue_count", &self.upvalue_count)
-      .field("Module", &"Manged(Module: { ... })")
-      .field("chunk", &"Chunk { ... }")
-      .finish()
+    self.fmt_heap(f, 1)
   }
 }
 
@@ -378,7 +377,7 @@ impl Trace for Fun {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.name.trace_debug(stdio);
     self.chunk.constants.iter().for_each(|constant| {
       constant.trace_debug(stdio);
@@ -389,17 +388,23 @@ impl Trace for Fun {
   }
 }
 
+impl DebugHeap for Fun {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_struct("Fun")
+      .field("name", &DebugWrap(&self.name, depth))
+      .field("arity", &self.arity)
+      .field("upvalue_count", &self.upvalue_count)
+      .field("Module", &DebugWrap(&self.module, depth))
+      .field("chunk", &self.chunk)
+      .finish()
+  }
+}
+
 impl Manage for Fun {
   fn alloc_type(&self) -> &str {
     "function"
-  }
-
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    format!("{:?}", self)
   }
 
   fn size(&self) -> usize {
@@ -407,6 +412,10 @@ impl Manage for Fun {
       + self.chunk.size()
       + mem::size_of::<TryBlock>()
       + self.try_blocks.capacity()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -512,7 +521,7 @@ impl<T: 'static + Trace> Trace for List<T> {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.iter().for_each(|value| {
       value.trace_debug(stdio);
     });
@@ -521,21 +530,27 @@ impl<T: 'static + Trace> Trace for List<T> {
   }
 }
 
-impl<T: 'static + Trace + fmt::Debug> Manage for List<T> {
+impl<T: 'static + Trace + DebugHeap> DebugHeap for List<T> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_list()
+      .entries(self.0.iter().map(|x| DebugWrap(x, depth)))
+      .finish()
+  }
+}
+
+impl<T: 'static + Trace + DebugHeap> Manage for List<T> {
   fn alloc_type(&self) -> &str {
     "list"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    "List: [...]".to_string()
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * self.capacity()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -592,7 +607,7 @@ impl<K, V> Default for Map<K, V> {
   }
 }
 
-impl<T: 'static + Trace> Trace for Map<T, T> {
+impl<K: 'static + Trace, V: 'static + Trace> Trace for Map<K, V> {
   fn trace(&self) -> bool {
     self.iter().for_each(|(key, value)| {
       key.trace();
@@ -602,7 +617,7 @@ impl<T: 'static + Trace> Trace for Map<T, T> {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.iter().for_each(|(key, value)| {
       key.trace_debug(stdio);
       value.trace_debug(stdio);
@@ -612,21 +627,36 @@ impl<T: 'static + Trace> Trace for Map<T, T> {
   }
 }
 
-impl<T: 'static + Trace + fmt::Debug> Manage for Map<T, T> {
+impl<K: 'static + DebugHeap, V: 'static + DebugHeap> DebugHeap for Map<K, V> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_map()
+      .entries(
+        self
+          .0
+          .iter()
+          .map(|(k, v)| (DebugWrap(k, depth), DebugWrap(v, depth))),
+      )
+      .finish()
+  }
+}
+
+impl<K, V> Manage for Map<K, V>
+where
+  K: 'static + DebugHeap + Trace,
+  V: 'static + DebugHeap + Trace,
+{
   fn alloc_type(&self) -> &str {
     "map"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    "Map: {...}".to_string()
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Map<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -673,10 +703,7 @@ impl Closure {
 
 impl fmt::Debug for Closure {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Closure")
-      .field("fun", &self.fun)
-      .field("upvalues", &format!("[UpValue; {}]", &self.upvalues.len()))
-      .finish()
+    self.fmt_heap(f, 1)
   }
 }
 
@@ -690,7 +717,7 @@ impl Trace for Closure {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.upvalues.iter().for_each(|upvalue| {
       upvalue.trace_debug(stdio);
     });
@@ -700,21 +727,28 @@ impl Trace for Closure {
   }
 }
 
+impl DebugHeap for Closure {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_struct("Closure")
+      .field("fun", &DebugWrap(&self.fun, depth))
+      .field("upvalues", &DebugWrap(&&*self.upvalues, depth))
+      .finish()
+  }
+}
+
 impl Manage for Closure {
   fn alloc_type(&self) -> &str {
     "closure"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    "Closure: {{ fun: {{ ... }}, upvalues: {{ ... }} }}".to_string()
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>() + mem::size_of::<Value>() * self.upvalues.capacity()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -837,11 +871,7 @@ impl Class {
 
 impl fmt::Debug for Class {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Class")
-      .field("name", &self.name)
-      .field("methods", &"Methods: { ... }")
-      .field("init", &self.init)
-      .finish()
+    self.fmt_heap(f, 1)
   }
 }
 
@@ -861,7 +891,7 @@ impl Trace for Class {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.name.trace_debug(stdio);
     self.init.map(|init| init.trace_debug(stdio));
 
@@ -877,22 +907,30 @@ impl Trace for Class {
   }
 }
 
+impl DebugHeap for Class {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_struct("Class")
+      .field("name", &DebugWrap(&self.name, depth))
+      .field("methods", &DebugWrap(&self.methods, depth))
+      .field("init", &DebugWrap(&self.init, depth))
+      .finish()
+  }
+}
+
 impl Manage for Class {
   fn alloc_type(&self) -> &str {
     "class"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    "Class: {{ init: {{...}}, name: {{...}}, methods: {{...}}}}".to_string()
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Class>()
       + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.methods.capacity()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    todo!()
   }
 }
 
@@ -934,10 +972,7 @@ impl Instance {
 
 impl fmt::Debug for Instance {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Instance")
-      .field("class", &self.class)
-      .field("fields", &self.fields)
-      .finish()
+    self.fmt_heap(f, 1)
   }
 }
 
@@ -952,7 +987,7 @@ impl Trace for Instance {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.class.trace_debug(stdio);
 
     self.fields.iter().for_each(|val| {
@@ -963,22 +998,29 @@ impl Trace for Instance {
   }
 }
 
+impl DebugHeap for Instance {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_struct("Instance")
+      .field("class", &DebugWrap(&self.class, depth))
+      .field("fields", &DebugWrap(&&*self.fields, depth))
+      .finish()
+  }
+}
+
 impl Manage for Instance {
   fn alloc_type(&self) -> &str {
     "instance"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    "Instance: {{ class: {{...}}, fields: {{...}} }}".to_string()
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Instance>()
       + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.fields.len()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -996,10 +1038,7 @@ impl Method {
 
 impl fmt::Debug for Method {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("BoundMethod")
-      .field("receiver", &format!("{}", self.receiver))
-      .field("method", &self.method)
-      .finish()
+    self.fmt_heap(f, 1)
   }
 }
 
@@ -1010,10 +1049,21 @@ impl Trace for Method {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.receiver.trace_debug(stdio);
     self.method.trace_debug(stdio);
     true
+  }
+}
+
+impl DebugHeap for Method {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_struct("Method")
+      .field("receiver", &DebugWrap(&self.receiver, depth))
+      .field("method", &DebugWrap(&self.method, depth))
+      .finish()
   }
 }
 
@@ -1022,15 +1072,11 @@ impl Manage for Method {
     "method"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    "Method: {{ method: {{...}}, receiver: {{...}}}}".to_string()
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }

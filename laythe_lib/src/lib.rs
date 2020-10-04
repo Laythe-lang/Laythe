@@ -47,7 +47,7 @@ macro_rules! native {
         self.meta.trace()
       }
 
-      fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+      fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
         self.meta.trace_debug(stdio)
       }
     }

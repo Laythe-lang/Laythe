@@ -4,7 +4,7 @@ use crate::{
 };
 use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
-use std::fmt::Display;
+use std::{fmt::Display, io::Write};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum Arity {
@@ -327,7 +327,7 @@ impl Trace for Signature {
     });
     true
   }
-  fn trace_debug(&self, stdio: &mut laythe_env::stdio::Stdio) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.parameters.iter().for_each(|p| {
       p.name.trace_debug(stdio);
     });

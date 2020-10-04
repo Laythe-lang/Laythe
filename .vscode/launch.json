@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "language/inheritance/set_fields_from_base_class.lay"
+        "std_lib/global/method/name.lay"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",
