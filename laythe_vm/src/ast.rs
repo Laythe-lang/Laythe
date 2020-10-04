@@ -1,8 +1,8 @@
 use crate::token::Token;
 
-/// A visitor pattern for the Laythe ast. 
-/// Not sure if this currently provides any value as enum 
-/// already know there variants. May still be useful 
+/// A visitor pattern for the Laythe ast.
+/// Not sure if this currently provides any value as enum
+/// already know there variants. May still be useful
 /// to ensure each node has cold associated with it
 pub trait Visitor {
   type Result;
@@ -29,6 +29,8 @@ pub trait Visitor {
   fn visit_while(&mut self, while_: &While) -> Self::Result;
   fn visit_if(&mut self, if_: &If) -> Self::Result;
   fn visit_return(&mut self, return_: &Return) -> Self::Result;
+  fn visit_continue(&mut self, continue_: &Token) -> Self::Result;
+  fn visit_break(&mut self, break_: &Token) -> Self::Result;
   fn visit_try(&mut self, try_: &Try) -> Self::Result;
   fn visit_block(&mut self, block: &Block) -> Self::Result;
 
@@ -357,6 +359,8 @@ pub enum Stmt {
   For(Box<For>),
   If(Box<If>),
   Return(Box<Return>),
+  Continue(Box<Token>),
+  Break(Box<Token>),
   While(Box<While>),
   Try(Box<Try>),
 }
@@ -369,6 +373,8 @@ impl Ranged for Stmt {
       Stmt::For(for_) => for_.start(),
       Stmt::If(if_) => if_.start(),
       Stmt::Return(return_) => return_.start(),
+      Stmt::Continue(continue_) => continue_.start(),
+      Stmt::Break(break_) => break_.start(),
       Stmt::While(while_) => while_.start(),
       Stmt::Try(try_) => try_.start(),
     }
@@ -381,6 +387,8 @@ impl Ranged for Stmt {
       Stmt::For(for_) => for_.end(),
       Stmt::If(if_) => if_.end(),
       Stmt::Return(return_) => return_.end(),
+      Stmt::Continue(continue_) => continue_.end(),
+      Stmt::Break(break_) => break_.end(),
       Stmt::While(while_) => while_.end(),
       Stmt::Try(try_) => try_.end(),
     }

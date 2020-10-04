@@ -15,7 +15,8 @@ pub fn exception_catch(stdout: &mut dyn Write, frame: &CallFrame, idx: usize) ->
 /// Write a chunk to console
 pub fn disassemble_chunk(stdio: &mut Stdio, code_chunk: &Chunk, name: &str) -> io::Result<()> {
   let stdout = stdio.stdout();
-  writeln!(stdout, "== {0} ==", name)?;
+  writeln!(stdout, "")?;
+  writeln!(stdout, "{0}", name)?;
 
   let mut offset: usize = 0;
   let mut last_offset: usize = 0;
@@ -37,7 +38,7 @@ pub fn disassemble_instruction(
   last_offset: usize,
 ) -> io::Result<usize> {
   let stdout = stdio.stdout();
-  write!(stdout, "{:0>4} ", ip)?;
+  write!(stdout, "  {:0>4} ", ip)?;
 
   if ip > 0 && chunk.get_line(ip) == chunk.get_line(last_offset) {
     write!(stdout, "   | ")?;
@@ -169,7 +170,7 @@ fn jump_instruction(
   let net_jump = sign * (jump as isize);
   writeln!(
     stdout,
-    "{:16} {:5} -> {}",
+    "{:13} {:5} -> {}",
     name,
     offset - 3,
     (offset as isize) + net_jump
@@ -185,7 +186,7 @@ fn constant_instruction(
   constant: u16,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:16} {:5} ", name, constant)?;
+  write!(stdout, "{:13} {:5} ", name, constant)?;
   writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
   Ok(offset)
 }
@@ -200,7 +201,7 @@ fn closure_instruction(
 ) -> io::Result<usize> {
   let stdout = stdio.stdout();
 
-  write!(stdout, "{:16} {:5} ", name, constant)?;
+  write!(stdout, "{:13} {:5} ", name, constant)?;
   writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
 
   let value = &chunk.constants[constant as usize];
@@ -228,12 +229,12 @@ fn closure_instruction(
     match upvalue_index {
       UpvalueIndex::Local(local) => writeln!(
         stdout,
-        "{:0>4}      |                     local {}",
+        "  {:0>4}      |                  local {}",
         current_offset, local
       ),
       UpvalueIndex::Upvalue(upvalue) => writeln!(
         stdout,
-        "{:0>4}      |                     upvalue {}",
+        "  {:0>4}      |                  upvalue {}",
         current_offset, upvalue
       ),
     }?;
@@ -252,7 +253,7 @@ fn invoke_instruction(
   arg_count: u8,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:16} {:5} ({} args) ", name, constant, arg_count)?;
+  write!(stdout, "{:13} {:5} ({} args) ", name, constant, arg_count)?;
   writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
   Ok(offset)
 }
@@ -264,7 +265,7 @@ fn short_instruction(
   slot: u16,
   offset: usize,
 ) -> io::Result<usize> {
-  writeln!(stdout, "{:16} {:5}", name, slot)?;
+  writeln!(stdout, "{:13} {:5}", name, slot)?;
   Ok(offset)
 }
 
@@ -275,12 +276,12 @@ fn byte_instruction(
   slot: u8,
   offset: usize,
 ) -> io::Result<usize> {
-  writeln!(stdout, "{:16} {:5}", name, slot)?;
+  writeln!(stdout, "{:13} {:5}", name, slot)?;
   Ok(offset)
 }
 
 /// print a simple instruction
 fn simple_instruction(stdout: &mut dyn Write, name: &str, offset: usize) -> io::Result<usize> {
-  writeln!(stdout, "{:16}", name)?;
+  writeln!(stdout, "{:13}", name)?;
   Ok(offset)
 }

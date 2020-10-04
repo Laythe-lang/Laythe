@@ -56,6 +56,8 @@ impl Visitor for AstPrint {
       Stmt::For(for_) => self.visit_for(for_),
       Stmt::If(if_) => self.visit_if(if_),
       Stmt::Return(return_) => self.visit_return(return_),
+      Stmt::Continue(continue_) => self.visit_continue(continue_),
+      Stmt::Break(break_) => self.visit_break(break_),
       Stmt::While(while_) => self.visit_while(while_),
       Stmt::Try(try_) => self.visit_try(try_),
     }
@@ -309,6 +311,15 @@ impl Visitor for AstPrint {
       }
       None => self.buffer.push_str("return;"),
     }
+  }
+  fn visit_continue(&mut self, _: &Token) -> Self::Result {
+    self.pad();
+    self.buffer.push_str("continue;")
+  }
+
+  fn visit_break(&mut self, _: &Token) -> Self::Result {
+    self.pad();
+    self.buffer.push_str("break;")
   }
   fn visit_try(&mut self, try_: &Try) -> Self::Result {
     self.pad();

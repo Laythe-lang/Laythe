@@ -12,11 +12,9 @@ use laythe_core::{
   value::Value,
   CallResult, LyResult,
 };
-use laythe_env::{
-  managed::{Managed, Trace},
-  stdio::Stdio,
-};
+use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
+use std::io::Write;
 
 pub const METHOD_CLASS_NAME: &str = "Method";
 
@@ -79,7 +77,11 @@ impl MetaData for MethodName {
 
 impl Native for MethodName {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
-    hooks.call_method_by_name(this.unwrap().to_method().method, self.method_name, args)
+    let method = this.unwrap().to_method().method;
+
+    hooks
+      .get_method(this.unwrap().to_method().method, self.method_name)
+      .and_then(|method_name| hooks.call_method(method, method_name, args))
   }
 }
 
@@ -89,9 +91,9 @@ impl Trace for MethodName {
     self.method_name.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.meta.trace_debug(stdio);
-    self.method_name.trace_debug(stdio)
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.meta.trace_debug(stdout);
+    self.method_name.trace_debug(stdout)
   }
 }
 
@@ -130,7 +132,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::default();
+      let mut context = MockedContext::with_std(&[]);
       let responses = &[val!(context.gc.manage_str("example", &NO_GC))];
       context.responses.extend_from_slice(responses);
 

@@ -1,5 +1,6 @@
 use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
+use laythe_env::managed::{DebugHeap, DebugWrap};
 use linear_map::LinearMap;
 use std::hash::Hash;
 
@@ -71,10 +72,32 @@ impl<K: Ord + Hash, V> DynamicMap<K, V> {
       Self::Hash(hash) => hash.iter().for_each(closure),
     }
   }
+
+  fn iter<'a>(&'a self) -> Box<dyn Iterator<Item = (&'a K, &'a V)> + 'a> {
+    match self {
+      Self::Linear(linear) => Box::new(linear.iter()),
+      Self::Hash(hash) => Box::new(hash.iter()),
+    }
+  }
 }
 
 impl<K: Ord + Hash, V> Default for DynamicMap<K, V> {
   fn default() -> Self {
     Self::new()
+  }
+}
+
+impl<K: DebugHeap + Ord + Hash, V: DebugHeap> DebugHeap for DynamicMap<K, V> {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_map()
+      .entries(self.iter().map(|(k, v)| {
+        (
+          DebugWrap(k, depth),
+          DebugWrap(v, depth),
+        )
+      }))
+      .finish()
   }
 }

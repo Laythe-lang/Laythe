@@ -4,13 +4,11 @@ use crate::{
   value::Value,
   LyHashSet, LyResult,
 };
-use laythe_env::{
-  managed::{Manage, Managed, Trace},
-  stdio::Stdio,
-};
+use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
 use smol_str::SmolStr;
-use std::fmt;
+use std::{fmt, io::Write};
 use std::{mem, path::PathBuf};
+
 
 /// A struct representing a collection of class functions and variable of shared functionality
 #[derive(Clone)]
@@ -157,16 +155,6 @@ impl Module {
   }
 }
 
-impl fmt::Debug for Module {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    f.debug_struct("Module")
-      .field("module_name", &"TODO")
-      .field("exports", &"LyHashMap: { ... }")
-      .field("symbols", &"LyHashMap: { ... }")
-      .finish()
-  }
-}
-
 impl Trace for Module {
   fn trace(&self) -> bool {
     self.module_class.trace();
@@ -182,19 +170,32 @@ impl Trace for Module {
 
     true
   }
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
     self.module_class.trace();
-    self.path.trace_debug(stdio);
+    self.path.trace_debug(stdout);
 
     self.exports.iter().for_each(|key| {
-      key.trace_debug(stdio);
+      key.trace_debug(stdout);
     });
     self.symbols.iter().for_each(|(key, value)| {
-      key.trace_debug(stdio);
-      value.trace_debug(stdio);
+      key.trace_debug(stdout);
+      value.trace_debug(stdout);
     });
 
     true
+  }
+}
+
+impl DebugHeap for Module {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_struct("Module")
+      .field("path", &DebugWrap(&self.path, depth))
+      .field("module_class", &DebugWrap(&self.module_class, depth))
+      .field("exports", &DebugWrap(&self.exports, depth))
+      .field("symbols", &DebugWrap(&self.symbols, depth))
+      .finish()
   }
 }
 
@@ -202,17 +203,15 @@ impl Manage for Module {
   fn alloc_type(&self) -> &str {
     "module"
   }
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-  fn debug_free(&self) -> String {
-    "Module: {{ name: {{...}}, exports: {{...}}, symbols: {{...}}}}".to_string()
-  }
 
   fn size(&self) -> usize {
     mem::size_of::<Self>()
       + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>())
         * (self.exports.capacity() + self.symbols.capacity())
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    todo!()
   }
 }
 

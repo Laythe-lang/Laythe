@@ -1,0 +1,31 @@
+for i in 100.times() {
+  :{
+    :{
+      :{
+        :{
+          break;
+        };
+      };
+    };
+  };
+
+  assert(false);
+}
+
+assert(true);
+
+while true {
+  :{
+    :{
+      :{
+        :{
+          break;
+        };
+      };
+    };
+  };
+
+  assert(false);
+}
+
+assert(true);

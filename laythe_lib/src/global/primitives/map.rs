@@ -17,10 +17,10 @@ use laythe_core::{
 };
 use laythe_env::{
   managed::{Managed, Trace},
-  stdio::Stdio,
 };
 use smol_str::SmolStr;
 use std::mem;
+use std::io::Write;
 
 pub const MAP_CLASS_NAME: &str = "Map";
 
@@ -169,7 +169,9 @@ fn format_map_entry(
   }
 
   // call '.str' method on each value
-  let result = hooks.call_method_by_name(*item, method_name, &[])?;
+  let result = hooks
+    .get_method(*item, method_name)
+    .and_then(|method| hooks.call_method(*item, method, &[]))?;
 
   if result.is_str() {
     buffer.push_str(&*result.to_str());
@@ -185,8 +187,8 @@ impl Trace for MapStr {
     self.method_name.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.method_name.trace_debug(stdio)
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.method_name.trace_debug(stdout)
   }
 }
 
@@ -322,8 +324,8 @@ impl Trace for MapIterator {
     self.map.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.map.trace_debug(stdio)
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.map.trace_debug(stdout)
   }
 }
 
@@ -350,7 +352,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::default();
+      let mut context = MockedContext::with_std(&[]);
       let response = &[
         val!(context.gc.manage_str("nil".to_string(), &NO_GC)),
         val!(context.gc.manage_str("nil".to_string(), &NO_GC)),

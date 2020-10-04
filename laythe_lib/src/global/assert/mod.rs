@@ -9,11 +9,9 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
 };
-use laythe_env::{
-  managed::{Managed, Trace},
-  stdio::Stdio,
-};
+use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
+use std::io::Write;
 
 pub(crate) fn add_assert_funs(
   hooks: &GcHooks,
@@ -68,15 +66,19 @@ pub fn declare_assert_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResul
 }
 
 fn to_str(hooks: &mut Hooks, value: Value) -> Managed<SmolStr> {
-  let result = hooks.call_method_by_name(value, hooks.manage_str("str".to_string()), &[]);
+  hooks
+    .get_method(value, hooks.manage_str("str"))
+    .map(|method| hooks.call_method(value, method, &[]))
+    .map(|string| {
+      if let Ok(ok) = string {
+        if ok.is_str() {
+          return ok.to_str();
+        }
+      }
 
-  if let Ok(ok) = result {
-    if ok.is_str() {
-      return ok.to_str();
-    }
-  }
-
-  hooks.manage_str(format!("{:?}", result))
+      hooks.manage_str(format!("{:?}", string))
+    })
+    .expect("No str method")
 }
 
 #[derive(Debug)]
@@ -118,9 +120,9 @@ impl Trace for Assert {
     self.method_str.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.meta.trace_debug(stdio);
-    self.method_str.trace_debug(stdio)
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.meta.trace_debug(stdout);
+    self.method_str.trace_debug(stdout)
   }
 }
 

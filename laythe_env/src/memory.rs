@@ -2,8 +2,14 @@ use crate::managed::{Allocation, Manage, Managed, Trace};
 use crate::stdio::Stdio;
 use hashbrown::HashMap;
 use smol_str::SmolStr;
-use std::cell::{Cell, RefCell};
 use std::ptr::NonNull;
+use std::{
+  cell::{Cell, RefCell},
+  io::Write,
+};
+
+#[cfg(feature = "debug_gc")]
+use crate::managed::{DebugWrap, DebugWrapDyn};
 
 /// The garbage collector and memory manager for laythe. Currently this is implemented a very crude
 /// generation mark and sweep collector. As of now the key areas for improvements are better allocation
@@ -11,7 +17,7 @@ use std::ptr::NonNull;
 pub struct Gc {
   /// Io in the given environment
   #[allow(dead_code)]
-  stdio: Stdio,
+  stdio: RefCell<Stdio>,
 
   /// The nursery heap for new objects initially allocated into this gc
   nursery_heap: RefCell<Vec<Box<Allocation<dyn Manage>>>>,
@@ -49,7 +55,7 @@ impl<'a> Gc {
   /// ```
   pub fn new(stdio: Stdio) -> Self {
     Gc {
-      stdio,
+      stdio: RefCell::new(stdio),
       nursery_heap: RefCell::new(Vec::with_capacity(1000)),
       heap: RefCell::new(Vec::with_capacity(0)),
       bytes_allocated: Cell::new(0),
@@ -225,7 +231,13 @@ impl<'a> Gc {
     self.gc_count.set(self.gc_count.get() + 1);
 
     #[cfg(feature = "debug_gc")]
-    self.stdio.println("-- gc begin");
+    let mut stdio = self.stdio.borrow_mut();
+
+    #[cfg(feature = "debug_gc")]
+    let stdout = stdio.stdout();
+
+    #[cfg(feature = "debug_gc")]
+    write!(stdout, "-- gc begin").expect("could not write to stdout");
 
     if self.trace(context) {
       self.temp_roots.borrow().iter().for_each(|root| {
@@ -249,14 +261,17 @@ impl<'a> Gc {
     #[cfg(feature = "debug_gc")]
     {
       let now = self.bytes_allocated.get();
-      self.stdio.println("-- gc end");
-      self.stdio.println(&format!(
+
+      writeln!(stdout, "-- gc end").expect("unable to write to stdout");
+      writeln!(
+        stdout,
         "   collected {} bytes (from {} to {}) next at {}",
         _before - now,
         _before,
         now,
         self.next_gc.get()
-      ));
+      )
+      .expect("unable to write to stdout");
     }
   }
 
@@ -267,7 +282,12 @@ impl<'a> Gc {
     return entity.trace();
 
     #[cfg(feature = "debug_gc")]
-    return entity.trace_debug(&*self.stdio);
+    {
+      let mut stdio = self.stdio.borrow_mut();
+      let stdout = stdio.stdout();
+
+      return entity.trace_debug(stdout);
+    }
   }
 
   /// Remove unmarked objects from the heap. This calculates the remaining
@@ -358,24 +378,34 @@ impl<'a> Gc {
   fn debug_allocate<T: 'static + Manage>(&self, ptr: NonNull<Allocation<T>>, size: usize) {
     #[cfg(feature = "debug_gc")]
     {
-      self.stdio.println(&format!(
-        "{:p} allocate {} for {}",
+      let mut stdio = self.stdio.borrow_mut();
+      let stdout = stdio.stdout();
+
+      writeln!(
+        stdout,
+        "{:p} allocated bytes {} for {:?}",
         ptr.as_ptr(),
         size,
-        unsafe { ptr.as_ref() }.debug()
-      ));
+        DebugWrap(unsafe { ptr.as_ref() }, 3)
+      )
+      .expect("unable to write to stdout");
     }
   }
 
   /// Debug logging for removing a string from the cache.
   #[cfg(feature = "debug_gc")]
-  fn debug_string_remove(&self, string: Managed<String>, free: bool) {
+  fn debug_string_remove(&self, string: Managed<SmolStr>, free: bool) {
     if free {
-      self.stdio.println(&format!(
-        "{:p} remove string from cache {}",
+      let mut stdio = self.stdio.borrow_mut();
+      let stdout = stdio.stdout();
+
+      writeln!(
+        stdout,
+        "{:p} remove string from cache {:?}",
         &**string,
-        (*string).debug(),
-      ));
+        DebugWrap(&string, 2)
+      )
+      .expect("unable to write to stdout");
     }
   }
 
@@ -383,9 +413,16 @@ impl<'a> Gc {
   #[cfg(feature = "debug_gc")]
   fn debug_free(&self, obj: &Box<Allocation<dyn Manage>>, free: bool) {
     if free {
-      self
-        .stdio
-        .println(&format!("{:p} free {}", &**obj, (**obj).debug_free()));
+      let mut stdio = self.stdio.borrow_mut();
+      let stdout = stdio.stdout();
+
+      writeln!(
+        stdout,
+        "{:p} free {:?}",
+        &**obj,
+        DebugWrapDyn((*obj).as_debug(), 0)
+      )
+      .expect("unable to write to stdout");
     }
   }
 }
@@ -402,7 +439,7 @@ impl Trace for NoGc {
     false
   }
 
-  fn trace_debug(&self, _: &mut Stdio) -> bool {
+  fn trace_debug(&self, _: &mut dyn Write) -> bool {
     false
   }
 }

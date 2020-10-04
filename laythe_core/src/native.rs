@@ -4,12 +4,9 @@ use crate::{
   value::Value,
   CallResult,
 };
-use laythe_env::{
-  managed::{Manage, Managed, Trace},
-  stdio::Stdio,
-};
+use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
 use smol_str::SmolStr;
-use std::fmt;
+use std::{fmt, io::Write};
 use std::{mem, ptr};
 
 #[derive(Clone, Debug)]
@@ -100,9 +97,9 @@ impl Trace for NativeMeta {
     self.signature.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.name.trace_debug(stdio);
-    self.signature.trace_debug(stdio)
+  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+    self.name.trace_debug(log);
+    self.signature.trace_debug(log)
   }
 }
 
@@ -122,17 +119,13 @@ impl PartialEq<dyn Native> for dyn Native {
   }
 }
 
-impl fmt::Debug for dyn Native {
+impl fmt::Debug for Box<dyn Native> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let meta = self.meta();
-    f.debug_struct("NativeFun")
-      .field("name", &meta.name)
-      .field("signature", &meta.signature)
-      .finish()
+    self.fmt_heap(f, 1)
   }
 }
 
-impl fmt::Display for dyn Native {
+impl fmt::Display for Box<dyn Native> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     let meta = self.meta();
     write!(f, "<native {}>", meta.name)
@@ -145,9 +138,21 @@ impl Trace for Box<dyn Native> {
     inner.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) -> bool {
     let inner: &dyn Native = &**self;
-    inner.trace_debug(stdio)
+    inner.trace_debug(log)
+  }
+}
+
+impl DebugHeap for Box<dyn Native> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let meta = self.meta();
+    let depth = depth.checked_sub(1).unwrap_or(0);
+
+    f.debug_struct("Native")
+      .field("name", &DebugWrap(&meta.name, depth))
+      .field("signature", &meta.signature)
+      .finish()
   }
 }
 
@@ -156,15 +161,11 @@ impl Manage for Box<dyn Native> {
     "native"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    format!("{:?}", self)
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }

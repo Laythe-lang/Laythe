@@ -15,4 +15,5 @@ debug_stress_gc = []
 [dependencies]
 laythe_macro = { path = "../laythe_macro" }
 hashbrown = "0.7.2"
+fnv = "1.0.3"
 smol_str = "0.1.16"

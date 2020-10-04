@@ -106,13 +106,13 @@ use smol_str::SmolStr;
 #[cfg(test)]
 mod test {
   use laythe_core::{
-    hooks::{CallContext, GcContext, GcHooks, HookContext, Hooks},
+    hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
     iterator::LyIter,
     module::Module,
-    object::Fun,
-    signature::Arity,
+    object::{BuiltIn, Fun},
+    package::Import,
     val,
-    value::{Value, ValueKind},
+    value::{Value, ValueKind, VALUE_NIL},
     CallResult, LyError,
   };
   use laythe_env::{
@@ -121,17 +121,20 @@ mod test {
     memory::{Gc, NoGc, NO_GC},
     stdio::{
       support::{IoStdioTest, StdioTestContainer},
-      Stdio,
     },
   };
   use smol_str::SmolStr;
+  use std::io::Write;
   use std::{path::PathBuf, rc::Rc};
+
+  use crate::{create_std_lib, global::builtin_from_global_module, GLOBAL, STD};
 
   pub struct MockedContext {
     pub gc: Gc,
+    pub responses: Vec<Value>,
     io: Io,
     no_gc: NoGc,
-    pub responses: Vec<Value>,
+    builtin: Option<BuiltIn>,
     response_count: usize,
   }
 
@@ -142,6 +145,7 @@ mod test {
         no_gc: NoGc(),
         responses: vec![],
         io: Io::default(),
+        builtin: None,
         response_count: 0,
       }
     }
@@ -154,8 +158,34 @@ mod test {
         no_gc: NoGc(),
         responses: Vec::from(responses),
         io: Io::default(),
+        builtin: None,
         response_count: 0,
       }
+    }
+
+    pub fn with_std(responses: &[Value]) -> Self {
+      let mut context = Self {
+        gc: Gc::default(),
+        no_gc: NoGc(),
+        responses: Vec::from(responses),
+        io: Io::default(),
+        builtin: None,
+        response_count: 0,
+      };
+
+      let hooks = GcHooks::new(&mut context);
+      let std = create_std_lib(&hooks).unwrap();
+      let global = std
+        .import(
+          &hooks,
+          Import::new(vec![hooks.manage_str(STD), hooks.manage_str(GLOBAL)]),
+        )
+        .expect("Could not retrieve global module");
+
+      let builtin = builtin_from_global_module(&hooks, &global);
+
+      context.builtin = builtin;
+      context
     }
 
     pub fn new_with_io(stdio_container: &Rc<StdioTestContainer>) -> Self {
@@ -164,6 +194,7 @@ mod test {
         no_gc: NoGc(),
         responses: Vec::from(vec![]),
         io: Io::default().with_stdio(Rc::new(IoStdioTest::new(stdio_container))),
+        builtin: None,
         response_count: 0,
       }
     }
@@ -174,7 +205,7 @@ mod test {
       self
     }
 
-    fn call_context(&mut self) -> &mut dyn CallContext {
+    fn value_context(&mut self) -> &mut dyn ValueContext {
       self
     }
 
@@ -189,7 +220,7 @@ mod test {
     }
   }
 
-  impl CallContext for MockedContext {
+  impl ValueContext for MockedContext {
     fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
       let arity = match callable.kind() {
         ValueKind::Closure => callable.to_closure().fun.arity,
@@ -254,53 +285,25 @@ mod test {
       )))
     }
 
-    fn call_method_by_name(
-      &mut self,
-      this: Value,
-      method_name: Managed<SmolStr>,
-      args: &[Value],
-    ) -> CallResult {
-      let arity = if this.is_instance() {
-        let instance = this.to_instance();
-        match instance.class.get_method(&method_name) {
-          Some(method) => {
-            if method.is_closure() {
-              method.to_closure().fun.arity
-            } else if method.is_native() {
-              method.to_native().meta().signature.arity
-            } else {
-              panic!("Only closures and native methods should be methods on an instance")
-            }
-          }
-          None => {
-            return Err(Box::new(LyError::new(self.gc.manage_str(
-              format!("No method {} exists on {:?}.", method_name, instance),
-              &NO_GC,
-            ))));
-          }
-        }
-      } else {
-        Arity::Variadic(0)
+    fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> CallResult {
+      let b = match &self.builtin {
+        Some(b) => b,
+        None => return Err(Box::new(LyError::new(self.gc.manage_str("error", self)))),
       };
 
-      match arity.check(args.len() as u8) {
-        Ok(_) => (),
-        Err(_) => {
-          return Err(Box::new(LyError::new(
-            self.gc.manage_str("Incorrect method arity", &NO_GC),
-          )))
-        }
-      }
+      let class = b.primitives.for_value(this, this.kind());
+      class
+        .get_method(&method_name)
+        .ok_or_else(|| Box::new(LyError::new(self.gc.manage_str("error", self))))
+    }
 
-      if self.response_count < self.responses.len() {
-        let response = self.responses[self.response_count];
-        self.response_count += 1;
-        return Ok(response);
-      }
+    fn get_class(&mut self, this: Value) -> Value {
+      let b = match &self.builtin {
+        Some(b) => b,
+        None => return VALUE_NIL,
+      };
 
-      Err(Box::new(LyError::new(
-        self.gc.manage_str("No mocked results", &NO_GC),
-      )))
+      val!(b.primitives.for_value(this, this.kind()))
     }
   }
 
@@ -309,8 +312,8 @@ mod test {
       self.no_gc.trace()
     }
 
-    fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-      self.no_gc.trace_debug(stdio)
+    fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+      self.no_gc.trace_debug(stdout)
     }
   }
 

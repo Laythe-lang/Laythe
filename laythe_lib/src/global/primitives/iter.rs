@@ -17,8 +17,8 @@ use laythe_core::{
 };
 use laythe_env::{
   managed::{Managed, Trace},
-  stdio::Stdio,
 };
+use std::io::Write;
 use std::mem;
 
 pub const ITER_CLASS_NAME: &str = "Iter";
@@ -216,10 +216,10 @@ impl Trace for MapIterator {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.current.trace_debug(stdio);
-    self.iter.trace_debug(stdio);
-    self.callable.trace_debug(stdio);
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.current.trace_debug(stdout);
+    self.iter.trace_debug(stdout);
+    self.callable.trace_debug(stdout);
     true
   }
 }
@@ -294,10 +294,10 @@ impl Trace for FilterIterator {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.current.trace_debug(stdio);
-    self.iter.trace_debug(stdio);
-    self.callable.trace_debug(stdio);
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.current.trace_debug(stdout);
+    self.iter.trace_debug(stdout);
+    self.callable.trace_debug(stdout);
     true
   }
 }
@@ -435,10 +435,10 @@ impl Trace for ZipIterator {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.current.trace_debug(stdio);
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.current.trace_debug(stdout);
     self.iters.iter().for_each(|iter| {
-      iter.trace_debug(stdio);
+      iter.trace_debug(stdout);
     });
     true
   }

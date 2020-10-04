@@ -167,6 +167,18 @@ fn number() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn object() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "std_lib/global/object/cls.lay",
+      "std_lib/global/object/equals.lay",
+      "std_lib/global/object/str.lay",
+    ],
+    ExecuteResult::Ok,
+  )
+}
+
+#[test]
 fn print() -> Result<(), std::io::Error> {
   test_file_with_stdio(
     "std_lib/global/print/basic.lay",

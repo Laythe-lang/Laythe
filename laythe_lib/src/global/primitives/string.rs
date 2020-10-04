@@ -13,11 +13,9 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
 };
-use laythe_env::{
-  managed::{Managed, Trace},
-  stdio::Stdio,
-};
+use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
+use std::io::Write;
 use std::{mem, str::Chars};
 
 pub const STRING_CLASS_NAME: &str = "String";
@@ -148,8 +146,8 @@ impl Trace for StringIterator {
     self.string.trace()
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.string.trace_debug(stdio)
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.string.trace_debug(stdout)
   }
 }
 

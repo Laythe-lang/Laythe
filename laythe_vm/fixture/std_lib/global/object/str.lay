@@ -1,0 +1,4 @@
+assertEq([].str(), '[]');
+assertEq(true.str(), 'true');
+assertEq('test'.str(), 'test');
+assertEq(|a, b| {}.str(), '<fn lambda>');

@@ -1,0 +1,17 @@
+
+assert(10.equals(10));
+assert(!10.equals(12));
+assert(false.equals(false));
+assert(!false.equals(true));
+
+let a = [];
+assert(a.equals(a));
+assert(!a.equals([]));
+
+let b = {};
+assert(b.equals(b));
+assert(!b.equals({}));
+
+let c = ||{};
+assert(c.equals(c));
+assert(!c.equals(||{}));

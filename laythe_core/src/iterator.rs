@@ -3,13 +3,10 @@ use crate::{
   value::{Value, VALUE_NIL},
   CallResult,
 };
-use laythe_env::{
-  managed::{Manage, Managed, Trace},
-  stdio::Stdio,
-};
+use laythe_env::managed::{DebugHeap, Manage, Managed, Trace};
 use smol_str::SmolStr;
-use std::fmt;
 use std::mem;
+use std::{fmt, io::Write};
 
 /// A container for iterators in laythe. The IterContainer
 /// is really a optimization for the Instance struct to avoid
@@ -72,11 +69,17 @@ impl Trace for LyIterator {
     true
   }
 
-  fn trace_debug(&self, stdio: &mut Stdio) -> bool {
-    self.current.trace_debug(stdio);
-    self.iterator.trace_debug(stdio);
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.current.trace_debug(stdout);
+    self.iterator.trace_debug(stdout);
 
     true
+  }
+}
+
+impl DebugHeap for LyIterator {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
+    f.write_fmt(format_args!("{:?}", self))
   }
 }
 
@@ -85,16 +88,12 @@ impl Manage for LyIterator {
     "iterator"
   }
 
-  fn debug(&self) -> String {
-    format!("{:?}", self)
-  }
-
-  fn debug_free(&self) -> String {
-    "Iterator: {{ class: {{...}}, fields: {{...}} }}, iterator: {{ ... }}".to_string()
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<LyIterator>() + self.iterator.size()
+  }
+
+  fn as_debug(&self) -> &dyn laythe_env::managed::DebugHeap {
+    self
   }
 }
 

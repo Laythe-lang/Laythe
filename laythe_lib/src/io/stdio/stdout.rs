@@ -15,7 +15,8 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
 };
-use laythe_env::{managed::Trace, stdio::Stdio};
+use laythe_env::managed::Trace;
+use std::io::Write;
 
 const STDOUT_CLASS_NAME: &str = "Stdout";
 const STDOUT_INSTANCE_NAME: &str = "stdout";

@@ -40,14 +40,12 @@ mod unboxed {
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::{
-    managed::{Managed, Trace},
-    stdio::Stdio,
-  };
+  use laythe_env::managed::{Managed, Trace};
 
   use smol_str::SmolStr;
   use std::fmt;
   use std::hash::Hash;
+  use std::io::Write;
 
   pub const VALUE_NIL: Value = Value::Nil;
   pub const VALUE_FALSE: Value = Value::Bool(false);
@@ -792,22 +790,22 @@ mod unboxed {
       }
     }
 
-    fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+    fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
       match self {
         Value::Nil => true,
         Value::Bool(_) => true,
         Value::Number(_) => true,
-        Value::String(string) => string.trace_debug(stdio),
-        Value::List(list) => list.trace_debug(stdio),
-        Value::Map(map) => map.trace_debug(stdio),
-        Value::Fun(fun) => fun.trace_debug(stdio),
-        Value::Closure(closure) => closure.trace_debug(stdio),
-        Value::Method(method) => method.trace_debug(stdio),
-        Value::Class(class) => class.trace_debug(stdio),
-        Value::Instance(instance) => instance.trace_debug(stdio),
-        Value::Iter(iter) => iter.trace_debug(stdio),
-        Value::Upvalue(upvalue) => upvalue.trace_debug(stdio),
-        Value::Native(native) => native.trace_debug(stdio),
+        Value::String(string) => string.trace_debug(stdout),
+        Value::List(list) => list.trace_debug(stdout),
+        Value::Map(map) => map.trace_debug(stdout),
+        Value::Fun(fun) => fun.trace_debug(stdout),
+        Value::Closure(closure) => closure.trace_debug(stdout),
+        Value::Method(method) => method.trace_debug(stdout),
+        Value::Class(class) => class.trace_debug(stdout),
+        Value::Instance(instance) => instance.trace_debug(stdout),
+        Value::Iter(iter) => iter.trace_debug(stdout),
+        Value::Upvalue(upvalue) => upvalue.trace_debug(stdout),
+        Value::Native(native) => native.trace_debug(stdout),
       }
     }
   }
@@ -821,14 +819,11 @@ mod boxed {
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::{
-    managed::{Allocation, Manage, Managed, Trace},
-    stdio::Stdio,
-  };
+  use laythe_env::managed::{Allocation, DebugHeap, DebugWrap, Manage, Managed, Trace};
 
   use smol_str::SmolStr;
-  use std::fmt;
   use std::ptr::NonNull;
+  use std::{fmt, io::Write};
 
   const BIT_SIGN: u64 = 0xc000_0000_0000_0000;
   const PTR_BITS: u64 = 0x0000_0000_0000_0007;
@@ -1117,20 +1112,47 @@ mod boxed {
         _ => true,
       }
     }
-    fn trace_debug(&self, stdio: &mut Stdio) -> bool {
+    fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
       match self.kind() {
-        ValueKind::String => self.to_str().trace_debug(stdio),
-        ValueKind::List => self.to_list().trace_debug(stdio),
-        ValueKind::Map => self.to_map().trace_debug(stdio),
-        ValueKind::Fun => self.to_fun().trace_debug(stdio),
-        ValueKind::Closure => self.to_closure().trace_debug(stdio),
-        ValueKind::Method => self.to_method().trace_debug(stdio),
-        ValueKind::Class => self.to_class().trace_debug(stdio),
-        ValueKind::Instance => self.to_instance().trace_debug(stdio),
-        ValueKind::Iter => self.to_iter().trace_debug(stdio),
-        ValueKind::Upvalue => self.to_upvalue().trace_debug(stdio),
-        ValueKind::Native => self.to_native().trace_debug(stdio),
+        ValueKind::String => self.to_str().trace_debug(stdout),
+        ValueKind::List => self.to_list().trace_debug(stdout),
+        ValueKind::Map => self.to_map().trace_debug(stdout),
+        ValueKind::Fun => self.to_fun().trace_debug(stdout),
+        ValueKind::Closure => self.to_closure().trace_debug(stdout),
+        ValueKind::Method => self.to_method().trace_debug(stdout),
+        ValueKind::Class => self.to_class().trace_debug(stdout),
+        ValueKind::Instance => self.to_instance().trace_debug(stdout),
+        ValueKind::Iter => self.to_iter().trace_debug(stdout),
+        ValueKind::Upvalue => self.to_upvalue().trace_debug(stdout),
+        ValueKind::Native => self.to_native().trace_debug(stdout),
         _ => true,
+      }
+    }
+  }
+
+  impl DebugHeap for Value {
+    fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+      match self.kind() {
+        ValueKind::Bool => f.write_fmt(format_args!("{}", self.to_bool())),
+        ValueKind::Nil => f.write_str("nil"),
+        ValueKind::Number => f.write_fmt(format_args!("{}", self.to_num())),
+        ValueKind::String => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_str(), depth))),
+        ValueKind::List => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_list(), depth))),
+        ValueKind::Map => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_map(), depth))),
+        ValueKind::Fun => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_fun(), depth))),
+        ValueKind::Closure => {
+          f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_closure(), depth)))
+        }
+        ValueKind::Class => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_class(), depth))),
+        ValueKind::Instance => {
+          f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_instance(), depth)))
+        }
+        ValueKind::Iter => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_iter(), depth))),
+        ValueKind::Method => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_method(), depth))),
+        ValueKind::Native => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_native(), depth))),
+        ValueKind::Upvalue => {
+          f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_upvalue(), depth)))
+        }
       }
     }
   }

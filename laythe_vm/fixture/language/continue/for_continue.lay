@@ -1,0 +1,6 @@
+for i in [1, 2, 3] {
+  continue;
+  assert(false);
+}
+
+assert(true);

@@ -69,6 +69,25 @@ fn bool() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn break_() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/break/additional_scopes.lay",
+      "language/break/for_break.lay",
+      "language/break/while_break.lay",
+      "language/break/nested_while_loops.lay",
+      "language/break/nested_for_loops.lay",
+    ],
+    ExecuteResult::Ok,
+  )?;
+
+  test_file_exits(
+    &vec!["language/break/outside_loop.lay"],
+    ExecuteResult::CompileError,
+  )
+}
+
+#[test]
 fn call() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
@@ -130,6 +149,25 @@ fn closure() -> Result<(), std::io::Error> {
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
   test_file_exits(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
+fn continue_() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/continue/additional_scopes.lay",
+      "language/continue/for_continue.lay",
+      "language/continue/while_continue.lay",
+      "language/continue/nested_while_loops.lay",
+      "language/continue/nested_for_loops.lay",
+    ],
+    ExecuteResult::Ok,
+  )?;
+
+  test_file_exits(
+    &vec!["language/continue/outside_loop.lay"],
+    ExecuteResult::CompileError,
+  )
 }
 
 #[test]

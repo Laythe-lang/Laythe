@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use crate::{
   value::{Value, VALUE_NIL},
   CallResult, LyError, LyResult,
@@ -6,7 +8,6 @@ use laythe_env::{
   io::Io,
   managed::{Manage, Managed, Trace},
   memory::Gc,
-  stdio::Stdio,
 };
 use smol_str::SmolStr;
 
@@ -46,8 +47,8 @@ impl<'a> Hooks<'a> {
 
   /// Get a CallHooks from this Hooks struct
   #[inline]
-  pub fn to_call(&mut self) -> CallHooks {
-    CallHooks::new(self.context.call_context())
+  pub fn to_value(&mut self) -> ValueHooks {
+    ValueHooks::new(self.context.value_context())
   }
 
   /// Get a handle to the current io
@@ -57,25 +58,22 @@ impl<'a> Hooks<'a> {
 
   /// Provide a function for the surround context to execute
   pub fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
-    self.context.call_context().call(callable, args)
+    self.context.value_context().call(callable, args)
   }
 
   /// Provide a value and a method for the surround context to execute
   pub fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> CallResult {
-    self.context.call_context().call_method(this, method, args)
+    self.context.value_context().call_method(this, method, args)
   }
 
   /// Provide a value and a method name for the surrounding context to execute
-  pub fn call_method_by_name(
-    &mut self,
-    this: Value,
-    method_name: Managed<SmolStr>,
-    args: &[Value],
-  ) -> CallResult {
-    self
-      .context
-      .call_context()
-      .call_method_by_name(this, method_name, args)
+  pub fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> CallResult {
+    self.context.value_context().get_method(this, method_name)
+  }
+
+  /// Provide a value and a method name for the surrounding context to execute
+  pub fn get_class(&mut self, this: Value) -> Value {
+    self.context.value_context().get_class(this)
   }
 
   /// Request a laythe error object be generated with the provided message
@@ -190,26 +188,26 @@ impl<'a> GcHooks<'a> {
   }
 }
 
-pub struct CallHooks<'a> {
-  context: &'a mut dyn CallContext,
+pub struct ValueHooks<'a> {
+  context: &'a mut dyn ValueContext,
 }
 
-impl<'a> CallHooks<'a> {
+impl<'a> ValueHooks<'a> {
   /// Create a new CallHooks instance. Uses the provided surrounding
   /// context to allocate objects and track resizing
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::hooks::{CallHooks, NoContext};
+  /// use laythe_core::hooks::{ValueHooks, NoContext};
   /// use laythe_core::value::Value;
   /// use laythe_env::memory::Gc;
   ///
   /// let gc = Gc::default();
   /// let mut context = NoContext::new(&gc);
-  /// let hooks = CallHooks::new(&mut context);
+  /// let hooks = ValueHooks::new(&mut context);
   /// ```
-  pub fn new(context: &'a mut dyn CallContext) -> CallHooks<'a> {
-    CallHooks { context }
+  pub fn new(context: &'a mut dyn ValueContext) -> ValueHooks<'a> {
+    ValueHooks { context }
   }
 
   /// Provide a function for the surround context to execute
@@ -223,37 +221,30 @@ impl<'a> CallHooks<'a> {
   }
 
   /// Provide a value and a method name for the surrounding context to execute
-  pub fn call_method_by_name(
-    &mut self,
-    this: Value,
-    method_name: Managed<SmolStr>,
-    args: &[Value],
-  ) -> CallResult {
-    self.context.call_method_by_name(this, method_name, args)
+  pub fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> CallResult {
+    self.context.get_method(this, method_name)
   }
 }
 
 pub trait HookContext {
   fn gc_context(&self) -> &dyn GcContext;
-  fn call_context(&mut self) -> &mut dyn CallContext;
+  fn value_context(&mut self) -> &mut dyn ValueContext;
   fn io(&mut self) -> Io;
 }
 
 /// A set of functions related to calling laythe values
-pub trait CallContext {
+pub trait ValueContext {
   /// Execute a laythe value in the surround context
   fn call(&mut self, callable: Value, args: &[Value]) -> CallResult;
 
   /// Execute a method on a laythe object with a given method name
   fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> CallResult;
 
-  /// Execute a method on a laythe object with a given method name
-  fn call_method_by_name(
-    &mut self,
-    this: Value,
-    method_name: Managed<SmolStr>,
-    args: &[Value],
-  ) -> CallResult;
+  /// Retrieve a method for this value with a given method name
+  fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> CallResult;
+
+  /// Retrieve the class for this value
+  fn get_class(&mut self, this: Value) -> Value;
 }
 
 /// A set of functionality required by the hooks objects in order to operate
@@ -279,7 +270,7 @@ impl<'a> Trace for NoContext<'a> {
     false
   }
 
-  fn trace_debug(&self, _stdio: &mut Stdio) -> bool {
+  fn trace_debug(&self, _stdout: &mut dyn Write) -> bool {
     false
   }
 }
@@ -289,7 +280,7 @@ impl<'a> HookContext for NoContext<'a> {
     self
   }
 
-  fn call_context(&mut self) -> &mut dyn CallContext {
+  fn value_context(&mut self) -> &mut dyn ValueContext {
     self
   }
 
@@ -304,7 +295,7 @@ impl<'a> GcContext for NoContext<'a> {
   }
 }
 
-impl<'a> CallContext for NoContext<'a> {
+impl<'a> ValueContext for NoContext<'a> {
   fn call(&mut self, _callable: Value, _args: &[Value]) -> CallResult {
     Ok(VALUE_NIL)
   }
@@ -313,13 +304,12 @@ impl<'a> CallContext for NoContext<'a> {
     Ok(VALUE_NIL)
   }
 
-  fn call_method_by_name(
-    &mut self,
-    _this: Value,
-    _method_name: Managed<SmolStr>,
-    _args: &[Value],
-  ) -> CallResult {
+  fn get_method(&mut self, _this: Value, _method_name: Managed<SmolStr>) -> CallResult {
     Ok(VALUE_NIL)
+  }
+
+  fn get_class(&mut self, _this: Value) -> Value {
+    VALUE_NIL
   }
 }
 
@@ -345,7 +335,7 @@ pub mod support {
       false
     }
 
-    fn trace_debug(&self, _stdio: &mut Stdio) -> bool {
+    fn trace_debug(&self, _stdout: &mut dyn Write) -> bool {
       false
     }
   }
@@ -355,7 +345,7 @@ pub mod support {
       self
     }
 
-    fn call_context(&mut self) -> &mut dyn CallContext {
+    fn value_context(&mut self) -> &mut dyn ValueContext {
       self
     }
 
@@ -370,7 +360,7 @@ pub mod support {
     }
   }
 
-  impl CallContext for TestContext {
+  impl ValueContext for TestContext {
     fn call(&mut self, _callable: Value, _args: &[Value]) -> CallResult {
       Ok(VALUE_NIL)
     }
@@ -379,13 +369,12 @@ pub mod support {
       Ok(VALUE_NIL)
     }
 
-    fn call_method_by_name(
-      &mut self,
-      _this: Value,
-      _method_name: Managed<SmolStr>,
-      _args: &[Value],
-    ) -> CallResult {
+    fn get_method(&mut self, _this: Value, _method_name: Managed<SmolStr>) -> CallResult {
       Ok(VALUE_NIL)
+    }
+
+    fn get_class(&mut self, _this: Value) -> Value {
+      VALUE_NIL
     }
   }
 }

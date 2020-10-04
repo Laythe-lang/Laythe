@@ -1,0 +1,21 @@
+let visited = false;
+
+let i = 0;
+while i < 10 {
+  while true {
+    break;
+  }
+
+  i = i + 1;
+  if i == 9 {
+    visited = true;
+    break;
+  }
+
+  if i == 9 {
+    assert(false);
+  }
+}
+
+assert(visited);
+

@@ -17,7 +17,7 @@ pub fn derive_trace(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         true
       }
 
-      fn trace_debug(&self, _: &mut Stdio) -> bool {
+      fn trace_debug(&self, _: &mut dyn Write) -> bool {
         true
       }
     }

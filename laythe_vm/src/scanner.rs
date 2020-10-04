@@ -341,9 +341,11 @@ impl<'a> Scanner<'a> {
     match self.nth_char_from(self.start, 0) {
       Some(c1) => match c1 {
         "a" => self.check_keyword(1, "nd", TokenKind::And),
+        "b" => self.check_keyword(1, "reak", TokenKind::Break),
         "c" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "a" => self.check_keyword(2, "tch", TokenKind::Catch),
+            "o" => self.check_keyword(2, "ntinue", TokenKind::Continue),
             "l" => self.check_keyword(2, "ass", TokenKind::Class),
             _ => TokenKind::Identifier,
           },
@@ -646,12 +648,20 @@ mod test {
       TokenGen::ALpha(Box::new(|| "and".to_string())),
     );
     map.insert(
+      TokenKind::Break,
+      TokenGen::ALpha(Box::new(|| "break".to_string())),
+    );
+    map.insert(
       TokenKind::Catch,
       TokenGen::ALpha(Box::new(|| "catch".to_string())),
     );
     map.insert(
       TokenKind::Class,
       TokenGen::ALpha(Box::new(|| "class".to_string())),
+    );
+    map.insert(
+      TokenKind::Continue,
+      TokenGen::ALpha(Box::new(|| "continue".to_string())),
     );
     map.insert(
       TokenKind::Else,
