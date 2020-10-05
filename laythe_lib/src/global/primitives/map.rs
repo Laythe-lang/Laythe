@@ -361,7 +361,7 @@ mod test {
 
       let mut hooks = Hooks::new(&mut context);
       let map_str = MapStr::new(
-        MAP_STR.to_meta(&hooks.to_gc()),
+        MAP_STR.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
 

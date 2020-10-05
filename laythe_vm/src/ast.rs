@@ -193,6 +193,7 @@ pub struct Class {
 }
 
 impl Class {
+  #[allow(clippy::too_many_arguments)]
   pub fn new(
     name: Option<Token>,
     range: Range,

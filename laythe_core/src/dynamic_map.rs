@@ -56,6 +56,13 @@ impl<K: Ord + Hash, V> DynamicMap<K, V> {
     }
   }
 
+  pub fn is_empty(&self) -> bool {
+    match self {
+      Self::Linear(linear) => linear.is_empty(),
+      Self::Hash(hash) => hash.is_empty(),
+    }
+  }
+
   pub fn capacity(&self) -> usize {
     match self {
       Self::Linear(linear) => linear.capacity(),
@@ -89,15 +96,14 @@ impl<K: Ord + Hash, V> Default for DynamicMap<K, V> {
 
 impl<K: DebugHeap + Ord + Hash, V: DebugHeap> DebugHeap for DynamicMap<K, V> {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_map()
-      .entries(self.iter().map(|(k, v)| {
-        (
-          DebugWrap(k, depth),
-          DebugWrap(v, depth),
-        )
-      }))
+      .entries(
+        self
+          .iter()
+          .map(|(k, v)| (DebugWrap(k, depth), DebugWrap(v, depth))),
+      )
       .finish()
   }
 }

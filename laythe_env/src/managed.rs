@@ -126,7 +126,12 @@ pub struct Managed<T: 'static + Manage + ?Sized> {
 }
 
 impl<T: 'static + Manage + ?Sized> Managed<T> {
-  /// Note this method is hilariously unsafe
+  /// Get a static reference to the underlying data
+  ///
+  /// # Safety
+  /// This object must be keep alive otherwise this can
+  /// lead to dangling pointer error. This effectively
+  /// completely circumvents rust type system completely
   pub unsafe fn deref_static(&self) -> &'static T {
     &(*self.ptr.as_ptr()).data
   }

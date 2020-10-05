@@ -59,7 +59,7 @@ native!(StdinRead, STDIN_READ);
 
 impl Native for StdinRead {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdin = stdio.stdin();
 
@@ -75,7 +75,7 @@ native!(StdinReadLine, STDIN_READ_LINE);
 
 impl Native for StdinReadLine {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let stdio = io.stdio();
 
     let mut buf = String::new();

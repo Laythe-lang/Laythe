@@ -147,7 +147,7 @@ impl Trace for Box<dyn Native> {
 impl DebugHeap for Box<dyn Native> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     let meta = self.meta();
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_struct("Native")
       .field("name", &DebugWrap(&meta.name, depth))

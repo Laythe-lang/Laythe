@@ -91,7 +91,7 @@ impl Native for Print {
       output.push_str(hooks.call_method(*s, str_method, &[])?.to_str().as_str())
     }
 
-    let mut stdio = hooks.to_io().stdio();
+    let mut stdio = hooks.as_io().stdio();
     match writeln!(stdio.stdout(), "{}", output) {
       Ok(_) => Ok(VALUE_NIL),
       Err(err) => hooks.error(err.to_string()),
@@ -144,7 +144,7 @@ mod test {
       let mut context = TestContext::default();
       let hooks = Hooks::new(&mut context);
       let assert = Print::new(
-        PRINT_META.to_meta(&hooks.to_gc()),
+        PRINT_META.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
 
@@ -167,7 +167,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let print = Print::new(
-        PRINT_META.to_meta(&hooks.to_gc()),
+        PRINT_META.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
       let values = &[val!(true)];

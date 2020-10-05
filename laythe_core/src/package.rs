@@ -52,7 +52,7 @@ pub enum PackageEntity {
 
 impl DebugHeap for PackageEntity {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     match self {
       PackageEntity::Module(module) => f.write_fmt(format_args!(
@@ -199,7 +199,7 @@ impl Trace for Package {
 
 impl DebugHeap for Package {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_struct("Package")
       .field("name", &DebugWrap(&self.name, depth))

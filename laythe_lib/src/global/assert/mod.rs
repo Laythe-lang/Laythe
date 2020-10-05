@@ -207,7 +207,7 @@ mod test {
       let mut context = TestContext::default();
       let hooks = Hooks::new(&mut context);
       let assert = Assert::new(
-        ASSERT_META.to_meta(&hooks.to_gc()),
+        ASSERT_META.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
 
@@ -225,7 +225,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let assert = Assert::new(
-        ASSERT_META.to_meta(&hooks.to_gc()),
+        ASSERT_META.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
       let values = &[val!(true)];
@@ -249,7 +249,7 @@ mod test {
       let hooks = Hooks::new(&mut context);
 
       let assert_eq = AssertEq::new(
-        ASSERTEQ_META.to_meta(&hooks.to_gc()),
+        ASSERTEQ_META.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
 
@@ -271,7 +271,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let assert_eq = AssertEq::new(
-        ASSERTEQ_META.to_meta(&hooks.to_gc()),
+        ASSERTEQ_META.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
 
@@ -296,7 +296,7 @@ mod test {
       let hooks = Hooks::new(&mut context);
 
       let assert_eq = AssertNe::new(
-        ASSERTNE_META.to_meta(&hooks.to_gc()),
+        ASSERTNE_META.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
 
@@ -318,7 +318,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let assert_ne = AssertNe::new(
-        ASSERTNE_META.to_meta(&hooks.to_gc()),
+        ASSERTNE_META.to_meta(&hooks.as_gc()),
         hooks.manage_str("str".to_string()),
       );
 

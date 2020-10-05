@@ -70,7 +70,7 @@ native!(StderrWrite, STDERR_WRITE);
 
 impl Native for StderrWrite {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stderr = stdio.stderr();
 
@@ -85,7 +85,7 @@ native!(StderrWriteln, STDERR_WRITELN);
 
 impl Native for StderrWriteln {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stderr = stdio.stderr();
 
@@ -100,7 +100,7 @@ native!(StderrFlush, STDERR_FLUSH);
 
 impl Native for StderrFlush {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stderr = stdio.stderr();
 

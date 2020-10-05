@@ -348,7 +348,7 @@ impl<'a> Compiler<'a> {
   /// Add a local variable to the current scope
   fn add_local(&mut self, name: Token) {
     if self.local_count == std::u8::MAX as usize {
-      self.error("Too many local variables in function.");
+      self.error("Too many local variables in function.", Some(&name));
       return;
     }
 
@@ -375,7 +375,10 @@ impl<'a> Compiler<'a> {
       // check that the same variable wasn't declared twice in the same scope
       if let Some(local_name) = &local.name {
         if &name.lexeme == local_name {
-          self.error("Variable with this name already declared in this scope.");
+          self.error(
+            "Variable with this name already declared in this scope.",
+            Some(&name),
+          );
           return;
         }
       }
@@ -424,7 +427,10 @@ impl<'a> Compiler<'a> {
         if &name.lexeme == local_name {
           // handle the case were `let a = a;`
           if local.depth == UNINITIALIZED {
-            self.error("Cannot read local variable in its own initializer.")
+            self.error(
+              "Cannot read local variable in its own initializer.",
+              Some(name),
+            )
           }
 
           return Some(i as u8);
@@ -473,7 +479,7 @@ impl<'a> Compiler<'a> {
 
     // prevent overflow
     if upvalue_count == std::u8::MAX as usize {
-      self.error("Too many closure variable in function.");
+      self.error("Too many closure variable in function.", None);
       return 0;
     }
 
@@ -526,7 +532,7 @@ impl<'a> Compiler<'a> {
     let jump = self.current_chunk().instructions.len() - offset - 2;
 
     if jump > std::u16::MAX.try_into().unwrap() {
-      self.error("Too much code to jump over.");
+      self.error("Too much code to jump over.", None);
     }
 
     jump as u16
@@ -536,7 +542,7 @@ impl<'a> Compiler<'a> {
   fn emit_loop(&mut self, loop_start: usize, line: u32) {
     let offset = self.current_chunk().instructions.len() - loop_start + 3;
     if offset > std::u16::MAX.try_into().unwrap() {
-      self.error("Loop body too large.");
+      self.error("Loop body too large.", None);
     }
 
     self.emit_byte(AlignedByteCode::Loop(offset as u16), line);
@@ -575,7 +581,7 @@ impl<'a> Compiler<'a> {
       None => {
         let index = self.fun.add_constant(&self.hooks, value);
         if index > std::u16::MAX as usize {
-          self.error("Too many constants in one chunk.");
+          self.error("Too many constants in one chunk.", None);
           return 0;
         }
 
@@ -597,23 +603,31 @@ impl<'a> Compiler<'a> {
   }
 
   /// Indicate an error occurred at he current index
-  fn error_at_current(&mut self, message: &str) {
-    self.error_at(message);
+  fn error_at_current(&mut self, message: &str, token: Option<&Token>) {
+    self.error_at(message, token);
   }
 
   /// Indicate an error occurred at the previous index
-  pub fn error(&mut self, message: &str) {
-    self.error_at(message);
+  pub fn error(&mut self, message: &str, token: Option<&Token>) {
+    self.error_at(message, token);
   }
 
   /// Print an error to the console for a user to address
-  fn error_at(&mut self, message: &str) {
+  fn error_at(&mut self, message: &str, token: Option<&Token>) {
     let mut stdio = self.io.stdio();
     let stderr = stdio.stderr();
 
-    write!(stderr, "[line {}] Error", 0).expect("Unable to write to stderr.");
-    write!(stderr, " at {}", "todo").expect("Unable to write to stderr.");
-    writeln!(stderr, ": {}", message).expect("Unable to write to stderr.");
+    match token {
+      Some(token) => {
+        write!(stderr, "[line {}] Error", token.line).expect("Unable to write to stderr.");
+        write!(stderr, " at {}", token.lexeme).expect("Unable to write to stderr.");
+        writeln!(stderr, ": {}", message).expect("Unable to write to stderr.");
+      }
+      None => {
+        writeln!(stderr, "{}", message).expect("Unable to write to stderr.");
+      }
+    }
+
     self.had_error = true;
   }
 
@@ -702,7 +716,7 @@ impl<'a> Compiler<'a> {
         self.emit_byte(AlignedByteCode::Export(symbol), export.end());
       }
     } else {
-      self.error_at_current("Can only export from the module scope.")
+      self.error_at_current("Can only export from the module scope.", None)
     }
   }
 
@@ -898,7 +912,7 @@ impl<'a> Compiler<'a> {
       self.emit_byte(AlignedByteCode::Import(path), import.imported.start());
       self.emit_byte(AlignedByteCode::DefineGlobal(name), import.imported.start());
     } else {
-      self.error_at_current("Can only import from the module scope.")
+      self.error_at_current("Can only import from the module scope.", None)
     }
   }
 
@@ -1116,15 +1130,12 @@ impl<'a> Compiler<'a> {
             }
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
-                match atom.primary {
-                  Primary::Self_(_) => {
-                    let mut class_info = self.class_info.unwrap();
+                if let Primary::Self_(_) = atom.primary {
+                  let mut class_info = self.class_info.unwrap();
 
-                    if !class_info.fields.iter().any(|f| *f == access.prop.lexeme) {
-                      class_info.fields.push(access.prop.lexeme.clone());
-                    }
+                  if !class_info.fields.iter().any(|f| *f == access.prop.lexeme) {
+                    class_info.fields.push(access.prop.lexeme.clone());
                   }
-                  _ => (),
                 }
               }
 
@@ -1333,7 +1344,10 @@ impl<'a> Compiler<'a> {
         })
       })
       .or_else(|| {
-        self.error("Cannot use 'self' outside of class instance methods.");
+        self.error(
+          "Cannot use 'self' outside of class instance methods.",
+          Some(self_),
+        );
         None
       });
 
@@ -1343,10 +1357,16 @@ impl<'a> Compiler<'a> {
   /// Compile the super token
   fn super_(&mut self, super_: &ast::Super, trailers: &[Trailer]) -> bool {
     match self.class_info {
-      None => self.error("Cannot use 'super' outside of a class."),
+      None => self.error(
+        "Cannot use 'super' outside of a class.",
+        Some(&super_.super_),
+      ),
       Some(class) => {
         if !class.has_super_class {
-          self.error("Cannot use 'super' in a class with no superclass.");
+          self.error(
+            "Cannot use 'super' in a class with no superclass.",
+            Some(&super_.super_),
+          );
         }
       }
     }

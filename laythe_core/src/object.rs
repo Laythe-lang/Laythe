@@ -223,7 +223,7 @@ impl Trace for Upvalue {
 
 impl DebugHeap for Upvalue {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     match self {
       Self::Open(v) => f.write_fmt(format_args!(
@@ -390,7 +390,7 @@ impl Trace for Fun {
 
 impl DebugHeap for Fun {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_struct("Fun")
       .field("name", &DebugWrap(&self.name, depth))
@@ -532,7 +532,7 @@ impl<T: 'static + Trace> Trace for List<T> {
 
 impl<T: 'static + Trace + DebugHeap> DebugHeap for List<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_list()
       .entries(self.0.iter().map(|x| DebugWrap(x, depth)))
@@ -629,7 +629,7 @@ impl<K: 'static + Trace, V: 'static + Trace> Trace for Map<K, V> {
 
 impl<K: 'static + DebugHeap, V: 'static + DebugHeap> DebugHeap for Map<K, V> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_map()
       .entries(
@@ -729,7 +729,7 @@ impl Trace for Closure {
 
 impl DebugHeap for Closure {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_struct("Closure")
       .field("fun", &DebugWrap(&self.fun, depth))
@@ -836,25 +836,25 @@ impl Class {
   }
 
   pub fn get_method(&self, name: &Managed<SmolStr>) -> Option<Value> {
-    self.methods.get(name).map(|v| *v)
+    self.methods.get(name).copied()
   }
 
   pub fn get_field_index(&self, name: &Managed<SmolStr>) -> Option<u16> {
-    self.fields.get(name).map(|v| *v)
+    self.fields.get(name).copied()
   }
 
   pub fn inherit(&mut self, hooks: &GcHooks, super_class: Managed<Class>) {
     hooks.grow(self, |class| {
       super_class.methods.for_each(|(key, value)| {
-        if let None = class.methods.get(&*key) {
+        if class.methods.get(&*key).is_none() {
           class.methods.insert(*key, *value);
         }
       });
 
       super_class.fields.for_each(|(field, _index)| {
-        if let None = class.fields.get(&field) {
+        if class.fields.get(&field).is_none() {
           let len = class.fields.len();
-          class.fields.insert(field.clone(), len as u16);
+          class.fields.insert(*field, len as u16);
         }
       })
     });
@@ -909,7 +909,7 @@ impl Trace for Class {
 
 impl DebugHeap for Class {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_struct("Class")
       .field("name", &DebugWrap(&self.name, depth))
@@ -1000,7 +1000,7 @@ impl Trace for Instance {
 
 impl DebugHeap for Instance {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_struct("Instance")
       .field("class", &DebugWrap(&self.class, depth))
@@ -1058,7 +1058,7 @@ impl Trace for Method {
 
 impl DebugHeap for Method {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.checked_sub(1).unwrap_or(0);
+    let depth = depth.saturating_sub(1);
 
     f.debug_struct("Method")
       .field("receiver", &DebugWrap(&self.receiver, depth))

@@ -42,7 +42,7 @@ native!(Args, ARGS_META);
 
 impl Native for Args {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     let vec: Vec<Value> = io
       .env()
       .args()
@@ -59,7 +59,7 @@ native!(Cwd, CWD_META);
 
 impl Native for Cwd {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
-    let io = hooks.to_io();
+    let io = hooks.as_io();
     match io.env().current_dir() {
       Ok(path) => match path.to_str() {
         Some(path) => Ok(val!(hooks.manage_str(path))),

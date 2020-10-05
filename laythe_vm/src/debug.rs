@@ -15,7 +15,7 @@ pub fn exception_catch(stdout: &mut dyn Write, frame: &CallFrame, idx: usize) ->
 /// Write a chunk to console
 pub fn disassemble_chunk(stdio: &mut Stdio, code_chunk: &Chunk, name: &str) -> io::Result<()> {
   let stdout = stdio.stdout();
-  writeln!(stdout, "")?;
+  writeln!(stdout)?;
   writeln!(stdout, "{0}", name)?;
 
   let mut offset: usize = 0;

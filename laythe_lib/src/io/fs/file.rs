@@ -43,7 +43,7 @@ native!(FileReadAllText, FILE_READ_ALL_TEXT);
 
 impl Native for FileReadAllText {
   fn call(&self, hook: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    let io = hook.to_io();
+    let io = hook.as_io();
     let managed = args[0].to_str();
     let path = managed.as_str();
 
