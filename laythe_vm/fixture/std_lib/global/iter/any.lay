@@ -1,0 +1,10 @@
+let ident = |x| x;
+assertEq([].iter().any(ident), false);
+
+assert([false, true].iter().any(ident));
+assert([true, false].iter().any(ident));
+
+assert([nil, true].iter().any(ident));
+
+assert(['cat', 'dog'].iter().any(|x| x.has('cat')));
+assert([10, 8].iter().any(|x| x < 9));

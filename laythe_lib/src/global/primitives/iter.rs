@@ -15,9 +15,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
 };
-use laythe_env::{
-  managed::{Managed, Trace},
-};
+use laythe_env::managed::{Managed, Trace};
 use std::io::Write;
 use std::mem;
 
@@ -43,14 +41,23 @@ const ITER_REDUCE: NativeMetaBuilder = NativeMetaBuilder::method("reduce", Arity
   ])
   .with_stack();
 
-const ITER_SIZE: NativeMetaBuilder = NativeMetaBuilder::method("size", Arity::Fixed(0));
+const ITER_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
 
 const ITER_EACH: NativeMetaBuilder = NativeMetaBuilder::method("each", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
   .with_stack();
 
 const ITER_ZIP: NativeMetaBuilder = NativeMetaBuilder::method("zip", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new("iterators", ParameterKind::Iter)]);
+  .with_params(&[ParameterBuilder::new("iterators", ParameterKind::Iter)])
+  .with_stack();
+
+const ITER_ALL: NativeMetaBuilder = NativeMetaBuilder::method("all", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
+  .with_stack();
+
+const ITER_ANY: NativeMetaBuilder = NativeMetaBuilder::method("any", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
+  .with_stack();
 
 const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
@@ -102,8 +109,8 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 
   class.add_method(
     hooks,
-    hooks.manage_str(ITER_SIZE.name),
-    val!(to_dyn_native(hooks, IterSize::from(hooks))),
+    hooks.manage_str(ITER_LEN.name),
+    val!(to_dyn_native(hooks, IterLen::from(hooks))),
   );
 
   class.add_method(
@@ -116,6 +123,18 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
     hooks,
     hooks.manage_str(ITER_ZIP.name),
     val!(to_dyn_native(hooks, IterZip::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_ALL.name),
+    val!(to_dyn_native(hooks, IterAll::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_ANY.name),
+    val!(to_dyn_native(hooks, IterAny::from(hooks))),
   );
 
   class.add_method(
@@ -319,9 +338,9 @@ impl Native for IterReduce {
   }
 }
 
-native!(IterSize, ITER_SIZE);
+native!(IterLen, ITER_LEN);
 
-impl Native for IterSize {
+impl Native for IterLen {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     let mut iter = this.unwrap().to_iter();
 
@@ -444,6 +463,42 @@ impl Trace for ZipIterator {
   }
 }
 
+native!(IterAll, ITER_ALL);
+
+impl Native for IterAll {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    let callable = args[0];
+    let mut iter = this.unwrap().to_iter();
+
+    while !is_falsey(iter.next(hooks)?) {
+      let current = iter.current();
+      if is_falsey(hooks.call(callable, &[current])?) {
+        return Ok(val!(false));
+      }
+    }
+
+    Ok(val!(true))
+  }
+}
+
+native!(IterAny, ITER_ANY);
+
+impl Native for IterAny {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    let callable = args[0];
+    let mut iter = this.unwrap().to_iter();
+
+    while !is_falsey(iter.next(hooks)?) {
+      let current = iter.current();
+      if !is_falsey(hooks.call(callable, &[current])?) {
+        return Ok(val!(true));
+      }
+    }
+
+    Ok(val!(false))
+  }
+}
+
 native!(IterInto, ITER_INTO);
 
 impl Native for IterInto {
@@ -458,6 +513,17 @@ mod test {
   use super::*;
   use crate::support::{test_iter, MockedContext};
   use laythe_core::iterator::LyIterator;
+
+  const TEST_FUN: NativeMetaBuilder = NativeMetaBuilder::fun("test", Arity::Fixed(1))
+    .with_params(&[ParameterBuilder::new("any", ParameterKind::Any)]);
+
+  native!(TestFun, TEST_FUN);
+
+  impl Native for TestFun {
+    fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+      Ok(args[0])
+    }
+  }
 
   #[cfg(test)]
   mod str {
@@ -725,9 +791,9 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_size = IterSize::from(&hooks);
+      let iter_size = IterLen::from(&hooks);
 
-      assert_eq!(iter_size.meta().name, "size");
+      assert_eq!(iter_size.meta().name, "len");
       assert_eq!(iter_size.meta().signature.arity, Arity::Fixed(0));
     }
 
@@ -735,7 +801,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let iter_size = IterSize::from(&hooks);
+      let iter_size = IterLen::from(&hooks);
 
       let this = val!(hooks.manage(LyIterator::new(test_iter())));
       let result = iter_size.call(&mut hooks, Some(this), &[]);
@@ -840,6 +906,88 @@ mod test {
       assert_eq!(zip.current().to_list().len(), 2);
       assert_eq!(zip.current().to_list()[0].to_num(), 1.0);
       assert_eq!(zip.current().to_list()[1].to_num(), 1.0);
+    }
+  }
+
+  mod all {
+    use super::*;
+    use crate::support::MockedContext;
+    use laythe_core::{iterator::LyIterator, value::VALUE_TRUE};
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let iter_all = IterAll::from(&hooks);
+
+      assert_eq!(iter_all.meta().name, "all");
+      assert_eq!(iter_all.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        iter_all.meta().signature.parameters[0].kind,
+        ParameterKind::Fun
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::new(&[val!(1.0); 10]);
+      let mut hooks = Hooks::new(&mut context);
+      let gc_hooks = hooks.as_gc();
+      let iter_all = IterAll::from(&gc_hooks);
+
+      let identity = val!(to_dyn_native(&gc_hooks, TestFun::from(&gc_hooks)));
+
+      let iter = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter));
+      let this = val!(managed);
+
+      let result = iter_all.call(&mut hooks, Some(this), &[identity]);
+      match result {
+        Ok(r) => assert_eq!(r, VALUE_TRUE),
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  mod any {
+    use super::*;
+    use crate::support::MockedContext;
+    use laythe_core::{iterator::LyIterator, value::VALUE_TRUE};
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let iter_any = IterAny::from(&hooks);
+
+      assert_eq!(iter_any.meta().name, "any");
+      assert_eq!(iter_any.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        iter_any.meta().signature.parameters[0].kind,
+        ParameterKind::Fun
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::new(&[val!(0.0), val!(0.0), val!(1.0)]);
+      let mut hooks = Hooks::new(&mut context);
+      let gc_hooks = hooks.as_gc();
+      let iter_any = IterAny::from(&gc_hooks);
+
+      let identity = val!(to_dyn_native(&gc_hooks, TestFun::from(&gc_hooks)));
+
+      let iter = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter));
+      let this = val!(managed);
+
+      let result = iter_any.call(&mut hooks, Some(this), &[identity]);
+      match result {
+        Ok(r) => assert_eq!(r, VALUE_TRUE),
+        Err(_) => assert!(false),
+      }
     }
   }
 

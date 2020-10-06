@@ -18,7 +18,7 @@ use std::io::Write;
 pub const CLOSURE_CLASS_NAME: &str = "Fun";
 
 const CLOSURE_NAME: NativeMetaBuilder = NativeMetaBuilder::method("name", Arity::Fixed(0));
-const CLOSURE_SIZE: NativeMetaBuilder = NativeMetaBuilder::method("size", Arity::Fixed(0));
+const CLOSURE_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
 
 const CLOSURE_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::Variadic(0))
   .with_params(&[ParameterBuilder::new("args", ParameterKind::Any)])
@@ -44,8 +44,8 @@ pub fn define_closure_class(hooks: &GcHooks, module: &Module, _: &Package) -> Ly
 
   class.add_method(
     hooks,
-    hooks.manage_str(CLOSURE_SIZE.name),
-    val!(to_dyn_native(hooks, ClosureSize::from(hooks))),
+    hooks.manage_str(CLOSURE_LEN.name),
+    val!(to_dyn_native(hooks, ClosureLen::from(hooks))),
   );
 
   class.add_method(
@@ -65,9 +65,9 @@ impl Native for ClosureName {
   }
 }
 
-native!(ClosureSize, CLOSURE_SIZE);
+native!(ClosureLen, CLOSURE_LEN);
 
-impl Native for ClosureSize {
+impl Native for ClosureLen {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     let req = match this.unwrap().to_closure().fun.arity {
       Arity::Default(req, _) => req,
@@ -135,9 +135,9 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let closure_name = ClosureSize::from(&hooks);
+      let closure_name = ClosureLen::from(&hooks);
 
-      assert_eq!(closure_name.meta().name, "size");
+      assert_eq!(closure_name.meta().name, "len");
       assert_eq!(closure_name.meta().signature.arity, Arity::Fixed(0));
     }
 
@@ -145,7 +145,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let closure_name = ClosureSize::from(&hooks);
+      let closure_name = ClosureLen::from(&hooks);
 
       let mut fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       fun.arity = Arity::Fixed(4);

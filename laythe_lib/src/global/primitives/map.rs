@@ -15,12 +15,10 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
 };
-use laythe_env::{
-  managed::{Managed, Trace},
-};
+use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
-use std::mem;
 use std::io::Write;
+use std::mem;
 
 pub const MAP_CLASS_NAME: &str = "Map";
 
@@ -45,7 +43,7 @@ const MAP_INSERT: NativeMetaBuilder = NativeMetaBuilder::method("insert", Arity:
 const MAP_REMOVE: NativeMetaBuilder = NativeMetaBuilder::method("remove", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)]);
 
-const MAP_SIZE: NativeMetaBuilder = NativeMetaBuilder::method("size", Arity::Fixed(0));
+const MAP_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
 const MAP_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const MAP_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
@@ -59,8 +57,8 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
 
   class.add_method(
     hooks,
-    hooks.manage_str(MAP_SIZE.name),
-    val!(to_dyn_native(hooks, MapSize::from(hooks))),
+    hooks.manage_str(MAP_LEN.name),
+    val!(to_dyn_native(hooks, MapLen::from(hooks))),
   );
 
   class.add_method(
@@ -192,9 +190,9 @@ impl Trace for MapStr {
   }
 }
 
-native!(MapSize, MAP_SIZE);
+native!(MapLen, MAP_LEN);
 
-impl Native for MapSize {
+impl Native for MapLen {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     Ok(val!(this.unwrap().to_map().len() as f64))
   }
@@ -389,9 +387,9 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = Hooks::new(&mut context);
 
-      let map_str = MapSize::from(&hooks);
+      let map_str = MapLen::from(&hooks);
 
-      assert_eq!(map_str.meta().name, "size");
+      assert_eq!(map_str.meta().name, "len");
       assert_eq!(map_str.meta().signature.arity, Arity::Fixed(0));
     }
 
@@ -399,7 +397,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let map_str = MapSize::from(&hooks);
+      let map_str = MapLen::from(&hooks);
 
       let values = &[];
 

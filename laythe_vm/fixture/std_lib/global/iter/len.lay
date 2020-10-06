@@ -1,0 +1,2 @@
+assertEq(10.times().len(), 10);
+assertEq(10.times().filter(|x| x).len(), 10);

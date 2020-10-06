@@ -15,9 +15,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
 };
-use laythe_env::{
-  managed::{Managed, Trace},
-};
+use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
 use std::io::Write;
 use std::{mem, slice::Iter};
@@ -47,7 +45,7 @@ const LIST_REMOVE: NativeMetaBuilder = NativeMetaBuilder::method("remove", Arity
 const LIST_INDEX: NativeMetaBuilder = NativeMetaBuilder::method("index", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("value", ParameterKind::Any)]);
 
-const LIST_SIZE: NativeMetaBuilder = NativeMetaBuilder::method("size", Arity::Fixed(0));
+const LIST_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
 const LIST_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
 // this may need a stack
@@ -64,8 +62,8 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 
   class.add_method(
     hooks,
-    hooks.manage_str(LIST_SIZE.name),
-    val!(to_dyn_native(hooks, ListSize::from(hooks))),
+    hooks.manage_str(LIST_LEN.name),
+    val!(to_dyn_native(hooks, ListLen::from(hooks))),
   );
 
   class.add_method(
@@ -201,9 +199,9 @@ impl Native for ListStr {
   }
 }
 
-native!(ListSize, LIST_SIZE);
+native!(ListLen, LIST_LEN);
 
-impl Native for ListSize {
+impl Native for ListLen {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     Ok(val!(this.unwrap().to_list().len() as f64))
   }
@@ -462,9 +460,9 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = Hooks::new(&mut context);
 
-      let list_size = ListSize::from(&hooks);
+      let list_size = ListLen::from(&hooks);
 
-      assert_eq!(list_size.meta().name, "size");
+      assert_eq!(list_size.meta().name, "len");
       assert_eq!(list_size.meta().signature.arity, Arity::Fixed(0));
     }
 
@@ -472,7 +470,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let list_size = ListSize::from(&hooks);
+      let list_size = ListLen::from(&hooks);
 
       let values = &[];
 

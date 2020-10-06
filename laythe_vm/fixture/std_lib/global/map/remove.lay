@@ -11,4 +11,4 @@ assertEq(map.remove(2), 2);
 assertEq(map.remove(3), 3);
 assertEq(map.remove(false), false);
 assertEq(map.remove("stuff"), "stuff");
-assertEq(map.size(), 0);
+assertEq(map.len(), 0);

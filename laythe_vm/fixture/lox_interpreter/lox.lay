@@ -494,9 +494,9 @@ class Call {
       .map(|argument| argument.evaluate(interpreter))
       .into(List.collect);
 
-    if arguments.size() != callee.arity() {
+    if arguments.len() != callee.arity() {
       runtimeError("Expected " + callee.arity().str() +
-                   " arguments but got " + arguments.size().str() + ".");
+                   " arguments but got " + arguments.len().str() + ".");
     }
     return callee.call(interpreter, arguments);
   }
@@ -707,7 +707,7 @@ class Variable {
   }
 
   resolve(resolver) {
-    if resolver.scopes.size() != 0 and resolver.scopes[resolver.scopes.size() - 1].get(self.name) == false {
+    if resolver.scopes.len() != 0 and resolver.scopes[resolver.scopes.len() - 1].get(self.name) == false {
       resolver.error("Error at '" + self.name + "': Cannot read local variable in its own initializer.");
     }
 
@@ -812,10 +812,10 @@ class Class {
     resolver.define(self.name);
     if self.superclass != nil {
       resolver.beginScope();
-      resolver.scopes[resolver.scopes.size() - 1].set("super", true);
+      resolver.scopes[resolver.scopes.len() - 1].set("super", true);
     }
     resolver.beginScope();
-    resolver.scopes[resolver.scopes.size() - 1].set("this", true);
+    resolver.scopes[resolver.scopes.len() - 1].set("this", true);
 
     self.methods.iter().each(|method| {
       resolver.resolveFunction(method);
@@ -1074,7 +1074,7 @@ class LoxFunction {
   }
 
   arity() {
-    return self.declaration.params.size();
+    return self.declaration.params.len();
   }
 
   call(interpreter, arguments) {
@@ -1642,10 +1642,10 @@ class Resolver {
   }
 
   declare(name) {
-    if self.scopes.size() == 0 {
+    if self.scopes.len() == 0 {
       return;
     }
-    let scope = self.scopes[self.scopes.size() - 1];
+    let scope = self.scopes[self.scopes.len() - 1];
     if scope.has(name) {
       self.error("Error at '" + name + "': Variable with this name already declared in this scope.");
     }
@@ -1653,16 +1653,16 @@ class Resolver {
   }
 
   define(name) {
-    if self.scopes.size() == 0 {
+    if self.scopes.len() == 0 {
       return;
     }
-    self.scopes[self.scopes.size() - 1].set(name, true);
+    self.scopes[self.scopes.len() - 1].set(name, true);
   }
 
   resolveVar(expr, name) {
-    for i in self.scopes.size().times() {
+    for i in self.scopes.len().times() {
       if self.scopes[i].has(name) {
-        self.interpreter.resolve(expr, self.scopes.size() - 1 - i);
+        self.interpreter.resolve(expr, self.scopes.len() - 1 - i);
         return;
       }
     }
@@ -1737,7 +1737,7 @@ let resolver;
 let interpreter;
 
 
-if args.size() < 3 {
+if args.len() < 3 {
   // do repl
 
   while true {
