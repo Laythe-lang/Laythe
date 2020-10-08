@@ -1,0 +1,285 @@
+
+trait Ast {
+  equals(other: AST) -> bool;
+}
+
+trait Parser<T> {
+  parse(source: Source) -> ParseResult<T> | nil;
+}
+
+class Number {
+  value: number;
+
+  init(value) {
+    self.value = value;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Number
+      and self.value == other.value;
+  }
+}
+
+class Id {
+  value: string;
+
+  init(value: string) {
+    self.value = value;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Id
+      and self.value.equals(other.value);
+  }
+}
+
+class Not {
+  term: Ast;
+
+  init(term: Ast) {
+    self.term = term;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Not
+      and self.term == other.term;
+  }
+}
+
+class Equal {
+  init(left: Ast, right: Ast) {
+    self.left = left;
+    self.right = right;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Equal 
+      and self.left.equals(other.left)
+      and self.right.equals(other.right);
+  }
+}
+
+class NotEqual {
+  init(left: Ast, right: Ast) {
+    self.left = left;
+    self.right = right;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == NotEqual 
+      and self.left.equals(other.left)
+      and self.right.equals(other.right);
+  }
+}
+
+
+class Add {
+  init(left: Ast, right: Ast) {
+    self.left = left;
+    self.right = right;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Add 
+      and self.left.equals(other.left)
+      and self.right.equals(other.right);
+  }
+}
+
+
+class Subtract {
+  init(left: Ast, right: Ast) {
+    self.left = left;
+    self.right = right;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Subtract 
+      and self.left.equals(other.left)
+      and self.right.equals(other.right);
+  }
+}
+
+class Multiply {
+  init(left: Ast, right: Ast) {
+    self.left = left;
+    self.right = right;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Multiply 
+      and self.left.equals(other.left)
+      and self.right.equals(other.right);
+  }
+}
+
+class Divide {
+  init(left: Ast, right: Ast) {
+    self.left = left;
+    self.right = right;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Divide 
+      and self.left.equals(other.left)
+      and self.right.equals(other.right);
+  }
+}
+
+class Call {
+  init(callee: string, args: Ast[]) {
+    self.callee = callee;
+    self.args = args;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Call
+      and self.callee == other.callee
+      and self.args.len() == other.len()
+      and self.args.iter()
+        .zip(other.args.iter())
+        .all(|both| both[0].equals(both[1]));
+  }
+}
+
+class Return {
+  init(term: Ast) {
+    self.term = term;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Return
+      and self.term.equals(other.term);
+  }
+}
+
+class Block {
+  init(statements: Ast[]) {
+    self.statements = statements;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Block
+      and self.statements.len() == other.statements.len()
+      and self.statements.iter()
+        .zip(other.statements.iter)
+        .all(|both| both[0].equals(both[1]));
+  }
+}
+
+class If {
+  init(
+    conditional: Ast, 
+    consequence: Ast, 
+    alternative: Ast
+  ) {
+    self.conditional = conditional;
+    self.consequence = consequence;
+    self.alternative = alternative;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == If
+      and self.conditional.equals(other.conditional)
+      and self.consequence.equals(other.consequence)
+      and self.alternative.equals(other.alternative);
+  }
+}
+
+class If {
+  init(
+    conditional: Ast, 
+    consequence: Ast, 
+    alternative: Ast
+  ) {
+    self.conditional = conditional;
+    self.consequence = consequence;
+    self.alternative = alternative;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == If
+      and self.conditional.equals(other.conditional)
+      and self.consequence.equals(other.consequence)
+      and self.alternative.equals(other.alternative);
+  }
+}
+
+class Function {
+  init(
+    name: string, 
+    parameters: string[], 
+    body: Ast
+  ) {
+    self.name = name;
+    self.parameters = parameters;
+    self.body = body;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Function
+      and self.name == other.name
+      and self.parameters.iter()
+        .zip(other.parameters.zip)
+        .every(|both| both[0] == both[1])
+      and self.body.equals(other.body);
+  }
+}
+
+class Var {
+  init(name: string, value: Ast) {
+    self.name = name;
+    self.value = value;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Var
+      and self.name == other.name
+      and self.value.equals(other.value);
+  }
+}
+
+class Assign {
+  init(name: string, value: Ast) {
+    self.name = name;
+    self.value = value;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == Assign
+      and self.name == other.name
+      and self.value.equals(other.value);
+  }
+}
+
+class While {
+  init(cond: Ast, body: Ast) {
+    self.cond = cond;
+    self.body = body;
+  }
+
+  equals(other: Ast) -> bool {
+    return other.cls() == While
+      and self.cond.equals(other.cond)
+      and self.body.equals(other.body);
+  }
+}
+
+
+class Source<T> {
+  init(value: T, source: Source) {
+    self.value = value;
+    self.source = source;
+  }
+
+  match(matcher: (src: string) -> string | nil) -> ParseResult<string> | nil {
+
+  }
+}
+
+class ParseResult<T> {
+  init(value: T, source: Source) {
+    self.value = value;
+    self.source = source;
+  }
+}

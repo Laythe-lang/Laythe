@@ -7,13 +7,16 @@ edition = "2018"
 [features]
 jemalloc = ["jemallocator"]
 
+[profile.release]
+debug = true
+
 [[bin]]
 name = "laythe"
 path = "src/main.rs"
 
 [dependencies]
 laythe_core = { path = "../laythe_core", features=["nan_boxing"] }
-laythe_vm = { path = "../laythe_vm" }
+laythe_vm = { path = "../laythe_vm", features=["debug"] }
 laythe_env = { path = "../laythe_env" }
 jemallocator = { version = "0.3.2", optional = true }
 

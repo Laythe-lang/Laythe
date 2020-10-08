@@ -9,6 +9,8 @@ Class ::= "class" IDENTIFIER ( "<" IDENTIFIER )?
 Fn ::= "fn" Function ;
 Let ::= "let" IDENTIFIER ( TypeAnnotation )? ( "=" Expr )? ";" ;
 Trait ::= "trait" IDENTIFIER TypeParams? "{" TypeMember ("," TypeMember)* "}"
+TraitMember ::= TypeMember | TypeMethod ;
+TypeMethod ::= IDENTIFIER CallSignature ;
 TypeMember ::= IDENTIFIER TypeAnnotation ";" ;
 TypeDecl ::= "type" IDENTIFIER TypeParams? = Type ";" ;
 

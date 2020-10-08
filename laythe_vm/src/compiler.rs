@@ -747,7 +747,7 @@ impl<'a> Compiler<'a> {
       self.begin_scope();
       self.add_local(Token {
         kind: TokenKind::Super,
-        lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
+        lexeme: SmolStr::new_inline(SUPER),
         line: super_class.end(),
       });
       self.define_variable(0, super_class.end());
@@ -931,14 +931,14 @@ impl<'a> Compiler<'a> {
 
       // token for hidden $iter variable
       let iterator_token = Token {
-        lexeme: SmolStr::new_inline_from_ascii(ITER_VAR.len(), ITER_VAR.as_bytes()),
+        lexeme: SmolStr::new_inline(ITER_VAR),
         kind: TokenKind::Identifier,
         line: expr_line,
       };
 
       // get constant for 'iter' method
       let iter_const = self_.identifier_constant(&Token {
-        lexeme: SmolStr::new_inline_from_ascii(ITER.len(), ITER.as_bytes()),
+        lexeme: SmolStr::new_inline(ITER),
         kind: TokenKind::Identifier,
         line: expr_line,
       });
@@ -960,13 +960,13 @@ impl<'a> Compiler<'a> {
 
       // define iterator method constants
       let next_const = self_.identifier_constant(&Token {
-        lexeme: SmolStr::new_inline_from_ascii(4, b"next"),
+        lexeme: SmolStr::new_inline("next"),
         kind: TokenKind::Identifier,
         line: for_.item.end(),
       });
 
       let current_const = self_.identifier_constant(&Token {
-        lexeme: SmolStr::new_inline_from_ascii(6, b"current"),
+        lexeme: SmolStr::new_inline("current"),
         kind: TokenKind::Identifier,
         line: for_.item.end(),
       });
@@ -1376,7 +1376,7 @@ impl<'a> Compiler<'a> {
     // load self on top of stack
     self.variable(
       &Token {
-        lexeme: SmolStr::new_inline_from_ascii(SELF.len(), SELF.as_bytes()),
+        lexeme: SmolStr::new_inline(SELF),
         kind: TokenKind::Self_,
         line: super_.end(),
       },
@@ -1406,7 +1406,7 @@ impl<'a> Compiler<'a> {
       None => {
         self.variable(
           &Token {
-            lexeme: SmolStr::new_inline_from_ascii(SUPER.len(), SUPER.as_bytes()),
+            lexeme: SmolStr::new_inline(SUPER),
             kind: TokenKind::Super,
             line: super_.super_.end(),
           },
@@ -1485,7 +1485,7 @@ fn first_local(fun_kind: FunKind) -> Local {
       is_captured: false,
     },
     FunKind::Method | FunKind::Initializer => Local {
-      name: Some(SmolStr::new_inline_from_ascii(SELF.len(), SELF.as_bytes())),
+      name: Some(SmolStr::new_inline(SELF)),
       depth: 0,
       is_captured: false,
     },

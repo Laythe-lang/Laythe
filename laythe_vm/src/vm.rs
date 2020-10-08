@@ -616,8 +616,9 @@ impl<'a> VmExecutor<'a> {
 
   /// read a u8 out of the bytecode
   #[inline]
+  #[no_mangle]
   fn read_byte(&mut self) -> u8 {
-    let byte = unsafe { *self.ip };
+    let byte = unsafe { ptr::read(self.ip) };
     self.update_ip(1);
     byte
   }

@@ -1,0 +1,6 @@
+let a = {};
+let b = {};
+
+b['cat'] = a['dog'] = 10;
+assertEq(b['cat'], 10);
+assertEq(a['dog'], 10);
