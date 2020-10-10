@@ -475,10 +475,12 @@ fn indexing() -> Result<(), std::io::Error> {
       "language/indexing/list_set.lay",
       "language/indexing/list_nested_get.lay",
       "language/indexing/list_nested_set.lay",
+      "language/indexing/list_pass_through_set.lay",
       "language/indexing/map_na_get.lay",
       "language/indexing/map_ref_equal_get.lay",
       "language/indexing/map_nested_get.lay",
       "language/indexing/map_nested_set.lay",
+      "language/indexing/map_pass_through_set.lay",
     ],
     ExecuteResult::Ok,
   )?;

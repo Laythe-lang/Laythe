@@ -924,8 +924,10 @@ impl<'a> VmExecutor<'a> {
         ));
       }
 
-      list[rounded] = self.pop();
-      self.drop();
+      let value = self.pop();
+      list[rounded] = value;
+      self.drop_n(2);
+      self.push(value);
       return Signal::Ok;
     } else if target.is_map() {
       let mut map = target.to_map();
@@ -936,12 +938,14 @@ impl<'a> VmExecutor<'a> {
         self.gc.grow(&mut map, self, |map| {
           map.insert(val!(use_sentinel_nan(num)), value)
         });
-        self.drop();
+        self.drop_n(2);
+        self.push(value);
         return Signal::Ok;
       } else {
         let value = self.pop();
         self.gc.grow(&mut map, self, |map| map.insert(index, value));
-        self.drop();
+        self.drop_n(2);
+        self.push(value);
         return Signal::Ok;
       }
     }

@@ -4,5 +4,3 @@ a[0] = a[1] = 5;
 assertEq(a[0], 5);
 assertEq(a[1], 5);
 assertEq(a[2], 3);
-
-print(a[2] = 5);
