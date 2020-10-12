@@ -34,16 +34,17 @@ pub use self::boxed::*;
 
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
-  use super::*;
   use crate::{
     iterator::LyIterator,
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::managed::{Managed, Trace};
+  use laythe_env::managed::{DebugHeap, DebugWrap, Managed, Trace};
 
+  use super::{Nil, ValueKind};
   use smol_str::SmolStr;
   use std::fmt;
+  use std::fmt::Debug;
   use std::hash::Hash;
   use std::io::Write;
 
@@ -263,12 +264,12 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_core::object::LyVec;
+    /// use laythe_core::object::List;
     /// use laythe_env::managed::{Allocation, Managed};
     ///
     /// use std::ptr::NonNull;
     ///
-    /// let list = LyVec::from(vec![Value::Nil]);
+    /// let list = List::from(vec![Value::Nil]);
     /// let mut alloc = Box::new(Allocation::new(list));
     /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
     /// let managed = Managed::from(ptr);
@@ -289,16 +290,15 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_env::managed::{Allocation, Managed, make_managed};
-    /// use laythe_core::object::LyHashMap;
-    /// use std::ptr::NonNull;
+    /// use laythe_env::managed::{Allocation, Managed};
+    /// use laythe_core::object::Map;
+    /// use laythe_core::hooks::{Hooks, support::TestContext};
     ///
-    /// let map: LyHashMap<Value, Value> = LyHashMap::default();
-    /// let mut alloc = Box::new(Allocation::new(map));
-    /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-    /// let managed = Managed::from(ptr);
+    /// let mut context = TestContext::default();
+    /// let hooks = Hooks::new(&mut context);
+    /// let map: Map<Value, Value> = Map::default();
     ///
-    /// let value = Value::Map(managed);
+    /// let value = Value::Map(hooks.manage(map));
     /// assert_eq!(value.to_map().len(), 0)
     /// ```
     #[inline]
@@ -324,18 +324,13 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::Fun;
-    /// use laythe_core::module::Module;
-    /// use laythe_core::chunk::Chunk;
-    /// use laythe_core::hooks::{Hooks, NoContext};
-    /// use laythe_env::memory::Gc;
-    /// use std::path::PathBuf;
+    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_env::managed::Managed;
     ///
-    /// let gc = Gc::default();
-    /// let mut context = NoContext::new(&gc);
+    /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let module = hooks.manage(Module::new(hooks.manage_str("module"), hooks.manage(PathBuf::from("self/module.ly"))));
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), module);
+    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Managed::dangling());
     /// let managed = hooks.manage(fun);
     ///
     /// let value = Value::Fun(managed);
@@ -364,22 +359,16 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Fun};
-    /// use laythe_env::memory::{Gc, NO_GC};
-    /// use laythe_core::module::Module;
-    /// use laythe_core::chunk::Chunk;
-    /// use laythe_core::hooks::{Hooks, NoContext};
-    /// use std::path::PathBuf;
+    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_env::managed::Managed;
     ///
-    /// let gc = Gc::default();
-    /// let mut context = NoContext::new(&gc);
+    /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
-    ///
-    /// let module = hooks.manage(Module::new(hooks.manage_str("module"), hooks.manage(PathBuf::from("self/module.ly"))));
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), module);
+    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Managed::dangling());
     /// let managed_fun = hooks.manage(fun);
     ///
     /// let closure = Closure::new(managed_fun);
-    /// let managed_closure = gc.manage(closure, &NO_GC);
+    /// let managed_closure = hooks.manage(closure);
     ///
     /// let value = Value::Closure(managed_closure);
     /// assert_eq!(&*value.to_closure().fun.name.clone(), "add");
@@ -396,28 +385,15 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_core::object::{Closure, Method, Fun};
-    /// use laythe_core::module::Module;
-    /// use laythe_env::memory::{Gc, NO_GC};
-    /// use laythe_core::chunk::Chunk;
-    /// use laythe_core::hooks::{Hooks, NoContext};
-    /// use std::path::PathBuf;
+    /// use laythe_core::object::{Closure, Method};
+    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_env::managed::Managed;
     ///
-    /// let gc = Gc::default();
-    /// let mut context = NoContext::new(&gc);
+    /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let module = hooks.manage(Module::new(hooks.manage_str("module"), hooks.manage(PathBuf::from("self/module.ly"))));
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), module);
-    /// let managed_fun = hooks.manage(fun);
-    ///
-    /// let closure = Closure::new(managed_fun);
-    /// let managed_closure = gc.manage(closure, &NO_GC);
-    ///
-    /// let nil = Value::Nil;
-    ///
-    /// let method = Method::new(nil, Value::Closure(managed_closure));
-    /// let managed_method = gc.manage(method, &NO_GC);
+    /// let method = Method::new(Value::Nil, Value::Closure(Managed::dangling()));
+    /// let managed_method = hooks.manage(method);
     ///
     /// let value = Value::Method(managed_method);
     /// assert_eq!(value.to_method(), managed_method);
@@ -435,11 +411,13 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::Upvalue;
-    /// use laythe_env::managed::{Allocation, Managed, make_managed};
+    /// use laythe_core::hooks::{Hooks, support::TestContext};
     /// use std::ptr::NonNull;
     ///
+    /// let mut context = TestContext::default();
+    /// let hooks = Hooks::new(&mut context);
     /// let value = Value::Number(5.0);
-    /// let (upvalue, upvalue_alloc) = make_managed(Upvalue::Open(NonNull::from(&value)));
+    /// let upvalue = hooks.manage(Upvalue::Open(NonNull::from(&value)));
     /// let value = Value::Upvalue(upvalue);
     ///
     /// match *value.to_upvalue() {
@@ -460,10 +438,12 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Instance, Class};
-    /// use laythe_env::managed::{Managed, Allocation, make_managed};
+    /// use laythe_core::hooks::{Hooks, support::TestContext};
     ///
-    /// let (name, name_alloc) = make_managed("example".to_string());
-    /// let (class, class_alloc) = make_managed(Class::bare(name));
+    /// let mut context = TestContext::default();
+    /// let hooks = Hooks::new(&mut context);
+    /// let name = hooks.manage_str("example");
+    /// let class = hooks.manage(Class::bare(name));
     ///
     /// let value = Value::Class(class);
     /// assert_eq!(value.to_class().name, name);
@@ -481,11 +461,13 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Instance, Class};
-    /// use laythe_env::managed::{Managed, Allocation, make_managed};
+    /// use laythe_core::hooks::{Hooks, support::TestContext};
     ///
-    /// let (name, name_alloc) = make_managed("example".to_string());
-    /// let (class, class_alloc) = make_managed(Class::bare(name));
-    /// let (instance, instance_alloc) = make_managed(Instance::new(class));
+    /// let mut context = TestContext::default();
+    /// let hooks = Hooks::new(&mut context);
+    /// let name = hooks.manage_str("example".to_string());
+    /// let class = hooks.manage(Class::bare(name));
+    /// let instance = hooks.manage(Instance::new(class));
     ///
     /// let value = Value::Instance(instance);
     /// assert_eq!(value.to_instance().class, class);
@@ -499,18 +481,17 @@ mod unboxed {
     /// Get a string representation of the underlying type this value representing
     ///
     /// # Examples
+    /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_core::object::{Obj, ObjValue};
     ///
     /// let nil = Value::Nil;
     /// let bool = Value::Bool(true);
-    /// let number = Value::Number(10);
-    /// let string = Value::Obj(Obj::new(ObjValue::String("something")));
+    /// let number = Value::Number(10.0);
     ///
     /// assert_eq!(nil.value_type(), "nil");
     /// assert_eq!(bool.value_type(), "bool");
     /// assert_eq!(number.value_type(), "number");
-    /// assert_eq!(string.value_type(), "string");
+    /// ```
     pub fn value_type(&self) -> String {
       match self {
         Value::Nil => "nil".to_string(),
@@ -806,6 +787,27 @@ mod unboxed {
         Value::Iter(iter) => iter.trace_debug(stdout),
         Value::Upvalue(upvalue) => upvalue.trace_debug(stdout),
         Value::Native(native) => native.trace_debug(stdout),
+      }
+    }
+  }
+
+  impl DebugHeap for Value {
+    fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+      match self {
+        Value::Nil => f.write_str("nil"),
+        Value::Bool(b) => f.write_fmt(format_args!("{}", b)),
+        Value::Number(num) => f.write_fmt(format_args!("{}", num)),
+        Value::String(string) => f.write_fmt(format_args!("{:?}", DebugWrap(string, depth))),
+        Value::List(list) => f.write_fmt(format_args!("{:?}", DebugWrap(list, depth))),
+        Value::Map(map) => f.write_fmt(format_args!("{:?}", DebugWrap(map, depth))),
+        Value::Fun(fun) => f.write_fmt(format_args!("{:?}", DebugWrap(fun, depth))),
+        Value::Closure(closure) => f.write_fmt(format_args!("{:?}", DebugWrap(closure, depth))),
+        Value::Method(method) => f.write_fmt(format_args!("{:?}", DebugWrap(method, depth))),
+        Value::Class(class) => f.write_fmt(format_args!("{:?}", DebugWrap(class, depth))),
+        Value::Instance(instance) => f.write_fmt(format_args!("{:?}", DebugWrap(instance, depth))),
+        Value::Iter(iter) => f.write_fmt(format_args!("{:?}", DebugWrap(iter, depth))),
+        Value::Upvalue(upvalue) => f.write_fmt(format_args!("{:?}", DebugWrap(upvalue, depth))),
+        Value::Native(native) => f.write_fmt(format_args!("{:?}", DebugWrap(native, depth))),
       }
     }
   }

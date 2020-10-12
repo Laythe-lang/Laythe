@@ -150,14 +150,10 @@ impl<T: 'static + Manage + ?Sized> Managed<T> {
 }
 
 impl<T: 'static + Manage> Managed<T> {
-  pub fn clone_dyn(self) -> Managed<dyn Manage> {
-    Managed {
-      ptr: NonNull::from(self.obj()) as NonNull<Allocation<dyn Manage>>,
+  pub fn dangling() -> Managed<T> {
+    Self {
+      ptr: NonNull::dangling(),
     }
-  }
-
-  pub fn size(self) -> usize {
-    self.obj().size()
   }
 }
 
@@ -334,13 +330,6 @@ impl<T: 'static + Manage + fmt::Debug> fmt::Debug for Managed<T> {
 
     f.debug_struct("Managed").field("ptr", inner).finish()
   }
-}
-
-pub fn make_managed<T: 'static + Manage>(data: T) -> (Managed<T>, Box<Allocation<T>>) {
-  let mut alloc = Box::new(Allocation::new(data));
-  let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-
-  (Managed::from(ptr), alloc)
 }
 
 #[cfg(test)]
