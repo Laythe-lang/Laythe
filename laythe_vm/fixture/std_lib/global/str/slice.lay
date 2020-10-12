@@ -1,0 +1,14 @@
+let example = "an example string";
+
+assertEq(example.slice(0), example);
+assertEq(example.slice(1), "n example string");
+assertEq(example.slice(40), "");
+assertEq(example.slice(-6), "string");
+assertEq(example.slice(-34), example);
+
+assertEq(example.slice(0, example.len()), example);
+assertEq(example.slice(5, 10), "ample");
+assertEq(example.slice(5, 0), "");
+assertEq(example.slice(5, -5), "ample s");
+assertEq(example.slice(-10, -5), "ple s");
+assertEq(example.slice(-3, -5), "");

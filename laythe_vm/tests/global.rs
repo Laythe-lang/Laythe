@@ -208,9 +208,12 @@ fn print() -> Result<(), std::io::Error> {
 fn str() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/global/str/str.lay",
       "std_lib/global/str/has.lay",
+      "std_lib/global/str/index.lay",
       "std_lib/global/str/iter.lay",
+      "std_lib/global/str/len.lay",
+      "std_lib/global/str/slice.lay",
+      "std_lib/global/str/str.lay",
     ],
     ExecuteResult::Ok,
   )?;

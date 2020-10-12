@@ -1,0 +1,22 @@
+let testString = "some test string";
+
+assertEq(testString[0], "s");
+assertEq(testString[testString.len() - 1], "g");
+
+assertEq(testString[-1], "g");
+assertEq(testString[-testString.len()], "s");
+
+try {
+  testString[50];
+  assert(false);
+} catch { }
+
+try {
+  testString[-50];
+  assert(false);
+} catch { }
+
+try {
+  testString[1.5];
+  assert(false);
+} catch { }
