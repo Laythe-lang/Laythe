@@ -4,6 +4,8 @@ use crate::{
 };
 use hashbrown::hash_map::Iter;
 use laythe_core::{
+  constants::INDEX_GET,
+  constants::INDEX_SET,
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
   module::Module,
@@ -11,6 +13,7 @@ use laythe_core::{
   object::{List, Map},
   package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
+  utils::use_sentinel_nan,
   val,
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
@@ -21,6 +24,15 @@ use std::io::Write;
 use std::mem;
 
 pub const MAP_CLASS_NAME: &str = "Map";
+
+const MAP_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)]);
+
+const MAP_INDEX_SET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_SET, Arity::Fixed(2))
+  .with_params(&[
+    ParameterBuilder::new("key", ParameterKind::Any),
+    ParameterBuilder::new("val", ParameterKind::Any),
+  ]);
 
 const MAP_GET: NativeMetaBuilder = NativeMetaBuilder::method("get", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)]);
@@ -59,6 +71,18 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
     hooks,
     hooks.manage_str(MAP_LEN.name),
     val!(to_dyn_native(hooks, MapLen::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(MAP_INDEX_GET.name),
+    val!(to_dyn_native(hooks, MapIndexGet::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(MAP_INDEX_SET.name),
+    val!(to_dyn_native(hooks, MapIndexSet::from(hooks))),
   );
 
   class.add_method(
@@ -206,11 +230,57 @@ impl Native for MapHas {
   }
 }
 
+native!(MapIndexGet, MAP_INDEX_GET);
+
+impl Native for MapIndexGet {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    let index = args[0];
+    let key = if index.is_num() {
+      val!(use_sentinel_nan(index.to_num()))
+    } else {
+      index
+    };
+
+    match this.unwrap().to_map().get(&key) {
+      Some(value) => Ok(*value),
+      None => hooks.error(format!("Key not found. {} is not present", key)),
+    }
+  }
+}
+
+native!(MapIndexSet, MAP_INDEX_SET);
+
+impl Native for MapIndexSet {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    let index = args[0];
+    let key = if index.is_num() {
+      val!(use_sentinel_nan(index.to_num()))
+    } else {
+      index
+    };
+
+    Ok(
+      this
+        .unwrap()
+        .to_map()
+        .insert(key, args[1])
+        .unwrap_or(VALUE_NIL),
+    )
+  }
+}
+
 native!(MapGet, MAP_GET);
 
 impl Native for MapGet {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
-    match this.unwrap().to_map().get(&args[0]) {
+    let index = args[0];
+    let key = if index.is_num() {
+      val!(use_sentinel_nan(index.to_num()))
+    } else {
+      index
+    };
+
+    match this.unwrap().to_map().get(&key) {
       Some(value) => Ok(*value),
       None => Ok(VALUE_NIL),
     }
@@ -221,11 +291,18 @@ native!(MapSet, MAP_SET);
 
 impl Native for MapSet {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    let index = args[0];
+    let key = if index.is_num() {
+      val!(use_sentinel_nan(index.to_num()))
+    } else {
+      index
+    };
+
     Ok(
       this
         .unwrap()
         .to_map()
-        .insert(args[0], args[1])
+        .insert(key, args[1])
         .unwrap_or(VALUE_NIL),
     )
   }
@@ -449,6 +526,103 @@ mod test {
         Ok(r) => assert_eq!(r.to_bool(), false),
         Err(_) => assert!(false),
       }
+    }
+  }
+
+  #[cfg(test)]
+  mod get_index {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let map_get = MapGet::from(&hooks);
+
+      assert_eq!(map_get.meta().name, "get");
+      assert_eq!(map_get.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        map_get.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+      let map_get = MapGet::from(&hooks);
+
+      let mut map = Map::default();
+      map.insert(VALUE_NIL, val!(false));
+      let this = hooks.manage(map);
+
+      let result = map_get.call(&mut hooks, Some(val!(this)), &[VALUE_NIL]);
+      match result {
+        Ok(r) => assert_eq!(r.to_bool(), false),
+        Err(_) => assert!(false),
+      }
+
+      let result = map_get.call(&mut hooks, Some(val!(this)), &[val!(true)]);
+      match result {
+        Ok(r) => assert!(r.is_nil()),
+        Err(_) => assert!(false),
+      }
+    }
+  }
+
+  #[cfg(test)]
+  mod set_index {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = Hooks::new(&mut context);
+
+      let map_set = MapSet::from(&hooks);
+
+      assert_eq!(map_set.meta().name, "set");
+      assert_eq!(map_set.meta().signature.arity, Arity::Fixed(2));
+      assert_eq!(
+        map_set.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+      assert_eq!(
+        map_set.meta().signature.parameters[0].kind,
+        ParameterKind::Any
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+      let map_set = MapSet::from(&hooks);
+
+      let map = Map::default();
+      let this = hooks.manage(map);
+
+      let result = map_set.call(&mut hooks, Some(val!(this)), &[val!(true), val!(10.0)]);
+      match result {
+        Ok(r) => assert!(r.is_nil()),
+        Err(_) => assert!(false),
+      }
+
+      assert_eq!(this.len(), 1);
+      assert_eq!(*this.get(&val!(true)).unwrap(), val!(10.0));
+
+      let result = map_set.call(&mut hooks, Some(val!(this)), &[val!(true), val!(false)]);
+      match result {
+        Ok(r) => assert_eq!(r.to_num(), 10.0),
+        Err(_) => assert!(false),
+      }
+
+      assert_eq!(this.len(), 1);
+      assert_eq!(*this.get(&val!(true)).unwrap(), val!(false));
     }
   }
 

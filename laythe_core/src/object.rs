@@ -1,6 +1,6 @@
 use crate::{
   chunk::{AlignedByteCode, Chunk},
-  constants::INIT,
+  constants::{INDEX_GET, INDEX_SET, INIT},
   dynamic_map::DynamicMap,
   hooks::GcHooks,
   module::Module,
@@ -756,6 +756,8 @@ impl Manage for Closure {
 pub struct Class {
   pub name: Managed<SmolStr>,
   pub init: Option<Value>,
+  pub index_get: Option<Value>,
+  pub index_set: Option<Value>,
   methods: DynamicMap<Managed<SmolStr>, Value>,
   fields: DynamicMap<Managed<SmolStr>, u16>,
   meta_class: Option<Managed<Class>>,
@@ -778,6 +780,8 @@ impl Class {
     let mut class = Self {
       name,
       init: None,
+      index_get: None,
+      index_set: None,
       methods: DynamicMap::new(),
       fields: DynamicMap::new(),
       meta_class: Some(meta_class),
@@ -792,6 +796,8 @@ impl Class {
     Self {
       name,
       init: None,
+      index_get: None,
+      index_set: None,
       methods: DynamicMap::new(),
       fields: DynamicMap::new(),
       meta_class: None,
@@ -828,8 +834,11 @@ impl Class {
     name: Managed<SmolStr>,
     method: Value,
   ) -> Option<Value> {
-    if *name == INIT {
-      self.init = Some(method);
+    match name.as_str() {
+      INIT => self.init = Some(method),
+      INDEX_GET => self.index_get = Some(method),
+      INDEX_SET => self.index_set = Some(method),
+      _ => (),
     }
 
     hooks.grow(self, |class| class.methods.insert(name, method))
