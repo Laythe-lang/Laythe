@@ -492,9 +492,6 @@ mod test {
       let list = List::from(vec![VALUE_NIL, val!(10.0)]);
       let this = hooks.manage(list);
 
-      let this2 = this;
-      let this3 = this;
-
       let result = list_index_get.call(&mut hooks, Some(val!(this)), values);
       match result {
         Ok(r) => assert!(r.is_nil()),
