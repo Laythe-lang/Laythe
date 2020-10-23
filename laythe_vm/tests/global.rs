@@ -67,6 +67,7 @@ fn iter() -> Result<(), std::io::Error> {
     &vec![
       "std_lib/global/iter/all.lay",
       "std_lib/global/iter/any.lay",
+      "std_lib/global/iter/chain.lay",
       "std_lib/global/iter/each.lay",
       "std_lib/global/iter/filter.lay",
       "std_lib/global/iter/into.lay",

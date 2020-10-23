@@ -1,0 +1,28 @@
+let l1 = [1, 2, 3, 4];
+let l2 = ["cat", "dog", "parrot"];
+
+let chained = l1.iter().chain(l2.iter());
+
+assertEq(chained.current, nil);
+assertEq(chained.next(), true);
+
+assertEq(chained.current, 1);
+assertEq(chained.next(), true);
+
+assertEq(chained.current, 2);
+assertEq(chained.next(), true);
+
+assertEq(chained.current, 3);
+assertEq(chained.next(), true);
+
+assertEq(chained.current, 4);
+assertEq(chained.next(), true);
+
+assertEq(chained.current, "cat");
+assertEq(chained.next(), true);
+
+assertEq(chained.current, "dog");
+assertEq(chained.next(), true);
+
+assertEq(chained.current, "parrot");
+assertEq(zipped.next(), false);

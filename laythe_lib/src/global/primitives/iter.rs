@@ -48,8 +48,10 @@ const ITER_EACH: NativeMetaBuilder = NativeMetaBuilder::method("each", Arity::Fi
   .with_stack();
 
 const ITER_ZIP: NativeMetaBuilder = NativeMetaBuilder::method("zip", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new("iterators", ParameterKind::Iter)])
-  .with_stack();
+  .with_params(&[ParameterBuilder::new("iterators", ParameterKind::Iter)]);
+
+const ITER_CHAIN: NativeMetaBuilder = NativeMetaBuilder::method("chain", Arity::Variadic(0))
+  .with_params(&[ParameterBuilder::new("iterators", ParameterKind::Iter)]);
 
 const ITER_ALL: NativeMetaBuilder = NativeMetaBuilder::method("all", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
@@ -123,6 +125,12 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
     hooks,
     hooks.manage_str(ITER_ZIP.name),
     val!(to_dyn_native(hooks, IterZip::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_CHAIN.name),
+    val!(to_dyn_native(hooks, IterChain::from(hooks))),
   );
 
   class.add_method(
@@ -463,6 +471,102 @@ impl Trace for ZipIterator {
   }
 }
 
+native!(IterChain, ITER_CHAIN);
+
+impl Native for IterChain {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    let iters: Vec<Managed<LyIterator>> = [this.unwrap()]
+      .iter()
+      .chain(args.iter())
+      .map(|arg| arg.to_iter())
+      .collect();
+
+    let inner_iter: Box<dyn LyIter> = Box::new(ChainIterator::new(iters));
+    let iter = LyIterator::new(inner_iter);
+    let iter = hooks.manage(iter);
+
+    Ok(val!(iter))
+  }
+}
+
+#[derive(Debug)]
+struct ChainIterator {
+  current: Value,
+  iter_index: usize,
+  iters: Vec<Managed<LyIterator>>,
+}
+
+impl ChainIterator {
+  fn new(iters: Vec<Managed<LyIterator>>) -> Self {
+    Self {
+      current: VALUE_NIL,
+      iter_index: 0,
+      iters,
+    }
+  }
+}
+
+impl LyIter for ChainIterator {
+  fn name(&self) -> &str {
+    "Chain Iterator"
+  }
+
+  fn current(&self) -> Value {
+    self.current
+  }
+
+  fn next(&mut self, hooks: &mut Hooks) -> CallResult {
+    loop {
+      if self.iter_index >= self.iters.len() {
+        return Ok(val!(false));
+      }
+
+      let mut iter = self.iters[self.iter_index];
+      let next = iter.next(hooks)?;
+      if !is_falsey(next) {
+        self.current = iter.current();
+        break;
+      }
+
+      self.iter_index += 1;
+    }
+
+    Ok(val!(true))
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    self
+      .iters
+      .iter()
+      .fold(Some(0), |acc, curr| match (acc, curr.size_hint()) {
+        (Some(acc), Some(curr)) => Some(acc + curr),
+        _ => None,
+      })
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+}
+
+impl Trace for ChainIterator {
+  fn trace(&self) -> bool {
+    self.current.trace();
+    self.iters.iter().for_each(|iter| {
+      iter.trace();
+    });
+    true
+  }
+
+  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    self.current.trace_debug(stdout);
+    self.iters.iter().for_each(|iter| {
+      iter.trace_debug(stdout);
+    });
+    true
+  }
+}
+
 native!(IterAll, ITER_ALL);
 
 impl Native for IterAll {
@@ -749,13 +853,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::new(&[
-        val!(false),
-        val!(false),
-        val!(false),
-        val!(false),
-        val!(10.1),
-      ]);
+      let mut context = MockedContext::new(&[val!(false), val!(false), val!(false), val!(10.1)]);
       let mut hooks = Hooks::new(&mut context);
       let iter_reduce = IterReduce::from(&hooks.as_gc());
 
@@ -906,6 +1004,59 @@ mod test {
       assert_eq!(zip.current().to_list().len(), 2);
       assert_eq!(zip.current().to_list()[0].to_num(), 1.0);
       assert_eq!(zip.current().to_list()[1].to_num(), 1.0);
+    }
+  }
+
+  mod chain {
+    use super::*;
+    use crate::support::MockedContext;
+    use laythe_core::iterator::LyIterator;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let iter_chain = IterChain::from(&hooks);
+
+      assert_eq!(iter_chain.meta().name, "chain");
+      assert_eq!(iter_chain.meta().signature.arity, Arity::Variadic(0));
+      assert_eq!(
+        iter_chain.meta().signature.parameters[0].kind,
+        ParameterKind::Iter,
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::new(&[val!(1.0); 10]);
+      let mut hooks = Hooks::new(&mut context);
+      let iter_chain = IterChain::from(&hooks.as_gc());
+
+      let iter = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter));
+      let this = val!(managed);
+
+      let iter2 = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter2));
+      let arg = val!(managed);
+
+      let result = iter_chain.call(&mut hooks, Some(this), &[arg]);
+      match result {
+        Ok(r) => assert!(r.is_iter()),
+        Err(_) => assert!(false),
+      }
+
+      let mut chain = result.unwrap().to_iter();
+      let expected = vec![1.0, 2.0, 3.0, 4.0, 1.0, 2.0, 3.0, 4.0];
+
+      for expect in expected {
+        assert!(chain.next(&mut hooks).unwrap().to_bool());
+        assert!(chain.current().is_num());
+        assert_eq!(chain.current().to_num(), expect);
+      }
+
+      assert!(!chain.next(&mut hooks).unwrap().to_bool());
     }
   }
 
