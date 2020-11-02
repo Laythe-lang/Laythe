@@ -1044,7 +1044,7 @@ mod test {
       match result {
         Ok(r) => {
           let list = r.to_list();
-          assert_eq!(list.len(), 5);
+          assert_eq!(list.len(), 4);
         }
         Err(_) => assert!(false),
       }

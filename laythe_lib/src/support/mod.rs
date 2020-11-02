@@ -119,9 +119,7 @@ mod test {
     io::Io,
     managed::{Managed, Trace},
     memory::{Gc, NoGc, NO_GC},
-    stdio::{
-      support::{IoStdioTest, StdioTestContainer},
-    },
+    stdio::support::{IoStdioTest, StdioTestContainer},
   };
   use smol_str::SmolStr;
   use std::io::Write;
@@ -342,7 +340,7 @@ mod test {
     }
 
     fn next(&mut self, _hooks: &mut Hooks) -> CallResult {
-      if self.current > 4 {
+      if self.current > 3 {
         return Ok(val!(false));
       }
 

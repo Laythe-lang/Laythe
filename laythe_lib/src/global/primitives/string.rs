@@ -126,9 +126,9 @@ impl Native for StringIndexGet {
       chars.rev().nth((-index) as usize - 1)
     };
 
-    const BUFFER: [u8; 4] = [0, 0, 0, 0];
+    let mut buffer: [u8; 4] = [0, 0, 0, 0];
     match c {
-      Some(c) => Ok(val!(hooks.manage_str(c.encode_utf8(&mut BUFFER)))),
+      Some(c) => Ok(val!(hooks.manage_str(c.encode_utf8(&mut buffer)))),
       None => hooks.error(format!(
         "Index out of bounds. string was length {} but attempted to index with {}.",
         this.chars().count(),

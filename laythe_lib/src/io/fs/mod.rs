@@ -14,7 +14,6 @@ pub fn fs_module(hooks: &GcHooks, std: Managed<Package>) -> LyResult<Managed<Mod
   )?);
 
   declare_file(hooks, &mut module, &*std)?;
-
   define_file(hooks, &module, &*std)?;
 
   Ok(module)

@@ -3,6 +3,7 @@ use crate::{
   support::{export_and_insert, load_class_from_module, to_dyn_native},
 };
 use laythe_core::{
+  constants::OBJECT,
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
@@ -16,7 +17,7 @@ use laythe_core::{
 use laythe_env::managed::Trace;
 use std::io::Write;
 
-pub const OBJECT_CLASS_NAME: &str = "Object";
+pub const OBJECT_CLASS_NAME: &str = OBJECT;
 
 const OBJECT_EQUALS: NativeMetaBuilder = NativeMetaBuilder::method("equals", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("other", ParameterKind::Any)]);

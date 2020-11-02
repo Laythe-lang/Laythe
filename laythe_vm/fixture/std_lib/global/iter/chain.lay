@@ -25,4 +25,4 @@ assertEq(chained.current, "dog");
 assertEq(chained.next(), true);
 
 assertEq(chained.current, "parrot");
-assertEq(zipped.next(), false);
+assertEq(chained.next(), false);

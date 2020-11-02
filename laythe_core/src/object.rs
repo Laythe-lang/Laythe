@@ -472,7 +472,7 @@ impl<T> Default for List<T> {
   }
 }
 
-impl<T: Clone> List<T> {
+impl<T> List<T> {
   pub fn new() -> Self {
     Self(Vec::new())
   }
@@ -480,7 +480,9 @@ impl<T: Clone> List<T> {
   pub fn with_capacity(capacity: usize) -> Self {
     Self(Vec::with_capacity(capacity))
   }
+}
 
+impl<T: Clone> List<T> {
   pub fn extend_from_slice(&mut self, other: &[T]) {
     self.0.extend_from_slice(other)
   }
@@ -946,7 +948,7 @@ impl Manage for Class {
 #[derive(PartialEq, Clone)]
 pub struct Instance {
   pub class: Managed<Class>,
-  fields: Box<[Value]>, // fields: DynamicMap<Managed<SmolStr>, Value>,
+  fields: Box<[Value]>,
 }
 
 impl Instance {
@@ -976,6 +978,20 @@ impl Instance {
       .class
       .get_field_index(&name)
       .map(|index| &self.fields[index as usize])
+  }
+}
+
+impl Index<usize> for Instance {
+  type Output = Value;
+
+  fn index(&self, index: usize) -> &Value {
+    &self.fields[index]
+  }
+}
+
+impl IndexMut<usize> for Instance {
+  fn index_mut(&mut self, index: usize) -> &mut Value {
+    &mut self.fields[index]
   }
 }
 
