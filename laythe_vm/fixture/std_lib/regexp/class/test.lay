@@ -1,0 +1,11 @@
+import re from 'std/regexp';
+let RegExp = re.RegExp;
+
+let r1 = RegExp('a{3}');
+let r2 = RegExp('\\d{3}-\\d{3}-\\d{4}');
+
+assert(r1.test('aaa'));
+assert(!r1.test(''));
+
+assert(r2.test('123-456-7891'));
+assert(!r2.test('john'));
