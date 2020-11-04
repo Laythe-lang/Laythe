@@ -5,6 +5,7 @@ use crate::{
 use ast::{BinaryOp, FunBody, List, Map, Ranged, Trailer, UnaryOp};
 use laythe_core::{
   chunk::{AlignedByteCode, Chunk, UpvalueIndex},
+  constants::OBJECT,
   constants::{ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::GcHooks,
   module, object,
@@ -727,6 +728,28 @@ impl<'a> Compiler<'a> {
     let name_constant = self.identifier_constant(&name);
     self.declare_variable(name.clone());
 
+    // handle the case where a super class exists
+    let line = if let Some(super_class) = &class.super_class {
+      self.variable(&super_class.type_ref.name, false);
+      super_class.type_ref.name.end()
+    } else {
+      let line = class
+        .name
+        .as_ref()
+        .map(|name| name.end())
+        .unwrap_or_else(|| class.range.start);
+
+      self.variable(
+        &Token {
+          lexeme: SmolStr::new_inline(OBJECT),
+          kind: TokenKind::Identifier,
+          line,
+        },
+        false,
+      );
+      line
+    };
+
     self.emit_byte(AlignedByteCode::Class(name_constant), name.end());
     self.define_variable(name_constant, name.end());
 
@@ -739,25 +762,18 @@ impl<'a> Compiler<'a> {
     });
     let enclosing_class = mem::replace(&mut self.class_info, Some(class_compiler));
 
-    // handle the case where a super class exists
-    if let Some(super_class) = &class.super_class {
-      self.variable(&super_class.type_ref.name, false);
+    // start a new scope with the super keyword present
+    self.begin_scope();
+    self.add_local(Token {
+      kind: TokenKind::Super,
+      lexeme: SmolStr::new_inline(SUPER),
+      line,
+    });
 
-      // start a new scope with the super keyword present
-      self.begin_scope();
-      self.add_local(Token {
-        kind: TokenKind::Super,
-        lexeme: SmolStr::new_inline(SUPER),
-        line: super_class.end(),
-      });
-      self.define_variable(0, super_class.end());
+    self.define_variable(0, line);
 
-      self.variable(&name, false);
-      self.emit_byte(AlignedByteCode::Inherit, super_class.type_ref.start());
-
-      // indicate this class is a subclass
-      class_compiler.has_super_class = true;
-    }
+    // indicate this class is a subclass
+    class_compiler.has_super_class = true;
 
     self.variable(&name, false);
 
@@ -823,7 +839,7 @@ impl<'a> Compiler<'a> {
     let constant = static_method
       .name
       .as_ref()
-      .map(|name| self.make_identifier(name))
+      .map(|name| self.identifier_constant(name))
       .expect("Expected method name.");
 
     self.class_info.expect("Class compiler not set").fun_kind = Some(FunKind::StaticMethod);
@@ -1714,9 +1730,11 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
+        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Drop,
         AlignedByteCode::Export(0),
         AlignedByteCode::Nil,
@@ -1895,16 +1913,16 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
+        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Drop,
-        AlignedByteCode::Class(1),
-        AlignedByteCode::DefineGlobal(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::Inherit,
-        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::Class(2),
+        AlignedByteCode::DefineGlobal(2),
+        AlignedByteCode::GetGlobal(2),
         AlignedByteCode::Drop,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -1925,9 +1943,11 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
+        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -1959,11 +1979,12 @@ mod test {
     assert_fun_bytecode(
       fun,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Fun((
-          2,
+          3,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
@@ -1973,10 +1994,10 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::Method(1)),
-        ByteCodeTest::Code(AlignedByteCode::Field(3)),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Field(4)),
         ByteCodeTest::Fun((
-          5,
+          6,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
@@ -1985,9 +2006,9 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::Method(4)),
+        ByteCodeTest::Code(AlignedByteCode::Method(5)),
         ByteCodeTest::Fun((
-          7,
+          8,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
@@ -1996,7 +2017,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::Method(6)),
+        ByteCodeTest::Code(AlignedByteCode::Method(7)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2024,11 +2046,12 @@ mod test {
     assert_fun_bytecode(
       fun,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Fun((
-          2,
+          3,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2036,9 +2059,9 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::StaticMethod(1)),
+        ByteCodeTest::Code(AlignedByteCode::StaticMethod(2)),
         ByteCodeTest::Fun((
-          4,
+          5,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2046,7 +2069,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::StaticMethod(3)),
+        ByteCodeTest::Code(AlignedByteCode::StaticMethod(4)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),

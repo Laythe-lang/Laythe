@@ -830,6 +830,7 @@ fn static_method() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/static_method/no_self.lay",
+      "language/static_method/not_inherited.lay",
       "language/static_method/too_many_arguments.lay",
       "language/static_method/too_many_parameters.lay",
     ],
@@ -898,8 +899,6 @@ fn super_() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/super/no_superclass_bind.lay",
-      "language/super/no_superclass_call.lay",
       "language/super/parenthesized.lay",
       "language/super/super_at_top_level.lay",
       "language/super/super_in_top_level_function.lay",

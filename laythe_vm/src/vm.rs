@@ -539,7 +539,6 @@ impl<'a> VmExecutor<'a> {
         ByteCode::Field => self.op_field(),
         ByteCode::StaticMethod => self.op_static_method(),
         ByteCode::Class => self.op_class(),
-        ByteCode::Inherit => self.op_inherit(),
         ByteCode::GetSuper => self.op_get_super(),
         ByteCode::CloseUpvalue => self.op_close_upvalue(),
         ByteCode::Return => self.op_return(),
@@ -834,13 +833,18 @@ impl<'a> VmExecutor<'a> {
   fn op_class(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
+    let super_class = self.peek(0);
+
+    if !super_class.is_class() {
+      return self.runtime_error("Superclass must be a class.");
+    }
 
     let class = val!(self.gc.manage(
       Class::new(
         &GcHooks::new(self),
         name,
         self.dep_manager.primitive_classes().class,
-        self.dep_manager.primitive_classes().object,
+        super_class.to_class(),
       ),
       self,
     ));
@@ -855,21 +859,6 @@ impl<'a> VmExecutor<'a> {
     let super_class = self.pop().to_class();
 
     self.bind_method(super_class, name)
-  }
-
-  /// Inherit a class by directly copying methods onto the subclass.
-  fn op_inherit(&mut self) -> Signal {
-    let mut class = self.peek(0).to_class();
-
-    let peek = self.peek(1);
-    if peek.is_class() {
-      class.inherit(&GcHooks::new(self), peek.to_class());
-
-      self.drop();
-      Signal::Ok
-    } else {
-      self.runtime_error("Superclass must be a class.")
-    }
   }
 
   /// Loop by performing an unconditional jump to a new instruction

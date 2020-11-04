@@ -100,7 +100,6 @@ pub fn disassemble_instruction(
     AlignedByteCode::GetSuper(constant) => {
       constant_instruction(stdio.stdout(), "GetSuper", chunk, constant, offset)
     }
-    AlignedByteCode::Inherit => simple_instruction(stdio.stdout(), "Inherit", offset),
     AlignedByteCode::Closure(constant) => {
       closure_instruction(stdio, "Closure", chunk, constant, offset)
     }
