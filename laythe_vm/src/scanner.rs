@@ -119,7 +119,7 @@ impl<'a> Scanner<'a> {
       "," => self.make_token_source(TokenKind::Comma),
       "." => self.make_token_source(TokenKind::Dot),
       "-" => {
-        if self.match_token(">") {
+        if self.match_char(">") {
           self.make_token_source(TokenKind::Arrow)
         } else {
           self.make_token_source(TokenKind::Minus)
@@ -131,28 +131,28 @@ impl<'a> Scanner<'a> {
       "/" => self.make_token_source(TokenKind::Slash),
       "*" => self.make_token_source(TokenKind::Star),
       "=" => {
-        if self.match_token("=") {
+        if self.match_char("=") {
           self.make_token_source(TokenKind::EqualEqual)
         } else {
           self.make_token_source(TokenKind::Equal)
         }
       }
       "<" => {
-        if self.match_token("=") {
+        if self.match_char("=") {
           self.make_token_source(TokenKind::LessEqual)
         } else {
           self.make_token_source(TokenKind::Less)
         }
       }
       ">" => {
-        if self.match_token("=") {
+        if self.match_char("=") {
           self.make_token_source(TokenKind::GreaterEqual)
         } else {
           self.make_token_source(TokenKind::Greater)
         }
       }
       "!" => {
-        if self.match_token("=") {
+        if self.match_char("=") {
           self.make_token_source(TokenKind::BangEqual)
         } else {
           self.make_token_source(TokenKind::Bang)
@@ -210,6 +210,21 @@ impl<'a> Scanner<'a> {
             self.advance_indices();
           }
         }
+      }
+    }
+
+    if self.match_char("e") || self.match_char("E") {
+      match self.peek() {
+        "+" | "-" => self.advance_indices(),
+        _ => (),
+      }
+
+      if !is_digit(self.peek()) {
+        self.error_token("Unterminated scientific notation.");
+      }
+
+      while !self.is_at_end() && is_digit(self.peek()) {
+        self.advance_indices();
       }
     }
 
@@ -493,7 +508,7 @@ impl<'a> Scanner<'a> {
   }
 
   /// match the current token against an expected
-  fn match_token(&mut self, expected: &str) -> bool {
+  fn match_char(&mut self, expected: &str) -> bool {
     if self.is_at_end() {
       return false;
     }
