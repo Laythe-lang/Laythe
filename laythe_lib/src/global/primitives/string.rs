@@ -191,7 +191,7 @@ fn string_index(hooks: &Hooks, string: &str, index: f64) -> LyResult<usize> {
     char_indices
       .nth(index as usize)
       .map(|(index, _)| index)
-      .unwrap_or(string.len())
+      .unwrap_or_else(|| string.len())
   } else {
     char_indices
       .rev()
