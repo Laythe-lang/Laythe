@@ -1,0 +1,20 @@
+import re from 'std/regexp';
+let RegExp = re.RegExp;
+
+let r1 = RegExp('a{3}');
+let r2 = RegExp('(\\d{3})-(\\d{3})-(\\d{4})');
+
+let captures1 = r1.captures('  aaa');
+
+assertEq(captures1.len(), 1);
+assertEq(captures1[0], 'aaa');
+assertEq(r1.captures(''), nil);
+
+let captures2 = r2.captures('1-123-456-7891');
+
+assertEq(captures2.len(), 4);
+assertEq(captures2[0], '123-456-7891');
+assertEq(captures2[1], '123');
+assertEq(captures2[2], '456');
+assertEq(captures2[3], '7891');
+assertEq(r2.captures('George Washington'), nil);

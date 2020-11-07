@@ -3,6 +3,8 @@ use crate::{
   support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
 };
 use laythe_core::{
+  constants::INDEX_GET,
+  constants::INDEX_SET,
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
   module::Module,
@@ -15,14 +17,21 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   CallResult, LyResult,
 };
-use laythe_env::{
-  managed::{Managed, Trace},
-};
+use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
 use std::io::Write;
 use std::{mem, slice::Iter};
 
 pub const LIST_CLASS_NAME: &str = "List";
+
+const LIST_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)]);
+
+const LIST_INDEX_SET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_SET, Arity::Fixed(2))
+  .with_params(&[
+    ParameterBuilder::new("index", ParameterKind::Number),
+    ParameterBuilder::new("val", ParameterKind::Any),
+  ]);
 
 const LIST_CLEAR: NativeMetaBuilder = NativeMetaBuilder::method("clear", Arity::Fixed(0));
 
@@ -47,7 +56,7 @@ const LIST_REMOVE: NativeMetaBuilder = NativeMetaBuilder::method("remove", Arity
 const LIST_INDEX: NativeMetaBuilder = NativeMetaBuilder::method("index", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("value", ParameterKind::Any)]);
 
-const LIST_SIZE: NativeMetaBuilder = NativeMetaBuilder::method("size", Arity::Fixed(0));
+const LIST_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
 const LIST_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
 // this may need a stack
@@ -64,8 +73,20 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 
   class.add_method(
     hooks,
-    hooks.manage_str(LIST_SIZE.name),
-    val!(to_dyn_native(hooks, ListSize::from(hooks))),
+    hooks.manage_str(LIST_INDEX_GET.name),
+    val!(to_dyn_native(hooks, ListIndexGet::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(LIST_INDEX_SET.name),
+    val!(to_dyn_native(hooks, ListIndexSet::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(LIST_LEN.name),
+    val!(to_dyn_native(hooks, ListLen::from(hooks))),
   );
 
   class.add_method(
@@ -201,9 +222,48 @@ impl Native for ListStr {
   }
 }
 
-native!(ListSize, LIST_SIZE);
+native!(ListIndexGet, LIST_INDEX_GET);
 
-impl Native for ListSize {
+impl Native for ListIndexGet {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    let rounded = args[0].to_num() as usize;
+    let list = this.unwrap().to_list();
+
+    if rounded >= list.len() {
+      return hooks.error(format!(
+        "Index out of bounds. list was length {} but attempted to index with {}.",
+        list.len(),
+        rounded
+      ));
+    }
+
+    Ok(list[rounded])
+  }
+}
+
+native!(ListIndexSet, LIST_INDEX_SET);
+
+impl Native for ListIndexSet {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+    let rounded = args[0].to_num() as usize;
+    let mut list = this.unwrap().to_list();
+
+    if rounded >= list.len() {
+      return hooks.error(format!(
+        "Index out of bounds. list was length {} but attempted to index with {}.",
+        list.len(),
+        rounded
+      ));
+    }
+
+    list[rounded] = args[1];
+    Ok(VALUE_NIL)
+  }
+}
+
+native!(ListLen, LIST_LEN);
+
+impl Native for ListLen {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
     Ok(val!(this.unwrap().to_list().len() as f64))
   }
@@ -402,6 +462,90 @@ impl Trace for ListIterator {
 mod test {
   use super::*;
 
+  mod index_get {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let list_index_get = ListIndexGet::from(&hooks);
+
+      assert_eq!(list_index_get.meta().name, "[]");
+      assert_eq!(list_index_get.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        list_index_get.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+      let list_index_get = ListIndexGet::from(&hooks);
+
+      let values = &[val!(0.0)];
+
+      let list = List::from(vec![VALUE_NIL, val!(10.0)]);
+      let this = hooks.manage(list);
+
+      let result = list_index_get.call(&mut hooks, Some(val!(this)), values);
+      match result {
+        Ok(r) => assert!(r.is_nil()),
+        Err(_) => assert!(false),
+      }
+
+      assert_eq!(this[0], VALUE_NIL)
+    }
+  }
+
+  mod index_set {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let list_index_set = ListIndexSet::from(&hooks);
+
+      assert_eq!(list_index_set.meta().name, "[]=");
+      assert_eq!(list_index_set.meta().signature.arity, Arity::Fixed(2));
+      assert_eq!(
+        list_index_set.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+      assert_eq!(
+        list_index_set.meta().signature.parameters[1].kind,
+        ParameterKind::Any
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+      let list_index_set = ListIndexSet::from(&hooks);
+
+      let values = &[val!(1.0), val!(false)];
+
+      let list = List::from(vec![VALUE_NIL, val!(10.0)]);
+      let this = hooks.manage(list);
+
+      let result = list_index_set.call(&mut hooks, Some(val!(this)), values);
+      match result {
+        Ok(r) => assert!(r.is_nil()),
+        Err(_) => assert!(false),
+      }
+
+      assert_eq!(this[1], val!(false))
+    }
+  }
+
   mod str {
     use super::*;
     use crate::support::{test_native_dependencies, MockedContext};
@@ -452,7 +596,7 @@ mod test {
     }
   }
 
-  mod size {
+  mod len {
     use super::*;
     use crate::support::MockedContext;
     use laythe_core::hooks::Hooks;
@@ -462,9 +606,9 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = Hooks::new(&mut context);
 
-      let list_size = ListSize::from(&hooks);
+      let list_size = ListLen::from(&hooks);
 
-      assert_eq!(list_size.meta().name, "size");
+      assert_eq!(list_size.meta().name, "len");
       assert_eq!(list_size.meta().signature.arity, Arity::Fixed(0));
     }
 
@@ -472,7 +616,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let list_size = ListSize::from(&hooks);
+      let list_size = ListLen::from(&hooks);
 
       let values = &[];
 
@@ -900,7 +1044,7 @@ mod test {
       match result {
         Ok(r) => {
           let list = r.to_list();
-          assert_eq!(list.len(), 5);
+          assert_eq!(list.len(), 4);
         }
         Err(_) => assert!(false),
       }

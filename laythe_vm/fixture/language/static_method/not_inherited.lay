@@ -1,0 +1,8 @@
+class A {
+  static example() {
+
+  }
+}
+
+class B : A {};
+B().example();

@@ -69,6 +69,7 @@ pub trait TypeVisitor {
   fn visit_type(&mut self, type_: &Type) -> Self::Result;
   fn visit_type_params(&mut self, type_params: &[TypeParam]) -> Self::Result;
   fn visit_type_member(&mut self, type_member: &TypeMember) -> Self::Result;
+  fn visit_type_method(&mut self, type_method: &TypeMethod) -> Self::Result;
   fn visit_union(&mut self, union: &Union) -> Self::Result;
   fn visit_intersection(&mut self, intersection: &Intersection) -> Self::Result;
   fn visit_list_type(&mut self, list_type: &ListType) -> Self::Result;
@@ -301,15 +302,23 @@ pub struct Trait {
   pub name: Token,
   pub params: Vec<TypeParam>,
   pub members: Vec<TypeMember>,
+  pub methods: Vec<TypeMethod>,
 }
 
 impl Trait {
-  pub fn new(range: Range, name: Token, params: Vec<TypeParam>, members: Vec<TypeMember>) -> Self {
+  pub fn new(
+    range: Range,
+    name: Token,
+    params: Vec<TypeParam>,
+    members: Vec<TypeMember>,
+    methods: Vec<TypeMethod>,
+  ) -> Self {
     Self {
       range,
       name,
       params,
       members,
+      methods,
     }
   }
 }
@@ -1113,6 +1122,29 @@ impl Ranged for TypeMember {
     self.type_.end()
   }
 }
+
+
+pub struct TypeMethod {
+  pub name: Token,
+  pub call_sig: CallSignature,
+}
+
+impl TypeMethod {
+  pub fn new(name: Token, call_sig: CallSignature) -> Self {
+    Self { name, call_sig }
+  }
+}
+
+impl Ranged for TypeMethod {
+  fn start(&self) -> u32 {
+    self.name.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.call_sig.end()
+  }
+}
+
 
 pub struct Union {
   pub lhs: Type,

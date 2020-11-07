@@ -46,7 +46,7 @@ fn closure() -> Result<(), std::io::Error> {
     &vec![
       "std_lib/global/closure/name.lay",
       "std_lib/global/closure/call.lay",
-      "std_lib/global/closure/size.lay",
+      "std_lib/global/closure/len.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -65,14 +65,17 @@ fn closure() -> Result<(), std::io::Error> {
 fn iter() -> Result<(), std::io::Error> {
   test_files(
     &vec![
+      "std_lib/global/iter/all.lay",
+      "std_lib/global/iter/any.lay",
+      "std_lib/global/iter/chain.lay",
       "std_lib/global/iter/each.lay",
       "std_lib/global/iter/filter.lay",
       "std_lib/global/iter/into.lay",
       "std_lib/global/iter/iter.lay",
+      "std_lib/global/iter/len.lay",
       "std_lib/global/iter/map.lay",
       "std_lib/global/iter/next.lay",
       "std_lib/global/iter/reduce.lay",
-      "std_lib/global/iter/size.lay",
       "std_lib/global/iter/str.lay",
       "std_lib/global/iter/zip.lay",
     ],
@@ -95,7 +98,7 @@ fn list() -> Result<(), std::io::Error> {
       "std_lib/global/list/pop.lay",
       "std_lib/global/list/push.lay",
       "std_lib/global/list/remove.lay",
-      "std_lib/global/list/size.lay",
+      "std_lib/global/list/len.lay",
       "std_lib/global/list/str.lay",
     ],
     ExecuteResult::Ok,
@@ -120,7 +123,7 @@ fn map() -> Result<(), std::io::Error> {
       "std_lib/global/map/iter.lay",
       "std_lib/global/map/remove.lay",
       "std_lib/global/map/set.lay",
-      "std_lib/global/map/size.lay",
+      "std_lib/global/map/len.lay",
       "std_lib/global/map/str.lay",
     ],
     ExecuteResult::Ok,
@@ -206,9 +209,12 @@ fn print() -> Result<(), std::io::Error> {
 fn str() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/global/str/str.lay",
       "std_lib/global/str/has.lay",
+      "std_lib/global/str/index.lay",
       "std_lib/global/str/iter.lay",
+      "std_lib/global/str/len.lay",
+      "std_lib/global/str/slice.lay",
+      "std_lib/global/str/str.lay",
     ],
     ExecuteResult::Ok,
   )?;

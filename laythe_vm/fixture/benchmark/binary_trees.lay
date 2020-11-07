@@ -23,7 +23,7 @@ class Tree {
 }
 
 let minDepth = 4;
-let maxDepth = 12;
+let maxDepth = 14;
 let stretchDepth = maxDepth + 1;
 
 let start = clock();

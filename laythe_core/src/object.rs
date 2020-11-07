@@ -1,6 +1,6 @@
 use crate::{
   chunk::{AlignedByteCode, Chunk},
-  constants::INIT,
+  constants::{INDEX_GET, INDEX_SET, INIT},
   dynamic_map::DynamicMap,
   hooks::GcHooks,
   module::Module,
@@ -472,7 +472,7 @@ impl<T> Default for List<T> {
   }
 }
 
-impl<T: Clone> List<T> {
+impl<T> List<T> {
   pub fn new() -> Self {
     Self(Vec::new())
   }
@@ -480,7 +480,9 @@ impl<T: Clone> List<T> {
   pub fn with_capacity(capacity: usize) -> Self {
     Self(Vec::with_capacity(capacity))
   }
+}
 
+impl<T: Clone> List<T> {
   pub fn extend_from_slice(&mut self, other: &[T]) {
     self.0.extend_from_slice(other)
   }
@@ -756,6 +758,8 @@ impl Manage for Closure {
 pub struct Class {
   pub name: Managed<SmolStr>,
   pub init: Option<Value>,
+  pub index_get: Option<Value>,
+  pub index_set: Option<Value>,
   methods: DynamicMap<Managed<SmolStr>, Value>,
   fields: DynamicMap<Managed<SmolStr>, u16>,
   meta_class: Option<Managed<Class>>,
@@ -778,6 +782,8 @@ impl Class {
     let mut class = Self {
       name,
       init: None,
+      index_get: None,
+      index_set: None,
       methods: DynamicMap::new(),
       fields: DynamicMap::new(),
       meta_class: Some(meta_class),
@@ -792,6 +798,8 @@ impl Class {
     Self {
       name,
       init: None,
+      index_get: None,
+      index_set: None,
       methods: DynamicMap::new(),
       fields: DynamicMap::new(),
       meta_class: None,
@@ -828,8 +836,11 @@ impl Class {
     name: Managed<SmolStr>,
     method: Value,
   ) -> Option<Value> {
-    if *name == INIT {
-      self.init = Some(method);
+    match name.as_str() {
+      INIT => self.init = Some(method),
+      INDEX_GET => self.index_get = Some(method),
+      INDEX_SET => self.index_set = Some(method),
+      _ => (),
     }
 
     hooks.grow(self, |class| class.methods.insert(name, method))
@@ -937,7 +948,7 @@ impl Manage for Class {
 #[derive(PartialEq, Clone)]
 pub struct Instance {
   pub class: Managed<Class>,
-  fields: Box<[Value]>, // fields: DynamicMap<Managed<SmolStr>, Value>,
+  fields: Box<[Value]>,
 }
 
 impl Instance {
@@ -967,6 +978,20 @@ impl Instance {
       .class
       .get_field_index(&name)
       .map(|index| &self.fields[index as usize])
+  }
+}
+
+impl Index<usize> for Instance {
+  type Output = Value;
+
+  fn index(&self, index: usize) -> &Value {
+    &self.fields[index]
+  }
+}
+
+impl IndexMut<usize> for Instance {
+  fn index_mut(&mut self, index: usize) -> &mut Value {
+    &mut self.fields[index]
   }
 }
 

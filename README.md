@@ -36,13 +36,6 @@ cargo run [--release]
 cargo run [--release] [filepath]
 ```
 
-If you have the the flamegraph cargo subcommand you can profile a script by the following.
-
-```
-cargo flamegraph --bin=laythe [filepath]
-```
-
-
 # Notable differences
 
 I've continued to work on the language with a few extensions. Below are some of the differences

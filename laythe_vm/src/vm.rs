@@ -15,7 +15,7 @@ use laythe_core::{
   object::{Class, Closure, Fun, Instance, List, Method, Upvalue},
   package::{Import, Package},
   signature::{ArityError, Environment, ParameterKind, SignatureError},
-  utils::{is_falsey, ptr_len, use_sentinel_nan},
+  utils::{is_falsey, ptr_len},
   val,
   value::VALUE_TRUE,
   value::{Value, ValueKind, VALUE_NIL},
@@ -539,7 +539,6 @@ impl<'a> VmExecutor<'a> {
         ByteCode::Field => self.op_field(),
         ByteCode::StaticMethod => self.op_static_method(),
         ByteCode::Class => self.op_class(),
-        ByteCode::Inherit => self.op_inherit(),
         ByteCode::GetSuper => self.op_get_super(),
         ByteCode::CloseUpvalue => self.op_close_upvalue(),
         ByteCode::Return => self.op_return(),
@@ -616,8 +615,9 @@ impl<'a> VmExecutor<'a> {
 
   /// read a u8 out of the bytecode
   #[inline]
+  #[no_mangle]
   fn read_byte(&mut self) -> u8 {
-    let byte = unsafe { *self.ip };
+    let byte = unsafe { ptr::read(self.ip) };
     self.update_ip(1);
     byte
   }
@@ -833,13 +833,18 @@ impl<'a> VmExecutor<'a> {
   fn op_class(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
+    let super_class = self.peek(0);
+
+    if !super_class.is_class() {
+      return self.runtime_error("Superclass must be a class.");
+    }
 
     let class = val!(self.gc.manage(
       Class::new(
         &GcHooks::new(self),
         name,
         self.dep_manager.primitive_classes().class,
-        self.dep_manager.primitive_classes().object,
+        super_class.to_class(),
       ),
       self,
     ));
@@ -854,21 +859,6 @@ impl<'a> VmExecutor<'a> {
     let super_class = self.pop().to_class();
 
     self.bind_method(super_class, name)
-  }
-
-  /// Inherit a class by directly copying methods onto the subclass.
-  fn op_inherit(&mut self) -> Signal {
-    let mut class = self.peek(0).to_class();
-
-    let peek = self.peek(1);
-    if peek.is_class() {
-      class.inherit(&GcHooks::new(self), peek.to_class());
-
-      self.drop();
-      Signal::Ok
-    } else {
-      self.runtime_error("Superclass must be a class.")
-    }
   }
 
   /// Loop by performing an unconditional jump to a new instruction
@@ -907,49 +897,23 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn op_set_index(&mut self) -> Signal {
-    let target = self.peek(2);
-    let index = self.peek(1);
+    let receiver = self.peek(2 as isize);
 
-    if target.is_list() && index.is_num() {
-      let mut list = target.to_list();
-      let num = index.to_num();
+    let class = self
+      .dep_manager
+      .primitive_classes()
+      .for_value(receiver, receiver.kind());
 
-      let rounded = num as usize;
-      if rounded >= list.len() {
-        return self.runtime_error(&format!(
-          "Index out of bounds. list was length {} but attempted to index with {}.",
-          list.len(),
-          rounded
-        ));
-      }
-
-      list[rounded] = self.pop();
-      self.drop();
-      return Signal::Ok;
-    } else if target.is_map() {
-      let mut map = target.to_map();
-
-      if index.is_num() {
-        let num = index.to_num();
-        let value = self.pop();
-        self.gc.grow(&mut map, self, |map| {
-          map.insert(val!(use_sentinel_nan(num)), value)
-        });
+    match class.index_set {
+      Some(index_get) => {
+        let value = self.peek(0);
+        let signal = self.resolve_call(index_get, 2);
         self.drop();
-        return Signal::Ok;
-      } else {
-        let value = self.pop();
-        self.gc.grow(&mut map, self, |map| map.insert(index, value));
-        self.drop();
-        return Signal::Ok;
+        self.push(value);
+        signal
       }
+      None => self.runtime_error(&format!("{} has not method []=.", class.name)),
     }
-
-    self.runtime_error(&format!(
-      "{} cannot be indexed by {}.",
-      target.value_type(),
-      index.value_type()
-    ))
   }
 
   fn op_set_global(&mut self) -> Signal {
@@ -1020,51 +984,17 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn op_get_index(&mut self) -> Signal {
-    let index = self.pop();
-    let target = self.pop();
+    let receiver = self.peek(1 as isize);
 
-    if target.is_list() && index.is_num() {
-      let list = target.to_list();
-      let num = index.to_num();
+    let class = self
+      .dep_manager
+      .primitive_classes()
+      .for_value(receiver, receiver.kind());
 
-      let rounded = num as usize;
-      if rounded >= list.len() {
-        return self.runtime_error(&format!(
-          "Index out of bounds. list was length 0 but attempted to index with {}.",
-          rounded
-        ));
-      }
-
-      self.push(list[rounded]);
-      return Signal::Ok;
-    } else if target.is_map() {
-      let map = target.to_map();
-
-      if index.is_num() {
-        let num = index.to_num();
-        return match map.get(&val!(use_sentinel_nan(num))) {
-          Some(value) => {
-            self.push(*value);
-            Signal::Ok
-          }
-          None => self.runtime_error(&format!("Key {} does not exist in map", index)),
-        };
-      } else {
-        return match map.get(&index) {
-          Some(value) => {
-            self.push(*value);
-            Signal::Ok
-          }
-          None => self.runtime_error(&format!("Key {} does not exist in map", index)),
-        };
-      }
+    match class.index_get {
+      Some(index_get) => self.resolve_call(index_get, 1),
+      None => self.runtime_error(&format!("{} has not method [].", class.name)),
     }
-
-    self.runtime_error(&format!(
-      "{} cannot be indexed with {}.",
-      target.value_type(),
-      index.value_type()
-    ))
   }
 
   fn op_get_global(&mut self) -> Signal {
@@ -1612,39 +1542,52 @@ impl<'a> VmExecutor<'a> {
   fn check_native_arity(&mut self, native_meta: &NativeMeta, args: &[Value]) -> Option<Signal> {
     match native_meta.signature.check(args) {
       Ok(()) => None,
-      Err(err) => match err {
-        SignatureError::LengthFixed(expected) => Some(self.runtime_error(&format!(
-          "{} expected {} argument(s) but received {}.",
-          native_meta.name,
-          expected,
-          args.len(),
-        ))),
-        SignatureError::LengthVariadic(expected) => Some(self.runtime_error(&format!(
-          "{} expected at least {} argument(s) but received {}.",
-          native_meta.name,
-          expected,
-          args.len(),
-        ))),
-        SignatureError::LengthDefaultLow(expected) => Some(self.runtime_error(&format!(
-          "{} expected at least {} argument(s) but received {}.",
-          native_meta.name,
-          expected,
-          args.len(),
-        ))),
-        SignatureError::LengthDefaultHigh(expected) => Some(self.runtime_error(&format!(
-          "{} expected at most {} argument(s) but received {}.",
-          native_meta.name,
-          expected,
-          args.len(),
-        ))),
-        SignatureError::TypeWrong(parameter) => Some(self.runtime_error(&format!(
-          "{} parameter {} must be a {} not a {}.",
-          native_meta.name,
-          native_meta.signature.parameters[parameter as usize].name,
-          native_meta.signature.parameters[parameter as usize].kind,
-          ParameterKind::from(args[parameter as usize])
-        ))),
-      },
+      Err(err) => {
+        let callable_type = if native_meta.is_method {
+          "method"
+        } else {
+          "function"
+        };
+
+        match err {
+          SignatureError::LengthFixed(expected) => Some(self.runtime_error(&format!(
+            "{} {} expected {} argument(s) but received {}.",
+            callable_type,
+            native_meta.name,
+            expected,
+            args.len(),
+          ))),
+          SignatureError::LengthVariadic(expected) => Some(self.runtime_error(&format!(
+            "{} {} expected at least {} argument(s) but received {}.",
+            callable_type,
+            native_meta.name,
+            expected,
+            args.len(),
+          ))),
+          SignatureError::LengthDefaultLow(expected) => Some(self.runtime_error(&format!(
+            "{} {} expected at least {} argument(s) but received {}.",
+            callable_type,
+            native_meta.name,
+            expected,
+            args.len(),
+          ))),
+          SignatureError::LengthDefaultHigh(expected) => Some(self.runtime_error(&format!(
+            "{} {} expected at most {} argument(s) but received {}.",
+            callable_type,
+            native_meta.name,
+            expected,
+            args.len(),
+          ))),
+          SignatureError::TypeWrong(parameter) => Some(self.runtime_error(&format!(
+            "{} {}'s parameter {} required a {} but received a {}.",
+            callable_type,
+            native_meta.name,
+            native_meta.signature.parameters[parameter as usize].name,
+            native_meta.signature.parameters[parameter as usize].kind,
+            ParameterKind::from(args[parameter as usize])
+          ))),
+        }
+      }
     }
   }
 

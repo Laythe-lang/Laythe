@@ -8,5 +8,5 @@ fn f2(x) {
   print(x);
 }
 
-assertEq(f1.size(), 3);
-assertEq(f2.size(), 1);
+assertEq(f1.len(), 3);
+assertEq(f2.len(), 1);

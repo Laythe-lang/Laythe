@@ -141,9 +141,6 @@ pub enum AlignedByteCode {
   /// Access this classes super
   GetSuper(u16),
 
-  /// Add inheritance to class
-  Inherit,
-
   /// Close an upvalue by moving it to the stack
   CloseUpvalue,
 
@@ -226,7 +223,6 @@ impl AlignedByteCode {
       Self::StaticMethod(slot) => push_op_u16(code, ByteCode::StaticMethod, slot),
       Self::Class(slot) => push_op_u16(code, ByteCode::Class, slot),
       Self::GetSuper(slot) => push_op_u16(code, ByteCode::GetSuper, slot),
-      Self::Inherit => push_op(code, ByteCode::Inherit),
       Self::CloseUpvalue => push_op(code, ByteCode::CloseUpvalue),
       Self::UpvalueIndex(index) => {
         let encoded: u16 = unsafe { mem::transmute(index) };
@@ -361,7 +357,6 @@ impl AlignedByteCode {
         AlignedByteCode::GetSuper(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::Inherit => (AlignedByteCode::Inherit, offset + 1),
       ByteCode::CloseUpvalue => (AlignedByteCode::CloseUpvalue, offset + 1),
       ByteCode::Equal => (AlignedByteCode::Equal, offset + 1),
       ByteCode::NotEqual => (AlignedByteCode::NotEqual, offset + 1),
@@ -510,9 +505,6 @@ pub enum ByteCode {
 
   /// Access this classes super
   GetSuper,
-
-  /// Add inheritance to class
-  Inherit,
 
   /// Close an upvalue by moving it to the stack
   CloseUpvalue,
@@ -803,7 +795,6 @@ mod test {
         (3, AlignedByteCode::StaticMethod(4912)),
         (3, AlignedByteCode::Class(64136)),
         (3, AlignedByteCode::GetSuper(24)),
-        (1, AlignedByteCode::Inherit),
         (1, AlignedByteCode::CloseUpvalue),
         (1, AlignedByteCode::Equal),
         (1, AlignedByteCode::NotEqual),

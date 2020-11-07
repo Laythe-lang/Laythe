@@ -551,6 +551,7 @@ impl TypeVisitor for AstPrint {
 
     self.buffer.push_str(" = ");
     self.visit_type(&type_decl.type_);
+    self.buffer.push_str(";");
   }
 
   fn visit_type(&mut self, type_: &Type) -> Self::Result {
@@ -614,6 +615,12 @@ impl TypeVisitor for AstPrint {
     self.buffer.push_str(": ");
     self.visit_type(&type_member.type_);
     self.buffer.push(';');
+  }
+
+  fn visit_type_method(&mut self, type_member: &TypeMethod) -> Self::Result {
+    self.pad();
+    self.buffer.push_str(type_member.name.lexeme.as_str());
+    self.visit_call_sig(&type_member.call_sig);
   }
 
   fn visit_type_ref(&mut self, type_ref: &TypeRef) -> Self::Result {

@@ -1,0 +1,2 @@
+assertEq("".len(), 0);
+assertEq("abc123".len(), 6);

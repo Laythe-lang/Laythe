@@ -58,12 +58,12 @@ impl<'a> Parser<'a> {
       scope_depth: 0,
       loop_depth: 0,
       previous: Token {
-        lexeme: SmolStr::new_inline_from_ascii(5, b"error"),
+        lexeme: SmolStr::new_inline("error"),
         line: 0,
         kind: TokenKind::Error,
       },
       current: Token {
-        lexeme: SmolStr::new_inline_from_ascii(5, b"error"),
+        lexeme: SmolStr::new_inline("error"),
         line: 0,
         kind: TokenKind::Error,
       },
@@ -234,7 +234,7 @@ impl<'a> Parser<'a> {
               let type_ = self.type_()?;
               self.consume(
                 TokenKind::Semicolon,
-                "Expected ';' after class member declration.",
+                "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
             }
@@ -337,15 +337,57 @@ impl<'a> Parser<'a> {
     self.consume(TokenKind::LeftBrace, "Expected '{' after trait name.")?;
 
     let mut members: Vec<TypeMember> = vec![];
+    let mut methods: Vec<TypeMethod> = vec![];
+
     while !self.check(TokenKind::RightBrace) && !self.check(TokenKind::Eof) {
-      members.push(self.type_member()?);
+      // We need to do a lookahead for ':' to determine
+      // if we're looking a member or a method
+      self.consume(
+        TokenKind::Identifier,
+        "Expected method or member declaration",
+      )?;
+      let name = self.previous.clone();
+
+      match self.current.kind {
+        TokenKind::Colon => {
+          self.advance()?;
+          let type_ = self.type_()?;
+          self.consume(
+            TokenKind::Semicolon,
+            "Expected ';' after class member declaration.",
+          )?;
+          members.push(TypeMember::new(name, type_));
+        }
+        TokenKind::Less | TokenKind::LeftParen => {
+          self.advance()?;
+          let type_params = if self.match_kind(TokenKind::Less)? {
+            self.type_params()?
+          } else {
+            vec![]
+          };
+          let call_sig = self.call_signature(TokenKind::RightParen, type_params)?;
+          self.consume(
+            TokenKind::Semicolon,
+            "Expected ';' after class member declaration.",
+          )?;
+          methods.push(TypeMethod::new(name, call_sig));
+        }
+        _ => self.error_at(
+          self.current.clone(),
+          "Expected member or method declaration inside trait.",
+        )?,
+      }
     }
+
+    self.consume(TokenKind::RightBrace, "Expected '}' after trait body.")?;
 
     let range = Range {
       start: name.line,
       end: self.previous.line,
     };
-    Ok(Symbol::Trait(Trait::new(range, name, params, members)))
+    Ok(Symbol::Trait(Trait::new(
+      range, name, params, members, methods,
+    )))
   }
 
   /// Parse a trait declaration
@@ -358,6 +400,8 @@ impl<'a> Parser<'a> {
     } else {
       Ok(vec![])
     }?;
+
+    self.consume(TokenKind::Equal, "Expected '=' after type name.")?;
 
     let type_ = self.type_()?;
     self.consume(TokenKind::Semicolon, "Expected ';' after type declaration.")?;
@@ -1090,22 +1134,6 @@ impl<'a> Parser<'a> {
     }
   }
 
-  /// Parse a type member
-  fn type_member(&mut self) -> ParseResult<TypeMember> {
-    self.consume(TokenKind::Identifier, "Expected identifer for type member.")?;
-    let name = self.previous.clone();
-
-    self.consume(
-      TokenKind::Colon,
-      "Expected ':' after identifer for type member.",
-    )?;
-    let type_ = self.type_()?;
-
-    self.consume(TokenKind::Semicolon, "Expected ';' after type member type.")?;
-
-    Ok(TypeMember::new(name, type_))
-  }
-
   /// Parse a class type
   fn class_type(&mut self) -> ParseResult<ClassType> {
     let name = self.previous.clone();
@@ -1325,8 +1353,10 @@ enum TypeInfix {
   Union,
 }
 
+const TOKEN_VARIANTS: usize = 56;
+
 /// The rules for infix and prefix operators
-const PREFIX_TABLE: [Rule<Prefix, Precedence>; 56] = [
+const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(Some(Prefix::Grouping), Precedence::Call),
   // LEFT_PAREN
   Rule::new(None, Precedence::None),
@@ -1442,7 +1472,7 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; 56] = [
 ];
 
 /// The rules for infix and prefix operators
-const INFIX_TABLE: [Rule<Infix, Precedence>; 56] = [
+const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(Some(Infix::Call), Precedence::Call),
   // LEFT_PAREN
   Rule::new(None, Precedence::None),
@@ -1558,7 +1588,7 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; 56] = [
 ];
 
 /// The rules for infix and prefix operators
-const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; 54] = [
+const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(Some(TypePrefix::Fun), TypePrecedence::Primary),
   // LEFT_PAREN
   Rule::new(None, TypePrecedence::None),
@@ -1644,6 +1674,10 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; 54] = [
   Rule::new(None, TypePrecedence::None),
   // RETURN
   Rule::new(None, TypePrecedence::None),
+  // BREAK
+  Rule::new(None, TypePrecedence::None),
+  // CONTINUE
+  Rule::new(None, TypePrecedence::None),
   // SUPER
   Rule::new(None, TypePrecedence::None),
   // SELF
@@ -1670,7 +1704,7 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; 54] = [
 ];
 
 /// The rules for infix and prefix operators
-const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; 54] = [
+const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // LEFT_PAREN
   Rule::new(None, TypePrecedence::None),
@@ -1755,6 +1789,10 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; 54] = [
   // OR
   Rule::new(None, TypePrecedence::None),
   // RETURN
+  Rule::new(None, TypePrecedence::None),
+  // BREAK
+  Rule::new(None, TypePrecedence::None),
+  // CONTINUE
   Rule::new(None, TypePrecedence::None),
   // SUPER
   Rule::new(None, TypePrecedence::None),
@@ -2106,6 +2144,37 @@ mod test {
         static sayHi() -> string 'hi'
         static sayBye() -> string 'bye'
       }
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn trait_empty() {
+    let example = "
+      trait A {
+      }
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn trait_fields() {
+    let example = "
+      trait A {
+        a: bool;
+        b: (some: bool) -> number;
+      }
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn type_basic() {
+    let example = "
+      type A = bool;
     ";
 
     test(example);

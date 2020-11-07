@@ -14,12 +14,12 @@ name = "laythe_vm"
 path = "src/lib.rs"
 
 [dependencies]
-laythe_core = { path = "../laythe_core", features = ["nan_boxing"]  }
+laythe_core = { path = "../laythe_core", features=["nan_boxing"] }
 laythe_lib = { path = "../laythe_lib" }
 laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }
 fnv = "1.0.3"
-smol_str = "0.1.16"
+smol_str = "0.1.17"
 
 [dev-dependencies]
 criterion = "0.3"

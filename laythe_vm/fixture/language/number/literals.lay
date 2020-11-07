@@ -5,3 +5,6 @@ assertEq(-0, 0 * -1);      // expect: -0
 
 assertEq(123.456, 123456 / 1000); // expect: 123.456
 assertEq(-0.001, 0 - 0.001);  // expect: -0.001
+assertEq(3e3, 3000);
+assertEq(9e+0, 9);
+assertEq(1.4e-2, 0.014);
