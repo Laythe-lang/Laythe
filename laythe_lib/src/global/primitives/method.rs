@@ -1,6 +1,7 @@
 use crate::{
   native,
   support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
+  InitResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -10,7 +11,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  CallResult, LyResult,
+  Call,
 };
 use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
@@ -28,12 +29,12 @@ pub fn declare_method_class(
   hooks: &GcHooks,
   module: &mut Module,
   package: &Package,
-) -> LyResult<()> {
+) -> InitResult<()> {
   let method_class = default_class_inheritance(hooks, package, METHOD_CLASS_NAME)?;
   export_and_insert(hooks, module, method_class.name, val!(method_class))
 }
 
-pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
   let mut class = load_class_from_module(hooks, module, METHOD_CLASS_NAME)?;
 
   class.add_method(
@@ -76,7 +77,7 @@ impl MetaData for MethodName {
 }
 
 impl Native for MethodName {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let method = this.unwrap().to_method().method;
 
     hooks
@@ -100,7 +101,7 @@ impl Trace for MethodName {
 native!(MethodCall, METHOD_CALL);
 
 impl Native for MethodCall {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let method = this.unwrap().to_method();
     hooks.call_method(method.receiver, method.method, args)
   }
@@ -151,8 +152,8 @@ mod test {
       let result1 = method_name.call(&mut hooks, Some(val!(method)), &[]);
 
       match result1 {
-        Ok(r) => assert_eq!(&*r.to_str(), "example"),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(&*r.to_str(), "example"),
+        _ => assert!(false),
       }
     }
   }
@@ -192,8 +193,8 @@ mod test {
       let result1 = method_call.call(&mut hooks, Some(val!(method)), &[]);
 
       match result1 {
-        Ok(r) => assert_eq!(r.to_num(), 14.3),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(r.to_num(), 14.3),
+        _ => assert!(false),
       }
     }
   }

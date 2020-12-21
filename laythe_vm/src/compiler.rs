@@ -46,7 +46,6 @@ pub struct Local {
 pub struct ClassInfo {
   fun_kind: Option<FunKind>,
   fields: Vec<SmolStr>,
-  has_super_class: bool,
   name: Option<Token>,
 }
 
@@ -55,7 +54,6 @@ impl DebugHeap for ClassInfo {
     f.debug_struct("ClassInfo")
       .field("fun_kind", &self.fun_kind)
       .field("fields", &self.fields)
-      .field("has_super_class", &self.has_super_class)
       .field("name", &self.name)
       .finish()
   }
@@ -77,6 +75,7 @@ impl Manage for ClassInfo {
 
 #[derive(Debug, Clone, Trace)]
 pub struct LoopInfo {
+  scope_depth: i16,
   start: usize,
   breaks: Vec<usize>,
 }
@@ -84,6 +83,7 @@ pub struct LoopInfo {
 impl DebugHeap for LoopInfo {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
     f.debug_struct("LoopInfo")
+      .field("scope_depth", &self.scope_depth)
       .field("start", &self.start)
       .field("breaks", &self.breaks)
       .finish()
@@ -302,21 +302,22 @@ impl<'a> Compiler<'a> {
   /// Decrease the scope depth by 1
   fn end_scope(&mut self, end_line: u32) {
     self.scope_depth -= 1;
-    self.drop_locals(end_line);
+    self.local_count = self.drop_locals(end_line, self.scope_depth);
   }
 
-  fn drop_locals(&mut self, line: u32) {
-    let mut idx = self.local_count;
+  /// Drop all locals to a specified scope depth
+  fn drop_locals(&mut self, line: u32, scope_depth: i16) -> usize {
+    let mut drop_idx = self.local_count;
     let mut no_captures = true;
 
-    while idx > 0 && self.locals[idx - 1].depth > self.scope_depth {
-      no_captures = no_captures && !self.locals[idx - 1].is_captured;
-      idx -= 1;
+    while drop_idx > 0 && self.locals[drop_idx - 1].depth > scope_depth {
+      no_captures = no_captures && !self.locals[drop_idx - 1].is_captured;
+      drop_idx -= 1;
     }
 
     // if we didn't capture anything emit dropN instruction
     if no_captures {
-      let dropped = self.local_count - idx;
+      let dropped = self.local_count - drop_idx;
 
       match dropped {
         0 => (),
@@ -324,19 +325,23 @@ impl<'a> Compiler<'a> {
         _ => self.emit_byte(AlignedByteCode::DropN(dropped as u8), line),
       }
 
-      self.local_count = idx;
-      return;
+      return drop_idx;
     }
 
+    let mut idx = self.local_count;
+
     // otherwise emit normal drop and close upvalues
-    while self.local_count > 0 && self.locals[self.local_count - 1].depth > self.scope_depth {
-      if self.locals[self.local_count - 1].is_captured {
+    while idx > 0 && self.locals[idx - 1].depth > scope_depth {
+      if self.locals[idx - 1].is_captured {
         self.emit_byte(AlignedByteCode::CloseUpvalue, line)
       } else {
         self.emit_byte(AlignedByteCode::Drop, line);
       }
-      self.local_count -= 1;
+
+      idx -= 1;
     }
+
+    return drop_idx;
   }
 
   /// Mark a variable initialized
@@ -754,11 +759,10 @@ impl<'a> Compiler<'a> {
     self.define_variable(name_constant, name.end());
 
     // set this class as the current class compiler
-    let mut class_compiler = self.hooks.manage(ClassInfo {
+    let class_compiler = self.hooks.manage(ClassInfo {
       name: class.name.clone(),
       fun_kind: None,
       fields: vec![],
-      has_super_class: false,
     });
     let enclosing_class = mem::replace(&mut self.class_info, Some(class_compiler));
 
@@ -771,10 +775,6 @@ impl<'a> Compiler<'a> {
     });
 
     self.define_variable(0, line);
-
-    // indicate this class is a subclass
-    class_compiler.has_super_class = true;
-
     self.variable(&name, false);
 
     // process the initializer
@@ -800,9 +800,7 @@ impl<'a> Compiler<'a> {
     self.emit_byte(AlignedByteCode::Drop, class.end());
 
     // if we have a super drop the extra scope with super
-    if class_compiler.has_super_class {
-      self.end_scope(class.end());
-    }
+    self.end_scope(class.end());
 
     // restore the enclosing class compiler
     self.class_info = enclosing_class;
@@ -969,6 +967,7 @@ impl<'a> Compiler<'a> {
       let loop_start = self_.current_chunk().instructions.len();
 
       let loop_info = self_.hooks.manage(LoopInfo {
+        scope_depth: self_.scope_depth,
         start: loop_start,
         breaks: vec![],
       });
@@ -1028,6 +1027,7 @@ impl<'a> Compiler<'a> {
 
     // set this class as the current class compiler
     let loop_info = self.hooks.manage(LoopInfo {
+      scope_depth: self.scope_depth,
       start: loop_start,
       breaks: vec![],
     });
@@ -1091,7 +1091,7 @@ impl<'a> Compiler<'a> {
       .loop_info
       .expect("Parser should have caught the loop constraint");
 
-    self.drop_locals(continue_.end());
+    self.drop_locals(continue_.end(), loop_info.scope_depth);
     self.emit_loop(loop_info.start, continue_.line)
   }
 
@@ -1101,7 +1101,7 @@ impl<'a> Compiler<'a> {
       .loop_info
       .expect("Parser should have caught the loop constraint");
 
-    self.drop_locals(break_.end());
+    self.drop_locals(break_.end(), loop_info.scope_depth);
     let offset = self.emit_jump(AlignedByteCode::Jump(0), break_.line);
     loop_info.breaks.push(offset);
   }
@@ -1372,19 +1372,11 @@ impl<'a> Compiler<'a> {
 
   /// Compile the super token
   fn super_(&mut self, super_: &ast::Super, trailers: &[Trailer]) -> bool {
-    match self.class_info {
-      None => self.error(
+    if self.class_info.is_none() {
+      self.error(
         "Cannot use 'super' outside of a class.",
         Some(&super_.super_),
-      ),
-      Some(class) => {
-        if !class.has_super_class {
-          self.error(
-            "Cannot use 'super' in a class with no superclass.",
-            Some(&super_.super_),
-          );
-        }
-      }
+      );
     }
 
     let name = self.identifier_constant(&super_.access);
@@ -3077,7 +3069,7 @@ mod test {
 
   #[test]
   fn op_negate() {
-    let example = "-15;";
+    let example = "-(15);";
 
     let context = TestContext::default();
     let fun = test_compile(example, &context);

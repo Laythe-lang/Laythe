@@ -1,4 +1,8 @@
-use crate::{native, support::export_and_insert};
+use crate::{
+  native,
+  support::{export_and_insert, to_dyn_native},
+  InitResult,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
@@ -6,7 +10,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  CallResult, LyResult,
+  Call,
 };
 use laythe_env::managed::Trace;
 use std::io::Write;
@@ -31,9 +35,14 @@ const REM_META: NativeMetaBuilder = NativeMetaBuilder::fun("rem", Arity::Fixed(2
   ParameterBuilder::new("divisor", ParameterKind::Number),
 ]);
 
+const POW_META: NativeMetaBuilder = NativeMetaBuilder::fun("pow", Arity::Fixed(2)).with_params(&[
+  ParameterBuilder::new("val", ParameterKind::Number),
+  ParameterBuilder::new("power", ParameterKind::Number),
+]);
+
 const RAND_META: NativeMetaBuilder = NativeMetaBuilder::fun("rand", Arity::Fixed(0));
 
-pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
+pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> InitResult<()> {
   export_and_insert(
     hooks,
     self_module,
@@ -52,46 +61,53 @@ pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> LyResul
     hooks,
     self_module,
     hooks.manage_str(SIN_META.name),
-    val!(hooks.manage(Box::new(Sin::from(hooks)) as Box<dyn Native>)),
+    val!(to_dyn_native(hooks, Sin::from(hooks))),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(COS_META.name),
-    val!(hooks.manage(Box::new(Cos::from(hooks)) as Box<dyn Native>)),
+    val!(to_dyn_native(hooks, Cos::from(hooks))),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(LN_META.name),
-    val!(hooks.manage(Box::new(Ln::from(hooks)) as Box<dyn Native>)),
+    val!(to_dyn_native(hooks, Ln::from(hooks))),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(ABS_META.name),
-    val!(hooks.manage(Box::new(Abs::from(hooks)) as Box<dyn Native>)),
+    val!(to_dyn_native(hooks, Abs::from(hooks))),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(REM_META.name),
-    val!(hooks.manage(Box::new(Rem::from(hooks)) as Box<dyn Native>)),
+    val!(to_dyn_native(hooks, Rem::from(hooks))),
+  )?;
+
+  export_and_insert(
+    hooks,
+    self_module,
+    hooks.manage_str(POW_META.name),
+    val!(to_dyn_native(hooks, Pow::from(hooks))),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(RAND_META.name),
-    val!(hooks.manage(Box::new(Rand::from(hooks)) as Box<dyn Native>)),
+    val!(to_dyn_native(hooks, Rand::from(hooks))),
   )
 }
 
-pub fn define_math_module(_: &GcHooks, _: &mut Module) -> LyResult<()> {
+pub fn define_math_module(_: &GcHooks, _: &mut Module) -> InitResult<()> {
   Ok(())
 }
 
@@ -99,14 +115,14 @@ native!(Sin, SIN_META);
 
 impl Native for Sin {
   #[cfg(not(feature = "wasm"))]
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    Ok(val!(args[0].to_num().sin()))
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_num().sin()))
   }
 
   #[cfg(feature = "wasm")]
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     use js_sys::Math::sin;
-    Ok(val!(sin(args[0].to_num())))
+    Call::Ok(val!(sin(args[0].to_num())))
   }
 }
 
@@ -114,38 +130,46 @@ native!(Cos, COS_META);
 
 impl Native for Cos {
   #[cfg(not(feature = "wasm"))]
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    Ok(val!(args[0].to_num().cos()))
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_num().cos()))
   }
 
   #[cfg(feature = "wasm")]
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     use js_sys::Math::cos;
-    Ok(val!(cos(args[0].to_num())))
+    Call::Ok(val!(cos(args[0].to_num())))
   }
 }
 
 native!(Ln, LN_META);
 
 impl Native for Ln {
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    Ok(val!(args[0].to_num().ln()))
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_num().ln()))
   }
 }
 
 native!(Abs, ABS_META);
 
 impl Native for Abs {
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    Ok(val!(args[0].to_num().abs()))
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_num().abs()))
   }
 }
 
 native!(Rem, REM_META);
 
 impl Native for Rem {
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    Ok(val!(args[0].to_num() % args[1].to_num()))
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_num() % args[1].to_num()))
+  }
+}
+
+native!(Pow, POW_META);
+
+impl Native for Pow {
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_num().powf(args[1].to_num())))
   }
 }
 
@@ -153,17 +177,17 @@ native!(Rand, RAND_META);
 
 impl Native for Rand {
   #[cfg(not(feature = "wasm"))]
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let val: f64 = rng.gen_range(0.0, 1.0);
-    Ok(val!(val))
+    Call::Ok(val!(val))
   }
 
   #[cfg(feature = "wasm")]
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     use js_sys::Math::random;
-    Ok(val!(random()))
+    Call::Ok(val!(random()))
   }
 }
 
@@ -197,15 +221,11 @@ mod test {
 
       let abs = Abs::from(&hooks.as_gc());
 
-      match abs.call(&mut hooks, None, &[val!(-2.0)]) {
-        Ok(res) => assert_eq!(res.to_num(), 2.0),
-        Err(_) => panic!(),
-      };
+      let r = abs.call(&mut hooks, None, &[val!(-2.0)]).unwrap();
+      assert_eq!(r.to_num(), 2.0);
 
-      match abs.call(&mut hooks, None, &[val!(2.0)]) {
-        Ok(res) => assert_eq!(res.to_num(), 2.0),
-        Err(_) => panic!(),
-      };
+      let r = abs.call(&mut hooks, None, &[val!(2.0)]).unwrap();
+      assert_eq!(r.to_num(), 2.0)
     }
   }
 
@@ -239,24 +259,17 @@ mod test {
       let rem = Rem::from(&hooks);
       let values = &[val!(3.0), val!(2.0)];
 
-      match rem.call(&mut hooks, None, values) {
-        Ok(res) => assert_eq!(res.to_num(), 1.0),
-        Err(_) => panic!(),
-      };
+      let r = rem.call(&mut hooks, None, values).unwrap();
+      assert_eq!(r.to_num(), 1.0);
 
       let values = &[val!(-3.0), val!(2.0)];
 
-      match rem.call(&mut hooks, None, values) {
-        Ok(res) => assert_eq!(res.to_num(), -1.0),
-        Err(_) => panic!(),
-      };
+      let r = rem.call(&mut hooks, None, values).unwrap();
+      assert_eq!(r.to_num(), -1.0);
 
       let values = &[val!(3.0), val!(-2.0)];
-
-      match rem.call(&mut hooks, None, values) {
-        Ok(res) => assert_eq!(res.to_num(), 1.0),
-        Err(_) => panic!(),
-      };
+      let r = rem.call(&mut hooks, None, values).unwrap();
+      assert_eq!(r.to_num(), 1.0)
     }
   }
 
@@ -286,10 +299,8 @@ mod test {
       let sin = Sin::from(&hooks);
       let values = &[val!(std::f64::consts::PI)];
 
-      match sin.call(&mut hooks, None, values) {
-        Ok(res) => assert!(res.to_num().abs() < 0.0000001),
-        Err(_) => panic!(),
-      };
+      let r = sin.call(&mut hooks, None, values).unwrap();
+      assert!(r.to_num().abs() < 0.0000001)
     }
   }
 
@@ -319,10 +330,8 @@ mod test {
       let cos = Cos::from(&hooks);
       let values = &[val!(std::f64::consts::FRAC_PI_2)];
 
-      match cos.call(&mut hooks, None, values) {
-        Ok(res) => assert!(res.to_num().abs() < 0.0000001),
-        Err(_) => panic!(),
-      };
+      let r = cos.call(&mut hooks, None, values).unwrap();
+      assert!(r.to_num().abs() < 0.0000001);
     }
   }
 
@@ -351,11 +360,8 @@ mod test {
 
       let ln = Ln::from(&hooks);
       let values = &[val!(std::f64::consts::E)];
-
-      match ln.call(&mut hooks, None, values) {
-        Ok(res) => assert!((res.to_num() - 1.0).abs() < 0.0000001),
-        Err(_) => panic!(),
-      };
+      let r = ln.call(&mut hooks, None, values).unwrap();
+      assert!((r.to_num() - 1.0).abs() < 0.0000001);
     }
   }
 
@@ -381,13 +387,9 @@ mod test {
       let rand = Rand::from(&hooks);
 
       for _ in 0..10 {
-        match rand.call(&mut hooks, None, &[]) {
-          Ok(res) => {
-            let num = res.to_num();
-            assert!(num >= 0.0 && num < 1.0);
-          }
-          Err(_) => panic!(),
-        };
+        let r = rand.call(&mut hooks, None, &[]).unwrap();
+        let num = r.to_num();
+        assert!(num >= 0.0 && num < 1.0);
       }
     }
   }

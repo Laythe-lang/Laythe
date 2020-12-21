@@ -1,4 +1,8 @@
-use crate::{native, support::export_and_insert};
+use crate::{
+  native,
+  support::{export_and_insert, to_dyn_native},
+  InitResult,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
@@ -6,32 +10,32 @@ use laythe_core::{
   signature::Arity,
   val,
   value::Value,
-  CallResult, LyResult,
+  Call,
 };
 use laythe_env::managed::Trace;
 use std::io::Write;
 
 const CLOCK_META: NativeMetaBuilder = NativeMetaBuilder::fun("clock", Arity::Fixed(0));
 
-pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> LyResult<()> {
+pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> InitResult<()> {
   export_and_insert(
     hooks,
     module,
     hooks.manage_str(CLOCK_META.name),
-    val!(hooks.manage(Box::new(Clock::from(hooks)) as Box<dyn Native>)),
+    val!(to_dyn_native(hooks, Clock::from(hooks))),
   )
 }
 
 native!(Clock, CLOCK_META);
 
 impl Native for Clock {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let time = io.time();
 
     match time.elapsed() {
-      Ok(elapsed) => Ok(val!((elapsed.as_micros() as f64) / 1_000_000.0)),
-      Err(e) => hooks.error(format!("clock failed {}", e)),
+      Ok(elapsed) => Call::Ok(val!((elapsed.as_micros() as f64) / 1_000_000.0)),
+      Err(e) => panic!(format!("TODO clock failed {}", e)),
     }
   }
 }
@@ -60,20 +64,11 @@ mod test {
 
     let values = &[];
 
-    let result1 = clock.call(&mut hooks, None, values);
-    let res1 = match result1 {
-      Ok(res) => res,
-      Err(_) => panic!(),
-    };
-
-    let result2 = clock.call(&mut hooks, None, values);
-    let res2 = match result2 {
-      Ok(res) => res,
-      Err(_) => panic!(),
-    };
-
-    if res1.is_num() && res2.is_num() {
-      assert!(res1.to_num() <= res2.to_num());
+    let result1 = clock.call(&mut hooks, None, values).unwrap();
+    let result2 = clock.call(&mut hooks, None, values).unwrap();
+    
+    if result1.is_num() && result2.is_num() {
+      assert!(result1.to_num() <= result2.to_num());
     } else {
       panic!();
     }

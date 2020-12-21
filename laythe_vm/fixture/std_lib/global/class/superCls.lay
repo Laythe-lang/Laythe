@@ -1,0 +1,10 @@
+class A {}
+class B : A {}
+
+assertEq(B.superCls(), A);
+assertEq(B.superCls().superCls(), Object);
+
+assertEq(A.superCls(), Object);
+
+assertEq(List.superCls(), Object);
+assertEq(Object.superCls(), nil);

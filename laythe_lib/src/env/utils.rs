@@ -1,6 +1,7 @@
 use crate::{
   native,
   support::{export_and_insert, to_dyn_native},
+  InitResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -10,15 +11,15 @@ use laythe_core::{
   signature::Arity,
   val,
   value::Value,
-  CallResult, LyResult,
+  Call,
 };
-use laythe_env::{managed::Trace};
+use laythe_env::managed::Trace;
 use std::io::Write;
 
 const ARGS_META: NativeMetaBuilder = NativeMetaBuilder::fun("args", Arity::Fixed(0));
 const CWD_META: NativeMetaBuilder = NativeMetaBuilder::fun("cwd", Arity::Fixed(0));
 
-pub fn declare_env_module(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
+pub fn declare_env_module(hooks: &GcHooks, self_module: &mut Module) -> InitResult<()> {
   export_and_insert(
     hooks,
     self_module,
@@ -34,14 +35,14 @@ pub fn declare_env_module(hooks: &GcHooks, self_module: &mut Module) -> LyResult
   )
 }
 
-pub fn define_env_module(_: &GcHooks, _: &mut Module) -> LyResult<()> {
+pub fn define_env_module(_: &GcHooks, _: &mut Module) -> InitResult<()> {
   Ok(())
 }
 
 native!(Args, ARGS_META);
 
 impl Native for Args {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let vec: Vec<Value> = io
       .env()
@@ -51,21 +52,21 @@ impl Native for Args {
       .collect();
     let list = hooks.manage(List::from(vec));
 
-    Ok(val!(list))
+    Call::Ok(val!(list))
   }
 }
 
 native!(Cwd, CWD_META);
 
 impl Native for Cwd {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     match io.env().current_dir() {
       Ok(path) => match path.to_str() {
-        Some(path) => Ok(val!(hooks.manage_str(path))),
-        None => hooks.error("Unable to create string from current working directory"),
+        Some(path) => Call::Ok(val!(hooks.manage_str(path))),
+        None => panic!("TODO: Unable to create string from current working directory"),
       },
-      Err(err) => hooks.error(err.to_string()),
+      Err(err) => panic!(err.to_string()),
     }
   }
 }

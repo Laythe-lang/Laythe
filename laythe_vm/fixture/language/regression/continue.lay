@@ -1,0 +1,24 @@
+let src = 'some
+stuff
+is here
+and
+more stuff
+is there';
+
+let total = 0;
+
+fn func() {
+  for line in src.split('\n') {
+    let result = line.split(' ').into(List.collect);
+
+    if result.len() == 2 {
+      continue;
+    }
+
+    total = total + result.len();
+  }
+}
+func();
+
+assertEq(total, 3);
+

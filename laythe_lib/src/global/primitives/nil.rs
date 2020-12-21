@@ -1,7 +1,4 @@
-use crate::{
-  native,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-};
+use crate::{InitResult, native, support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native}};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
@@ -10,7 +7,7 @@ use laythe_core::{
   signature::Arity,
   val,
   value::Value,
-  CallResult, LyResult,
+  Call,
 };
 use laythe_env::managed::Trace;
 use std::io::Write;
@@ -18,12 +15,16 @@ use std::io::Write;
 pub const NIL_CLASS_NAME: &str = "Nil";
 const NIL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_nil_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
+pub fn declare_nil_class(
+  hooks: &GcHooks,
+  module: &mut Module,
+  package: &Package,
+) -> InitResult<()> {
   let class = default_class_inheritance(hooks, package, NIL_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name, val!(class))
 }
 
-pub fn define_nil_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+pub fn define_nil_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
   let mut class = load_class_from_module(hooks, module, NIL_CLASS_NAME)?;
 
   class.add_method(
@@ -38,8 +39,8 @@ pub fn define_nil_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResu
 native!(NilStr, NIL_STR);
 
 impl Native for NilStr {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
-    Ok(val!(hooks.manage_str("nil")))
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
+    Call::Ok(val!(hooks.manage_str("nil")))
   }
 }
 
@@ -71,8 +72,8 @@ mod test {
 
       let result = nil_str.call(&mut hooks, Some(VALUE_NIL), &[]);
       match result {
-        Ok(r) => assert_eq!(*r.to_str(), "nil".to_string()),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(*r.to_str(), "nil".to_string()),
+        _ => assert!(false),
       }
     }
   }

@@ -1,0 +1,10 @@
+let a = [1, 2, 3];
+let b = a.rev();
+
+assertEq(a[0], 1);
+assertEq(a[1], 2);
+assertEq(a[2], 3);
+
+assertEq(b[0], 3);
+assertEq(b[1], 2);
+assertEq(b[2], 1);

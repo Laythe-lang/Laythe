@@ -1,0 +1,3 @@
+assertEq(Number.cmp(11, 10), 1);
+assertEq(Number.cmp(10, 11), -1);
+assertEq(Number.cmp(5, -5), 10.0);

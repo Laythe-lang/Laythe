@@ -1,8 +1,11 @@
 use crate::{
-  native,
+  io::global::{ERROR_PATH, IO_ERROR},
+  native_with_error,
+  support::load_class_from_package,
   support::{
     default_class_inheritance, export_and_insert, load_instance_from_module, to_dyn_native,
   },
+  InitResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -13,7 +16,7 @@ use laythe_core::{
   signature::Arity,
   val,
   value::Value,
-  CallResult, LyResult,
+  Call,
 };
 use laythe_env::managed::Trace;
 use std::io::Write;
@@ -24,7 +27,7 @@ const STDIN_INSTANCE_NAME: &str = "stdin";
 const STDIN_READ: NativeMetaBuilder = NativeMetaBuilder::method("read", Arity::Fixed(0));
 const STDIN_READ_LINE: NativeMetaBuilder = NativeMetaBuilder::method("readLine", Arity::Fixed(0));
 
-pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> LyResult<()> {
+pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> InitResult<()> {
   let class = default_class_inheritance(hooks, std, STDIN_CLASS_NAME)?;
   let instance = hooks.manage(Instance::new(class));
 
@@ -36,45 +39,46 @@ pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> LyR
   )
 }
 
-pub fn define_stdin(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+pub fn define_stdin(hooks: &GcHooks, module: &Module, std: &Package) -> InitResult<()> {
   let instance = load_instance_from_module(hooks, module, STDIN_INSTANCE_NAME)?;
   let mut class = instance.class;
+  let io_error = val!(load_class_from_package(hooks, std, ERROR_PATH, IO_ERROR)?);
 
   class.add_method(
     hooks,
     hooks.manage_str(STDIN_READ.name),
-    val!(to_dyn_native(hooks, StdinRead::from(hooks))),
+    val!(to_dyn_native(hooks, StdinRead::new(hooks, io_error))),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(STDIN_READ_LINE.name),
-    val!(to_dyn_native(hooks, StdinReadLine::from(hooks))),
+    val!(to_dyn_native(hooks, StdinReadLine::new(hooks, io_error))),
   );
 
   Ok(())
 }
 
-native!(StdinRead, STDIN_READ);
+native_with_error!(StdinRead, STDIN_READ);
 
 impl Native for StdinRead {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdin = stdio.stdin();
 
     let mut buf = String::new();
     match stdin.read_to_string(&mut buf) {
-      Ok(_) => Ok(val!(hooks.manage_str(buf))),
-      Err(err) => hooks.error(err.to_string()),
+      Ok(_) => Call::Ok(val!(hooks.manage_str(buf))),
+      Err(err) => self.call_error(hooks, err.to_string()),
     }
   }
 }
 
-native!(StdinReadLine, STDIN_READ_LINE);
+native_with_error!(StdinReadLine, STDIN_READ_LINE);
 
 impl Native for StdinReadLine {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let stdio = io.stdio();
 
@@ -85,9 +89,9 @@ impl Native for StdinReadLine {
         if buf.ends_with('\n') {
           buf.pop();
         }
-        Ok(val!(hooks.manage_str(buf)))
+        Call::Ok(val!(hooks.manage_str(buf)))
       }
-      Err(err) => hooks.error(err.to_string()),
+      Err(err) => self.call_error(hooks, err.to_string()),
     }
   }
 }
@@ -98,7 +102,7 @@ mod test {
 
   mod read {
     use super::*;
-    use crate::support::MockedContext;
+    use crate::support::{test_error_class, MockedContext};
     use laythe_core::value::VALUE_NIL;
     use laythe_env::stdio::support::StdioTestContainer;
     use std::rc::Rc;
@@ -107,8 +111,9 @@ mod test {
     fn new() {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
+      let error = val!(test_error_class(&hooks));
 
-      let stdin_read = StdinRead::from(&hooks);
+      let stdin_read = StdinRead::new(&hooks, error);
 
       assert_eq!(stdin_read.meta().name, "read");
       assert_eq!(stdin_read.meta().signature.arity, Arity::Fixed(0));
@@ -120,7 +125,9 @@ mod test {
 
       let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
-      let stdin_read = StdinRead::from(&hooks);
+      let error = val!(test_error_class(&hooks.as_gc()));
+
+      let stdin_read = StdinRead::new(&hooks.as_gc(), error);
 
       let result = stdin_read.call(&mut hooks, Some(VALUE_NIL), &[]);
 
@@ -134,7 +141,7 @@ mod test {
 
   mod readlines {
     use super::*;
-    use crate::support::MockedContext;
+    use crate::support::{test_error_class, MockedContext};
     use laythe_core::value::VALUE_NIL;
     use laythe_env::stdio::support::StdioTestContainer;
     use std::rc::Rc;
@@ -143,8 +150,9 @@ mod test {
     fn new() {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
+      let error = val!(test_error_class(&hooks));
 
-      let stdin_readline = StdinReadLine::from(&hooks);
+      let stdin_readline = StdinReadLine::new(&hooks, error);
 
       assert_eq!(stdin_readline.meta().name, "readLine");
       assert_eq!(stdin_readline.meta().signature.arity, Arity::Fixed(0));
@@ -159,7 +167,9 @@ mod test {
 
       let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
-      let stdin_readline = StdinReadLine::from(&hooks);
+      let error = val!(test_error_class(&hooks.as_gc()));
+
+      let stdin_readline = StdinReadLine::new(&hooks.as_gc(), error);
 
       let result = stdin_readline.call(&mut hooks, Some(VALUE_NIL), &[]);
 

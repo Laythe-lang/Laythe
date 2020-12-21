@@ -1,7 +1,7 @@
 use crate::{
   hooks::Hooks,
   value::{Value, VALUE_NIL},
-  CallResult,
+  Call,
 };
 use laythe_env::managed::{DebugHeap, Manage, Managed, Trace};
 use smol_str::SmolStr;
@@ -45,7 +45,7 @@ impl LyIterator {
   }
 
   /// Increment the iterator
-  pub fn next(&mut self, hooks: &mut Hooks) -> CallResult {
+  pub fn next(&mut self, hooks: &mut Hooks) -> Call {
     let result = self.iterator.next(hooks);
     self.current = self.iterator.current();
     result
@@ -105,7 +105,7 @@ pub trait LyIter: Trace + fmt::Debug {
   fn current(&self) -> Value;
 
   /// Get the next value indicating if the iterator has reached the end
-  fn next(&mut self, hooks: &mut Hooks) -> CallResult;
+  fn next(&mut self, hooks: &mut Hooks) -> Call;
 
   /// If known how many elements will this iterator produce
   fn size_hint(&self) -> Option<usize>;
