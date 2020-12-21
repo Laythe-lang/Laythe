@@ -341,7 +341,7 @@ impl<'a> Compiler<'a> {
       idx -= 1;
     }
 
-    return drop_idx;
+    drop_idx
   }
 
   /// Mark a variable initialized

@@ -18,7 +18,7 @@ pub fn errors_module(hooks: &GcHooks, std: &Package) -> InitResult<Managed<Modul
   )?);
 
   declare_io_errors(hooks, &mut module, std)?;
-  define_io_errors(hooks, &mut module, std)?;
+  define_io_errors(hooks, &module, std)?;
 
   Ok(module)
 }

@@ -236,13 +236,13 @@ fn format_map_entry(
     Call::Ok(VALUE_NIL)
   } else {
     // if error throw away temporary strings
-    return hooks.call(
+    hooks.call(
       error,
       &[val!(hooks.manage_str(format!(
         "Expected type str from {}.str()",
         item
       )))],
-    );
+    )
   }
 }
 

@@ -89,7 +89,7 @@ impl DepManager {
     let relative: Vec<String> = relative
       .ancestors()
       .map(|p| p.display().to_string())
-      .filter(|p| p != "")
+      .filter(|p| !p.is_empty())
       .collect();
 
     // split import into segments and join to relative path

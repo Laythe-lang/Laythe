@@ -86,7 +86,7 @@ impl<'a> Parser<'a> {
   /// let parser = Parser::new(stdio, source);
   /// assert_eq!(parser.parse().is_ok(), true);
   /// ```
-  pub fn parse(mut self) -> Result<Module, ()> {
+  pub fn parse(mut self) -> ParseResult<Module> {
     self.advance()?;
 
     // early exit if ""
@@ -609,11 +609,11 @@ impl<'a> Parser<'a> {
       Prefix::Map => self.map(),
       Prefix::Lambda => self.lambda(),
       Prefix::Grouping => self.grouping(),
-      Prefix::Literal => self.literal(),
-      Prefix::Number => self.number(),
-      Prefix::String => self.string(),
+      Prefix::Literal => Ok(self.literal()),
+      Prefix::Number => Ok(self.number()),
+      Prefix::String => Ok(self.string()),
       Prefix::Super => self.super_(),
-      Prefix::Self_ => self.self_(),
+      Prefix::Self_ => Ok(self.self_()),
       Prefix::Variable => self.variable(can_assign),
       Prefix::Unary => self.unary(),
     }
@@ -811,8 +811,8 @@ impl<'a> Parser<'a> {
   }
 
   /// Parse a class's self identifier
-  fn self_(&mut self) -> ParseResult<Expr> {
-    Ok(self.atom(Primary::Self_(self.previous.clone())))
+  fn self_(&mut self) -> Expr {
+    self.atom(Primary::Self_(self.previous.clone()))
   }
 
   /// Parse a class' super identifer
@@ -876,24 +876,24 @@ impl<'a> Parser<'a> {
   }
 
   /// Parse a number literal
-  fn number(&self) -> ParseResult<Expr> {
-    Ok(self.atom(Primary::Number(self.previous.clone())))
+  fn number(&self) -> Expr {
+    self.atom(Primary::Number(self.previous.clone()))
   }
 
   /// Parse a string literal
-  fn string(&self) -> ParseResult<Expr> {
-    Ok(self.atom(Primary::String(self.previous.clone())))
+  fn string(&self) -> Expr {
+    self.atom(Primary::String(self.previous.clone()))
   }
 
   /// Parse a literal
-  fn literal(&self) -> ParseResult<Expr> {
+  fn literal(&self) -> Expr {
     let previous = self.previous.clone();
-    Ok(match self.previous.kind {
+    match self.previous.kind {
       TokenKind::True => self.atom(Primary::True(previous)),
       TokenKind::False => self.atom(Primary::False(previous)),
       TokenKind::Nil => self.atom(Primary::Nil(previous)),
       _ => unreachable!(format!("Unexpected token kind {:?}", previous.kind)),
-    })
+    }
   }
 
   /// Create an atom from a primary

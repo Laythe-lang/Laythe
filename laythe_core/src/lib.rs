@@ -51,26 +51,17 @@ fn unwrap_failed(msg: &str, error: &dyn fmt::Debug) -> ! {
 impl<T> LyResult<T> {
   #[inline]
   pub fn is_ok(&self) -> bool {
-    match self {
-      Self::Ok(_) => true,
-      _ => false,
-    }
+    matches!(self, Self::Ok(_))
   }
 
   #[inline]
   pub fn is_err(&self) -> bool {
-    match self {
-      Self::Err(_) => true,
-      _ => false,
-    }
+    matches!(self, Self::Err(_))
   }
 
   #[inline]
   pub fn is_exit(&self) -> bool {
-    match self {
-      Self::Exit(_) => true,
-      _ => false,
-    }
+    matches!(self, Self::Exit(_))
   }
 
   #[inline]

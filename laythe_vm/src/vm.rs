@@ -901,7 +901,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn op_set_index(&mut self) -> Signal {
-    let receiver = self.peek(2 as isize);
+    let receiver = self.peek(2_isize);
 
     let class = self
       .dep_manager
@@ -997,7 +997,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn op_get_index(&mut self) -> Signal {
-    let receiver = self.peek(1 as isize);
+    let receiver = self.peek(1_isize);
 
     let class = self
       .dep_manager
