@@ -1,15 +1,18 @@
-use crate::constants::IMPORT_SEPARATOR;
 use laythe_core::{
-  hooks::GcHooks,
+  constants::IMPORT_SEPARATOR,
+  hooks::Hooks,
   module::Module,
-  object::{BuiltIn, BuiltInDependencies, BuiltinPrimitives, Map},
+  object::Map,
   package::{Import, Package},
-  LyResult,
+  val,
+  value::Value,
+  Call, LyResult,
 };
 use laythe_env::{
   io::Io,
   managed::{DebugHeap, DebugWrap, Manage, Managed, Trace},
 };
+use laythe_lib::{create_error, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives};
 use smol_str::SmolStr;
 use std::{fmt, io::Write, mem, path::PathBuf};
 
@@ -28,22 +31,28 @@ pub struct DepManager {
 
   /// A cache for full filepath to individual modules
   cache: Map<Managed<SmolStr>, Managed<Module>>,
+
+  /// The error class for import errors
+  import_error: Value,
 }
 
 impl DepManager {
   /// Create a new dependency manager
   pub fn new(io: Io, builtin: BuiltIn, src_dir: Managed<PathBuf>) -> Self {
+    let import_error = val!(builtin.errors.import);
+
     Self {
       io,
       src_dir,
       builtin,
       packages: Map::default(),
       cache: Map::default(),
+      import_error,
     }
   }
 
   /// Get the class for primitives in laythe
-  pub fn primitive_classes(&self) -> &BuiltinPrimitives {
+  pub fn primitive_classes(&self) -> &BuiltInPrimitives {
     &self.builtin.primitives
   }
 
@@ -52,10 +61,15 @@ impl DepManager {
     &self.builtin.dependencies
   }
 
+  /// Get the classes for dependency entities in laythe
+  pub fn error_classes(&self) -> &BuiltInErrors {
+    &self.builtin.errors
+  }
+
   /// Import a module using the given path
   pub fn import(
     &mut self,
-    hooks: &GcHooks,
+    hooks: &mut Hooks,
     module: Managed<Module>,
     path: Managed<SmolStr>,
   ) -> LyResult<Managed<Module>> {
@@ -65,14 +79,17 @@ impl DepManager {
     // determine relative position of module relative to the src directory
     let relative = match self.io.fs().relative_path(&*self.src_dir, &module_dir) {
       Ok(relative) => relative,
-      Err(err) => return hooks.error(err.to_string()),
+      Err(err) => {
+        return create_error!(self.import_error, hooks, err.to_string())
+          .and_then(|err| LyResult::Err(err.to_instance()))
+      }
     };
 
     // split path into segments
     let relative: Vec<String> = relative
       .ancestors()
       .map(|p| p.display().to_string())
-      .filter(|p| p != "")
+      .filter(|p| !p.is_empty())
       .collect();
 
     // split import into segments and join to relative path
@@ -89,16 +106,10 @@ impl DepManager {
         .collect()
     };
 
-    // let resolved_segments: Vec<String> = relative
-    //   .into_iter()
-    //   .rev()
-    //   .chain(path.split(IMPORT_SEPARATOR).map(|s| s.to_string()))
-    //   .collect();
-
     // check if fully resolved module has already been loaded
     let resolved = hooks.manage_str(resolved_segments.join("/"));
     if let Some(module) = self.cache.get(&resolved) {
-      return Ok(*module);
+      return LyResult::Ok(*module);
     }
 
     // generate a new import object
@@ -112,10 +123,24 @@ impl DepManager {
     // match by package then resolve inside the package
     match import.package() {
       Some(pkg) => match self.packages.get(&pkg) {
-        Some(package) => package.import(hooks, import),
-        None => hooks.error(format!("Package {} does not exist", pkg)),
+        Some(package) => match package.import(&hooks.as_gc(), import) {
+          Ok(module) => LyResult::Ok(module),
+          Err(err) => create_error!(self.import_error, hooks, err.to_string())
+            .and_then(|err| LyResult::Err(err.to_instance())),
+        },
+        None => create_error!(
+          self.import_error,
+          hooks,
+          format!("Package {} does not exist", pkg)
+        )
+        .and_then(|err| LyResult::Err(err.to_instance())),
       },
-      None => hooks.error("Import needs to be prepended with a package name".to_string()),
+      None => create_error!(
+        self.import_error,
+        hooks,
+        "Import needs to be prepended with a package name"
+      )
+      .and_then(|err| LyResult::Err(err.to_instance())),
     }
   }
 
@@ -143,6 +168,7 @@ impl Trace for DepManager {
       key.trace();
       value.trace();
     });
+    self.builtin.trace();
 
     true
   }
@@ -153,6 +179,7 @@ impl Trace for DepManager {
       key.trace_debug(stdout);
       value.trace_debug(stdout);
     });
+    self.builtin.trace_debug(stdout);
 
     true
   }

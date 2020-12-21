@@ -1,8 +1,11 @@
 use crate::{
-  native,
+  io::global::{ERROR_PATH, IO_ERROR},
+  native_with_error,
+  support::load_class_from_package,
   support::{
     default_class_inheritance, export_and_insert, load_instance_from_module, to_dyn_native,
   },
+  InitResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -13,7 +16,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  CallResult, LyResult,
+  Call,
 };
 use laythe_env::managed::Trace;
 use std::io::Write;
@@ -29,7 +32,7 @@ const STDOUT_WRITELN: NativeMetaBuilder = NativeMetaBuilder::method("writeln", A
 
 const STDOUT_FLUSH: NativeMetaBuilder = NativeMetaBuilder::method("flush", Arity::Fixed(0));
 
-pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> LyResult<()> {
+pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> InitResult<()> {
   let class = default_class_inheritance(hooks, std, STDOUT_CLASS_NAME)?;
   let instance = hooks.manage(Instance::new(class));
 
@@ -41,72 +44,73 @@ pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> Ly
   )
 }
 
-pub fn define_stdout(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+pub fn define_stdout(hooks: &GcHooks, module: &Module, std: &Package) -> InitResult<()> {
   let instance = load_instance_from_module(hooks, module, STDOUT_INSTANCE_NAME)?;
   let mut class = instance.class;
+  let io_error = val!(load_class_from_package(hooks, std, ERROR_PATH, IO_ERROR)?);
 
   class.add_method(
     hooks,
     hooks.manage_str(STDOUT_WRITE.name),
-    val!(to_dyn_native(hooks, StdoutWrite::from(hooks))),
+    val!(to_dyn_native(hooks, StdoutWrite::new(hooks, io_error))),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(STDOUT_WRITELN.name),
-    val!(to_dyn_native(hooks, StdoutWriteln::from(hooks))),
+    val!(to_dyn_native(hooks, StdoutWriteln::new(hooks, io_error))),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(STDOUT_FLUSH.name),
-    val!(to_dyn_native(hooks, StdoutFlush::from(hooks))),
+    val!(to_dyn_native(hooks, StdoutFlush::new(hooks, io_error))),
   );
 
   Ok(())
 }
 
-native!(StdoutWrite, STDOUT_WRITE);
+native_with_error!(StdoutWrite, STDOUT_WRITE);
 
 impl Native for StdoutWrite {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 
     match stdout.write(args[0].to_str().as_bytes()) {
-      Ok(_) => Ok(VALUE_NIL),
-      Err(err) => hooks.error(err.to_string()),
+      Ok(_) => Call::Ok(VALUE_NIL),
+      Err(err) => self.call_error(hooks, err.to_string()),
     }
   }
 }
 
-native!(StdoutWriteln, STDOUT_WRITELN);
+native_with_error!(StdoutWriteln, STDOUT_WRITELN);
 
 impl Native for StdoutWriteln {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 
     match writeln!(stdout, "{}", args[0].to_str()) {
-      Ok(_) => Ok(VALUE_NIL),
-      Err(err) => hooks.error(err.to_string()),
+      Ok(_) => Call::Ok(VALUE_NIL),
+      Err(err) => self.call_error(hooks, err.to_string()),
     }
   }
 }
 
-native!(StdoutFlush, STDOUT_FLUSH);
+native_with_error!(StdoutFlush, STDOUT_FLUSH);
 
 impl Native for StdoutFlush {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 
     match stdout.flush() {
-      Ok(_) => Ok(VALUE_NIL),
-      Err(err) => hooks.error(err.to_string()),
+      Ok(_) => Call::Ok(VALUE_NIL),
+      Err(err) => self.call_error(hooks, err.to_string()),
     }
   }
 }
@@ -117,16 +121,17 @@ mod test {
 
   mod write {
     use super::*;
-    use crate::support::MockedContext;
+    use crate::support::{test_error_class, MockedContext};
     use laythe_env::stdio::support::StdioTestContainer;
     use std::{rc::Rc, str};
 
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
+      let hooks = GcHooks::new(&mut context);
+      let error = val!(test_error_class(&hooks));
 
-      let stdout_write = StdoutWrite::from(&hooks);
+      let stdout_write = StdoutWrite::new(&hooks, error);
 
       assert_eq!(stdout_write.meta().name, "write");
       assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(1));
@@ -142,7 +147,9 @@ mod test {
 
       let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
-      let stdout_write = StdoutWrite::from(&hooks);
+      let error = val!(test_error_class(&hooks.as_gc()));
+
+      let stdout_write = StdoutWrite::new(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string".to_string()));
       let result = stdout_write.call(&mut hooks, Some(VALUE_NIL), &[string]);
@@ -158,16 +165,17 @@ mod test {
 
   mod writeln {
     use super::*;
-    use crate::support::MockedContext;
+    use crate::support::{test_error_class, MockedContext};
     use laythe_env::stdio::support::StdioTestContainer;
     use std::{rc::Rc, str};
 
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
+      let hooks = GcHooks::new(&mut context);
+      let error = val!(test_error_class(&hooks));
 
-      let stdout_writeln = StdoutWriteln::from(&hooks);
+      let stdout_writeln = StdoutWriteln::new(&hooks, error);
 
       assert_eq!(stdout_writeln.meta().name, "writeln");
       assert_eq!(stdout_writeln.meta().signature.arity, Arity::Fixed(1));
@@ -183,7 +191,9 @@ mod test {
 
       let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
-      let stdout_write = StdoutWriteln::from(&hooks);
+      let error = val!(test_error_class(&hooks.as_gc()));
+
+      let stdout_write = StdoutWriteln::new(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string".to_string()));
       let result = stdout_write.call(&mut hooks, Some(VALUE_NIL), &[string]);

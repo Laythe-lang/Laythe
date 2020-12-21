@@ -1,0 +1,8 @@
+let a = [1, 2, 3];
+assertEq(a.iter().last(), 3);
+
+let b = {"example": nil};
+assertEq(b.iter().last()[0], "example");
+assertEq(b.iter().last()[1], nil);
+
+assertEq([].iter().last(), nil);

@@ -1,4 +1,4 @@
-use crate::{hooks::GcHooks, module::Module, object::Map, LyResult};
+use crate::{hooks::GcHooks, module::Module, object::Map};
 use hashbrown::hash_map::{Entry, Iter};
 use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
 use smol_str::SmolStr;
@@ -91,13 +91,17 @@ impl Package {
   }
 
   /// Add a module to this package
-  pub fn add_module(&mut self, hooks: &GcHooks, module: Managed<Module>) -> LyResult<()> {
+  pub fn add_module(
+    &mut self,
+    hooks: &GcHooks,
+    module: Managed<Module>,
+  ) -> Result<(), Managed<SmolStr>> {
     match self.entities.entry(module.name()) {
-      Entry::Occupied(_) => hooks.error(format!(
+      Entry::Occupied(_) => Err(hooks.manage_str(format!(
         "Cannot add module {} to package {}",
         module.name(),
         self.name
-      )),
+      ))),
       Entry::Vacant(entry) => {
         entry.insert(PackageEntity::Module(module));
         Ok(())
@@ -106,12 +110,16 @@ impl Package {
   }
 
   /// Add a sub package to this package
-  pub fn add_package(&mut self, hooks: &GcHooks, sub_package: Managed<Package>) -> LyResult<()> {
+  pub fn add_package(
+    &mut self,
+    hooks: &GcHooks,
+    sub_package: Managed<Package>,
+  ) -> Result<(), Managed<SmolStr>> {
     match self.entities.entry(sub_package.name) {
-      Entry::Occupied(_) => hooks.error(format!(
+      Entry::Occupied(_) => Err(hooks.manage_str(format!(
         "Cannot add sub package {} to package {}",
         sub_package.name, self.name
-      )),
+      ))),
       Entry::Vacant(entry) => {
         entry.insert(PackageEntity::Package(sub_package));
         Ok(())
@@ -126,7 +134,11 @@ impl Package {
 
   /// Get a set of symbols from this package using a requested import. This
   /// operation can fail if some or all of the symbols are not found.
-  pub fn import(&self, hooks: &GcHooks, import: Import) -> LyResult<Managed<Module>> {
+  pub fn import(
+    &self,
+    hooks: &GcHooks,
+    import: Import,
+  ) -> Result<Managed<Module>, Managed<SmolStr>> {
     if import.0.is_empty() {
       panic!("No path in import");
     }
@@ -140,18 +152,24 @@ impl Package {
 
   /// Get a set of symbols from this packages using a requested. This method
   /// is used internally to track how far down the import path has currently been resolved
-  fn _import(&self, hooks: &GcHooks, depth: usize, import: Import) -> LyResult<Managed<Module>> {
+  fn _import(
+    &self,
+    hooks: &GcHooks,
+    depth: usize,
+    import: Import,
+  ) -> Result<Managed<Module>, Managed<SmolStr>> {
     if depth >= import.0.len() {
-      return hooks.error(format!("Could not resolve module {}", import.path_str()));
+      return Err(hooks.manage_str(format!("Could not resolve module {}", import.path_str())));
     }
 
     let key = import.0[depth];
+
     match self.entities.get(&key) {
       Some(entity) => match entity {
         PackageEntity::Package(sub_package) => sub_package._import(hooks, depth + 1, import),
         PackageEntity::Module(module) => Ok(*module),
       },
-      None => hooks.error(format!("Could not resolve module {}", import.path_str())),
+      None => Err(hooks.manage_str(format!("Could not resolve module {}", import.path_str()))),
     }
   }
 }

@@ -540,12 +540,14 @@ fn make_token(kind: TokenKind, raw: &str, line: u32) -> Token {
 
 /// Is the str slice a digit. Assumes single char
 fn is_digit(c: &str) -> bool {
-  c >= "0" && c <= "9"
+  ("0"..="9").contains(&c)
+  // c >= "0" && c <= "9"
 }
 
 /// Is the str slice a alphabetic. Assumes single char
 fn is_alpha(c: &str) -> bool {
-  (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_"
+  ("a"..="z").contains(&c) || ("A"..="Z").contains(&c) || c == "_"
+  // (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_"
 }
 
 #[cfg(test)]

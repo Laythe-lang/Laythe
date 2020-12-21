@@ -4,7 +4,7 @@ use laythe_core::{
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::Arity,
   value::{Value, VALUE_NIL},
-  CallResult,
+  Call,
 };
 use laythe_env::managed::Trace;
 use std::io::Write;
@@ -14,7 +14,7 @@ const TEST_META: NativeMetaBuilder = NativeMetaBuilder::fun("test", Arity::Fixed
 native!(TestNative, TEST_META);
 
 impl Native for TestNative {
-  fn call(&self, _: &mut Hooks, _this: Option<Value>, _: &[Value]) -> CallResult {
-    Ok(VALUE_NIL)
+  fn call(&self, _: &mut Hooks, _this: Option<Value>, _: &[Value]) -> Call {
+    Call::Ok(VALUE_NIL)
   }
 }

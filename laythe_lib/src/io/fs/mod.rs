@@ -1,13 +1,15 @@
 mod file;
 
 use file::{declare_file, define_file};
-use laythe_core::{hooks::GcHooks, module::Module, package::Package, LyResult};
+use laythe_core::{hooks::GcHooks, module::Module, package::Package};
 use laythe_env::managed::Managed;
 use std::path::PathBuf;
 
+use crate::InitResult;
+
 const FS_PATH: &str = "std/io/fs.ly";
 
-pub fn fs_module(hooks: &GcHooks, std: Managed<Package>) -> LyResult<Managed<Module>> {
+pub fn fs_module(hooks: &GcHooks, std: &Package) -> InitResult<Managed<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
     hooks.manage(PathBuf::from(FS_PATH)),

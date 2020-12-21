@@ -1,5 +1,6 @@
-use crate::{native, support::export_and_insert};
+use crate::{native, support::export_and_insert, InitResult};
 use laythe_core::{
+  get,
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
@@ -7,18 +8,14 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  CallResult, LyError, LyResult,
+  Call,
 };
 use laythe_env::managed::{Managed, Trace};
 use smol_str::SmolStr;
 use std::io::Write;
 
-pub fn add_misc_funs(
-  hooks: &GcHooks,
-  mut module: Managed<Module>,
-  _package: Managed<Package>,
-) -> LyResult<()> {
-  declare_misc_funs(hooks, &mut module)
+pub fn add_misc_funs(hooks: &GcHooks, module: &mut Module, _package: &Package) -> InitResult<()> {
+  declare_misc_funs(hooks, module)
 }
 
 const PRINT_META: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Variadic(0))
@@ -35,19 +32,19 @@ const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Defau
 //     ParameterBuilder::new("stide", ParameterKind::Number),
 //   ]);
 
-pub fn declare_misc_funs(hooks: &GcHooks, self_module: &mut Module) -> LyResult<()> {
+pub fn declare_misc_funs(hooks: &GcHooks, module: &mut Module) -> InitResult<()> {
   let str_name = hooks.manage_str("str");
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(PRINT_META.name),
     val!(hooks.manage(Box::new(Print::new(PRINT_META.to_meta(hooks), str_name)) as Box<dyn Native>)),
   )?;
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(EXIT_META.name),
     val!(hooks.manage(Box::new(Exit::from(hooks)) as Box<dyn Native>)),
   )
@@ -75,26 +72,29 @@ impl MetaData for Print {
 }
 
 impl Native for Print {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-    let str_method = hooks.get_method(args[0], self.method_str)?;
+  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+    let str_method = get!(hooks.get_method(args[0], self.method_str));
     let mut output = String::from(
-      hooks
-        .call_method(args[0], str_method, &[])?
+      get!(hooks.call_method(args[0], str_method, &[]))
         .to_str()
         .as_str(),
     );
 
     for s in args.iter().skip(1) {
-      let str_method = hooks.get_method(*s, self.method_str)?;
+      let str_method = get!(hooks.get_method(*s, self.method_str));
 
       output.push(' ');
-      output.push_str(hooks.call_method(*s, str_method, &[])?.to_str().as_str())
+      output.push_str(
+        get!(hooks.call_method(*s, str_method, &[]))
+          .to_str()
+          .as_str(),
+      )
     }
 
     let mut stdio = hooks.as_io().stdio();
     match writeln!(stdio.stdout(), "{}", output) {
-      Ok(_) => Ok(VALUE_NIL),
-      Err(err) => hooks.error(err.to_string()),
+      Ok(_) => Call::Ok(VALUE_NIL),
+      Err(err) => panic!(format!("TODO {}", err.to_string())),
     }
   }
 }
@@ -114,16 +114,14 @@ impl Trace for Print {
 native!(Exit, EXIT_META);
 
 impl Native for Exit {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let code = if args.is_empty() {
-      0.0
+      0
     } else {
-      args[0].to_num() as f64
+      args[0].to_num() as u16
     };
 
-    Err(Box::new(LyError::exit(
-      hooks.manage_str(&format!("Exit code {}", code)),
-    )))
+    Call::Exit(code)
   }
 }
 
@@ -172,10 +170,7 @@ mod test {
       );
       let values = &[val!(true)];
 
-      let result = match print.call(&mut hooks, None, values) {
-        Ok(res) => res,
-        Err(_) => panic!(),
-      };
+      let result = print.call(&mut hooks, None, values).unwrap();
 
       assert_eq!(result, VALUE_NIL);
     }

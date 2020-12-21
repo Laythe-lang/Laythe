@@ -172,14 +172,14 @@ impl<T: 'static + Manage> Trace for Managed<T> {
       return true;
     }
 
-    stdout
-      .write_fmt(format_args!(
-        "{:p} mark {:?}\n",
-        &*self.obj(),
-        DebugWrap(self, 2)
-      ))
-      .expect("unable to write to stdout");
-    stdout.flush().expect("unable to flush stdout");
+    // stdout
+    //   .write_fmt(format_args!(
+    //     "{:p} mark {:?}\n",
+    //     &*self.obj(),
+    //     DebugWrap(self, 2)
+    //   ))
+    //   .expect("unable to write to stdout");
+    // stdout.flush().expect("unable to flush stdout");
 
     self.obj().data.trace_debug(stdout);
     true
@@ -189,7 +189,7 @@ impl<T: 'static + Manage> Trace for Managed<T> {
 impl<T: 'static + Manage> DebugHeap for Managed<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
-      f.write_str("*{...}")
+      f.write_str("*()")
     } else {
       f.write_fmt(format_args!("*{:?}", DebugWrap(self.obj(), depth)))
     }
@@ -241,7 +241,7 @@ impl Trace for Managed<dyn Manage> {
 
 impl DebugHeap for Managed<dyn Manage> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
-    f.write_str("*{...}")
+    f.write_str("*()")
   }
 }
 
@@ -396,7 +396,7 @@ mod test {
       )
       .expect("failure");
 
-      assert_eq!(output, "*{...}");
+      assert_eq!(output, "*()");
 
       let mut output = String::new();
       fmt::write(
@@ -405,7 +405,7 @@ mod test {
       )
       .expect("failure");
 
-      assert_eq!(output, "*Test { next: Some(*{...}), val: 2 }");
+      assert_eq!(output, "*Test { next: Some(*()), val: 2 }");
 
       let mut output = String::new();
       fmt::write(

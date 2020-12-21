@@ -144,11 +144,11 @@ impl<'a> Gc {
     // collect if need be
     #[cfg(feature = "debug_stress_gc")]
     {
-      self.collect_garbage::<T, C>(context, None);
+      self.collect_garbage(context);
     }
 
     if allocated + delta > self.next_gc.get() {
-      self.collect_garbage::<T, C>(context, None);
+      self.collect_garbage(context);
     }
 
     result
@@ -205,69 +205,72 @@ impl<'a> Gc {
 
     let managed = Managed::from(ptr);
 
+    #[cfg(feature = "debug_gc")]
+    self.debug_allocate(ptr, size);
+
     #[cfg(feature = "debug_stress_gc")]
     {
-      self.collect_garbage(context, Some(managed));
+      self.push_root(managed);
+      self.collect_garbage(context);
+      self.pop_roots(1)
     }
 
     if allocated + size > self.next_gc.get() {
-      self.collect_garbage(context, Some(managed));
+      self.push_root(managed);
+      self.collect_garbage(context);
+      self.pop_roots(1)
     }
-
-    #[cfg(feature = "debug_gc")]
-    self.debug_allocate(ptr, size);
 
     managed
   }
 
   /// Collect garbage present in the heap for unreachable objects. Use the provided context
   /// to mark a set of initial roots into the vm.
-  fn collect_garbage<T: 'static + Manage, C: Trace + ?Sized>(
-    &self,
-    context: &C,
-    last: Option<Managed<T>>,
-  ) {
-    let mut _before = self.bytes_allocated.get();
+  fn collect_garbage<C: Trace + ?Sized>(&self, context: &C) {
+    #[cfg(feature = "debug_gc")]
+    let before = self.bytes_allocated.get();
     self.gc_count.set(self.gc_count.get() + 1);
 
     #[cfg(feature = "debug_gc")]
-    let mut stdio = self.stdio.borrow_mut();
-
-    #[cfg(feature = "debug_gc")]
-    let stdout = stdio.stdout();
-
-    #[cfg(feature = "debug_gc")]
-    write!(stdout, "-- gc begin").expect("could not write to stdout");
+    {
+      let mut stdio = self.stdio.borrow_mut();
+      let stdout = stdio.stdout();
+      writeln!(stdout, "-- gc begin {} --", self.gc_count.get())
+        .expect("could not write to stdout");
+    }
 
     if self.trace(context) {
       self.temp_roots.borrow().iter().for_each(|root| {
         root.trace();
       });
 
-      if let Some(obj) = last {
-        self.trace(&obj);
-      }
-
       self.sweep_string_cache();
       let remaining = self.sweep();
 
       self.bytes_allocated.set(remaining);
 
-      self
-        .next_gc
-        .set(self.bytes_allocated.get() * GC_HEAP_GROW_FACTOR);
+      self.next_gc.set(remaining * GC_HEAP_GROW_FACTOR);
     }
 
     #[cfg(feature = "debug_gc")]
     {
+      let mut stdio = self.stdio.borrow_mut();
+      let stdout = stdio.stdout();
       let now = self.bytes_allocated.get();
 
-      writeln!(stdout, "-- gc end").expect("unable to write to stdout");
+      writeln!(stdout, "-- gc end --").expect("unable to write to stdout");
+      debug_assert!(
+        before >= now,
+        "Heap was incorrectly calculated before: {} now {}",
+        before,
+        now
+      );
+
       writeln!(
         stdout,
         "   collected {} bytes (from {} to {}) next at {}",
-        _before - now,
-        _before,
+        before.saturating_sub(now),
+        before,
         now,
         self.next_gc.get()
       )
@@ -293,6 +296,10 @@ impl<'a> Gc {
   /// Remove unmarked objects from the heap. This calculates the remaining
   /// memory present in the heap
   fn sweep(&self) -> usize {
+    #[cfg(feature = "debug_stress_gc")]
+    return self.sweep_full();
+
+    #[cfg(not(feature = "debug_stress_gc"))]
     if self.gc_count.get() % 10 == 0 {
       self.sweep_full()
     } else {
@@ -302,6 +309,7 @@ impl<'a> Gc {
 
   /// Remove unmarked objects from the nursery heap. Promoting surviving objects
   /// to the normal heap
+  #[cfg(not(feature = "debug_stress_gc"))]
   fn sweep_nursery(&self) -> usize {
     let mut remaining: usize = 0;
     let mut heap = self.heap.borrow_mut();
@@ -383,10 +391,10 @@ impl<'a> Gc {
 
       writeln!(
         stdout,
-        "{:p} allocated bytes {} for {:?}",
+        "{:p} allocated {} bytes for {:?}",
         ptr.as_ptr(),
         size,
-        DebugWrap(unsafe { ptr.as_ref() }, 3)
+        DebugWrap(unsafe { ptr.as_ref() }, 1)
       )
       .expect("unable to write to stdout");
     }
@@ -403,7 +411,7 @@ impl<'a> Gc {
         stdout,
         "{:p} remove string from cache {:?}",
         &**string,
-        DebugWrap(&string, 2)
+        DebugWrap(&string, 1)
       )
       .expect("unable to write to stdout");
     }

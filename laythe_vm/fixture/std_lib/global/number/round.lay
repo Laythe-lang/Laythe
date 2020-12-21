@@ -1,0 +1,9 @@
+assertEq(10.0.round(), 10);
+assertEq(10.49.round(), 10);
+assertEq(10.5.round(), 11);
+assertEq(11.round(), 11);
+
+assertEq(-10.0.round(), -10);
+assertEq(-10.49.round(), -10);
+assertEq(-10.5.round(), -11);
+assertEq(-11.round(), -11);

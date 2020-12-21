@@ -17,16 +17,15 @@ use laythe_core::{
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len},
   val,
-  value::VALUE_TRUE,
-  value::{Value, ValueKind, VALUE_NIL},
-  CallResult, LyError,
+  value::{Value, ValueKind, VALUE_NIL, VALUE_TRUE},
+  Call, LyResult,
 };
 use laythe_env::{
   io::Io,
   managed::{Managed, Trace},
   memory::{Gc, NO_GC},
 };
-use laythe_lib::{create_std_lib, global::builtin_from_global_module, GLOBAL, STD};
+use laythe_lib::{builtin_from_module, create_std_lib, GLOBAL, STD};
 use laythe_native::io::io_native;
 use smol_str::SmolStr;
 use std::cmp::Ordering;
@@ -146,7 +145,7 @@ impl Vm {
       )
       .expect("Could not retrieve global module");
 
-    let builtin = builtin_from_global_module(&hooks, &global)
+    let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
     let mut dep_manager = hooks.manage(DepManager::new(io.clone(), builtin, hooks.manage(cwd)));
@@ -173,7 +172,7 @@ impl Vm {
 
     let main_module = self
       .main_module(self.dep_manager.src_dir.join(PathBuf::from(REPL_MODULE)))
-      .expect("TODO");
+      .expect("Could not retrieve main module");
 
     loop {
       let mut buffer = String::new();
@@ -254,7 +253,7 @@ impl Vm {
     let module = match Module::from_path(&hooks, hooks.manage(module_path)) {
       Ok(module) => module,
       Err(err) => {
-        writeln!(stderr, "{}", &*err.message).expect("Unable to write to stderr");
+        writeln!(stderr, "{}", err).expect("Unable to write to stderr");
         return Err(ExecuteResult::RuntimeError);
       }
     };
@@ -262,8 +261,8 @@ impl Vm {
 
     // transfer the symbols from the global module into the main module
     match self.global.transfer_exported(&hooks, &mut module) {
-      Ok(_) => {}
-      Err(_) => {
+      LyResult::Ok(_) => {}
+      _ => {
         writeln!(stderr, "Transfer global module failed.").expect("Unable to write to stderr");
         return Err(ExecuteResult::RuntimeError);
       }
@@ -289,7 +288,7 @@ impl From<VmDependencies> for Vm {
       )
       .expect("Could not retrieve global module");
 
-    let builtin = builtin_from_global_module(&hooks, &global)
+    let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
     let cwd = dependencies
@@ -348,7 +347,10 @@ struct VmExecutor<'a> {
   current_frame: *mut CallFrame,
 
   /// The current error if one is active
-  current_error: Option<LyError>,
+  current_error: Option<Managed<Instance>>,
+
+  /// What exit code is currently set
+  exit_code: u16,
 
   /// pointer to the top of the value stack
   stack_top: *mut Value,
@@ -389,6 +391,7 @@ impl<'a> VmExecutor<'a> {
       current_fun,
       current_frame,
       current_error: None,
+      exit_code: 0,
       gc: &mut vm.gc,
       io: &mut vm.io,
       stack_top,
@@ -447,18 +450,26 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Get a method for this this value with a given method name
-  pub fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> CallResult {
+  pub fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> Call {
     let class = self
       .dep_manager
       .primitive_classes()
       .for_value(this, this.kind());
 
-    class.get_method(&method_name).ok_or_else(|| {
-      Box::new(LyError::new(self.gc.manage_str(
-        format!("Class {} does not have method {}", class.name, method_name),
-        self,
-      )))
-    })
+    match class.get_method(&method_name) {
+      Some(method) => Call::Ok(method),
+      None => {
+        let result = self.run_fun(
+          val!(self.dep_manager.error_classes().import),
+          &[val!(self.gc.manage_str(
+            format!("Class {} does not have method {}", class.name, method_name),
+            self,
+          ))],
+        );
+
+        self.to_call_result(result)
+      }
+    }
   }
 
   /// Get the class for this value
@@ -472,9 +483,6 @@ impl<'a> VmExecutor<'a> {
   /// Main virtual machine execution loop. This will run the until the program interrupts
   /// from a normal exit or from a runtime error.
   pub fn run(&mut self, mode: RunMode) -> ExecuteResult {
-    #[cfg(feature = "debug")]
-    let mut last_ip: *const u8 = &self.current_fun.chunk().instructions[0] as *const u8;
-
     loop {
       // get the current instruction
       let op_code: ByteCode = ByteCode::from(self.read_byte());
@@ -482,10 +490,9 @@ impl<'a> VmExecutor<'a> {
       #[cfg(feature = "debug")]
       {
         let ip = unsafe { self.ip.offset(-1) };
-        if let Err(_) = self.print_state(ip, last_ip) {
+        if let Err(_) = self.print_state(ip) {
           return ExecuteResult::InternalError;
         }
-        last_ip = ip;
       }
 
       // execute the decoded instruction
@@ -553,17 +560,14 @@ impl<'a> VmExecutor<'a> {
           }
         }
         Signal::Ok => (),
-        Signal::RuntimeError => {
-          let current_error = self.current_error.clone();
-          match &current_error {
-            Some(error) => {
-              if let Some(signal) = self.stack_unwind(error) {
-                return signal;
-              }
+        Signal::RuntimeError => match self.current_error {
+          Some(error) => {
+            if let Some(signal) = self.stack_unwind(error) {
+              return signal;
             }
-            None => self.internal_error("Runtime error was not set."),
           }
-        }
+          None => self.internal_error("Runtime error was not set."),
+        },
         Signal::Exit => {
           return ExecuteResult::Ok;
         }
@@ -752,11 +756,12 @@ impl<'a> VmExecutor<'a> {
     if receiver.is_iter() {
       self.update_ip(2);
       match receiver.to_iter().next(&mut Hooks::new(self)) {
-        Ok(value) => {
+        Call::Ok(value) => {
           self.set_val(-1, value);
           Signal::Ok
         }
-        Err(error) => self.set_error(*error),
+        Call::Err(error) => self.set_error(error),
+        Call::Exit(code) => self.set_exit(code),
       }
     } else {
       let constant = self.read_short();
@@ -836,17 +841,16 @@ impl<'a> VmExecutor<'a> {
     let super_class = self.peek(0);
 
     if !super_class.is_class() {
-      return self.runtime_error("Superclass must be a class.");
+      return self.runtime_error(
+        self.dep_manager.error_classes().runtime,
+        "Superclass must be a class.",
+      );
     }
 
-    let class = val!(self.gc.manage(
-      Class::new(
-        &GcHooks::new(self),
-        name,
-        self.dep_manager.primitive_classes().class,
-        super_class.to_class(),
-      ),
-      self,
+    let class = val!(Class::new(
+      &GcHooks::new(self),
+      name,
+      super_class.to_class()
     ));
     self.push(class);
     Signal::Ok
@@ -897,7 +901,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn op_set_index(&mut self) -> Signal {
-    let receiver = self.peek(2 as isize);
+    let receiver = self.peek(2_isize);
 
     let class = self
       .dep_manager
@@ -912,7 +916,10 @@ impl<'a> VmExecutor<'a> {
         self.push(value);
         signal
       }
-      None => self.runtime_error(&format!("{} has not method []=.", class.name)),
+      None => self.runtime_error(
+        self.dep_manager.error_classes().method_not_found,
+        &format!("{} has no method []=.", class.name),
+      ),
     }
   }
 
@@ -927,7 +934,10 @@ impl<'a> VmExecutor<'a> {
       .is_none()
     {
       current_module.remove_symbol(&GcHooks::new(self), string);
-      return self.runtime_error(&format!("Undefined variable {}", string.as_str()));
+      return self.runtime_error(
+        self.dep_manager.error_classes().property,
+        &format!("Undefined variable {}", string.as_str()),
+      );
     }
 
     Signal::Ok
@@ -960,7 +970,10 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
-    self.runtime_error("Only instances have settable fields.")
+    self.runtime_error(
+      self.dep_manager.error_classes().runtime,
+      "Only instances have settable fields.",
+    )
   }
 
   fn op_set_upvalue(&mut self) -> Signal {
@@ -984,7 +997,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn op_get_index(&mut self) -> Signal {
-    let receiver = self.peek(1 as isize);
+    let receiver = self.peek(1_isize);
 
     let class = self
       .dep_manager
@@ -993,7 +1006,10 @@ impl<'a> VmExecutor<'a> {
 
     match class.index_get {
       Some(index_get) => self.resolve_call(index_get, 1),
-      None => self.runtime_error(&format!("{} has not method [].", class.name)),
+      None => self.runtime_error(
+        self.dep_manager.error_classes().method_not_found,
+        &format!("Not method [] on class {}.", class.name),
+      ),
     }
   }
 
@@ -1007,7 +1023,10 @@ impl<'a> VmExecutor<'a> {
         self.push(copy);
         Signal::Ok
       }
-      None => self.runtime_error(&format!("Undefined variable {}", string.as_str())),
+      None => self.runtime_error(
+        self.dep_manager.error_classes().runtime,
+        &format!("Undefined variable {}", string.as_str()),
+      ),
     }
   }
 
@@ -1075,12 +1094,13 @@ impl<'a> VmExecutor<'a> {
     let mut dep_manager = self.dep_manager;
     let current_module = self.current_fun.module;
 
-    match dep_manager.import(&GcHooks::new(self), current_module, path) {
-      Ok(module) => {
+    match dep_manager.import(&mut Hooks::new(self), current_module, path) {
+      LyResult::Ok(module) => {
         self.push(val!(module.import(&GcHooks::new(self))));
         Signal::Ok
       }
-      Err(error) => self.set_error(*error),
+      LyResult::Err(error) => self.set_error(error),
+      LyResult::Exit(code) => self.set_exit(code),
     }
   }
 
@@ -1091,7 +1111,7 @@ impl<'a> VmExecutor<'a> {
 
     match copy.export_symbol(&GcHooks::new(self), name) {
       Ok(_) => Signal::Ok,
-      Err(error) => self.set_error(*error),
+      Err(error) => self.runtime_error(self.dep_manager.error_classes().export, error.as_str()),
     }
   }
 
@@ -1117,7 +1137,10 @@ impl<'a> VmExecutor<'a> {
       self.push(val!(-pop.to_num()));
       Signal::Ok
     } else {
-      self.runtime_error("Operand must be a number.")
+      self.runtime_error(
+        self.dep_manager.error_classes().runtime,
+        "Operand must be a number.",
+      )
     }
   }
 
@@ -1139,7 +1162,10 @@ impl<'a> VmExecutor<'a> {
       self.push(val!(string));
       Signal::Ok
     } else {
-      self.runtime_error("Operands must be two numbers or two strings.")
+      self.runtime_error(
+        self.dep_manager.error_classes().runtime,
+        "Operands must be two numbers or two strings.",
+      )
     }
   }
 
@@ -1151,7 +1177,10 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
-    self.runtime_error("Operands must be numbers.")
+    self.runtime_error(
+      self.dep_manager.error_classes().runtime,
+      "Operands must be numbers.",
+    )
   }
 
   fn op_mul(&mut self) -> Signal {
@@ -1162,7 +1191,10 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
-    self.runtime_error("Operands must be numbers.")
+    self.runtime_error(
+      self.dep_manager.error_classes().runtime,
+      "Operands must be numbers.",
+    )
   }
 
   fn op_div(&mut self) -> Signal {
@@ -1173,7 +1205,10 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
-    self.runtime_error("Operands must be numbers.")
+    self.runtime_error(
+      self.dep_manager.error_classes().runtime,
+      "Operands must be numbers.",
+    )
   }
 
   fn op_less(&mut self) -> Signal {
@@ -1191,7 +1226,10 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
-    self.runtime_error("Operands must be numbers.")
+    self.runtime_error(
+      self.dep_manager.error_classes().runtime,
+      "Operands must be numbers.",
+    )
   }
 
   fn op_less_equal(&mut self) -> Signal {
@@ -1214,7 +1252,10 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
-    self.runtime_error("Operands must be numbers.")
+    self.runtime_error(
+      self.dep_manager.error_classes().runtime,
+      "Operands must be numbers or strings.",
+    )
   }
 
   fn op_greater(&mut self) -> Signal {
@@ -1232,7 +1273,10 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
-    self.runtime_error("Operands must be numbers.")
+    self.runtime_error(
+      self.dep_manager.error_classes().runtime,
+      "Operands must be numbers or strings.",
+    )
   }
 
   fn op_greater_equal(&mut self) -> Signal {
@@ -1255,7 +1299,10 @@ impl<'a> VmExecutor<'a> {
       return Signal::Ok;
     }
 
-    self.runtime_error("Operands must be numbers.")
+    self.runtime_error(
+      self.dep_manager.error_classes().runtime,
+      "Operands must be numbers or strings.",
+    )
   }
 
   fn op_equal(&mut self) -> Signal {
@@ -1389,19 +1436,30 @@ impl<'a> VmExecutor<'a> {
         "Function {} was not wrapped in a closure.",
         callee.to_fun().name
       )),
-      _ => self.runtime_error("Can only call functions, methods and classes."),
+      _ => {
+        let class_name = self.get_class(callee).to_class().name;
+        self.runtime_error(
+          self.dep_manager.error_classes().runtime,
+          &format!("{} is not callable.", class_name),
+        )
+      }
     }
   }
 
   fn call_class(&mut self, class: Managed<Class>, arg_count: u8) -> Signal {
-    let value = val!(self.gc.manage(Instance::new(class), self));
-    self.set_val(-(arg_count as isize) - 1, value);
+    self.set_val(
+      -(arg_count as isize) - 1,
+      val!(self.gc.manage(Instance::new(class), self)),
+    );
 
     match class.init {
       Some(init) => self.resolve_call(init, arg_count),
       None => {
         if arg_count != 0 {
-          self.runtime_error(&format!("Expected 0 arguments but got {}", arg_count))
+          self.runtime_error(
+            self.dep_manager.error_classes().runtime,
+            &format!("Expected 0 arguments but got {}", arg_count),
+          )
         } else {
           Signal::Ok
         }
@@ -1433,26 +1491,28 @@ impl<'a> VmExecutor<'a> {
 
     match meta.environment {
       Environment::StackLess => match native.call(&mut Hooks::new(self), this, args) {
-        Ok(value) => {
+        Call::Ok(value) => {
           self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
           self.push(value);
 
           Signal::OkReturn
         }
-        Err(error) => self.set_error(*error),
+        Call::Err(error) => self.set_error(error),
+        Call::Exit(code) => self.set_exit(code),
       },
       Environment::Normal => {
         let native_closure = self.gc.manage(Closure::new(self.native_fun_stub), self);
         self.push_frame(native_closure, arg_count);
 
         match native.call(&mut Hooks::new(self), this, args) {
-          Ok(value) => {
+          Call::Ok(value) => {
             self.pop_frame();
             self.push(value);
 
             Signal::OkReturn
           }
-          Err(error) => self.set_error(*error),
+          Call::Err(error) => self.set_error(error),
+          Call::Exit(code) => self.set_exit(code),
         }
       }
     }
@@ -1467,7 +1527,7 @@ impl<'a> VmExecutor<'a> {
 
     // set the current current instruction pointer. check for overflow
     if self.frame_count == FRAME_MAX {
-      return self.runtime_error("Stack overflow.");
+      return self.runtime_error(self.dep_manager.error_classes().runtime, "Stack overflow.");
     }
 
     self.push_frame(closure, arg_count);
@@ -1519,22 +1579,34 @@ impl<'a> VmExecutor<'a> {
     match fun.arity.check(arg_count) {
       Ok(_) => None,
       Err(error) => match error {
-        ArityError::Fixed(arity) => Some(self.runtime_error(&format!(
-          "{} expected {} argument(s) but got {}.",
-          fun.name, arity, arg_count,
-        ))),
-        ArityError::Variadic(arity) => Some(self.runtime_error(&format!(
-          "{} expected at least {} argument(s) but got {}.",
-          fun.name, arity, arg_count,
-        ))),
-        ArityError::DefaultLow(arity) => Some(self.runtime_error(&format!(
-          "{} expected at least {} argument(s) but got {}.",
-          fun.name, arity, arg_count,
-        ))),
-        ArityError::DefaultHigh(arity) => Some(self.runtime_error(&format!(
-          "{} expected at most {} argument(s) but got {}.",
-          fun.name, arity, arg_count,
-        ))),
+        ArityError::Fixed(arity) => Some(self.runtime_error(
+          self.dep_manager.error_classes().runtime,
+          &format!(
+            "{} expected {} argument(s) but got {}.",
+            fun.name, arity, arg_count,
+          ),
+        )),
+        ArityError::Variadic(arity) => Some(self.runtime_error(
+          self.dep_manager.error_classes().runtime,
+          &format!(
+            "{} expected at least {} argument(s) but got {}.",
+            fun.name, arity, arg_count,
+          ),
+        )),
+        ArityError::DefaultLow(arity) => Some(self.runtime_error(
+          self.dep_manager.error_classes().runtime,
+          &format!(
+            "{} expected at least {} argument(s) but got {}.",
+            fun.name, arity, arg_count,
+          ),
+        )),
+        ArityError::DefaultHigh(arity) => Some(self.runtime_error(
+          self.dep_manager.error_classes().runtime,
+          &format!(
+            "{} expected at most {} argument(s) but got {}.",
+            fun.name, arity, arg_count,
+          ),
+        )),
       },
     }
   }
@@ -1550,42 +1622,57 @@ impl<'a> VmExecutor<'a> {
         };
 
         match err {
-          SignatureError::LengthFixed(expected) => Some(self.runtime_error(&format!(
-            "{} {} expected {} argument(s) but received {}.",
-            callable_type,
-            native_meta.name,
-            expected,
-            args.len(),
-          ))),
-          SignatureError::LengthVariadic(expected) => Some(self.runtime_error(&format!(
-            "{} {} expected at least {} argument(s) but received {}.",
-            callable_type,
-            native_meta.name,
-            expected,
-            args.len(),
-          ))),
-          SignatureError::LengthDefaultLow(expected) => Some(self.runtime_error(&format!(
-            "{} {} expected at least {} argument(s) but received {}.",
-            callable_type,
-            native_meta.name,
-            expected,
-            args.len(),
-          ))),
-          SignatureError::LengthDefaultHigh(expected) => Some(self.runtime_error(&format!(
-            "{} {} expected at most {} argument(s) but received {}.",
-            callable_type,
-            native_meta.name,
-            expected,
-            args.len(),
-          ))),
-          SignatureError::TypeWrong(parameter) => Some(self.runtime_error(&format!(
-            "{} {}'s parameter {} required a {} but received a {}.",
-            callable_type,
-            native_meta.name,
-            native_meta.signature.parameters[parameter as usize].name,
-            native_meta.signature.parameters[parameter as usize].kind,
-            ParameterKind::from(args[parameter as usize])
-          ))),
+          SignatureError::LengthFixed(expected) => Some(self.runtime_error(
+            self.dep_manager.error_classes().runtime,
+            &format!(
+              "{} {} expected {} argument(s) but received {}.",
+              callable_type,
+              native_meta.name,
+              expected,
+              args.len(),
+            ),
+          )),
+          SignatureError::LengthVariadic(expected) => Some(self.runtime_error(
+            self.dep_manager.error_classes().runtime,
+            &format!(
+              "{} {} expected at least {} argument(s) but received {}.",
+              callable_type,
+              native_meta.name,
+              expected,
+              args.len(),
+            ),
+          )),
+          SignatureError::LengthDefaultLow(expected) => Some(self.runtime_error(
+            self.dep_manager.error_classes().runtime,
+            &format!(
+              "{} {} expected at least {} argument(s) but received {}.",
+              callable_type,
+              native_meta.name,
+              expected,
+              args.len(),
+            ),
+          )),
+          SignatureError::LengthDefaultHigh(expected) => Some(self.runtime_error(
+            self.dep_manager.error_classes().runtime,
+            &format!(
+              "{} {} expected at most {} argument(s) but received {}.",
+              callable_type,
+              native_meta.name,
+              expected,
+              args.len(),
+            ),
+          )),
+          SignatureError::TypeWrong(parameter) => Some(self.runtime_error(
+            self.dep_manager.error_classes().runtime,
+            &format!(
+              "{} {}'s parameter {} required a {} but received a {}.",
+              callable_type,
+              native_meta.name,
+              native_meta.signature.parameters[parameter as usize].name,
+              native_meta.signature.parameters[parameter as usize].kind,
+              ParameterKind::from(args[parameter as usize])
+            ),
+          )),
         }
       }
     }
@@ -1605,7 +1692,10 @@ impl<'a> VmExecutor<'a> {
         self.set_val(-1, val!(bound));
         Signal::Ok
       }
-      None => self.runtime_error(&format!("Undefined property {}", name.as_str())),
+      None => self.runtime_error(
+        self.dep_manager.error_classes().runtime,
+        &format!("Undefined property {}", name.as_str()),
+      ),
     }
   }
 
@@ -1618,7 +1708,13 @@ impl<'a> VmExecutor<'a> {
   ) -> Signal {
     match class.get_method(&method_name) {
       Some(method) => self.resolve_call(method, arg_count),
-      None => self.runtime_error(&format!("Undefined property {}.", method_name.as_str())),
+      None => self.runtime_error(
+        self.dep_manager.error_classes().property,
+        &format!(
+          "Undefined property {} on class {}.",
+          method_name, class.name
+        ),
+      ),
     }
   }
 
@@ -1681,7 +1777,7 @@ impl<'a> VmExecutor<'a> {
 
   /// Print debugging information for the current instruction
   #[cfg(feature = "debug")]
-  fn print_state(&self, ip: *const u8, last_ip: *const u8) -> io::Result<usize> {
+  fn print_state(&self, ip: *const u8) -> io::Result<usize> {
     let mut stdio = self.io.stdio();
 
     self.print_stack_debug(&mut stdio)?;
@@ -1691,8 +1787,7 @@ impl<'a> VmExecutor<'a> {
 
     let start = &self.current_fun.chunk().instructions[0] as *const u8;
     let offset = ptr_len(start, ip);
-    let last_offset = ptr_len(start, last_ip);
-    disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, last_offset)
+    disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, true)
   }
 
   /// Print the current stack
@@ -1716,7 +1811,12 @@ impl<'a> VmExecutor<'a> {
       let slice = std::slice::from_raw_parts(start, len);
 
       for value in slice {
-        write!(stdout, "[ {} ]", *value)?;
+        let s = value.to_string();
+        write!(
+          stdout,
+          "[ {} ]",
+          s.chars().into_iter().take(60).collect::<String>()
+        )?;
       }
     }
 
@@ -1743,24 +1843,16 @@ impl<'a> VmExecutor<'a> {
     writeln!(stdout)
   }
 
-  // #[cfg(feature = "debug")]
-  // fn print(&self, message: &str) {
-  //   let mut stdio = self.io.stdio();
-  //   let stdout = stdio.stdout();
-
-  //   writeln!(stdout, "{}", message).expect("Could not write to stdout");
-  // }
-
   /// Convert an execute result to a call result
-  fn to_call_result(&self, execute_result: ExecuteResult) -> CallResult {
+  fn to_call_result(&self, execute_result: ExecuteResult) -> Call {
     match execute_result {
-      ExecuteResult::FunResult(value) => Ok(value),
+      ExecuteResult::FunResult(value) => Call::Ok(value),
       ExecuteResult::Ok => self.internal_error("Accidental early exit in hook call."),
       ExecuteResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
       }
-      ExecuteResult::RuntimeError => match self.current_error.clone() {
-        Some(error) => Err(Box::new(error)),
+      ExecuteResult::RuntimeError => match self.current_error {
+        Some(error) => Call::Err(error),
         None => self.internal_error("Error not set on vm executor."),
       },
       ExecuteResult::InternalError => self.internal_error("Internal error encountered"),
@@ -1773,25 +1865,43 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Report a known laythe runtime error to the user
-  fn runtime_error(&mut self, message: &str) -> Signal {
-    self.set_error(LyError::new(self.gc.manage_str(message, self)));
+  fn runtime_error(&mut self, error: Managed<Class>, message: &str) -> Signal {
+    self.push(val!(self.gc.manage_str(message, self)));
+
+    let mode = RunMode::CallFunction(self.frame_count);
+    let result = match self.resolve_call(val!(error), 1) {
+      Signal::Ok => self.run(mode),
+      Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
+      Signal::RuntimeError => ExecuteResult::RuntimeError,
+      _ => self.internal_error("Unexpected signal in run_fun."),
+    };
+
+    match result {
+      ExecuteResult::FunResult(error) => {
+        if error.is_instance() {
+          self.set_error(error.to_instance())
+        } else {
+          self.internal_error("Failed to construct error")
+        }
+      }
+      _ => self.internal_error("Failed to construct error"),
+    }
+  }
+
+  /// Set the current error place the vm signal a runtime error
+  fn set_error(&mut self, error: Managed<Instance>) -> Signal {
+    self.current_error = Some(error);
     Signal::RuntimeError
   }
 
   /// Set the current error place the vm signal a runtime error
-  fn set_error(&mut self, error: LyError) -> Signal {
-    let signal = if error.exit {
-      Signal::Exit
-    } else {
-      Signal::RuntimeError
-    };
-
-    self.current_error = Some(error);
-    signal
+  fn set_exit(&mut self, code: u16) -> Signal {
+    self.exit_code = code;
+    Signal::Exit
   }
 
   /// Search for a catch block up the stack, printing the error if no catch is found
-  fn stack_unwind(&mut self, error: &LyError) -> Option<ExecuteResult> {
+  fn stack_unwind(&mut self, error: Managed<Instance>) -> Option<ExecuteResult> {
     let mut popped_frames = None;
     let mut stack_top = None;
     self.store_ip();
@@ -1847,12 +1957,12 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Print an error message and the current call stack to the user
-  fn print_error(&mut self, error: &LyError) {
-    let message = error.message;
+  fn print_error(&mut self, error: Managed<Instance>) {
+    let message = error[0].to_str();
 
     let mut stdio = self.io.stdio();
     let stderr = stdio.stderr();
-    writeln!(stderr, "{}", &*message).expect("Unable to write to stderr");
+    writeln!(stderr, "{}: {}", error.class.name, message).expect("Unable to write to stderr");
 
     for frame in self.frames[1..self.frame_count].iter().rev() {
       let closure = &frame.closure;
@@ -1864,7 +1974,7 @@ impl<'a> VmExecutor<'a> {
       let offset = ptr_len(&closure.fun.chunk().instructions[0], frame.ip);
       writeln!(
         stderr,
-        "[line {}] in {}",
+        "  [line {}] in {}",
         closure.fun.chunk().get_line(offset),
         location
       )
@@ -1900,6 +2010,7 @@ impl<'a> Trace for VmExecutor<'a> {
     self.dep_manager.trace();
     self.native_fun_stub.trace();
     self.global.trace();
+    self.current_error.map(|error| error.trace());
 
     true
   }
@@ -1928,6 +2039,7 @@ impl<'a> Trace for VmExecutor<'a> {
     self.dep_manager.trace_debug(stdout);
     self.native_fun_stub.trace_debug(stdout);
     self.global.trace_debug(stdout);
+    self.current_error.map(|error| error.trace_debug(stdout));
 
     true
   }
@@ -1954,17 +2066,17 @@ impl<'a> GcContext for VmExecutor<'a> {
 }
 
 impl<'a> ValueContext for VmExecutor<'a> {
-  fn call(&mut self, callable: Value, args: &[Value]) -> CallResult {
+  fn call(&mut self, callable: Value, args: &[Value]) -> Call {
     let result = self.run_fun(callable, args);
     self.to_call_result(result)
   }
 
-  fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> CallResult {
+  fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> Call {
     let result = self.run_method(this, method, args);
     self.to_call_result(result)
   }
 
-  fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> CallResult {
+  fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> Call {
     self.get_method(this, method_name)
   }
 

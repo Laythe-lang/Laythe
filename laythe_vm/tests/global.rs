@@ -31,7 +31,7 @@ fn bool() -> Result<(), std::io::Error> {
 fn class() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/global/class/superClass.lay",
+      "std_lib/global/class/superCls.lay",
       "std_lib/global/class/str.lay",
     ],
     ExecuteResult::Ok,
@@ -70,8 +70,10 @@ fn iter() -> Result<(), std::io::Error> {
       "std_lib/global/iter/chain.lay",
       "std_lib/global/iter/each.lay",
       "std_lib/global/iter/filter.lay",
+      "std_lib/global/iter/first.lay",
       "std_lib/global/iter/into.lay",
       "std_lib/global/iter/iter.lay",
+      "std_lib/global/iter/last.lay",
       "std_lib/global/iter/len.lay",
       "std_lib/global/iter/map.lay",
       "std_lib/global/iter/next.lay",
@@ -92,13 +94,15 @@ fn list() -> Result<(), std::io::Error> {
       "std_lib/global/list/clear.lay",
       "std_lib/global/list/collect.lay",
       "std_lib/global/list/has.lay",
-      "std_lib/global/list/insert.lay",
       "std_lib/global/list/index.lay",
+      "std_lib/global/list/insert.lay",
       "std_lib/global/list/iter.lay",
+      "std_lib/global/list/len.lay",
       "std_lib/global/list/pop.lay",
       "std_lib/global/list/push.lay",
       "std_lib/global/list/remove.lay",
-      "std_lib/global/list/len.lay",
+      "std_lib/global/list/rev.lay",
+      "std_lib/global/list/slice.lay",
       "std_lib/global/list/str.lay",
     ],
     ExecuteResult::Ok,
@@ -159,9 +163,13 @@ fn nil() -> Result<(), std::io::Error> {
 fn number() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/global/number/times.lay",
-      "std_lib/global/number/str.lay",
+      "std_lib/global/number/ceil.lay",
+      "std_lib/global/number/cmp.lay",
+      "std_lib/global/number/floor.lay",
       "std_lib/global/number/parse.lay",
+      "std_lib/global/number/round.lay",
+      "std_lib/global/number/str.lay",
+      "std_lib/global/number/times.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -214,6 +222,7 @@ fn str() -> Result<(), std::io::Error> {
       "std_lib/global/str/iter.lay",
       "std_lib/global/str/len.lay",
       "std_lib/global/str/slice.lay",
+      "std_lib/global/str/split.lay",
       "std_lib/global/str/str.lay",
     ],
     ExecuteResult::Ok,
