@@ -1,13 +1,15 @@
 mod utils;
 
-use laythe_core::{hooks::GcHooks, module::Module, package::Package, LyResult};
+use laythe_core::{hooks::GcHooks, module::Module, package::Package};
 use laythe_env::managed::Managed;
 use std::path::PathBuf;
 use utils::{declare_env_module, define_env_module};
 
+use crate::InitResult;
+
 const ENV_PATH: &str = "std/env.ly";
 
-pub fn env_module(hooks: &GcHooks, mut _std: Managed<Package>) -> LyResult<Managed<Module>> {
+pub fn env_module(hooks: &GcHooks, _std: &Package) -> InitResult<Managed<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
     hooks.manage(PathBuf::from(ENV_PATH)),

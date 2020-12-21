@@ -1,0 +1,7 @@
+assertEq(10.0.floor(), 10.0);
+assertEq(10.1.floor(), 10.0);
+assertEq(10.99.floor(), 10.0);
+
+assertEq((-10.0).floor(), -10.0);
+assertEq((-10.1).floor(), -11.0);
+assertEq((-10.99).floor(), -11.0);

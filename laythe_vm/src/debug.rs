@@ -13,7 +13,7 @@ pub fn exception_catch(stdout: &mut dyn Write, frame: &CallFrame, idx: usize) ->
 }
 
 /// Write a chunk to console
-pub fn disassemble_chunk(stdio: &mut Stdio, code_chunk: &Chunk, name: &str) -> io::Result<()> {
+pub fn disassemble_chunk(stdio: &mut Stdio, chunk: &Chunk, name: &str) -> io::Result<()> {
   let stdout = stdio.stdout();
   writeln!(stdout)?;
   writeln!(stdout, "{0}", name)?;
@@ -21,8 +21,9 @@ pub fn disassemble_chunk(stdio: &mut Stdio, code_chunk: &Chunk, name: &str) -> i
   let mut offset: usize = 0;
   let mut last_offset: usize = 0;
 
-  while offset < code_chunk.instructions.len() {
-    let temp = disassemble_instruction(stdio, code_chunk, offset, last_offset);
+  while offset < chunk.instructions.len() {
+    let show_line = chunk.get_line(offset) == chunk.get_line(last_offset);
+    let temp = disassemble_instruction(stdio, chunk, offset, show_line);
     last_offset = offset;
     offset = temp?;
   }
@@ -35,12 +36,12 @@ pub fn disassemble_instruction(
   stdio: &mut Stdio,
   chunk: &Chunk,
   ip: usize,
-  last_offset: usize,
+  show_line: bool,
 ) -> io::Result<usize> {
   let stdout = stdio.stdout();
   write!(stdout, "  {:0>4} ", ip)?;
 
-  if ip > 0 && chunk.get_line(ip) == chunk.get_line(last_offset) {
+  if ip != 0 && show_line {
     write!(stdout, "   | ")?;
   } else {
     write!(stdout, "{:>4} ", chunk.get_line(ip))?;

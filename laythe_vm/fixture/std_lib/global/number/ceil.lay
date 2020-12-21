@@ -1,0 +1,7 @@
+assertEq(10.0.ceil(), 10.0);
+assertEq(10.1.ceil(), 11.0);
+assertEq(10.99.ceil(), 11.0);
+
+assertEq((-10.0).ceil(), -10.0);
+assertEq((-10.1).ceil(), -10.0);
+assertEq((-10.99).ceil(), -10.0);

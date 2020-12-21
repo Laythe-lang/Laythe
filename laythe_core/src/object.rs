@@ -5,8 +5,8 @@ use crate::{
   hooks::GcHooks,
   module::Module,
   signature::Arity,
+  value::Value,
   value::VALUE_NIL,
-  value::{Value, ValueKind},
 };
 use core::slice;
 use fnv::FnvBuildHasher;
@@ -16,129 +16,16 @@ use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
 use slice::SliceIndex;
 use smol_str::SmolStr;
 use std::{
+  cmp::Ordering,
   fmt,
   hash::Hash,
   io::Write,
+  iter::FromIterator,
   mem,
+  ops::Deref,
   ops::{Index, IndexMut},
   ptr::NonNull,
 };
-
-pub struct BuiltIn {
-  pub dependencies: BuiltInDependencies,
-
-  pub primitives: BuiltinPrimitives,
-}
-
-impl Trace for BuiltIn {
-  fn trace(&self) -> bool {
-    self.primitives.trace()
-  }
-
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
-    self.primitives.trace_debug(stdio)
-  }
-}
-
-pub struct BuiltInDependencies {
-  pub module: Managed<Class>,
-}
-
-pub struct BuiltinPrimitives {
-  /// The base Object class
-  pub object: Managed<Class>,
-
-  /// the Nil class
-  pub nil: Managed<Class>,
-
-  /// the Bool class
-  pub bool: Managed<Class>,
-
-  /// the Class class
-  pub class: Managed<Class>,
-
-  /// the Number class
-  pub number: Managed<Class>,
-
-  /// the String class
-  pub string: Managed<Class>,
-
-  /// the List class
-  pub list: Managed<Class>,
-
-  /// the Map class
-  pub map: Managed<Class>,
-
-  /// the Iter class
-  pub iter: Managed<Class>,
-
-  /// the Closure class
-  pub closure: Managed<Class>,
-
-  /// the method class
-  pub method: Managed<Class>,
-
-  /// the NativeFun class
-  pub native_fun: Managed<Class>,
-}
-
-impl BuiltinPrimitives {
-  pub fn for_value(&self, value: Value, kind: ValueKind) -> Managed<Class> {
-    match kind {
-      ValueKind::Bool => self.bool,
-      ValueKind::Nil => self.nil,
-      ValueKind::Number => self.number,
-      ValueKind::String => self.string,
-      ValueKind::List => self.list,
-      ValueKind::Map => self.map,
-      ValueKind::Fun => panic!(),
-      ValueKind::Closure => self.closure,
-      ValueKind::Class => value.to_class().meta().expect("Meta class not set."),
-      ValueKind::Instance => value.to_instance().class,
-      ValueKind::Iter => self.iter,
-      ValueKind::Method => self.method,
-      ValueKind::Native => self.native_fun,
-      ValueKind::Upvalue => {
-        let value = value.to_upvalue().value();
-        self.for_value(value, value.kind())
-      }
-    }
-  }
-}
-
-impl Trace for BuiltinPrimitives {
-  fn trace(&self) -> bool {
-    self.bool.trace();
-    self.nil.trace();
-    self.class.trace();
-    self.number.trace();
-    self.string.trace();
-    self.list.trace();
-    self.iter.trace();
-    self.map.trace();
-    self.closure.trace();
-    self.method.trace();
-    self.native_fun.trace();
-
-    true
-  }
-
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
-    self.bool.trace_debug(stdio);
-    self.nil.trace_debug(stdio);
-    self.class.trace_debug(stdio);
-    self.number.trace_debug(stdio);
-    self.string.trace_debug(stdio);
-    self.list.trace_debug(stdio);
-    self.iter.trace_debug(stdio);
-    self.map.trace_debug(stdio);
-    self.closure.trace_debug(stdio);
-    self.method.trace_debug(stdio);
-    self.native_fun.trace_debug(stdio);
-
-    true
-  }
-}
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Upvalue {
@@ -423,6 +310,14 @@ impl Manage for Fun {
 pub struct List<T>(Vec<T>);
 
 impl<T> List<T> {
+  pub fn new() -> Self {
+    Self(Vec::new())
+  }
+
+  pub fn with_capacity(capacity: usize) -> Self {
+    Self(Vec::with_capacity(capacity))
+  }
+
   pub fn iter(&self) -> slice::Iter<'_, T> {
     self.0.iter()
   }
@@ -455,6 +350,10 @@ impl<T> List<T> {
     self.0.insert(index, value)
   }
 
+  pub fn sort_by<F: FnMut(&T, &T) -> Ordering>(&mut self, compare: F) {
+    self.0.sort_by(compare)
+  }
+
   pub fn clear(&mut self) {
     self.0.clear()
   }
@@ -472,19 +371,19 @@ impl<T> Default for List<T> {
   }
 }
 
-impl<T> List<T> {
-  pub fn new() -> Self {
-    Self(Vec::new())
+impl<T: Clone> List<T> {
+  pub fn to_list(&self) -> List<T> {
+    List(self.0.to_vec())
   }
 
-  pub fn with_capacity(capacity: usize) -> Self {
-    Self(Vec::with_capacity(capacity))
+  pub fn extend_from_slice(&mut self, other: &[T]) {
+    self.0.extend_from_slice(other)
   }
 }
 
-impl<T: Clone> List<T> {
-  pub fn extend_from_slice(&mut self, other: &[T]) {
-    self.0.extend_from_slice(other)
+impl<T> FromIterator<T> for List<T> {
+  fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+    List(Vec::from_iter(iter))
   }
 }
 
@@ -499,6 +398,14 @@ impl<T, I: SliceIndex<[T]>> Index<I> for List<T> {
 impl<T, I: SliceIndex<[T]>> IndexMut<I> for List<T> {
   fn index_mut(&mut self, index: I) -> &mut <Vec<T> as Index<I>>::Output {
     &mut self.0[index]
+  }
+}
+
+impl<T> Deref for List<T> {
+  type Target = [T];
+
+  fn deref(&self) -> &[T] {
+    self.0.deref()
   }
 }
 
@@ -574,6 +481,14 @@ impl<K, V> Map<K, V> {
 
   pub fn iter(&self) -> hash_map::Iter<'_, K, V> {
     self.0.iter()
+  }
+
+  pub fn keys(&self) -> hash_map::Keys<'_, K, V> {
+    self.0.keys()
+  }
+
+  pub fn values(&self) -> hash_map::Values<'_, K, V> {
+    self.0.values()
   }
 }
 
@@ -776,10 +691,23 @@ impl Class {
   pub fn new(
     hooks: &GcHooks,
     name: Managed<SmolStr>,
-    meta_class: Managed<Class>,
     super_class: Managed<Class>,
-  ) -> Self {
-    let mut class = Self {
+  ) -> Managed<Self> {
+    let super_meta = super_class
+      .meta()
+      .expect("Expected super class to have meta class");
+    let super_meta_meta = super_meta
+      .meta()
+      .expect("Expected super meta class to have meta class");
+
+    let meta_class = Class::with_meta(
+      hooks,
+      hooks.manage_str(format!("{} metaClass", name)),
+      super_meta_meta,
+      super_meta_meta,
+    );
+
+    let mut class = hooks.manage(Self {
       name,
       init: None,
       index_get: None,
@@ -788,9 +716,36 @@ impl Class {
       fields: DynamicMap::new(),
       meta_class: Some(meta_class),
       super_class: None,
-    };
+    });
 
+    hooks.push_root(class);
     class.inherit(hooks, super_class);
+    hooks.pop_roots(1);
+
+    class
+  }
+
+  fn with_meta(
+    hooks: &GcHooks,
+    name: Managed<SmolStr>,
+    meta_class: Managed<Class>,
+    super_class: Managed<Class>,
+  ) -> Managed<Self> {
+    let mut class = hooks.manage(Self {
+      name,
+      init: None,
+      index_get: None,
+      index_set: None,
+      methods: DynamicMap::new(),
+      fields: DynamicMap::new(),
+      meta_class: Some(meta_class),
+      super_class: None,
+    });
+
+    hooks.push_root(class);
+    class.inherit(hooks, super_class);
+    hooks.pop_roots(1);
+
     class
   }
 
@@ -807,8 +762,19 @@ impl Class {
     }
   }
 
-  pub fn meta(&mut self) -> &Option<Managed<Class>> {
+  pub fn meta(&self) -> &Option<Managed<Class>> {
     &self.meta_class
+  }
+
+  pub fn is_subclass(&self, class: Managed<Class>) -> bool {
+    if self == &*class {
+      return true;
+    }
+
+    match self.super_class {
+      Some(super_class) => super_class.is_subclass(class),
+      None => false,
+    }
   }
 
   pub fn super_class(&mut self) -> &Option<Managed<Class>> {
@@ -889,11 +855,13 @@ impl fmt::Debug for Class {
 impl Trace for Class {
   fn trace(&self) -> bool {
     self.name.trace();
-    self.init.map(|init| init.trace());
 
     self.methods.for_each(|(key, val)| {
       key.trace();
       val.trace();
+    });
+    self.fields.for_each(|(key, _)| {
+      key.trace();
     });
 
     self.super_class.map(|class| class.trace());
@@ -904,11 +872,13 @@ impl Trace for Class {
 
   fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.name.trace_debug(stdio);
-    self.init.map(|init| init.trace_debug(stdio));
 
     self.methods.for_each(|(key, val)| {
       key.trace_debug(stdio);
       val.trace_debug(stdio);
+    });
+    self.fields.for_each(|(key, _)| {
+      key.trace_debug(stdio);
     });
 
     self.super_class.map(|class| class.trace_debug(stdio));
@@ -941,7 +911,7 @@ impl Manage for Class {
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
-    todo!()
+    self
   }
 }
 

@@ -1,6 +1,7 @@
 use crate::{
   native,
   support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
+  InitResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -10,7 +11,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  CallResult, LyResult,
+  Call,
 };
 use laythe_env::managed::Trace;
 use std::io::Write;
@@ -27,12 +28,12 @@ pub fn declare_native_class(
   hooks: &GcHooks,
   module: &mut Module,
   package: &Package,
-) -> LyResult<()> {
+) -> InitResult<()> {
   let class = default_class_inheritance(hooks, package, NATIVE_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name, val!(class))
 }
 
-pub fn define_native_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+pub fn define_native_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
   let mut class = load_class_from_module(hooks, module, NATIVE_CLASS_NAME)?;
 
   class.add_method(
@@ -53,15 +54,15 @@ pub fn define_native_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyR
 native!(NativeName, NATIVE_NAME);
 
 impl Native for NativeName {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
-    Ok(val!(this.unwrap().to_native().meta().name))
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    Call::Ok(val!(this.unwrap().to_native().meta().name))
   }
 }
 
 native!(NativeCall, NATIVE_CALL);
 
 impl Native for NativeCall {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     hooks.call(this.unwrap(), args)
   }
 }
@@ -96,8 +97,8 @@ mod test {
       let managed: Managed<Box<dyn Native>> = hooks.manage(Box::new(TestNative::from(&hooks)));
       let result = native_name.call(&mut hooks, Some(val!(managed)), &[]);
       match result {
-        Ok(r) => assert_eq!(*r.to_str(), "test".to_string()),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(*r.to_str(), "test".to_string()),
+        _ => assert!(false),
       }
     }
   }
@@ -131,8 +132,8 @@ mod test {
       let managed: Managed<Box<dyn Native>> = hooks.manage(Box::new(TestNative::from(&hooks)));
       let result = native_call.call(&mut hooks, Some(val!(managed)), &[]);
       match result {
-        Ok(r) => assert!(r.is_nil()),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert!(r.is_nil()),
+        _ => assert!(false),
       }
     }
   }

@@ -1,6 +1,7 @@
 use crate::{
   native,
   support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
+  InitResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -10,20 +11,24 @@ use laythe_core::{
   signature::Arity,
   val,
   value::{Value, VALUE_TRUE},
-  CallResult, LyResult,
+  Call,
 };
-use laythe_env::{managed::Trace};
+use laythe_env::managed::Trace;
 use std::io::Write;
 
 pub const BOOL_CLASS_NAME: &str = "Bool";
 const BOOL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_bool_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
+pub fn declare_bool_class(
+  hooks: &GcHooks,
+  module: &mut Module,
+  package: &Package,
+) -> InitResult<()> {
   let bool_class = default_class_inheritance(hooks, package, BOOL_CLASS_NAME)?;
   export_and_insert(hooks, module, bool_class.name, val!(bool_class))
 }
 
-pub fn define_bool_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+pub fn define_bool_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
   let mut bool_class = load_class_from_module(hooks, module, BOOL_CLASS_NAME)?;
 
   bool_class.add_method(
@@ -38,11 +43,11 @@ pub fn define_bool_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 native!(BoolStr, BOOL_STR);
 
 impl Native for BoolStr {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     if this.unwrap() == VALUE_TRUE {
-      Ok(val!(hooks.manage_str("true")))
+      Call::Ok(val!(hooks.manage_str("true")))
     } else {
-      Ok(val!(hooks.manage_str("false")))
+      Call::Ok(val!(hooks.manage_str("false")))
     }
   }
 }
@@ -79,14 +84,8 @@ mod test {
       let result1 = bool_str.call(&mut hooks, Some(b_true), &[]);
       let result2 = bool_str.call(&mut hooks, Some(b_false), &[]);
 
-      match result1 {
-        Ok(r) => assert_eq!(&*r.to_str(), "true"),
-        Err(_) => assert!(false),
-      }
-      match result2 {
-        Ok(r) => assert_eq!(&*r.to_str(), "false"),
-        Err(_) => assert!(false),
-      }
+      assert_eq!(result1.unwrap().to_str(), "true");
+      assert_eq!(result2.unwrap().to_str(), "false");
     }
   }
 }

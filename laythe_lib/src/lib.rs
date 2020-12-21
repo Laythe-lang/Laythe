@@ -1,4 +1,5 @@
 #![deny(clippy::all)]
+mod builtin;
 mod env;
 pub mod global;
 mod io;
@@ -8,43 +9,50 @@ mod support;
 
 use env::env_module;
 use global::add_global_module;
-use io::io_package;
-use laythe_core::{hooks::GcHooks, package::Package, LyResult};
+use io::add_io_package;
+use laythe_core::{hooks::GcHooks, package::Package};
 use laythe_env::managed::Managed;
-use math::math_module;
+use math::add_math_module;
 use regexp::regexp_module;
+use smol_str::SmolStr;
+
+pub use builtin::{
+  builtin_from_module, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives,
+};
+
+type InitResult<T> = Result<T, Managed<SmolStr>>;
 
 #[macro_export]
 macro_rules! native {
-  ( $x:ident, $y:ident ) => {
+  ( $st:ident, $meta:ident ) => {
     #[derive(Debug)]
-    pub struct $x {
+    pub struct $st {
       meta: NativeMeta,
     }
 
-    impl<'a> From<&GcHooks<'a>> for $x {
+    impl<'a> From<&GcHooks<'a>> for $st {
       fn from(hooks: &GcHooks<'a>) -> Self {
         Self {
-          meta: $y.to_meta(hooks),
+          meta: $meta.to_meta(hooks),
         }
       }
     }
 
-    impl<'a> From<&Hooks<'a>> for $x {
+    impl<'a> From<&Hooks<'a>> for $st {
       fn from(hooks: &Hooks<'a>) -> Self {
         Self {
-          meta: $y.to_meta(&hooks.as_gc()),
+          meta: $meta.to_meta(&hooks.as_gc()),
         }
       }
     }
 
-    impl MetaData for $x {
+    impl MetaData for $st {
       fn meta(&self) -> &NativeMeta {
         &self.meta
       }
     }
 
-    impl Trace for $x {
+    impl Trace for $st {
       fn trace(&self) -> bool {
         self.meta.trace()
       }
@@ -56,22 +64,98 @@ macro_rules! native {
   };
 }
 
+#[macro_export]
+macro_rules! create_error {
+  ( $error:expr, $hooks:ident, $message:expr ) => {
+    match $hooks.call($error, &[Value::from($hooks.manage_str($message))]) {
+      Call::Ok(err) => {
+        if err.is_instance() {
+          Call::Err(err.to_instance())
+        } else {
+          panic!(
+            "Standard library failed to instantiate error instance\nFound value {:?}",
+            err.kind()
+          )
+        }
+      }
+      Call::Err(err) => Call::Err(err),
+      Call::Exit(exit) => Call::Exit(exit),
+    }
+  };
+}
+
+#[macro_export]
+macro_rules! native_with_error {
+  ( $st:ident, $meta:ident ) => {
+    #[derive(Debug)]
+    pub struct $st {
+      meta: NativeMeta,
+      error: Value,
+    }
+
+    impl $st {
+      fn new(hooks: &GcHooks, error: Value) -> Self {
+        let native = Self {
+          meta: $meta.to_meta(hooks),
+          error,
+        };
+
+        debug_assert!(native.error.is_class());
+        native
+      }
+
+      fn call_error<T: Into<String> + AsRef<str>>(&self, hooks: &mut Hooks, message: T) -> Call {
+        match hooks.call(self.error, &[val!(hooks.manage_str(message))]) {
+          Call::Ok(err) => {
+            if err.is_instance() {
+              Call::Err(err.to_instance())
+            } else {
+              panic!(
+                "Standard library failed to instantiate error instance\nFound value {:?}",
+                err.kind()
+              )
+            }
+          }
+          Call::Err(err) => Call::Err(err),
+          Call::Exit(err) => Call::Exit(err),
+        }
+      }
+    }
+
+    impl MetaData for $st {
+      fn meta(&self) -> &NativeMeta {
+        &self.meta
+      }
+    }
+
+    impl Trace for $st {
+      fn trace(&self) -> bool {
+        self.meta.trace();
+        self.error.trace()
+      }
+
+      fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+        self.meta.trace_debug(stdio);
+        self.meta.trace_debug(stdio)
+      }
+    }
+  };
+}
+
 pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 pub const GLOBAL_PATH: &str = "std/global.ly";
 
-pub fn create_std_lib(hooks: &GcHooks) -> LyResult<Managed<Package>> {
+pub fn create_std_lib(hooks: &GcHooks) -> InitResult<Managed<Package>> {
   let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
 
-  add_global_module(hooks, std)?;
+  add_global_module(hooks, &mut std)?;
 
-  let math = math_module(hooks, std)?;
-  let io = io_package(hooks, std)?;
-  let env = env_module(hooks, std)?;
-  let regexp = regexp_module(hooks, std)?;
+  add_math_module(hooks, &mut std)?;
+  add_io_package(hooks, &mut std)?;
+  let env = env_module(hooks, &std)?;
+  let regexp = regexp_module(hooks, &std)?;
 
-  std.add_module(hooks, math)?;
-  std.add_package(hooks, io)?;
   std.add_module(hooks, env)?;
   std.add_module(hooks, regexp)?;
 

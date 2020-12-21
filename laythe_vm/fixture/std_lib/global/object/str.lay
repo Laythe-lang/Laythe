@@ -1,4 +1,7 @@
+class A {}
+
 assertEq([].str(), '[]');
 assertEq(true.str(), 'true');
 assertEq('test'.str(), 'test');
-assertEq(|a, b| {}.str(), '<fn lambda>');
+assert(|a, b| {}.str().has('<Fun'));
+assert(A().str().has('<A'));

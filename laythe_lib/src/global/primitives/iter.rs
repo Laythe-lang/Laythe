@@ -1,8 +1,10 @@
 use crate::{
   native,
   support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
+  InitResult,
 };
 use laythe_core::{
+  get,
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
   module::Module,
@@ -13,7 +15,7 @@ use laythe_core::{
   utils::is_falsey,
   val,
   value::{Value, VALUE_NIL},
-  CallResult, LyResult,
+  Call,
 };
 use laythe_env::managed::{Managed, Trace};
 use std::io::Write;
@@ -25,6 +27,9 @@ const ITER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixe
 /// This might need to have a stack once we implement yield or the iterator class
 const ITER_NEXT: NativeMetaBuilder = NativeMetaBuilder::method("next", Arity::Fixed(0));
 const ITER_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
+
+const ITER_FIRST: NativeMetaBuilder = NativeMetaBuilder::method("first", Arity::Fixed(0));
+const ITER_LAST: NativeMetaBuilder = NativeMetaBuilder::method("last", Arity::Fixed(0));
 
 const ITER_MAP: NativeMetaBuilder = NativeMetaBuilder::method("map", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
@@ -65,12 +70,16 @@ const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fi
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
   .with_stack();
 
-pub fn declare_iter_class(hooks: &GcHooks, module: &mut Module, package: &Package) -> LyResult<()> {
+pub fn declare_iter_class(
+  hooks: &GcHooks,
+  module: &mut Module,
+  package: &Package,
+) -> InitResult<()> {
   let class = default_class_inheritance(hooks, package, ITER_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name, val!(class))
 }
 
-pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyResult<()> {
+pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
   let mut class = load_class_from_module(hooks, module, ITER_CLASS_NAME)?;
 
   class.add_method(
@@ -89,6 +98,18 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
     hooks,
     hooks.manage_str(ITER_ITER.name),
     val!(to_dyn_native(hooks, IterIter::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_FIRST.name),
+    val!(to_dyn_native(hooks, IterFirst::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_LAST.name),
+    val!(to_dyn_native(hooks, IterLast::from(hooks))),
   );
 
   class.add_method(
@@ -157,15 +178,15 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> LyRes
 native!(IterStr, ITER_STR);
 
 impl Native for IterStr {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
-    Ok(val!(hooks.manage_str(this.unwrap().to_iter().name())))
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    Call::Ok(val!(hooks.manage_str(this.unwrap().to_iter().name())))
   }
 }
 
 native!(IterNext, ITER_NEXT);
 
 impl Native for IterNext {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     this.unwrap().to_iter().next(hooks)
   }
 }
@@ -173,20 +194,50 @@ impl Native for IterNext {
 native!(IterIter, ITER_ITER);
 
 impl Native for IterIter {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
-    Ok(this.unwrap())
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    Call::Ok(this.unwrap())
+  }
+}
+
+native!(IterFirst, ITER_FIRST);
+
+impl Native for IterFirst {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let mut iter = this.unwrap().to_iter();
+
+    if !is_falsey(get!(iter.next(hooks))) {
+      let current = iter.current();
+      Call::Ok(current)
+    } else {
+      Call::Ok(VALUE_NIL)
+    }
+  }
+}
+
+native!(IterLast, ITER_LAST);
+
+impl Native for IterLast {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let mut iter = this.unwrap().to_iter();
+    let mut result = VALUE_NIL;
+
+    while !is_falsey(get!(iter.next(hooks))) {
+      result = iter.current();
+    }
+
+    Call::Ok(result)
   }
 }
 
 native!(IterMap, ITER_MAP);
 
 impl Native for IterMap {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let inner_iter: Box<dyn LyIter> = Box::new(MapIterator::new(this.unwrap().to_iter(), args[0]));
     let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
-    Ok(val!(iter))
+    Call::Ok(val!(iter))
   }
 }
 
@@ -216,13 +267,13 @@ impl LyIter for MapIterator {
     self.current
   }
 
-  fn next(&mut self, hooks: &mut Hooks) -> CallResult {
-    if is_falsey(self.iter.next(hooks)?) {
-      Ok(val!(false))
+  fn next(&mut self, hooks: &mut Hooks) -> Call {
+    if is_falsey(get!(self.iter.next(hooks))) {
+      Call::Ok(val!(false))
     } else {
       let current = self.iter.current();
-      self.current = hooks.call(self.callable, &[current])?;
-      Ok(val!(true))
+      self.current = get!(hooks.call(self.callable, &[current]));
+      Call::Ok(val!(true))
     }
   }
 
@@ -254,13 +305,13 @@ impl Trace for MapIterator {
 native!(IterFilter, ITER_FILTER);
 
 impl Native for IterFilter {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let inner_iter: Box<dyn LyIter> =
       Box::new(FilterIterator::new(this.unwrap().to_iter(), args[0]));
     let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
-    Ok(val!(iter))
+    Call::Ok(val!(iter))
   }
 }
 
@@ -290,18 +341,18 @@ impl LyIter for FilterIterator {
     self.current
   }
 
-  fn next(&mut self, hooks: &mut Hooks) -> CallResult {
-    while !is_falsey(self.iter.next(hooks)?) {
+  fn next(&mut self, hooks: &mut Hooks) -> Call {
+    while !is_falsey(get!(self.iter.next(hooks))) {
       let current = self.iter.current();
-      let should_keep = hooks.call(self.callable, &[current])?;
+      let should_keep = get!(hooks.call(self.callable, &[current]));
 
       if !is_falsey(should_keep) {
         self.current = current;
-        return Ok(val!(true));
+        return Call::Ok(val!(true));
       }
     }
 
-    Ok(val!(false))
+    Call::Ok(val!(false))
   }
 
   fn size_hint(&self) -> Option<usize> {
@@ -332,35 +383,35 @@ impl Trace for FilterIterator {
 native!(IterReduce, ITER_REDUCE);
 
 impl Native for IterReduce {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let mut accumulator = args[0];
     let callable = args[1];
     let mut iter = this.unwrap().to_iter();
 
-    while !is_falsey(iter.next(hooks)?) {
+    while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
-      accumulator = hooks.call(callable, &[accumulator, current])?;
+      accumulator = get!(hooks.call(callable, &[accumulator, current]));
     }
 
-    Ok(accumulator)
+    Call::Ok(accumulator)
   }
 }
 
 native!(IterLen, ITER_LEN);
 
 impl Native for IterLen {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let mut iter = this.unwrap().to_iter();
 
     match iter.size_hint() {
-      Some(size) => Ok(val!(size as f64)),
+      Some(size) => Call::Ok(val!(size as f64)),
       None => {
         let mut size: usize = 0;
-        while !is_falsey(iter.next(hooks)?) {
+        while !is_falsey(get!(iter.next(hooks))) {
           size += 1;
         }
 
-        Ok(val!(size as f64))
+        Call::Ok(val!(size as f64))
       }
     }
   }
@@ -369,23 +420,23 @@ impl Native for IterLen {
 native!(IterEach, ITER_EACH);
 
 impl Native for IterEach {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
 
-    while !is_falsey(iter.next(hooks)?) {
+    while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
-      hooks.call(callable, &[current])?;
+      get!(hooks.call(callable, &[current]));
     }
 
-    Ok(VALUE_NIL)
+    Call::Ok(VALUE_NIL)
   }
 }
 
 native!(IterZip, ITER_ZIP);
 
 impl Native for IterZip {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let iters: Vec<Managed<LyIterator>> = [this.unwrap()]
       .iter()
       .chain(args.iter())
@@ -396,7 +447,7 @@ impl Native for IterZip {
     let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
-    Ok(val!(iter))
+    Call::Ok(val!(iter))
   }
 }
 
@@ -424,20 +475,20 @@ impl LyIter for ZipIterator {
     self.current
   }
 
-  fn next(&mut self, hooks: &mut Hooks) -> CallResult {
+  fn next(&mut self, hooks: &mut Hooks) -> Call {
     let mut results = hooks.manage(List::with_capacity(self.iters.len()));
 
     for iter in &mut self.iters {
-      let next = iter.next(hooks)?;
+      let next = get!(iter.next(hooks));
       if is_falsey(next) {
-        return Ok(val!(false));
+        return Call::Ok(val!(false));
       }
 
       results.push(iter.current());
     }
 
     self.current = val!(results);
-    Ok(val!(true))
+    Call::Ok(val!(true))
   }
 
   fn size_hint(&self) -> Option<usize> {
@@ -474,7 +525,7 @@ impl Trace for ZipIterator {
 native!(IterChain, ITER_CHAIN);
 
 impl Native for IterChain {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let iters: Vec<Managed<LyIterator>> = [this.unwrap()]
       .iter()
       .chain(args.iter())
@@ -485,7 +536,7 @@ impl Native for IterChain {
     let iter = LyIterator::new(inner_iter);
     let iter = hooks.manage(iter);
 
-    Ok(val!(iter))
+    Call::Ok(val!(iter))
   }
 }
 
@@ -515,14 +566,14 @@ impl LyIter for ChainIterator {
     self.current
   }
 
-  fn next(&mut self, hooks: &mut Hooks) -> CallResult {
+  fn next(&mut self, hooks: &mut Hooks) -> Call {
     loop {
       if self.iter_index >= self.iters.len() {
-        return Ok(val!(false));
+        return Call::Ok(val!(false));
       }
 
       let mut iter = self.iters[self.iter_index];
-      let next = iter.next(hooks)?;
+      let next = get!(iter.next(hooks));
       if !is_falsey(next) {
         self.current = iter.current();
         break;
@@ -531,7 +582,7 @@ impl LyIter for ChainIterator {
       self.iter_index += 1;
     }
 
-    Ok(val!(true))
+    Call::Ok(val!(true))
   }
 
   fn size_hint(&self) -> Option<usize> {
@@ -570,45 +621,51 @@ impl Trace for ChainIterator {
 native!(IterAll, ITER_ALL);
 
 impl Native for IterAll {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
 
-    while !is_falsey(iter.next(hooks)?) {
+    while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
-      if is_falsey(hooks.call(callable, &[current])?) {
-        return Ok(val!(false));
+      if is_falsey(get!(hooks.call(callable, &[current]))) {
+        return Call::Ok(val!(false));
       }
     }
 
-    Ok(val!(true))
+    Call::Ok(val!(true))
   }
 }
 
 native!(IterAny, ITER_ANY);
 
 impl Native for IterAny {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
 
-    while !is_falsey(iter.next(hooks)?) {
+    while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
-      if !is_falsey(hooks.call(callable, &[current])?) {
-        return Ok(val!(true));
+      if !is_falsey(get!(hooks.call(callable, &[current]))) {
+        return Call::Ok(val!(true));
       }
     }
 
-    Ok(val!(false))
+    Call::Ok(val!(false))
   }
 }
 
 native!(IterInto, ITER_INTO);
 
 impl Native for IterInto {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> CallResult {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let callable = args[0];
-    hooks.call(callable, &[this.unwrap()])
+    let iter = this.unwrap().to_iter();
+
+    hooks.push_root(iter);
+    let result = hooks.call(callable, &[this.unwrap()]);
+    hooks.pop_roots(1);
+
+    result
   }
 }
 
@@ -624,8 +681,8 @@ mod test {
   native!(TestFun, TEST_FUN);
 
   impl Native for TestFun {
-    fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-      Ok(args[0])
+    fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+      Call::Ok(args[0])
     }
   }
 
@@ -655,8 +712,8 @@ mod test {
 
       let result = iter_str.call(&mut hooks, Some(val!(this)), &[]);
       match result {
-        Ok(r) => assert_eq!(&*r.to_str(), "Test Iterator"),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(&*r.to_str(), "Test Iterator"),
+        _ => assert!(false),
       }
     }
   }
@@ -687,11 +744,12 @@ mod test {
 
       let result = iter_next.call(&mut hooks, Some(val!(this)), &[]);
       match result {
-        Ok(r) => assert_eq!(r.to_bool(), true),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(r.to_bool(), true),
+        _ => assert!(false),
       }
     }
   }
+
   #[cfg(test)]
   mod iter {
     use super::*;
@@ -720,9 +778,71 @@ mod test {
 
       let result = iter_iter.call(&mut hooks, Some(this), &[]);
       match result {
-        Ok(r) => assert_eq!(r, this),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(r, this),
+        _ => assert!(false),
       }
+    }
+  }
+
+  #[cfg(test)]
+  mod first {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let iter_first = IterFirst::from(&hooks);
+
+      assert_eq!(iter_first.meta().name, "first");
+      assert_eq!(iter_first.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let iter_first = IterFirst::from(&hooks.as_gc());
+
+      let iter = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter));
+      let this = val!(managed);
+
+      let result = iter_first.call(&mut hooks, Some(this), &[]).unwrap();
+      assert_eq!(result, val!(1.0));
+    }
+  }
+
+  #[cfg(test)]
+  mod last {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let iter_last = IterLast::from(&hooks);
+
+      assert_eq!(iter_last.meta().name, "last");
+      assert_eq!(iter_last.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let iter_last = IterLast::from(&hooks.as_gc());
+
+      let iter = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter));
+      let this = val!(managed);
+
+      let result = iter_last.call(&mut hooks, Some(this), &[]).unwrap();
+      assert_eq!(result, val!(4.0));
     }
   }
 
@@ -766,12 +886,12 @@ mod test {
 
       let result = iter_map.call(&mut hooks, Some(this), &[fun]);
       match result {
-        Ok(r) => {
+        Call::Ok(r) => {
           let mut map_iter = r.to_iter();
           assert_eq!(map_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(map_iter.current(), val!(5.0));
         }
-        Err(_) => assert!(false),
+        _ => assert!(false),
       }
     }
   }
@@ -815,14 +935,14 @@ mod test {
 
       let result = iter_filter.call(&mut hooks, Some(this), &[fun]);
       match result {
-        Ok(r) => {
+        Call::Ok(r) => {
           let mut filter_iter = r.to_iter();
           assert_eq!(filter_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(filter_iter.current(), val!(2.0));
           assert_eq!(filter_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(filter_iter.current(), val!(3.0));
         }
-        Err(_) => assert!(false),
+        _ => assert!(false),
       }
     }
   }
@@ -870,16 +990,16 @@ mod test {
 
       let result = iter_reduce.call(&mut hooks, Some(this), &[val!(0.0), fun]);
       match result {
-        Ok(r) => {
+        Call::Ok(r) => {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 10.1);
         }
-        Err(_) => assert!(false),
+        _ => assert!(false),
       }
     }
   }
 
-  mod size {
+  mod len {
     use super::*;
     use crate::support::MockedContext;
     use laythe_core::iterator::LyIterator;
@@ -904,11 +1024,11 @@ mod test {
       let this = val!(hooks.manage(LyIterator::new(test_iter())));
       let result = iter_size.call(&mut hooks, Some(this), &[]);
       match result {
-        Ok(r) => {
+        Call::Ok(r) => {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 4.0);
         }
-        Err(_) => assert!(false),
+        _ => assert!(false),
       }
     }
   }
@@ -952,8 +1072,8 @@ mod test {
 
       let result = iter_each.call(&mut hooks, Some(this), &[fun]);
       match result {
-        Ok(r) => assert!(r.is_nil()),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert!(r.is_nil()),
+        _ => assert!(false),
       }
     }
   }
@@ -994,8 +1114,8 @@ mod test {
 
       let result = iter_zip.call(&mut hooks, Some(this), &[arg]);
       match result {
-        Ok(r) => assert!(r.is_iter()),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert!(r.is_iter()),
+        _ => assert!(false),
       }
 
       let mut zip = result.unwrap().to_iter();
@@ -1043,8 +1163,8 @@ mod test {
 
       let result = iter_chain.call(&mut hooks, Some(this), &[arg]);
       match result {
-        Ok(r) => assert!(r.is_iter()),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert!(r.is_iter()),
+        _ => assert!(false),
       }
 
       let mut chain = result.unwrap().to_iter();
@@ -1095,8 +1215,8 @@ mod test {
 
       let result = iter_all.call(&mut hooks, Some(this), &[identity]);
       match result {
-        Ok(r) => assert_eq!(r, VALUE_TRUE),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(r, VALUE_TRUE),
+        _ => assert!(false),
       }
     }
   }
@@ -1136,8 +1256,8 @@ mod test {
 
       let result = iter_any.call(&mut hooks, Some(this), &[identity]);
       match result {
-        Ok(r) => assert_eq!(r, VALUE_TRUE),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(r, VALUE_TRUE),
+        _ => assert!(false),
       }
     }
   }
@@ -1153,8 +1273,8 @@ mod test {
     native!(EchoFun, M);
 
     impl Native for EchoFun {
-      fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> CallResult {
-        Ok(args[0])
+      fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+        Call::Ok(args[0])
       }
     }
 
@@ -1186,8 +1306,8 @@ mod test {
 
       let result = iter_into.call(&mut hooks, Some(this), &[echo]);
       match result {
-        Ok(r) => assert_eq!(r.to_bool(), true),
-        Err(_) => assert!(false),
+        Call::Ok(r) => assert_eq!(r.to_bool(), true),
+        _ => assert!(false),
       }
     }
   }

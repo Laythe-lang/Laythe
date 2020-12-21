@@ -83,18 +83,12 @@ mod unboxed {
     /// ```
     #[inline]
     pub fn is_nil(&self) -> bool {
-      match self {
-        Value::Nil => true,
-        _ => false,
-      }
+      matches!(self, Value::Nil)
     }
 
     #[inline]
     pub fn is_bool(&self) -> bool {
-      match self {
-        Value::Bool(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Bool(_))
     }
 
     #[inline]
@@ -107,98 +101,62 @@ mod unboxed {
 
     #[inline]
     pub fn is_num(&self) -> bool {
-      match self {
-        Value::Number(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Number(_))
     }
 
     #[inline]
     pub fn is_str(&self) -> bool {
-      match self {
-        Value::String(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::String(_))
     }
 
     #[inline]
     pub fn is_list(&self) -> bool {
-      match self {
-        Value::List(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::List(_))
     }
 
     #[inline]
     pub fn is_map(&self) -> bool {
-      match self {
-        Value::Map(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Map(_))
     }
 
     #[inline]
     pub fn is_iter(&self) -> bool {
-      match self {
-        Value::Iter(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Iter(_))
     }
 
     #[inline]
     pub fn is_closure(&self) -> bool {
-      match self {
-        Value::Closure(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Closure(_))
     }
 
     #[inline]
     pub fn is_fun(&self) -> bool {
-      match self {
-        Value::Fun(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Fun(_))
     }
 
     #[inline]
     pub fn is_class(&self) -> bool {
-      match self {
-        Value::Class(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Class(_))
     }
 
     #[inline]
     pub fn is_instance(&self) -> bool {
-      match self {
-        Value::Instance(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Instance(_))
     }
 
     #[inline]
     pub fn is_method(&self) -> bool {
-      match self {
-        Value::Method(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Method(_))
     }
 
     #[inline]
     pub fn is_native(&self) -> bool {
-      match self {
-        Value::Native(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Native(_))
     }
 
     #[inline]
     pub fn is_upvalue(&self) -> bool {
-      match self {
-        Value::Upvalue(_) => true,
-        _ => false,
-      }
+      matches!(self, Value::Upvalue(_))
     }
 
     /// Convert laythe value to number, panics if not a number

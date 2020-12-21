@@ -106,6 +106,16 @@ impl Parameter {
   }
 }
 
+impl Trace for Parameter {
+  fn trace(&self) -> bool {
+    self.name.trace()
+  }
+
+  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+    self.name.trace_debug(log)
+  }
+}
+
 /// Indicating the type of the parameter passed in
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub enum ParameterKind {
@@ -323,13 +333,13 @@ impl Signature {
 impl Trace for Signature {
   fn trace(&self) -> bool {
     self.parameters.iter().for_each(|p| {
-      p.name.trace();
+      p.trace();
     });
     true
   }
   fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
     self.parameters.iter().for_each(|p| {
-      p.name.trace_debug(stdio);
+      p.trace_debug(stdio);
     });
     true
   }

@@ -2,7 +2,7 @@ use crate::{
   hooks::{GcHooks, Hooks},
   signature::{Arity, Environment, ParameterBuilder, Signature, SignatureBuilder},
   value::Value,
-  CallResult,
+  Call,
 };
 use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
 use smol_str::SmolStr;
@@ -105,7 +105,7 @@ impl Trace for NativeMeta {
 
 pub trait Native: MetaData + Trace {
   /// Call the native functions
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, values: &[Value]) -> CallResult;
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, values: &[Value]) -> Call;
 }
 
 pub trait MetaData {

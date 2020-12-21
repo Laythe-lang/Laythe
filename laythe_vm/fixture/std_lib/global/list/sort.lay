@@ -1,0 +1,17 @@
+let a = [4, 3, 2, 1];
+let b = ['d', 'b', 'c', 'a'];
+
+let c = a.sort(Number.cmp);
+let d = b.sort(|a, b| a < b);
+
+assertEq(c.len(), 4);
+assertEq(c[0], 1);
+assertEq(c[1], 2);
+assertEq(c[2], 3);
+assertEq(c[4], 4);
+
+assertEq(d.len(), 4);
+assertEq(d[0], 'a');
+assertEq(d[1], 'b');
+assertEq(d[2], 'c');
+assertEq(d[4], 'd');

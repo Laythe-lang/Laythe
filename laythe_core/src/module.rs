@@ -42,16 +42,16 @@ impl Module {
   }
 
   /// Create a module from a filepath
-  pub fn from_path(hooks: &GcHooks, path: Managed<PathBuf>) -> LyResult<Self> {
+  pub fn from_path(hooks: &GcHooks, path: Managed<PathBuf>) -> Result<Self, Managed<SmolStr>> {
     let module_name = path.file_stem().and_then(|m| m.to_str());
 
     let module_name = match module_name {
       Some(module_name) => module_name,
       None => {
-        return hooks.error(format!(
+        return Err(hooks.manage_str(format!(
           "Could not create module from {}, path malformed.",
           path.to_str().unwrap_or("invalid path")
-        ))
+        )))
       }
     };
 
@@ -66,13 +66,17 @@ impl Module {
   }
 
   /// Add export a new symbol from this module. Exported names must be unique
-  pub fn export_symbol(&mut self, hooks: &GcHooks, name: Managed<SmolStr>) -> LyResult<()> {
+  pub fn export_symbol(
+    &mut self,
+    hooks: &GcHooks,
+    name: Managed<SmolStr>,
+  ) -> Result<(), Managed<SmolStr>> {
     if self.exports.contains(&name) {
-      hooks.error(format!(
+      Err(hooks.manage_str(format!(
         "{} has already been exported from {}",
         name,
         self.name()
-      ))
+      )))
     } else {
       hooks.grow(self, |module| {
         module.exports.insert(name);
@@ -150,7 +154,7 @@ impl Module {
       );
     }
 
-    Ok(())
+    LyResult::Ok(())
   }
 }
 
