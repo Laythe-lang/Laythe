@@ -72,6 +72,9 @@ pub enum AlignedByteCode {
   /// Drop n values
   DropN(u8),
 
+  /// Duplicate top of the stack
+  Dup,
+
   /// Import all symbols
   Import(u16),
 
@@ -196,6 +199,7 @@ impl AlignedByteCode {
       Self::LessEqual => push_op(code, ByteCode::LessEqual),
       Self::Drop => push_op(code, ByteCode::Drop),
       Self::DropN(slot) => push_op_u8(code, ByteCode::DropN, slot),
+      Self::Dup => push_op(code, ByteCode::Dup),
       Self::Constant(slot) => push_op_u8(code, ByteCode::Constant, slot),
       Self::ConstantLong(slot) => push_op_u16(code, ByteCode::ConstantLong, slot),
       Self::Import(path) => push_op_u16(code, ByteCode::Import, path),
@@ -274,6 +278,7 @@ impl AlignedByteCode {
       ByteCode::SetIndex => (AlignedByteCode::SetIndex, offset + 1),
       ByteCode::Drop => (AlignedByteCode::Drop, offset + 1),
       ByteCode::DropN => (AlignedByteCode::DropN(store[offset + 1]), offset + 2),
+      ByteCode::Dup => (AlignedByteCode::Dup, offset + 1),
       ByteCode::Import => (
         AlignedByteCode::Import(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
@@ -436,6 +441,9 @@ pub enum ByteCode {
 
   /// Drop n values
   DropN,
+
+  /// Duplicate top of the stack
+  Dup,
 
   /// Import all symbols
   Import,
