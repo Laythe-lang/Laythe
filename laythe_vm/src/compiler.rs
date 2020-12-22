@@ -2,7 +2,7 @@ use crate::{
   ast::{self, Decl, Expr, Primary, Stmt, Symbol},
   token::{Token, TokenKind},
 };
-use ast::{BinaryOp, FunBody, List, Map, Ranged, Trailer, UnaryOp};
+use ast::{AssignBinaryOp, BinaryOp, FunBody, List, Map, Ranged, Trailer, UnaryOp};
 use laythe_core::{
   chunk::{AlignedByteCode, Chunk, UpvalueIndex},
   constants::OBJECT,
@@ -669,6 +669,7 @@ impl<'a> Compiler<'a> {
   fn expr(&mut self, expr: &Expr) {
     match expr {
       Expr::Assign(assign) => self.assign(assign),
+      Expr::AssignBinary(assign_binary) => self.assign_binary(assign_binary),
       Expr::Binary(binary) => self.binary(binary),
       Expr::Unary(unary) => self.unary(unary),
       Expr::Atom(atom) => self.atom(atom),
@@ -1140,8 +1141,8 @@ impl<'a> Compiler<'a> {
 
           match last {
             Trailer::Index(index) => {
-              self.expr(&index.index);
               self.expr(&assign.rhs);
+              self.expr(&index.index);
               self.emit_byte(AlignedByteCode::SetIndex, assign.rhs.end())
             }
             Trailer::Access(access) => {
@@ -1178,6 +1179,76 @@ impl<'a> Compiler<'a> {
     }
   }
 
+  /// Compile a binary assignment expression
+  fn assign_binary(&mut self, assign_binary: &ast::AssignBinary) {
+    let binary_op = |comp: &mut Compiler| match &assign_binary.op {
+      AssignBinaryOp::Add => comp.emit_byte(AlignedByteCode::Add, assign_binary.rhs.end()),
+      AssignBinaryOp::Sub => comp.emit_byte(AlignedByteCode::Subtract, assign_binary.rhs.end()),
+      AssignBinaryOp::Mul => comp.emit_byte(AlignedByteCode::Multiply, assign_binary.rhs.end()),
+      AssignBinaryOp::Div => comp.emit_byte(AlignedByteCode::Divide, assign_binary.rhs.end()),
+    };
+
+    match &assign_binary.lhs {
+      Expr::Atom(atom) => match atom.trailers.last() {
+        // if we have trailers compile to last trailer and emit specialized
+        // set instruction
+        Some(last) => {
+          let skip_first = self.primary(&atom.primary, &atom.trailers);
+          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+
+          match last {
+            Trailer::Index(index) => {
+              self.emit_byte(AlignedByteCode::Dup, assign_binary.lhs.end());
+
+              self.expr(&index.index);
+              self.emit_byte(AlignedByteCode::GetIndex, assign_binary.lhs.end());
+              self.expr(&assign_binary.rhs);
+              binary_op(self);
+
+              self.expr(&index.index);
+              self.emit_byte(AlignedByteCode::SetIndex, assign_binary.rhs.end())
+            }
+            Trailer::Access(access) => {
+              if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
+                if let Primary::Self_(_) = atom.primary {
+                  let mut class_info = self.class_info.unwrap();
+
+                  if !class_info.fields.iter().any(|f| *f == access.prop.lexeme) {
+                    class_info.fields.push(access.prop.lexeme.clone());
+                  }
+                }
+              }
+
+              let name = self.identifier_constant(&access.prop);
+
+              self.emit_byte(AlignedByteCode::Dup, access.end());
+              self.emit_byte(AlignedByteCode::GetProperty(name), access.end());
+
+              self.expr(&assign_binary.rhs);
+              binary_op(self);
+
+              self.emit_byte(AlignedByteCode::SetProperty(name), access.end())
+            }
+            Trailer::Call(_) => {
+              unreachable!("Unexpected expression on left hand side of assignment.")
+            }
+          }
+        }
+        None => {
+          if let Primary::Ident(name) = &atom.primary {
+            self.variable(name, false);
+            self.expr(&assign_binary.rhs);
+            binary_op(self);
+            self.variable(name, true);
+          } else {
+            unreachable!("Unexpected expression on left hand side of assignment.");
+          }
+        }
+      },
+      _ => unreachable!("Unexpected expression on left hand side of assignment."),
+    }
+  }
+
   /// Compile a binary expression
   fn binary(&mut self, binary: &ast::Binary) {
     self.expr(&binary.lhs);
@@ -1192,7 +1263,7 @@ impl<'a> Compiler<'a> {
     match &binary.op {
       BinaryOp::Add => self.emit_byte(AlignedByteCode::Add, binary.rhs.end()),
       BinaryOp::Sub => self.emit_byte(AlignedByteCode::Subtract, binary.rhs.end()),
-      BinaryOp::Multi => self.emit_byte(AlignedByteCode::Multiply, binary.rhs.end()),
+      BinaryOp::Mul => self.emit_byte(AlignedByteCode::Multiply, binary.rhs.end()),
       BinaryOp::Div => self.emit_byte(AlignedByteCode::Divide, binary.rhs.end()),
       BinaryOp::Lt => self.emit_byte(AlignedByteCode::Less, binary.rhs.end()),
       BinaryOp::LtEq => self.emit_byte(AlignedByteCode::LessEqual, binary.rhs.end()),
@@ -1845,52 +1916,6 @@ mod test {
     assert_eq!(fun.has_catch_jump(5), Some(13));
   }
 
-  // #[test]
-  // fn test() {
-  //   let example = r#"
-  //   class Base {
-  //     foo() {
-  //       print("Base.foo()");
-  //     }
-  //   }
-
-  //   class Derived : Base {
-  //     bar() {
-  //       print("Derived.bar()");
-  //       super.foo();
-  //     }
-  //   }
-
-  //   Derived().bar();
-  //   // expect: Derived.bar()
-  //   // expect: Base.foo()
-
-  //   "#;
-
-  //   let context = TestContext::default();
-  //   let fun = test_compile(example, &context);
-
-  //   assert_simple_bytecode(
-  //     fun,
-  //     &vec![
-  //       AlignedByteCode::Class(0),
-  //       AlignedByteCode::DefineGlobal(0),
-  //       AlignedByteCode::GetGlobal(0),
-  //       AlignedByteCode::Drop,
-  //       AlignedByteCode::Class(1),
-  //       AlignedByteCode::DefineGlobal(1),
-  //       AlignedByteCode::GetGlobal(0),
-  //       AlignedByteCode::GetGlobal(1),
-  //       AlignedByteCode::Inherit,
-  //       AlignedByteCode::GetGlobal(1),
-  //       AlignedByteCode::Drop,
-  //       AlignedByteCode::Drop,
-  //       AlignedByteCode::Nil,
-  //       AlignedByteCode::Return,
-  //     ],
-  //   );
-  // }
-
   #[test]
   fn class_with_inherit() {
     let example = "
@@ -2019,6 +2044,55 @@ mod test {
   }
 
   #[test]
+  fn class_property_assign_set() {
+    let example = "
+    class A {
+      init() {
+        self.a = 10;
+        self.a /= 5;
+      }
+    }
+  ";
+
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Fun((
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Dup),
+            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(2)),
+            ByteCodeTest::Code(AlignedByteCode::Divide),
+            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Field(4)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
   fn class_with_static_methods() {
     let example = "
       class A {
@@ -2124,6 +2198,40 @@ mod test {
         AlignedByteCode::Constant(5),
         AlignedByteCode::GetIndex,
         AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn list_index_assign_set() {
+    let example = "
+    let a = [1, 2, 3];
+    a[1] += 5;
+  ";
+
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::List,
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Constant(3),
+        AlignedByteCode::ListInit(3),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Dup,
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::GetIndex,
+        AlignedByteCode::Constant(4),
+        AlignedByteCode::Add,
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::SetIndex,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,

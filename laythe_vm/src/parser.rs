@@ -677,7 +677,7 @@ impl<'a> Parser<'a> {
       TokenKind::LessEqual => BinaryOp::LtEq,
       TokenKind::Plus => BinaryOp::Add,
       TokenKind::Minus => BinaryOp::Sub,
-      TokenKind::Star => BinaryOp::Multi,
+      TokenKind::Star => BinaryOp::Mul,
       TokenKind::Slash => BinaryOp::Div,
       _ => unreachable!("Invalid operator"),
     };
@@ -746,9 +746,8 @@ impl<'a> Parser<'a> {
       return self.error("Expected expression. TODO can you get here?");
     }
 
-    if can_assign && self.match_kind(TokenKind::Equal)? {
-      let rhs = self.expr()?;
-      expr = Expr::Assign(Box::new(Assign::new(expr, rhs)));
+    if can_assign {
+      expr = self.assign(expr)?;
     }
 
     Ok(expr)
@@ -766,10 +765,8 @@ impl<'a> Parser<'a> {
       return self.error("Expected expression. TODO can you get here?");
     }
 
-    if can_assign && self.match_kind(TokenKind::Equal)? {
-      let rhs = self.expr()?;
-
-      expr = Expr::Assign(Box::new(Assign::new(expr, rhs)));
+    if can_assign {
+      expr = self.assign(expr)?;
     }
 
     Ok(expr)
@@ -801,10 +798,8 @@ impl<'a> Parser<'a> {
   fn variable(&mut self, can_assign: bool) -> ParseResult<Expr> {
     let mut expr = self.atom(Primary::Ident(self.previous.clone()));
 
-    if can_assign && self.match_kind(TokenKind::Equal)? {
-      let rhs = self.expr()?;
-
-      expr = Expr::Assign(Box::new(Assign::new(expr, rhs)));
+    if can_assign {
+      expr = self.assign(expr)?;
     }
 
     Ok(expr)
@@ -949,6 +944,32 @@ impl<'a> Parser<'a> {
       end: self.previous.line,
     };
     Ok(CallSignature::new(range, type_params, params, return_type))
+  }
+
+  fn assign(&mut self, expr: Expr) -> ParseResult<Expr> {
+    match self.current.kind {
+      TokenKind::Equal => self
+        .advance()
+        .and_then(|()| self.expr())
+        .map(|rhs| Expr::Assign(Box::new(Assign::new(expr, rhs)))),
+      TokenKind::PlusEqual => self
+        .advance()
+        .and_then(|()| self.expr())
+        .map(|rhs| Expr::AssignBinary(Box::new(AssignBinary::new(expr, AssignBinaryOp::Add, rhs)))),
+      TokenKind::MinusEqual => self
+        .advance()
+        .and_then(|()| self.expr())
+        .map(|rhs| Expr::AssignBinary(Box::new(AssignBinary::new(expr, AssignBinaryOp::Sub, rhs)))),
+      TokenKind::StarEqual => self
+        .advance()
+        .and_then(|()| self.expr())
+        .map(|rhs| Expr::AssignBinary(Box::new(AssignBinary::new(expr, AssignBinaryOp::Mul, rhs)))),
+      TokenKind::SlashEqual => self
+        .advance()
+        .and_then(|()| self.expr())
+        .map(|rhs| Expr::AssignBinary(Box::new(AssignBinary::new(expr, AssignBinaryOp::Div, rhs)))),
+      _ => Ok(expr),
+    }
   }
 
   /// Consume a comma separated set of arguments for a call or list
@@ -1353,7 +1374,7 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 56;
+const TOKEN_VARIANTS: usize = 60;
 
 /// The rules for infix and prefix operators
 const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
@@ -1387,6 +1408,14 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   // SLASH
   Rule::new(None, Precedence::None),
   // STAR
+  Rule::new(None, Precedence::None),
+  // PLUS_EQUAL
+  Rule::new(None, Precedence::None),
+  // MINUS_EQUAL
+  Rule::new(None, Precedence::None),
+  // SLASH_EQUAL
+  Rule::new(None, Precedence::None),
+  // STAR_EQUAL
   Rule::new(None, Precedence::None),
   // ARROW
   Rule::new(None, Precedence::None),
@@ -1504,6 +1533,14 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(Some(Infix::Binary), Precedence::Factor),
   // STAR
   Rule::new(None, Precedence::None),
+  // PLUS_EQUAL
+  Rule::new(None, Precedence::None),
+  // MINUS_EQUAL
+  Rule::new(None, Precedence::None),
+  // SLASH_EQUAL
+  Rule::new(None, Precedence::None),
+  // STAR_EQUAL
+  Rule::new(None, Precedence::None),
   // ARROW
   Rule::new(None, Precedence::None),
   // EXPORT
@@ -1620,6 +1657,14 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // STAR
   Rule::new(None, TypePrecedence::None),
+  // PLUS_EQUAL
+  Rule::new(None, TypePrecedence::None),
+  // MINUS_EQUAL
+  Rule::new(None, TypePrecedence::None),
+  // SLASH_EQUAL
+  Rule::new(None, TypePrecedence::None),
+  // STAR_EQUAL
+  Rule::new(None, TypePrecedence::None),
   // ARROW
   Rule::new(None, TypePrecedence::None),
   // EXPORT
@@ -1735,6 +1780,14 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   // SLASH
   Rule::new(None, TypePrecedence::None),
   // STAR
+  Rule::new(None, TypePrecedence::None),
+  // PLUS_EQUAL
+  Rule::new(None, TypePrecedence::None),
+  // MINUS_EQUAL
+  Rule::new(None, TypePrecedence::None),
+  // SLASH_EQUAL
+  Rule::new(None, TypePrecedence::None),
+  // STAR_EQUAL
   Rule::new(None, TypePrecedence::None),
   // ARROW
   Rule::new(None, TypePrecedence::None),
@@ -2436,13 +2489,13 @@ mod test {
     "(|a| print(a))(10)",
     "b = nil",
   ];
-  const EXAMPLE_ASSIGNS: [&str; 4] = [
+  const EXAMPLE_ATOMS: [&str; 4] = [
     "item(true).stuff[3]",
     "settable",
     "man.dude.bro",
     "ten(\"false\")[10].bro",
   ];
-  const EXAMPLES_PRIMARIES: [&str; 12] = [
+  const EXAMPLE_PRIMARIES: [&str; 12] = [
     "true",
     "false",
     "nil",
@@ -2458,30 +2511,33 @@ mod test {
   ];
   const EXAMPLE_TRAILERS: [&str; 3] = ["[2]", "(true, 10)", ".someProp"];
   const BINARY_OPS: [&str; 10] = ["!=", "==", ">", ">=", "<", "<=", "+", "-", "*", "/"];
+  const ASSIGNMENTS: [&str; 5] = ["=", "+=", "-=", "/=", "*="];
   const UNARY_OPS: [&str; 2] = ["!", "-"];
 
   #[test]
   fn expr_stmt() {
-    for e in EXAMPLE_EXPR.iter() {
-      let example = format!("{};", e);
+    for expr in EXAMPLE_EXPR.iter() {
+      let example = format!("{};", expr);
       test(&example);
     }
   }
 
   #[test]
   fn assign() {
-    for e in EXAMPLE_EXPR.iter() {
-      for a in EXAMPLE_ASSIGNS.iter() {
-        let example = format!("{} = {};", a, e);
-        test(&example);
+    for expr in EXAMPLE_EXPR.iter() {
+      for atom in EXAMPLE_ATOMS.iter() {
+        for assign in ASSIGNMENTS.iter() {
+          let example = format!("{}{}{};", atom, assign, expr);
+          test(&example);
+        }
       }
     }
   }
 
   #[test]
   fn binary() {
-    for p1 in EXAMPLES_PRIMARIES.iter() {
-      for p2 in EXAMPLES_PRIMARIES.iter() {
+    for p1 in EXAMPLE_PRIMARIES.iter() {
+      for p2 in EXAMPLE_PRIMARIES.iter() {
         for op in BINARY_OPS.iter() {
           let example = format!("{}{}{};", p1, op, p2);
           test(&example);
@@ -2492,7 +2548,7 @@ mod test {
 
   #[test]
   fn unary() {
-    for p in EXAMPLES_PRIMARIES.iter() {
+    for p in EXAMPLE_PRIMARIES.iter() {
       for op in UNARY_OPS.iter() {
         let example = format!("{}{};", op, p);
         test(&example);
@@ -2502,7 +2558,7 @@ mod test {
 
   #[test]
   fn trailers() {
-    for p in EXAMPLES_PRIMARIES.iter() {
+    for p in EXAMPLE_PRIMARIES.iter() {
       for t in EXAMPLE_TRAILERS.iter() {
         let example = format!("{}{};", p, t);
         test(&example);
@@ -2512,7 +2568,7 @@ mod test {
 
   #[test]
   fn primaries() {
-    for p in EXAMPLES_PRIMARIES.iter() {
+    for p in EXAMPLE_PRIMARIES.iter() {
       let example = format!("{};", p);
       test(&example);
     }

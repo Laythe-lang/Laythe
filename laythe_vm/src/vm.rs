@@ -527,6 +527,7 @@ impl<'a> VmExecutor<'a> {
         ByteCode::Export => self.op_export(),
         ByteCode::Drop => self.op_drop(),
         ByteCode::DropN => self.op_drop_n(),
+        ByteCode::Dup => self.op_dup(),
         ByteCode::Nil => self.op_literal(VALUE_NIL),
         ByteCode::True => self.op_literal(val!(true)),
         ByteCode::False => self.op_literal(val!(false)),
@@ -710,6 +711,12 @@ impl<'a> VmExecutor<'a> {
   fn op_drop_n(&mut self) -> Signal {
     let count = self.read_byte();
     self.drop_n(count);
+    Signal::Ok
+  }
+
+  /// duplicate the top value on the stack
+  fn op_dup(&mut self) -> Signal {
+    self.push(self.peek(0));
     Signal::Ok
   }
 
@@ -909,16 +916,16 @@ impl<'a> VmExecutor<'a> {
       .for_value(receiver, receiver.kind());
 
     match class.index_set {
-      Some(index_get) => {
-        let value = self.peek(0);
-        let signal = self.resolve_call(index_get, 2);
+      Some(index_set) => {
+        let value = self.peek(1);
+        let signal = self.resolve_call(index_set, 2);
         self.drop();
         self.push(value);
         signal
       }
       None => self.runtime_error(
         self.dep_manager.error_classes().method_not_found,
-        &format!("{} has no method []=.", class.name),
+        &format!("No method []= on class {}.", class.name),
       ),
     }
   }
@@ -1008,7 +1015,7 @@ impl<'a> VmExecutor<'a> {
       Some(index_get) => self.resolve_call(index_get, 1),
       None => self.runtime_error(
         self.dep_manager.error_classes().method_not_found,
-        &format!("Not method [] on class {}.", class.name),
+        &format!("No method [] on class {}.", class.name),
       ),
     }
   }
