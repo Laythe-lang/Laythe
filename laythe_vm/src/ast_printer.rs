@@ -66,6 +66,7 @@ impl Visitor for AstPrint {
   fn visit_expr(&mut self, expr: &Expr) -> Self::Result {
     match expr {
       Expr::Assign(assign) => self.visit_assign(assign),
+      Expr::AssignBinary(assign_binary) => self.visit_assign_binary(assign_binary),
       Expr::Binary(binary) => self.visit_binary(binary),
       Expr::Unary(unary) => self.visit_unary(unary),
       Expr::Atom(atom) => self.visit_atom(atom),
@@ -349,6 +350,20 @@ impl Visitor for AstPrint {
     self.buffer.push_str(" = ");
     self.visit_expr(&assign.rhs);
   }
+
+  fn visit_assign_binary(&mut self, assign_binary: &AssignBinary) -> Self::Result {
+    self.visit_expr(&assign_binary.lhs);
+    self.buffer.push(' ');
+    match &assign_binary.op {
+      AssignBinaryOp::Add => self.buffer.push_str("+="),
+      AssignBinaryOp::Sub => self.buffer.push_str("-="),
+      AssignBinaryOp::Mul => self.buffer.push_str("*="),
+      AssignBinaryOp::Div => self.buffer.push_str("/="),
+    }
+    self.buffer.push(' ');
+    self.visit_expr(&assign_binary.rhs);
+  }
+
   fn visit_binary(&mut self, binary: &Binary) -> Self::Result {
     self.visit_expr(&binary.lhs);
 
@@ -356,7 +371,7 @@ impl Visitor for AstPrint {
     match &binary.op {
       BinaryOp::Add => self.buffer.push('+'),
       BinaryOp::Sub => self.buffer.push('-'),
-      BinaryOp::Multi => self.buffer.push('*'),
+      BinaryOp::Mul => self.buffer.push('*'),
       BinaryOp::Div => self.buffer.push('/'),
       BinaryOp::Lt => self.buffer.push('<'),
       BinaryOp::LtEq => self.buffer.push_str("<="),

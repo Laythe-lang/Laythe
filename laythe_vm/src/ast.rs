@@ -35,6 +35,7 @@ pub trait Visitor {
   fn visit_block(&mut self, block: &Block) -> Self::Result;
 
   fn visit_assign(&mut self, assign: &Assign) -> Self::Result;
+  fn visit_assign_binary(&mut self, assign: &AssignBinary) -> Self::Result;
   fn visit_binary(&mut self, binary: &Binary) -> Self::Result;
   fn visit_unary(&mut self, unary: &Unary) -> Self::Result;
   fn visit_atom(&mut self, atom: &Atom) -> Self::Result;
@@ -640,6 +641,7 @@ impl Ranged for Param {
 
 pub enum Expr {
   Assign(Box<Assign>),
+  AssignBinary(Box<AssignBinary>),
   Binary(Box<Binary>),
   Unary(Box<Unary>),
   Atom(Box<Atom>),
@@ -649,6 +651,7 @@ impl Ranged for Expr {
   fn start(&self) -> u32 {
     match self {
       Expr::Assign(assign) => assign.start(),
+      Expr::AssignBinary(assign_binary) => assign_binary.start(),
       Expr::Binary(binary) => binary.start(),
       Expr::Unary(unary) => unary.start(),
       Expr::Atom(atom) => atom.start(),
@@ -658,6 +661,7 @@ impl Ranged for Expr {
   fn end(&self) -> u32 {
     match self {
       Expr::Assign(assign) => assign.end(),
+      Expr::AssignBinary(assign_binary) => assign_binary.end(),
       Expr::Binary(binary) => binary.end(),
       Expr::Unary(unary) => unary.end(),
       Expr::Atom(atom) => atom.end(),
@@ -686,10 +690,39 @@ impl Ranged for Assign {
   }
 }
 
+pub enum AssignBinaryOp {
+  Add,
+  Sub,
+  Mul,
+  Div,
+}
+
+pub struct AssignBinary {
+  pub lhs: Expr,
+  pub op: AssignBinaryOp,
+  pub rhs: Expr,
+}
+
+impl AssignBinary {
+  pub fn new(lhs: Expr, op: AssignBinaryOp, rhs: Expr) -> Self {
+    Self { lhs, op, rhs }
+  }
+}
+
+impl Ranged for AssignBinary {
+  fn start(&self) -> u32 {
+    self.lhs.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.rhs.end()
+  }
+}
+
 pub enum BinaryOp {
   Add,
   Sub,
-  Multi,
+  Mul,
   Div,
   Lt,
   LtEq,
@@ -1123,7 +1156,6 @@ impl Ranged for TypeMember {
   }
 }
 
-
 pub struct TypeMethod {
   pub name: Token,
   pub call_sig: CallSignature,
@@ -1144,7 +1176,6 @@ impl Ranged for TypeMethod {
     self.call_sig.end()
   }
 }
-
 
 pub struct Union {
   pub lhs: Type,
