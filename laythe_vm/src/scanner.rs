@@ -121,15 +121,35 @@ impl<'a> Scanner<'a> {
       "-" => {
         if self.match_char(">") {
           self.make_token_source(TokenKind::Arrow)
+        } else if self.match_char("=") {
+          self.make_token_source(TokenKind::MinusEqual)
         } else {
           self.make_token_source(TokenKind::Minus)
         }
       }
       "&" => self.make_token_source(TokenKind::Amp),
-      "+" => self.make_token_source(TokenKind::Plus),
+      "+" => {
+        if self.match_char("=") {
+          self.make_token_source(TokenKind::PlusEqual)
+        } else {
+          self.make_token_source(TokenKind::Plus)
+        }
+      }
       "|" => self.make_token_source(TokenKind::Pipe),
-      "/" => self.make_token_source(TokenKind::Slash),
-      "*" => self.make_token_source(TokenKind::Star),
+      "/" => {
+        if self.match_char("=") {
+          self.make_token_source(TokenKind::SlashEqual)
+        } else {
+          self.make_token_source(TokenKind::Slash)
+        }
+      }
+      "*" => {
+        if self.match_char("=") {
+          self.make_token_source(TokenKind::StarEqual)
+        } else {
+          self.make_token_source(TokenKind::Star)
+        }
+      }
       "=" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::EqualEqual)
@@ -541,13 +561,11 @@ fn make_token(kind: TokenKind, raw: &str, line: u32) -> Token {
 /// Is the str slice a digit. Assumes single char
 fn is_digit(c: &str) -> bool {
   ("0"..="9").contains(&c)
-  // c >= "0" && c <= "9"
 }
 
 /// Is the str slice a alphabetic. Assumes single char
 fn is_alpha(c: &str) -> bool {
   ("a"..="z").contains(&c) || ("A"..="Z").contains(&c) || c == "_"
-  // (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_"
 }
 
 #[cfg(test)]
@@ -593,6 +611,10 @@ mod test {
       TokenGen::Symbol(Box::new(|| "-".to_string())),
     );
     map.insert(
+      TokenKind::MinusEqual,
+      TokenGen::Symbol(Box::new(|| "-=".to_string())),
+    );
+    map.insert(
       TokenKind::Amp,
       TokenGen::Symbol(Box::new(|| "&".to_string())),
     );
@@ -605,6 +627,10 @@ mod test {
       TokenGen::Symbol(Box::new(|| "+".to_string())),
     );
     map.insert(
+      TokenKind::PlusEqual,
+      TokenGen::Symbol(Box::new(|| "+=".to_string())),
+    );
+    map.insert(
       TokenKind::Semicolon,
       TokenGen::Symbol(Box::new(|| ";".to_string())),
     );
@@ -613,8 +639,16 @@ mod test {
       TokenGen::Symbol(Box::new(|| "/".to_string())),
     );
     map.insert(
+      TokenKind::SlashEqual,
+      TokenGen::Symbol(Box::new(|| "/=".to_string())),
+    );
+    map.insert(
       TokenKind::Star,
       TokenGen::Symbol(Box::new(|| "*".to_string())),
+    );
+    map.insert(
+      TokenKind::StarEqual,
+      TokenGen::Symbol(Box::new(|| "*=".to_string())),
     );
     map.insert(
       TokenKind::Bang,
