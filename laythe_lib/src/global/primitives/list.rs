@@ -32,8 +32,8 @@ const LIST_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, A
 
 const LIST_INDEX_SET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_SET, Arity::Fixed(2))
   .with_params(&[
-    ParameterBuilder::new("index", ParameterKind::Number),
     ParameterBuilder::new("val", ParameterKind::Any),
+    ParameterBuilder::new("index", ParameterKind::Number),
   ]);
 
 const LIST_CLEAR: NativeMetaBuilder = NativeMetaBuilder::method("clear", Arity::Fixed(0));
@@ -325,8 +325,8 @@ impl ListSlice {
     if index.fract() != 0.0 {
       return LyResult::Err(
         self
-          .call_error(hooks, "slice methods takes integer parameters")
-          .expect_err("TODO"),
+          .call_error(hooks, "Method slice takes integer parameters")
+          .expect_err("Expected Err"),
       );
     }
 
@@ -342,21 +342,30 @@ native_with_error!(ListIndexGet, LIST_INDEX_GET);
 
 impl Native for ListIndexGet {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let rounded = args[0].to_num() as usize;
+    let index = args[0].to_num();
     let list = this.unwrap().to_list();
 
-    if rounded >= list.len() {
+    if index.fract() != 0.0 {
+      return LyResult::Err(
+        self
+          .call_error(hooks, "Index must be an integer.")
+          .expect_err("Expected error"),
+      );
+    }
+
+    let index = index as usize;
+    if index >= list.len() {
       return self.call_error(
         hooks,
         format!(
           "Index out of bounds. list was length {} but attempted to index with {}.",
           list.len(),
-          rounded
+          index
         ),
       );
     }
 
-    Call::Ok(list[rounded])
+    Call::Ok(list[index])
   }
 }
 
@@ -364,21 +373,30 @@ native_with_error!(ListIndexSet, LIST_INDEX_SET);
 
 impl Native for ListIndexSet {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let rounded = args[0].to_num() as usize;
+    let index = args[1].to_num();
     let mut list = this.unwrap().to_list();
 
-    if rounded >= list.len() {
+    if index.fract() != 0.0 {
+      return LyResult::Err(
+        self
+          .call_error(hooks, "Index must be an integer.")
+          .expect_err("Expected error"),
+      );
+    }
+
+    let index = index as usize;
+    if index >= list.len() {
       return self.call_error(
         hooks,
         &format!(
           "Index out of bounds. list was length {} but attempted to index with {}.",
           list.len(),
-          rounded
+          index
         ),
       );
     }
 
-    list[rounded] = args[1];
+    list[index] = args[0];
     Call::Ok(VALUE_NIL)
   }
 }
@@ -712,11 +730,11 @@ mod test {
       assert_eq!(list_index_set.meta().signature.arity, Arity::Fixed(2));
       assert_eq!(
         list_index_set.meta().signature.parameters[0].kind,
-        ParameterKind::Number
+        ParameterKind::Any
       );
       assert_eq!(
         list_index_set.meta().signature.parameters[1].kind,
-        ParameterKind::Any
+        ParameterKind::Number
       );
     }
 
@@ -728,17 +746,15 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_index_set = ListIndexSet::new(&hooks.as_gc(), error);
 
-      let values = &[val!(1.0), val!(false)];
+      let values = &[val!(false), val!(1.0)];
 
       let list = List::from(vec![VALUE_NIL, val!(10.0)]);
       let this = hooks.manage(list);
 
-      let result = list_index_set.call(&mut hooks, Some(val!(this)), values);
-      match result {
-        Call::Ok(r) => assert!(r.is_nil()),
-        _ => assert!(false),
-      }
-
+      let result = list_index_set
+        .call(&mut hooks, Some(val!(this)), values)
+        .unwrap();
+      assert_eq!(result, VALUE_NIL);
       assert_eq!(this[1], val!(false))
     }
   }

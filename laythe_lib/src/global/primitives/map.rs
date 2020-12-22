@@ -294,18 +294,15 @@ native!(MapIndexSet, MAP_INDEX_SET);
 
 impl Native for MapIndexSet {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let index = args[0];
+    let index = args[1];
     let key = if index.is_num() {
       val!(use_sentinel_nan(index.to_num()))
     } else {
       index
     };
 
-    let result = hooks.grow(&mut *this.unwrap().to_map(), |map| {
-      map.insert(key, args[1]).unwrap_or(VALUE_NIL)
-    });
-
-    Call::Ok(result)
+    hooks.grow(&mut *this.unwrap().to_map(), |map| map.insert(key, args[0]));
+    Call::Ok(VALUE_NIL)
   }
 }
 
@@ -581,19 +578,20 @@ mod test {
   #[cfg(test)]
   mod get_index {
     use super::*;
-    use crate::support::MockedContext;
+    use crate::support::{test_error_class, MockedContext};
 
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
+      let hooks = GcHooks::new(&mut context);
+      let error = val!(test_error_class(&hooks));
 
-      let map_get = MapGet::from(&hooks);
+      let map_index_get = MapIndexGet::new(&hooks, error);
 
-      assert_eq!(map_get.meta().name, "get");
-      assert_eq!(map_get.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(map_index_get.meta().name, "[]");
+      assert_eq!(map_index_get.meta().signature.arity, Arity::Fixed(1));
       assert_eq!(
-        map_get.meta().signature.parameters[0].kind,
+        map_index_get.meta().signature.parameters[0].kind,
         ParameterKind::Any
       );
     }
@@ -602,21 +600,17 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let map_get = MapGet::from(&hooks);
+      let error = val!(test_error_class(&hooks.as_gc()));
+
+      let map_index_get = MapIndexGet::new(&hooks.as_gc(), error);
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, val!(false));
       let this = hooks.manage(map);
 
-      let result = map_get.call(&mut hooks, Some(val!(this)), &[VALUE_NIL]);
+      let result = map_index_get.call(&mut hooks, Some(val!(this)), &[VALUE_NIL]);
       match result {
         Call::Ok(r) => assert_eq!(r.to_bool(), false),
-        _ => assert!(false),
-      }
-
-      let result = map_get.call(&mut hooks, Some(val!(this)), &[val!(true)]);
-      match result {
-        Call::Ok(r) => assert!(r.is_nil()),
         _ => assert!(false),
       }
     }
@@ -632,16 +626,16 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = Hooks::new(&mut context);
 
-      let map_set = MapSet::from(&hooks);
+      let map_set = MapIndexSet::from(&hooks);
 
-      assert_eq!(map_set.meta().name, "set");
+      assert_eq!(map_set.meta().name, "[]=");
       assert_eq!(map_set.meta().signature.arity, Arity::Fixed(2));
       assert_eq!(
         map_set.meta().signature.parameters[0].kind,
         ParameterKind::Any
       );
       assert_eq!(
-        map_set.meta().signature.parameters[0].kind,
+        map_set.meta().signature.parameters[1].kind,
         ParameterKind::Any
       );
     }
@@ -650,25 +644,23 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let map_set = MapSet::from(&hooks);
+      let map_set = MapIndexSet::from(&hooks);
 
       let map = Map::default();
       let this = hooks.manage(map);
 
-      let result = map_set.call(&mut hooks, Some(val!(this)), &[val!(true), val!(10.0)]);
-      match result {
-        Call::Ok(r) => assert!(r.is_nil()),
-        _ => assert!(false),
-      }
+      let result = map_set
+        .call(&mut hooks, Some(val!(this)), &[val!(10.0), val!(true)])
+        .unwrap();
+      assert!(result.is_nil());
 
       assert_eq!(this.len(), 1);
       assert_eq!(*this.get(&val!(true)).unwrap(), val!(10.0));
 
-      let result = map_set.call(&mut hooks, Some(val!(this)), &[val!(true), val!(false)]);
-      match result {
-        Call::Ok(r) => assert_eq!(r.to_num(), 10.0),
-        _ => assert!(false),
-      }
+      let result = map_set
+        .call(&mut hooks, Some(val!(this)), &[val!(false), val!(true)])
+        .unwrap();
+      assert!(result.is_nil());
 
       assert_eq!(this.len(), 1);
       assert_eq!(*this.get(&val!(true)).unwrap(), val!(false));
