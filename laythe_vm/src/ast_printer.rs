@@ -86,6 +86,7 @@ impl Visitor for AstPrint {
         self.buffer.push(')');
       }
       Primary::String(token) => self.visit_string(token),
+      Primary::Interpolation(string_interp) => self.visit_interpolation(string_interp),
       Primary::Ident(token) => self.visit_ident(token),
       Primary::Self_(token) => self.visit_self(token),
       Primary::Super(token) => self.visit_super(token),
@@ -472,6 +473,28 @@ impl Visitor for AstPrint {
     self.buffer.push_str(&token.lexeme);
     self.buffer.push('"');
   }
+
+  fn visit_interpolation(&mut self, string_interp: &Interpolation) -> Self::Result {
+    self.buffer.push('"');
+    self.buffer.push_str(&string_interp.start.lexeme);
+    self.buffer.push_str("${");
+
+    for segment in string_interp.segments.iter() {
+      match segment {
+        StringSegments::Token(segment) => {
+          self.buffer.push_str("${");
+          self.buffer.push_str(&segment.lexeme);
+          self.buffer.push('}');
+        }
+        StringSegments::Expr(expr) => self.visit_expr(&expr),
+      }
+    }
+
+    self.buffer.push('}');
+    self.buffer.push_str(&string_interp.end.lexeme);
+    self.buffer.push('"');
+  }
+
   fn visit_ident(&mut self, token: &Token) -> Self::Result {
     self.buffer.push_str(&token.lexeme);
   }

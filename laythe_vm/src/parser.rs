@@ -612,6 +612,7 @@ impl<'a> Parser<'a> {
       Prefix::Literal => Ok(self.literal()),
       Prefix::Number => Ok(self.number()),
       Prefix::String => Ok(self.string()),
+      Prefix::Interpolation => self.interpolation(),
       Prefix::Super => self.super_(),
       Prefix::Self_ => Ok(self.self_()),
       Prefix::Variable => self.variable(can_assign),
@@ -878,6 +879,40 @@ impl<'a> Parser<'a> {
   /// Parse a string literal
   fn string(&self) -> Expr {
     self.atom(Primary::String(self.previous.clone()))
+  }
+
+  /// Parse a string literal
+  fn interpolation(&mut self) -> ParseResult<Expr> {
+    let start = self.previous.clone();
+
+    let mut segments: Vec<StringSegments> = vec![];
+    loop {
+      if segments.len() == std::u16::MAX as usize {
+        return self.error(&format!(
+          "Cannot have more than {} segments in a string interpolation",
+          segments.len()
+        ));
+      }
+
+      match self.current.kind {
+        TokenKind::StringSegment => {
+          self.advance()?;
+          segments.push(StringSegments::Token(self.previous.clone()))
+        }
+        TokenKind::StringEnd => {
+          break;
+        }
+        _ => segments.push(StringSegments::Expr(Box::new(self.expr()?))),
+      }
+    }
+    self.consume(TokenKind::StringEnd, "Unterminated interpolated string.")?;
+    let end = self.previous.clone();
+
+    Ok(
+      self.atom(Primary::Interpolation(Box::new(Interpolation::new(
+        start, segments, end,
+      )))),
+    )
   }
 
   /// Parse a literal
@@ -1345,6 +1380,7 @@ enum Prefix {
   Number,
   Self_,
   String,
+  Interpolation,
   Super,
   Unary,
   Variable,
@@ -1374,7 +1410,7 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 60;
+const TOKEN_VARIANTS: usize = 63;
 
 /// The rules for infix and prefix operators
 const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
@@ -1446,6 +1482,12 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   // IDENTIFIER
   Rule::new(Some(Prefix::String), Precedence::None),
   // STRING
+  Rule::new(Some(Prefix::Interpolation), Precedence::None),
+  // STRING_BEGIN
+  Rule::new(None, Precedence::None),
+  // STRING_SEGMENT
+  Rule::new(None, Precedence::None),
+  // STRING_END
   Rule::new(Some(Prefix::Number), Precedence::None),
   // NUMBER
   Rule::new(None, Precedence::None),
@@ -1571,6 +1613,12 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // STRING
   Rule::new(None, Precedence::None),
+  // STRING_BEGIN
+  Rule::new(None, Precedence::None),
+  // STRING_SEGMENT
+  Rule::new(None, Precedence::None),
+  // STRING_END
+  Rule::new(None, Precedence::None),
   // NUMBER
   Rule::new(Some(Infix::And), Precedence::And),
   // AND
@@ -1695,6 +1743,12 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // STRING
   Rule::new(None, TypePrecedence::None),
+  // STRING_BEGIN
+  Rule::new(None, TypePrecedence::None),
+  // STRING_SEGMENT
+  Rule::new(None, TypePrecedence::None),
+  // STRING_END
+  Rule::new(None, TypePrecedence::None),
   // NUMBER
   Rule::new(None, TypePrecedence::None),
   // AND
@@ -1818,6 +1872,12 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   // IDENTIFIER
   Rule::new(None, TypePrecedence::None),
   // STRING
+  Rule::new(None, TypePrecedence::None),
+  // STRING_BEGIN
+  Rule::new(None, TypePrecedence::None),
+  // STRING_SEGMENT
+  Rule::new(None, TypePrecedence::None),
+  // STRING_END
   Rule::new(None, TypePrecedence::None),
   // NUMBER
   Rule::new(None, TypePrecedence::None),
