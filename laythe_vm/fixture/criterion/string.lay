@@ -1,0 +1,29 @@
+for _ in 1000.times() {
+  let a = 'cat';
+  let b = 'dog';
+  let c = 'parrot';
+  let d = 'rabbit';
+  let e = 'deer';
+  let f = 'bear';
+  let g = 'coyote';
+  let h = 'squirrl';
+  let i = 'fish';
+  let j = 'monkey';
+
+  let k = a + b + c + d + e + f + g + h + i + j;
+}
+
+for _ in 1000.times() {
+  let a = 'cat';
+  let b = 'dog';
+  let c = 'parrot';
+  let d = 'rabbit';
+  let e = 'deer';
+  let f = 'bear';
+  let g = 'coyote';
+  let h = 'squirrl';
+  let i = 'fish';
+  let j = 'monkey';
+
+  let k = '${a}${b}${c}${d}${e}${f}${g}${h}${i}${j}';
+}

@@ -1185,8 +1185,14 @@ impl<'a> VmExecutor<'a> {
       self.push(val!(left.to_num() + right.to_num()));
       Signal::Ok
     } else if right.is_str() && left.is_str() {
-      let result = format!("{}{}", left.to_str(), right.to_str());
-      let string = self.gc.manage_str(result, self);
+      let left = left.to_str();
+      let right = right.to_str();
+
+      let mut buffer = String::with_capacity(left.len() + right.len());
+      buffer.push_str(left.as_str());
+      buffer.push_str(right.as_str());
+
+      let string = self.gc.manage_str(buffer, self);
       self.push(val!(string));
       Signal::Ok
     } else {
