@@ -2,11 +2,23 @@ use crate::token::{Token, TokenKind};
 use laythe_core::utils::{next_boundary, previous_boundary};
 use smol_str::SmolStr;
 
+/// Tracking information for one layer of string interpolation
+struct Interpolation<'a> {
+  // the bracket depth for the current string interpolation
+  brackets: u32,
+
+  // the quoting character for this string interpolation
+  quote_char: &'a str,
+}
+
 /// A scanner for the lox language. This struct is
 /// responsible for taking a source string and tokenizing it
 pub struct Scanner<'a> {
   /// The input source string
   source: &'a str,
+
+  /// The current string interpolation depth
+  interpolations: Vec<Interpolation<'a>>,
 
   /// The current line number
   line: u32,
@@ -48,6 +60,8 @@ impl<'a> Scanner<'a> {
 
     Scanner {
       source,
+
+      interpolations: Vec::new(),
 
       start: 0,
       current,
@@ -110,8 +124,28 @@ impl<'a> Scanner<'a> {
     match char_slice {
       "(" => self.make_token_source(TokenKind::LeftParen),
       ")" => self.make_token_source(TokenKind::RightParen),
-      "{" => self.make_token_source(TokenKind::LeftBrace),
-      "}" => self.make_token_source(TokenKind::RightBrace),
+      "{" => {
+        if !self.interpolations.is_empty() {
+          let end = self.interpolations.len() - 1;
+          self.interpolations[end].brackets += 1;
+        }
+        self.make_token_source(TokenKind::LeftBrace)
+      }
+      "}" => {
+        let mut token: Option<Token> = None;
+
+        if !self.interpolations.is_empty() {
+          let end = self.interpolations.len() - 1;
+          self.interpolations[end].brackets -= 1;
+
+          if self.interpolations[end].brackets == 0 {
+            let interpolation = self.interpolations.pop().expect("Expected interpolation.");
+            token = Some(self.string(TokenKind::StringSegment, interpolation.quote_char));
+          }
+        }
+
+        token.unwrap_or_else(|| self.make_token_source(TokenKind::RightBrace))
+      }
       "[" => self.make_token_source(TokenKind::LeftBracket),
       "]" => self.make_token_source(TokenKind::RightBracket),
       ":" => self.make_token_source(TokenKind::Colon),
@@ -178,8 +212,8 @@ impl<'a> Scanner<'a> {
           self.make_token_source(TokenKind::Bang)
         }
       }
-      "\"" => self.string("\""),
-      "'" => self.string("'"),
+      "\"" => self.string(TokenKind::String, "\""),
+      "'" => self.string(TokenKind::String, "'"),
       _ => {
         if is_digit(char_slice) {
           return self.number();
@@ -189,7 +223,7 @@ impl<'a> Scanner<'a> {
           return self.identifier();
         }
 
-        self.error_token("Unexpected character")
+        self.error_token("Unexpected character.")
       }
     }
   }
@@ -252,8 +286,9 @@ impl<'a> Scanner<'a> {
   }
 
   /// Generate a string token
-  fn string(&mut self, quote_char: &str) -> Token {
+  fn string(&mut self, kind: TokenKind, quote_char: &'a str) -> Token {
     let mut buffer = String::with_capacity(8);
+    let mut kind = kind;
 
     while !self.is_at_end() && self.peek() != quote_char {
       match self.peek() {
@@ -288,19 +323,20 @@ impl<'a> Scanner<'a> {
               while !self.is_at_end() && self.peek() != quote_char && self.peek() != "}" {
                 self.advance_indices();
                 if len > 6 {
-                  return self
-                    .error_token("Unicode escape have a hexidecimal longer than length 6");
+                  return self.error_token(
+                    "Unicode escape sequence has a hexidecimal longer than length 6.",
+                  );
                 }
 
                 len += 1;
               }
 
               if self.peek() == quote_char {
-                return self.error_token("Expected '}' after unicode escape.");
+                return self.error_token("Expected '}' after unicode escape sequence.");
               }
 
               if self.is_at_end() {
-                return self.error_token("Unterminated string");
+                return self.error_token("Unterminated string.");
               }
               let unicode = &self.source[start..self.current - 1];
 
@@ -313,7 +349,7 @@ impl<'a> Scanner<'a> {
                 },
                 Err(_) => {
                   return self.error_token(&format!(
-                    "Invalid hexadecimal for unicode escape {}.",
+                    "Invalid hexadecimal unicode escape sequence {}.",
                     unicode
                   ));
                 }
@@ -327,17 +363,37 @@ impl<'a> Scanner<'a> {
             }
           }
         }
+        "$" => {
+          if self.peek_next().map(|c| c == "{").unwrap_or(false) {
+            self.advance_indices();
+
+            if let TokenKind::String = kind {
+              kind = TokenKind::StringStart
+            }
+            self.interpolations.push(Interpolation {
+              quote_char,
+              brackets: 1,
+            });
+            break;
+          } else {
+            buffer.push('$');
+          }
+        }
         c => buffer.push_str(c),
       }
       self.advance_indices();
     }
 
     if self.is_at_end() {
-      return self.error_token("Unterminated string");
+      return self.error_token("Unterminated string.");
+    }
+
+    if self.peek() == quote_char && kind == TokenKind::StringSegment {
+      kind = TokenKind::StringEnd;
     }
 
     self.advance_indices();
-    make_token(TokenKind::String, &buffer, self.line)
+    make_token(kind, &buffer, self.line)
   }
 
   /// Advance through whitespace effectively throwing it away
@@ -833,10 +889,36 @@ mod test {
 
     for (input, expected) in tests {
       let mut scanner = Scanner::new(&input);
-      let scanned_token = scanner.scan_token().clone();
+      let scanned_token = scanner.scan_token();
       assert_eq!(scanned_token.kind, TokenKind::String);
       assert_eq!(scanned_token.lexeme, expected);
     }
+  }
+
+  #[test]
+  fn string_interpolation() {
+    let source = "
+    let x = 'My name is ${name} and am ${'${20}'}';
+    ";
+
+    let mut scanner = Scanner::new(&source);
+
+    let mut assert_token = |kind: TokenKind, lexeme: &str| {
+      let scanned_token = scanner.scan_token();
+      assert_eq!(scanned_token.kind, kind);
+      assert_eq!(scanned_token.lexeme, lexeme);
+    };
+
+    assert_token(TokenKind::Let, "let");
+    assert_token(TokenKind::Identifier, "x");
+    assert_token(TokenKind::Equal, "=");
+    assert_token(TokenKind::StringStart, "My name is ");
+    assert_token(TokenKind::Identifier, "name");
+    assert_token(TokenKind::StringSegment, " and am ");
+    assert_token(TokenKind::StringStart, "");
+    assert_token(TokenKind::Number, "20");
+    assert_token(TokenKind::StringEnd, "");
+    assert_token(TokenKind::StringEnd, "");
   }
 
   #[test]

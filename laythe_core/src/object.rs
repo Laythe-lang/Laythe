@@ -467,6 +467,13 @@ impl<T: 'static + Trace + DebugHeap> Manage for List<T> {
 pub struct Map<K, V>(HashMap<K, V, FnvBuildHasher>);
 
 impl<K, V> Map<K, V> {
+  pub fn with_capacity(capacity: usize) -> Self {
+    Self(HashMap::<K, V, FnvBuildHasher>::with_capacity_and_hasher(
+      capacity,
+      FnvBuildHasher::default(),
+    ))
+  }
+
   pub fn len(&self) -> usize {
     self.0.len()
   }

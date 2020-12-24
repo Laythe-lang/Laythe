@@ -51,6 +51,7 @@ pub trait Visitor {
   fn visit_nil(&mut self, token: &Token) -> Self::Result;
   fn visit_number(&mut self, token: &Token) -> Self::Result;
   fn visit_string(&mut self, token: &Token) -> Self::Result;
+  fn visit_interpolation(&mut self, string_interp: &Interpolation) -> Self::Result;
   fn visit_ident(&mut self, token: &Token) -> Self::Result;
   fn visit_self(&mut self, token: &Token) -> Self::Result;
   fn visit_super(&mut self, token: &Super) -> Self::Result;
@@ -914,6 +915,7 @@ pub enum Primary {
   Number(Token),
   Grouping(Box<Expr>),
   String(Token),
+  Interpolation(Box<Interpolation>),
   Ident(Token),
   Self_(Token),
   Super(Super),
@@ -932,6 +934,7 @@ impl Ranged for Primary {
       Primary::Number(nil_) => nil_.start(),
       Primary::Grouping(grouping) => grouping.start(),
       Primary::String(string) => string.start(),
+      Primary::Interpolation(string) => string.start(),
       Primary::Ident(ident) => ident.start(),
       Primary::Self_(self_) => self_.start(),
       Primary::Super(super_) => super_.start(),
@@ -950,6 +953,7 @@ impl Ranged for Primary {
       Primary::Number(nil_) => nil_.end(),
       Primary::Grouping(grouping) => grouping.end(),
       Primary::String(string) => string.end(),
+      Primary::Interpolation(string) => string.end(),
       Primary::Ident(ident) => ident.end(),
       Primary::Self_(self_) => self_.end(),
       Primary::Super(super_) => super_.end(),
@@ -957,6 +961,37 @@ impl Ranged for Primary {
       Primary::List(list) => list.end(),
       Primary::Map(map) => map.end(),
     }
+  }
+}
+
+pub struct Interpolation {
+  pub start: Token,
+  pub segments: Vec<StringSegments>,
+  pub end: Token,
+}
+
+pub enum StringSegments {
+  Token(Token),
+  Expr(Box<Expr>),
+}
+
+impl Interpolation {
+  pub fn new(start: Token, segments: Vec<StringSegments>, end: Token) -> Self {
+    Self {
+      start,
+      segments,
+      end,
+    }
+  }
+}
+
+impl Ranged for Interpolation {
+  fn start(&self) -> u32 {
+    self.start.line
+  }
+
+  fn end(&self) -> u32 {
+    self.end.line
   }
 }
 

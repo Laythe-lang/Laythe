@@ -57,6 +57,9 @@ pub enum TokenKind {
   // sequences
   Identifier,
   String,
+  StringStart,
+  StringSegment,
+  StringEnd,
   Number,
 
   // keywords

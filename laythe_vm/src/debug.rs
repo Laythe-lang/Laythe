@@ -59,13 +59,12 @@ pub fn disassemble_instruction(
     AlignedByteCode::Nil => simple_instruction(stdio.stdout(), "Nil", offset),
     AlignedByteCode::True => simple_instruction(stdio.stdout(), "True", offset),
     AlignedByteCode::False => simple_instruction(stdio.stdout(), "False", offset),
-    AlignedByteCode::List => simple_instruction(stdio.stdout(), "List", offset),
-    AlignedByteCode::ListInit(arg_count) => {
-      short_instruction(stdio.stdout(), "ListInit", arg_count, offset)
+    AlignedByteCode::List(arg_count) => {
+      short_instruction(stdio.stdout(), "List", arg_count, offset)
     }
-    AlignedByteCode::Map => simple_instruction(stdio.stdout(), "Map", offset),
-    AlignedByteCode::MapInit(arg_count) => {
-      short_instruction(stdio.stdout(), "MapInit", arg_count, offset)
+    AlignedByteCode::Map(arg_count) => short_instruction(stdio.stdout(), "Map", arg_count, offset),
+    AlignedByteCode::Interpolate(arg_count) => {
+      short_instruction(stdio.stdout(), "Interpolate", arg_count, offset)
     }
     AlignedByteCode::IterNext(constant) => {
       invoke_instruction(stdio.stdout(), "IterNext", chunk, constant, 0, offset)

@@ -885,6 +885,7 @@ fn static_method() -> Result<(), std::io::Error> {
 fn string() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
+      "language/string/interpolation.lay",
       "language/string/literals.lay",
       "language/string/multiline.lay",
       "language/string/escape.lay",
@@ -896,6 +897,7 @@ fn string() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/string/invalid_escape.lay",
+      "language/string/invalid_interpolation_missing_close.lay",
       "language/string/invalid_unicode_hex.lay",
       "language/string/invalid_unicode_missing_close.lay",
       "language/string/invalid_unicode_missing_open.lay",
