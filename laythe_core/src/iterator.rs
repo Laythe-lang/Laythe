@@ -3,8 +3,7 @@ use crate::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{DebugHeap, Manage, Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{DebugHeap, Manage, Trace};
 use std::mem;
 use std::{fmt, io::Write};
 
@@ -28,15 +27,6 @@ impl LyIterator {
       iterator,
       current: VALUE_NIL,
     }
-  }
-
-  /// Allow access the "current" field in the iterator
-  pub fn get_field(&self, name: &Managed<SmolStr>) -> Option<&Value> {
-    if &***name == "current" {
-      return Some(&self.current);
-    }
-
-    None
   }
 
   /// Get the name of this iterator

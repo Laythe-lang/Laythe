@@ -800,17 +800,17 @@ impl<'a> VmExecutor<'a> {
 
   /// get the current value from an iterator
   fn op_iter_current(&mut self) -> Signal {
-    let value = self.peek(0);
+    let receiver = self.peek(0);
 
-    if value.is_iter() {
+    if receiver.is_iter() {
       self.update_ip(2);
-      let result = value.to_iter().current();
+      let result = receiver.to_iter().current();
       self.set_val(-1, result);
       Signal::Ok
     } else {
-      let slot = self.read_short();
-      let name = self.read_string(slot);
-      self.get_property(value, name)
+      let constant = self.read_short();
+      let method_name = self.read_string(constant);
+      self.invoke(receiver, method_name, 0)
     }
   }
 
@@ -1089,29 +1089,19 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn get_property(&mut self, value: Value, name: Managed<SmolStr>) -> Signal {
-    let kind = value.kind();
-    match kind {
-      ValueKind::Instance => {
-        let instance = value.to_instance();
+    if value.is_instance() {
+      let instance = value.to_instance();
 
-        if let Some(value) = instance.get_field(&name) {
-          self.set_val(-1, *value);
-          return Signal::Ok;
-        }
+      if let Some(value) = instance.get_field(&name) {
+        self.set_val(-1, *value);
+        return Signal::Ok;
       }
-      ValueKind::Iter => {
-        let iter = value.to_iter();
-
-        if let Some(value) = iter.get_field(&name) {
-          self.set_val(-1, *value);
-          return Signal::Ok;
-        }
-      }
-      _ => (),
     }
 
-    let class = self.dep_manager.primitive_classes().for_value(value, kind);
-
+    let class = self
+      .dep_manager
+      .primitive_classes()
+      .for_value(value, value.kind());
     self.bind_method(class, name)
   }
 
