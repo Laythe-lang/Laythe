@@ -531,10 +531,9 @@ impl<'a> VmExecutor<'a> {
         ByteCode::Nil => self.op_literal(VALUE_NIL),
         ByteCode::True => self.op_literal(val!(true)),
         ByteCode::False => self.op_literal(val!(false)),
-        ByteCode::List => self.op_literal(val!(self.gc.manage(List::default(), self))),
-        ByteCode::ListInit => self.op_list(),
-        ByteCode::Map => self.op_literal(val!(self.gc.manage(Map::default(), self))),
-        ByteCode::MapInit => self.op_map(),
+        ByteCode::List => self.op_list(),
+        ByteCode::Map => self.op_map(),
+        ByteCode::Interpolate => self.op_interpolate(),
         ByteCode::IterNext => self.op_iter_next(),
         ByteCode::IterCurrent => self.op_iter_current(),
         ByteCode::Constant => self.op_constant(),
@@ -729,11 +728,9 @@ impl<'a> VmExecutor<'a> {
         arg_count as usize,
       )
     };
-    let mut list = self.peek(arg_count as isize).to_list();
-    self
-      .gc
-      .grow(&mut list, self, |list| list.extend_from_slice(args));
+    let list = val!(self.gc.manage(List::from(args), self));
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
+    self.push(list);
 
     Signal::Ok
   }
@@ -741,10 +738,7 @@ impl<'a> VmExecutor<'a> {
   /// create a map from a map literal
   fn op_map(&mut self) -> Signal {
     let arg_count = self.read_short();
-    let mut map = self.peek(arg_count as isize * 2).to_map();
-    self
-      .gc
-      .grow(&mut map, self, |map| map.reserve(arg_count as usize));
+    let mut map = self.gc.manage(Map::with_capacity(arg_count as usize), self);
 
     for i in 0..arg_count {
       let key = self.get_val(-(i as isize * 2) - 2);
@@ -753,6 +747,33 @@ impl<'a> VmExecutor<'a> {
       map.insert(key, value);
     }
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize * 2)) };
+    self.push(val!(map));
+
+    Signal::Ok
+  }
+
+  /// create a map from a map literal
+  fn op_interpolate(&mut self) -> Signal {
+    let arg_count = self.read_short();
+    let args = unsafe {
+      std::slice::from_raw_parts(
+        self.stack_top.offset(-(arg_count as isize)),
+        arg_count as usize,
+      )
+    };
+
+    let mut length: usize = 0;
+    for arg in args {
+      length += arg.to_str().len();
+    }
+
+    let mut buffers = String::with_capacity(length);
+    for arg in args {
+      buffers.push_str(arg.to_str().as_str())
+    }
+
+    self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
+    self.push(val!(self.gc.manage_str(buffers, self)));
     Signal::Ok
   }
 
