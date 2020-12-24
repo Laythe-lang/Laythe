@@ -42,17 +42,14 @@ pub enum AlignedByteCode {
   /// False ByteCode
   False,
 
-  /// Create an empty list
-  List,
-
   /// Initialize list from literal
-  ListInit(u16),
+  List(u16),
 
-  /// Create an empty map
-  Map,
+  /// Initialize map from literal
+  Map(u16),
 
-  /// Initial map from literal
-  MapInit(u16),
+  /// Combine string interpolation
+  Interpolate(u16),
 
   /// Get the next element from an iterator
   IterNext(u16),
@@ -183,10 +180,9 @@ impl AlignedByteCode {
       Self::Nil => push_op(code, ByteCode::Nil),
       Self::True => push_op(code, ByteCode::True),
       Self::False => push_op(code, ByteCode::False),
-      Self::List => push_op(code, ByteCode::List),
-      Self::ListInit(slot) => push_op_u16(code, ByteCode::ListInit, slot),
-      Self::Map => push_op(code, ByteCode::Map),
-      Self::MapInit(slot) => push_op_u16(code, ByteCode::MapInit, slot),
+      Self::List(slot) => push_op_u16(code, ByteCode::List, slot),
+      Self::Map(slot) => push_op_u16(code, ByteCode::Map, slot),
+      Self::Interpolate(slot) => push_op_u16(code, ByteCode::Interpolate, slot),
       Self::IterNext(slot) => push_op_u16(code, ByteCode::IterNext, slot),
       Self::IterCurrent(slot) => push_op_u16(code, ByteCode::IterCurrent, slot),
       Self::GetIndex => push_op(code, ByteCode::GetIndex),
@@ -256,14 +252,16 @@ impl AlignedByteCode {
       ByteCode::Nil => (AlignedByteCode::Nil, offset + 1),
       ByteCode::True => (AlignedByteCode::True, offset + 1),
       ByteCode::False => (AlignedByteCode::False, offset + 1),
-      ByteCode::List => (AlignedByteCode::List, offset + 1),
-      ByteCode::ListInit => (
-        AlignedByteCode::ListInit(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::List => (
+        AlignedByteCode::List(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::Map => (AlignedByteCode::Map, offset + 1),
-      ByteCode::MapInit => (
-        AlignedByteCode::MapInit(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::Map => (
+        AlignedByteCode::Map(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Interpolate => (
+        AlignedByteCode::Interpolate(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::IterNext => (
@@ -412,17 +410,14 @@ pub enum ByteCode {
   /// False ByteCode
   False,
 
-  /// Empty list
+  /// Initialize List
   List,
 
-  /// Initialize List
-  ListInit,
-
-  /// Empty Map
+  /// Initialize map
   Map,
 
-  /// Initialize map
-  MapInit,
+  /// Combine string interpolation
+  Interpolate,
 
   /// Get the next element from an iterator
   IterNext,
@@ -773,10 +768,9 @@ mod test {
         (1, AlignedByteCode::Nil),
         (1, AlignedByteCode::True),
         (1, AlignedByteCode::False),
-        (1, AlignedByteCode::List),
-        (3, AlignedByteCode::ListInit(54782)),
-        (1, AlignedByteCode::Map),
-        (3, AlignedByteCode::MapInit(1923)),
+        (3, AlignedByteCode::List(54782)),
+        (3, AlignedByteCode::Map(1923)),
+        (3, AlignedByteCode::Interpolate(3389)),
         (3, AlignedByteCode::IterNext(81)),
         (3, AlignedByteCode::IterCurrent(49882)),
         (1, AlignedByteCode::Drop),

@@ -576,7 +576,12 @@ impl<'a> Compiler<'a> {
 
   /// Generate a constant from the provided identifier token
   fn identifier_constant(&mut self, name: &Token) -> u16 {
-    let identifer = self.hooks.manage_str(name.lexeme.as_str());
+    self.string_constant(name.lexeme.as_str())
+  }
+
+  /// Generate a constant from the provided identifier token
+  fn string_constant(&mut self, str: &str) -> u16 {
+    let identifer = self.hooks.manage_str(str);
     self.make_constant(val!(identifer))
   }
 
@@ -689,12 +694,13 @@ impl<'a> Compiler<'a> {
         false
       }
       Primary::String(token) => self.string(token),
+      Primary::Interpolation(interpolation) => self.interpolation(interpolation),
       Primary::Ident(token) => self.identifier(token),
       Primary::Self_(token) => self.self_(token),
       Primary::Super(token) => self.super_(token, trailers),
       Primary::Lambda(fun) => self.lambda(fun),
-      Primary::List(items) => self.list(items),
-      Primary::Map(kvps) => self.map(kvps),
+      Primary::List(list) => self.list(list),
+      Primary::Map(map) => self.map(map),
     }
   }
 
@@ -933,6 +939,9 @@ impl<'a> Compiler<'a> {
 
   /// Compile a for loop
   fn for_(&mut self, for_: &ast::For) {
+    const NEXT: &str = "next";
+    const CURRENT: &str = "current";
+
     // new scope for full loop including loop variables
     self.scope(for_.end(), |self_| {
       let item = self_.make_identifier(&for_.item);
@@ -952,11 +961,7 @@ impl<'a> Compiler<'a> {
       };
 
       // get constant for 'iter' method
-      let iter_const = self_.identifier_constant(&Token {
-        lexeme: SmolStr::new_inline(ITER),
-        kind: TokenKind::Identifier,
-        line: expr_line,
-      });
+      let iter_const = self_.string_constant(ITER);
 
       // declare the hidden local $iter variable
       let iterator_const = self_.identifier_constant(&iterator_token);
@@ -975,17 +980,8 @@ impl<'a> Compiler<'a> {
       let enclosing_loop = mem::replace(&mut self_.loop_info, Some(loop_info));
 
       // define iterator method constants
-      let next_const = self_.identifier_constant(&Token {
-        lexeme: SmolStr::new_inline("next"),
-        kind: TokenKind::Identifier,
-        line: for_.item.end(),
-      });
-
-      let current_const = self_.identifier_constant(&Token {
-        lexeme: SmolStr::new_inline("current"),
-        kind: TokenKind::Identifier,
-        line: for_.item.end(),
-      });
+      let next_const = self_.string_constant(NEXT);
+      let current_const = self_.string_constant(CURRENT);
 
       // call next on iterator
       let iterator_variable = self_
@@ -1410,6 +1406,37 @@ impl<'a> Compiler<'a> {
     false
   }
 
+  /// Compile a string token
+  fn interpolation(&mut self, interpolation: &ast::Interpolation) -> bool {
+    const STR: &str = "str";
+    let str_constant = self.string_constant(STR);
+
+    let value = val!(self.hooks.manage_str(interpolation.start.lexeme.as_str()));
+    self.emit_constant(value, interpolation.start.end());
+
+    for segment in interpolation.segments.iter() {
+      match segment {
+        ast::StringSegments::Token(token) => {
+          let value = val!(self.hooks.manage_str(token.lexeme.as_str()));
+          self.emit_constant(value, token.end());
+        }
+        ast::StringSegments::Expr(expr) => {
+          self.expr(expr);
+          self.emit_byte(AlignedByteCode::Invoke((str_constant, 0)), expr.end());
+        }
+      }
+    }
+
+    let value = val!(self.hooks.manage_str(interpolation.end.lexeme.as_str()));
+    self.emit_constant(value, interpolation.end.end());
+    self.emit_byte(
+      AlignedByteCode::Interpolate((interpolation.segments.len() + 2) as u16),
+      interpolation.end(),
+    );
+
+    false
+  }
+
   /// Compile a identifer token
   fn identifier(&mut self, token: &Token) -> bool {
     self.variable(&token, false);
@@ -1506,37 +1533,23 @@ impl<'a> Compiler<'a> {
 
   /// Compile a list literal
   fn list(&mut self, list: &List) -> bool {
-    self.emit_byte(AlignedByteCode::List, list.start());
-
     for item in list.items.iter() {
       self.expr(item);
     }
 
-    if !list.items.is_empty() {
-      self.emit_byte(
-        AlignedByteCode::ListInit(list.items.len() as u16),
-        list.end(),
-      );
-    }
+    self.emit_byte(AlignedByteCode::List(list.items.len() as u16), list.end());
 
     false
   }
 
   /// Compile a map literal
   fn map(&mut self, map: &Map) -> bool {
-    self.emit_byte(AlignedByteCode::Map, map.start());
-
     for (key, value) in map.entries.iter() {
       self.expr(key);
       self.expr(value);
     }
 
-    if !map.entries.is_empty() {
-      self.emit_byte(
-        AlignedByteCode::MapInit(map.entries.len() as u16),
-        map.end(),
-      );
-    }
+    self.emit_byte(AlignedByteCode::Map(map.entries.len() as u16), map.end());
 
     false
   }
@@ -1848,23 +1861,23 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Map,          // 0
-        AlignedByteCode::GetLocal(1),  // 1
-        AlignedByteCode::Constant(1),  // 3
-        AlignedByteCode::GetIndex,     // 5
-        AlignedByteCode::Drop,         // 6
-        AlignedByteCode::Drop,         // 7
-        AlignedByteCode::Jump(8),      // 8
+        AlignedByteCode::Map(0),       // 0
+        AlignedByteCode::GetLocal(1),  // 3
+        AlignedByteCode::Constant(1),  // 5
+        AlignedByteCode::GetIndex,     // 7
+        AlignedByteCode::Drop,         // 8
+        AlignedByteCode::Drop,         // 9
+        AlignedByteCode::Jump(8),      // 10
         AlignedByteCode::GetGlobal(2), // 13
-        AlignedByteCode::Constant(3),  // 11
-        AlignedByteCode::Call(1),      // 13
-        AlignedByteCode::Drop,         //
-        AlignedByteCode::Nil,          // 14
-        AlignedByteCode::Return,       // 15
+        AlignedByteCode::Constant(3),  // 16
+        AlignedByteCode::Call(1),      // 18
+        AlignedByteCode::Drop,         // 20
+        AlignedByteCode::Nil,          // 21
+        AlignedByteCode::Return,       // 22
       ],
     );
 
-    assert_eq!(fun.has_catch_jump(0), Some(11));
+    assert_eq!(fun.has_catch_jump(0), Some(13));
   }
 
   #[test]
@@ -1888,32 +1901,32 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::List,         // 0
-        AlignedByteCode::Constant(0),  // 1
-        AlignedByteCode::GetIndex,     // 3
-        AlignedByteCode::Drop,         // 4
-        AlignedByteCode::List,         // 5
-        AlignedByteCode::Constant(1),  // 6
-        AlignedByteCode::GetIndex,     // 8
-        AlignedByteCode::Drop,         // 9
-        AlignedByteCode::Jump(8),      // 10
-        AlignedByteCode::GetGlobal(2), //
-        AlignedByteCode::Constant(3),  // 13
-        AlignedByteCode::Call(1),      //
-        AlignedByteCode::Drop,
-        AlignedByteCode::Jump(8),      // 16
-        AlignedByteCode::GetGlobal(2), // 21
-        AlignedByteCode::Constant(4),  // 19
-        AlignedByteCode::Call(1),      // 21
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,    // 22
-        AlignedByteCode::Return, // 23
+        AlignedByteCode::List(0),      // 0
+        AlignedByteCode::Constant(0),  // 3
+        AlignedByteCode::GetIndex,     // 5
+        AlignedByteCode::Drop,         // 6
+        AlignedByteCode::List(0),      // 7
+        AlignedByteCode::Constant(1),  // 10
+        AlignedByteCode::GetIndex,     // 12
+        AlignedByteCode::Drop,         // 13
+        AlignedByteCode::Jump(8),      // 14
+        AlignedByteCode::GetGlobal(2), // 17
+        AlignedByteCode::Constant(3),  // 20
+        AlignedByteCode::Call(1),      // 22
+        AlignedByteCode::Drop,         // 24
+        AlignedByteCode::Jump(8),      // 25
+        AlignedByteCode::GetGlobal(2), // 28
+        AlignedByteCode::Constant(4),  // 31
+        AlignedByteCode::Call(1),      // 33
+        AlignedByteCode::Drop,         // 35
+        AlignedByteCode::Nil,          // 36
+        AlignedByteCode::Return,       // 37
       ],
     );
 
-    assert_eq!(fun.has_catch_jump(0), Some(24));
-    assert_eq!(fun.has_catch_jump(13), Some(24));
-    assert_eq!(fun.has_catch_jump(5), Some(13));
+    assert_eq!(fun.has_catch_jump(5), Some(28));
+    assert_eq!(fun.has_catch_jump(20), Some(28));
+    assert_eq!(fun.has_catch_jump(12), Some(17));
   }
 
   #[test]
@@ -2157,11 +2170,10 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::List,
         AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::ListInit(3),
+        AlignedByteCode::List(3),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Constant(2),
@@ -2187,11 +2199,10 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::List,
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
-        AlignedByteCode::ListInit(3),
+        AlignedByteCode::List(3),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::GetGlobal(4),
         AlignedByteCode::GetGlobal(0),
@@ -2218,11 +2229,10 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::List,
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
-        AlignedByteCode::ListInit(3),
+        AlignedByteCode::List(3),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Dup,
@@ -2251,13 +2261,12 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::List,
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Nil,
         AlignedByteCode::False,
         AlignedByteCode::Constant(3),
-        AlignedByteCode::ListInit(5),
+        AlignedByteCode::List(5),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -2277,7 +2286,7 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::List,
+        AlignedByteCode::List(0),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -2300,12 +2309,11 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Map,
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Nil,
-        AlignedByteCode::MapInit(2),
+        AlignedByteCode::Map(2),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -2325,7 +2333,7 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Map,
+        AlignedByteCode::Map(0),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -2661,12 +2669,11 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::Map,             // 0
         AlignedByteCode::Constant(1),     // 1
         AlignedByteCode::Constant(2),     // 3
         AlignedByteCode::Constant(3),     // 5
         AlignedByteCode::Nil,             // 7
-        AlignedByteCode::MapInit(2),      // 8
+        AlignedByteCode::Map(2),          // 8
         AlignedByteCode::DefineGlobal(0), // 11
         AlignedByteCode::Nil,             // 13
         AlignedByteCode::Return,          // 14
@@ -2684,12 +2691,11 @@ mod test {
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::List,            // 0
         AlignedByteCode::Constant(1),     // 1
         AlignedByteCode::Constant(2),     // 3
         AlignedByteCode::Constant(3),     // 5
         AlignedByteCode::Constant(4),     // 7
-        AlignedByteCode::ListInit(4),     // 9
+        AlignedByteCode::List(4),         // 9
         AlignedByteCode::DefineGlobal(0), // 12
         AlignedByteCode::Nil,             // 14
         AlignedByteCode::Return,          // 15
@@ -2708,20 +2714,19 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::Nil,             // 0
-        AlignedByteCode::List,            // 1   local 1 = x
-        AlignedByteCode::Constant(0),     // 2   local 2 = [1, 2, 3].iter()
-        AlignedByteCode::Constant(1),     // 4   local 3 =
-        AlignedByteCode::Constant(2),     // 6
-        AlignedByteCode::ListInit(3),     // 8
-        AlignedByteCode::Invoke((3, 0)),  // 11  const 1 = 1
-        AlignedByteCode::GetLocal(2),     // 14  const 2 = 2
-        AlignedByteCode::IterNext(5),     // 16  const 3 = 3
-        AlignedByteCode::JumpIfFalse(20), // 18  const 4 = "iter"
-        AlignedByteCode::Drop,            // 21  const 5 = "next"
-        AlignedByteCode::GetLocal(2),     // 22
-        AlignedByteCode::IterCurrent(6),  // 24  const 6 = "current"
-        AlignedByteCode::SetLocal(1),     // 26
-        AlignedByteCode::Drop,            // 28
+        AlignedByteCode::Constant(0),     // 1   local 2 = [1, 2, 3].iter()
+        AlignedByteCode::Constant(1),     // 3   local 3 =
+        AlignedByteCode::Constant(2),     // 5
+        AlignedByteCode::List(3),         // 7
+        AlignedByteCode::Invoke((3, 0)),  // 10  const 1 = 1
+        AlignedByteCode::GetLocal(2),     // 13  const 2 = 2
+        AlignedByteCode::IterNext(5),     // 15  const 3 = 3
+        AlignedByteCode::JumpIfFalse(20), // 17  const 4 = "iter"
+        AlignedByteCode::Drop,            // 20  const 5 = "next"
+        AlignedByteCode::GetLocal(2),     // 21
+        AlignedByteCode::IterCurrent(6),  // 23  const 6 = "current"
+        AlignedByteCode::SetLocal(1),     // 25
+        AlignedByteCode::Drop,            // 27
         AlignedByteCode::GetGlobal(7),
         AlignedByteCode::GetLocal(1), // 29
         AlignedByteCode::Call(1),
@@ -3099,6 +3104,30 @@ mod test {
       fun,
       &vec![
         AlignedByteCode::Constant(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn op_interpolate() {
+    let example = "\"${firstName} ${lastName}\";";
+
+    let context = TestContext::default();
+    let fun = test_compile(example, &context);
+    assert_simple_bytecode(
+      fun,
+      &vec![
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::Invoke((0, 0)),
+        AlignedByteCode::Constant(3),
+        AlignedByteCode::GetGlobal(4),
+        AlignedByteCode::Invoke((0, 0)),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Interpolate(5),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
