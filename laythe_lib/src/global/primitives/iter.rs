@@ -26,6 +26,7 @@ const ITER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixe
 
 /// This might need to have a stack once we implement yield or the iterator class
 const ITER_NEXT: NativeMetaBuilder = NativeMetaBuilder::method("next", Arity::Fixed(0));
+const ITER_CURRENT: NativeMetaBuilder = NativeMetaBuilder::method("current", Arity::Fixed(0));
 const ITER_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
 const ITER_FIRST: NativeMetaBuilder = NativeMetaBuilder::method("first", Arity::Fixed(0));
@@ -92,6 +93,12 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitR
     hooks,
     hooks.manage_str(ITER_NEXT.name),
     val!(to_dyn_native(hooks, IterNext::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_CURRENT.name),
+    val!(to_dyn_native(hooks, IterCurrent::from(hooks))),
   );
 
   class.add_method(
@@ -188,6 +195,14 @@ native!(IterNext, ITER_NEXT);
 impl Native for IterNext {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     this.unwrap().to_iter().next(hooks)
+  }
+}
+
+native!(IterCurrent, ITER_CURRENT);
+
+impl Native for IterCurrent {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    Call::Ok(this.unwrap().to_iter().current())
   }
 }
 
@@ -747,6 +762,37 @@ mod test {
         Call::Ok(r) => assert_eq!(r.to_bool(), true),
         _ => assert!(false),
       }
+    }
+  }
+
+  #[cfg(test)]
+  mod current {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let iter_current = IterCurrent::from(&hooks);
+
+      assert_eq!(iter_current.meta().name, "current");
+      assert_eq!(iter_current.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+      let iter_current = IterCurrent::from(&hooks.as_gc());
+
+      let iter = test_iter();
+      let this = hooks.manage(LyIterator::new(iter));
+
+      let result = iter_current
+        .call(&mut hooks, Some(val!(this)), &[])
+        .unwrap();
+      assert!(result.is_nil());
     }
   }
 

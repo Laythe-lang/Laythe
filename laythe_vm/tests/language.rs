@@ -563,10 +563,7 @@ fn iterator() -> Result<(), std::io::Error> {
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
-  test_file_exits(
-    &vec!["language/iterator/cannot_set_current.lay"],
-    ExecuteResult::RuntimeError,
-  )
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]

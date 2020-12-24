@@ -1,12 +1,12 @@
 let b = "a b c".split(" ");
 
 assert(b.next());
-assertEq(b.current, "a");
+assertEq(b.current(), "a");
 
 assert(b.next());
-assertEq(b.current, "b");
+assertEq(b.current(), "b");
 
 assert(b.next());
-assertEq(b.current, "c");
+assertEq(b.current(), "c");
 
 assert(!b.next());

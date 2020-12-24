@@ -4,6 +4,6 @@ let iter = {
 }.iter().filter(|x| x[0] == "key");
 
 assertEq(iter.next(), true);
-assertEq(iter.current[1], 10);
+assertEq(iter.current()[1], 10);
 
 assertEq(iter.next(), false);
