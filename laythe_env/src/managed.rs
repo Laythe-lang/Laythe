@@ -121,11 +121,11 @@ impl<T: 'static + Manage + ?Sized> DebugHeap for Allocation<T> {
   }
 }
 
-pub struct Managed<T: 'static + Manage + ?Sized> {
+pub struct Gc<T: 'static + Manage + ?Sized> {
   ptr: NonNull<Allocation<T>>,
 }
 
-impl<T: 'static + Manage + ?Sized> Managed<T> {
+impl<T: 'static + Manage + ?Sized> Gc<T> {
   /// Get a static reference to the underlying data
   ///
   /// # Safety
@@ -149,15 +149,15 @@ impl<T: 'static + Manage + ?Sized> Managed<T> {
   }
 }
 
-impl<T: 'static + Manage> Managed<T> {
-  pub fn dangling() -> Managed<T> {
+impl<T: 'static + Manage> Gc<T> {
+  pub fn dangling() -> Gc<T> {
     Self {
       ptr: NonNull::dangling(),
     }
   }
 }
 
-impl<T: 'static + Manage> Trace for Managed<T> {
+impl<T: 'static + Manage> Trace for Gc<T> {
   fn trace(&self) -> bool {
     if self.obj().mark() {
       return true;
@@ -186,7 +186,7 @@ impl<T: 'static + Manage> Trace for Managed<T> {
   }
 }
 
-impl<T: 'static + Manage> DebugHeap for Managed<T> {
+impl<T: 'static + Manage> DebugHeap for Gc<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
       f.write_str("*()")
@@ -196,7 +196,7 @@ impl<T: 'static + Manage> DebugHeap for Managed<T> {
   }
 }
 
-impl<T: 'static + Manage> Manage for Managed<T> {
+impl<T: 'static + Manage> Manage for Gc<T> {
   fn alloc_type(&self) -> &str {
     self.obj().data.alloc_type()
   }
@@ -210,7 +210,7 @@ impl<T: 'static + Manage> Manage for Managed<T> {
   }
 }
 
-impl Trace for Managed<dyn Manage> {
+impl Trace for Gc<dyn Manage> {
   fn trace(&self) -> bool {
     if self.obj().mark() {
       return true;
@@ -239,13 +239,13 @@ impl Trace for Managed<dyn Manage> {
   }
 }
 
-impl DebugHeap for Managed<dyn Manage> {
+impl DebugHeap for Gc<dyn Manage> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
     f.write_str("*()")
   }
 }
 
-impl Manage for Managed<dyn Manage> {
+impl Manage for Gc<dyn Manage> {
   fn alloc_type(&self) -> &str {
     self.obj().data.alloc_type()
   }
@@ -259,20 +259,20 @@ impl Manage for Managed<dyn Manage> {
   }
 }
 
-impl<T: 'static + Manage + ?Sized> From<NonNull<Allocation<T>>> for Managed<T> {
+impl<T: 'static + Manage + ?Sized> From<NonNull<Allocation<T>>> for Gc<T> {
   fn from(ptr: NonNull<Allocation<T>>) -> Self {
     Self { ptr }
   }
 }
 
-impl<T: 'static + Manage + ?Sized> Copy for Managed<T> {}
-impl<T: 'static + Manage + ?Sized> Clone for Managed<T> {
-  fn clone(&self) -> Managed<T> {
+impl<T: 'static + Manage + ?Sized> Copy for Gc<T> {}
+impl<T: 'static + Manage + ?Sized> Clone for Gc<T> {
+  fn clone(&self) -> Gc<T> {
     *self
   }
 }
 
-impl<T: 'static + Manage> Deref for Managed<T> {
+impl<T: 'static + Manage> Deref for Gc<T> {
   type Target = T;
 
   fn deref(&self) -> &T {
@@ -280,15 +280,15 @@ impl<T: 'static + Manage> Deref for Managed<T> {
   }
 }
 
-impl<T: 'static + Manage> DerefMut for Managed<T> {
+impl<T: 'static + Manage> DerefMut for Gc<T> {
   fn deref_mut(&mut self) -> &mut T {
     &mut self.obj_mut().data
   }
 }
 
-impl<T: 'static + Manage> PartialEq for Managed<T> {
+impl<T: 'static + Manage> PartialEq for Gc<T> {
   #[inline]
-  fn eq(&self, other: &Managed<T>) -> bool {
+  fn eq(&self, other: &Gc<T>) -> bool {
     let left_inner: &T = &*self;
     let right_inner: &T = &*other;
 
@@ -296,35 +296,35 @@ impl<T: 'static + Manage> PartialEq for Managed<T> {
   }
 }
 
-impl<T: 'static + Manage> Eq for Managed<T> {}
+impl<T: 'static + Manage> Eq for Gc<T> {}
 
-impl<T: 'static + Manage> Hash for Managed<T> {
+impl<T: 'static + Manage> Hash for Gc<T> {
   #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
     ptr::hash(self.ptr.as_ptr(), state)
   }
 }
 
-impl<T: 'static + Manage> PartialOrd for Managed<T> {
-  fn partial_cmp(&self, other: &Managed<T>) -> Option<Ordering> {
+impl<T: 'static + Manage> PartialOrd for Gc<T> {
+  fn partial_cmp(&self, other: &Gc<T>) -> Option<Ordering> {
     Some(self.cmp(other))
   }
 }
 
-impl<T: 'static + Manage> Ord for Managed<T> {
-  fn cmp(&self, other: &Managed<T>) -> Ordering {
+impl<T: 'static + Manage> Ord for Gc<T> {
+  fn cmp(&self, other: &Gc<T>) -> Ordering {
     self.ptr.cmp(&other.ptr)
   }
 }
 
-impl<T: 'static + Manage + fmt::Display> fmt::Display for Managed<T> {
+impl<T: 'static + Manage + fmt::Display> fmt::Display for Gc<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = &*self;
     write!(f, "{}", inner)
   }
 }
 
-impl<T: 'static + Manage + fmt::Debug> fmt::Debug for Managed<T> {
+impl<T: 'static + Manage + fmt::Debug> fmt::Debug for Gc<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = &*self;
 
@@ -340,7 +340,7 @@ mod test {
 
     struct Test {
       val: usize,
-      next: Option<Managed<Test>>,
+      next: Option<Gc<Test>>,
     }
 
     impl Manage for Test {
@@ -380,14 +380,14 @@ mod test {
     fn managed() {
       let inner = Test { next: None, val: 1 };
       let mut alloc_inner = Box::new(Allocation::new(inner));
-      let managed_inner = Managed::from(unsafe { NonNull::new_unchecked(&mut *alloc_inner) });
+      let managed_inner = Gc::from(unsafe { NonNull::new_unchecked(&mut *alloc_inner) });
 
       let outer = Test {
         next: Some(managed_inner),
         val: 2,
       };
       let mut alloc_outer = Box::new(Allocation::new(outer));
-      let managed_outer = Managed::from(unsafe { NonNull::new_unchecked(&mut *alloc_outer) });
+      let managed_outer = Gc::from(unsafe { NonNull::new_unchecked(&mut *alloc_outer) });
 
       let mut output = String::new();
       fmt::write(

@@ -199,9 +199,9 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::hooks::{Hooks, NoContext};
-    /// use laythe_env::memory::Gc;
+    /// use laythe_env::memory::Allocator;
     ///
-    /// let gc = Gc::default();
+    /// let gc = Allocator::default();
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
     /// let managed =  hooks.manage_str("example");
@@ -779,7 +779,7 @@ mod boxed {
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::managed::{Allocation, DebugHeap, DebugWrap, Manage, Managed, Trace};
+  use laythe_env::managed::{Allocation, DebugHeap, DebugWrap, Manage, Gc, Trace};
 
   use smol_str::SmolStr;
   use std::ptr::NonNull;
@@ -944,64 +944,64 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_obj_tag<T: 'static + Manage>(&self, tag: u64) -> Managed<T> {
+    pub fn to_obj_tag<T: 'static + Manage>(&self, tag: u64) -> Gc<T> {
       let as_unsigned = self.0 & !tag;
       let ptr = unsafe { NonNull::new_unchecked(as_unsigned as usize as *mut Allocation<T>) };
-      Managed::from(ptr)
+      Gc::from(ptr)
     }
 
     #[inline]
-    pub fn to_str(&self) -> Managed<SmolStr> {
+    pub fn to_str(&self) -> Gc<SmolStr> {
       self.to_obj_tag(TAG_STRING)
     }
 
     #[inline]
-    pub fn to_list(&self) -> Managed<List<Value>> {
+    pub fn to_list(&self) -> Gc<List<Value>> {
       self.to_obj_tag(TAG_LIST)
     }
 
     #[inline]
-    pub fn to_map(&self) -> Managed<Map<Value, Value>> {
+    pub fn to_map(&self) -> Gc<Map<Value, Value>> {
       self.to_obj_tag(TAG_MAP)
     }
 
     #[inline]
-    pub fn to_iter(&self) -> Managed<LyIterator> {
+    pub fn to_iter(&self) -> Gc<LyIterator> {
       self.to_obj_tag(TAG_ITER)
     }
 
     #[inline]
-    pub fn to_closure(&self) -> Managed<Closure> {
+    pub fn to_closure(&self) -> Gc<Closure> {
       self.to_obj_tag(TAG_CLOSURE)
     }
 
     #[inline]
-    pub fn to_fun(&self) -> Managed<Fun> {
+    pub fn to_fun(&self) -> Gc<Fun> {
       self.to_obj_tag(TAG_FUN)
     }
 
     #[inline]
-    pub fn to_class(&self) -> Managed<Class> {
+    pub fn to_class(&self) -> Gc<Class> {
       self.to_obj_tag(TAG_CLASS)
     }
 
     #[inline]
-    pub fn to_instance(&self) -> Managed<Instance> {
+    pub fn to_instance(&self) -> Gc<Instance> {
       self.to_obj_tag(TAG_INSTANCE)
     }
 
     #[inline]
-    pub fn to_method(&self) -> Managed<Method> {
+    pub fn to_method(&self) -> Gc<Method> {
       self.to_obj_tag(TAG_METHOD)
     }
 
     #[inline]
-    pub fn to_native(&self) -> Managed<Box<dyn Native>> {
+    pub fn to_native(&self) -> Gc<Box<dyn Native>> {
       self.to_obj_tag(TAG_NATIVE)
     }
 
     #[inline]
-    pub fn to_upvalue(&self) -> Managed<Upvalue> {
+    pub fn to_upvalue(&self) -> Gc<Upvalue> {
       self.to_obj_tag(TAG_UPVALUE)
     }
 
@@ -1140,68 +1140,68 @@ mod boxed {
     }
   }
 
-  impl From<Managed<SmolStr>> for Value {
-    fn from(managed: Managed<SmolStr>) -> Value {
+  impl From<Gc<SmolStr>> for Value {
+    fn from(managed: Gc<SmolStr>) -> Value {
       Self(managed.to_usize() as u64 | TAG_STRING)
     }
   }
 
-  impl From<Managed<List<Value>>> for Value {
-    fn from(managed: Managed<List<Value>>) -> Value {
+  impl From<Gc<List<Value>>> for Value {
+    fn from(managed: Gc<List<Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_LIST)
     }
   }
 
-  impl From<Managed<Map<Value, Value>>> for Value {
-    fn from(managed: Managed<Map<Value, Value>>) -> Value {
+  impl From<Gc<Map<Value, Value>>> for Value {
+    fn from(managed: Gc<Map<Value, Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_MAP)
     }
   }
 
-  impl From<Managed<LyIterator>> for Value {
-    fn from(managed: Managed<LyIterator>) -> Value {
+  impl From<Gc<LyIterator>> for Value {
+    fn from(managed: Gc<LyIterator>) -> Value {
       Self(managed.to_usize() as u64 | TAG_ITER)
     }
   }
 
-  impl From<Managed<Closure>> for Value {
-    fn from(managed: Managed<Closure>) -> Value {
+  impl From<Gc<Closure>> for Value {
+    fn from(managed: Gc<Closure>) -> Value {
       Self(managed.to_usize() as u64 | TAG_CLOSURE)
     }
   }
 
-  impl From<Managed<Fun>> for Value {
-    fn from(managed: Managed<Fun>) -> Value {
+  impl From<Gc<Fun>> for Value {
+    fn from(managed: Gc<Fun>) -> Value {
       Self(managed.to_usize() as u64 | TAG_FUN)
     }
   }
 
-  impl From<Managed<Class>> for Value {
-    fn from(managed: Managed<Class>) -> Value {
+  impl From<Gc<Class>> for Value {
+    fn from(managed: Gc<Class>) -> Value {
       Self(managed.to_usize() as u64 | TAG_CLASS)
     }
   }
 
-  impl From<Managed<Instance>> for Value {
-    fn from(managed: Managed<Instance>) -> Value {
+  impl From<Gc<Instance>> for Value {
+    fn from(managed: Gc<Instance>) -> Value {
       Self(managed.to_usize() as u64 | TAG_INSTANCE)
     }
   }
 
-  impl From<Managed<Method>> for Value {
-    fn from(managed: Managed<Method>) -> Value {
+  impl From<Gc<Method>> for Value {
+    fn from(managed: Gc<Method>) -> Value {
       Self(managed.to_usize() as u64 | TAG_METHOD)
     }
   }
 
-  impl From<Managed<Box<dyn Native>>> for Value {
-    fn from(managed: Managed<Box<dyn Native>>) -> Value {
+  impl From<Gc<Box<dyn Native>>> for Value {
+    fn from(managed: Gc<Box<dyn Native>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_NATIVE)
     }
   }
 
-  impl From<Managed<Upvalue>> for Value {
-    fn from(managed: Managed<Upvalue>) -> Value {
+  impl From<Gc<Upvalue>> for Value {
+    fn from(managed: Gc<Upvalue>) -> Value {
       Self(managed.to_usize() as u64 | TAG_UPVALUE)
     }
   }
@@ -1257,7 +1257,7 @@ mod test {
     module::Module,
     object::{Class, Closure, Fun, List, Map},
   };
-  use laythe_env::managed::{Allocation, Manage, Managed};
+  use laythe_env::managed::{Allocation, Manage, Gc};
   use smol_str::SmolStr;
   use std::{path::PathBuf, ptr::NonNull};
   type Allocs = Vec<Box<Allocation<dyn Manage>>>;
@@ -1308,38 +1308,38 @@ mod test {
     });
   }
 
-  fn test_string() -> (Allocs, Managed<SmolStr>) {
+  fn test_string() -> (Allocs, Gc<SmolStr>) {
     let string = SmolStr::from("sup");
     let mut alloc = Box::new(Allocation::new(string));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     (vec![alloc], managed)
   }
 
-  fn test_path() -> (Allocs, Managed<PathBuf>) {
+  fn test_path() -> (Allocs, Gc<PathBuf>) {
     let path = PathBuf::from("test/sup.ly");
     let mut alloc = Box::new(Allocation::new(path));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     (vec![alloc], managed)
   }
 
-  fn test_module() -> (Allocs, Managed<Module>) {
+  fn test_module() -> (Allocs, Gc<Module>) {
     let (allocs_class, class) = test_class();
     let (allocs_path, path) = test_path();
     let mut alloc = Box::new(Allocation::new(Module::new(class, path)));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     let mut allocs: Allocs = vec![alloc];
     allocs.extend(allocs_class);
     allocs.extend(allocs_path);
     (allocs, managed)
   }
 
-  fn test_fun() -> (Allocs, Managed<Fun>) {
+  fn test_fun() -> (Allocs, Gc<Fun>) {
     let (allocs_string, name) = test_string();
     let (allocs_module, module) = test_module();
 
@@ -1347,7 +1347,7 @@ mod test {
     let mut alloc = Box::new(Allocation::new(fun));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     let mut allocs: Allocs = vec![alloc];
     allocs.extend(allocs_string);
     allocs.extend(allocs_module);
@@ -1355,28 +1355,28 @@ mod test {
     (allocs, managed)
   }
 
-  fn test_closure() -> (Allocs, Managed<Closure>) {
+  fn test_closure() -> (Allocs, Gc<Closure>) {
     let (allocs_fun, fun) = test_fun();
 
     let closure = Closure::new(fun);
     let mut alloc = Box::new(Allocation::new(closure));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     let mut allocs: Allocs = vec![alloc];
     allocs.extend(allocs_fun);
 
     (allocs, managed)
   }
 
-  fn test_class() -> (Allocs, Managed<Class>) {
+  fn test_class() -> (Allocs, Gc<Class>) {
     let (allocs_string, string) = test_string();
 
     let class = Class::bare(string);
     let mut alloc = Box::new(Allocation::new(class));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
 
     let mut allocs: Allocs = vec![alloc];
     allocs.extend(allocs_string);
@@ -1419,9 +1419,9 @@ mod test {
     let mut alloc = Box::new(Allocation::new(string));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     let value = val!(managed);
-    let managed2: Managed<SmolStr> = value.to_str();
+    let managed2: Gc<SmolStr> = value.to_str();
 
     assert_type(value, ValueKind::String);
 
@@ -1435,7 +1435,7 @@ mod test {
     let mut alloc = Box::new(Allocation::new(list));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     let value = val!(managed);
     let managed2 = value.to_list();
 
@@ -1457,7 +1457,7 @@ mod test {
     let mut alloc = Box::new(Allocation::new(map));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     let value = val!(managed);
     let managed2 = value.to_map();
 

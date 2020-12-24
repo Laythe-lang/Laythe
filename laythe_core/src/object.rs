@@ -12,7 +12,7 @@ use core::slice;
 use fnv::FnvBuildHasher;
 use hash_map::Entry;
 use hashbrown::{hash_map, HashMap};
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
+use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
 use slice::SliceIndex;
 use smol_str::SmolStr;
 use std::{
@@ -163,7 +163,7 @@ impl TryBlock {
 #[derive(Clone)]
 pub struct Fun {
   /// Name if not top-level script
-  pub name: Managed<SmolStr>,
+  pub name: Gc<SmolStr>,
 
   /// Arity of this function
   pub arity: Arity,
@@ -172,7 +172,7 @@ pub struct Fun {
   pub upvalue_count: usize,
 
   /// The module this function belongs to
-  pub module: Managed<Module>,
+  pub module: Gc<Module>,
 
   /// Catch block present in this function
   try_blocks: Vec<TryBlock>,
@@ -182,7 +182,7 @@ pub struct Fun {
 }
 
 impl Fun {
-  pub fn new(name: Managed<SmolStr>, module: Managed<Module>) -> Self {
+  pub fn new(name: Gc<SmolStr>, module: Gc<Module>) -> Self {
     Self {
       arity: Arity::default(),
       upvalue_count: 0,
@@ -586,7 +586,7 @@ where
 
 #[derive(PartialEq, Clone)]
 pub struct Closure {
-  pub fun: Managed<Fun>,
+  pub fun: Gc<Fun>,
   pub upvalues: Vec<Value>,
 }
 
@@ -597,13 +597,13 @@ impl Closure {
   /// ```
   /// use laythe_core::object::{Closure, Class, Fun};
   /// use laythe_core::signature::Arity;
-  /// use laythe_env::memory::{Gc, NO_GC};
+  /// use laythe_env::memory::{Allocator, NO_GC};
   /// use laythe_core::module::Module;
   /// use laythe_core::chunk::Chunk;
   /// use laythe_core::hooks::{NoContext, Hooks, HookContext};
   /// use std::path::PathBuf;
   ///
-  /// let gc = Gc::default();
+  /// let gc = Allocator::default();
   /// let mut context = NoContext::new(&gc);
   /// let hooks = Hooks::new(&mut context);
   ///
@@ -617,7 +617,7 @@ impl Closure {
   /// let closure = Closure::new(managed_fun);
   /// assert_eq!(&*closure.fun.name, "example");
   /// ```
-  pub fn new(fun: Managed<Fun>) -> Self {
+  pub fn new(fun: Gc<Fun>) -> Self {
     Closure {
       upvalues: Vec::with_capacity(fun.upvalue_count as usize),
       fun,
@@ -678,14 +678,14 @@ impl Manage for Closure {
 
 #[derive(PartialEq, Clone)]
 pub struct Class {
-  pub name: Managed<SmolStr>,
+  pub name: Gc<SmolStr>,
   pub init: Option<Value>,
   pub index_get: Option<Value>,
   pub index_set: Option<Value>,
-  methods: DynamicMap<Managed<SmolStr>, Value>,
-  fields: DynamicMap<Managed<SmolStr>, u16>,
-  meta_class: Option<Managed<Class>>,
-  super_class: Option<Managed<Class>>,
+  methods: DynamicMap<Gc<SmolStr>, Value>,
+  fields: DynamicMap<Gc<SmolStr>, u16>,
+  meta_class: Option<Gc<Class>>,
+  super_class: Option<Gc<Class>>,
 }
 
 impl fmt::Display for Class {
@@ -695,11 +695,7 @@ impl fmt::Display for Class {
 }
 
 impl Class {
-  pub fn new(
-    hooks: &GcHooks,
-    name: Managed<SmolStr>,
-    super_class: Managed<Class>,
-  ) -> Managed<Self> {
+  pub fn new(hooks: &GcHooks, name: Gc<SmolStr>, super_class: Gc<Class>) -> Gc<Self> {
     let super_meta = super_class
       .meta()
       .expect("Expected super class to have meta class");
@@ -734,10 +730,10 @@ impl Class {
 
   fn with_meta(
     hooks: &GcHooks,
-    name: Managed<SmolStr>,
-    meta_class: Managed<Class>,
-    super_class: Managed<Class>,
-  ) -> Managed<Self> {
+    name: Gc<SmolStr>,
+    meta_class: Gc<Class>,
+    super_class: Gc<Class>,
+  ) -> Gc<Self> {
     let mut class = hooks.manage(Self {
       name,
       init: None,
@@ -756,7 +752,7 @@ impl Class {
     class
   }
 
-  pub fn bare(name: Managed<SmolStr>) -> Self {
+  pub fn bare(name: Gc<SmolStr>) -> Self {
     Self {
       name,
       init: None,
@@ -769,11 +765,11 @@ impl Class {
     }
   }
 
-  pub fn meta(&self) -> &Option<Managed<Class>> {
+  pub fn meta(&self) -> &Option<Gc<Class>> {
     &self.meta_class
   }
 
-  pub fn is_subclass(&self, class: Managed<Class>) -> bool {
+  pub fn is_subclass(&self, class: Gc<Class>) -> bool {
     if self == &*class {
       return true;
     }
@@ -784,11 +780,11 @@ impl Class {
     }
   }
 
-  pub fn super_class(&mut self) -> &Option<Managed<Class>> {
+  pub fn super_class(&mut self) -> &Option<Gc<Class>> {
     &self.super_class
   }
 
-  pub fn set_meta(&mut self, meta_class: Managed<Class>) -> &mut Self {
+  pub fn set_meta(&mut self, meta_class: Gc<Class>) -> &mut Self {
     if self.meta_class.is_some() {
       panic!("Meta class already set!");
     }
@@ -797,18 +793,13 @@ impl Class {
     self
   }
 
-  pub fn add_field(&mut self, hooks: &GcHooks, name: Managed<SmolStr>) -> Option<u16> {
+  pub fn add_field(&mut self, hooks: &GcHooks, name: Gc<SmolStr>) -> Option<u16> {
     let len = self.fields.len();
 
     hooks.grow(self, |class| class.fields.insert(name, len as u16))
   }
 
-  pub fn add_method(
-    &mut self,
-    hooks: &GcHooks,
-    name: Managed<SmolStr>,
-    method: Value,
-  ) -> Option<Value> {
+  pub fn add_method(&mut self, hooks: &GcHooks, name: Gc<SmolStr>, method: Value) -> Option<Value> {
     match name.as_str() {
       INIT => self.init = Some(method),
       INDEX_GET => self.index_get = Some(method),
@@ -819,15 +810,15 @@ impl Class {
     hooks.grow(self, |class| class.methods.insert(name, method))
   }
 
-  pub fn get_method(&self, name: &Managed<SmolStr>) -> Option<Value> {
+  pub fn get_method(&self, name: &Gc<SmolStr>) -> Option<Value> {
     self.methods.get(name).copied()
   }
 
-  pub fn get_field_index(&self, name: &Managed<SmolStr>) -> Option<u16> {
+  pub fn get_field_index(&self, name: &Gc<SmolStr>) -> Option<u16> {
     self.fields.get(name).copied()
   }
 
-  pub fn inherit(&mut self, hooks: &GcHooks, super_class: Managed<Class>) {
+  pub fn inherit(&mut self, hooks: &GcHooks, super_class: Gc<Class>) {
     hooks.grow(self, |class| {
       super_class.methods.for_each(|(key, value)| {
         if class.methods.get(&*key).is_none() {
@@ -914,7 +905,7 @@ impl Manage for Class {
 
   fn size(&self) -> usize {
     mem::size_of::<Class>()
-      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.methods.capacity()
+      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>()) * self.methods.capacity()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -924,12 +915,12 @@ impl Manage for Class {
 
 #[derive(PartialEq, Clone)]
 pub struct Instance {
-  pub class: Managed<Class>,
+  pub class: Gc<Class>,
   fields: Box<[Value]>,
 }
 
 impl Instance {
-  pub fn new(class: Managed<Class>) -> Self {
+  pub fn new(class: Gc<Class>) -> Self {
     Instance {
       class,
       fields: vec![VALUE_NIL; class.fields.len()].into_boxed_slice(),
@@ -940,7 +931,7 @@ impl Instance {
     &self.fields
   }
 
-  pub fn set_field(&mut self, name: Managed<SmolStr>, value: Value) -> bool {
+  pub fn set_field(&mut self, name: Gc<SmolStr>, value: Value) -> bool {
     match self.class.get_field_index(&name) {
       Some(index) => {
         self.fields[index as usize] = value;
@@ -950,7 +941,7 @@ impl Instance {
     }
   }
 
-  pub fn get_field(&self, name: &Managed<SmolStr>) -> Option<&Value> {
+  pub fn get_field(&self, name: &Gc<SmolStr>) -> Option<&Value> {
     self
       .class
       .get_field_index(&name)
@@ -1018,7 +1009,7 @@ impl Manage for Instance {
 
   fn size(&self) -> usize {
     mem::size_of::<Instance>()
-      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.fields.len()
+      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>()) * self.fields.len()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {

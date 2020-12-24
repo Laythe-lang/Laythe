@@ -18,7 +18,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyResult,
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 use smol_str::SmolStr;
 use std::{cmp::Ordering, io::Write};
 use std::{mem, slice::Iter};
@@ -202,12 +202,12 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitR
 #[derive(Debug, Trace)]
 struct ListStr {
   meta: NativeMeta,
-  method_name: Managed<SmolStr>,
+  method_name: Gc<SmolStr>,
   error: Value,
 }
 
 impl ListStr {
-  fn new(meta: NativeMeta, method_name: Managed<SmolStr>, error: Value) -> Self {
+  fn new(meta: NativeMeta, method_name: Gc<SmolStr>, error: Value) -> Self {
     Self {
       meta,
       method_name,
@@ -610,13 +610,13 @@ impl Native for ListCollect {
 
 #[derive(Debug)]
 struct ListIterator {
-  list: Managed<List<Value>>,
+  list: Gc<List<Value>>,
   current: Value,
   iter: Iter<'static, Value>,
 }
 
 impl ListIterator {
-  fn new(list: Managed<List<Value>>) -> Self {
+  fn new(list: Gc<List<Value>>) -> Self {
     let iter = unsafe { list.deref_static().iter() };
 
     Self {

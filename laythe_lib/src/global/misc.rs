@@ -10,7 +10,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 use smol_str::SmolStr;
 use std::io::Write;
 
@@ -54,13 +54,13 @@ pub fn declare_misc_funs(hooks: &GcHooks, module: &mut Module) -> InitResult<()>
 /// A native method to assert that for a boolean true value
 pub struct Print {
   /// reference to 'str'
-  method_str: Managed<SmolStr>,
+  method_str: Gc<SmolStr>,
   meta: NativeMeta,
 }
 
 impl Print {
   /// Construct a new instance of the native assert function
-  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>) -> Self {
+  pub fn new(meta: NativeMeta, method_str: Gc<SmolStr>) -> Self {
     Self { meta, method_str }
   }
 }
@@ -159,7 +159,7 @@ mod test {
       let response = SmolStr::from("true");
       let allocation = Allocation::new(response);
 
-      let managed = Managed::from(NonNull::from(&allocation));
+      let managed = Gc::from(NonNull::from(&allocation));
 
       let mut context = MockedContext::with_std(&[val!(managed)]);
       let mut hooks = Hooks::new(&mut context);

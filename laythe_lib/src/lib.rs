@@ -11,7 +11,7 @@ use env::env_module;
 use global::add_global_module;
 use io::add_io_package;
 use laythe_core::{hooks::GcHooks, package::Package};
-use laythe_env::managed::Managed;
+use laythe_env::managed::Gc;
 use math::add_math_module;
 use regexp::regexp_module;
 use smol_str::SmolStr;
@@ -20,7 +20,7 @@ pub use builtin::{
   builtin_from_module, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives,
 };
 
-type InitResult<T> = Result<T, Managed<SmolStr>>;
+type InitResult<T> = Result<T, Gc<SmolStr>>;
 
 #[macro_export]
 macro_rules! native {
@@ -146,7 +146,7 @@ pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 pub const GLOBAL_PATH: &str = "std/global.ly";
 
-pub fn create_std_lib(hooks: &GcHooks) -> InitResult<Managed<Package>> {
+pub fn create_std_lib(hooks: &GcHooks) -> InitResult<Gc<Package>> {
   let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
 
   add_global_module(hooks, &mut std)?;
@@ -168,7 +168,7 @@ mod test {
   use crate::support::MockedContext;
   use laythe_core::{package::PackageEntity, signature::Arity, value::ValueKind};
 
-  fn check_inner(hooks: &GcHooks, package: Managed<Package>) {
+  fn check_inner(hooks: &GcHooks, package: Gc<Package>) {
     package.entities().for_each(|(_key, entity)| match entity {
       PackageEntity::Module(module) => {
         let import = module.import(hooks);

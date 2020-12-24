@@ -13,7 +13,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 use smol_str::SmolStr;
 use std::io::Write;
 
@@ -80,7 +80,7 @@ pub fn declare_assert_funs(hooks: &GcHooks, module: &mut Module) -> InitResult<(
   )
 }
 
-fn to_str(hooks: &mut Hooks, value: Value) -> Managed<SmolStr> {
+fn to_str(hooks: &mut Hooks, value: Value) -> Gc<SmolStr> {
   hooks
     .get_method(value, hooks.manage_str("str"))
     .map(|method| hooks.call_method(value, method, &[]))
@@ -100,14 +100,14 @@ fn to_str(hooks: &mut Hooks, value: Value) -> Managed<SmolStr> {
 /// A native method to assert that for a boolean true value
 pub struct Assert {
   /// reference to 'str'
-  method_str: Managed<SmolStr>,
+  method_str: Gc<SmolStr>,
   meta: NativeMeta,
   error: Value,
 }
 
 impl Assert {
   /// Construct a new instance of the native assert function
-  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>, error: Value) -> Self {
+  pub fn new(meta: NativeMeta, method_str: Gc<SmolStr>, error: Value) -> Self {
     Self {
       meta,
       method_str,
@@ -151,13 +151,13 @@ impl Trace for Assert {
 #[derive(Debug)]
 pub struct AssertEq {
   meta: NativeMeta,
-  method_str: Managed<SmolStr>,
+  method_str: Gc<SmolStr>,
   error: Value,
 }
 
 impl AssertEq {
   /// Construct a new instance of the native assertEq function
-  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>, error: Value) -> Self {
+  pub fn new(meta: NativeMeta, method_str: Gc<SmolStr>, error: Value) -> Self {
     Self {
       meta,
       method_str,
@@ -206,13 +206,13 @@ impl Trace for AssertEq {
 #[derive(Debug)]
 pub struct AssertNe {
   meta: NativeMeta,
-  method_str: Managed<SmolStr>,
+  method_str: Gc<SmolStr>,
   error: Value,
 }
 
 impl AssertNe {
   /// Construct a new instance of the native assertNe function
-  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>, error: Value) -> Self {
+  pub fn new(meta: NativeMeta, method_str: Gc<SmolStr>, error: Value) -> Self {
     Self {
       meta,
       method_str,

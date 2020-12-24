@@ -71,7 +71,7 @@ impl Native for NativeCall {
 mod test {
   use super::*;
   use crate::{global::support::TestNative, support::MockedContext};
-  use laythe_env::managed::Managed;
+  use laythe_env::managed::Gc;
 
   mod name {
     use super::*;
@@ -94,7 +94,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let native_name = NativeName::from(&hooks);
 
-      let managed: Managed<Box<dyn Native>> = hooks.manage(Box::new(TestNative::from(&hooks)));
+      let managed: Gc<Box<dyn Native>> = hooks.manage(Box::new(TestNative::from(&hooks)));
       let result = native_name.call(&mut hooks, Some(val!(managed)), &[]);
       match result {
         Call::Ok(r) => assert_eq!(*r.to_str(), "test".to_string()),
@@ -129,7 +129,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let native_call = NativeCall::from(&hooks);
 
-      let managed: Managed<Box<dyn Native>> = hooks.manage(Box::new(TestNative::from(&hooks)));
+      let managed: Gc<Box<dyn Native>> = hooks.manage(Box::new(TestNative::from(&hooks)));
       let result = native_call.call(&mut hooks, Some(val!(managed)), &[]);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),

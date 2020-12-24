@@ -1,21 +1,21 @@
 use crate::{hooks::GcHooks, module::Module, object::Map};
 use hashbrown::hash_map::{Entry, Iter};
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
+use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
 use smol_str::SmolStr;
 use std::mem;
 use std::{fmt, io::Write};
 
 /// An object representing an import request from a file
-pub struct Import(Vec<Managed<SmolStr>>);
+pub struct Import(Vec<Gc<SmolStr>>);
 
 impl Import {
   /// Create a new import
-  pub fn new(path: Vec<Managed<SmolStr>>) -> Self {
+  pub fn new(path: Vec<Gc<SmolStr>>) -> Self {
     Self(path)
   }
 
   /// Get the package name
-  pub fn package(&self) -> Option<Managed<SmolStr>> {
+  pub fn package(&self) -> Option<Gc<SmolStr>> {
     self.0.first().copied()
   }
 
@@ -44,10 +44,10 @@ impl Import {
 #[derive(Clone)]
 pub enum PackageEntity {
   /// A module in a package
-  Module(Managed<Module>),
+  Module(Gc<Module>),
 
   /// A sub package in this package
-  Package(Managed<Package>),
+  Package(Gc<Package>),
 }
 
 impl DebugHeap for PackageEntity {
@@ -70,15 +70,15 @@ impl DebugHeap for PackageEntity {
 #[derive(Clone)]
 pub struct Package {
   /// The name of the package
-  name: Managed<SmolStr>,
+  name: Gc<SmolStr>,
 
   /// A hash of names to sub packages and modules
-  entities: Map<Managed<SmolStr>, PackageEntity>,
+  entities: Map<Gc<SmolStr>, PackageEntity>,
 }
 
 impl Package {
   /// Create a new package
-  pub fn new(name: Managed<SmolStr>) -> Self {
+  pub fn new(name: Gc<SmolStr>) -> Self {
     Self {
       name,
       entities: Map::default(),
@@ -86,16 +86,12 @@ impl Package {
   }
 
   /// Retrieve the name of this package
-  pub fn name(&self) -> Managed<SmolStr> {
+  pub fn name(&self) -> Gc<SmolStr> {
     self.name
   }
 
   /// Add a module to this package
-  pub fn add_module(
-    &mut self,
-    hooks: &GcHooks,
-    module: Managed<Module>,
-  ) -> Result<(), Managed<SmolStr>> {
+  pub fn add_module(&mut self, hooks: &GcHooks, module: Gc<Module>) -> Result<(), Gc<SmolStr>> {
     match self.entities.entry(module.name()) {
       Entry::Occupied(_) => Err(hooks.manage_str(format!(
         "Cannot add module {} to package {}",
@@ -113,8 +109,8 @@ impl Package {
   pub fn add_package(
     &mut self,
     hooks: &GcHooks,
-    sub_package: Managed<Package>,
-  ) -> Result<(), Managed<SmolStr>> {
+    sub_package: Gc<Package>,
+  ) -> Result<(), Gc<SmolStr>> {
     match self.entities.entry(sub_package.name) {
       Entry::Occupied(_) => Err(hooks.manage_str(format!(
         "Cannot add sub package {} to package {}",
@@ -128,17 +124,13 @@ impl Package {
   }
 
   /// Get an iterator to the elements in this package
-  pub fn entities(&self) -> Iter<'_, Managed<SmolStr>, PackageEntity> {
+  pub fn entities(&self) -> Iter<'_, Gc<SmolStr>, PackageEntity> {
     self.entities.iter()
   }
 
   /// Get a set of symbols from this package using a requested import. This
   /// operation can fail if some or all of the symbols are not found.
-  pub fn import(
-    &self,
-    hooks: &GcHooks,
-    import: Import,
-  ) -> Result<Managed<Module>, Managed<SmolStr>> {
+  pub fn import(&self, hooks: &GcHooks, import: Import) -> Result<Gc<Module>, Gc<SmolStr>> {
     if import.0.is_empty() {
       panic!("No path in import");
     }
@@ -157,7 +149,7 @@ impl Package {
     hooks: &GcHooks,
     depth: usize,
     import: Import,
-  ) -> Result<Managed<Module>, Managed<SmolStr>> {
+  ) -> Result<Gc<Module>, Gc<SmolStr>> {
     if depth >= import.0.len() {
       return Err(hooks.manage_str(format!("Could not resolve module {}", import.path_str())));
     }
@@ -233,7 +225,7 @@ impl Manage for Package {
 
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<PackageEntity>())
+      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<PackageEntity>())
         * (self.entities.capacity())
   }
 
@@ -249,18 +241,18 @@ mod test {
   #[test]
   fn new() {
     use crate::package::Package;
-    use laythe_env::memory::{Gc, NO_GC};
+    use laythe_env::memory::{Allocator, NO_GC};
 
-    let gc = Gc::default();
+    let gc = Allocator::default();
     Package::new(gc.manage_str("example".to_string(), &NO_GC));
   }
 
   #[test]
   fn name() {
     use crate::package::Package;
-    use laythe_env::memory::{Gc, NO_GC};
+    use laythe_env::memory::{Allocator, NO_GC};
 
-    let gc = Gc::default();
+    let gc = Allocator::default();
     let package = Package::new(gc.manage_str("example".to_string(), &NO_GC));
 
     assert_eq!(&*package.name(), "example");

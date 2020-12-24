@@ -16,7 +16,7 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{DebugHeap, Manage, Managed, Trace},
+  managed::{DebugHeap, Gc, Manage, Trace},
 };
 use object::{Fun, TryBlock};
 use smol_str::SmolStr;
@@ -26,7 +26,7 @@ use std::{convert::TryInto, io::Write, mem, ptr::NonNull};
 use crate::debug::disassemble_chunk;
 
 /// The result of a compilation
-pub type CompilerResult = Result<Managed<Fun>, ()>;
+pub type CompilerResult = Result<Gc<Fun>, ()>;
 
 const UNINITIALIZED: i16 = -1;
 
@@ -109,23 +109,23 @@ pub struct Compiler<'a> {
   io: &'a Io,
 
   /// The current function
-  fun: Managed<Fun>,
+  fun: Gc<Fun>,
 
   /// The type the current function scope
   fun_kind: FunKind,
 
   /// The current module
-  module: Managed<module::Module>,
+  module: Gc<module::Module>,
 
   /// The parent compiler if it exists note uses
   /// unsafe pointer
   enclosing: Option<NonNull<Compiler<'a>>>,
 
   /// The info on the current class
-  class_info: Option<Managed<ClassInfo>>,
+  class_info: Option<Gc<ClassInfo>>,
 
   /// The info on the current loop
-  loop_info: Option<Managed<LoopInfo>>,
+  loop_info: Option<Gc<LoopInfo>>,
 
   /// hooks into the surround context. Used to allocate laythe objects
   hooks: &'a GcHooks<'a>,
@@ -161,7 +161,6 @@ impl<'a> Compiler<'a> {
   /// use laythe_core::hooks::support::TestContext;
   /// use laythe_core::hooks::GcHooks;
   /// use laythe_env::io::Io;
-  /// use laythe_env::memory::Gc;
   /// use std::path::PathBuf;
   ///
   /// let context = TestContext::default();
@@ -174,7 +173,7 @@ impl<'a> Compiler<'a> {
   ///
   /// let compiler = Compiler::new(module, &io, &hooks);
   /// ```
-  pub fn new(module: Managed<module::Module>, io: &'a Io, hooks: &'a GcHooks<'a>) -> Self {
+  pub fn new(module: Gc<module::Module>, io: &'a Io, hooks: &'a GcHooks<'a>) -> Self {
     let fun = hooks.manage(object::Fun::new(hooks.manage_str(SCRIPT), module));
 
     Self {
@@ -218,7 +217,7 @@ impl<'a> Compiler<'a> {
   }
 
   // create a child compiler to compile a function inside the enclosing module
-  fn child(name: Managed<SmolStr>, fun_kind: FunKind, enclosing: &mut Compiler<'a>) -> Self {
+  fn child(name: Gc<SmolStr>, fun_kind: FunKind, enclosing: &mut Compiler<'a>) -> Self {
     let mut child = Self {
       fun: enclosing.fun,
       io: enclosing.io,
@@ -1602,7 +1601,7 @@ mod test {
     Fun((u16, Vec<ByteCodeTest>)),
   }
 
-  fn test_compile<'a>(src: &str, context: &dyn GcContext) -> Managed<Fun> {
+  fn test_compile<'a>(src: &str, context: &dyn GcContext) -> Gc<Fun> {
     let mut stdio_container = Rc::new(StdioTestContainer::default());
 
     let stdio = Rc::new(IoStdioTest::new(&mut stdio_container));
@@ -1623,7 +1622,7 @@ mod test {
     result.unwrap()
   }
 
-  fn decode_byte_code(fun: Managed<Fun>) -> Vec<AlignedByteCode> {
+  fn decode_byte_code(fun: Gc<Fun>) -> Vec<AlignedByteCode> {
     let bytes = &fun.chunk().instructions;
     let mut decoded = Vec::new();
     let mut offset = 0;
@@ -1647,7 +1646,7 @@ mod test {
   }
 
   fn decode_byte_code_closure(
-    fun: Managed<Fun>,
+    fun: Gc<Fun>,
     decoded: &mut Vec<AlignedByteCode>,
     offset: usize,
     slot: u16,
@@ -1667,7 +1666,7 @@ mod test {
     current_offset
   }
 
-  fn assert_simple_bytecode(fun: Managed<Fun>, code: &[AlignedByteCode]) {
+  fn assert_simple_bytecode(fun: Gc<Fun>, code: &[AlignedByteCode]) {
     let stdio_container = StdioTestContainer::default();
     let mut stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
 
@@ -1693,7 +1692,7 @@ mod test {
     assert_eq!(decoded_byte_code.len(), code.len());
   }
 
-  fn assert_fun_bytecode(fun: Managed<Fun>, code: &[ByteCodeTest]) {
+  fn assert_fun_bytecode(fun: Gc<Fun>, code: &[ByteCodeTest]) {
     let stdio_container = StdioTestContainer::default();
     let mut stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
 

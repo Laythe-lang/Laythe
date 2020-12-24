@@ -17,7 +17,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 use std::mem;
 
@@ -259,12 +259,12 @@ impl Native for IterMap {
 #[derive(Debug)]
 struct MapIterator {
   current: Value,
-  iter: Managed<LyIterator>,
+  iter: Gc<LyIterator>,
   callable: Value,
 }
 
 impl MapIterator {
-  fn new(iter: Managed<LyIterator>, callable: Value) -> Self {
+  fn new(iter: Gc<LyIterator>, callable: Value) -> Self {
     Self {
       current: VALUE_NIL,
       iter,
@@ -333,12 +333,12 @@ impl Native for IterFilter {
 #[derive(Debug)]
 struct FilterIterator {
   current: Value,
-  iter: Managed<LyIterator>,
+  iter: Gc<LyIterator>,
   callable: Value,
 }
 
 impl FilterIterator {
-  fn new(iter: Managed<LyIterator>, callable: Value) -> Self {
+  fn new(iter: Gc<LyIterator>, callable: Value) -> Self {
     Self {
       current: VALUE_NIL,
       iter,
@@ -452,7 +452,7 @@ native!(IterZip, ITER_ZIP);
 
 impl Native for IterZip {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let iters: Vec<Managed<LyIterator>> = [this.unwrap()]
+    let iters: Vec<Gc<LyIterator>> = [this.unwrap()]
       .iter()
       .chain(args.iter())
       .map(|arg| arg.to_iter())
@@ -469,11 +469,11 @@ impl Native for IterZip {
 #[derive(Debug)]
 struct ZipIterator {
   current: Value,
-  iters: Vec<Managed<LyIterator>>,
+  iters: Vec<Gc<LyIterator>>,
 }
 
 impl ZipIterator {
-  fn new(iters: Vec<Managed<LyIterator>>) -> Self {
+  fn new(iters: Vec<Gc<LyIterator>>) -> Self {
     Self {
       current: VALUE_NIL,
       iters,
@@ -541,7 +541,7 @@ native!(IterChain, ITER_CHAIN);
 
 impl Native for IterChain {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let iters: Vec<Managed<LyIterator>> = [this.unwrap()]
+    let iters: Vec<Gc<LyIterator>> = [this.unwrap()]
       .iter()
       .chain(args.iter())
       .map(|arg| arg.to_iter())
@@ -559,11 +559,11 @@ impl Native for IterChain {
 struct ChainIterator {
   current: Value,
   iter_index: usize,
-  iters: Vec<Managed<LyIterator>>,
+  iters: Vec<Gc<LyIterator>>,
 }
 
 impl ChainIterator {
-  fn new(iters: Vec<Managed<LyIterator>>) -> Self {
+  fn new(iters: Vec<Gc<LyIterator>>) -> Self {
     Self {
       current: VALUE_NIL,
       iter_index: 0,

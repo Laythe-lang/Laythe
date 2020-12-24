@@ -1,4 +1,4 @@
-use crate::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
+use crate::managed::{DebugHeap, DebugWrap, Manage, Gc, Trace};
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
 use smol_str::SmolStr;
@@ -33,7 +33,7 @@ impl Manage for PathBuf {
   }
 }
 
-impl<T: AsRef<str>> PartialEq<T> for Managed<SmolStr> {
+impl<T: AsRef<str>> PartialEq<T> for Gc<SmolStr> {
   fn eq(&self, other: &T) -> bool {
     **self == other.as_ref()
   }

@@ -2,7 +2,7 @@ use crate::{
   hooks::GcHooks,
   value::{Value, ValueKind},
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 use smol_str::SmolStr;
 use std::{fmt::Display, io::Write};
 
@@ -95,13 +95,13 @@ impl ParameterBuilder {
 /// A native parameter indicating the name and kind of the parameter
 #[derive(Copy, Clone, Debug)]
 pub struct Parameter {
-  pub name: Managed<SmolStr>,
+  pub name: Gc<SmolStr>,
   pub kind: ParameterKind,
 }
 
 impl Parameter {
   /// Create a new parameter
-  pub const fn new(name: Managed<SmolStr>, kind: ParameterKind) -> Self {
+  pub const fn new(name: Gc<SmolStr>, kind: ParameterKind) -> Self {
     Self { name, kind }
   }
 }

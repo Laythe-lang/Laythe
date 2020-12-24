@@ -10,7 +10,7 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{DebugHeap, DebugWrap, Manage, Managed, Trace},
+  managed::{DebugHeap, DebugWrap, Manage, Gc, Trace},
 };
 use laythe_lib::{create_error, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives};
 use smol_str::SmolStr;
@@ -18,7 +18,7 @@ use std::{fmt, io::Write, mem, path::PathBuf};
 
 pub struct DepManager {
   /// The directory of the entry point
-  pub src_dir: Managed<PathBuf>,
+  pub src_dir: Gc<PathBuf>,
 
   /// interface to the current environments io
   io: Io,
@@ -27,10 +27,10 @@ pub struct DepManager {
   builtin: BuiltIn,
 
   /// A collection of packages that have already been loaded
-  packages: Map<Managed<SmolStr>, Managed<Package>>,
+  packages: Map<Gc<SmolStr>, Gc<Package>>,
 
   /// A cache for full filepath to individual modules
-  cache: Map<Managed<SmolStr>, Managed<Module>>,
+  cache: Map<Gc<SmolStr>, Gc<Module>>,
 
   /// The error class for import errors
   import_error: Value,
@@ -38,7 +38,7 @@ pub struct DepManager {
 
 impl DepManager {
   /// Create a new dependency manager
-  pub fn new(io: Io, builtin: BuiltIn, src_dir: Managed<PathBuf>) -> Self {
+  pub fn new(io: Io, builtin: BuiltIn, src_dir: Gc<PathBuf>) -> Self {
     let import_error = val!(builtin.errors.import);
 
     Self {
@@ -70,9 +70,9 @@ impl DepManager {
   pub fn import(
     &mut self,
     hooks: &mut Hooks,
-    module: Managed<Module>,
-    path: Managed<SmolStr>,
-  ) -> LyResult<Managed<Module>> {
+    module: Gc<Module>,
+    path: Gc<SmolStr>,
+  ) -> LyResult<Gc<Module>> {
     let mut module_dir = (*module.path).clone();
     module_dir.pop();
 
@@ -145,7 +145,7 @@ impl DepManager {
   }
 
   /// Add a package to the dependency manager
-  pub fn add_package(&mut self, package: Managed<Package>) {
+  pub fn add_package(&mut self, package: Gc<Package>) {
     self.packages.insert(package.name(), package);
   }
 }
@@ -205,8 +205,8 @@ impl Manage for DepManager {
 
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + self.cache.capacity() * 2 * mem::size_of::<Managed<SmolStr>>()
-      + self.packages.capacity() * 2 * mem::size_of::<Managed<SmolStr>>()
+      + self.cache.capacity() * 2 * mem::size_of::<Gc<SmolStr>>()
+      + self.packages.capacity() * 2 * mem::size_of::<Gc<SmolStr>>()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {

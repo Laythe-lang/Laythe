@@ -1,4 +1,4 @@
-use crate::managed::{Allocation, Manage, Managed, Trace};
+use crate::managed::{Allocation, Gc, Manage, Trace};
 use crate::stdio::Stdio;
 use hashbrown::HashMap;
 use smol_str::SmolStr;
@@ -14,7 +14,7 @@ use crate::managed::{DebugWrap, DebugWrapDyn};
 /// The garbage collector and memory manager for laythe. Currently this is implemented a very crude
 /// generation mark and sweep collector. As of now the key areas for improvements are better allocation
 /// strategy and better tuning of the interaction between the nursery and regular heap
-pub struct Gc {
+pub struct Allocator {
   /// Io in the given environment
   #[allow(dead_code)]
   stdio: RefCell<Stdio>,
@@ -32,7 +32,7 @@ pub struct Gc {
   bytes_allocated: Cell<usize>,
 
   /// The intern string cache
-  intern_cache: RefCell<HashMap<&'static str, Managed<SmolStr>>>,
+  intern_cache: RefCell<HashMap<&'static str, Gc<SmolStr>>>,
 
   /// The size in bytes of the gc before the next collection
   next_gc: Cell<usize>,
@@ -43,18 +43,18 @@ pub struct Gc {
 
 const GC_HEAP_GROW_FACTOR: usize = 2;
 
-impl<'a> Gc {
+impl<'a> Allocator {
   /// Create a new manged heap for laythe for objects.
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::memory::Gc;
+  /// use laythe_env::memory::Allocator;
   /// use laythe_env::stdio::Stdio;
   ///
-  /// let gc = Gc::new(Stdio::default());
+  /// let gc = Allocator::new(Stdio::default());
   /// ```
   pub fn new(stdio: Stdio) -> Self {
-    Gc {
+    Self {
       stdio: RefCell::new(stdio),
       nursery_heap: RefCell::new(Vec::with_capacity(1000)),
       heap: RefCell::new(Vec::with_capacity(0)),
@@ -77,16 +77,15 @@ impl<'a> Gc {
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::memory::{Gc, NO_GC};
-  /// use laythe_env::managed::Managed;
+  /// use laythe_env::memory::{Allocator, NO_GC};
   /// use smol_str::SmolStr;
   ///
-  /// let gc = Gc::default();
+  /// let gc = Allocator::default();
   /// let string = gc.manage(SmolStr::from("example"), &NO_GC);
   ///
   /// assert_eq!(&*string, "example");
   /// ```
-  pub fn manage<T: 'static + Manage, C: Trace + ?Sized>(&self, data: T, context: &C) -> Managed<T> {
+  pub fn manage<T: 'static + Manage, C: Trace + ?Sized>(&self, data: T, context: &C) -> Gc<T> {
     self.allocate(data, context)
   }
 
@@ -97,10 +96,9 @@ impl<'a> Gc {
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::memory::{Gc, NO_GC};
-  /// use laythe_env::managed::Managed;
+  /// use laythe_env::memory::{Allocator, NO_GC};
   ///
-  /// let gc = Gc::default();
+  /// let gc = Allocator::default();
   /// let str = gc.manage_str("hi!", &NO_GC);
   ///
   /// assert_eq!(&*str, "hi!");
@@ -109,7 +107,7 @@ impl<'a> Gc {
     &self,
     src: S,
     context: &C,
-  ) -> Managed<SmolStr> {
+  ) -> Gc<SmolStr> {
     let string = SmolStr::from(src);
     if let Some(cached) = self.intern_cache.borrow_mut().get(&*string) {
       return *cached;
@@ -191,7 +189,7 @@ impl<'a> Gc {
   /// Allocate `data` on the gc's heap. If conditions are met
   /// a garbage collection can be triggered. When triggered will use the
   /// context to determine the active roots.
-  fn allocate<T: 'static + Manage, C: Trace + ?Sized>(&self, data: T, context: &C) -> Managed<T> {
+  fn allocate<T: 'static + Manage, C: Trace + ?Sized>(&self, data: T, context: &C) -> Gc<T> {
     // create own store of allocation
     let mut alloc = Box::new(Allocation::new(data));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
@@ -203,7 +201,7 @@ impl<'a> Gc {
       .replace(self.bytes_allocated.get() + size);
     self.nursery_heap.borrow_mut().push(alloc);
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
 
     #[cfg(feature = "debug_gc")]
     self.debug_allocate(ptr, size);
@@ -435,9 +433,9 @@ impl<'a> Gc {
   }
 }
 
-impl<'a> Default for Gc {
+impl<'a> Default for Allocator {
   fn default() -> Self {
-    Gc::new(Stdio::default())
+    Allocator::new(Stdio::default())
   }
 }
 pub struct NoGc();
@@ -461,7 +459,7 @@ mod test {
   #[test]
   fn dyn_manage() {
     let dyn_trace: Box<dyn Trace> = Box::new(NoGc());
-    let gc = Gc::default();
+    let gc = Allocator::default();
 
     let dyn_manged_str = gc.manage(SmolStr::from("managed"), &*dyn_trace);
     assert_eq!(*dyn_manged_str, SmolStr::from("managed"));

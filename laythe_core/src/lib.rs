@@ -19,13 +19,13 @@ use std::fmt;
 
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
-use laythe_env::managed::Managed;
+use laythe_env::managed::Gc;
 use object::Instance;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LyResult<T> {
   Ok(T),
-  Err(Managed<Instance>),
+  Err(Gc<Instance>),
   Exit(u16),
 }
 
@@ -104,7 +104,7 @@ impl<T> LyResult<T> {
 impl<T: fmt::Debug> LyResult<T> {
   #[inline]
   #[track_caller]
-  pub fn expect_err(self, msg: &str) -> Managed<Instance> {
+  pub fn expect_err(self, msg: &str) -> Gc<Instance> {
     match self {
       Self::Ok(t) => unwrap_failed(msg, &t),
       Self::Err(e) => e,

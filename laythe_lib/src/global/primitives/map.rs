@@ -22,7 +22,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 use smol_str::SmolStr;
 use std::io::Write;
 use std::mem;
@@ -153,13 +153,13 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitRe
 
 #[derive(Debug)]
 struct MapStr {
-  method_name: Managed<SmolStr>,
+  method_name: Gc<SmolStr>,
   meta: NativeMeta,
   error: Value,
 }
 
 impl MapStr {
-  fn new(meta: NativeMeta, method_name: Managed<SmolStr>, error: Value) -> Self {
+  fn new(meta: NativeMeta, method_name: Gc<SmolStr>, error: Value) -> Self {
     Self {
       meta,
       method_name,
@@ -215,7 +215,7 @@ impl Native for MapStr {
 
 fn format_map_entry(
   item: &Value,
-  method_name: Managed<SmolStr>,
+  method_name: Gc<SmolStr>,
   error: Value,
   buffer: &mut String,
   hooks: &mut Hooks,
@@ -383,13 +383,13 @@ impl Native for MapIter {
 
 #[derive(Debug)]
 struct MapIterator {
-  map: Managed<Map<Value, Value>>,
+  map: Gc<Map<Value, Value>>,
   iter: Iter<'static, Value, Value>,
   current: Value,
 }
 
 impl MapIterator {
-  fn new(map: Managed<Map<Value, Value>>) -> Self {
+  fn new(map: Gc<Map<Value, Value>>) -> Self {
     let iter = unsafe { map.deref_static().iter() };
 
     Self {

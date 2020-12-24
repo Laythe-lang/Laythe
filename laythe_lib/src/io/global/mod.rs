@@ -1,6 +1,6 @@
 use laythe_core::value::Value;
 use laythe_core::{hooks::GcHooks, module::Module, package::Package, val};
-use laythe_env::managed::Managed;
+use laythe_env::managed::Gc;
 use std::path::PathBuf;
 
 use crate::{
@@ -11,7 +11,7 @@ use crate::{
 pub const ERROR_PATH: &str = "std/io/global.ly";
 pub const IO_ERROR: &str = "IoError";
 
-pub fn errors_module(hooks: &GcHooks, std: &Package) -> InitResult<Managed<Module>> {
+pub fn errors_module(hooks: &GcHooks, std: &Package) -> InitResult<Gc<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
     hooks.manage(PathBuf::from(ERROR_PATH)),

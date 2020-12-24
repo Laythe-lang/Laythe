@@ -15,7 +15,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyResult,
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 use smol_str::SmolStr;
 use std::{io::Write, str::Split};
 use std::{mem, str::Chars};
@@ -182,14 +182,14 @@ impl Native for StringSplit {
 
 #[derive(Debug)]
 struct SplitIterator {
-  string: Managed<SmolStr>,
-  separator: Managed<SmolStr>,
+  string: Gc<SmolStr>,
+  separator: Gc<SmolStr>,
   iter: Split<'static, &'static str>,
   current: Value,
 }
 
 impl SplitIterator {
-  fn new(string: Managed<SmolStr>, separator: Managed<SmolStr>) -> Self {
+  fn new(string: Gc<SmolStr>, separator: Gc<SmolStr>) -> Self {
     let iter = unsafe {
       string
         .deref_static()
@@ -333,13 +333,13 @@ impl Native for StringIter {
 
 #[derive(Debug)]
 struct StringIterator {
-  string: Managed<SmolStr>,
+  string: Gc<SmolStr>,
   iter: Chars<'static>,
   current: Value,
 }
 
 impl StringIterator {
-  fn new(string: Managed<SmolStr>) -> Self {
+  fn new(string: Gc<SmolStr>) -> Self {
     let iter = unsafe { string.deref_static().chars() };
 
     Self {

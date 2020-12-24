@@ -22,8 +22,8 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Managed, Trace},
-  memory::{Gc, NO_GC},
+  managed::{Gc, Trace},
+  memory::{Allocator, NO_GC},
 };
 use laythe_lib::{builtin_from_module, create_std_lib, GLOBAL, STD};
 use laythe_native::io::io_native;
@@ -81,7 +81,7 @@ pub struct VmDependencies {
   io: Io,
 
   /// The garbage collector
-  gc: Gc,
+  gc: Allocator,
 
   /// The value stack
   stack: Vec<Value>,
@@ -90,7 +90,7 @@ pub struct VmDependencies {
   frames: Vec<CallFrame>,
 
   /// The native functions
-  std_lib: Managed<Package>,
+  std_lib: Gc<Package>,
 }
 
 /// The virtual machine for the laythe programming language
@@ -102,21 +102,21 @@ pub struct Vm {
   frames: Vec<CallFrame>,
 
   /// The vm's garbage collector
-  gc: Gc,
+  gc: Allocator,
 
   /// The environments io access
   io: Io,
 
   /// an object to manage the current dependencies
-  dep_manager: Managed<DepManager>,
+  dep_manager: Gc<DepManager>,
 
   /// The global module
-  global: Managed<Module>,
+  global: Gc<Module>,
 }
 
 impl Vm {
   pub fn new(io: Io) -> Vm {
-    let gc = Gc::new(io.stdio());
+    let gc = Allocator::new(io.stdio());
     let no_gc_context = NoContext::new(&gc);
     let hooks = GcHooks::new(&no_gc_context);
 
@@ -217,7 +217,7 @@ impl Vm {
   }
 
   /// Interpret the provided laythe script returning the execution result
-  fn interpret(&mut self, main_module: Managed<Module>, source: &str) -> ExecuteResult {
+  fn interpret(&mut self, main_module: Gc<Module>, source: &str) -> ExecuteResult {
     match self.compile(main_module, source) {
       Ok(fun) => {
         let script_closure = self.gc.manage(Closure::new(fun), &NO_GC);
@@ -231,7 +231,7 @@ impl Vm {
   }
 
   /// Compile the provided laythe source into the virtual machine's bytecode
-  fn compile(&mut self, module: Managed<Module>, source: &str) -> CompilerResult {
+  fn compile(&mut self, module: Gc<Module>, source: &str) -> CompilerResult {
     let ast = Parser::new(self.io.stdio(), &source).parse()?;
 
     let compiler_context = NoContext::new(&self.gc);
@@ -242,7 +242,7 @@ impl Vm {
   }
 
   /// Prepare the main module for use
-  fn main_module(&self, module_path: PathBuf) -> Result<Managed<Module>, ExecuteResult> {
+  fn main_module(&self, module_path: PathBuf) -> Result<Gc<Module>, ExecuteResult> {
     let no_gc_context = NoContext::new(&self.gc);
     let hooks = GcHooks::new(&no_gc_context);
 
@@ -323,31 +323,31 @@ struct VmExecutor<'a> {
   stack: &'a mut [Value],
 
   /// global variable present in the vm
-  global: Managed<Module>,
+  global: Gc<Module>,
 
   /// the standard lib package
-  dep_manager: Managed<DepManager>,
+  dep_manager: Gc<DepManager>,
 
   /// A reference to a object currently in the vm
-  gc: &'a mut Gc,
+  gc: &'a mut Allocator,
 
   /// The environments io access
   io: &'a Io,
 
   /// A collection of currently available upvalues
-  open_upvalues: Vec<Managed<Upvalue>>,
+  open_upvalues: Vec<Gc<Upvalue>>,
 
   /// the main script level function
   script: Value,
 
   /// The current frame's function
-  current_fun: Managed<Fun>,
+  current_fun: Gc<Fun>,
 
   /// The current frame's closure
   current_frame: *mut CallFrame,
 
   /// The current error if one is active
-  current_error: Option<Managed<Instance>>,
+  current_error: Option<Gc<Instance>>,
 
   /// What exit code is currently set
   exit_code: u16,
@@ -361,7 +361,7 @@ struct VmExecutor<'a> {
   /// TODO replace this. A fun to fill a call frame for higher order native functions
   /// may want to eventually have a function rental so native functions can set name / module
   /// for exception
-  native_fun_stub: Managed<Fun>,
+  native_fun_stub: Gc<Fun>,
 
   /// The current frame depth of the program
   frame_count: usize,
@@ -450,7 +450,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Get a method for this this value with a given method name
-  pub fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> Call {
+  pub fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
     let class = self
       .dep_manager
       .primitive_classes()
@@ -613,7 +613,7 @@ impl<'a> VmExecutor<'a> {
 
   /// Get the current closure
   #[inline]
-  fn closure(&self) -> Managed<Closure> {
+  fn closure(&self) -> Gc<Closure> {
     unsafe { (*self.current_frame).closure }
   }
 
@@ -683,7 +683,7 @@ impl<'a> VmExecutor<'a> {
 
   /// read a constant as a string from the current chunk
   #[inline]
-  fn read_string(&self, index: u16) -> Managed<SmolStr> {
+  fn read_string(&self, index: u16) -> Gc<SmolStr> {
     self.read_constant(index).to_str()
   }
 
@@ -834,7 +834,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// invoke a method
-  fn invoke(&mut self, receiver: Value, method_name: Managed<SmolStr>, arg_count: u8) -> Signal {
+  fn invoke(&mut self, receiver: Value, method_name: Gc<SmolStr>, arg_count: u8) -> Signal {
     if receiver.is_instance() {
       let instance = receiver.to_instance();
       if let Some(field) = instance.get_field(&method_name) {
@@ -1088,7 +1088,7 @@ impl<'a> VmExecutor<'a> {
     self.get_property(value, name)
   }
 
-  fn get_property(&mut self, value: Value, name: Managed<SmolStr>) -> Signal {
+  fn get_property(&mut self, value: Value, name: Gc<SmolStr>) -> Signal {
     if value.is_instance() {
       let instance = value.to_instance();
 
@@ -1470,7 +1470,7 @@ impl<'a> VmExecutor<'a> {
     }
   }
 
-  fn call_class(&mut self, class: Managed<Class>, arg_count: u8) -> Signal {
+  fn call_class(&mut self, class: Gc<Class>, arg_count: u8) -> Signal {
     self.set_val(
       -(arg_count as isize) - 1,
       val!(self.gc.manage(Instance::new(class), self)),
@@ -1492,7 +1492,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// call a native function immediately returning the result
-  fn call_native(&mut self, native: Managed<Box<dyn Native>>, arg_count: u8) -> Signal {
+  fn call_native(&mut self, native: Gc<Box<dyn Native>>, arg_count: u8) -> Signal {
     let meta = native.meta();
 
     let args = unsafe {
@@ -1543,7 +1543,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// call a laythe function setting it as the new call frame
-  fn call(&mut self, closure: Managed<Closure>, arg_count: u8) -> Signal {
+  fn call(&mut self, closure: Gc<Closure>, arg_count: u8) -> Signal {
     // check that the current function is called with the right number of args
     if let Some(error) = self.check_arity(closure.fun, arg_count) {
       return error;
@@ -1560,7 +1560,7 @@ impl<'a> VmExecutor<'a> {
 
   /// Push a call frame onto the the call frame stack
   #[inline]
-  fn push_frame(&mut self, closure: Managed<Closure>, arg_count: u8) {
+  fn push_frame(&mut self, closure: Gc<Closure>, arg_count: u8) {
     unsafe {
       self.store_ip();
       let frame = &mut *self.current_frame.offset(1);
@@ -1599,7 +1599,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// check that the number of args is valid for the function arity
-  fn check_arity(&mut self, fun: Managed<Fun>, arg_count: u8) -> Option<Signal> {
+  fn check_arity(&mut self, fun: Gc<Fun>, arg_count: u8) -> Option<Signal> {
     match fun.arity.check(arg_count) {
       Ok(_) => None,
       Err(error) => match error {
@@ -1703,13 +1703,13 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Call a bound method
-  fn call_method(&mut self, bound: Managed<Method>, arg_count: u8) -> Signal {
+  fn call_method(&mut self, bound: Gc<Method>, arg_count: u8) -> Signal {
     self.set_val(-(arg_count as isize) - 1, bound.receiver);
     self.resolve_call(bound.method, arg_count)
   }
 
   /// bind a method to an instance
-  fn bind_method(&mut self, class: Managed<Class>, name: Managed<SmolStr>) -> Signal {
+  fn bind_method(&mut self, class: Gc<Class>, name: Gc<SmolStr>) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
         let bound = self.gc.manage(Method::new(self.peek(0), method), self);
@@ -1726,8 +1726,8 @@ impl<'a> VmExecutor<'a> {
   /// invoke a method from the provided class
   fn invoke_from_class(
     &mut self,
-    class: Managed<Class>,
-    method_name: Managed<SmolStr>,
+    class: Gc<Class>,
+    method_name: Gc<SmolStr>,
     arg_count: u8,
   ) -> Signal {
     match class.get_method(&method_name) {
@@ -1889,7 +1889,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Report a known laythe runtime error to the user
-  fn runtime_error(&mut self, error: Managed<Class>, message: &str) -> Signal {
+  fn runtime_error(&mut self, error: Gc<Class>, message: &str) -> Signal {
     self.push(val!(self.gc.manage_str(message, self)));
 
     let mode = RunMode::CallFunction(self.frame_count);
@@ -1913,7 +1913,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Set the current error place the vm signal a runtime error
-  fn set_error(&mut self, error: Managed<Instance>) -> Signal {
+  fn set_error(&mut self, error: Gc<Instance>) -> Signal {
     self.current_error = Some(error);
     Signal::RuntimeError
   }
@@ -1925,7 +1925,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Search for a catch block up the stack, printing the error if no catch is found
-  fn stack_unwind(&mut self, error: Managed<Instance>) -> Option<ExecuteResult> {
+  fn stack_unwind(&mut self, error: Gc<Instance>) -> Option<ExecuteResult> {
     let mut popped_frames = None;
     let mut stack_top = None;
     self.store_ip();
@@ -1981,7 +1981,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Print an error message and the current call stack to the user
-  fn print_error(&mut self, error: Managed<Instance>) {
+  fn print_error(&mut self, error: Gc<Instance>) {
     let message = error[0].to_str();
 
     let mut stdio = self.io.stdio();
@@ -2084,7 +2084,7 @@ impl<'a> HookContext for VmExecutor<'a> {
 }
 
 impl<'a> GcContext for VmExecutor<'a> {
-  fn gc(&self) -> &Gc {
+  fn gc(&self) -> &Allocator {
     self.gc
   }
 }
@@ -2100,7 +2100,7 @@ impl<'a> ValueContext for VmExecutor<'a> {
     self.to_call_result(result)
   }
 
-  fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> Call {
+  fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
     self.get_method(this, method_name)
   }
 

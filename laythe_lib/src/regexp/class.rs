@@ -17,7 +17,7 @@ use laythe_core::{
   value::VALUE_NIL,
   Call,
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 use regex::Regex;
 use std::io::Write;
 
@@ -143,7 +143,7 @@ impl Native for RegExpCaptures {
 
     match regexp.captures(args[0].to_str().as_str()) {
       Some(captures) => {
-        let mut results: Managed<List<Value>> = hooks.manage(List::new());
+        let mut results: Gc<List<Value>> = hooks.manage(List::new());
         hooks.push_root(results);
 
         for capture in captures.iter().map(|sub_capture| match sub_capture {

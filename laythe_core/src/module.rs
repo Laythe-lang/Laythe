@@ -4,7 +4,7 @@ use crate::{
   value::Value,
   LyHashSet, LyResult,
 };
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
+use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Gc, Trace};
 use smol_str::SmolStr;
 use std::{fmt, io::Write};
 use std::{mem, path::PathBuf};
@@ -13,21 +13,21 @@ use std::{mem, path::PathBuf};
 #[derive(Clone)]
 pub struct Module {
   /// The full filepath to this module
-  pub path: Managed<PathBuf>,
+  pub path: Gc<PathBuf>,
 
   /// The class that represents this module when imported
-  module_class: Managed<Class>,
+  module_class: Gc<Class>,
 
   /// A key value set of named exports from the provided modules
-  exports: LyHashSet<Managed<SmolStr>>,
+  exports: LyHashSet<Gc<SmolStr>>,
 
   /// All of the top level symbols in this module
-  symbols: Map<Managed<SmolStr>, Value>,
+  symbols: Map<Gc<SmolStr>, Value>,
 }
 
 impl Module {
   /// Create a new laythe module
-  pub fn new(module_class: Managed<Class>, path: Managed<PathBuf>) -> Self {
+  pub fn new(module_class: Gc<Class>, path: Gc<PathBuf>) -> Self {
     Module {
       path,
       module_class,
@@ -37,12 +37,12 @@ impl Module {
   }
 
   /// Get the name of this module
-  pub fn name(&self) -> Managed<SmolStr> {
+  pub fn name(&self) -> Gc<SmolStr> {
     self.module_class.name
   }
 
   /// Create a module from a filepath
-  pub fn from_path(hooks: &GcHooks, path: Managed<PathBuf>) -> Result<Self, Managed<SmolStr>> {
+  pub fn from_path(hooks: &GcHooks, path: Gc<PathBuf>) -> Result<Self, Gc<SmolStr>> {
     let module_name = path.file_stem().and_then(|m| m.to_str());
 
     let module_name = match module_name {
@@ -69,8 +69,8 @@ impl Module {
   pub fn export_symbol(
     &mut self,
     hooks: &GcHooks,
-    name: Managed<SmolStr>,
-  ) -> Result<(), Managed<SmolStr>> {
+    name: Gc<SmolStr>,
+  ) -> Result<(), Gc<SmolStr>> {
     if self.exports.contains(&name) {
       Err(hooks.manage_str(format!(
         "{} has already been exported from {}",
@@ -87,7 +87,7 @@ impl Module {
   }
 
   /// Get a reference to all exported symbols in this module
-  pub fn import(&self, hooks: &GcHooks) -> Managed<Instance> {
+  pub fn import(&self, hooks: &GcHooks) -> Gc<Instance> {
     let class = self.module_class;
 
     let mut import = hooks.manage(Instance::new(class));
@@ -112,14 +112,14 @@ impl Module {
   pub fn insert_symbol(
     &mut self,
     hooks: &GcHooks,
-    name: Managed<SmolStr>,
+    name: Gc<SmolStr>,
     symbol: Value,
   ) -> Option<Value> {
     hooks.grow(self, |module| module.symbols.insert(name, symbol))
   }
 
   /// Get a symbol from this module's symbol table
-  pub fn get_symbol(&self, name: Managed<SmolStr>) -> Option<&Value> {
+  pub fn get_symbol(&self, name: Gc<SmolStr>) -> Option<&Value> {
     self.symbols.get(&name)
   }
 
@@ -134,7 +134,7 @@ impl Module {
   }
 
   /// Remove a symbol from this module
-  pub fn remove_symbol(&mut self, hooks: &GcHooks, name: Managed<SmolStr>) {
+  pub fn remove_symbol(&mut self, hooks: &GcHooks, name: Gc<SmolStr>) {
     hooks.shrink(self, |module| {
       module.symbols.remove(&name);
       module.exports.remove(&name);
@@ -209,7 +209,7 @@ impl Manage for Module {
 
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>())
+      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>())
         * (self.exports.capacity() + self.symbols.capacity())
   }
 
