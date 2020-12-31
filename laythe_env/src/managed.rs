@@ -43,12 +43,19 @@ pub trait Trace {
   fn trace_debug(&self, log: &mut dyn Write) -> bool;
 }
 
+/// An entity that can provide tracing roots to the garbage collector
+pub trait RootTrace {
+  /// Mark all objects that are reachable from this object
+  fn trace(&self) -> bool;
+
+  /// Mark all objects that are reachable printing debugging information
+  /// for each object
+  fn trace_debug(&self, log: &mut dyn Write) -> bool;
+}
+
 /// An entity that can be managed and collected by the garbage collector.
 /// This trait provided debugging capabilities and statistics for the gc.
 pub trait Manage: Trace + DebugHeap {
-  /// What allocation type is
-  fn alloc_type(&self) -> &str;
-
   /// What is the size of this allocation
   fn size(&self) -> usize;
 
@@ -109,10 +116,6 @@ impl<T: 'static + Manage + ?Sized> Allocation<T> {
   pub fn marked(&self) -> bool {
     self.header.marked.get()
   }
-
-  pub fn alloc_type(&self) -> &str {
-    self.data.alloc_type()
-  }
 }
 
 impl<T: 'static + Manage + ?Sized> DebugHeap for Allocation<T> {
@@ -172,14 +175,14 @@ impl<T: 'static + Manage> Trace for Gc<T> {
       return true;
     }
 
-    // stdout
-    //   .write_fmt(format_args!(
-    //     "{:p} mark {:?}\n",
-    //     &*self.obj(),
-    //     DebugWrap(self, 2)
-    //   ))
-    //   .expect("unable to write to stdout");
-    // stdout.flush().expect("unable to flush stdout");
+    stdout
+      .write_fmt(format_args!(
+        "{:p} mark {:?}\n",
+        &*self.obj(),
+        DebugWrap(self, 1)
+      ))
+      .expect("unable to write to stdout");
+    stdout.flush().expect("unable to flush stdout");
 
     self.obj().data.trace_debug(stdout);
     true
@@ -197,10 +200,6 @@ impl<T: 'static + Manage> DebugHeap for Gc<T> {
 }
 
 impl<T: 'static + Manage> Manage for Gc<T> {
-  fn alloc_type(&self) -> &str {
-    self.obj().data.alloc_type()
-  }
-
   fn size(&self) -> usize {
     self.obj().size()
   }
@@ -229,7 +228,7 @@ impl Trace for Gc<dyn Manage> {
       .write_fmt(format_args!(
         "{:p} mark {:?}\n",
         &*self.obj(),
-        DebugWrap(self, 2)
+        DebugWrap(self, 1)
       ))
       .expect("unable to write to stdout");
     stdout.flush().expect("unable to flush stdout");
@@ -246,10 +245,6 @@ impl DebugHeap for Gc<dyn Manage> {
 }
 
 impl Manage for Gc<dyn Manage> {
-  fn alloc_type(&self) -> &str {
-    self.obj().data.alloc_type()
-  }
-
   fn size(&self) -> usize {
     self.obj().size()
   }
@@ -328,7 +323,7 @@ impl<T: 'static + Manage + fmt::Debug> fmt::Debug for Gc<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = &*self;
 
-    f.debug_struct("Managed").field("ptr", inner).finish()
+    f.debug_struct("Gc").field("ptr", inner).finish()
   }
 }
 
@@ -344,10 +339,6 @@ mod test {
     }
 
     impl Manage for Test {
-      fn alloc_type(&self) -> &str {
-        todo!()
-      }
-
       fn size(&self) -> usize {
         todo!()
       }

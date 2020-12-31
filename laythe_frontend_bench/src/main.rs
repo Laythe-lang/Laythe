@@ -1,4 +1,4 @@
-use laythe_core::hooks::{support::TestContext, GcHooks};
+use laythe_core::hooks::{NoContext, GcHooks};
 use laythe_core::module::Module;
 use laythe_env::io::Io;
 use laythe_env::stdio::Stdio;
@@ -20,7 +20,7 @@ fn load_source(path: &str) -> String {
 
 fn compiler_bench(src: &str) {
   for _ in 0..1000000 {
-    let context = TestContext::default();
+    let context = NoContext::default();
     let hooks = GcHooks::new(&context);
     let io = Io::default();
 

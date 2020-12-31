@@ -4,7 +4,7 @@ use crate::{
   value::Value,
   LyHashSet, LyResult,
 };
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Gc, Trace};
+use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
 use smol_str::SmolStr;
 use std::{fmt, io::Write};
 use std::{mem, path::PathBuf};
@@ -66,11 +66,7 @@ impl Module {
   }
 
   /// Add export a new symbol from this module. Exported names must be unique
-  pub fn export_symbol(
-    &mut self,
-    hooks: &GcHooks,
-    name: Gc<SmolStr>,
-  ) -> Result<(), Gc<SmolStr>> {
+  pub fn export_symbol(&mut self, hooks: &GcHooks, name: Gc<SmolStr>) -> Result<(), Gc<SmolStr>> {
     if self.exports.contains(&name) {
       Err(hooks.manage_str(format!(
         "{} has already been exported from {}",
@@ -203,25 +199,21 @@ impl DebugHeap for Module {
 }
 
 impl Manage for Module {
-  fn alloc_type(&self) -> &str {
-    "module"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>())
-        * (self.exports.capacity() + self.symbols.capacity())
+      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>()) * self.symbols.capacity()
+      + mem::size_of::<Gc<SmolStr>>() * self.exports.capacity()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
-    todo!()
+    self
   }
 }
 
 #[cfg(test)]
 mod test {
   use crate::{
-    hooks::{support::TestContext, GcHooks},
+    hooks::{GcHooks, NoContext},
     object::Class,
     val,
   };
@@ -231,7 +223,7 @@ mod test {
     use crate::module::Module;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self/path.ly");
@@ -246,11 +238,11 @@ mod test {
 
   #[test]
   fn from_path() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let path = hooks.manage(PathBuf::from("self/path.ly"));
@@ -262,12 +254,12 @@ mod test {
 
   #[test]
   fn export_symbol() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::value::Value;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
@@ -287,12 +279,12 @@ mod test {
 
   #[test]
   fn import() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::value::Value;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
@@ -315,12 +307,12 @@ mod test {
 
   #[test]
   fn insert_symbol() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::value::Value;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
@@ -342,11 +334,11 @@ mod test {
 
   #[test]
   fn get_symbol() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let module = Module::new(

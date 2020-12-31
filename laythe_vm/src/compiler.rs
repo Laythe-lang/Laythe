@@ -7,7 +7,7 @@ use laythe_core::{
   chunk::{AlignedByteCode, Chunk, UpvalueIndex},
   constants::OBJECT,
   constants::{ITER, ITER_VAR, SCRIPT, SELF, SUPER},
-  hooks::GcHooks,
+  hooks::{GcContext, GcHooks},
   module, object,
   object::FunKind,
   signature::Arity,
@@ -16,11 +16,18 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{DebugHeap, Gc, Manage, Trace},
+  managed::{DebugHeap, Gc, Manage, RootTrace, Trace},
+  memory::Allocator,
 };
 use object::{Fun, TryBlock};
 use smol_str::SmolStr;
-use std::{convert::TryInto, io::Write, mem, ptr::NonNull};
+use std::{
+  cell::{RefCell, RefMut},
+  convert::TryInto,
+  io::Write,
+  mem,
+  ptr::NonNull,
+};
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_chunk;
@@ -60,10 +67,6 @@ impl DebugHeap for ClassInfo {
 }
 
 impl Manage for ClassInfo {
-  fn alloc_type(&self) -> &str {
-    "class info"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }
@@ -91,10 +94,6 @@ impl DebugHeap for LoopInfo {
 }
 
 impl Manage for LoopInfo {
-  fn alloc_type(&self) -> &str {
-    "loop info"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }
@@ -107,6 +106,9 @@ impl Manage for LoopInfo {
 pub struct Compiler<'a> {
   /// The environments io interface
   io: &'a Io,
+
+  /// The roots from the surround context
+  root_trace: &'a dyn RootTrace,
 
   /// The current function
   fun: Gc<Fun>,
@@ -128,7 +130,7 @@ pub struct Compiler<'a> {
   loop_info: Option<Gc<LoopInfo>>,
 
   /// hooks into the surround context. Used to allocate laythe objects
-  hooks: &'a GcHooks<'a>,
+  gc: RefCell<Allocator>,
 
   /// Number of locals
   local_count: usize,
@@ -158,12 +160,13 @@ impl<'a> Compiler<'a> {
   /// use laythe_vm::compiler::Compiler;
   /// use laythe_core::module::Module;
   /// use laythe_core::object::Class;
-  /// use laythe_core::hooks::support::TestContext;
+  /// use laythe_core::hooks::NoContext;
   /// use laythe_core::hooks::GcHooks;
+  /// use laythe_env::memory::NO_GC;
   /// use laythe_env::io::Io;
   /// use std::path::PathBuf;
   ///
-  /// let context = TestContext::default();
+  /// let context = NoContext::default();
   /// let hooks = GcHooks::new(&context);
   /// let io = Io::default();
   /// let module = hooks.manage(Module::new(
@@ -171,20 +174,30 @@ impl<'a> Compiler<'a> {
   ///  hooks.manage(PathBuf::from("./module.ly"))
   /// ));
   ///
-  /// let compiler = Compiler::new(module, &io, &hooks);
+  /// let gc = context.gc.take();
+  /// let compiler = Compiler::new(module, &NO_GC, &io, gc);
   /// ```
-  pub fn new(module: Gc<module::Module>, io: &'a Io, hooks: &'a GcHooks<'a>) -> Self {
-    let fun = hooks.manage(object::Fun::new(hooks.manage_str(SCRIPT), module));
+  pub fn new(
+    module: Gc<module::Module>,
+    root_trace: &'a dyn RootTrace,
+    io: &'a Io,
+    mut gc: Allocator,
+  ) -> Self {
+    gc.push_root(module);
+    let fun_name = gc.manage_str(SCRIPT, root_trace);
+    let fun = gc.manage(Fun::new(fun_name, module), root_trace);
+    gc.pop_roots(1);
 
     Self {
       fun,
       io,
+      root_trace,
       module,
       fun_kind: FunKind::Script,
       scope_depth: 0,
       class_info: None,
       loop_info: None,
-      hooks,
+      gc: RefCell::new(gc),
       enclosing: None,
       local_count: 1,
       locals: vec![
@@ -203,30 +216,39 @@ impl<'a> Compiler<'a> {
 
   /// Compile the provided ast into managed function objects that
   /// contain the vm bytecode
-  pub fn compile(mut self, module: &ast::Module) -> CompilerResult {
+  pub fn compile(mut self, module: &ast::Module) -> (CompilerResult, Allocator) {
     for decl in &module.decls {
       self.decl(decl);
     }
 
     self.end_compiler(module.end());
     if !self.had_error {
-      Ok(self.fun)
+      (Ok(self.fun), self.gc.take())
     } else {
-      Err(())
+      (Err(()), self.gc.take())
     }
   }
 
   // create a child compiler to compile a function inside the enclosing module
   fn child(name: Gc<SmolStr>, fun_kind: FunKind, enclosing: &mut Compiler<'a>) -> Self {
+    let fun = enclosing
+      .gc
+      .borrow_mut()
+      .manage(Fun::new(name, enclosing.module), enclosing);
+
+    let gc = RefCell::new(Allocator::default());
+    gc.swap(&enclosing.gc);
+
     let mut child = Self {
-      fun: enclosing.fun,
+      fun,
       io: enclosing.io,
       module: enclosing.module,
+      root_trace: enclosing.root_trace,
       fun_kind,
       scope_depth: 0,
       class_info: enclosing.class_info,
       loop_info: enclosing.loop_info,
-      hooks: enclosing.hooks,
+      gc,
       enclosing: Some(NonNull::from(enclosing)),
       local_count: 1,
       locals: vec![
@@ -242,7 +264,6 @@ impl<'a> Compiler<'a> {
       had_error: false,
     };
 
-    child.fun = child.hooks.manage(Fun::new(name, child.module));
     child.locals[0] = first_local(fun_kind);
     child
   }
@@ -251,7 +272,8 @@ impl<'a> Compiler<'a> {
   /// and shrinking the function to the correct size
   fn end_compiler(&mut self, line: u32) {
     self.emit_return(line);
-    self.fun.shrink_to_fit(self.hooks);
+    let mut fun = self.fun;
+    fun.shrink_to_fit(&GcHooks::new(self));
 
     #[cfg(feature = "debug")]
     self.print_chunk();
@@ -449,10 +471,9 @@ impl<'a> Compiler<'a> {
 
   /// resolve a token to an upvalue in an enclosing scope if it exists
   fn resolve_upvalue(&mut self, name: &Token) -> Option<u8> {
-    match &mut self.enclosing {
-      Some(parent_ptr) => {
+    match self.enclosing {
+      Some(mut parent_ptr) => {
         let parent = unsafe { parent_ptr.as_mut() };
-
         match parent.resolve_local(name) {
           Some(local) => {
             parent.locals[local as usize].is_captured = true;
@@ -560,7 +581,8 @@ impl<'a> Compiler<'a> {
 
   /// write instruction to the current function
   fn write_instruction(&mut self, op_code: AlignedByteCode, line: u32) {
-    self.fun.write_instruction(self.hooks, op_code, line)
+    let mut fun = self.fun;
+    fun.write_instruction(&GcHooks::new(self), op_code, line)
   }
 
   /// Parse a variable from the provided token return it's new constant
@@ -580,7 +602,7 @@ impl<'a> Compiler<'a> {
 
   /// Generate a constant from the provided identifier token
   fn string_constant(&mut self, str: &str) -> u16 {
-    let identifer = self.hooks.manage_str(str);
+    let identifer = self.gc.borrow_mut().manage_str(str, self);
     self.make_constant(val!(identifer))
   }
 
@@ -589,7 +611,8 @@ impl<'a> Compiler<'a> {
     match self.constants.get(&value) {
       Some(index) => *index as u16,
       None => {
-        let index = self.fun.add_constant(&self.hooks, value);
+        let mut fun = self.fun;
+        let index = fun.add_constant(&GcHooks::new(self), value);
         if index > std::u16::MAX as usize {
           self.error("Too many constants in one chunk.", None);
           return 0;
@@ -739,6 +762,20 @@ impl<'a> Compiler<'a> {
     let name_constant = self.identifier_constant(&name);
     self.declare_variable(name.clone());
 
+    self.emit_byte(AlignedByteCode::Class(name_constant), name.end());
+    self.define_variable(name_constant, name.end());
+
+    // set this class as the current class compiler
+    let class_compiler = self.gc.borrow_mut().manage(
+      ClassInfo {
+        name: class.name.clone(),
+        fun_kind: None,
+        fields: vec![],
+      },
+      self,
+    );
+    let enclosing_class = mem::replace(&mut self.class_info, Some(class_compiler));
+
     // handle the case where a super class exists
     let line = if let Some(super_class) = &class.super_class {
       self.variable(&super_class.type_ref.name, false);
@@ -761,17 +798,6 @@ impl<'a> Compiler<'a> {
       line
     };
 
-    self.emit_byte(AlignedByteCode::Class(name_constant), name.end());
-    self.define_variable(name_constant, name.end());
-
-    // set this class as the current class compiler
-    let class_compiler = self.hooks.manage(ClassInfo {
-      name: class.name.clone(),
-      fun_kind: None,
-      fields: vec![],
-    });
-    let enclosing_class = mem::replace(&mut self.class_info, Some(class_compiler));
-
     // start a new scope with the super keyword present
     self.begin_scope();
     self.add_local(Token {
@@ -782,6 +808,7 @@ impl<'a> Compiler<'a> {
 
     self.define_variable(0, line);
     self.variable(&name, false);
+    self.emit_byte(AlignedByteCode::Inherit, line);
 
     // process the initializer
     let field_line = if let Some(init) = &class.init {
@@ -818,7 +845,7 @@ impl<'a> Compiler<'a> {
     let class_info = self.class_info.expect("Current class unset");
 
     class_info.fields.iter().for_each(|f| {
-      let value = val!(self.hooks.manage_str(f.as_str()));
+      let value = val!(self.gc.borrow_mut().manage_str(f.as_str(), self));
       let constant = self.make_constant(value);
       self.emit_byte(AlignedByteCode::Field(constant), line)
     })
@@ -888,8 +915,8 @@ impl<'a> Compiler<'a> {
     let name = fun
       .name
       .as_ref()
-      .map(|name| self.hooks.manage_str(name.lexeme.as_str()))
-      .unwrap_or_else(|| self.hooks.manage_str("lambda"));
+      .map(|name| self.gc.borrow_mut().manage_str(name.lexeme.as_str(), self))
+      .unwrap_or_else(|| self.gc.borrow_mut().manage_str("lambda", self));
 
     // create a new child compiler for this function
     let mut compiler = Compiler::child(name, fun_kind, &mut *self);
@@ -908,6 +935,7 @@ impl<'a> Compiler<'a> {
 
     // end compilation of function chunk
     compiler.end_compiler(end_line);
+    self.gc.swap(&compiler.gc);
     let upvalue_count = compiler.fun.upvalue_count;
 
     let index = self.make_constant(val!(compiler.fun));
@@ -923,7 +951,10 @@ impl<'a> Compiler<'a> {
   /// Compile an import statement
   fn import(&mut self, import: &ast::Import) {
     let name = self.identifier_constant(&import.imported);
-    let string = self.hooks.manage_str(import.path.lexeme.as_str());
+    let string = self
+      .gc
+      .borrow_mut()
+      .manage_str(import.path.lexeme.as_str(), self);
     let value = val!(string);
     let path = self.make_constant(value);
 
@@ -971,11 +1002,14 @@ impl<'a> Compiler<'a> {
       // mark start of loop
       let loop_start = self_.current_chunk().instructions.len();
 
-      let loop_info = self_.hooks.manage(LoopInfo {
-        scope_depth: self_.scope_depth,
-        start: loop_start,
-        breaks: vec![],
-      });
+      let loop_info = self_.gc.borrow_mut().manage(
+        LoopInfo {
+          scope_depth: self_.scope_depth,
+          start: loop_start,
+          breaks: vec![],
+        },
+        self_,
+      );
       let enclosing_loop = mem::replace(&mut self_.loop_info, Some(loop_info));
 
       // define iterator method constants
@@ -1022,11 +1056,14 @@ impl<'a> Compiler<'a> {
     let loop_start = self.current_chunk().instructions.len();
 
     // set this class as the current class compiler
-    let loop_info = self.hooks.manage(LoopInfo {
-      scope_depth: self.scope_depth,
-      start: loop_start,
-      breaks: vec![],
-    });
+    let loop_info = self.gc.borrow_mut().manage(
+      LoopInfo {
+        scope_depth: self.scope_depth,
+        start: loop_start,
+        breaks: vec![],
+      },
+      self,
+    );
     let enclosing_loop = mem::replace(&mut self.loop_info, Some(loop_info));
 
     self.expr(&while_.cond);
@@ -1114,7 +1151,8 @@ impl<'a> Compiler<'a> {
     self.scope(try_.catch.end(), |self_| self_.block(&try_.catch));
 
     self.patch_jump(catch_jump);
-    self.fun.add_try(TryBlock::new(start as u16, end as u16));
+    let mut fun = self.fun;
+    fun.add_try(&GcHooks::new(self), TryBlock::new(start as u16, end as u16));
   }
 
   /// Compile a block
@@ -1400,7 +1438,7 @@ impl<'a> Compiler<'a> {
 
   /// Compile a string token
   fn string(&mut self, token: &Token) -> bool {
-    let value = val!(self.hooks.manage_str(token.lexeme.as_str()));
+    let value = val!(self.gc.borrow_mut().manage_str(token.lexeme.as_str(), self));
     self.emit_constant(value, token.end());
     false
   }
@@ -1410,13 +1448,16 @@ impl<'a> Compiler<'a> {
     const STR: &str = "str";
     let str_constant = self.string_constant(STR);
 
-    let value = val!(self.hooks.manage_str(interpolation.start.lexeme.as_str()));
+    let value = val!(self
+      .gc
+      .borrow_mut()
+      .manage_str(interpolation.start.lexeme.as_str(), self));
     self.emit_constant(value, interpolation.start.end());
 
     for segment in interpolation.segments.iter() {
       match segment {
         ast::StringSegments::Token(token) => {
-          let value = val!(self.hooks.manage_str(token.lexeme.as_str()));
+          let value = val!(self.gc.borrow_mut().manage_str(token.lexeme.as_str(), self));
           self.emit_constant(value, token.end());
         }
         ast::StringSegments::Expr(expr) => {
@@ -1426,7 +1467,10 @@ impl<'a> Compiler<'a> {
       }
     }
 
-    let value = val!(self.hooks.manage_str(interpolation.end.lexeme.as_str()));
+    let value = val!(self
+      .gc
+      .borrow_mut()
+      .manage_str(interpolation.end.lexeme.as_str(), self));
     self.emit_constant(value, interpolation.end.end());
     self.emit_byte(
       AlignedByteCode::Interpolate((interpolation.segments.len() + 2) as u16),
@@ -1567,6 +1611,50 @@ impl<'a> Compiler<'a> {
   fn visit_error(&mut self, _: &[Token]) {}
 }
 
+impl<'a> GcContext for Compiler<'a> {
+  fn gc(&self) -> RefMut<'_, Allocator> {
+    self.gc.borrow_mut()
+  }
+}
+
+impl<'a> RootTrace for Compiler<'a> {
+  fn trace(&self) -> bool {
+    match self.enclosing {
+      Some(enclosing) => unsafe { enclosing.as_ref().trace() },
+      None => self.root_trace.trace(),
+    };
+
+    self.fun.trace();
+    self.module.trace();
+    self.class_info.map(|class_info| class_info.trace());
+    self.loop_info.map(|loop_info| loop_info.trace());
+    self.constants.keys().for_each(|key| {
+      key.trace();
+    });
+
+    true
+  }
+
+  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+    match self.enclosing {
+      Some(enclosing) => unsafe { enclosing.as_ref().trace_debug(log) },
+      None => self.root_trace.trace_debug(log),
+    };
+
+    self.fun.trace_debug(log);
+    self.module.trace_debug(log);
+    self
+      .class_info
+      .map(|class_info| class_info.trace_debug(log));
+    self.loop_info.map(|loop_info| loop_info.trace_debug(log));
+    self.constants.keys().for_each(|key| {
+      key.trace_debug(log);
+    });
+
+    true
+  }
+}
+
 /// Get the first local for a given function kind
 fn first_local(fun_kind: FunKind) -> Local {
   match fun_kind {
@@ -1588,10 +1676,13 @@ mod test {
   use super::*;
   use crate::{debug::disassemble_chunk, parser::Parser};
   use laythe_core::chunk::decode_u16;
-  use laythe_core::hooks::{support::TestContext, GcContext};
-  use laythe_env::stdio::{
-    support::{IoStdioTest, StdioTestContainer},
-    Stdio,
+  use laythe_core::hooks::NoContext;
+  use laythe_env::{
+    memory::NO_GC,
+    stdio::{
+      support::{IoStdioTest, StdioTestContainer},
+      Stdio,
+    },
   };
   use module::Module;
   use std::{path::PathBuf, rc::Rc};
@@ -1601,7 +1692,7 @@ mod test {
     Fun((u16, Vec<ByteCodeTest>)),
   }
 
-  fn test_compile<'a>(src: &str, context: &dyn GcContext) -> Gc<Fun> {
+  fn test_compile<'a>(src: &str, context: &NoContext) -> Gc<Fun> {
     let mut stdio_container = Rc::new(StdioTestContainer::default());
 
     let stdio = Rc::new(IoStdioTest::new(&mut stdio_container));
@@ -1612,11 +1703,18 @@ mod test {
 
     let hooks = &GcHooks::new(context);
 
-    let module = hooks
-      .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("path/module.ly"))).unwrap());
+    let path = hooks.manage(PathBuf::from("path/module.ly"));
+    hooks.push_root(path);
 
-    let compiler = Compiler::new(module, &io, hooks);
-    let result = compiler.compile(&ast.unwrap());
+    let module = hooks.manage(Module::from_path(&hooks, path).unwrap());
+    hooks.pop_roots(1);
+
+    let gc = context.gc.take();
+
+    let compiler = Compiler::new(module, &NO_GC, &io, gc);
+    let (result, gc) = compiler.compile(&ast.unwrap());
+
+    context.gc.replace(gc);
 
     assert_eq!(result.is_ok(), true);
     result.unwrap()
@@ -1731,7 +1829,7 @@ mod test {
       import time from "std/time";
     "#;
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -1751,7 +1849,7 @@ mod test {
       export let x = 10;
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -1772,7 +1870,7 @@ mod test {
       export fn example() {}
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
@@ -1799,16 +1897,17 @@ mod test {
       export class example {}
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Inherit,
         AlignedByteCode::Drop,
         AlignedByteCode::Drop,
         AlignedByteCode::Export(0),
@@ -1828,7 +1927,7 @@ mod test {
       }
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -1854,7 +1953,7 @@ mod test {
       }
     "#;
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -1894,7 +1993,7 @@ mod test {
       }
     "#;
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -1936,22 +2035,24 @@ mod test {
       class B : A {}
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Inherit,
         AlignedByteCode::Drop,
         AlignedByteCode::Drop,
-        AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Class(2),
         AlignedByteCode::DefineGlobal(2),
+        AlignedByteCode::GetGlobal(0),
         AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::Inherit,
         AlignedByteCode::Drop,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -1966,16 +2067,17 @@ mod test {
       class A {}
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
       fun,
       &vec![
-        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Inherit,
         AlignedByteCode::Drop,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -2002,16 +2104,17 @@ mod test {
       }
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
       fun,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
           vec![
@@ -2066,16 +2169,17 @@ mod test {
     }
   ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
       fun,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
           vec![
@@ -2118,16 +2222,17 @@ mod test {
       }
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
       fun,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
           vec![
@@ -2163,7 +2268,7 @@ mod test {
       a[1] = 5;
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2192,7 +2297,7 @@ mod test {
       print(a[1]);
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2222,7 +2327,7 @@ mod test {
     a[1] += 5;
   ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2254,7 +2359,7 @@ mod test {
       let a = [1, 2, nil, false, \"cat\"];
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2279,7 +2384,7 @@ mod test {
       let a = [];
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2302,7 +2407,7 @@ mod test {
       };
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2326,7 +2431,7 @@ mod test {
       let a = {};
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2347,7 +2452,7 @@ mod test {
     example();
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
@@ -2379,7 +2484,7 @@ mod test {
     example();
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
@@ -2413,7 +2518,7 @@ mod test {
     example(1, 2, 3);
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
@@ -2464,7 +2569,7 @@ mod test {
     example();
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
@@ -2528,7 +2633,7 @@ mod test {
     inner();
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
@@ -2570,7 +2675,7 @@ mod test {
   fn empty_fun() {
     let example = "fn example() {} example();";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
@@ -2602,7 +2707,7 @@ mod test {
     example(a);
     ";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
@@ -2633,7 +2738,7 @@ mod test {
   fn empty_fun_basic() {
     let example = "fn example() { let a = 10; return a; } example();";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       fun,
@@ -2662,7 +2767,7 @@ mod test {
   fn map() {
     let example = "let a = { \"cat\": \"bat\", 10: nil };";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2684,7 +2789,7 @@ mod test {
   fn list() {
     let example = "let a = [1, 2, 3, \"cat\"];";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2706,7 +2811,7 @@ mod test {
   fn for_loop() {
     let example = "for x in [1, 2, 3] { print(x); }";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2742,7 +2847,7 @@ mod test {
   #[test]
   fn while_loop() {
     let example = "while true { print(10); }";
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2766,7 +2871,7 @@ mod test {
   #[test]
   fn break_() {
     let example = "while true { break; print(10); }";
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2791,7 +2896,7 @@ mod test {
   #[test]
   fn continue_() {
     let example = "while true { continue; print(10); }";
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2816,7 +2921,7 @@ mod test {
   #[test]
   fn and_operator() {
     let example = "true and false;";
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2836,7 +2941,7 @@ mod test {
   #[test]
   fn or_operator() {
     let example = "false or true;";
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2858,7 +2963,7 @@ mod test {
   fn if_condition() {
     let example = "if (3 < 10) { print(\"hi\"); }";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2885,7 +2990,7 @@ mod test {
   fn if_else_condition() {
     let example = "if (3 < 10) { print(\"hi\"); } else { print(\"bye\"); }";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2916,7 +3021,7 @@ mod test {
   fn declare_local() {
     let example = ":{ let x = 10; };";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -2935,7 +3040,7 @@ mod test {
   fn op_get_local() {
     let example = ":{ let x = 10; print(x); };";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -2958,7 +3063,7 @@ mod test {
   fn op_set_local() {
     let example = ":{ let x = 10; x = 5; };";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2981,7 +3086,7 @@ mod test {
   fn op_define_global_nil() {
     let example = "let x;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -2999,7 +3104,7 @@ mod test {
   fn op_define_global_val() {
     let example = "let x = 10;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
@@ -3017,7 +3122,7 @@ mod test {
   fn op_get_global() {
     let example = "print(x);";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3036,7 +3141,7 @@ mod test {
   fn op_set_global() {
     let example = "x = \"cat\";";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3054,7 +3159,7 @@ mod test {
   fn op_pop() {
     let example = "false;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3071,7 +3176,7 @@ mod test {
   fn op_return() {
     let example = "";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(fun, &vec![AlignedByteCode::Nil, AlignedByteCode::Return]);
   }
@@ -3080,7 +3185,7 @@ mod test {
   fn op_number() {
     let example = "5.18;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3097,7 +3202,7 @@ mod test {
   fn op_string() {
     let example = "\"example\";";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3114,7 +3219,7 @@ mod test {
   fn op_interpolate() {
     let example = "\"${firstName} ${lastName}\";";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3138,7 +3243,7 @@ mod test {
   fn op_false() {
     let example = "false;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3155,7 +3260,7 @@ mod test {
   fn op_true() {
     let example = "true;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3172,7 +3277,7 @@ mod test {
   fn op_nil() {
     let example = "nil;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3189,7 +3294,7 @@ mod test {
   fn op_not() {
     let example = "!false;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3207,7 +3312,7 @@ mod test {
   fn op_negate() {
     let example = "-(15);";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3225,7 +3330,7 @@ mod test {
   fn op_add() {
     let example = "10 + 4;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3244,7 +3349,7 @@ mod test {
   fn op_subtract() {
     let example = "10 - 4;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3263,7 +3368,7 @@ mod test {
   fn op_divide() {
     let example = "10 / 4;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3282,7 +3387,7 @@ mod test {
   fn op_multi() {
     let example = "10 * 4;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3301,7 +3406,7 @@ mod test {
   fn op_equal() {
     let example = "true == nil;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3320,7 +3425,7 @@ mod test {
   fn op_not_equal() {
     let example = "true != nil;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3339,7 +3444,7 @@ mod test {
   fn op_less() {
     let example = "3 < 5;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3358,7 +3463,7 @@ mod test {
   fn op_less_equal() {
     let example = "3 <= 5;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3377,7 +3482,7 @@ mod test {
   fn op_greater() {
     let example = "3 > 5;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,
@@ -3396,7 +3501,7 @@ mod test {
   fn op_greater_equal() {
     let example = "3 >= 5;";
 
-    let context = TestContext::default();
+    let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       fun,

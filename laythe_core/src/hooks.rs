@@ -1,4 +1,7 @@
-use std::io::Write;
+use std::{
+  cell::{RefCell, RefMut},
+  io::Write,
+};
 
 use crate::{
   value::{Value, VALUE_NIL},
@@ -6,7 +9,7 @@ use crate::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Manage, Gc, Trace},
+  managed::{Gc, Manage, RootTrace},
   memory::Allocator,
 };
 use smol_str::SmolStr;
@@ -26,10 +29,8 @@ impl<'a> Hooks<'a> {
   /// ```
   /// use laythe_core::hooks::{Hooks, NoContext};
   /// use laythe_core::value::Value;
-  /// use laythe_env::memory::Allocator;
   ///
-  /// let gc = Allocator::default();
-  /// let mut context = NoContext::new(&gc);
+  /// let mut context = NoContext::default();
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let allocated = hooks.manage_str("example");
@@ -111,6 +112,12 @@ impl<'a> Hooks<'a> {
   }
 }
 
+pub trait HookContext {
+  fn gc_context(&self) -> &dyn GcContext;
+  fn value_context(&mut self) -> &mut dyn ValueContext;
+  fn io(&mut self) -> Io;
+}
+
 /// A set of hooks that provide a gc and tracing roots
 pub struct GcHooks<'a> {
   context: &'a dyn GcContext,
@@ -126,8 +133,7 @@ impl<'a> GcHooks<'a> {
   /// use laythe_core::value::Value;
   /// use laythe_env::memory::Allocator;
   ///
-  /// let gc = Allocator::default();
-  /// let mut context = NoContext::new(&gc);
+  /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);
   ///
   /// let allocated = hooks.manage_str("example");
@@ -151,13 +157,17 @@ impl<'a> GcHooks<'a> {
 
   /// Tell the context's gc that the provided managed object may grow during this operation
   #[inline]
-  pub fn grow<T: 'static + Manage, R, F: Fn(&mut T) -> R>(&self, managed: &mut T, action: F) -> R {
+  pub fn grow<T: 'static + Manage, R, F: FnOnce(&mut T) -> R>(
+    &self,
+    managed: &mut T,
+    action: F,
+  ) -> R {
     self.context.gc().grow(managed, self.context, action)
   }
 
   /// Tell the context's gc that the provided managed object may shrink during this operation
   #[inline]
-  pub fn shrink<T: 'static + Manage, R, F: Fn(&mut T) -> R>(
+  pub fn shrink<T: 'static + Manage, R, F: FnOnce(&mut T) -> R>(
     &self,
     managed: &mut T,
     action: F,
@@ -189,11 +199,8 @@ impl<'a> ValueHooks<'a> {
   /// # Examples
   /// ```
   /// use laythe_core::hooks::{ValueHooks, NoContext};
-  /// use laythe_core::value::Value;
-  /// use laythe_env::memory::Allocator;
   ///
-  /// let gc = Allocator::default();
-  /// let mut context = NoContext::new(&gc);
+  /// let mut context = NoContext::default();
   /// let hooks = ValueHooks::new(&mut context);
   /// ```
   pub fn new(context: &'a mut dyn ValueContext) -> ValueHooks<'a> {
@@ -216,12 +223,6 @@ impl<'a> ValueHooks<'a> {
   }
 }
 
-pub trait HookContext {
-  fn gc_context(&self) -> &dyn GcContext;
-  fn value_context(&mut self) -> &mut dyn ValueContext;
-  fn io(&mut self) -> Io;
-}
-
 /// A set of functions related to calling laythe values
 pub trait ValueContext {
   /// Execute a laythe value in the surround context
@@ -238,24 +239,31 @@ pub trait ValueContext {
 }
 
 /// A set of functionality required by the hooks objects in order to operate
-pub trait GcContext: Trace {
+pub trait GcContext: RootTrace {
   /// Get a reference to the context garbage collector
-  fn gc(&self) -> &Allocator;
+  fn gc(&self) -> RefMut<'_, Allocator>;
 }
 
-pub struct NoContext<'a> {
+#[derive(Default)]
+pub struct NoContext {
   /// A reference to a gc just to allocate
-  gc: &'a Allocator,
+  pub gc: RefCell<Allocator>,
 }
 
-impl<'a> NoContext<'a> {
+impl NoContext {
   /// Create a new instance of no context
-  pub fn new(gc: &'a Allocator) -> Self {
-    Self { gc }
+  pub fn new(gc: Allocator) -> Self {
+    Self {
+      gc: RefCell::new(gc),
+    }
+  }
+
+  pub fn done(self) -> Allocator {
+    self.gc.take()
   }
 }
 
-impl<'a> Trace for NoContext<'a> {
+impl RootTrace for NoContext {
   fn trace(&self) -> bool {
     false
   }
@@ -265,7 +273,7 @@ impl<'a> Trace for NoContext<'a> {
   }
 }
 
-impl<'a> HookContext for NoContext<'a> {
+impl HookContext for NoContext {
   fn gc_context(&self) -> &dyn GcContext {
     self
   }
@@ -279,13 +287,13 @@ impl<'a> HookContext for NoContext<'a> {
   }
 }
 
-impl<'a> GcContext for NoContext<'a> {
-  fn gc(&self) -> &Allocator {
-    &self.gc
+impl GcContext for NoContext {
+  fn gc(&self) -> RefMut<'_, Allocator> {
+    self.gc.borrow_mut()
   }
 }
 
-impl<'a> ValueContext for NoContext<'a> {
+impl ValueContext for NoContext {
   fn call(&mut self, _callable: Value, _args: &[Value]) -> Call {
     Call::Ok(VALUE_NIL)
   }
@@ -300,71 +308,5 @@ impl<'a> ValueContext for NoContext<'a> {
 
   fn get_class(&mut self, _this: Value) -> Value {
     VALUE_NIL
-  }
-}
-
-pub mod support {
-  use super::*;
-
-  /// A placeholder context that does not gc and does not call functions
-  #[derive(Default)]
-  pub struct TestContext {
-    /// A reference to a gc just to allocate
-    gc: Allocator,
-  }
-
-  impl TestContext {
-    /// Create a new instance of no context
-    pub fn new(gc: Allocator) -> Self {
-      Self { gc }
-    }
-  }
-
-  impl Trace for TestContext {
-    fn trace(&self) -> bool {
-      false
-    }
-
-    fn trace_debug(&self, _stdout: &mut dyn Write) -> bool {
-      false
-    }
-  }
-
-  impl HookContext for TestContext {
-    fn gc_context(&self) -> &dyn GcContext {
-      self
-    }
-
-    fn value_context(&mut self) -> &mut dyn ValueContext {
-      self
-    }
-
-    fn io(&mut self) -> Io {
-      Io::default()
-    }
-  }
-
-  impl GcContext for TestContext {
-    fn gc(&self) -> &Allocator {
-      &self.gc
-    }
-  }
-
-  impl ValueContext for TestContext {
-    fn call(&mut self, _callable: Value, _args: &[Value]) -> Call {
-      Call::Ok(VALUE_NIL)
-    }
-
-    fn call_method(&mut self, _this: Value, _method: Value, _args: &[Value]) -> Call {
-      Call::Ok(VALUE_NIL)
-    }
-
-    fn get_method(&mut self, _this: Value, _method_name: Gc<SmolStr>) -> Call {
-      Call::Ok(VALUE_NIL)
-    }
-
-    fn get_class(&mut self, _this: Value) -> Value {
-      VALUE_NIL
-    }
   }
 }

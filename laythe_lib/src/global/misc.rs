@@ -128,7 +128,6 @@ impl Native for Exit {
 #[cfg(test)]
 mod test {
   use super::*;
-  use laythe_core::hooks::support::TestContext;
 
   #[cfg(test)]
   mod print {
@@ -139,7 +138,7 @@ mod test {
 
     #[test]
     fn new() {
-      let mut context = TestContext::default();
+      let mut context = MockedContext::default();
       let hooks = Hooks::new(&mut context);
       let assert = Print::new(
         PRINT_META.to_meta(&hooks.as_gc()),

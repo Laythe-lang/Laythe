@@ -782,7 +782,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
+      let mut gc = test_native_dependencies();
       let mut context = MockedContext::with_std(&[
         val!(gc.manage_str("nil".to_string(), &NO_GC)),
         val!(gc.manage_str("10".to_string(), &NO_GC)),

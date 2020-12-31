@@ -1,6 +1,8 @@
+let hit = false;
+
 class Foo {
   init(a, b) {
-    print("init"); // expect: init
+    hit = true;
     self.a = a;
     self.b = b;
   }
@@ -9,3 +11,4 @@ class Foo {
 let foo = Foo(1, 2);
 assertEq(foo.a, 1); // expect: 1
 assertEq(foo.b, 2); // expect: 2
+assert(hit);

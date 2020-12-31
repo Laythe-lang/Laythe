@@ -22,17 +22,17 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Gc, Trace},
+  managed::{Gc, RootTrace, Trace},
   memory::{Allocator, NO_GC},
 };
 use laythe_lib::{builtin_from_module, create_std_lib, GLOBAL, STD};
 use laythe_native::io::io_native;
 use smol_str::SmolStr;
-use std::cmp::Ordering;
 use std::convert::TryInto;
 use std::io::Write;
 use std::mem;
 use std::ptr;
+use std::{cell::RefCell, cmp::Ordering};
 use std::{path::PathBuf, ptr::NonNull};
 
 #[cfg(feature = "debug")]
@@ -66,7 +66,7 @@ pub enum ExecuteResult {
   CompileError,
 }
 
-pub enum RunMode {
+pub enum ExecuteMode {
   Normal,
   CallFunction(usize),
 }
@@ -83,12 +83,6 @@ pub struct VmDependencies {
   /// The garbage collector
   gc: Allocator,
 
-  /// The value stack
-  stack: Vec<Value>,
-
-  /// The callframe stack
-  frames: Vec<CallFrame>,
-
   /// The native functions
   std_lib: Gc<Package>,
 }
@@ -102,7 +96,7 @@ pub struct Vm {
   frames: Vec<CallFrame>,
 
   /// The vm's garbage collector
-  gc: Allocator,
+  gc: RefCell<Allocator>,
 
   /// The environments io access
   io: Io,
@@ -112,30 +106,50 @@ pub struct Vm {
 
   /// The global module
   global: Gc<Module>,
+
+  /// A collection of currently available upvalues
+  open_upvalues: Vec<Gc<Upvalue>>,
+
+  /// the main script level function
+  script: Option<Gc<Closure>>,
+
+  /// The current frame's function
+  current_fun: Gc<Fun>,
+
+  /// The current frame's closure
+  current_frame: *mut CallFrame,
+
+  /// The current error if one is active
+  current_error: Option<Gc<Instance>>,
+
+  /// What exit code is currently set
+  exit_code: u16,
+
+  /// pointer to the top of the value stack
+  stack_top: *mut Value,
+
+  /// pointer to the current instruction
+  ip: *const u8,
+
+  /// TODO replace this. A fun to fill a call frame for higher order native functions
+  /// may want to eventually have a function rental so native functions can set name / module
+  /// for exception
+  native_fun_stub: Gc<Fun>,
+
+  /// The current frame depth of the program
+  frame_count: usize,
 }
 
 impl Vm {
   pub fn new(io: Io) -> Vm {
     let gc = Allocator::new(io.stdio());
-    let no_gc_context = NoContext::new(&gc);
+    let no_gc_context = NoContext::new(gc);
     let hooks = GcHooks::new(&no_gc_context);
 
     let cwd = io
       .env()
       .current_dir()
       .expect("Could not obtain the current working directory.");
-
-    let module = hooks.manage(Module::new(
-      hooks.manage(Class::bare(hooks.manage_str(PLACEHOLDER_NAME))),
-      hooks.manage(PathBuf::from(PLACEHOLDER_NAME)),
-    ));
-    let fun = Fun::new(hooks.manage_str(PLACEHOLDER_NAME), module);
-
-    let managed_fun = hooks.manage(fun);
-    let closure = hooks.manage(Closure::new(managed_fun));
-
-    let frames = vec![CallFrame::new(closure); FRAME_MAX];
-    let stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
 
     let std_lib = create_std_lib(&hooks).expect("Standard library creation failed");
     let global = std_lib
@@ -145,11 +159,32 @@ impl Vm {
       )
       .expect("Could not retrieve global module");
 
+    let fun = Fun::new(hooks.manage_str(PLACEHOLDER_NAME), global);
+
+    let managed_fun = hooks.manage(fun);
+    let closure = hooks.manage(Closure::new(managed_fun));
+
+    let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
+    let mut stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
+
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let mut dep_manager = hooks.manage(DepManager::new(io.clone(), builtin, hooks.manage(cwd)));
-    dep_manager.add_package(std_lib);
+    let dep_manager = DepManager::new(io.clone(), builtin, hooks.manage(cwd));
+    let mut dep_manager = hooks.manage(dep_manager);
+
+    dep_manager.add_package(&hooks, std_lib);
+
+    let current_frame = &mut frames[0];
+    let current_fun = current_frame.closure.fun;
+    let stack_top = &mut stack[1] as *mut Value;
+    let ip = ptr::null();
+
+    let current_frame = current_frame as *mut CallFrame;
+    let mut native_fun_stub = hooks.manage(Fun::new(hooks.manage_str("native"), global));
+    native_fun_stub.write_instruction(&hooks, AlignedByteCode::Nil, 0);
+
+    let gc = RefCell::new(no_gc_context.done());
 
     Vm {
       io,
@@ -158,6 +193,16 @@ impl Vm {
       gc,
       dep_manager,
       global,
+      frame_count: 1,
+      script: None,
+      current_fun,
+      current_frame,
+      current_error: None,
+      exit_code: 0,
+      stack_top,
+      ip,
+      native_fun_stub,
+      open_upvalues: Vec::with_capacity(100),
     }
   }
 
@@ -198,7 +243,7 @@ impl Vm {
         let mut directory = module_path.clone();
         directory.pop();
 
-        self.dep_manager.src_dir = self.gc.manage(directory, &NO_GC);
+        self.dep_manager.src_dir = self.gc.borrow_mut().manage(directory, &NO_GC);
         let main_module = match self.main_module(module_path) {
           Ok(module) => module,
           Err(err) => {
@@ -220,11 +265,8 @@ impl Vm {
   fn interpret(&mut self, main_module: Gc<Module>, source: &str) -> ExecuteResult {
     match self.compile(main_module, source) {
       Ok(fun) => {
-        let script_closure = self.gc.manage(Closure::new(fun), &NO_GC);
-        let script = val!(script_closure);
-
-        let mut executor = VmExecutor::new(self, script);
-        executor.run(RunMode::Normal)
+        self.prepare(fun);
+        self.execute(ExecuteMode::Normal)
       }
       Err(()) => ExecuteResult::CompileError,
     }
@@ -234,23 +276,43 @@ impl Vm {
   fn compile(&mut self, module: Gc<Module>, source: &str) -> CompilerResult {
     let ast = Parser::new(self.io.stdio(), &source).parse()?;
 
-    let compiler_context = NoContext::new(&self.gc);
-    let hooks = GcHooks::new(&compiler_context);
+    let gc = self.gc.take();
+    let compiler = Compiler::new(module, self, &self.io, gc);
+    let (result, gc) = compiler.compile(&ast);
+    self.gc.replace(gc);
 
-    let compiler = Compiler::new(module, &self.io, &hooks);
-    compiler.compile(&ast)
+    result
+  }
+
+  /// Reset the vm to execute another script
+  fn prepare(&mut self, script: Gc<Fun>) {
+    self.script = Some(self.gc.borrow_mut().manage(Closure::new(script), &NO_GC));
+    self.reset_stack();
+    let result = self.call(self.script.expect("Script removed."), 0);
+
+    if result != Signal::Ok {
+      self.internal_error("Main script call failed.");
+    }
+
+    let mut current_module = self.current_fun.module;
+    self
+      .global
+      .transfer_exported(&GcHooks::new(self), &mut current_module)
+      .expect("Transfer global module failed");
   }
 
   /// Prepare the main module for use
   fn main_module(&self, module_path: PathBuf) -> Result<Gc<Module>, ExecuteResult> {
-    let no_gc_context = NoContext::new(&self.gc);
-    let hooks = GcHooks::new(&no_gc_context);
+    let hooks = GcHooks::new(self);
 
     let mut stdio = self.io.stdio();
     let stderr = stdio.stderr();
 
     // resolve the main module from the provided path
-    let module = match Module::from_path(&hooks, hooks.manage(module_path)) {
+    let module_path = hooks.manage(module_path);
+    hooks.push_root(module_path);
+
+    let module = match Module::from_path(&hooks, module_path) {
       Ok(module) => module,
       Err(err) => {
         writeln!(stderr, "{}", err).expect("Unable to write to stderr");
@@ -258,6 +320,7 @@ impl Vm {
       }
     };
     let mut module = hooks.manage(module);
+    hooks.push_root(module);
 
     // transfer the symbols from the global module into the main module
     match self.global.transfer_exported(&hooks, &mut module) {
@@ -268,152 +331,8 @@ impl Vm {
       }
     }
 
+    hooks.pop_roots(2);
     Ok(module)
-  }
-}
-
-impl From<VmDependencies> for Vm {
-  /// Construct a vm from a set of dependencies. This is meant to be used when targeting
-  /// different environments
-  fn from(dependencies: VmDependencies) -> Self {
-    let gc = dependencies.gc;
-    let no_gc_context = NoContext::new(&gc);
-    let hooks = GcHooks::new(&no_gc_context);
-
-    let std_lib = dependencies.std_lib;
-    let global = std_lib
-      .import(
-        &hooks,
-        Import::new(vec![hooks.manage_str(STD), hooks.manage_str(GLOBAL)]),
-      )
-      .expect("Could not retrieve global module");
-
-    let builtin = builtin_from_module(&hooks, &global)
-      .expect("Failed to generate builtin class from global module");
-
-    let cwd = dependencies
-      .io
-      .env()
-      .current_dir()
-      .expect("Could not obtain the current working directory.");
-
-    let mut dep_manager = hooks.manage(DepManager::new(
-      dependencies.io.clone(),
-      builtin,
-      hooks.manage(cwd),
-    ));
-    dep_manager.add_package(std_lib);
-
-    Vm {
-      io: dependencies.io,
-      stack: dependencies.stack,
-      frames: dependencies.frames,
-      gc,
-      dep_manager,
-      global,
-    }
-  }
-}
-
-struct VmExecutor<'a> {
-  /// A stack of call frames for the current execution
-  frames: &'a mut [CallFrame],
-
-  /// A stack holding all local variable currently in use
-  stack: &'a mut [Value],
-
-  /// global variable present in the vm
-  global: Gc<Module>,
-
-  /// the standard lib package
-  dep_manager: Gc<DepManager>,
-
-  /// A reference to a object currently in the vm
-  gc: &'a mut Allocator,
-
-  /// The environments io access
-  io: &'a Io,
-
-  /// A collection of currently available upvalues
-  open_upvalues: Vec<Gc<Upvalue>>,
-
-  /// the main script level function
-  script: Value,
-
-  /// The current frame's function
-  current_fun: Gc<Fun>,
-
-  /// The current frame's closure
-  current_frame: *mut CallFrame,
-
-  /// The current error if one is active
-  current_error: Option<Gc<Instance>>,
-
-  /// What exit code is currently set
-  exit_code: u16,
-
-  /// pointer to the top of the value stack
-  stack_top: *mut Value,
-
-  /// pointer to the current instruction
-  ip: *const u8,
-
-  /// TODO replace this. A fun to fill a call frame for higher order native functions
-  /// may want to eventually have a function rental so native functions can set name / module
-  /// for exception
-  native_fun_stub: Gc<Fun>,
-
-  /// The current frame depth of the program
-  frame_count: usize,
-}
-
-impl<'a> VmExecutor<'a> {
-  /// Create an instance of the vm executor that can execute the provided script.
-  pub fn new(vm: &'a mut Vm, script: Value) -> VmExecutor<'a> {
-    let current_frame = { &mut vm.frames[0] };
-    let current_fun = current_frame.closure.fun;
-    let stack_top = &mut vm.stack[1] as *mut Value;
-    let ip = ptr::null();
-
-    let current_frame = current_frame as *mut CallFrame;
-    let mut native_fun_stub = vm.gc.manage(
-      Fun::new(vm.gc.manage_str("native", &NO_GC), vm.global),
-      &NO_GC,
-    );
-    let no_gc_context = NoContext::new(&vm.gc);
-    native_fun_stub.write_instruction(&GcHooks::new(&no_gc_context), AlignedByteCode::Nil, 0);
-
-    let mut executor = VmExecutor {
-      frames: &mut vm.frames,
-      frame_count: 1,
-      stack: &mut vm.stack,
-      script,
-      current_fun,
-      current_frame,
-      current_error: None,
-      exit_code: 0,
-      gc: &mut vm.gc,
-      io: &mut vm.io,
-      stack_top,
-      ip,
-      global: vm.global,
-      dep_manager: vm.dep_manager,
-      native_fun_stub,
-      open_upvalues: Vec::with_capacity(100),
-    };
-
-    executor.ip = &executor.script.to_closure().fun.chunk().instructions[0];
-    let result = executor.call(executor.script.to_closure(), 0);
-
-    let mut current_module = executor.current_fun.module;
-    vm.global
-      .transfer_exported(&GcHooks::new(&executor), &mut current_module)
-      .expect("Transfer global module failed");
-
-    match result {
-      Signal::Ok => executor,
-      _ => executor.internal_error("Main script call failed."),
-    }
   }
 
   /// Run a laythe function on top of the current stack.
@@ -423,9 +342,9 @@ impl<'a> VmExecutor<'a> {
       self.push(*arg);
     }
 
-    let mode = RunMode::CallFunction(self.frame_count);
+    let mode = ExecuteMode::CallFunction(self.frame_count);
     match self.resolve_call(callable, args.len() as u8) {
-      Signal::Ok => self.run(mode),
+      Signal::Ok => self.execute(mode),
       Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_fun."),
@@ -440,9 +359,9 @@ impl<'a> VmExecutor<'a> {
       self.push(*arg);
     }
 
-    let mode = RunMode::CallFunction(self.frame_count);
+    let mode = ExecuteMode::CallFunction(self.frame_count);
     match self.resolve_call(method, args.len() as u8) {
-      Signal::Ok => self.run(mode),
+      Signal::Ok => self.execute(mode),
       Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_method."),
@@ -450,7 +369,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Get a method for this this value with a given method name
-  pub fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
+  fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
     let class = self
       .dep_manager
       .primitive_classes()
@@ -459,12 +378,14 @@ impl<'a> VmExecutor<'a> {
     match class.get_method(&method_name) {
       Some(method) => Call::Ok(method),
       None => {
+        let error_message = val!(self.gc.borrow_mut().manage_str(
+          format!("Class {} does not have method {}", class.name, method_name),
+          self,
+        ));
+
         let result = self.run_fun(
           val!(self.dep_manager.error_classes().import),
-          &[val!(self.gc.manage_str(
-            format!("Class {} does not have method {}", class.name, method_name),
-            self,
-          ))],
+          &[error_message],
         );
 
         self.to_call_result(result)
@@ -473,7 +394,7 @@ impl<'a> VmExecutor<'a> {
   }
 
   /// Get the class for this value
-  pub fn get_class(&mut self, this: Value) -> Value {
+  fn get_class(&mut self, this: Value) -> Value {
     val!(self
       .dep_manager
       .primitive_classes()
@@ -482,7 +403,7 @@ impl<'a> VmExecutor<'a> {
 
   /// Main virtual machine execution loop. This will run the until the program interrupts
   /// from a normal exit or from a runtime error.
-  pub fn run(&mut self, mode: RunMode) -> ExecuteResult {
+  fn execute(&mut self, mode: ExecuteMode) -> ExecuteResult {
     loop {
       // get the current instruction
       let op_code: ByteCode = ByteCode::from(self.read_byte());
@@ -546,6 +467,7 @@ impl<'a> VmExecutor<'a> {
         ByteCode::Field => self.op_field(),
         ByteCode::StaticMethod => self.op_static_method(),
         ByteCode::Class => self.op_class(),
+        ByteCode::Inherit => self.op_inherit(),
         ByteCode::GetSuper => self.op_get_super(),
         ByteCode::CloseUpvalue => self.op_close_upvalue(),
         ByteCode::Return => self.op_return(),
@@ -553,7 +475,7 @@ impl<'a> VmExecutor<'a> {
 
       match result {
         Signal::OkReturn => {
-          if let RunMode::CallFunction(depth) = mode {
+          if let ExecuteMode::CallFunction(depth) = mode {
             if depth == self.frame_count {
               return ExecuteResult::FunResult(self.get_val(-1));
             }
@@ -690,6 +612,7 @@ impl<'a> VmExecutor<'a> {
   /// reset the stack in case of interrupt
   fn reset_stack(&mut self) {
     self.stack_top = &mut self.stack[1] as *mut Value;
+    self.current_frame = &mut self.frames[0] as *mut CallFrame;
     self.frame_count = 1;
     self.open_upvalues.clear();
   }
@@ -728,7 +651,7 @@ impl<'a> VmExecutor<'a> {
         arg_count as usize,
       )
     };
-    let list = val!(self.gc.manage(List::from(args), self));
+    let list = val!(self.gc.borrow_mut().manage(List::from(args), self));
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
     self.push(list);
 
@@ -738,7 +661,10 @@ impl<'a> VmExecutor<'a> {
   /// create a map from a map literal
   fn op_map(&mut self) -> Signal {
     let arg_count = self.read_short();
-    let mut map = self.gc.manage(Map::with_capacity(arg_count as usize), self);
+    let mut map = self
+      .gc
+      .borrow_mut()
+      .manage(Map::with_capacity(arg_count as usize), self);
 
     for i in 0..arg_count {
       let key = self.get_val(-(i as isize * 2) - 2);
@@ -773,7 +699,8 @@ impl<'a> VmExecutor<'a> {
     }
 
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
-    self.push(val!(self.gc.manage_str(buffers, self)));
+    let interpolated = val!(self.gc.borrow_mut().manage_str(buffers, self));
+    self.push(interpolated);
     Signal::Ok
   }
 
@@ -866,7 +793,14 @@ impl<'a> VmExecutor<'a> {
   fn op_class(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
-    let super_class = self.peek(0);
+
+    let class = val!(self.gc.borrow_mut().manage(Class::bare(name), self));
+    self.push(class);
+    Signal::Ok
+  }
+
+  fn op_inherit(&mut self) -> Signal {
+    let super_class = self.peek(1);
 
     if !super_class.is_class() {
       return self.runtime_error(
@@ -875,12 +809,12 @@ impl<'a> VmExecutor<'a> {
       );
     }
 
-    let class = val!(Class::new(
-      &GcHooks::new(self),
-      name,
-      super_class.to_class()
-    ));
-    self.push(class);
+    let hooks = GcHooks::new(self);
+    let mut sub_class = self.peek(0).to_class();
+
+    sub_class.inherit(&hooks, super_class.to_class());
+    sub_class.meta_from_super(&hooks);
+
     Signal::Ok
   }
 
@@ -1182,7 +1116,7 @@ impl<'a> VmExecutor<'a> {
       buffer.push_str(left.as_str());
       buffer.push_str(right.as_str());
 
-      let string = self.gc.manage_str(buffer, self);
+      let string = self.gc.borrow_mut().manage_str(buffer, self);
       self.push(val!(string));
       Signal::Ok
     } else {
@@ -1404,27 +1338,26 @@ impl<'a> VmExecutor<'a> {
   fn op_closure(&mut self) -> Signal {
     let slot = self.read_short();
     let fun = self.read_constant(slot).to_fun();
-    let mut closure = Closure::new(fun);
+    let mut closure = self.gc.borrow_mut().manage(Closure::new(fun), self);
+    self.gc.borrow_mut().push_root(closure);
 
-    for _ in 0..fun.upvalue_count {
+    for i in 0..fun.upvalue_count {
       let upvalue_index: UpvalueIndex = unsafe { mem::transmute(self.read_short()) };
 
       match upvalue_index {
         UpvalueIndex::Local(index) => {
           let value = unsafe { &*self.slots().offset(index as isize) };
-          closure
-            .upvalues
-            .push(self.capture_upvalue(NonNull::from(value)));
+          closure.upvalues[i] = self.capture_upvalue(NonNull::from(value))
         }
         UpvalueIndex::Upvalue(upvalue) => {
           let upvalue = self.closure().upvalues[upvalue as usize];
-          closure.upvalues.push(upvalue);
+          closure.upvalues[i] = upvalue
         }
       }
     }
 
-    let closure = val!(self.gc.manage(closure, self));
-    self.push(closure);
+    self.gc.borrow_mut().pop_roots(1);
+    self.push(val!(closure));
     Signal::Ok
   }
 
@@ -1471,10 +1404,8 @@ impl<'a> VmExecutor<'a> {
   }
 
   fn call_class(&mut self, class: Gc<Class>, arg_count: u8) -> Signal {
-    self.set_val(
-      -(arg_count as isize) - 1,
-      val!(self.gc.manage(Instance::new(class), self)),
-    );
+    let instance = val!(self.gc.borrow_mut().manage(Instance::new(class), self));
+    self.set_val(-(arg_count as isize) - 1, instance);
 
     match class.init {
       Some(init) => self.resolve_call(init, arg_count),
@@ -1525,7 +1456,10 @@ impl<'a> VmExecutor<'a> {
         Call::Exit(code) => self.set_exit(code),
       },
       Environment::Normal => {
-        let native_closure = self.gc.manage(Closure::new(self.native_fun_stub), self);
+        let native_closure = self
+          .gc
+          .borrow_mut()
+          .manage(Closure::new(self.native_fun_stub), self);
         self.push_frame(native_closure, arg_count);
 
         match native.call(&mut Hooks::new(self), this, args) {
@@ -1712,7 +1646,10 @@ impl<'a> VmExecutor<'a> {
   fn bind_method(&mut self, class: Gc<Class>, name: Gc<SmolStr>) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
-        let bound = self.gc.manage(Method::new(self.peek(0), method), self);
+        let bound = self
+          .gc
+          .borrow_mut()
+          .manage(Method::new(self.peek(0), method), self);
         self.set_val(-1, val!(bound));
         Signal::Ok
       }
@@ -1761,7 +1698,10 @@ impl<'a> VmExecutor<'a> {
       }
     }
 
-    let created_upvalue = self.gc.manage(Upvalue::Open(local_index), self);
+    let created_upvalue = self
+      .gc
+      .borrow_mut()
+      .manage(Upvalue::Open(local_index), self);
     self.open_upvalues.push(created_upvalue);
 
     val!(created_upvalue)
@@ -1890,11 +1830,12 @@ impl<'a> VmExecutor<'a> {
 
   /// Report a known laythe runtime error to the user
   fn runtime_error(&mut self, error: Gc<Class>, message: &str) -> Signal {
-    self.push(val!(self.gc.manage_str(message, self)));
+    let error_message = val!(self.gc.borrow_mut().manage_str(message, self));
+    self.push(error_message);
 
-    let mode = RunMode::CallFunction(self.frame_count);
+    let mode = ExecuteMode::CallFunction(self.frame_count);
     let result = match self.resolve_call(val!(error), 1) {
-      Signal::Ok => self.run(mode),
+      Signal::Ok => self.execute(mode),
       Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_fun."),
@@ -2009,9 +1950,80 @@ impl<'a> VmExecutor<'a> {
   }
 }
 
-impl<'a> Trace for VmExecutor<'a> {
+impl From<VmDependencies> for Vm {
+  /// Construct a vm from a set of dependencies. This is meant to be used when targeting
+  /// different environments
+  fn from(dependencies: VmDependencies) -> Self {
+    let no_gc_context = NoContext::new(dependencies.gc);
+    let hooks = GcHooks::new(&no_gc_context);
+
+    let std_lib = dependencies.std_lib;
+    let global = std_lib
+      .import(
+        &hooks,
+        Import::new(vec![hooks.manage_str(STD), hooks.manage_str(GLOBAL)]),
+      )
+      .expect("Could not retrieve global module");
+
+    let fun = Fun::new(hooks.manage_str(PLACEHOLDER_NAME), global);
+
+    let managed_fun = hooks.manage(fun);
+    let closure = hooks.manage(Closure::new(managed_fun));
+
+    let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
+    let mut stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
+
+    let builtin = builtin_from_module(&hooks, &global)
+      .expect("Failed to generate builtin class from global module");
+
+    let cwd = dependencies
+      .io
+      .env()
+      .current_dir()
+      .expect("Could not obtain the current working directory.");
+
+    let mut dep_manager = hooks.manage(DepManager::new(
+      dependencies.io.clone(),
+      builtin,
+      hooks.manage(cwd),
+    ));
+    dep_manager.add_package(&hooks, std_lib);
+
+    let current_frame = &mut frames[0];
+    let current_fun = current_frame.closure.fun;
+    let stack_top = &mut stack[1] as *mut Value;
+    let ip = ptr::null();
+
+    let current_frame = current_frame as *mut CallFrame;
+    let mut native_fun_stub = hooks.manage(Fun::new(hooks.manage_str("native"), global));
+    native_fun_stub.write_instruction(&hooks, AlignedByteCode::Nil, 0);
+
+    let gc = RefCell::new(no_gc_context.done());
+
+    Vm {
+      io: dependencies.io,
+      stack,
+      frames,
+      gc,
+      dep_manager,
+      global,
+      frame_count: 1,
+      script: None,
+      current_fun,
+      current_frame,
+      current_error: None,
+      exit_code: 0,
+      stack_top,
+      ip,
+      native_fun_stub,
+      open_upvalues: Vec::with_capacity(100),
+    }
+  }
+}
+
+impl RootTrace for Vm {
   fn trace(&self) -> bool {
-    self.script.trace();
+    self.script.map(|script| script.trace());
 
     unsafe {
       let start = &self.stack[0] as *const Value;
@@ -2040,7 +2052,7 @@ impl<'a> Trace for VmExecutor<'a> {
   }
 
   fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-    self.script.trace_debug(stdout);
+    self.script.map(|script| script.trace_debug(stdout));
 
     unsafe {
       let start = &self.stack[0] as *const Value;
@@ -2069,7 +2081,7 @@ impl<'a> Trace for VmExecutor<'a> {
   }
 }
 
-impl<'a> HookContext for VmExecutor<'a> {
+impl HookContext for Vm {
   fn gc_context(&self) -> &dyn GcContext {
     self
   }
@@ -2083,13 +2095,13 @@ impl<'a> HookContext for VmExecutor<'a> {
   }
 }
 
-impl<'a> GcContext for VmExecutor<'a> {
-  fn gc(&self) -> &Allocator {
-    self.gc
+impl GcContext for Vm {
+  fn gc(&self) -> std::cell::RefMut<'_, Allocator> {
+    self.gc.borrow_mut()
   }
 }
 
-impl<'a> ValueContext for VmExecutor<'a> {
+impl ValueContext for Vm {
   fn call(&mut self, callable: Value, args: &[Value]) -> Call {
     let result = self.run_fun(callable, args);
     self.to_call_result(result)

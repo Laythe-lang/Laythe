@@ -167,7 +167,7 @@ fn setFields() {
 
 setFields();
 
-fn printFields() {
+fn assertFields() {
   assertEq(foo.apple, "apple"); // expect: apple
   assertEq(foo.apricot, "apricot"); // expect: apricot
   assertEq(foo.avocado, "avocado"); // expect: avocado
@@ -249,4 +249,4 @@ fn printFields() {
   assertEq(foo.yuzu, "yuzu"); // expect: yuzu
 }
 
-printFields();
+assertFields();

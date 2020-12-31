@@ -380,7 +380,7 @@ mod test {
 
   mod signature {
     use super::*;
-    use crate::{hooks::support::TestContext, val};
+    use crate::{hooks::NoContext, val};
 
     const PARAMETERS_FIXED: [ParameterBuilder; 2] = [
       ParameterBuilder::new("index", ParameterKind::Number),
@@ -389,7 +389,7 @@ mod test {
 
     #[test]
     fn check_fixed() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Fixed(2))
@@ -418,7 +418,7 @@ mod test {
 
     #[test]
     fn check_variadic() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Variadic(1))
@@ -455,7 +455,7 @@ mod test {
 
     #[test]
     fn check_default() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Default(1, 2))

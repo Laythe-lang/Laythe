@@ -1,6 +1,6 @@
 use laythe_core::{
   constants::IMPORT_SEPARATOR,
-  hooks::Hooks,
+  hooks::{GcHooks, Hooks},
   module::Module,
   object::Map,
   package::{Import, Package},
@@ -10,7 +10,7 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{DebugHeap, DebugWrap, Manage, Gc, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, Manage, Trace},
 };
 use laythe_lib::{create_error, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives};
 use smol_str::SmolStr;
@@ -145,8 +145,10 @@ impl DepManager {
   }
 
   /// Add a package to the dependency manager
-  pub fn add_package(&mut self, package: Gc<Package>) {
-    self.packages.insert(package.name(), package);
+  pub fn add_package(&mut self, hooks: &GcHooks, package: Gc<Package>) {
+    hooks.grow(&mut self.packages, |packages| {
+      packages.insert(package.name(), package)
+    });
   }
 }
 
@@ -199,10 +201,6 @@ impl DebugHeap for DepManager {
 }
 
 impl Manage for DepManager {
-  fn alloc_type(&self) -> &str {
-    "Dependency Manager"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
       + self.cache.capacity() * 2 * mem::size_of::<Gc<SmolStr>>()

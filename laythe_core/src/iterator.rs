@@ -74,10 +74,6 @@ impl DebugHeap for LyIterator {
 }
 
 impl Manage for LyIterator {
-  fn alloc_type(&self) -> &str {
-    "iterator"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<LyIterator>() + self.iterator.size()
   }

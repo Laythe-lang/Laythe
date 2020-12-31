@@ -24,7 +24,7 @@ pub fn default_class_inheritance(
 
   let object_class = load_class_from_module(hooks, &*module, "Object")?;
 
-  Ok(Class::new(hooks, name, object_class))
+  Ok(Class::with_inheritance(hooks, name, object_class))
 }
 
 pub fn default_error_inheritance(
@@ -38,7 +38,7 @@ pub fn default_error_inheritance(
   let module = package.import(hooks, import)?;
 
   let error_class = load_class_from_module(hooks, &*module, "Error")?;
-  Ok(Class::new(hooks, name, error_class))
+  Ok(Class::with_inheritance(hooks, name, error_class))
 }
 
 pub fn load_class_from_package(
@@ -146,12 +146,12 @@ mod test {
   };
   use laythe_env::{
     io::Io,
-    managed::{Gc, Trace},
+    managed::{Gc, RootTrace, Trace},
     memory::{Allocator, NoGc},
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
   use smol_str::SmolStr;
-  use std::io::Write;
+  use std::{cell::RefCell, io::Write};
   use std::{path::PathBuf, rc::Rc};
 
   use crate::{
@@ -162,7 +162,7 @@ mod test {
   use super::to_dyn_native;
 
   pub struct MockedContext {
-    pub gc: Allocator,
+    pub gc: RefCell<Allocator>,
     pub responses: Vec<Value>,
     io: Io,
     no_gc: NoGc,
@@ -173,7 +173,7 @@ mod test {
   impl Default for MockedContext {
     fn default() -> Self {
       Self {
-        gc: Allocator::default(),
+        gc: RefCell::default(),
         no_gc: NoGc(),
         responses: vec![],
         io: Io::default(),
@@ -186,7 +186,7 @@ mod test {
   impl MockedContext {
     pub fn new(responses: &[Value]) -> Self {
       Self {
-        gc: Allocator::default(),
+        gc: RefCell::default(),
         no_gc: NoGc(),
         responses: Vec::from(responses),
         io: Io::default(),
@@ -197,7 +197,7 @@ mod test {
 
     pub fn with_std(responses: &[Value]) -> Self {
       let mut context = Self {
-        gc: Allocator::default(),
+        gc: RefCell::default(),
         no_gc: NoGc(),
         responses: Vec::from(responses),
         io: Io::default(),
@@ -219,7 +219,7 @@ mod test {
 
     pub fn new_with_io(stdio_container: &Rc<StdioTestContainer>) -> Self {
       Self {
-        gc: Allocator::default(),
+        gc: RefCell::default(),
         no_gc: NoGc(),
         responses: Vec::from(vec![]),
         io: Io::default().with_stdio(Rc::new(IoStdioTest::new(stdio_container))),
@@ -244,8 +244,8 @@ mod test {
   }
 
   impl GcContext for MockedContext {
-    fn gc(&self) -> &Allocator {
-      &self.gc
+    fn gc(&self) -> std::cell::RefMut<'_, Allocator> {
+      self.gc.borrow_mut()
     }
   }
 
@@ -323,7 +323,7 @@ mod test {
     }
   }
 
-  impl Trace for MockedContext {
+  impl RootTrace for MockedContext {
     fn trace(&self) -> bool {
       self.no_gc.trace()
     }

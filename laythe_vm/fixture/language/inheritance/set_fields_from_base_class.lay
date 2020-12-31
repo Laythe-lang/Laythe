@@ -9,9 +9,8 @@ class Foo {
     self.field2 = b;
   }
 
-  fooPrint() {
-    print(self.field1);
-    print(self.field2);
+  fooFn() {
+    return [self.field1, self.field2];
   }
 }
 
@@ -21,23 +20,22 @@ class Bar : Foo {
     self.field2 = b;
   }
 
-  barPrint() {
-    print(self.field1);
-    print(self.field2);
+  barFn() {
+    return [self.field1, self.field2];
   }
 }
 
 let bar = Bar();
 bar.foo("foo 1", "foo 2");
-bar.fooPrint();
-// expect: foo 1
-// expect: foo 2
+let r = bar.fooFn();
+assertEq(r[0], "foo 1");
+assertEq(r[1], "foo 2");
 
 bar.bar("bar 1", "bar 2");
-bar.barPrint();
-// expect: bar 1
-// expect: bar 2
+let r = bar.barFn();
+assertEq(r[0], "bar 1");
+assertEq(r[1], "bar 2");
 
-bar.fooPrint();
-// expect: bar 1
-// expect: bar 2
+bar.fooFn();
+assertEq(r[0], "bar 1");
+assertEq(r[1], "bar 2");

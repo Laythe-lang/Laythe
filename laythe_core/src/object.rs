@@ -123,10 +123,6 @@ impl DebugHeap for Upvalue {
 }
 
 impl Manage for Upvalue {
-  fn alloc_type(&self) -> &str {
-    "upvalue"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }
@@ -197,8 +193,8 @@ impl Fun {
     &self.chunk
   }
 
-  pub fn add_try(&mut self, try_block: TryBlock) {
-    self.try_blocks.push(try_block);
+  pub fn add_try(&mut self, hooks: &GcHooks, try_block: TryBlock) {
+    hooks.grow(self, |fun| fun.try_blocks.push(try_block));
   }
 
   pub fn has_catch_jump(&self, ip: u16) -> Option<u16> {
@@ -290,15 +286,10 @@ impl DebugHeap for Fun {
 }
 
 impl Manage for Fun {
-  fn alloc_type(&self) -> &str {
-    "function"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
       + self.chunk.size()
-      + mem::size_of::<TryBlock>()
-      + self.try_blocks.capacity()
+      + mem::size_of::<TryBlock>() * self.try_blocks.capacity()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -450,10 +441,6 @@ impl<T: 'static + Trace + DebugHeap> DebugHeap for List<T> {
 }
 
 impl<T: 'static + Trace + DebugHeap> Manage for List<T> {
-  fn alloc_type(&self) -> &str {
-    "list"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * self.capacity()
   }
@@ -571,10 +558,6 @@ where
   K: 'static + DebugHeap + Trace,
   V: 'static + DebugHeap + Trace,
 {
-  fn alloc_type(&self) -> &str {
-    "map"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Map<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
   }
@@ -587,7 +570,7 @@ where
 #[derive(PartialEq, Clone)]
 pub struct Closure {
   pub fun: Gc<Fun>,
-  pub upvalues: Vec<Value>,
+  pub upvalues: Box<[Value]>,
 }
 
 impl Closure {
@@ -597,14 +580,12 @@ impl Closure {
   /// ```
   /// use laythe_core::object::{Closure, Class, Fun};
   /// use laythe_core::signature::Arity;
-  /// use laythe_env::memory::{Allocator, NO_GC};
   /// use laythe_core::module::Module;
   /// use laythe_core::chunk::Chunk;
   /// use laythe_core::hooks::{NoContext, Hooks, HookContext};
   /// use std::path::PathBuf;
   ///
-  /// let gc = Allocator::default();
-  /// let mut context = NoContext::new(&gc);
+  /// let mut context = NoContext::default();
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
@@ -619,7 +600,7 @@ impl Closure {
   /// ```
   pub fn new(fun: Gc<Fun>) -> Self {
     Closure {
-      upvalues: Vec::with_capacity(fun.upvalue_count as usize),
+      upvalues: vec![VALUE_NIL; fun.upvalue_count].into_boxed_slice(),
       fun,
     }
   }
@@ -663,12 +644,8 @@ impl DebugHeap for Closure {
 }
 
 impl Manage for Closure {
-  fn alloc_type(&self) -> &str {
-    "closure"
-  }
-
   fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.upvalues.capacity()
+    mem::size_of::<Self>() + mem::size_of::<Value>() * self.upvalues.len()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -695,21 +672,7 @@ impl fmt::Display for Class {
 }
 
 impl Class {
-  pub fn new(hooks: &GcHooks, name: Gc<SmolStr>, super_class: Gc<Class>) -> Gc<Self> {
-    let super_meta = super_class
-      .meta()
-      .expect("Expected super class to have meta class");
-    let super_meta_meta = super_meta
-      .meta()
-      .expect("Expected super meta class to have meta class");
-
-    let meta_class = Class::with_meta(
-      hooks,
-      hooks.manage_str(format!("{} metaClass", name)),
-      super_meta_meta,
-      super_meta_meta,
-    );
-
+  pub fn with_inheritance(hooks: &GcHooks, name: Gc<SmolStr>, super_class: Gc<Class>) -> Gc<Self> {
     let mut class = hooks.manage(Self {
       name,
       init: None,
@@ -717,36 +680,13 @@ impl Class {
       index_set: None,
       methods: DynamicMap::new(),
       fields: DynamicMap::new(),
-      meta_class: Some(meta_class),
+      meta_class: None,
       super_class: None,
     });
 
     hooks.push_root(class);
     class.inherit(hooks, super_class);
-    hooks.pop_roots(1);
-
-    class
-  }
-
-  fn with_meta(
-    hooks: &GcHooks,
-    name: Gc<SmolStr>,
-    meta_class: Gc<Class>,
-    super_class: Gc<Class>,
-  ) -> Gc<Self> {
-    let mut class = hooks.manage(Self {
-      name,
-      init: None,
-      index_get: None,
-      index_set: None,
-      methods: DynamicMap::new(),
-      fields: DynamicMap::new(),
-      meta_class: Some(meta_class),
-      super_class: None,
-    });
-
-    hooks.push_root(class);
-    class.inherit(hooks, super_class);
+    class.meta_from_super(hooks);
     hooks.pop_roots(1);
 
     class
@@ -819,13 +759,18 @@ impl Class {
   }
 
   pub fn inherit(&mut self, hooks: &GcHooks, super_class: Gc<Class>) {
+    debug_assert!(self.methods.len() == 0);
+    debug_assert!(self.fields.len() == 0);
+
     hooks.grow(self, |class| {
+      class.methods.reserve(super_class.methods.len());
       super_class.methods.for_each(|(key, value)| {
         if class.methods.get(&*key).is_none() {
           class.methods.insert(*key, *value);
         }
       });
 
+      class.fields.reserve(super_class.fields.len());
       super_class.fields.for_each(|(field, _index)| {
         if class.fields.get(&field).is_none() {
           let len = class.fields.len();
@@ -841,6 +786,34 @@ impl Class {
 
     self.super_class = Some(super_class);
     self.init = self.init.or(super_class.init);
+  }
+
+  pub fn meta_from_super(&mut self, hooks: &GcHooks) {
+    let super_meta_class = self
+      .super_class
+      .expect("Expected super class.")
+      .meta()
+      .expect("Expected super class to have meta class.");
+    let super_meta_meta_class = super_meta_class
+      .meta()
+      .expect("Expected super meta class to have meta class.");
+
+    let mut meta_class = hooks.manage(Self {
+      name: hooks.manage_str(format!("{} metaClass", self.name)),
+      init: None,
+      index_get: None,
+      index_set: None,
+      methods: DynamicMap::new(),
+      fields: DynamicMap::new(),
+      meta_class: Some(super_meta_meta_class),
+      super_class: None,
+    });
+
+    hooks.push_root(meta_class);
+    meta_class.inherit(hooks, super_meta_meta_class);
+    hooks.pop_roots(1);
+
+    self.set_meta(meta_class);
   }
 }
 
@@ -899,10 +872,6 @@ impl DebugHeap for Class {
 }
 
 impl Manage for Class {
-  fn alloc_type(&self) -> &str {
-    "class"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Class>()
       + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>()) * self.methods.capacity()
@@ -1003,10 +972,6 @@ impl DebugHeap for Instance {
 }
 
 impl Manage for Instance {
-  fn alloc_type(&self) -> &str {
-    "instance"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Instance>()
       + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>()) * self.fields.len()
@@ -1061,10 +1026,6 @@ impl DebugHeap for Method {
 }
 
 impl Manage for Method {
-  fn alloc_type(&self) -> &str {
-    "method"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }

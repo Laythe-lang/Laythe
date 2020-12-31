@@ -20,10 +20,6 @@ impl DebugHeap for PathBuf {
 }
 
 impl Manage for PathBuf {
-  fn alloc_type(&self) -> &str {
-    "path"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>() // TODO add capacity once stabilized? + self.capacity()
   }
@@ -56,10 +52,6 @@ impl DebugHeap for SmolStr {
 }
 
 impl Manage for SmolStr {
-  fn alloc_type(&self) -> &str {
-    "string"
-  }
-
   fn size(&self) -> usize {
     if self.is_heap_allocated() {
       mem::size_of::<Self>() + self.len()

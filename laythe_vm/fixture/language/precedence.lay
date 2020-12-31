@@ -1,32 +1,32 @@
 // * has higher precedence than +.
-print(2 + 3 * 4); // expect: 14
+assertEq(2 + 3 * 4, 14); // expect: 14
 
 // * has higher precedence than -.
-print(20 - 3 * 4); // expect: 8
+assertEq(20 - 3 * 4, 8); // expect: 8
 
 // / has higher precedence than +.
-print(2 + 6 / 3); // expect: 4
+assertEq(2 + 6 / 3, 4); // expect: 4
 
 // / has higher precedence than -.
-print(2 - 6 / 3); // expect: 0
+assertEq(2 - 6 / 3, 0); // expect: 0
 
 // < has higher precedence than ==.
-print(false == 2 < 1); // expect: true
+assertEq(false == 2 < 1, true); // expect: true
 
 // > has higher precedence than ==.
-print(false == 1 > 2); // expect: true
+assertEq(false == 1 > 2, true); // expect: true
 
 // <= has higher precedence than ==.
-print(false == 2 <= 1); // expect: true
+assertEq(false == 2 <= 1, true); // expect: true
 
 // >= has higher precedence than ==.
-print(false == 1 >= 2); // expect: true
+assertEq(false == 1 >= 2, true); // expect: true
 
 // 1 - 1 is not space-sensitive.
-print(1 - 1); // expect: 0
-print(1 -1);  // expect: 0
-print(1- 1);  // expect: 0
-print(1-1);   // expect: 0
+assertEq(1 - 1, 0); // expect: 0
+assertEq(1 -1, 0);  // expect: 0
+assertEq(1- 1, 0);  // expect: 0
+assertEq(1-1, 0);   // expect: 0
 
 // Using () for grouping.
-print((2 * (6 - (2 + 2)))); // expect: 4
+assertEq((2 * (6 - (2 + 2))), 4); // expect: 4

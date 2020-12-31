@@ -157,10 +157,6 @@ impl DebugHeap for Box<dyn Native> {
 }
 
 impl Manage for Box<dyn Native> {
-  fn alloc_type(&self) -> &str {
-    "native"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }

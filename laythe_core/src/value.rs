@@ -39,7 +39,7 @@ mod unboxed {
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::managed::{DebugHeap, DebugWrap, Managed, Trace};
+  use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Trace};
 
   use super::{Nil, ValueKind};
   use smol_str::SmolStr;
@@ -58,17 +58,17 @@ mod unboxed {
     Bool(bool),
     Nil,
     Number(f64),
-    String(Managed<SmolStr>),
-    List(Managed<List<Value>>),
-    Map(Managed<Map<Value, Value>>),
-    Fun(Managed<Fun>),
-    Closure(Managed<Closure>),
-    Class(Managed<Class>),
-    Instance(Managed<Instance>),
-    Method(Managed<Method>),
-    Iter(Managed<LyIterator>),
-    Native(Managed<Box<dyn Native>>),
-    Upvalue(Managed<Upvalue>),
+    String(Gc<SmolStr>),
+    List(Gc<List<Value>>),
+    Map(Gc<Map<Value, Value>>),
+    Fun(Gc<Fun>),
+    Closure(Gc<Closure>),
+    Class(Gc<Class>),
+    Instance(Gc<Instance>),
+    Method(Gc<Method>),
+    Iter(Gc<LyIterator>),
+    Native(Gc<Box<dyn Native>>),
+    Upvalue(Gc<Upvalue>),
   }
 
   impl Value {
@@ -210,7 +210,7 @@ mod unboxed {
     /// assert_eq!(&*value.to_str(), "example")
     /// ```
     #[inline]
-    pub fn to_str(&self) -> Managed<SmolStr> {
+    pub fn to_str(&self) -> Gc<SmolStr> {
       match self {
         Self::String(str1) => *str1,
         _ => panic!("Expected string."),
@@ -223,20 +223,20 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::List;
-    /// use laythe_env::managed::{Allocation, Managed};
+    /// use laythe_env::managed::{Allocation, Gc};
     ///
     /// use std::ptr::NonNull;
     ///
     /// let list = List::from(vec![Value::Nil]);
     /// let mut alloc = Box::new(Allocation::new(list));
     /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-    /// let managed = Managed::from(ptr);
+    /// let managed = Gc::from(ptr);
     ///
     /// let value = Value::List(managed);
     /// assert_eq!(value.to_list()[0], Value::Nil)
     /// ```
     #[inline]
-    pub fn to_list(&self) -> Managed<List<Value>> {
+    pub fn to_list(&self) -> Gc<List<Value>> {
       match self {
         Self::List(list) => *list,
         _ => panic!("Expected list."),
@@ -248,7 +248,7 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_env::managed::{Allocation, Managed};
+    /// use laythe_env::managed::{Allocation, Gc};
     /// use laythe_core::object::Map;
     /// use laythe_core::hooks::{Hooks, support::TestContext};
     ///
@@ -260,7 +260,7 @@ mod unboxed {
     /// assert_eq!(value.to_map().len(), 0)
     /// ```
     #[inline]
-    pub fn to_map(&self) -> Managed<Map<Value, Value>> {
+    pub fn to_map(&self) -> Gc<Map<Value, Value>> {
       match self {
         Self::Map(map) => *map,
         _ => panic!("Expected list."),
@@ -269,7 +269,7 @@ mod unboxed {
 
     /// Unwrap and reference a laythe iterator, panics if not a iterator
     #[inline]
-    pub fn to_iter(&self) -> Managed<LyIterator> {
+    pub fn to_iter(&self) -> Gc<LyIterator> {
       match self {
         Self::Iter(iter) => *iter,
         _ => panic!("Expected iterator."),
@@ -283,19 +283,19 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::Fun;
     /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Managed;
+    /// use laythe_env::managed::Gc;
     ///
     /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Managed::dangling());
+    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Gc::dangling());
     /// let managed = hooks.manage(fun);
     ///
     /// let value = Value::Fun(managed);
     /// assert_eq!(&*value.to_fun().name, "add");
     /// ```
     #[inline]
-    pub fn to_fun(&self) -> Managed<Fun> {
+    pub fn to_fun(&self) -> Gc<Fun> {
       match self {
         Self::Fun(fun) => *fun,
         _ => panic!("Expected function!"),
@@ -304,7 +304,7 @@ mod unboxed {
 
     /// Unwrap a laythe native function, panics if not a native function
     #[inline]
-    pub fn to_native(&self) -> Managed<Box<dyn Native>> {
+    pub fn to_native(&self) -> Gc<Box<dyn Native>> {
       match self {
         Self::Native(native_fun) => *native_fun,
         _ => panic!("Expected native function!"),
@@ -318,11 +318,11 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Fun};
     /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Managed;
+    /// use laythe_env::managed::Gc;
     ///
     /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Managed::dangling());
+    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Gc::dangling());
     /// let managed_fun = hooks.manage(fun);
     ///
     /// let closure = Closure::new(managed_fun);
@@ -331,7 +331,7 @@ mod unboxed {
     /// let value = Value::Closure(managed_closure);
     /// assert_eq!(&*value.to_closure().fun.name.clone(), "add");
     /// ```
-    pub fn to_closure(&self) -> Managed<Closure> {
+    pub fn to_closure(&self) -> Gc<Closure> {
       match self {
         Self::Closure(closure) => *closure,
         _ => panic!("Expected closure!"),
@@ -345,18 +345,18 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Method};
     /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Managed;
+    /// use laythe_env::managed::Gc;
     ///
     /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let method = Method::new(Value::Nil, Value::Closure(Managed::dangling()));
+    /// let method = Method::new(Value::Nil, Value::Closure(Gc::dangling()));
     /// let managed_method = hooks.manage(method);
     ///
     /// let value = Value::Method(managed_method);
     /// assert_eq!(value.to_method(), managed_method);
     /// ```
-    pub fn to_method(&self) -> Managed<Method> {
+    pub fn to_method(&self) -> Gc<Method> {
       match self {
         Self::Method(method) => *method,
         _ => panic!("Expected method!"),
@@ -383,7 +383,7 @@ mod unboxed {
     ///   Upvalue::Closed(_) => assert!(false),
     /// };
     /// ```
-    pub fn to_upvalue(&self) -> Managed<Upvalue> {
+    pub fn to_upvalue(&self) -> Gc<Upvalue> {
       match self {
         Self::Upvalue(upvalue) => *upvalue,
         _ => panic!("Expected upvalue!"),
@@ -406,7 +406,7 @@ mod unboxed {
     /// let value = Value::Class(class);
     /// assert_eq!(value.to_class().name, name);
     /// ```
-    pub fn to_class(&self) -> Managed<Class> {
+    pub fn to_class(&self) -> Gc<Class> {
       match self {
         Self::Class(class) => *class,
         _ => panic!("Expected class.",),
@@ -429,7 +429,7 @@ mod unboxed {
     ///
     /// let value = Value::Instance(instance);
     /// assert_eq!(value.to_instance().class, class);
-    pub fn to_instance(&self) -> Managed<Instance> {
+    pub fn to_instance(&self) -> Gc<Instance> {
       match self {
         Self::Instance(instance) => *instance,
         _ => panic!("Expected instance!"),
@@ -507,68 +507,68 @@ mod unboxed {
     }
   }
 
-  impl From<Managed<SmolStr>> for Value {
-    fn from(managed: Managed<SmolStr>) -> Value {
+  impl From<Gc<SmolStr>> for Value {
+    fn from(managed: Gc<SmolStr>) -> Value {
       Value::String(managed)
     }
   }
 
-  impl From<Managed<List<Value>>> for Value {
-    fn from(managed: Managed<List<Value>>) -> Value {
+  impl From<Gc<List<Value>>> for Value {
+    fn from(managed: Gc<List<Value>>) -> Value {
       Value::List(managed)
     }
   }
 
-  impl From<Managed<Map<Value, Value>>> for Value {
-    fn from(managed: Managed<Map<Value, Value>>) -> Value {
+  impl From<Gc<Map<Value, Value>>> for Value {
+    fn from(managed: Gc<Map<Value, Value>>) -> Value {
       Value::Map(managed)
     }
   }
 
-  impl From<Managed<LyIterator>> for Value {
-    fn from(managed: Managed<LyIterator>) -> Value {
+  impl From<Gc<LyIterator>> for Value {
+    fn from(managed: Gc<LyIterator>) -> Value {
       Value::Iter(managed)
     }
   }
 
-  impl From<Managed<Closure>> for Value {
-    fn from(managed: Managed<Closure>) -> Value {
+  impl From<Gc<Closure>> for Value {
+    fn from(managed: Gc<Closure>) -> Value {
       Value::Closure(managed)
     }
   }
 
-  impl From<Managed<Fun>> for Value {
-    fn from(managed: Managed<Fun>) -> Value {
+  impl From<Gc<Fun>> for Value {
+    fn from(managed: Gc<Fun>) -> Value {
       Value::Fun(managed)
     }
   }
 
-  impl From<Managed<Class>> for Value {
-    fn from(managed: Managed<Class>) -> Value {
+  impl From<Gc<Class>> for Value {
+    fn from(managed: Gc<Class>) -> Value {
       Value::Class(managed)
     }
   }
 
-  impl From<Managed<Instance>> for Value {
-    fn from(managed: Managed<Instance>) -> Value {
+  impl From<Gc<Instance>> for Value {
+    fn from(managed: Gc<Instance>) -> Value {
       Value::Instance(managed)
     }
   }
 
-  impl From<Managed<Method>> for Value {
-    fn from(managed: Managed<Method>) -> Value {
+  impl From<Gc<Method>> for Value {
+    fn from(managed: Gc<Method>) -> Value {
       Value::Method(managed)
     }
   }
 
-  impl From<Managed<Box<dyn Native>>> for Value {
-    fn from(managed: Managed<Box<dyn Native>>) -> Value {
+  impl From<Gc<Box<dyn Native>>> for Value {
+    fn from(managed: Gc<Box<dyn Native>>) -> Value {
       Value::Native(managed)
     }
   }
 
-  impl From<Managed<Upvalue>> for Value {
-    fn from(managed: Managed<Upvalue>) -> Value {
+  impl From<Gc<Upvalue>> for Value {
+    fn from(managed: Gc<Upvalue>) -> Value {
       Value::Upvalue(managed)
     }
   }
@@ -779,7 +779,7 @@ mod boxed {
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::managed::{Allocation, DebugHeap, DebugWrap, Manage, Gc, Trace};
+  use laythe_env::managed::{Allocation, DebugHeap, DebugWrap, Gc, Manage, Trace};
 
   use smol_str::SmolStr;
   use std::ptr::NonNull;
@@ -1257,7 +1257,7 @@ mod test {
     module::Module,
     object::{Class, Closure, Fun, List, Map},
   };
-  use laythe_env::managed::{Allocation, Manage, Gc};
+  use laythe_env::managed::{Allocation, Gc, Manage};
   use smol_str::SmolStr;
   use std::{path::PathBuf, ptr::NonNull};
   type Allocs = Vec<Box<Allocation<dyn Manage>>>;

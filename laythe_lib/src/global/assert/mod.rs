@@ -261,7 +261,7 @@ impl Trace for AssertNe {
 #[cfg(test)]
 mod test {
   use super::*;
-  use laythe_core::hooks::support::TestContext;
+  use laythe_core::hooks::NoContext;
 
   #[cfg(test)]
   mod assert {
@@ -271,7 +271,7 @@ mod test {
 
     #[test]
     fn new() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
@@ -291,7 +291,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
@@ -319,7 +319,7 @@ mod test {
 
     #[test]
     fn new() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks));
@@ -343,7 +343,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
@@ -372,7 +372,7 @@ mod test {
 
     #[test]
     fn new() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks));
@@ -396,7 +396,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));

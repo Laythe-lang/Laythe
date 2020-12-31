@@ -471,10 +471,11 @@ mod test {
     #[test]
     fn call() {
       let mut context = MockedContext::with_std(&[]);
-      let response = &[
-        val!(context.gc.manage_str("nil".to_string(), &NO_GC)),
-        val!(context.gc.manage_str("nil".to_string(), &NO_GC)),
-      ];
+      let nil = val!(context
+        .gc
+        .borrow_mut()
+        .manage_str("nil".to_string(), &NO_GC));
+      let response = &[nil, nil];
       context.responses.extend_from_slice(response);
 
       let mut hooks = Hooks::new(&mut context);

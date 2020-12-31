@@ -219,10 +219,6 @@ impl DebugHeap for Package {
 }
 
 impl Manage for Package {
-  fn alloc_type(&self) -> &str {
-    "package"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
       + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<PackageEntity>())
@@ -243,7 +239,7 @@ mod test {
     use crate::package::Package;
     use laythe_env::memory::{Allocator, NO_GC};
 
-    let gc = Allocator::default();
+    let mut gc = Allocator::default();
     Package::new(gc.manage_str("example".to_string(), &NO_GC));
   }
 
@@ -252,7 +248,7 @@ mod test {
     use crate::package::Package;
     use laythe_env::memory::{Allocator, NO_GC};
 
-    let gc = Allocator::default();
+    let mut gc = Allocator::default();
     let package = Package::new(gc.manage_str("example".to_string(), &NO_GC));
 
     assert_eq!(&*package.name(), "example");
@@ -260,12 +256,12 @@ mod test {
 
   #[test]
   fn add_module() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{NoContext, GcHooks};
     use crate::module::Module;
     use crate::package::Package;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut package = Package::new(hooks.manage_str("package".to_string()));
@@ -283,10 +279,10 @@ mod test {
 
   #[test]
   fn add_package() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{NoContext, GcHooks};
     use crate::package::Package;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut package = Package::new(hooks.manage_str("package".to_string()));
@@ -301,13 +297,13 @@ mod test {
 
   #[test]
   fn import() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{NoContext, GcHooks};
     use crate::module::Module;
     use crate::package::{Import, Package};
     use crate::value::Value;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = hooks.manage(

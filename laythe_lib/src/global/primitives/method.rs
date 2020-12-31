@@ -134,7 +134,7 @@ mod test {
     #[test]
     fn call() {
       let mut context = MockedContext::with_std(&[]);
-      let responses = &[val!(context.gc.manage_str("example", &NO_GC))];
+      let responses = &[val!(context.gc.borrow_mut().manage_str("example", &NO_GC))];
       context.responses.extend_from_slice(responses);
 
       let mut hooks = Hooks::new(&mut context);

@@ -101,7 +101,7 @@
       },
       "args": [
         // "compiler/arm_compiler.lay"
-        "language/super/test.lay"
+        "language/field/get_and_set_method.lay"
         // "../aoc2020/day9/day9.lay"
       ],
       "sourceLanguages": ["rust"],

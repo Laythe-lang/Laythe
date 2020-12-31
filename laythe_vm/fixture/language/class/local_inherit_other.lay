@@ -5,4 +5,4 @@ fn f() {
   return B;
 }
 
-print(f()); // expect: B
+assert(f().str().has('<class B')); // expect: B

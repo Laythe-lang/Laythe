@@ -1,26 +1,26 @@
 let f0 = || 0;
-print(f0()); // expect: 0
+assertEq(f0(), 0);
 
 let f1 = |a| a;
-print(f1(1)); // expect: 1
+assertEq(f1(1), 1);
 
 let f2 = |a, b| a + b;
-print(f2(1, 2)); // expect: 3
+assertEq(f2(1, 2), 3);
 
 let f3 = |a, b, c| a + b + c;
-print(f3(1, 2, 3)); // expect: 6
+assertEq(f3(1, 2, 3), 6);
 
 let f4 = |a, b, c, d| a + b + c + d;
-print(f4(1, 2, 3, 4)); // expect: 10
+assertEq(f4(1, 2, 3, 4), 10);
 
 let f5 = |a, b, c, d, e| a + b + c + d + e;
-print(f5(1, 2, 3, 4, 5)); // expect: 15
+assertEq(f5(1, 2, 3, 4, 5), 15);
 
 let f6 = |a, b, c, d, e, f| a + b + c + d + e + f;
-print(f6(1, 2, 3, 4, 5, 6)); // expect: 21
+assertEq(f6(1, 2, 3, 4, 5, 6), 21);
 
 let f7 = |a, b, c, d, e, f, g| a + b + c + d + e + f + g;
-print(f7(1, 2, 3, 4, 5, 6, 7)); // expect: 28
+assertEq(f7(1, 2, 3, 4, 5, 6, 7), 28);
 
 let f8 = |a, b, c, d, e, f, g, h| a + b + c + d + e + f + g + h;
-print(f8(1, 2, 3, 4, 5, 6, 7, 8)); // expect: 36
+assertEq(f8(1, 2, 3, 4, 5, 6, 7, 8), 36);
