@@ -13,13 +13,8 @@ pub fn derive_trace(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
   let expanded = quote! {
     impl Trace for #name {
-      fn trace(&self) -> bool {
-        true
-      }
-
-      fn trace_debug(&self, _: &mut dyn Write) -> bool {
-        true
-      }
+      fn trace(&self) {}
+      fn trace_debug(&self, _: &mut dyn Write) {}
     }
   };
 

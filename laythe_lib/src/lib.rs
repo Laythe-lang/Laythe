@@ -53,11 +53,11 @@ macro_rules! native {
     }
 
     impl Trace for $st {
-      fn trace(&self) -> bool {
+      fn trace(&self) {
         self.meta.trace()
       }
 
-      fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+      fn trace_debug(&self, stdio: &mut dyn Write) {
         self.meta.trace_debug(stdio)
       }
     }
@@ -129,14 +129,14 @@ macro_rules! native_with_error {
     }
 
     impl Trace for $st {
-      fn trace(&self) -> bool {
+      fn trace(&self) {
         self.meta.trace();
-        self.error.trace()
+        self.error.trace();
       }
 
-      fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+      fn trace_debug(&self, stdio: &mut dyn Write) {
         self.meta.trace_debug(stdio);
-        self.meta.trace_debug(stdio)
+        self.meta.trace_debug(stdio);
       }
     }
   };

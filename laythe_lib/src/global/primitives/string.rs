@@ -237,16 +237,16 @@ impl LyIter for SplitIterator {
 }
 
 impl Trace for SplitIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.string.trace();
     self.separator.trace();
-    self.current.trace()
+    self.current.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.string.trace_debug(stdout);
     self.separator.trace_debug(stdout);
-    self.current.trace_debug(stdout)
+    self.current.trace_debug(stdout);
   }
 }
 
@@ -384,14 +384,14 @@ impl LyIter for StringIterator {
 }
 
 impl Trace for StringIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.string.trace();
-    self.current.trace()
+    self.current.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.string.trace_debug(stdout);
-    self.current.trace_debug(stdout)
+    self.current.trace_debug(stdout);
   }
 }
 

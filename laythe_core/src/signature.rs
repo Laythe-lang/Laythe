@@ -107,11 +107,11 @@ impl Parameter {
 }
 
 impl Trace for Parameter {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.name.trace()
   }
 
-  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) {
     self.name.trace_debug(log)
   }
 }
@@ -331,17 +331,15 @@ impl Signature {
 }
 
 impl Trace for Signature {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.parameters.iter().for_each(|p| {
       p.trace();
     });
-    true
   }
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.parameters.iter().for_each(|p| {
       p.trace_debug(stdio);
     });
-    true
   }
 }
 #[cfg(test)]

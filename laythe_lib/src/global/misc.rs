@@ -100,14 +100,14 @@ impl Native for Print {
 }
 
 impl Trace for Print {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.meta.trace();
-    self.method_str.trace()
+    self.method_str.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.meta.trace_debug(stdout);
-    self.method_str.trace_debug(stdout)
+    self.method_str.trace_debug(stdout);
   }
 }
 

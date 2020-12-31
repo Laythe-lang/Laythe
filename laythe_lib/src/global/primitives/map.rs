@@ -247,12 +247,12 @@ fn format_map_entry(
 }
 
 impl Trace for MapStr {
-  fn trace(&self) -> bool {
-    self.method_name.trace()
+  fn trace(&self) {
+    self.method_name.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-    self.method_name.trace_debug(stdout)
+  fn trace_debug(&self, stdout: &mut dyn Write) {
+    self.method_name.trace_debug(stdout);
   }
 }
 
@@ -432,12 +432,12 @@ impl LyIter for MapIterator {
 }
 
 impl Trace for MapIterator {
-  fn trace(&self) -> bool {
-    self.map.trace()
+  fn trace(&self) {
+    self.map.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-    self.map.trace_debug(stdout)
+  fn trace_debug(&self, stdout: &mut dyn Write) {
+    self.map.trace_debug(stdout);
   }
 }
 

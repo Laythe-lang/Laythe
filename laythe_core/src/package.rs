@@ -176,7 +176,7 @@ impl fmt::Debug for Package {
 }
 
 impl Trace for Package {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.name.trace();
 
     self.entities.iter().for_each(|(key, value)| {
@@ -187,11 +187,9 @@ impl Trace for Package {
         PackageEntity::Package(package) => package.trace(),
       };
     });
-
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.name.trace_debug(stdout);
 
     self.entities.iter().for_each(|(key, value)| {
@@ -202,8 +200,6 @@ impl Trace for Package {
         PackageEntity::Package(package) => package.trace_debug(stdout),
       };
     });
-
-    true
   }
 }
 
@@ -256,7 +252,7 @@ mod test {
 
   #[test]
   fn add_module() {
-    use crate::hooks::{NoContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::package::Package;
     use std::path::PathBuf;
@@ -279,7 +275,7 @@ mod test {
 
   #[test]
   fn add_package() {
-    use crate::hooks::{NoContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::package::Package;
 
     let mut context = NoContext::default();
@@ -297,7 +293,7 @@ mod test {
 
   #[test]
   fn import() {
-    use crate::hooks::{NoContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::package::{Import, Package};
     use crate::value::Value;

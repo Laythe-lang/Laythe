@@ -8,7 +8,12 @@ use laythe_core::{
 };
 use laythe_env::managed::{Gc, Trace};
 
-use crate::global::{BOOL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, EXPORT_ERROR_NAME, IMPORT_ERROR_NAME, ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME, MODULE_CLASS_NAME, NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME, PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, STRING_CLASS_NAME};
+use crate::global::{
+  BOOL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, EXPORT_ERROR_NAME, IMPORT_ERROR_NAME,
+  ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME,
+  MODULE_CLASS_NAME, NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME,
+  PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, STRING_CLASS_NAME,
+};
 
 pub struct BuiltIn {
   /// built in classes related to dependencies
@@ -22,16 +27,16 @@ pub struct BuiltIn {
 }
 
 impl Trace for BuiltIn {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.primitives.trace();
     self.dependencies.trace();
-    self.errors.trace()
+    self.errors.trace();
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.primitives.trace_debug(stdio);
     self.dependencies.trace_debug(stdio);
-    self.errors.trace_debug(stdio)
+    self.errors.trace_debug(stdio);
   }
 }
 
@@ -41,11 +46,11 @@ pub struct BuiltInDependencies {
 }
 
 impl Trace for BuiltInDependencies {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.module.trace()
   }
 
-  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) {
     self.module.trace_debug(log)
   }
 }
@@ -113,7 +118,7 @@ impl BuiltInPrimitives {
 }
 
 impl Trace for BuiltInPrimitives {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.bool.trace();
     self.nil.trace();
     self.class.trace();
@@ -125,11 +130,9 @@ impl Trace for BuiltInPrimitives {
     self.closure.trace();
     self.method.trace();
     self.native_fun.trace();
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.bool.trace_debug(stdio);
     self.nil.trace_debug(stdio);
     self.class.trace_debug(stdio);
@@ -141,8 +144,6 @@ impl Trace for BuiltInPrimitives {
     self.closure.trace_debug(stdio);
     self.method.trace_debug(stdio);
     self.native_fun.trace_debug(stdio);
-
-    true
   }
 }
 
@@ -159,11 +160,11 @@ pub struct BuiltInErrors {
 }
 
 impl Trace for BuiltInErrors {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.method_not_found.trace()
   }
 
-  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) {
     self.method_not_found.trace_debug(log)
   }
 }

@@ -93,17 +93,17 @@ impl Upvalue {
 }
 
 impl Trace for Upvalue {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     match self {
       Upvalue::Closed(upvalue) => upvalue.trace(),
-      _ => true,
+      _ => (),
     }
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     match self {
       Upvalue::Closed(upvalue) => upvalue.trace_debug(stdio),
-      _ => true,
+      _ => (),
     }
   }
 }
@@ -250,24 +250,20 @@ impl fmt::Debug for Fun {
 }
 
 impl Trace for Fun {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.name.trace();
     self.chunk.constants.iter().for_each(|constant| {
       constant.trace();
     });
     self.module.trace();
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.name.trace_debug(stdio);
     self.chunk.constants.iter().for_each(|constant| {
       constant.trace_debug(stdio);
     });
     self.module.trace_debug(stdio);
-
-    true
   }
 }
 
@@ -413,20 +409,16 @@ impl<T: Clone> From<&[T]> for List<T> {
 }
 
 impl<T: 'static + Trace> Trace for List<T> {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.iter().for_each(|value| {
       value.trace();
     });
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.iter().for_each(|value| {
       value.trace_debug(stdio);
     });
-
-    true
   }
 }
 
@@ -519,22 +511,18 @@ impl<K, V> Default for Map<K, V> {
 }
 
 impl<K: 'static + Trace, V: 'static + Trace> Trace for Map<K, V> {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.iter().for_each(|(key, value)| {
       key.trace();
       value.trace();
     });
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.iter().for_each(|(key, value)| {
       key.trace_debug(stdio);
       value.trace_debug(stdio);
     });
-
-    true
   }
 }
 
@@ -613,22 +601,20 @@ impl fmt::Debug for Closure {
 }
 
 impl Trace for Closure {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.upvalues.iter().for_each(|upvalue| {
       upvalue.trace();
     });
 
     self.fun.trace();
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.upvalues.iter().for_each(|upvalue| {
       upvalue.trace_debug(stdio);
     });
 
     self.fun.trace_debug(stdio);
-    true
   }
 }
 
@@ -824,7 +810,7 @@ impl fmt::Debug for Class {
 }
 
 impl Trace for Class {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.name.trace();
 
     self.methods.for_each(|(key, val)| {
@@ -837,11 +823,9 @@ impl Trace for Class {
 
     self.super_class.map(|class| class.trace());
     self.meta_class.map(|class| class.trace());
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.name.trace_debug(stdio);
 
     self.methods.for_each(|(key, val)| {
@@ -854,8 +838,6 @@ impl Trace for Class {
 
     self.super_class.map(|class| class.trace_debug(stdio));
     self.meta_class.map(|class| class.trace_debug(stdio));
-
-    true
   }
 }
 
@@ -939,24 +921,20 @@ impl fmt::Debug for Instance {
 }
 
 impl Trace for Instance {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.class.trace();
 
     self.fields.iter().for_each(|val| {
       val.trace();
     });
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.class.trace_debug(stdio);
 
     self.fields.iter().for_each(|val| {
       val.trace_debug(stdio);
     });
-
-    true
   }
 }
 
@@ -1001,16 +979,14 @@ impl fmt::Debug for Method {
 }
 
 impl Trace for Method {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.receiver.trace();
     self.method.trace();
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.receiver.trace_debug(stdio);
     self.method.trace_debug(stdio);
-    true
   }
 }
 

@@ -659,12 +659,12 @@ impl LyIter for ListIterator {
 }
 
 impl Trace for ListIterator {
-  fn trace(&self) -> bool {
-    self.list.trace()
+  fn trace(&self) {
+    self.list.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-    self.list.trace_debug(stdout)
+  fn trace_debug(&self, stdout: &mut dyn Write) {
+    self.list.trace_debug(stdout);
   }
 }
 

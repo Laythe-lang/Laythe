@@ -1,16 +1,12 @@
-use crate::managed::{DebugHeap, DebugWrap, Manage, Gc, Trace};
+use crate::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
 use smol_str::SmolStr;
 use std::{fmt, io::Write, mem, path::PathBuf};
 
 impl Trace for PathBuf {
-  fn trace(&self) -> bool {
-    true
-  }
-  fn trace_debug(&self, _: &mut dyn Write) -> bool {
-    true
-  }
+  fn trace(&self) {}
+  fn trace_debug(&self, _: &mut dyn Write) {}
 }
 
 impl DebugHeap for PathBuf {
@@ -36,13 +32,9 @@ impl<T: AsRef<str>> PartialEq<T> for Gc<SmolStr> {
 }
 
 impl Trace for SmolStr {
-  fn trace(&self) -> bool {
-    true
-  }
+  fn trace(&self) {}
 
-  fn trace_debug(&self, _: &mut dyn Write) -> bool {
-    true
-  }
+  fn trace_debug(&self, _: &mut dyn Write) {}
 }
 
 impl DebugHeap for SmolStr {

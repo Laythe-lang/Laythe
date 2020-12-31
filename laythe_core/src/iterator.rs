@@ -52,18 +52,14 @@ impl LyIterator {
 }
 
 impl Trace for LyIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.current.trace();
     self.iterator.trace();
-
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.current.trace_debug(stdout);
     self.iterator.trace_debug(stdout);
-
-    true
   }
 }
 

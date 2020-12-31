@@ -710,7 +710,7 @@ mod unboxed {
   }
 
   impl Trace for Value {
-    fn trace(&self) -> bool {
+    fn trace(&self) {
       match self {
         Value::Nil => true,
         Value::Bool(_) => true,
@@ -729,11 +729,9 @@ mod unboxed {
       }
     }
 
-    fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    fn trace_debug(&self, stdout: &mut dyn Write) {
       match self {
-        Value::Nil => true,
-        Value::Bool(_) => true,
-        Value::Number(_) => true,
+        _ => (),
         Value::String(string) => string.trace_debug(stdout),
         Value::List(list) => list.trace_debug(stdout),
         Value::Map(map) => map.trace_debug(stdout),
@@ -1056,7 +1054,7 @@ mod boxed {
   }
 
   impl Trace for Value {
-    fn trace(&self) -> bool {
+    fn trace(&self) {
       match self.kind() {
         ValueKind::String => self.to_str().trace(),
         ValueKind::List => self.to_list().trace(),
@@ -1069,10 +1067,10 @@ mod boxed {
         ValueKind::Iter => self.to_iter().trace(),
         ValueKind::Upvalue => self.to_upvalue().trace(),
         ValueKind::Native => self.to_native().trace(),
-        _ => true,
+        _ => (),
       }
     }
-    fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    fn trace_debug(&self, stdout: &mut dyn Write) {
       match self.kind() {
         ValueKind::String => self.to_str().trace_debug(stdout),
         ValueKind::List => self.to_list().trace_debug(stdout),
@@ -1085,7 +1083,7 @@ mod boxed {
         ValueKind::Iter => self.to_iter().trace_debug(stdout),
         ValueKind::Upvalue => self.to_upvalue().trace_debug(stdout),
         ValueKind::Native => self.to_native().trace_debug(stdout),
-        _ => true,
+        _ => (),
       }
     }
   }

@@ -302,18 +302,16 @@ impl LyIter for MapIterator {
 }
 
 impl Trace for MapIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.current.trace();
     self.iter.trace();
     self.callable.trace();
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.current.trace_debug(stdout);
     self.iter.trace_debug(stdout);
     self.callable.trace_debug(stdout);
-    true
   }
 }
 
@@ -380,18 +378,16 @@ impl LyIter for FilterIterator {
 }
 
 impl Trace for FilterIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.current.trace();
     self.iter.trace();
     self.callable.trace();
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.current.trace_debug(stdout);
     self.iter.trace_debug(stdout);
     self.callable.trace_debug(stdout);
-    true
   }
 }
 
@@ -520,20 +516,18 @@ impl LyIter for ZipIterator {
 }
 
 impl Trace for ZipIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.current.trace();
     self.iters.iter().for_each(|iter| {
       iter.trace();
     });
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.current.trace_debug(stdout);
     self.iters.iter().for_each(|iter| {
       iter.trace_debug(stdout);
     });
-    true
   }
 }
 
@@ -616,20 +610,18 @@ impl LyIter for ChainIterator {
 }
 
 impl Trace for ChainIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.current.trace();
     self.iters.iter().for_each(|iter| {
       iter.trace();
     });
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.current.trace_debug(stdout);
     self.iters.iter().for_each(|iter| {
       iter.trace_debug(stdout);
     });
-    true
   }
 }
 

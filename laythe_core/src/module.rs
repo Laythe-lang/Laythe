@@ -155,7 +155,7 @@ impl Module {
 }
 
 impl Trace for Module {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.module_class.trace();
     self.path.trace();
 
@@ -166,10 +166,8 @@ impl Trace for Module {
       key.trace();
       value.trace();
     });
-
-    true
   }
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.module_class.trace();
     self.path.trace_debug(stdout);
 
@@ -180,8 +178,6 @@ impl Trace for Module {
       key.trace_debug(stdout);
       value.trace_debug(stdout);
     });
-
-    true
   }
 }
 

@@ -164,26 +164,22 @@ impl fmt::Debug for DepManager {
 }
 
 impl Trace for DepManager {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.src_dir.trace();
     self.packages.iter().for_each(|(key, value)| {
       key.trace();
       value.trace();
     });
     self.builtin.trace();
-
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.src_dir.trace_debug(stdout);
     self.packages.iter().for_each(|(key, value)| {
       key.trace_debug(stdout);
       value.trace_debug(stdout);
     });
     self.builtin.trace_debug(stdout);
-
-    true
   }
 }
 

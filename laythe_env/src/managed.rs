@@ -36,11 +36,11 @@ pub trait DebugHeap {
 /// An entity that is traceable by the garbage collector
 pub trait Trace {
   /// Mark all objects that are reachable from this object
-  fn trace(&self) -> bool;
+  fn trace(&self);
 
   /// Mark all objects that are reachable printing debugging information
   /// for each object
-  fn trace_debug(&self, log: &mut dyn Write) -> bool;
+  fn trace_debug(&self, log: &mut dyn Write);
 }
 
 /// An entity that can provide tracing roots to the garbage collector
@@ -161,18 +161,17 @@ impl<T: 'static + Manage> Gc<T> {
 }
 
 impl<T: 'static + Manage> Trace for Gc<T> {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     if self.obj().mark() {
-      return true;
+      return;
     }
 
     self.obj().data.trace();
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     if self.obj().mark() {
-      return true;
+      return;
     }
 
     stdout
@@ -185,7 +184,6 @@ impl<T: 'static + Manage> Trace for Gc<T> {
     stdout.flush().expect("unable to flush stdout");
 
     self.obj().data.trace_debug(stdout);
-    true
   }
 }
 
@@ -210,18 +208,17 @@ impl<T: 'static + Manage> Manage for Gc<T> {
 }
 
 impl Trace for Gc<dyn Manage> {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     if self.obj().mark() {
-      return true;
+      return;
     }
 
     self.obj().data.trace();
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     if self.obj().mark() {
-      return true;
+      return;
     }
 
     stdout
@@ -234,7 +231,6 @@ impl Trace for Gc<dyn Manage> {
     stdout.flush().expect("unable to flush stdout");
 
     self.obj().data.trace_debug(stdout);
-    true
   }
 }
 
@@ -331,6 +327,8 @@ impl<T: 'static + Manage + fmt::Debug> fmt::Debug for Gc<T> {
 mod test {
   use super::*;
   mod fmt_heap {
+    use std::mem;
+
     use super::*;
 
     struct Test {
@@ -340,7 +338,7 @@ mod test {
 
     impl Manage for Test {
       fn size(&self) -> usize {
-        todo!()
+        mem::size_of::<Self>()
       }
 
       fn as_debug(&self) -> &dyn DebugHeap {
@@ -349,13 +347,9 @@ mod test {
     }
 
     impl Trace for Test {
-      fn trace(&self) -> bool {
-        todo!()
-      }
+      fn trace(&self) {}
 
-      fn trace_debug(&self, _: &mut dyn Write) -> bool {
-        todo!()
-      }
+      fn trace_debug(&self, _: &mut dyn Write) {}
     }
 
     impl DebugHeap for Test {

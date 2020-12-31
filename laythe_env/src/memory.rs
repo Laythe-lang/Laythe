@@ -282,15 +282,15 @@ impl<'a> Allocator {
 
   /// wrapper around an entities trace method to select either normal
   /// or debug trace at compile time.
-  fn trace(&self, entity: &dyn Trace) -> bool {
+  fn trace(&self, entity: &dyn Trace) {
     #[cfg(not(feature = "debug_gc"))]
-    return entity.trace();
+    entity.trace();
 
     #[cfg(feature = "debug_gc")]
     {
       let mut stdio = self.stdio.borrow_mut();
       let stdout = stdio.stdout();
-      return entity.trace_debug(stdout);
+      entity.trace_debug(stdout);
     }
   }
 
