@@ -114,6 +114,6 @@ impl Clone for Io {
   }
 }
 
-pub trait IoImpl<T: Send + Sync>: fmt::Debug + Send + Sync {
+pub trait IoImpl<T>: fmt::Debug {
   fn make(&self) -> T;
 }

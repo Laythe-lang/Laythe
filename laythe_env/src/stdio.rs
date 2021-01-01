@@ -42,7 +42,7 @@ impl Stdio {
   }
 }
 
-pub trait StdioImpl: Send + Sync {
+pub trait StdioImpl {
   fn stdout(&mut self) -> &mut dyn Write;
   fn stderr(&mut self) -> &mut dyn Write;
   fn stdin(&mut self) -> &mut dyn Read;

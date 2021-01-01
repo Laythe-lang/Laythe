@@ -6,7 +6,7 @@ mod time_wasm;
 use js_sys::Function;
 use laythe_env::io::Io;
 use laythe_vm::vm::{ExecuteResult, Vm};
-use std::{path::PathBuf, rc::Rc};
+use std::{path::PathBuf, sync::Arc};
 use stdio_wasm::{IoStdioWasmConsole, IoStdioWasmJsFunction};
 use time_wasm::IoTimeWasm;
 use wasm_bindgen::prelude::*;
@@ -25,8 +25,8 @@ impl VmWasm {
   pub fn new() -> Self {
     set_panic_hook();
     let wasm_io = Io::default()
-      .with_time(Rc::new(IoTimeWasm::default()))
-      .with_stdio(Rc::new(IoStdioWasmConsole()));
+      .with_time(Arc::new(IoTimeWasm::default()))
+      .with_stdio(Arc::new(IoStdioWasmConsole()));
 
     Self(Vm::new(wasm_io))
   }
@@ -34,8 +34,10 @@ impl VmWasm {
   pub fn with_stdout(stdout: &Function) -> Self {
     set_panic_hook();
     let wasm_io = Io::default()
-      .with_time(Rc::new(IoTimeWasm::default()))
-      .with_stdio(Rc::new(IoStdioWasmJsFunction::new(Rc::new(stdout.clone()))));
+      .with_time(Arc::new(IoTimeWasm::default()))
+      .with_stdio(Arc::new(IoStdioWasmJsFunction::new(Arc::new(
+        stdout.clone(),
+      ))));
 
     Self(Vm::new(wasm_io))
   }
