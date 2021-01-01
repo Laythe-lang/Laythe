@@ -4,12 +4,15 @@ use std::{
   cmp::Ordering,
   fmt,
   hash::{Hash, Hasher},
-  io,
+  io, mem,
   ops::{Deref, DerefMut},
   ptr::{self, NonNull},
   sync::atomic::{self, AtomicBool},
 };
 
+/// A wrapper struct to print debug information to
+/// a provided depth. This is to handled cycles in
+/// managed Gc pointers
 pub struct DebugWrap<'a, T>(pub &'a T, pub usize);
 
 impl<'a, T: DebugHeap> fmt::Debug for DebugWrap<'a, T> {
@@ -18,6 +21,9 @@ impl<'a, T: DebugHeap> fmt::Debug for DebugWrap<'a, T> {
   }
 }
 
+/// A wrapper struct to print debug information to
+/// a provided depth. This is to handled cycles in
+/// managed Gc pointers
 pub struct DebugWrapDyn<'a>(pub &'a dyn DebugHeap, pub usize);
 
 impl<'a> fmt::Debug for DebugWrapDyn<'a> {
@@ -66,16 +72,33 @@ pub trait Manage: Trace + DebugHeap {
 /// The header of an allocation indicate meta data about the object
 #[derive(Debug, Default)]
 pub struct Header {
+  // has this allocation been marked by the garbage collector
   marked: AtomicBool,
 }
 
 #[derive(Debug)]
+/// An allocation onto the Laythe Heap. This struct
+/// attaches a header to all objects the GC uses to
+/// manage the object
 pub struct Allocation<T: 'static + Trace + ?Sized> {
+  // The object header
   header: Header,
+
+  // The underlying date being managed
   data: T,
 }
 
 impl<T: 'static + Manage> Allocation<T> {
+  /// Create a new allocation from a struct that is Manage
+  ///
+  /// # Examples
+  /// ```
+  /// use laythe_env::Managed::Allocation;
+  /// use smol_str::SmolStr;
+  ///
+  /// let s = SmolStr::from("example");
+  /// let alloc = Allocation::new(s);
+  /// ```
   pub fn new(data: T) -> Self {
     Self {
       data,
@@ -85,26 +108,32 @@ impl<T: 'static + Manage> Allocation<T> {
     }
   }
 
+  /// What is the size of this allocation in bytes
   pub fn size(&self) -> usize {
-    self.data.size()
+    self.data.size() + mem::size_of::<Header>()
   }
 
+  /// Get a trait object is can be logged for the heap
   pub fn as_debug(&self) -> &dyn DebugHeap {
     self.data.as_debug()
   }
 }
 
 impl Allocation<dyn Manage> {
+  /// What is the size of this allocation in bytes
   pub fn size(&self) -> usize {
-    self.data.size()
+    self.data.size() + mem::size_of::<Header>()
   }
 
+  /// Get a trait object is can be logged for the heap
   pub fn as_debug(&self) -> &dyn DebugHeap {
     self.data.as_debug()
   }
 }
 
 impl<T: 'static + Manage + ?Sized> Allocation<T> {
+  /// Mark this allocation as visited, returning
+  /// the existing marked status
   pub fn mark(&self) -> bool {
     self
       .header
@@ -112,6 +141,8 @@ impl<T: 'static + Manage + ?Sized> Allocation<T> {
       .compare_and_swap(false, true, atomic::Ordering::Release)
   }
 
+  /// Unmark this allocation as visited, returning 
+  /// the existing marked status
   pub fn unmark(&self) -> bool {
     self
       .header
@@ -119,6 +150,7 @@ impl<T: 'static + Manage + ?Sized> Allocation<T> {
       .compare_and_swap(true, false, atomic::Ordering::Release)
   }
 
+  /// Is this allocation marked
   pub fn marked(&self) -> bool {
     self.header.marked.load(atomic::Ordering::Acquire)
   }
@@ -144,20 +176,27 @@ impl<T: 'static + Manage + ?Sized> Gc<T> {
     &(*self.ptr.as_ptr()).data
   }
 
+  /// Return the underlying pointer as a usize. This is
+  /// used by the nan boxing functionality
   pub fn to_usize(&self) -> usize {
     self.ptr.as_ptr() as *const () as usize
   }
 
-  pub fn obj(&self) -> &Allocation<T> {
+  /// Return an immutable reference to the pointed
+  /// to allocation.
+  pub(crate) fn obj(&self) -> &Allocation<T> {
     unsafe { self.ptr.as_ref() }
   }
 
-  pub fn obj_mut(&mut self) -> &mut Allocation<T> {
+  /// Return a mutable reference to the pointed
+  /// to allocation.
+  fn obj_mut(&mut self) -> &mut Allocation<T> {
     unsafe { self.ptr.as_mut() }
   }
 }
 
 impl<T: 'static + Manage> Gc<T> {
+  /// Create a new Gc pointer that is dangling but well-aligned
   pub fn dangling() -> Gc<T> {
     Self {
       ptr: NonNull::dangling(),
