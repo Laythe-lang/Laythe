@@ -1,13 +1,13 @@
 use io::Write;
 pub use laythe_macro::*;
 use std::{
-  cell::Cell,
   cmp::Ordering,
   fmt,
   hash::{Hash, Hasher},
   io,
   ops::{Deref, DerefMut},
   ptr::{self, NonNull},
+  sync::atomic::{self, AtomicBool},
 };
 
 pub struct DebugWrap<'a, T>(pub &'a T, pub usize);
@@ -66,7 +66,7 @@ pub trait Manage: Trace + DebugHeap {
 /// The header of an allocation indicate meta data about the object
 #[derive(Debug, Default)]
 pub struct Header {
-  marked: Cell<bool>,
+  marked: AtomicBool,
 }
 
 #[derive(Debug)]
@@ -80,7 +80,7 @@ impl<T: 'static + Manage> Allocation<T> {
     Self {
       data,
       header: Header {
-        marked: Cell::new(false),
+        marked: AtomicBool::new(false),
       },
     }
   }
@@ -106,15 +106,21 @@ impl Allocation<dyn Manage> {
 
 impl<T: 'static + Manage + ?Sized> Allocation<T> {
   pub fn mark(&self) -> bool {
-    self.header.marked.replace(true)
+    self
+      .header
+      .marked
+      .compare_and_swap(false, true, atomic::Ordering::Release)
   }
 
   pub fn unmark(&self) -> bool {
-    self.header.marked.replace(false)
+    self
+      .header
+      .marked
+      .compare_and_swap(true, false, atomic::Ordering::Release)
   }
 
   pub fn marked(&self) -> bool {
-    self.header.marked.get()
+    self.header.marked.load(atomic::Ordering::Acquire)
   }
 }
 
@@ -123,7 +129,6 @@ impl<T: 'static + Manage + ?Sized> DebugHeap for Allocation<T> {
     self.data.fmt_heap(f, depth)
   }
 }
-
 pub struct Gc<T: 'static + Manage + ?Sized> {
   ptr: NonNull<Allocation<T>>,
 }
@@ -266,12 +271,14 @@ impl<T: 'static + Manage + ?Sized> Clone for Gc<T> {
 impl<T: 'static + Manage> Deref for Gc<T> {
   type Target = T;
 
+  #[inline]
   fn deref(&self) -> &T {
     &self.obj().data
   }
 }
 
 impl<T: 'static + Manage> DerefMut for Gc<T> {
+  #[inline]
   fn deref_mut(&mut self) -> &mut T {
     &mut self.obj_mut().data
   }
@@ -297,12 +304,14 @@ impl<T: 'static + Manage> Hash for Gc<T> {
 }
 
 impl<T: 'static + Manage> PartialOrd for Gc<T> {
+  #[inline]
   fn partial_cmp(&self, other: &Gc<T>) -> Option<Ordering> {
     Some(self.cmp(other))
   }
 }
 
 impl<T: 'static + Manage> Ord for Gc<T> {
+  #[inline]
   fn cmp(&self, other: &Gc<T>) -> Ordering {
     self.ptr.cmp(&other.ptr)
   }
