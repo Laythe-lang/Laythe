@@ -1685,7 +1685,7 @@ mod test {
     },
   };
   use module::Module;
-  use std::{path::PathBuf, rc::Rc};
+  use std::{path::PathBuf, sync::Arc};
 
   enum ByteCodeTest {
     Code(AlignedByteCode),
@@ -1693,9 +1693,9 @@ mod test {
   }
 
   fn test_compile<'a>(src: &str, context: &NoContext) -> Gc<Fun> {
-    let mut stdio_container = Rc::new(StdioTestContainer::default());
+    let mut stdio_container = Arc::new(StdioTestContainer::default());
 
-    let stdio = Rc::new(IoStdioTest::new(&mut stdio_container));
+    let stdio = Arc::new(IoStdioTest::new(&mut stdio_container));
     let io = Io::default().with_stdio(stdio);
 
     let ast = Parser::new(io.stdio(), src).parse();

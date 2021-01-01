@@ -68,7 +68,7 @@ impl DepManager {
 
   /// Import a module using the given path
   pub fn import(
-    &mut self,
+    &self,
     hooks: &mut Hooks,
     module: Gc<Module>,
     path: Gc<SmolStr>,

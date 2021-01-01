@@ -123,7 +123,7 @@ mod test {
     use super::*;
     use crate::support::{test_error_class, MockedContext};
     use laythe_env::stdio::support::StdioTestContainer;
-    use std::{rc::Rc, str};
+    use std::{str, sync::Arc};
 
     #[test]
     fn new() {
@@ -143,7 +143,7 @@ mod test {
 
     #[test]
     fn call() {
-      let stdio_container = Rc::new(StdioTestContainer::default());
+      let stdio_container = Arc::new(StdioTestContainer::default());
 
       let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
@@ -167,7 +167,7 @@ mod test {
     use super::*;
     use crate::support::{test_error_class, MockedContext};
     use laythe_env::stdio::support::StdioTestContainer;
-    use std::{rc::Rc, str};
+    use std::{str, sync::Arc};
 
     #[test]
     fn new() {
@@ -187,7 +187,7 @@ mod test {
 
     #[test]
     fn call() {
-      let stdio_container = Rc::new(StdioTestContainer::default());
+      let stdio_container = Arc::new(StdioTestContainer::default());
 
       let mut context = MockedContext::new_with_io(&stdio_container);
       let mut hooks = Hooks::new(&mut context);

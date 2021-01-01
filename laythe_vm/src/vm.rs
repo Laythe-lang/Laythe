@@ -170,8 +170,7 @@ impl Vm {
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let dep_manager = DepManager::new(io.clone(), builtin, hooks.manage(cwd));
-    let mut dep_manager = hooks.manage(dep_manager);
+    let mut dep_manager = hooks.manage(DepManager::new(io.clone(), builtin, hooks.manage(cwd)));
 
     dep_manager.add_package(&hooks, std_lib);
 
@@ -1043,8 +1042,8 @@ impl Vm {
     let index_path = self.read_short();
     let path = self.read_string(index_path);
 
-    let mut dep_manager = self.dep_manager;
     let current_module = self.current_fun.module;
+    let dep_manager = self.dep_manager;
 
     match dep_manager.import(&mut Hooks::new(self), current_module, path) {
       LyResult::Ok(module) => {

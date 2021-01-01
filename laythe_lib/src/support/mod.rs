@@ -128,6 +128,10 @@ use smol_str::SmolStr;
 
 #[cfg(test)]
 mod test {
+  use crate::{
+    builtin::{builtin_from_module, BuiltIn},
+    create_std_lib, native, GLOBAL_PATH,
+  };
   use laythe_core::{
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
     iterator::LyIter,
@@ -151,13 +155,7 @@ mod test {
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
   use smol_str::SmolStr;
-  use std::{cell::RefCell, io::Write};
-  use std::{path::PathBuf, rc::Rc};
-
-  use crate::{
-    builtin::{builtin_from_module, BuiltIn},
-    create_std_lib, native, GLOBAL_PATH,
-  };
+  use std::{cell::RefCell, io::Write, path::PathBuf, sync::Arc};
 
   use super::to_dyn_native;
 
@@ -217,12 +215,12 @@ mod test {
       context
     }
 
-    pub fn new_with_io(stdio_container: &Rc<StdioTestContainer>) -> Self {
+    pub fn new_with_io(stdio_container: &Arc<StdioTestContainer>) -> Self {
       Self {
         gc: RefCell::default(),
         no_gc: NoGc(),
         responses: Vec::from(vec![]),
-        io: Io::default().with_stdio(Rc::new(IoStdioTest::new(stdio_container))),
+        io: Io::default().with_stdio(Arc::new(IoStdioTest::new(stdio_container))),
         builtin: None,
         response_count: 0,
       }

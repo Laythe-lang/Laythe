@@ -31,7 +31,7 @@ impl Env {
   }
 }
 
-pub trait EnvImpl {
+pub trait EnvImpl: Send + Sync {
   fn current_dir(&self) -> io::Result<PathBuf>;
   fn args(&self) -> Vec<String>;
 }

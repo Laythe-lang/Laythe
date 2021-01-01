@@ -42,7 +42,7 @@ impl Stdio {
   }
 }
 
-pub trait StdioImpl {
+pub trait StdioImpl: Send + Sync {
   fn stdout(&mut self) -> &mut dyn Write;
   fn stderr(&mut self) -> &mut dyn Write;
   fn stdin(&mut self) -> &mut dyn Read;
@@ -112,26 +112,29 @@ impl Read for MockRead {
 
 pub mod support {
   use super::*;
-  use std::io::{Cursor, Write};
-  use std::{rc::Rc, str};
+  use std::{
+    io::{Cursor, Write},
+    str,
+    sync::Arc,
+  };
 
   #[derive(Debug)]
   pub struct IoStdioTest {
-    stdio_container: Rc<StdioTestContainer>,
+    stdio_container: Arc<StdioTestContainer>,
   }
 
   impl Default for IoStdioTest {
     fn default() -> Self {
       Self {
-        stdio_container: Rc::new(StdioTestContainer::default()),
+        stdio_container: Arc::new(StdioTestContainer::default()),
       }
     }
   }
 
   impl IoStdioTest {
-    pub fn new(stdio_container: &Rc<StdioTestContainer>) -> Self {
+    pub fn new(stdio_container: &Arc<StdioTestContainer>) -> Self {
       Self {
-        stdio_container: Rc::clone(stdio_container),
+        stdio_container: Arc::clone(stdio_container),
       }
     }
   }
@@ -208,6 +211,8 @@ pub mod support {
     }
   }
 
+  /// Note this implementation is definitely not actually thread safe and shouldn't
+  /// be used outside the context of a single thread test.
   #[derive(Debug, Clone)]
   pub struct StdioTest {
     pub stdout: *mut Vec<u8>,
@@ -241,4 +246,7 @@ pub mod support {
       }
     }
   }
+
+  unsafe impl Send for StdioTest {}
+  unsafe impl Sync for StdioTest {}
 }
