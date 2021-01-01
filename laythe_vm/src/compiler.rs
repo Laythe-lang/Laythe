@@ -16,7 +16,7 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{DebugHeap, Gc, Manage, RootTrace, Trace},
+  managed::{DebugHeap, Gc, Manage, Trace, TraceRoot},
   memory::Allocator,
 };
 use object::{Fun, TryBlock};
@@ -49,7 +49,7 @@ pub struct Local {
   is_captured: bool,
 }
 
-#[derive(Debug, Clone, Trace)]
+#[derive(Debug, Clone)]
 pub struct ClassInfo {
   fun_kind: Option<FunKind>,
   fields: Vec<SmolStr>,
@@ -76,7 +76,17 @@ impl Manage for ClassInfo {
   }
 }
 
-#[derive(Debug, Clone, Trace)]
+impl Trace for ClassInfo {
+  fn trace(&self) {
+    self.fields.iter().for_each(|field| field.trace());
+  }
+
+  fn trace_debug(&self, log: &mut dyn Write) {
+    self.fields.iter().for_each(|field| field.trace_debug(log));
+  }
+}
+
+#[derive(Debug, Clone)]
 pub struct LoopInfo {
   scope_depth: i16,
   start: usize,
@@ -103,12 +113,14 @@ impl Manage for LoopInfo {
   }
 }
 
+impl Trace for LoopInfo {}
+
 pub struct Compiler<'a> {
   /// The environments io interface
   io: &'a Io,
 
   /// The roots from the surround context
-  root_trace: &'a dyn RootTrace,
+  root_trace: &'a dyn TraceRoot,
 
   /// The current function
   fun: Gc<Fun>,
@@ -179,7 +191,7 @@ impl<'a> Compiler<'a> {
   /// ```
   pub fn new(
     module: Gc<module::Module>,
-    root_trace: &'a dyn RootTrace,
+    root_trace: &'a dyn TraceRoot,
     io: &'a Io,
     mut gc: Allocator,
   ) -> Self {
@@ -1617,8 +1629,8 @@ impl<'a> GcContext for Compiler<'a> {
   }
 }
 
-impl<'a> RootTrace for Compiler<'a> {
-  fn trace(&self) -> bool {
+impl<'a> TraceRoot for Compiler<'a> {
+  fn trace(&self) {
     match self.enclosing {
       Some(enclosing) => unsafe { enclosing.as_ref().trace() },
       None => self.root_trace.trace(),
@@ -1631,11 +1643,9 @@ impl<'a> RootTrace for Compiler<'a> {
     self.constants.keys().for_each(|key| {
       key.trace();
     });
-
-    true
   }
 
-  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) {
     match self.enclosing {
       Some(enclosing) => unsafe { enclosing.as_ref().trace_debug(log) },
       None => self.root_trace.trace_debug(log),
@@ -1650,7 +1660,9 @@ impl<'a> RootTrace for Compiler<'a> {
     self.constants.keys().for_each(|key| {
       key.trace_debug(log);
     });
+  }
 
+  fn can_collect(&self) -> bool {
     true
   }
 }

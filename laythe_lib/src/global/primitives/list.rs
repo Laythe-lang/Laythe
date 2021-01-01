@@ -199,7 +199,7 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitR
   Ok(())
 }
 
-#[derive(Debug, Trace)]
+#[derive(Debug)]
 struct ListStr {
   meta: NativeMeta,
   method_name: Gc<SmolStr>,
@@ -213,6 +213,16 @@ impl ListStr {
       method_name,
       error,
     }
+  }
+}
+
+impl Trace for ListStr {
+  fn trace(&self) {
+    self.method_name.trace();
+  }
+
+  fn trace_debug(&self, log: &mut dyn Write) {
+    self.method_name.trace_debug(log);
   }
 }
 

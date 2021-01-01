@@ -9,7 +9,7 @@ use crate::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Gc, Manage, RootTrace},
+  managed::{Gc, Manage, TraceRoot},
   memory::Allocator,
 };
 use smol_str::SmolStr;
@@ -239,7 +239,7 @@ pub trait ValueContext {
 }
 
 /// A set of functionality required by the hooks objects in order to operate
-pub trait GcContext: RootTrace {
+pub trait GcContext: TraceRoot {
   /// Get a reference to the context garbage collector
   fn gc(&self) -> RefMut<'_, Allocator>;
 }
@@ -263,12 +263,12 @@ impl NoContext {
   }
 }
 
-impl RootTrace for NoContext {
-  fn trace(&self) -> bool {
-    false
-  }
+impl TraceRoot for NoContext {
+  fn trace(&self) {}
 
-  fn trace_debug(&self, _stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, _stdout: &mut dyn Write) {}
+
+  fn can_collect(&self) -> bool {
     false
   }
 }

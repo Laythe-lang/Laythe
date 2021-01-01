@@ -150,7 +150,7 @@ mod test {
   };
   use laythe_env::{
     io::Io,
-    managed::{Gc, RootTrace, Trace},
+    managed::{Gc, Trace, TraceRoot},
     memory::{Allocator, NoGc},
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
@@ -321,13 +321,17 @@ mod test {
     }
   }
 
-  impl RootTrace for MockedContext {
-    fn trace(&self) -> bool {
+  impl TraceRoot for MockedContext {
+    fn trace(&self) {
       self.no_gc.trace()
     }
 
-    fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-      self.no_gc.trace_debug(stdout)
+    fn trace_debug(&self, log: &mut dyn Write) {
+      self.no_gc.trace_debug(log)
+    }
+
+    fn can_collect(&self) -> bool {
+      true
     }
   }
 
@@ -335,7 +339,7 @@ mod test {
     Box::new(Allocator::default())
   }
 
-  #[derive(Trace, Debug)]
+  #[derive(Debug)]
   pub struct TestIterator {
     current: usize,
   }
@@ -372,6 +376,8 @@ mod test {
       8
     }
   }
+
+  impl Trace for TestIterator {}
 
   pub fn test_iter() -> Box<dyn LyIter> {
     Box::new(TestIterator::new())

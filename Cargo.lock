@@ -337,7 +337,6 @@ version = "0.1.0"
 dependencies = [
  "fnv",
  "hashbrown",
- "laythe_macro",
  "rayon",
  "smol_str",
 ]
@@ -365,15 +364,6 @@ dependencies = [
  "rand",
  "regex",
  "smol_str",
-]
-
-[[package]]
-name = "laythe_macro"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]

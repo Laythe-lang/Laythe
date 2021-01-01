@@ -1,4 +1,4 @@
-use crate::managed::{Allocation, Gc, Manage, RootTrace, Trace};
+use crate::managed::{Allocation, Gc, Manage, Trace, TraceRoot};
 use crate::stdio::Stdio;
 use hashbrown::HashMap;
 use smol_str::SmolStr;
@@ -82,7 +82,7 @@ impl<'a> Allocator {
   ///
   /// assert_eq!(&*string, "example");
   /// ```
-  pub fn manage<T: 'static + Manage, C: RootTrace + ?Sized>(
+  pub fn manage<T: 'static + Manage, C: TraceRoot + ?Sized>(
     &mut self,
     data: T,
     context: &C,
@@ -104,7 +104,7 @@ impl<'a> Allocator {
   ///
   /// assert_eq!(&*str, "hi!");
   /// ```
-  pub fn manage_str<S: Into<String> + AsRef<str>, C: RootTrace + ?Sized>(
+  pub fn manage_str<S: Into<String> + AsRef<str>, C: TraceRoot + ?Sized>(
     &mut self,
     src: S,
     context: &C,
@@ -122,7 +122,7 @@ impl<'a> Allocator {
 
   /// track events that may grow the size of the heap. If
   /// a heap grows beyond the current threshold will trigger a gc
-  pub fn grow<T: 'static + Manage, R, F: FnOnce(&mut T) -> R, C: RootTrace + ?Sized>(
+  pub fn grow<T: 'static + Manage, R, F: FnOnce(&mut T) -> R, C: TraceRoot + ?Sized>(
     &mut self,
     managed: &mut T,
     context: &C,
@@ -179,7 +179,7 @@ impl<'a> Allocator {
   /// Allocate `data` on the gc's heap. If conditions are met
   /// a garbage collection can be triggered. When triggered will use the
   /// context to determine the active roots.
-  fn allocate<T: 'static + Manage, C: RootTrace + ?Sized>(
+  fn allocate<T: 'static + Manage, C: TraceRoot + ?Sized>(
     &mut self,
     data: T,
     context: &C,
@@ -217,7 +217,7 @@ impl<'a> Allocator {
 
   /// Collect garbage present in the heap for unreachable objects. Use the provided context
   /// to mark a set of initial roots into the vm.
-  fn collect_garbage<C: RootTrace + ?Sized>(&mut self, context: &C) {
+  fn collect_garbage<C: TraceRoot + ?Sized>(&mut self, context: &C) {
     #[cfg(feature = "debug_gc")]
     let before = self.bytes_allocated;
     self.gc_count += 1;
@@ -229,7 +229,8 @@ impl<'a> Allocator {
       writeln!(stdout, "-- gc begin {} --", self.gc_count).expect("could not write to stdout");
     }
 
-    if self.trace_root(context) {
+    if context.can_collect() {
+      self.trace_root(context);
       self.temp_roots.iter().for_each(|root| {
         self.trace(&**root);
       });
@@ -267,7 +268,7 @@ impl<'a> Allocator {
 
   /// wrapper around a roots trace method to select either normal
   /// or debug trace at compile time.
-  fn trace_root<C: RootTrace + ?Sized>(&self, context: &C) -> bool {
+  fn trace_root<C: TraceRoot + ?Sized>(&self, context: &C) {
     #[cfg(not(feature = "debug_gc"))]
     return context.trace();
 
@@ -427,12 +428,12 @@ impl<'a> Default for Allocator {
 }
 pub struct NoGc();
 
-impl RootTrace for NoGc {
-  fn trace(&self) -> bool {
-    false
-  }
+impl TraceRoot for NoGc {
+  fn trace(&self) {}
 
-  fn trace_debug(&self, _: &mut dyn Write) -> bool {
+  fn trace_debug(&self, _: &mut dyn Write) {}
+
+  fn can_collect(&self) -> bool {
     false
   }
 }
@@ -445,7 +446,7 @@ mod test {
 
   #[test]
   fn dyn_manage() {
-    let dyn_trace: Box<dyn RootTrace> = Box::new(NoGc());
+    let dyn_trace: Box<dyn TraceRoot> = Box::new(NoGc());
     let mut gc = Allocator::default();
 
     let dyn_manged_str = gc.manage(SmolStr::from("managed"), &*dyn_trace);

@@ -22,7 +22,7 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Gc, RootTrace, Trace},
+  managed::{Gc, Trace, TraceRoot},
   memory::{Allocator, NO_GC},
 };
 use laythe_lib::{builtin_from_module, create_std_lib, GLOBAL, STD};
@@ -2020,8 +2020,8 @@ impl From<VmDependencies> for Vm {
   }
 }
 
-impl RootTrace for Vm {
-  fn trace(&self) -> bool {
+impl TraceRoot for Vm {
+  fn trace(&self) {
     self.script.map(|script| script.trace());
 
     unsafe {
@@ -2046,11 +2046,9 @@ impl RootTrace for Vm {
     self.native_fun_stub.trace();
     self.global.trace();
     self.current_error.map(|error| error.trace());
-
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.script.map(|script| script.trace_debug(stdout));
 
     unsafe {
@@ -2075,7 +2073,9 @@ impl RootTrace for Vm {
     self.native_fun_stub.trace_debug(stdout);
     self.global.trace_debug(stdout);
     self.current_error.map(|error| error.trace_debug(stdout));
+  }
 
+  fn can_collect(&self) -> bool {
     true
   }
 }
