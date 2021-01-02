@@ -55,7 +55,7 @@ impl<T: 'static + Manage> Gc<T> {
   }
 }
 
-impl<T: 'static + Manage> Trace for Gc<T> {
+impl<T: 'static + Manage + Send> Trace for Gc<T> {
   fn trace(&self) {
     if self.obj().mark() {
       return;
@@ -102,48 +102,50 @@ impl<T: 'static + Manage> Manage for Gc<T> {
   }
 }
 
-impl Trace for Gc<dyn Manage> {
-  fn trace(&self) {
-    if self.obj().mark() {
-      return;
-    }
+unsafe impl<T: 'static + Manage> Send for Gc<T> {}
 
-    self.obj().data.trace();
-  }
+// impl Trace for Gc<dyn Manage> {
+//   fn trace(&self) {
+//     if self.obj().mark() {
+//       return;
+//     }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) {
-    if self.obj().mark() {
-      return;
-    }
+//     self.obj().data.trace();
+//   }
 
-    stdout
-      .write_fmt(format_args!(
-        "{:p} mark {:?}\n",
-        &*self.obj(),
-        DebugWrap(self, 1)
-      ))
-      .expect("unable to write to stdout");
-    stdout.flush().expect("unable to flush stdout");
+//   fn trace_debug(&self, stdout: &mut dyn Write) {
+//     if self.obj().mark() {
+//       return;
+//     }
 
-    self.obj().data.trace_debug(stdout);
-  }
-}
+//     stdout
+//       .write_fmt(format_args!(
+//         "{:p} mark {:?}\n",
+//         &*self.obj(),
+//         DebugWrap(self, 1)
+//       ))
+//       .expect("unable to write to stdout");
+//     stdout.flush().expect("unable to flush stdout");
 
-impl DebugHeap for Gc<dyn Manage> {
-  fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
-    f.write_str("*()")
-  }
-}
+//     self.obj().data.trace_debug(stdout);
+//   }
+// }
 
-impl Manage for Gc<dyn Manage> {
-  fn size(&self) -> usize {
-    self.obj().size()
-  }
+// impl DebugHeap for Gc<dyn Manage> {
+//   fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
+//     f.write_str("*()")
+//   }
+// }
 
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
-  }
-}
+// impl Manage for Gc<dyn Manage> {
+//   fn size(&self) -> usize {
+//     self.obj().size()
+//   }
+
+//   fn as_debug(&self) -> &dyn DebugHeap {
+//     self
+//   }
+// }
 
 impl<T: 'static + Manage + ?Sized> From<NonNull<Allocation<T>>> for Gc<T> {
   fn from(ptr: NonNull<Allocation<T>>) -> Self {

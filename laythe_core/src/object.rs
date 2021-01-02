@@ -132,6 +132,8 @@ impl Manage for Upvalue {
   }
 }
 
+unsafe impl Send for Upvalue {}
+
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FunKind {
   Fun,

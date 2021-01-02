@@ -29,7 +29,7 @@ impl<T: 'static + Manage> Allocation<T> {
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::Managed::Allocation;
+  /// use laythe_env::managed::Allocation;
   /// use smol_str::SmolStr;
   ///
   /// let s = SmolStr::from("example");

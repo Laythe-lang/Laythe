@@ -30,7 +30,7 @@ pub trait DebugHeap {
 }
 
 /// An entity that is traceable by the garbage collector
-pub trait Trace {
+pub trait Trace: Send {
   /// Mark all objects that are reachable from this object
   fn trace(&self) {}
 

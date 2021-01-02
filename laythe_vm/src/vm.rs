@@ -2,12 +2,11 @@ use crate::{
   call_frame::CallFrame,
   compiler::{Compiler, CompilerResult},
   constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
-  dep_manager::DepManager,
   parser::Parser,
 };
 use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
-  constants::{PLACEHOLDER_NAME, SCRIPT},
+  constants::{IMPORT_SEPARATOR, PLACEHOLDER_NAME, SCRIPT},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   module::Module,
   native::{Native, NativeMeta},
@@ -25,7 +24,7 @@ use laythe_env::{
   managed::{Gc, Trace, TraceRoot},
   memory::{Allocator, NO_GC},
 };
-use laythe_lib::{builtin_from_module, create_std_lib, GLOBAL, STD};
+use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn, GLOBAL, STD};
 use laythe_native::io::io_native;
 use smol_str::SmolStr;
 use std::convert::TryInto;
@@ -101,8 +100,17 @@ pub struct Vm {
   /// The environments io access
   io: Io,
 
-  /// an object to manage the current dependencies
-  dep_manager: Gc<DepManager>,
+  /// The root directory
+  root_dir: Gc<PathBuf>,
+
+  /// The builtin class the vm need reference to
+  builtin: BuiltIn,
+
+  /// A collection of packages that have already been loaded
+  packages: Map<Gc<SmolStr>, Gc<Package>>,
+
+  /// A cache for full filepath to individual modules
+  cache: Map<Gc<SmolStr>, Gc<Module>>,
 
   /// The global module
   global: Gc<Module>,
@@ -146,10 +154,11 @@ impl Vm {
     let no_gc_context = NoContext::new(gc);
     let hooks = GcHooks::new(&no_gc_context);
 
-    let cwd = io
-      .env()
-      .current_dir()
-      .expect("Could not obtain the current working directory.");
+    let root_dir = hooks.manage(
+      io.env()
+        .current_dir()
+        .expect("Could not obtain the current working directory."),
+    );
 
     let std_lib = create_std_lib(&hooks).expect("Standard library creation failed");
     let global = std_lib
@@ -170,10 +179,6 @@ impl Vm {
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let mut dep_manager = hooks.manage(DepManager::new(io.clone(), builtin, hooks.manage(cwd)));
-
-    dep_manager.add_package(&hooks, std_lib);
-
     let current_frame = &mut frames[0];
     let current_fun = current_frame.closure.fun;
     let stack_top = &mut stack[1] as *mut Value;
@@ -185,12 +190,15 @@ impl Vm {
 
     let gc = RefCell::new(no_gc_context.done());
 
-    Vm {
+    let mut vm = Vm {
       io,
       stack,
       frames,
       gc,
-      dep_manager,
+      builtin,
+      root_dir,
+      packages: Map::default(),
+      cache: Map::default(),
       global,
       frame_count: 1,
       script: None,
@@ -202,7 +210,10 @@ impl Vm {
       ip,
       native_fun_stub,
       open_upvalues: Vec::with_capacity(100),
-    }
+    };
+    vm.add_package(std_lib);
+
+    vm
   }
 
   /// The current version of the virtual machine
@@ -215,7 +226,7 @@ impl Vm {
     let mut stdio = self.io.stdio();
 
     let main_module = self
-      .main_module(self.dep_manager.src_dir.join(PathBuf::from(REPL_MODULE)))
+      .main_module(self.root_dir.join(PathBuf::from(REPL_MODULE)))
       .expect("Could not retrieve main module");
 
     loop {
@@ -242,7 +253,7 @@ impl Vm {
         let mut directory = module_path.clone();
         directory.pop();
 
-        self.dep_manager.src_dir = self.gc.borrow_mut().manage(directory, &NO_GC);
+        self.root_dir = self.gc.borrow_mut().manage(directory, &NO_GC);
         let main_module = match self.main_module(module_path) {
           Ok(module) => module,
           Err(err) => {
@@ -258,6 +269,11 @@ impl Vm {
         ExecuteResult::RuntimeError
       }
     }
+  }
+
+  /// Add a package to the vm
+  pub fn add_package(&mut self, package: Gc<Package>) {
+    self.packages.insert(package.name(), package);
   }
 
   /// Interpret the provided laythe script returning the execution result
@@ -369,10 +385,7 @@ impl Vm {
 
   /// Get a method for this this value with a given method name
   fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
-    let class = self
-      .dep_manager
-      .primitive_classes()
-      .for_value(this, this.kind());
+    let class = self.builtin.primitives.for_value(this, this.kind());
 
     match class.get_method(&method_name) {
       Some(method) => Call::Ok(method),
@@ -382,10 +395,7 @@ impl Vm {
           self,
         ));
 
-        let result = self.run_fun(
-          val!(self.dep_manager.error_classes().import),
-          &[error_message],
-        );
+        let result = self.run_fun(val!(self.builtin.errors.import), &[error_message]);
 
         self.to_call_result(result)
       }
@@ -394,10 +404,7 @@ impl Vm {
 
   /// Get the class for this value
   fn get_class(&mut self, this: Value) -> Value {
-    val!(self
-      .dep_manager
-      .primitive_classes()
-      .for_value(this, this.kind()))
+    val!(self.builtin.primitives.for_value(this, this.kind()))
   }
 
   /// Main virtual machine execution loop. This will run the until the program interrupts
@@ -483,8 +490,8 @@ impl Vm {
         Signal::Ok => (),
         Signal::RuntimeError => match self.current_error {
           Some(error) => {
-            if let Some(signal) = self.stack_unwind(error) {
-              return signal;
+            if let Some(execute_result) = self.stack_unwind(error) {
+              return execute_result;
             }
           }
           None => self.internal_error("Runtime error was not set."),
@@ -769,10 +776,7 @@ impl Vm {
       }
     }
 
-    let class = self
-      .dep_manager
-      .primitive_classes()
-      .for_value(receiver, receiver.kind());
+    let class = self.builtin.primitives.for_value(receiver, receiver.kind());
 
     self.invoke_from_class(class, method_name, arg_count)
   }
@@ -802,10 +806,7 @@ impl Vm {
     let super_class = self.peek(1);
 
     if !super_class.is_class() {
-      return self.runtime_error(
-        self.dep_manager.error_classes().runtime,
-        "Superclass must be a class.",
-      );
+      return self.runtime_error(self.builtin.errors.runtime, "Superclass must be a class.");
     }
 
     let hooks = GcHooks::new(self);
@@ -864,10 +865,7 @@ impl Vm {
   fn op_set_index(&mut self) -> Signal {
     let receiver = self.peek(2_isize);
 
-    let class = self
-      .dep_manager
-      .primitive_classes()
-      .for_value(receiver, receiver.kind());
+    let class = self.builtin.primitives.for_value(receiver, receiver.kind());
 
     match class.index_set {
       Some(index_set) => {
@@ -878,7 +876,7 @@ impl Vm {
         signal
       }
       None => self.runtime_error(
-        self.dep_manager.error_classes().method_not_found,
+        self.builtin.errors.method_not_found,
         &format!("No method []= on class {}.", class.name),
       ),
     }
@@ -896,7 +894,7 @@ impl Vm {
     {
       current_module.remove_symbol(&GcHooks::new(self), string);
       return self.runtime_error(
-        self.dep_manager.error_classes().property,
+        self.builtin.errors.property,
         &format!("Undefined variable {}", string.as_str()),
       );
     }
@@ -932,7 +930,7 @@ impl Vm {
     }
 
     self.runtime_error(
-      self.dep_manager.error_classes().runtime,
+      self.builtin.errors.runtime,
       "Only instances have settable fields.",
     )
   }
@@ -960,15 +958,12 @@ impl Vm {
   fn op_get_index(&mut self) -> Signal {
     let receiver = self.peek(1_isize);
 
-    let class = self
-      .dep_manager
-      .primitive_classes()
-      .for_value(receiver, receiver.kind());
+    let class = self.builtin.primitives.for_value(receiver, receiver.kind());
 
     match class.index_get {
       Some(index_get) => self.resolve_call(index_get, 1),
       None => self.runtime_error(
-        self.dep_manager.error_classes().method_not_found,
+        self.builtin.errors.method_not_found,
         &format!("No method [] on class {}.", class.name),
       ),
     }
@@ -985,7 +980,7 @@ impl Vm {
         Signal::Ok
       }
       None => self.runtime_error(
-        self.dep_manager.error_classes().runtime,
+        self.builtin.errors.runtime,
         &format!("Undefined variable {}", string.as_str()),
       ),
     }
@@ -1031,10 +1026,7 @@ impl Vm {
       }
     }
 
-    let class = self
-      .dep_manager
-      .primitive_classes()
-      .for_value(value, value.kind());
+    let class = self.builtin.primitives.for_value(value, value.kind());
     self.bind_method(class, name)
   }
 
@@ -1042,16 +1034,79 @@ impl Vm {
     let index_path = self.read_short();
     let path = self.read_string(index_path);
 
-    let current_module = self.current_fun.module;
-    let dep_manager = self.dep_manager;
+    let module = self.current_fun.module;
 
-    match dep_manager.import(&mut Hooks::new(self), current_module, path) {
-      LyResult::Ok(module) => {
-        self.push(val!(module.import(&GcHooks::new(self))));
-        Signal::Ok
+    let mut module_dir = (*module.path).clone();
+    module_dir.pop();
+
+    // determine relative position of module relative to the src directory
+    let relative = match self.io.fs().relative_path(&*self.root_dir, &module_dir) {
+      Ok(relative) => relative,
+      Err(err) => {
+        return self.runtime_error(self.builtin.errors.runtime, &err.to_string());
       }
-      LyResult::Err(error) => self.set_error(error),
-      LyResult::Exit(code) => self.set_exit(code),
+    };
+
+    // split path into segments
+    let relative: Vec<String> = relative
+      .ancestors()
+      .map(|p| p.display().to_string())
+      .filter(|p| !p.is_empty())
+      .collect();
+
+    // split import into segments and join to relative path
+    let resolved_segments: Vec<String> = if &path[..1] == "." {
+      relative
+        .into_iter()
+        .rev()
+        .chain(path.split(IMPORT_SEPARATOR).map(|s| s.to_string()))
+        .collect()
+    } else {
+      path
+        .split(IMPORT_SEPARATOR)
+        .map(|s| s.to_string())
+        .collect()
+    };
+
+    // check if fully resolved module has already been loaded
+    let resolved = self
+      .gc
+      .borrow_mut()
+      .manage_str(resolved_segments.join("/"), self);
+    if let Some(module) = self.cache.get(&resolved) {
+      let imported = module.import(&GcHooks::new(self));
+      self.push(val!(imported));
+      return Signal::Ok;
+    }
+
+    // generate a new import object
+    let import = Import::new(
+      resolved_segments
+        .iter()
+        .map(|segment| self.gc.borrow_mut().manage_str(segment, self))
+        .collect(),
+    );
+
+    // match by package then resolve inside the package
+    match import.package() {
+      Some(pkg) => match self.packages.get(&pkg) {
+        Some(package) => match package.import(&GcHooks::new(self), import) {
+          Ok(module) => {
+            let imported = module.import(&GcHooks::new(self));
+            self.push(val!(imported));
+            return Signal::Ok;
+          }
+          Err(err) => self.runtime_error(self.builtin.errors.runtime, &err),
+        },
+        None => self.runtime_error(
+          self.builtin.errors.import,
+          &format!("Package {} does not exist", pkg),
+        ),
+      },
+      None => self.runtime_error(
+        self.builtin.errors.import,
+        "Import needs to be prepended with a package name",
+      ),
     }
   }
 
@@ -1062,7 +1117,7 @@ impl Vm {
 
     match copy.export_symbol(&GcHooks::new(self), name) {
       Ok(_) => Signal::Ok,
-      Err(error) => self.runtime_error(self.dep_manager.error_classes().export, error.as_str()),
+      Err(error) => self.runtime_error(self.builtin.errors.export, error.as_str()),
     }
   }
 
@@ -1088,10 +1143,7 @@ impl Vm {
       self.push(val!(-pop.to_num()));
       Signal::Ok
     } else {
-      self.runtime_error(
-        self.dep_manager.error_classes().runtime,
-        "Operand must be a number.",
-      )
+      self.runtime_error(self.builtin.errors.runtime, "Operand must be a number.")
     }
   }
 
@@ -1120,7 +1172,7 @@ impl Vm {
       Signal::Ok
     } else {
       self.runtime_error(
-        self.dep_manager.error_classes().runtime,
+        self.builtin.errors.runtime,
         "Operands must be two numbers or two strings.",
       )
     }
@@ -1134,10 +1186,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    self.runtime_error(
-      self.dep_manager.error_classes().runtime,
-      "Operands must be numbers.",
-    )
+    self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
   fn op_mul(&mut self) -> Signal {
@@ -1148,10 +1197,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    self.runtime_error(
-      self.dep_manager.error_classes().runtime,
-      "Operands must be numbers.",
-    )
+    self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
   fn op_div(&mut self) -> Signal {
@@ -1162,10 +1208,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    self.runtime_error(
-      self.dep_manager.error_classes().runtime,
-      "Operands must be numbers.",
-    )
+    self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
   fn op_less(&mut self) -> Signal {
@@ -1183,10 +1226,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    self.runtime_error(
-      self.dep_manager.error_classes().runtime,
-      "Operands must be numbers.",
-    )
+    self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
   fn op_less_equal(&mut self) -> Signal {
@@ -1210,7 +1250,7 @@ impl Vm {
     }
 
     self.runtime_error(
-      self.dep_manager.error_classes().runtime,
+      self.builtin.errors.runtime,
       "Operands must be numbers or strings.",
     )
   }
@@ -1231,7 +1271,7 @@ impl Vm {
     }
 
     self.runtime_error(
-      self.dep_manager.error_classes().runtime,
+      self.builtin.errors.runtime,
       "Operands must be numbers or strings.",
     )
   }
@@ -1257,7 +1297,7 @@ impl Vm {
     }
 
     self.runtime_error(
-      self.dep_manager.error_classes().runtime,
+      self.builtin.errors.runtime,
       "Operands must be numbers or strings.",
     )
   }
@@ -1382,6 +1422,7 @@ impl Vm {
     Signal::Ok
   }
 
+  /// resolve the current value and call in the appropriate manner
   fn resolve_call(&mut self, callee: Value, arg_count: u8) -> Signal {
     match callee.kind() {
       ValueKind::Closure => self.call(callee.to_closure(), arg_count),
@@ -1395,13 +1436,14 @@ impl Vm {
       _ => {
         let class_name = self.get_class(callee).to_class().name;
         self.runtime_error(
-          self.dep_manager.error_classes().runtime,
+          self.builtin.errors.runtime,
           &format!("{} is not callable.", class_name),
         )
       }
     }
   }
 
+  /// call a class creating a new instance of that class
   fn call_class(&mut self, class: Gc<Class>, arg_count: u8) -> Signal {
     let instance = val!(self.gc.borrow_mut().manage(Instance::new(class), self));
     self.set_val(-(arg_count as isize) - 1, instance);
@@ -1411,7 +1453,7 @@ impl Vm {
       None => {
         if arg_count != 0 {
           self.runtime_error(
-            self.dep_manager.error_classes().runtime,
+            self.builtin.errors.runtime,
             &format!("Expected 0 arguments but got {}", arg_count),
           )
         } else {
@@ -1484,7 +1526,7 @@ impl Vm {
 
     // set the current current instruction pointer. check for overflow
     if self.frame_count == FRAME_MAX {
-      return self.runtime_error(self.dep_manager.error_classes().runtime, "Stack overflow.");
+      return self.runtime_error(self.builtin.errors.runtime, "Stack overflow.");
     }
 
     self.push_frame(closure, arg_count);
@@ -1537,28 +1579,28 @@ impl Vm {
       Ok(_) => None,
       Err(error) => match error {
         ArityError::Fixed(arity) => Some(self.runtime_error(
-          self.dep_manager.error_classes().runtime,
+          self.builtin.errors.runtime,
           &format!(
             "{} expected {} argument(s) but got {}.",
             fun.name, arity, arg_count,
           ),
         )),
         ArityError::Variadic(arity) => Some(self.runtime_error(
-          self.dep_manager.error_classes().runtime,
+          self.builtin.errors.runtime,
           &format!(
             "{} expected at least {} argument(s) but got {}.",
             fun.name, arity, arg_count,
           ),
         )),
         ArityError::DefaultLow(arity) => Some(self.runtime_error(
-          self.dep_manager.error_classes().runtime,
+          self.builtin.errors.runtime,
           &format!(
             "{} expected at least {} argument(s) but got {}.",
             fun.name, arity, arg_count,
           ),
         )),
         ArityError::DefaultHigh(arity) => Some(self.runtime_error(
-          self.dep_manager.error_classes().runtime,
+          self.builtin.errors.runtime,
           &format!(
             "{} expected at most {} argument(s) but got {}.",
             fun.name, arity, arg_count,
@@ -1580,7 +1622,7 @@ impl Vm {
 
         match err {
           SignatureError::LengthFixed(expected) => Some(self.runtime_error(
-            self.dep_manager.error_classes().runtime,
+            self.builtin.errors.runtime,
             &format!(
               "{} {} expected {} argument(s) but received {}.",
               callable_type,
@@ -1590,7 +1632,7 @@ impl Vm {
             ),
           )),
           SignatureError::LengthVariadic(expected) => Some(self.runtime_error(
-            self.dep_manager.error_classes().runtime,
+            self.builtin.errors.runtime,
             &format!(
               "{} {} expected at least {} argument(s) but received {}.",
               callable_type,
@@ -1600,7 +1642,7 @@ impl Vm {
             ),
           )),
           SignatureError::LengthDefaultLow(expected) => Some(self.runtime_error(
-            self.dep_manager.error_classes().runtime,
+            self.builtin.errors.runtime,
             &format!(
               "{} {} expected at least {} argument(s) but received {}.",
               callable_type,
@@ -1610,7 +1652,7 @@ impl Vm {
             ),
           )),
           SignatureError::LengthDefaultHigh(expected) => Some(self.runtime_error(
-            self.dep_manager.error_classes().runtime,
+            self.builtin.errors.runtime,
             &format!(
               "{} {} expected at most {} argument(s) but received {}.",
               callable_type,
@@ -1620,7 +1662,7 @@ impl Vm {
             ),
           )),
           SignatureError::TypeWrong(parameter) => Some(self.runtime_error(
-            self.dep_manager.error_classes().runtime,
+            self.builtin.errors.runtime,
             &format!(
               "{} {}'s parameter {} required a {} but received a {}.",
               callable_type,
@@ -1653,7 +1695,7 @@ impl Vm {
         Signal::Ok
       }
       None => self.runtime_error(
-        self.dep_manager.error_classes().runtime,
+        self.builtin.errors.runtime,
         &format!("Undefined property {}", name.as_str()),
       ),
     }
@@ -1669,7 +1711,7 @@ impl Vm {
     match class.get_method(&method_name) {
       Some(method) => self.resolve_call(method, arg_count),
       None => self.runtime_error(
-        self.dep_manager.error_classes().property,
+        self.builtin.errors.property,
         &format!(
           "Undefined property {} on class {}.",
           method_name, class.name
@@ -1975,18 +2017,13 @@ impl From<VmDependencies> for Vm {
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let cwd = dependencies
-      .io
-      .env()
-      .current_dir()
-      .expect("Could not obtain the current working directory.");
-
-    let mut dep_manager = hooks.manage(DepManager::new(
-      dependencies.io.clone(),
-      builtin,
-      hooks.manage(cwd),
-    ));
-    dep_manager.add_package(&hooks, std_lib);
+    let root_dir = hooks.manage(
+      dependencies
+        .io
+        .env()
+        .current_dir()
+        .expect("Could not obtain the current working directory."),
+    );
 
     let current_frame = &mut frames[0];
     let current_fun = current_frame.closure.fun;
@@ -1999,12 +2036,15 @@ impl From<VmDependencies> for Vm {
 
     let gc = RefCell::new(no_gc_context.done());
 
-    Vm {
+    let mut vm = Vm {
       io: dependencies.io,
       stack,
       frames,
       gc,
-      dep_manager,
+      root_dir,
+      builtin,
+      packages: Map::default(),
+      cache: Map::default(),
       global,
       frame_count: 1,
       script: None,
@@ -2016,7 +2056,10 @@ impl From<VmDependencies> for Vm {
       ip,
       native_fun_stub,
       open_upvalues: Vec::with_capacity(100),
-    }
+    };
+    vm.add_package(std_lib);
+
+    vm
   }
 }
 
@@ -2042,7 +2085,10 @@ impl TraceRoot for Vm {
       upvalue.trace();
     });
 
-    self.dep_manager.trace();
+    self.builtin.trace();
+    self.packages.trace();
+    self.cache.trace();
+    self.root_dir.trace();
     self.native_fun_stub.trace();
     self.global.trace();
     self.current_error.map(|error| error.trace());
@@ -2069,7 +2115,10 @@ impl TraceRoot for Vm {
       upvalue.trace_debug(stdout);
     });
 
-    self.dep_manager.trace_debug(stdout);
+    self.builtin.trace_debug(stdout);
+    self.packages.trace_debug(stdout);
+    self.cache.trace_debug(stdout);
+    self.root_dir.trace_debug(stdout);
     self.native_fun_stub.trace_debug(stdout);
     self.global.trace_debug(stdout);
     self.current_error.map(|error| error.trace_debug(stdout));
