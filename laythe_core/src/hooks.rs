@@ -258,7 +258,7 @@ impl NoContext {
   }
 
   pub fn done(self) -> Allocator {
-    self.gc.take()
+    self.gc.replace(Allocator::default())
   }
 }
 

@@ -4,7 +4,7 @@ use crate::token::Token;
 /// Not sure if this currently provides any value as enum
 /// already know there variants. May still be useful
 /// to ensure each node has cold associated with it
-pub trait Visitor {
+pub trait Visitor<'a> {
   type Result;
 
   fn visit(&mut self, module: &Module) -> Self::Result;
@@ -16,7 +16,7 @@ pub trait Visitor {
 
   fn visit_symbol(&mut self, symbol: &Symbol) -> Self::Result;
   fn visit_export(&mut self, export: &Symbol) -> Self::Result;
-  fn visit_error(&mut self, error: &[Token]) -> Self::Result;
+  fn visit_error(&mut self, error: &[Token<'a>]) -> Self::Result;
 
   fn visit_class(&mut self, class: &Class) -> Self::Result;
   fn visit_fun(&mut self, fun: &Fun) -> Self::Result;
@@ -29,8 +29,8 @@ pub trait Visitor {
   fn visit_while(&mut self, while_: &While) -> Self::Result;
   fn visit_if(&mut self, if_: &If) -> Self::Result;
   fn visit_return(&mut self, return_: &Return) -> Self::Result;
-  fn visit_continue(&mut self, continue_: &Token) -> Self::Result;
-  fn visit_break(&mut self, break_: &Token) -> Self::Result;
+  fn visit_continue(&mut self, continue_: &Token<'a>) -> Self::Result;
+  fn visit_break(&mut self, break_: &Token<'a>) -> Self::Result;
   fn visit_try(&mut self, try_: &Try) -> Self::Result;
   fn visit_block(&mut self, block: &Block) -> Self::Result;
 
@@ -46,14 +46,14 @@ pub trait Visitor {
   fn visit_call_sig(&mut self, call_sig: &CallSignature) -> Self::Result;
 
   fn visit_assign_block(&mut self, block: &Block) -> Self::Result;
-  fn visit_true(&mut self, token: &Token) -> Self::Result;
-  fn visit_false(&mut self, token: &Token) -> Self::Result;
-  fn visit_nil(&mut self, token: &Token) -> Self::Result;
-  fn visit_number(&mut self, token: &Token) -> Self::Result;
-  fn visit_string(&mut self, token: &Token) -> Self::Result;
+  fn visit_true(&mut self, token: &Token<'a>) -> Self::Result;
+  fn visit_false(&mut self, token: &Token<'a>) -> Self::Result;
+  fn visit_nil(&mut self, token: &Token<'a>) -> Self::Result;
+  fn visit_number(&mut self, token: &Token<'a>) -> Self::Result;
+  fn visit_string(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_interpolation(&mut self, string_interp: &Interpolation) -> Self::Result;
-  fn visit_ident(&mut self, token: &Token) -> Self::Result;
-  fn visit_self(&mut self, token: &Token) -> Self::Result;
+  fn visit_ident(&mut self, token: &Token<'a>) -> Self::Result;
+  fn visit_self(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_super(&mut self, token: &Super) -> Self::Result;
   fn visit_lambda(&mut self, fun: &Fun) -> Self::Result;
   fn visit_list(&mut self, items: &List) -> Self::Result;
@@ -107,17 +107,17 @@ pub struct Range {
 }
 
 #[derive(Default)]
-pub struct Module {
-  pub decls: Vec<Decl>,
+pub struct Module<'a> {
+  pub decls: Vec<Decl<'a>>,
 }
 
-impl Module {
-  pub fn new(decls: Vec<Decl>) -> Self {
+impl<'a> Module<'a> {
+  pub fn new(decls: Vec<Decl<'a>>) -> Self {
     Self { decls }
   }
 }
 
-impl Ranged for Module {
+impl<'a> Ranged for Module<'a> {
   fn start(&self) -> u32 {
     self.decls.first().map_or(1, |first| first.start())
   }
@@ -127,14 +127,14 @@ impl Ranged for Module {
   }
 }
 
-pub enum Decl {
-  Symbol(Box<Symbol>),
-  Export(Box<Symbol>),
-  Stmt(Box<Stmt>),
-  Error(Box<[Token]>),
+pub enum Decl<'a> {
+  Symbol(Box<Symbol<'a>>),
+  Export(Box<Symbol<'a>>),
+  Stmt(Box<Stmt<'a>>),
+  Error(Box<[Token<'a>]>),
 }
 
-impl Ranged for Decl {
+impl<'a> Ranged for Decl<'a> {
   fn start(&self) -> u32 {
     match self {
       Decl::Symbol(symbol) => symbol.start(),
@@ -154,15 +154,15 @@ impl Ranged for Decl {
   }
 }
 
-pub enum Symbol {
-  Class(Class),
-  Fun(Fun),
-  Let(Let),
-  Trait(Trait),
-  TypeDecl(TypeDecl),
+pub enum Symbol<'a> {
+  Class(Class<'a>),
+  Fun(Fun<'a>),
+  Let(Let<'a>),
+  Trait(Trait<'a>),
+  TypeDecl(TypeDecl<'a>),
 }
 
-impl Ranged for Symbol {
+impl<'a> Ranged for Symbol<'a> {
   fn start(&self) -> u32 {
     match self {
       Symbol::Class(class) => class.start(),
@@ -184,28 +184,28 @@ impl Ranged for Symbol {
   }
 }
 
-pub struct Class {
-  pub name: Option<Token>,
+pub struct Class<'a> {
+  pub name: Option<Token<'a>>,
   pub range: Range,
-  pub type_params: Vec<TypeParam>,
-  pub super_class: Option<ClassType>,
-  pub type_members: Vec<TypeMember>,
-  pub init: Option<Fun>,
-  pub methods: Vec<Fun>,
-  pub static_methods: Vec<Fun>,
+  pub type_params: Vec<TypeParam<'a>>,
+  pub super_class: Option<ClassType<'a>>,
+  pub type_members: Vec<TypeMember<'a>>,
+  pub init: Option<Fun<'a>>,
+  pub methods: Vec<Fun<'a>>,
+  pub static_methods: Vec<Fun<'a>>,
 }
 
-impl Class {
+impl<'a> Class<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    name: Option<Token>,
+    name: Option<Token<'a>>,
     range: Range,
-    type_params: Vec<TypeParam>,
-    super_class: Option<ClassType>,
-    type_members: Vec<TypeMember>,
-    init: Option<Fun>,
-    methods: Vec<Fun>,
-    static_methods: Vec<Fun>,
+    type_params: Vec<TypeParam<'a>>,
+    super_class: Option<ClassType<'a>>,
+    type_members: Vec<TypeMember<'a>>,
+    init: Option<Fun<'a>>,
+    methods: Vec<Fun<'a>>,
+    static_methods: Vec<Fun<'a>>,
   ) -> Self {
     Self {
       name,
@@ -220,7 +220,7 @@ impl Class {
   }
 }
 
-impl Ranged for Class {
+impl<'a> Ranged for Class<'a> {
   fn range(&self) -> Range {
     self.range
   }
@@ -234,14 +234,14 @@ impl Ranged for Class {
   }
 }
 
-pub struct Fun {
-  pub name: Option<Token>,
-  pub call_sig: CallSignature,
-  pub body: FunBody,
+pub struct Fun<'a> {
+  pub name: Option<Token<'a>>,
+  pub call_sig: CallSignature<'a>,
+  pub body: FunBody<'a>,
 }
 
-impl Fun {
-  pub fn new(name: Option<Token>, call_sig: CallSignature, body: FunBody) -> Self {
+impl<'a> Fun<'a> {
+  pub fn new(name: Option<Token<'a>>, call_sig: CallSignature<'a>, body: FunBody<'a>) -> Self {
     Self {
       name,
       call_sig,
@@ -250,7 +250,7 @@ impl Fun {
   }
 }
 
-impl Ranged for Fun {
+impl<'a> Ranged for Fun<'a> {
   fn start(&self) -> u32 {
     match &self.name {
       Some(name) => name.start(),
@@ -266,24 +266,24 @@ impl Ranged for Fun {
   }
 }
 
-pub enum FunBody {
-  Block(Box<Block>),
-  Expr(Box<Expr>),
+pub enum FunBody<'a> {
+  Block(Box<Block<'a>>),
+  Expr(Box<Expr<'a>>),
 }
 
-pub struct Let {
-  pub name: Token,
-  pub type_: Option<Type>,
-  pub value: Option<Expr>,
+pub struct Let<'a> {
+  pub name: Token<'a>,
+  pub type_: Option<Type<'a>>,
+  pub value: Option<Expr<'a>>,
 }
 
-impl Let {
-  pub fn new(name: Token, type_: Option<Type>, value: Option<Expr>) -> Self {
+impl<'a> Let<'a> {
+  pub fn new(name: Token<'a>, type_: Option<Type<'a>>, value: Option<Expr<'a>>) -> Self {
     Self { name, type_, value }
   }
 }
 
-impl Ranged for Let {
+impl<'a> Ranged for Let<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -299,21 +299,21 @@ impl Ranged for Let {
   }
 }
 
-pub struct Trait {
+pub struct Trait<'a> {
   pub range: Range,
-  pub name: Token,
-  pub params: Vec<TypeParam>,
-  pub members: Vec<TypeMember>,
-  pub methods: Vec<TypeMethod>,
+  pub name: Token<'a>,
+  pub params: Vec<TypeParam<'a>>,
+  pub members: Vec<TypeMember<'a>>,
+  pub methods: Vec<TypeMethod<'a>>,
 }
 
-impl Trait {
+impl<'a> Trait<'a> {
   pub fn new(
     range: Range,
-    name: Token,
-    params: Vec<TypeParam>,
-    members: Vec<TypeMember>,
-    methods: Vec<TypeMethod>,
+    name: Token<'a>,
+    params: Vec<TypeParam<'a>>,
+    members: Vec<TypeMember<'a>>,
+    methods: Vec<TypeMethod<'a>>,
   ) -> Self {
     Self {
       range,
@@ -325,7 +325,7 @@ impl Trait {
   }
 }
 
-impl Ranged for Trait {
+impl<'a> Ranged for Trait<'a> {
   fn range(&self) -> Range {
     self.range
   }
@@ -339,14 +339,14 @@ impl Ranged for Trait {
   }
 }
 
-pub struct TypeDecl {
-  pub name: Token,
-  pub type_params: Vec<TypeParam>,
-  pub type_: Type,
+pub struct TypeDecl<'a> {
+  pub name: Token<'a>,
+  pub type_params: Vec<TypeParam<'a>>,
+  pub type_: Type<'a>,
 }
 
-impl TypeDecl {
-  pub fn new(name: Token, type_params: Vec<TypeParam>, type_: Type) -> Self {
+impl<'a> TypeDecl<'a> {
+  pub fn new(name: Token<'a>, type_params: Vec<TypeParam<'a>>, type_: Type<'a>) -> Self {
     Self {
       name,
       type_params,
@@ -355,7 +355,7 @@ impl TypeDecl {
   }
 }
 
-impl Ranged for TypeDecl {
+impl<'a> Ranged for TypeDecl<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -365,19 +365,19 @@ impl Ranged for TypeDecl {
   }
 }
 
-pub enum Stmt {
-  Expr(Box<Expr>),
-  Import(Box<Import>),
-  For(Box<For>),
-  If(Box<If>),
-  Return(Box<Return>),
-  Continue(Box<Token>),
-  Break(Box<Token>),
-  While(Box<While>),
-  Try(Box<Try>),
+pub enum Stmt<'a> {
+  Expr(Box<Expr<'a>>),
+  Import(Box<Import<'a>>),
+  For(Box<For<'a>>),
+  If(Box<If<'a>>),
+  Return(Box<Return<'a>>),
+  Continue(Box<Token<'a>>),
+  Break(Box<Token<'a>>),
+  While(Box<While<'a>>),
+  Try(Box<Try<'a>>),
 }
 
-impl Ranged for Stmt {
+impl<'a> Ranged for Stmt<'a> {
   fn start(&self) -> u32 {
     match self {
       Stmt::Expr(expr) => expr.start(),
@@ -407,18 +407,18 @@ impl Ranged for Stmt {
   }
 }
 
-pub struct Import {
-  pub imported: Token,
-  pub path: Token,
+pub struct Import<'a> {
+  pub imported: Token<'a>,
+  pub path: Token<'a>,
 }
 
-impl Import {
-  pub fn new(imported: Token, path: Token) -> Self {
+impl<'a> Import<'a> {
+  pub fn new(imported: Token<'a>, path: Token<'a>) -> Self {
     Self { imported, path }
   }
 }
 
-impl Ranged for Import {
+impl<'a> Ranged for Import<'a> {
   fn start(&self) -> u32 {
     self.imported.start()
   }
@@ -428,19 +428,19 @@ impl Ranged for Import {
   }
 }
 
-pub struct For {
-  pub item: Token,
-  pub iter: Expr,
-  pub body: Block,
+pub struct For<'a> {
+  pub item: Token<'a>,
+  pub iter: Expr<'a>,
+  pub body: Block<'a>,
 }
 
-impl For {
-  pub fn new(item: Token, iter: Expr, body: Block) -> Self {
+impl<'a> For<'a> {
+  pub fn new(item: Token<'a>, iter: Expr<'a>, body: Block<'a>) -> Self {
     Self { item, iter, body }
   }
 }
 
-impl Ranged for For {
+impl<'a> Ranged for For<'a> {
   fn start(&self) -> u32 {
     self.item.start()
   }
@@ -450,23 +450,19 @@ impl Ranged for For {
   }
 }
 
-pub struct If {
-  pub cond: Expr,
-  pub body: Block,
-  pub else_: Option<Else>,
+pub struct If<'a> {
+  pub cond: Expr<'a>,
+  pub body: Block<'a>,
+  pub else_: Option<Else<'a>>,
 }
 
-impl If {
-  pub fn new(cond: Expr, body: Block, else_body: Option<Else>) -> Self {
-    Self {
-      cond,
-      body,
-      else_: else_body,
-    }
+impl<'a> If<'a> {
+  pub fn new(cond: Expr<'a>, body: Block<'a>, else_: Option<Else<'a>>) -> Self {
+    Self { cond, body, else_ }
   }
 }
 
-impl Ranged for If {
+impl<'a> Ranged for If<'a> {
   fn start(&self) -> u32 {
     self.cond.start()
   }
@@ -482,23 +478,23 @@ impl Ranged for If {
   }
 }
 
-pub enum Else {
-  If(Box<If>),
-  Block(Block),
+pub enum Else<'a> {
+  If(Box<If<'a>>),
+  Block(Block<'a>),
 }
 
-pub struct Return {
-  pub return_: Token,
-  pub value: Option<Expr>,
+pub struct Return<'a> {
+  pub return_: Token<'a>,
+  pub value: Option<Expr<'a>>,
 }
 
-impl Return {
-  pub fn new(return_: Token, value: Option<Expr>) -> Self {
+impl<'a> Return<'a> {
+  pub fn new(return_: Token<'a>, value: Option<Expr<'a>>) -> Self {
     Self { return_, value }
   }
 }
 
-impl Ranged for Return {
+impl<'a> Ranged for Return<'a> {
   fn start(&self) -> u32 {
     self.return_.start()
   }
@@ -511,18 +507,18 @@ impl Ranged for Return {
   }
 }
 
-pub struct While {
-  pub cond: Expr,
-  pub body: Block,
+pub struct While<'a> {
+  pub cond: Expr<'a>,
+  pub body: Block<'a>,
 }
 
-impl While {
-  pub fn new(cond: Expr, body: Block) -> Self {
+impl<'a> While<'a> {
+  pub fn new(cond: Expr<'a>, body: Block<'a>) -> Self {
     Self { cond, body }
   }
 }
 
-impl Ranged for While {
+impl<'a> Ranged for While<'a> {
   fn start(&self) -> u32 {
     self.cond.start()
   }
@@ -532,18 +528,18 @@ impl Ranged for While {
   }
 }
 
-pub struct Try {
-  pub block: Block,
-  pub catch: Block,
+pub struct Try<'a> {
+  pub block: Block<'a>,
+  pub catch: Block<'a>,
 }
 
-impl Try {
-  pub fn new(block: Block, catch: Block) -> Self {
+impl<'a> Try<'a> {
+  pub fn new(block: Block<'a>, catch: Block<'a>) -> Self {
     Self { block, catch }
   }
 }
 
-impl Ranged for Try {
+impl<'a> Ranged for Try<'a> {
   fn start(&self) -> u32 {
     self.block.start()
   }
@@ -553,18 +549,18 @@ impl Ranged for Try {
   }
 }
 
-pub struct Block {
+pub struct Block<'a> {
   pub range: Range,
-  pub decls: Vec<Decl>,
+  pub decls: Vec<Decl<'a>>,
 }
 
-impl Block {
-  pub fn new(range: Range, decls: Vec<Decl>) -> Self {
+impl<'a> Block<'a> {
+  pub fn new(range: Range, decls: Vec<Decl<'a>>) -> Self {
     Self { range, decls }
   }
 }
 
-impl Ranged for Block {
+impl<'a> Ranged for Block<'a> {
   fn range(&self) -> Range {
     self.range
   }
@@ -579,19 +575,19 @@ impl Ranged for Block {
 }
 
 #[derive(Default)]
-pub struct CallSignature {
+pub struct CallSignature<'a> {
   pub range: Range,
-  pub type_params: Vec<TypeParam>,
-  pub params: Vec<Param>,
-  pub return_type: Option<Type>,
+  pub type_params: Vec<TypeParam<'a>>,
+  pub params: Vec<Param<'a>>,
+  pub return_type: Option<Type<'a>>,
 }
 
-impl CallSignature {
+impl<'a> CallSignature<'a> {
   pub fn new(
     range: Range,
-    type_params: Vec<TypeParam>,
-    params: Vec<Param>,
-    return_type: Option<Type>,
+    type_params: Vec<TypeParam<'a>>,
+    params: Vec<Param<'a>>,
+    return_type: Option<Type<'a>>,
   ) -> Self {
     Self {
       range,
@@ -602,7 +598,7 @@ impl CallSignature {
   }
 }
 
-impl Ranged for CallSignature {
+impl<'a> Ranged for CallSignature<'a> {
   fn range(&self) -> Range {
     self.range
   }
@@ -616,18 +612,18 @@ impl Ranged for CallSignature {
   }
 }
 
-pub struct Param {
-  pub name: Token,
-  pub type_: Option<Type>,
+pub struct Param<'a> {
+  pub name: Token<'a>,
+  pub type_: Option<Type<'a>>,
 }
 
-impl Param {
-  pub fn new(name: Token, type_: Option<Type>) -> Self {
+impl<'a> Param<'a> {
+  pub fn new(name: Token<'a>, type_: Option<Type<'a>>) -> Self {
     Self { name, type_ }
   }
 }
 
-impl Ranged for Param {
+impl<'a> Ranged for Param<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -640,15 +636,15 @@ impl Ranged for Param {
   }
 }
 
-pub enum Expr {
-  Assign(Box<Assign>),
-  AssignBinary(Box<AssignBinary>),
-  Binary(Box<Binary>),
-  Unary(Box<Unary>),
-  Atom(Box<Atom>),
+pub enum Expr<'a> {
+  Assign(Box<Assign<'a>>),
+  AssignBinary(Box<AssignBinary<'a>>),
+  Binary(Box<Binary<'a>>),
+  Unary(Box<Unary<'a>>),
+  Atom(Box<Atom<'a>>),
 }
 
-impl Ranged for Expr {
+impl<'a> Ranged for Expr<'a> {
   fn start(&self) -> u32 {
     match self {
       Expr::Assign(assign) => assign.start(),
@@ -670,18 +666,18 @@ impl Ranged for Expr {
   }
 }
 
-pub struct Assign {
-  pub lhs: Expr,
-  pub rhs: Expr,
+pub struct Assign<'a> {
+  pub lhs: Expr<'a>,
+  pub rhs: Expr<'a>,
 }
 
-impl Assign {
-  pub fn new(lhs: Expr, rhs: Expr) -> Self {
+impl<'a> Assign<'a> {
+  pub fn new(lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
     Self { lhs, rhs }
   }
 }
 
-impl Ranged for Assign {
+impl<'a> Ranged for Assign<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -698,19 +694,19 @@ pub enum AssignBinaryOp {
   Div,
 }
 
-pub struct AssignBinary {
-  pub lhs: Expr,
+pub struct AssignBinary<'a> {
+  pub lhs: Expr<'a>,
   pub op: AssignBinaryOp,
-  pub rhs: Expr,
+  pub rhs: Expr<'a>,
 }
 
-impl AssignBinary {
-  pub fn new(lhs: Expr, op: AssignBinaryOp, rhs: Expr) -> Self {
+impl<'a> AssignBinary<'a> {
+  pub fn new(lhs: Expr<'a>, op: AssignBinaryOp, rhs: Expr<'a>) -> Self {
     Self { lhs, op, rhs }
   }
 }
 
-impl Ranged for AssignBinary {
+impl<'a> Ranged for AssignBinary<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -735,19 +731,19 @@ pub enum BinaryOp {
   Or,
 }
 
-pub struct Binary {
+pub struct Binary<'a> {
   pub op: BinaryOp,
-  pub lhs: Expr,
-  pub rhs: Expr,
+  pub lhs: Expr<'a>,
+  pub rhs: Expr<'a>,
 }
 
-impl Binary {
-  pub fn new(op: BinaryOp, lhs: Expr, rhs: Expr) -> Binary {
+impl<'a> Binary<'a> {
+  pub fn new(op: BinaryOp, lhs: Expr<'a>, rhs: Expr<'a>) -> Binary<'a> {
     Self { op, lhs, rhs }
   }
 }
 
-impl Ranged for Binary {
+impl<'a> Ranged for Binary<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -762,18 +758,18 @@ pub enum UnaryOp {
   Negate,
 }
 
-pub struct Unary {
+pub struct Unary<'a> {
   pub op: UnaryOp,
-  pub expr: Expr,
+  pub expr: Expr<'a>,
 }
 
-impl Unary {
-  pub fn new(op: UnaryOp, expr: Expr) -> Self {
+impl<'a> Unary<'a> {
+  pub fn new(op: UnaryOp, expr: Expr<'a>) -> Self {
     Self { op, expr }
   }
 }
 
-impl Ranged for Unary {
+impl<'a> Ranged for Unary<'a> {
   fn range(&self) -> Range {
     self.expr.range()
   }
@@ -787,13 +783,13 @@ impl Ranged for Unary {
   }
 }
 
-pub struct Atom {
-  pub primary: Primary,
-  pub trailers: Vec<Trailer>,
+pub struct Atom<'a> {
+  pub primary: Primary<'a>,
+  pub trailers: Vec<Trailer<'a>>,
 }
 
-impl Atom {
-  pub fn new(primary: Primary) -> Self {
+impl<'a> Atom<'a> {
+  pub fn new(primary: Primary<'a>) -> Self {
     Self {
       primary,
       trailers: vec![],
@@ -801,7 +797,7 @@ impl Atom {
   }
 }
 
-impl Ranged for Atom {
+impl<'a> Ranged for Atom<'a> {
   fn start(&self) -> u32 {
     self.primary.start()
   }
@@ -814,13 +810,13 @@ impl Ranged for Atom {
   }
 }
 
-pub enum Trailer {
-  Call(Box<Call>),
-  Index(Box<Index>),
-  Access(Box<Access>),
+pub enum Trailer<'a> {
+  Call(Box<Call<'a>>),
+  Index(Box<Index<'a>>),
+  Access(Box<Access<'a>>),
 }
 
-impl Ranged for Trailer {
+impl<'a> Ranged for Trailer<'a> {
   fn start(&self) -> u32 {
     match self {
       Trailer::Call(call) => call.start(),
@@ -838,18 +834,18 @@ impl Ranged for Trailer {
   }
 }
 
-pub struct Call {
+pub struct Call<'a> {
   pub range: Range,
-  pub args: Vec<Expr>,
+  pub args: Vec<Expr<'a>>,
 }
 
-impl Call {
-  pub fn new(range: Range, args: Vec<Expr>) -> Self {
+impl<'a> Call<'a> {
+  pub fn new(range: Range, args: Vec<Expr<'a>>) -> Self {
     Self { range, args }
   }
 }
 
-impl Ranged for Call {
+impl<'a> Ranged for Call<'a> {
   fn range(&self) -> Range {
     self.range
   }
@@ -863,17 +859,17 @@ impl Ranged for Call {
   }
 }
 
-pub struct Index {
-  pub index: Expr,
+pub struct Index<'a> {
+  pub index: Expr<'a>,
 }
 
-impl Index {
-  pub fn new(index: Expr) -> Self {
+impl<'a> Index<'a> {
+  pub fn new(index: Expr<'a>) -> Self {
     Self { index }
   }
 }
 
-impl Ranged for Index {
+impl<'a> Ranged for Index<'a> {
   fn range(&self) -> Range {
     self.index.range()
   }
@@ -887,17 +883,17 @@ impl Ranged for Index {
   }
 }
 
-pub struct Access {
-  pub prop: Token,
+pub struct Access<'a> {
+  pub prop: Token<'a>,
 }
 
-impl Access {
-  pub fn new(prop: Token) -> Self {
+impl<'a> Access<'a> {
+  pub fn new(prop: Token<'a>) -> Self {
     Self { prop }
   }
 }
 
-impl Ranged for Access {
+impl<'a> Ranged for Access<'a> {
   fn start(&self) -> u32 {
     self.prop.start()
   }
@@ -907,24 +903,24 @@ impl Ranged for Access {
   }
 }
 
-pub enum Primary {
-  AssignBlock(Block),
-  True(Token),
-  False(Token),
-  Nil(Token),
-  Number(Token),
-  Grouping(Box<Expr>),
-  String(Token),
-  Interpolation(Box<Interpolation>),
-  Ident(Token),
-  Self_(Token),
-  Super(Super),
-  Lambda(Box<Fun>),
-  List(List),
-  Map(Map),
+pub enum Primary<'a> {
+  AssignBlock(Block<'a>),
+  True(Token<'a>),
+  False(Token<'a>),
+  Nil(Token<'a>),
+  Number(Token<'a>),
+  Grouping(Box<Expr<'a>>),
+  String(Token<'a>),
+  Interpolation(Box<Interpolation<'a>>),
+  Ident(Token<'a>),
+  Self_(Token<'a>),
+  Super(Super<'a>),
+  Lambda(Box<Fun<'a>>),
+  List(List<'a>),
+  Map(Map<'a>),
 }
 
-impl Ranged for Primary {
+impl<'a> Ranged for Primary<'a> {
   fn start(&self) -> u32 {
     match self {
       Primary::AssignBlock(block) => block.start(),
@@ -964,19 +960,19 @@ impl Ranged for Primary {
   }
 }
 
-pub struct Interpolation {
-  pub start: Token,
-  pub segments: Vec<StringSegments>,
-  pub end: Token,
+pub struct Interpolation<'a> {
+  pub start: Token<'a>,
+  pub segments: Vec<StringSegments<'a>>,
+  pub end: Token<'a>,
 }
 
-pub enum StringSegments {
-  Token(Token),
-  Expr(Box<Expr>),
+pub enum StringSegments<'a> {
+  Token(Token<'a>),
+  Expr(Box<Expr<'a>>),
 }
 
-impl Interpolation {
-  pub fn new(start: Token, segments: Vec<StringSegments>, end: Token) -> Self {
+impl<'a> Interpolation<'a> {
+  pub fn new(start: Token<'a>, segments: Vec<StringSegments<'a>>, end: Token<'a>) -> Self {
     Self {
       start,
       segments,
@@ -985,7 +981,7 @@ impl Interpolation {
   }
 }
 
-impl Ranged for Interpolation {
+impl<'a> Ranged for Interpolation<'a> {
   fn start(&self) -> u32 {
     self.start.line
   }
@@ -995,18 +991,18 @@ impl Ranged for Interpolation {
   }
 }
 
-pub struct List {
+pub struct List<'a> {
   pub range: Range,
-  pub items: Vec<Expr>,
+  pub items: Vec<Expr<'a>>,
 }
 
-impl List {
-  pub fn new(range: Range, items: Vec<Expr>) -> Self {
+impl<'a> List<'a> {
+  pub fn new(range: Range, items: Vec<Expr<'a>>) -> Self {
     Self { range, items }
   }
 }
 
-impl Ranged for List {
+impl<'a> Ranged for List<'a> {
   fn range(&self) -> Range {
     self.range
   }
@@ -1020,13 +1016,13 @@ impl Ranged for List {
   }
 }
 
-pub struct Map {
+pub struct Map<'a> {
   pub range: Range,
-  pub entries: Vec<(Expr, Expr)>,
+  pub entries: Vec<(Expr<'a>, Expr<'a>)>,
 }
 
-impl Map {
-  pub fn new(range: Range, kvp: Vec<(Expr, Expr)>) -> Self {
+impl<'a> Map<'a> {
+  pub fn new(range: Range, kvp: Vec<(Expr<'a>, Expr<'a>)>) -> Self {
     Self {
       range,
       entries: kvp,
@@ -1034,7 +1030,7 @@ impl Map {
   }
 }
 
-impl Ranged for Map {
+impl<'a> Ranged for Map<'a> {
   fn range(&self) -> Range {
     self.range
   }
@@ -1048,18 +1044,18 @@ impl Ranged for Map {
   }
 }
 
-pub struct Super {
-  pub super_: Token,
-  pub access: Token,
+pub struct Super<'a> {
+  pub super_: Token<'a>,
+  pub access: Token<'a>,
 }
 
-impl Super {
-  pub fn new(super_: Token, access: Token) -> Self {
+impl<'a> Super<'a> {
+  pub fn new(super_: Token<'a>, access: Token<'a>) -> Self {
     Self { super_, access }
   }
 }
 
-impl Ranged for Super {
+impl<'a> Ranged for Super<'a> {
   fn start(&self) -> u32 {
     self.super_.start()
   }
@@ -1069,18 +1065,18 @@ impl Ranged for Super {
   }
 }
 
-pub struct TypeParam {
-  pub name: Token,
-  pub constraint: Option<Type>,
+pub struct TypeParam<'a> {
+  pub name: Token<'a>,
+  pub constraint: Option<Type<'a>>,
 }
 
-impl TypeParam {
-  pub fn new(name: Token, constraint: Option<Type>) -> Self {
+impl<'a> TypeParam<'a> {
+  pub fn new(name: Token<'a>, constraint: Option<Type<'a>>) -> Self {
     Self { name, constraint }
   }
 }
 
-impl Ranged for TypeParam {
+impl<'a> Ranged for TypeParam<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -1093,16 +1089,16 @@ impl Ranged for TypeParam {
   }
 }
 
-pub enum Type {
-  Union(Box<Union>),
-  Intersection(Box<Intersection>),
-  Fun(Box<CallSignature>),
-  List(Box<ListType>),
-  Ref(Box<TypeRef>),
-  Primitive(Primitive),
+pub enum Type<'a> {
+  Union(Box<Union<'a>>),
+  Intersection(Box<Intersection<'a>>),
+  Fun(Box<CallSignature<'a>>),
+  List(Box<ListType<'a>>),
+  Ref(Box<TypeRef<'a>>),
+  Primitive(Primitive<'a>),
 }
 
-impl Ranged for Type {
+impl<'a> Ranged for Type<'a> {
   fn start(&self) -> u32 {
     match self {
       Type::Union(union) => union.start(),
@@ -1126,17 +1122,17 @@ impl Ranged for Type {
   }
 }
 
-pub struct ClassType {
-  pub type_ref: TypeRef,
+pub struct ClassType<'a> {
+  pub type_ref: TypeRef<'a>,
 }
 
-impl ClassType {
-  pub fn new(type_ref: TypeRef) -> Self {
+impl<'a> ClassType<'a> {
+  pub fn new(type_ref: TypeRef<'a>) -> Self {
     Self { type_ref }
   }
 }
 
-impl Ranged for ClassType {
+impl<'a> Ranged for ClassType<'a> {
   fn start(&self) -> u32 {
     self.type_ref.start()
   }
@@ -1146,18 +1142,18 @@ impl Ranged for ClassType {
   }
 }
 
-pub struct TypeRef {
-  pub name: Token,
-  pub type_args: Vec<Type>,
+pub struct TypeRef<'a> {
+  pub name: Token<'a>,
+  pub type_args: Vec<Type<'a>>,
 }
 
-impl TypeRef {
-  pub fn new(name: Token, type_args: Vec<Type>) -> Self {
+impl<'a> TypeRef<'a> {
+  pub fn new(name: Token<'a>, type_args: Vec<Type<'a>>) -> Self {
     Self { name, type_args }
   }
 }
 
-impl Ranged for TypeRef {
+impl<'a> Ranged for TypeRef<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -1170,18 +1166,18 @@ impl Ranged for TypeRef {
   }
 }
 
-pub struct TypeMember {
-  pub name: Token,
-  pub type_: Type,
+pub struct TypeMember<'a> {
+  pub name: Token<'a>,
+  pub type_: Type<'a>,
 }
 
-impl TypeMember {
-  pub fn new(name: Token, type_: Type) -> Self {
+impl<'a> TypeMember<'a> {
+  pub fn new(name: Token<'a>, type_: Type<'a>) -> Self {
     Self { name, type_ }
   }
 }
 
-impl Ranged for TypeMember {
+impl<'a> Ranged for TypeMember<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -1191,18 +1187,18 @@ impl Ranged for TypeMember {
   }
 }
 
-pub struct TypeMethod {
-  pub name: Token,
-  pub call_sig: CallSignature,
+pub struct TypeMethod<'a> {
+  pub name: Token<'a>,
+  pub call_sig: CallSignature<'a>,
 }
 
-impl TypeMethod {
-  pub fn new(name: Token, call_sig: CallSignature) -> Self {
+impl<'a> TypeMethod<'a> {
+  pub fn new(name: Token<'a>, call_sig: CallSignature<'a>) -> Self {
     Self { name, call_sig }
   }
 }
 
-impl Ranged for TypeMethod {
+impl<'a> Ranged for TypeMethod<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -1212,18 +1208,18 @@ impl Ranged for TypeMethod {
   }
 }
 
-pub struct Union {
-  pub lhs: Type,
-  pub rhs: Type,
+pub struct Union<'a> {
+  pub lhs: Type<'a>,
+  pub rhs: Type<'a>,
 }
 
-impl Union {
-  pub fn new(lhs: Type, rhs: Type) -> Self {
+impl<'a> Union<'a> {
+  pub fn new(lhs: Type<'a>, rhs: Type<'a>) -> Self {
     Self { lhs, rhs }
   }
 }
 
-impl Ranged for Union {
+impl<'a> Ranged for Union<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -1233,18 +1229,18 @@ impl Ranged for Union {
   }
 }
 
-pub struct Intersection {
-  pub lhs: Type,
-  pub rhs: Type,
+pub struct Intersection<'a> {
+  pub lhs: Type<'a>,
+  pub rhs: Type<'a>,
 }
 
-impl Intersection {
-  pub fn new(lhs: Type, rhs: Type) -> Self {
+impl<'a> Intersection<'a> {
+  pub fn new(lhs: Type<'a>, rhs: Type<'a>) -> Self {
     Self { lhs, rhs }
   }
 }
 
-impl Ranged for Intersection {
+impl<'a> Ranged for Intersection<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -1254,17 +1250,17 @@ impl Ranged for Intersection {
   }
 }
 
-pub struct ListType {
-  pub item_type: Type,
+pub struct ListType<'a> {
+  pub item_type: Type<'a>,
 }
 
-impl ListType {
-  pub fn new(item_type: Type) -> Self {
+impl<'a> ListType<'a> {
+  pub fn new(item_type: Type<'a>) -> Self {
     Self { item_type }
   }
 }
 
-impl Ranged for ListType {
+impl<'a> Ranged for ListType<'a> {
   fn start(&self) -> u32 {
     self.item_type.start()
   }
@@ -1274,15 +1270,15 @@ impl Ranged for ListType {
   }
 }
 
-pub enum Primitive {
-  Nil(Token),
-  Number(Token),
-  Bool(Token),
-  String(Token),
-  Any(Token),
+pub enum Primitive<'a> {
+  Nil(Token<'a>),
+  Number(Token<'a>),
+  Bool(Token<'a>),
+  String(Token<'a>),
+  Any(Token<'a>),
 }
 
-impl Ranged for Primitive {
+impl<'a> Ranged for Primitive<'a> {
   fn start(&self) -> u32 {
     match self {
       Primitive::Nil(t) => t,
@@ -1306,7 +1302,7 @@ impl Ranged for Primitive {
   }
 }
 
-impl Ranged for Token {
+impl<'a> Ranged for Token<'a> {
   fn start(&self) -> u32 {
     self.line
   }

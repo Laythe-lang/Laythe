@@ -80,12 +80,12 @@ impl<'a> Allocator {
   /// # Examples
   /// ```
   /// use laythe_env::memory::{Allocator, NO_GC};
-  /// use smol_str::SmolStr;
+  /// use std::path::PathBuf;
   ///
   /// let mut gc = Allocator::default();
-  /// let string = gc.manage(SmolStr::from("example"), &NO_GC);
+  /// let path = gc.manage(PathBuf::from("example"), &NO_GC);
   ///
-  /// assert_eq!(&*string, "example");
+  /// assert_eq!(&*path, &PathBuf::from("example"));
   /// ```
   pub fn manage<T: 'static + Manage, C: TraceRoot + ?Sized>(
     &mut self,

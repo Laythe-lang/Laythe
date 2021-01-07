@@ -290,7 +290,7 @@ impl Vm {
   fn compile(&mut self, module: Gc<Module>, source: &str) -> CompilerResult {
     let ast = Parser::new(self.io.stdio(), &source).parse()?;
 
-    let gc = self.gc.take();
+    let gc = self.gc.replace(Allocator::default());
     let compiler = Compiler::new(module, self, &self.io, gc);
     let (result, gc) = compiler.compile(&ast);
     self.gc.replace(gc);

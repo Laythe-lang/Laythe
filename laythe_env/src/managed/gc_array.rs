@@ -5,6 +5,7 @@ use alloc::alloc::Layout;
 use ptr::NonNull;
 use std::{
   cmp,
+  fmt::Debug,
   marker::PhantomData,
   mem,
   ops::{Deref, DerefMut},
@@ -76,7 +77,7 @@ pub struct GcArray<T> {
 /// The `Header` meta data for `GcArray<T>`. This struct
 /// is positioned at the front of the array such that the layout looks like
 /// this
-/// ```
+/// ```markdown
 /// [Header (potential padding)| T | T | T | ...]
 /// ```
 struct Header {
@@ -184,6 +185,19 @@ impl<T> DerefMut for GcArray<T> {
   }
 }
 
+impl<T> PartialEq<GcArray<T>> for GcArray<T> {
+  #[inline]
+  fn eq(&self, other: &GcArray<T>) -> bool {
+    ptr::eq(self.as_alloc_ptr(), other.as_alloc_ptr())
+  }
+}
+
+impl<T: Debug> Debug for GcArray<T> {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    f.debug_list().entry(self).finish()
+  }
+}
+
 /// A owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
 /// as a single pointer.
@@ -197,8 +211,6 @@ impl<T> DerefMut for GcArray<T> {
 /// let handle = GcArrayHandle::from(data);
 ///
 /// assert_eq!(mem::size_of::<GcArrayHandle<u32>>(), mem::size_of::<&u32>());
-/// assert_eq!(data[0], array[0]);
-/// assert_eq!(data.len(), array.len());
 /// ```
 pub struct GcArrayHandle<T>(GcArray<T>);
 

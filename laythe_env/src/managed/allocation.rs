@@ -33,9 +33,9 @@ impl<T: 'static + Manage> Allocation<T> {
   /// # Examples
   /// ```
   /// use laythe_env::managed::Allocation;
-  /// use smol_str::SmolStr;
+  /// use std::path::PathBuf;
   ///
-  /// let s = SmolStr::from("example");
+  /// let s = PathBuf::from("example");
   /// let alloc = Allocation::new(s);
   /// ```
   pub fn new(data: T) -> Self {

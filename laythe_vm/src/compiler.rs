@@ -1,6 +1,6 @@
 use crate::{
   ast::{self, Decl, Expr, Primary, Stmt, Symbol},
-  token::{Token, TokenKind},
+  token::{Lexeme, Token, TokenKind},
 };
 use ast::{AssignBinaryOp, BinaryOp, FunBody, List, Map, Ranged, Trailer, UnaryOp};
 use laythe_core::{
@@ -52,8 +52,8 @@ pub struct Local {
 #[derive(Debug, Clone)]
 pub struct ClassInfo {
   fun_kind: Option<FunKind>,
-  fields: Vec<SmolStr>,
-  name: Option<Token>,
+  fields: Vec<GcStr>,
+  name: Option<GcStr>,
 }
 
 impl DebugHeap for ClassInfo {
@@ -77,8 +77,16 @@ impl Manage for ClassInfo {
 }
 
 impl Trace for ClassInfo {
-  fn trace(&self) {}
-  fn trace_debug(&self, _: &mut dyn Write) {}
+  fn trace(&self) {
+    if let Some(name) = self.name {
+      name.trace();
+    }
+  }
+  fn trace_debug(&self, log: &mut dyn Write) {
+    if let Some(name) = self.name {
+      name.trace_debug(log);
+    }
+  }
 }
 
 #[derive(Debug, Clone)]
@@ -171,21 +179,19 @@ impl<'a> Compiler<'a> {
   /// use laythe_vm::compiler::Compiler;
   /// use laythe_core::module::Module;
   /// use laythe_core::object::Class;
-  /// use laythe_core::hooks::NoContext;
   /// use laythe_core::hooks::GcHooks;
-  /// use laythe_env::memory::NO_GC;
+  /// use laythe_env::memory::{NO_GC, Allocator};
   /// use laythe_env::io::Io;
   /// use std::path::PathBuf;
   ///
-  /// let context = NoContext::default();
-  /// let hooks = GcHooks::new(&context);
+  /// let mut gc = Allocator::default();
   /// let io = Io::default();
-  /// let module = hooks.manage(Module::new(
-  ///  hooks.manage(Class::bare(hooks.manage_str("module"))),
-  ///  hooks.manage(PathBuf::from("./module.ly"))
-  /// ));
+  /// let name = gc.manage_str("module", &NO_GC);
+  /// let class = gc.manage(Class::bare(name), &NO_GC);
+  /// let path = gc.manage(PathBuf::from("./module.ly"), &NO_GC);
   ///
-  /// let gc = context.gc.take();
+  /// let module = gc.manage(Module::new(class, path), &NO_GC);
+  ///
   /// let compiler = Compiler::new(module, &NO_GC, &io, gc);
   /// ```
   pub fn new(
@@ -227,16 +233,16 @@ impl<'a> Compiler<'a> {
 
   /// Compile the provided ast into managed function objects that
   /// contain the vm bytecode
-  pub fn compile(mut self, module: &ast::Module) -> (CompilerResult, Allocator) {
+  pub fn compile(mut self, module: &ast::Module<'a>) -> (CompilerResult, Allocator) {
     for decl in &module.decls {
       self.decl(decl);
     }
 
     self.end_compiler(module.end());
     if !self.had_error {
-      (Ok(self.fun), self.gc.take())
+      (Ok(self.fun), self.gc.replace(Allocator::default()))
     } else {
-      (Err(()), self.gc.take())
+      (Err(()), self.gc.replace(Allocator::default()))
     }
   }
 
@@ -384,7 +390,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Add a local variable to the current scope
-  fn add_local(&mut self, name: Token) {
+  fn add_local(&mut self, name: Token<'a>) {
     if self.local_count == std::u8::MAX as usize {
       self.error("Too many local variables in function.", Some(&name));
       return;
@@ -393,12 +399,12 @@ impl<'a> Compiler<'a> {
     let local = &mut self.locals[self.local_count];
     self.local_count += 1;
 
-    local.name = Some(name.lexeme);
+    local.name = Some(SmolStr::from(name.str()));
     local.depth = -1;
   }
 
   ///  declare a variable
-  fn declare_variable(&mut self, name: Token) {
+  fn declare_variable(&mut self, name: Token<'a>) {
     // if global exit
     if self.scope_depth == 0 {
       return;
@@ -412,7 +418,7 @@ impl<'a> Compiler<'a> {
 
       // check that the same variable wasn't declared twice in the same scope
       if let Some(local_name) = &local.name {
-        if &name.lexeme == local_name {
+        if name.str() == *local_name {
           self.error(
             "Variable with this name already declared in this scope.",
             Some(&name),
@@ -426,7 +432,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// retrieve a named variable from either local or global scope
-  fn variable(&mut self, name: &Token, can_assign: bool) {
+  fn variable(&mut self, name: &Token<'a>, can_assign: bool) {
     let index = self.resolve_local(&name);
 
     let (get_byte, set_byte) = match index {
@@ -440,7 +446,7 @@ impl<'a> Compiler<'a> {
           AlignedByteCode::SetUpvalue(upvalue),
         ),
         None => {
-          let global_index = self.identifier_constant(&name);
+          let global_index = self.identifier_constant(name.str());
           (
             AlignedByteCode::GetGlobal(global_index),
             AlignedByteCode::SetGlobal(global_index),
@@ -457,12 +463,12 @@ impl<'a> Compiler<'a> {
   }
 
   /// resolve a token to a local if it exists
-  fn resolve_local(&mut self, name: &Token) -> Option<u8> {
+  fn resolve_local(&mut self, name: &Token<'a>) -> Option<u8> {
     for i in (0..self.local_count).rev() {
       let local = &self.locals[i];
 
       if let Some(local_name) = &local.name {
-        if &name.lexeme == local_name {
+        if &name.str() == local_name {
           // handle the case were `let a = a;`
           if local.depth == UNINITIALIZED {
             self.error(
@@ -598,17 +604,17 @@ impl<'a> Compiler<'a> {
 
   /// Parse a variable from the provided token return it's new constant
   /// identifer if an identifer was identified
-  fn make_identifier(&mut self, name: &Token) -> u16 {
+  fn make_identifier(&mut self, name: &Token<'a>) -> u16 {
     self.declare_variable(name.clone());
     if self.scope_depth > 0 {
       return 0;
     }
-    self.identifier_constant(name)
+    self.identifier_constant(name.str())
   }
 
   /// Generate a constant from the provided identifier token
-  fn identifier_constant(&mut self, name: &Token) -> u16 {
-    self.string_constant(name.lexeme.as_str())
+  fn identifier_constant(&mut self, name: &str) -> u16 {
+    self.string_constant(name)
   }
 
   /// Generate a constant from the provided identifier token
@@ -664,7 +670,7 @@ impl<'a> Compiler<'a> {
     match token {
       Some(token) => {
         write!(stderr, "[line {}] Error", token.line).expect("Unable to write to stderr.");
-        write!(stderr, " at {}", token.lexeme).expect("Unable to write to stderr.");
+        write!(stderr, " at {}", token.str()).expect("Unable to write to stderr.");
         writeln!(stderr, ": {}", message).expect("Unable to write to stderr.");
       }
       None => {
@@ -676,7 +682,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a declaration
-  fn decl(&mut self, decl: &Decl) {
+  fn decl(&mut self, decl: &Decl<'a>) {
     match decl {
       Decl::Symbol(symbol) => self.symbol(symbol),
       Decl::Export(export) => self.export(export),
@@ -686,7 +692,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a statement
-  fn stmt(&mut self, stmt: &Stmt) {
+  fn stmt(&mut self, stmt: &Stmt<'a>) {
     match stmt {
       Stmt::Expr(expr) => {
         self.expr(expr);
@@ -704,7 +710,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile an expression
-  fn expr(&mut self, expr: &Expr) {
+  fn expr(&mut self, expr: &Expr<'a>) {
     match expr {
       Expr::Assign(assign) => self.assign(assign),
       Expr::AssignBinary(assign_binary) => self.assign_binary(assign_binary),
@@ -715,7 +721,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a the base of an expression
-  fn primary(&mut self, primary: &Primary, trailers: &[Trailer]) -> bool {
+  fn primary(&mut self, primary: &Primary<'a>, trailers: &[Trailer<'a>]) -> bool {
     match primary {
       Primary::AssignBlock(block) => self.assign_block(block),
       Primary::True(token) => self.true_(token),
@@ -738,7 +744,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a symbol declaration
-  fn symbol(&mut self, symbol: &Symbol) {
+  fn symbol(&mut self, symbol: &Symbol<'a>) {
     match symbol {
       Symbol::Class(class) => self.class(class),
       Symbol::Fun(fun) => self.fun(fun),
@@ -748,7 +754,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile an export declaration
-  fn export(&mut self, export: &Symbol) {
+  fn export(&mut self, export: &Symbol<'a>) {
     let symbol = match &export {
       Symbol::Class(class) => Some(self.class(class)),
       Symbol::Fun(fun) => Some(self.fun(fun)),
@@ -767,19 +773,23 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a class declaration
-  fn class(&mut self, class: &ast::Class) -> u16 {
+  fn class(&mut self, class: &ast::Class<'a>) -> u16 {
     // declare the class by name
     let name = class.name.clone().expect("Expected class name.");
-    let name_constant = self.identifier_constant(&name);
+    let name_constant = self.identifier_constant(name.str());
     self.declare_variable(name.clone());
 
     self.emit_byte(AlignedByteCode::Class(name_constant), name.end());
     self.define_variable(name_constant, name.end());
 
     // set this class as the current class compiler
+    let class_info_name = class
+      .name
+      .as_ref()
+      .map(|name| self.gc.borrow_mut().manage_str(name.str(), self));
     let class_compiler = self.gc.borrow_mut().manage(
       ClassInfo {
-        name: class.name.clone(),
+        name: class_info_name,
         fun_kind: None,
         fields: vec![],
       },
@@ -800,7 +810,7 @@ impl<'a> Compiler<'a> {
 
       self.variable(
         &Token {
-          lexeme: SmolStr::new_inline(OBJECT),
+          lexeme: Lexeme::Slice(OBJECT),
           kind: TokenKind::Identifier,
           line,
         },
@@ -813,7 +823,7 @@ impl<'a> Compiler<'a> {
     self.begin_scope();
     self.add_local(Token {
       kind: TokenKind::Super,
-      lexeme: SmolStr::new_inline(SUPER),
+      lexeme: Lexeme::Slice(SUPER),
       line,
     });
 
@@ -856,8 +866,7 @@ impl<'a> Compiler<'a> {
     let class_info = self.class_info.expect("Current class unset");
 
     class_info.fields.iter().for_each(|f| {
-      let value = val!(self.gc.borrow_mut().manage_str(f.as_str(), self));
-      let constant = self.make_constant(value);
+      let constant = self.make_constant(val!(*f));
       self.emit_byte(AlignedByteCode::Field(constant), line)
     })
   }
@@ -867,7 +876,7 @@ impl<'a> Compiler<'a> {
     let constant = method
       .name
       .as_ref()
-      .map(|name| self.identifier_constant(name))
+      .map(|name| self.identifier_constant(name.str()))
       .expect("Expect method name");
 
     self.class_info.expect("Class compiler not set").fun_kind = Some(fun_kind);
@@ -881,7 +890,7 @@ impl<'a> Compiler<'a> {
     let constant = static_method
       .name
       .as_ref()
-      .map(|name| self.identifier_constant(name))
+      .map(|name| self.identifier_constant(name.str()))
       .expect("Expected method name.");
 
     self.class_info.expect("Class compiler not set").fun_kind = Some(FunKind::StaticMethod);
@@ -891,7 +900,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a plain function
-  fn fun(&mut self, fun: &ast::Fun) -> u16 {
+  fn fun(&mut self, fun: &ast::Fun<'a>) -> u16 {
     let constant = fun
       .name
       .as_ref()
@@ -906,9 +915,9 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a let binding
-  fn let_(&mut self, let_: &ast::Let) -> u16 {
+  fn let_(&mut self, let_: &ast::Let<'a>) -> u16 {
     self.declare_variable(let_.name.clone());
-    let variable = self.identifier_constant(&let_.name);
+    let variable = self.identifier_constant(let_.name.str());
 
     match &let_.value {
       Some(v) => self.expr(v),
@@ -926,7 +935,7 @@ impl<'a> Compiler<'a> {
     let name = fun
       .name
       .as_ref()
-      .map(|name| self.gc.borrow_mut().manage_str(name.lexeme.as_str(), self))
+      .map(|name| self.gc.borrow_mut().manage_str(name.str(), self))
       .unwrap_or_else(|| self.gc.borrow_mut().manage_str("lambda", self));
 
     // create a new child compiler for this function
@@ -961,11 +970,8 @@ impl<'a> Compiler<'a> {
 
   /// Compile an import statement
   fn import(&mut self, import: &ast::Import) {
-    let name = self.identifier_constant(&import.imported);
-    let string = self
-      .gc
-      .borrow_mut()
-      .manage_str(import.path.lexeme.as_str(), self);
+    let name = self.identifier_constant(&import.imported.str());
+    let string = self.gc.borrow_mut().manage_str(import.path.str(), self);
     let value = val!(string);
     let path = self.make_constant(value);
 
@@ -979,7 +985,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a for loop
-  fn for_(&mut self, for_: &ast::For) {
+  fn for_(&mut self, for_: &ast::For<'a>) {
     const NEXT: &str = "next";
     const CURRENT: &str = "current";
 
@@ -996,7 +1002,7 @@ impl<'a> Compiler<'a> {
 
       // token for hidden $iter variable
       let iterator_token = Token {
-        lexeme: SmolStr::new_inline(ITER_VAR),
+        lexeme: Lexeme::Slice(ITER_VAR),
         kind: TokenKind::Identifier,
         line: expr_line,
       };
@@ -1005,7 +1011,7 @@ impl<'a> Compiler<'a> {
       let iter_const = self_.string_constant(ITER);
 
       // declare the hidden local $iter variable
-      let iterator_const = self_.identifier_constant(&iterator_token);
+      let iterator_const = self_.identifier_constant(&iterator_token.str());
       self_.declare_variable(iterator_token.clone());
       self_.emit_byte(AlignedByteCode::Invoke((iter_const, 0)), expr_line);
       self_.define_variable(iterator_const, expr_line);
@@ -1063,7 +1069,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a while loop
-  fn while_(&mut self, while_: &ast::While) {
+  fn while_(&mut self, while_: &ast::While<'a>) {
     let loop_start = self.current_chunk().instructions.len();
 
     // set this class as the current class compiler
@@ -1100,7 +1106,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a if statement
-  fn if_(&mut self, if_: &ast::If) {
+  fn if_(&mut self, if_: &ast::If<'a>) {
     self.expr(&if_.cond);
 
     // parse then branch
@@ -1125,7 +1131,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a return statement
-  fn return_(&mut self, return_: &ast::Return) {
+  fn return_(&mut self, return_: &ast::Return<'a>) {
     match &return_.value {
       Some(v) => {
         self.expr(&v);
@@ -1157,7 +1163,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a try catch block
-  fn try_(&mut self, try_: &ast::Try) {
+  fn try_(&mut self, try_: &ast::Try<'a>) {
     let start = self.current_chunk().instructions.len();
 
     self.scope(try_.block.end(), |self_| self_.block(&try_.block));
@@ -1173,14 +1179,14 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a block
-  fn block(&mut self, block: &ast::Block) {
+  fn block(&mut self, block: &ast::Block<'a>) {
     for decl in &block.decls {
       self.decl(&decl);
     }
   }
 
   /// Compile an assignment expression
-  fn assign(&mut self, assign: &ast::Assign) {
+  fn assign(&mut self, assign: &ast::Assign<'a>) {
     match &assign.lhs {
       Expr::Atom(atom) => match atom.trailers.last() {
         // if we have trailers compile to last trailer and emit specialized
@@ -1200,13 +1206,14 @@ impl<'a> Compiler<'a> {
                 if let Primary::Self_(_) = atom.primary {
                   let mut class_info = self.class_info.unwrap();
 
-                  if !class_info.fields.iter().any(|f| *f == access.prop.lexeme) {
-                    class_info.fields.push(access.prop.lexeme.clone());
+                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
+                    let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
+                    class_info.fields.push(field);
                   }
                 }
               }
 
-              let name = self.identifier_constant(&access.prop);
+              let name = self.identifier_constant(access.prop.str());
 
               self.expr(&assign.rhs);
               self.emit_byte(AlignedByteCode::SetProperty(name), access.end())
@@ -1230,7 +1237,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a binary assignment expression
-  fn assign_binary(&mut self, assign_binary: &ast::AssignBinary) {
+  fn assign_binary(&mut self, assign_binary: &ast::AssignBinary<'a>) {
     let binary_op = |comp: &mut Compiler| match &assign_binary.op {
       AssignBinaryOp::Add => comp.emit_byte(AlignedByteCode::Add, assign_binary.rhs.end()),
       AssignBinaryOp::Sub => comp.emit_byte(AlignedByteCode::Subtract, assign_binary.rhs.end()),
@@ -1263,13 +1270,14 @@ impl<'a> Compiler<'a> {
                 if let Primary::Self_(_) = atom.primary {
                   let mut class_info = self.class_info.unwrap();
 
-                  if !class_info.fields.iter().any(|f| *f == access.prop.lexeme) {
-                    class_info.fields.push(access.prop.lexeme.clone());
+                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
+                    let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
+                    class_info.fields.push(field);
                   }
                 }
               }
 
-              let name = self.identifier_constant(&access.prop);
+              let name = self.identifier_constant(&access.prop.str());
 
               self.emit_byte(AlignedByteCode::Dup, access.end());
               self.emit_byte(AlignedByteCode::GetProperty(name), access.end());
@@ -1300,7 +1308,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a binary expression
-  fn binary(&mut self, binary: &ast::Binary) {
+  fn binary(&mut self, binary: &ast::Binary<'a>) {
     self.expr(&binary.lhs);
 
     // emit for rhs if we're not an "and" or "or"
@@ -1343,7 +1351,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a unary expression
-  fn unary(&mut self, unary: &ast::Unary) {
+  fn unary(&mut self, unary: &ast::Unary<'a>) {
     self.expr(&unary.expr);
 
     match &unary.op {
@@ -1353,7 +1361,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a call expression
-  fn call(&mut self, call: &ast::Call) -> bool {
+  fn call(&mut self, call: &ast::Call<'a>) -> bool {
     for expr in &call.args {
       self.expr(expr);
     }
@@ -1363,15 +1371,15 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile an indexing expression
-  fn index(&mut self, index: &ast::Index) -> bool {
+  fn index(&mut self, index: &ast::Index<'a>) -> bool {
     self.expr(&index.index);
     self.emit_byte(AlignedByteCode::GetIndex, index.end());
     false
   }
 
   /// Compile an access expression
-  fn access(&mut self, access: &ast::Access, trailers: &[Trailer]) -> bool {
-    let name = self.identifier_constant(&access.prop);
+  fn access(&mut self, access: &ast::Access, trailers: &[Trailer<'a>]) -> bool {
+    let name = self.identifier_constant(access.prop.str());
 
     match trailers.first() {
       Some(trailer) => {
@@ -1397,13 +1405,13 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile an atom expression
-  fn atom(&mut self, atom: &ast::Atom) {
+  fn atom(&mut self, atom: &ast::Atom<'a>) {
     let skip_first = self.primary(&atom.primary, &atom.trailers);
     self.apply_trailers(skip_first, &atom.trailers);
   }
 
   /// Compile trailers onto a base primary
-  fn apply_trailers(&mut self, skip_first: bool, trailers: &[Trailer]) {
+  fn apply_trailers(&mut self, skip_first: bool, trailers: &[Trailer<'a>]) {
     let mut skip = skip_first;
     for (idx, trailer) in trailers.iter().enumerate() {
       if skip {
@@ -1420,7 +1428,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile an assignment block
-  fn assign_block(&mut self, block: &ast::Block) -> bool {
+  fn assign_block(&mut self, block: &ast::Block<'a>) -> bool {
     self.scope(block.end(), |self_| {
       self_.block(block);
     });
@@ -1448,33 +1456,33 @@ impl<'a> Compiler<'a> {
 
   /// Compile a number token
   fn number(&mut self, token: &Token) -> bool {
-    let value = val!(token.lexeme.parse::<f64>().expect("Unable to parse float"));
+    let value = val!(token.str().parse::<f64>().expect("Unable to parse float"));
     self.emit_constant(value, token.end());
     false
   }
 
   /// Compile a string token
   fn string(&mut self, token: &Token) -> bool {
-    let value = val!(self.gc.borrow_mut().manage_str(token.lexeme.as_str(), self));
+    let value = val!(self.gc.borrow_mut().manage_str(token.str(), self));
     self.emit_constant(value, token.end());
     false
   }
 
   /// Compile a string token
-  fn interpolation(&mut self, interpolation: &ast::Interpolation) -> bool {
+  fn interpolation(&mut self, interpolation: &ast::Interpolation<'a>) -> bool {
     const STR: &str = "str";
     let str_constant = self.string_constant(STR);
 
     let value = val!(self
       .gc
       .borrow_mut()
-      .manage_str(interpolation.start.lexeme.as_str(), self));
+      .manage_str(interpolation.start.str(), self));
     self.emit_constant(value, interpolation.start.end());
 
     for segment in interpolation.segments.iter() {
       match segment {
         ast::StringSegments::Token(token) => {
-          let value = val!(self.gc.borrow_mut().manage_str(token.lexeme.as_str(), self));
+          let value = val!(self.gc.borrow_mut().manage_str(token.str(), self));
           self.emit_constant(value, token.end());
         }
         ast::StringSegments::Expr(expr) => {
@@ -1487,7 +1495,7 @@ impl<'a> Compiler<'a> {
     let value = val!(self
       .gc
       .borrow_mut()
-      .manage_str(interpolation.end.lexeme.as_str(), self));
+      .manage_str(interpolation.end.str(), self));
     self.emit_constant(value, interpolation.end.end());
     self.emit_byte(
       AlignedByteCode::Interpolate((interpolation.segments.len() + 2) as u16),
@@ -1498,13 +1506,13 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a identifer token
-  fn identifier(&mut self, token: &Token) -> bool {
+  fn identifier(&mut self, token: &Token<'a>) -> bool {
     self.variable(&token, false);
     false
   }
 
   /// Compile the self token
-  fn self_(&mut self, self_: &Token) -> bool {
+  fn self_(&mut self, self_: &Token<'a>) -> bool {
     self
       .class_info
       .map(|class_compiler| class_compiler.fun_kind)
@@ -1529,7 +1537,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile the super token
-  fn super_(&mut self, super_: &ast::Super, trailers: &[Trailer]) -> bool {
+  fn super_(&mut self, super_: &ast::Super<'a>, trailers: &[Trailer<'a>]) -> bool {
     if self.class_info.is_none() {
       self.error(
         "Cannot use 'super' outside of a class.",
@@ -1537,12 +1545,12 @@ impl<'a> Compiler<'a> {
       );
     }
 
-    let name = self.identifier_constant(&super_.access);
+    let name = self.identifier_constant(super_.access.str());
 
     // load self on top of stack
     self.variable(
       &Token {
-        lexeme: SmolStr::new_inline(SELF),
+        lexeme: Lexeme::Slice(SELF),
         kind: TokenKind::Self_,
         line: super_.end(),
       },
@@ -1572,7 +1580,7 @@ impl<'a> Compiler<'a> {
       None => {
         self.variable(
           &Token {
-            lexeme: SmolStr::new_inline(SUPER),
+            lexeme: Lexeme::Slice(SUPER),
             kind: TokenKind::Super,
             line: super_.super_.end(),
           },
@@ -1592,7 +1600,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a list literal
-  fn list(&mut self, list: &List) -> bool {
+  fn list(&mut self, list: &List<'a>) -> bool {
     for item in list.items.iter() {
       self.expr(item);
     }
@@ -1603,7 +1611,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a map literal
-  fn map(&mut self, map: &Map) -> bool {
+  fn map(&mut self, map: &Map<'a>) -> bool {
     for (key, value) in map.entries.iter() {
       self.expr(key);
       self.expr(value);
@@ -1615,7 +1623,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Set the functions arity from the call signature
-  fn call_sig(&mut self, call_sig: &ast::CallSignature) {
+  fn call_sig(&mut self, call_sig: &ast::CallSignature<'a>) {
     for param in &call_sig.params {
       let param_constant = self.make_identifier(&param.name);
       self.define_variable(param_constant, param.name.end());
@@ -1673,7 +1681,7 @@ impl<'a> TraceRoot for Compiler<'a> {
 }
 
 /// Get the first local for a given function kind
-fn first_local(fun_kind: FunKind) -> Local {
+fn first_local<'a>(fun_kind: FunKind) -> Local {
   match fun_kind {
     FunKind::Fun | FunKind::StaticMethod | FunKind::Script => Local {
       name: Option::None,
@@ -1726,7 +1734,7 @@ mod test {
     let module = hooks.manage(Module::from_path(&hooks, path).unwrap());
     hooks.pop_roots(1);
 
-    let gc = context.gc.take();
+    let gc = context.gc.replace(Allocator::default());
 
     let compiler = Compiler::new(module, &NO_GC, &io, gc);
     let (result, gc) = compiler.compile(&ast.unwrap());
