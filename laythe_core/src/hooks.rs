@@ -9,10 +9,9 @@ use crate::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Gc, Manage, TraceRoot},
+  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
   memory::Allocator,
 };
-use smol_str::SmolStr;
 
 /// A set of commands that a native function to request from it's surrounding
 /// context
@@ -68,7 +67,7 @@ impl<'a> Hooks<'a> {
   }
 
   /// Provide a value and a method name for the surrounding context to execute
-  pub fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
+  pub fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
     self.context.value_context().get_method(this, method_name)
   }
 
@@ -83,7 +82,7 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request a string be managed by the context's garbage collector
-  pub fn manage_str<S: Into<String> + AsRef<str>>(&self, string: S) -> Gc<SmolStr> {
+  pub fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
     self.as_gc().manage_str(string)
   }
 
@@ -102,7 +101,7 @@ impl<'a> Hooks<'a> {
   }
 
   /// Push a new root onto the gc
-  pub fn push_root<T: 'static + Manage>(&self, managed: T) {
+  pub fn push_root<T: 'static + Trace>(&self, managed: T) {
     self.as_gc().push_root(managed)
   }
 
@@ -151,7 +150,7 @@ impl<'a> GcHooks<'a> {
 
   /// Request a string be managed by the context's garbage collector
   #[inline]
-  pub fn manage_str<S: Into<String> + AsRef<str>>(&self, string: S) -> Gc<SmolStr> {
+  pub fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
     self.context.gc().manage_str(string, self.context)
   }
 
@@ -177,7 +176,7 @@ impl<'a> GcHooks<'a> {
 
   /// Push a new root onto the gc
   #[inline]
-  pub fn push_root<T: 'static + Manage>(&self, managed: T) {
+  pub fn push_root<T: 'static + Trace>(&self, managed: T) {
     self.context.gc().push_root(managed);
   }
 
@@ -218,7 +217,7 @@ impl<'a> ValueHooks<'a> {
   }
 
   /// Provide a value and a method name for the surrounding context to execute
-  pub fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
+  pub fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
     self.context.get_method(this, method_name)
   }
 }
@@ -232,7 +231,7 @@ pub trait ValueContext {
   fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> Call;
 
   /// Retrieve a method for this value with a given method name
-  fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call;
+  fn get_method(&mut self, this: Value, method_name: GcStr) -> Call;
 
   /// Retrieve the class for this value
   fn get_class(&mut self, this: Value) -> Value;
@@ -302,7 +301,7 @@ impl ValueContext for NoContext {
     Call::Ok(VALUE_NIL)
   }
 
-  fn get_method(&mut self, _this: Value, _method_name: Gc<SmolStr>) -> Call {
+  fn get_method(&mut self, _this: Value, _method_name: GcStr) -> Call {
     Call::Ok(VALUE_NIL)
   }
 

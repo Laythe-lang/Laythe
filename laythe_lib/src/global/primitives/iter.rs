@@ -397,12 +397,18 @@ impl Native for IterReduce {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let mut accumulator = args[0];
     let callable = args[1];
+
+    hooks.push_root(accumulator);
+    hooks.push_root(callable);
+
     let mut iter = this.unwrap().to_iter();
 
     while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
       accumulator = get!(hooks.call(callable, &[accumulator, current]));
     }
+
+    hooks.pop_roots(2);
 
     Call::Ok(accumulator)
   }
@@ -435,10 +441,14 @@ impl Native for IterEach {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
 
+    hooks.push_root(callable);
+
     while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
       get!(hooks.call(callable, &[current]));
     }
+
+    hooks.pop_roots(1);
 
     Call::Ok(VALUE_NIL)
   }
@@ -489,6 +499,7 @@ impl LyIter for ZipIterator {
   fn next(&mut self, hooks: &mut Hooks) -> Call {
     let mut results = hooks.manage(List::with_capacity(self.iters.len()));
 
+    hooks.push_root(results);
     for iter in &mut self.iters {
       let next = get!(iter.next(hooks));
       if is_falsey(next) {
@@ -497,6 +508,7 @@ impl LyIter for ZipIterator {
 
       results.push(iter.current());
     }
+    hooks.pop_roots(1);
 
     self.current = val!(results);
     Call::Ok(val!(true))
@@ -632,13 +644,17 @@ impl Native for IterAll {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
 
+    hooks.push_root(callable);
+
     while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
       if is_falsey(get!(hooks.call(callable, &[current]))) {
+        hooks.pop_roots(1);
         return Call::Ok(val!(false));
       }
     }
 
+    hooks.pop_roots(1);
     Call::Ok(val!(true))
   }
 }
@@ -650,13 +666,17 @@ impl Native for IterAny {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
 
+    hooks.push_root(callable);
+
     while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
       if !is_falsey(get!(hooks.call(callable, &[current]))) {
+        hooks.pop_roots(1);
         return Call::Ok(val!(true));
       }
     }
 
+    hooks.pop_roots(1);
     Call::Ok(val!(false))
   }
 }
@@ -669,8 +689,9 @@ impl Native for IterInto {
     let iter = this.unwrap().to_iter();
 
     hooks.push_root(iter);
+    hooks.push_root(callable);
     let result = hooks.call(callable, &[this.unwrap()]);
-    hooks.pop_roots(1);
+    hooks.pop_roots(2);
 
     result
   }

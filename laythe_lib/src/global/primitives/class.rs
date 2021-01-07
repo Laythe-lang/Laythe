@@ -148,7 +148,7 @@ mod test {
       let class_value = val!(class);
 
       let result = class_str.call(&mut hooks, Some(class_value), &[]).unwrap();
-      assert!(result.to_str().as_str().contains("<class someClass"));
+      assert!(result.to_str().contains("<class someClass"));
     }
   }
 }

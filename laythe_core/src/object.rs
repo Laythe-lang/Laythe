@@ -12,9 +12,8 @@ use core::slice;
 use fnv::FnvBuildHasher;
 use hash_map::Entry;
 use hashbrown::{hash_map, HashMap};
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
+use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use slice::SliceIndex;
-use smol_str::SmolStr;
 use std::{
   cmp::Ordering,
   fmt,
@@ -161,7 +160,7 @@ impl TryBlock {
 #[derive(Clone)]
 pub struct Fun {
   /// Name if not top-level script
-  pub name: Gc<SmolStr>,
+  pub name: GcStr,
 
   /// Arity of this function
   pub arity: Arity,
@@ -180,7 +179,7 @@ pub struct Fun {
 }
 
 impl Fun {
-  pub fn new(name: Gc<SmolStr>, module: Gc<Module>) -> Self {
+  pub fn new(name: GcStr, module: Gc<Module>) -> Self {
     Self {
       arity: Arity::default(),
       upvalue_count: 0,
@@ -643,12 +642,12 @@ impl Manage for Closure {
 
 #[derive(PartialEq, Clone)]
 pub struct Class {
-  pub name: Gc<SmolStr>,
+  pub name: GcStr,
   pub init: Option<Value>,
   pub index_get: Option<Value>,
   pub index_set: Option<Value>,
-  methods: DynamicMap<Gc<SmolStr>, Value>,
-  fields: DynamicMap<Gc<SmolStr>, u16>,
+  methods: DynamicMap<GcStr, Value>,
+  fields: DynamicMap<GcStr, u16>,
   meta_class: Option<Gc<Class>>,
   super_class: Option<Gc<Class>>,
 }
@@ -660,7 +659,7 @@ impl fmt::Display for Class {
 }
 
 impl Class {
-  pub fn with_inheritance(hooks: &GcHooks, name: Gc<SmolStr>, super_class: Gc<Class>) -> Gc<Self> {
+  pub fn with_inheritance(hooks: &GcHooks, name: GcStr, super_class: Gc<Class>) -> Gc<Self> {
     let mut class = hooks.manage(Self {
       name,
       init: None,
@@ -680,7 +679,7 @@ impl Class {
     class
   }
 
-  pub fn bare(name: Gc<SmolStr>) -> Self {
+  pub fn bare(name: GcStr) -> Self {
     Self {
       name,
       init: None,
@@ -721,14 +720,14 @@ impl Class {
     self
   }
 
-  pub fn add_field(&mut self, hooks: &GcHooks, name: Gc<SmolStr>) -> Option<u16> {
+  pub fn add_field(&mut self, hooks: &GcHooks, name: GcStr) -> Option<u16> {
     let len = self.fields.len();
 
     hooks.grow(self, |class| class.fields.insert(name, len as u16))
   }
 
-  pub fn add_method(&mut self, hooks: &GcHooks, name: Gc<SmolStr>, method: Value) -> Option<Value> {
-    match name.as_str() {
+  pub fn add_method(&mut self, hooks: &GcHooks, name: GcStr, method: Value) -> Option<Value> {
+    match &*name {
       INIT => self.init = Some(method),
       INDEX_GET => self.index_get = Some(method),
       INDEX_SET => self.index_set = Some(method),
@@ -738,11 +737,11 @@ impl Class {
     hooks.grow(self, |class| class.methods.insert(name, method))
   }
 
-  pub fn get_method(&self, name: &Gc<SmolStr>) -> Option<Value> {
+  pub fn get_method(&self, name: &GcStr) -> Option<Value> {
     self.methods.get(name).copied()
   }
 
-  pub fn get_field_index(&self, name: &Gc<SmolStr>) -> Option<u16> {
+  pub fn get_field_index(&self, name: &GcStr) -> Option<u16> {
     self.fields.get(name).copied()
   }
 
@@ -858,7 +857,7 @@ impl DebugHeap for Class {
 impl Manage for Class {
   fn size(&self) -> usize {
     mem::size_of::<Class>()
-      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>()) * self.methods.capacity()
+      + (mem::size_of::<GcStr>() + mem::size_of::<Value>()) * self.methods.capacity()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -884,7 +883,7 @@ impl Instance {
     &self.fields
   }
 
-  pub fn set_field(&mut self, name: Gc<SmolStr>, value: Value) -> bool {
+  pub fn set_field(&mut self, name: GcStr, value: Value) -> bool {
     match self.class.get_field_index(&name) {
       Some(index) => {
         self.fields[index as usize] = value;
@@ -894,7 +893,7 @@ impl Instance {
     }
   }
 
-  pub fn get_field(&self, name: &Gc<SmolStr>) -> Option<&Value> {
+  pub fn get_field(&self, name: &GcStr) -> Option<&Value> {
     self
       .class
       .get_field_index(&name)
@@ -954,7 +953,7 @@ impl DebugHeap for Instance {
 impl Manage for Instance {
   fn size(&self) -> usize {
     mem::size_of::<Instance>()
-      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>()) * self.fields.len()
+      + (mem::size_of::<GcStr>() + mem::size_of::<Value>()) * self.fields.len()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {

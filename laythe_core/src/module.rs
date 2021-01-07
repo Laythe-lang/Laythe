@@ -4,8 +4,7 @@ use crate::{
   value::Value,
   LyHashSet, LyResult,
 };
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write};
 use std::{mem, path::PathBuf};
 
@@ -19,10 +18,10 @@ pub struct Module {
   module_class: Gc<Class>,
 
   /// A key value set of named exports from the provided modules
-  exports: LyHashSet<Gc<SmolStr>>,
+  exports: LyHashSet<GcStr>,
 
   /// All of the top level symbols in this module
-  symbols: Map<Gc<SmolStr>, Value>,
+  symbols: Map<GcStr, Value>,
 }
 
 impl Module {
@@ -37,12 +36,12 @@ impl Module {
   }
 
   /// Get the name of this module
-  pub fn name(&self) -> Gc<SmolStr> {
+  pub fn name(&self) -> GcStr {
     self.module_class.name
   }
 
   /// Create a module from a filepath
-  pub fn from_path(hooks: &GcHooks, path: Gc<PathBuf>) -> Result<Self, Gc<SmolStr>> {
+  pub fn from_path(hooks: &GcHooks, path: Gc<PathBuf>) -> Result<Self, GcStr> {
     let module_name = path.file_stem().and_then(|m| m.to_str());
 
     let module_name = match module_name {
@@ -66,7 +65,7 @@ impl Module {
   }
 
   /// Add export a new symbol from this module. Exported names must be unique
-  pub fn export_symbol(&mut self, hooks: &GcHooks, name: Gc<SmolStr>) -> Result<(), Gc<SmolStr>> {
+  pub fn export_symbol(&mut self, hooks: &GcHooks, name: GcStr) -> Result<(), GcStr> {
     if self.exports.contains(&name) {
       Err(hooks.manage_str(format!(
         "{} has already been exported from {}",
@@ -105,17 +104,12 @@ impl Module {
   }
 
   /// Insert a symbol into this module's symbol table
-  pub fn insert_symbol(
-    &mut self,
-    hooks: &GcHooks,
-    name: Gc<SmolStr>,
-    symbol: Value,
-  ) -> Option<Value> {
+  pub fn insert_symbol(&mut self, hooks: &GcHooks, name: GcStr, symbol: Value) -> Option<Value> {
     hooks.grow(self, |module| module.symbols.insert(name, symbol))
   }
 
   /// Get a symbol from this module's symbol table
-  pub fn get_symbol(&self, name: Gc<SmolStr>) -> Option<&Value> {
+  pub fn get_symbol(&self, name: GcStr) -> Option<&Value> {
     self.symbols.get(&name)
   }
 
@@ -130,7 +124,7 @@ impl Module {
   }
 
   /// Remove a symbol from this module
-  pub fn remove_symbol(&mut self, hooks: &GcHooks, name: Gc<SmolStr>) {
+  pub fn remove_symbol(&mut self, hooks: &GcHooks, name: GcStr) {
     hooks.shrink(self, |module| {
       module.symbols.remove(&name);
       module.exports.remove(&name);
@@ -197,8 +191,8 @@ impl DebugHeap for Module {
 impl Manage for Module {
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<Value>()) * self.symbols.capacity()
-      + mem::size_of::<Gc<SmolStr>>() * self.exports.capacity()
+      + (mem::size_of::<GcStr>() + mem::size_of::<Value>()) * self.symbols.capacity()
+      + mem::size_of::<GcStr>() * self.exports.capacity()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {

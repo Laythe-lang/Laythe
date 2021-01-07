@@ -1,7 +1,8 @@
-use crate::managed::{Allocation, Gc, Manage, Trace, TraceRoot};
+use crate::managed::{
+  Allocation, Gc, GcStr, GcStrHandle, Manage, Marked, Trace, TraceRoot, Unmark,
+};
 use crate::stdio::Stdio;
 use hashbrown::HashMap;
-use smol_str::SmolStr;
 use std::ptr::NonNull;
 use std::{cell::RefCell, io::Write};
 
@@ -22,6 +23,9 @@ pub struct Allocator {
   /// The regular heap where objects that have survived a gc reside
   heap: Vec<Box<Allocation<dyn Manage>>>,
 
+  /// The heap specifically for strings
+  str_heap: Vec<GcStrHandle>,
+
   /// A collection of temporary roots in the gc
   temp_roots: Vec<Box<dyn Trace>>,
 
@@ -29,7 +33,7 @@ pub struct Allocator {
   bytes_allocated: usize,
 
   /// The intern string cache
-  intern_cache: HashMap<&'static str, Gc<SmolStr>>,
+  intern_cache: HashMap<&'static str, GcStr>,
 
   /// The size in bytes of the gc before the next collection
   next_gc: usize,
@@ -53,8 +57,9 @@ impl<'a> Allocator {
   pub fn new(stdio: Stdio) -> Self {
     Self {
       stdio: RefCell::new(stdio),
-      nursery_heap: Vec::with_capacity(1000),
+      nursery_heap: vec![],
       heap: vec![],
+      str_heap: vec![],
       bytes_allocated: 0,
       temp_roots: vec![],
       intern_cache: HashMap::new(),
@@ -104,18 +109,14 @@ impl<'a> Allocator {
   ///
   /// assert_eq!(&*str, "hi!");
   /// ```
-  pub fn manage_str<S: Into<String> + AsRef<str>, C: TraceRoot + ?Sized>(
-    &mut self,
-    src: S,
-    context: &C,
-  ) -> Gc<SmolStr> {
-    let string = SmolStr::from(src);
-    if let Some(cached) = self.intern_cache.get(&*string) {
+  pub fn manage_str<S: AsRef<str>, C: TraceRoot + ?Sized>(&mut self, src: S, context: &C) -> GcStr {
+    let string = src.as_ref();
+    if let Some(cached) = self.intern_cache.get(string) {
       return *cached;
     }
 
-    let managed = self.allocate(string, context);
-    let static_str: &'static str = unsafe { &*(&**managed as *const str) };
+    let managed = self.allocate_str(string, context);
+    let static_str: &'static str = unsafe { &*(&*managed as *const str) };
     self.intern_cache.insert(&static_str, managed);
     managed
   }
@@ -167,13 +168,43 @@ impl<'a> Allocator {
   }
 
   /// Push a new temporary root onto the gc to avoid collection
-  pub fn push_root<T: 'static + Manage>(&mut self, managed: T) {
+  pub fn push_root<T: 'static + Trace>(&mut self, managed: T) {
     self.temp_roots.push(Box::new(managed));
   }
 
   /// Pop a temporary root again allowing gc to occur normally
   pub fn pop_roots(&mut self, count: usize) {
     self.temp_roots.truncate(self.temp_roots.len() - count);
+  }
+
+  fn allocate_str<C: TraceRoot + ?Sized>(&mut self, string: &str, context: &C) -> GcStr {
+    // create own store of allocation
+    let gc_string_handle = GcStrHandle::from(string);
+    let size = gc_string_handle.size();
+
+    let gc_string = gc_string_handle.value();
+
+    // push onto heap
+    self.bytes_allocated += size;
+    self.str_heap.push(gc_string_handle);
+
+    #[cfg(feature = "debug_gc")]
+    self.debug_allocate_str(gc_string, size);
+
+    #[cfg(feature = "debug_stress_gc")]
+    {
+      self.push_root(gc_string);
+      self.collect_garbage(context);
+      self.pop_roots(1)
+    }
+
+    if self.bytes_allocated > self.next_gc {
+      self.push_root(gc_string);
+      self.collect_garbage(context);
+      self.pop_roots(1)
+    }
+
+    gc_string
   }
 
   /// Allocate `data` on the gc's heap. If conditions are met
@@ -235,8 +266,10 @@ impl<'a> Allocator {
         self.trace(&**root);
       });
 
-      self.sweep_string_cache();
-      self.bytes_allocated = self.sweep();
+      let string_heap_size = self.sweep_string_heap();
+      let heap_size = self.sweep_heap();
+
+      self.bytes_allocated = string_heap_size + heap_size;
       self.next_gc = self.bytes_allocated * GC_HEAP_GROW_FACTOR
     }
 
@@ -297,7 +330,7 @@ impl<'a> Allocator {
 
   /// Remove unmarked objects from the heap. This calculates the remaining
   /// memory present in the heap
-  fn sweep(&mut self) -> usize {
+  fn sweep_heap(&mut self) -> usize {
     #[cfg(feature = "debug_stress_gc")]
     return self.sweep_full();
 
@@ -364,46 +397,67 @@ impl<'a> Allocator {
 
   /// Remove strings from the cache that no longer have any references
   /// in the heap
-  fn sweep_string_cache(&mut self) {
-    self.intern_cache.retain(|_, &mut string| {
+  fn sweep_string_heap(&mut self) -> usize {
+    self.intern_cache.retain(|_, &mut string| string.marked());
+
+    let mut remaining: usize = 0;
+
+    self.str_heap.retain(|string| {
       #[allow(clippy::let_and_return)]
-      let retain = string.obj().marked();
+      let retain = string.unmark();
 
       #[cfg(feature = "debug_gc")]
       debug_string_remove(string, !retain);
 
+      if retain {
+        remaining += string.size();
+      }
+
       retain
     });
+
+    remaining
   }
 
   /// Debug logging for allocating an object.
   #[cfg(feature = "debug_gc")]
   fn debug_allocate<T: 'static + Manage>(&self, ptr: NonNull<Allocation<T>>, size: usize) {
-    #[cfg(feature = "debug_gc")]
-    {
-      let mut stdio = self.stdio.borrow_mut();
-      let stdout = stdio.stdout();
+    let mut stdio = self.stdio.borrow_mut();
+    let stdout = stdio.stdout();
 
-      writeln!(
-        stdout,
-        "{:p} allocated {} bytes for {:?}",
-        ptr.as_ptr(),
-        size,
-        DebugWrap(unsafe { ptr.as_ref() }, 1)
-      )
-      .expect("unable to write to stdout");
-    }
+    writeln!(
+      stdout,
+      "{:p} allocated {} bytes for {:?}",
+      ptr.as_ptr(),
+      size,
+      DebugWrap(unsafe { ptr.as_ref() }, 1)
+    )
+    .expect("unable to write to stdout");
+  }
+
+  /// Debug logging for allocating an object.
+  #[cfg(feature = "debug_gc")]
+  fn debug_allocate_str(&self, string: GcStr, size: usize) {
+    let mut stdio = self.stdio.borrow_mut();
+    let stdout = stdio.stdout();
+
+    writeln!(
+      stdout,
+      "{:p} allocated {} bytes for {:?}",
+      string, size, string,
+    )
+    .expect("unable to write to stdout");
   }
 }
 
 /// Debug logging for removing a string from the cache.
 #[cfg(feature = "debug_gc")]
-fn debug_string_remove(string: Gc<SmolStr>, free: bool) {
+fn debug_string_remove(string: &GcStrHandle, free: bool) {
   if free {
     println!(
       "{:p} remove string from cache {:?}",
-      &**string,
-      DebugWrap(&string, 1)
+      string,
+      DebugWrap(string, 1)
     )
   }
 }
@@ -439,17 +493,3 @@ impl TraceRoot for NoGc {
 }
 
 pub static NO_GC: NoGc = NoGc();
-
-#[cfg(test)]
-mod test {
-  use super::*;
-
-  #[test]
-  fn dyn_manage() {
-    let dyn_trace: Box<dyn TraceRoot> = Box::new(NoGc());
-    let mut gc = Allocator::default();
-
-    let dyn_manged_str = gc.manage(SmolStr::from("managed"), &*dyn_trace);
-    assert_eq!(*dyn_manged_str, SmolStr::from("managed"));
-  }
-}

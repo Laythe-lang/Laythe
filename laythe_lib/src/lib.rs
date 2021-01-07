@@ -11,16 +11,15 @@ use env::env_module;
 use global::add_global_module;
 use io::add_io_package;
 use laythe_core::{hooks::GcHooks, package::Package};
-use laythe_env::managed::Gc;
+use laythe_env::managed::{Gc, GcStr};
 use math::add_math_module;
 use regexp::regexp_module;
-use smol_str::SmolStr;
 
 pub use builtin::{
   builtin_from_module, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives,
 };
 
-type InitResult<T> = Result<T, Gc<SmolStr>>;
+type InitResult<T> = Result<T, GcStr>;
 
 #[macro_export]
 macro_rules! native {

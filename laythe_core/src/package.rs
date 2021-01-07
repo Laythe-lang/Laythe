@@ -1,21 +1,20 @@
 use crate::{hooks::GcHooks, module::Module, object::Map};
 use hashbrown::hash_map::{Entry, Iter};
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::mem;
 use std::{fmt, io::Write};
 
 /// An object representing an import request from a file
-pub struct Import(Vec<Gc<SmolStr>>);
+pub struct Import(Vec<GcStr>);
 
 impl Import {
   /// Create a new import
-  pub fn new(path: Vec<Gc<SmolStr>>) -> Self {
+  pub fn new(path: Vec<GcStr>) -> Self {
     Self(path)
   }
 
   /// Get the package name
-  pub fn package(&self) -> Option<Gc<SmolStr>> {
+  pub fn package(&self) -> Option<GcStr> {
     self.0.first().copied()
   }
 
@@ -70,15 +69,15 @@ impl DebugHeap for PackageEntity {
 #[derive(Clone)]
 pub struct Package {
   /// The name of the package
-  name: Gc<SmolStr>,
+  name: GcStr,
 
   /// A hash of names to sub packages and modules
-  entities: Map<Gc<SmolStr>, PackageEntity>,
+  entities: Map<GcStr, PackageEntity>,
 }
 
 impl Package {
   /// Create a new package
-  pub fn new(name: Gc<SmolStr>) -> Self {
+  pub fn new(name: GcStr) -> Self {
     Self {
       name,
       entities: Map::default(),
@@ -86,12 +85,12 @@ impl Package {
   }
 
   /// Retrieve the name of this package
-  pub fn name(&self) -> Gc<SmolStr> {
+  pub fn name(&self) -> GcStr {
     self.name
   }
 
   /// Add a module to this package
-  pub fn add_module(&mut self, hooks: &GcHooks, module: Gc<Module>) -> Result<(), Gc<SmolStr>> {
+  pub fn add_module(&mut self, hooks: &GcHooks, module: Gc<Module>) -> Result<(), GcStr> {
     match self.entities.entry(module.name()) {
       Entry::Occupied(_) => Err(hooks.manage_str(format!(
         "Cannot add module {} to package {}",
@@ -106,11 +105,7 @@ impl Package {
   }
 
   /// Add a sub package to this package
-  pub fn add_package(
-    &mut self,
-    hooks: &GcHooks,
-    sub_package: Gc<Package>,
-  ) -> Result<(), Gc<SmolStr>> {
+  pub fn add_package(&mut self, hooks: &GcHooks, sub_package: Gc<Package>) -> Result<(), GcStr> {
     match self.entities.entry(sub_package.name) {
       Entry::Occupied(_) => Err(hooks.manage_str(format!(
         "Cannot add sub package {} to package {}",
@@ -124,13 +119,13 @@ impl Package {
   }
 
   /// Get an iterator to the elements in this package
-  pub fn entities(&self) -> Iter<'_, Gc<SmolStr>, PackageEntity> {
+  pub fn entities(&self) -> Iter<'_, GcStr, PackageEntity> {
     self.entities.iter()
   }
 
   /// Get a set of symbols from this package using a requested import. This
   /// operation can fail if some or all of the symbols are not found.
-  pub fn import(&self, hooks: &GcHooks, import: Import) -> Result<Gc<Module>, Gc<SmolStr>> {
+  pub fn import(&self, hooks: &GcHooks, import: Import) -> Result<Gc<Module>, GcStr> {
     if import.0.is_empty() {
       panic!("No path in import");
     }
@@ -144,12 +139,7 @@ impl Package {
 
   /// Get a set of symbols from this packages using a requested. This method
   /// is used internally to track how far down the import path has currently been resolved
-  fn _import(
-    &self,
-    hooks: &GcHooks,
-    depth: usize,
-    import: Import,
-  ) -> Result<Gc<Module>, Gc<SmolStr>> {
+  fn _import(&self, hooks: &GcHooks, depth: usize, import: Import) -> Result<Gc<Module>, GcStr> {
     if depth >= import.0.len() {
       return Err(hooks.manage_str(format!("Could not resolve module {}", import.path_str())));
     }
@@ -169,7 +159,7 @@ impl Package {
 impl fmt::Debug for Package {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_struct("Package")
-      .field("name", &*self.name)
+      .field("name", &self.name)
       .field("entities", &"LyHashMap: { ... }")
       .finish()
   }
@@ -217,8 +207,7 @@ impl DebugHeap for Package {
 impl Manage for Package {
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + (mem::size_of::<Gc<SmolStr>>() + mem::size_of::<PackageEntity>())
-        * (self.entities.capacity())
+      + (mem::size_of::<GcStr>() + mem::size_of::<PackageEntity>()) * (self.entities.capacity())
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {

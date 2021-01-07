@@ -6,7 +6,7 @@ use laythe_core::{
   package::{Import, Package},
   value::Value,
 };
-use laythe_env::managed::Gc;
+use laythe_env::managed::{Gc, GcStr};
 
 pub fn to_dyn_native<T: 'static + Native>(hooks: &GcHooks, method: T) -> Gc<Box<dyn Native>> {
   hooks.manage(Box::new(method) as Box<dyn Native>)
@@ -16,7 +16,7 @@ pub fn default_class_inheritance(
   hooks: &GcHooks,
   package: &Package,
   class_name: &str,
-) -> Result<Gc<Class>, Gc<SmolStr>> {
+) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, GLOBAL_PATH);
@@ -31,7 +31,7 @@ pub fn default_error_inheritance(
   hooks: &GcHooks,
   package: &Package,
   class_name: &str,
-) -> Result<Gc<Class>, Gc<SmolStr>> {
+) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, GLOBAL_PATH);
@@ -46,7 +46,7 @@ pub fn load_class_from_package(
   package: &Package,
   path: &str,
   name: &str,
-) -> Result<Gc<Class>, Gc<SmolStr>> {
+) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(name);
   let import: Import = Import::from_str(hooks, path);
 
@@ -71,7 +71,7 @@ pub fn load_class_from_module(
   hooks: &GcHooks,
   module: &Module,
   name: &str,
-) -> Result<Gc<Class>, Gc<SmolStr>> {
+) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(name);
   match module.import(hooks).get_field(&name) {
     Some(symbol) => {
@@ -93,7 +93,7 @@ pub fn load_instance_from_module(
   hooks: &GcHooks,
   module: &Module,
   name: &str,
-) -> Result<Gc<Instance>, Gc<SmolStr>> {
+) -> Result<Gc<Instance>, GcStr> {
   let name = hooks.manage_str(name);
   match module.import(hooks).get_field(&name) {
     Some(symbol) => {
@@ -114,9 +114,9 @@ pub fn load_instance_from_module(
 pub fn export_and_insert(
   hooks: &GcHooks,
   module: &mut Module,
-  name: Gc<SmolStr>,
+  name: GcStr,
   symbol: Value,
-) -> Result<(), Gc<SmolStr>> {
+) -> Result<(), GcStr> {
   module.insert_symbol(hooks, name, symbol);
   module.export_symbol(hooks, name)
 }
@@ -124,7 +124,6 @@ pub fn export_and_insert(
 #[cfg(test)]
 pub use self::test::*;
 use crate::GLOBAL_PATH;
-use smol_str::SmolStr;
 
 #[cfg(test)]
 mod test {
@@ -150,11 +149,10 @@ mod test {
   };
   use laythe_env::{
     io::Io,
-    managed::{Gc, Trace, TraceRoot},
+    managed::{Gc, GcStr, Trace, TraceRoot},
     memory::{Allocator, NoGc},
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
-  use smol_str::SmolStr;
   use std::{cell::RefCell, io::Write, path::PathBuf, sync::Arc};
 
   use super::to_dyn_native;
@@ -224,6 +222,10 @@ mod test {
         builtin: None,
         response_count: 0,
       }
+    }
+
+    pub fn add_responses(&mut self, responses: &[Value]) {
+      self.responses.extend_from_slice(responses);
     }
   }
 
@@ -298,7 +300,7 @@ mod test {
       Call::Exit(1)
     }
 
-    fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
+    fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
       let b = match &self.builtin {
         Some(b) => b,
         None => return Call::Exit(1),

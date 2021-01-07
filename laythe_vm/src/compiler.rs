@@ -16,7 +16,7 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{DebugHeap, Gc, Manage, Trace, TraceRoot},
+  managed::{DebugHeap, Gc, GcStr, Manage, Trace, TraceRoot},
   memory::Allocator,
 };
 use object::{Fun, TryBlock};
@@ -77,13 +77,8 @@ impl Manage for ClassInfo {
 }
 
 impl Trace for ClassInfo {
-  fn trace(&self) {
-    self.fields.iter().for_each(|field| field.trace());
-  }
-
-  fn trace_debug(&self, log: &mut dyn Write) {
-    self.fields.iter().for_each(|field| field.trace_debug(log));
-  }
+  fn trace(&self) {}
+  fn trace_debug(&self, _: &mut dyn Write) {}
 }
 
 #[derive(Debug, Clone)]
@@ -113,7 +108,11 @@ impl Manage for LoopInfo {
   }
 }
 
-impl Trace for LoopInfo {}
+impl Trace for LoopInfo {
+  fn trace(&self) {}
+
+  fn trace_debug(&self, _log: &mut dyn Write) {}
+}
 
 pub struct Compiler<'a> {
   /// The environments io interface
@@ -242,7 +241,7 @@ impl<'a> Compiler<'a> {
   }
 
   // create a child compiler to compile a function inside the enclosing module
-  fn child(name: Gc<SmolStr>, fun_kind: FunKind, enclosing: &mut Compiler<'a>) -> Self {
+  fn child(name: GcStr, fun_kind: FunKind, enclosing: &mut Compiler<'a>) -> Self {
     let fun = enclosing
       .gc
       .borrow_mut()
@@ -1077,6 +1076,9 @@ impl<'a> Compiler<'a> {
       self,
     );
     let enclosing_loop = mem::replace(&mut self.loop_info, Some(loop_info));
+    if let Some(enclosing_loop) = enclosing_loop {
+      self.gc.borrow_mut().push_root(enclosing_loop)
+    }
 
     self.expr(&while_.cond);
 
@@ -1091,6 +1093,9 @@ impl<'a> Compiler<'a> {
     self.emit_byte(AlignedByteCode::Drop, while_.end());
     self.patch_breaks();
 
+    if enclosing_loop.is_some() {
+      self.gc.borrow_mut().pop_roots(1);
+    }
     self.loop_info = enclosing_loop;
   }
 

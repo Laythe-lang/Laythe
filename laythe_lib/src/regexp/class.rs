@@ -105,7 +105,7 @@ macro_rules! get_regex {
   ( $self:ident, $this:ident, $hooks:ident ) => {{
     let instance = $this.unwrap().to_instance();
 
-    match Regex::new(instance[0].to_str().as_str()) {
+    match Regex::new(&*instance[0].to_str()) {
       Ok(regexp) => regexp,
       Err(err) => return $self.call_error($hooks, err.to_string()),
     }
@@ -118,7 +118,7 @@ impl Native for RegExpTest {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let regexp = get_regex!(self, this, hooks);
 
-    Call::Ok(val!(regexp.is_match(args[0].to_str().as_str())))
+    Call::Ok(val!(regexp.is_match(&args[0].to_str())))
   }
 }
 
@@ -128,7 +128,7 @@ impl Native for RegExpMatch {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let regexp = get_regex!(self, this, hooks);
 
-    match regexp.find(args[0].to_str().as_str()) {
+    match regexp.find(&args[0].to_str()) {
       Some(found) => Call::Ok(val!(hooks.manage_str(found.as_str()))),
       None => Call::Ok(VALUE_NIL),
     }
@@ -141,7 +141,7 @@ impl Native for RegExpCaptures {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let regexp = get_regex!(self, this, hooks);
 
-    match regexp.captures(args[0].to_str().as_str()) {
+    match regexp.captures(&args[0].to_str()) {
       Some(captures) => {
         let mut results: Gc<List<Value>> = hooks.manage(List::new());
         hooks.push_root(results);

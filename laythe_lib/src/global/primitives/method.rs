@@ -13,8 +13,7 @@ use laythe_core::{
   value::Value,
   Call,
 };
-use laythe_env::managed::{Gc, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{GcStr, Trace};
 use std::io::Write;
 
 pub const METHOD_CLASS_NAME: &str = "Method";
@@ -61,11 +60,11 @@ pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> Ini
 #[derive(Debug)]
 struct MethodName {
   meta: NativeMeta,
-  method_name: Gc<SmolStr>,
+  method_name: GcStr,
 }
 
 impl MethodName {
-  fn new(meta: NativeMeta, method_name: Gc<SmolStr>) -> Self {
+  fn new(meta: NativeMeta, method_name: GcStr) -> Self {
     Self { meta, method_name }
   }
 }

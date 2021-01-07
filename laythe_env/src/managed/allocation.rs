@@ -3,7 +3,10 @@ use std::{
   sync::atomic::{AtomicBool, Ordering},
 };
 
-use super::manage::{DebugHeap, Manage, Trace};
+use super::{
+  manage::{DebugHeap, Manage, Trace},
+  Mark, Marked, Unmark,
+};
 
 /// The header of an allocation indicate meta data about the object
 #[derive(Debug, Default)]
@@ -21,7 +24,7 @@ pub struct Allocation<T: 'static + Trace + ?Sized> {
   header: Header,
 
   // The underlying date being managed
-  pub data: T,
+  pub(crate) data: T,
 }
 
 impl<T: 'static + Manage> Allocation<T> {
@@ -45,6 +48,7 @@ impl<T: 'static + Manage> Allocation<T> {
   }
 
   /// What is the size of this allocation in bytes
+  #[inline]
   pub fn size(&self) -> usize {
     self.data.size() + mem::size_of::<Header>()
   }
@@ -57,6 +61,7 @@ impl<T: 'static + Manage> Allocation<T> {
 
 impl Allocation<dyn Manage> {
   /// What is the size of this allocation in bytes
+  #[inline]
   pub fn size(&self) -> usize {
     self.data.size() + mem::size_of::<Header>()
   }
@@ -67,27 +72,38 @@ impl Allocation<dyn Manage> {
   }
 }
 
-impl<T: 'static + Manage + ?Sized> Allocation<T> {
+impl<T: Trace> Mark for Allocation<T> {
   /// Mark this allocation as visited, returning
   /// the existing marked status
-  pub fn mark(&self) -> bool {
+  #[inline]
+  fn mark(&self) -> bool {
     self
       .header
       .marked
       .compare_and_swap(false, true, Ordering::Release)
   }
+}
 
-  /// Unmark this allocation as visited, returning
-  /// the existing marked status
-  pub fn unmark(&self) -> bool {
+impl<T: Trace> Marked for Allocation<T> {
+  #[inline]
+  fn marked(&self) -> bool {
+    self.header.marked.load(Ordering::Acquire)
+  }
+}
+
+impl Unmark for Allocation<dyn Manage + 'static> {
+  #[inline]
+  fn unmark(&self) -> bool {
     self
       .header
       .marked
       .compare_and_swap(true, false, Ordering::Release)
   }
+}
 
-  /// Is this allocation marked
-  pub fn marked(&self) -> bool {
+impl Marked for Allocation<dyn Manage + 'static> {
+  #[inline]
+  fn marked(&self) -> bool {
     self.header.marked.load(Ordering::Acquire)
   }
 }

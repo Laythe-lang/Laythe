@@ -21,12 +21,11 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Gc, Trace, TraceRoot},
+  managed::{Gc, GcStr, Trace, TraceRoot},
   memory::{Allocator, NO_GC},
 };
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn, GLOBAL, STD};
 use laythe_native::io::io_native;
-use smol_str::SmolStr;
 use std::convert::TryInto;
 use std::io::Write;
 use std::mem;
@@ -107,10 +106,10 @@ pub struct Vm {
   builtin: BuiltIn,
 
   /// A collection of packages that have already been loaded
-  packages: Map<Gc<SmolStr>, Gc<Package>>,
+  packages: Map<GcStr, Gc<Package>>,
 
   /// A cache for full filepath to individual modules
-  cache: Map<Gc<SmolStr>, Gc<Module>>,
+  cache: Map<GcStr, Gc<Module>>,
 
   /// The global module
   global: Gc<Module>,
@@ -384,7 +383,7 @@ impl Vm {
   }
 
   /// Get a method for this this value with a given method name
-  fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
+  fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
     let class = self.builtin.primitives.for_value(this, this.kind());
 
     match class.get_method(&method_name) {
@@ -611,7 +610,7 @@ impl Vm {
 
   /// read a constant as a string from the current chunk
   #[inline]
-  fn read_string(&self, index: u16) -> Gc<SmolStr> {
+  fn read_string(&self, index: u16) -> GcStr {
     self.read_constant(index).to_str()
   }
 
@@ -701,7 +700,7 @@ impl Vm {
 
     let mut buffers = String::with_capacity(length);
     for arg in args {
-      buffers.push_str(arg.to_str().as_str())
+      buffers.push_str(&arg.to_str())
     }
 
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
@@ -767,7 +766,7 @@ impl Vm {
   }
 
   /// invoke a method
-  fn invoke(&mut self, receiver: Value, method_name: Gc<SmolStr>, arg_count: u8) -> Signal {
+  fn invoke(&mut self, receiver: Value, method_name: GcStr, arg_count: u8) -> Signal {
     if receiver.is_instance() {
       let instance = receiver.to_instance();
       if let Some(field) = instance.get_field(&method_name) {
@@ -895,7 +894,7 @@ impl Vm {
       current_module.remove_symbol(&GcHooks::new(self), string);
       return self.runtime_error(
         self.builtin.errors.property,
-        &format!("Undefined variable {}", string.as_str()),
+        &format!("Undefined variable {}", string),
       );
     }
 
@@ -981,7 +980,7 @@ impl Vm {
       }
       None => self.runtime_error(
         self.builtin.errors.runtime,
-        &format!("Undefined variable {}", string.as_str()),
+        &format!("Undefined variable {}", string),
       ),
     }
   }
@@ -1016,7 +1015,7 @@ impl Vm {
     self.get_property(value, name)
   }
 
-  fn get_property(&mut self, value: Value, name: Gc<SmolStr>) -> Signal {
+  fn get_property(&mut self, value: Value, name: GcStr) -> Signal {
     if value.is_instance() {
       let instance = value.to_instance();
 
@@ -1117,7 +1116,7 @@ impl Vm {
 
     match copy.export_symbol(&GcHooks::new(self), name) {
       Ok(_) => Signal::Ok,
-      Err(error) => self.runtime_error(self.builtin.errors.export, error.as_str()),
+      Err(error) => self.runtime_error(self.builtin.errors.export, &*error),
     }
   }
 
@@ -1164,8 +1163,8 @@ impl Vm {
       let right = right.to_str();
 
       let mut buffer = String::with_capacity(left.len() + right.len());
-      buffer.push_str(left.as_str());
-      buffer.push_str(right.as_str());
+      buffer.push_str(&*left);
+      buffer.push_str(&*right);
 
       let string = self.gc.borrow_mut().manage_str(buffer, self);
       self.push(val!(string));
@@ -1684,7 +1683,7 @@ impl Vm {
   }
 
   /// bind a method to an instance
-  fn bind_method(&mut self, class: Gc<Class>, name: Gc<SmolStr>) -> Signal {
+  fn bind_method(&mut self, class: Gc<Class>, name: GcStr) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
         let bound = self
@@ -1696,18 +1695,13 @@ impl Vm {
       }
       None => self.runtime_error(
         self.builtin.errors.runtime,
-        &format!("Undefined property {}", name.as_str()),
+        &format!("Undefined property {}", name),
       ),
     }
   }
 
   /// invoke a method from the provided class
-  fn invoke_from_class(
-    &mut self,
-    class: Gc<Class>,
-    method_name: Gc<SmolStr>,
-    arg_count: u8,
-  ) -> Signal {
+  fn invoke_from_class(&mut self, class: Gc<Class>, method_name: GcStr, arg_count: u8) -> Signal {
     match class.get_method(&method_name) {
       Some(method) => self.resolve_call(method, arg_count),
       None => self.runtime_error(
@@ -1804,7 +1798,7 @@ impl Vm {
       write!(stdout, "Frame Stack:  ")?;
       for frame in self.frames[1..(self.frame_count)].iter() {
         let fun = frame.closure.fun;
-        write!(stdout, "[ {}:{} ]", *fun.module.name(), *fun.name)?;
+        write!(stdout, "[ {}:{} ]", fun.module.name(), fun.name)?;
       }
       writeln!(stdout)?;
     }
@@ -1972,7 +1966,7 @@ impl Vm {
 
     for frame in self.frames[1..self.frame_count].iter().rev() {
       let closure = &frame.closure;
-      let location: String = match &**closure.fun.name {
+      let location: String = match &*closure.fun.name {
         SCRIPT => SCRIPT.to_owned(),
         _ => format!("{}()", closure.fun.name),
       };
@@ -2065,7 +2059,9 @@ impl From<VmDependencies> for Vm {
 
 impl TraceRoot for Vm {
   fn trace(&self) {
-    self.script.map(|script| script.trace());
+    if let Some(script) = self.script {
+      script.trace();
+    }
 
     unsafe {
       let start = &self.stack[0] as *const Value;
@@ -2085,13 +2081,13 @@ impl TraceRoot for Vm {
       upvalue.trace();
     });
 
-    self.builtin.trace();
     self.packages.trace();
     self.cache.trace();
     self.root_dir.trace();
     self.native_fun_stub.trace();
-    self.global.trace();
-    self.current_error.map(|error| error.trace());
+    if let Some(current_error) = self.current_error {
+      current_error.trace()
+    }
   }
 
   fn trace_debug(&self, stdout: &mut dyn Write) {
@@ -2115,13 +2111,13 @@ impl TraceRoot for Vm {
       upvalue.trace_debug(stdout);
     });
 
-    self.builtin.trace_debug(stdout);
     self.packages.trace_debug(stdout);
     self.cache.trace_debug(stdout);
     self.root_dir.trace_debug(stdout);
     self.native_fun_stub.trace_debug(stdout);
-    self.global.trace_debug(stdout);
-    self.current_error.map(|error| error.trace_debug(stdout));
+    if let Some(current_error) = self.current_error {
+      current_error.trace_debug(stdout)
+    }
   }
 
   fn can_collect(&self) -> bool {
@@ -2160,7 +2156,7 @@ impl ValueContext for Vm {
     self.to_call_result(result)
   }
 
-  fn get_method(&mut self, this: Value, method_name: Gc<SmolStr>) -> Call {
+  fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
     self.get_method(this, method_name)
   }
 

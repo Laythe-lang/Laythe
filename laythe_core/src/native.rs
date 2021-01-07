@@ -4,8 +4,7 @@ use crate::{
   value::Value,
   Call,
 };
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{DebugHeap, DebugWrap, GcStr, Manage, Trace};
 use std::{fmt, io::Write};
 use std::{mem, ptr};
 
@@ -79,7 +78,7 @@ impl NativeMetaBuilder {
 #[derive(Clone, Debug)]
 pub struct NativeMeta {
   /// The name of the native function
-  pub name: Gc<SmolStr>,
+  pub name: GcStr,
 
   /// Is this native function used as a method
   pub is_method: bool,

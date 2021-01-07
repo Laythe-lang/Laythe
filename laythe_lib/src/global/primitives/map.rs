@@ -22,8 +22,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Gc, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{Gc, GcStr, Trace};
 use std::io::Write;
 use std::mem;
 
@@ -153,13 +152,13 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitRe
 
 #[derive(Debug)]
 struct MapStr {
-  method_name: Gc<SmolStr>,
+  method_name: GcStr,
   meta: NativeMeta,
   error: Value,
 }
 
 impl MapStr {
-  fn new(meta: NativeMeta, method_name: Gc<SmolStr>, error: Value) -> Self {
+  fn new(meta: NativeMeta, method_name: GcStr, error: Value) -> Self {
     Self {
       meta,
       method_name,
@@ -215,7 +214,7 @@ impl Native for MapStr {
 
 fn format_map_entry(
   item: &Value,
-  method_name: Gc<SmolStr>,
+  method_name: GcStr,
   error: Value,
   buffer: &mut String,
   hooks: &mut Hooks,

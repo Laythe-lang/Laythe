@@ -328,7 +328,6 @@ dependencies = [
  "hashbrown",
  "laythe_env",
  "linear-map",
- "smol_str",
 ]
 
 [[package]]
@@ -338,7 +337,6 @@ dependencies = [
  "fnv",
  "hashbrown",
  "rayon",
- "smol_str",
 ]
 
 [[package]]
@@ -363,7 +361,6 @@ dependencies = [
  "laythe_env",
  "rand",
  "regex",
- "smol_str",
 ]
 
 [[package]]

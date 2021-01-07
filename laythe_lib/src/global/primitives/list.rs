@@ -18,8 +18,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyResult,
 };
-use laythe_env::managed::{Gc, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{Gc, GcStr, Trace};
 use std::{cmp::Ordering, io::Write};
 use std::{mem, slice::Iter};
 
@@ -202,12 +201,12 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitR
 #[derive(Debug)]
 struct ListStr {
   meta: NativeMeta,
-  method_name: Gc<SmolStr>,
+  method_name: GcStr,
   error: Value,
 }
 
 impl ListStr {
-  fn new(meta: NativeMeta, method_name: Gc<SmolStr>, error: Value) -> Self {
+  fn new(meta: NativeMeta, method_name: GcStr, error: Value) -> Self {
     Self {
       meta,
       method_name,
@@ -243,7 +242,7 @@ impl Native for ListStr {
     for item in list.iter() {
       // if already string quote and add to temps
       if item.is_str() {
-        strings.push(format!("'{}'", item.to_str().as_str()));
+        strings.push(format!("'{}'", item.to_str()));
         continue;
       }
 

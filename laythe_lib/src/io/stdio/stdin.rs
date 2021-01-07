@@ -135,7 +135,7 @@ mod test {
       let unwrapped = result.unwrap();
 
       assert!(unwrapped.is_str());
-      assert_eq!(&**unwrapped.to_str(), "dude");
+      assert_eq!(unwrapped.to_str(), "dude");
     }
   }
 
@@ -177,7 +177,7 @@ mod test {
       let unwrapped = result.unwrap();
 
       assert!(unwrapped.is_str());
-      assert_eq!(&**unwrapped.to_str(), "dude");
+      assert_eq!(unwrapped.to_str(), "dude");
     }
   }
 }

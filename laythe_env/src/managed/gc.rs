@@ -10,6 +10,7 @@ use std::{
 use super::{
   allocation::Allocation,
   manage::{DebugHeap, DebugWrap, Manage, Trace},
+  Mark,
 };
 
 pub struct Gc<T: 'static + Manage + ?Sized> {
@@ -103,49 +104,6 @@ impl<T: 'static + Manage> Manage for Gc<T> {
 }
 
 unsafe impl<T: 'static + Manage> Send for Gc<T> {}
-
-// impl Trace for Gc<dyn Manage> {
-//   fn trace(&self) {
-//     if self.obj().mark() {
-//       return;
-//     }
-
-//     self.obj().data.trace();
-//   }
-
-//   fn trace_debug(&self, stdout: &mut dyn Write) {
-//     if self.obj().mark() {
-//       return;
-//     }
-
-//     stdout
-//       .write_fmt(format_args!(
-//         "{:p} mark {:?}\n",
-//         &*self.obj(),
-//         DebugWrap(self, 1)
-//       ))
-//       .expect("unable to write to stdout");
-//     stdout.flush().expect("unable to flush stdout");
-
-//     self.obj().data.trace_debug(stdout);
-//   }
-// }
-
-// impl DebugHeap for Gc<dyn Manage> {
-//   fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
-//     f.write_str("*()")
-//   }
-// }
-
-// impl Manage for Gc<dyn Manage> {
-//   fn size(&self) -> usize {
-//     self.obj().size()
-//   }
-
-//   fn as_debug(&self) -> &dyn DebugHeap {
-//     self
-//   }
-// }
 
 impl<T: 'static + Manage + ?Sized> From<NonNull<Allocation<T>>> for Gc<T> {
   fn from(ptr: NonNull<Allocation<T>>) -> Self {

@@ -29,6 +29,24 @@ pub trait DebugHeap {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result;
 }
 
+/// A struct that can indicate it's status are marked or unmarked
+pub trait Marked {
+  /// Is this structure marked
+  fn marked(&self) -> bool;
+}
+
+/// A struct that can be marked as having being visited by
+/// a garbage collector
+pub trait Mark: Marked {
+  /// Mark this struct returning if it was previously marked
+  fn mark(&self) -> bool;
+}
+
+pub trait Unmark: Marked {
+  /// Unmark this struct returning if it was previously marked
+  fn unmark(&self) -> bool;
+}
+
 /// An entity that is traceable by the garbage collector
 pub trait Trace: Send {
   /// Mark all objects that are reachable from this object
