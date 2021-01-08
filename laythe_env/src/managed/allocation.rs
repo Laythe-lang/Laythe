@@ -77,10 +77,7 @@ impl<T: Trace> Mark for Allocation<T> {
   /// the existing marked status
   #[inline]
   fn mark(&self) -> bool {
-    self
-      .header
-      .marked
-      .compare_and_swap(false, true, Ordering::Release)
+    self.header.marked.swap(true, Ordering::Release)
   }
 }
 
@@ -94,10 +91,7 @@ impl<T: Trace> Marked for Allocation<T> {
 impl Unmark for Allocation<dyn Manage + 'static> {
   #[inline]
   fn unmark(&self) -> bool {
-    self
-      .header
-      .marked
-      .compare_and_swap(true, false, Ordering::Release)
+    self.header.marked.swap(false, Ordering::Release)
   }
 }
 

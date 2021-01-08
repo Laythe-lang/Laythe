@@ -502,7 +502,9 @@ impl LyIter for ZipIterator {
     hooks.push_root(results);
     for iter in &mut self.iters {
       let next = get!(iter.next(hooks));
+
       if is_falsey(next) {
+        hooks.pop_roots(1);
         return Call::Ok(val!(false));
       }
 

@@ -101,8 +101,18 @@ impl Trace for GcStr {
     self.mark();
   }
 
-  fn trace_debug(&self, _: &mut dyn Write) {
-    self.mark();
+  fn trace_debug(&self, log: &mut dyn Write) {
+    if self.mark() {
+      return;
+    }
+
+    log
+      .write_fmt(format_args!(
+        "{:p} mark {:?}\n",
+        self.0.as_alloc_ptr(),
+        self
+      ))
+      .expect("unable to write to stdout");
   }
 }
 
@@ -280,3 +290,4 @@ impl Pointer for GcStrHandle {
     Pointer::fmt(&self.value().0.as_alloc_ptr(), f)
   }
 }
+

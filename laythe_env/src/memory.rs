@@ -6,8 +6,11 @@ use hashbrown::HashMap;
 use std::ptr::NonNull;
 use std::{cell::RefCell, io::Write};
 
-#[cfg(feature = "debug_gc")]
-use crate::managed::{DebugWrap, DebugWrapDyn};
+#[cfg(any(feature = "gc_log_free", feature = "gc_log_alloc"))]
+use crate::managed::DebugWrap;
+
+#[cfg(feature = "gc_log_free")]
+use crate::managed::DebugWrapDyn;
 
 /// The garbage collector and memory manager for laythe. Currently this is implemented a very crude
 /// generation mark and sweep collector. As of now the key areas for improvements are better allocation
@@ -27,7 +30,7 @@ pub struct Allocator {
   str_heap: Vec<GcStrHandle>,
 
   /// A collection of temporary roots in the gc
-  temp_roots: Vec<Box<dyn Trace>>,
+  pub temp_roots: Vec<Box<dyn Trace>>,
 
   /// The total byte allocated in both heaps
   bytes_allocated: usize,
@@ -71,6 +74,11 @@ impl<'a> Allocator {
   /// Get the number of bytes allocated
   pub fn allocated(&self) -> usize {
     self.bytes_allocated
+  }
+
+  /// How many temporary roots are present
+  pub fn temp_roots(&self) -> usize {
+    self.temp_roots.len()
   }
 
   /// Create a `Managed<T>` from the provided `data`. This method will allocate space
@@ -174,6 +182,12 @@ impl<'a> Allocator {
 
   /// Pop a temporary root again allowing gc to occur normally
   pub fn pop_roots(&mut self, count: usize) {
+    debug_assert!(
+      count <= self.temp_roots.len(),
+      "Attempted to pop more temp roots than are present. Currently there are {} roots and tried to pop {}.",
+      count,
+      self.temp_roots.len()
+    );
     self.temp_roots.truncate(self.temp_roots.len() - count);
   }
 
@@ -188,10 +202,10 @@ impl<'a> Allocator {
     self.bytes_allocated += size;
     self.str_heap.push(gc_string_handle);
 
-    #[cfg(feature = "debug_gc")]
+    #[cfg(feature = "gc_log_alloc")]
     self.debug_allocate_str(gc_string, size);
 
-    #[cfg(feature = "debug_stress_gc")]
+    #[cfg(feature = "gc_stress")]
     {
       self.push_root(gc_string);
       self.collect_garbage(context);
@@ -227,10 +241,10 @@ impl<'a> Allocator {
 
     let managed = Gc::from(ptr);
 
-    #[cfg(feature = "debug_gc")]
+    #[cfg(feature = "gc_log_alloc")]
     self.debug_allocate(ptr, size);
 
-    #[cfg(feature = "debug_stress_gc")]
+    #[cfg(feature = "gc_stress")]
     {
       self.push_root(managed);
       self.collect_garbage(context);
@@ -249,11 +263,19 @@ impl<'a> Allocator {
   /// Collect garbage present in the heap for unreachable objects. Use the provided context
   /// to mark a set of initial roots into the vm.
   fn collect_garbage<C: TraceRoot + ?Sized>(&mut self, context: &C) {
-    #[cfg(feature = "debug_gc")]
+    #[cfg(any(
+      feature = "gc_log_mark",
+      feature = "gc_log_free",
+      feature = "gc_log_alloc"
+    ))]
     let before = self.bytes_allocated;
     self.gc_count += 1;
 
-    #[cfg(feature = "debug_gc")]
+    #[cfg(any(
+      feature = "gc_log_mark",
+      feature = "gc_log_free",
+      feature = "gc_log_alloc"
+    ))]
     {
       let mut stdio = self.stdio.borrow_mut();
       let stdout = stdio.stdout();
@@ -273,7 +295,11 @@ impl<'a> Allocator {
       self.next_gc = self.bytes_allocated * GC_HEAP_GROW_FACTOR
     }
 
-    #[cfg(feature = "debug_gc")]
+    #[cfg(any(
+      feature = "gc_log_mark",
+      feature = "gc_log_free",
+      feature = "gc_log_alloc"
+    ))]
     {
       let mut stdio = self.stdio.borrow_mut();
       let stdout = stdio.stdout();
@@ -302,10 +328,10 @@ impl<'a> Allocator {
   /// wrapper around a roots trace method to select either normal
   /// or debug trace at compile time.
   fn trace_root<C: TraceRoot + ?Sized>(&self, context: &C) {
-    #[cfg(not(feature = "debug_gc"))]
+    #[cfg(not(feature = "gc_log_mark"))]
     return context.trace();
 
-    #[cfg(feature = "debug_gc")]
+    #[cfg(feature = "gc_log_mark")]
     {
       let mut stdio = self.stdio.borrow_mut();
       let stdout = stdio.stdout();
@@ -317,10 +343,10 @@ impl<'a> Allocator {
   /// wrapper around an entities trace method to select either normal
   /// or debug trace at compile time.
   fn trace(&self, entity: &dyn Trace) {
-    #[cfg(not(feature = "debug_gc"))]
+    #[cfg(not(feature = "gc_log_mark"))]
     entity.trace();
 
-    #[cfg(feature = "debug_gc")]
+    #[cfg(feature = "gc_log_mark")]
     {
       let mut stdio = self.stdio.borrow_mut();
       let stdout = stdio.stdout();
@@ -331,10 +357,10 @@ impl<'a> Allocator {
   /// Remove unmarked objects from the heap. This calculates the remaining
   /// memory present in the heap
   fn sweep_heap(&mut self) -> usize {
-    #[cfg(feature = "debug_stress_gc")]
+    #[cfg(feature = "gc_stress")]
     return self.sweep_full();
 
-    #[cfg(not(feature = "debug_stress_gc"))]
+    #[cfg(not(feature = "gc_stress"))]
     if self.gc_count % 10 == 0 {
       self.sweep_full()
     } else {
@@ -344,15 +370,22 @@ impl<'a> Allocator {
 
   /// Remove unmarked objects from the nursery heap. Promoting surviving objects
   /// to the normal heap
-  #[cfg(not(feature = "debug_stress_gc"))]
+  #[cfg(not(feature = "gc_stress"))]
   fn sweep_nursery(&mut self) -> usize {
     self.heap.extend(self.nursery_heap.drain(..).filter(|obj| {
-      let retain = (*obj).marked();
+      #[cfg(not(feature = "gc_log_free"))]
+      {
+        (*obj).marked()
+      }
 
-      #[cfg(feature = "debug_gc")]
-      debug_free(&obj, !retain);
+      #[cfg(feature = "gc_log_free")]
+      {
+        let retain = (*obj).marked();
 
-      retain
+        debug_free(&obj, !retain);
+
+        retain
+      }
     }));
 
     let mut remaining: usize = 0;
@@ -370,18 +403,25 @@ impl<'a> Allocator {
     let mut remaining: usize = 0;
 
     self.heap.extend(self.nursery_heap.drain(..).filter(|obj| {
-      let retain = (*obj).marked();
+      #[cfg(not(feature = "gc_log_free"))]
+      {
+        (*obj).marked()
+      }
 
-      #[cfg(feature = "debug_gc")]
-      debug_free(&obj, !retain);
+      #[cfg(feature = "gc_log_free")]
+      {
+        let retain = (*obj).marked();
 
-      retain
+        debug_free(&obj, !retain);
+
+        retain
+      }
     }));
 
     self.heap.retain(|obj| {
       let retain = (*obj).unmark();
 
-      #[cfg(feature = "debug_gc")]
+      #[cfg(feature = "gc_log_free")]
       debug_free(&obj, !retain);
 
       if retain {
@@ -406,7 +446,7 @@ impl<'a> Allocator {
       #[allow(clippy::let_and_return)]
       let retain = string.unmark();
 
-      #[cfg(feature = "debug_gc")]
+      #[cfg(feature = "gc_log_free")]
       debug_string_remove(string, !retain);
 
       if retain {
@@ -420,7 +460,7 @@ impl<'a> Allocator {
   }
 
   /// Debug logging for allocating an object.
-  #[cfg(feature = "debug_gc")]
+  #[cfg(feature = "gc_log_alloc")]
   fn debug_allocate<T: 'static + Manage>(&self, ptr: NonNull<Allocation<T>>, size: usize) {
     let mut stdio = self.stdio.borrow_mut();
     let stdout = stdio.stdout();
@@ -436,7 +476,7 @@ impl<'a> Allocator {
   }
 
   /// Debug logging for allocating an object.
-  #[cfg(feature = "debug_gc")]
+  #[cfg(feature = "gc_log_alloc")]
   fn debug_allocate_str(&self, string: GcStr, size: usize) {
     let mut stdio = self.stdio.borrow_mut();
     let stdout = stdio.stdout();
@@ -451,7 +491,7 @@ impl<'a> Allocator {
 }
 
 /// Debug logging for removing a string from the cache.
-#[cfg(feature = "debug_gc")]
+#[cfg(feature = "gc_log_free")]
 fn debug_string_remove(string: &GcStrHandle, free: bool) {
   if free {
     println!(
@@ -463,7 +503,7 @@ fn debug_string_remove(string: &GcStrHandle, free: bool) {
 }
 
 /// Debug logging for free an object.
-#[cfg(feature = "debug_gc")]
+#[cfg(feature = "gc_log_free")]
 fn debug_free(obj: &Box<Allocation<dyn Manage>>, free: bool) {
   if free {
     println!(

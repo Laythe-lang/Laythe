@@ -147,7 +147,7 @@ mod test {
     fn call() {
       let stdio_container = Arc::new(StdioTestContainer::default());
 
-      let mut context = MockedContext::new_with_io(&stdio_container);
+      let mut context = MockedContext::with_test_stdio(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
@@ -191,7 +191,7 @@ mod test {
     fn call() {
       let stdio_container = Arc::new(StdioTestContainer::default());
 
-      let mut context = MockedContext::new_with_io(&stdio_container);
+      let mut context = MockedContext::with_test_stdio(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 

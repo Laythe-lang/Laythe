@@ -123,7 +123,7 @@ mod test {
     fn call() {
       let stdio_container = Arc::new(StdioTestContainer::with_stdin(&"dude".as_bytes()));
 
-      let mut context = MockedContext::new_with_io(&stdio_container);
+      let mut context = MockedContext::with_test_stdio(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
@@ -165,7 +165,7 @@ mod test {
         "sup".to_string(),
       ]));
 
-      let mut context = MockedContext::new_with_io(&stdio_container);
+      let mut context = MockedContext::with_test_stdio(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 

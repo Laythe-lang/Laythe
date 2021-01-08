@@ -1,8 +1,7 @@
 use crate::{
-  ast::{self, Decl, Expr, Primary, Stmt, Symbol},
+  ast::{self, Decl, Expr, Primary, Ranged, Stmt, Symbol, Trailer},
   token::{Lexeme, Token, TokenKind},
 };
-use ast::{AssignBinaryOp, BinaryOp, FunBody, List, Map, Ranged, Trailer, UnaryOp};
 use laythe_core::{
   chunk::{AlignedByteCode, Chunk, UpvalueIndex},
   constants::OBJECT,
@@ -56,6 +55,20 @@ pub struct ClassInfo {
   name: Option<GcStr>,
 }
 
+impl ClassInfo {
+  fn new(name: Option<GcStr>) -> Self {
+    ClassInfo {
+      fun_kind: None,
+      fields: vec![],
+      name,
+    }
+  }
+
+  fn add_field(&mut self, hooks: &GcHooks, field: GcStr) {
+    hooks.grow(self, |self_| self_.fields.push(field));
+  }
+}
+
 impl DebugHeap for ClassInfo {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
     f.debug_struct("ClassInfo")
@@ -68,7 +81,7 @@ impl DebugHeap for ClassInfo {
 
 impl Manage for ClassInfo {
   fn size(&self) -> usize {
-    mem::size_of::<Self>()
+    mem::size_of::<Self>() + mem::size_of::<GcStr>() * self.fields.capacity()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -81,11 +94,16 @@ impl Trace for ClassInfo {
     if let Some(name) = self.name {
       name.trace();
     }
+
+    self.fields.iter().for_each(|field| field.trace());
   }
+
   fn trace_debug(&self, log: &mut dyn Write) {
     if let Some(name) = self.name {
       name.trace_debug(log);
     }
+
+    self.fields.iter().for_each(|field| field.trace_debug(log));
   }
 }
 
@@ -304,11 +322,12 @@ impl<'a> Compiler<'a> {
     let name = match self.fun_kind {
       FunKind::Script => "script.lay".to_string(),
       FunKind::Fun => self.fun.name.to_string(),
-      FunKind::Method | FunKind::StaticMethod | FunKind::Initializer => format!(
-        "{}:{}",
-        self.class_info.unwrap().name.clone().unwrap().lexeme,
-        self.fun.name
-      ),
+      FunKind::Method | FunKind::StaticMethod | FunKind::Initializer => {
+        match self.class_info.expect("Class info not set").name {
+          Some(name) => format!("{}:{}", name, self.fun.name),
+          None => format!("AnonymousClass:{}", self.fun.name),
+        }
+      }
     };
 
     disassemble_chunk(&mut stdio, self.current_chunk(), &name).expect("could not write to stdio");
@@ -468,7 +487,7 @@ impl<'a> Compiler<'a> {
       let local = &self.locals[i];
 
       if let Some(local_name) = &local.name {
-        if &name.str() == local_name {
+        if name.str() == local_name {
           // handle the case were `let a = a;`
           if local.depth == UNINITIALIZED {
             self.error(
@@ -787,14 +806,10 @@ impl<'a> Compiler<'a> {
       .name
       .as_ref()
       .map(|name| self.gc.borrow_mut().manage_str(name.str(), self));
-    let class_compiler = self.gc.borrow_mut().manage(
-      ClassInfo {
-        name: class_info_name,
-        fun_kind: None,
-        fields: vec![],
-      },
-      self,
-    );
+    let class_compiler = self
+      .gc
+      .borrow_mut()
+      .manage(ClassInfo::new(class_info_name), self);
     let enclosing_class = mem::replace(&mut self.class_info, Some(class_compiler));
 
     // handle the case where a super class exists
@@ -944,8 +959,8 @@ impl<'a> Compiler<'a> {
     compiler.call_sig(&fun.call_sig);
 
     match &fun.body {
-      FunBody::Block(block) => compiler.block(&block),
-      FunBody::Expr(expr) => {
+      ast::FunBody::Block(block) => compiler.block(&block),
+      ast::FunBody::Expr(expr) => {
         compiler.expr(&expr);
         compiler.emit_byte(AlignedByteCode::Return, expr.end());
       }
@@ -1208,7 +1223,7 @@ impl<'a> Compiler<'a> {
 
                   if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
-                    class_info.fields.push(field);
+                    class_info.add_field(&GcHooks::new(self), field);
                   }
                 }
               }
@@ -1239,10 +1254,14 @@ impl<'a> Compiler<'a> {
   /// Compile a binary assignment expression
   fn assign_binary(&mut self, assign_binary: &ast::AssignBinary<'a>) {
     let binary_op = |comp: &mut Compiler| match &assign_binary.op {
-      AssignBinaryOp::Add => comp.emit_byte(AlignedByteCode::Add, assign_binary.rhs.end()),
-      AssignBinaryOp::Sub => comp.emit_byte(AlignedByteCode::Subtract, assign_binary.rhs.end()),
-      AssignBinaryOp::Mul => comp.emit_byte(AlignedByteCode::Multiply, assign_binary.rhs.end()),
-      AssignBinaryOp::Div => comp.emit_byte(AlignedByteCode::Divide, assign_binary.rhs.end()),
+      ast::AssignBinaryOp::Add => comp.emit_byte(AlignedByteCode::Add, assign_binary.rhs.end()),
+      ast::AssignBinaryOp::Sub => {
+        comp.emit_byte(AlignedByteCode::Subtract, assign_binary.rhs.end())
+      }
+      ast::AssignBinaryOp::Mul => {
+        comp.emit_byte(AlignedByteCode::Multiply, assign_binary.rhs.end())
+      }
+      ast::AssignBinaryOp::Div => comp.emit_byte(AlignedByteCode::Divide, assign_binary.rhs.end()),
     };
 
     match &assign_binary.lhs {
@@ -1272,7 +1291,7 @@ impl<'a> Compiler<'a> {
 
                   if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
-                    class_info.fields.push(field);
+                    class_info.add_field(&GcHooks::new(self), field);
                   }
                 }
               }
@@ -1313,23 +1332,23 @@ impl<'a> Compiler<'a> {
 
     // emit for rhs if we're not an "and" or "or"
     match &binary.op {
-      BinaryOp::And | BinaryOp::Or => (),
+      ast::BinaryOp::And | ast::BinaryOp::Or => (),
       _ => self.expr(&binary.rhs),
     }
 
     // emit for binary operation
     match &binary.op {
-      BinaryOp::Add => self.emit_byte(AlignedByteCode::Add, binary.rhs.end()),
-      BinaryOp::Sub => self.emit_byte(AlignedByteCode::Subtract, binary.rhs.end()),
-      BinaryOp::Mul => self.emit_byte(AlignedByteCode::Multiply, binary.rhs.end()),
-      BinaryOp::Div => self.emit_byte(AlignedByteCode::Divide, binary.rhs.end()),
-      BinaryOp::Lt => self.emit_byte(AlignedByteCode::Less, binary.rhs.end()),
-      BinaryOp::LtEq => self.emit_byte(AlignedByteCode::LessEqual, binary.rhs.end()),
-      BinaryOp::Gt => self.emit_byte(AlignedByteCode::Greater, binary.rhs.end()),
-      BinaryOp::GtEq => self.emit_byte(AlignedByteCode::GreaterEqual, binary.rhs.end()),
-      BinaryOp::Eq => self.emit_byte(AlignedByteCode::Equal, binary.rhs.end()),
-      BinaryOp::Ne => self.emit_byte(AlignedByteCode::NotEqual, binary.rhs.end()),
-      BinaryOp::And => {
+      ast::BinaryOp::Add => self.emit_byte(AlignedByteCode::Add, binary.rhs.end()),
+      ast::BinaryOp::Sub => self.emit_byte(AlignedByteCode::Subtract, binary.rhs.end()),
+      ast::BinaryOp::Mul => self.emit_byte(AlignedByteCode::Multiply, binary.rhs.end()),
+      ast::BinaryOp::Div => self.emit_byte(AlignedByteCode::Divide, binary.rhs.end()),
+      ast::BinaryOp::Lt => self.emit_byte(AlignedByteCode::Less, binary.rhs.end()),
+      ast::BinaryOp::LtEq => self.emit_byte(AlignedByteCode::LessEqual, binary.rhs.end()),
+      ast::BinaryOp::Gt => self.emit_byte(AlignedByteCode::Greater, binary.rhs.end()),
+      ast::BinaryOp::GtEq => self.emit_byte(AlignedByteCode::GreaterEqual, binary.rhs.end()),
+      ast::BinaryOp::Eq => self.emit_byte(AlignedByteCode::Equal, binary.rhs.end()),
+      ast::BinaryOp::Ne => self.emit_byte(AlignedByteCode::NotEqual, binary.rhs.end()),
+      ast::BinaryOp::And => {
         let end_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), binary.lhs.end());
 
         self.emit_byte(AlignedByteCode::Drop, binary.lhs.end());
@@ -1337,7 +1356,7 @@ impl<'a> Compiler<'a> {
 
         self.patch_jump(end_jump);
       }
-      BinaryOp::Or => {
+      ast::BinaryOp::Or => {
         let else_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), binary.lhs.end());
         let end_jump = self.emit_jump(AlignedByteCode::Jump(0), binary.lhs.end());
 
@@ -1355,8 +1374,8 @@ impl<'a> Compiler<'a> {
     self.expr(&unary.expr);
 
     match &unary.op {
-      UnaryOp::Not => self.emit_byte(AlignedByteCode::Not, unary.expr.end()),
-      UnaryOp::Negate => self.emit_byte(AlignedByteCode::Negate, unary.expr.end()),
+      ast::UnaryOp::Not => self.emit_byte(AlignedByteCode::Not, unary.expr.end()),
+      ast::UnaryOp::Negate => self.emit_byte(AlignedByteCode::Negate, unary.expr.end()),
     }
   }
 
@@ -1600,7 +1619,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a list literal
-  fn list(&mut self, list: &List<'a>) -> bool {
+  fn list(&mut self, list: &ast::List<'a>) -> bool {
     for item in list.items.iter() {
       self.expr(item);
     }
@@ -1611,7 +1630,7 @@ impl<'a> Compiler<'a> {
   }
 
   /// Compile a map literal
-  fn map(&mut self, map: &Map<'a>) -> bool {
+  fn map(&mut self, map: &ast::Map<'a>) -> bool {
     for (key, value) in map.entries.iter() {
       self.expr(key);
       self.expr(value);
@@ -1651,8 +1670,14 @@ impl<'a> TraceRoot for Compiler<'a> {
 
     self.fun.trace();
     self.module.trace();
-    self.class_info.map(|class_info| class_info.trace());
-    self.loop_info.map(|loop_info| loop_info.trace());
+
+    if let Some(class_info) = self.class_info {
+      class_info.trace();
+    }
+    if let Some(loop_info) = self.loop_info {
+      loop_info.trace();
+    }
+
     self.constants.keys().for_each(|key| {
       key.trace();
     });
@@ -1666,10 +1691,14 @@ impl<'a> TraceRoot for Compiler<'a> {
 
     self.fun.trace_debug(log);
     self.module.trace_debug(log);
-    self
-      .class_info
-      .map(|class_info| class_info.trace_debug(log));
-    self.loop_info.map(|loop_info| loop_info.trace_debug(log));
+
+    if let Some(class_info) = self.class_info {
+      class_info.trace_debug(log)
+    }
+    if let Some(loop_info) = self.loop_info {
+      loop_info.trace_debug(log)
+    }
+
     self.constants.keys().for_each(|key| {
       key.trace_debug(log);
     });
@@ -1681,7 +1710,7 @@ impl<'a> TraceRoot for Compiler<'a> {
 }
 
 /// Get the first local for a given function kind
-fn first_local<'a>(fun_kind: FunKind) -> Local {
+fn first_local(fun_kind: FunKind) -> Local {
   match fun_kind {
     FunKind::Fun | FunKind::StaticMethod | FunKind::Script => Local {
       name: Option::None,

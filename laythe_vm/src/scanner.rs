@@ -615,7 +615,7 @@ impl<'a> Scanner<'a> {
 }
 
 /// Make a new token
-fn make_token<'a>(kind: TokenKind, lexeme: &'a str, line: u32) -> Token<'a> {
+fn make_token(kind: TokenKind, lexeme: &str, line: u32) -> Token {
   Token {
     kind,
     lexeme: Lexeme::Slice(lexeme),

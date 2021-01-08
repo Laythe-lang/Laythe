@@ -326,7 +326,7 @@ impl Native for MapGet {
 native!(MapSet, MAP_SET);
 
 impl Native for MapSet {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let index = args[0];
     let key = if index.is_num() {
       val!(use_sentinel_nan(index.to_num()))
@@ -334,13 +334,8 @@ impl Native for MapSet {
       index
     };
 
-    Call::Ok(
-      this
-        .unwrap()
-        .to_map()
-        .insert(key, args[1])
-        .unwrap_or(VALUE_NIL),
-    )
+    let result = hooks.grow(&mut *this.unwrap().to_map(), |map| map.insert(key, args[1]));
+    Call::Ok(result.unwrap_or(VALUE_NIL))
   }
 }
 

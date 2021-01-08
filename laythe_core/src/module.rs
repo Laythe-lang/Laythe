@@ -162,7 +162,7 @@ impl Trace for Module {
     });
   }
   fn trace_debug(&self, stdout: &mut dyn Write) {
-    self.module_class.trace();
+    self.module_class.trace_debug(stdout);
     self.path.trace_debug(stdout);
 
     self.exports.iter().for_each(|key| {

@@ -56,7 +56,7 @@ impl<T: 'static + Manage> Gc<T> {
   }
 }
 
-impl<T: 'static + Manage + Send> Trace for Gc<T> {
+impl<T: 'static + Manage> Trace for Gc<T> {
   fn trace(&self) {
     if self.obj().mark() {
       return;
@@ -65,21 +65,21 @@ impl<T: 'static + Manage + Send> Trace for Gc<T> {
     self.obj().data.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) {
+  fn trace_debug(&self, log: &mut dyn Write) {
     if self.obj().mark() {
       return;
     }
 
-    stdout
+    log
       .write_fmt(format_args!(
         "{:p} mark {:?}\n",
         &*self.obj(),
         DebugWrap(self, 1)
       ))
       .expect("unable to write to stdout");
-    stdout.flush().expect("unable to flush stdout");
+    log.flush().expect("unable to flush stdout");
 
-    self.obj().data.trace_debug(stdout);
+    self.obj().data.trace_debug(log);
   }
 }
 

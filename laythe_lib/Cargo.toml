@@ -14,6 +14,7 @@ path = "src/lib.rs"
 [dependencies]
 laythe_core = { path = "../laythe_core" } # , features = ["nan_boxing"]
 laythe_env = { path = "../laythe_env" }
+laythe_native = { path = "../laythe_native" }
 hashbrown = "0.9.1"
 js-sys = { version = "0.3.41", optional = true }
 fnv = "1.0.3"

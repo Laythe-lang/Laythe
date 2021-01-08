@@ -93,16 +93,14 @@ impl Upvalue {
 
 impl Trace for Upvalue {
   fn trace(&self) {
-    match self {
-      Upvalue::Closed(upvalue) => upvalue.trace(),
-      _ => (),
+    if let Upvalue::Closed(upvalue) = self {
+      upvalue.trace();
     }
   }
 
   fn trace_debug(&self, stdio: &mut dyn Write) {
-    match self {
-      Upvalue::Closed(upvalue) => upvalue.trace_debug(stdio),
-      _ => (),
+    if let Upvalue::Closed(upvalue) = self {
+      upvalue.trace_debug(stdio);
     }
   }
 }
@@ -746,8 +744,8 @@ impl Class {
   }
 
   pub fn inherit(&mut self, hooks: &GcHooks, super_class: Gc<Class>) {
-    debug_assert!(self.methods.len() == 0);
-    debug_assert!(self.fields.len() == 0);
+    debug_assert!(self.methods.is_empty());
+    debug_assert!(self.fields.is_empty());
 
     hooks.grow(self, |class| {
       class.methods.reserve(super_class.methods.len());
@@ -822,8 +820,12 @@ impl Trace for Class {
       key.trace();
     });
 
-    self.super_class.map(|class| class.trace());
-    self.meta_class.map(|class| class.trace());
+    if let Some(super_class) = self.super_class {
+      super_class.trace();
+    }
+    if let Some(meta_class) = self.meta_class {
+      meta_class.trace();
+    }
   }
 
   fn trace_debug(&self, stdio: &mut dyn Write) {
@@ -837,8 +839,12 @@ impl Trace for Class {
       key.trace_debug(stdio);
     });
 
-    self.super_class.map(|class| class.trace_debug(stdio));
-    self.meta_class.map(|class| class.trace_debug(stdio));
+    if let Some(super_class) = self.super_class {
+      super_class.trace_debug(stdio);
+    }
+    if let Some(meta_class) = self.meta_class {
+      meta_class.trace_debug(stdio);
+    }
   }
 }
 

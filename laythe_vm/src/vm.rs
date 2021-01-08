@@ -1093,7 +1093,7 @@ impl Vm {
           Ok(module) => {
             let imported = module.import(&GcHooks::new(self));
             self.push(val!(imported));
-            return Signal::Ok;
+            Signal::Ok
           }
           Err(err) => self.runtime_error(self.builtin.errors.runtime, &err),
         },
@@ -1484,12 +1484,20 @@ impl Vm {
       None
     };
 
+    #[cfg(debug_assertions)]
+    let roots_before = self.gc.borrow().temp_roots();
+
     match meta.environment {
       Environment::StackLess => match native.call(&mut Hooks::new(self), this, args) {
         Call::Ok(value) => {
           self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
           self.push(value);
 
+          #[cfg(debug_assertions)]
+          {
+            let roots_current = self.gc.borrow().temp_roots();
+            assert_roots(native, roots_before, roots_current);
+          }
           Signal::OkReturn
         }
         Call::Err(error) => self.set_error(error),
@@ -1507,6 +1515,11 @@ impl Vm {
             self.pop_frame();
             self.push(value);
 
+            #[cfg(debug_assertions)]
+            {
+              let roots_current = self.gc.borrow().temp_roots();
+              assert_roots(native, roots_before, roots_current);
+            }
             Signal::OkReturn
           }
           Call::Err(error) => self.set_error(error),
@@ -1786,7 +1799,7 @@ impl Vm {
 
     let start = &self.current_fun.chunk().instructions[0] as *const u8;
     let offset = ptr_len(start, ip);
-    disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, true)
+    disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, false)
   }
 
   /// Print the current stack
@@ -1985,6 +1998,16 @@ impl Vm {
   }
 }
 
+#[cfg(debug_assertions)]
+fn assert_roots(native: Gc<Box<dyn Native>>, roots_before: usize, roots_now: usize) {
+  assert!(
+    roots_before == roots_now,
+    "Native function {} increased roots by {}.",
+    native.meta().name,
+    roots_now - roots_before,
+  );
+}
+
 impl From<VmDependencies> for Vm {
   /// Construct a vm from a set of dependencies. This is meant to be used when targeting
   /// different environments
@@ -2091,7 +2114,9 @@ impl TraceRoot for Vm {
   }
 
   fn trace_debug(&self, stdout: &mut dyn Write) {
-    self.script.map(|script| script.trace_debug(stdout));
+    if let Some(script) = self.script {
+      script.trace_debug(stdout);
+    }
 
     unsafe {
       let start = &self.stack[0] as *const Value;

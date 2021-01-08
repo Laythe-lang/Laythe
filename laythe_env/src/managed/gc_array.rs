@@ -112,6 +112,9 @@ impl<T> GcArray<T> {
   }
 
   /// Construct a `GcArray<T>` from `NonNull<u8>`
+  ///
+  /// ## Safety
+  /// This should only be constructed from a box value
   pub unsafe fn from_alloc_ptr(buf: NonNull<u8>) -> Self {
     Self {
       buf,
@@ -123,10 +126,7 @@ impl<T> GcArray<T> {
 impl<T> Mark for GcArray<T> {
   #[inline]
   fn mark(&self) -> bool {
-    self
-      .header()
-      .marked
-      .compare_and_swap(false, true, Ordering::Release)
+    self.header().marked.swap(true, Ordering::Release)
   }
 }
 
@@ -154,9 +154,6 @@ impl<T: Trace> Trace for GcArray<T> {
     self.iter().for_each(|i| i.trace_debug(log));
   }
 }
-
-unsafe impl<T: Send> Send for GcArray<T> {}
-unsafe impl<T: Sync> Sync for GcArray<T> {}
 
 impl<T> Copy for GcArray<T> {}
 impl<T> Clone for GcArray<T> {
@@ -197,6 +194,9 @@ impl<T: Debug> Debug for GcArray<T> {
     f.debug_list().entry(self).finish()
   }
 }
+
+unsafe impl<T: Send> Send for GcArray<T> {}
+unsafe impl<T: Sync> Sync for GcArray<T> {}
 
 /// A owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
@@ -241,11 +241,7 @@ impl<T> Unmark for GcArrayHandle<T> {
   /// the existing marked status
   #[inline]
   fn unmark(&self) -> bool {
-    self
-      .0
-      .header()
-      .marked
-      .compare_and_swap(true, false, Ordering::Release)
+    self.0.header().marked.swap(false, Ordering::Release)
   }
 }
 
@@ -312,7 +308,7 @@ impl<T> Drop for GcArrayHandle<T> {
       unsafe { ptr::read(self.0.data().add(i)) };
     }
 
-    unsafe { alloc::alloc::dealloc(self.0.buf.as_mut(), make_layout::<T>(header.len)) };
+    unsafe { alloc::alloc::dealloc(self.0.buf.as_ptr(), make_layout::<T>(header.len)) };
   }
 }
 

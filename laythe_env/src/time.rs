@@ -26,7 +26,7 @@ impl Time {
   }
 }
 
-pub trait TimeImpl: Send + Sync {
+pub trait TimeImpl {
   fn elapsed(&self) -> Result<Duration, String>;
 }
 

@@ -246,7 +246,4 @@ pub mod support {
       }
     }
   }
-
-  unsafe impl Send for StdioTest {}
-  unsafe impl Sync for StdioTest {}
 }

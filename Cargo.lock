@@ -336,7 +336,6 @@ version = "0.1.0"
 dependencies = [
  "fnv",
  "hashbrown",
- "rayon",
 ]
 
 [[package]]
@@ -359,6 +358,7 @@ dependencies = [
  "js-sys",
  "laythe_core",
  "laythe_env",
+ "laythe_native",
  "rand",
  "regex",
 ]

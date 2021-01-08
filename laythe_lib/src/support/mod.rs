@@ -213,7 +213,7 @@ mod test {
       context
     }
 
-    pub fn new_with_io(stdio_container: &Arc<StdioTestContainer>) -> Self {
+    pub fn with_test_stdio(stdio_container: &Arc<StdioTestContainer>) -> Self {
       Self {
         gc: RefCell::default(),
         no_gc: NoGc(),
@@ -333,7 +333,7 @@ mod test {
     }
 
     fn can_collect(&self) -> bool {
-      true
+      false
     }
   }
 

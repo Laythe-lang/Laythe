@@ -338,9 +338,8 @@ class Environment {
   // Find named value in environment, also looking in enclosing
   // environments. Exit with runtime error if name not found.
   get(name) {
-    let item = self.values.get(name);
-    if item {
-      return item;
+    if self.values.has(name) {
+      return self.values.get(name);
     }
 
     if self.enclosing {
