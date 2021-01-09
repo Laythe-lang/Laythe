@@ -4,8 +4,7 @@ use crate::{
   value::Value,
   LyHashSet, LyResult,
 };
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write};
 use std::{mem, path::PathBuf};
 
@@ -13,21 +12,21 @@ use std::{mem, path::PathBuf};
 #[derive(Clone)]
 pub struct Module {
   /// The full filepath to this module
-  pub path: Managed<PathBuf>,
+  pub path: Gc<PathBuf>,
 
   /// The class that represents this module when imported
-  module_class: Managed<Class>,
+  module_class: Gc<Class>,
 
   /// A key value set of named exports from the provided modules
-  exports: LyHashSet<Managed<SmolStr>>,
+  exports: LyHashSet<GcStr>,
 
   /// All of the top level symbols in this module
-  symbols: Map<Managed<SmolStr>, Value>,
+  symbols: Map<GcStr, Value>,
 }
 
 impl Module {
   /// Create a new laythe module
-  pub fn new(module_class: Managed<Class>, path: Managed<PathBuf>) -> Self {
+  pub fn new(module_class: Gc<Class>, path: Gc<PathBuf>) -> Self {
     Module {
       path,
       module_class,
@@ -37,12 +36,12 @@ impl Module {
   }
 
   /// Get the name of this module
-  pub fn name(&self) -> Managed<SmolStr> {
+  pub fn name(&self) -> GcStr {
     self.module_class.name
   }
 
   /// Create a module from a filepath
-  pub fn from_path(hooks: &GcHooks, path: Managed<PathBuf>) -> Result<Self, Managed<SmolStr>> {
+  pub fn from_path(hooks: &GcHooks, path: Gc<PathBuf>) -> Result<Self, GcStr> {
     let module_name = path.file_stem().and_then(|m| m.to_str());
 
     let module_name = match module_name {
@@ -66,11 +65,7 @@ impl Module {
   }
 
   /// Add export a new symbol from this module. Exported names must be unique
-  pub fn export_symbol(
-    &mut self,
-    hooks: &GcHooks,
-    name: Managed<SmolStr>,
-  ) -> Result<(), Managed<SmolStr>> {
+  pub fn export_symbol(&mut self, hooks: &GcHooks, name: GcStr) -> Result<(), GcStr> {
     if self.exports.contains(&name) {
       Err(hooks.manage_str(format!(
         "{} has already been exported from {}",
@@ -87,7 +82,7 @@ impl Module {
   }
 
   /// Get a reference to all exported symbols in this module
-  pub fn import(&self, hooks: &GcHooks) -> Managed<Instance> {
+  pub fn import(&self, hooks: &GcHooks) -> Gc<Instance> {
     let class = self.module_class;
 
     let mut import = hooks.manage(Instance::new(class));
@@ -109,17 +104,12 @@ impl Module {
   }
 
   /// Insert a symbol into this module's symbol table
-  pub fn insert_symbol(
-    &mut self,
-    hooks: &GcHooks,
-    name: Managed<SmolStr>,
-    symbol: Value,
-  ) -> Option<Value> {
+  pub fn insert_symbol(&mut self, hooks: &GcHooks, name: GcStr, symbol: Value) -> Option<Value> {
     hooks.grow(self, |module| module.symbols.insert(name, symbol))
   }
 
   /// Get a symbol from this module's symbol table
-  pub fn get_symbol(&self, name: Managed<SmolStr>) -> Option<&Value> {
+  pub fn get_symbol(&self, name: GcStr) -> Option<&Value> {
     self.symbols.get(&name)
   }
 
@@ -134,7 +124,7 @@ impl Module {
   }
 
   /// Remove a symbol from this module
-  pub fn remove_symbol(&mut self, hooks: &GcHooks, name: Managed<SmolStr>) {
+  pub fn remove_symbol(&mut self, hooks: &GcHooks, name: GcStr) {
     hooks.shrink(self, |module| {
       module.symbols.remove(&name);
       module.exports.remove(&name);
@@ -159,7 +149,7 @@ impl Module {
 }
 
 impl Trace for Module {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.module_class.trace();
     self.path.trace();
 
@@ -170,11 +160,9 @@ impl Trace for Module {
       key.trace();
       value.trace();
     });
-
-    true
   }
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-    self.module_class.trace();
+  fn trace_debug(&self, stdout: &mut dyn Write) {
+    self.module_class.trace_debug(stdout);
     self.path.trace_debug(stdout);
 
     self.exports.iter().for_each(|key| {
@@ -184,8 +172,6 @@ impl Trace for Module {
       key.trace_debug(stdout);
       value.trace_debug(stdout);
     });
-
-    true
   }
 }
 
@@ -203,25 +189,21 @@ impl DebugHeap for Module {
 }
 
 impl Manage for Module {
-  fn alloc_type(&self) -> &str {
-    "module"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>())
-        * (self.exports.capacity() + self.symbols.capacity())
+      + (mem::size_of::<GcStr>() + mem::size_of::<Value>()) * self.symbols.capacity()
+      + mem::size_of::<GcStr>() * self.exports.capacity()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
-    todo!()
+    self
   }
 }
 
 #[cfg(test)]
 mod test {
   use crate::{
-    hooks::{support::TestContext, GcHooks},
+    hooks::{GcHooks, NoContext},
     object::Class,
     val,
   };
@@ -231,7 +213,7 @@ mod test {
     use crate::module::Module;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self/path.ly");
@@ -246,11 +228,11 @@ mod test {
 
   #[test]
   fn from_path() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let path = hooks.manage(PathBuf::from("self/path.ly"));
@@ -262,12 +244,12 @@ mod test {
 
   #[test]
   fn export_symbol() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::value::Value;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
@@ -287,12 +269,12 @@ mod test {
 
   #[test]
   fn import() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::value::Value;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
@@ -315,12 +297,12 @@ mod test {
 
   #[test]
   fn insert_symbol() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::value::Value;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
@@ -342,11 +324,11 @@ mod test {
 
   #[test]
   fn get_symbol() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let module = Module::new(

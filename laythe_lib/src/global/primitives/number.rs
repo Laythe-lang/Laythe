@@ -177,7 +177,7 @@ impl Native for NumberTimes {
   }
 }
 
-#[derive(Debug, Trace)]
+#[derive(Debug)]
 struct TimesIterator {
   current: f64,
   max: f64,
@@ -219,6 +219,8 @@ impl LyIter for TimesIterator {
   }
 }
 
+impl Trace for TimesIterator {}
+
 native_with_error!(NumberUntil, NUMBER_UNTIL);
 
 impl Native for NumberUntil {
@@ -243,7 +245,7 @@ impl Native for NumberUntil {
   }
 }
 
-#[derive(Debug, Trace)]
+#[derive(Debug)]
 struct UntilIterator {
   current: f64,
   max: f64,
@@ -286,6 +288,8 @@ impl LyIter for UntilIterator {
     mem::size_of::<Self>()
   }
 }
+
+impl Trace for UntilIterator {}
 
 #[cfg(test)]
 mod test {

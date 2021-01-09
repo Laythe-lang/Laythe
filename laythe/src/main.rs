@@ -16,10 +16,13 @@ fn main() {
   let args: Vec<String> = env::args().collect();
 
   match args.as_slice() {
-    [_] => {
-      vm.repl();
-      process::exit(0);
-    }
+    [_] => match vm.repl() {
+      ExecuteResult::Ok => process::exit(0),
+      ExecuteResult::FunResult(_) => panic!("Fun result should only be returned internally"),
+      ExecuteResult::CompileError => process::exit(2),
+      ExecuteResult::RuntimeError => process::exit(3),
+      ExecuteResult::InternalError => process::exit(4),
+    },
     _ => {
       let file_path = &args.as_slice()[1];
       let path = PathBuf::from(file_path);

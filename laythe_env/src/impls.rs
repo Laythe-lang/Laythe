@@ -1,16 +1,11 @@
-use crate::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
+use crate::managed::{DebugHeap, DebugWrap, Manage, Trace};
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
-use smol_str::SmolStr;
 use std::{fmt, io::Write, mem, path::PathBuf};
 
 impl Trace for PathBuf {
-  fn trace(&self) -> bool {
-    true
-  }
-  fn trace_debug(&self, _: &mut dyn Write) -> bool {
-    true
-  }
+  fn trace(&self) {}
+  fn trace_debug(&self, _: &mut dyn Write) {}
 }
 
 impl DebugHeap for PathBuf {
@@ -20,52 +15,8 @@ impl DebugHeap for PathBuf {
 }
 
 impl Manage for PathBuf {
-  fn alloc_type(&self) -> &str {
-    "path"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>() // TODO add capacity once stabilized? + self.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
-  }
-}
-
-impl<T: AsRef<str>> PartialEq<T> for Managed<SmolStr> {
-  fn eq(&self, other: &T) -> bool {
-    **self == other.as_ref()
-  }
-}
-
-impl Trace for SmolStr {
-  fn trace(&self) -> bool {
-    true
-  }
-
-  fn trace_debug(&self, _: &mut dyn Write) -> bool {
-    true
-  }
-}
-
-impl DebugHeap for SmolStr {
-  fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
-    f.write_fmt(format_args!("{:?}", self))
-  }
-}
-
-impl Manage for SmolStr {
-  fn alloc_type(&self) -> &str {
-    "string"
-  }
-
-  fn size(&self) -> usize {
-    if self.is_heap_allocated() {
-      mem::size_of::<Self>() + self.len()
-    } else {
-      mem::size_of::<Self>()
-    }
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {

@@ -17,7 +17,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 use std::mem;
 
@@ -259,12 +259,12 @@ impl Native for IterMap {
 #[derive(Debug)]
 struct MapIterator {
   current: Value,
-  iter: Managed<LyIterator>,
+  iter: Gc<LyIterator>,
   callable: Value,
 }
 
 impl MapIterator {
-  fn new(iter: Managed<LyIterator>, callable: Value) -> Self {
+  fn new(iter: Gc<LyIterator>, callable: Value) -> Self {
     Self {
       current: VALUE_NIL,
       iter,
@@ -302,18 +302,16 @@ impl LyIter for MapIterator {
 }
 
 impl Trace for MapIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.current.trace();
     self.iter.trace();
     self.callable.trace();
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.current.trace_debug(stdout);
     self.iter.trace_debug(stdout);
     self.callable.trace_debug(stdout);
-    true
   }
 }
 
@@ -333,12 +331,12 @@ impl Native for IterFilter {
 #[derive(Debug)]
 struct FilterIterator {
   current: Value,
-  iter: Managed<LyIterator>,
+  iter: Gc<LyIterator>,
   callable: Value,
 }
 
 impl FilterIterator {
-  fn new(iter: Managed<LyIterator>, callable: Value) -> Self {
+  fn new(iter: Gc<LyIterator>, callable: Value) -> Self {
     Self {
       current: VALUE_NIL,
       iter,
@@ -380,18 +378,16 @@ impl LyIter for FilterIterator {
 }
 
 impl Trace for FilterIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.current.trace();
     self.iter.trace();
     self.callable.trace();
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.current.trace_debug(stdout);
     self.iter.trace_debug(stdout);
     self.callable.trace_debug(stdout);
-    true
   }
 }
 
@@ -401,12 +397,18 @@ impl Native for IterReduce {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let mut accumulator = args[0];
     let callable = args[1];
+
+    hooks.push_root(accumulator);
+    hooks.push_root(callable);
+
     let mut iter = this.unwrap().to_iter();
 
     while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
       accumulator = get!(hooks.call(callable, &[accumulator, current]));
     }
+
+    hooks.pop_roots(2);
 
     Call::Ok(accumulator)
   }
@@ -439,10 +441,14 @@ impl Native for IterEach {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
 
+    hooks.push_root(callable);
+
     while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
       get!(hooks.call(callable, &[current]));
     }
+
+    hooks.pop_roots(1);
 
     Call::Ok(VALUE_NIL)
   }
@@ -452,7 +458,7 @@ native!(IterZip, ITER_ZIP);
 
 impl Native for IterZip {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let iters: Vec<Managed<LyIterator>> = [this.unwrap()]
+    let iters: Vec<Gc<LyIterator>> = [this.unwrap()]
       .iter()
       .chain(args.iter())
       .map(|arg| arg.to_iter())
@@ -469,11 +475,11 @@ impl Native for IterZip {
 #[derive(Debug)]
 struct ZipIterator {
   current: Value,
-  iters: Vec<Managed<LyIterator>>,
+  iters: Vec<Gc<LyIterator>>,
 }
 
 impl ZipIterator {
-  fn new(iters: Vec<Managed<LyIterator>>) -> Self {
+  fn new(iters: Vec<Gc<LyIterator>>) -> Self {
     Self {
       current: VALUE_NIL,
       iters,
@@ -493,14 +499,18 @@ impl LyIter for ZipIterator {
   fn next(&mut self, hooks: &mut Hooks) -> Call {
     let mut results = hooks.manage(List::with_capacity(self.iters.len()));
 
+    hooks.push_root(results);
     for iter in &mut self.iters {
       let next = get!(iter.next(hooks));
+
       if is_falsey(next) {
+        hooks.pop_roots(1);
         return Call::Ok(val!(false));
       }
 
       results.push(iter.current());
     }
+    hooks.pop_roots(1);
 
     self.current = val!(results);
     Call::Ok(val!(true))
@@ -520,20 +530,18 @@ impl LyIter for ZipIterator {
 }
 
 impl Trace for ZipIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.current.trace();
     self.iters.iter().for_each(|iter| {
       iter.trace();
     });
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.current.trace_debug(stdout);
     self.iters.iter().for_each(|iter| {
       iter.trace_debug(stdout);
     });
-    true
   }
 }
 
@@ -541,7 +549,7 @@ native!(IterChain, ITER_CHAIN);
 
 impl Native for IterChain {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let iters: Vec<Managed<LyIterator>> = [this.unwrap()]
+    let iters: Vec<Gc<LyIterator>> = [this.unwrap()]
       .iter()
       .chain(args.iter())
       .map(|arg| arg.to_iter())
@@ -559,11 +567,11 @@ impl Native for IterChain {
 struct ChainIterator {
   current: Value,
   iter_index: usize,
-  iters: Vec<Managed<LyIterator>>,
+  iters: Vec<Gc<LyIterator>>,
 }
 
 impl ChainIterator {
-  fn new(iters: Vec<Managed<LyIterator>>) -> Self {
+  fn new(iters: Vec<Gc<LyIterator>>) -> Self {
     Self {
       current: VALUE_NIL,
       iter_index: 0,
@@ -616,20 +624,18 @@ impl LyIter for ChainIterator {
 }
 
 impl Trace for ChainIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.current.trace();
     self.iters.iter().for_each(|iter| {
       iter.trace();
     });
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.current.trace_debug(stdout);
     self.iters.iter().for_each(|iter| {
       iter.trace_debug(stdout);
     });
-    true
   }
 }
 
@@ -640,13 +646,17 @@ impl Native for IterAll {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
 
+    hooks.push_root(callable);
+
     while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
       if is_falsey(get!(hooks.call(callable, &[current]))) {
+        hooks.pop_roots(1);
         return Call::Ok(val!(false));
       }
     }
 
+    hooks.pop_roots(1);
     Call::Ok(val!(true))
   }
 }
@@ -658,13 +668,17 @@ impl Native for IterAny {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
 
+    hooks.push_root(callable);
+
     while !is_falsey(get!(iter.next(hooks))) {
       let current = iter.current();
       if !is_falsey(get!(hooks.call(callable, &[current]))) {
+        hooks.pop_roots(1);
         return Call::Ok(val!(true));
       }
     }
 
+    hooks.pop_roots(1);
     Call::Ok(val!(false))
   }
 }
@@ -677,8 +691,9 @@ impl Native for IterInto {
     let iter = this.unwrap().to_iter();
 
     hooks.push_root(iter);
+    hooks.push_root(callable);
     let result = hooks.call(callable, &[this.unwrap()]);
-    hooks.pop_roots(1);
+    hooks.pop_roots(2);
 
     result
   }

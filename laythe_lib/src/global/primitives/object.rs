@@ -209,7 +209,7 @@ mod test {
       let result = object_str.call(&mut hooks, Some(ten), &[]);
 
       match result {
-        Call::Ok(r) => assert_eq!(r.to_str().as_str(), "<Number 10>"),
+        Call::Ok(r) => assert_eq!(r.to_str(), "<Number 10>"),
         _ => assert!(false),
       }
     }

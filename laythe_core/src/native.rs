@@ -4,8 +4,7 @@ use crate::{
   value::Value,
   Call,
 };
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{DebugHeap, DebugWrap, GcStr, Manage, Trace};
 use std::{fmt, io::Write};
 use std::{mem, ptr};
 
@@ -79,7 +78,7 @@ impl NativeMetaBuilder {
 #[derive(Clone, Debug)]
 pub struct NativeMeta {
   /// The name of the native function
-  pub name: Managed<SmolStr>,
+  pub name: GcStr,
 
   /// Is this native function used as a method
   pub is_method: bool,
@@ -92,14 +91,14 @@ pub struct NativeMeta {
 }
 
 impl Trace for NativeMeta {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.name.trace();
-    self.signature.trace()
+    self.signature.trace();
   }
 
-  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) {
     self.name.trace_debug(log);
-    self.signature.trace_debug(log)
+    self.signature.trace_debug(log);
   }
 }
 
@@ -133,14 +132,14 @@ impl fmt::Display for Box<dyn Native> {
 }
 
 impl Trace for Box<dyn Native> {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     let inner: &dyn Native = &**self;
-    inner.trace()
+    inner.trace();
   }
 
-  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) {
     let inner: &dyn Native = &**self;
-    inner.trace_debug(log)
+    inner.trace_debug(log);
   }
 }
 
@@ -157,10 +156,6 @@ impl DebugHeap for Box<dyn Native> {
 }
 
 impl Manage for Box<dyn Native> {
-  fn alloc_type(&self) -> &str {
-    "native"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }

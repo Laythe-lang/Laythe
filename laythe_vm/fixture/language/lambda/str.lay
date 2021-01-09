@@ -1,0 +1,3 @@
+let foo = || {};
+assert(foo.str().has("<Fun"));
+

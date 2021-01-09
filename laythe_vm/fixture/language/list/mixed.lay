@@ -1,1 +1,1 @@
-print([nil, true, 10.3, "cat"]);
+assertEq([nil, true, 10.3, "cat"].cls(), List);

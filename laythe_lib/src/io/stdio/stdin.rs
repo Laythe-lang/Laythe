@@ -105,7 +105,7 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
     use laythe_core::value::VALUE_NIL;
     use laythe_env::stdio::support::StdioTestContainer;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     #[test]
     fn new() {
@@ -121,9 +121,9 @@ mod test {
 
     #[test]
     fn call() {
-      let stdio_container = Rc::new(StdioTestContainer::with_stdin(&"dude".as_bytes()));
+      let stdio_container = Arc::new(StdioTestContainer::with_stdin(&"dude".as_bytes()));
 
-      let mut context = MockedContext::new_with_io(&stdio_container);
+      let mut context = MockedContext::with_test_stdio(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
@@ -135,7 +135,7 @@ mod test {
       let unwrapped = result.unwrap();
 
       assert!(unwrapped.is_str());
-      assert_eq!(&**unwrapped.to_str(), "dude");
+      assert_eq!(unwrapped.to_str(), "dude");
     }
   }
 
@@ -144,7 +144,7 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
     use laythe_core::value::VALUE_NIL;
     use laythe_env::stdio::support::StdioTestContainer;
-    use std::rc::Rc;
+    use std::sync::Arc;
 
     #[test]
     fn new() {
@@ -160,12 +160,12 @@ mod test {
 
     #[test]
     fn call() {
-      let stdio_container = Rc::new(StdioTestContainer::with_lines(vec![
+      let stdio_container = Arc::new(StdioTestContainer::with_lines(vec![
         "dude".to_string(),
         "sup".to_string(),
       ]));
 
-      let mut context = MockedContext::new_with_io(&stdio_container);
+      let mut context = MockedContext::with_test_stdio(&stdio_container);
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
@@ -177,7 +177,7 @@ mod test {
       let unwrapped = result.unwrap();
 
       assert!(unwrapped.is_str());
-      assert_eq!(&**unwrapped.to_str(), "dude");
+      assert_eq!(unwrapped.to_str(), "dude");
     }
   }
 }

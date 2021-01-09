@@ -63,6 +63,13 @@ impl<K: Ord + Hash, V> DynamicMap<K, V> {
     }
   }
 
+  pub fn reserve(&mut self, additional: usize) {
+    match self {
+      Self::Linear(linear) => linear.reserve(additional),
+      Self::Hash(hash) => hash.reserve(additional),
+    }
+  }
+
   pub fn capacity(&self) -> usize {
     match self {
       Self::Linear(linear) => linear.capacity(),

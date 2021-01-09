@@ -1,1 +1,1 @@
-print([]); // expect list
+assertEq([].cls(), List);

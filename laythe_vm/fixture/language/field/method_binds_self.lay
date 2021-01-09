@@ -4,9 +4,8 @@ class Foo {
     self.slot = nil;
   }
 
-  sayName(a) {
-    print(self.name);
-    print(a);
+  nameAndSelf(a) {
+    return [self.name, a];
   }
 }
 
@@ -17,8 +16,9 @@ let foo2 = Foo();
 foo2.name = "foo2";
 
 // Store the method reference on another object.
-foo2.slot = foo1.sayName;
+foo2.slot = foo1.nameAndSelf;
+
 // Still retains original receiver.
-foo2.slot(1);
-// expect: foo1
-// expect: 1
+let result = foo2.slot(1);
+assertEq(result[0], "foo1");
+assertEq(result[1], 1);

@@ -22,5 +22,7 @@ jemallocator = { version = "0.3.2", optional = true }
 # laythe_vm features
 # debug
 # debug_upvalue
-# debug_stress_gc
-# debug_gc
+# gc_stress
+# gc_log_alloc
+# gc_log_free
+# gc_log_mark

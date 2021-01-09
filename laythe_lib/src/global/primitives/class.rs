@@ -100,9 +100,9 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let class_super_class = ClassSuperCls::from(&hooks);
 
-      let mut class = hooks.manage(Class::bare(hooks.manage_str("someClass".to_string())));
+      let mut class = hooks.manage(Class::bare(hooks.manage_str("someClass")));
 
-      let super_class = hooks.manage(Class::bare(hooks.manage_str("someSuperClass".to_string())));
+      let super_class = hooks.manage(Class::bare(hooks.manage_str("someSuperClass")));
 
       class.inherit(&hooks.as_gc(), super_class);
 
@@ -148,7 +148,7 @@ mod test {
       let class_value = val!(class);
 
       let result = class_str.call(&mut hooks, Some(class_value), &[]).unwrap();
-      assert!(result.to_str().as_str().contains("<class someClass"));
+      assert!(result.to_str().contains("<class someClass"));
     }
   }
 }

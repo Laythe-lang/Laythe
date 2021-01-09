@@ -22,8 +22,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{Gc, GcStr, Trace};
 use std::io::Write;
 use std::mem;
 
@@ -153,13 +152,13 @@ pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitRe
 
 #[derive(Debug)]
 struct MapStr {
-  method_name: Managed<SmolStr>,
+  method_name: GcStr,
   meta: NativeMeta,
   error: Value,
 }
 
 impl MapStr {
-  fn new(meta: NativeMeta, method_name: Managed<SmolStr>, error: Value) -> Self {
+  fn new(meta: NativeMeta, method_name: GcStr, error: Value) -> Self {
     Self {
       meta,
       method_name,
@@ -215,7 +214,7 @@ impl Native for MapStr {
 
 fn format_map_entry(
   item: &Value,
-  method_name: Managed<SmolStr>,
+  method_name: GcStr,
   error: Value,
   buffer: &mut String,
   hooks: &mut Hooks,
@@ -247,12 +246,12 @@ fn format_map_entry(
 }
 
 impl Trace for MapStr {
-  fn trace(&self) -> bool {
-    self.method_name.trace()
+  fn trace(&self) {
+    self.method_name.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-    self.method_name.trace_debug(stdout)
+  fn trace_debug(&self, stdout: &mut dyn Write) {
+    self.method_name.trace_debug(stdout);
   }
 }
 
@@ -327,7 +326,7 @@ impl Native for MapGet {
 native!(MapSet, MAP_SET);
 
 impl Native for MapSet {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let index = args[0];
     let key = if index.is_num() {
       val!(use_sentinel_nan(index.to_num()))
@@ -335,13 +334,8 @@ impl Native for MapSet {
       index
     };
 
-    Call::Ok(
-      this
-        .unwrap()
-        .to_map()
-        .insert(key, args[1])
-        .unwrap_or(VALUE_NIL),
-    )
+    let result = hooks.grow(&mut *this.unwrap().to_map(), |map| map.insert(key, args[1]));
+    Call::Ok(result.unwrap_or(VALUE_NIL))
   }
 }
 
@@ -383,13 +377,13 @@ impl Native for MapIter {
 
 #[derive(Debug)]
 struct MapIterator {
-  map: Managed<Map<Value, Value>>,
+  map: Gc<Map<Value, Value>>,
   iter: Iter<'static, Value, Value>,
   current: Value,
 }
 
 impl MapIterator {
-  fn new(map: Managed<Map<Value, Value>>) -> Self {
+  fn new(map: Gc<Map<Value, Value>>) -> Self {
     let iter = unsafe { map.deref_static().iter() };
 
     Self {
@@ -432,12 +426,12 @@ impl LyIter for MapIterator {
 }
 
 impl Trace for MapIterator {
-  fn trace(&self) -> bool {
-    self.map.trace()
+  fn trace(&self) {
+    self.map.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-    self.map.trace_debug(stdout)
+  fn trace_debug(&self, stdout: &mut dyn Write) {
+    self.map.trace_debug(stdout);
   }
 }
 
@@ -471,10 +465,11 @@ mod test {
     #[test]
     fn call() {
       let mut context = MockedContext::with_std(&[]);
-      let response = &[
-        val!(context.gc.manage_str("nil".to_string(), &NO_GC)),
-        val!(context.gc.manage_str("nil".to_string(), &NO_GC)),
-      ];
+      let nil = val!(context
+        .gc
+        .borrow_mut()
+        .manage_str("nil".to_string(), &NO_GC));
+      let response = &[nil, nil];
       context.responses.extend_from_slice(response);
 
       let mut hooks = Hooks::new(&mut context);

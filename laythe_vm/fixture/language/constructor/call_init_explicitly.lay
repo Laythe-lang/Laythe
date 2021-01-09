@@ -1,15 +1,20 @@
+let args = [];
+
 class Foo {
   init(arg) {
-    print("Foo.init(" + arg + ")");
+    args.push(arg);
     self.field = "init";
   }
 }
 
-let foo = Foo("one"); // expect: Foo.init(one)
+let foo = Foo("one");
 foo.field = "field";
 
-let foo2 = foo.init("two"); // expect: Foo.init(two)
-print(foo2); // expect: Foo instance
+let foo2 = foo.init("two");
+assertEq(foo2.cls(), Foo);
 
-// Make sure init() doesn't create a fresh instance.
-assertEq(foo.field, "init"); // expect: init
+assertEq(foo.field, "init");
+assertEq(foo2.field, "init");
+
+assertEq(args[0], "one");
+assertEq(args[1], "two");

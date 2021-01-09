@@ -1,6 +1,6 @@
-use laythe_core::hooks::{support::TestContext, GcHooks};
+use laythe_core::hooks::{NoContext, GcHooks};
 use laythe_core::module::Module;
-use laythe_env::io::Io;
+use laythe_env::{io::Io, memory::{Allocator, NO_GC}};
 use laythe_env::stdio::Stdio;
 use laythe_native::stdio::StdioNative;
 use laythe_vm::compiler;
@@ -20,15 +20,16 @@ fn load_source(path: &str) -> String {
 
 fn compiler_bench(src: &str) {
   for _ in 0..1000000 {
-    let context = TestContext::default();
+    let context = NoContext::default();
     let hooks = GcHooks::new(&context);
+    let gc = Allocator::default();
     let io = Io::default();
 
     let ast = Parser::new(io.stdio(), &src).parse().unwrap();
     let module = Module::from_path(&hooks, hooks.manage(PathBuf::from("/Benchmark.ly"))).unwrap();
     let module = hooks.manage(module);
-    let compiler = compiler::Compiler::new(module, &io, &hooks);
-    compiler.compile(&ast).unwrap();
+    let compiler = compiler::Compiler::new(module, &NO_GC, &io, gc);
+    compiler.compile(&ast).0.unwrap();
   }
 }
 

@@ -24,7 +24,7 @@ impl AstPrint {
   }
 }
 
-impl Visitor for AstPrint {
+impl<'a> Visitor<'a> for AstPrint {
   type Result = ();
 
   fn visit(&mut self, module: &Module) -> Self::Result {
@@ -116,9 +116,9 @@ impl Visitor for AstPrint {
     }
   }
 
-  fn visit_error(&mut self, error: &[Token]) -> Self::Result {
+  fn visit_error(&mut self, error: &[Token<'a>]) -> Self::Result {
     for token in error.iter() {
-      self.buffer.push_str(&token.lexeme);
+      self.buffer.push_str(&token.str());
       self.buffer.push(' ')
     }
   }
@@ -129,7 +129,7 @@ impl Visitor for AstPrint {
     match &class.name {
       Some(name) => {
         self.buffer.push_str("class ");
-        self.buffer.push_str(&name.lexeme);
+        self.buffer.push_str(&name.str());
       }
       None => self.buffer.push_str("class"),
     }
@@ -167,7 +167,7 @@ impl Visitor for AstPrint {
 
     match &method.name {
       Some(name) => {
-        self.buffer.push_str(&name.lexeme);
+        self.buffer.push_str(&name.str());
       }
       None => unreachable!(),
     }
@@ -175,7 +175,7 @@ impl Visitor for AstPrint {
     self.buffer.push('(');
     let len = method.call_sig.params.len();
     for (idx, param) in method.call_sig.params.iter().enumerate() {
-      self.buffer.push_str(&param.name.lexeme);
+      self.buffer.push_str(&param.name.str());
 
       if let Some(type_) = &param.type_ {
         self.buffer.push_str(": ");
@@ -199,7 +199,7 @@ impl Visitor for AstPrint {
     match &static_method.name {
       Some(name) => {
         self.buffer.push_str("static ");
-        self.buffer.push_str(&name.lexeme);
+        self.buffer.push_str(&name.str());
       }
       None => unreachable!(),
     }
@@ -207,7 +207,7 @@ impl Visitor for AstPrint {
     self.buffer.push('(');
     let len = static_method.call_sig.params.len();
     for (idx, param) in static_method.call_sig.params.iter().enumerate() {
-      self.buffer.push_str(&param.name.lexeme);
+      self.buffer.push_str(&param.name.str());
 
       if let Some(type_) = &param.type_ {
         self.visit_type(type_)
@@ -231,7 +231,7 @@ impl Visitor for AstPrint {
     match &fun.name {
       Some(name) => {
         self.buffer.push_str("fn ");
-        self.buffer.push_str(&name.lexeme);
+        self.buffer.push_str(&name.str());
       }
       None => self.buffer.push_str("fn"),
     }
@@ -247,7 +247,7 @@ impl Visitor for AstPrint {
   fn visit_let(&mut self, let_: &Let) -> Self::Result {
     self.pad();
     self.buffer.push_str("let ");
-    self.buffer.push_str(&let_.name.lexeme);
+    self.buffer.push_str(&let_.name.str());
 
     if let Some(type_) = &let_.type_ {
       self.buffer.push_str(": ");
@@ -267,16 +267,16 @@ impl Visitor for AstPrint {
   fn visit_import(&mut self, import: &Import) -> Self::Result {
     self.pad();
     self.buffer.push_str("import ");
-    self.buffer.push_str(&import.imported.lexeme);
+    self.buffer.push_str(&import.imported.str());
     self.buffer.push_str(" from \"");
-    self.buffer.push_str(&import.path.lexeme);
+    self.buffer.push_str(&import.path.str());
     self.buffer.push_str("\";");
   }
 
   fn visit_for(&mut self, for_: &For) -> Self::Result {
     self.pad();
     self.buffer.push_str("for ");
-    self.buffer.push_str(&for_.item.lexeme);
+    self.buffer.push_str(&for_.item.str());
     self.buffer.push_str(" in ");
     self.visit_expr(&for_.iter);
     self.visit_block(&for_.body);
@@ -415,7 +415,7 @@ impl Visitor for AstPrint {
   }
   fn visit_access(&mut self, access: &Access) -> Self::Result {
     self.buffer.push('.');
-    self.buffer.push_str(&access.prop.lexeme);
+    self.buffer.push_str(&access.prop.str());
   }
 
   fn visit_call_sig(&mut self, call_sig: &CallSignature) -> Self::Result {
@@ -424,7 +424,7 @@ impl Visitor for AstPrint {
     let len = call_sig.params.len();
 
     for (idx, param) in call_sig.params.iter().enumerate() {
-      self.buffer.push_str(param.name.lexeme.as_str());
+      self.buffer.push_str(param.name.str());
       if let Some(type_) = &param.type_ {
         self.buffer.push_str(": ");
         self.visit_type(type_);
@@ -466,24 +466,24 @@ impl Visitor for AstPrint {
     self.buffer.push_str("nil");
   }
   fn visit_number(&mut self, token: &Token) -> Self::Result {
-    self.buffer.push_str(&token.lexeme);
+    self.buffer.push_str(&token.str());
   }
   fn visit_string(&mut self, token: &Token) -> Self::Result {
     self.buffer.push('"');
-    self.buffer.push_str(&token.lexeme);
+    self.buffer.push_str(&token.str());
     self.buffer.push('"');
   }
 
   fn visit_interpolation(&mut self, string_interp: &Interpolation) -> Self::Result {
     self.buffer.push('"');
-    self.buffer.push_str(&string_interp.start.lexeme);
+    self.buffer.push_str(&string_interp.start.str());
     self.buffer.push_str("${");
 
     for segment in string_interp.segments.iter() {
       match segment {
         StringSegments::Token(segment) => {
           self.buffer.push_str("${");
-          self.buffer.push_str(&segment.lexeme);
+          self.buffer.push_str(&segment.str());
           self.buffer.push('}');
         }
         StringSegments::Expr(expr) => self.visit_expr(&expr),
@@ -491,25 +491,25 @@ impl Visitor for AstPrint {
     }
 
     self.buffer.push('}');
-    self.buffer.push_str(&string_interp.end.lexeme);
+    self.buffer.push_str(&string_interp.end.str());
     self.buffer.push('"');
   }
 
   fn visit_ident(&mut self, token: &Token) -> Self::Result {
-    self.buffer.push_str(&token.lexeme);
+    self.buffer.push_str(&token.str());
   }
   fn visit_self(&mut self, _: &Token) -> Self::Result {
     self.buffer.push_str("self");
   }
   fn visit_super(&mut self, super_: &Super) -> Self::Result {
     self.buffer.push_str("super.");
-    self.buffer.push_str(&super_.access.lexeme);
+    self.buffer.push_str(&super_.access.str());
   }
   fn visit_lambda(&mut self, fun: &Fun) -> Self::Result {
     self.buffer.push('|');
     let len = fun.call_sig.params.len();
     for (idx, param) in fun.call_sig.params.iter().enumerate() {
-      self.buffer.push_str(&param.name.lexeme);
+      self.buffer.push_str(&param.name.str());
 
       if let Some(type_) = &param.type_ {
         self.visit_type(type_);
@@ -563,7 +563,7 @@ impl TypeVisitor for AstPrint {
     self.pad();
 
     self.buffer.push_str("trait ");
-    self.buffer.push_str(trait_.name.lexeme.as_str());
+    self.buffer.push_str(trait_.name.str());
     self.visit_type_params(&trait_.params);
 
     self.buffer.push_str(" {\n");
@@ -584,7 +584,7 @@ impl TypeVisitor for AstPrint {
     self.pad();
 
     self.buffer.push_str("type ");
-    self.buffer.push_str(type_decl.name.lexeme.as_str());
+    self.buffer.push_str(type_decl.name.str());
     self.visit_type_params(&type_decl.type_params);
 
     self.buffer.push_str(" = ");
@@ -633,7 +633,7 @@ impl TypeVisitor for AstPrint {
 
     self.buffer.push('<');
     for (idx, type_param) in type_params.iter().enumerate() {
-      self.buffer.push_str(type_param.name.lexeme.as_str());
+      self.buffer.push_str(type_param.name.str());
       if let Some(constraint) = &type_param.constraint {
         self.buffer.push_str(": ");
         self.visit_type(&constraint);
@@ -649,7 +649,7 @@ impl TypeVisitor for AstPrint {
 
   fn visit_type_member(&mut self, type_member: &TypeMember) -> Self::Result {
     self.pad();
-    self.buffer.push_str(type_member.name.lexeme.as_str());
+    self.buffer.push_str(type_member.name.str());
     self.buffer.push_str(": ");
     self.visit_type(&type_member.type_);
     self.buffer.push(';');
@@ -657,12 +657,12 @@ impl TypeVisitor for AstPrint {
 
   fn visit_type_method(&mut self, type_member: &TypeMethod) -> Self::Result {
     self.pad();
-    self.buffer.push_str(type_member.name.lexeme.as_str());
+    self.buffer.push_str(type_member.name.str());
     self.visit_call_sig(&type_member.call_sig);
   }
 
   fn visit_type_ref(&mut self, type_ref: &TypeRef) -> Self::Result {
-    self.buffer.push_str(type_ref.name.lexeme.as_str());
+    self.buffer.push_str(type_ref.name.str());
 
     if type_ref.type_args.len() > 0 {
       self.buffer.push('<');

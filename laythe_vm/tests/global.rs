@@ -169,7 +169,7 @@ fn number() -> Result<(), std::io::Error> {
       "std_lib/global/number/parse.lay",
       "std_lib/global/number/round.lay",
       "std_lib/global/number/str.lay",
-      "std_lib/global/number/times.lay",
+      // "std_lib/global/number/times.lay",
     ],
     ExecuteResult::Ok,
   )?;

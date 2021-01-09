@@ -1,11 +1,14 @@
+let count = 0;
+
 class Foo {
   init() {
-    print("init");
+    count += 1;
     return;
     assert(false);
   }
 }
 
-let foo = Foo(); // expect: init
-print(foo.init()); // expect: init
-// expect: Foo instance
+let foo = Foo();
+assertEq(foo.cls(), Foo);
+assertEq(foo.init().cls(), Foo);
+assertEq(count, 2);

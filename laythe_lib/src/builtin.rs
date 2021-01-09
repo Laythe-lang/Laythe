@@ -6,9 +6,14 @@ use laythe_core::{
   object::Class,
   value::{Value, ValueKind},
 };
-use laythe_env::managed::{Managed, Trace};
+use laythe_env::managed::{Gc, Trace};
 
-use crate::global::{BOOL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, EXPORT_ERROR_NAME, IMPORT_ERROR_NAME, ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME, MODULE_CLASS_NAME, NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME, PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, STRING_CLASS_NAME};
+use crate::global::{
+  BOOL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, EXPORT_ERROR_NAME, IMPORT_ERROR_NAME,
+  ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME,
+  MODULE_CLASS_NAME, NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME,
+  PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, STRING_CLASS_NAME,
+};
 
 pub struct BuiltIn {
   /// built in classes related to dependencies
@@ -22,74 +27,74 @@ pub struct BuiltIn {
 }
 
 impl Trace for BuiltIn {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.primitives.trace();
     self.dependencies.trace();
-    self.errors.trace()
+    self.errors.trace();
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.primitives.trace_debug(stdio);
     self.dependencies.trace_debug(stdio);
-    self.errors.trace_debug(stdio)
+    self.errors.trace_debug(stdio);
   }
 }
 
 pub struct BuiltInDependencies {
   /// The
-  pub module: Managed<Class>,
+  pub module: Gc<Class>,
 }
 
 impl Trace for BuiltInDependencies {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.module.trace()
   }
 
-  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) {
     self.module.trace_debug(log)
   }
 }
 
 pub struct BuiltInPrimitives {
   /// The base Object class
-  pub object: Managed<Class>,
+  pub object: Gc<Class>,
 
   /// the Nil class
-  pub nil: Managed<Class>,
+  pub nil: Gc<Class>,
 
   /// the Bool class
-  pub bool: Managed<Class>,
+  pub bool: Gc<Class>,
 
   /// the Class class
-  pub class: Managed<Class>,
+  pub class: Gc<Class>,
 
   /// the Number class
-  pub number: Managed<Class>,
+  pub number: Gc<Class>,
 
   /// the String class
-  pub string: Managed<Class>,
+  pub string: Gc<Class>,
 
   /// the List class
-  pub list: Managed<Class>,
+  pub list: Gc<Class>,
 
   /// the Map class
-  pub map: Managed<Class>,
+  pub map: Gc<Class>,
 
   /// the Iter class
-  pub iter: Managed<Class>,
+  pub iter: Gc<Class>,
 
   /// the Closure class
-  pub closure: Managed<Class>,
+  pub closure: Gc<Class>,
 
   /// the method class
-  pub method: Managed<Class>,
+  pub method: Gc<Class>,
 
   /// the NativeFun class
-  pub native_fun: Managed<Class>,
+  pub native_fun: Gc<Class>,
 }
 
 impl BuiltInPrimitives {
-  pub fn for_value(&self, value: Value, kind: ValueKind) -> Managed<Class> {
+  pub fn for_value(&self, value: Value, kind: ValueKind) -> Gc<Class> {
     match kind {
       ValueKind::Bool => self.bool,
       ValueKind::Nil => self.nil,
@@ -113,7 +118,7 @@ impl BuiltInPrimitives {
 }
 
 impl Trace for BuiltInPrimitives {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.bool.trace();
     self.nil.trace();
     self.class.trace();
@@ -125,11 +130,9 @@ impl Trace for BuiltInPrimitives {
     self.closure.trace();
     self.method.trace();
     self.native_fun.trace();
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.bool.trace_debug(stdio);
     self.nil.trace_debug(stdio);
     self.class.trace_debug(stdio);
@@ -141,29 +144,27 @@ impl Trace for BuiltInPrimitives {
     self.closure.trace_debug(stdio);
     self.method.trace_debug(stdio);
     self.native_fun.trace_debug(stdio);
-
-    true
   }
 }
 
 pub struct BuiltInErrors {
-  pub runtime: Managed<Class>,
+  pub runtime: Gc<Class>,
 
-  pub method_not_found: Managed<Class>,
+  pub method_not_found: Gc<Class>,
 
-  pub property: Managed<Class>,
+  pub property: Gc<Class>,
 
-  pub import: Managed<Class>,
+  pub import: Gc<Class>,
 
-  pub export: Managed<Class>,
+  pub export: Gc<Class>,
 }
 
 impl Trace for BuiltInErrors {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.method_not_found.trace()
   }
 
-  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) {
     self.method_not_found.trace_debug(log)
   }
 }

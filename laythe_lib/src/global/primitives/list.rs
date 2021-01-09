@@ -18,8 +18,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyResult,
 };
-use laythe_env::managed::{Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{Gc, GcStr, Trace};
 use std::{cmp::Ordering, io::Write};
 use std::{mem, slice::Iter};
 
@@ -199,20 +198,30 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitR
   Ok(())
 }
 
-#[derive(Debug, Trace)]
+#[derive(Debug)]
 struct ListStr {
   meta: NativeMeta,
-  method_name: Managed<SmolStr>,
+  method_name: GcStr,
   error: Value,
 }
 
 impl ListStr {
-  fn new(meta: NativeMeta, method_name: Managed<SmolStr>, error: Value) -> Self {
+  fn new(meta: NativeMeta, method_name: GcStr, error: Value) -> Self {
     Self {
       meta,
       method_name,
       error,
     }
+  }
+}
+
+impl Trace for ListStr {
+  fn trace(&self) {
+    self.method_name.trace();
+  }
+
+  fn trace_debug(&self, log: &mut dyn Write) {
+    self.method_name.trace_debug(log);
   }
 }
 
@@ -233,7 +242,7 @@ impl Native for ListStr {
     for item in list.iter() {
       // if already string quote and add to temps
       if item.is_str() {
-        strings.push(format!("'{}'", item.to_str().as_str()));
+        strings.push(format!("'{}'", item.to_str()));
         continue;
       }
 
@@ -610,13 +619,13 @@ impl Native for ListCollect {
 
 #[derive(Debug)]
 struct ListIterator {
-  list: Managed<List<Value>>,
+  list: Gc<List<Value>>,
   current: Value,
   iter: Iter<'static, Value>,
 }
 
 impl ListIterator {
-  fn new(list: Managed<List<Value>>) -> Self {
+  fn new(list: Gc<List<Value>>) -> Self {
     let iter = unsafe { list.deref_static().iter() };
 
     Self {
@@ -659,12 +668,12 @@ impl LyIter for ListIterator {
 }
 
 impl Trace for ListIterator {
-  fn trace(&self) -> bool {
-    self.list.trace()
+  fn trace(&self) {
+    self.list.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-    self.list.trace_debug(stdout)
+  fn trace_debug(&self, stdout: &mut dyn Write) {
+    self.list.trace_debug(stdout);
   }
 }
 
@@ -782,7 +791,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
+      let mut gc = test_native_dependencies();
       let mut context = MockedContext::with_std(&[
         val!(gc.manage_str("nil".to_string(), &NO_GC)),
         val!(gc.manage_str("10".to_string(), &NO_GC)),

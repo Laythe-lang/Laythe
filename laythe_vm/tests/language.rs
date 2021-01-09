@@ -598,7 +598,7 @@ fn lambda() -> Result<(), std::io::Error> {
       "language/lambda/mutual_recursion.lay",
       "language/lambda/recursion.lay",
       "language/lambda/parameters.lay",
-      "language/lambda/print.lay",
+      "language/lambda/str.lay",
     ],
     ExecuteResult::Ok,
   )?;

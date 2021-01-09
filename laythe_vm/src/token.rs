@@ -1,16 +1,31 @@
 use smol_str::SmolStr;
 
+#[derive(Debug, Clone)]
+pub enum Lexeme<'a> {
+  Slice(&'a str),
+  Owned(SmolStr),
+}
+
 /// A token in the space lox language
 #[derive(Debug, Clone)]
-pub struct Token {
+pub struct Token<'a> {
   /// The token kind
   pub kind: TokenKind,
 
   /// The character array of the source
-  pub lexeme: SmolStr,
+  pub lexeme: Lexeme<'a>,
 
   /// line number this token appears
   pub line: u32,
+}
+
+impl<'a> Token<'a> {
+  pub fn str(&'a self) -> &'a str {
+    match &self.lexeme {
+      Lexeme::Slice(slice) => slice,
+      Lexeme::Owned(smol) => smol.as_str(),
+    }
+  }
 }
 
 /// Token kinds in the space lox language

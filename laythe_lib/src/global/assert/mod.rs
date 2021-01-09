@@ -13,8 +13,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{GcStr, Trace};
 use std::io::Write;
 
 pub const ASSERT_ERROR_NAME: &str = "AssertError";
@@ -80,7 +79,7 @@ pub fn declare_assert_funs(hooks: &GcHooks, module: &mut Module) -> InitResult<(
   )
 }
 
-fn to_str(hooks: &mut Hooks, value: Value) -> Managed<SmolStr> {
+fn to_str(hooks: &mut Hooks, value: Value) -> GcStr {
   hooks
     .get_method(value, hooks.manage_str("str"))
     .map(|method| hooks.call_method(value, method, &[]))
@@ -100,14 +99,14 @@ fn to_str(hooks: &mut Hooks, value: Value) -> Managed<SmolStr> {
 /// A native method to assert that for a boolean true value
 pub struct Assert {
   /// reference to 'str'
-  method_str: Managed<SmolStr>,
+  method_str: GcStr,
   meta: NativeMeta,
   error: Value,
 }
 
 impl Assert {
   /// Construct a new instance of the native assert function
-  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>, error: Value) -> Self {
+  pub fn new(meta: NativeMeta, method_str: GcStr, error: Value) -> Self {
     Self {
       meta,
       method_str,
@@ -137,27 +136,27 @@ impl Native for Assert {
 }
 
 impl Trace for Assert {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.meta.trace();
-    self.method_str.trace()
+    self.method_str.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.meta.trace_debug(stdout);
-    self.method_str.trace_debug(stdout)
+    self.method_str.trace_debug(stdout);
   }
 }
 
 #[derive(Debug)]
 pub struct AssertEq {
   meta: NativeMeta,
-  method_str: Managed<SmolStr>,
+  method_str: GcStr,
   error: Value,
 }
 
 impl AssertEq {
   /// Construct a new instance of the native assertEq function
-  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>, error: Value) -> Self {
+  pub fn new(meta: NativeMeta, method_str: GcStr, error: Value) -> Self {
     Self {
       meta,
       method_str,
@@ -190,29 +189,29 @@ impl Native for AssertEq {
 }
 
 impl Trace for AssertEq {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.meta.trace();
     self.method_str.trace();
-    self.error.trace()
+    self.error.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.meta.trace_debug(stdout);
     self.method_str.trace_debug(stdout);
-    self.error.trace_debug(stdout)
+    self.error.trace_debug(stdout);
   }
 }
 
 #[derive(Debug)]
 pub struct AssertNe {
   meta: NativeMeta,
-  method_str: Managed<SmolStr>,
+  method_str: GcStr,
   error: Value,
 }
 
 impl AssertNe {
   /// Construct a new instance of the native assertNe function
-  pub fn new(meta: NativeMeta, method_str: Managed<SmolStr>, error: Value) -> Self {
+  pub fn new(meta: NativeMeta, method_str: GcStr, error: Value) -> Self {
     Self {
       meta,
       method_str,
@@ -245,23 +244,23 @@ impl Native for AssertNe {
 }
 
 impl Trace for AssertNe {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.meta.trace();
     self.method_str.trace();
-    self.error.trace()
+    self.error.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.meta.trace_debug(stdout);
     self.method_str.trace_debug(stdout);
-    self.error.trace_debug(stdout)
+    self.error.trace_debug(stdout);
   }
 }
 
 #[cfg(test)]
 mod test {
   use super::*;
-  use laythe_core::hooks::support::TestContext;
+  use laythe_core::hooks::NoContext;
 
   #[cfg(test)]
   mod assert {
@@ -271,7 +270,7 @@ mod test {
 
     #[test]
     fn new() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
@@ -291,7 +290,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
@@ -319,7 +318,7 @@ mod test {
 
     #[test]
     fn new() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks));
@@ -343,7 +342,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
@@ -372,7 +371,7 @@ mod test {
 
     #[test]
     fn new() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks));
@@ -396,7 +395,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));

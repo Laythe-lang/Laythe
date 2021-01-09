@@ -138,6 +138,9 @@ pub enum AlignedByteCode {
   /// Create a class
   Class(u16),
 
+  /// Inherit from another class
+  Inherit,
+
   /// Access this classes super
   GetSuper(u16),
 
@@ -222,6 +225,7 @@ impl AlignedByteCode {
       Self::Field(slot) => push_op_u16(code, ByteCode::Field, slot),
       Self::StaticMethod(slot) => push_op_u16(code, ByteCode::StaticMethod, slot),
       Self::Class(slot) => push_op_u16(code, ByteCode::Class, slot),
+      Self::Inherit => push_op(code, ByteCode::Inherit),
       Self::GetSuper(slot) => push_op_u16(code, ByteCode::GetSuper, slot),
       Self::CloseUpvalue => push_op(code, ByteCode::CloseUpvalue),
       Self::UpvalueIndex(index) => {
@@ -356,6 +360,7 @@ impl AlignedByteCode {
         AlignedByteCode::Class(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
+      ByteCode::Inherit => (AlignedByteCode::Inherit, offset + 1),
       ByteCode::GetSuper => (
         AlignedByteCode::GetSuper(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
@@ -505,6 +510,9 @@ pub enum ByteCode {
 
   /// Create a class
   Class,
+
+  /// Inherit from another class
+  Inherit,
 
   /// Access this classes super
   GetSuper,
@@ -796,6 +804,7 @@ mod test {
         (3, AlignedByteCode::Field(6634)),
         (3, AlignedByteCode::StaticMethod(4912)),
         (3, AlignedByteCode::Class(64136)),
+        (1, AlignedByteCode::Inherit),
         (3, AlignedByteCode::GetSuper(24)),
         (1, AlignedByteCode::CloseUpvalue),
         (1, AlignedByteCode::Equal),
