@@ -18,8 +18,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyResult,
 };
-use laythe_env::managed::{Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{Gc, GcStr, Trace};
 use std::{cmp::Ordering, io::Write};
 use std::{mem, slice::Iter};
 
@@ -32,8 +31,8 @@ const LIST_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, A
 
 const LIST_INDEX_SET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_SET, Arity::Fixed(2))
   .with_params(&[
-    ParameterBuilder::new("index", ParameterKind::Number),
     ParameterBuilder::new("val", ParameterKind::Any),
+    ParameterBuilder::new("index", ParameterKind::Number),
   ]);
 
 const LIST_CLEAR: NativeMetaBuilder = NativeMetaBuilder::method("clear", Arity::Fixed(0));
@@ -199,20 +198,30 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitR
   Ok(())
 }
 
-#[derive(Debug, Trace)]
+#[derive(Debug)]
 struct ListStr {
   meta: NativeMeta,
-  method_name: Managed<SmolStr>,
+  method_name: GcStr,
   error: Value,
 }
 
 impl ListStr {
-  fn new(meta: NativeMeta, method_name: Managed<SmolStr>, error: Value) -> Self {
+  fn new(meta: NativeMeta, method_name: GcStr, error: Value) -> Self {
     Self {
       meta,
       method_name,
       error,
     }
+  }
+}
+
+impl Trace for ListStr {
+  fn trace(&self) {
+    self.method_name.trace();
+  }
+
+  fn trace_debug(&self, log: &mut dyn Write) {
+    self.method_name.trace_debug(log);
   }
 }
 
@@ -233,7 +242,7 @@ impl Native for ListStr {
     for item in list.iter() {
       // if already string quote and add to temps
       if item.is_str() {
-        strings.push(format!("'{}'", item.to_str().as_str()));
+        strings.push(format!("'{}'", item.to_str()));
         continue;
       }
 
@@ -325,8 +334,8 @@ impl ListSlice {
     if index.fract() != 0.0 {
       return LyResult::Err(
         self
-          .call_error(hooks, "slice methods takes integer parameters")
-          .expect_err("TODO"),
+          .call_error(hooks, "Method slice takes integer parameters")
+          .expect_err("Expected Err"),
       );
     }
 
@@ -342,21 +351,30 @@ native_with_error!(ListIndexGet, LIST_INDEX_GET);
 
 impl Native for ListIndexGet {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let rounded = args[0].to_num() as usize;
+    let index = args[0].to_num();
     let list = this.unwrap().to_list();
 
-    if rounded >= list.len() {
+    if index.fract() != 0.0 {
+      return LyResult::Err(
+        self
+          .call_error(hooks, "Index must be an integer.")
+          .expect_err("Expected error"),
+      );
+    }
+
+    let index = index as usize;
+    if index >= list.len() {
       return self.call_error(
         hooks,
         format!(
           "Index out of bounds. list was length {} but attempted to index with {}.",
           list.len(),
-          rounded
+          index
         ),
       );
     }
 
-    Call::Ok(list[rounded])
+    Call::Ok(list[index])
   }
 }
 
@@ -364,21 +382,30 @@ native_with_error!(ListIndexSet, LIST_INDEX_SET);
 
 impl Native for ListIndexSet {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let rounded = args[0].to_num() as usize;
+    let index = args[1].to_num();
     let mut list = this.unwrap().to_list();
 
-    if rounded >= list.len() {
+    if index.fract() != 0.0 {
+      return LyResult::Err(
+        self
+          .call_error(hooks, "Index must be an integer.")
+          .expect_err("Expected error"),
+      );
+    }
+
+    let index = index as usize;
+    if index >= list.len() {
       return self.call_error(
         hooks,
         &format!(
           "Index out of bounds. list was length {} but attempted to index with {}.",
           list.len(),
-          rounded
+          index
         ),
       );
     }
 
-    list[rounded] = args[1];
+    list[index] = args[0];
     Call::Ok(VALUE_NIL)
   }
 }
@@ -592,13 +619,13 @@ impl Native for ListCollect {
 
 #[derive(Debug)]
 struct ListIterator {
-  list: Managed<List<Value>>,
+  list: Gc<List<Value>>,
   current: Value,
   iter: Iter<'static, Value>,
 }
 
 impl ListIterator {
-  fn new(list: Managed<List<Value>>) -> Self {
+  fn new(list: Gc<List<Value>>) -> Self {
     let iter = unsafe { list.deref_static().iter() };
 
     Self {
@@ -641,12 +668,12 @@ impl LyIter for ListIterator {
 }
 
 impl Trace for ListIterator {
-  fn trace(&self) -> bool {
-    self.list.trace()
+  fn trace(&self) {
+    self.list.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-    self.list.trace_debug(stdout)
+  fn trace_debug(&self, stdout: &mut dyn Write) {
+    self.list.trace_debug(stdout);
   }
 }
 
@@ -712,11 +739,11 @@ mod test {
       assert_eq!(list_index_set.meta().signature.arity, Arity::Fixed(2));
       assert_eq!(
         list_index_set.meta().signature.parameters[0].kind,
-        ParameterKind::Number
+        ParameterKind::Any
       );
       assert_eq!(
         list_index_set.meta().signature.parameters[1].kind,
-        ParameterKind::Any
+        ParameterKind::Number
       );
     }
 
@@ -728,17 +755,15 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_index_set = ListIndexSet::new(&hooks.as_gc(), error);
 
-      let values = &[val!(1.0), val!(false)];
+      let values = &[val!(false), val!(1.0)];
 
       let list = List::from(vec![VALUE_NIL, val!(10.0)]);
       let this = hooks.manage(list);
 
-      let result = list_index_set.call(&mut hooks, Some(val!(this)), values);
-      match result {
-        Call::Ok(r) => assert!(r.is_nil()),
-        _ => assert!(false),
-      }
-
+      let result = list_index_set
+        .call(&mut hooks, Some(val!(this)), values)
+        .unwrap();
+      assert_eq!(result, VALUE_NIL);
       assert_eq!(this[1], val!(false))
     }
   }
@@ -766,7 +791,7 @@ mod test {
 
     #[test]
     fn call() {
-      let gc = test_native_dependencies();
+      let mut gc = test_native_dependencies();
       let mut context = MockedContext::with_std(&[
         val!(gc.manage_str("nil".to_string(), &NO_GC)),
         val!(gc.manage_str("10".to_string(), &NO_GC)),

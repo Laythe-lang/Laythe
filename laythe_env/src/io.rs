@@ -4,26 +4,24 @@ use crate::{
   stdio::{IoStdioMock, Stdio},
   time::{IoTimeMock, Time},
 };
-use std::{fmt, rc::Rc};
-
-// type IoImpl<T> = Rc<dyn Fn() -> T>;
+use std::{fmt, sync::Arc};
 
 #[derive(Debug)]
 /// A struct wrapping the externally provided io to Laythe
 pub struct Io {
-  stdio_impl: Rc<dyn IoImpl<Stdio>>,
-  fs_impl: Rc<dyn IoImpl<Fs>>,
-  env_impl: Rc<dyn IoImpl<Env>>,
-  time_impl: Rc<dyn IoImpl<Time>>,
+  stdio_impl: Arc<dyn IoImpl<Stdio>>,
+  fs_impl: Arc<dyn IoImpl<Fs>>,
+  env_impl: Arc<dyn IoImpl<Env>>,
+  time_impl: Arc<dyn IoImpl<Time>>,
 }
 
 impl Default for Io {
   fn default() -> Self {
     Self {
-      stdio_impl: Rc::new(IoStdioMock()),
-      fs_impl: Rc::new(IoFsMock()),
-      env_impl: Rc::new(IoEnvMock()),
-      time_impl: Rc::new(IoTimeMock()),
+      stdio_impl: Arc::new(IoStdioMock()),
+      fs_impl: Arc::new(IoFsMock()),
+      env_impl: Arc::new(IoEnvMock()),
+      time_impl: Arc::new(IoTimeMock()),
     }
   }
 }
@@ -31,10 +29,10 @@ impl Default for Io {
 impl Io {
   /// Create a new io wrapper uses the provided io impl
   pub fn new(
-    stdio_impl: Rc<dyn IoImpl<Stdio>>,
-    fs_impl: Rc<dyn IoImpl<Fs>>,
-    env_impl: Rc<dyn IoImpl<Env>>,
-    time_impl: Rc<dyn IoImpl<Time>>,
+    stdio_impl: Arc<dyn IoImpl<Stdio>>,
+    fs_impl: Arc<dyn IoImpl<Fs>>,
+    env_impl: Arc<dyn IoImpl<Env>>,
+    time_impl: Arc<dyn IoImpl<Time>>,
   ) -> Self {
     Self {
       stdio_impl,
@@ -45,7 +43,7 @@ impl Io {
   }
 
   /// Replace this stdio implementation
-  pub fn with_stdio(self, stdio_impl: Rc<dyn IoImpl<Stdio>>) -> Self {
+  pub fn with_stdio(self, stdio_impl: Arc<dyn IoImpl<Stdio>>) -> Self {
     Self {
       stdio_impl,
       fs_impl: self.fs_impl,
@@ -55,7 +53,7 @@ impl Io {
   }
 
   /// Replace this fs implementation
-  pub fn with_fs(self, fs_impl: Rc<dyn IoImpl<Fs>>) -> Self {
+  pub fn with_fs(self, fs_impl: Arc<dyn IoImpl<Fs>>) -> Self {
     Self {
       stdio_impl: self.stdio_impl,
       fs_impl,
@@ -65,7 +63,7 @@ impl Io {
   }
 
   /// Replace this env implementation
-  pub fn with_env(self, env_impl: Rc<dyn IoImpl<Env>>) -> Self {
+  pub fn with_env(self, env_impl: Arc<dyn IoImpl<Env>>) -> Self {
     Self {
       stdio_impl: self.stdio_impl,
       fs_impl: self.fs_impl,
@@ -75,7 +73,7 @@ impl Io {
   }
 
   /// Replace this env implementation
-  pub fn with_time(self, time_impl: Rc<dyn IoImpl<Time>>) -> Self {
+  pub fn with_time(self, time_impl: Arc<dyn IoImpl<Time>>) -> Self {
     Self {
       stdio_impl: self.stdio_impl,
       fs_impl: self.fs_impl,
@@ -108,10 +106,10 @@ impl Io {
 impl Clone for Io {
   fn clone(&self) -> Self {
     Io::new(
-      Rc::clone(&self.stdio_impl),
-      Rc::clone(&self.fs_impl),
-      Rc::clone(&self.env_impl),
-      Rc::clone(&self.time_impl),
+      Arc::clone(&self.stdio_impl),
+      Arc::clone(&self.fs_impl),
+      Arc::clone(&self.env_impl),
+      Arc::clone(&self.time_impl),
     )
   }
 }

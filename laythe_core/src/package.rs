@@ -1,21 +1,20 @@
 use crate::{hooks::GcHooks, module::Module, object::Map};
 use hashbrown::hash_map::{Entry, Iter};
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::mem;
 use std::{fmt, io::Write};
 
 /// An object representing an import request from a file
-pub struct Import(Vec<Managed<SmolStr>>);
+pub struct Import(Vec<GcStr>);
 
 impl Import {
   /// Create a new import
-  pub fn new(path: Vec<Managed<SmolStr>>) -> Self {
+  pub fn new(path: Vec<GcStr>) -> Self {
     Self(path)
   }
 
   /// Get the package name
-  pub fn package(&self) -> Option<Managed<SmolStr>> {
+  pub fn package(&self) -> Option<GcStr> {
     self.0.first().copied()
   }
 
@@ -44,10 +43,10 @@ impl Import {
 #[derive(Clone)]
 pub enum PackageEntity {
   /// A module in a package
-  Module(Managed<Module>),
+  Module(Gc<Module>),
 
   /// A sub package in this package
-  Package(Managed<Package>),
+  Package(Gc<Package>),
 }
 
 impl DebugHeap for PackageEntity {
@@ -70,15 +69,15 @@ impl DebugHeap for PackageEntity {
 #[derive(Clone)]
 pub struct Package {
   /// The name of the package
-  name: Managed<SmolStr>,
+  name: GcStr,
 
   /// A hash of names to sub packages and modules
-  entities: Map<Managed<SmolStr>, PackageEntity>,
+  entities: Map<GcStr, PackageEntity>,
 }
 
 impl Package {
   /// Create a new package
-  pub fn new(name: Managed<SmolStr>) -> Self {
+  pub fn new(name: GcStr) -> Self {
     Self {
       name,
       entities: Map::default(),
@@ -86,16 +85,12 @@ impl Package {
   }
 
   /// Retrieve the name of this package
-  pub fn name(&self) -> Managed<SmolStr> {
+  pub fn name(&self) -> GcStr {
     self.name
   }
 
   /// Add a module to this package
-  pub fn add_module(
-    &mut self,
-    hooks: &GcHooks,
-    module: Managed<Module>,
-  ) -> Result<(), Managed<SmolStr>> {
+  pub fn add_module(&mut self, hooks: &GcHooks, module: Gc<Module>) -> Result<(), GcStr> {
     match self.entities.entry(module.name()) {
       Entry::Occupied(_) => Err(hooks.manage_str(format!(
         "Cannot add module {} to package {}",
@@ -110,11 +105,7 @@ impl Package {
   }
 
   /// Add a sub package to this package
-  pub fn add_package(
-    &mut self,
-    hooks: &GcHooks,
-    sub_package: Managed<Package>,
-  ) -> Result<(), Managed<SmolStr>> {
+  pub fn add_package(&mut self, hooks: &GcHooks, sub_package: Gc<Package>) -> Result<(), GcStr> {
     match self.entities.entry(sub_package.name) {
       Entry::Occupied(_) => Err(hooks.manage_str(format!(
         "Cannot add sub package {} to package {}",
@@ -128,17 +119,13 @@ impl Package {
   }
 
   /// Get an iterator to the elements in this package
-  pub fn entities(&self) -> Iter<'_, Managed<SmolStr>, PackageEntity> {
+  pub fn entities(&self) -> Iter<'_, GcStr, PackageEntity> {
     self.entities.iter()
   }
 
   /// Get a set of symbols from this package using a requested import. This
   /// operation can fail if some or all of the symbols are not found.
-  pub fn import(
-    &self,
-    hooks: &GcHooks,
-    import: Import,
-  ) -> Result<Managed<Module>, Managed<SmolStr>> {
+  pub fn import(&self, hooks: &GcHooks, import: Import) -> Result<Gc<Module>, GcStr> {
     if import.0.is_empty() {
       panic!("No path in import");
     }
@@ -152,12 +139,7 @@ impl Package {
 
   /// Get a set of symbols from this packages using a requested. This method
   /// is used internally to track how far down the import path has currently been resolved
-  fn _import(
-    &self,
-    hooks: &GcHooks,
-    depth: usize,
-    import: Import,
-  ) -> Result<Managed<Module>, Managed<SmolStr>> {
+  fn _import(&self, hooks: &GcHooks, depth: usize, import: Import) -> Result<Gc<Module>, GcStr> {
     if depth >= import.0.len() {
       return Err(hooks.manage_str(format!("Could not resolve module {}", import.path_str())));
     }
@@ -177,14 +159,14 @@ impl Package {
 impl fmt::Debug for Package {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     f.debug_struct("Package")
-      .field("name", &*self.name)
+      .field("name", &self.name)
       .field("entities", &"LyHashMap: { ... }")
       .finish()
   }
 }
 
 impl Trace for Package {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.name.trace();
 
     self.entities.iter().for_each(|(key, value)| {
@@ -195,11 +177,9 @@ impl Trace for Package {
         PackageEntity::Package(package) => package.trace(),
       };
     });
-
-    true
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.name.trace_debug(stdout);
 
     self.entities.iter().for_each(|(key, value)| {
@@ -210,8 +190,6 @@ impl Trace for Package {
         PackageEntity::Package(package) => package.trace_debug(stdout),
       };
     });
-
-    true
   }
 }
 
@@ -227,14 +205,9 @@ impl DebugHeap for Package {
 }
 
 impl Manage for Package {
-  fn alloc_type(&self) -> &str {
-    "package"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<PackageEntity>())
-        * (self.entities.capacity())
+      + (mem::size_of::<GcStr>() + mem::size_of::<PackageEntity>()) * (self.entities.capacity())
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -249,18 +222,18 @@ mod test {
   #[test]
   fn new() {
     use crate::package::Package;
-    use laythe_env::memory::{Gc, NO_GC};
+    use laythe_env::memory::{Allocator, NO_GC};
 
-    let gc = Gc::default();
+    let mut gc = Allocator::default();
     Package::new(gc.manage_str("example".to_string(), &NO_GC));
   }
 
   #[test]
   fn name() {
     use crate::package::Package;
-    use laythe_env::memory::{Gc, NO_GC};
+    use laythe_env::memory::{Allocator, NO_GC};
 
-    let gc = Gc::default();
+    let mut gc = Allocator::default();
     let package = Package::new(gc.manage_str("example".to_string(), &NO_GC));
 
     assert_eq!(&*package.name(), "example");
@@ -268,12 +241,12 @@ mod test {
 
   #[test]
   fn add_module() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::package::Package;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut package = Package::new(hooks.manage_str("package".to_string()));
@@ -291,10 +264,10 @@ mod test {
 
   #[test]
   fn add_package() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::package::Package;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut package = Package::new(hooks.manage_str("package".to_string()));
@@ -309,13 +282,13 @@ mod test {
 
   #[test]
   fn import() {
-    use crate::hooks::{support::TestContext, GcHooks};
+    use crate::hooks::{GcHooks, NoContext};
     use crate::module::Module;
     use crate::package::{Import, Package};
     use crate::value::Value;
     use std::path::PathBuf;
 
-    let mut context = TestContext::default();
+    let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = hooks.manage(

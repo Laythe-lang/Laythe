@@ -1,7 +1,7 @@
 class Foo {}
 
-print([true, false]);  // expect list
-print([1, 2, 3, 4]);   // expect list
-print(["John", "Jain", "Mary"]); // expect list
-print([Foo(), Foo(), Foo()]);  // expect list
-print([clock, clock, clock]);  // expect list
+assertEq([true, false].cls(), List);
+assertEq([1, 2, 3, 4].cls(), List);
+assertEq(["John", "Jain", "Mary"].cls(), List);
+assertEq([Foo(), Foo(), Foo()].cls(), List);
+assertEq([clock, clock, clock].cls(), List);

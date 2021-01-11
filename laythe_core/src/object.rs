@@ -12,9 +12,8 @@ use core::slice;
 use fnv::FnvBuildHasher;
 use hash_map::Entry;
 use hashbrown::{hash_map, HashMap};
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Managed, Trace};
+use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use slice::SliceIndex;
-use smol_str::SmolStr;
 use std::{
   cmp::Ordering,
   fmt,
@@ -93,17 +92,15 @@ impl Upvalue {
 }
 
 impl Trace for Upvalue {
-  fn trace(&self) -> bool {
-    match self {
-      Upvalue::Closed(upvalue) => upvalue.trace(),
-      _ => true,
+  fn trace(&self) {
+    if let Upvalue::Closed(upvalue) = self {
+      upvalue.trace();
     }
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
-    match self {
-      Upvalue::Closed(upvalue) => upvalue.trace_debug(stdio),
-      _ => true,
+  fn trace_debug(&self, stdio: &mut dyn Write) {
+    if let Upvalue::Closed(upvalue) = self {
+      upvalue.trace_debug(stdio);
     }
   }
 }
@@ -123,10 +120,6 @@ impl DebugHeap for Upvalue {
 }
 
 impl Manage for Upvalue {
-  fn alloc_type(&self) -> &str {
-    "upvalue"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }
@@ -135,6 +128,8 @@ impl Manage for Upvalue {
     self
   }
 }
+
+unsafe impl Send for Upvalue {}
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FunKind {
@@ -163,7 +158,7 @@ impl TryBlock {
 #[derive(Clone)]
 pub struct Fun {
   /// Name if not top-level script
-  pub name: Managed<SmolStr>,
+  pub name: GcStr,
 
   /// Arity of this function
   pub arity: Arity,
@@ -172,7 +167,7 @@ pub struct Fun {
   pub upvalue_count: usize,
 
   /// The module this function belongs to
-  pub module: Managed<Module>,
+  pub module: Gc<Module>,
 
   /// Catch block present in this function
   try_blocks: Vec<TryBlock>,
@@ -182,7 +177,7 @@ pub struct Fun {
 }
 
 impl Fun {
-  pub fn new(name: Managed<SmolStr>, module: Managed<Module>) -> Self {
+  pub fn new(name: GcStr, module: Gc<Module>) -> Self {
     Self {
       arity: Arity::default(),
       upvalue_count: 0,
@@ -197,8 +192,8 @@ impl Fun {
     &self.chunk
   }
 
-  pub fn add_try(&mut self, try_block: TryBlock) {
-    self.try_blocks.push(try_block);
+  pub fn add_try(&mut self, hooks: &GcHooks, try_block: TryBlock) {
+    hooks.grow(self, |fun| fun.try_blocks.push(try_block));
   }
 
   pub fn has_catch_jump(&self, ip: u16) -> Option<u16> {
@@ -254,24 +249,20 @@ impl fmt::Debug for Fun {
 }
 
 impl Trace for Fun {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.name.trace();
     self.chunk.constants.iter().for_each(|constant| {
       constant.trace();
     });
     self.module.trace();
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.name.trace_debug(stdio);
     self.chunk.constants.iter().for_each(|constant| {
       constant.trace_debug(stdio);
     });
     self.module.trace_debug(stdio);
-
-    true
   }
 }
 
@@ -290,15 +281,10 @@ impl DebugHeap for Fun {
 }
 
 impl Manage for Fun {
-  fn alloc_type(&self) -> &str {
-    "function"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
       + self.chunk.size()
-      + mem::size_of::<TryBlock>()
-      + self.try_blocks.capacity()
+      + mem::size_of::<TryBlock>() * self.try_blocks.capacity()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -422,20 +408,16 @@ impl<T: Clone> From<&[T]> for List<T> {
 }
 
 impl<T: 'static + Trace> Trace for List<T> {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.iter().for_each(|value| {
       value.trace();
     });
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.iter().for_each(|value| {
       value.trace_debug(stdio);
     });
-
-    true
   }
 }
 
@@ -450,10 +432,6 @@ impl<T: 'static + Trace + DebugHeap> DebugHeap for List<T> {
 }
 
 impl<T: 'static + Trace + DebugHeap> Manage for List<T> {
-  fn alloc_type(&self) -> &str {
-    "list"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Vec<T>>() + mem::size_of::<T>() * self.capacity()
   }
@@ -467,6 +445,13 @@ impl<T: 'static + Trace + DebugHeap> Manage for List<T> {
 pub struct Map<K, V>(HashMap<K, V, FnvBuildHasher>);
 
 impl<K, V> Map<K, V> {
+  pub fn with_capacity(capacity: usize) -> Self {
+    Self(HashMap::<K, V, FnvBuildHasher>::with_capacity_and_hasher(
+      capacity,
+      FnvBuildHasher::default(),
+    ))
+  }
+
   pub fn len(&self) -> usize {
     self.0.len()
   }
@@ -525,22 +510,18 @@ impl<K, V> Default for Map<K, V> {
 }
 
 impl<K: 'static + Trace, V: 'static + Trace> Trace for Map<K, V> {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.iter().for_each(|(key, value)| {
       key.trace();
       value.trace();
     });
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.iter().for_each(|(key, value)| {
       key.trace_debug(stdio);
       value.trace_debug(stdio);
     });
-
-    true
   }
 }
 
@@ -564,10 +545,6 @@ where
   K: 'static + DebugHeap + Trace,
   V: 'static + DebugHeap + Trace,
 {
-  fn alloc_type(&self) -> &str {
-    "map"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Map<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
   }
@@ -579,8 +556,8 @@ where
 
 #[derive(PartialEq, Clone)]
 pub struct Closure {
-  pub fun: Managed<Fun>,
-  pub upvalues: Vec<Value>,
+  pub fun: Gc<Fun>,
+  pub upvalues: Box<[Value]>,
 }
 
 impl Closure {
@@ -590,14 +567,12 @@ impl Closure {
   /// ```
   /// use laythe_core::object::{Closure, Class, Fun};
   /// use laythe_core::signature::Arity;
-  /// use laythe_env::memory::{Gc, NO_GC};
   /// use laythe_core::module::Module;
   /// use laythe_core::chunk::Chunk;
   /// use laythe_core::hooks::{NoContext, Hooks, HookContext};
   /// use std::path::PathBuf;
   ///
-  /// let gc = Gc::default();
-  /// let mut context = NoContext::new(&gc);
+  /// let mut context = NoContext::default();
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
@@ -610,9 +585,9 @@ impl Closure {
   /// let closure = Closure::new(managed_fun);
   /// assert_eq!(&*closure.fun.name, "example");
   /// ```
-  pub fn new(fun: Managed<Fun>) -> Self {
+  pub fn new(fun: Gc<Fun>) -> Self {
     Closure {
-      upvalues: Vec::with_capacity(fun.upvalue_count as usize),
+      upvalues: vec![VALUE_NIL; fun.upvalue_count].into_boxed_slice(),
       fun,
     }
   }
@@ -625,22 +600,20 @@ impl fmt::Debug for Closure {
 }
 
 impl Trace for Closure {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.upvalues.iter().for_each(|upvalue| {
       upvalue.trace();
     });
 
     self.fun.trace();
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.upvalues.iter().for_each(|upvalue| {
       upvalue.trace_debug(stdio);
     });
 
     self.fun.trace_debug(stdio);
-    true
   }
 }
 
@@ -656,12 +629,8 @@ impl DebugHeap for Closure {
 }
 
 impl Manage for Closure {
-  fn alloc_type(&self) -> &str {
-    "closure"
-  }
-
   fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.upvalues.capacity()
+    mem::size_of::<Self>() + mem::size_of::<Value>() * self.upvalues.len()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -671,14 +640,14 @@ impl Manage for Closure {
 
 #[derive(PartialEq, Clone)]
 pub struct Class {
-  pub name: Managed<SmolStr>,
+  pub name: GcStr,
   pub init: Option<Value>,
   pub index_get: Option<Value>,
   pub index_set: Option<Value>,
-  methods: DynamicMap<Managed<SmolStr>, Value>,
-  fields: DynamicMap<Managed<SmolStr>, u16>,
-  meta_class: Option<Managed<Class>>,
-  super_class: Option<Managed<Class>>,
+  methods: DynamicMap<GcStr, Value>,
+  fields: DynamicMap<GcStr, u16>,
+  meta_class: Option<Gc<Class>>,
+  super_class: Option<Gc<Class>>,
 }
 
 impl fmt::Display for Class {
@@ -688,25 +657,7 @@ impl fmt::Display for Class {
 }
 
 impl Class {
-  pub fn new(
-    hooks: &GcHooks,
-    name: Managed<SmolStr>,
-    super_class: Managed<Class>,
-  ) -> Managed<Self> {
-    let super_meta = super_class
-      .meta()
-      .expect("Expected super class to have meta class");
-    let super_meta_meta = super_meta
-      .meta()
-      .expect("Expected super meta class to have meta class");
-
-    let meta_class = Class::with_meta(
-      hooks,
-      hooks.manage_str(format!("{} metaClass", name)),
-      super_meta_meta,
-      super_meta_meta,
-    );
-
+  pub fn with_inheritance(hooks: &GcHooks, name: GcStr, super_class: Gc<Class>) -> Gc<Self> {
     let mut class = hooks.manage(Self {
       name,
       init: None,
@@ -714,42 +665,19 @@ impl Class {
       index_set: None,
       methods: DynamicMap::new(),
       fields: DynamicMap::new(),
-      meta_class: Some(meta_class),
+      meta_class: None,
       super_class: None,
     });
 
     hooks.push_root(class);
     class.inherit(hooks, super_class);
+    class.meta_from_super(hooks);
     hooks.pop_roots(1);
 
     class
   }
 
-  fn with_meta(
-    hooks: &GcHooks,
-    name: Managed<SmolStr>,
-    meta_class: Managed<Class>,
-    super_class: Managed<Class>,
-  ) -> Managed<Self> {
-    let mut class = hooks.manage(Self {
-      name,
-      init: None,
-      index_get: None,
-      index_set: None,
-      methods: DynamicMap::new(),
-      fields: DynamicMap::new(),
-      meta_class: Some(meta_class),
-      super_class: None,
-    });
-
-    hooks.push_root(class);
-    class.inherit(hooks, super_class);
-    hooks.pop_roots(1);
-
-    class
-  }
-
-  pub fn bare(name: Managed<SmolStr>) -> Self {
+  pub fn bare(name: GcStr) -> Self {
     Self {
       name,
       init: None,
@@ -762,11 +690,11 @@ impl Class {
     }
   }
 
-  pub fn meta(&self) -> &Option<Managed<Class>> {
+  pub fn meta(&self) -> &Option<Gc<Class>> {
     &self.meta_class
   }
 
-  pub fn is_subclass(&self, class: Managed<Class>) -> bool {
+  pub fn is_subclass(&self, class: Gc<Class>) -> bool {
     if self == &*class {
       return true;
     }
@@ -777,11 +705,11 @@ impl Class {
     }
   }
 
-  pub fn super_class(&mut self) -> &Option<Managed<Class>> {
+  pub fn super_class(&mut self) -> &Option<Gc<Class>> {
     &self.super_class
   }
 
-  pub fn set_meta(&mut self, meta_class: Managed<Class>) -> &mut Self {
+  pub fn set_meta(&mut self, meta_class: Gc<Class>) -> &mut Self {
     if self.meta_class.is_some() {
       panic!("Meta class already set!");
     }
@@ -790,19 +718,14 @@ impl Class {
     self
   }
 
-  pub fn add_field(&mut self, hooks: &GcHooks, name: Managed<SmolStr>) -> Option<u16> {
+  pub fn add_field(&mut self, hooks: &GcHooks, name: GcStr) -> Option<u16> {
     let len = self.fields.len();
 
     hooks.grow(self, |class| class.fields.insert(name, len as u16))
   }
 
-  pub fn add_method(
-    &mut self,
-    hooks: &GcHooks,
-    name: Managed<SmolStr>,
-    method: Value,
-  ) -> Option<Value> {
-    match name.as_str() {
+  pub fn add_method(&mut self, hooks: &GcHooks, name: GcStr, method: Value) -> Option<Value> {
+    match &*name {
       INIT => self.init = Some(method),
       INDEX_GET => self.index_get = Some(method),
       INDEX_SET => self.index_set = Some(method),
@@ -812,22 +735,27 @@ impl Class {
     hooks.grow(self, |class| class.methods.insert(name, method))
   }
 
-  pub fn get_method(&self, name: &Managed<SmolStr>) -> Option<Value> {
+  pub fn get_method(&self, name: &GcStr) -> Option<Value> {
     self.methods.get(name).copied()
   }
 
-  pub fn get_field_index(&self, name: &Managed<SmolStr>) -> Option<u16> {
+  pub fn get_field_index(&self, name: &GcStr) -> Option<u16> {
     self.fields.get(name).copied()
   }
 
-  pub fn inherit(&mut self, hooks: &GcHooks, super_class: Managed<Class>) {
+  pub fn inherit(&mut self, hooks: &GcHooks, super_class: Gc<Class>) {
+    debug_assert!(self.methods.is_empty());
+    debug_assert!(self.fields.is_empty());
+
     hooks.grow(self, |class| {
+      class.methods.reserve(super_class.methods.len());
       super_class.methods.for_each(|(key, value)| {
         if class.methods.get(&*key).is_none() {
           class.methods.insert(*key, *value);
         }
       });
 
+      class.fields.reserve(super_class.fields.len());
       super_class.fields.for_each(|(field, _index)| {
         if class.fields.get(&field).is_none() {
           let len = class.fields.len();
@@ -844,6 +772,34 @@ impl Class {
     self.super_class = Some(super_class);
     self.init = self.init.or(super_class.init);
   }
+
+  pub fn meta_from_super(&mut self, hooks: &GcHooks) {
+    let super_meta_class = self
+      .super_class
+      .expect("Expected super class.")
+      .meta()
+      .expect("Expected super class to have meta class.");
+    let super_meta_meta_class = super_meta_class
+      .meta()
+      .expect("Expected super meta class to have meta class.");
+
+    let mut meta_class = hooks.manage(Self {
+      name: hooks.manage_str(format!("{} metaClass", self.name)),
+      init: None,
+      index_get: None,
+      index_set: None,
+      methods: DynamicMap::new(),
+      fields: DynamicMap::new(),
+      meta_class: Some(super_meta_meta_class),
+      super_class: None,
+    });
+
+    hooks.push_root(meta_class);
+    meta_class.inherit(hooks, super_meta_meta_class);
+    hooks.pop_roots(1);
+
+    self.set_meta(meta_class);
+  }
 }
 
 impl fmt::Debug for Class {
@@ -853,7 +809,7 @@ impl fmt::Debug for Class {
 }
 
 impl Trace for Class {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.name.trace();
 
     self.methods.for_each(|(key, val)| {
@@ -864,13 +820,15 @@ impl Trace for Class {
       key.trace();
     });
 
-    self.super_class.map(|class| class.trace());
-    self.meta_class.map(|class| class.trace());
-
-    true
+    if let Some(super_class) = self.super_class {
+      super_class.trace();
+    }
+    if let Some(meta_class) = self.meta_class {
+      meta_class.trace();
+    }
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.name.trace_debug(stdio);
 
     self.methods.for_each(|(key, val)| {
@@ -881,10 +839,12 @@ impl Trace for Class {
       key.trace_debug(stdio);
     });
 
-    self.super_class.map(|class| class.trace_debug(stdio));
-    self.meta_class.map(|class| class.trace_debug(stdio));
-
-    true
+    if let Some(super_class) = self.super_class {
+      super_class.trace_debug(stdio);
+    }
+    if let Some(meta_class) = self.meta_class {
+      meta_class.trace_debug(stdio);
+    }
   }
 }
 
@@ -901,13 +861,9 @@ impl DebugHeap for Class {
 }
 
 impl Manage for Class {
-  fn alloc_type(&self) -> &str {
-    "class"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Class>()
-      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.methods.capacity()
+      + (mem::size_of::<GcStr>() + mem::size_of::<Value>()) * self.methods.capacity()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -917,12 +873,12 @@ impl Manage for Class {
 
 #[derive(PartialEq, Clone)]
 pub struct Instance {
-  pub class: Managed<Class>,
+  pub class: Gc<Class>,
   fields: Box<[Value]>,
 }
 
 impl Instance {
-  pub fn new(class: Managed<Class>) -> Self {
+  pub fn new(class: Gc<Class>) -> Self {
     Instance {
       class,
       fields: vec![VALUE_NIL; class.fields.len()].into_boxed_slice(),
@@ -933,7 +889,7 @@ impl Instance {
     &self.fields
   }
 
-  pub fn set_field(&mut self, name: Managed<SmolStr>, value: Value) -> bool {
+  pub fn set_field(&mut self, name: GcStr, value: Value) -> bool {
     match self.class.get_field_index(&name) {
       Some(index) => {
         self.fields[index as usize] = value;
@@ -943,7 +899,7 @@ impl Instance {
     }
   }
 
-  pub fn get_field(&self, name: &Managed<SmolStr>) -> Option<&Value> {
+  pub fn get_field(&self, name: &GcStr) -> Option<&Value> {
     self
       .class
       .get_field_index(&name)
@@ -972,24 +928,20 @@ impl fmt::Debug for Instance {
 }
 
 impl Trace for Instance {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.class.trace();
 
     self.fields.iter().for_each(|val| {
       val.trace();
     });
-
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.class.trace_debug(stdio);
 
     self.fields.iter().for_each(|val| {
       val.trace_debug(stdio);
     });
-
-    true
   }
 }
 
@@ -1005,13 +957,9 @@ impl DebugHeap for Instance {
 }
 
 impl Manage for Instance {
-  fn alloc_type(&self) -> &str {
-    "instance"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Instance>()
-      + (mem::size_of::<Managed<SmolStr>>() + mem::size_of::<Value>()) * self.fields.len()
+      + (mem::size_of::<GcStr>() + mem::size_of::<Value>()) * self.fields.len()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -1038,16 +986,14 @@ impl fmt::Debug for Method {
 }
 
 impl Trace for Method {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.receiver.trace();
     self.method.trace();
-    true
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.receiver.trace_debug(stdio);
     self.method.trace_debug(stdio);
-    true
   }
 }
 
@@ -1063,10 +1009,6 @@ impl DebugHeap for Method {
 }
 
 impl Manage for Method {
-  fn alloc_type(&self) -> &str {
-    "method"
-  }
-
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }

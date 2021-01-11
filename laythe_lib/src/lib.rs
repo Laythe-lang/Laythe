@@ -11,16 +11,15 @@ use env::env_module;
 use global::add_global_module;
 use io::add_io_package;
 use laythe_core::{hooks::GcHooks, package::Package};
-use laythe_env::managed::Managed;
+use laythe_env::managed::{Gc, GcStr};
 use math::add_math_module;
 use regexp::regexp_module;
-use smol_str::SmolStr;
 
 pub use builtin::{
   builtin_from_module, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives,
 };
 
-type InitResult<T> = Result<T, Managed<SmolStr>>;
+type InitResult<T> = Result<T, GcStr>;
 
 #[macro_export]
 macro_rules! native {
@@ -53,11 +52,11 @@ macro_rules! native {
     }
 
     impl Trace for $st {
-      fn trace(&self) -> bool {
+      fn trace(&self) {
         self.meta.trace()
       }
 
-      fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+      fn trace_debug(&self, stdio: &mut dyn Write) {
         self.meta.trace_debug(stdio)
       }
     }
@@ -129,14 +128,14 @@ macro_rules! native_with_error {
     }
 
     impl Trace for $st {
-      fn trace(&self) -> bool {
+      fn trace(&self) {
         self.meta.trace();
-        self.error.trace()
+        self.error.trace();
       }
 
-      fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+      fn trace_debug(&self, stdio: &mut dyn Write) {
         self.meta.trace_debug(stdio);
-        self.meta.trace_debug(stdio)
+        self.meta.trace_debug(stdio);
       }
     }
   };
@@ -146,7 +145,7 @@ pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 pub const GLOBAL_PATH: &str = "std/global.ly";
 
-pub fn create_std_lib(hooks: &GcHooks) -> InitResult<Managed<Package>> {
+pub fn create_std_lib(hooks: &GcHooks) -> InitResult<Gc<Package>> {
   let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
 
   add_global_module(hooks, &mut std)?;
@@ -168,7 +167,7 @@ mod test {
   use crate::support::MockedContext;
   use laythe_core::{package::PackageEntity, signature::Arity, value::ValueKind};
 
-  fn check_inner(hooks: &GcHooks, package: Managed<Package>) {
+  fn check_inner(hooks: &GcHooks, package: Gc<Package>) {
     package.entities().for_each(|(_key, entity)| match entity {
       PackageEntity::Module(module) => {
         let import = module.import(hooks);

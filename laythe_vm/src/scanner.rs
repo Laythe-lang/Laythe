@@ -1,12 +1,24 @@
-use crate::token::{Token, TokenKind};
+use crate::token::{Lexeme, Token, TokenKind};
 use laythe_core::utils::{next_boundary, previous_boundary};
 use smol_str::SmolStr;
+
+/// Tracking information for one layer of string interpolation
+struct Interpolation<'a> {
+  // the bracket depth for the current string interpolation
+  brackets: u32,
+
+  // the quoting character for this string interpolation
+  quote_char: &'a str,
+}
 
 /// A scanner for the lox language. This struct is
 /// responsible for taking a source string and tokenizing it
 pub struct Scanner<'a> {
   /// The input source string
   source: &'a str,
+
+  /// The current string interpolation depth
+  interpolations: Vec<Interpolation<'a>>,
 
   /// The current line number
   line: u32,
@@ -41,13 +53,15 @@ impl<'a> Scanner<'a> {
   /// let token = scanner.scan_token();
   /// assert_eq!(token.line, 2);
   /// assert_eq!(token.kind, TokenKind::Let);
-  /// assert_eq!(token.lexeme, "let");
+  /// assert_eq!(token.str(), "let");
   /// ```
   pub fn new(source: &'a str) -> Scanner<'a> {
     let current = next_boundary(&source, 0);
 
     Scanner {
       source,
+
+      interpolations: Vec::new(),
 
       start: 0,
       current,
@@ -76,19 +90,19 @@ impl<'a> Scanner<'a> {
   /// let mut token = scanner.scan_token();
   /// assert_eq!(token.line, 2);
   /// assert_eq!(token.kind, TokenKind::Let);
-  /// assert_eq!(token.lexeme, "let");
+  /// assert_eq!(token.str(), "let");
   ///
   /// token = scanner.scan_token();
   /// assert_eq!(token.line, 2);
   /// assert_eq!(token.kind, TokenKind::Identifier);
-  /// assert_eq!(token.lexeme, "x");
+  /// assert_eq!(token.str(), "x");
   ///
   /// token = scanner.scan_token();
   /// assert_eq!(token.line, 2);
   /// assert_eq!(token.kind, TokenKind::Equal);
-  /// assert_eq!(token.lexeme, "=");
+  /// assert_eq!(token.str(), "=");
   /// ```
-  pub fn scan_token(&mut self) -> Token {
+  pub fn scan_token(&mut self) -> Token<'a> {
     // advance whitespace
     self.skip_white_space();
 
@@ -110,8 +124,26 @@ impl<'a> Scanner<'a> {
     match char_slice {
       "(" => self.make_token_source(TokenKind::LeftParen),
       ")" => self.make_token_source(TokenKind::RightParen),
-      "{" => self.make_token_source(TokenKind::LeftBrace),
-      "}" => self.make_token_source(TokenKind::RightBrace),
+      "{" => {
+        if !self.interpolations.is_empty() {
+          let end = self.interpolations.len() - 1;
+          self.interpolations[end].brackets += 1;
+        }
+        self.make_token_source(TokenKind::LeftBrace)
+      }
+      "}" => {
+        if !self.interpolations.is_empty() {
+          let end = self.interpolations.len() - 1;
+          self.interpolations[end].brackets -= 1;
+
+          if self.interpolations[end].brackets == 0 {
+            let interpolation = self.interpolations.pop().expect("Expected interpolation.");
+            return self.string(TokenKind::StringSegment, interpolation.quote_char);
+          }
+        }
+
+        self.make_token_source(TokenKind::RightBrace)
+      }
       "[" => self.make_token_source(TokenKind::LeftBracket),
       "]" => self.make_token_source(TokenKind::RightBracket),
       ":" => self.make_token_source(TokenKind::Colon),
@@ -121,15 +153,35 @@ impl<'a> Scanner<'a> {
       "-" => {
         if self.match_char(">") {
           self.make_token_source(TokenKind::Arrow)
+        } else if self.match_char("=") {
+          self.make_token_source(TokenKind::MinusEqual)
         } else {
           self.make_token_source(TokenKind::Minus)
         }
       }
       "&" => self.make_token_source(TokenKind::Amp),
-      "+" => self.make_token_source(TokenKind::Plus),
+      "+" => {
+        if self.match_char("=") {
+          self.make_token_source(TokenKind::PlusEqual)
+        } else {
+          self.make_token_source(TokenKind::Plus)
+        }
+      }
       "|" => self.make_token_source(TokenKind::Pipe),
-      "/" => self.make_token_source(TokenKind::Slash),
-      "*" => self.make_token_source(TokenKind::Star),
+      "/" => {
+        if self.match_char("=") {
+          self.make_token_source(TokenKind::SlashEqual)
+        } else {
+          self.make_token_source(TokenKind::Slash)
+        }
+      }
+      "*" => {
+        if self.match_char("=") {
+          self.make_token_source(TokenKind::StarEqual)
+        } else {
+          self.make_token_source(TokenKind::Star)
+        }
+      }
       "=" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::EqualEqual)
@@ -158,8 +210,8 @@ impl<'a> Scanner<'a> {
           self.make_token_source(TokenKind::Bang)
         }
       }
-      "\"" => self.string("\""),
-      "'" => self.string("'"),
+      "\"" => self.string(TokenKind::String, "\""),
+      "'" => self.string(TokenKind::String, "'"),
       _ => {
         if is_digit(char_slice) {
           return self.number();
@@ -169,13 +221,13 @@ impl<'a> Scanner<'a> {
           return self.identifier();
         }
 
-        self.error_token("Unexpected character")
+        self.error_token("Unexpected character.")
       }
     }
   }
 
   /// Generate an identifier token
-  fn identifier(&mut self) -> Token {
+  fn identifier(&mut self) -> Token<'a> {
     // advance until we hit whitespace or a special char
     loop {
       if self.is_at_end() {
@@ -195,7 +247,7 @@ impl<'a> Scanner<'a> {
   }
 
   /// Generate a number token
-  fn number(&mut self) -> Token {
+  fn number(&mut self) -> Token<'a> {
     // advance consecutive digits
     while !self.is_at_end() && is_digit(self.peek()) {
       self.advance_indices();
@@ -232,8 +284,9 @@ impl<'a> Scanner<'a> {
   }
 
   /// Generate a string token
-  fn string(&mut self, quote_char: &str) -> Token {
+  fn string(&mut self, kind: TokenKind, quote_char: &'a str) -> Token<'a> {
     let mut buffer = String::with_capacity(8);
+    let mut kind = kind;
 
     while !self.is_at_end() && self.peek() != quote_char {
       match self.peek() {
@@ -268,19 +321,20 @@ impl<'a> Scanner<'a> {
               while !self.is_at_end() && self.peek() != quote_char && self.peek() != "}" {
                 self.advance_indices();
                 if len > 6 {
-                  return self
-                    .error_token("Unicode escape have a hexidecimal longer than length 6");
+                  return self.error_token(
+                    "Unicode escape sequence has a hexidecimal longer than length 6.",
+                  );
                 }
 
                 len += 1;
               }
 
               if self.peek() == quote_char {
-                return self.error_token("Expected '}' after unicode escape.");
+                return self.error_token("Expected '}' after unicode escape sequence.");
               }
 
               if self.is_at_end() {
-                return self.error_token("Unterminated string");
+                return self.error_token("Unterminated string.");
               }
               let unicode = &self.source[start..self.current - 1];
 
@@ -288,23 +342,42 @@ impl<'a> Scanner<'a> {
                 Ok(code_point) => match std::char::from_u32(code_point) {
                   Some(c) => buffer.push(c),
                   None => {
-                    return self.error_token(&format!("Invalid unicode escape {}.", unicode));
+                    return self.error_token_owned(SmolStr::from(format!(
+                      "Invalid unicode escape {}.",
+                      unicode
+                    )));
                   }
                 },
                 Err(_) => {
-                  return self.error_token(&format!(
-                    "Invalid hexadecimal for unicode escape {}.",
+                  return self.error_token_owned(SmolStr::from(format!(
+                    "Invalid hexadecimal unicode escape sequence {}.",
                     unicode
-                  ));
+                  )));
                 }
               }
             }
             _ => {
-              return self.error_token(&format!(
+              return self.error_token_owned(SmolStr::from(format!(
                 "Invalid escape character '{}'.",
                 self.current_slice()
-              ));
+              )));
             }
+          }
+        }
+        "$" => {
+          if self.peek_next().map(|c| c == "{").unwrap_or(false) {
+            self.advance_indices();
+
+            if let TokenKind::String = kind {
+              kind = TokenKind::StringStart
+            }
+            self.interpolations.push(Interpolation {
+              quote_char,
+              brackets: 1,
+            });
+            break;
+          } else {
+            buffer.push('$');
           }
         }
         c => buffer.push_str(c),
@@ -313,11 +386,15 @@ impl<'a> Scanner<'a> {
     }
 
     if self.is_at_end() {
-      return self.error_token("Unterminated string");
+      return self.error_token("Unterminated string.");
+    }
+
+    if self.peek() == quote_char && kind == TokenKind::StringSegment {
+      kind = TokenKind::StringEnd;
     }
 
     self.advance_indices();
-    make_token(TokenKind::String, &buffer, self.line)
+    make_token_owned(kind, SmolStr::from(buffer), self.line)
   }
 
   /// Advance through whitespace effectively throwing it away
@@ -443,13 +520,18 @@ impl<'a> Scanner<'a> {
   }
 
   /// Make a token from the current state of the scanner
-  fn make_token_source(&'a self, kind: TokenKind) -> Token {
+  fn make_token_source(&self, kind: TokenKind) -> Token<'a> {
     make_token(kind, self.current_slice(), self.line)
   }
 
   /// Make a new error token
-  fn error_token(&'a self, message: &str) -> Token {
+  fn error_token(&self, message: &'a str) -> Token<'a> {
     make_token(TokenKind::Error, message, self.line)
+  }
+
+  /// Make a owned error error token
+  fn error_token_owned(&self, message: SmolStr) -> Token<'static> {
+    make_token_owned(TokenKind::Error, message, self.line)
   }
 
   /// Peek the next token
@@ -487,7 +569,7 @@ impl<'a> Scanner<'a> {
   }
 
   /// Get the current str slice
-  fn current_slice(&'a self) -> &'a str {
+  fn current_slice(&self) -> &'a str {
     &self.source[self.start..self.current - 1]
   }
 
@@ -533,21 +615,31 @@ impl<'a> Scanner<'a> {
 }
 
 /// Make a new token
-fn make_token(kind: TokenKind, raw: &str, line: u32) -> Token {
-  let lexeme = SmolStr::new(raw);
-  Token { kind, lexeme, line }
+fn make_token(kind: TokenKind, lexeme: &str, line: u32) -> Token {
+  Token {
+    kind,
+    lexeme: Lexeme::Slice(lexeme),
+    line,
+  }
+}
+
+/// Make a new token
+fn make_token_owned<'a>(kind: TokenKind, lexeme: SmolStr, line: u32) -> Token<'a> {
+  Token {
+    kind,
+    lexeme: Lexeme::Owned(lexeme),
+    line,
+  }
 }
 
 /// Is the str slice a digit. Assumes single char
 fn is_digit(c: &str) -> bool {
   ("0"..="9").contains(&c)
-  // c >= "0" && c <= "9"
 }
 
 /// Is the str slice a alphabetic. Assumes single char
 fn is_alpha(c: &str) -> bool {
   ("a"..="z").contains(&c) || ("A"..="Z").contains(&c) || c == "_"
-  // (c >= "a" && c <= "z") || (c >= "A" && c <= "Z") || c == "_"
 }
 
 #[cfg(test)]
@@ -593,6 +685,10 @@ mod test {
       TokenGen::Symbol(Box::new(|| "-".to_string())),
     );
     map.insert(
+      TokenKind::MinusEqual,
+      TokenGen::Symbol(Box::new(|| "-=".to_string())),
+    );
+    map.insert(
       TokenKind::Amp,
       TokenGen::Symbol(Box::new(|| "&".to_string())),
     );
@@ -605,6 +701,10 @@ mod test {
       TokenGen::Symbol(Box::new(|| "+".to_string())),
     );
     map.insert(
+      TokenKind::PlusEqual,
+      TokenGen::Symbol(Box::new(|| "+=".to_string())),
+    );
+    map.insert(
       TokenKind::Semicolon,
       TokenGen::Symbol(Box::new(|| ";".to_string())),
     );
@@ -613,8 +713,16 @@ mod test {
       TokenGen::Symbol(Box::new(|| "/".to_string())),
     );
     map.insert(
+      TokenKind::SlashEqual,
+      TokenGen::Symbol(Box::new(|| "/=".to_string())),
+    );
+    map.insert(
       TokenKind::Star,
       TokenGen::Symbol(Box::new(|| "*".to_string())),
+    );
+    map.insert(
+      TokenKind::StarEqual,
+      TokenGen::Symbol(Box::new(|| "*=".to_string())),
     );
     map.insert(
       TokenKind::Bang,
@@ -780,7 +888,7 @@ mod test {
 
     let token_eof = scanner.scan_token().clone();
     assert_eq!(token_eof.kind, TokenKind::Eof);
-    assert_eq!(token_eof.lexeme, "");
+    assert_eq!(token_eof.str(), "");
   }
 
   #[test]
@@ -799,9 +907,36 @@ mod test {
 
     for (input, expected) in tests {
       let mut scanner = Scanner::new(&input);
-      let scanned_token = scanner.scan_token().clone();
+      let scanned_token = scanner.scan_token();
       assert_eq!(scanned_token.kind, TokenKind::String);
-      assert_eq!(scanned_token.lexeme, expected);
+      assert_eq!(scanned_token.str(), expected);
+    }
+  }
+
+  #[test]
+  fn string_interpolation() {
+    let source = "
+    let x = 'My name is ${name} and am ${'${20}'}';
+    ";
+
+    let mut scanner = Scanner::new(&source);
+    let asserts = [
+      (TokenKind::Let, "let"),
+      (TokenKind::Identifier, "x"),
+      (TokenKind::Equal, "="),
+      (TokenKind::StringStart, "My name is "),
+      (TokenKind::Identifier, "name"),
+      (TokenKind::StringSegment, " and am "),
+      (TokenKind::StringStart, ""),
+      (TokenKind::Number, "20"),
+      (TokenKind::StringEnd, ""),
+      (TokenKind::StringEnd, ""),
+    ];
+
+    for (kind, lexeme) in asserts.iter() {
+      let scanned_token = scanner.scan_token();
+      assert_eq!(scanned_token.kind, *kind);
+      assert_eq!(scanned_token.str(), *lexeme);
     }
   }
 
@@ -827,18 +962,18 @@ mod test {
 
     let token_ten = scanner.scan_token().clone();
     assert_eq!(token_ten.kind, TokenKind::Number);
-    assert_eq!(token_ten.lexeme, "10");
+    assert_eq!(token_ten.str(), "10");
 
     let token_plus = scanner.scan_token().clone();
     assert_eq!(token_plus.kind, TokenKind::Plus);
-    assert_eq!(token_plus.lexeme, "+");
+    assert_eq!(token_plus.str(), "+");
 
     let token_three = scanner.scan_token().clone();
     assert_eq!(token_three.kind, TokenKind::Number);
-    assert_eq!(token_three.lexeme, "3");
+    assert_eq!(token_three.str(), "3");
 
     let token_eof = scanner.scan_token().clone();
     assert_eq!(token_eof.kind, TokenKind::Eof);
-    assert_eq!(token_eof.lexeme, "");
+    assert_eq!(token_eof.str(), "");
   }
 }

@@ -39,10 +39,9 @@ mod unboxed {
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::managed::{DebugHeap, DebugWrap, Managed, Trace};
+  use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Trace};
 
   use super::{Nil, ValueKind};
-  use smol_str::SmolStr;
   use std::fmt;
   use std::fmt::Debug;
   use std::hash::Hash;
@@ -58,17 +57,17 @@ mod unboxed {
     Bool(bool),
     Nil,
     Number(f64),
-    String(Managed<SmolStr>),
-    List(Managed<List<Value>>),
-    Map(Managed<Map<Value, Value>>),
-    Fun(Managed<Fun>),
-    Closure(Managed<Closure>),
-    Class(Managed<Class>),
-    Instance(Managed<Instance>),
-    Method(Managed<Method>),
-    Iter(Managed<LyIterator>),
-    Native(Managed<Box<dyn Native>>),
-    Upvalue(Managed<Upvalue>),
+    String(GcStr),
+    List(Gc<List<Value>>),
+    Map(Gc<Map<Value, Value>>),
+    Fun(Gc<Fun>),
+    Closure(Gc<Closure>),
+    Class(Gc<Class>),
+    Instance(Gc<Instance>),
+    Method(Gc<Method>),
+    Iter(Gc<LyIterator>),
+    Native(Gc<Box<dyn Native>>),
+    Upvalue(Gc<Upvalue>),
   }
 
   impl Value {
@@ -199,9 +198,9 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::hooks::{Hooks, NoContext};
-    /// use laythe_env::memory::Gc;
+    /// use laythe_env::memory::Allocator;
     ///
-    /// let gc = Gc::default();
+    /// let gc = Allocator::default();
     /// let mut context = NoContext::new(&gc);
     /// let hooks = Hooks::new(&mut context);
     /// let managed =  hooks.manage_str("example");
@@ -210,7 +209,7 @@ mod unboxed {
     /// assert_eq!(&*value.to_str(), "example")
     /// ```
     #[inline]
-    pub fn to_str(&self) -> Managed<SmolStr> {
+    pub fn to_str(&self) -> GcStr {
       match self {
         Self::String(str1) => *str1,
         _ => panic!("Expected string."),
@@ -223,20 +222,20 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::List;
-    /// use laythe_env::managed::{Allocation, Managed};
+    /// use laythe_env::managed::{Allocation, Gc};
     ///
     /// use std::ptr::NonNull;
     ///
     /// let list = List::from(vec![Value::Nil]);
     /// let mut alloc = Box::new(Allocation::new(list));
     /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-    /// let managed = Managed::from(ptr);
+    /// let managed = Gc::from(ptr);
     ///
     /// let value = Value::List(managed);
     /// assert_eq!(value.to_list()[0], Value::Nil)
     /// ```
     #[inline]
-    pub fn to_list(&self) -> Managed<List<Value>> {
+    pub fn to_list(&self) -> Gc<List<Value>> {
       match self {
         Self::List(list) => *list,
         _ => panic!("Expected list."),
@@ -248,7 +247,7 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_env::managed::{Allocation, Managed};
+    /// use laythe_env::managed::{Allocation, Gc};
     /// use laythe_core::object::Map;
     /// use laythe_core::hooks::{Hooks, support::TestContext};
     ///
@@ -260,7 +259,7 @@ mod unboxed {
     /// assert_eq!(value.to_map().len(), 0)
     /// ```
     #[inline]
-    pub fn to_map(&self) -> Managed<Map<Value, Value>> {
+    pub fn to_map(&self) -> Gc<Map<Value, Value>> {
       match self {
         Self::Map(map) => *map,
         _ => panic!("Expected list."),
@@ -269,7 +268,7 @@ mod unboxed {
 
     /// Unwrap and reference a laythe iterator, panics if not a iterator
     #[inline]
-    pub fn to_iter(&self) -> Managed<LyIterator> {
+    pub fn to_iter(&self) -> Gc<LyIterator> {
       match self {
         Self::Iter(iter) => *iter,
         _ => panic!("Expected iterator."),
@@ -283,19 +282,19 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::Fun;
     /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Managed;
+    /// use laythe_env::managed::Gc;
     ///
     /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Managed::dangling());
+    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Gc::dangling());
     /// let managed = hooks.manage(fun);
     ///
     /// let value = Value::Fun(managed);
     /// assert_eq!(&*value.to_fun().name, "add");
     /// ```
     #[inline]
-    pub fn to_fun(&self) -> Managed<Fun> {
+    pub fn to_fun(&self) -> Gc<Fun> {
       match self {
         Self::Fun(fun) => *fun,
         _ => panic!("Expected function!"),
@@ -304,7 +303,7 @@ mod unboxed {
 
     /// Unwrap a laythe native function, panics if not a native function
     #[inline]
-    pub fn to_native(&self) -> Managed<Box<dyn Native>> {
+    pub fn to_native(&self) -> Gc<Box<dyn Native>> {
       match self {
         Self::Native(native_fun) => *native_fun,
         _ => panic!("Expected native function!"),
@@ -318,11 +317,11 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Fun};
     /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Managed;
+    /// use laythe_env::managed::Gc;
     ///
     /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Managed::dangling());
+    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Gc::dangling());
     /// let managed_fun = hooks.manage(fun);
     ///
     /// let closure = Closure::new(managed_fun);
@@ -331,7 +330,7 @@ mod unboxed {
     /// let value = Value::Closure(managed_closure);
     /// assert_eq!(&*value.to_closure().fun.name.clone(), "add");
     /// ```
-    pub fn to_closure(&self) -> Managed<Closure> {
+    pub fn to_closure(&self) -> Gc<Closure> {
       match self {
         Self::Closure(closure) => *closure,
         _ => panic!("Expected closure!"),
@@ -345,18 +344,18 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Method};
     /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Managed;
+    /// use laythe_env::managed::Gc;
     ///
     /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let method = Method::new(Value::Nil, Value::Closure(Managed::dangling()));
+    /// let method = Method::new(Value::Nil, Value::Closure(Gc::dangling()));
     /// let managed_method = hooks.manage(method);
     ///
     /// let value = Value::Method(managed_method);
     /// assert_eq!(value.to_method(), managed_method);
     /// ```
-    pub fn to_method(&self) -> Managed<Method> {
+    pub fn to_method(&self) -> Gc<Method> {
       match self {
         Self::Method(method) => *method,
         _ => panic!("Expected method!"),
@@ -383,7 +382,7 @@ mod unboxed {
     ///   Upvalue::Closed(_) => assert!(false),
     /// };
     /// ```
-    pub fn to_upvalue(&self) -> Managed<Upvalue> {
+    pub fn to_upvalue(&self) -> Gc<Upvalue> {
       match self {
         Self::Upvalue(upvalue) => *upvalue,
         _ => panic!("Expected upvalue!"),
@@ -406,7 +405,7 @@ mod unboxed {
     /// let value = Value::Class(class);
     /// assert_eq!(value.to_class().name, name);
     /// ```
-    pub fn to_class(&self) -> Managed<Class> {
+    pub fn to_class(&self) -> Gc<Class> {
       match self {
         Self::Class(class) => *class,
         _ => panic!("Expected class.",),
@@ -429,7 +428,7 @@ mod unboxed {
     ///
     /// let value = Value::Instance(instance);
     /// assert_eq!(value.to_instance().class, class);
-    pub fn to_instance(&self) -> Managed<Instance> {
+    pub fn to_instance(&self) -> Gc<Instance> {
       match self {
         Self::Instance(instance) => *instance,
         _ => panic!("Expected instance!"),
@@ -507,68 +506,68 @@ mod unboxed {
     }
   }
 
-  impl From<Managed<SmolStr>> for Value {
-    fn from(managed: Managed<SmolStr>) -> Value {
+  impl From<GcStr> for Value {
+    fn from(managed: GcStr) -> Value {
       Value::String(managed)
     }
   }
 
-  impl From<Managed<List<Value>>> for Value {
-    fn from(managed: Managed<List<Value>>) -> Value {
+  impl From<Gc<List<Value>>> for Value {
+    fn from(managed: Gc<List<Value>>) -> Value {
       Value::List(managed)
     }
   }
 
-  impl From<Managed<Map<Value, Value>>> for Value {
-    fn from(managed: Managed<Map<Value, Value>>) -> Value {
+  impl From<Gc<Map<Value, Value>>> for Value {
+    fn from(managed: Gc<Map<Value, Value>>) -> Value {
       Value::Map(managed)
     }
   }
 
-  impl From<Managed<LyIterator>> for Value {
-    fn from(managed: Managed<LyIterator>) -> Value {
+  impl From<Gc<LyIterator>> for Value {
+    fn from(managed: Gc<LyIterator>) -> Value {
       Value::Iter(managed)
     }
   }
 
-  impl From<Managed<Closure>> for Value {
-    fn from(managed: Managed<Closure>) -> Value {
+  impl From<Gc<Closure>> for Value {
+    fn from(managed: Gc<Closure>) -> Value {
       Value::Closure(managed)
     }
   }
 
-  impl From<Managed<Fun>> for Value {
-    fn from(managed: Managed<Fun>) -> Value {
+  impl From<Gc<Fun>> for Value {
+    fn from(managed: Gc<Fun>) -> Value {
       Value::Fun(managed)
     }
   }
 
-  impl From<Managed<Class>> for Value {
-    fn from(managed: Managed<Class>) -> Value {
+  impl From<Gc<Class>> for Value {
+    fn from(managed: Gc<Class>) -> Value {
       Value::Class(managed)
     }
   }
 
-  impl From<Managed<Instance>> for Value {
-    fn from(managed: Managed<Instance>) -> Value {
+  impl From<Gc<Instance>> for Value {
+    fn from(managed: Gc<Instance>) -> Value {
       Value::Instance(managed)
     }
   }
 
-  impl From<Managed<Method>> for Value {
-    fn from(managed: Managed<Method>) -> Value {
+  impl From<Gc<Method>> for Value {
+    fn from(managed: Gc<Method>) -> Value {
       Value::Method(managed)
     }
   }
 
-  impl From<Managed<Box<dyn Native>>> for Value {
-    fn from(managed: Managed<Box<dyn Native>>) -> Value {
+  impl From<Gc<Box<dyn Native>>> for Value {
+    fn from(managed: Gc<Box<dyn Native>>) -> Value {
       Value::Native(managed)
     }
   }
 
-  impl From<Managed<Upvalue>> for Value {
-    fn from(managed: Managed<Upvalue>) -> Value {
+  impl From<Gc<Upvalue>> for Value {
+    fn from(managed: Gc<Upvalue>) -> Value {
       Value::Upvalue(managed)
     }
   }
@@ -580,7 +579,7 @@ mod unboxed {
         Self::Number(num) => write!(f, "{}", num),
         Self::Bool(b) => write!(f, "{}", b),
         Self::Nil => write!(f, "nil"),
-        Self::String(string) => write!(f, "'{}'", string.as_str()),
+        Self::String(string) => write!(f, "'{}'", string),
         Self::List(list) => {
           let mut strings: Vec<String> = Vec::with_capacity(list.len());
           for item in list.iter() {
@@ -603,8 +602,8 @@ mod unboxed {
         },
         Self::Closure(closure) => write!(f, "{}", *closure.fun),
         Self::Method(bound) => write!(f, "{}.{}", bound.receiver, bound.method),
-        Self::Class(class) => write!(f, "{}", &class.name.as_str()),
-        Self::Instance(instance) => write!(f, "{} instance", &instance.class.name.as_str()),
+        Self::Class(class) => write!(f, "{}", class.name),
+        Self::Instance(instance) => write!(f, "{} instance", instance.class.name),
         Self::Iter(iterator) => write!(f, "{} iterator", &iterator.name()),
         Self::Native(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
       }
@@ -710,11 +709,8 @@ mod unboxed {
   }
 
   impl Trace for Value {
-    fn trace(&self) -> bool {
+    fn trace(&self) {
       match self {
-        Value::Nil => true,
-        Value::Bool(_) => true,
-        Value::Number(_) => true,
         Value::String(string) => string.trace(),
         Value::List(list) => list.trace(),
         Value::Map(map) => map.trace(),
@@ -726,14 +722,12 @@ mod unboxed {
         Value::Iter(iter) => iter.trace(),
         Value::Upvalue(upvalue) => upvalue.trace(),
         Value::Native(native) => native.trace(),
+        _ => (),
       }
     }
 
-    fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    fn trace_debug(&self, stdout: &mut dyn Write) {
       match self {
-        Value::Nil => true,
-        Value::Bool(_) => true,
-        Value::Number(_) => true,
         Value::String(string) => string.trace_debug(stdout),
         Value::List(list) => list.trace_debug(stdout),
         Value::Map(map) => map.trace_debug(stdout),
@@ -745,6 +739,7 @@ mod unboxed {
         Value::Iter(iter) => iter.trace_debug(stdout),
         Value::Upvalue(upvalue) => upvalue.trace_debug(stdout),
         Value::Native(native) => native.trace_debug(stdout),
+        _ => (),
       }
     }
   }
@@ -779,9 +774,8 @@ mod boxed {
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::managed::{Allocation, DebugHeap, DebugWrap, Manage, Managed, Trace};
+  use laythe_env::managed::{Allocation, DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 
-  use smol_str::SmolStr;
   use std::ptr::NonNull;
   use std::{fmt, io::Write};
 
@@ -944,64 +938,68 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_obj_tag<T: 'static + Manage>(&self, tag: u64) -> Managed<T> {
+    pub fn to_obj_tag<T: 'static + Manage>(&self, tag: u64) -> Gc<T> {
       let as_unsigned = self.0 & !tag;
       let ptr = unsafe { NonNull::new_unchecked(as_unsigned as usize as *mut Allocation<T>) };
-      Managed::from(ptr)
+      Gc::from(ptr)
     }
 
     #[inline]
-    pub fn to_str(&self) -> Managed<SmolStr> {
-      self.to_obj_tag(TAG_STRING)
+    pub fn to_str(&self) -> GcStr {
+      let as_unsigned = self.0 & !TAG_STRING;
+      unsafe {
+        let ptr = NonNull::new_unchecked(as_unsigned as usize as *mut u8);
+        GcStr::from_alloc_ptr(ptr)
+      }
     }
 
     #[inline]
-    pub fn to_list(&self) -> Managed<List<Value>> {
+    pub fn to_list(&self) -> Gc<List<Value>> {
       self.to_obj_tag(TAG_LIST)
     }
 
     #[inline]
-    pub fn to_map(&self) -> Managed<Map<Value, Value>> {
+    pub fn to_map(&self) -> Gc<Map<Value, Value>> {
       self.to_obj_tag(TAG_MAP)
     }
 
     #[inline]
-    pub fn to_iter(&self) -> Managed<LyIterator> {
+    pub fn to_iter(&self) -> Gc<LyIterator> {
       self.to_obj_tag(TAG_ITER)
     }
 
     #[inline]
-    pub fn to_closure(&self) -> Managed<Closure> {
+    pub fn to_closure(&self) -> Gc<Closure> {
       self.to_obj_tag(TAG_CLOSURE)
     }
 
     #[inline]
-    pub fn to_fun(&self) -> Managed<Fun> {
+    pub fn to_fun(&self) -> Gc<Fun> {
       self.to_obj_tag(TAG_FUN)
     }
 
     #[inline]
-    pub fn to_class(&self) -> Managed<Class> {
+    pub fn to_class(&self) -> Gc<Class> {
       self.to_obj_tag(TAG_CLASS)
     }
 
     #[inline]
-    pub fn to_instance(&self) -> Managed<Instance> {
+    pub fn to_instance(&self) -> Gc<Instance> {
       self.to_obj_tag(TAG_INSTANCE)
     }
 
     #[inline]
-    pub fn to_method(&self) -> Managed<Method> {
+    pub fn to_method(&self) -> Gc<Method> {
       self.to_obj_tag(TAG_METHOD)
     }
 
     #[inline]
-    pub fn to_native(&self) -> Managed<Box<dyn Native>> {
+    pub fn to_native(&self) -> Gc<Box<dyn Native>> {
       self.to_obj_tag(TAG_NATIVE)
     }
 
     #[inline]
-    pub fn to_upvalue(&self) -> Managed<Upvalue> {
+    pub fn to_upvalue(&self) -> Gc<Upvalue> {
       self.to_obj_tag(TAG_UPVALUE)
     }
 
@@ -1056,7 +1054,7 @@ mod boxed {
   }
 
   impl Trace for Value {
-    fn trace(&self) -> bool {
+    fn trace(&self) {
       match self.kind() {
         ValueKind::String => self.to_str().trace(),
         ValueKind::List => self.to_list().trace(),
@@ -1069,10 +1067,10 @@ mod boxed {
         ValueKind::Iter => self.to_iter().trace(),
         ValueKind::Upvalue => self.to_upvalue().trace(),
         ValueKind::Native => self.to_native().trace(),
-        _ => true,
+        _ => (),
       }
     }
-    fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+    fn trace_debug(&self, stdout: &mut dyn Write) {
       match self.kind() {
         ValueKind::String => self.to_str().trace_debug(stdout),
         ValueKind::List => self.to_list().trace_debug(stdout),
@@ -1085,7 +1083,7 @@ mod boxed {
         ValueKind::Iter => self.to_iter().trace_debug(stdout),
         ValueKind::Upvalue => self.to_upvalue().trace_debug(stdout),
         ValueKind::Native => self.to_native().trace_debug(stdout),
-        _ => true,
+        _ => (),
       }
     }
   }
@@ -1140,68 +1138,68 @@ mod boxed {
     }
   }
 
-  impl From<Managed<SmolStr>> for Value {
-    fn from(managed: Managed<SmolStr>) -> Value {
+  impl From<GcStr> for Value {
+    fn from(managed: GcStr) -> Value {
       Self(managed.to_usize() as u64 | TAG_STRING)
     }
   }
 
-  impl From<Managed<List<Value>>> for Value {
-    fn from(managed: Managed<List<Value>>) -> Value {
+  impl From<Gc<List<Value>>> for Value {
+    fn from(managed: Gc<List<Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_LIST)
     }
   }
 
-  impl From<Managed<Map<Value, Value>>> for Value {
-    fn from(managed: Managed<Map<Value, Value>>) -> Value {
+  impl From<Gc<Map<Value, Value>>> for Value {
+    fn from(managed: Gc<Map<Value, Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_MAP)
     }
   }
 
-  impl From<Managed<LyIterator>> for Value {
-    fn from(managed: Managed<LyIterator>) -> Value {
+  impl From<Gc<LyIterator>> for Value {
+    fn from(managed: Gc<LyIterator>) -> Value {
       Self(managed.to_usize() as u64 | TAG_ITER)
     }
   }
 
-  impl From<Managed<Closure>> for Value {
-    fn from(managed: Managed<Closure>) -> Value {
+  impl From<Gc<Closure>> for Value {
+    fn from(managed: Gc<Closure>) -> Value {
       Self(managed.to_usize() as u64 | TAG_CLOSURE)
     }
   }
 
-  impl From<Managed<Fun>> for Value {
-    fn from(managed: Managed<Fun>) -> Value {
+  impl From<Gc<Fun>> for Value {
+    fn from(managed: Gc<Fun>) -> Value {
       Self(managed.to_usize() as u64 | TAG_FUN)
     }
   }
 
-  impl From<Managed<Class>> for Value {
-    fn from(managed: Managed<Class>) -> Value {
+  impl From<Gc<Class>> for Value {
+    fn from(managed: Gc<Class>) -> Value {
       Self(managed.to_usize() as u64 | TAG_CLASS)
     }
   }
 
-  impl From<Managed<Instance>> for Value {
-    fn from(managed: Managed<Instance>) -> Value {
+  impl From<Gc<Instance>> for Value {
+    fn from(managed: Gc<Instance>) -> Value {
       Self(managed.to_usize() as u64 | TAG_INSTANCE)
     }
   }
 
-  impl From<Managed<Method>> for Value {
-    fn from(managed: Managed<Method>) -> Value {
+  impl From<Gc<Method>> for Value {
+    fn from(managed: Gc<Method>) -> Value {
       Self(managed.to_usize() as u64 | TAG_METHOD)
     }
   }
 
-  impl From<Managed<Box<dyn Native>>> for Value {
-    fn from(managed: Managed<Box<dyn Native>>) -> Value {
+  impl From<Gc<Box<dyn Native>>> for Value {
+    fn from(managed: Gc<Box<dyn Native>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_NATIVE)
     }
   }
 
-  impl From<Managed<Upvalue>> for Value {
-    fn from(managed: Managed<Upvalue>) -> Value {
+  impl From<Gc<Upvalue>> for Value {
+    fn from(managed: Gc<Upvalue>) -> Value {
       Self(managed.to_usize() as u64 | TAG_UPVALUE)
     }
   }
@@ -1241,7 +1239,7 @@ mod boxed {
           let bound = self.to_method();
           write!(f, "{}.{}", bound.receiver, bound.method)
         }
-        ValueKind::Class => write!(f, "{}", &self.to_class().name.as_str()),
+        ValueKind::Class => write!(f, "{}", &self.to_class().name),
         ValueKind::Instance => write!(f, "{} instance", &self.to_instance().class.name),
         ValueKind::Iter => write!(f, "{}", &self.to_iter().name()),
         ValueKind::Native => write!(f, "<native {}>", self.to_native().meta().name),
@@ -1257,10 +1255,11 @@ mod test {
     module::Module,
     object::{Class, Closure, Fun, List, Map},
   };
-  use laythe_env::managed::{Allocation, Manage, Managed};
-  use smol_str::SmolStr;
+  use laythe_env::{
+    managed::{Allocation, Gc, GcStr},
+    memory::{Allocator, NO_GC},
+  };
   use std::{path::PathBuf, ptr::NonNull};
-  type Allocs = Vec<Box<Allocation<dyn Manage>>>;
 
   const VARIANTS: [ValueKind; 14] = [
     ValueKind::Bool,
@@ -1308,79 +1307,38 @@ mod test {
     });
   }
 
-  fn test_string() -> (Allocs, Managed<SmolStr>) {
-    let string = SmolStr::from("sup");
-    let mut alloc = Box::new(Allocation::new(string));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-
-    let managed = Managed::from(ptr);
-    (vec![alloc], managed)
+  fn test_string(gc: &mut Allocator) -> GcStr {
+    gc.manage_str("sup", &NO_GC)
   }
 
-  fn test_path() -> (Allocs, Managed<PathBuf>) {
-    let path = PathBuf::from("test/sup.ly");
-    let mut alloc = Box::new(Allocation::new(path));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-
-    let managed = Managed::from(ptr);
-    (vec![alloc], managed)
+  fn test_path(gc: &mut Allocator) -> Gc<PathBuf> {
+    gc.manage(PathBuf::from("test/sup.ly"), &NO_GC)
   }
 
-  fn test_module() -> (Allocs, Managed<Module>) {
-    let (allocs_class, class) = test_class();
-    let (allocs_path, path) = test_path();
-    let mut alloc = Box::new(Allocation::new(Module::new(class, path)));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+  fn test_module(gc: &mut Allocator) -> Gc<Module> {
+    let class = test_class(gc);
+    let path = test_path(gc);
 
-    let managed = Managed::from(ptr);
-    let mut allocs: Allocs = vec![alloc];
-    allocs.extend(allocs_class);
-    allocs.extend(allocs_path);
-    (allocs, managed)
+    gc.manage(Module::new(class, path), &NO_GC)
   }
 
-  fn test_fun() -> (Allocs, Managed<Fun>) {
-    let (allocs_string, name) = test_string();
-    let (allocs_module, module) = test_module();
+  fn test_fun(gc: &mut Allocator) -> Gc<Fun> {
+    let name = test_string(gc);
+    let module = test_module(gc);
 
-    let fun = Fun::new(name, module);
-    let mut alloc = Box::new(Allocation::new(fun));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-
-    let managed = Managed::from(ptr);
-    let mut allocs: Allocs = vec![alloc];
-    allocs.extend(allocs_string);
-    allocs.extend(allocs_module);
-
-    (allocs, managed)
+    gc.manage(Fun::new(name, module), &NO_GC)
   }
 
-  fn test_closure() -> (Allocs, Managed<Closure>) {
-    let (allocs_fun, fun) = test_fun();
+  fn test_closure(gc: &mut Allocator) -> Gc<Closure> {
+    let fun = test_fun(gc);
 
-    let closure = Closure::new(fun);
-    let mut alloc = Box::new(Allocation::new(closure));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-
-    let managed = Managed::from(ptr);
-    let mut allocs: Allocs = vec![alloc];
-    allocs.extend(allocs_fun);
-
-    (allocs, managed)
+    gc.manage(Closure::new(fun), &NO_GC)
   }
 
-  fn test_class() -> (Allocs, Managed<Class>) {
-    let (allocs_string, string) = test_string();
+  fn test_class(gc: &mut Allocator) -> Gc<Class> {
+    let name = test_string(gc);
 
-    let class = Class::bare(string);
-    let mut alloc = Box::new(Allocation::new(class));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-
-    let managed = Managed::from(ptr);
-
-    let mut allocs: Allocs = vec![alloc];
-    allocs.extend(allocs_string);
-    (allocs, managed)
+    gc.manage(Class::bare(name), &NO_GC)
   }
 
   #[test]
@@ -1415,18 +1373,15 @@ mod test {
 
   #[test]
   fn string() {
-    let string = SmolStr::from("sup");
-    let mut alloc = Box::new(Allocation::new(string));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+    let mut gc = Allocator::default();
+    let string = gc.manage_str("example", &NO_GC);
 
-    let managed = Managed::from(ptr);
-    let value = val!(managed);
-    let managed2: Managed<SmolStr> = value.to_str();
+    let value = val!(string);
+    let string2: GcStr = value.to_str();
 
     assert_type(value, ValueKind::String);
 
-    assert_eq!(&*managed, &*managed2);
-    assert_eq!(managed, managed2);
+    assert_eq!(string, string2);
   }
 
   #[test]
@@ -1435,7 +1390,7 @@ mod test {
     let mut alloc = Box::new(Allocation::new(list));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     let value = val!(managed);
     let managed2 = value.to_list();
 
@@ -1457,7 +1412,7 @@ mod test {
     let mut alloc = Box::new(Allocation::new(map));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let managed = Managed::from(ptr);
+    let managed = Gc::from(ptr);
     let value = val!(managed);
     let managed2 = value.to_map();
 
@@ -1470,38 +1425,41 @@ mod test {
 
   #[test]
   fn fun() {
-    let (_, managed) = test_fun();
-    let value = val!(managed);
-    let managed2 = value.to_fun();
+    let mut gc = Allocator::default();
+    let fun = test_fun(&mut gc);
+    let value = val!(fun);
+    let fun2 = value.to_fun();
 
     assert_type(value, ValueKind::Fun);
 
-    assert_eq!(managed.name, managed2.name);
-    assert_eq!(managed.arity, managed2.arity);
+    assert_eq!(fun.name, fun2.name);
+    assert_eq!(fun.arity, fun2.arity);
   }
 
   #[test]
   fn closure() {
-    let (_, managed) = test_closure();
+    let mut gc = Allocator::default();
+    let closure = test_closure(&mut gc);
 
-    let value = val!(managed);
-    let managed2 = value.to_closure();
+    let value = val!(closure);
+    let closure2 = value.to_closure();
 
     assert_type(value, ValueKind::Closure);
 
-    assert_eq!(managed.fun, managed2.fun);
-    assert_eq!(managed.upvalues.len(), managed2.upvalues.len());
+    assert_eq!(closure.fun, closure2.fun);
+    assert_eq!(closure.upvalues.len(), closure2.upvalues.len());
   }
 
   #[test]
   fn class() {
-    let (_, managed) = test_class();
+    let mut gc = Allocator::default();
+    let class = test_class(&mut gc);
 
-    let value = val!(managed);
-    let managed2 = value.to_class();
+    let value = val!(class);
+    let class2 = value.to_class();
 
     assert_type(value, ValueKind::Class);
 
-    assert_eq!(managed.name, managed2.name);
+    assert_eq!(class.name, class2.name);
   }
 }

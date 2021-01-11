@@ -4,7 +4,7 @@ use laythe_env::{
   io::IoImpl,
   stdio::{MockRead, Stdio, StdioImpl},
 };
-use std::{cell::RefCell, io, rc::Rc};
+use std::{cell::RefCell, io, sync::Arc};
 use wasm_bindgen::JsValue;
 use web_sys::console::{error_1, log_1};
 
@@ -19,15 +19,15 @@ impl IoImpl<Stdio> for IoStdioWasmConsole {
 
 #[derive(Debug)]
 pub struct IoStdioWasmJsFunction {
-  fun: Rc<Function>,
-  line_buffer: Rc<RefCell<String>>,
+  fun: Arc<Function>,
+  line_buffer: Arc<RefCell<String>>,
 }
 
 impl IoStdioWasmJsFunction {
-  pub fn new(fun: Rc<Function>) -> Self {
+  pub fn new(fun: Arc<Function>) -> Self {
     Self {
       fun,
-      line_buffer: Rc::new(RefCell::new("".to_string())),
+      line_buffer: Arc::new(RefCell::new("".to_string())),
     }
   }
 }
@@ -35,8 +35,8 @@ impl IoStdioWasmJsFunction {
 impl IoImpl<Stdio> for IoStdioWasmJsFunction {
   fn make(&self) -> Stdio {
     Stdio::new(Box::new(StdioJsFunction::new(
-      Rc::clone(&self.fun),
-      Rc::clone(&self.line_buffer),
+      Arc::clone(&self.fun),
+      Arc::clone(&self.line_buffer),
     )))
   }
 }
@@ -67,8 +67,8 @@ where
 
 impl<'a, O, E> StdioImpl for StdioWasm<'a, O, E>
 where
-  O: Fn(&JsValue) + 'static,
-  E: Fn(&JsValue) + 'static,
+  O: Fn(&JsValue) + 'static + Sync,
+  E: Fn(&JsValue) + 'static + Sync,
 {
   fn stdout(&mut self) -> &mut dyn io::Write {
     &mut self.stdout
@@ -91,9 +91,9 @@ struct StdioJsFunction {
 }
 
 impl StdioJsFunction {
-  pub fn new(stdout: Rc<Function>, line_buffer: Rc<RefCell<String>>) -> Self {
+  pub fn new(stdout: Arc<Function>, line_buffer: Arc<RefCell<String>>) -> Self {
     Self {
-      stdout: FunWrapper::new(Rc::clone(&stdout), &line_buffer),
+      stdout: FunWrapper::new(Arc::clone(&stdout), &line_buffer),
       stderr: FunWrapper::new(stdout, &line_buffer),
       stdin: MockRead(),
     }
@@ -170,15 +170,15 @@ impl<'a, W: Fn(&JsValue)> Write for ConsoleWrapper<'a, W> {
 }
 
 struct FunWrapper {
-  fun: Rc<Function>,
-  line_buffer: Rc<RefCell<String>>,
+  fun: Arc<Function>,
+  line_buffer: Arc<RefCell<String>>,
 }
 
 impl FunWrapper {
-  pub fn new(fun: Rc<Function>, line_buffer: &Rc<RefCell<String>>) -> Self {
+  pub fn new(fun: Arc<Function>, line_buffer: &Arc<RefCell<String>>) -> Self {
     Self {
       fun,
-      line_buffer: Rc::clone(line_buffer),
+      line_buffer: Arc::clone(line_buffer),
     }
   }
 }
@@ -220,7 +220,7 @@ impl Write for FunWrapper {
   }
 
   fn flush(&mut self) -> io::Result<()> {
-    if &*self.line_buffer.borrow() != "" {
+    if &*self.line_buffer.borrow_mut() != "" {
       if let Err(_) = self
         .fun
         .call1(&JsValue::NULL, &self.line_buffer.borrow().clone().into())

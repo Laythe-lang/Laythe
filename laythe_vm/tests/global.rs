@@ -78,7 +78,9 @@ fn iter() -> Result<(), std::io::Error> {
       "std_lib/global/iter/map.lay",
       "std_lib/global/iter/next.lay",
       "std_lib/global/iter/reduce.lay",
+      "std_lib/global/iter/skip.lay",
       "std_lib/global/iter/str.lay",
+      "std_lib/global/iter/take.lay",
       "std_lib/global/iter/zip.lay",
     ],
     ExecuteResult::Ok,
@@ -169,7 +171,7 @@ fn number() -> Result<(), std::io::Error> {
       "std_lib/global/number/parse.lay",
       "std_lib/global/number/round.lay",
       "std_lib/global/number/str.lay",
-      "std_lib/global/number/times.lay",
+      // "std_lib/global/number/times.lay",
     ],
     ExecuteResult::Ok,
   )?;

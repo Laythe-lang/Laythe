@@ -1,0 +1,25 @@
+assertEq([].iter().take(8).len(), 0);
+assertEq([].iter().take(0).len(), 0);
+
+assertEq({ 'cat': 'dog', 1: 2 }.iter().take(0).len(), 0);
+assertEq({ 'cat': 'dog', 1: 2 }.iter().take(1).len(), 1);
+assertEq({ 'cat': 'dog', 1: 2 }.iter().take(2).len(), 2);
+assertEq({ 'cat': 'dog', 1: 2 }.iter().take(3).len(), 2);
+
+for i in [1, 2, 3].iter().take(1) {
+  assertEq(i, i);
+}
+
+try {
+  [].iter().take(1.5);
+  assert(false);
+} catch {
+  assert(true);
+}
+
+try {
+  [].iter().take(-5);
+  assert(false);
+} catch {
+  assert(true);
+}

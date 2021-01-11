@@ -2,8 +2,7 @@ use crate::{
   hooks::GcHooks,
   value::{Value, ValueKind},
 };
-use laythe_env::managed::{Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{GcStr, Trace};
 use std::{fmt::Display, io::Write};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
@@ -95,23 +94,23 @@ impl ParameterBuilder {
 /// A native parameter indicating the name and kind of the parameter
 #[derive(Copy, Clone, Debug)]
 pub struct Parameter {
-  pub name: Managed<SmolStr>,
+  pub name: GcStr,
   pub kind: ParameterKind,
 }
 
 impl Parameter {
   /// Create a new parameter
-  pub const fn new(name: Managed<SmolStr>, kind: ParameterKind) -> Self {
+  pub const fn new(name: GcStr, kind: ParameterKind) -> Self {
     Self { name, kind }
   }
 }
 
 impl Trace for Parameter {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.name.trace()
   }
 
-  fn trace_debug(&self, log: &mut dyn Write) -> bool {
+  fn trace_debug(&self, log: &mut dyn Write) {
     self.name.trace_debug(log)
   }
 }
@@ -331,17 +330,15 @@ impl Signature {
 }
 
 impl Trace for Signature {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.parameters.iter().for_each(|p| {
       p.trace();
     });
-    true
   }
-  fn trace_debug(&self, stdio: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdio: &mut dyn Write) {
     self.parameters.iter().for_each(|p| {
       p.trace_debug(stdio);
     });
-    true
   }
 }
 #[cfg(test)]
@@ -380,7 +377,7 @@ mod test {
 
   mod signature {
     use super::*;
-    use crate::{hooks::support::TestContext, val};
+    use crate::{hooks::NoContext, val};
 
     const PARAMETERS_FIXED: [ParameterBuilder; 2] = [
       ParameterBuilder::new("index", ParameterKind::Number),
@@ -389,7 +386,7 @@ mod test {
 
     #[test]
     fn check_fixed() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Fixed(2))
@@ -418,7 +415,7 @@ mod test {
 
     #[test]
     fn check_variadic() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Variadic(1))
@@ -455,7 +452,7 @@ mod test {
 
     #[test]
     fn check_default() {
-      let mut context = TestContext::default();
+      let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Default(1, 2))

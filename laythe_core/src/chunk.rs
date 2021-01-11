@@ -42,17 +42,14 @@ pub enum AlignedByteCode {
   /// False ByteCode
   False,
 
-  /// Create an empty list
-  List,
-
   /// Initialize list from literal
-  ListInit(u16),
+  List(u16),
 
-  /// Create an empty map
-  Map,
+  /// Initialize map from literal
+  Map(u16),
 
-  /// Initial map from literal
-  MapInit(u16),
+  /// Combine string interpolation
+  Interpolate(u16),
 
   /// Get the next element from an iterator
   IterNext(u16),
@@ -71,6 +68,9 @@ pub enum AlignedByteCode {
 
   /// Drop n values
   DropN(u8),
+
+  /// Duplicate top of the stack
+  Dup,
 
   /// Import all symbols
   Import(u16),
@@ -138,6 +138,9 @@ pub enum AlignedByteCode {
   /// Create a class
   Class(u16),
 
+  /// Inherit from another class
+  Inherit,
+
   /// Access this classes super
   GetSuper(u16),
 
@@ -180,10 +183,9 @@ impl AlignedByteCode {
       Self::Nil => push_op(code, ByteCode::Nil),
       Self::True => push_op(code, ByteCode::True),
       Self::False => push_op(code, ByteCode::False),
-      Self::List => push_op(code, ByteCode::List),
-      Self::ListInit(slot) => push_op_u16(code, ByteCode::ListInit, slot),
-      Self::Map => push_op(code, ByteCode::Map),
-      Self::MapInit(slot) => push_op_u16(code, ByteCode::MapInit, slot),
+      Self::List(slot) => push_op_u16(code, ByteCode::List, slot),
+      Self::Map(slot) => push_op_u16(code, ByteCode::Map, slot),
+      Self::Interpolate(slot) => push_op_u16(code, ByteCode::Interpolate, slot),
       Self::IterNext(slot) => push_op_u16(code, ByteCode::IterNext, slot),
       Self::IterCurrent(slot) => push_op_u16(code, ByteCode::IterCurrent, slot),
       Self::GetIndex => push_op(code, ByteCode::GetIndex),
@@ -196,6 +198,7 @@ impl AlignedByteCode {
       Self::LessEqual => push_op(code, ByteCode::LessEqual),
       Self::Drop => push_op(code, ByteCode::Drop),
       Self::DropN(slot) => push_op_u8(code, ByteCode::DropN, slot),
+      Self::Dup => push_op(code, ByteCode::Dup),
       Self::Constant(slot) => push_op_u8(code, ByteCode::Constant, slot),
       Self::ConstantLong(slot) => push_op_u16(code, ByteCode::ConstantLong, slot),
       Self::Import(path) => push_op_u16(code, ByteCode::Import, path),
@@ -222,6 +225,7 @@ impl AlignedByteCode {
       Self::Field(slot) => push_op_u16(code, ByteCode::Field, slot),
       Self::StaticMethod(slot) => push_op_u16(code, ByteCode::StaticMethod, slot),
       Self::Class(slot) => push_op_u16(code, ByteCode::Class, slot),
+      Self::Inherit => push_op(code, ByteCode::Inherit),
       Self::GetSuper(slot) => push_op_u16(code, ByteCode::GetSuper, slot),
       Self::CloseUpvalue => push_op(code, ByteCode::CloseUpvalue),
       Self::UpvalueIndex(index) => {
@@ -252,14 +256,16 @@ impl AlignedByteCode {
       ByteCode::Nil => (AlignedByteCode::Nil, offset + 1),
       ByteCode::True => (AlignedByteCode::True, offset + 1),
       ByteCode::False => (AlignedByteCode::False, offset + 1),
-      ByteCode::List => (AlignedByteCode::List, offset + 1),
-      ByteCode::ListInit => (
-        AlignedByteCode::ListInit(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::List => (
+        AlignedByteCode::List(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::Map => (AlignedByteCode::Map, offset + 1),
-      ByteCode::MapInit => (
-        AlignedByteCode::MapInit(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::Map => (
+        AlignedByteCode::Map(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Interpolate => (
+        AlignedByteCode::Interpolate(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::IterNext => (
@@ -274,6 +280,7 @@ impl AlignedByteCode {
       ByteCode::SetIndex => (AlignedByteCode::SetIndex, offset + 1),
       ByteCode::Drop => (AlignedByteCode::Drop, offset + 1),
       ByteCode::DropN => (AlignedByteCode::DropN(store[offset + 1]), offset + 2),
+      ByteCode::Dup => (AlignedByteCode::Dup, offset + 1),
       ByteCode::Import => (
         AlignedByteCode::Import(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
@@ -353,6 +360,7 @@ impl AlignedByteCode {
         AlignedByteCode::Class(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
+      ByteCode::Inherit => (AlignedByteCode::Inherit, offset + 1),
       ByteCode::GetSuper => (
         AlignedByteCode::GetSuper(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
@@ -407,17 +415,14 @@ pub enum ByteCode {
   /// False ByteCode
   False,
 
-  /// Empty list
+  /// Initialize List
   List,
 
-  /// Initialize List
-  ListInit,
-
-  /// Empty Map
+  /// Initialize map
   Map,
 
-  /// Initialize map
-  MapInit,
+  /// Combine string interpolation
+  Interpolate,
 
   /// Get the next element from an iterator
   IterNext,
@@ -436,6 +441,9 @@ pub enum ByteCode {
 
   /// Drop n values
   DropN,
+
+  /// Duplicate top of the stack
+  Dup,
 
   /// Import all symbols
   Import,
@@ -502,6 +510,9 @@ pub enum ByteCode {
 
   /// Create a class
   Class,
+
+  /// Inherit from another class
+  Inherit,
 
   /// Access this classes super
   GetSuper,
@@ -765,10 +776,9 @@ mod test {
         (1, AlignedByteCode::Nil),
         (1, AlignedByteCode::True),
         (1, AlignedByteCode::False),
-        (1, AlignedByteCode::List),
-        (3, AlignedByteCode::ListInit(54782)),
-        (1, AlignedByteCode::Map),
-        (3, AlignedByteCode::MapInit(1923)),
+        (3, AlignedByteCode::List(54782)),
+        (3, AlignedByteCode::Map(1923)),
+        (3, AlignedByteCode::Interpolate(3389)),
         (3, AlignedByteCode::IterNext(81)),
         (3, AlignedByteCode::IterCurrent(49882)),
         (1, AlignedByteCode::Drop),
@@ -794,6 +804,7 @@ mod test {
         (3, AlignedByteCode::Field(6634)),
         (3, AlignedByteCode::StaticMethod(4912)),
         (3, AlignedByteCode::Class(64136)),
+        (1, AlignedByteCode::Inherit),
         (3, AlignedByteCode::GetSuper(24)),
         (1, AlignedByteCode::CloseUpvalue),
         (1, AlignedByteCode::Equal),

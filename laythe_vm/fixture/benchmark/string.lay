@@ -1,0 +1,43 @@
+let i = 0;
+
+let concatStart = clock();
+
+for _ in 10000000.times() {
+  let a = 'cat';
+  let b = 'dog';
+  let c = 'parrot';
+  let d = 'rabbit';
+  let e = 'deer';
+  let f = 'bear';
+  let g = 'coyote';
+  let h = 'squirrl';
+  let i = 'fish';
+  let j = 'monkey';
+
+  let k = a + b + c + d + e + f + g + h + i + j;
+}
+
+let concatTime = clock() - concatStart;
+
+let interopStart = clock();
+
+for _ in 10000000.times() {
+  let a = 'cat';
+  let b = 'dog';
+  let c = 'parrot';
+  let d = 'rabbit';
+  let e = 'deer';
+  let f = 'bear';
+  let g = 'coyote';
+  let h = 'squirrl';
+  let i = 'fish';
+  let j = 'monkey';
+
+  let k = '${a}${b}${c}${d}${e}${f}${g}${h}${i}${j}';
+}
+
+let interopTime = clock() - interopStart;
+print("concat");
+print(concatTime);
+print("interpolation");
+print(interopTime);

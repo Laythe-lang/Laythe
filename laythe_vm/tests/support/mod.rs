@@ -4,12 +4,12 @@ use laythe_env::{
 };
 use laythe_native::{env::IoEnvNative, fs::IoFsNative, time::IoTimeNative};
 use laythe_vm::vm::{ExecuteResult, Vm};
-use std::fmt;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, Cursor};
 use std::path::{Path, PathBuf};
-use std::{rc::Rc, str};
+use std::str;
+use std::{fmt, sync::Arc};
 
 pub fn fixture_path_inner(fixture_path: &str, test_file_path: &str) -> Option<PathBuf> {
   let test_path = Path::new(test_file_path);
@@ -28,11 +28,11 @@ pub fn assert_files_exit(
   result: ExecuteResult,
 ) -> io::Result<()> {
   for path in paths {
-    let mut stdio_container = Rc::new(StdioTestContainer::default());
-    let stdio = Rc::new(IoStdioTest::new(&mut stdio_container));
-    let time = Rc::new(IoTimeNative::default());
-    let fs = Rc::new(IoFsNative());
-    let env = Rc::new(IoEnvNative());
+    let mut stdio_container = Arc::new(StdioTestContainer::default());
+    let stdio = Arc::new(IoStdioTest::new(&mut stdio_container));
+    let time = Arc::new(IoTimeNative::default());
+    let fs = Arc::new(IoFsNative());
+    let env = Arc::new(IoEnvNative());
 
     {
       let io = Io::default()
@@ -69,7 +69,7 @@ pub fn assert_file_exit_and_stdio(
   stderr: Option<Vec<&str>>,
   result: ExecuteResult,
 ) -> io::Result<()> {
-  let stdio_container = Rc::new(StdioTestContainer {
+  let stdio_container = Arc::new(StdioTestContainer {
     stdout: vec![],
     stderr: vec![],
     stdin: Box::new(Cursor::new(Vec::from(
@@ -78,7 +78,7 @@ pub fn assert_file_exit_and_stdio(
     lines: lines.unwrap_or(vec![]),
     line_index: Box::new(0),
   });
-  let stdio = Rc::new(IoStdioTest::new(&stdio_container));
+  let stdio = Arc::new(IoStdioTest::new(&stdio_container));
 
   {
     let io = Io::default().with_stdio(stdio);

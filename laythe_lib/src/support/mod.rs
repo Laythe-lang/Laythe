@@ -6,9 +6,9 @@ use laythe_core::{
   package::{Import, Package},
   value::Value,
 };
-use laythe_env::managed::Managed;
+use laythe_env::managed::{Gc, GcStr};
 
-pub fn to_dyn_native<T: 'static + Native>(hooks: &GcHooks, method: T) -> Managed<Box<dyn Native>> {
+pub fn to_dyn_native<T: 'static + Native>(hooks: &GcHooks, method: T) -> Gc<Box<dyn Native>> {
   hooks.manage(Box::new(method) as Box<dyn Native>)
 }
 
@@ -16,7 +16,7 @@ pub fn default_class_inheritance(
   hooks: &GcHooks,
   package: &Package,
   class_name: &str,
-) -> Result<Managed<Class>, Managed<SmolStr>> {
+) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, GLOBAL_PATH);
@@ -24,21 +24,21 @@ pub fn default_class_inheritance(
 
   let object_class = load_class_from_module(hooks, &*module, "Object")?;
 
-  Ok(Class::new(hooks, name, object_class))
+  Ok(Class::with_inheritance(hooks, name, object_class))
 }
 
 pub fn default_error_inheritance(
   hooks: &GcHooks,
   package: &Package,
   class_name: &str,
-) -> Result<Managed<Class>, Managed<SmolStr>> {
+) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, GLOBAL_PATH);
   let module = package.import(hooks, import)?;
 
   let error_class = load_class_from_module(hooks, &*module, "Error")?;
-  Ok(Class::new(hooks, name, error_class))
+  Ok(Class::with_inheritance(hooks, name, error_class))
 }
 
 pub fn load_class_from_package(
@@ -46,7 +46,7 @@ pub fn load_class_from_package(
   package: &Package,
   path: &str,
   name: &str,
-) -> Result<Managed<Class>, Managed<SmolStr>> {
+) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(name);
   let import: Import = Import::from_str(hooks, path);
 
@@ -71,7 +71,7 @@ pub fn load_class_from_module(
   hooks: &GcHooks,
   module: &Module,
   name: &str,
-) -> Result<Managed<Class>, Managed<SmolStr>> {
+) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(name);
   match module.import(hooks).get_field(&name) {
     Some(symbol) => {
@@ -93,7 +93,7 @@ pub fn load_instance_from_module(
   hooks: &GcHooks,
   module: &Module,
   name: &str,
-) -> Result<Managed<Instance>, Managed<SmolStr>> {
+) -> Result<Gc<Instance>, GcStr> {
   let name = hooks.manage_str(name);
   match module.import(hooks).get_field(&name) {
     Some(symbol) => {
@@ -114,9 +114,9 @@ pub fn load_instance_from_module(
 pub fn export_and_insert(
   hooks: &GcHooks,
   module: &mut Module,
-  name: Managed<SmolStr>,
+  name: GcStr,
   symbol: Value,
-) -> Result<(), Managed<SmolStr>> {
+) -> Result<(), GcStr> {
   module.insert_symbol(hooks, name, symbol);
   module.export_symbol(hooks, name)
 }
@@ -124,10 +124,13 @@ pub fn export_and_insert(
 #[cfg(test)]
 pub use self::test::*;
 use crate::GLOBAL_PATH;
-use smol_str::SmolStr;
 
 #[cfg(test)]
 mod test {
+  use crate::{
+    builtin::{builtin_from_module, BuiltIn},
+    create_std_lib, native, GLOBAL_PATH,
+  };
   use laythe_core::{
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
     iterator::LyIter,
@@ -146,23 +149,16 @@ mod test {
   };
   use laythe_env::{
     io::Io,
-    managed::{Managed, Trace},
-    memory::{Gc, NoGc},
+    managed::{Gc, GcStr, Trace, TraceRoot},
+    memory::{Allocator, NoGc},
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
-  use smol_str::SmolStr;
-  use std::io::Write;
-  use std::{path::PathBuf, rc::Rc};
-
-  use crate::{
-    builtin::{builtin_from_module, BuiltIn},
-    create_std_lib, native, GLOBAL_PATH,
-  };
+  use std::{cell::RefCell, io::Write, path::PathBuf, sync::Arc};
 
   use super::to_dyn_native;
 
   pub struct MockedContext {
-    pub gc: Gc,
+    pub gc: RefCell<Allocator>,
     pub responses: Vec<Value>,
     io: Io,
     no_gc: NoGc,
@@ -173,7 +169,7 @@ mod test {
   impl Default for MockedContext {
     fn default() -> Self {
       Self {
-        gc: Gc::default(),
+        gc: RefCell::default(),
         no_gc: NoGc(),
         responses: vec![],
         io: Io::default(),
@@ -186,7 +182,7 @@ mod test {
   impl MockedContext {
     pub fn new(responses: &[Value]) -> Self {
       Self {
-        gc: Gc::default(),
+        gc: RefCell::default(),
         no_gc: NoGc(),
         responses: Vec::from(responses),
         io: Io::default(),
@@ -197,7 +193,7 @@ mod test {
 
     pub fn with_std(responses: &[Value]) -> Self {
       let mut context = Self {
-        gc: Gc::default(),
+        gc: RefCell::default(),
         no_gc: NoGc(),
         responses: Vec::from(responses),
         io: Io::default(),
@@ -217,15 +213,19 @@ mod test {
       context
     }
 
-    pub fn new_with_io(stdio_container: &Rc<StdioTestContainer>) -> Self {
+    pub fn with_test_stdio(stdio_container: &Arc<StdioTestContainer>) -> Self {
       Self {
-        gc: Gc::default(),
+        gc: RefCell::default(),
         no_gc: NoGc(),
         responses: Vec::from(vec![]),
-        io: Io::default().with_stdio(Rc::new(IoStdioTest::new(stdio_container))),
+        io: Io::default().with_stdio(Arc::new(IoStdioTest::new(stdio_container))),
         builtin: None,
         response_count: 0,
       }
+    }
+
+    pub fn add_responses(&mut self, responses: &[Value]) {
+      self.responses.extend_from_slice(responses);
     }
   }
 
@@ -244,8 +244,8 @@ mod test {
   }
 
   impl GcContext for MockedContext {
-    fn gc(&self) -> &Gc {
-      &self.gc
+    fn gc(&self) -> std::cell::RefMut<'_, Allocator> {
+      self.gc.borrow_mut()
     }
   }
 
@@ -300,7 +300,7 @@ mod test {
       Call::Exit(1)
     }
 
-    fn get_method(&mut self, this: Value, method_name: Managed<SmolStr>) -> Call {
+    fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
       let b = match &self.builtin {
         Some(b) => b,
         None => return Call::Exit(1),
@@ -323,21 +323,25 @@ mod test {
     }
   }
 
-  impl Trace for MockedContext {
-    fn trace(&self) -> bool {
+  impl TraceRoot for MockedContext {
+    fn trace(&self) {
       self.no_gc.trace()
     }
 
-    fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
-      self.no_gc.trace_debug(stdout)
+    fn trace_debug(&self, log: &mut dyn Write) {
+      self.no_gc.trace_debug(log)
+    }
+
+    fn can_collect(&self) -> bool {
+      false
     }
   }
 
-  pub fn test_native_dependencies() -> Box<Gc> {
-    Box::new(Gc::default())
+  pub fn test_native_dependencies() -> Box<Allocator> {
+    Box::new(Allocator::default())
   }
 
-  #[derive(Trace, Debug)]
+  #[derive(Debug)]
   pub struct TestIterator {
     current: usize,
   }
@@ -375,11 +379,13 @@ mod test {
     }
   }
 
+  impl Trace for TestIterator {}
+
   pub fn test_iter() -> Box<dyn LyIter> {
     Box::new(TestIterator::new())
   }
 
-  pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Managed<Fun> {
+  pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Gc<Fun> {
     let module = Module::from_path(
       &hooks,
       hooks.manage(PathBuf::from(format!("path/{}.ly", module_name))),
@@ -390,7 +396,7 @@ mod test {
     hooks.manage(Fun::new(hooks.manage_str(name), module))
   }
 
-  pub fn test_error_class(hooks: &GcHooks) -> Managed<Class> {
+  pub fn test_error_class(hooks: &GcHooks) -> Gc<Class> {
     let mut error_class = Class::bare(hooks.manage_str("Error"));
 
     error_class.add_method(

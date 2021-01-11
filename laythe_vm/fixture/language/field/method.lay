@@ -1,9 +1,8 @@
 class Foo {
   bar(arg) {
-    print(arg);
+    return arg;
   }
 }
 
 let bar = Foo().bar;
-print("got method"); // expect: got method
-bar("arg");          // expect: arg
+assertEq(bar("arg"), "arg");

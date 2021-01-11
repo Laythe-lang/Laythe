@@ -1,0 +1,9 @@
+let a = "a";
+let b = "b";
+let c = "c";
+
+// Assignment is right-associative.
+a += b += c;
+assertEq(a, "abc"); // expect: c
+assertEq(b, "bc"); // expect: c
+assertEq(c, "c"); // expect: c

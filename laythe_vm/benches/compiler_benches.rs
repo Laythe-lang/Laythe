@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use laythe_core::hooks::{support::TestContext, GcHooks};
+use laythe_core::hooks::{GcHooks, NoContext};
 use laythe_core::module::Module;
-use laythe_env::io::Io;
+use laythe_env::{io::Io, memory::NO_GC};
 use laythe_vm::compiler::Compiler;
 use laythe_vm::parser::Parser;
 use std::fs::File;
@@ -29,15 +29,20 @@ fn load_source<P: AsRef<Path>>(dir: P) -> String {
 }
 
 fn compile_source(source: &str) {
-  let mut context = TestContext::default();
+  let mut context = NoContext::default();
   let hooks = GcHooks::new(&mut context);
   let io = Io::default();
 
-  let module = hooks
-    .manage(Module::from_path(&hooks, hooks.manage(PathBuf::from("./Benchmark.lay"))).unwrap());
+  let path = hooks.manage(PathBuf::from("./Benchmark.lay"));
+  hooks.push_root(path);
+
+  let module = hooks.manage(Module::from_path(&hooks, path).unwrap());
+  hooks.pop_roots(1);
   let ast = Parser::new(io.stdio(), source).parse().unwrap();
-  let compiler = Compiler::new(module, &io, &hooks);
-  compiler.compile(&ast).unwrap();
+
+  let gc = context.done();
+  let compiler = Compiler::new(module, &NO_GC, &io, gc);
+  compiler.compile(&ast).0.unwrap();
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

@@ -46,7 +46,7 @@ impl Fs {
 
 pub struct SlDirEntry();
 
-pub trait FsImpl {
+pub trait FsImpl: Send + Sync {
   fn read_to_string(&self, path: &Path) -> io::Result<String>;
   fn read_directory(&self, path: &Path) -> io::Result<SlDirEntry>;
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;

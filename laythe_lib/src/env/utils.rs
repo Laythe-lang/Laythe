@@ -13,7 +13,7 @@ use laythe_core::{
   value::Value,
   Call,
 };
-use laythe_env::managed::Trace;
+use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 
 const ARGS_META: NativeMetaBuilder = NativeMetaBuilder::fun("args", Arity::Fixed(0));
@@ -44,14 +44,15 @@ native!(Args, ARGS_META);
 impl Native for Args {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
-    let vec: Vec<Value> = io
-      .env()
-      .args()
-      .iter()
-      .map(|arg| val!(hooks.manage_str(arg)))
-      .collect();
-    let list = hooks.manage(List::from(vec));
+    let mut list: Gc<List<Value>> = hooks.manage(List::new());
+    hooks.push_root(list);
 
+    for arg in io.env().args() {
+      let arg = val!(hooks.manage_str(arg));
+      hooks.grow(&mut list, |list| list.push(arg));
+    }
+
+    hooks.pop_roots(1);
     Call::Ok(val!(list))
   }
 }

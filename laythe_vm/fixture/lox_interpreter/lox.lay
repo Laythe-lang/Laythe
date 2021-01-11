@@ -162,20 +162,22 @@ class Scanner {
   advance() {
     let ch = self.ch;
     self.source.next();
-    self.ch = self.source.current;
+    self.ch = self.source.current();
     return ch;
   }
 
   next() {
     // Support a one-character buffer for "123." use case to mimic Lox
-    if self.buffered != nil {
+    if self.buffered {
       let buffered = self.buffered;
       self.buffered = nil;
       return buffered;
     }
 
+
     while self.ch {
       let ch = self.advance();
+
       if ch == '(' { return Token(LEFT_PAREN, nil, self.line); }
       else if ch == ')' { return Token(RIGHT_PAREN, nil, self.line); }
       else if ch == '{' { return Token(LEFT_BRACE, nil, self.line); }
@@ -293,9 +295,6 @@ class Scanner {
         return Token(IDENTIFIER, name, self.line);
       }
       else {
-        print(isNameStart(ch));
-        print(isDigit(ch));
-
         return Token(INVALID, 'Unexpected character "' + ch + '".' , self.line);
       }
     }
@@ -339,16 +338,15 @@ class Environment {
   // Find named value in environment, also looking in enclosing
   // environments. Exit with runtime error if name not found.
   get(name) {
-    let item = self.values.get(name);
-    if item {
-      return item;
+    if self.values.has(name) {
+      return self.values.get(name);
     }
 
-    if self.enclosing != nil {
+    if self.enclosing {
       return self.enclosing.get(name);
     }
 
-    runtimeError("Undefined variable '" + name + "'.");
+    runtimeError("Undefined variable '${name}'.");
   }
 
   // Assign an already-defined name in environment to value, also
@@ -364,7 +362,7 @@ class Environment {
       self.enclosing.assign(name, value);
       return;
     }
-    runtimeError("Undefined variable '" + name + "'.");
+    runtimeError("Undefined variable '${name}'.");
   }
 
   // Define a name in this environment and set to value.
@@ -415,7 +413,7 @@ class Assign {
   evaluate(interpreter) {
     let value = self.value.evaluate(interpreter);
     let distance = interpreter.locals.get(self);
-    if distance != nil {
+    if distance {
       interpreter.environment.assignAt(distance, self.name, value);
     } else {
       interpreter.globals.assign(self.name, value);
@@ -438,8 +436,7 @@ class Binary {
   }
 
   str() {
-    return "(" + self.left.str() + " " + tokenTypeStr(self.operator) +
-           " " + self.right.str() + ")";
+    return "${self.left} ${tokenTypeStr(self.operator)} ${self.right}";
   }
 
   evaluate(interpreter) {
@@ -495,8 +492,7 @@ class Call {
       .into(List.collect);
 
     if arguments.len() != callee.arity() {
-      runtimeError("Expected " + callee.arity().str() +
-                   " arguments but got " + arguments.len().str() + ".");
+      runtimeError("Expected ${callee.arity()} arguments but got ${arguments.len()}.");
     }
     return callee.call(interpreter, arguments);
   }
@@ -510,7 +506,7 @@ class Get {
   }
   
   str() {
-    return self.object.str() + "." + self.name;
+    return "${self.object}.${self.name}";
   }
 
   resolve(resolver) {
@@ -530,7 +526,7 @@ class Grouping {
   }
 
   str() {
-    return "(" + self.expr.str() + ")";
+    return "(${self.expr})";
   }
 
   resolve(resolver) {
@@ -564,7 +560,7 @@ class Literal {
       return self.value.str();
     }
     if self.kind == "string" {
-      return '"' + self.value + '"';
+      return '"${self.value}"';
     }
     return "<unexpected kind>";
   }
@@ -586,8 +582,7 @@ class Logical {
   }
 
   str() {
-    return "(" + self.left.str() + " " + tokenTypeStr(self.operator) +
-           " " + self.right.str() + ")";
+    return "${self.left} ${tokenTypeStr(self.operator)} ${self.right.str()}";
   }
 
   resolve(resolver) {
@@ -614,7 +609,7 @@ class Set {
   }
 
   str() {
-    return self.object.str() + "." + self.name + " = " + self.value.str();
+    return "${self.object}.${self.name} = ${self.value}";
   }
 
   resolve(resolver) {
@@ -637,7 +632,7 @@ class Super {
   }
 
   str() {
-    return "super." + self.method;
+    return "super.${self.method}";
   }
 
   resolve(resolver) {
@@ -650,7 +645,7 @@ class Super {
     let object = interpreter.environment.getAt(distance - 1, "this");
     let method = superclass.findMethod(object, self.method);
     if method == nil {
-      runtimeError("Undefined property '" + self.method + "'.");
+      runtimeError("Undefined property '${self.method}'.");
     }
     return method;
   }
@@ -682,7 +677,7 @@ class Unary {
   }
 
   str() {
-    return tokenTypeStr(self.operator) + self.right.str();
+    return "${tokenTypeStr(self.operator)}${self.right}";
   }
 
   resolve(resolver) {
@@ -708,7 +703,7 @@ class Variable {
 
   resolve(resolver) {
     if resolver.scopes.len() != 0 and resolver.scopes[resolver.scopes.len() - 1].get(self.name) == false {
-      resolver.error("Error at '" + self.name + "': Cannot read local variable in its own initializer.");
+      resolver.error("Error at '${self.name}': Cannot read local variable in its own initializer.");
     }
 
     resolver.resolveVar(self, self.name);
@@ -796,21 +791,21 @@ class Class {
   }
 
   str() {
-    let s = "class " + self.name + " ";
-    if self.superclass != nil {
-      s = s + "< " + self.superclass.name + " ";
+    let s = "class ${self.name} ";
+    if self.superclass {
+      s += "< ${self.superclass.name} ";
     }
-    s = s + Block(self.methods).str(); // Reuse Block.str()
+    s += Block(self.methods).str(); // Reuse Block.str()
     return s;
   }
 
   resolve(resolver) {
     resolver.declare(self.name);
-    if self.superclass != nil {
+    if self.superclass {
       self.superclass.resolve(resolver);
     }
     resolver.define(self.name);
-    if self.superclass != nil {
+    if self.superclass {
       resolver.beginScope();
       resolver.scopes[resolver.scopes.len() - 1].set("super", true);
     }
@@ -829,14 +824,14 @@ class Class {
 
   execute(interpreter) {
     let superclass;
-    if self.superclass != nil {
+    if self.superclass {
       superclass = self.superclass.evaluate(interpreter);
       // The following will cause a runtime error if the superclass
       // is not a class
       superclass.findMethod;
     }
     interpreter.environment.define(self.name, nil);
-    if self.superclass != nil {
+    if self.superclass {
       interpreter.environment = Environment(interpreter.environment);
       interpreter.environment.define("super", superclass);
     }
@@ -863,7 +858,7 @@ class Expression {
   }
 
   str() {
-    return self.expression.str() + ";\n";
+    return "${self.expression};\n";
   }
 
   resolve(resolver) {
@@ -884,19 +879,17 @@ class Function {
   }
 
   str() {
-    let s = "fun " + self.name + "(";
+    let s = "fun ${self.name}(";
     let addComma = false;
     self.params.iter().reduce(s, |s, param| {
       if addComma {
-        return s + ", ";
+        return s + ", ${param}";
       }
       addComma = true;
       return s + param;
     });
 
-    s = s + ") ";
-    s = s + Block(self.body).str();
-    return s;
+    return s + ") ${Block(self.body)}";
   }
 
   resolve(resolver) {
@@ -920,12 +913,12 @@ class If {
   }
 
   str() {
-    let s = "if (" + self.condition.str() + ") " + self.thenBranch.str();
-    if self.elseBranch != nil {
+    let s = "if (${self.condition}) ${self.thenBranch}";
+    if self.elseBranch {
       for i in indent.times() {
-        s = s + "  ";
+        s += "  ";
       }
-      s = s + "else " + self.elseBranch.str();
+      s += "else ${self.elseBranch}";
     }
     return s;
   }
@@ -955,7 +948,7 @@ class Print {
   }
 
   str() {
-    return "print " + self.expression.str() + ";\n";
+    return "print ${self.expression};\n";
   }
 
   resolve(resolver) {
@@ -980,7 +973,7 @@ class Return {
   }
 
   str() {
-    return "return " + self.value.str() + ";\n";
+    return "return ${self.value};\n";
   }
 
   resolve(resolver) {
@@ -1006,11 +999,11 @@ class Var {
   }
 
   str() {
-    let s = "var " + self.name;
-    if self.initializer != nil {
-      s = s + " = " + self.initializer.str();
+    let s = "var ${self.name}";
+    if self.initializer {
+      s += " = ${self.initializer}";
     }
-    s = s + ";\n";
+    s += ";\n";
     return s;
   }
 
@@ -1039,7 +1032,7 @@ class While {
   }
 
   str() {
-    return "while (" + self.condition.str() + ") " + self.body.str();
+    return "while (${self.condition}) ${self.body}";
   }
 
   resolve(resolver) {
@@ -1080,15 +1073,11 @@ class LoxFunction {
   call(interpreter, arguments) {
     let environment = Environment(self.closure);
 
-    // print("before: " + environment.cls().str());
     self.declaration.params
       .iter()
       .zip(arguments.iter())
       .each(|items| {
-        // print("each before: " + environment.cls().str());
         environment.define(items[0], items[1]);
-        // print("each after: " + environment.cls().str());
-        // last = environment;
       });
 
     let ret = interpreter.executeBlock(self.declaration.body, environment);
@@ -1109,15 +1098,17 @@ class LoxInstance {
   }
 
   get(name) {
-    let field = self.fields.get(name);
-    if field {
-      return field;
+    if self.fields.has(name) {
+      return self.fields.get(name);
     }
     let method = self.klass.findMethod(self, name);
     if method {
       return method;
     }
-    runtimeError("Undefined property '" + name + "'.");
+
+    print('sup');
+    print(self.fields);
+    runtimeError("Undefined property '${name}'.");
   }
 
   set(name, value) {
@@ -1137,6 +1128,7 @@ class LoxClass {
     if method {
       return method.bind(instance);
     }
+    
     if self.superclass {
       return self.superclass.findMethod(instance, name);
     }
@@ -1218,13 +1210,13 @@ class Parser {
     } else if token.kind == EOF {
       at = "Error at end: ";
     } else if token.kind == IDENTIFIER {
-      at = "Error at '" + token.value + "': ";
+      at = "Error at '${token.value}': ";
     } else if token.kind == NUMBER {
-      at = "Error at '" + token.value.str() + "': ";
+      at = "Error at '${token.value}': ";
     } else {
-      at = "Error at '" + tokenTypeStr(token.kind) + "': ";
+      at = "Error at '${tokenTypeStr(token.kind)}': ";
     }
-    stderr.writeln("[line " + self.token.line.str() + "] " + at + message);
+    stderr.writeln("[line ${self.token.line}] ${at}${message}");
     exit(65);
   }
 
@@ -1405,8 +1397,8 @@ class Parser {
   }
 
   function(kind) {
-    let name = self.consume(IDENTIFIER, "Expect " + kind + " name.");
-    self.consume(LEFT_PAREN, "Expect '(' after " + kind + " name.");
+    let name = self.consume(IDENTIFIER, "Expect ${kind} name.");
+    self.consume(LEFT_PAREN, "Expect '(' after ${kind} name.");
     let parameters = [];
     let n = 0;
     while self.token.kind != RIGHT_PAREN {
@@ -1612,7 +1604,7 @@ class Resolver {
   }
 
   error(message) {
-    stderr.writeln("[line 1] " + message); // This is hack for tests (it's not always line 1)
+    stderr.writeln("[line 1] ${message}"); // This is hack for tests (it's not always line 1)
     exit(65);
   }
 
@@ -1647,7 +1639,7 @@ class Resolver {
     }
     let scope = self.scopes[self.scopes.len() - 1];
     if scope.has(name) {
-      self.error("Error at '" + name + "': Variable with this name already declared in this scope.");
+      self.error("Error at '${name}': Variable with this name already declared in this scope.");
     }
     scope.set(name, false);
   }
@@ -1660,6 +1652,7 @@ class Resolver {
   }
 
   resolveVar(expr, name) {
+
     for i in self.scopes.len().times() {
       if self.scopes[i].has(name) {
         self.interpreter.resolve(expr, self.scopes.len() - 1 - i);
@@ -1667,23 +1660,34 @@ class Resolver {
       }
     }
     // Not found, assume it's a global
+
   }
 }
 
 
 // The tree-walking interpreter
 
-class Interpreter {
-  init(program) {
-    self.program = program;
-    self.globals = Environment(nil);
-    self.environment = self.globals;
-    self.locals = {};
+fn defaultGlobals() {
+  let globals = Environment(nil);
 
-    // Define built-in functions
-    self.globals.define("clock", Builtin0(clock));
-    self.globals.define("exit", Builtin1(exit));
-    self.globals.define("print_error", Builtin1(print_error));
+  // Define built-in functions
+  globals.define("clock", Builtin0(clock));
+  globals.define("exit", Builtin1(exit));
+  globals.define("print_error", Builtin1(print_error));
+
+  return globals;
+}
+
+class Interpreter {
+  init(program, globals) {
+    self.program = program;
+    self.globals = globals;
+    self.environment = globals;
+    self.locals = {};
+  }
+
+  static default(program) {
+    return Interpreter(program, defaultGlobals());
   }
 
   interpret() {
@@ -1740,6 +1744,7 @@ let interpreter;
 if args.len() < 3 {
   // do repl
 
+  let globals = defaultGlobals();
   while true {
     stdout.write('lox:> ');
     stdout.flush();
@@ -1749,13 +1754,15 @@ if args.len() < 3 {
     let program = parser.parse();
 
     // Uncomment these two lines to pretty-print the parsed syntax tree
-    print(program.str());
-    print("-----");
+    // print(program.str());
+    // print("-----");
 
-    interpreter = Interpreter(program);
+    interpreter = Interpreter(program, globals);
     resolver = Resolver(program, interpreter);
     resolver.resolve();
     interpreter.interpret();
+
+    globals = interpreter.globals;
   }
 } else {
   let filePath = args[2];
@@ -1767,7 +1774,7 @@ if args.len() < 3 {
   print(program.str());
   print("-----");
 
-  interpreter = Interpreter(program);
+  interpreter = Interpreter.default(program);
   resolver = Resolver(program, interpreter);
   resolver.resolve();
   interpreter.interpret();

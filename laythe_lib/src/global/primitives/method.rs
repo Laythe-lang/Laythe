@@ -13,8 +13,7 @@ use laythe_core::{
   value::Value,
   Call,
 };
-use laythe_env::managed::{Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{GcStr, Trace};
 use std::io::Write;
 
 pub const METHOD_CLASS_NAME: &str = "Method";
@@ -61,11 +60,11 @@ pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> Ini
 #[derive(Debug)]
 struct MethodName {
   meta: NativeMeta,
-  method_name: Managed<SmolStr>,
+  method_name: GcStr,
 }
 
 impl MethodName {
-  fn new(meta: NativeMeta, method_name: Managed<SmolStr>) -> Self {
+  fn new(meta: NativeMeta, method_name: GcStr) -> Self {
     Self { meta, method_name }
   }
 }
@@ -87,14 +86,14 @@ impl Native for MethodName {
 }
 
 impl Trace for MethodName {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.meta.trace();
-    self.method_name.trace()
+    self.method_name.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.meta.trace_debug(stdout);
-    self.method_name.trace_debug(stdout)
+    self.method_name.trace_debug(stdout);
   }
 }
 
@@ -134,7 +133,7 @@ mod test {
     #[test]
     fn call() {
       let mut context = MockedContext::with_std(&[]);
-      let responses = &[val!(context.gc.manage_str("example", &NO_GC))];
+      let responses = &[val!(context.gc.borrow_mut().manage_str("example", &NO_GC))];
       context.responses.extend_from_slice(responses);
 
       let mut hooks = Hooks::new(&mut context);

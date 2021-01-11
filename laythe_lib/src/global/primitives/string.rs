@@ -15,8 +15,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyResult,
 };
-use laythe_env::managed::{Managed, Trace};
-use smol_str::SmolStr;
+use laythe_env::managed::{GcStr, Trace};
 use std::{io::Write, str::Split};
 use std::{mem, str::Chars};
 
@@ -162,7 +161,7 @@ native!(StringHas, STRING_HAS);
 impl Native for StringHas {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let str = this.unwrap().to_str();
-    Call::Ok(val!(str.contains(args[0].to_str().as_str())))
+    Call::Ok(val!(str.contains(&*args[0].to_str())))
   }
 }
 
@@ -182,19 +181,15 @@ impl Native for StringSplit {
 
 #[derive(Debug)]
 struct SplitIterator {
-  string: Managed<SmolStr>,
-  separator: Managed<SmolStr>,
+  string: GcStr,
+  separator: GcStr,
   iter: Split<'static, &'static str>,
   current: Value,
 }
 
 impl SplitIterator {
-  fn new(string: Managed<SmolStr>, separator: Managed<SmolStr>) -> Self {
-    let iter = unsafe {
-      string
-        .deref_static()
-        .split(separator.deref_static().as_str())
-    };
+  fn new(string: GcStr, separator: GcStr) -> Self {
+    let iter = unsafe { string.deref_static().split(separator.deref_static()) };
 
     Self {
       string,
@@ -237,16 +232,16 @@ impl LyIter for SplitIterator {
 }
 
 impl Trace for SplitIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.string.trace();
     self.separator.trace();
-    self.current.trace()
+    self.current.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.string.trace_debug(stdout);
     self.separator.trace_debug(stdout);
-    self.current.trace_debug(stdout)
+    self.current.trace_debug(stdout);
   }
 }
 
@@ -256,7 +251,6 @@ impl Native for StringSlice {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     // get underlying string slice
     let string = this.unwrap().to_str();
-    let string = string.as_str();
 
     let (start, end) = match args.len() {
       0 => (0.0, string.len() as f64),
@@ -266,14 +260,14 @@ impl Native for StringSlice {
     };
 
     // get start and end indices
-    let start_index = match self.string_index(hooks, string, start) {
+    let start_index = match self.string_index(hooks, &string, start) {
       LyResult::Ok(index) => index,
       LyResult::Err(err) => return LyResult::Err(err),
       LyResult::Exit(exit) => return LyResult::Exit(exit),
     };
 
     // let end_index = if let Some(end) = end {
-    let end_index = match self.string_index(hooks, string, end) {
+    let end_index = match self.string_index(hooks, &string, end) {
       LyResult::Ok(index) => index,
       LyResult::Err(err) => return LyResult::Err(err),
       LyResult::Exit(exit) => return LyResult::Exit(exit),
@@ -333,13 +327,13 @@ impl Native for StringIter {
 
 #[derive(Debug)]
 struct StringIterator {
-  string: Managed<SmolStr>,
+  string: GcStr,
   iter: Chars<'static>,
   current: Value,
 }
 
 impl StringIterator {
-  fn new(string: Managed<SmolStr>) -> Self {
+  fn new(string: GcStr) -> Self {
     let iter = unsafe { string.deref_static().chars() };
 
     Self {
@@ -384,14 +378,14 @@ impl LyIter for StringIterator {
 }
 
 impl Trace for StringIterator {
-  fn trace(&self) -> bool {
+  fn trace(&self) {
     self.string.trace();
-    self.current.trace()
+    self.current.trace();
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) -> bool {
+  fn trace_debug(&self, stdout: &mut dyn Write) {
     self.string.trace_debug(stdout);
-    self.current.trace_debug(stdout)
+    self.current.trace_debug(stdout);
   }
 }
 

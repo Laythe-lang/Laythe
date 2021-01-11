@@ -1,0 +1,7 @@
+assertEq('${10}', '10');
+assertEq('${'test'}', 'test');
+
+let firstName = 'Joe';
+let lastName = 'Dirt';
+let age = 35;
+assertEq('${'${firstName} ${lastName}'} ${age}', 'Joe Dirt 35');
