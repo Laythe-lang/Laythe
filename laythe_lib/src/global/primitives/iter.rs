@@ -1,5 +1,6 @@
 use crate::{
-  native,
+  global::VALUE_ERROR_NAME,
+  native, native_with_error,
   support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
   InitResult,
 };
@@ -31,6 +32,12 @@ const ITER_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fi
 
 const ITER_FIRST: NativeMetaBuilder = NativeMetaBuilder::method("first", Arity::Fixed(0));
 const ITER_LAST: NativeMetaBuilder = NativeMetaBuilder::method("last", Arity::Fixed(0));
+
+const ITER_TAKE: NativeMetaBuilder = NativeMetaBuilder::method("take", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)]);
+
+const ITER_SKIP: NativeMetaBuilder = NativeMetaBuilder::method("skip", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)]);
 
 const ITER_MAP: NativeMetaBuilder = NativeMetaBuilder::method("map", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
@@ -82,6 +89,7 @@ pub fn declare_iter_class(
 
 pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
   let mut class = load_class_from_module(hooks, module, ITER_CLASS_NAME)?;
+  let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);
 
   class.add_method(
     hooks,
@@ -117,6 +125,18 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitR
     hooks,
     hooks.manage_str(ITER_LAST.name),
     val!(to_dyn_native(hooks, IterLast::from(hooks))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_TAKE.name),
+    val!(to_dyn_native(hooks, IterTake::new(hooks, value_error))),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_SKIP.name),
+    val!(to_dyn_native(hooks, IterSkip::new(hooks, value_error))),
   );
 
   class.add_method(
@@ -241,6 +261,171 @@ impl Native for IterLast {
     }
 
     Call::Ok(result)
+  }
+}
+
+native_with_error!(IterTake, ITER_TAKE);
+
+impl Native for IterTake {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+    let iter = this.unwrap().to_iter();
+    let take_count = args[0].to_num();
+
+    if take_count.fract() != 0.0 {
+      return Call::Err(
+        self
+          .call_error(hooks, "Method skip takes an integer parameter.")
+          .expect_err("Expected Err"),
+      );
+    }
+
+    let take_count = take_count as usize;
+    let inner_iter: Box<dyn LyIter> = Box::new(TakeIterator::new(iter, take_count));
+    let take_iter = hooks.manage(LyIterator::new(inner_iter));
+    Call::Ok(val!(take_iter))
+  }
+}
+
+#[derive(Debug)]
+struct TakeIterator {
+  current: usize,
+  iter: Gc<LyIterator>,
+  take_count: usize,
+}
+
+impl TakeIterator {
+  fn new(iter: Gc<LyIterator>, take_count: usize) -> Self {
+    Self {
+      current: 0,
+      iter,
+      take_count,
+    }
+  }
+}
+
+impl LyIter for TakeIterator {
+  fn name(&self) -> &str {
+    "TakeIterator"
+  }
+
+  fn current(&self) -> Value {
+    self.iter.current()
+  }
+
+  fn next(&mut self, hooks: &mut Hooks) -> Call {
+    if self.current >= self.take_count || is_falsey(get!(self.iter.next(hooks))) {
+      Call::Ok(val!(false))
+    } else {
+      self.current += 1;
+      Call::Ok(val!(true))
+    }
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    self.iter.size_hint().map(|hint| hint.min(self.take_count))
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+}
+
+impl Trace for TakeIterator {
+  fn trace(&self) {
+    self.iter.trace();
+  }
+
+  fn trace_debug(&self, log: &mut dyn Write) {
+    self.iter.trace_debug(log)
+  }
+}
+
+native_with_error!(IterSkip, ITER_SKIP);
+
+impl Native for IterSkip {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+    let mut iter = this.unwrap().to_iter();
+    let skip_count = args[0].to_num();
+
+    if skip_count.fract() != 0.0 {
+      return Call::Err(
+        self
+          .call_error(
+            hooks,
+            "Method skip takes an non negative integer parameter.",
+          )
+          .expect_err("Expected Err"),
+      );
+    }
+
+    if skip_count < 0.0 {
+      return Call::Err(
+        self
+          .call_error(
+            hooks,
+            "Method skip takes an non negative integer parameter.",
+          )
+          .expect_err("Expected Err"),
+      );
+    }
+
+    let mut current = 0usize;
+    let skip_count = skip_count as usize;
+
+    while current < skip_count && !is_falsey(get!(iter.next(hooks))) {
+      current += 1;
+    }
+
+    let inner_iter: Box<dyn LyIter> = Box::new(SkipIterator::new(iter, skip_count));
+    let skip_iter = hooks.manage(LyIterator::new(inner_iter));
+    Call::Ok(val!(skip_iter))
+  }
+}
+
+#[derive(Debug)]
+struct SkipIterator {
+  skip_count: usize,
+  iter: Gc<LyIterator>,
+}
+
+impl SkipIterator {
+  fn new(iter: Gc<LyIterator>, skip_count: usize) -> Self {
+    Self { iter, skip_count }
+  }
+}
+
+impl LyIter for SkipIterator {
+  fn name(&self) -> &str {
+    "SkipIterator"
+  }
+
+  fn current(&self) -> Value {
+    self.iter.current()
+  }
+
+  fn next(&mut self, hooks: &mut Hooks) -> Call {
+    self.iter.next(hooks)
+  }
+
+  fn size_hint(&self) -> Option<usize> {
+    self
+      .iter
+      .size_hint()
+      .map(|hint| hint.saturating_sub(self.skip_count))
+  }
+
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+}
+
+impl Trace for SkipIterator {
+  fn trace(&self) {
+    self.iter.trace();
+  }
+
+  fn trace_debug(&self, log: &mut dyn Write) {
+    self.iter.trace_debug(log)
   }
 }
 
@@ -873,6 +1058,101 @@ mod test {
 
       let result = iter_first.call(&mut hooks, Some(this), &[]).unwrap();
       assert_eq!(result, val!(1.0));
+    }
+  }
+
+  #[cfg(test)]
+  mod take {
+    use crate::support::test_error_class;
+
+    use super::*;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+      let error = val!(test_error_class(&hooks));
+
+      let iter_take = IterTake::new(&hooks, error);
+
+      assert_eq!(iter_take.meta().name, "take");
+      assert_eq!(iter_take.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        iter_take.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+      let error = val!(test_error_class(&hooks.as_gc()));
+
+      let iter_take = IterTake::new(&hooks.as_gc(), error);
+
+      let iter = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter));
+      let this = val!(managed);
+
+      let result = iter_take
+        .call(&mut hooks, Some(this), &[val!(1.0)])
+        .unwrap();
+
+      assert!(result.is_iter());
+
+      let mut iter = result.to_iter();
+      assert_eq!(iter.next(&mut hooks).unwrap(), val!(true));
+      assert_eq!(iter.current(), val!(1.0));
+      assert_eq!(iter.next(&mut hooks).unwrap(), val!(false));
+    }
+  }
+
+  #[cfg(test)]
+  mod skip {
+    use crate::support::test_error_class;
+
+    use super::*;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+      let error = val!(test_error_class(&hooks));
+
+      let iter_skip = IterSkip::new(&hooks, error);
+
+      assert_eq!(iter_skip.meta().name, "skip");
+      assert_eq!(iter_skip.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        iter_skip.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let error = val!(test_error_class(&hooks.as_gc()));
+
+      let iter_skip = IterSkip::new(&hooks.as_gc(), error);
+
+      let iter = test_iter();
+      let managed = hooks.manage(LyIterator::new(iter));
+      let this = val!(managed);
+
+      let result = iter_skip
+        .call(&mut hooks, Some(this), &[val!(2.0)])
+        .unwrap();
+
+      let mut iter = result.to_iter();
+      assert_eq!(iter.next(&mut hooks).unwrap(), val!(true));
+      assert_eq!(iter.current(), val!(3.0));
+      assert_eq!(iter.next(&mut hooks).unwrap(), val!(true));
+      assert_eq!(iter.current(), val!(4.0));
+      assert_eq!(iter.next(&mut hooks).unwrap(), val!(false));
     }
   }
 
