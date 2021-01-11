@@ -5,3 +5,5 @@ assertEq(true.str(), 'true');
 assertEq('test'.str(), 'test');
 assert(|a, b| {}.str().has('<Fun'));
 assert(A().str().has('<A'));
+
+assertNe(A().str(), A().str());
