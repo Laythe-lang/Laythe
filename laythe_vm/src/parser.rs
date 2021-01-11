@@ -1083,14 +1083,19 @@ impl<'a> Parser<'a> {
     type_params: Vec<TypeParam<'a>>,
     block_return: BlockReturn,
   ) -> ParseResult<Fun<'a>> {
-    self.consume(TokenKind::LeftParen, "Expected '(' after function name.")?;
+    if !self.match_kind(TokenKind::LeftParen)? {
+      return self.error_current(&format!("Expected '(' after {} name.", self.fun_kind));
+    }
 
     // parse function parameters
     let call_sig = self.call_signature(TokenKind::RightParen, type_params)?;
 
+    if !self.match_kind(TokenKind::LeftBrace)? {
+      return self.error_current(&format!("Expected '{{' after {} signature.", self.fun_kind));
+    }
     self
-      .fun_body(block_return)
-      .map(|body| Fun::new(Some(name), call_sig, body))
+      .block(block_return)
+      .map(|body| Fun::new(Some(name), call_sig, FunBody::Block(Box::new(body))))
   }
 
   /// Parse a method declaration and body
@@ -2031,7 +2036,7 @@ mod test {
         self.state = startState;
       }
     
-      value() self.state
+      value() { self.state }
     
       activate() {
         self.state = !self.state;
@@ -2227,38 +2232,12 @@ mod test {
   }
 
   #[test]
-  fn class_with_methods_expr() {
-    let example = "
-      class A {
-        init() self.field = true
-        getField() self.field
-        getGetField() self.getField()
-      }
-    ";
-
-    test(example);
-  }
-
-  #[test]
   fn class_with_methods_implicit() {
     let example = "
       class A {
         init() { self.field = true; }
         getField() { self.field }
         getGetField() { self.getField() }
-      }
-    ";
-
-    test(example);
-  }
-
-  #[test]
-  fn class_with_methods_expr_typed() {
-    let example = "
-      class A {
-        init(value: bool) self.field = value
-        getField() -> bool self.field
-        getGetField() -> bool self.getField()
       }
     ";
 
@@ -2293,30 +2272,6 @@ mod test {
         static sayBye() -> string {
           return 'bye';
         }
-      }
-    ";
-
-    test(example);
-  }
-
-  #[test]
-  fn class_with_static_methods_expr() {
-    let example = "
-      class A {
-        static sayHi() 'hi'
-        static sayBye() 'bye'
-      }
-    ";
-
-    test(example);
-  }
-
-  #[test]
-  fn class_with_static_methods_expr_typed() {
-    let example = "
-      class A {
-        static sayHi() -> string 'hi'
-        static sayBye() -> string 'bye'
       }
     ";
 
@@ -2473,12 +2428,6 @@ mod test {
     ";
 
     test(example)
-  }
-
-  #[test]
-  fn fun_expr_body() {
-    let example = "fn example() print(10)";
-    test(example);
   }
 
   #[test]
