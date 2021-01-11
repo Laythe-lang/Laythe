@@ -52,6 +52,10 @@ impl<'a> Visitor<'a> for AstPrint {
         self.visit_expr(expr);
         self.buffer.push(';');
       }
+      Stmt::ImplicitReturn(expr) => {
+        self.pad();
+        self.visit_expr(expr);
+      }
       Stmt::Import(import) => self.visit_import(import),
       Stmt::For(for_) => self.visit_for(for_),
       Stmt::If(if_) => self.visit_if(if_),

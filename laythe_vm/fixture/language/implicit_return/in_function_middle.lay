@@ -1,0 +1,3 @@
+fn f() { "ok" print(10); }
+
+assertEq(f(), "ok"); // expect: ok

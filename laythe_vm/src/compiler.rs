@@ -717,6 +717,10 @@ impl<'a> Compiler<'a> {
         self.expr(expr);
         self.emit_byte(AlignedByteCode::Drop, expr.end());
       }
+      Stmt::ImplicitReturn(expr) => {
+        self.expr(expr);
+        self.emit_byte(AlignedByteCode::Return, expr.end());
+      }
       Stmt::Import(import) => self.import(import),
       Stmt::For(for_) => self.for_(for_),
       Stmt::If(if_) => self.if_(if_),
@@ -2213,6 +2217,78 @@ mod test {
   }
 
   #[test]
+  fn class_with_methods_implicit() {
+    let example = "
+      class A {
+        init() {
+          self.field = true;
+        }
+
+        getField() {
+          self.field
+        }
+
+        getGetField() {
+          self.getField()
+        }
+      }
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
+        ByteCodeTest::Fun((
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::True),
+            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Field(4)),
+        ByteCodeTest::Fun((
+          6,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(5)),
+        ByteCodeTest::Fun((
+          8,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(7)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
   fn class_property_assign_set() {
     let example = "
     class A {
@@ -2802,6 +2878,34 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Call(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn implicit_return() {
+    let example = "fn example() { 10 } example();";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+    assert_fun_bytecode(
+      fun,
+      &vec![
+        ByteCodeTest::Fun((
+          1,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),

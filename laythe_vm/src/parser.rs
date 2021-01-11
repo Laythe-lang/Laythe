@@ -9,6 +9,11 @@ use std::mem;
 
 type ParseResult<T> = Result<T, ()>;
 
+enum BlockReturn {
+  Can,
+  Cannot,
+}
+
 const NUMBER_TYPE: &str = "number";
 const BOOL_TYPE: &str = "bool";
 const STRING_TYPE: &str = "string";
@@ -28,6 +33,9 @@ pub struct Parser<'a> {
 
   /// Is the parser in panic mode
   panic_mode: bool,
+
+  /// Can we currently implicitly return
+  block_return: BlockReturn,
 
   /// Current function kind
   fun_kind: FunKind,
@@ -54,6 +62,7 @@ impl<'a> Parser<'a> {
       had_error: false,
       panic_mode: false,
       fun_kind: FunKind::Script,
+      block_return: BlockReturn::Cannot,
       scope_depth: 0,
       loop_depth: 0,
       previous: Token {
@@ -291,7 +300,9 @@ impl<'a> Parser<'a> {
       Ok(vec![])
     }?;
 
-    let fun = self.function(name, type_params).map(Symbol::Fun);
+    let fun = self
+      .function(name, type_params, BlockReturn::Can)
+      .map(Symbol::Fun);
 
     self.fun_kind = previous;
     fun
@@ -445,12 +456,12 @@ impl<'a> Parser<'a> {
   fn try_block(&mut self) -> ParseResult<Stmt<'a>> {
     let block = self
       .consume(TokenKind::LeftBrace, "Expected '{' after try.")
-      .and_then(|()| self.block())?;
+      .and_then(|()| self.block(BlockReturn::Cannot))?;
 
     self
       .consume(TokenKind::Catch, "Expected 'catch' after try block.")
       .and_then(|()| self.consume(TokenKind::LeftBrace, "Expected '{' after catch."))
-      .and_then(|()| self.block())
+      .and_then(|()| self.block(BlockReturn::Cannot))
       .map(|catch| Stmt::Try(Box::new(Try::new(block, catch))))
   }
 
@@ -461,12 +472,12 @@ impl<'a> Parser<'a> {
     self.consume(TokenKind::LeftBrace, "Expected '{' after condition.")?;
 
     // parse then branch
-    let body = self.block()?;
+    let body = self.block(BlockReturn::Cannot)?;
 
     // parse else branch if it exists
     let else_body = if self.match_kind(TokenKind::Else)? {
       if self.match_kind(TokenKind::LeftBrace)? {
-        Some(Else::Block(self.block()?))
+        Some(Else::Block(self.block(BlockReturn::Cannot)?))
       } else if self.match_kind(TokenKind::If)? {
         if let Stmt::If(if_) = self.if_()? {
           Some(Else::If(if_))
@@ -502,7 +513,7 @@ impl<'a> Parser<'a> {
 
       self_
         .consume(TokenKind::LeftBrace, "Expected '{' after iterable.")
-        .and_then(|()| self_.block())
+        .and_then(|()| self_.block(BlockReturn::Cannot))
         .map(|body| Stmt::For(Box::new(For::new(item, iter, body))))
     })
   }
@@ -513,7 +524,7 @@ impl<'a> Parser<'a> {
       let cond = self_.expr()?;
       self_.consume(TokenKind::LeftBrace, "Expected '{' after while condition.")?;
 
-      let body = self_.block()?;
+      let body = self_.block(BlockReturn::Cannot)?;
       Ok(Stmt::While(Box::new(While::new(cond, body))))
     })
   }
@@ -564,8 +575,15 @@ impl<'a> Parser<'a> {
   /// Parse an expression statement
   fn expr_stmt(&mut self) -> ParseResult<Stmt<'a>> {
     let expr = self.expr()?;
-    self.consume(TokenKind::Semicolon, "Expected ';' after expression.")?;
-    Ok(Stmt::Expr(Box::new(expr)))
+    if self.match_kind(TokenKind::Semicolon)? {
+      Ok(Stmt::Expr(Box::new(expr)))
+    } else {
+      if let BlockReturn::Cannot = self.block_return {
+        return self.error("Expected ';' after expression");
+      }
+
+      Ok(Stmt::ImplicitReturn(Box::new(expr)))
+    }
   }
 
   /// Parse an expression using a Pratt parser
@@ -637,15 +655,17 @@ impl<'a> Parser<'a> {
       TokenKind::LeftBrace,
       "Expected '{' after assignment block ':'",
     )?;
-    let block = self.block()?;
+    let block = self.block(BlockReturn::Cannot)?;
     Ok(self.atom(Primary::AssignBlock(block)))
   }
 
   /// Parse a block statement
-  fn block(&mut self) -> ParseResult<Block<'a>> {
+  fn block(&mut self, block_return: BlockReturn) -> ParseResult<Block<'a>> {
     let start = self.previous.line;
 
     self.scope_depth += 1;
+    let block_return = mem::replace(&mut self.block_return, block_return);
+
     let mut decls: Vec<Decl> = vec![];
     while !self.check(TokenKind::RightBrace) && !self.check(TokenKind::Eof) {
       decls.push(self.decl().map_err(|err| {
@@ -654,7 +674,28 @@ impl<'a> Parser<'a> {
       })?);
     }
 
+    if let BlockReturn::Can = self.block_return {
+      if let Some((_, rest)) = decls.split_last() {
+        for decl in rest {
+          if let Decl::Stmt(stmt) = decl {
+            if let Stmt::ImplicitReturn(return_) = &**stmt {
+              return self.error_at::<Block<'a>>(
+                Token {
+                  kind: TokenKind::Error,
+                  line: return_.end(),
+                  lexeme: Lexeme::Slice(&"sup"),
+                },
+                "Implicit return can only appear at the end of a block.",
+              );
+            }
+          }
+        }
+      }
+    }
+
     self.scope_depth -= 1;
+    self.block_return = block_return;
+
     let end = self.current.line;
 
     self
@@ -779,7 +820,7 @@ impl<'a> Parser<'a> {
 
     let previous = mem::replace(&mut self.fun_kind, FunKind::Fun);
     let lambda = self
-      .fun_body()
+      .fun_body(BlockReturn::Can)
       .map(|body| self.atom(Primary::Lambda(Box::new(Fun::new(None, call_sig, body)))));
 
     self.fun_kind = previous;
@@ -1026,9 +1067,9 @@ impl<'a> Parser<'a> {
   }
 
   // Parse a function body
-  fn fun_body(&mut self) -> ParseResult<FunBody<'a>> {
+  fn fun_body(&mut self, block_return: BlockReturn) -> ParseResult<FunBody<'a>> {
     if self.match_kind(TokenKind::LeftBrace)? {
-      Ok(FunBody::Block(Box::new(self.block()?)))
+      Ok(FunBody::Block(Box::new(self.block(block_return)?)))
     } else {
       // implicitly return expression lambdas
       Ok(FunBody::Expr(Box::new(self.expr()?)))
@@ -1036,25 +1077,30 @@ impl<'a> Parser<'a> {
   }
 
   /// Parse a function declaration and body
-  fn function(&mut self, name: Token<'a>, type_params: Vec<TypeParam<'a>>) -> ParseResult<Fun<'a>> {
+  fn function(
+    &mut self,
+    name: Token<'a>,
+    type_params: Vec<TypeParam<'a>>,
+    block_return: BlockReturn,
+  ) -> ParseResult<Fun<'a>> {
     self.consume(TokenKind::LeftParen, "Expected '(' after function name.")?;
 
     // parse function parameters
     let call_sig = self.call_signature(TokenKind::RightParen, type_params)?;
 
     self
-      .fun_body()
+      .fun_body(block_return)
       .map(|body| Fun::new(Some(name), call_sig, body))
   }
 
   /// Parse a method declaration and body
   fn method(&mut self, name: Token<'a>, is_static: bool) -> ParseResult<(FunKind, Fun<'a>)> {
-    let fun_kind = if is_static {
-      FunKind::StaticMethod
+    let (fun_kind, block_return) = if is_static {
+      (FunKind::StaticMethod, BlockReturn::Can)
     } else if INIT == name.str() {
-      FunKind::Initializer
+      (FunKind::Initializer, BlockReturn::Cannot)
     } else {
-      FunKind::Method
+      (FunKind::Method, BlockReturn::Can)
     };
 
     let previous = mem::replace(&mut self.fun_kind, fun_kind);
@@ -1064,7 +1110,9 @@ impl<'a> Parser<'a> {
       vec![]
     };
 
-    let method = self.function(name, type_params).map(|fun| (fun_kind, fun));
+    let method = self
+      .function(name, type_params, block_return)
+      .map(|fun| (fun_kind, fun));
     self.fun_kind = previous;
     method
   }
@@ -2192,6 +2240,19 @@ mod test {
   }
 
   #[test]
+  fn class_with_methods_implicit() {
+    let example = "
+      class A {
+        init() { self.field = true; }
+        getField() { self.field }
+        getGetField() { self.getField() }
+      }
+    ";
+
+    test(example);
+  }
+
+  #[test]
   fn class_with_methods_expr_typed() {
     let example = "
       class A {
@@ -2401,6 +2462,17 @@ mod test {
     let example = "fn example() { let a = 10; return a; } example();";
 
     test(example);
+  }
+
+  #[test]
+  fn fun_basic_implicit() {
+    let example = "
+    fn example(a) { a }
+    let a = 1;
+    example(a);
+    ";
+
+    test(example)
   }
 
   #[test]

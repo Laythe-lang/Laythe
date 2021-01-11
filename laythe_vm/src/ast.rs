@@ -367,6 +367,7 @@ impl<'a> Ranged for TypeDecl<'a> {
 
 pub enum Stmt<'a> {
   Expr(Box<Expr<'a>>),
+  ImplicitReturn(Box<Expr<'a>>),
   Import(Box<Import<'a>>),
   For(Box<For<'a>>),
   If(Box<If<'a>>),
@@ -381,6 +382,7 @@ impl<'a> Ranged for Stmt<'a> {
   fn start(&self) -> u32 {
     match self {
       Stmt::Expr(expr) => expr.start(),
+      Stmt::ImplicitReturn(expr) => expr.start(),
       Stmt::Import(import) => import.start(),
       Stmt::For(for_) => for_.start(),
       Stmt::If(if_) => if_.start(),
@@ -395,6 +397,7 @@ impl<'a> Ranged for Stmt<'a> {
   fn end(&self) -> u32 {
     match self {
       Stmt::Expr(expr) => expr.end(),
+      Stmt::ImplicitReturn(expr) => expr.end(),
       Stmt::Import(import) => import.end(),
       Stmt::For(for_) => for_.end(),
       Stmt::If(if_) => if_.end(),
