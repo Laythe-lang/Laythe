@@ -104,6 +104,7 @@ impl<T: 'static + Manage> Manage for Gc<T> {
 }
 
 unsafe impl<T: 'static + Manage> Send for Gc<T> {}
+unsafe impl<T: 'static + Manage> Sync for Gc<T> {}
 
 impl<T: 'static + Manage + ?Sized> From<NonNull<Allocation<T>>> for Gc<T> {
   fn from(ptr: NonNull<Allocation<T>>) -> Self {
