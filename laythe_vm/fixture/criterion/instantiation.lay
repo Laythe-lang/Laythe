@@ -36,5 +36,5 @@ while i < 500 {
   Foo();
   Foo();
   Foo();
-  i = i + 1;
+  i += 1;
 }

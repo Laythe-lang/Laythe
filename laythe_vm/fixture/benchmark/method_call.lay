@@ -3,11 +3,11 @@ class Toggle {
     self.state = startState;
   }
 
-  value() { return self.state; }
+  value() { self.state }
 
   activate() {
     self.state = !self.state;
-    return self;
+    self
   }
 }
 
@@ -19,7 +19,7 @@ class NthToggle : Toggle {
   }
 
   activate() {
-    self.count = self.count + 1;
+    self.count += 1;
     if self.count >= self.countMax {
       super.activate();
       self.count = 0;

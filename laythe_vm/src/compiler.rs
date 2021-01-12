@@ -1225,7 +1225,7 @@ impl<'a> Compiler<'a> {
                 if let Primary::Self_(_) = atom.primary {
                   let mut class_info = self.class_info.unwrap();
 
-                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
+                  if !class_info.fields.iter().any(|f| &*f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
                     class_info.add_field(&GcHooks::new(self), field);
                   }
@@ -1293,7 +1293,7 @@ impl<'a> Compiler<'a> {
                 if let Primary::Self_(_) = atom.primary {
                   let mut class_info = self.class_info.unwrap();
 
-                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
+                  if !class_info.fields.iter().any(|f| &*f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
                     class_info.add_field(&GcHooks::new(self), field);
                   }

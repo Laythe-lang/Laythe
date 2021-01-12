@@ -4,6 +4,7 @@ use crate::{
   constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
   parser::Parser,
 };
+use codespan::{FileId, Files};
 use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
   constants::{IMPORT_SEPARATOR, PLACEHOLDER_NAME, SCRIPT},
@@ -98,6 +99,12 @@ pub struct Vm {
 
   /// The environments io access
   io: Io,
+
+  /// The currently loaded files
+  files: Files<GcStr>,
+
+  /// All the file id currently loaded
+  file_ids: Map<PathBuf, FileId>,
 
   /// The root directory
   root_dir: Gc<PathBuf>,
@@ -194,6 +201,8 @@ impl Vm {
       stack,
       frames,
       gc,
+      files: Files::new(),
+      file_ids: Map::default(),
       builtin,
       root_dir,
       packages: Map::default(),
@@ -253,6 +262,18 @@ impl Vm {
         directory.pop();
 
         self.root_dir = self.gc.borrow_mut().manage(directory, &NO_GC);
+        let managed_source = self.gc.borrow_mut().manage_str(source, &NO_GC);
+
+        match self.file_ids.get(&module_path) {
+          Some(file_id) => {
+            self.files.update(*file_id, managed_source);
+          }
+          None => {
+            let main_file_id = self.files.add(module_path.clone(), managed_source);
+            self.file_ids.insert(module_path.clone(), main_file_id);
+          }
+        }
+
         let main_module = match self.main_module(module_path) {
           Ok(module) => module,
           Err(err) => {
@@ -260,7 +281,7 @@ impl Vm {
           }
         };
 
-        self.interpret(main_module, source)
+        self.interpret(main_module, &managed_source)
       }
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
@@ -2058,6 +2079,8 @@ impl From<VmDependencies> for Vm {
       stack,
       frames,
       gc,
+      files: Files::new(),
+      file_ids: Map::default(),
       root_dir,
       builtin,
       packages: Map::default(),
@@ -2104,6 +2127,10 @@ impl TraceRoot for Vm {
       upvalue.trace();
     });
 
+    self.file_ids.values().for_each(|file_id| {
+      self.files.source(*file_id).trace();
+    });
+
     self.packages.trace();
     self.cache.trace();
     self.root_dir.trace();
@@ -2113,9 +2140,9 @@ impl TraceRoot for Vm {
     }
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) {
+  fn trace_debug(&self, log: &mut dyn Write) {
     if let Some(script) = self.script {
-      script.trace_debug(stdout);
+      script.trace_debug(log);
     }
 
     unsafe {
@@ -2124,24 +2151,28 @@ impl TraceRoot for Vm {
       let slice = std::slice::from_raw_parts(start, len);
 
       slice.iter().for_each(|value| {
-        value.trace_debug(stdout);
+        value.trace_debug(log);
       });
     }
 
     self.frames[0..self.frame_count].iter().for_each(|frame| {
-      frame.closure.trace_debug(stdout);
+      frame.closure.trace_debug(log);
     });
 
     self.open_upvalues.iter().for_each(|upvalue| {
-      upvalue.trace_debug(stdout);
+      upvalue.trace_debug(log);
     });
 
-    self.packages.trace_debug(stdout);
-    self.cache.trace_debug(stdout);
-    self.root_dir.trace_debug(stdout);
-    self.native_fun_stub.trace_debug(stdout);
+    self.file_ids.values().for_each(|file_id| {
+      self.files.source(*file_id).trace_debug(log);
+    });
+
+    self.packages.trace_debug(log);
+    self.cache.trace_debug(log);
+    self.root_dir.trace_debug(log);
+    self.native_fun_stub.trace_debug(log);
     if let Some(current_error) = self.current_error {
-      current_error.trace_debug(stdout)
+      current_error.trace_debug(log)
     }
   }
 

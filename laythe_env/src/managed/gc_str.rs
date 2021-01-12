@@ -24,7 +24,7 @@ use super::{Marked, Unmark};
 /// use laythe_env::managed::{GcStr, GcStrHandle};
 /// use std::mem;
 ///
-/// let str = &"my string";
+/// let str = "my string";
 /// let handle = GcStrHandle::from(str);
 /// let string = handle.value();
 ///
@@ -157,10 +157,17 @@ impl PartialEq<GcStr> for GcStr {
   }
 }
 
-impl<T: AsRef<str>> PartialEq<T> for GcStr {
+impl PartialEq<str> for GcStr {
   #[inline]
-  fn eq(&self, other: &T) -> bool {
-    &**self == other.as_ref()
+  fn eq(&self, other: &str) -> bool {
+    &**self == other
+  }
+}
+
+impl PartialEq<&str> for GcStr {
+  #[inline]
+  fn eq(&self, other: &&str) -> bool {
+    &**self == *other
   }
 }
 
@@ -199,6 +206,12 @@ impl Copy for GcStr {}
 impl Clone for GcStr {
   fn clone(&self) -> Self {
     *self
+  }
+}
+
+impl AsRef<str> for GcStr {
+  fn as_ref(&self) -> &str {
+    &self
   }
 }
 
@@ -290,4 +303,3 @@ impl Pointer for GcStrHandle {
     Pointer::fmt(&self.value().0.as_alloc_ptr(), f)
   }
 }
-

@@ -67,7 +67,7 @@ while i < 500000 {
   foo.method27();
   foo.method28();
   foo.method29();
-  i = i + 1;
+  i += 1;
 }
 
 print(clock() - start);
