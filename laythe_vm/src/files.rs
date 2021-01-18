@@ -4,14 +4,26 @@ use codespan_reporting::files;
 use laythe_core::object::Map;
 use laythe_env::managed::{GcStr, Trace};
 
-/// A set of offsets indicating the
+/// A struct for efficiently determine lines for an associated
+/// file.
 #[derive(Default, Clone)]
 pub struct LineOffsets {
+  /// The offsets where line break occur in the associated file
   offsets: Vec<usize>,
+
+  /// The full length of the file
   len: usize,
 }
 
 impl LineOffsets {
+  /// Create a new instance of LineOffsets
+  ///
+  /// # Examples
+  /// ```
+  /// use laythe_vm::files::LineOffsets;
+  ///
+  /// let offsets = LineOffsets::new(vec![0, 10], 20);
+  /// ```
   pub fn new(offsets: Vec<usize>, len: usize) -> Self {
     assert!(!offsets.is_empty());
     assert!(*offsets.last().unwrap_or(&0) <= len);
@@ -82,13 +94,21 @@ impl LineOffsets {
   }
 }
 
+/// A struct for holding information related to file loaded
+/// by the virtual machine
 struct VmFile {
+  /// The name of this file
   name: GcStr,
+
+  /// The full source of this file
   source: GcStr,
+
+  /// The line offsets for this file
   line_offsets: Option<LineOffsets>,
 }
 
 impl VmFile {
+  /// Get an immutable reference to files line offsets
   fn line_offsets(&self) -> &LineOffsets {
     self.line_offsets.as_ref().expect("Line offset not set yet")
   }
@@ -106,32 +126,45 @@ impl Trace for VmFile {
   }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+/// A unique id to a `VmFile`
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VmFileId(usize);
 
+/// A file database managed by the virtual machine
 #[derive(Default)]
 pub struct VmFiles {
+  /// The files stored in this file database
   files: Vec<VmFile>,
+
+  /// A map between file names and there unwrapped
   name_map: Map<GcStr, usize>,
 }
 
 impl VmFiles {
-  fn get<'a>(&'a self, id: VmFileId) -> Result<&'a VmFile, files::Error> {
-    if id.0 > self.files.len() {
-      return Err(files::Error::FileMissing);
-    }
-
-    Ok(&self.files[id.0])
-  }
-
-  fn get_mut<'a>(&'a mut self, id: VmFileId) -> Result<&'a mut VmFile, files::Error> {
-    if id.0 > self.files.len() {
-      return Err(files::Error::FileMissing);
-    }
-
-    Ok(&mut self.files[id.0])
-  }
-
+  /// Insert or update a file into the file database. Returns the
+  /// `VmFileId` for the new file or updated file.
+  ///
+  /// # Examples
+  /// ```
+  /// use laythe_env::memory::{Allocator, NO_GC};
+  /// use laythe_vm::files::VmFiles;
+  ///
+  /// let mut alloc = Allocator::default();
+  /// let name1 = alloc.manage_str("first.lay", &NO_GC);
+  /// let name2 = alloc.manage_str("second.lay", &NO_GC);
+  ///
+  /// let source1 = alloc.manage_str("let x = 10;", &NO_GC);
+  /// let source2 = alloc.manage_str("print(\"hi\")", &NO_GC);
+  ///
+  /// let mut files = VmFiles::default();
+  /// let id1 = files.upsert(name1, source1);
+  /// let id2 = files.upsert(name2, source1);
+  /// let id3 = files.upsert(name1, source2);
+  ///
+  /// assert_ne!(id1, id2);
+  /// assert_ne!(id2, id3);
+  /// assert_eq!(id1, id3);
+  /// ```
   pub fn upsert(&mut self, name: GcStr, source: GcStr) -> VmFileId {
     match self.name_map.get(&name) {
       Some(id) => {
@@ -157,6 +190,23 @@ impl VmFiles {
     }
   }
 
+  /// Update a files line offsets after it has been calculated
+  ///
+  /// # Examples
+  /// ```
+  /// use laythe_env::memory::{Allocator, NO_GC};
+  /// use laythe_vm::files::{VmFiles, LineOffsets};
+  ///
+  /// let mut alloc = Allocator::default();
+  ///
+  /// let name = alloc.manage_str("first.lay", &NO_GC);
+  /// let source = alloc.manage_str("let x = 10;", &NO_GC);
+  ///
+  /// let mut files = VmFiles::default();
+  /// let id = files.upsert(name, source);
+  ///
+  /// assert!(files.update_line_offsets(id, LineOffsets::new(vec![0], 10)).is_ok());
+  /// ```
   pub fn update_line_offsets(
     &mut self,
     id: VmFileId,
@@ -165,6 +215,26 @@ impl VmFiles {
     let vm_file = self.get_mut(id)?;
     vm_file.line_offsets = Some(line_offsets);
     Ok(())
+  }
+
+  /// Retrieve an immutable file reference from the file database. Return
+  /// a file missing error if not found
+  fn get<'a>(&'a self, id: VmFileId) -> Result<&'a VmFile, files::Error> {
+    if id.0 > self.files.len() {
+      return Err(files::Error::FileMissing);
+    }
+
+    Ok(&self.files[id.0])
+  }
+
+  /// Retrieve an mutable file reference from the file database. Return
+  /// a file missing error if not found
+  fn get_mut<'a>(&'a mut self, id: VmFileId) -> Result<&'a mut VmFile, files::Error> {
+    if id.0 > self.files.len() {
+      return Err(files::Error::FileMissing);
+    }
+
+    Ok(&mut self.files[id.0])
   }
 }
 
@@ -221,4 +291,40 @@ impl Trace for VmFiles {
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
     self.files.iter().for_each(|file| file.trace_debug(log));
   }
+}
+
+#[cfg(test)]
+mod test {
+  mod line_offsets {
+    use crate::files::LineOffsets;
+
+    #[test]
+    fn lines() {
+      let offsets = LineOffsets::new(vec![0, 10], 20);
+      assert_eq!(offsets.lines(), 2);
+    }
+
+    #[test]
+    fn offset_line() {
+      let offsets = LineOffsets::new(vec![0, 10], 20);
+
+      assert_eq!(offsets.offset_line(0), Ok(0));
+      assert_eq!(offsets.offset_line(1), Ok(0));
+      assert_eq!(offsets.offset_line(10), Ok(1));
+      assert_eq!(offsets.offset_line(11), Ok(1));
+      assert_eq!(offsets.offset_line(20), Ok(1));
+      assert_eq!(offsets.offset_line(30), Err(()));
+    }
+
+    #[test]
+    fn line_range() {
+      let offsets = LineOffsets::new(vec![0, 10], 20);
+
+      assert_eq!(offsets.line_range(0), Ok(0..10));
+      assert_eq!(offsets.line_range(1), Ok(10..20));
+      assert_eq!(offsets.line_range(2), Err(()));
+    }
+  }
+
+  mod vm_files {}
 }
