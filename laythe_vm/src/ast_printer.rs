@@ -130,13 +130,8 @@ impl<'a> Visitor<'a> for AstPrint {
   fn visit_class(&mut self, class: &Class) -> Self::Result {
     self.pad();
 
-    match &class.name {
-      Some(name) => {
-        self.buffer.push_str("class ");
-        self.buffer.push_str(&name.str());
-      }
-      None => self.buffer.push_str("class"),
-    }
+    self.buffer.push_str("class ");
+    self.buffer.push_str(&class.name.str());
 
     self.buffer.push_str(" {\n");
     self.depth += 1;

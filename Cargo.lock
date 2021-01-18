@@ -355,6 +355,7 @@ version = "0.1.0"
 dependencies = [
  "fnv",
  "hashbrown",
+ "termcolor",
 ]
 
 [[package]]
@@ -387,6 +388,7 @@ name = "laythe_native"
 version = "0.1.0"
 dependencies = [
  "laythe_env",
+ "termcolor",
 ]
 
 [[package]]
@@ -394,6 +396,7 @@ name = "laythe_vm"
 version = "0.1.0"
 dependencies = [
  "codespan",
+ "codespan-reporting",
  "criterion",
  "fnv",
  "laythe_core",
@@ -412,6 +415,7 @@ dependencies = [
  "laythe_core",
  "laythe_env",
  "laythe_vm",
+ "termcolor",
  "wasm-bindgen",
  "web-sys",
 ]

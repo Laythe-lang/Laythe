@@ -5,6 +5,7 @@ use laythe_env::{
   stdio::{MockRead, Stdio, StdioImpl},
 };
 use std::{cell::RefCell, io, sync::Arc};
+use termcolor::WriteColor;
 use wasm_bindgen::JsValue;
 use web_sys::console::{error_1, log_1};
 
@@ -76,6 +77,9 @@ where
   fn stderr(&mut self) -> &mut dyn io::Write {
     &mut self.stderr
   }
+  fn stderr_color(&mut self) -> &mut dyn WriteColor {
+    &mut self.stderr
+  }
   fn stdin(&mut self) -> &mut dyn io::Read {
     &mut self.stdin
   }
@@ -107,6 +111,9 @@ impl StdioImpl for StdioJsFunction {
   fn stderr(&mut self) -> &mut dyn io::Write {
     &mut self.stderr
   }
+  fn stderr_color(&mut self) -> &mut dyn WriteColor {
+    &mut self.stderr
+  }
   fn stdin(&mut self) -> &mut dyn io::Read {
     &mut self.stdin
   }
@@ -126,6 +133,20 @@ impl<'a, W: Fn(&JsValue)> ConsoleWrapper<'a, W> {
       writer,
       line_buffer: "".to_string(),
     }
+  }
+}
+
+impl<'a, W: Fn(&JsValue)> WriteColor for ConsoleWrapper<'a, W> {
+  fn supports_color(&self) -> bool {
+    false
+  }
+
+  fn set_color(&mut self, _: &termcolor::ColorSpec) -> io::Result<()> {
+    Ok(())
+  }
+
+  fn reset(&mut self) -> io::Result<()> {
+    Ok(())
   }
 }
 
@@ -180,6 +201,20 @@ impl FunWrapper {
       fun,
       line_buffer: Arc::clone(line_buffer),
     }
+  }
+}
+
+impl WriteColor for FunWrapper {
+  fn supports_color(&self) -> bool {
+    false
+  }
+
+  fn set_color(&mut self, _: &termcolor::ColorSpec) -> io::Result<()> {
+    Ok(())
+  }
+
+  fn reset(&mut self) -> io::Result<()> {
+    Ok(())
   }
 }
 

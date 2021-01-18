@@ -10,3 +10,4 @@ path = "src/lib.rs"
 
 [dependencies]
 laythe_env = { path = "../laythe_env" }
+termcolor = "1.1.2"

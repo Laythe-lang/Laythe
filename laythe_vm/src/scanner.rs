@@ -1,6 +1,10 @@
-use crate::token::{Lexeme, Token, TokenKind};
+use std::usize;
+
+use crate::{
+  files::LineOffsets,
+  token::{Lexeme, Token, TokenKind},
+};
 use laythe_core::utils::{next_boundary, previous_boundary};
-use smol_str::SmolStr;
 
 /// Tracking information for one layer of string interpolation
 struct Interpolation<'a> {
@@ -21,7 +25,7 @@ pub struct Scanner<'a> {
   interpolations: Vec<Interpolation<'a>>,
 
   /// The current line number
-  line: u32,
+  line_offsets: Vec<usize>,
 
   /// The start of the current token
   start: usize,
@@ -41,6 +45,7 @@ impl<'a> Scanner<'a> {
   /// ```
   /// use laythe_vm::scanner::Scanner;
   /// use laythe_vm::token::TokenKind;
+  /// use laythe_vm::ast::Spanned;
   ///
   /// let source = String::from("
   /// let x = \"something\";
@@ -51,12 +56,22 @@ impl<'a> Scanner<'a> {
   ///
   /// let mut scanner = Scanner::new(&source);
   /// let token = scanner.scan_token();
-  /// assert_eq!(token.line, 2);
-  /// assert_eq!(token.kind, TokenKind::Let);
+  /// assert_eq!(token.start(), 1);
+  /// assert_eq!(token.end(), 4);
+  /// assert_eq!(token.kind(), TokenKind::Let);
   /// assert_eq!(token.str(), "let");
   /// ```
   pub fn new(source: &'a str) -> Scanner<'a> {
+    assert!(
+      source.len() < std::u32::MAX as usize,
+      "Can only read files less than {} bytes",
+      std::u32::MAX
+    );
+
     let current = next_boundary(&source, 0);
+
+    let mut line_offsets = Vec::with_capacity(source_line_heuristic_guess(source.len()));
+    line_offsets.push(0);
 
     Scanner {
       source,
@@ -67,7 +82,7 @@ impl<'a> Scanner<'a> {
       current,
       char_start: 0,
 
-      line: 1,
+      line_offsets,
     }
   }
 
@@ -78,6 +93,7 @@ impl<'a> Scanner<'a> {
   /// ```
   /// use laythe_vm::scanner::{Scanner};
   /// use laythe_vm::token::TokenKind;
+  /// use laythe_vm::ast::Spanned;
   ///
   /// let source = String::from("
   /// let x = \"something\";
@@ -88,18 +104,21 @@ impl<'a> Scanner<'a> {
   ///
   /// let mut scanner = Scanner::new(&source);
   /// let mut token = scanner.scan_token();
-  /// assert_eq!(token.line, 2);
-  /// assert_eq!(token.kind, TokenKind::Let);
+  /// assert_eq!(token.start(), 1);
+  /// assert_eq!(token.end(), 4);
+  /// assert_eq!(token.kind(), TokenKind::Let);
   /// assert_eq!(token.str(), "let");
   ///
   /// token = scanner.scan_token();
-  /// assert_eq!(token.line, 2);
-  /// assert_eq!(token.kind, TokenKind::Identifier);
+  /// assert_eq!(token.start(), 5);
+  /// assert_eq!(token.end(), 6);
+  /// assert_eq!(token.kind(), TokenKind::Identifier);
   /// assert_eq!(token.str(), "x");
   ///
   /// token = scanner.scan_token();
-  /// assert_eq!(token.line, 2);
-  /// assert_eq!(token.kind, TokenKind::Equal);
+  /// assert_eq!(token.start(), 7);
+  /// assert_eq!(token.end(), 8);
+  /// assert_eq!(token.kind(), TokenKind::Equal);
   /// assert_eq!(token.str(), "=");
   /// ```
   pub fn scan_token(&mut self) -> Token<'a> {
@@ -112,7 +131,7 @@ impl<'a> Scanner<'a> {
 
     // if at end return oef token
     if self.is_at_end() {
-      return make_token(TokenKind::Eof, "", self.line);
+      return make_token(TokenKind::Eof, "", self.start, self.current - 1);
     }
 
     // move scanner index and get current unicode character
@@ -226,6 +245,53 @@ impl<'a> Scanner<'a> {
     }
   }
 
+  /// Retrieve this files line offsets after it has
+  /// been scanned
+  ///
+  /// # Examples
+  /// ```
+  /// use laythe_vm::scanner::{Scanner};
+  /// use laythe_vm::token::TokenKind;
+  ///
+  /// let source = String::from("
+  /// let x = \"something\";
+  /// if x != \"something\" {
+  ///   print(x);
+  /// }");
+  ///
+  /// let mut scanner = Scanner::new(&source);
+  /// let token = scanner.scan_token();
+  ///
+  /// let mut offsets = scanner.line_offsets();
+  /// assert_eq!(offsets.lines(), 5);
+  /// assert_eq!(offsets.line_range(0), Ok(0..1));
+  /// assert_eq!(offsets.line_range(1), Ok(1..22));
+  /// assert_eq!(offsets.line_range(2), Ok(22..44));
+  /// assert_eq!(offsets.line_range(3), Ok(44..56));
+  /// assert_eq!(offsets.line_range(4), Ok(56..57));
+  /// assert_eq!(offsets.line_range(5), Err(()));
+  /// ```
+  pub fn line_offsets(mut self) -> LineOffsets {
+    if !self.source.is_empty() {
+      while !self.is_at_end() {
+        let c = self.peek();
+
+        match c {
+          "\n" => {
+            self.new_line();
+            self.advance_indices();
+          }
+          _ => {
+            self.advance_indices();
+          }
+        }
+      }
+    }
+
+    self.line_offsets.shrink_to_fit();
+    LineOffsets::new(self.line_offsets, self.source.len())
+  }
+
   /// Generate an identifier token
   fn identifier(&mut self) -> Token<'a> {
     // advance until we hit whitespace or a special char
@@ -291,7 +357,7 @@ impl<'a> Scanner<'a> {
     while !self.is_at_end() && self.peek() != quote_char {
       match self.peek() {
         "\n" => {
-          self.line += 1;
+          self.new_line();
           buffer.push('\n');
         }
         "\\" => {
@@ -342,25 +408,22 @@ impl<'a> Scanner<'a> {
                 Ok(code_point) => match std::char::from_u32(code_point) {
                   Some(c) => buffer.push(c),
                   None => {
-                    return self.error_token_owned(SmolStr::from(format!(
-                      "Invalid unicode escape {}.",
-                      unicode
-                    )));
+                    return self.error_token_owned(format!("Invalid unicode escape {}.", unicode));
                   }
                 },
                 Err(_) => {
-                  return self.error_token_owned(SmolStr::from(format!(
+                  return self.error_token_owned(format!(
                     "Invalid hexadecimal unicode escape sequence {}.",
                     unicode
-                  )));
+                  ));
                 }
               }
             }
             _ => {
-              return self.error_token_owned(SmolStr::from(format!(
+              return self.error_token_owned(format!(
                 "Invalid escape character '{}'.",
                 self.current_slice()
-              )));
+              ));
             }
           }
         }
@@ -394,7 +457,7 @@ impl<'a> Scanner<'a> {
     }
 
     self.advance_indices();
-    make_token_owned(kind, SmolStr::from(buffer), self.line)
+    make_token_owned(kind, buffer, self.start, self.current - 1)
   }
 
   /// Advance through whitespace effectively throwing it away
@@ -407,7 +470,7 @@ impl<'a> Scanner<'a> {
           self.advance_indices();
         }
         "\n" => {
-          self.line += 1;
+          self.new_line();
           self.advance_indices();
         }
         "/" => match self.peek_next() {
@@ -521,17 +584,17 @@ impl<'a> Scanner<'a> {
 
   /// Make a token from the current state of the scanner
   fn make_token_source(&self, kind: TokenKind) -> Token<'a> {
-    make_token(kind, self.current_slice(), self.line)
+    make_token(kind, self.current_slice(), self.start, self.current - 1)
   }
 
   /// Make a new error token
   fn error_token(&self, message: &'a str) -> Token<'a> {
-    make_token(TokenKind::Error, message, self.line)
+    make_token(TokenKind::Error, message, self.start, self.current - 1)
   }
 
   /// Make a owned error error token
-  fn error_token_owned(&self, message: SmolStr) -> Token<'static> {
-    make_token_owned(TokenKind::Error, message, self.line)
+  fn error_token_owned(&self, message: String) -> Token<'static> {
+    make_token_owned(TokenKind::Error, message, self.start, self.current - 1)
   }
 
   /// Peek the next token
@@ -549,6 +612,10 @@ impl<'a> Scanner<'a> {
   /// Peek the current token
   fn peek(&self) -> &str {
     unsafe { self.source.get_unchecked(self.char_start..self.current) }
+  }
+
+  fn new_line(&mut self) {
+    self.line_offsets.push(self.current);
   }
 
   /// Find the nth char from the current index
@@ -615,21 +682,13 @@ impl<'a> Scanner<'a> {
 }
 
 /// Make a new token
-fn make_token(kind: TokenKind, lexeme: &str, line: u32) -> Token {
-  Token {
-    kind,
-    lexeme: Lexeme::Slice(lexeme),
-    line,
-  }
+fn make_token(kind: TokenKind, lexeme: &str, start: usize, end: usize) -> Token {
+  Token::new(kind, Lexeme::Slice(lexeme), start as u32, end as u32)
 }
 
 /// Make a new token
-fn make_token_owned<'a>(kind: TokenKind, lexeme: SmolStr, line: u32) -> Token<'a> {
-  Token {
-    kind,
-    lexeme: Lexeme::Owned(lexeme),
-    line,
-  }
+fn make_token_owned<'a>(kind: TokenKind, lexeme: String, start: usize, end: usize) -> Token<'a> {
+  Token::new(kind, Lexeme::Owned(lexeme), start as u32, end as u32)
 }
 
 /// Is the str slice a digit. Assumes single char
@@ -640,6 +699,11 @@ fn is_digit(c: &str) -> bool {
 /// Is the str slice a alphabetic. Assumes single char
 fn is_alpha(c: &str) -> bool {
   ("a"..="z").contains(&c) || ("A"..="Z").contains(&c) || c == "_"
+}
+
+/// A loose estimate for how many characters are in a typical line
+const fn source_line_heuristic_guess(len: usize) -> usize {
+  len / 20
 }
 
 #[cfg(test)]
@@ -887,7 +951,7 @@ mod test {
     let mut scanner = Scanner::new(&empty);
 
     let token_eof = scanner.scan_token().clone();
-    assert_eq!(token_eof.kind, TokenKind::Eof);
+    assert_eq!(token_eof.kind(), TokenKind::Eof);
     assert_eq!(token_eof.str(), "");
   }
 
@@ -908,7 +972,7 @@ mod test {
     for (input, expected) in tests {
       let mut scanner = Scanner::new(&input);
       let scanned_token = scanner.scan_token();
-      assert_eq!(scanned_token.kind, TokenKind::String);
+      assert_eq!(scanned_token.kind(), TokenKind::String);
       assert_eq!(scanned_token.str(), expected);
     }
   }
@@ -935,7 +999,7 @@ mod test {
 
     for (kind, lexeme) in asserts.iter() {
       let scanned_token = scanner.scan_token();
-      assert_eq!(scanned_token.kind, *kind);
+      assert_eq!(scanned_token.kind(), *kind);
       assert_eq!(scanned_token.str(), *lexeme);
     }
   }
@@ -951,7 +1015,7 @@ mod test {
 
       let mut scanner = Scanner::new(&example);
       let scanned_token = scanner.scan_token().clone();
-      assert_eq!(scanned_token.kind, token_kind.clone());
+      assert_eq!(scanned_token.kind(), token_kind.clone());
     }
   }
 
@@ -961,19 +1025,19 @@ mod test {
     let mut scanner = Scanner::new(&basic);
 
     let token_ten = scanner.scan_token().clone();
-    assert_eq!(token_ten.kind, TokenKind::Number);
+    assert_eq!(token_ten.kind(), TokenKind::Number);
     assert_eq!(token_ten.str(), "10");
 
     let token_plus = scanner.scan_token().clone();
-    assert_eq!(token_plus.kind, TokenKind::Plus);
+    assert_eq!(token_plus.kind(), TokenKind::Plus);
     assert_eq!(token_plus.str(), "+");
 
     let token_three = scanner.scan_token().clone();
-    assert_eq!(token_three.kind, TokenKind::Number);
+    assert_eq!(token_three.kind(), TokenKind::Number);
     assert_eq!(token_three.str(), "3");
 
     let token_eof = scanner.scan_token().clone();
-    assert_eq!(token_eof.kind, TokenKind::Eof);
+    assert_eq!(token_eof.kind(), TokenKind::Eof);
     assert_eq!(token_eof.str(), "");
   }
 }

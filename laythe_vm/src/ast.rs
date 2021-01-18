@@ -1,3 +1,5 @@
+use std::{ops::Range, usize};
+
 use crate::token::Token;
 
 /// A visitor pattern for the Laythe ast.
@@ -82,7 +84,7 @@ pub trait TypeVisitor {
 
 /// An object that can specify it's start and end position and optionally the full range
 /// Implementors of ranges only need to implement `start` ad `end`
-pub trait Ranged {
+pub trait Spanned {
   /// The starting line of this node
   fn start(&self) -> u32;
 
@@ -90,8 +92,8 @@ pub trait Ranged {
   fn end(&self) -> u32;
 
   /// The full range of this node
-  fn range(&self) -> Range {
-    Range {
+  fn span(&self) -> Span {
+    Span {
       start: self.start(),
       end: self.end(),
     }
@@ -100,10 +102,16 @@ pub trait Ranged {
 
 /// Representing the start and end of a node. Typically this would
 /// be a multi line control flow or a function declaration
-#[derive(Default, Copy, Clone)]
-pub struct Range {
+#[derive(Default, Debug, Copy, Clone)]
+pub struct Span {
   pub start: u32,
   pub end: u32,
+}
+
+impl Into<Range<usize>> for Span {
+  fn into(self) -> Range<usize> {
+    (self.start as usize)..(self.end as usize)
+  }
 }
 
 #[derive(Default)]
@@ -117,13 +125,13 @@ impl<'a> Module<'a> {
   }
 }
 
-impl<'a> Ranged for Module<'a> {
+impl<'a> Spanned for Module<'a> {
   fn start(&self) -> u32 {
-    self.decls.first().map_or(1, |first| first.start())
+    self.decls.first().map_or(0, |first| first.start())
   }
 
   fn end(&self) -> u32 {
-    self.decls.last().map_or(1, |last| last.end())
+    self.decls.last().map_or(0, |last| last.end())
   }
 }
 
@@ -134,13 +142,13 @@ pub enum Decl<'a> {
   Error(Box<[Token<'a>]>),
 }
 
-impl<'a> Ranged for Decl<'a> {
+impl<'a> Spanned for Decl<'a> {
   fn start(&self) -> u32 {
     match self {
       Decl::Symbol(symbol) => symbol.start(),
       Decl::Export(export) => export.start(),
       Decl::Stmt(stmt) => stmt.start(),
-      Decl::Error(error) => error.first().map_or(0, |first| first.line),
+      Decl::Error(error) => error.first().map_or(0, |first| first.start()),
     }
   }
 
@@ -149,7 +157,7 @@ impl<'a> Ranged for Decl<'a> {
       Decl::Symbol(symbol) => symbol.end(),
       Decl::Export(export) => export.end(),
       Decl::Stmt(stmt) => stmt.end(),
-      Decl::Error(error) => error.last().map_or(0, |last| last.line),
+      Decl::Error(error) => error.last().map_or(0, |last| last.start()),
     }
   }
 }
@@ -162,7 +170,7 @@ pub enum Symbol<'a> {
   TypeDecl(TypeDecl<'a>),
 }
 
-impl<'a> Ranged for Symbol<'a> {
+impl<'a> Spanned for Symbol<'a> {
   fn start(&self) -> u32 {
     match self {
       Symbol::Class(class) => class.start(),
@@ -185,8 +193,8 @@ impl<'a> Ranged for Symbol<'a> {
 }
 
 pub struct Class<'a> {
-  pub name: Option<Token<'a>>,
-  pub range: Range,
+  pub name: Token<'a>,
+  pub range: Span,
   pub type_params: Vec<TypeParam<'a>>,
   pub super_class: Option<ClassType<'a>>,
   pub type_members: Vec<TypeMember<'a>>,
@@ -198,8 +206,8 @@ pub struct Class<'a> {
 impl<'a> Class<'a> {
   #[allow(clippy::too_many_arguments)]
   pub fn new(
-    name: Option<Token<'a>>,
-    range: Range,
+    name: Token<'a>,
+    range: Span,
     type_params: Vec<TypeParam<'a>>,
     super_class: Option<ClassType<'a>>,
     type_members: Vec<TypeMember<'a>>,
@@ -220,8 +228,8 @@ impl<'a> Class<'a> {
   }
 }
 
-impl<'a> Ranged for Class<'a> {
-  fn range(&self) -> Range {
+impl<'a> Spanned for Class<'a> {
+  fn span(&self) -> Span {
     self.range
   }
 
@@ -250,7 +258,7 @@ impl<'a> Fun<'a> {
   }
 }
 
-impl<'a> Ranged for Fun<'a> {
+impl<'a> Spanned for Fun<'a> {
   fn start(&self) -> u32 {
     match &self.name {
       Some(name) => name.start(),
@@ -283,7 +291,7 @@ impl<'a> Let<'a> {
   }
 }
 
-impl<'a> Ranged for Let<'a> {
+impl<'a> Spanned for Let<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -300,7 +308,7 @@ impl<'a> Ranged for Let<'a> {
 }
 
 pub struct Trait<'a> {
-  pub range: Range,
+  pub range: Span,
   pub name: Token<'a>,
   pub params: Vec<TypeParam<'a>>,
   pub members: Vec<TypeMember<'a>>,
@@ -309,7 +317,7 @@ pub struct Trait<'a> {
 
 impl<'a> Trait<'a> {
   pub fn new(
-    range: Range,
+    range: Span,
     name: Token<'a>,
     params: Vec<TypeParam<'a>>,
     members: Vec<TypeMember<'a>>,
@@ -325,8 +333,8 @@ impl<'a> Trait<'a> {
   }
 }
 
-impl<'a> Ranged for Trait<'a> {
-  fn range(&self) -> Range {
+impl<'a> Spanned for Trait<'a> {
+  fn span(&self) -> Span {
     self.range
   }
 
@@ -355,7 +363,7 @@ impl<'a> TypeDecl<'a> {
   }
 }
 
-impl<'a> Ranged for TypeDecl<'a> {
+impl<'a> Spanned for TypeDecl<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -378,7 +386,7 @@ pub enum Stmt<'a> {
   Try(Box<Try<'a>>),
 }
 
-impl<'a> Ranged for Stmt<'a> {
+impl<'a> Spanned for Stmt<'a> {
   fn start(&self) -> u32 {
     match self {
       Stmt::Expr(expr) => expr.start(),
@@ -421,7 +429,7 @@ impl<'a> Import<'a> {
   }
 }
 
-impl<'a> Ranged for Import<'a> {
+impl<'a> Spanned for Import<'a> {
   fn start(&self) -> u32 {
     self.imported.start()
   }
@@ -443,7 +451,7 @@ impl<'a> For<'a> {
   }
 }
 
-impl<'a> Ranged for For<'a> {
+impl<'a> Spanned for For<'a> {
   fn start(&self) -> u32 {
     self.item.start()
   }
@@ -465,7 +473,7 @@ impl<'a> If<'a> {
   }
 }
 
-impl<'a> Ranged for If<'a> {
+impl<'a> Spanned for If<'a> {
   fn start(&self) -> u32 {
     self.cond.start()
   }
@@ -497,7 +505,7 @@ impl<'a> Return<'a> {
   }
 }
 
-impl<'a> Ranged for Return<'a> {
+impl<'a> Spanned for Return<'a> {
   fn start(&self) -> u32 {
     self.return_.start()
   }
@@ -521,7 +529,7 @@ impl<'a> While<'a> {
   }
 }
 
-impl<'a> Ranged for While<'a> {
+impl<'a> Spanned for While<'a> {
   fn start(&self) -> u32 {
     self.cond.start()
   }
@@ -542,7 +550,7 @@ impl<'a> Try<'a> {
   }
 }
 
-impl<'a> Ranged for Try<'a> {
+impl<'a> Spanned for Try<'a> {
   fn start(&self) -> u32 {
     self.block.start()
   }
@@ -553,18 +561,18 @@ impl<'a> Ranged for Try<'a> {
 }
 
 pub struct Block<'a> {
-  pub range: Range,
+  pub range: Span,
   pub decls: Vec<Decl<'a>>,
 }
 
 impl<'a> Block<'a> {
-  pub fn new(range: Range, decls: Vec<Decl<'a>>) -> Self {
+  pub fn new(range: Span, decls: Vec<Decl<'a>>) -> Self {
     Self { range, decls }
   }
 }
 
-impl<'a> Ranged for Block<'a> {
-  fn range(&self) -> Range {
+impl<'a> Spanned for Block<'a> {
+  fn span(&self) -> Span {
     self.range
   }
 
@@ -579,7 +587,7 @@ impl<'a> Ranged for Block<'a> {
 
 #[derive(Default)]
 pub struct CallSignature<'a> {
-  pub range: Range,
+  pub range: Span,
   pub type_params: Vec<TypeParam<'a>>,
   pub params: Vec<Param<'a>>,
   pub return_type: Option<Type<'a>>,
@@ -587,7 +595,7 @@ pub struct CallSignature<'a> {
 
 impl<'a> CallSignature<'a> {
   pub fn new(
-    range: Range,
+    range: Span,
     type_params: Vec<TypeParam<'a>>,
     params: Vec<Param<'a>>,
     return_type: Option<Type<'a>>,
@@ -601,8 +609,8 @@ impl<'a> CallSignature<'a> {
   }
 }
 
-impl<'a> Ranged for CallSignature<'a> {
-  fn range(&self) -> Range {
+impl<'a> Spanned for CallSignature<'a> {
+  fn span(&self) -> Span {
     self.range
   }
 
@@ -626,7 +634,7 @@ impl<'a> Param<'a> {
   }
 }
 
-impl<'a> Ranged for Param<'a> {
+impl<'a> Spanned for Param<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -647,7 +655,7 @@ pub enum Expr<'a> {
   Atom(Box<Atom<'a>>),
 }
 
-impl<'a> Ranged for Expr<'a> {
+impl<'a> Spanned for Expr<'a> {
   fn start(&self) -> u32 {
     match self {
       Expr::Assign(assign) => assign.start(),
@@ -680,7 +688,7 @@ impl<'a> Assign<'a> {
   }
 }
 
-impl<'a> Ranged for Assign<'a> {
+impl<'a> Spanned for Assign<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -709,7 +717,7 @@ impl<'a> AssignBinary<'a> {
   }
 }
 
-impl<'a> Ranged for AssignBinary<'a> {
+impl<'a> Spanned for AssignBinary<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -746,7 +754,7 @@ impl<'a> Binary<'a> {
   }
 }
 
-impl<'a> Ranged for Binary<'a> {
+impl<'a> Spanned for Binary<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -772,9 +780,9 @@ impl<'a> Unary<'a> {
   }
 }
 
-impl<'a> Ranged for Unary<'a> {
-  fn range(&self) -> Range {
-    self.expr.range()
+impl<'a> Spanned for Unary<'a> {
+  fn span(&self) -> Span {
+    self.expr.span()
   }
 
   fn start(&self) -> u32 {
@@ -800,7 +808,7 @@ impl<'a> Atom<'a> {
   }
 }
 
-impl<'a> Ranged for Atom<'a> {
+impl<'a> Spanned for Atom<'a> {
   fn start(&self) -> u32 {
     self.primary.start()
   }
@@ -819,7 +827,7 @@ pub enum Trailer<'a> {
   Access(Box<Access<'a>>),
 }
 
-impl<'a> Ranged for Trailer<'a> {
+impl<'a> Spanned for Trailer<'a> {
   fn start(&self) -> u32 {
     match self {
       Trailer::Call(call) => call.start(),
@@ -838,18 +846,18 @@ impl<'a> Ranged for Trailer<'a> {
 }
 
 pub struct Call<'a> {
-  pub range: Range,
+  pub range: Span,
   pub args: Vec<Expr<'a>>,
 }
 
 impl<'a> Call<'a> {
-  pub fn new(range: Range, args: Vec<Expr<'a>>) -> Self {
+  pub fn new(range: Span, args: Vec<Expr<'a>>) -> Self {
     Self { range, args }
   }
 }
 
-impl<'a> Ranged for Call<'a> {
-  fn range(&self) -> Range {
+impl<'a> Spanned for Call<'a> {
+  fn span(&self) -> Span {
     self.range
   }
 
@@ -872,9 +880,9 @@ impl<'a> Index<'a> {
   }
 }
 
-impl<'a> Ranged for Index<'a> {
-  fn range(&self) -> Range {
-    self.index.range()
+impl<'a> Spanned for Index<'a> {
+  fn span(&self) -> Span {
+    self.index.span()
   }
 
   fn start(&self) -> u32 {
@@ -896,7 +904,7 @@ impl<'a> Access<'a> {
   }
 }
 
-impl<'a> Ranged for Access<'a> {
+impl<'a> Spanned for Access<'a> {
   fn start(&self) -> u32 {
     self.prop.start()
   }
@@ -923,7 +931,7 @@ pub enum Primary<'a> {
   Map(Map<'a>),
 }
 
-impl<'a> Ranged for Primary<'a> {
+impl<'a> Spanned for Primary<'a> {
   fn start(&self) -> u32 {
     match self {
       Primary::AssignBlock(block) => block.start(),
@@ -984,29 +992,29 @@ impl<'a> Interpolation<'a> {
   }
 }
 
-impl<'a> Ranged for Interpolation<'a> {
+impl<'a> Spanned for Interpolation<'a> {
   fn start(&self) -> u32 {
-    self.start.line
+    self.start.start()
   }
 
   fn end(&self) -> u32 {
-    self.end.line
+    self.end.end()
   }
 }
 
 pub struct List<'a> {
-  pub range: Range,
+  pub range: Span,
   pub items: Vec<Expr<'a>>,
 }
 
 impl<'a> List<'a> {
-  pub fn new(range: Range, items: Vec<Expr<'a>>) -> Self {
+  pub fn new(range: Span, items: Vec<Expr<'a>>) -> Self {
     Self { range, items }
   }
 }
 
-impl<'a> Ranged for List<'a> {
-  fn range(&self) -> Range {
+impl<'a> Spanned for List<'a> {
+  fn span(&self) -> Span {
     self.range
   }
 
@@ -1020,12 +1028,12 @@ impl<'a> Ranged for List<'a> {
 }
 
 pub struct Map<'a> {
-  pub range: Range,
+  pub range: Span,
   pub entries: Vec<(Expr<'a>, Expr<'a>)>,
 }
 
 impl<'a> Map<'a> {
-  pub fn new(range: Range, kvp: Vec<(Expr<'a>, Expr<'a>)>) -> Self {
+  pub fn new(range: Span, kvp: Vec<(Expr<'a>, Expr<'a>)>) -> Self {
     Self {
       range,
       entries: kvp,
@@ -1033,8 +1041,8 @@ impl<'a> Map<'a> {
   }
 }
 
-impl<'a> Ranged for Map<'a> {
-  fn range(&self) -> Range {
+impl<'a> Spanned for Map<'a> {
+  fn span(&self) -> Span {
     self.range
   }
 
@@ -1058,7 +1066,7 @@ impl<'a> Super<'a> {
   }
 }
 
-impl<'a> Ranged for Super<'a> {
+impl<'a> Spanned for Super<'a> {
   fn start(&self) -> u32 {
     self.super_.start()
   }
@@ -1079,7 +1087,7 @@ impl<'a> TypeParam<'a> {
   }
 }
 
-impl<'a> Ranged for TypeParam<'a> {
+impl<'a> Spanned for TypeParam<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -1088,7 +1096,7 @@ impl<'a> Ranged for TypeParam<'a> {
     self
       .constraint
       .as_ref()
-      .map_or_else(|| self.name.end(), |constraint| constraint.range().end)
+      .map_or_else(|| self.name.end(), |constraint| constraint.span().end)
   }
 }
 
@@ -1101,7 +1109,7 @@ pub enum Type<'a> {
   Primitive(Primitive<'a>),
 }
 
-impl<'a> Ranged for Type<'a> {
+impl<'a> Spanned for Type<'a> {
   fn start(&self) -> u32 {
     match self {
       Type::Union(union) => union.start(),
@@ -1135,7 +1143,7 @@ impl<'a> ClassType<'a> {
   }
 }
 
-impl<'a> Ranged for ClassType<'a> {
+impl<'a> Spanned for ClassType<'a> {
   fn start(&self) -> u32 {
     self.type_ref.start()
   }
@@ -1156,7 +1164,7 @@ impl<'a> TypeRef<'a> {
   }
 }
 
-impl<'a> Ranged for TypeRef<'a> {
+impl<'a> Spanned for TypeRef<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -1180,7 +1188,7 @@ impl<'a> TypeMember<'a> {
   }
 }
 
-impl<'a> Ranged for TypeMember<'a> {
+impl<'a> Spanned for TypeMember<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -1201,7 +1209,7 @@ impl<'a> TypeMethod<'a> {
   }
 }
 
-impl<'a> Ranged for TypeMethod<'a> {
+impl<'a> Spanned for TypeMethod<'a> {
   fn start(&self) -> u32 {
     self.name.start()
   }
@@ -1222,7 +1230,7 @@ impl<'a> Union<'a> {
   }
 }
 
-impl<'a> Ranged for Union<'a> {
+impl<'a> Spanned for Union<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -1243,7 +1251,7 @@ impl<'a> Intersection<'a> {
   }
 }
 
-impl<'a> Ranged for Intersection<'a> {
+impl<'a> Spanned for Intersection<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -1263,7 +1271,7 @@ impl<'a> ListType<'a> {
   }
 }
 
-impl<'a> Ranged for ListType<'a> {
+impl<'a> Spanned for ListType<'a> {
   fn start(&self) -> u32 {
     self.item_type.start()
   }
@@ -1281,7 +1289,7 @@ pub enum Primitive<'a> {
   Any(Token<'a>),
 }
 
-impl<'a> Ranged for Primitive<'a> {
+impl<'a> Spanned for Primitive<'a> {
   fn start(&self) -> u32 {
     match self {
       Primitive::Nil(t) => t,
@@ -1302,15 +1310,5 @@ impl<'a> Ranged for Primitive<'a> {
       Primitive::Any(t) => t,
     }
     .end()
-  }
-}
-
-impl<'a> Ranged for Token<'a> {
-  fn start(&self) -> u32 {
-    self.line
-  }
-
-  fn end(&self) -> u32 {
-    self.line
   }
 }
