@@ -259,14 +259,11 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       gc: RefCell::new(gc),
       enclosing: None,
       local_count: 1,
-      locals: vec![
-        Local {
-          name: &UNINITIALIZED_TOKEN,
-          depth: 0,
-          is_captured: false,
-        };
-        std::u8::MAX as usize
-      ],
+      locals: vec![Local {
+        name: &UNINITIALIZED_TOKEN,
+        depth: 0,
+        is_captured: false,
+      }],
       upvalues: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
@@ -304,7 +301,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     let gc = RefCell::new(Allocator::default());
     gc.swap(&enclosing.gc);
 
-    let mut child = Compiler {
+    Compiler {
       fun,
       file_id: enclosing.file_id,
       module: enclosing.module,
@@ -319,22 +316,12 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       gc,
       enclosing: Some(NonNull::from(enclosing)),
       local_count: 1,
-      locals: vec![
-        Local {
-          name: &UNINITIALIZED_TOKEN,
-          depth: 0,
-          is_captured: false,
-        };
-        std::u8::MAX as usize
-      ],
+      locals: vec![first_local],
       upvalues: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
       had_error: false,
-    };
-
-    child.locals[0] = first_local;
-    child
+    }
   }
 
   /// End this compilers compilation emitting a final return
@@ -394,6 +381,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   fn end_scope(&mut self, end_line: u32) {
     self.scope_depth -= 1;
     self.local_count = self.drop_locals(end_line, self.scope_depth);
+    self.locals.truncate(self.local_count);
   }
 
   /// Drop all locals to a specified scope depth
@@ -449,11 +437,12 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       return;
     }
 
-    let local = &mut self.locals[self.local_count];
     self.local_count += 1;
-
-    local.name = name;
-    local.depth = -1;
+    self.locals.push(Local {
+      name,
+      depth: -1,
+      is_captured: false,
+    });
   }
 
   ///  declare a variable
@@ -463,7 +452,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       return;
     }
 
-    for local in self.locals[..self.local_count].iter().rev() {
+    for local in self.locals.iter().rev() {
       // If we in a lower scope break
       if local.depth != UNINITIALIZED && local.depth < self.scope_depth {
         break;
