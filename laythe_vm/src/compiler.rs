@@ -1,5 +1,5 @@
 use crate::{
-  ast::{self, Decl, Expr, Primary, Spanned, Stmt, Symbol, Trailer},
+  ast::{self, Decl, Expr, Primary, Span, Spanned, Stmt, Symbol, Trailer},
   files::LineOffsets,
   token::{Lexeme, Token, TokenKind},
   FeResult,
@@ -452,6 +452,8 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       return;
     }
 
+    let mut conflict: Option<Span> = None;
+
     for local in self.locals.iter().rev() {
       // If we in a lower scope break
       if local.depth != UNINITIALIZED && local.depth < self.scope_depth {
@@ -460,15 +462,22 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
       // check that the same variable wasn't declared twice in the same scope
       if name.str() == local.name.str() {
-        self.error(
-          "Variable with this name already declared in this scope.",
-          Some(&name),
-        );
-        return;
+        conflict = Some(local.name.span());
+        break;
       }
     }
 
-    self.add_local(name);
+    match conflict {
+      Some(span) => self.error_with_context(
+        "Variable with this name already declared in this scope.",
+        vec![
+          Label::primary(self.file_id, name.span()).with_message("Declared a second time here"),
+          Label::secondary(self.file_id, span)
+            .with_message(&format!("{} was originally declared here", &name.str())),
+        ],
+      ),
+      None => self.add_local(name),
+    }
   }
 
   /// retrieve a named variable from either local or global scope
@@ -697,13 +706,23 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     }
   }
 
+  /// Indicate an error with additional context
+  fn error_with_context(&mut self, message_primary: &str, labels: Vec<Label<FileId>>) {
+    let error = Diagnostic::error()
+      .with_message(message_primary)
+      .with_labels(labels);
+
+    self.errors.push(error);
+    self.had_error = true;
+  }
+
   /// Indicate an error occurred at he current index
   fn error_at_current(&mut self, message: &str, token: Option<&Token>) {
     self.error_at(message, token);
   }
 
   /// Indicate an error occurred at the previous index
-  pub fn error(&mut self, message: &str, token: Option<&Token>) {
+  fn error(&mut self, message: &str, token: Option<&Token>) {
     self.error_at(message, token);
   }
 
