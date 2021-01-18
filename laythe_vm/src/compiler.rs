@@ -267,7 +267,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
         };
         std::u8::MAX as usize
       ],
-      upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
+      upvalues: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
       had_error: false,
@@ -327,7 +327,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
         };
         std::u8::MAX as usize
       ],
-      upvalues: vec![UpvalueIndex::Local(0); std::u8::MAX as usize],
+      upvalues: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
       had_error: false,
@@ -559,12 +559,14 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     let upvalue_count = self.fun.upvalue_count;
 
     // check for existing upvalues
-    if let Some(i) = self.upvalues[0..upvalue_count]
-      .iter()
-      .position(|existing_upvalue| match (&existing_upvalue, &upvalue) {
-        (UpvalueIndex::Local(existing), UpvalueIndex::Local(new)) => *existing == *new,
-        _ => false,
-      })
+    if let Some(i) =
+      self
+        .upvalues
+        .iter()
+        .position(|existing_upvalue| match (&existing_upvalue, &upvalue) {
+          (UpvalueIndex::Local(existing), UpvalueIndex::Local(new)) => *existing == *new,
+          _ => false,
+        })
     {
       return i;
     }
@@ -575,7 +577,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       return 0;
     }
 
-    self.upvalues[upvalue_count] = upvalue;
+    self.upvalues.push(upvalue);
     self.fun.upvalue_count += 1;
 
     upvalue_count
@@ -1011,7 +1013,6 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     // end compilation of function chunk
     compiler.end_compiler(end_line);
     self.gc.swap(&compiler.gc);
-    let upvalue_count = compiler.fun.upvalue_count;
 
     let index = self.make_constant(val!(compiler.fun));
     self.emit_byte(AlignedByteCode::Closure(index), end_line);
@@ -1022,7 +1023,8 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     }
 
     // emit upvalue index instructions
-    compiler.upvalues[0..upvalue_count]
+    compiler
+      .upvalues
       .iter()
       .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(*upvalue), end_line));
   }
