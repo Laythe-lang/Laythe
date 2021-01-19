@@ -143,6 +143,7 @@ impl Trace for LoopInfo {
 }
 
 pub struct Compiler<'a, FileId> {
+  #[allow(dead_code)]
   io: Option<Io>,
 
   /// The roots from the surround context
