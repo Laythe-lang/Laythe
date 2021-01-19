@@ -252,6 +252,7 @@ impl<'a> Scanner<'a> {
   /// ```
   /// use laythe_vm::scanner::{Scanner};
   /// use laythe_vm::token::TokenKind;
+  /// use laythe_vm::files::LineError;
   ///
   /// let source = String::from("
   /// let x = \"something\";
@@ -269,7 +270,7 @@ impl<'a> Scanner<'a> {
   /// assert_eq!(offsets.line_range(2), Ok(22..44));
   /// assert_eq!(offsets.line_range(3), Ok(44..56));
   /// assert_eq!(offsets.line_range(4), Ok(56..57));
-  /// assert_eq!(offsets.line_range(5), Err(()));
+  /// assert_eq!(offsets.line_range(5), Err(LineError::LineOutOfBounds));
   /// ```
   pub fn line_offsets(mut self) -> LineOffsets {
     if !self.source.is_empty() {

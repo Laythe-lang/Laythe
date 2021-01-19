@@ -37,12 +37,11 @@ use crate::debug::disassemble_chunk;
 const UNINITIALIZED: i16 = -1;
 
 /// A placeholder token to fill the first slot for non method functions
-const UNINITIALIZED_TOKEN: &'static Token<'static> =
+const UNINITIALIZED_TOKEN: &Token<'static> =
   &Token::new(TokenKind::Error, Lexeme::Slice("@##@"), 0, 0);
 
 /// A placeholder token to fill the first slot for non method functions
-const SELF_TOKEN: &'static Token<'static> =
-  &Token::new(TokenKind::Error, Lexeme::Slice(SELF), 0, 0);
+const SELF_TOKEN: &Token<'static> = &Token::new(TokenKind::Error, Lexeme::Slice(SELF), 0, 0);
 
 #[derive(Debug, Clone)]
 pub struct Local<'a> {
@@ -1295,7 +1294,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
                 if let Primary::Self_(_) = atom.primary {
                   let mut class_info = self.class_info.unwrap();
 
-                  if !class_info.fields.iter().any(|f| &*f == access.prop.str()) {
+                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
                     class_info.add_field(&GcHooks::new(self), field);
                   }
@@ -1363,7 +1362,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
                 if let Primary::Self_(_) = atom.primary {
                   let mut class_info = self.class_info.unwrap();
 
-                  if !class_info.fields.iter().any(|f| &*f == access.prop.str()) {
+                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
                     class_info.add_field(&GcHooks::new(self), field);
                   }

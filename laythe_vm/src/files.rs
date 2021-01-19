@@ -15,6 +15,12 @@ pub struct LineOffsets {
   len: usize,
 }
 
+#[derive(Debug, PartialEq)]
+pub enum LineError {
+  OffsetOutOfBounds,
+  LineOutOfBounds,
+}
+
 impl LineOffsets {
   /// Create a new instance of LineOffsets
   ///
@@ -48,7 +54,7 @@ impl LineOffsets {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::files::LineOffsets;
+  /// use laythe_vm::files::{LineOffsets, LineError};
   ///
   /// let offsets = LineOffsets::new(vec![0, 10], 20);
   /// assert_eq!(offsets.offset_line(0), Ok(0));
@@ -56,11 +62,11 @@ impl LineOffsets {
   /// assert_eq!(offsets.offset_line(11), Ok(1));
   /// assert_eq!(offsets.offset_line(17), Ok(1));
   /// assert_eq!(offsets.offset_line(20), Ok(1));
-  /// assert_eq!(offsets.offset_line(25), Err(()));
+  /// assert_eq!(offsets.offset_line(25), Err(LineError::OffsetOutOfBounds));
   /// ```
-  pub fn offset_line(&self, offset: usize) -> Result<usize, ()> {
+  pub fn offset_line(&self, offset: usize) -> Result<usize, LineError> {
     if offset > self.len {
-      return Err(());
+      return Err(LineError::OffsetOutOfBounds);
     }
 
     Ok(match self.offsets.binary_search(&offset) {
@@ -73,17 +79,17 @@ impl LineOffsets {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::files::LineOffsets;
+  /// use laythe_vm::files::{LineOffsets, LineError};
   ///
   /// let offsets = LineOffsets::new(vec![0, 10], 20);
   /// assert_eq!(offsets.line_range(0), Ok(0..10));
   /// assert_eq!(offsets.line_range(1), Ok(10..20));
-  /// assert_eq!(offsets.line_range(2), Err(()));
+  /// assert_eq!(offsets.line_range(2), Err(LineError::LineOutOfBounds));
   /// ```
-  pub fn line_range(&self, line: usize) -> Result<Range<usize>, ()> {
+  pub fn line_range(&self, line: usize) -> Result<Range<usize>, LineError> {
     let lines = self.lines();
     if line >= lines {
-      return Err(());
+      return Err(LineError::LineOutOfBounds);
     }
 
     if line == (self.lines()) - 1 {
@@ -219,7 +225,7 @@ impl VmFiles {
 
   /// Retrieve an immutable file reference from the file database. Return
   /// a file missing error if not found
-  fn get<'a>(&'a self, id: VmFileId) -> Result<&'a VmFile, files::Error> {
+  fn get(&'_ self, id: VmFileId) -> Result<&'_ VmFile, files::Error> {
     if id.0 > self.files.len() {
       return Err(files::Error::FileMissing);
     }
@@ -229,7 +235,7 @@ impl VmFiles {
 
   /// Retrieve an mutable file reference from the file database. Return
   /// a file missing error if not found
-  fn get_mut<'a>(&'a mut self, id: VmFileId) -> Result<&'a mut VmFile, files::Error> {
+  fn get_mut(&'_ mut self, id: VmFileId) -> Result<&'_ mut VmFile, files::Error> {
     if id.0 > self.files.len() {
       return Err(files::Error::FileMissing);
     }
@@ -256,12 +262,10 @@ impl<'a> files::Files<'a> for VmFiles {
 
     match vm_file.line_offsets().offset_line(byte_index) {
       Ok(line) => Ok(line),
-      Err(_) => {
-        return Err(files::Error::IndexTooLarge {
-          given: byte_index,
-          max: vm_file.source.len(),
-        })
-      }
+      Err(_) => Err(files::Error::IndexTooLarge {
+        given: byte_index,
+        max: vm_file.source.len(),
+      }),
     }
   }
 
@@ -296,7 +300,7 @@ impl Trace for VmFiles {
 #[cfg(test)]
 mod test {
   mod line_offsets {
-    use crate::files::LineOffsets;
+    use crate::files::{LineError, LineOffsets};
 
     #[test]
     fn lines() {
@@ -313,7 +317,7 @@ mod test {
       assert_eq!(offsets.offset_line(10), Ok(1));
       assert_eq!(offsets.offset_line(11), Ok(1));
       assert_eq!(offsets.offset_line(20), Ok(1));
-      assert_eq!(offsets.offset_line(30), Err(()));
+      assert_eq!(offsets.offset_line(30), Err(LineError::OffsetOutOfBounds));
     }
 
     #[test]
@@ -322,7 +326,7 @@ mod test {
 
       assert_eq!(offsets.line_range(0), Ok(0..10));
       assert_eq!(offsets.line_range(1), Ok(10..20));
-      assert_eq!(offsets.line_range(2), Err(()));
+      assert_eq!(offsets.line_range(2), Err(LineError::LineOutOfBounds));
     }
   }
 

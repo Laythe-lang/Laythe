@@ -137,20 +137,20 @@ impl ParameterKind {
       return true;
     }
 
-    match (self, value.kind()) {
-      (ParameterKind::Bool, ValueKind::Bool) => true,
-      (ParameterKind::Number, ValueKind::Number) => true,
-      (ParameterKind::String, ValueKind::String) => true,
-      (ParameterKind::List, ValueKind::List) => true,
-      (ParameterKind::Map, ValueKind::Map) => true,
-      (ParameterKind::Class, ValueKind::Class) => true,
-      (ParameterKind::Instance, ValueKind::Instance) => true,
-      (ParameterKind::Iter, ValueKind::Iter) => true,
-      (ParameterKind::Fun, ValueKind::Closure) => true,
-      (ParameterKind::Fun, ValueKind::Method) => true,
-      (ParameterKind::Fun, ValueKind::Native) => true,
-      _ => false,
-    }
+    matches!(
+      (self, value.kind()),
+      (ParameterKind::Bool, ValueKind::Bool)
+        | (ParameterKind::Number, ValueKind::Number)
+        | (ParameterKind::String, ValueKind::String)
+        | (ParameterKind::List, ValueKind::List)
+        | (ParameterKind::Map, ValueKind::Map)
+        | (ParameterKind::Class, ValueKind::Class)
+        | (ParameterKind::Instance, ValueKind::Instance)
+        | (ParameterKind::Iter, ValueKind::Iter)
+        | (ParameterKind::Fun, ValueKind::Closure)
+        | (ParameterKind::Fun, ValueKind::Method)
+        | (ParameterKind::Fun, ValueKind::Native)
+    )
   }
 }
 
