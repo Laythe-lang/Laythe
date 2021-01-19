@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "language/import/missing_name.lay"
+        "compiler/arm_compiler.lay"
         // "lox_interpreter/lox.lay",
         // "../../../craftinginterpreters/test/benchmark/binary_trees.lox"
       ],

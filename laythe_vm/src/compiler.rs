@@ -17,6 +17,7 @@ use laythe_core::{
   value::Value,
 };
 use laythe_env::{
+  io::Io,
   managed::{DebugHeap, Gc, GcStr, Manage, Trace, TraceRoot},
   memory::Allocator,
 };
@@ -37,7 +38,7 @@ const UNINITIALIZED: i16 = -1;
 
 /// A placeholder token to fill the first slot for non method functions
 const UNINITIALIZED_TOKEN: &'static Token<'static> =
-  &Token::new(TokenKind::Error, Lexeme::Slice("error"), 0, 0);
+  &Token::new(TokenKind::Error, Lexeme::Slice("@##@"), 0, 0);
 
 /// A placeholder token to fill the first slot for non method functions
 const SELF_TOKEN: &'static Token<'static> =
@@ -142,6 +143,8 @@ impl Trace for LoopInfo {
 }
 
 pub struct Compiler<'a, FileId> {
+  io: Option<Io>,
+
   /// The roots from the surround context
   root_trace: &'a dyn TraceRoot,
 
@@ -245,6 +248,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     gc.pop_roots(1);
 
     Self {
+      io: None,
       fun,
       file_id,
       root_trace,
@@ -301,7 +305,14 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     let gc = RefCell::new(Allocator::default());
     gc.swap(&enclosing.gc);
 
+    #[cfg(feature = "debug")]
+    let io: Option<Io> = enclosing.io.clone();
+
+    #[cfg(not(feature = "debug"))]
+    let io: Option<Io> = None;
+
     Compiler {
+      io,
       fun,
       file_id: enclosing.file_id,
       module: enclosing.module,
@@ -324,6 +335,12 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     }
   }
 
+  #[cfg(feature = "debug")]
+  pub fn with_io(mut self, io: Io) -> Self {
+    self.io = Some(io);
+    self
+  }
+
   /// End this compilers compilation emitting a final return
   /// and shrinking the function to the correct size
   fn end_compiler(&mut self, line: u32) {
@@ -338,19 +355,16 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   /// Print the chunk if debug and an error occurred
   #[cfg(feature = "debug")]
   fn print_chunk(&mut self) {
-    let mut stdio = &mut self.io.stdio();
-
     let name = match self.fun_kind {
       FunKind::Script => "script.lay".to_string(),
       FunKind::Fun => self.fun.name.to_string(),
       FunKind::Method | FunKind::StaticMethod | FunKind::Initializer => {
-        match self.class_info.expect("Class info not set").name {
-          Some(name) => format!("{}:{}", name, self.fun.name),
-          None => format!("AnonymousClass:{}", self.fun.name),
-        }
+        let name = self.class_info.expect("Class info not set").name;
+        format!("{}:{}", name, self.fun.name)
       }
     };
 
+    let mut stdio = self.io.as_ref().unwrap().stdio();
     disassemble_chunk(&mut stdio, self.current_chunk(), &name).expect("could not write to stdio");
   }
 
@@ -1079,6 +1093,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
         ),
         self_,
       );
+      self_.temp_tokens.push(iterator_token);
 
       // get constant for 'iter' method
       let iter_const = self_.string_constant(ITER);

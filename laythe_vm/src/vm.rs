@@ -334,13 +334,16 @@ impl Vm {
     self
       .files
       .update_line_offsets(file_id, line_offsets.clone())
-      .expect("todo");
+      .expect("File id not set for line offsets");
 
     let ast = ast?;
     let gc = self.gc.replace(Allocator::default());
     let compiler = Compiler::new(module, &ast, &line_offsets, file_id, self, gc);
-    let (result, gc) = compiler.compile();
 
+    #[cfg(feature = "debug")]
+    let compiler = compiler.with_io(self.io.clone());
+
+    let (result, gc) = compiler.compile();
     self.gc.replace(gc);
 
     result
