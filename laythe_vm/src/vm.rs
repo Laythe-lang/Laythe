@@ -1,9 +1,12 @@
 use crate::{
   call_frame::CallFrame,
-  compiler::{Compiler, CompilerResult},
+  compiler::Compiler,
   constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
+  files::{VmFileId, VmFiles},
   parser::Parser,
+  FeResult,
 };
+use codespan_reporting::term::{self, Config};
 use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
   constants::{IMPORT_SEPARATOR, PLACEHOLDER_NAME, SCRIPT},
@@ -98,6 +101,9 @@ pub struct Vm {
 
   /// The environments io access
   io: Io,
+
+  /// The currently loaded files
+  files: VmFiles,
 
   /// The root directory
   root_dir: Gc<PathBuf>,
@@ -194,6 +200,7 @@ impl Vm {
       stack,
       frames,
       gc,
+      files: VmFiles::default(),
       builtin,
       root_dir,
       packages: Map::default(),
@@ -224,8 +231,9 @@ impl Vm {
   pub fn repl(&mut self) -> ExecuteResult {
     let mut stdio = self.io.stdio();
 
+    let repl_path = self.root_dir.join(PathBuf::from(REPL_MODULE));
     let main_module = self
-      .main_module(self.root_dir.join(PathBuf::from(REPL_MODULE)))
+      .main_module(repl_path.clone())
       .expect("Could not retrieve main module");
 
     loop {
@@ -238,7 +246,15 @@ impl Vm {
 
       match stdio.read_line(&mut buffer) {
         Ok(_) => {
-          self.interpret(main_module, &buffer);
+          let managed_source = self.gc.borrow_mut().manage_str(buffer, &NO_GC);
+          let managed_path = self
+            .gc
+            .borrow_mut()
+            .manage_str(repl_path.to_string_lossy(), &NO_GC);
+
+          let file_id = self.files.upsert(managed_path, managed_source);
+
+          self.interpret(main_module, &managed_source, file_id);
         }
         Err(error) => panic!(error),
       }
@@ -253,6 +269,14 @@ impl Vm {
         directory.pop();
 
         self.root_dir = self.gc.borrow_mut().manage(directory, &NO_GC);
+        let managed_source = self.gc.borrow_mut().manage_str(source, &NO_GC);
+        let managed_path = self
+          .gc
+          .borrow_mut()
+          .manage_str(module_path.to_string_lossy(), &NO_GC);
+
+        let file_id = self.files.upsert(managed_path, managed_source);
+
         let main_module = match self.main_module(module_path) {
           Ok(module) => module,
           Err(err) => {
@@ -260,7 +284,7 @@ impl Vm {
           }
         };
 
-        self.interpret(main_module, source)
+        self.interpret(main_module, &managed_source, file_id)
       }
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
@@ -276,23 +300,50 @@ impl Vm {
   }
 
   /// Interpret the provided laythe script returning the execution result
-  fn interpret(&mut self, main_module: Gc<Module>, source: &str) -> ExecuteResult {
-    match self.compile(main_module, source) {
+  fn interpret(
+    &mut self,
+    main_module: Gc<Module>,
+    source: &str,
+    file_id: VmFileId,
+  ) -> ExecuteResult {
+    match self.compile(main_module, source, file_id) {
       Ok(fun) => {
         self.prepare(fun);
         self.execute(ExecuteMode::Normal)
       }
-      Err(()) => ExecuteResult::CompileError,
+      Err(errors) => {
+        let mut stdio = self.io.stdio();
+        let stderr_color = stdio.stderr_color();
+        for error in errors.iter() {
+          term::emit(stderr_color, &Config::default(), &self.files, error)
+            .expect("Unable to write to stderr");
+        }
+        ExecuteResult::CompileError
+      }
     }
   }
 
   /// Compile the provided laythe source into the virtual machine's bytecode
-  fn compile(&mut self, module: Gc<Module>, source: &str) -> CompilerResult {
-    let ast = Parser::new(self.io.stdio(), &source).parse()?;
+  fn compile(
+    &mut self,
+    module: Gc<Module>,
+    source: &str,
+    file_id: VmFileId,
+  ) -> FeResult<Gc<Fun>, VmFileId> {
+    let (ast, line_offsets) = Parser::new(&source, file_id).parse();
+    self
+      .files
+      .update_line_offsets(file_id, line_offsets.clone())
+      .expect("File id not set for line offsets");
 
+    let ast = ast?;
     let gc = self.gc.replace(Allocator::default());
-    let compiler = Compiler::new(module, self, &self.io, gc);
-    let (result, gc) = compiler.compile(&ast);
+    let compiler = Compiler::new(module, &ast, &line_offsets, file_id, self, gc);
+
+    #[cfg(feature = "debug")]
+    let compiler = compiler.with_io(self.io.clone());
+
+    let (result, gc) = compiler.compile();
     self.gc.replace(gc);
 
     result
@@ -2058,6 +2109,7 @@ impl From<VmDependencies> for Vm {
       stack,
       frames,
       gc,
+      files: VmFiles::default(),
       root_dir,
       builtin,
       packages: Map::default(),
@@ -2104,6 +2156,7 @@ impl TraceRoot for Vm {
       upvalue.trace();
     });
 
+    self.files.trace();
     self.packages.trace();
     self.cache.trace();
     self.root_dir.trace();
@@ -2113,9 +2166,9 @@ impl TraceRoot for Vm {
     }
   }
 
-  fn trace_debug(&self, stdout: &mut dyn Write) {
+  fn trace_debug(&self, log: &mut dyn Write) {
     if let Some(script) = self.script {
-      script.trace_debug(stdout);
+      script.trace_debug(log);
     }
 
     unsafe {
@@ -2124,24 +2177,25 @@ impl TraceRoot for Vm {
       let slice = std::slice::from_raw_parts(start, len);
 
       slice.iter().for_each(|value| {
-        value.trace_debug(stdout);
+        value.trace_debug(log);
       });
     }
 
     self.frames[0..self.frame_count].iter().for_each(|frame| {
-      frame.closure.trace_debug(stdout);
+      frame.closure.trace_debug(log);
     });
 
     self.open_upvalues.iter().for_each(|upvalue| {
-      upvalue.trace_debug(stdout);
+      upvalue.trace_debug(log);
     });
 
-    self.packages.trace_debug(stdout);
-    self.cache.trace_debug(stdout);
-    self.root_dir.trace_debug(stdout);
-    self.native_fun_stub.trace_debug(stdout);
+    self.files.trace_debug(log);
+    self.packages.trace_debug(log);
+    self.cache.trace_debug(log);
+    self.root_dir.trace_debug(log);
+    self.native_fun_stub.trace_debug(log);
     if let Some(current_error) = self.current_error {
-      current_error.trace_debug(stdout)
+      current_error.trace_debug(log)
     }
   }
 

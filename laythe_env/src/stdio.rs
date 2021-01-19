@@ -1,6 +1,6 @@
 use crate::io::IoImpl;
-use io::{Read, Write};
-use std::io;
+use std::io::{self, Read, Write};
+use termcolor::WriteColor;
 
 /// A wrapper the provided facilities around standard input output and err
 pub struct Stdio {
@@ -31,6 +31,11 @@ impl Stdio {
     self.stdio.stderr()
   }
 
+  /// Get a WriteColor to stderr
+  pub fn stderr_color(&mut self) -> &mut dyn WriteColor {
+    self.stdio.stderr_color()
+  }
+
   /// Get a Read to stdin
   pub fn stdin(&mut self) -> &mut dyn Read {
     self.stdio.stdin()
@@ -45,6 +50,7 @@ impl Stdio {
 pub trait StdioImpl {
   fn stdout(&mut self) -> &mut dyn Write;
   fn stderr(&mut self) -> &mut dyn Write;
+  fn stderr_color(&mut self) -> &mut dyn WriteColor;
   fn stdin(&mut self) -> &mut dyn Read;
 
   fn read_line(&self, buffer: &mut String) -> io::Result<usize>;
@@ -80,6 +86,9 @@ impl StdioImpl for StdioMock {
   fn stderr(&mut self) -> &mut dyn Write {
     &mut self.write
   }
+  fn stderr_color(&mut self) -> &mut dyn WriteColor {
+    &mut self.write
+  }
   fn stdin(&mut self) -> &mut dyn Read {
     &mut self.read
   }
@@ -92,6 +101,20 @@ impl StdioImpl for StdioMock {
 }
 
 pub struct MockWrite();
+
+impl WriteColor for MockWrite {
+  fn supports_color(&self) -> bool {
+    false
+  }
+
+  fn set_color(&mut self, _: &termcolor::ColorSpec) -> io::Result<()> {
+    Ok(())
+  }
+
+  fn reset(&mut self) -> io::Result<()> {
+    Ok(())
+  }
+}
 
 impl Write for MockWrite {
   fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
@@ -114,9 +137,46 @@ pub mod support {
   use super::*;
   use std::{
     io::{Cursor, Write},
+    ops::Deref,
     str,
     sync::Arc,
   };
+  use termcolor::WriteColor;
+
+  #[derive(Default, Debug)]
+  pub struct TestWriter(Vec<u8>);
+
+  impl WriteColor for TestWriter {
+    fn supports_color(&self) -> bool {
+      false
+    }
+
+    fn set_color(&mut self, _: &termcolor::ColorSpec) -> io::Result<()> {
+      Ok(())
+    }
+
+    fn reset(&mut self) -> io::Result<()> {
+      Ok(())
+    }
+  }
+
+  impl Write for TestWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+      self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+      self.0.flush()
+    }
+  }
+
+  impl Deref for TestWriter {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+      self.0.deref()
+    }
+  }
 
   #[derive(Debug)]
   pub struct IoStdioTest {
@@ -147,8 +207,8 @@ pub mod support {
 
   #[derive(Debug)]
   pub struct StdioTestContainer {
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
+    pub stdout: TestWriter,
+    pub stderr: TestWriter,
     pub stdin: Box<Cursor<Vec<u8>>>,
     pub lines: Vec<String>,
     pub line_index: Box<usize>,
@@ -157,8 +217,8 @@ pub mod support {
   impl Default for StdioTestContainer {
     fn default() -> Self {
       Self {
-        stdout: vec![],
-        stderr: vec![],
+        stdout: TestWriter::default(),
+        stderr: TestWriter::default(),
         stdin: Box::new(Cursor::new(vec![])),
         lines: vec![],
         line_index: Box::new(0),
@@ -169,8 +229,8 @@ pub mod support {
   impl StdioTestContainer {
     pub fn with_lines(lines: Vec<String>) -> Self {
       Self {
-        stdout: vec![],
-        stderr: vec![],
+        stdout: TestWriter::default(),
+        stderr: TestWriter::default(),
         stdin: Box::new(Cursor::new(vec![])),
         lines,
         line_index: Box::new(0),
@@ -179,8 +239,8 @@ pub mod support {
 
     pub fn with_stdin(buf: &[u8]) -> Self {
       Self {
-        stdout: vec![],
-        stderr: vec![],
+        stdout: TestWriter::default(),
+        stderr: TestWriter::default(),
         stdin: Box::new(Cursor::new(Vec::from(buf))),
         lines: vec![],
         line_index: Box::new(0),
@@ -191,9 +251,9 @@ pub mod support {
     /// perverts the rust safety checks
     pub fn make_stdio(&self) -> StdioTest {
       StdioTest {
-        stdout: &self.stdout as *const Vec<u8> as *mut Vec<u8>,
+        stdout: &self.stdout as *const TestWriter as *mut TestWriter,
         stdin: &*self.stdin as *const Cursor<Vec<u8>> as *mut Cursor<Vec<u8>>,
-        stderr: &self.stderr as *const Vec<u8> as *mut Vec<u8>,
+        stderr: &self.stderr as *const TestWriter as *mut TestWriter,
         lines: &self.lines as *const Vec<String> as *mut Vec<String>,
         line_index: &*self.line_index as *const usize as *mut usize,
       }
@@ -202,11 +262,11 @@ pub mod support {
     pub fn log_stdio(&self) {
       eprintln!(
         "{}",
-        str::from_utf8(&*self.stdout).expect("Could not unwrap stdout")
+        str::from_utf8(&*self.stdout.0).expect("Could not unwrap stdout")
       );
       eprintln!(
         "{}",
-        str::from_utf8(&*self.stderr).expect("Could not unwrap stderr")
+        str::from_utf8(&*self.stderr.0).expect("Could not unwrap stderr")
       );
     }
   }
@@ -215,8 +275,8 @@ pub mod support {
   /// be used outside the context of a single thread test.
   #[derive(Debug, Clone)]
   pub struct StdioTest {
-    pub stdout: *mut Vec<u8>,
-    pub stderr: *mut Vec<u8>,
+    pub stdout: *mut TestWriter,
+    pub stderr: *mut TestWriter,
     pub stdin: *mut Cursor<Vec<u8>>,
     pub lines: *mut Vec<String>,
     line_index: *mut usize,
@@ -227,6 +287,9 @@ pub mod support {
       unsafe { &mut *self.stdout }
     }
     fn stderr(&mut self) -> &mut dyn Write {
+      unsafe { &mut *self.stderr }
+    }
+    fn stderr_color(&mut self) -> &mut dyn WriteColor {
       unsafe { &mut *self.stderr }
     }
     fn stdin(&mut self) -> &mut dyn std::io::Read {

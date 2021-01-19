@@ -1,9 +1,10 @@
-use io::{Stderr, Stdin, Stdout};
+use io::Stdin;
 use laythe_env::{
   io::IoImpl,
   stdio::{Stdio, StdioImpl},
 };
-use std::io::{self, stderr, stdin, stdout};
+use std::io::{self, stdin, Write};
+use termcolor::{StandardStream, WriteColor};
 
 #[derive(Debug)]
 pub struct IoStdioNative();
@@ -14,29 +15,32 @@ impl IoImpl<Stdio> for IoStdioNative {
   }
 }
 
-#[derive(Debug)]
 pub struct StdioNative {
-  stdout: Stdout,
-  stderr: Stderr,
+  stdout: StandardStream,
+  stderr: StandardStream,
   stdin: Stdin,
 }
 
 impl Default for StdioNative {
   fn default() -> Self {
     Self {
-      stdout: stdout(),
-      stderr: stderr(),
+      stdout: StandardStream::stdout(termcolor::ColorChoice::Always),
+      stderr: StandardStream::stderr(termcolor::ColorChoice::Always),
       stdin: stdin(),
     }
   }
 }
 
 impl StdioImpl for StdioNative {
-  fn stdout(&mut self) -> &mut dyn std::io::Write {
+  fn stdout(&mut self) -> &mut dyn Write {
     &mut self.stdout
   }
 
-  fn stderr(&mut self) -> &mut dyn std::io::Write {
+  fn stderr(&mut self) -> &mut dyn Write {
+    &mut self.stderr
+  }
+
+  fn stderr_color(&mut self) -> &mut dyn WriteColor {
     &mut self.stderr
   }
 

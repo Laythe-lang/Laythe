@@ -12,12 +12,12 @@ class Tree {
 
   walk() {
     if self.depth == 0 { return 0; }
-    return self.depth 
-        + self.a.walk()
-        + self.b.walk()
-        + self.c.walk()
-        + self.d.walk()
-        + self.e.walk();
+    self.depth 
+      + self.a.walk()
+      + self.b.walk()
+      + self.c.walk()
+      + self.d.walk()
+      + self.e.walk()
   }
 }
 
@@ -26,6 +26,6 @@ let start = clock();
 for i in 100.times() {
   if tree.walk() != 122068 {
     print("Error");
-  } 
+  }
 }
 print(clock() - start);

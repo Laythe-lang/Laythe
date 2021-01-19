@@ -1,5 +1,4 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use laythe_env::stdio::Stdio;
 use laythe_vm::parser::Parser;
 use std::fs::File;
 use std::io::prelude::*;
@@ -26,8 +25,8 @@ fn load_source<P: AsRef<Path>>(dir: P) -> String {
 }
 
 fn parse_source(source: &str) {
-  let parser = Parser::new(Stdio::default(), source);
-  parser.parse().unwrap();
+  let parser = Parser::new(source, 0);
+  parser.parse().0.unwrap();
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

@@ -52,6 +52,10 @@ impl<'a> Visitor<'a> for AstPrint {
         self.visit_expr(expr);
         self.buffer.push(';');
       }
+      Stmt::ImplicitReturn(expr) => {
+        self.pad();
+        self.visit_expr(expr);
+      }
       Stmt::Import(import) => self.visit_import(import),
       Stmt::For(for_) => self.visit_for(for_),
       Stmt::If(if_) => self.visit_if(if_),
@@ -126,13 +130,8 @@ impl<'a> Visitor<'a> for AstPrint {
   fn visit_class(&mut self, class: &Class) -> Self::Result {
     self.pad();
 
-    match &class.name {
-      Some(name) => {
-        self.buffer.push_str("class ");
-        self.buffer.push_str(&name.str());
-      }
-      None => self.buffer.push_str("class"),
-    }
+    self.buffer.push_str("class ");
+    self.buffer.push_str(&class.name.str());
 
     self.buffer.push_str(" {\n");
     self.depth += 1;

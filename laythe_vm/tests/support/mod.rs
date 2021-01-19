@@ -1,6 +1,6 @@
 use laythe_env::{
   io::Io,
-  stdio::support::{IoStdioTest, StdioTestContainer},
+  stdio::support::{IoStdioTest, StdioTestContainer, TestWriter},
 };
 use laythe_native::{env::IoEnvNative, fs::IoFsNative, time::IoTimeNative};
 use laythe_vm::vm::{ExecuteResult, Vm};
@@ -70,8 +70,8 @@ pub fn assert_file_exit_and_stdio(
   result: ExecuteResult,
 ) -> io::Result<()> {
   let stdio_container = Arc::new(StdioTestContainer {
-    stdout: vec![],
-    stderr: vec![],
+    stdout: TestWriter::default(),
+    stderr: TestWriter::default(),
     stdin: Box::new(Cursor::new(Vec::from(
       stdin.unwrap_or("".to_string()).as_bytes(),
     ))),

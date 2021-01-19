@@ -1,30 +1,94 @@
-use smol_str::SmolStr;
+use std::{fmt, mem};
+
+use laythe_env::managed::{DebugHeap, Manage, Trace};
+
+use crate::ast::Spanned;
 
 #[derive(Debug, Clone)]
 pub enum Lexeme<'a> {
   Slice(&'a str),
-  Owned(SmolStr),
+  Owned(String),
 }
 
 /// A token in the space lox language
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
   /// The token kind
-  pub kind: TokenKind,
+  kind: TokenKind,
 
   /// The character array of the source
-  pub lexeme: Lexeme<'a>,
+  lexeme: Lexeme<'a>,
 
-  /// line number this token appears
-  pub line: u32,
+  /// the start offset of this token
+  start: u32,
+
+  /// The end offset of this token
+  end: u32,
 }
 
 impl<'a> Token<'a> {
+  pub const fn new(kind: TokenKind, lexeme: Lexeme<'a>, start: u32, end: u32) -> Self {
+    Self {
+      kind,
+      lexeme,
+      start,
+      end,
+    }
+  }
+
+  #[inline]
   pub fn str(&'a self) -> &'a str {
     match &self.lexeme {
       Lexeme::Slice(slice) => slice,
-      Lexeme::Owned(smol) => smol.as_str(),
+      Lexeme::Owned(string) => &*string,
     }
+  }
+
+  #[inline]
+  pub fn kind(&self) -> TokenKind {
+    self.kind
+  }
+}
+
+impl<'a> Spanned for Token<'a> {
+  fn start(&self) -> u32 {
+    self.start
+  }
+
+  fn end(&self) -> u32 {
+    self.end
+  }
+}
+
+impl Trace for Token<'static> {
+  fn trace(&self) {}
+
+  fn trace_debug(&self, _log: &mut dyn std::io::Write) {}
+}
+
+impl Manage for Token<'static> {
+  fn size(&self) -> usize {
+    let string = match &self.lexeme {
+      Lexeme::Slice(_) => 0,
+      Lexeme::Owned(str) => str.capacity(),
+    };
+
+    mem::size_of::<Self>() + string
+  }
+
+  fn as_debug(&self) -> &dyn laythe_env::managed::DebugHeap {
+    self
+  }
+}
+
+impl DebugHeap for Token<'static> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, _depth: usize) -> fmt::Result {
+    f.debug_struct("Token")
+      .field("start", &self.start)
+      .field("end", &self.end)
+      .field("lexeme", &self.str())
+      .field("kind", &self.kind)
+      .finish()
   }
 }
 
@@ -105,4 +169,74 @@ pub enum TokenKind {
   // meta
   Error,
   Eof,
+}
+
+impl fmt::Display for TokenKind {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    f.write_str(match self {
+      TokenKind::LeftParen => "(",
+      TokenKind::RightParen => ")",
+      TokenKind::LeftBrace => "{",
+      TokenKind::RightBrace => "}",
+      TokenKind::LeftBracket => "[",
+      TokenKind::RightBracket => "]",
+      TokenKind::Comma => ",",
+      TokenKind::Dot => ".",
+      TokenKind::Minus => "-",
+      TokenKind::Plus => "+",
+      TokenKind::Colon => ":",
+      TokenKind::Semicolon => ";",
+      TokenKind::Pipe => "|",
+      TokenKind::Slash => "/",
+      TokenKind::Star => "*",
+      TokenKind::PlusEqual => "+=",
+      TokenKind::MinusEqual => "-=",
+      TokenKind::SlashEqual => "/=",
+      TokenKind::StarEqual => "*=",
+      TokenKind::Arrow => "->",
+      TokenKind::Export => "export",
+      TokenKind::Import => "import",
+      TokenKind::From => "from",
+      TokenKind::Amp => "&",
+      TokenKind::Bang => "!",
+      TokenKind::BangEqual => "!=",
+      TokenKind::Equal => "=",
+      TokenKind::EqualEqual => "==",
+      TokenKind::Greater => ">",
+      TokenKind::GreaterEqual => ">=",
+      TokenKind::Less => "<",
+      TokenKind::LessEqual => "<=",
+      TokenKind::Identifier => "identifier",
+      TokenKind::String => "string",
+      TokenKind::StringStart => "string start",
+      TokenKind::StringSegment => "string segment",
+      TokenKind::StringEnd => "string end",
+      TokenKind::Number => "number",
+      TokenKind::And => "and",
+      TokenKind::Class => "class",
+      TokenKind::Else => "else",
+      TokenKind::False => "false",
+      TokenKind::For => "for",
+      TokenKind::Fun => "fn",
+      TokenKind::If => "if",
+      TokenKind::In => "in",
+      TokenKind::Nil => "nil",
+      TokenKind::Or => "or",
+      TokenKind::Return => "return",
+      TokenKind::Break => "break",
+      TokenKind::Continue => "continue",
+      TokenKind::Super => "super",
+      TokenKind::Self_ => "self",
+      TokenKind::Static => "static",
+      TokenKind::True => "true",
+      TokenKind::Let => "let",
+      TokenKind::While => "while",
+      TokenKind::Try => "try",
+      TokenKind::Catch => "catch",
+      TokenKind::Trait => "trait",
+      TokenKind::Type => "type",
+      TokenKind::Error => "error",
+      TokenKind::Eof => "eof",
+    })
+  }
 }
