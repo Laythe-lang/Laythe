@@ -9,6 +9,7 @@ use crate::{
   value::VALUE_NIL,
 };
 use core::slice;
+use fmt::Display;
 use fnv::FnvBuildHasher;
 use hash_map::Entry;
 use hashbrown::{hash_map, HashMap};
@@ -138,6 +139,20 @@ pub enum FunKind {
   StaticMethod,
   Initializer,
   Script,
+}
+
+impl Display for FunKind {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let string = match self {
+      FunKind::Fun => "function",
+      FunKind::Method => "method",
+      FunKind::StaticMethod => "static method",
+      FunKind::Initializer => "class initializer",
+      FunKind::Script => "script"
+    };
+
+    f.write_str(string)
+  }
 }
 
 #[derive(Clone)]

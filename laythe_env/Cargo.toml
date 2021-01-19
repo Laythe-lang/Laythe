@@ -17,3 +17,4 @@ gc_stress = []
 [dependencies]
 hashbrown = "0.9.1"
 fnv = "1.0.3"
+termcolor = "1.1.2"

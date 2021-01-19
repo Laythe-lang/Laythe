@@ -16,7 +16,7 @@ let closure;
     closure = returnA;
 
     if false {
-      fn returnB() b
+      fn returnB() { b }
     }
   };
 

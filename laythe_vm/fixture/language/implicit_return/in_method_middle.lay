@@ -1,0 +1,8 @@
+class Foo {
+  method() {
+    "ok"
+    print(10);
+  }
+}
+
+assertEq(Foo().method(), "ok"); // expect: ok

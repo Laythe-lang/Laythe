@@ -37,7 +37,7 @@ while i < 500000 {
   Foo();
   Foo();
   Foo();
-  i = i + 1;
+  i += 1;
 }
 
 print(clock() - start);

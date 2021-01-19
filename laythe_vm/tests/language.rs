@@ -476,6 +476,32 @@ fn if_stmt() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn implicit_return() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/implicit_return/in_function.lay",
+      "language/implicit_return/in_method.lay",
+    ],
+    ExecuteResult::Ok,
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/implicit_return/after_else.lay",
+      "language/implicit_return/after_if.lay",
+      "language/implicit_return/after_while.lay",
+      "language/implicit_return/at_top_level.lay",
+      "language/implicit_return/in_function_middle.lay",
+      "language/implicit_return/in_method_middle.lay",
+      "language/implicit_return/in_init.lay",
+    ],
+    ExecuteResult::CompileError,
+  )?;
+
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
 fn import() -> Result<(), std::io::Error> {
   test_file_exits(&vec![], ExecuteResult::Ok)?;
 

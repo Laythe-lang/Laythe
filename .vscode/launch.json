@@ -100,8 +100,9 @@
         }
       },
       "args": [
-        "lox_interpreter/lox.lay",
-        "../../../craftinginterpreters/test/benchmark/binary_trees.lox"
+        "compiler/arm_compiler.lay"
+        // "lox_interpreter/lox.lay",
+        // "../../../craftinginterpreters/test/benchmark/binary_trees.lox"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}/laythe_vm/fixture",

@@ -1,8 +1,6 @@
-use laythe_core::hooks::{NoContext, GcHooks};
+use laythe_core::hooks::{GcHooks, NoContext};
 use laythe_core::module::Module;
-use laythe_env::{io::Io, memory::{Allocator, NO_GC}};
-use laythe_env::stdio::Stdio;
-use laythe_native::stdio::StdioNative;
+use laythe_env::memory::{Allocator, NO_GC};
 use laythe_vm::compiler;
 use laythe_vm::parser::Parser;
 use std::env;
@@ -23,21 +21,20 @@ fn compiler_bench(src: &str) {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
     let gc = Allocator::default();
-    let io = Io::default();
 
-    let ast = Parser::new(io.stdio(), &src).parse().unwrap();
+    let (ast, line_offsets) = Parser::new(&src, 0).parse();
+    let ast = ast.unwrap();
     let module = Module::from_path(&hooks, hooks.manage(PathBuf::from("/Benchmark.ly"))).unwrap();
     let module = hooks.manage(module);
-    let compiler = compiler::Compiler::new(module, &NO_GC, &io, gc);
-    compiler.compile(&ast).0.unwrap();
+    let compiler = compiler::Compiler::new(module, &ast, &line_offsets, 0, &NO_GC, gc);
+    compiler.compile().0.unwrap();
   }
 }
 
 fn parser_bench(src: &str) {
   for _ in 0..1000000 {
-    let stdio = Stdio::new(Box::new(StdioNative::default()));
-    let parser = Parser::new(stdio, src);
-    parser.parse().unwrap();
+    let parser = Parser::new(src, 0);
+    parser.parse().0.unwrap();
   }
 }
 
