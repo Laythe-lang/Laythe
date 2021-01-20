@@ -12,7 +12,7 @@ const FS_PATH: &str = "std/io/fs.ly";
 pub fn fs_module(hooks: &GcHooks, std: &Package) -> InitResult<Gc<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
-    hooks.manage(PathBuf::from(FS_PATH)),
+    PathBuf::from(FS_PATH),
   )?);
 
   declare_file(hooks, &mut module, &*std)?;

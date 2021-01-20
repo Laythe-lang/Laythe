@@ -227,7 +227,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   /// let mut gc = Allocator::default();
   /// let name = gc.manage_str("module", &NO_GC);
   /// let class = gc.manage(Class::bare(name), &NO_GC);
-  /// let path = gc.manage(PathBuf::from("./module.ly"), &NO_GC);
+  /// let path = PathBuf::from("./module.ly");
   ///
   /// let module = gc.manage(Module::new(class, path), &NO_GC);
   /// let ast = ast::Module::new(vec![]);
@@ -1806,11 +1806,9 @@ mod test {
 
     let hooks = &GcHooks::new(context);
 
-    let path = hooks.manage(PathBuf::from("path/module.ly"));
-    hooks.push_root(path);
+    let path = PathBuf::from("path/module.ly");
 
     let module = hooks.manage(Module::from_path(&hooks, path).unwrap());
-    hooks.pop_roots(1);
 
     let gc = context.gc.replace(Allocator::default());
 

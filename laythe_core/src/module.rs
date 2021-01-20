@@ -12,7 +12,7 @@ use std::{mem, path::PathBuf};
 #[derive(Clone)]
 pub struct Module {
   /// The full filepath to this module
-  pub path: Gc<PathBuf>,
+  path: PathBuf,
 
   /// The class that represents this module when imported
   module_class: Gc<Class>,
@@ -26,7 +26,7 @@ pub struct Module {
 
 impl Module {
   /// Create a new laythe module
-  pub fn new(module_class: Gc<Class>, path: Gc<PathBuf>) -> Self {
+  pub fn new(module_class: Gc<Class>, path: PathBuf) -> Self {
     Module {
       path,
       module_class,
@@ -40,8 +40,13 @@ impl Module {
     self.module_class.name
   }
 
+  /// Retrieve the path for this module
+  pub fn path(&self) -> &PathBuf {
+    &self.path
+  }
+
   /// Create a module from a filepath
-  pub fn from_path(hooks: &GcHooks, path: Gc<PathBuf>) -> Result<Self, GcStr> {
+  pub fn from_path(hooks: &GcHooks, path: PathBuf) -> Result<Self, GcStr> {
     let module_name = path.file_stem().and_then(|m| m.to_str());
 
     let module_name = match module_name {
@@ -151,7 +156,6 @@ impl Module {
 impl Trace for Module {
   fn trace(&self) {
     self.module_class.trace();
-    self.path.trace();
 
     self.exports.iter().for_each(|key| {
       key.trace();
@@ -163,7 +167,6 @@ impl Trace for Module {
   }
   fn trace_debug(&self, stdout: &mut dyn Write) {
     self.module_class.trace_debug(stdout);
-    self.path.trace_debug(stdout);
 
     self.exports.iter().for_each(|key| {
       key.trace_debug(stdout);
@@ -180,7 +183,7 @@ impl DebugHeap for Module {
     let depth = depth.saturating_sub(1);
 
     f.debug_struct("Module")
-      .field("path", &DebugWrap(&self.path, depth))
+      .field("path", &self.path)
       .field("module_class", &DebugWrap(&self.module_class, depth))
       .field("exports", &DebugWrap(&self.exports, depth))
       .field("symbols", &DebugWrap(&self.symbols, depth))
@@ -220,7 +223,7 @@ mod test {
 
     Module::new(
       hooks.manage(Class::bare(hooks.manage_str("example".to_string()))),
-      hooks.manage(path),
+      path,
     );
 
     assert!(true);
@@ -235,7 +238,7 @@ mod test {
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let path = hooks.manage(PathBuf::from("self/path.ly"));
+    let path = PathBuf::from("self/path.ly");
     let module = Module::from_path(&hooks, path);
 
     assert!(module.is_ok());
@@ -254,7 +257,7 @@ mod test {
 
     let mut module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
-      hooks.manage(PathBuf::from("self/module.ly")),
+      PathBuf::from("self/module.ly"),
     );
 
     let export_name = hooks.manage_str("exported".to_string());
@@ -279,7 +282,7 @@ mod test {
 
     let mut module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
-      hooks.manage(PathBuf::from("self/module.ly")),
+      PathBuf::from("self/module.ly"),
     );
 
     let export_name = hooks.manage_str("exported".to_string());
@@ -307,7 +310,7 @@ mod test {
 
     let mut module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
-      hooks.manage(PathBuf::from("self/module.ly")),
+      PathBuf::from("self/module.ly"),
     );
 
     let name = hooks.manage_str("exported".to_string());
@@ -333,7 +336,7 @@ mod test {
 
     let module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
-      hooks.manage(PathBuf::from("self/module.ly")),
+      PathBuf::from("self/module.ly"),
     );
 
     let name = hooks.manage_str("exported".to_string());

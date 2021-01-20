@@ -1311,13 +1311,13 @@ mod test {
     gc.manage_str("sup", &NO_GC)
   }
 
-  fn test_path(gc: &mut Allocator) -> Gc<PathBuf> {
-    gc.manage(PathBuf::from("test/sup.ly"), &NO_GC)
+  fn test_path() -> PathBuf {
+    PathBuf::from("test/sup.ly")
   }
 
   fn test_module(gc: &mut Allocator) -> Gc<Module> {
     let class = test_class(gc);
-    let path = test_path(gc);
+    let path = test_path();
 
     gc.manage(Module::new(class, path), &NO_GC)
   }

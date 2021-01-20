@@ -24,7 +24,7 @@ fn compiler_bench(src: &str) {
 
     let (ast, line_offsets) = Parser::new(&src, 0).parse();
     let ast = ast.unwrap();
-    let module = Module::from_path(&hooks, hooks.manage(PathBuf::from("/Benchmark.ly"))).unwrap();
+    let module = Module::from_path(&hooks, PathBuf::from("/Benchmark.ly")).unwrap();
     let module = hooks.manage(module);
     let compiler = compiler::Compiler::new(module, &ast, &line_offsets, 0, &NO_GC, gc);
     compiler.compile().0.unwrap();

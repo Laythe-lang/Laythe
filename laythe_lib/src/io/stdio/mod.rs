@@ -14,10 +14,7 @@ use crate::InitResult;
 const STDIO_PATH: &str = "std/io/stdio.ly";
 
 pub fn stdio_module(hooks: &GcHooks, std: &Package) -> InitResult<Gc<Module>> {
-  let mut module = hooks.manage(Module::from_path(
-    &hooks,
-    hooks.manage(PathBuf::from(STDIO_PATH)),
-  )?);
+  let mut module = hooks.manage(Module::from_path(&hooks, PathBuf::from(STDIO_PATH))?);
 
   declare_stderr(hooks, &mut module, std)?;
   declare_stdin(hooks, &mut module, std)?;

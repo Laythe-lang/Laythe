@@ -27,7 +27,7 @@ pub use primitives::{
 pub fn add_global_module(hooks: &GcHooks, std: &mut Package) -> InitResult<()> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
-    hooks.manage(PathBuf::from(GLOBAL_PATH)),
+    PathBuf::from(GLOBAL_PATH),
   )?);
 
   std.add_module(hooks, module)?;

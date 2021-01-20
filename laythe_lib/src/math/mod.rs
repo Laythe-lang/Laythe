@@ -11,7 +11,7 @@ const MATH_PATH: &str = "std/math.ly";
 pub fn add_math_module(hooks: &GcHooks, std: &mut Package) -> InitResult<()> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
-    hooks.manage(PathBuf::from(MATH_PATH)),
+    PathBuf::from(MATH_PATH),
   )?);
 
   std.add_module(hooks, module)?;

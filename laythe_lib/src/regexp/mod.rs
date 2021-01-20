@@ -13,7 +13,7 @@ const REGEXP_PATH: &str = "std/regexp.ly";
 pub fn regexp_module(hooks: &GcHooks, std: &Package) -> InitResult<Gc<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
-    hooks.manage(PathBuf::from(REGEXP_PATH)),
+    PathBuf::from(REGEXP_PATH),
   )?);
 
   declare_regexp_class(hooks, &mut module, std)?;

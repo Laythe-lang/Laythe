@@ -388,7 +388,7 @@ mod test {
   pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Gc<Fun> {
     let module = Module::from_path(
       &hooks,
-      hooks.manage(PathBuf::from(format!("path/{}.ly", module_name))),
+      PathBuf::from(format!("path/{}.ly", module_name)),
     )
     .expect("TODO");
 

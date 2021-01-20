@@ -12,7 +12,7 @@ const ENV_PATH: &str = "std/env.ly";
 pub fn env_module(hooks: &GcHooks, _std: &Package) -> InitResult<Gc<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
-    hooks.manage(PathBuf::from(ENV_PATH)),
+    PathBuf::from(ENV_PATH),
   )?);
 
   declare_env_module(hooks, &mut module)?;

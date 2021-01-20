@@ -35,8 +35,7 @@ impl<T: 'static + Manage> Allocation<T> {
   /// use laythe_env::managed::Allocation;
   /// use std::path::PathBuf;
   ///
-  /// let s = PathBuf::from("example");
-  /// let alloc = Allocation::new(s);
+  /// let alloc = Allocation::new(20u128);
   /// ```
   pub fn new(data: T) -> Self {
     Self {

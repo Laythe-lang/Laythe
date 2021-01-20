@@ -106,7 +106,7 @@ pub struct Vm {
   files: VmFiles,
 
   /// The root directory
-  root_dir: Gc<PathBuf>,
+  root_dir: PathBuf,
 
   /// The builtin class the vm need reference to
   builtin: BuiltIn,
@@ -159,11 +159,10 @@ impl Vm {
     let no_gc_context = NoContext::new(gc);
     let hooks = GcHooks::new(&no_gc_context);
 
-    let root_dir = hooks.manage(
-      io.env()
-        .current_dir()
-        .expect("Could not obtain the current working directory."),
-    );
+    let root_dir = io
+      .env()
+      .current_dir()
+      .expect("Could not obtain the current working directory.");
 
     let std_lib = create_std_lib(&hooks).expect("Standard library creation failed");
     let global = std_lib
@@ -268,7 +267,7 @@ impl Vm {
         let mut directory = module_path.clone();
         directory.pop();
 
-        self.root_dir = self.gc.borrow_mut().manage(directory, &NO_GC);
+        self.root_dir = directory;
         let managed_source = self.gc.borrow_mut().manage_str(source, &NO_GC);
         let managed_path = self
           .gc
@@ -374,8 +373,6 @@ impl Vm {
     let stderr = stdio.stderr();
 
     // resolve the main module from the provided path
-    let module_path = hooks.manage(module_path);
-    hooks.push_root(module_path);
 
     let module = match Module::from_path(&hooks, module_path) {
       Ok(module) => module,
@@ -396,7 +393,7 @@ impl Vm {
       }
     }
 
-    hooks.pop_roots(2);
+    hooks.pop_roots(1);
     Ok(module)
   }
 
@@ -1086,11 +1083,11 @@ impl Vm {
 
     let module = self.current_fun.module;
 
-    let mut module_dir = (*module.path).clone();
+    let mut module_dir = module.path().clone();
     module_dir.pop();
 
     // determine relative position of module relative to the src directory
-    let relative = match self.io.fs().relative_path(&*self.root_dir, &module_dir) {
+    let relative = match self.io.fs().relative_path(&self.root_dir, &module_dir) {
       Ok(relative) => relative,
       Err(err) => {
         return self.runtime_error(self.builtin.errors.runtime, &err.to_string());
@@ -2085,13 +2082,11 @@ impl From<VmDependencies> for Vm {
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let root_dir = hooks.manage(
-      dependencies
-        .io
-        .env()
-        .current_dir()
-        .expect("Could not obtain the current working directory."),
-    );
+    let root_dir = dependencies
+      .io
+      .env()
+      .current_dir()
+      .expect("Could not obtain the current working directory.");
 
     let current_frame = &mut frames[0];
     let current_fun = current_frame.closure.fun;
@@ -2159,7 +2154,6 @@ impl TraceRoot for Vm {
     self.files.trace();
     self.packages.trace();
     self.cache.trace();
-    self.root_dir.trace();
     self.native_fun_stub.trace();
     if let Some(current_error) = self.current_error {
       current_error.trace()
@@ -2192,7 +2186,6 @@ impl TraceRoot for Vm {
     self.files.trace_debug(log);
     self.packages.trace_debug(log);
     self.cache.trace_debug(log);
-    self.root_dir.trace_debug(log);
     self.native_fun_stub.trace_debug(log);
     if let Some(current_error) = self.current_error {
       current_error.trace_debug(log)

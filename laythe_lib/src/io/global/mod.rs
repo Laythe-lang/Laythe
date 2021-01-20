@@ -14,7 +14,7 @@ pub const IO_ERROR: &str = "IoError";
 pub fn errors_module(hooks: &GcHooks, std: &Package) -> InitResult<Gc<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
-    hooks.manage(PathBuf::from(ERROR_PATH)),
+    PathBuf::from(ERROR_PATH),
   )?);
 
   declare_io_errors(hooks, &mut module, std)?;

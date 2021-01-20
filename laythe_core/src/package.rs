@@ -252,7 +252,7 @@ mod test {
     let mut package = Package::new(hooks.manage_str("package".to_string()));
     let module = hooks.manage(Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
-      hooks.manage(PathBuf::from("self/module.ly")),
+      PathBuf::from("self/module.ly"),
     ));
 
     let result1 = package.add_module(&hooks, module.clone());
@@ -294,7 +294,7 @@ mod test {
     let mut module = hooks.manage(
       Module::from_path(
         &hooks,
-        hooks.manage(PathBuf::from("my_package/my_module.ly")),
+        PathBuf::from("my_package/my_module.ly"),
       )
       .unwrap(),
     );

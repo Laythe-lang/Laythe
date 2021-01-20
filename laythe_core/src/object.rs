@@ -148,7 +148,7 @@ impl Display for FunKind {
       FunKind::Method => "method",
       FunKind::StaticMethod => "static method",
       FunKind::Initializer => "class initializer",
-      FunKind::Script => "script"
+      FunKind::Script => "script",
     };
 
     f.write_str(string)
@@ -592,7 +592,7 @@ impl Closure {
   ///
   /// let module = hooks.manage(Module::new(
   ///   hooks.manage(Class::bare(hooks.manage_str("module"))),
-  ///   hooks.manage(PathBuf::from("self/module.ly")),
+  ///   PathBuf::from("self/module.ly"),
   /// ));
   /// let mut fun = Fun::new(hooks.manage_str("example"), module);
   /// let managed_fun = hooks.manage(fun);

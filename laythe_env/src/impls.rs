@@ -1,26 +1,29 @@
 use crate::managed::{DebugHeap, DebugWrap, Manage, Trace};
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
-use std::{fmt, io::Write, mem, path::PathBuf};
+use std::{
+  fmt::{self, Debug},
+  mem,
+};
 
-impl Trace for PathBuf {
+impl Trace for u128 {
   fn trace(&self) {}
-  fn trace_debug(&self, _: &mut dyn Write) {}
+  fn trace_debug(&self, _log: &mut dyn std::io::Write) {}
 }
 
-impl DebugHeap for PathBuf {
-  fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
-    f.write_fmt(format_args!("{:?}", self))
-  }
-}
-
-impl Manage for PathBuf {
+impl Manage for u128 {
   fn size(&self) -> usize {
-    mem::size_of::<Self>() // TODO add capacity once stabilized? + self.capacity()
+    mem::size_of::<Self>()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
     self
+  }
+}
+
+impl DebugHeap for u128 {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, _depth: usize) -> fmt::Result {
+    self.fmt(f)
   }
 }
 
