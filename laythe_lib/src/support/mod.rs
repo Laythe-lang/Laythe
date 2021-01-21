@@ -51,7 +51,7 @@ pub fn load_class_from_package(
   let import: Import = Import::from_str(hooks, path);
 
   let module = package.import(hooks, import)?;
-  match module.import(hooks).get_field(&name) {
+  match module.import_symbol(name) {
     Some(symbol) => {
       if symbol.is_class() {
         Ok(symbol.to_class())
@@ -73,7 +73,7 @@ pub fn load_class_from_module(
   name: &str,
 ) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(name);
-  match module.import(hooks).get_field(&name) {
+  match module.import_symbol(name) {
     Some(symbol) => {
       if symbol.is_class() {
         Ok(symbol.to_class())
@@ -95,7 +95,7 @@ pub fn load_instance_from_module(
   name: &str,
 ) -> Result<Gc<Instance>, GcStr> {
   let name = hooks.manage_str(name);
-  match module.import(hooks).get_field(&name) {
+  match module.import_symbol(name) {
     Some(symbol) => {
       if symbol.is_instance() {
         Ok(symbol.to_instance())
@@ -386,11 +386,8 @@ mod test {
   }
 
   pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Gc<Fun> {
-    let module = Module::from_path(
-      &hooks,
-      PathBuf::from(format!("path/{}.ly", module_name)),
-    )
-    .expect("TODO");
+    let module =
+      Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name))).expect("TODO");
 
     let module = hooks.manage(module);
     hooks.manage(Fun::new(hooks.manage_str(name), module))

@@ -71,6 +71,10 @@ impl Module {
 
   /// Add export a new symbol from this module. Exported names must be unique
   pub fn export_symbol(&mut self, hooks: &GcHooks, name: GcStr) -> Result<(), GcStr> {
+    if self.symbols.contains_key(&name) {
+      return Err(hooks.manage_str(format!("No symbol {} present in module", name,)));
+    }
+
     if self.exports.contains(&name) {
       Err(hooks.manage_str(format!(
         "{} has already been exported from {}",
@@ -78,9 +82,6 @@ impl Module {
         self.name()
       )))
     } else {
-      hooks.grow(self, |module| {
-        module.exports.insert(name);
-      });
       self.module_class.add_field(hooks, name);
       Ok(())
     }
@@ -108,12 +109,23 @@ impl Module {
     import
   }
 
+  /// Import a single symbol from this module
+  pub fn import_symbol(&self, name: GcStr) -> Option<Value> {
+    if !self.exports.contains(&name) {
+      return None;
+    }
+
+    self.symbols.get(&name).map(|symbol| *symbol)
+  }
+
   /// Insert a symbol into this module's symbol table
+  #[inline]
   pub fn insert_symbol(&mut self, hooks: &GcHooks, name: GcStr, symbol: Value) -> Option<Value> {
     hooks.grow(self, |module| module.symbols.insert(name, symbol))
   }
 
   /// Get a symbol from this module's symbol table
+  #[inline]
   pub fn get_symbol(&self, name: GcStr) -> Option<&Value> {
     self.symbols.get(&name)
   }
