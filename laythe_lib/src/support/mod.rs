@@ -139,7 +139,7 @@ mod test {
     native::{MetaData, NativeMeta, NativeMetaBuilder},
     object::Class,
     object::Fun,
-    object::List,
+    object::{FunBuilder, List},
     package::Import,
     signature::Arity,
     signature::{ParameterBuilder, ParameterKind},
@@ -252,8 +252,8 @@ mod test {
   impl ValueContext for MockedContext {
     fn call(&mut self, callable: Value, args: &[Value]) -> Call {
       let arity = match callable.kind() {
-        ValueKind::Closure => callable.to_closure().fun().arity,
-        ValueKind::Method => callable.to_method().method().to_closure().fun().arity,
+        ValueKind::Closure => *callable.to_closure().fun().arity(),
+        ValueKind::Method => *callable.to_method().method().to_closure().fun().arity(),
         ValueKind::Native => callable.to_native().meta().signature.arity,
         _ => return Call::Exit(1),
       };
@@ -276,8 +276,8 @@ mod test {
 
     fn call_method(&mut self, _this: Value, method: Value, args: &[Value]) -> Call {
       let arity = match method.kind() {
-        ValueKind::Closure => method.to_closure().fun().arity,
-        ValueKind::Method => method.to_method().method().to_closure().fun().arity,
+        ValueKind::Closure => *method.to_closure().fun().arity(),
+        ValueKind::Method => *method.to_method().method().to_closure().fun().arity(),
         ValueKind::Native => method.to_native().meta().signature.arity,
         _ => {
           return Call::Exit(1);
@@ -390,7 +390,18 @@ mod test {
       Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name))).expect("TODO");
 
     let module = hooks.manage(module);
-    hooks.manage(Fun::new(hooks.manage_str(name), module))
+    let mut builder = FunBuilder::new(hooks.manage_str(name), module);
+    builder.set_arity(Arity::default());
+
+    hooks.manage(builder.build())
+  }
+
+  pub fn fun_builder_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
+    let module =
+      Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name))).expect("TODO");
+
+    let module = hooks.manage(module);
+    FunBuilder::new(hooks.manage_str(name), module)
   }
 
   pub fn test_error_class(hooks: &GcHooks) -> Gc<Class> {

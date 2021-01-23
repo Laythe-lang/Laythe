@@ -600,7 +600,7 @@ mod unboxed {
           Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
           Upvalue::Closed(store) => write!(f, "{}", store),
         },
-        Self::Closure(closure) => write!(f, "{}", *closure.fun),
+        Self::Closure(closure) => write!(f, "{}", *closure.fun()),
         Self::Method(bound) => write!(f, "{}.{}", bound.receiver(), bound.method()),
         Self::Class(class) => write!(f, "{}", class.name()),
         Self::Instance(instance) => write!(f, "{} instance", instance.class().name()),
@@ -1326,7 +1326,7 @@ mod test {
     let name = test_string(gc);
     let module = test_module(gc);
 
-    gc.manage(Fun::new(name, module), &NO_GC)
+    gc.manage(Fun::test(name, module), &NO_GC)
   }
 
   fn test_closure(gc: &mut Allocator) -> Gc<Closure> {
@@ -1432,8 +1432,8 @@ mod test {
 
     assert_type(value, ValueKind::Fun);
 
-    assert_eq!(fun.name, fun2.name);
-    assert_eq!(fun.arity, fun2.arity);
+    assert_eq!(fun.name(), fun2.name());
+    assert_eq!(fun.arity(), fun2.arity());
   }
 
   #[test]

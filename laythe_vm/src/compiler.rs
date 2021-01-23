@@ -6,12 +6,12 @@ use crate::{
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
-  chunk::{AlignedByteCode, Chunk, UpvalueIndex},
+  chunk::{AlignedByteCode, ChunkBuilder, UpvalueIndex},
   constants::OBJECT,
   constants::{ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::{GcContext, GcHooks},
   module, object,
-  object::{FunKind, Map},
+  object::{FunBuilder, FunKind, Map},
   signature::Arity,
   val,
   value::Value,
@@ -149,7 +149,7 @@ pub struct Compiler<'a, FileId> {
   root_trace: &'a dyn TraceRoot,
 
   /// The current function
-  fun: Gc<Fun>,
+  fun: FunBuilder,
 
   /// The type the current function scope
   fun_kind: FunKind,
@@ -199,9 +199,6 @@ pub struct Compiler<'a, FileId> {
 
   /// A set of constants used in the current function
   constants: Map<Value, usize>,
-
-  /// Was an error encountered during compilation
-  had_error: bool,
 }
 
 impl<'a, FileId: Copy> Compiler<'a, FileId> {
@@ -244,7 +241,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   ) -> Self {
     gc.push_root(module);
     let fun_name = gc.manage_str(SCRIPT, root_trace);
-    let fun = gc.manage(Fun::new(fun_name, module), root_trace);
+    let fun = FunBuilder::new(fun_name, module);
     gc.pop_roots(1);
 
     Self {
@@ -271,22 +268,22 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       upvalues: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
-      had_error: false,
     }
   }
 
   /// Compile the provided ast into managed function objects that
   /// contain the vm bytecode
-  pub fn compile(mut self) -> (FeResult<Gc<Fun>, FileId>, Allocator) {
+  pub fn compile(mut self) -> (FeResult<Fun, FileId>, Allocator) {
     for decl in &self.ast.decls {
       self.decl(decl);
     }
 
-    self.end_compiler(self.ast.end());
-    if !self.had_error {
-      (Ok(self.fun), self.gc.replace(Allocator::default()))
+    let end = self.ast.end();
+    let (fun, errors, _, gc) = self.end_compiler(end);
+    if errors.is_empty() {
+      (Ok(fun), gc)
     } else {
-      (Err(self.errors), self.gc.replace(Allocator::default()))
+      (Err(errors), gc)
     }
   }
 
@@ -297,10 +294,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     first_local: Local<'b>,
     enclosing: &mut Compiler<'c, FileId>,
   ) -> Compiler<'b, FileId> {
-    let fun = enclosing
-      .gc
-      .borrow_mut()
-      .manage(Fun::new(name, enclosing.module), enclosing);
+    let fun = FunBuilder::new(name, enclosing.module);
 
     let gc = RefCell::new(Allocator::default());
     gc.swap(&enclosing.gc);
@@ -331,7 +325,6 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       upvalues: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
-      had_error: false,
     }
   }
 
@@ -343,29 +336,41 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
   /// End this compilers compilation emitting a final return
   /// and shrinking the function to the correct size
-  fn end_compiler(&mut self, line: u32) {
+  fn end_compiler(
+    mut self,
+    line: u32,
+  ) -> (Fun, Vec<Diagnostic<FileId>>, Vec<UpvalueIndex>, Allocator) {
     self.emit_return(line);
-    let mut fun = self.fun;
-    fun.shrink_to_fit(&GcHooks::new(self));
+
+    let fun = self.fun.build();
 
     #[cfg(feature = "debug")]
-    self.print_chunk();
+    {
+      Compiler::<FileId>::print_chunk(&fun, &self.class_info, &self.io, self.fun_kind);
+    }
+
+    (fun, self.errors, self.upvalues, self.gc.into_inner())
   }
 
   /// Print the chunk if debug and an error occurred
   #[cfg(feature = "debug")]
-  fn print_chunk(&mut self) {
-    let name = match self.fun_kind {
+  fn print_chunk(
+    fun: &Fun,
+    class_info: &Option<Gc<ClassInfo>>,
+    io: &Option<Io>,
+    fun_kind: FunKind,
+  ) {
+    let name = match fun_kind {
       FunKind::Script => "script.lay".to_string(),
-      FunKind::Fun => self.fun.name.to_string(),
+      FunKind::Fun => fun.name().to_string(),
       FunKind::Method | FunKind::StaticMethod | FunKind::Initializer => {
-        let name = self.class_info.expect("Class info not set").name;
-        format!("{}:{}", name, self.fun.name)
+        let name = class_info.expect("Class info not set").name;
+        format!("{}:{}", name, fun.name())
       }
     };
 
-    let mut stdio = self.io.as_ref().unwrap().stdio();
-    disassemble_chunk(&mut stdio, self.current_chunk(), &name).expect("could not write to stdio");
+    let mut stdio = io.as_ref().unwrap().stdio();
+    disassemble_chunk(&mut stdio, fun.chunk(), &name).expect("could not write to stdio");
   }
 
   /// Emit byte code for a return
@@ -568,7 +573,6 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
   /// add an upvalue
   fn add_upvalue(&mut self, upvalue: UpvalueIndex) -> usize {
-    let upvalue_count = self.fun.upvalue_count;
 
     // check for existing upvalues
     if let Some(i) =
@@ -583,14 +587,16 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       return i;
     }
 
+    let upvalue_count = self.fun.upvalue_count();
+
     // prevent overflow
     if upvalue_count == std::u8::MAX as usize {
-      self.error("Too many closure variable in function.", None);
+      self.error("Too many closure variables in function.", None);
       return 0;
     }
 
     self.upvalues.push(upvalue);
-    self.fun.upvalue_count += 1;
+    self.fun.inc_upvalue();
 
     upvalue_count
   }
@@ -619,7 +625,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   fn emit_jump(&mut self, jump: AlignedByteCode, offset: u32) -> usize {
     self.emit_byte(jump, offset);
 
-    self.current_chunk().instructions.len() - 2
+    self.current_chunk().instructions().len() - 2
   }
 
   /// Patch any break statements at the end of a loop
@@ -634,13 +640,13 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   fn patch_jump(&mut self, offset: usize) {
     let jump_landing = self.calc_jump(offset);
     let buffer = jump_landing.to_ne_bytes();
-    self.fun.replace_instruction(offset, buffer[0]);
-    self.fun.replace_instruction(offset + 1, buffer[1]);
+    self.fun.patch_instruction(offset, buffer[0]);
+    self.fun.patch_instruction(offset + 1, buffer[1]);
   }
 
   /// Calculate the jump once it's landing has been found
   fn calc_jump(&mut self, offset: usize) -> u16 {
-    let jump = self.current_chunk().instructions.len() - offset - 2;
+    let jump = self.current_chunk().instructions().len() - offset - 2;
 
     if jump > std::u16::MAX.try_into().unwrap() {
       self.error("Too much code to jump over.", None);
@@ -651,7 +657,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
   /// Emit a loop instruction
   fn emit_loop(&mut self, loop_start: usize, line: u32) {
-    let offset = self.current_chunk().instructions.len() - loop_start + 3;
+    let offset = self.current_chunk().instructions().len() - loop_start + 3;
     if offset > std::u16::MAX.try_into().unwrap() {
       self.error("Loop body too large.", None);
     }
@@ -660,14 +666,13 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   }
 
   /// The current chunk
-  fn current_chunk(&self) -> &Chunk {
+  fn current_chunk(&self) -> &ChunkBuilder {
     self.fun.chunk()
   }
 
   /// write instruction to the current function
   fn write_instruction(&mut self, op_code: AlignedByteCode, line: u32) {
-    let mut fun = self.fun;
-    fun.write_instruction(&GcHooks::new(self), op_code, line)
+    self.fun.write_instruction(op_code, line)
   }
 
   /// Parse a variable from the provided token return it's new constant
@@ -696,8 +701,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     match self.constants.get(&value) {
       Some(index) => *index as u16,
       None => {
-        let mut fun = self.fun;
-        let index = fun.add_constant(&GcHooks::new(self), value);
+        let index = self.fun.add_constant(value);
         if index > std::u16::MAX as usize {
           self.error("Too many constants in one chunk.", None);
           return 0;
@@ -727,7 +731,6 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       .with_labels(labels);
 
     self.errors.push(error);
-    self.had_error = true;
   }
 
   /// Indicate an error occurred at he current index
@@ -750,7 +753,6 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     };
 
     self.errors.push(error);
-    self.had_error = true;
   }
 
   /// Compile a declaration
@@ -1033,20 +1035,19 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     let end_line = fun.end();
 
     // end compilation of function chunk
-    compiler.end_compiler(end_line);
-    self.gc.swap(&compiler.gc);
+    let (fun, errors, upvalues, gc) = compiler.end_compiler(end_line);
+    self.gc.replace(gc);
 
-    let index = self.make_constant(val!(compiler.fun));
+    let fun = self.gc.borrow_mut().manage(fun, self);
+
+    let index = self.make_constant(val!(fun));
     self.emit_byte(AlignedByteCode::Closure(index), end_line);
 
-    if compiler.had_error {
-      self.had_error = compiler.had_error;
-      self.errors.extend(compiler.errors.drain(..));
+    if !errors.is_empty() {
+      self.errors.extend_from_slice(&errors);
     }
-
     // emit upvalue index instructions
-    compiler
-      .upvalues
+    upvalues
       .iter()
       .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(*upvalue), end_line));
   }
@@ -1105,7 +1106,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       self_.define_variable(iterator_const, expr_line);
 
       // mark start of loop
-      let loop_start = self_.current_chunk().instructions.len();
+      let loop_start = self_.current_chunk().instructions().len();
 
       let loop_info = self_.gc.borrow_mut().manage(
         LoopInfo {
@@ -1158,7 +1159,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
   /// Compile a while loop
   fn while_(&mut self, while_: &'a ast::While<'a>) {
-    let loop_start = self.current_chunk().instructions.len();
+    let loop_start = self.current_chunk().instructions().len();
 
     // set this class as the current class compiler
     let loop_info = self.gc.borrow_mut().manage(
@@ -1252,18 +1253,17 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
   /// Compile a try catch block
   fn try_(&mut self, try_: &'a ast::Try<'a>) {
-    let start = self.current_chunk().instructions.len();
+    let start = self.current_chunk().instructions().len();
 
     self.scope(try_.block.end(), |self_| self_.block(&try_.block));
 
     let catch_jump = self.emit_jump(AlignedByteCode::Jump(0), try_.block.end());
-    let end = self.current_chunk().instructions.len();
+    let end = self.current_chunk().instructions().len();
 
     self.scope(try_.catch.end(), |self_| self_.block(&try_.catch));
 
     self.patch_jump(catch_jump);
-    let mut fun = self.fun;
-    fun.add_try(&GcHooks::new(self), TryBlock::new(start as u16, end as u16));
+    self.fun.add_try(TryBlock::new(start as u16, end as u16));
   }
 
   /// Compile a block
@@ -1715,7 +1715,9 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       self.define_variable(param_constant, param.name.end());
     }
 
-    self.fun.arity = Arity::Fixed(call_sig.params.len() as u8);
+    self
+      .fun
+      .set_arity(Arity::Fixed(call_sig.params.len() as u8))
   }
 
   /// Do nothing if we encounter an error token
@@ -1794,12 +1796,15 @@ mod test {
   use module::Module;
   use std::path::PathBuf;
 
+  #[cfg(feature = "debug")]
+  use laythe_native::io::io_native;
+
   enum ByteCodeTest {
     Code(AlignedByteCode),
     Fun((u16, Vec<ByteCodeTest>)),
   }
 
-  fn test_compile<'a>(src: &str, context: &NoContext) -> Gc<Fun> {
+  fn test_compile<'a>(src: &str, context: &NoContext) -> Fun {
     let (ast, line_offsets) = Parser::new(src, 0).parse();
     assert!(ast.is_ok());
     let ast = ast.unwrap();
@@ -1813,6 +1818,9 @@ mod test {
     let gc = context.gc.replace(Allocator::default());
 
     let compiler = Compiler::new(module, &ast, &line_offsets, 0, &NO_GC, gc);
+    #[cfg(feature = "debug")]
+    let compiler = compiler.with_io(io_native());
+
     let (result, gc) = compiler.compile();
     context.gc.replace(gc);
 
@@ -1820,8 +1828,8 @@ mod test {
     result.unwrap()
   }
 
-  fn decode_byte_code(fun: Gc<Fun>) -> Vec<AlignedByteCode> {
-    let bytes = &fun.chunk().instructions;
+  fn decode_byte_code(fun: &Fun) -> Vec<AlignedByteCode> {
+    let bytes = &fun.chunk().instructions();
     let mut decoded = Vec::new();
     let mut offset = 0;
 
@@ -1844,16 +1852,16 @@ mod test {
   }
 
   fn decode_byte_code_closure(
-    fun: Gc<Fun>,
+    fun: &Fun,
     decoded: &mut Vec<AlignedByteCode>,
     offset: usize,
     slot: u16,
   ) -> usize {
-    let inner_fun = fun.chunk().constants[slot as usize].to_fun();
+    let inner_fun = fun.chunk().get_constant(slot as usize).to_fun();
     let mut current_offset = offset;
 
-    let instructions = &fun.chunk().instructions;
-    for _ in 0..inner_fun.upvalue_count {
+    let instructions = &fun.chunk().instructions();
+    for _ in 0..inner_fun.upvalue_count() {
       let scalar = decode_u16(&instructions[offset..offset + 2]);
 
       let upvalue_index: UpvalueIndex = unsafe { mem::transmute(scalar) };
@@ -1864,7 +1872,7 @@ mod test {
     current_offset
   }
 
-  fn assert_simple_bytecode(fun: Gc<Fun>, code: &[AlignedByteCode]) {
+  fn assert_simple_bytecode(fun: &Fun, code: &[AlignedByteCode]) {
     let stdio_container = StdioTestContainer::default();
     let mut stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
 
@@ -1890,25 +1898,30 @@ mod test {
     assert_eq!(decoded_byte_code.len(), code.len());
   }
 
-  fn assert_fun_bytecode(fun: Gc<Fun>, code: &[ByteCodeTest]) {
+  fn assert_fun_bytecode(fun: &Fun, code: &[ByteCodeTest]) {
     let stdio_container = StdioTestContainer::default();
     let mut stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
 
-    assert!(disassemble_chunk(&mut stdio, &fun.chunk(), &*fun.name).is_ok());
+    assert!(disassemble_chunk(&mut stdio, &fun.chunk(), &*fun.name()).is_ok());
     stdio_container.log_stdio();
 
     let decoded_byte_code = decode_byte_code(fun);
-    assert_eq!(decoded_byte_code.len(), code.len(), "for fun {}", fun.name);
+    assert_eq!(
+      decoded_byte_code.len(),
+      code.len(),
+      "for fun {}",
+      fun.name()
+    );
 
     for i in 0..code.len() {
       match decoded_byte_code[i] {
         AlignedByteCode::Closure(index) => {
-          let fun = fun.chunk().constants[index as usize].to_fun();
+          let fun = fun.chunk().get_constant(index as usize).to_fun();
 
           match &code[i] {
             ByteCodeTest::Fun((expected, inner)) => {
               assert_eq!(*expected, index);
-              assert_fun_bytecode(fun, &inner);
+              assert_fun_bytecode(&*fun, &inner);
             }
             _ => assert!(false),
           }
@@ -1933,7 +1946,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Import(1),
         AlignedByteCode::DefineGlobal(0),
@@ -1953,7 +1966,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::DefineGlobal(0),
@@ -1974,7 +1987,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           1,
@@ -2001,7 +2014,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2031,7 +2044,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Jump(0),
         AlignedByteCode::Nil,
@@ -2057,7 +2070,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Map(0),       // 0
         AlignedByteCode::GetLocal(1),  // 3
@@ -2097,7 +2110,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::List(0),      // 0
         AlignedByteCode::Constant(0),  // 3
@@ -2139,7 +2152,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2171,7 +2184,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2208,7 +2221,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
@@ -2280,7 +2293,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
@@ -2345,7 +2358,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
@@ -2398,7 +2411,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
@@ -2444,7 +2457,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(1),
@@ -2473,7 +2486,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -2503,7 +2516,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -2535,7 +2548,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -2560,7 +2573,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::List(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2583,7 +2596,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -2607,7 +2620,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Map(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2627,7 +2640,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           // example
@@ -2659,7 +2672,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           // example
@@ -2694,7 +2707,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           // example
@@ -2744,7 +2757,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           // example
@@ -2808,7 +2821,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           1,
@@ -2850,7 +2863,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           1,
@@ -2882,7 +2895,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           1,
@@ -2913,7 +2926,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           1,
@@ -2942,7 +2955,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
-      fun,
+      &fun,
       &vec![
         ByteCodeTest::Fun((
           1,
@@ -2971,7 +2984,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),     // 1
         AlignedByteCode::Constant(2),     // 3
@@ -2993,7 +3006,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),     // 1
         AlignedByteCode::Constant(2),     // 3
@@ -3015,7 +3028,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Nil,             // 0
         AlignedByteCode::Constant(0),     // 1   local 2 = [1, 2, 3].iter()
@@ -3051,7 +3064,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(12),
@@ -3075,7 +3088,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(15),
@@ -3100,7 +3113,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(15),
@@ -3125,7 +3138,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(2),
@@ -3145,7 +3158,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::False,
         AlignedByteCode::JumpIfFalse(3),
@@ -3167,7 +3180,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3194,7 +3207,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),     // 0
         AlignedByteCode::Constant(1),     // 2
@@ -3224,7 +3237,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Drop,
@@ -3243,7 +3256,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::GetGlobal(2),
@@ -3267,7 +3280,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -3290,7 +3303,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Nil,
         AlignedByteCode::DefineGlobal(0),
@@ -3308,7 +3321,7 @@ mod test {
     let fun = test_compile(example, &context);
 
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::DefineGlobal(0),
@@ -3325,7 +3338,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::GetGlobal(1),
@@ -3344,7 +3357,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::SetGlobal(1),
@@ -3362,7 +3375,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::False,
         AlignedByteCode::Drop,
@@ -3378,7 +3391,7 @@ mod test {
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
-    assert_simple_bytecode(fun, &vec![AlignedByteCode::Nil, AlignedByteCode::Return]);
+    assert_simple_bytecode(&fun, &vec![AlignedByteCode::Nil, AlignedByteCode::Return]);
   }
 
   #[test]
@@ -3388,7 +3401,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Drop,
@@ -3405,7 +3418,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Drop,
@@ -3422,7 +3435,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::GetGlobal(2),
@@ -3446,7 +3459,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::False,
         AlignedByteCode::Drop,
@@ -3463,7 +3476,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::Drop,
@@ -3480,7 +3493,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Nil,
         AlignedByteCode::Drop,
@@ -3497,7 +3510,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::False,
         AlignedByteCode::Not,
@@ -3515,7 +3528,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Negate,
@@ -3533,7 +3546,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3552,7 +3565,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3571,7 +3584,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3590,7 +3603,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3609,7 +3622,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::Nil,
@@ -3628,7 +3641,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::Nil,
@@ -3647,7 +3660,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3666,7 +3679,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3685,7 +3698,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3704,7 +3717,7 @@ mod test {
     let context = NoContext::default();
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
-      fun,
+      &fun,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),

@@ -9,7 +9,7 @@ mod upvalue;
 
 pub use class::Class;
 pub use closure::Closure;
-pub use fun::{Fun, FunKind, TryBlock};
+pub use fun::{Fun, FunBuilder, FunKind, TryBlock};
 pub use instance::Instance;
 pub use list::List;
 pub use map::Map;

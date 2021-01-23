@@ -14,7 +14,7 @@ use laythe_core::{
   module::Module,
   native::{Native, NativeMeta},
   object::Map,
-  object::{Class, Closure, Fun, Instance, List, Method, Upvalue},
+  object::{Class, Closure, Fun, FunBuilder, Instance, List, Method, Upvalue},
   package::{Import, Package},
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len},
@@ -24,7 +24,7 @@ use laythe_core::{
 };
 use laythe_env::{
   io::Io,
-  managed::{Gc, GcStr, Trace, TraceRoot},
+  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
   memory::{Allocator, NO_GC},
 };
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn, GLOBAL, STD};
@@ -172,9 +172,9 @@ impl Vm {
       )
       .expect("Could not retrieve global module");
 
-    let fun = Fun::new(hooks.manage_str(PLACEHOLDER_NAME), global);
+    let builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
 
-    let managed_fun = hooks.manage(fun);
+    let managed_fun = hooks.manage(builder.build());
     let closure = hooks.manage(Closure::without_upvalues(managed_fun));
 
     let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
@@ -189,8 +189,10 @@ impl Vm {
     let ip = ptr::null();
 
     let current_frame = current_frame as *mut CallFrame;
-    let mut native_fun_stub = hooks.manage(Fun::new(hooks.manage_str("native"), global));
-    native_fun_stub.write_instruction(&hooks, AlignedByteCode::Nil, 0);
+    let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
+    native_builder.write_instruction(AlignedByteCode::Nil, 0);
+
+    let native_fun_stub = hooks.manage(native_builder.build());
 
     let gc = RefCell::new(no_gc_context.done());
 
@@ -245,13 +247,14 @@ impl Vm {
 
       match stdio.read_line(&mut buffer) {
         Ok(_) => {
-          let managed_source = self.gc.borrow_mut().manage_str(buffer, &NO_GC);
-          let managed_path = self
-            .gc
-            .borrow_mut()
-            .manage_str(repl_path.to_string_lossy(), &NO_GC);
+          let managed_source = self.manage_str(buffer);
+          self.push_root(managed_source);
+
+          let managed_path = self.manage_str(repl_path.to_string_lossy());
+          self.push_root(managed_path);
 
           let file_id = self.files.upsert(managed_path, managed_source);
+          self.pop_roots(2);
 
           self.interpret(main_module, &managed_source, file_id);
         }
@@ -268,13 +271,14 @@ impl Vm {
         directory.pop();
 
         self.root_dir = directory;
-        let managed_source = self.gc.borrow_mut().manage_str(source, &NO_GC);
-        let managed_path = self
-          .gc
-          .borrow_mut()
-          .manage_str(module_path.to_string_lossy(), &NO_GC);
+        let managed_source = self.manage_str(source);
+        self.push_root(managed_source);
+
+        let managed_path = self.manage_str(module_path.to_string_lossy());
+        self.push_root(managed_path);
 
         let file_id = self.files.upsert(managed_path, managed_source);
+        self.pop_roots(2);
 
         let main_module = match self.main_module(module_path) {
           Ok(module) => module,
@@ -345,7 +349,7 @@ impl Vm {
     let (result, gc) = compiler.compile();
     self.gc.replace(gc);
 
-    result
+    result.map(|fun| self.gc.borrow_mut().manage(fun, self))
   }
 
   /// Reset the vm to execute another script
@@ -559,6 +563,26 @@ impl Vm {
     }
   }
 
+  #[inline]
+  fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
+    self.gc.borrow_mut().manage(data, self)
+  }
+
+  #[inline]
+  fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
+    self.gc.borrow_mut().manage_str(string, self)
+  }
+
+  #[inline]
+  fn push_root<T: 'static + Trace>(&self, data: T) {
+    self.gc.borrow_mut().push_root(data)
+  }
+
+  #[inline]
+  fn pop_roots(&self, count: usize) {
+    self.gc.borrow_mut().pop_roots(count)
+  }
+
   /// Get an immutable reference to value on the stack
   #[inline]
   fn get_val(&self, offset: isize) -> Value {
@@ -657,11 +681,10 @@ impl Vm {
   #[inline]
   fn read_constant(&self, index: u16) -> Value {
     unsafe {
-      *self
+      self
         .current_fun
         .chunk()
-        .constants
-        .get_unchecked(index as usize)
+        .get_constant_unchecked(index as usize)
     }
   }
 
@@ -713,7 +736,7 @@ impl Vm {
         arg_count as usize,
       )
     };
-    let list = val!(self.gc.borrow_mut().manage(List::from(args), self));
+    let list = val!(self.manage(List::from(args)));
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
     self.push(list);
 
@@ -723,10 +746,7 @@ impl Vm {
   /// create a map from a map literal
   fn op_map(&mut self) -> Signal {
     let arg_count = self.read_short();
-    let mut map = self
-      .gc
-      .borrow_mut()
-      .manage(Map::with_capacity(arg_count as usize), self);
+    let mut map = self.manage(Map::with_capacity(arg_count as usize));
 
     for i in 0..arg_count {
       let key = self.get_val(-(i as isize * 2) - 2);
@@ -761,7 +781,7 @@ impl Vm {
     }
 
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
-    let interpolated = val!(self.gc.borrow_mut().manage_str(buffers, self));
+    let interpolated = val!(self.manage_str(buffers));
     self.push(interpolated);
     Signal::Ok
   }
@@ -853,7 +873,7 @@ impl Vm {
     let slot = self.read_short();
     let name = self.read_string(slot);
 
-    let class = val!(self.gc.borrow_mut().manage(Class::bare(name), self));
+    let class = val!(self.manage(Class::bare(name)));
     self.push(class);
     Signal::Ok
   }
@@ -1106,10 +1126,7 @@ impl Vm {
     };
 
     // check if fully resolved module has already been loaded
-    let resolved = self
-      .gc
-      .borrow_mut()
-      .manage_str(resolved_segments.join("/"), self);
+    let resolved = self.manage_str(resolved_segments.join("/"));
     if let Some(module) = self.cache.get(&resolved) {
       let imported = module.import(&GcHooks::new(self));
       self.push(val!(imported));
@@ -1120,7 +1137,7 @@ impl Vm {
     let import = Import::new(
       resolved_segments
         .iter()
-        .map(|segment| self.gc.borrow_mut().manage_str(segment, self))
+        .map(|segment| self.manage_str(segment))
         .collect(),
     );
 
@@ -1204,7 +1221,7 @@ impl Vm {
       buffer.push_str(&*left);
       buffer.push_str(&*right);
 
-      let string = self.gc.borrow_mut().manage_str(buffer, self);
+      let string = self.manage_str(buffer);
       self.push(val!(string));
       Signal::Ok
     } else {
@@ -1415,7 +1432,7 @@ impl Vm {
     let slot = self.read_short();
     let fun = self.read_constant(slot).to_fun();
 
-    let upvalues = (0..fun.upvalue_count)
+    let upvalues = (0..fun.upvalue_count())
       .map(|_| {
         let upvalue_index: UpvalueIndex = unsafe { mem::transmute(self.read_short()) };
 
@@ -1430,10 +1447,7 @@ impl Vm {
       .collect::<Vec<Gc<Upvalue>>>()
       .into_boxed_slice();
 
-    let closure = self
-      .gc
-      .borrow_mut()
-      .manage(Closure::new(fun, upvalues), self);
+    let closure = self.manage(Closure::new(fun, upvalues));
 
     self.push(val!(closure));
     Signal::Ok
@@ -1484,7 +1498,7 @@ impl Vm {
 
   /// call a class creating a new instance of that class
   fn call_class(&mut self, class: Gc<Class>, arg_count: u8) -> Signal {
-    let instance = val!(self.gc.borrow_mut().manage(Instance::new(class), self));
+    let instance = val!(self.manage(Instance::new(class)));
     self.set_val(-(arg_count as isize) - 1, instance);
 
     match class.init() {
@@ -1544,10 +1558,7 @@ impl Vm {
         Call::Exit(code) => self.set_exit(code),
       },
       Environment::Normal => {
-        let native_closure = self
-          .gc
-          .borrow_mut()
-          .manage(Closure::without_upvalues(self.native_fun_stub), self);
+        let native_closure = self.manage(Closure::without_upvalues(self.native_fun_stub));
         self.push_frame(native_closure, arg_count);
 
         match native.call(&mut Hooks::new(self), this, args) {
@@ -1592,7 +1603,7 @@ impl Vm {
       self.store_ip();
       let frame = &mut *self.current_frame.offset(1);
       frame.closure = closure;
-      frame.ip = closure.fun().chunk().instructions.get_unchecked(0) as *const u8;
+      frame.ip = closure.fun().chunk().instructions().get_unchecked(0) as *const u8;
       frame.slots = self.stack_top.offset(-(arg_count as isize) - 1);
       self.current_frame = frame as *mut CallFrame;
       self.load_ip();
@@ -1627,7 +1638,7 @@ impl Vm {
 
   /// check that the number of args is valid for the function arity
   fn check_arity(&mut self, fun: Gc<Fun>, arg_count: u8) -> Option<Signal> {
-    match fun.arity.check(arg_count) {
+    match fun.arity().check(arg_count) {
       Ok(_) => None,
       Err(error) => match error {
         ArityError::Fixed(arity) => Some(self.runtime_error(
@@ -1747,10 +1758,7 @@ impl Vm {
   fn bind_method(&mut self, class: Gc<Class>, name: GcStr) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
-        let bound = self
-          .gc
-          .borrow_mut()
-          .manage(Method::new(self.peek(0), method), self);
+        let bound = self.manage(Method::new(self.peek(0), method));
         self.set_val(-1, val!(bound));
         Signal::Ok
       }
@@ -1795,10 +1803,7 @@ impl Vm {
       }
     }
 
-    let created_upvalue = self
-      .gc
-      .borrow_mut()
-      .manage(Upvalue::Open(local_index), self);
+    let created_upvalue = self.manage(Upvalue::Open(local_index));
     self.open_upvalues.push(created_upvalue);
 
     created_upvalue
@@ -1846,7 +1851,7 @@ impl Vm {
     #[cfg(feature = "debug_upvalue")]
     self.print_upvalue_debug(&mut stdio)?;
 
-    let start = &self.current_fun.chunk().instructions[0] as *const u8;
+    let start = &self.current_fun.chunk().instructions()[0] as *const u8;
     let offset = ptr_len(start, ip);
     disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, false)
   }
@@ -1859,8 +1864,8 @@ impl Vm {
     if self.frame_count > 2 {
       write!(stdout, "Frame Stack:  ")?;
       for frame in self.frames[1..(self.frame_count)].iter() {
-        let fun = frame.closure.fun;
-        write!(stdout, "[ {}:{} ]", fun.module.name(), fun.name)?;
+        let fun = frame.closure.fun();
+        write!(stdout, "[ {}:{} ]", fun.module().name(), fun.name())?;
       }
       writeln!(stdout)?;
     }
@@ -1927,7 +1932,7 @@ impl Vm {
 
   /// Report a known laythe runtime error to the user
   fn runtime_error(&mut self, error: Gc<Class>, message: &str) -> Signal {
-    let error_message = val!(self.gc.borrow_mut().manage_str(message, self));
+    let error_message = val!(self.manage_str(message));
     self.push(error_message);
 
     let mode = ExecuteMode::CallFunction(self.frame_count);
@@ -1975,7 +1980,7 @@ impl Vm {
       .enumerate()
     {
       let fun = frame.closure.fun();
-      let instructions = &*fun.chunk().instructions;
+      let instructions = &*fun.chunk().instructions();
 
       let offset = ptr_len(&instructions[0], frame.ip);
       if let Some(offset) = fun.has_catch_jump(offset as u16) {
@@ -2033,7 +2038,7 @@ impl Vm {
         _ => format!("{}()", fun.name()),
       };
 
-      let offset = ptr_len(&fun.chunk().instructions[0], frame.ip);
+      let offset = ptr_len(&fun.chunk().instructions()[0], frame.ip);
       writeln!(
         stderr,
         "  [line {}] in {}",
@@ -2072,9 +2077,9 @@ impl From<VmDependencies> for Vm {
       )
       .expect("Could not retrieve global module");
 
-    let fun = Fun::new(hooks.manage_str(PLACEHOLDER_NAME), global);
+    let fun = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
 
-    let managed_fun = hooks.manage(fun);
+    let managed_fun = hooks.manage(fun.build());
     let closure = hooks.manage(Closure::without_upvalues(managed_fun));
 
     let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
@@ -2095,8 +2100,10 @@ impl From<VmDependencies> for Vm {
     let ip = ptr::null();
 
     let current_frame = current_frame as *mut CallFrame;
-    let mut native_fun_stub = hooks.manage(Fun::new(hooks.manage_str("native"), global));
-    native_fun_stub.write_instruction(&hooks, AlignedByteCode::Nil, 0);
+    let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
+    native_builder.write_instruction(AlignedByteCode::Nil, 0);
+
+    let native_fun_stub = hooks.manage(native_builder.build());
 
     let gc = RefCell::new(no_gc_context.done());
 

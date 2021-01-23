@@ -22,7 +22,7 @@ pub fn disassemble_chunk(stdio: &mut Stdio, chunk: &Chunk, name: &str) -> io::Re
   let mut offset: usize = 0;
   let mut last_offset: usize = 0;
 
-  while offset < chunk.instructions.len() {
+  while offset < chunk.instructions().len() {
     let show_line = chunk.get_line(offset) == chunk.get_line(last_offset);
     let temp = disassemble_instruction(stdio, chunk, offset, show_line);
     last_offset = offset;
@@ -48,7 +48,7 @@ pub fn disassemble_instruction(
     write!(stdout, "{:>4} ", chunk.get_line(ip))?;
   }
 
-  let (instruction, offset) = AlignedByteCode::decode(&chunk.instructions, ip as usize);
+  let (instruction, offset) = AlignedByteCode::decode(chunk.instructions(), ip as usize);
   match instruction {
     AlignedByteCode::Return => simple_instruction(stdio.stdout(), "Return", offset),
     AlignedByteCode::Negate => simple_instruction(stdio.stdout(), "Negate", offset),
@@ -189,7 +189,7 @@ fn constant_instruction(
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ", name, constant)?;
-  writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
+  writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   Ok(offset)
 }
 
@@ -204,11 +204,11 @@ fn closure_instruction(
   let stdout = stdio.stdout();
 
   write!(stdout, "{:13} {:5} ", name, constant)?;
-  writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
+  writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
 
-  let value = &chunk.constants[constant as usize];
+  let value = &chunk.get_constant(constant as usize);
   let upvalue_count = if value.is_fun() {
-    value.to_fun().upvalue_count
+    value.to_fun().upvalue_count()
   } else {
     let stderr = stdio.stderr();
 
@@ -224,7 +224,7 @@ fn closure_instruction(
   for _ in 0..upvalue_count {
     let upvalue_index: UpvalueIndex = unsafe {
       mem::transmute(decode_u16(
-        &chunk.instructions[current_offset..current_offset + 2],
+        &chunk.instructions()[current_offset..current_offset + 2],
       ))
     };
 
@@ -256,7 +256,7 @@ fn invoke_instruction(
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ({} args) ", name, constant, arg_count)?;
-  writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
+  writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   Ok(offset)
 }
 

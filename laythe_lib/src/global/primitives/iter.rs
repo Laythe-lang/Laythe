@@ -1190,8 +1190,8 @@ mod test {
   #[cfg(test)]
   mod map {
     use super::*;
-    use crate::support::fun_from_hooks;
-    use laythe_core::object::Closure;
+    use crate::support::{fun_builder_from_hooks};
+    use laythe_core::object::{Closure};
 
     #[test]
     fn new() {
@@ -1217,13 +1217,10 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
-      let fun = val!(hooks.manage(Closure::without_upvalues(fun_from_hooks(
-        &hooks.as_gc(),
-        "example",
-        "module",
-      ))));
+      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      builder.set_arity(Arity::Fixed(1));
 
-      fun.to_closure().fun().arity = Arity::Fixed(1);
+      let fun = val!(hooks.manage(Closure::without_upvalues(hooks.manage(builder.build()))));
 
       let result = iter_map.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1239,7 +1236,7 @@ mod test {
 
   mod filter {
     use super::*;
-    use crate::support::{fun_from_hooks, MockedContext};
+    use crate::support::{fun_builder_from_hooks, MockedContext};
     use laythe_core::{iterator::LyIterator, object::Closure};
 
     #[test]
@@ -1266,13 +1263,10 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
-      let fun = val!(hooks.manage(Closure::without_upvalues(fun_from_hooks(
-        &hooks.as_gc(),
-        "example",
-        "module",
-      ))));
+      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      builder.set_arity(Arity::Fixed(1));
 
-      fun.to_closure().fun().arity = Arity::Fixed(1);
+      let fun = val!(hooks.manage(Closure::without_upvalues(hooks.manage(builder.build()))));
 
       let result = iter_filter.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1290,7 +1284,7 @@ mod test {
 
   mod reduce {
     use super::*;
-    use crate::support::{fun_from_hooks, MockedContext};
+    use crate::support::{fun_builder_from_hooks, MockedContext};
     use laythe_core::{iterator::LyIterator, object::Closure};
 
     #[test]
@@ -1321,13 +1315,11 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
-      let fun = val!(hooks.manage(Closure::without_upvalues(fun_from_hooks(
-        &hooks.as_gc(),
-        "example",
-        "module",
-      ))));
 
-      fun.to_closure().fun().arity = Arity::Fixed(2);
+      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      builder.set_arity(Arity::Fixed(2));
+
+      let fun = val!(hooks.manage(Closure::without_upvalues(hooks.manage(builder.build()))));
 
       let result = iter_reduce.call(&mut hooks, Some(this), &[val!(0.0), fun]);
       match result {
@@ -1376,7 +1368,7 @@ mod test {
 
   mod each {
     use super::*;
-    use crate::support::{fun_from_hooks, MockedContext};
+    use crate::support::{fun_builder_from_hooks, MockedContext};
     use laythe_core::{iterator::LyIterator, object::Closure};
 
     #[test]
@@ -1403,13 +1395,11 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
-      let fun = val!(hooks.manage(Closure::without_upvalues(fun_from_hooks(
-        &hooks.as_gc(),
-        "example",
-        "module",
-      ))));
 
-      fun.to_closure().fun().arity = Arity::Fixed(1);
+      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      builder.set_arity(Arity::Fixed(1));
+
+      let fun = val!(hooks.manage(Closure::without_upvalues(hooks.manage(builder.build()))));
 
       let result = iter_each.call(&mut hooks, Some(this), &[fun]);
       match result {

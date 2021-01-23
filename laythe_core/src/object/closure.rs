@@ -14,7 +14,7 @@ impl Closure {
   ///
   /// # Example
   /// ```
-  /// use laythe_core::object::{Closure, Class, Fun};
+  /// use laythe_core::object::{Closure, Class, FunBuilder};
   /// use laythe_core::signature::Arity;
   /// use laythe_core::module::Module;
   /// use laythe_core::chunk::Chunk;
@@ -28,18 +28,18 @@ impl Closure {
   ///   hooks.manage(Class::bare(hooks.manage_str("module"))),
   ///   PathBuf::from("self/module.ly"),
   /// ));
-  /// let mut fun = Fun::new(hooks.manage_str("example"), module);
-  /// let managed_fun = hooks.manage(fun);
+  /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module);
+  /// let managed_fun = hooks.manage(builder.build());
   ///
   /// let closure = Closure::new(managed_fun, vec![].into_boxed_slice());
-  /// assert_eq!(&*closure.fun().name, "example");
+  /// assert_eq!(&*closure.fun().name(), "example");
   /// ```
   pub fn new(fun: Gc<Fun>, upvalues: Box<[Gc<Upvalue>]>) -> Self {
     Closure { upvalues, fun }
   }
 
   pub fn without_upvalues(fun: Gc<Fun>) -> Self {
-    assert!(fun.upvalue_count == 0);
+    assert!(fun.upvalue_count() == 0);
     Closure {
       upvalues: vec![].into_boxed_slice(),
       fun,
