@@ -46,7 +46,7 @@ pub fn declare_stderr(hooks: &GcHooks, module: &mut Module, std: &Package) -> In
 
 pub fn define_stderr(hooks: &GcHooks, module: &Module, package: &Package) -> InitResult<()> {
   let instance = load_instance_from_module(hooks, module, STDERR_INSTANCE_NAME)?;
-  let mut class = instance.class;
+  let mut class = instance.class();
   let io_error = val!(load_class_from_package(
     hooks, package, ERROR_PATH, IO_ERROR
   )?);

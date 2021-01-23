@@ -71,8 +71,8 @@ pub fn declare_map_class(
   let class = default_class_inheritance(hooks, package, MAP_CLASS_NAME)?;
   let key_error = default_error_inheritance(hooks, package, KEY_ERROR_NAME)?;
 
-  export_and_insert(hooks, module, class.name, val!(class))?;
-  export_and_insert(hooks, module, key_error.name, val!(key_error))
+  export_and_insert(hooks, module, class.name(), val!(class))?;
+  export_and_insert(hooks, module, key_error.name(), val!(key_error))
 }
 
 pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {

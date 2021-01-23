@@ -252,8 +252,8 @@ mod test {
   impl ValueContext for MockedContext {
     fn call(&mut self, callable: Value, args: &[Value]) -> Call {
       let arity = match callable.kind() {
-        ValueKind::Closure => callable.to_closure().fun.arity,
-        ValueKind::Method => callable.to_method().method.to_closure().fun.arity,
+        ValueKind::Closure => callable.to_closure().fun().arity,
+        ValueKind::Method => callable.to_method().method().to_closure().fun().arity,
         ValueKind::Native => callable.to_native().meta().signature.arity,
         _ => return Call::Exit(1),
       };
@@ -276,8 +276,8 @@ mod test {
 
     fn call_method(&mut self, _this: Value, method: Value, args: &[Value]) -> Call {
       let arity = match method.kind() {
-        ValueKind::Closure => method.to_closure().fun.arity,
-        ValueKind::Method => method.to_method().method.to_closure().fun.arity,
+        ValueKind::Closure => method.to_closure().fun().arity,
+        ValueKind::Method => method.to_method().method().to_closure().fun().arity,
         ValueKind::Native => method.to_native().meta().signature.arity,
         _ => {
           return Call::Exit(1);

@@ -37,7 +37,7 @@ impl Module {
 
   /// Get the name of this module
   pub fn name(&self) -> GcStr {
-    self.module_class.name
+    self.module_class.name()
   }
 
   /// Retrieve the path for this module
@@ -71,7 +71,7 @@ impl Module {
 
   /// Add export a new symbol from this module. Exported names must be unique
   pub fn export_symbol(&mut self, hooks: &GcHooks, name: GcStr) -> Result<(), GcStr> {
-    if self.symbols.contains_key(&name) {
+    if !self.symbols.contains_key(&name) {
       return Err(hooks.manage_str(format!("No symbol {} present in module", name,)));
     }
 
@@ -83,6 +83,7 @@ impl Module {
       )))
     } else {
       self.module_class.add_field(hooks, name);
+      self.exports.insert(name);
       Ok(())
     }
   }
@@ -278,8 +279,8 @@ mod test {
     let result1 = module.export_symbol(&hooks, export_name);
     let result2 = module.export_symbol(&hooks, export_name);
 
-    assert_eq!(result1.is_ok(), true);
-    assert_eq!(result2.is_err(), true);
+    assert!(result1.is_ok());
+    assert!(result2.is_err());
   }
 
   #[test]

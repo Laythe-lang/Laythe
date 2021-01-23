@@ -8,7 +8,8 @@ pub fn exception_catch(stdout: &mut dyn Write, frame: &CallFrame, idx: usize) ->
   writeln!(
     stdout,
     "Exception popped {:0>4} frames caught by: {}",
-    idx, frame.closure.fun.name
+    idx,
+    frame.closure.fun().name()
   )
 }
 

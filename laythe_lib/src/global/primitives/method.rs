@@ -30,7 +30,7 @@ pub fn declare_method_class(
   package: &Package,
 ) -> InitResult<()> {
   let method_class = default_class_inheritance(hooks, package, METHOD_CLASS_NAME)?;
-  export_and_insert(hooks, module, method_class.name, val!(method_class))
+  export_and_insert(hooks, module, method_class.name(), val!(method_class))
 }
 
 pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
@@ -77,10 +77,10 @@ impl MetaData for MethodName {
 
 impl Native for MethodName {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let method = this.unwrap().to_method().method;
+    let method = this.unwrap().to_method().method();
 
     hooks
-      .get_method(this.unwrap().to_method().method, self.method_name)
+      .get_method(this.unwrap().to_method().method(), self.method_name)
       .and_then(|method_name| hooks.call_method(method, method_name, args))
   }
 }
@@ -102,7 +102,7 @@ native!(MethodCall, METHOD_CALL);
 impl Native for MethodCall {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let method = this.unwrap().to_method();
-    hooks.call_method(method.receiver, method.method, args)
+    hooks.call_method(method.receiver(), method.method(), args)
   }
 }
 
@@ -144,7 +144,7 @@ mod test {
 
       let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
-      let closure = hooks.manage(Closure::new(fun));
+      let closure = hooks.manage(Closure::without_upvalues(fun));
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(val!(instance), val!(closure)));
 
@@ -185,7 +185,7 @@ mod test {
 
       let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
-      let closure = hooks.manage(Closure::new(fun));
+      let closure = hooks.manage(Closure::without_upvalues(fun));
       let instance = hooks.manage(Instance::new(class));
       let method = hooks.manage(Method::new(val!(instance), val!(closure)));
 

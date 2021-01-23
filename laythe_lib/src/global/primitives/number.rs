@@ -49,7 +49,7 @@ pub fn declare_number_class(
   package: &Package,
 ) -> InitResult<()> {
   let class = default_class_inheritance(hooks, package, NUMBER_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_number_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
@@ -93,13 +93,13 @@ pub fn define_number_class(hooks: &GcHooks, module: &Module, _: &Package) -> Ini
     val!(to_dyn_native(hooks, NumberUntil::new(hooks, value_error))),
   );
 
-  class.meta().expect("Meta class not set.").add_method(
+  class.meta_class().expect("Meta class not set.").add_method(
     hooks,
     hooks.manage_str(NUMBER_PARSE.name),
     val!(to_dyn_native(hooks, NumberParse::new(hooks, format_error))),
   );
 
-  class.meta().expect("Meta class not set.").add_method(
+  class.meta_class().expect("Meta class not set.").add_method(
     hooks,
     hooks.manage_str(NUMBER_CMP.name),
     val!(to_dyn_native(hooks, NumberCmp::from(hooks))),

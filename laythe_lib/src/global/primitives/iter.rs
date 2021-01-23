@@ -84,7 +84,7 @@ pub fn declare_iter_class(
   package: &Package,
 ) -> InitResult<()> {
   let class = default_class_inheritance(hooks, package, ITER_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
@@ -1217,13 +1217,13 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
-      let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
+      let fun = val!(hooks.manage(Closure::without_upvalues(fun_from_hooks(
         &hooks.as_gc(),
         "example",
         "module",
       ))));
 
-      fun.to_closure().fun.arity = Arity::Fixed(1);
+      fun.to_closure().fun().arity = Arity::Fixed(1);
 
       let result = iter_map.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1266,13 +1266,13 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
-      let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
+      let fun = val!(hooks.manage(Closure::without_upvalues(fun_from_hooks(
         &hooks.as_gc(),
         "example",
         "module",
       ))));
 
-      fun.to_closure().fun.arity = Arity::Fixed(1);
+      fun.to_closure().fun().arity = Arity::Fixed(1);
 
       let result = iter_filter.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1321,13 +1321,13 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
-      let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
+      let fun = val!(hooks.manage(Closure::without_upvalues(fun_from_hooks(
         &hooks.as_gc(),
         "example",
         "module",
       ))));
 
-      fun.to_closure().fun.arity = Arity::Fixed(2);
+      fun.to_closure().fun().arity = Arity::Fixed(2);
 
       let result = iter_reduce.call(&mut hooks, Some(this), &[val!(0.0), fun]);
       match result {
@@ -1403,13 +1403,13 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
-      let fun = val!(hooks.manage(Closure::new(fun_from_hooks(
+      let fun = val!(hooks.manage(Closure::without_upvalues(fun_from_hooks(
         &hooks.as_gc(),
         "example",
         "module",
       ))));
 
-      fun.to_closure().fun.arity = Arity::Fixed(1);
+      fun.to_closure().fun().arity = Arity::Fixed(1);
 
       let result = iter_each.call(&mut hooks, Some(this), &[fun]);
       match result {

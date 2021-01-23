@@ -42,7 +42,7 @@ const REGEXP_CAPTURES: NativeMetaBuilder = NativeMetaBuilder::method("captures",
 
 pub fn declare_regexp_class(hooks: &GcHooks, module: &mut Module, std: &Package) -> InitResult<()> {
   let class = default_class_inheritance(hooks, std, REGEXP_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_regexp_class(hooks: &GcHooks, module: &Module, std: &Package) -> InitResult<()> {

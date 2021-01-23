@@ -31,7 +31,7 @@ pub fn declare_closure_class(
   package: &Package,
 ) -> InitResult<()> {
   let class = default_class_inheritance(hooks, package, CLOSURE_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_closure_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
@@ -62,7 +62,7 @@ native!(ClosureName, CLOSURE_NAME);
 
 impl Native for ClosureName {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_closure().fun.name))
+    Call::Ok(val!(this.unwrap().to_closure().fun().name()))
   }
 }
 
@@ -70,7 +70,7 @@ native!(ClosureLen, CLOSURE_LEN);
 
 impl Native for ClosureLen {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let req = match this.unwrap().to_closure().fun.arity {
+    let req = match this.unwrap().to_closure().fun().arity {
       Arity::Default(req, _) => req,
       Arity::Fixed(req) => req,
       Arity::Variadic(req) => req,
@@ -115,7 +115,7 @@ mod test {
       let closure_name = ClosureName::from(&hooks);
 
       let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
-      let closure = hooks.manage(Closure::new(fun));
+      let closure = hooks.manage(Closure::without_upvalues(fun));
 
       let result1 = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
 
@@ -151,7 +151,7 @@ mod test {
       let mut fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       fun.arity = Arity::Fixed(4);
 
-      let closure = hooks.manage(Closure::new(fun));
+      let closure = hooks.manage(Closure::without_upvalues(fun));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 4.0);
@@ -195,7 +195,7 @@ mod test {
       let mut fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
       fun.arity = Arity::Fixed(1);
 
-      let closure = hooks.manage(Closure::new(fun));
+      let closure = hooks.manage(Closure::without_upvalues(fun));
 
       let args = &[val!(hooks.manage_str("input".to_string()))];
       let result1 = closure_call.call(&mut hooks, Some(val!(closure)), args);

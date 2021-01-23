@@ -96,7 +96,7 @@ fn bootstrap_classes(hooks: &GcHooks, module: &mut Module, package: &Package) ->
   // create object's meta class
   let object_meta_class = Class::with_inheritance(
     hooks,
-    hooks.manage_str(format!("{} metaClass", object_class.name)),
+    hooks.manage_str(format!("{} metaClass", object_class.name())),
     class_class,
   );
 

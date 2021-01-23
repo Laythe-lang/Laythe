@@ -743,12 +743,6 @@ impl Chunk {
     self.instructions.shrink_to_fit();
     self.constants.shrink_to_fit();
     self.lines.shrink_to_fit();
-
-    self.constants.iter_mut().for_each(|constant| {
-      if constant.is_fun() {
-        constant.to_fun().shrink_to_fit_internal();
-      }
-    })
   }
 }
 

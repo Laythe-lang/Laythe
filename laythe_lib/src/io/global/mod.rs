@@ -30,7 +30,7 @@ pub fn declare_io_errors(
 ) -> InitResult<()> {
   let io_error = default_error_inheritance(hooks, package, IO_ERROR)?;
 
-  export_and_insert(hooks, module, io_error.name, val!(io_error))
+  export_and_insert(hooks, module, io_error.name(), val!(io_error))
 }
 
 pub fn define_io_errors(_hooks: &GcHooks, _module: &Module, _: &Package) -> InitResult<()> {

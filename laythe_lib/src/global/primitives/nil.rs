@@ -21,7 +21,7 @@ pub fn declare_nil_class(
   package: &Package,
 ) -> InitResult<()> {
   let class = default_class_inheritance(hooks, package, NIL_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_nil_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
