@@ -34,7 +34,7 @@ fn compile_source(source: &str) {
 
   let path = PathBuf::from("./Benchmark.lay");
 
-  let module = hooks.manage(Module::from_path(&hooks, path).unwrap());
+  let module = hooks.manage(Module::from_path(&hooks, path, 0).unwrap());
   let (ast, line_offsets) = Parser::new(source, 0).parse();
   let ast = ast.unwrap();
 

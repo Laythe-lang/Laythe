@@ -14,6 +14,9 @@ pub struct Module {
   /// The full filepath to this module
   path: PathBuf,
 
+  // What is the id of this module for this execution
+  id: usize,
+
   /// The class that represents this module when imported
   module_class: Gc<Class>,
 
@@ -26,9 +29,10 @@ pub struct Module {
 
 impl Module {
   /// Create a new laythe module
-  pub fn new(module_class: Gc<Class>, path: PathBuf) -> Self {
+  pub fn new(module_class: Gc<Class>, path: PathBuf, id: usize) -> Self {
     Module {
       path,
+      id,
       module_class,
       exports: LyHashSet::default(),
       symbols: Map::default(),
@@ -46,7 +50,7 @@ impl Module {
   }
 
   /// Create a module from a filepath
-  pub fn from_path(hooks: &GcHooks, path: PathBuf) -> Result<Self, GcStr> {
+  pub fn from_path(hooks: &GcHooks, path: PathBuf, id: usize) -> Result<Self, GcStr> {
     let module_name = path.file_stem().and_then(|m| m.to_str());
 
     let module_name = match module_name {
@@ -63,6 +67,7 @@ impl Module {
 
     Ok(Self {
       path,
+      id,
       module_class: hooks.manage(Class::bare(name)),
       exports: LyHashSet::default(),
       symbols: Map::default(),
@@ -237,6 +242,7 @@ mod test {
     Module::new(
       hooks.manage(Class::bare(hooks.manage_str("example".to_string()))),
       path,
+      0,
     );
 
     assert!(true);
@@ -252,7 +258,7 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self/path.ly");
-    let module = Module::from_path(&hooks, path);
+    let module = Module::from_path(&hooks, path, 0);
 
     assert!(module.is_ok());
     assert_eq!(&*module.unwrap().name(), "path");
@@ -271,6 +277,7 @@ mod test {
     let mut module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
       PathBuf::from("self/module.ly"),
+      0,
     );
 
     let export_name = hooks.manage_str("exported".to_string());
@@ -296,6 +303,7 @@ mod test {
     let mut module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
       PathBuf::from("self/module.ly"),
+      0,
     );
 
     let export_name = hooks.manage_str("exported".to_string());
@@ -324,6 +332,7 @@ mod test {
     let mut module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
       PathBuf::from("self/module.ly"),
+      0,
     );
 
     let name = hooks.manage_str("exported".to_string());
@@ -350,6 +359,7 @@ mod test {
     let module = Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
       PathBuf::from("self/module.ly"),
+      0,
     );
 
     let name = hooks.manage_str("exported".to_string());

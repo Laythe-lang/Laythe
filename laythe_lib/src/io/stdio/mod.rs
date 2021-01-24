@@ -2,7 +2,7 @@ mod stderr;
 mod stdin;
 mod stdout;
 
-use laythe_core::{hooks::GcHooks, module::Module, package::Package};
+use laythe_core::{hooks::GcHooks, module::Module, package::Package, utils::IdEmitter};
 use laythe_env::managed::Gc;
 use std::path::PathBuf;
 use stderr::{declare_stderr, define_stderr};
@@ -13,8 +13,16 @@ use crate::InitResult;
 
 const STDIO_PATH: &str = "std/io/stdio.ly";
 
-pub fn stdio_module(hooks: &GcHooks, std: &Package) -> InitResult<Gc<Module>> {
-  let mut module = hooks.manage(Module::from_path(&hooks, PathBuf::from(STDIO_PATH))?);
+pub fn stdio_module(
+  hooks: &GcHooks,
+  std: &Package,
+  emitter: &mut IdEmitter,
+) -> InitResult<Gc<Module>> {
+  let mut module = hooks.manage(Module::from_path(
+    &hooks,
+    PathBuf::from(STDIO_PATH),
+    emitter.emit(),
+  )?);
 
   declare_stderr(hooks, &mut module, std)?;
   declare_stdin(hooks, &mut module, std)?;

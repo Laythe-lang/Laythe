@@ -1319,7 +1319,7 @@ mod test {
     let class = test_class(gc);
     let path = test_path();
 
-    gc.manage(Module::new(class, path), &NO_GC)
+    gc.manage(Module::new(class, path, 0), &NO_GC)
   }
 
   fn test_fun(gc: &mut Allocator) -> Gc<Fun> {

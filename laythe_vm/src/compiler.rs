@@ -573,7 +573,6 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
   /// add an upvalue
   fn add_upvalue(&mut self, upvalue: UpvalueIndex) -> usize {
-
     // check for existing upvalues
     if let Some(i) =
       self
@@ -1813,7 +1812,7 @@ mod test {
 
     let path = PathBuf::from("path/module.ly");
 
-    let module = hooks.manage(Module::from_path(&hooks, path).unwrap());
+    let module = hooks.manage(Module::from_path(&hooks, path, 0).unwrap());
 
     let gc = context.gc.replace(Allocator::default());
 

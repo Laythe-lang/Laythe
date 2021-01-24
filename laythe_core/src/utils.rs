@@ -27,6 +27,7 @@ pub fn is_falsey(value: Value) -> bool {
   value.is_false() || value.is_nil()
 }
 
+/// Length in T between two points. Assumes aligned
 pub fn ptr_len<T>(start: *const T, end: *const T) -> usize {
   let end_u = end as usize;
   let start_u = start as usize;
@@ -38,6 +39,23 @@ pub fn ptr_len<T>(start: *const T, end: *const T) -> usize {
   byte_len / mem::size_of::<T>()
 }
 
+#[derive(Default)]
+pub struct IdEmitter(usize);
+
+impl IdEmitter {
+  pub fn emit(&mut self) -> usize {
+    let result = self.0;
+    self.0 += 1;
+    result
+  }
+
+  pub fn id_count(&self) -> usize {
+    self.0
+  }
+}
+
+/// Get a specific NAN value to sit in place
+/// of any nan
 pub fn use_sentinel_nan(val: f64) -> f64 {
   if val.is_nan() {
     std::f64::NAN

@@ -17,7 +17,7 @@ use laythe_core::{
   object::{Class, Closure, Fun, FunBuilder, Instance, List, Method, Upvalue},
   package::{Import, Package},
   signature::{ArityError, Environment, ParameterKind, SignatureError},
-  utils::{is_falsey, ptr_len},
+  utils::{is_falsey, ptr_len, IdEmitter},
   val,
   value::{Value, ValueKind, VALUE_NIL, VALUE_TRUE},
   Call, LyResult,
@@ -114,6 +114,9 @@ pub struct Vm {
   /// A collection of packages that have already been loaded
   packages: Map<GcStr, Gc<Package>>,
 
+  /// A utility to emit ids for modules
+  emitter: IdEmitter,
+
   /// A cache for full filepath to individual modules
   cache: Map<GcStr, Gc<Module>>,
 
@@ -164,7 +167,8 @@ impl Vm {
       .current_dir()
       .expect("Could not obtain the current working directory.");
 
-    let std_lib = create_std_lib(&hooks).expect("Standard library creation failed");
+    let mut emitter = IdEmitter::default();
+    let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
     let global = std_lib
       .import(
         &hooks,
@@ -205,6 +209,7 @@ impl Vm {
       builtin,
       root_dir,
       packages: Map::default(),
+      emitter,
       cache: Map::default(),
       global,
       frame_count: 1,
@@ -233,8 +238,10 @@ impl Vm {
     let mut stdio = self.io.stdio();
 
     let repl_path = self.root_dir.join(PathBuf::from(REPL_MODULE));
+    let main_id = self.emitter.emit();
+
     let main_module = self
-      .main_module(repl_path.clone())
+      .main_module(repl_path.clone(), main_id)
       .expect("Could not retrieve main module");
 
     loop {
@@ -280,7 +287,8 @@ impl Vm {
         let file_id = self.files.upsert(managed_path, managed_source);
         self.pop_roots(2);
 
-        let main_module = match self.main_module(module_path) {
+        let main_id = self.emitter.emit();
+        let main_module = match self.main_module(module_path, main_id) {
           Ok(module) => module,
           Err(err) => {
             return err;
@@ -375,7 +383,7 @@ impl Vm {
   }
 
   /// Prepare the main module for use
-  fn main_module(&self, module_path: PathBuf) -> Result<Gc<Module>, ExecuteResult> {
+  fn main_module(&self, module_path: PathBuf, main_id: usize) -> Result<Gc<Module>, ExecuteResult> {
     let hooks = GcHooks::new(self);
 
     let mut stdio = self.io.stdio();
@@ -383,7 +391,7 @@ impl Vm {
 
     // resolve the main module from the provided path
 
-    let module = match Module::from_path(&hooks, module_path) {
+    let module = match Module::from_path(&hooks, module_path, main_id) {
       Ok(module) => module,
       Err(err) => {
         writeln!(stderr, "{}", err).expect("Unable to write to stderr");
@@ -2113,6 +2121,7 @@ impl From<VmDependencies> for Vm {
       frames,
       gc,
       files: VmFiles::default(),
+      emitter: IdEmitter::default(),
       root_dir,
       builtin,
       packages: Map::default(),

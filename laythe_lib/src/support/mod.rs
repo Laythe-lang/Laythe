@@ -143,6 +143,7 @@ mod test {
     package::Import,
     signature::Arity,
     signature::{ParameterBuilder, ParameterKind},
+    utils::IdEmitter,
     val,
     value::{Value, ValueKind, VALUE_NIL},
     Call,
@@ -202,7 +203,8 @@ mod test {
       };
 
       let hooks = GcHooks::new(&mut context);
-      let std = create_std_lib(&hooks).unwrap();
+      let mut emitter = IdEmitter::default();
+      let std = create_std_lib(&hooks, &mut emitter).unwrap();
       let global = std
         .import(&hooks, Import::from_str(&hooks, GLOBAL_PATH))
         .expect("Could not retrieve global module");
@@ -386,8 +388,8 @@ mod test {
   }
 
   pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Gc<Fun> {
-    let module =
-      Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name))).expect("TODO");
+    let module = Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name)), 0)
+      .expect("TODO");
 
     let module = hooks.manage(module);
     let mut builder = FunBuilder::new(hooks.manage_str(name), module);
@@ -397,8 +399,8 @@ mod test {
   }
 
   pub fn fun_builder_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
-    let module =
-      Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name))).expect("TODO");
+    let module = Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name)), 0)
+      .expect("TODO");
 
     let module = hooks.manage(module);
     FunBuilder::new(hooks.manage_str(name), module)
