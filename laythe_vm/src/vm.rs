@@ -25,7 +25,7 @@ use laythe_core::{
 use laythe_env::{
   io::Io,
   managed::{Gc, GcStr, Manage, Trace, TraceRoot},
-  memory::{Allocator, NO_GC},
+  memory::Allocator,
 };
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn, GLOBAL, STD};
 use laythe_native::io::io_native;
@@ -126,9 +126,6 @@ pub struct Vm {
   /// A collection of currently available upvalues
   open_upvalues: Vec<Gc<Upvalue>>,
 
-  /// the main script level function
-  script: Option<Gc<Closure>>,
-
   /// The current frame's function
   current_fun: Gc<Fun>,
 
@@ -213,7 +210,6 @@ impl Vm {
       cache: Map::default(),
       global,
       frame_count: 1,
-      script: None,
       current_fun,
       current_frame,
       current_error: None,
@@ -362,14 +358,13 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: Gc<Fun>) {
-    self.script = Some(
-      self
-        .gc
-        .borrow_mut()
-        .manage(Closure::without_upvalues(script), &NO_GC),
-    );
+    let script = self
+      .gc
+      .borrow_mut()
+      .manage(Closure::without_upvalues(script), self);
+
     self.reset_stack();
-    let result = self.call(self.script.expect("Script removed."), 0);
+    let result = self.call(script, 0);
 
     if result != Signal::Ok {
       self.internal_error("Main script call failed.");
@@ -2128,7 +2123,6 @@ impl From<VmDependencies> for Vm {
       cache: Map::default(),
       global,
       frame_count: 1,
-      script: None,
       current_fun,
       current_frame,
       current_error: None,
@@ -2146,10 +2140,6 @@ impl From<VmDependencies> for Vm {
 
 impl TraceRoot for Vm {
   fn trace(&self) {
-    if let Some(script) = self.script {
-      script.trace();
-    }
-
     unsafe {
       let start = &self.stack[0] as *const Value;
       let len = ptr_len(start, self.stack_top);
@@ -2178,10 +2168,6 @@ impl TraceRoot for Vm {
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
-    if let Some(script) = self.script {
-      script.trace_debug(log);
-    }
-
     unsafe {
       let start = &self.stack[0] as *const Value;
       let len = ptr_len(start, self.stack_top) + 1;

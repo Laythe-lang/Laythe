@@ -226,7 +226,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   /// let class = gc.manage(Class::bare(name), &NO_GC);
   /// let path = PathBuf::from("./module.ly");
   ///
-  /// let module = gc.manage(Module::new(class, path), &NO_GC);
+  /// let module = gc.manage(Module::new(class, path, 0), &NO_GC);
   /// let ast = ast::Module::new(vec![]);
   ///
   /// let compiler = Compiler::new(module, &ast, &LineOffsets::default(), 0, &NO_GC, gc);

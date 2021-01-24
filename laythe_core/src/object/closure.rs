@@ -27,6 +27,7 @@ impl Closure {
   /// let module = hooks.manage(Module::new(
   ///   hooks.manage(Class::bare(hooks.manage_str("module"))),
   ///   PathBuf::from("self/module.ly"),
+  ///   0,
   /// ));
   /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module);
   /// let managed_fun = hooks.manage(builder.build());
