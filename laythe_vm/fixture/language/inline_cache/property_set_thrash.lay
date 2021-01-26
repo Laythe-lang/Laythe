@@ -1,0 +1,31 @@
+class A {
+  init() {
+    self.a = true;
+    self.b = false;
+  }
+}
+
+class B {
+  init() {
+    self.b = true;
+    self.a = false;
+  }
+}
+
+fn toggle(a) {
+  a.b = !a.b;
+}
+
+let examples = [A(), B()];
+
+for _ in 5.times() {
+  for example in examples {
+    toggle(example);
+  }
+}
+
+assertEq(examples[0].a, true);
+assertEq(examples[0].b, true);
+
+assertEq(examples[1].a, false);
+assertEq(examples[1].b, false);

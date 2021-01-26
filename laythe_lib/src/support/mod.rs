@@ -51,7 +51,7 @@ pub fn load_class_from_package(
   let import: Import = Import::from_str(hooks, path);
 
   let module = package.import(hooks, import)?;
-  match module.import(hooks).get_field(&name) {
+  match module.import_symbol(name) {
     Some(symbol) => {
       if symbol.is_class() {
         Ok(symbol.to_class())
@@ -73,7 +73,7 @@ pub fn load_class_from_module(
   name: &str,
 ) -> Result<Gc<Class>, GcStr> {
   let name = hooks.manage_str(name);
-  match module.import(hooks).get_field(&name) {
+  match module.import_symbol(name) {
     Some(symbol) => {
       if symbol.is_class() {
         Ok(symbol.to_class())
@@ -95,7 +95,7 @@ pub fn load_instance_from_module(
   name: &str,
 ) -> Result<Gc<Instance>, GcStr> {
   let name = hooks.manage_str(name);
-  match module.import(hooks).get_field(&name) {
+  match module.import_symbol(name) {
     Some(symbol) => {
       if symbol.is_instance() {
         Ok(symbol.to_instance())
@@ -139,10 +139,11 @@ mod test {
     native::{MetaData, NativeMeta, NativeMetaBuilder},
     object::Class,
     object::Fun,
-    object::List,
+    object::{FunBuilder, List},
     package::Import,
     signature::Arity,
     signature::{ParameterBuilder, ParameterKind},
+    utils::IdEmitter,
     val,
     value::{Value, ValueKind, VALUE_NIL},
     Call,
@@ -202,7 +203,8 @@ mod test {
       };
 
       let hooks = GcHooks::new(&mut context);
-      let std = create_std_lib(&hooks).unwrap();
+      let mut emitter = IdEmitter::default();
+      let std = create_std_lib(&hooks, &mut emitter).unwrap();
       let global = std
         .import(&hooks, Import::from_str(&hooks, GLOBAL_PATH))
         .expect("Could not retrieve global module");
@@ -252,8 +254,8 @@ mod test {
   impl ValueContext for MockedContext {
     fn call(&mut self, callable: Value, args: &[Value]) -> Call {
       let arity = match callable.kind() {
-        ValueKind::Closure => callable.to_closure().fun.arity,
-        ValueKind::Method => callable.to_method().method.to_closure().fun.arity,
+        ValueKind::Closure => *callable.to_closure().fun().arity(),
+        ValueKind::Method => *callable.to_method().method().to_closure().fun().arity(),
         ValueKind::Native => callable.to_native().meta().signature.arity,
         _ => return Call::Exit(1),
       };
@@ -276,8 +278,8 @@ mod test {
 
     fn call_method(&mut self, _this: Value, method: Value, args: &[Value]) -> Call {
       let arity = match method.kind() {
-        ValueKind::Closure => method.to_closure().fun.arity,
-        ValueKind::Method => method.to_method().method.to_closure().fun.arity,
+        ValueKind::Closure => *method.to_closure().fun().arity(),
+        ValueKind::Method => *method.to_method().method().to_closure().fun().arity(),
         ValueKind::Native => method.to_native().meta().signature.arity,
         _ => {
           return Call::Exit(1);
@@ -386,14 +388,22 @@ mod test {
   }
 
   pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Gc<Fun> {
-    let module = Module::from_path(
-      &hooks,
-      hooks.manage(PathBuf::from(format!("path/{}.ly", module_name))),
-    )
-    .expect("TODO");
+    let module = Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name)), 0)
+      .expect("TODO");
 
     let module = hooks.manage(module);
-    hooks.manage(Fun::new(hooks.manage_str(name), module))
+    let mut builder = FunBuilder::new(hooks.manage_str(name), module);
+    builder.set_arity(Arity::default());
+
+    hooks.manage(builder.build())
+  }
+
+  pub fn fun_builder_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
+    let module = Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name)), 0)
+      .expect("TODO");
+
+    let module = hooks.manage(module);
+    FunBuilder::new(hooks.manage_str(name), module)
   }
 
   pub fn test_error_class(hooks: &GcHooks) -> Gc<Class> {

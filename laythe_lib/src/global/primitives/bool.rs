@@ -25,7 +25,7 @@ pub fn declare_bool_class(
   package: &Package,
 ) -> InitResult<()> {
   let bool_class = default_class_inheritance(hooks, package, BOOL_CLASS_NAME)?;
-  export_and_insert(hooks, module, bool_class.name, val!(bool_class))
+  export_and_insert(hooks, module, bool_class.name(), val!(bool_class))
 }
 
 pub fn define_bool_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {

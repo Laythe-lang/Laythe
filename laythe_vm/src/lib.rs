@@ -1,10 +1,10 @@
 #![deny(clippy::all)]
 
 pub mod ast;
-pub mod call_frame;
+mod cache;
+mod call_frame;
 pub mod compiler;
-pub mod constants;
-pub mod debug;
+mod constants;
 pub mod files;
 pub mod parser;
 pub mod scanner;
@@ -14,6 +14,9 @@ use codespan_reporting::diagnostic::Diagnostic;
 
 #[cfg(test)]
 pub mod ast_printer;
+
+#[cfg(any(test, feature = "debug"))]
+mod debug;
 
 /// The result of a compilation
 pub type FeResult<T, F> = Result<T, Vec<Diagnostic<F>>>;

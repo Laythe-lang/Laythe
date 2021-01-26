@@ -41,7 +41,7 @@ pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> Ini
 
 pub fn define_stdin(hooks: &GcHooks, module: &Module, std: &Package) -> InitResult<()> {
   let instance = load_instance_from_module(hooks, module, STDIN_INSTANCE_NAME)?;
-  let mut class = instance.class;
+  let mut class = instance.class();
   let io_error = val!(load_class_from_package(hooks, std, ERROR_PATH, IO_ERROR)?);
 
   class.add_method(

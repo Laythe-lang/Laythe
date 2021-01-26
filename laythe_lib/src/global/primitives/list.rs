@@ -84,7 +84,7 @@ pub fn declare_list_class(
 ) -> InitResult<()> {
   let class = default_class_inheritance(hooks, package, LIST_CLASS_NAME)?;
 
-  export_and_insert(hooks, module, class.name, val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
@@ -189,7 +189,7 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitR
     val!(to_dyn_native(hooks, ListSort::new(hooks, type_error))),
   );
 
-  class.meta().expect("Meta class not set.").add_method(
+  class.meta_class().expect("Meta class not set.").add_method(
     hooks,
     hooks.manage_str(LIST_COLLECT.name),
     val!(to_dyn_native(hooks, ListCollect::from(hooks))),

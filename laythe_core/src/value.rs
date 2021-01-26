@@ -600,10 +600,10 @@ mod unboxed {
           Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
           Upvalue::Closed(store) => write!(f, "{}", store),
         },
-        Self::Closure(closure) => write!(f, "{}", *closure.fun),
-        Self::Method(bound) => write!(f, "{}.{}", bound.receiver, bound.method),
-        Self::Class(class) => write!(f, "{}", class.name),
-        Self::Instance(instance) => write!(f, "{} instance", instance.class.name),
+        Self::Closure(closure) => write!(f, "{}", *closure.fun()),
+        Self::Method(bound) => write!(f, "{}.{}", bound.receiver(), bound.method()),
+        Self::Class(class) => write!(f, "{}", class.name()),
+        Self::Instance(instance) => write!(f, "{} instance", instance.class().name()),
         Self::Iter(iterator) => write!(f, "{} iterator", &iterator.name()),
         Self::Native(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
       }
@@ -1234,13 +1234,13 @@ mod boxed {
           Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
           Upvalue::Closed(store) => write!(f, "{}", store),
         },
-        ValueKind::Closure => write!(f, "{}", *self.to_closure().fun),
+        ValueKind::Closure => write!(f, "{}", *self.to_closure().fun()),
         ValueKind::Method => {
           let bound = self.to_method();
-          write!(f, "{}.{}", bound.receiver, bound.method)
+          write!(f, "{}.{}", bound.receiver(), bound.method())
         }
-        ValueKind::Class => write!(f, "{}", &self.to_class().name),
-        ValueKind::Instance => write!(f, "{} instance", &self.to_instance().class.name),
+        ValueKind::Class => write!(f, "{}", &self.to_class().name()),
+        ValueKind::Instance => write!(f, "{} instance", &self.to_instance().class().name()),
         ValueKind::Iter => write!(f, "{}", &self.to_iter().name()),
         ValueKind::Native => write!(f, "<native {}>", self.to_native().meta().name),
       }
@@ -1311,28 +1311,28 @@ mod test {
     gc.manage_str("sup", &NO_GC)
   }
 
-  fn test_path(gc: &mut Allocator) -> Gc<PathBuf> {
-    gc.manage(PathBuf::from("test/sup.ly"), &NO_GC)
+  fn test_path() -> PathBuf {
+    PathBuf::from("test/sup.ly")
   }
 
   fn test_module(gc: &mut Allocator) -> Gc<Module> {
     let class = test_class(gc);
-    let path = test_path(gc);
+    let path = test_path();
 
-    gc.manage(Module::new(class, path), &NO_GC)
+    gc.manage(Module::new(class, path, 0), &NO_GC)
   }
 
   fn test_fun(gc: &mut Allocator) -> Gc<Fun> {
     let name = test_string(gc);
     let module = test_module(gc);
 
-    gc.manage(Fun::new(name, module), &NO_GC)
+    gc.manage(Fun::test(name, module), &NO_GC)
   }
 
   fn test_closure(gc: &mut Allocator) -> Gc<Closure> {
     let fun = test_fun(gc);
 
-    gc.manage(Closure::new(fun), &NO_GC)
+    gc.manage(Closure::without_upvalues(fun), &NO_GC)
   }
 
   fn test_class(gc: &mut Allocator) -> Gc<Class> {
@@ -1432,8 +1432,8 @@ mod test {
 
     assert_type(value, ValueKind::Fun);
 
-    assert_eq!(fun.name, fun2.name);
-    assert_eq!(fun.arity, fun2.arity);
+    assert_eq!(fun.name(), fun2.name());
+    assert_eq!(fun.arity(), fun2.arity());
   }
 
   #[test]
@@ -1446,8 +1446,8 @@ mod test {
 
     assert_type(value, ValueKind::Closure);
 
-    assert_eq!(closure.fun, closure2.fun);
-    assert_eq!(closure.upvalues.len(), closure2.upvalues.len());
+    assert_eq!(closure.fun(), closure2.fun());
+    assert_eq!(closure.upvalues(), closure2.upvalues());
   }
 
   #[test]
@@ -1460,6 +1460,6 @@ mod test {
 
     assert_type(value, ValueKind::Class);
 
-    assert_eq!(class.name, class2.name);
+    assert_eq!(class.name(), class2.name());
   }
 }

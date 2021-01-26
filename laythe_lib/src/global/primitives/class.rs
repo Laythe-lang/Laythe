@@ -70,7 +70,7 @@ impl Native for ClassStr {
     let class = this.unwrap().to_class();
 
     Call::Ok(val!(
-      hooks.manage_str(&format!("<class {} {:p}>", class.name, &*class))
+      hooks.manage_str(&format!("<class {} {:p}>", class.name(), &*class))
     ))
   }
 }

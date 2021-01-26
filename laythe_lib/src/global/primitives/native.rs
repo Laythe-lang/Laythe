@@ -30,7 +30,7 @@ pub fn declare_native_class(
   package: &Package,
 ) -> InitResult<()> {
   let class = default_class_inheritance(hooks, package, NATIVE_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_native_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {

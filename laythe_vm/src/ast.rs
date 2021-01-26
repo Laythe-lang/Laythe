@@ -108,9 +108,9 @@ pub struct Span {
   pub end: u32,
 }
 
-impl Into<Range<usize>> for Span {
-  fn into(self) -> Range<usize> {
-    (self.start as usize)..(self.end as usize)
+impl From<Span> for Range<usize> {
+  fn from(span: Span) -> Self {
+    (span.start as usize)..(span.end as usize)
   }
 }
 

@@ -1,0 +1,20 @@
+class A {
+  init() {
+    self.a = "foo";
+    self.b = "bar";
+  }
+}
+
+class B {
+  init() {
+    self.b = "foo";
+    self.a = "bar";
+  }
+}
+
+let examples = [A(), B(), A(), B()];
+let expected = ["bar", "foo", "bar", "foo"];
+
+for i in examples.len().times() {
+  assertEq(examples[i].b, expected[i]);
+}

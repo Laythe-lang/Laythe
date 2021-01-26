@@ -27,14 +27,14 @@ const FILE_READ_ALL_TEXT: NativeMetaBuilder =
 
 pub fn declare_file(hooks: &GcHooks, module: &mut Module, std: &Package) -> InitResult<()> {
   let class = default_class_inheritance(hooks, std, FILE_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name, val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_file(hooks: &GcHooks, module: &Module, std: &Package) -> InitResult<()> {
   let class = load_class_from_module(hooks, module, FILE_CLASS_NAME)?;
   let io_error = val!(load_class_from_package(hooks, std, ERROR_PATH, IO_ERROR)?);
 
-  class.meta().expect("Meta class not set.").add_method(
+  class.meta_class().expect("Meta class not set.").add_method(
     hooks,
     hooks.manage_str(FILE_READ_ALL_TEXT.name),
     val!(to_dyn_native(hooks, FileReadAllText::new(hooks, io_error))),

@@ -252,7 +252,8 @@ mod test {
     let mut package = Package::new(hooks.manage_str("package".to_string()));
     let module = hooks.manage(Module::new(
       hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
-      hooks.manage(PathBuf::from("self/module.ly")),
+      PathBuf::from("self/module.ly"),
+      0,
     ));
 
     let result1 = package.add_module(&hooks, module.clone());
@@ -291,13 +292,8 @@ mod test {
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let mut module = hooks.manage(
-      Module::from_path(
-        &hooks,
-        hooks.manage(PathBuf::from("my_package/my_module.ly")),
-      )
-      .unwrap(),
-    );
+    let mut module =
+      hooks.manage(Module::from_path(&hooks, PathBuf::from("my_package/my_module.ly"), 0).unwrap());
     let export_name = hooks.manage_str("exported".to_string());
     module.insert_symbol(&hooks, export_name, val!(true));
     assert!(module.export_symbol(&hooks, export_name).is_ok());

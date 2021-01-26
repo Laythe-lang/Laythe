@@ -1192,6 +1192,7 @@ class Parser {
     self.scanner = Scanner(source);
     self.previous = nil;
     self.inInitializer = nil;
+    self.hasSuperClass = false;
     self.next();
   }
 

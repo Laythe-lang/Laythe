@@ -32,11 +32,9 @@ fn compile_source(source: &str) {
   let mut context = NoContext::default();
   let hooks = GcHooks::new(&mut context);
 
-  let path = hooks.manage(PathBuf::from("./Benchmark.lay"));
-  hooks.push_root(path);
+  let path = PathBuf::from("./Benchmark.lay");
 
-  let module = hooks.manage(Module::from_path(&hooks, path).unwrap());
-  hooks.pop_roots(1);
+  let module = hooks.manage(Module::from_path(&hooks, path, 0).unwrap());
   let (ast, line_offsets) = Parser::new(source, 0).parse();
   let ast = ast.unwrap();
 

@@ -10,7 +10,7 @@ mod support;
 use crate::{InitResult, GLOBAL_PATH};
 use assert::add_assert_funs;
 use dependencies::add_dependency_classes;
-use laythe_core::{hooks::GcHooks, module::Module, package::Package};
+use laythe_core::{hooks::GcHooks, module::Module, package::Package, utils::IdEmitter};
 use misc::add_misc_funs;
 use primitives::add_primitive_classes;
 use std::path::PathBuf;
@@ -24,10 +24,15 @@ pub use primitives::{
   object::OBJECT_CLASS_NAME, string::STRING_CLASS_NAME,
 };
 
-pub fn add_global_module(hooks: &GcHooks, std: &mut Package) -> InitResult<()> {
+pub fn add_global_module(
+  hooks: &GcHooks,
+  std: &mut Package,
+  emitter: &mut IdEmitter,
+) -> InitResult<()> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
-    hooks.manage(PathBuf::from(GLOBAL_PATH)),
+    PathBuf::from(GLOBAL_PATH),
+    emitter.emit(),
   )?);
 
   std.add_module(hooks, module)?;

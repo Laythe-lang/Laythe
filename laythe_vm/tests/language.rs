@@ -331,7 +331,6 @@ fn field() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/field/call_function_field.lay",
-      "language/field/get_and_set_method.lay",
       "language/field/many.lay",
       "language/field/method_binds_self.lay",
       "language/field/method.lay",
@@ -352,13 +351,14 @@ fn field() -> Result<(), std::io::Error> {
       "language/field/get_on_num.lay",
       "language/field/get_on_string.lay",
       "language/field/set_evaluation_order.lay",
+      "language/field/set_undefined.lay",
       "language/field/set_on_bool.lay",
       "language/field/set_on_class.lay",
       "language/field/set_on_function.lay",
       "language/field/set_on_nil.lay",
       "language/field/set_on_num.lay",
       "language/field/set_on_string.lay",
-      "language/field/undefined.lay",
+      "language/field/get_undefined.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -575,6 +575,23 @@ fn inheritance() -> Result<(), std::io::Error> {
     ],
     ExecuteResult::RuntimeError,
   )
+}
+
+#[test]
+fn inline_cache() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/inline_cache/invoke_thrash.lay",
+      "language/inline_cache/property_get_thrash.lay",
+      "language/inline_cache/property_set_thrash.lay",
+      "language/inline_cache/super_invoke_thrash.lay",
+    ],
+    ExecuteResult::Ok,
+  )?;
+
+  test_file_exits(&vec![], ExecuteResult::CompileError)?;
+
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]

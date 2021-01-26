@@ -24,7 +24,7 @@ pub(crate) fn add_assert_funs(
   package: &Package,
 ) -> InitResult<()> {
   let error = default_error_inheritance(hooks, package, ASSERT_ERROR_NAME)?;
-  export_and_insert(hooks, module, error.name, val!(error))?;
+  export_and_insert(hooks, module, error.name(), val!(error))?;
 
   declare_assert_funs(hooks, module)
 }

@@ -1,3 +1,5 @@
+use laythe_env::managed::Trace;
+
 use crate::value::Value;
 use std::cmp;
 use std::convert::TryInto;
@@ -150,6 +152,9 @@ pub enum AlignedByteCode {
   // An upvalue index for a closure
   UpvalueIndex(UpvalueIndex),
 
+  /// A inline cache slot
+  Slot(u32),
+
   /// Apply equality between the top two operands on the stack
   Equal,
 
@@ -231,6 +236,10 @@ impl AlignedByteCode {
       Self::UpvalueIndex(index) => {
         let encoded: u16 = unsafe { mem::transmute(index) };
         let bytes = encoded.to_ne_bytes();
+        code.extend_from_slice(&bytes);
+      }
+      Self::Slot(slot) => {
+        let bytes = slot.to_ne_bytes();
         code.extend_from_slice(&bytes);
       }
     }
@@ -623,33 +632,45 @@ impl Line {
 }
 
 /// Represents a chunk of code
-#[derive(Clone, PartialEq, Default, Debug)]
-pub struct Chunk {
-  /// instructions in this code chunk
-  pub instructions: Vec<u8>,
+#[derive(Default, Debug)]
+
+/// A mutable builder for a final immutable chunk
+pub struct ChunkBuilder {
+  /// instruction in this code chunk
+  instructions: Vec<u8>,
 
   /// constants in this code chunk
-  pub constants: Vec<Value>,
+  constants: Vec<Value>,
 
   /// debug line information
   lines: Vec<Line>,
 }
 
-impl Chunk {
+impl ChunkBuilder {
+  /// instruction in this code chunk
+  #[inline]
+  pub fn instructions(&self) -> &[u8] {
+    &self.instructions
+  }
+
   /// Write an instruction to this chunk
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::chunk::{Chunk, AlignedByteCode};
+  /// use laythe_core::chunk::{ChunkBuilder, AlignedByteCode};
   ///
-  /// let mut chunk = Chunk::default();
-  /// chunk.write_instruction(AlignedByteCode::Return, 0);
-  /// chunk.write_instruction(AlignedByteCode::Add, 0);
-  /// chunk.write_instruction(AlignedByteCode::Constant(10), 1);
+  /// let mut builder = ChunkBuilder::default();
+  /// builder.write_instruction(AlignedByteCode::Return, 0);
+  /// builder.write_instruction(AlignedByteCode::Add, 0);
+  /// builder.write_instruction(AlignedByteCode::Constant(10), 1);
   ///
-  /// assert_eq!(chunk.instructions.len(), 4);
+  /// assert_eq!(builder.instructions().len(), 4);
+  /// assert_eq!(builder.instructions()[0], 0);
+  /// assert_eq!(builder.instructions()[1], 2);
+  /// assert_eq!(builder.instructions()[2], 7);
+  /// assert_eq!(builder.instructions()[3], 10);
   /// ```
-  ///
+  #[inline]
   pub fn write_instruction(&mut self, op_code: AlignedByteCode, line: u32) {
     let l1 = self.instructions.len() as u32;
     op_code.encode(&mut self.instructions);
@@ -668,40 +689,137 @@ impl Chunk {
     }
   }
 
+  /// Patch an existing instruction in this check with
+  /// a new value
+  ///
+  /// # Examples
+  /// ```
+  /// use laythe_core::chunk::{ChunkBuilder, AlignedByteCode};
+  ///
+  /// let mut builder = ChunkBuilder::default();
+  /// builder.write_instruction(AlignedByteCode::Jump(0), 0);
+  /// builder.patch_instruction(1, 0);
+  /// builder.patch_instruction(2, 16);
+  ///
+  /// assert_eq!(builder.instructions().len(), 3);
+  /// assert_eq!(builder.instructions()[0], 34);
+  /// assert_eq!(builder.instructions()[1], 0);
+  /// assert_eq!(builder.instructions()[2], 16);
+  /// ```
+  #[inline]
+  pub fn patch_instruction(&mut self, index: usize, byte: u8) {
+    self.instructions[index] = byte
+  }
+
   /// Add a constant to this chunk
   ///
   /// # Examples
   /// ```
   /// use laythe_core::val;
-  /// use laythe_core::chunk::Chunk;
+  /// use laythe_core::chunk::ChunkBuilder;
   /// use laythe_core::value::Value;
   ///
-  /// let mut chunk = Chunk::default();
-  /// let index_1 = chunk.add_constant(val!(10.4));
-  /// let index_2 = chunk.add_constant(val!(5.2));
+  /// let mut builder = ChunkBuilder::default();
+  /// let index_1 = builder.add_constant(val!(10.4));
+  /// let index_2 = builder.add_constant(val!(5.2));
   ///
   /// assert_eq!(index_1, 0);
   /// assert_eq!(index_2, 1);
   ///
-  /// assert_eq!(chunk.constants[index_1], val!(10.4));
-  /// assert_eq!(chunk.constants[index_2], val!(5.2));
+  /// let chunk = builder.build();
+  ///
+  /// assert_eq!(chunk.get_constant(index_1), val!(10.4));
+  /// assert_eq!(chunk.get_constant(index_2), val!(5.2));
   /// ```
+  #[inline]
   pub fn add_constant(&mut self, value: Value) -> usize {
     self.constants.push(value);
     self.constants.len() - 1
+  }
+
+  /// Get the approximate size of this chunk in bytes
+  pub fn size(&self) -> usize {
+    mem::size_of::<Self>()
+      + mem::size_of::<u8>() * self.instructions.capacity()
+      + mem::size_of::<Value>() * self.constants.capacity()
+      + mem::size_of::<Line>() * self.lines.capacity()
+  }
+
+  /// Build the final chunk from this builder. Consumes this
+  /// chunk builder in the process
+  pub fn build(self) -> Chunk {
+    Chunk {
+      instructions: self.instructions.into_boxed_slice(),
+      constants: self.constants.into_boxed_slice(),
+      lines: self.lines.into_boxed_slice(),
+    }
+  }
+}
+
+impl Trace for ChunkBuilder {
+  fn trace(&self) {
+    self.constants.iter().for_each(|constant| constant.trace());
+  }
+
+  fn trace_debug(&self, log: &mut dyn std::io::Write) {
+    self
+      .constants
+      .iter()
+      .for_each(|constant| constant.trace_debug(log));
+  }
+}
+
+/// An immutable chunk of code
+#[derive(Clone, PartialEq, Default, Debug)]
+pub struct Chunk {
+  /// instruction in this code chunk
+  instructions: Box<[u8]>,
+
+  /// constants in this code chunk
+  constants: Box<[Value]>,
+
+  /// debug line information
+  lines: Box<[Line]>,
+}
+
+impl Chunk {
+  /// instruction in this code chunk
+  #[inline]
+  pub fn instructions(&self) -> &[u8] {
+    &self.instructions
+  }
+
+  /// Retrieve a constant in the constants table at
+  /// the provided offset
+  #[inline]
+  pub fn get_constant(&self, offset: usize) -> Value {
+    self.constants[offset]
+  }
+
+  /// Retrieve a constant in the constants table at
+  /// the provided offset without bounds checks
+  /// 
+  /// # Safety
+  /// This method assumes the index comes from a trusted 
+  /// source that is inbounds. 
+  #[inline]
+  pub unsafe fn get_constant_unchecked(&self, offset: usize) -> Value {
+    *self.constants.get_unchecked(offset)
   }
 
   /// Get the line number at a token offset
   ///
   /// # Example
   /// ```
-  /// use laythe_core::chunk::{Chunk, AlignedByteCode};
-  /// let mut chunk = Chunk::default();
+  /// use laythe_core::chunk::{ChunkBuilder, AlignedByteCode};
+  /// let mut builder = ChunkBuilder::default();
   ///     
-  /// chunk.write_instruction(AlignedByteCode::Add, 0);
-  /// chunk.write_instruction(AlignedByteCode::Divide, 0);
-  /// chunk.write_instruction(AlignedByteCode::Return, 2);
-  /// chunk.write_instruction(AlignedByteCode::Constant(2), 3);
+  /// builder.write_instruction(AlignedByteCode::Add, 0);
+  /// builder.write_instruction(AlignedByteCode::Divide, 0);
+  /// builder.write_instruction(AlignedByteCode::Return, 2);
+  /// builder.write_instruction(AlignedByteCode::Constant(2), 3);
+  ///
+  /// let chunk = builder.build();
   ///
   /// assert_eq!(chunk.get_line(1), 0);
   /// assert_eq!(chunk.get_line(2), 0);
@@ -730,25 +848,25 @@ impl Chunk {
     }
   }
 
-  /// Get the approximate size of this chunk in bytes
+  /// Get the size of this chunk in bytes
   pub fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + mem::size_of::<u8>() * self.instructions.capacity()
-      + mem::size_of::<Value>() * self.constants.capacity()
-      + mem::size_of::<Line>() * self.lines.capacity()
+      + mem::size_of::<u8>() * self.instructions.len()
+      + mem::size_of::<Value>() * self.constants.len()
+      + mem::size_of::<Line>() * self.lines.len()
+  }
+}
+
+impl Trace for Chunk {
+  fn trace(&self) {
+    self.constants.iter().for_each(|constant| constant.trace());
   }
 
-  /// Shrink the chunk to its minimum size
-  pub fn shrink_to_fit(&mut self) {
-    self.instructions.shrink_to_fit();
-    self.constants.shrink_to_fit();
-    self.lines.shrink_to_fit();
-
-    self.constants.iter_mut().for_each(|constant| {
-      if constant.is_fun() {
-        constant.to_fun().shrink_to_fit_internal();
-      }
-    })
+  fn trace_debug(&self, log: &mut dyn std::io::Write) {
+    self
+      .constants
+      .iter()
+      .for_each(|constant| constant.trace_debug(log));
   }
 }
 
@@ -847,7 +965,7 @@ mod test {
   }
 
   #[cfg(test)]
-  mod chunk {
+  mod chunk_builder {
     use super::*;
 
     #[test]
@@ -859,7 +977,7 @@ mod test {
 
     #[test]
     fn write_instruction() {
-      let mut chunk = Chunk::default();
+      let mut chunk = ChunkBuilder::default();
       chunk.write_instruction(AlignedByteCode::Nil, 0);
 
       assert_eq!(chunk.instructions.len(), 1);
@@ -873,18 +991,23 @@ mod test {
     fn add_constant() {
       use crate::value::VALUE_NIL;
 
-      let mut chunk = Chunk::default();
+      let mut chunk = ChunkBuilder::default();
       let index = chunk.add_constant(VALUE_NIL);
 
       assert_eq!(index, 0);
       assert!(chunk.constants[0].is_nil());
     }
+  }
+
+  #[cfg(test)]
+  mod chunk {
+    use crate::chunk::{AlignedByteCode, ChunkBuilder};
 
     #[test]
     fn get_line() {
-      let mut chunk = Chunk::default();
-      chunk.write_instruction(AlignedByteCode::Nil, 0);
-      assert_eq!(chunk.get_line(0), 0);
+      let mut builder = ChunkBuilder::default();
+      builder.write_instruction(AlignedByteCode::Nil, 0);
+      assert_eq!(builder.build().get_line(0), 0);
     }
   }
 }

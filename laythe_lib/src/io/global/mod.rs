@@ -1,4 +1,4 @@
-use laythe_core::value::Value;
+use laythe_core::{utils::IdEmitter, value::Value};
 use laythe_core::{hooks::GcHooks, module::Module, package::Package, val};
 use laythe_env::managed::Gc;
 use std::path::PathBuf;
@@ -11,10 +11,15 @@ use crate::{
 pub const ERROR_PATH: &str = "std/io/global.ly";
 pub const IO_ERROR: &str = "IoError";
 
-pub fn errors_module(hooks: &GcHooks, std: &Package) -> InitResult<Gc<Module>> {
+pub fn errors_module(
+  hooks: &GcHooks,
+  std: &Package,
+  emitter: &mut IdEmitter,
+) -> InitResult<Gc<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
-    hooks.manage(PathBuf::from(ERROR_PATH)),
+    PathBuf::from(ERROR_PATH),
+    emitter.emit(),
   )?);
 
   declare_io_errors(hooks, &mut module, std)?;
@@ -30,7 +35,7 @@ pub fn declare_io_errors(
 ) -> InitResult<()> {
   let io_error = default_error_inheritance(hooks, package, IO_ERROR)?;
 
-  export_and_insert(hooks, module, io_error.name, val!(io_error))
+  export_and_insert(hooks, module, io_error.name(), val!(io_error))
 }
 
 pub fn define_io_errors(_hooks: &GcHooks, _module: &Module, _: &Package) -> InitResult<()> {

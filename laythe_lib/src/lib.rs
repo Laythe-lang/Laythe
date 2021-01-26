@@ -10,7 +10,7 @@ mod support;
 use env::env_module;
 use global::add_global_module;
 use io::add_io_package;
-use laythe_core::{hooks::GcHooks, package::Package};
+use laythe_core::{hooks::GcHooks, package::Package, utils::IdEmitter};
 use laythe_env::managed::{Gc, GcStr};
 use math::add_math_module;
 use regexp::regexp_module;
@@ -145,15 +145,15 @@ pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 pub const GLOBAL_PATH: &str = "std/global.ly";
 
-pub fn create_std_lib(hooks: &GcHooks) -> InitResult<Gc<Package>> {
+pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> InitResult<Gc<Package>> {
   let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
 
-  add_global_module(hooks, &mut std)?;
+  add_global_module(hooks, &mut std, emitter)?;
 
-  add_math_module(hooks, &mut std)?;
-  add_io_package(hooks, &mut std)?;
-  let env = env_module(hooks, &std)?;
-  let regexp = regexp_module(hooks, &std)?;
+  add_math_module(hooks, &mut std, emitter)?;
+  add_io_package(hooks, &mut std, emitter)?;
+  let env = env_module(hooks, &std, emitter)?;
+  let regexp = regexp_module(hooks, &std, emitter)?;
 
   std.add_module(hooks, env)?;
   std.add_module(hooks, regexp)?;
@@ -202,8 +202,9 @@ mod test {
   fn new() {
     let mut context = MockedContext::default();
     let hooks = GcHooks::new(&mut context);
+    let mut emitter = IdEmitter::default();
 
-    let std_lib = create_std_lib(&hooks);
+    let std_lib = create_std_lib(&hooks, &mut emitter);
     assert!(std_lib.is_ok());
 
     let std_lib = std_lib.unwrap();

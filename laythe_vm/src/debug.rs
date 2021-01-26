@@ -1,14 +1,17 @@
-use crate::call_frame::CallFrame;
-use laythe_core::chunk::{decode_u16, AlignedByteCode, Chunk, UpvalueIndex};
+use laythe_core::chunk::{decode_u16, decode_u32, AlignedByteCode, Chunk, UpvalueIndex};
 use laythe_env::stdio::Stdio;
 use std::{io, io::Write, mem};
 
 /// Indicate where and how an exception was caught
+#[cfg(feature = "debug")]
 pub fn exception_catch(stdout: &mut dyn Write, frame: &CallFrame, idx: usize) -> io::Result<()> {
+  use crate::call_frame::CallFrame;
+
   writeln!(
     stdout,
     "Exception popped {:0>4} frames caught by: {}",
-    idx, frame.closure.fun.name
+    idx,
+    frame.closure.fun().name()
   )
 }
 
@@ -21,7 +24,7 @@ pub fn disassemble_chunk(stdio: &mut Stdio, chunk: &Chunk, name: &str) -> io::Re
   let mut offset: usize = 0;
   let mut last_offset: usize = 0;
 
-  while offset < chunk.instructions.len() {
+  while offset < chunk.instructions().len() {
     let show_line = chunk.get_line(offset) == chunk.get_line(last_offset);
     let temp = disassemble_instruction(stdio, chunk, offset, show_line);
     last_offset = offset;
@@ -47,7 +50,7 @@ pub fn disassemble_instruction(
     write!(stdout, "{:>4} ", chunk.get_line(ip))?;
   }
 
-  let (instruction, offset) = AlignedByteCode::decode(&chunk.instructions, ip as usize);
+  let (instruction, offset) = AlignedByteCode::decode(chunk.instructions(), ip as usize);
   match instruction {
     AlignedByteCode::Return => simple_instruction(stdio.stdout(), "Return", offset),
     AlignedByteCode::Negate => simple_instruction(stdio.stdout(), "Negate", offset),
@@ -118,6 +121,9 @@ pub fn disassemble_instruction(
     AlignedByteCode::UpvalueIndex(_) => {
       simple_instruction(stdio.stdout(), "!=== UpValueIndex - Invalid ===!", offset)
     }
+    AlignedByteCode::Slot(_) => {
+      simple_instruction(stdio.stdout(), "!=== Slot - Invalid ===!", offset)
+    }
     AlignedByteCode::DefineGlobal(constant) => {
       constant_instruction(stdio.stdout(), "DefineGlobal", chunk, constant, offset)
     }
@@ -136,10 +142,10 @@ pub fn disassemble_instruction(
       byte_instruction(stdio.stdout(), "SetUpvalue", slot, offset)
     }
     AlignedByteCode::SetProperty(slot) => {
-      constant_instruction(stdio.stdout(), "SetProperty", chunk, slot, offset)
+      constant_instruction_with_slot(stdio.stdout(), "SetProperty", chunk, slot, offset)
     }
     AlignedByteCode::GetProperty(slot) => {
-      constant_instruction(stdio.stdout(), "GetProperty", chunk, slot, offset)
+      constant_instruction_with_slot(stdio.stdout(), "GetProperty", chunk, slot, offset)
     }
     AlignedByteCode::Jump(jump) => jump_instruction(stdio.stdout(), "Jump", 1, jump, offset),
     AlignedByteCode::JumpIfFalse(jump) => {
@@ -188,8 +194,27 @@ fn constant_instruction(
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ", name, constant)?;
-  writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
+  writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   Ok(offset)
+}
+
+/// print a constant
+fn constant_instruction_with_slot(
+  stdout: &mut dyn Write,
+  name: &str,
+  chunk: &Chunk,
+  constant: u16,
+  offset: usize,
+) -> io::Result<usize> {
+  write!(stdout, "{:13} {:5} ", name, constant)?;
+  write!(stdout, "{} ", &chunk.get_constant(constant as usize))?;
+  writeln!(
+    stdout,
+    "cache slot {}",
+    &decode_u32(&chunk.instructions()[offset..offset + 4])
+  )?;
+
+  Ok(offset + 4)
 }
 
 /// print a closure
@@ -203,11 +228,11 @@ fn closure_instruction(
   let stdout = stdio.stdout();
 
   write!(stdout, "{:13} {:5} ", name, constant)?;
-  writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
+  writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
 
-  let value = &chunk.constants[constant as usize];
+  let value = &chunk.get_constant(constant as usize);
   let upvalue_count = if value.is_fun() {
-    value.to_fun().upvalue_count
+    value.to_fun().upvalue_count()
   } else {
     let stderr = stdio.stderr();
 
@@ -223,7 +248,7 @@ fn closure_instruction(
   for _ in 0..upvalue_count {
     let upvalue_index: UpvalueIndex = unsafe {
       mem::transmute(decode_u16(
-        &chunk.instructions[current_offset..current_offset + 2],
+        &chunk.instructions()[current_offset..current_offset + 2],
       ))
     };
 
@@ -255,8 +280,13 @@ fn invoke_instruction(
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ({} args) ", name, constant, arg_count)?;
-  writeln!(stdout, "{}", &chunk.constants[constant as usize])?;
-  Ok(offset)
+  write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
+  writeln!(
+    stdout,
+    "cache slot {}",
+    &decode_u32(&chunk.instructions()[offset..offset + 4])
+  )?;
+  Ok(offset + 4)
 }
 
 /// print a short instruction

@@ -82,25 +82,25 @@ impl Native for ObjectStr {
     let class = hooks.get_class(this).to_class();
 
     let string = match this.kind() {
-      laythe_core::value::ValueKind::Bool => format!("<{} {}>", class.name, this.to_bool()),
-      laythe_core::value::ValueKind::Nil => format!("<{} nil>", class.name),
-      laythe_core::value::ValueKind::Number => format!("<{} {}>", class.name, this.to_num()),
-      laythe_core::value::ValueKind::String => format!("<{} {}>", class.name, this.to_str()),
-      laythe_core::value::ValueKind::List => format!("<{} {:p}>", class.name, &*this.to_list()),
-      laythe_core::value::ValueKind::Map => format!("<{} {:p}>", class.name, &*this.to_map()),
-      laythe_core::value::ValueKind::Fun => format!("<{} {:p}>", class.name, &*this.to_fun()),
+      laythe_core::value::ValueKind::Bool => format!("<{} {}>", class.name(), this.to_bool()),
+      laythe_core::value::ValueKind::Nil => format!("<{} nil>", class.name()),
+      laythe_core::value::ValueKind::Number => format!("<{} {}>", class.name(), this.to_num()),
+      laythe_core::value::ValueKind::String => format!("<{} {}>", class.name(), this.to_str()),
+      laythe_core::value::ValueKind::List => format!("<{} {:p}>", class.name(), &*this.to_list()),
+      laythe_core::value::ValueKind::Map => format!("<{} {:p}>", class.name(), &*this.to_map()),
+      laythe_core::value::ValueKind::Fun => format!("<{} {:p}>", class.name(), &*this.to_fun()),
       laythe_core::value::ValueKind::Closure => {
-        format!("<{} {:p}>", class.name, &*this.to_closure())
+        format!("<{} {:p}>", class.name(), &*this.to_closure())
       }
-      laythe_core::value::ValueKind::Class => format!("<{} {:p}>", class.name, &this.to_class()),
+      laythe_core::value::ValueKind::Class => format!("<{} {:p}>", class.name(), &this.to_class()),
       laythe_core::value::ValueKind::Instance => {
-        format!("<{} {:p}>", class.name, &*this.to_instance())
+        format!("<{} {:p}>", class.name(), &*this.to_instance())
       }
-      laythe_core::value::ValueKind::Iter => format!("<{} {:p}>", class.name, &*this.to_iter()),
-      laythe_core::value::ValueKind::Method => format!("<{} {:p}>", class.name, &*this.to_method()),
-      laythe_core::value::ValueKind::Native => format!("<{} {:p}>", class.name, &*this.to_native()),
+      laythe_core::value::ValueKind::Iter => format!("<{} {:p}>", class.name(), &*this.to_iter()),
+      laythe_core::value::ValueKind::Method => format!("<{} {:p}>", class.name(), &*this.to_method()),
+      laythe_core::value::ValueKind::Native => format!("<{} {:p}>", class.name(), &*this.to_native()),
       laythe_core::value::ValueKind::Upvalue => {
-        format!("<{} {:p}>", class.name, &*this.to_upvalue())
+        format!("<{} {:p}>", class.name(), &*this.to_upvalue())
       }
     };
 
@@ -179,7 +179,7 @@ mod test {
       let ten = val!(10.0);
 
       let result = object_cls.call(&mut hooks, Some(ten), &[]).unwrap();
-      assert_eq!(result.to_class().name, hooks.manage_str("Number"));
+      assert_eq!(result.to_class().name(), hooks.manage_str("Number"));
     }
   }
 

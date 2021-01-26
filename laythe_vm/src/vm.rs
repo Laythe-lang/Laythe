@@ -1,4 +1,5 @@
 use crate::{
+  cache::InlineCache,
   call_frame::CallFrame,
   compiler::Compiler,
   constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
@@ -14,18 +15,18 @@ use laythe_core::{
   module::Module,
   native::{Native, NativeMeta},
   object::Map,
-  object::{Class, Closure, Fun, Instance, List, Method, Upvalue},
+  object::{Class, Closure, Fun, FunBuilder, Instance, List, Method, Upvalue},
   package::{Import, Package},
   signature::{ArityError, Environment, ParameterKind, SignatureError},
-  utils::{is_falsey, ptr_len},
+  utils::{is_falsey, ptr_len, IdEmitter},
   val,
   value::{Value, ValueKind, VALUE_NIL, VALUE_TRUE},
   Call, LyResult,
 };
 use laythe_env::{
   io::Io,
-  managed::{Gc, GcStr, Trace, TraceRoot},
-  memory::{Allocator, NO_GC},
+  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
+  memory::Allocator,
 };
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn, GLOBAL, STD};
 use laythe_native::io::io_native;
@@ -106,7 +107,7 @@ pub struct Vm {
   files: VmFiles,
 
   /// The root directory
-  root_dir: Gc<PathBuf>,
+  root_dir: PathBuf,
 
   /// The builtin class the vm need reference to
   builtin: BuiltIn,
@@ -114,17 +115,20 @@ pub struct Vm {
   /// A collection of packages that have already been loaded
   packages: Map<GcStr, Gc<Package>>,
 
+  /// A utility to emit ids for modules
+  emitter: IdEmitter,
+
   /// A cache for full filepath to individual modules
-  cache: Map<GcStr, Gc<Module>>,
+  module_cache: Map<GcStr, Gc<Module>>,
+
+  /// Inline caches for each module
+  inline_cache: Vec<InlineCache>,
 
   /// The global module
   global: Gc<Module>,
 
   /// A collection of currently available upvalues
   open_upvalues: Vec<Gc<Upvalue>>,
-
-  /// the main script level function
-  script: Option<Gc<Closure>>,
 
   /// The current frame's function
   current_fun: Gc<Fun>,
@@ -159,13 +163,13 @@ impl Vm {
     let no_gc_context = NoContext::new(gc);
     let hooks = GcHooks::new(&no_gc_context);
 
-    let root_dir = hooks.manage(
-      io.env()
-        .current_dir()
-        .expect("Could not obtain the current working directory."),
-    );
+    let root_dir = io
+      .env()
+      .current_dir()
+      .expect("Could not obtain the current working directory.");
 
-    let std_lib = create_std_lib(&hooks).expect("Standard library creation failed");
+    let mut emitter = IdEmitter::default();
+    let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
     let global = std_lib
       .import(
         &hooks,
@@ -173,10 +177,10 @@ impl Vm {
       )
       .expect("Could not retrieve global module");
 
-    let fun = Fun::new(hooks.manage_str(PLACEHOLDER_NAME), global);
+    let builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
 
-    let managed_fun = hooks.manage(fun);
-    let closure = hooks.manage(Closure::new(managed_fun));
+    let managed_fun = hooks.manage(builder.build());
+    let closure = hooks.manage(Closure::without_upvalues(managed_fun));
 
     let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
     let mut stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
@@ -185,15 +189,20 @@ impl Vm {
       .expect("Failed to generate builtin class from global module");
 
     let current_frame = &mut frames[0];
-    let current_fun = current_frame.closure.fun;
+    let current_fun = current_frame.closure.fun();
     let stack_top = &mut stack[1] as *mut Value;
     let ip = ptr::null();
 
     let current_frame = current_frame as *mut CallFrame;
-    let mut native_fun_stub = hooks.manage(Fun::new(hooks.manage_str("native"), global));
-    native_fun_stub.write_instruction(&hooks, AlignedByteCode::Nil, 0);
+    let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
+    native_builder.write_instruction(AlignedByteCode::Nil, 0);
+
+    let native_fun_stub = hooks.manage(native_builder.build());
 
     let gc = RefCell::new(no_gc_context.done());
+    let inline_cache: Vec<InlineCache> = (0..emitter.id_count())
+      .map(|_| InlineCache::new(0, 0))
+      .collect();
 
     let mut vm = Vm {
       io,
@@ -204,10 +213,11 @@ impl Vm {
       builtin,
       root_dir,
       packages: Map::default(),
-      cache: Map::default(),
+      emitter,
+      module_cache: Map::default(),
+      inline_cache,
       global,
       frame_count: 1,
-      script: None,
       current_fun,
       current_frame,
       current_error: None,
@@ -232,8 +242,10 @@ impl Vm {
     let mut stdio = self.io.stdio();
 
     let repl_path = self.root_dir.join(PathBuf::from(REPL_MODULE));
+    let main_id = self.emitter.emit();
+
     let main_module = self
-      .main_module(repl_path.clone())
+      .main_module(repl_path.clone(), main_id)
       .expect("Could not retrieve main module");
 
     loop {
@@ -246,13 +258,14 @@ impl Vm {
 
       match stdio.read_line(&mut buffer) {
         Ok(_) => {
-          let managed_source = self.gc.borrow_mut().manage_str(buffer, &NO_GC);
-          let managed_path = self
-            .gc
-            .borrow_mut()
-            .manage_str(repl_path.to_string_lossy(), &NO_GC);
+          let managed_source = self.manage_str(buffer);
+          self.push_root(managed_source);
+
+          let managed_path = self.manage_str(repl_path.to_string_lossy());
+          self.push_root(managed_path);
 
           let file_id = self.files.upsert(managed_path, managed_source);
+          self.pop_roots(2);
 
           self.interpret(main_module, &managed_source, file_id);
         }
@@ -268,16 +281,18 @@ impl Vm {
         let mut directory = module_path.clone();
         directory.pop();
 
-        self.root_dir = self.gc.borrow_mut().manage(directory, &NO_GC);
-        let managed_source = self.gc.borrow_mut().manage_str(source, &NO_GC);
-        let managed_path = self
-          .gc
-          .borrow_mut()
-          .manage_str(module_path.to_string_lossy(), &NO_GC);
+        self.root_dir = directory;
+        let managed_source = self.manage_str(source);
+        self.push_root(managed_source);
+
+        let managed_path = self.manage_str(module_path.to_string_lossy());
+        self.push_root(managed_path);
 
         let file_id = self.files.upsert(managed_path, managed_source);
+        self.pop_roots(2);
 
-        let main_module = match self.main_module(module_path) {
+        let main_id = self.emitter.emit();
+        let main_module = match self.main_module(module_path, main_id) {
           Ok(module) => module,
           Err(err) => {
             return err;
@@ -343,23 +358,36 @@ impl Vm {
     #[cfg(feature = "debug")]
     let compiler = compiler.with_io(self.io.clone());
 
-    let (result, gc) = compiler.compile();
+    let (result, gc, cache_id_emitter) = compiler.compile();
     self.gc.replace(gc);
 
-    result
+    result.map(|fun| {
+      let cache = InlineCache::new(
+        cache_id_emitter.property_count(),
+        cache_id_emitter.invoke_count(),
+      );
+
+      if module.id() < self.inline_cache.len() {
+        self.inline_cache[module.id()] = cache;
+      } else {
+        self.inline_cache.push(cache);
+      }
+      self.manage(fun)
+    })
   }
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: Gc<Fun>) {
-    self.script = Some(self.gc.borrow_mut().manage(Closure::new(script), &NO_GC));
+    let script = self.manage(Closure::without_upvalues(script));
+
     self.reset_stack();
-    let result = self.call(self.script.expect("Script removed."), 0);
+    let result = self.call(script, 0);
 
     if result != Signal::Ok {
       self.internal_error("Main script call failed.");
     }
 
-    let mut current_module = self.current_fun.module;
+    let mut current_module = self.current_fun.module();
     self
       .global
       .transfer_exported(&GcHooks::new(self), &mut current_module)
@@ -367,17 +395,15 @@ impl Vm {
   }
 
   /// Prepare the main module for use
-  fn main_module(&self, module_path: PathBuf) -> Result<Gc<Module>, ExecuteResult> {
+  fn main_module(&self, module_path: PathBuf, main_id: usize) -> Result<Gc<Module>, ExecuteResult> {
     let hooks = GcHooks::new(self);
 
     let mut stdio = self.io.stdio();
     let stderr = stdio.stderr();
 
     // resolve the main module from the provided path
-    let module_path = hooks.manage(module_path);
-    hooks.push_root(module_path);
 
-    let module = match Module::from_path(&hooks, module_path) {
+    let module = match Module::from_path(&hooks, module_path, main_id) {
       Ok(module) => module,
       Err(err) => {
         writeln!(stderr, "{}", err).expect("Unable to write to stderr");
@@ -396,7 +422,7 @@ impl Vm {
       }
     }
 
-    hooks.pop_roots(2);
+    hooks.pop_roots(1);
     Ok(module)
   }
 
@@ -435,15 +461,16 @@ impl Vm {
 
   /// Get a method for this this value with a given method name
   fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
-    let class = self.builtin.primitives.for_value(this, this.kind());
+    let class = self.value_class(this);
 
     match class.get_method(&method_name) {
       Some(method) => Call::Ok(method),
       None => {
-        let error_message = val!(self.gc.borrow_mut().manage_str(
-          format!("Class {} does not have method {}", class.name, method_name),
-          self,
-        ));
+        let error_message = val!(self.manage_str(format!(
+          "Class {} does not have method {}",
+          class.name(),
+          method_name
+        )));
 
         let result = self.run_fun(val!(self.builtin.errors.import), &[error_message]);
 
@@ -553,6 +580,31 @@ impl Vm {
     }
   }
 
+  #[inline]
+  fn value_class(&self, value: Value) -> Gc<Class> {
+    self.builtin.primitives.for_value(value, value.kind())
+  }
+
+  #[inline]
+  fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
+    self.gc.borrow_mut().manage(data, self)
+  }
+
+  #[inline]
+  fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
+    self.gc.borrow_mut().manage_str(string, self)
+  }
+
+  #[inline]
+  fn push_root<T: 'static + Trace>(&self, data: T) {
+    self.gc.borrow_mut().push_root(data)
+  }
+
+  #[inline]
+  fn pop_roots(&self, count: usize) {
+    self.gc.borrow_mut().pop_roots(count)
+  }
+
   /// Get an immutable reference to value on the stack
   #[inline]
   fn get_val(&self, offset: isize) -> Value {
@@ -595,6 +647,18 @@ impl Vm {
     unsafe { (*self.current_frame).closure }
   }
 
+  /// Get the current closure
+  #[inline]
+  fn inline_cache(&mut self) -> &InlineCache {
+    &self.inline_cache[self.current_fun.module_id()]
+  }
+
+  /// Get the current closure
+  #[inline]
+  fn inline_cache_mut(&mut self) -> &mut InlineCache {
+    &mut self.inline_cache[self.current_fun.module_id()]
+  }
+
   /// read a u8 out of the bytecode
   #[inline]
   #[no_mangle]
@@ -611,6 +675,17 @@ impl Vm {
     let buffer = slice.try_into().expect("slice of incorrect length.");
     let short = u16::from_ne_bytes(buffer);
     self.update_ip(2);
+
+    short
+  }
+
+  /// read a u32 out of the bytecode
+  #[inline]
+  fn read_slot(&mut self) -> u32 {
+    let slice = unsafe { std::slice::from_raw_parts(self.ip, 4) };
+    let buffer = slice.try_into().expect("slice of incorrect length.");
+    let short = u32::from_ne_bytes(buffer);
+    self.update_ip(4);
 
     short
   }
@@ -651,11 +726,10 @@ impl Vm {
   #[inline]
   fn read_constant(&self, index: u16) -> Value {
     unsafe {
-      *self
+      self
         .current_fun
         .chunk()
-        .constants
-        .get_unchecked(index as usize)
+        .get_constant_unchecked(index as usize)
     }
   }
 
@@ -707,7 +781,7 @@ impl Vm {
         arg_count as usize,
       )
     };
-    let list = val!(self.gc.borrow_mut().manage(List::from(args), self));
+    let list = val!(self.manage(List::from(args)));
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
     self.push(list);
 
@@ -717,10 +791,7 @@ impl Vm {
   /// create a map from a map literal
   fn op_map(&mut self) -> Signal {
     let arg_count = self.read_short();
-    let mut map = self
-      .gc
-      .borrow_mut()
-      .manage(Map::with_capacity(arg_count as usize), self);
+    let mut map = self.manage(Map::with_capacity(arg_count as usize));
 
     for i in 0..arg_count {
       let key = self.get_val(-(i as isize * 2) - 2);
@@ -755,7 +826,7 @@ impl Vm {
     }
 
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
-    let interpolated = val!(self.gc.borrow_mut().manage_str(buffers, self));
+    let interpolated = val!(self.manage_str(buffers));
     self.push(interpolated);
     Signal::Ok
   }
@@ -809,11 +880,42 @@ impl Vm {
   fn op_invoke(&mut self) -> Signal {
     let constant = self.read_short();
     let arg_count = self.read_byte();
+    let inline_slot = self.read_slot() as usize;
 
     let method_name = self.read_string(constant);
     let receiver = self.peek(arg_count as isize);
 
-    self.invoke(receiver, method_name, arg_count)
+    let class = self.value_class(receiver);
+    match self.inline_cache().get_invoke_cache(inline_slot, class) {
+      Some(method) => self.resolve_call(method, arg_count),
+      None => {
+        if receiver.is_instance() {
+          let instance = receiver.to_instance();
+          if let Some(field) = instance.get_field(&method_name) {
+            self.set_val(-(arg_count as isize) - 1, *field);
+            self.inline_cache_mut().clear_invoke_cache(inline_slot);
+            return self.resolve_call(*field, arg_count);
+          }
+        }
+
+        match class.get_method(&method_name) {
+          Some(method) => {
+            self
+              .inline_cache_mut()
+              .set_invoke_cache(inline_slot, class, method);
+            self.resolve_call(method, arg_count)
+          }
+          None => self.runtime_error(
+            self.builtin.errors.property,
+            &format!(
+              "Undefined property {} on class {}.",
+              method_name,
+              class.name()
+            ),
+          ),
+        }
+      }
+    }
   }
 
   /// invoke a method
@@ -826,8 +928,7 @@ impl Vm {
       }
     }
 
-    let class = self.builtin.primitives.for_value(receiver, receiver.kind());
-
+    let class = self.value_class(receiver);
     self.invoke_from_class(class, method_name, arg_count)
   }
 
@@ -835,11 +936,33 @@ impl Vm {
   fn op_super_invoke(&mut self) -> Signal {
     let constant = self.read_short();
     let arg_count = self.read_byte();
+    let inline_slot = self.read_slot() as usize;
 
     let method_name = self.read_string(constant);
     let super_class = self.pop().to_class();
 
-    self.invoke_from_class(super_class, method_name, arg_count)
+    match self
+      .inline_cache()
+      .get_invoke_cache(inline_slot, super_class)
+    {
+      Some(method) => self.resolve_call(method, arg_count),
+      None => match super_class.get_method(&method_name) {
+        Some(method) => {
+          self
+            .inline_cache_mut()
+            .set_invoke_cache(inline_slot, super_class, method);
+          self.resolve_call(method, arg_count)
+        }
+        None => self.runtime_error(
+          self.builtin.errors.property,
+          &format!(
+            "Undefined property {} on class {}.",
+            method_name,
+            super_class.name()
+          ),
+        ),
+      },
+    }
   }
 
   /// Generate a new class
@@ -847,7 +970,7 @@ impl Vm {
     let slot = self.read_short();
     let name = self.read_string(slot);
 
-    let class = val!(self.gc.borrow_mut().manage(Class::bare(name), self));
+    let class = val!(self.manage(Class::bare(name)));
     self.push(class);
     Signal::Ok
   }
@@ -907,7 +1030,7 @@ impl Vm {
     let slot = self.read_short();
     let name = self.read_string(slot);
     let global = self.pop();
-    let mut current_module = self.current_fun.module;
+    let mut current_module = self.current_fun.module();
     current_module.insert_symbol(&GcHooks::new(self), name, global);
     Signal::Ok
   }
@@ -915,9 +1038,9 @@ impl Vm {
   fn op_set_index(&mut self) -> Signal {
     let receiver = self.peek(2_isize);
 
-    let class = self.builtin.primitives.for_value(receiver, receiver.kind());
+    let class = self.value_class(receiver);
 
-    match class.index_set {
+    match class.index_set() {
       Some(index_set) => {
         let value = self.peek(1);
         let signal = self.resolve_call(index_set, 2);
@@ -927,7 +1050,7 @@ impl Vm {
       }
       None => self.runtime_error(
         self.builtin.errors.method_not_found,
-        &format!("No method []= on class {}.", class.name),
+        &format!("No method []= on class {}.", class.name()),
       ),
     }
   }
@@ -937,7 +1060,7 @@ impl Vm {
     let string = self.read_string(slot);
     let peek = self.peek(0);
 
-    let mut current_module = self.current_fun.module;
+    let mut current_module = self.current_fun.module();
     if current_module
       .insert_symbol(&GcHooks::new(self), string, peek)
       .is_none()
@@ -964,19 +1087,45 @@ impl Vm {
 
   fn op_set_property(&mut self) -> Signal {
     let slot = self.read_short();
-    let value = self.peek(1);
+    let instance = self.peek(1);
     let name = self.read_string(slot);
+    let inline_slot = self.read_slot() as usize;
 
-    if value.is_instance() {
-      let mut instance = value.to_instance();
-      let value = self.peek(0);
-      instance.set_field(name, value);
+    if instance.is_instance() {
+      let mut instance = instance.to_instance();
+      let class = instance.class();
 
-      let popped = self.pop();
-      self.drop();
-      self.push(popped);
+      match self.inline_cache().get_property_cache(inline_slot, class) {
+        Some(property_slot) => {
+          let value = self.pop();
 
-      return Signal::Ok;
+          self.drop();
+          self.push(value);
+
+          instance[property_slot] = value;
+          return Signal::Ok;
+        }
+        None => {
+          let property_slot = class.get_field_index(&name);
+          let value = self.pop();
+
+          self.drop();
+          self.push(value);
+
+          return match property_slot {
+            Some(property_slot) => {
+              let cache = self.inline_cache_mut();
+              cache.set_property_cache(inline_slot, class, property_slot as usize);
+              instance[property_slot as usize] = value;
+              Signal::Ok
+            }
+            None => self.runtime_error(
+              self.builtin.errors.property,
+              &format!("Undefined property {} on class {}.", name, class.name()),
+            ),
+          };
+        }
+      }
     }
 
     self.runtime_error(
@@ -988,19 +1137,7 @@ impl Vm {
   fn op_set_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
     let value = self.peek(0);
-    let upvalue = &mut self.closure().upvalues[slot as usize];
-
-    let open_index = match &mut *upvalue.to_upvalue() {
-      Upvalue::Open(stack_ptr) => Some(*stack_ptr),
-      Upvalue::Closed(store) => {
-        *store = value;
-        None
-      }
-    };
-
-    if let Some(stack_ptr) = open_index {
-      unsafe { ptr::write(stack_ptr.as_ptr(), value) }
-    }
+    self.closure().set_value(slot as usize, value);
 
     Signal::Ok
   }
@@ -1008,13 +1145,13 @@ impl Vm {
   fn op_get_index(&mut self) -> Signal {
     let receiver = self.peek(1_isize);
 
-    let class = self.builtin.primitives.for_value(receiver, receiver.kind());
+    let class = self.value_class(receiver);
 
-    match class.index_get {
+    match class.index_get() {
       Some(index_get) => self.resolve_call(index_get, 1),
       None => self.runtime_error(
         self.builtin.errors.method_not_found,
-        &format!("No method [] on class {}.", class.name),
+        &format!("No method [] on class {}.", class.name()),
       ),
     }
   }
@@ -1023,7 +1160,7 @@ impl Vm {
     let store_index = self.read_short();
     let string = self.read_string(store_index);
 
-    match self.current_fun.module.get_symbol(string) {
+    match self.current_fun.module().get_symbol(string) {
       Some(gbl) => {
         let copy = *gbl;
         self.push(copy);
@@ -1046,14 +1183,7 @@ impl Vm {
 
   fn op_get_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
-    let upvalue_value = &self.closure().upvalues[slot as usize];
-
-    let value = match &*upvalue_value.to_upvalue() {
-      Upvalue::Open(stack_ptr) => *unsafe { stack_ptr.as_ref() },
-      Upvalue::Closed(store) => *store,
-    };
-
-    self.push(value);
+    self.push(self.closure().get_value(slot as usize));
 
     Signal::Ok
   }
@@ -1062,21 +1192,33 @@ impl Vm {
     let slot = self.read_short();
     let value = self.peek(0);
     let name = self.read_string(slot);
+    let inline_slot = self.read_slot() as usize;
 
-    self.get_property(value, name)
-  }
-
-  fn get_property(&mut self, value: Value, name: GcStr) -> Signal {
     if value.is_instance() {
       let instance = value.to_instance();
+      let class = instance.class();
+      match self.inline_cache().get_property_cache(inline_slot, class) {
+        Some(property_slot) => {
+          self.set_val(-1, instance[property_slot]);
+          return Signal::Ok;
+        }
+        None => {
+          if let Some(property_slot) = class.get_field_index(&name) {
+            self
+              .inline_cache_mut()
+              .set_property_cache(inline_slot, class, property_slot as usize);
 
-      if let Some(value) = instance.get_field(&name) {
-        self.set_val(-1, *value);
-        return Signal::Ok;
+            let instance = value.to_instance();
+            self.set_val(-1, instance[property_slot as usize]);
+            return Signal::Ok;
+          }
+        }
       }
     }
 
-    let class = self.builtin.primitives.for_value(value, value.kind());
+    let class = self.value_class(value);
+    let cache = self.inline_cache_mut();
+    cache.clear_property_cache(inline_slot);
     self.bind_method(class, name)
   }
 
@@ -1084,13 +1226,13 @@ impl Vm {
     let index_path = self.read_short();
     let path = self.read_string(index_path);
 
-    let module = self.current_fun.module;
+    let module = self.current_fun.module();
 
-    let mut module_dir = (*module.path).clone();
+    let mut module_dir = module.path().clone();
     module_dir.pop();
 
     // determine relative position of module relative to the src directory
-    let relative = match self.io.fs().relative_path(&*self.root_dir, &module_dir) {
+    let relative = match self.io.fs().relative_path(&self.root_dir, &module_dir) {
       Ok(relative) => relative,
       Err(err) => {
         return self.runtime_error(self.builtin.errors.runtime, &err.to_string());
@@ -1119,11 +1261,8 @@ impl Vm {
     };
 
     // check if fully resolved module has already been loaded
-    let resolved = self
-      .gc
-      .borrow_mut()
-      .manage_str(resolved_segments.join("/"), self);
-    if let Some(module) = self.cache.get(&resolved) {
+    let resolved = self.manage_str(resolved_segments.join("/"));
+    if let Some(module) = self.module_cache.get(&resolved) {
       let imported = module.import(&GcHooks::new(self));
       self.push(val!(imported));
       return Signal::Ok;
@@ -1133,7 +1272,7 @@ impl Vm {
     let import = Import::new(
       resolved_segments
         .iter()
-        .map(|segment| self.gc.borrow_mut().manage_str(segment, self))
+        .map(|segment| self.manage_str(segment))
         .collect(),
     );
 
@@ -1163,7 +1302,7 @@ impl Vm {
   fn op_export(&mut self) -> Signal {
     let index = self.read_short();
     let name = self.read_string(index);
-    let mut copy = self.current_fun.module;
+    let mut copy = self.current_fun.module();
 
     match copy.export_symbol(&GcHooks::new(self), name) {
       Ok(_) => Signal::Ok,
@@ -1217,7 +1356,7 @@ impl Vm {
       buffer.push_str(&*left);
       buffer.push_str(&*right);
 
-      let string = self.gc.borrow_mut().manage_str(buffer, self);
+      let string = self.manage_str(buffer);
       self.push(val!(string));
       Signal::Ok
     } else {
@@ -1410,11 +1549,11 @@ impl Vm {
     let method = self.peek(0);
 
     if class.is_class() && method.is_closure() {
-      match class.to_class().meta() {
+      match class.to_class().meta_class() {
         Some(mut meta) => {
           meta.add_method(&GcHooks::new(self), name, method);
         }
-        None => self.internal_error(&format!("{} meta class not set.", class.to_class().name)),
+        None => self.internal_error(&format!("{} meta class not set.", class.to_class().name())),
       }
     } else {
       self.internal_error("Invalid Stack for op_static_method.");
@@ -1427,25 +1566,24 @@ impl Vm {
   fn op_closure(&mut self) -> Signal {
     let slot = self.read_short();
     let fun = self.read_constant(slot).to_fun();
-    let mut closure = self.gc.borrow_mut().manage(Closure::new(fun), self);
-    self.gc.borrow_mut().push_root(closure);
 
-    for i in 0..fun.upvalue_count {
-      let upvalue_index: UpvalueIndex = unsafe { mem::transmute(self.read_short()) };
+    let upvalues = (0..fun.upvalue_count())
+      .map(|_| {
+        let upvalue_index: UpvalueIndex = unsafe { mem::transmute(self.read_short()) };
 
-      match upvalue_index {
-        UpvalueIndex::Local(index) => {
-          let value = unsafe { &*self.slots().offset(index as isize) };
-          closure.upvalues[i] = self.capture_upvalue(NonNull::from(value))
+        match upvalue_index {
+          UpvalueIndex::Local(index) => {
+            let value = unsafe { &*self.slots().offset(index as isize) };
+            self.capture_upvalue(NonNull::from(value))
+          }
+          UpvalueIndex::Upvalue(upvalue) => self.closure().get_upvalue(upvalue as usize),
         }
-        UpvalueIndex::Upvalue(upvalue) => {
-          let upvalue = self.closure().upvalues[upvalue as usize];
-          closure.upvalues[i] = upvalue
-        }
-      }
-    }
+      })
+      .collect::<Vec<Gc<Upvalue>>>()
+      .into_boxed_slice();
 
-    self.gc.borrow_mut().pop_roots(1);
+    let closure = self.manage(Closure::new(fun, upvalues));
+
     self.push(val!(closure));
     Signal::Ok
   }
@@ -1481,10 +1619,10 @@ impl Vm {
       ValueKind::Class => self.call_class(callee.to_class(), arg_count),
       ValueKind::Fun => self.internal_error(&format!(
         "Function {} was not wrapped in a closure.",
-        callee.to_fun().name
+        callee.to_fun().name()
       )),
       _ => {
-        let class_name = self.get_class(callee).to_class().name;
+        let class_name = self.get_class(callee).to_class().name();
         self.runtime_error(
           self.builtin.errors.runtime,
           &format!("{} is not callable.", class_name),
@@ -1495,10 +1633,10 @@ impl Vm {
 
   /// call a class creating a new instance of that class
   fn call_class(&mut self, class: Gc<Class>, arg_count: u8) -> Signal {
-    let instance = val!(self.gc.borrow_mut().manage(Instance::new(class), self));
+    let instance = val!(self.manage(Instance::new(class)));
     self.set_val(-(arg_count as isize) - 1, instance);
 
-    match class.init {
+    match class.init() {
       Some(init) => self.resolve_call(init, arg_count),
       None => {
         if arg_count != 0 {
@@ -1555,10 +1693,7 @@ impl Vm {
         Call::Exit(code) => self.set_exit(code),
       },
       Environment::Normal => {
-        let native_closure = self
-          .gc
-          .borrow_mut()
-          .manage(Closure::new(self.native_fun_stub), self);
+        let native_closure = self.manage(Closure::without_upvalues(self.native_fun_stub));
         self.push_frame(native_closure, arg_count);
 
         match native.call(&mut Hooks::new(self), this, args) {
@@ -1583,7 +1718,7 @@ impl Vm {
   /// call a laythe function setting it as the new call frame
   fn call(&mut self, closure: Gc<Closure>, arg_count: u8) -> Signal {
     // check that the current function is called with the right number of args
-    if let Some(error) = self.check_arity(closure.fun, arg_count) {
+    if let Some(error) = self.check_arity(closure.fun(), arg_count) {
       return error;
     }
 
@@ -1603,13 +1738,13 @@ impl Vm {
       self.store_ip();
       let frame = &mut *self.current_frame.offset(1);
       frame.closure = closure;
-      frame.ip = closure.fun.chunk().instructions.get_unchecked(0) as *const u8;
+      frame.ip = closure.fun().chunk().instructions().get_unchecked(0) as *const u8;
       frame.slots = self.stack_top.offset(-(arg_count as isize) - 1);
       self.current_frame = frame as *mut CallFrame;
       self.load_ip();
     }
 
-    self.current_fun = closure.fun;
+    self.current_fun = closure.fun();
     self.frame_count += 1;
   }
 
@@ -1629,7 +1764,7 @@ impl Vm {
     unsafe {
       self.stack_top = self.slots();
       self.current_frame = self.current_frame.offset(-1);
-      self.current_fun = self.closure().fun;
+      self.current_fun = self.closure().fun();
       self.load_ip();
     }
 
@@ -1638,41 +1773,50 @@ impl Vm {
 
   /// check that the number of args is valid for the function arity
   fn check_arity(&mut self, fun: Gc<Fun>, arg_count: u8) -> Option<Signal> {
-    match fun.arity.check(arg_count) {
+    match fun.arity().check(arg_count) {
       Ok(_) => None,
       Err(error) => match error {
         ArityError::Fixed(arity) => Some(self.runtime_error(
           self.builtin.errors.runtime,
           &format!(
             "{} expected {} argument(s) but got {}.",
-            fun.name, arity, arg_count,
+            fun.name(),
+            arity,
+            arg_count,
           ),
         )),
         ArityError::Variadic(arity) => Some(self.runtime_error(
           self.builtin.errors.runtime,
           &format!(
             "{} expected at least {} argument(s) but got {}.",
-            fun.name, arity, arg_count,
+            fun.name(),
+            arity,
+            arg_count,
           ),
         )),
         ArityError::DefaultLow(arity) => Some(self.runtime_error(
           self.builtin.errors.runtime,
           &format!(
             "{} expected at least {} argument(s) but got {}.",
-            fun.name, arity, arg_count,
+            fun.name(),
+            arity,
+            arg_count,
           ),
         )),
         ArityError::DefaultHigh(arity) => Some(self.runtime_error(
           self.builtin.errors.runtime,
           &format!(
             "{} expected at most {} argument(s) but got {}.",
-            fun.name, arity, arg_count,
+            fun.name(),
+            arity,
+            arg_count,
           ),
         )),
       },
     }
   }
 
+  /// Check the arity of a native functio
   fn check_native_arity(&mut self, native_meta: &NativeMeta, args: &[Value]) -> Option<Signal> {
     match native_meta.signature.check(args) {
       Ok(()) => None,
@@ -1742,18 +1886,15 @@ impl Vm {
 
   /// Call a bound method
   fn call_method(&mut self, bound: Gc<Method>, arg_count: u8) -> Signal {
-    self.set_val(-(arg_count as isize) - 1, bound.receiver);
-    self.resolve_call(bound.method, arg_count)
+    self.set_val(-(arg_count as isize) - 1, bound.receiver());
+    self.resolve_call(bound.method(), arg_count)
   }
 
   /// bind a method to an instance
   fn bind_method(&mut self, class: Gc<Class>, name: GcStr) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
-        let bound = self
-          .gc
-          .borrow_mut()
-          .manage(Method::new(self.peek(0), method), self);
+        let bound = self.manage(Method::new(self.peek(0), method));
         self.set_val(-1, val!(bound));
         Signal::Ok
       }
@@ -1772,14 +1913,15 @@ impl Vm {
         self.builtin.errors.property,
         &format!(
           "Undefined property {} on class {}.",
-          method_name, class.name
+          method_name,
+          class.name()
         ),
       ),
     }
   }
 
   /// capture an upvalue return an existing upvalue if already captured
-  fn capture_upvalue(&mut self, local_index: NonNull<Value>) -> Value {
+  fn capture_upvalue(&mut self, local_index: NonNull<Value>) -> Gc<Upvalue> {
     let closest_upvalue = self
       .open_upvalues
       .iter()
@@ -1792,18 +1934,15 @@ impl Vm {
     if let Some(upvalue) = closest_upvalue {
       if let Upvalue::Open(index) = **upvalue {
         if index == local_index {
-          return val!(*upvalue);
+          return *upvalue;
         }
       }
     }
 
-    let created_upvalue = self
-      .gc
-      .borrow_mut()
-      .manage(Upvalue::Open(local_index), self);
+    let created_upvalue = self.manage(Upvalue::Open(local_index));
     self.open_upvalues.push(created_upvalue);
 
-    val!(created_upvalue)
+    created_upvalue
   }
 
   /// hoist all open upvalue above the last index
@@ -1848,7 +1987,7 @@ impl Vm {
     #[cfg(feature = "debug_upvalue")]
     self.print_upvalue_debug(&mut stdio)?;
 
-    let start = &self.current_fun.chunk().instructions[0] as *const u8;
+    let start = &self.current_fun.chunk().instructions()[0] as *const u8;
     let offset = ptr_len(start, ip);
     disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, false)
   }
@@ -1861,8 +2000,8 @@ impl Vm {
     if self.frame_count > 2 {
       write!(stdout, "Frame Stack:  ")?;
       for frame in self.frames[1..(self.frame_count)].iter() {
-        let fun = frame.closure.fun;
-        write!(stdout, "[ {}:{} ]", fun.module.name(), fun.name)?;
+        let fun = frame.closure.fun();
+        write!(stdout, "[ {}:{} ]", fun.module().name(), fun.name())?;
       }
       writeln!(stdout)?;
     }
@@ -1929,7 +2068,7 @@ impl Vm {
 
   /// Report a known laythe runtime error to the user
   fn runtime_error(&mut self, error: Gc<Class>, message: &str) -> Signal {
-    let error_message = val!(self.gc.borrow_mut().manage_str(message, self));
+    let error_message = val!(self.manage_str(message));
     self.push(error_message);
 
     let mode = ExecuteMode::CallFunction(self.frame_count);
@@ -1976,8 +2115,8 @@ impl Vm {
       .rev()
       .enumerate()
     {
-      let fun = frame.closure.fun;
-      let instructions = &*fun.chunk().instructions;
+      let fun = frame.closure.fun();
+      let instructions = &*fun.chunk().instructions();
 
       let offset = ptr_len(&instructions[0], frame.ip);
       if let Some(offset) = fun.has_catch_jump(offset as u16) {
@@ -1986,7 +2125,7 @@ impl Vm {
 
         self.frame_count -= idx;
         self.current_frame = frame as *mut CallFrame;
-        self.current_fun = frame.closure.fun;
+        self.current_fun = frame.closure.fun();
         self.ip = frame.ip;
 
         if let Some(top) = stack_top {
@@ -2026,20 +2165,20 @@ impl Vm {
 
     let mut stdio = self.io.stdio();
     let stderr = stdio.stderr();
-    writeln!(stderr, "{}: {}", error.class.name, message).expect("Unable to write to stderr");
+    writeln!(stderr, "{}: {}", error.class().name(), message).expect("Unable to write to stderr");
 
     for frame in self.frames[1..self.frame_count].iter().rev() {
-      let closure = &frame.closure;
-      let location: String = match &*closure.fun.name {
+      let fun = frame.closure.fun();
+      let location: String = match &*fun.name() {
         SCRIPT => SCRIPT.to_owned(),
-        _ => format!("{}()", closure.fun.name),
+        _ => format!("{}()", fun.name()),
       };
 
-      let offset = ptr_len(&closure.fun.chunk().instructions[0], frame.ip);
+      let offset = ptr_len(&fun.chunk().instructions()[0], frame.ip);
       writeln!(
         stderr,
         "  [line {}] in {}",
-        closure.fun.chunk().get_line(offset),
+        fun.chunk().get_line(offset),
         location
       )
       .expect("Unable to write to stderr");
@@ -2074,10 +2213,10 @@ impl From<VmDependencies> for Vm {
       )
       .expect("Could not retrieve global module");
 
-    let fun = Fun::new(hooks.manage_str(PLACEHOLDER_NAME), global);
+    let fun = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
 
-    let managed_fun = hooks.manage(fun);
-    let closure = hooks.manage(Closure::new(managed_fun));
+    let managed_fun = hooks.manage(fun.build());
+    let closure = hooks.manage(Closure::without_upvalues(managed_fun));
 
     let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
     let mut stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
@@ -2085,22 +2224,22 @@ impl From<VmDependencies> for Vm {
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let root_dir = hooks.manage(
-      dependencies
-        .io
-        .env()
-        .current_dir()
-        .expect("Could not obtain the current working directory."),
-    );
+    let root_dir = dependencies
+      .io
+      .env()
+      .current_dir()
+      .expect("Could not obtain the current working directory.");
 
     let current_frame = &mut frames[0];
-    let current_fun = current_frame.closure.fun;
+    let current_fun = current_frame.closure.fun();
     let stack_top = &mut stack[1] as *mut Value;
     let ip = ptr::null();
 
     let current_frame = current_frame as *mut CallFrame;
-    let mut native_fun_stub = hooks.manage(Fun::new(hooks.manage_str("native"), global));
-    native_fun_stub.write_instruction(&hooks, AlignedByteCode::Nil, 0);
+    let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
+    native_builder.write_instruction(AlignedByteCode::Nil, 0);
+
+    let native_fun_stub = hooks.manage(native_builder.build());
 
     let gc = RefCell::new(no_gc_context.done());
 
@@ -2110,13 +2249,14 @@ impl From<VmDependencies> for Vm {
       frames,
       gc,
       files: VmFiles::default(),
+      emitter: IdEmitter::default(),
+      inline_cache: vec![],
       root_dir,
       builtin,
       packages: Map::default(),
-      cache: Map::default(),
+      module_cache: Map::default(),
       global,
       frame_count: 1,
-      script: None,
       current_fun,
       current_frame,
       current_error: None,
@@ -2134,10 +2274,6 @@ impl From<VmDependencies> for Vm {
 
 impl TraceRoot for Vm {
   fn trace(&self) {
-    if let Some(script) = self.script {
-      script.trace();
-    }
-
     unsafe {
       let start = &self.stack[0] as *const Value;
       let len = ptr_len(start, self.stack_top);
@@ -2158,8 +2294,7 @@ impl TraceRoot for Vm {
 
     self.files.trace();
     self.packages.trace();
-    self.cache.trace();
-    self.root_dir.trace();
+    self.module_cache.trace();
     self.native_fun_stub.trace();
     if let Some(current_error) = self.current_error {
       current_error.trace()
@@ -2167,10 +2302,6 @@ impl TraceRoot for Vm {
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
-    if let Some(script) = self.script {
-      script.trace_debug(log);
-    }
-
     unsafe {
       let start = &self.stack[0] as *const Value;
       let len = ptr_len(start, self.stack_top) + 1;
@@ -2191,8 +2322,7 @@ impl TraceRoot for Vm {
 
     self.files.trace_debug(log);
     self.packages.trace_debug(log);
-    self.cache.trace_debug(log);
-    self.root_dir.trace_debug(log);
+    self.module_cache.trace_debug(log);
     self.native_fun_stub.trace_debug(log);
     if let Some(current_error) = self.current_error {
       current_error.trace_debug(log)
