@@ -126,7 +126,7 @@ impl Module {
       return None;
     }
 
-    self.symbols.get(&name).map(|symbol| *symbol)
+    self.symbols.get(&name).copied()
   }
 
   /// Insert a symbol into this module's symbol table

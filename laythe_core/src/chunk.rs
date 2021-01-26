@@ -798,6 +798,10 @@ impl Chunk {
 
   /// Retrieve a constant in the constants table at
   /// the provided offset without bounds checks
+  /// 
+  /// # Safety
+  /// This method assumes the index comes from a trusted 
+  /// source that is inbounds. 
   #[inline]
   pub unsafe fn get_constant_unchecked(&self, offset: usize) -> Value {
     *self.constants.get_unchecked(offset)

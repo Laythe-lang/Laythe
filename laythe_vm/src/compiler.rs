@@ -285,7 +285,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     }
 
     let end = self.ast.end();
-    let cache_id_emitter = self.cache_id_emitter.take();
+    let cache_id_emitter = self.cache_id_emitter.replace(CacheIdEmitter::default());
     let (fun, errors, _, gc) = self.end_compiler(end);
     if errors.is_empty() {
       (Ok(fun), gc, cache_id_emitter)
