@@ -16,6 +16,7 @@ pub struct Instance {
 }
 
 impl Instance {
+  #[inline]
   pub fn new(class: Gc<Class>) -> Self {
     Instance {
       class,

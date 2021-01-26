@@ -1,5 +1,7 @@
 use crate::constants::{INDEX_GET, INDEX_SET, INIT};
-use crate::{dynamic_map::DynamicMap, hooks::GcHooks, value::Value};
+use crate::{hooks::GcHooks, value::Value};
+use fnv::FnvBuildHasher;
+use hashbrown::HashMap;
 use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write, mem};
 
@@ -9,8 +11,8 @@ pub struct Class {
   init: Option<Value>,
   index_get: Option<Value>,
   index_set: Option<Value>,
-  methods: DynamicMap<GcStr, Value>,
-  fields: DynamicMap<GcStr, u16>,
+  methods: HashMap<GcStr, Value, FnvBuildHasher>,
+  fields: HashMap<GcStr, u16, FnvBuildHasher>,
   meta_class: Option<Gc<Class>>,
   super_class: Option<Gc<Class>>,
 }
@@ -28,8 +30,8 @@ impl Class {
       init: None,
       index_get: None,
       index_set: None,
-      methods: DynamicMap::new(),
-      fields: DynamicMap::new(),
+      methods: HashMap::default(),
+      fields: HashMap::default(),
       meta_class: None,
       super_class: None,
     });
@@ -48,8 +50,8 @@ impl Class {
       init: None,
       index_get: None,
       index_set: None,
-      methods: DynamicMap::new(),
-      fields: DynamicMap::new(),
+      methods: HashMap::default(),
+      fields: HashMap::default(),
       meta_class: None,
       super_class: None,
     }
@@ -140,14 +142,14 @@ impl Class {
 
     hooks.grow(self, |class| {
       class.methods.reserve(super_class.methods.len());
-      super_class.methods.for_each(|(key, value)| {
+      super_class.methods.iter().for_each(|(key, value)| {
         if class.methods.get(&*key).is_none() {
           class.methods.insert(*key, *value);
         }
       });
 
       class.fields.reserve(super_class.fields.len());
-      super_class.fields.for_each(|(field, _index)| {
+      super_class.fields.iter().for_each(|(field, _index)| {
         if class.fields.get(&field).is_none() {
           let len = class.fields.len();
           class.fields.insert(*field, len as u16);
@@ -179,8 +181,8 @@ impl Class {
       init: None,
       index_get: None,
       index_set: None,
-      methods: DynamicMap::new(),
-      fields: DynamicMap::new(),
+      methods: HashMap::default(),
+      fields: HashMap::default(),
       meta_class: Some(super_meta_meta_class),
       super_class: None,
     });
@@ -203,11 +205,11 @@ impl Trace for Class {
   fn trace(&self) {
     self.name.trace();
 
-    self.methods.for_each(|(key, val)| {
+    self.methods.iter().for_each(|(key, val)| {
       key.trace();
       val.trace();
     });
-    self.fields.for_each(|(key, _)| {
+    self.fields.iter().for_each(|(key, _)| {
       key.trace();
     });
 
@@ -222,11 +224,11 @@ impl Trace for Class {
   fn trace_debug(&self, stdio: &mut dyn Write) {
     self.name.trace_debug(stdio);
 
-    self.methods.for_each(|(key, val)| {
+    self.methods.iter().for_each(|(key, val)| {
       key.trace_debug(stdio);
       val.trace_debug(stdio);
     });
-    self.fields.for_each(|(key, _)| {
+    self.fields.iter().for_each(|(key, _)| {
       key.trace_debug(stdio);
     });
 

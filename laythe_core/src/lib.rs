@@ -1,7 +1,6 @@
 #![deny(clippy::all)]
 pub mod chunk;
 pub mod constants;
-pub mod dynamic_map;
 pub mod hooks;
 pub mod iterator;
 pub mod module;

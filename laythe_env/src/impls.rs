@@ -1,6 +1,6 @@
 use crate::managed::{DebugHeap, DebugWrap, Manage, Trace};
 use fnv::FnvBuildHasher;
-use hashbrown::HashSet;
+use hashbrown::{HashMap, HashSet};
 use std::{
   fmt::{self, Debug},
   mem,
@@ -18,6 +18,20 @@ impl Manage for u128 {
 
   fn as_debug(&self) -> &dyn DebugHeap {
     self
+  }
+}
+
+impl<K: DebugHeap, V: DebugHeap> DebugHeap for HashMap<K, V, FnvBuildHasher> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let depth = depth.saturating_sub(1);
+
+    f.debug_map()
+      .entries(
+        self
+          .iter()
+          .map(|(k, v)| (DebugWrap(k, depth), DebugWrap(v, depth))),
+      )
+      .finish()
   }
 }
 
