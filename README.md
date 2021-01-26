@@ -226,21 +226,21 @@ while true { }
 
 ### Performance
 
-In the whole performance is unfortunately only about 50~60% that of clox. For the internal hashmap I use the `hashbrown` crate with the `fnv` hasher which should be about the best setup for small hashes as all hashes are 16bytes. This still falls quite short of the brutally simply method used in clox.
+Run the lox benchmark suite for laythe and clox laythe averages 73% of the speed of clox. In general this seems to be focused around hashing speed and the overhead of the main interpreter loop. This is probably best seen in `equality.lox` and `fib.lox` where equality is likely the simplest in terms of execution is only 80% as clox while fib which exercises both global lookups for fib and function calls only achieves 63% of clox. The benchmark Laythe edges out clox is in binary trees. This is likely do to the class caching the init function and inline caching property and method calls. 
 
 Running the original benchmark suite on a 2015 dell xps we have.
 
 |benchmark|clox|Laythe|relative speed|notes|
 |--|--|--|--|--|
-|binary_tress.lox|total: 2.58032|total: 3.37959|1.06|This likely due to the small number of properties and the init optimization. We essentially avoid hashing altogether in this bench|
-|equality.lox|loop: 2.54958 elapsed: 2.08519|loop: 2.67095 elapsed: 2.972451|0.61|Similar to above we have essentially zero hashing and again perform pretty equal to clox|
-|fib.lox|total: 1.33588|total: 1.993408|0.69|Here we have some hashing from the `fib` lookup but even making this local shows a difference. It appears there is still some performance difference in function calling here|
-|instantiation.lox|total: 0.794824|total: 1.514988|0.53|Again localizing this gives a decent speedup but hashing and function calls still seem to slow Laythe down|
-|invocation.lox|total: 0.419431|total: 1.194626|0.41|Now the hashing speed difference is quite apparent|
-|method_call.lox|total: 0.26644|total: 0.423134|0.63|Same as above|
-|properties.lox|total: 0.645307|total: 1.559428|0.43|Same as above|
-|trees.lox|total: 3.09063|total: 4.72343|0.62|Same as above|
-|zoo.lox|total: 0.495144|total: 0.970341|0.51|Same as above|
+|binary_tress.lox|total: 2.58032|total: 2.35423|1.1|This likely due to the small number of properties and the init optimization. We essentially avoid hashing altogether in this bench|
+|equality.lox|loop: 2.54958 elapsed: 2.08519|loop: 2.647906 elapsed: 3.131277|0.80|Similar to above we have essentially zero hashing and again perform pretty equal to clox|
+|fib.lox|total: 1.33588|total: 2.08769|0.63|Here we have some hashing from the `fib` lookup but even making this local shows a difference. It appears there is still some performance difference in function calling here|
+|instantiation.lox|total: 0.794824|total: 1.50812|0.53|Again localizing this gives a decent speedup but hashing and function calls still seem to slow Laythe down|
+|invocation.lox|total: 0.419431|total: 0.814637|0.52|Now the hashing speed difference is quite apparent|
+|method_call.lox|total: 0.26644|total: 0.341227|0.65|Same as above|
+|properties.lox|total: 0.645307|total: 0.937192|0.69|Same as above|
+|trees.lox|total: 3.09063|total: 3.387378|0.91|Same as above|
+|zoo.lox|total: 0.495144|total: 0.709942|0.70|Same as above|
 
 ## Future Ideas
 
