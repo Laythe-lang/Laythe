@@ -1,4 +1,5 @@
 use crate::{
+  cache::InlineCache,
   call_frame::CallFrame,
   compiler::Compiler,
   constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
@@ -118,7 +119,10 @@ pub struct Vm {
   emitter: IdEmitter,
 
   /// A cache for full filepath to individual modules
-  cache: Map<GcStr, Gc<Module>>,
+  module_cache: Map<GcStr, Gc<Module>>,
+
+  /// Inline caches for each module
+  inline_cache: Vec<InlineCache>,
 
   /// The global module
   global: Gc<Module>,
@@ -196,6 +200,9 @@ impl Vm {
     let native_fun_stub = hooks.manage(native_builder.build());
 
     let gc = RefCell::new(no_gc_context.done());
+    let inline_cache: Vec<InlineCache> = (0..emitter.id_count())
+      .map(|_| InlineCache::new(0, 0))
+      .collect();
 
     let mut vm = Vm {
       io,
@@ -207,7 +214,8 @@ impl Vm {
       root_dir,
       packages: Map::default(),
       emitter,
-      cache: Map::default(),
+      module_cache: Map::default(),
+      inline_cache,
       global,
       frame_count: 1,
       current_fun,
@@ -350,18 +358,27 @@ impl Vm {
     #[cfg(feature = "debug")]
     let compiler = compiler.with_io(self.io.clone());
 
-    let (result, gc) = compiler.compile();
+    let (result, gc, cache_id_emitter) = compiler.compile();
     self.gc.replace(gc);
 
-    result.map(|fun| self.gc.borrow_mut().manage(fun, self))
+    result.map(|fun| {
+      let cache = InlineCache::new(
+        cache_id_emitter.property_count(),
+        cache_id_emitter.invoke_count(),
+      );
+
+      if module.id() < self.inline_cache.len() {
+        self.inline_cache[module.id()] = cache;
+      } else {
+        self.inline_cache.push(cache);
+      }
+      self.manage(fun)
+    })
   }
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: Gc<Fun>) {
-    let script = self
-      .gc
-      .borrow_mut()
-      .manage(Closure::without_upvalues(script), self);
+    let script = self.manage(Closure::without_upvalues(script));
 
     self.reset_stack();
     let result = self.call(script, 0);
@@ -444,19 +461,16 @@ impl Vm {
 
   /// Get a method for this this value with a given method name
   fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
-    let class = self.builtin.primitives.for_value(this, this.kind());
+    let class = self.value_class(this);
 
     match class.get_method(&method_name) {
       Some(method) => Call::Ok(method),
       None => {
-        let error_message = val!(self.gc.borrow_mut().manage_str(
-          format!(
-            "Class {} does not have method {}",
-            class.name(),
-            method_name
-          ),
-          self,
-        ));
+        let error_message = val!(self.manage_str(format!(
+          "Class {} does not have method {}",
+          class.name(),
+          method_name
+        )));
 
         let result = self.run_fun(val!(self.builtin.errors.import), &[error_message]);
 
@@ -567,6 +581,11 @@ impl Vm {
   }
 
   #[inline]
+  fn value_class(&self, value: Value) -> Gc<Class> {
+    self.builtin.primitives.for_value(value, value.kind())
+  }
+
+  #[inline]
   fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
     self.gc.borrow_mut().manage(data, self)
   }
@@ -628,6 +647,18 @@ impl Vm {
     unsafe { (*self.current_frame).closure }
   }
 
+  /// Get the current closure
+  #[inline]
+  fn inline_cache(&mut self) -> &InlineCache {
+    &self.inline_cache[self.current_fun.module_id()]
+  }
+
+  /// Get the current closure
+  #[inline]
+  fn inline_cache_mut(&mut self) -> &mut InlineCache {
+    &mut self.inline_cache[self.current_fun.module_id()]
+  }
+
   /// read a u8 out of the bytecode
   #[inline]
   #[no_mangle]
@@ -644,6 +675,17 @@ impl Vm {
     let buffer = slice.try_into().expect("slice of incorrect length.");
     let short = u16::from_ne_bytes(buffer);
     self.update_ip(2);
+
+    short
+  }
+
+  /// read a u32 out of the bytecode
+  #[inline]
+  fn read_slot(&mut self) -> u32 {
+    let slice = unsafe { std::slice::from_raw_parts(self.ip, 4) };
+    let buffer = slice.try_into().expect("slice of incorrect length.");
+    let short = u32::from_ne_bytes(buffer);
+    self.update_ip(4);
 
     short
   }
@@ -838,11 +880,42 @@ impl Vm {
   fn op_invoke(&mut self) -> Signal {
     let constant = self.read_short();
     let arg_count = self.read_byte();
+    let inline_slot = self.read_slot() as usize;
 
     let method_name = self.read_string(constant);
     let receiver = self.peek(arg_count as isize);
 
-    self.invoke(receiver, method_name, arg_count)
+    let class = self.value_class(receiver);
+    match self.inline_cache().get_invoke_cache(inline_slot, class) {
+      Some(method) => self.resolve_call(method, arg_count),
+      None => {
+        if receiver.is_instance() {
+          let instance = receiver.to_instance();
+          if let Some(field) = instance.get_field(&method_name) {
+            self.set_val(-(arg_count as isize) - 1, *field);
+            self.inline_cache_mut().clear_invoke_cache(inline_slot);
+            return self.resolve_call(*field, arg_count);
+          }
+        }
+
+        match class.get_method(&method_name) {
+          Some(method) => {
+            self
+              .inline_cache_mut()
+              .set_invoke_cache(inline_slot, class, method);
+            self.resolve_call(method, arg_count)
+          }
+          None => self.runtime_error(
+            self.builtin.errors.property,
+            &format!(
+              "Undefined property {} on class {}.",
+              method_name,
+              class.name()
+            ),
+          ),
+        }
+      }
+    }
   }
 
   /// invoke a method
@@ -855,8 +928,7 @@ impl Vm {
       }
     }
 
-    let class = self.builtin.primitives.for_value(receiver, receiver.kind());
-
+    let class = self.value_class(receiver);
     self.invoke_from_class(class, method_name, arg_count)
   }
 
@@ -864,11 +936,33 @@ impl Vm {
   fn op_super_invoke(&mut self) -> Signal {
     let constant = self.read_short();
     let arg_count = self.read_byte();
+    let inline_slot = self.read_slot() as usize;
 
     let method_name = self.read_string(constant);
     let super_class = self.pop().to_class();
 
-    self.invoke_from_class(super_class, method_name, arg_count)
+    match self
+      .inline_cache()
+      .get_invoke_cache(inline_slot, super_class)
+    {
+      Some(method) => self.resolve_call(method, arg_count),
+      None => match super_class.get_method(&method_name) {
+        Some(method) => {
+          self
+            .inline_cache_mut()
+            .set_invoke_cache(inline_slot, super_class, method);
+          self.resolve_call(method, arg_count)
+        }
+        None => self.runtime_error(
+          self.builtin.errors.property,
+          &format!(
+            "Undefined property {} on class {}.",
+            method_name,
+            super_class.name()
+          ),
+        ),
+      },
+    }
   }
 
   /// Generate a new class
@@ -944,7 +1038,7 @@ impl Vm {
   fn op_set_index(&mut self) -> Signal {
     let receiver = self.peek(2_isize);
 
-    let class = self.builtin.primitives.for_value(receiver, receiver.kind());
+    let class = self.value_class(receiver);
 
     match class.index_set() {
       Some(index_set) => {
@@ -993,19 +1087,45 @@ impl Vm {
 
   fn op_set_property(&mut self) -> Signal {
     let slot = self.read_short();
-    let value = self.peek(1);
+    let instance = self.peek(1);
     let name = self.read_string(slot);
+    let inline_slot = self.read_slot() as usize;
 
-    if value.is_instance() {
-      let mut instance = value.to_instance();
-      let value = self.peek(0);
-      instance.set_field(name, value);
+    if instance.is_instance() {
+      let mut instance = instance.to_instance();
+      let class = instance.class();
 
-      let popped = self.pop();
-      self.drop();
-      self.push(popped);
+      match self.inline_cache().get_property_cache(inline_slot, class) {
+        Some(property_slot) => {
+          let value = self.pop();
 
-      return Signal::Ok;
+          self.drop();
+          self.push(value);
+
+          instance[property_slot] = value;
+          return Signal::Ok;
+        }
+        None => {
+          let property_slot = class.get_field_index(&name);
+          let value = self.pop();
+
+          self.drop();
+          self.push(value);
+
+          return match property_slot {
+            Some(property_slot) => {
+              let cache = self.inline_cache_mut();
+              cache.set_property_cache(inline_slot, class, property_slot as usize);
+              instance[property_slot as usize] = value;
+              Signal::Ok
+            }
+            None => self.runtime_error(
+              self.builtin.errors.property,
+              &format!("Undefined property {} on class {}.", name, class.name()),
+            ),
+          };
+        }
+      }
     }
 
     self.runtime_error(
@@ -1025,7 +1145,7 @@ impl Vm {
   fn op_get_index(&mut self) -> Signal {
     let receiver = self.peek(1_isize);
 
-    let class = self.builtin.primitives.for_value(receiver, receiver.kind());
+    let class = self.value_class(receiver);
 
     match class.index_get() {
       Some(index_get) => self.resolve_call(index_get, 1),
@@ -1072,21 +1192,33 @@ impl Vm {
     let slot = self.read_short();
     let value = self.peek(0);
     let name = self.read_string(slot);
+    let inline_slot = self.read_slot() as usize;
 
-    self.get_property(value, name)
-  }
-
-  fn get_property(&mut self, value: Value, name: GcStr) -> Signal {
     if value.is_instance() {
       let instance = value.to_instance();
+      let class = instance.class();
+      match self.inline_cache().get_property_cache(inline_slot, class) {
+        Some(property_slot) => {
+          self.set_val(-1, instance[property_slot]);
+          return Signal::Ok;
+        }
+        None => {
+          if let Some(property_slot) = class.get_field_index(&name) {
+            self
+              .inline_cache_mut()
+              .set_property_cache(inline_slot, class, property_slot as usize);
 
-      if let Some(value) = instance.get_field(&name) {
-        self.set_val(-1, *value);
-        return Signal::Ok;
+            let instance = value.to_instance();
+            self.set_val(-1, instance[property_slot as usize]);
+            return Signal::Ok;
+          }
+        }
       }
     }
 
-    let class = self.builtin.primitives.for_value(value, value.kind());
+    let class = self.value_class(value);
+    let cache = self.inline_cache_mut();
+    cache.clear_property_cache(inline_slot);
     self.bind_method(class, name)
   }
 
@@ -1130,7 +1262,7 @@ impl Vm {
 
     // check if fully resolved module has already been loaded
     let resolved = self.manage_str(resolved_segments.join("/"));
-    if let Some(module) = self.cache.get(&resolved) {
+    if let Some(module) = self.module_cache.get(&resolved) {
       let imported = module.import(&GcHooks::new(self));
       self.push(val!(imported));
       return Signal::Ok;
@@ -1684,6 +1816,7 @@ impl Vm {
     }
   }
 
+  /// Check the arity of a native functio
   fn check_native_arity(&mut self, native_meta: &NativeMeta, args: &[Value]) -> Option<Signal> {
     match native_meta.signature.check(args) {
       Ok(()) => None,
@@ -2117,10 +2250,11 @@ impl From<VmDependencies> for Vm {
       gc,
       files: VmFiles::default(),
       emitter: IdEmitter::default(),
+      inline_cache: vec![],
       root_dir,
       builtin,
       packages: Map::default(),
-      cache: Map::default(),
+      module_cache: Map::default(),
       global,
       frame_count: 1,
       current_fun,
@@ -2160,7 +2294,7 @@ impl TraceRoot for Vm {
 
     self.files.trace();
     self.packages.trace();
-    self.cache.trace();
+    self.module_cache.trace();
     self.native_fun_stub.trace();
     if let Some(current_error) = self.current_error {
       current_error.trace()
@@ -2188,7 +2322,7 @@ impl TraceRoot for Vm {
 
     self.files.trace_debug(log);
     self.packages.trace_debug(log);
-    self.cache.trace_debug(log);
+    self.module_cache.trace_debug(log);
     self.native_fun_stub.trace_debug(log);
     if let Some(current_error) = self.current_error {
       current_error.trace_debug(log)

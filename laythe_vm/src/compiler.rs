@@ -1,5 +1,6 @@
 use crate::{
   ast::{self, Decl, Expr, Primary, Span, Spanned, Stmt, Symbol, Trailer},
+  cache::CacheIdEmitter,
   files::LineOffsets,
   token::{Lexeme, Token, TokenKind},
   FeResult,
@@ -28,6 +29,7 @@ use std::{
   io::Write,
   mem,
   ptr::NonNull,
+  rc::Rc,
 };
 
 #[cfg(feature = "debug")]
@@ -176,6 +178,9 @@ pub struct Compiler<'a, FileId> {
   /// The info on the current loop
   loop_info: Option<Gc<LoopInfo>>,
 
+  /// The idea emmiter for
+  cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
+
   /// hooks into the surround context. Used to allocate laythe objects
   gc: RefCell<Allocator>,
 
@@ -252,6 +257,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       module,
       ast,
       line_offsets,
+      cache_id_emitter: Rc::new(RefCell::new(CacheIdEmitter::default())),
       errors: vec![],
       fun_kind: FunKind::Script,
       scope_depth: 0,
@@ -273,17 +279,18 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
   /// Compile the provided ast into managed function objects that
   /// contain the vm bytecode
-  pub fn compile(mut self) -> (FeResult<Fun, FileId>, Allocator) {
+  pub fn compile(mut self) -> (FeResult<Fun, FileId>, Allocator, CacheIdEmitter) {
     for decl in &self.ast.decls {
       self.decl(decl);
     }
 
     let end = self.ast.end();
+    let cache_id_emitter = self.cache_id_emitter.take();
     let (fun, errors, _, gc) = self.end_compiler(end);
     if errors.is_empty() {
-      (Ok(fun), gc)
+      (Ok(fun), gc, cache_id_emitter)
     } else {
-      (Err(errors), gc)
+      (Err(errors), gc, cache_id_emitter)
     }
   }
 
@@ -312,6 +319,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       module: enclosing.module,
       ast: enclosing.ast,
       line_offsets: enclosing.line_offsets,
+      cache_id_emitter: Rc::clone(&enclosing.cache_id_emitter),
       errors: vec![],
       root_trace: enclosing.root_trace,
       fun_kind,
@@ -608,6 +616,16 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     }
 
     self.emit_byte(AlignedByteCode::DefineGlobal(variable), offset);
+  }
+
+  /// Get inline cache property id
+  fn emit_property_id(&self) -> u32 {
+    self.cache_id_emitter.borrow_mut().emit_property()
+  }
+
+  /// Get inline cache property id
+  fn emit_invoke_id(&self) -> u32 {
+    self.cache_id_emitter.borrow_mut().emit_invoke()
   }
 
   /// Emit a provided instruction
@@ -1102,6 +1120,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       let iterator_const = self_.identifier_constant(&iterator_token.str());
       self_.declare_variable(unsafe { iterator_token.deref_static() });
       self_.emit_byte(AlignedByteCode::Invoke((iter_const, 0)), expr_line);
+      self_.emit_byte(AlignedByteCode::Slot(self_.emit_invoke_id()), expr_line);
       self_.define_variable(iterator_const, expr_line);
 
       // mark start of loop
@@ -1303,7 +1322,8 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
               let name = self.identifier_constant(access.prop.str());
 
               self.expr(&assign.rhs);
-              self.emit_byte(AlignedByteCode::SetProperty(name), access.end())
+              self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
+              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
             }
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
@@ -1372,11 +1392,13 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
               self.emit_byte(AlignedByteCode::Dup, access.end());
               self.emit_byte(AlignedByteCode::GetProperty(name), access.end());
+              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
 
               self.expr(&assign_binary.rhs);
               binary_op(self);
 
-              self.emit_byte(AlignedByteCode::SetProperty(name), access.end())
+              self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
+              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
             }
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
@@ -1482,14 +1504,17 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
             AlignedByteCode::Invoke((name, call.args.len() as u8)),
             trailer.end(),
           );
+          self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), trailer.end());
           true
         } else {
           self.emit_byte(AlignedByteCode::GetProperty(name), access.prop.end());
+          self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
           false
         }
       }
       None => {
         self.emit_byte(AlignedByteCode::GetProperty(name), access.prop.end());
+        self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
         false
       }
     }
@@ -1579,6 +1604,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
         ast::StringSegments::Expr(expr) => {
           self.expr(expr);
           self.emit_byte(AlignedByteCode::Invoke((str_constant, 0)), expr.end());
+          self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), expr.end());
         }
       }
     }
@@ -1659,6 +1685,10 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
           self.variable(&super_.super_, false);
           self.emit_byte(
             AlignedByteCode::SuperInvoke((name, call.args.len() as u8)),
+            super_.access.end(),
+          );
+          self.emit_byte(
+            AlignedByteCode::Slot(self.emit_invoke_id()),
             super_.access.end(),
           );
           true
@@ -1786,7 +1816,7 @@ impl<'a, FileId> TraceRoot for Compiler<'a, FileId> {
 mod test {
   use super::*;
   use crate::{debug::disassemble_chunk, parser::Parser};
-  use laythe_core::chunk::decode_u16;
+  use laythe_core::chunk::{decode_u16, decode_u32};
   use laythe_core::hooks::NoContext;
   use laythe_env::{
     memory::NO_GC,
@@ -1820,7 +1850,7 @@ mod test {
     #[cfg(feature = "debug")]
     let compiler = compiler.with_io(io_native());
 
-    let (result, gc) = compiler.compile();
+    let (result, gc, _) = compiler.compile();
     context.gc.replace(gc);
 
     assert_eq!(result.is_ok(), true);
@@ -1839,6 +1869,13 @@ mod test {
         AlignedByteCode::Closure(closure) => {
           decoded.push(byte_code);
           offset = decode_byte_code_closure(fun, &mut decoded, new_offset, closure)
+        }
+        AlignedByteCode::GetProperty(_)
+        | AlignedByteCode::SetProperty(_)
+        | AlignedByteCode::Invoke(_)
+        | AlignedByteCode::SuperInvoke(_) => {
+          decoded.push(byte_code);
+          offset = decode_byte_code_slot(fun, &mut decoded, new_offset)
         }
         _ => {
           decoded.push(byte_code);
@@ -1859,9 +1896,9 @@ mod test {
     let inner_fun = fun.chunk().get_constant(slot as usize).to_fun();
     let mut current_offset = offset;
 
-    let instructions = &fun.chunk().instructions();
+    let byte_slice = &fun.chunk().instructions();
     for _ in 0..inner_fun.upvalue_count() {
-      let scalar = decode_u16(&instructions[offset..offset + 2]);
+      let scalar = decode_u16(&byte_slice[offset..offset + 2]);
 
       let upvalue_index: UpvalueIndex = unsafe { mem::transmute(scalar) };
       decoded.push(AlignedByteCode::UpvalueIndex(upvalue_index));
@@ -1869,6 +1906,15 @@ mod test {
     }
 
     current_offset
+  }
+
+  fn decode_byte_code_slot(fun: &Fun, decoded: &mut Vec<AlignedByteCode>, offset: usize) -> usize {
+    let byte_slice = fun.chunk().instructions();
+    decoded.push(AlignedByteCode::Slot(decode_u32(
+      &byte_slice[offset..offset + 4],
+    )));
+
+    offset + 4
   }
 
   fn assert_simple_bytecode(fun: &Fun, code: &[AlignedByteCode]) {
@@ -2233,6 +2279,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
             ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2245,6 +2292,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
             ByteCodeTest::Code(AlignedByteCode::Return),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2256,6 +2304,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2305,6 +2354,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
             ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2317,6 +2367,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
             ByteCodeTest::Code(AlignedByteCode::Return),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2328,6 +2379,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2370,13 +2422,16 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Dup),
             ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
             ByteCodeTest::Code(AlignedByteCode::Constant(2)),
             ByteCodeTest::Code(AlignedByteCode::Divide),
             ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(2)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3035,6 +3090,7 @@ mod test {
         AlignedByteCode::Constant(2),     // 5
         AlignedByteCode::List(3),         // 7
         AlignedByteCode::Invoke((3, 0)),  // 10  const 1 = 1
+        AlignedByteCode::Slot(0),         // 10  const 1 = 1
         AlignedByteCode::GetLocal(2),     // 13  const 2 = 2
         AlignedByteCode::IterNext(5),     // 15  const 3 = 3
         AlignedByteCode::JumpIfFalse(20), // 17  const 4 = "iter"
@@ -3439,9 +3495,11 @@ mod test {
         AlignedByteCode::Constant(1),
         AlignedByteCode::GetGlobal(2),
         AlignedByteCode::Invoke((0, 0)),
+        AlignedByteCode::Slot(0),
         AlignedByteCode::Constant(3),
         AlignedByteCode::GetGlobal(4),
         AlignedByteCode::Invoke((0, 0)),
+        AlignedByteCode::Slot(1),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Interpolate(5),
         AlignedByteCode::Drop,

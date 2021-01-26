@@ -1,0 +1,22 @@
+fn test(foo) {
+  foo.bar()
+}
+
+class A {
+  bar() {
+    'A'
+  }
+}
+
+class B {
+  bar() {
+    'B'
+  }
+}
+
+let examples = [A(), B(), A(), B()];
+let expected = ['A', 'B', 'A', 'B'];
+
+for i in examples.len().times() {
+  assertEq(test(examples[i]), expected[i]);
+}

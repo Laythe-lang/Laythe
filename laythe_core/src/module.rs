@@ -49,6 +49,11 @@ impl Module {
     &self.path
   }
 
+  /// The id of this module
+  pub fn id(&self) -> usize {
+    self.id
+  }
+
   /// Create a module from a filepath
   pub fn from_path(hooks: &GcHooks, path: PathBuf, id: usize) -> Result<Self, GcStr> {
     let module_name = path.file_stem().and_then(|m| m.to_str());

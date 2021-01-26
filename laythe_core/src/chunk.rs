@@ -152,6 +152,9 @@ pub enum AlignedByteCode {
   // An upvalue index for a closure
   UpvalueIndex(UpvalueIndex),
 
+  /// A inline cache slot
+  Slot(u32),
+
   /// Apply equality between the top two operands on the stack
   Equal,
 
@@ -233,6 +236,10 @@ impl AlignedByteCode {
       Self::UpvalueIndex(index) => {
         let encoded: u16 = unsafe { mem::transmute(index) };
         let bytes = encoded.to_ne_bytes();
+        code.extend_from_slice(&bytes);
+      }
+      Self::Slot(slot) => {
+        let bytes = slot.to_ne_bytes();
         code.extend_from_slice(&bytes);
       }
     }
@@ -684,7 +691,7 @@ impl ChunkBuilder {
 
   /// Patch an existing instruction in this check with
   /// a new value
-  /// 
+  ///
   /// # Examples
   /// ```
   /// use laythe_core::chunk::{ChunkBuilder, AlignedByteCode};
@@ -738,7 +745,7 @@ impl ChunkBuilder {
       + mem::size_of::<Line>() * self.lines.capacity()
   }
 
-  /// Build the final chunk from this builder. Consumes this 
+  /// Build the final chunk from this builder. Consumes this
   /// chunk builder in the process
   pub fn build(self) -> Chunk {
     Chunk {
@@ -762,7 +769,7 @@ impl Trace for ChunkBuilder {
   }
 }
 
-/// An immutable chunk of code 
+/// An immutable chunk of code
 #[derive(Clone, PartialEq, Default, Debug)]
 pub struct Chunk {
   /// instruction in this code chunk

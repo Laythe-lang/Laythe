@@ -132,6 +132,7 @@ impl FunBuilder {
       name: self.name,
       arity: self.arity,
       upvalue_count: self.upvalue_count,
+      module_id: self.module.id(),
       module: self.module,
       try_blocks: self.try_blocks.into_boxed_slice(),
       chunk: self.chunk.build(),
@@ -163,6 +164,9 @@ pub struct Fun {
 
   /// Number of upvalues
   upvalue_count: usize,
+
+  /// What is the idea of the associated module
+  module_id: usize,
 
   /// The module this function belongs to
   module: Gc<Module>,
@@ -199,6 +203,12 @@ impl Fun {
   #[inline]
   pub fn chunk(&self) -> &Chunk {
     &self.chunk
+  }
+
+  /// The module id this function belongs to
+  #[inline]
+  pub fn module_id(&self) -> usize {
+    self.module_id
   }
 
   /// The module this function belongs to

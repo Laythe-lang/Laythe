@@ -1,10 +1,12 @@
-use crate::call_frame::CallFrame;
-use laythe_core::chunk::{decode_u16, AlignedByteCode, Chunk, UpvalueIndex};
+use laythe_core::chunk::{decode_u16, decode_u32, AlignedByteCode, Chunk, UpvalueIndex};
 use laythe_env::stdio::Stdio;
 use std::{io, io::Write, mem};
 
 /// Indicate where and how an exception was caught
+#[cfg(feature = "debug")]
 pub fn exception_catch(stdout: &mut dyn Write, frame: &CallFrame, idx: usize) -> io::Result<()> {
+  use crate::call_frame::CallFrame;
+
   writeln!(
     stdout,
     "Exception popped {:0>4} frames caught by: {}",
@@ -119,6 +121,9 @@ pub fn disassemble_instruction(
     AlignedByteCode::UpvalueIndex(_) => {
       simple_instruction(stdio.stdout(), "!=== UpValueIndex - Invalid ===!", offset)
     }
+    AlignedByteCode::Slot(_) => {
+      simple_instruction(stdio.stdout(), "!=== Slot - Invalid ===!", offset)
+    }
     AlignedByteCode::DefineGlobal(constant) => {
       constant_instruction(stdio.stdout(), "DefineGlobal", chunk, constant, offset)
     }
@@ -137,10 +142,10 @@ pub fn disassemble_instruction(
       byte_instruction(stdio.stdout(), "SetUpvalue", slot, offset)
     }
     AlignedByteCode::SetProperty(slot) => {
-      constant_instruction(stdio.stdout(), "SetProperty", chunk, slot, offset)
+      constant_instruction_with_slot(stdio.stdout(), "SetProperty", chunk, slot, offset)
     }
     AlignedByteCode::GetProperty(slot) => {
-      constant_instruction(stdio.stdout(), "GetProperty", chunk, slot, offset)
+      constant_instruction_with_slot(stdio.stdout(), "GetProperty", chunk, slot, offset)
     }
     AlignedByteCode::Jump(jump) => jump_instruction(stdio.stdout(), "Jump", 1, jump, offset),
     AlignedByteCode::JumpIfFalse(jump) => {
@@ -191,6 +196,25 @@ fn constant_instruction(
   write!(stdout, "{:13} {:5} ", name, constant)?;
   writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   Ok(offset)
+}
+
+/// print a constant
+fn constant_instruction_with_slot(
+  stdout: &mut dyn Write,
+  name: &str,
+  chunk: &Chunk,
+  constant: u16,
+  offset: usize,
+) -> io::Result<usize> {
+  write!(stdout, "{:13} {:5} ", name, constant)?;
+  write!(stdout, "{} ", &chunk.get_constant(constant as usize))?;
+  writeln!(
+    stdout,
+    "cache slot {}",
+    &decode_u32(&chunk.instructions()[offset..offset + 4])
+  )?;
+
+  Ok(offset + 4)
 }
 
 /// print a closure
@@ -256,8 +280,13 @@ fn invoke_instruction(
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ({} args) ", name, constant, arg_count)?;
-  writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
-  Ok(offset)
+  write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
+  writeln!(
+    stdout,
+    "cache slot {}",
+    &decode_u32(&chunk.instructions()[offset..offset + 4])
+  )?;
+  Ok(offset + 4)
 }
 
 /// print a short instruction
