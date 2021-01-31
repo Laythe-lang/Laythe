@@ -9,18 +9,21 @@ use laythe_env::managed::Gc;
 use std::path::PathBuf;
 use utils::{declare_env_module, define_env_module};
 
-use crate::StdResult;
+use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
 
 const ENV_PATH: &str = "std/env";
 
 pub fn env_module(
   hooks: &GcHooks,
-  _std: &Package,
+  std: &Package,
   emitter: &mut IdEmitter,
 ) -> StdResult<Gc<Module>> {
+  let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
+
   let mut module = hooks.manage(Module::from_path(
     &hooks,
     PathBuf::from(ENV_PATH),
+    module_class,
     emitter.emit(),
   )?);
 

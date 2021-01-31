@@ -2,14 +2,18 @@ mod stderr;
 mod stdin;
 mod stdout;
 
-use laythe_core::{hooks::GcHooks, module::{Module, Package}, utils::IdEmitter};
+use laythe_core::{
+  hooks::GcHooks,
+  module::{Module, Package},
+  utils::IdEmitter,
+};
 use laythe_env::managed::Gc;
 use std::path::PathBuf;
 use stderr::{declare_stderr, define_stderr};
 use stdin::{declare_stdin, define_stdin};
 use stdout::{declare_stdout, define_stdout};
 
-use crate::StdResult;
+use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
 
 const STDIO_PATH: &str = "std/io/stdio";
 
@@ -18,9 +22,12 @@ pub fn stdio_module(
   std: &Package,
   emitter: &mut IdEmitter,
 ) -> StdResult<Gc<Module>> {
+  let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
+
   let mut module = hooks.manage(Module::from_path(
     &hooks,
     PathBuf::from(STDIO_PATH),
+    module_class,
     emitter.emit(),
   )?);
 

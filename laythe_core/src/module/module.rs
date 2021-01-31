@@ -62,18 +62,24 @@ impl Module {
   }
 
   /// Create a module from a filepath
-  pub fn from_path(hooks: &GcHooks, path: PathBuf, id: usize) -> ModuleResult<Self> {
+  pub fn from_path(
+    hooks: &GcHooks,
+    path: PathBuf,
+    base_class: Gc<Class>,
+    id: usize,
+  ) -> ModuleResult<Self> {
     let module_name = path
       .file_stem()
       .and_then(|m| m.to_str())
       .ok_or(ModuleError::ModulePathMalformed)?;
 
     let name = hooks.manage_str(module_name);
+    let module_class = Class::with_inheritance(hooks, name, base_class);
 
     Ok(Self {
       path,
       id,
-      module_class: hooks.manage(Class::bare(name)),
+      module_class,
       exports: LyHashSet::default(),
       symbols: Map::default(),
       modules: Map::default(),
@@ -305,10 +311,15 @@ mod test {
   use crate::{
     hooks::{GcHooks, NoContext},
     module::{ModuleError, ModuleResult},
-    object::Class,
+    object::{test_class, Class},
     val,
   };
   use std::path::PathBuf;
+
+  fn test_module(hooks: &GcHooks, path: PathBuf) -> ModuleResult<Module> {
+    let module_class = test_class(hooks, "Module");
+    Module::from_path(&hooks, path, module_class, 0)
+  }
 
   #[test]
   fn new() {
@@ -336,7 +347,8 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self/path.ly");
-    let module = Module::from_path(&hooks, path, 0);
+    let module_class = test_class(&hooks, "Module");
+    let module = Module::from_path(&hooks, path, module_class, 0);
 
     assert!(module.is_ok());
     assert_eq!(&*module.unwrap().name(), "path");
@@ -380,16 +392,16 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self");
-    let mut module = hooks.manage(Module::from_path(&hooks, path, 0)?);
+    let mut module = hooks.manage(test_module(&hooks, path)?);
 
     let path = PathBuf::from("self/inner");
-    let inner_module = hooks.manage(Module::from_path(&hooks, path, 0)?);
+    let inner_module = hooks.manage(test_module(&hooks, path)?);
 
     let path = PathBuf::from("other/inner");
-    let invalid_parent_module = hooks.manage(Module::from_path(&hooks, path, 0)?);
+    let invalid_parent_module = hooks.manage(test_module(&hooks, path)?);
 
     let path = PathBuf::from("self/inner/innerer");
-    let invalid_depth_module = hooks.manage(Module::from_path(&hooks, path, 0)?);
+    let invalid_depth_module = hooks.manage(test_module(&hooks, path)?);
 
     assert!(module.insert_module(&hooks, inner_module).is_ok());
     assert_eq!(
@@ -412,10 +424,10 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self");
-    let mut module = hooks.manage(Module::from_path(&hooks, path, 0)?);
+    let mut module = hooks.manage(test_module(&hooks, path)?);
 
     let path = PathBuf::from("self/inner");
-    let inner_module = hooks.manage(Module::from_path(&hooks, path, 0)?);
+    let inner_module = hooks.manage(test_module(&hooks, path)?);
     assert!(module.insert_module(&hooks, inner_module).is_ok());
 
     assert!(module.import(&hooks, &[hooks.manage_str("inner"),]).is_ok());
@@ -437,10 +449,10 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self");
-    let mut module = hooks.manage(Module::from_path(&hooks, path, 0)?);
+    let mut module = hooks.manage(test_module(&hooks, path)?);
 
     let path = PathBuf::from("self/inner");
-    let mut inner_module = hooks.manage(Module::from_path(&hooks, path, 0)?);
+    let mut inner_module = hooks.manage(test_module(&hooks, path)?);
 
     let symbol_name1 = hooks.manage_str("test1");
     let symbol_name2 = hooks.manage_str("test2");
@@ -510,7 +522,7 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self");
-    let mut module = hooks.manage(Module::from_path(&hooks, path, 0)?);
+    let mut module = hooks.manage(test_module(&hooks, path)?);
 
     assert_eq!(
       module.set_symbol(hooks.manage_str("does not exist"), val!(false)),
@@ -564,7 +576,7 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self");
-    let mut module = Module::from_path(&hooks, path, 0)?;
+    let mut module = test_module(&hooks, path)?;
 
     let name = hooks.manage_str("exported".to_string());
 
@@ -586,7 +598,7 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let path = PathBuf::from("self");
-    let mut module = Module::from_path(&hooks, path, 0)?;
+    let mut module = test_module(&hooks, path)?;
 
     let name = hooks.manage_str("exported".to_string());
 

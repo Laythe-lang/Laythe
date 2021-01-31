@@ -396,7 +396,12 @@ impl Vm {
 
     // resolve the main module from the provided path
 
-    let module = match Module::from_path(&hooks, module_path, main_id) {
+    let module = match Module::from_path(
+      &hooks,
+      module_path,
+      self.builtin.dependencies.module,
+      main_id,
+    ) {
       Ok(module) => module,
       Err(err) => {
         writeln!(stderr, "{}", err).expect("Unable to write to stderr");

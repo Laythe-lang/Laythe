@@ -102,7 +102,7 @@ mod test {
   use super::Package;
   use crate::{
     module::{Import, Module, ModuleError},
-    object::Class,
+    object::{test_class, Class},
     val,
   };
   use laythe_env::{
@@ -149,10 +149,19 @@ mod test {
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let mut module =
-      hooks.manage(Module::from_path(&hooks, PathBuf::from("my_package"), 0).unwrap());
-    let mut inner_module =
-      hooks.manage(Module::from_path(&hooks, PathBuf::from("my_package/my_module"), 0).unwrap());
+    let module_class = test_class(&hooks, "Module");
+
+    let mut module = hooks
+      .manage(Module::from_path(&hooks, PathBuf::from("my_package"), module_class, 0).unwrap());
+    let mut inner_module = hooks.manage(
+      Module::from_path(
+        &hooks,
+        PathBuf::from("my_package/my_module"),
+        module_class,
+        0,
+      )
+      .unwrap(),
+    );
 
     let export_name = hooks.manage_str("exported".to_string());
     assert!(inner_module
@@ -186,10 +195,19 @@ mod test {
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let mut module =
-      hooks.manage(Module::from_path(&hooks, PathBuf::from("my_package"), 0).unwrap());
-    let mut inner_module =
-      hooks.manage(Module::from_path(&hooks, PathBuf::from("my_package/my_module"), 0).unwrap());
+    let module_class = test_class(&hooks, "Module");
+
+    let mut module = hooks
+      .manage(Module::from_path(&hooks, PathBuf::from("my_package"), module_class, 0).unwrap());
+    let mut inner_module = hooks.manage(
+      Module::from_path(
+        &hooks,
+        PathBuf::from("my_package/my_module"),
+        module_class,
+        0,
+      )
+      .unwrap(),
+    );
 
     let export_name = hooks.manage_str("exported".to_string());
     assert!(inner_module

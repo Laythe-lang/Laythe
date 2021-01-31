@@ -8,8 +8,9 @@ use laythe_env::managed::Gc;
 use std::path::PathBuf;
 
 use crate::{
-  support::{default_error_inheritance, export_and_insert},
-  StdResult,
+  global::MODULE_CLASS_NAME,
+  support::{default_error_inheritance, export_and_insert, load_class_from_package},
+  StdResult, STD,
 };
 
 use super::IO_MODULE_PATH;
@@ -17,9 +18,12 @@ use super::IO_MODULE_PATH;
 pub const IO_ERROR: &str = "IoError";
 
 pub fn io_module(hooks: &GcHooks, std: &Package, emitter: &mut IdEmitter) -> StdResult<Gc<Module>> {
+  let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
+
   let mut module = hooks.manage(Module::from_path(
     &hooks,
     PathBuf::from(IO_MODULE_PATH),
+    module_class,
     emitter.emit(),
   )?);
 

@@ -376,9 +376,34 @@ mod test {
     Box::new(TestIterator::new())
   }
 
+  pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
+    let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+    let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+    class_class.inherit(hooks, object_class);
+
+    let class_copy = class_class;
+    class_class.set_meta(class_copy);
+
+    let object_meta_class = Class::with_inheritance(
+      hooks,
+      hooks.manage_str(format!("{} metaClass", object_class.name())),
+      class_class,
+    );
+
+    object_class.set_meta(object_meta_class);
+    Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
+  }
+
   pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Gc<Fun> {
-    let module = Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name)), 0)
-      .expect("TODO");
+    let module_class = test_class(hooks, name);
+
+    let module = Module::from_path(
+      &hooks,
+      PathBuf::from(format!("path/{}", module_name)),
+      module_class,
+      0,
+    )
+    .expect("TODO");
 
     let module = hooks.manage(module);
     let mut builder = FunBuilder::new(hooks.manage_str(name), module);
@@ -388,8 +413,15 @@ mod test {
   }
 
   pub fn fun_builder_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
-    let module = Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name)), 0)
-      .expect("TODO");
+    let module_class = test_class(hooks, name);
+
+    let module = Module::from_path(
+      &hooks,
+      PathBuf::from(format!("path/{}.ly", module_name)),
+      module_class,
+      0,
+    )
+    .expect("TODO");
 
     let module = hooks.manage(module);
     FunBuilder::new(hooks.manage_str(name), module)

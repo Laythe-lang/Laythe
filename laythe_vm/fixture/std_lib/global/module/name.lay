@@ -1,0 +1,2 @@
+import Math from 'std/math';
+assertEq(Math.cls().name(), "math");

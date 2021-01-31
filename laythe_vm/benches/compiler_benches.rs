@@ -1,7 +1,10 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use laythe_core::hooks::{GcHooks, NoContext};
 use laythe_core::module::Module;
-use laythe_env::memory::NO_GC;
+use laythe_core::{
+  hooks::{GcHooks, NoContext},
+  object::Class,
+};
+use laythe_env::{managed::Gc, memory::NO_GC};
 use laythe_vm::compiler::Compiler;
 use laythe_vm::parser::Parser;
 use std::fs::File;
@@ -28,13 +31,32 @@ fn load_source<P: AsRef<Path>>(dir: P) -> String {
   source
 }
 
+pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
+  let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+  let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+  class_class.inherit(hooks, object_class);
+
+  let class_copy = class_class;
+  class_class.set_meta(class_copy);
+
+  let object_meta_class = Class::with_inheritance(
+    hooks,
+    hooks.manage_str(format!("{} metaClass", object_class.name())),
+    class_class,
+  );
+
+  object_class.set_meta(object_meta_class);
+  Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
+}
+
 fn compile_source(source: &str) {
   let mut context = NoContext::default();
   let hooks = GcHooks::new(&mut context);
 
   let path = PathBuf::from("./Benchmark.lay");
 
-  let module = hooks.manage(Module::from_path(&hooks, path, 0).unwrap());
+  let module_class = test_class(&hooks, "Module");
+  let module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
   let (ast, line_offsets) = Parser::new(source, 0).parse();
   let ast = ast.unwrap();
 

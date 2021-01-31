@@ -1,6 +1,4 @@
-use crate::{
-  constants::{INDEX_GET, INDEX_SET, INIT},
-};
+use crate::constants::{INDEX_GET, INDEX_SET, INIT};
 use crate::{hooks::GcHooks, value::Value};
 use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
@@ -264,4 +262,23 @@ impl Manage for Class {
   fn as_debug(&self) -> &dyn DebugHeap {
     self
   }
+}
+
+#[cfg(test)]
+pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
+  let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+  let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+  class_class.inherit(hooks, object_class);
+
+  let class_copy = class_class;
+  class_class.set_meta(class_copy);
+
+  let object_meta_class = Class::with_inheritance(
+    hooks,
+    hooks.manage_str(format!("{} metaClass", object_class.name())),
+    class_class,
+  );
+
+  object_class.set_meta(object_meta_class);
+  Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
 }

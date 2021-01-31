@@ -1817,7 +1817,7 @@ mod test {
   use super::*;
   use crate::{debug::disassemble_chunk, parser::Parser};
   use laythe_core::chunk::{decode_u16, decode_u32};
-  use laythe_core::hooks::NoContext;
+  use laythe_core::{hooks::NoContext, object::Class};
   use laythe_env::{
     memory::NO_GC,
     stdio::{support::StdioTestContainer, Stdio},
@@ -1833,6 +1833,24 @@ mod test {
     Fun((u16, Vec<ByteCodeTest>)),
   }
 
+  pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
+    let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+    let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+    class_class.inherit(hooks, object_class);
+
+    let class_copy = class_class;
+    class_class.set_meta(class_copy);
+
+    let object_meta_class = Class::with_inheritance(
+      hooks,
+      hooks.manage_str(format!("{} metaClass", object_class.name())),
+      class_class,
+    );
+
+    object_class.set_meta(object_meta_class);
+    Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
+  }
+
   fn test_compile<'a>(src: &str, context: &NoContext) -> Fun {
     let (ast, line_offsets) = Parser::new(src, 0).parse();
     assert!(ast.is_ok());
@@ -1842,7 +1860,8 @@ mod test {
 
     let path = PathBuf::from("path/module.ly");
 
-    let module = hooks.manage(Module::from_path(&hooks, path, 0).unwrap());
+    let module_class = test_class(hooks, "Module");
+    let module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
 
     let gc = context.gc.replace(Allocator::default());
 

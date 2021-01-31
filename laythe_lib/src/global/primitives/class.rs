@@ -14,8 +14,8 @@ use std::io::Write;
 pub const CLASS_CLASS_NAME: &str = "Class";
 
 const CLASS_SUPER_CLS: NativeMetaBuilder = NativeMetaBuilder::method("superCls", Arity::Fixed(0));
-
 const CLASS_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
+const CLASS_NAME: NativeMetaBuilder = NativeMetaBuilder::method("name", Arity::Fixed(0));
 
 pub fn create_class_class(hooks: &GcHooks, object: Gc<Class>) -> Gc<Class> {
   let name = hooks.manage_str(CLASS_CLASS_NAME);
@@ -32,6 +32,12 @@ pub fn create_class_class(hooks: &GcHooks, object: Gc<Class>) -> Gc<Class> {
     &hooks,
     hooks.manage_str(CLASS_STR.name),
     val!(to_dyn_native(hooks, ClassStr::from(hooks))),
+  );
+
+  class.add_method(
+    &hooks,
+    hooks.manage_str(CLASS_NAME.name),
+    val!(to_dyn_native(hooks, ClassName::from(hooks))),
   );
 
   class
@@ -63,6 +69,15 @@ impl Native for ClassStr {
       class.name(),
       &*class
     ))))
+  }
+}
+
+native!(ClassName, CLASS_NAME);
+
+impl Native for ClassName {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let class = this.unwrap().to_class();
+    Call::Ok(val!(class.name()))
   }
 }
 
@@ -140,6 +155,35 @@ mod test {
 
       let result = class_str.call(&mut hooks, Some(class_value), &[]).unwrap();
       assert!(result.to_str().contains("<class someClass"));
+    }
+  }
+
+  mod name {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let class_str = ClassName::from(&hooks);
+
+      assert_eq!(class_str.meta().name, "name");
+      assert_eq!(class_str.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+      let class_str = ClassName::from(&hooks);
+
+      let class = hooks.manage(Class::bare(hooks.manage_str("someClass".to_string())));
+
+      let class_value = val!(class);
+
+      let result = class_str.call(&mut hooks, Some(class_value), &[]).unwrap();
+      assert_eq!(result.to_str(), "someClass");
     }
   }
 }

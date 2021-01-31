@@ -1,6 +1,12 @@
-use laythe_core::hooks::{GcHooks, NoContext};
 use laythe_core::module::Module;
-use laythe_env::memory::{Allocator, NO_GC};
+use laythe_core::{
+  hooks::{GcHooks, NoContext},
+  object::Class,
+};
+use laythe_env::{
+  managed::Gc,
+  memory::{Allocator, NO_GC},
+};
 use laythe_vm::compiler;
 use laythe_vm::parser::Parser;
 use std::env;
@@ -16,16 +22,36 @@ fn load_source(path: &str) -> String {
   source
 }
 
+pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
+  let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+  let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+  class_class.inherit(hooks, object_class);
+
+  let class_copy = class_class;
+  class_class.set_meta(class_copy);
+
+  let object_meta_class = Class::with_inheritance(
+    hooks,
+    hooks.manage_str(format!("{} metaClass", object_class.name())),
+    class_class,
+  );
+
+  object_class.set_meta(object_meta_class);
+  Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
+}
+
 fn compiler_bench(src: &str) {
   for _ in 0..1000000 {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
     let gc = Allocator::default();
+    let class = test_class(&hooks, "class");
 
     let (ast, line_offsets) = Parser::new(&src, 0).parse();
     let ast = ast.unwrap();
-    let module = Module::from_path(&hooks, PathBuf::from("/Benchmark.ly"), 0).unwrap();
+    let module = Module::from_path(&hooks, PathBuf::from("/Benchmark.ly"), class, 0).unwrap();
     let module = hooks.manage(module);
+
     let compiler = compiler::Compiler::new(module, &ast, &line_offsets, 0, &NO_GC, gc);
     compiler.compile().0.unwrap();
   }
