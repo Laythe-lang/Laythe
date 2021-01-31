@@ -12,23 +12,22 @@ use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
   constants::{IMPORT_SEPARATOR, PLACEHOLDER_NAME, SCRIPT},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
-  module::Module,
+  module::{Import, Module, Package},
   native::{Native, NativeMeta},
   object::Map,
   object::{Class, Closure, Fun, FunBuilder, Instance, List, Method, Upvalue},
-  package::{Import, Package},
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, IdEmitter},
   val,
   value::{Value, ValueKind, VALUE_NIL, VALUE_TRUE},
-  Call, LyResult,
+  Call,
 };
 use laythe_env::{
   io::Io,
   managed::{Gc, GcStr, Manage, Trace, TraceRoot},
   memory::Allocator,
 };
-use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn, GLOBAL, STD};
+use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
 use laythe_native::io::io_native;
 use std::convert::TryInto;
 use std::io::Write;
@@ -170,12 +169,7 @@ impl Vm {
 
     let mut emitter = IdEmitter::default();
     let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
-    let global = std_lib
-      .import(
-        &hooks,
-        Import::new(vec![hooks.manage_str(STD), hooks.manage_str(GLOBAL)]),
-      )
-      .expect("Could not retrieve global module");
+    let global = std_lib.root_module();
 
     let builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
 
@@ -390,8 +384,7 @@ impl Vm {
     let mut current_module = self.current_fun.module();
     self
       .global
-      .transfer_exported(&GcHooks::new(self), &mut current_module)
-      .expect("Transfer global module failed");
+      .transfer_exported(&GcHooks::new(self), &mut current_module);
   }
 
   /// Prepare the main module for use
@@ -414,13 +407,7 @@ impl Vm {
     hooks.push_root(module);
 
     // transfer the symbols from the global module into the main module
-    match self.global.transfer_exported(&hooks, &mut module) {
-      LyResult::Ok(_) => {}
-      _ => {
-        writeln!(stderr, "Transfer global module failed.").expect("Unable to write to stderr");
-        return Err(ExecuteResult::RuntimeError);
-      }
-    }
+    self.global.transfer_exported(&hooks, &mut module);
 
     hooks.pop_roots(1);
     Ok(module)
@@ -1031,8 +1018,10 @@ impl Vm {
     let name = self.read_string(slot);
     let global = self.pop();
     let mut current_module = self.current_fun.module();
-    current_module.insert_symbol(&GcHooks::new(self), name, global);
-    Signal::Ok
+    match current_module.insert_symbol(&GcHooks::new(self), name, global) {
+      Ok(_) => Signal::Ok,
+      Err(_) => Signal::Ok,
+    }
   }
 
   fn op_set_index(&mut self) -> Signal {
@@ -1061,11 +1050,7 @@ impl Vm {
     let peek = self.peek(0);
 
     let mut current_module = self.current_fun.module();
-    if current_module
-      .insert_symbol(&GcHooks::new(self), string, peek)
-      .is_none()
-    {
-      current_module.remove_symbol(&GcHooks::new(self), string);
+    if current_module.set_symbol(string, peek).is_err() {
       return self.runtime_error(
         self.builtin.errors.property,
         &format!("Undefined variable {}", string),
@@ -1162,8 +1147,7 @@ impl Vm {
 
     match self.current_fun.module().get_symbol(string) {
       Some(gbl) => {
-        let copy = *gbl;
-        self.push(copy);
+        self.push(gbl);
         Signal::Ok
       }
       None => self.runtime_error(
@@ -1263,35 +1247,49 @@ impl Vm {
     // check if fully resolved module has already been loaded
     let resolved = self.manage_str(resolved_segments.join("/"));
     if let Some(module) = self.module_cache.get(&resolved) {
-      let imported = module.import(&GcHooks::new(self));
+      let imported = module.module_instance(&GcHooks::new(self));
       self.push(val!(imported));
       return Signal::Ok;
     }
 
-    // generate a new import object
-    let import = Import::new(
-      resolved_segments
-        .iter()
-        .map(|segment| self.manage_str(segment))
-        .collect(),
-    );
+    match resolved_segments.split_first() {
+      Some((package, path_slice)) => {
+        let package = self.gc().manage_str(package, self);
+        self.gc().push_root(package);
 
-    // match by package then resolve inside the package
-    match import.package() {
-      Some(pkg) => match self.packages.get(&pkg) {
-        Some(package) => match package.import(&GcHooks::new(self), import) {
-          Ok(module) => {
-            let imported = module.import(&GcHooks::new(self));
-            self.push(val!(imported));
-            Signal::Ok
-          }
-          Err(err) => self.runtime_error(self.builtin.errors.runtime, &err),
-        },
-        None => self.runtime_error(
-          self.builtin.errors.import,
-          &format!("Package {} does not exist", pkg),
-        ),
-      },
+        let mut path: Gc<List<GcStr>> = self
+          .gc()
+          .manage(List::with_capacity(path_slice.len()), self);
+        self.gc().push_root(path);
+
+        path.extend(
+          path_slice
+            .iter()
+            .map(|segment| self.gc().manage_str(segment, self)),
+        );
+        self.gc().pop_roots(2);
+
+        // generate a new import object
+        let import = self.gc().manage(Import::new(package, path), self);
+        self.gc().push_root(import);
+
+        let result = match self.packages.get(&import.package()) {
+          Some(package) => match package.import(&GcHooks::new(self), import) {
+            Ok(module) => {
+              self.push(val!(module));
+              Signal::Ok
+            }
+            Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
+          },
+          None => self.runtime_error(
+            self.builtin.errors.import,
+            &format!("Package {} does not exist", &import.package()),
+          ),
+        };
+
+        self.gc().pop_roots(1);
+        result
+      }
       None => self.runtime_error(
         self.builtin.errors.import,
         "Import needs to be prepended with a package name",
@@ -1306,7 +1304,7 @@ impl Vm {
 
     match copy.export_symbol(&GcHooks::new(self), name) {
       Ok(_) => Signal::Ok,
-      Err(error) => self.runtime_error(self.builtin.errors.export, &*error),
+      Err(error) => self.runtime_error(self.builtin.errors.export, &error.to_string()),
     }
   }
 
@@ -2206,12 +2204,7 @@ impl From<VmDependencies> for Vm {
     let hooks = GcHooks::new(&no_gc_context);
 
     let std_lib = dependencies.std_lib;
-    let global = std_lib
-      .import(
-        &hooks,
-        Import::new(vec![hooks.manage_str(STD), hooks.manage_str(GLOBAL)]),
-      )
-      .expect("Could not retrieve global module");
+    let global = std_lib.root_module();
 
     let fun = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
 

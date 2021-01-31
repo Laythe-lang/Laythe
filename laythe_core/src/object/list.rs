@@ -59,6 +59,10 @@ impl<T> List<T> {
     self.0.insert(index, value)
   }
 
+  pub fn extend<I: IntoIterator<Item = T>>(&mut self, iter: I) {
+    self.0.extend(iter)
+  }
+
   pub fn sort_by<F: FnMut(&T, &T) -> Ordering>(&mut self, compare: F) {
     self.0.sort_by(compare)
   }

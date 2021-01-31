@@ -52,6 +52,10 @@ where
     self.0.get(key)
   }
 
+  pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+    self.0.get_mut(key)
+  }
+
   pub fn contains_key(&self, key: &K) -> bool {
     self.0.contains_key(key)
   }

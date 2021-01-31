@@ -1,4 +1,6 @@
-use crate::constants::{INDEX_GET, INDEX_SET, INIT};
+use crate::{
+  constants::{INDEX_GET, INDEX_SET, INIT},
+};
 use crate::{hooks::GcHooks, value::Value};
 use fnv::FnvBuildHasher;
 use hashbrown::HashMap;

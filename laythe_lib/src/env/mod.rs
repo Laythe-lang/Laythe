@@ -1,15 +1,23 @@
 mod utils;
 
-use laythe_core::{hooks::GcHooks, module::Module, package::Package, utils::IdEmitter};
+use laythe_core::{
+  hooks::GcHooks,
+  module::{Module, Package},
+  utils::IdEmitter,
+};
 use laythe_env::managed::Gc;
 use std::path::PathBuf;
 use utils::{declare_env_module, define_env_module};
 
-use crate::InitResult;
+use crate::StdResult;
 
-const ENV_PATH: &str = "std/env.ly";
+const ENV_PATH: &str = "std/env";
 
-pub fn env_module(hooks: &GcHooks, _std: &Package, emitter: &mut IdEmitter) -> InitResult<Gc<Module>> {
+pub fn env_module(
+  hooks: &GcHooks,
+  _std: &Package,
+  emitter: &mut IdEmitter,
+) -> StdResult<Gc<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
     PathBuf::from(ENV_PATH),

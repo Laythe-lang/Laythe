@@ -1,10 +1,9 @@
-use crate::{native, support::export_and_insert, InitResult};
+use crate::{native, support::export_and_insert, StdError, StdResult};
 use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
@@ -13,7 +12,7 @@ use laythe_core::{
 use laythe_env::managed::{GcStr, Trace};
 use std::io::Write;
 
-pub fn add_misc_funs(hooks: &GcHooks, module: &mut Module, _package: &Package) -> InitResult<()> {
+pub fn add_misc_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
   declare_misc_funs(hooks, module)
 }
 
@@ -24,14 +23,7 @@ const PRINT_META: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Var
 const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Default(0, 1))
   .with_params(&[ParameterBuilder::new("code", ParameterKind::Number)]);
 
-// const RANGE_META: NativeMetaBuilder = NativeMetaBuilder::fun("range", Arity::Default(2, 3))
-//   .with_params(&[
-//     ParameterBuilder::new("lower", ParameterKind::Number),
-//     ParameterBuilder::new("upper", ParameterKind::Number),
-//     ParameterBuilder::new("stide", ParameterKind::Number),
-//   ]);
-
-pub fn declare_misc_funs(hooks: &GcHooks, module: &mut Module) -> InitResult<()> {
+pub fn declare_misc_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
   let str_name = hooks.manage_str("str");
 
   export_and_insert(
@@ -47,6 +39,7 @@ pub fn declare_misc_funs(hooks: &GcHooks, module: &mut Module) -> InitResult<()>
     hooks.manage_str(EXIT_META.name),
     val!(hooks.manage(Box::new(Exit::from(hooks)) as Box<dyn Native>)),
   )
+  .map_err(StdError::from)
 }
 
 #[derive(Debug)]
@@ -146,7 +139,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::with_std(&[]);
+      let mut context = MockedContext::with_std(&[]).unwrap();
       let response = context.gc.borrow_mut().manage_str("true", &NO_GC);
       context.add_responses(&[val!(response)]);
 

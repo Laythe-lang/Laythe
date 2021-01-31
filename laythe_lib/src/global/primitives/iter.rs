@@ -1,17 +1,16 @@
 use crate::{
   global::VALUE_ERROR_NAME,
   native, native_with_error,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  StdResult,
 };
 use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
-  module::Module,
+  module::{Module},
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::List,
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   utils::is_falsey,
   val,
@@ -21,6 +20,8 @@ use laythe_core::{
 use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 use std::mem;
+
+use super::class_inheritance;
 
 pub const ITER_CLASS_NAME: &str = "Iter";
 const ITER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
@@ -78,16 +79,12 @@ const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fi
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
   .with_stack();
 
-pub fn declare_iter_class(
-  hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
-) -> InitResult<()> {
-  let class = default_class_inheritance(hooks, package, ITER_CLASS_NAME)?;
+pub fn declare_iter_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+  let class = class_inheritance(hooks, module, ITER_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_iter_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
+pub fn define_iter_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, ITER_CLASS_NAME)?;
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);
 
@@ -1190,8 +1187,8 @@ mod test {
   #[cfg(test)]
   mod map {
     use super::*;
-    use crate::support::{fun_builder_from_hooks};
-    use laythe_core::object::{Closure};
+    use crate::support::fun_builder_from_hooks;
+    use laythe_core::object::Closure;
 
     #[test]
     fn new() {

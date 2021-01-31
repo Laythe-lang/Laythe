@@ -1,7 +1,7 @@
 use crate::{
   native,
   support::{export_and_insert, to_dyn_native},
-  InitResult,
+  StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -19,7 +19,7 @@ use std::io::Write;
 const ARGS_META: NativeMetaBuilder = NativeMetaBuilder::fun("args", Arity::Fixed(0));
 const CWD_META: NativeMetaBuilder = NativeMetaBuilder::fun("cwd", Arity::Fixed(0));
 
-pub fn declare_env_module(hooks: &GcHooks, self_module: &mut Module) -> InitResult<()> {
+pub fn declare_env_module(hooks: &GcHooks, self_module: &mut Module) -> StdResult<()> {
   export_and_insert(
     hooks,
     self_module,
@@ -35,7 +35,7 @@ pub fn declare_env_module(hooks: &GcHooks, self_module: &mut Module) -> InitResu
   )
 }
 
-pub fn define_env_module(_: &GcHooks, _: &mut Module) -> InitResult<()> {
+pub fn define_env_module(_: &GcHooks, _: &mut Module) -> StdResult<()> {
   Ok(())
 }
 

@@ -1,20 +1,24 @@
 mod class;
 
-use laythe_core::{hooks::GcHooks, module::Module, package::Package, utils::IdEmitter};
+use laythe_core::{
+  hooks::GcHooks,
+  module::{Module, Package},
+  utils::IdEmitter,
+};
 use laythe_env::managed::Gc;
 use std::path::PathBuf;
 
-use crate::InitResult;
+use crate::StdResult;
 
 use self::class::{declare_regexp_class, define_regexp_class};
 
-const REGEXP_PATH: &str = "std/regexp.ly";
+const REGEXP_PATH: &str = "std/regexp";
 
 pub fn regexp_module(
   hooks: &GcHooks,
   std: &Package,
   emitter: &mut IdEmitter,
-) -> InitResult<Gc<Module>> {
+) -> StdResult<Gc<Module>> {
   let mut module = hooks.manage(Module::from_path(
     &hooks,
     PathBuf::from(REGEXP_PATH),

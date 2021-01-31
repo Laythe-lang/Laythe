@@ -1,13 +1,12 @@
 use crate::{
   create_error,
-  support::{default_error_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
+  support::{default_error_inheritance, export_and_insert, to_dyn_native},
+  StdError, StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  module::Module,
+  module::{Module, Package},
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
@@ -22,11 +21,43 @@ pub(crate) fn add_assert_funs(
   hooks: &GcHooks,
   module: &mut Module,
   package: &Package,
-) -> InitResult<()> {
+) -> StdResult<()> {
   let error = default_error_inheritance(hooks, package, ASSERT_ERROR_NAME)?;
-  export_and_insert(hooks, module, error.name(), val!(error))?;
 
-  declare_assert_funs(hooks, module)
+  let error_val = val!(error);
+  let str_name = hooks.manage_str("str");
+  export_and_insert(hooks, module, error.name(), error_val)?;
+
+  export_and_insert(
+    hooks,
+    module,
+    hooks.manage_str(ASSERT_META.name),
+    val!(to_dyn_native(
+      hooks,
+      Assert::new(ASSERT_META.to_meta(hooks), str_name, error_val)
+    )),
+  )?;
+
+  export_and_insert(
+    hooks,
+    module,
+    hooks.manage_str(ASSERTEQ_META.name),
+    val!(to_dyn_native(
+      hooks,
+      AssertEq::new(ASSERTEQ_META.to_meta(hooks), str_name, error_val)
+    )),
+  )?;
+
+  export_and_insert(
+    hooks,
+    module,
+    hooks.manage_str(ASSERTNE_META.name),
+    val!(to_dyn_native(
+      hooks,
+      AssertNe::new(ASSERTNE_META.to_meta(hooks), str_name, error_val)
+    )),
+  )
+  .map_err(StdError::from)
 }
 
 const ASSERT_META: NativeMetaBuilder = NativeMetaBuilder::fun("assert", Arity::Fixed(1))
@@ -43,41 +74,6 @@ const ASSERTNE_META: NativeMetaBuilder = NativeMetaBuilder::fun("assertNe", Arit
     ParameterBuilder::new("actual", ParameterKind::Any),
     ParameterBuilder::new("unexpected", ParameterKind::Any),
   ]);
-
-pub fn declare_assert_funs(hooks: &GcHooks, module: &mut Module) -> InitResult<()> {
-  let str_name = hooks.manage_str("str");
-  let assert_error = val!(load_class_from_module(hooks, module, ASSERT_ERROR_NAME)?);
-
-  export_and_insert(
-    hooks,
-    module,
-    hooks.manage_str(ASSERT_META.name),
-    val!(to_dyn_native(
-      hooks,
-      Assert::new(ASSERT_META.to_meta(hooks), str_name, assert_error)
-    )),
-  )?;
-
-  export_and_insert(
-    hooks,
-    module,
-    hooks.manage_str(ASSERTEQ_META.name),
-    val!(to_dyn_native(
-      hooks,
-      AssertEq::new(ASSERTEQ_META.to_meta(hooks), str_name, assert_error)
-    )),
-  )?;
-
-  export_and_insert(
-    hooks,
-    module,
-    hooks.manage_str(ASSERTNE_META.name),
-    val!(to_dyn_native(
-      hooks,
-      AssertNe::new(ASSERTNE_META.to_meta(hooks), str_name, assert_error)
-    )),
-  )
-}
 
 fn to_str(hooks: &mut Hooks, value: Value) -> GcStr {
   hooks

@@ -1,15 +1,8 @@
-use crate::{
-  io::global::{ERROR_PATH, IO_ERROR},
-  native_with_error,
-  support::load_class_from_package,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
-};
+use crate::{StdResult, io::{IO_MODULE_PATH, global::{IO_ERROR}}, native_with_error, support::load_class_from_package, support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native}};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  module::Module,
+  module::{Module, Package},
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -25,14 +18,14 @@ const FILE_READ_ALL_TEXT: NativeMetaBuilder =
   NativeMetaBuilder::fun("readAllText", Arity::Fixed(1))
     .with_params(&[ParameterBuilder::new("path", ParameterKind::String)]);
 
-pub fn declare_file(hooks: &GcHooks, module: &mut Module, std: &Package) -> InitResult<()> {
+pub fn declare_file(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdResult<()> {
   let class = default_class_inheritance(hooks, std, FILE_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_file(hooks: &GcHooks, module: &Module, std: &Package) -> InitResult<()> {
+pub fn define_file(hooks: &GcHooks, module: &Module, std: &Package) -> StdResult<()> {
   let class = load_class_from_module(hooks, module, FILE_CLASS_NAME)?;
-  let io_error = val!(load_class_from_package(hooks, std, ERROR_PATH, IO_ERROR)?);
+  let io_error = val!(load_class_from_package(hooks, std, IO_MODULE_PATH, IO_ERROR)?);
 
   class.meta_class().expect("Meta class not set.").add_method(
     hooks,

@@ -1,14 +1,13 @@
 use crate::{
   native, native_with_error,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -18,7 +17,10 @@ use laythe_env::managed::Trace;
 use std::io::Write;
 use std::mem;
 
-use super::error::{FORMAT_CLASS_NAME, VALUE_ERROR_NAME};
+use super::{
+  class_inheritance,
+  error::{FORMAT_CLASS_NAME, VALUE_ERROR_NAME},
+};
 
 pub const NUMBER_CLASS_NAME: &str = "Number";
 
@@ -43,16 +45,12 @@ const NUMBER_CMP: NativeMetaBuilder =
 const NUMBER_PARSE: NativeMetaBuilder = NativeMetaBuilder::fun("parse", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("str", ParameterKind::String)]);
 
-pub fn declare_number_class(
-  hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
-) -> InitResult<()> {
-  let class = default_class_inheritance(hooks, package, NUMBER_CLASS_NAME)?;
+pub fn declare_number_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+  let class = class_inheritance(hooks, module, NUMBER_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_number_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
+pub fn define_number_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NUMBER_CLASS_NAME)?;
   let format_error = val!(load_class_from_module(hooks, module, FORMAT_CLASS_NAME)?);
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);

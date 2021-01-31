@@ -1,7 +1,7 @@
 use crate::{
   native, native_with_error,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  StdResult,
 };
 use laythe_core::{
   constants::{INDEX_GET, INDEX_SET},
@@ -11,7 +11,6 @@ use laythe_core::{
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::List,
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   utils::is_falsey,
   val,
@@ -22,7 +21,10 @@ use laythe_env::managed::{Gc, GcStr, Trace};
 use std::{cmp::Ordering, io::Write};
 use std::{mem, slice::Iter};
 
-use super::error::{INDEX_ERROR_NAME, TYPE_ERROR_NAME};
+use super::{
+  class_inheritance,
+  error::{INDEX_ERROR_NAME, TYPE_ERROR_NAME},
+};
 
 pub const LIST_CLASS_NAME: &str = "List";
 
@@ -77,17 +79,13 @@ const LIST_SORT: NativeMetaBuilder = NativeMetaBuilder::method("sort", Arity::Fi
 const LIST_COLLECT: NativeMetaBuilder = NativeMetaBuilder::fun("collect", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("iter", ParameterKind::Iter)]);
 
-pub fn declare_list_class(
-  hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
-) -> InitResult<()> {
-  let class = default_class_inheritance(hooks, package, LIST_CLASS_NAME)?;
+pub fn declare_list_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+  let class = class_inheritance(hooks, module, LIST_CLASS_NAME)?;
 
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_list_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
+pub fn define_list_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, LIST_CLASS_NAME)?;
   let index_error = val!(load_class_from_module(hooks, module, INDEX_ERROR_NAME)?);
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);
@@ -796,7 +794,8 @@ mod test {
         val!(gc.manage_str("nil".to_string(), &NO_GC)),
         val!(gc.manage_str("10".to_string(), &NO_GC)),
         val!(gc.manage_str("[5]".to_string(), &NO_GC)),
-      ]);
+      ])
+      .unwrap();
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_str = ListStr::new(

@@ -1,13 +1,12 @@
 use crate::{
   native,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -15,6 +14,8 @@ use laythe_core::{
 };
 use laythe_env::managed::{GcStr, Trace};
 use std::io::Write;
+
+use super::class_inheritance;
 
 pub const METHOD_CLASS_NAME: &str = "Method";
 
@@ -24,16 +25,12 @@ const METHOD_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::
   .with_params(&[ParameterBuilder::new("args", ParameterKind::Any)])
   .with_stack();
 
-pub fn declare_method_class(
-  hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
-) -> InitResult<()> {
-  let method_class = default_class_inheritance(hooks, package, METHOD_CLASS_NAME)?;
+pub fn declare_method_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+  let method_class = class_inheritance(hooks, module, METHOD_CLASS_NAME)?;
   export_and_insert(hooks, module, method_class.name(), val!(method_class))
 }
 
-pub fn define_method_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
+pub fn define_method_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, METHOD_CLASS_NAME)?;
 
   class.add_method(
@@ -132,7 +129,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::with_std(&[]);
+      let mut context = MockedContext::with_std(&[]).unwrap();
       let responses = &[val!(context.gc.borrow_mut().manage_str("example", &NO_GC))];
       context.responses.extend_from_slice(responses);
 

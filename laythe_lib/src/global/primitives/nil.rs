@@ -1,9 +1,12 @@
-use crate::{InitResult, native, support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native}};
+use crate::{
+  native,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  StdResult,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  package::Package,
   signature::Arity,
   val,
   value::Value,
@@ -12,19 +15,17 @@ use laythe_core::{
 use laythe_env::managed::Trace;
 use std::io::Write;
 
+use super::class_inheritance;
+
 pub const NIL_CLASS_NAME: &str = "Nil";
 const NIL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_nil_class(
-  hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
-) -> InitResult<()> {
-  let class = default_class_inheritance(hooks, package, NIL_CLASS_NAME)?;
+pub fn declare_nil_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+  let class = class_inheritance(hooks, module, NIL_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_nil_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
+pub fn define_nil_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NIL_CLASS_NAME)?;
 
   class.add_method(
