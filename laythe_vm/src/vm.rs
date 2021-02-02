@@ -10,7 +10,7 @@ use crate::{
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
-  constants::{PLACEHOLDER_NAME, SCRIPT},
+  constants::{PLACEHOLDER_NAME, SCRIPT, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   module::{Import, Module, Package},
   native::{Native, NativeMeta},
@@ -388,33 +388,26 @@ impl Vm {
   }
 
   /// Prepare the main module for use
-  fn main_module(&self, module_path: PathBuf, main_id: usize) -> Result<Gc<Module>, ExecuteResult> {
+  fn main_module(
+    &mut self,
+    module_path: PathBuf,
+    main_id: usize,
+  ) -> Result<Gc<Module>, ExecuteResult> {
     let hooks = GcHooks::new(self);
 
-    let mut stdio = self.io.stdio();
-    let stderr = stdio.stderr();
+    let name = hooks.manage_str(SELF);
+    let module_class = Class::with_inheritance(&hooks, name, self.builtin.dependencies.module);
 
-    // resolve the main module from the provided path
-
-    let module = match Module::from_path(
-      &hooks,
-      module_path,
-      self.builtin.dependencies.module,
-      main_id,
-    ) {
-      Ok(module) => module,
-      Err(err) => {
-        writeln!(stderr, "{}", err).expect("Unable to write to stderr");
-        return Err(ExecuteResult::RuntimeError);
-      }
-    };
-    let mut module = hooks.manage(module);
+    let mut module = hooks.manage(Module::new(module_class, module_path, main_id));
     hooks.push_root(module);
 
     // transfer the symbols from the global module into the main module
     self.global.transfer_exported(&hooks, &mut module);
 
     hooks.pop_roots(1);
+    let package = hooks.manage(Package::new(name, module));
+
+    self.packages.insert(name, package);
     Ok(module)
   }
 
