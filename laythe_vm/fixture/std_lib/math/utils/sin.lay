@@ -1,12 +1,12 @@
-import Math from 'std/math';
+import std.math;
 
 fn almost(actual, expect) {
-  assert(Math.abs((actual - expect)) < 0.0000001);
+  assert(math.abs((actual - expect)) < 0.0000001);
 }
 
-almost(Math.sin(0), 0.0);
-almost(Math.sin(Math.pi), 0.0);
-almost(Math.sin(Math.pi * 2), 0.0);
+almost(math.sin(0), 0.0);
+almost(math.sin(math.pi), 0.0);
+almost(math.sin(math.pi * 2), 0.0);
 
-almost(Math.sin(Math.pi / 2), 1.0);
-almost(Math.sin(Math.pi * 3 / 2), -1.0);
+almost(math.sin(math.pi / 2), 1.0);
+almost(math.sin(math.pi * 3 / 2), -1.0);

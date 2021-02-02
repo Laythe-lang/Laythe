@@ -496,7 +496,14 @@ impl<'a> Scanner<'a> {
   fn identifier_type(&self) -> TokenKind {
     match self.nth_char_from(self.start, 0) {
       Some(c1) => match c1 {
-        "a" => self.check_keyword(1, "nd", TokenKind::And),
+        "a" => match self.nth_char_from(self.start, 1) {
+          Some(c2) => match c2 {
+            "n" => self.check_keyword(2, "d", TokenKind::And),
+            "s" => self.check_keyword(2, "", TokenKind::As),
+            _ => TokenKind::Identifier,
+          },
+          None => TokenKind::Identifier,
+        },
         "b" => self.check_keyword(1, "reak", TokenKind::Break),
         "c" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
@@ -519,8 +526,7 @@ impl<'a> Scanner<'a> {
           Some(c2) => match c2 {
             "a" => self.check_keyword(2, "lse", TokenKind::False),
             "o" => self.check_keyword(2, "r", TokenKind::For),
-            "r" => self.check_keyword(2, "om", TokenKind::From),
-            "n" => TokenKind::Fun,
+            "n" => self.check_keyword(2, "", TokenKind::Fun),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
@@ -553,7 +559,7 @@ impl<'a> Scanner<'a> {
               Some(c3) => match c3 {
                 "a" => self.check_keyword(3, "it", TokenKind::Trait),
                 "u" => self.check_keyword(3, "e", TokenKind::True),
-                "y" => TokenKind::Try,
+                "y" => self.check_keyword(3, "", TokenKind::Try),
                 _ => TokenKind::Identifier,
               },
               None => TokenKind::Identifier,
@@ -870,8 +876,8 @@ mod test {
       TokenGen::ALpha(Box::new(|| "for".to_string())),
     );
     map.insert(
-      TokenKind::From,
-      TokenGen::ALpha(Box::new(|| "from".to_string())),
+      TokenKind::As,
+      TokenGen::ALpha(Box::new(|| "as".to_string())),
     );
     map.insert(
       TokenKind::Fun,

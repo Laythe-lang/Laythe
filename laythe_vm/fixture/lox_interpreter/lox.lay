@@ -1,11 +1,7 @@
-import Env from 'std/env';
-import Stdio from 'std/io/stdio';
-import Fs from 'std/io/fs/';
+import std.env;
+import std.io.stdio:{stdout, stderr, stdin};
+import std.io.fs:{File};
 
-let stdout = Stdio.stdout;
-let stderr = Stdio.stderr;
-let stdin = Stdio.stdin;
-let File = Fs.File;
 // Lox interpreter written in ... Laythe!
 
 
@@ -1736,7 +1732,7 @@ fn print_error(message) {
   stderr.writeln(message);
 }
 
-let args = Env.args();
+let args = env.args();
 let parser;
 let resolver;
 let interpreter;

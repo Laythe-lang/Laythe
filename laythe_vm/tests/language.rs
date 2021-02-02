@@ -507,17 +507,24 @@ fn import() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/import/missing_name.lay",
+      "language/import/missing_path.lay",
       "language/import/missing_semicolon.lay",
-      "language/import/non_identifier_name.lay",
-      "language/import/non_string_literal.lay",
-      "language/import/non_string_path.lay",
+      "language/import/non_identifier_path.lay",
+      "language/import/rename_missing.lay",
+      "language/import/rename_not_identifer.lay",
+      "language/import/symbols_rename_missing.lay",
+      "language/import/symbols_rename_not_identifer.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/import/std_lib_not_real.lay"],
+    &vec![
+      "language/import/module_not_real.lay",
+      // "language/import/rename_redefine.lay",
+      "language/import/symbols_not_real.lay",
+      // "language/import/symbols_redefine.lay",
+    ],
     ExecuteResult::RuntimeError,
   )
 }

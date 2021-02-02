@@ -1,5 +1,4 @@
-import Stdio from 'std/io/stdio';
-let stdout = Stdio.stdout;
+import std.io.stdio:{stdout};
 
 stdout.writeln('expected 1');
 stdout.writeln('expected 2');

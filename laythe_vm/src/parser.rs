@@ -447,17 +447,57 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       return self.error_current("Can only import from the module scope.");
     }
 
-    self.consume(TokenKind::Identifier, "Expected name following import.")?;
-    let imported = self.previous.clone();
+    self.consume(
+      TokenKind::Identifier,
+      "Expected package name following import.",
+    )?;
+    let mut path = vec![self.previous.clone()];
 
-    let path = self
-      .consume(TokenKind::From, "Expected 'from' following import name.")
-      .and_then(|()| self.consume(TokenKind::String, "Expected path string after 'from'."))
-      .map(|()| self.previous.clone())?;
+    while self.match_kind(TokenKind::Dot)? {
+      self.consume(TokenKind::Identifier, "Expect import path after '.'")?;
+      path.push(self.previous.clone())
+    }
+
+    let stem = match self.current.kind() {
+      TokenKind::Colon => self.advance().and_then(|()| {
+        self.consume(TokenKind::LeftBrace, "Expected '{' after ':'.")?;
+        let mut symbols = vec![];
+
+        while !self.check(TokenKind::RightBrace) {
+          self.consume(
+            TokenKind::Identifier,
+            "Expected symbol identifier in import.",
+          )?;
+          let symbol = self.previous.clone();
+
+          if self.match_kind(TokenKind::As)? {
+            self.consume(TokenKind::Identifier, "Expected identifier after 'as'.")?;
+            symbols.push(ImportSymbol::new(symbol, Some(self.previous.clone())))
+          } else {
+            symbols.push(ImportSymbol::new(symbol, None))
+          }
+
+          if !self.match_kind(TokenKind::Comma)? {
+            break;
+          }
+        }
+
+        self.consume(
+          TokenKind::RightBrace,
+          "Expected '}' following import symbols",
+        )?;
+        Ok(ImportStem::Symbols(symbols))
+      }),
+      TokenKind::As => self.advance().and_then(|()| {
+        self.consume(TokenKind::Identifier, "Expected identifier after 'as'.")?;
+        Ok(ImportStem::Rename(self.previous.clone()))
+      }),
+      _ => Ok(ImportStem::None),
+    }?;
 
     self
       .consume_basic(TokenKind::Semicolon, "Expected ';' after value.")
-      .map(|()| Stmt::Import(Box::new(Import::new(imported, path))))
+      .map(|()| Stmt::Import(Box::new(Import::new(path, stem))))
   }
 
   /// Parse a try catch block
@@ -2139,7 +2179,7 @@ mod test {
   #[test]
   fn import() {
     let example = r#"
-      import time from "std/time";
+      import std.time;
     "#;
 
     test(example);

@@ -1,5 +1,4 @@
-import re from 'std/regexp';
-let RegExp = re.RegExp;
+import std.regexp:{RegExp};
 
 let emit = print;
 let throwError = |message| {

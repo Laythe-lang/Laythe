@@ -10,7 +10,7 @@ use crate::{
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
-  constants::{IMPORT_SEPARATOR, PLACEHOLDER_NAME, SCRIPT},
+  constants::{PLACEHOLDER_NAME, SCRIPT},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   module::{Import, Module, Package},
   native::{Native, NativeMeta},
@@ -520,6 +520,7 @@ impl Vm {
         ByteCode::GetProperty => self.op_get_property(),
         ByteCode::SetProperty => self.op_set_property(),
         ByteCode::Import => self.op_import(),
+        ByteCode::ImportSymbol => self.op_import_symbol(),
         ByteCode::Export => self.op_export(),
         ByteCode::Drop => self.op_drop(),
         ByteCode::DropN => self.op_drop_n(),
@@ -1213,101 +1214,132 @@ impl Vm {
 
   fn op_import(&mut self) -> Signal {
     let index_path = self.read_short();
-    let path = self.read_string(index_path);
+    let path = self.read_constant(index_path).to_list();
 
-    let module = self.current_fun.module();
+    let mut path_segments: Gc<List<GcStr>> = self
+      .gc
+      .borrow_mut()
+      .manage(List::with_capacity(path.len()), self);
 
-    let mut module_dir = module.path().clone();
-    module_dir.pop();
+    path_segments.extend(path.iter().map(|segment| segment.to_str()));
 
-    // determine relative position of module relative to the src directory
-    let relative = match self.io.fs().relative_path(&self.root_dir, &module_dir) {
-      Ok(relative) => relative,
-      Err(err) => {
-        return self.runtime_error(self.builtin.errors.runtime, &err.to_string());
-      }
-    };
+    let mut buffer = String::new();
+    for segment in &path_segments[..path_segments.len() - 1] {
+      buffer.push_str(segment);
+      buffer.push_str("/")
+    }
 
-    // split path into segments
-    let relative: Vec<String> = relative
-      .ancestors()
-      .map(|p| p.display().to_string())
-      .filter(|p| !p.is_empty())
-      .collect();
-
-    // split import into segments and join to relative path
-    let resolved_segments: Vec<String> = if &path[..1] == "." {
-      relative
-        .into_iter()
-        .rev()
-        .chain(path.split(IMPORT_SEPARATOR).map(|s| s.to_string()))
-        .collect()
-    } else {
-      path
-        .split(IMPORT_SEPARATOR)
-        .map(|s| s.to_string())
-        .collect()
-    };
+    buffer.push_str(&path_segments[path_segments.len() - 1]);
 
     // check if fully resolved module has already been loaded
-    let resolved = self.manage_str(resolved_segments.join("/"));
+    let resolved = self.manage_str(buffer);
     if let Some(module) = self.module_cache.get(&resolved) {
       let imported = module.module_instance(&GcHooks::new(self));
       self.push(val!(imported));
       return Signal::Ok;
     }
 
-    match resolved_segments.split_first() {
-      Some((package, path_slice)) => {
-        let package = self.gc().manage_str(package, self);
-        self.gc().push_root(package);
-
-        let mut path: Gc<List<GcStr>> = self
-          .gc()
-          .manage(List::with_capacity(path_slice.len()), self);
-        self.gc().push_root(path);
-
-        path.extend(
-          path_slice
-            .iter()
-            .map(|segment| self.gc().manage_str(segment, self)),
-        );
-        self.gc().pop_roots(2);
-
+    let import = match path_segments.split_first() {
+      Some((package, path)) => {
         // generate a new import object
-        let import = self.gc().manage(Import::new(package, path), self);
-        self.gc().push_root(import);
-
-        let result = match self.packages.get(&import.package()) {
-          Some(package) => match package.import(&GcHooks::new(self), import) {
-            Ok(module) => {
-              self.push(val!(module));
-              Signal::Ok
-            }
-            Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
-          },
-          None => self.runtime_error(
-            self.builtin.errors.import,
-            &format!("Package {} does not exist", &import.package()),
-          ),
-        };
-
-        self.gc().pop_roots(1);
-        result
+        let path = self.gc().manage(List::from(path), self);
+        self.gc().manage(Import::new(*package, path), self)
       }
+      None => {
+        // generate a new import object
+        let path = self.gc().manage(List::new(), self);
+        self.gc().manage(Import::new(path_segments[0], path), self)
+      }
+    };
+
+    self.gc().push_root(import);
+
+    let result = match self.packages.get(&import.package()) {
+      Some(package) => match package.import(&GcHooks::new(self), import) {
+        Ok(module) => {
+          self.push(val!(module));
+          Signal::Ok
+        }
+        Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
+      },
       None => self.runtime_error(
         self.builtin.errors.import,
-        "Import needs to be prepended with a package name",
+        &format!("Package {} does not exist", &import.package()),
       ),
+    };
+
+    self.gc().pop_roots(1);
+    result
+  }
+
+  fn op_import_symbol(&mut self) -> Signal {
+    let index_path = self.read_short();
+    let index_name = self.read_short();
+    let path = self.read_constant(index_path).to_list();
+    let name = self.read_string(index_name);
+
+    let mut path_segments: Gc<List<GcStr>> = self
+      .gc
+      .borrow_mut()
+      .manage(List::with_capacity(path.len()), self);
+
+    path_segments.extend(path.iter().map(|segment| segment.to_str()));
+
+    let mut buffer = String::new();
+    for segment in &path_segments[..path_segments.len() - 1] {
+      buffer.push_str(segment);
+      buffer.push_str("/")
     }
+
+    buffer.push_str(&path_segments[path_segments.len() - 1]);
+
+    // check if fully resolved module has already been loaded
+    let resolved = self.manage_str(buffer);
+    if let Some(module) = self.module_cache.get(&resolved) {
+      let imported = module.module_instance(&GcHooks::new(self));
+      self.push(val!(imported));
+      return Signal::Ok;
+    }
+
+    let import = match path_segments.split_first() {
+      Some((package, path)) => {
+        // generate a new import object
+        let path = self.gc().manage(List::from(path), self);
+        self.gc().manage(Import::new(*package, path), self)
+      }
+      None => {
+        // generate a new import object
+        let path = self.gc().manage(List::new(), self);
+        self.gc().manage(Import::new(path_segments[0], path), self)
+      }
+    };
+
+    self.gc().push_root(import);
+
+    let result = match self.packages.get(&import.package()) {
+      Some(package) => match package.import_symbol(&GcHooks::new(self), import, name) {
+        Ok(module) => {
+          self.push(val!(module));
+          Signal::Ok
+        }
+        Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
+      },
+      None => self.runtime_error(
+        self.builtin.errors.import,
+        &format!("Package {} does not exist", &import.package()),
+      ),
+    };
+
+    self.gc().pop_roots(1);
+    result
   }
 
   fn op_export(&mut self) -> Signal {
     let index = self.read_short();
     let name = self.read_string(index);
-    let mut copy = self.current_fun.module();
+    let mut current_module = self.current_fun.module();
 
-    match copy.export_symbol(&GcHooks::new(self), name) {
+    match current_module.export_symbol(&GcHooks::new(self), name) {
       Ok(_) => Signal::Ok,
       Err(error) => self.runtime_error(self.builtin.errors.export, &error.to_string()),
     }
@@ -1677,7 +1709,7 @@ impl Vm {
     };
 
     #[cfg(debug_assertions)]
-    let roots_before = self.gc.borrow().temp_roots();
+    let roots_before = self.gc().temp_roots();
 
     match meta.environment {
       Environment::StackLess => match native.call(&mut Hooks::new(self), this, args) {
@@ -1687,7 +1719,7 @@ impl Vm {
 
           #[cfg(debug_assertions)]
           {
-            let roots_current = self.gc.borrow().temp_roots();
+            let roots_current = self.gc().temp_roots();
             assert_roots(native, roots_before, roots_current);
           }
           Signal::OkReturn
@@ -1706,7 +1738,7 @@ impl Vm {
 
             #[cfg(debug_assertions)]
             {
-              let roots_current = self.gc.borrow().temp_roots();
+              let roots_current = self.gc().temp_roots();
               assert_roots(native, roots_before, roots_current);
             }
             Signal::OkReturn

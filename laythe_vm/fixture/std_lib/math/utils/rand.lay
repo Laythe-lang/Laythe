@@ -1,6 +1,6 @@
-import Math from 'std/math';
+import std.math;
 
 for _ in 10.times() {
-  let rand = Math.rand();
+  let rand = math.rand();
   assert(rand >= 0 and rand < 1);
 }

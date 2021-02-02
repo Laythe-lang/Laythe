@@ -1,5 +1,4 @@
-import Math from 'std/math';
-let rem = Math.rem;
+import std.math:{rem};
 
 10000.times()
   .filter(|x| rem(x, 3))
