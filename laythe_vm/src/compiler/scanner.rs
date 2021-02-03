@@ -43,7 +43,7 @@ impl<'a> Scanner<'a> {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::scanner::Scanner;
+  /// use laythe_vm::compiler::Scanner;
   /// use laythe_vm::token::TokenKind;
   /// use laythe_vm::ast::Spanned;
   ///
@@ -91,7 +91,7 @@ impl<'a> Scanner<'a> {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::scanner::{Scanner};
+  /// use laythe_vm::compiler::{Scanner};
   /// use laythe_vm::token::TokenKind;
   /// use laythe_vm::ast::Spanned;
   ///
@@ -250,7 +250,7 @@ impl<'a> Scanner<'a> {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::scanner::{Scanner};
+  /// use laythe_vm::compiler::{Scanner};
   /// use laythe_vm::token::TokenKind;
   /// use laythe_vm::files::LineError;
   ///

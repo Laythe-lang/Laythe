@@ -6,7 +6,7 @@ use laythe_core::{
 };
 use laythe_env::{managed::Gc, memory::NO_GC};
 use laythe_vm::compiler::Compiler;
-use laythe_vm::parser::Parser;
+use laythe_vm::compiler::Parser;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};

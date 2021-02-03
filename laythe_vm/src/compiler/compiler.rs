@@ -1848,7 +1848,7 @@ impl<'a, FileId> TraceRoot for Compiler<'a, FileId> {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::{debug::disassemble_chunk, parser::Parser};
+  use crate::{compiler::Parser, debug::disassemble_chunk};
   use laythe_core::chunk::{decode_u16, decode_u32};
   use laythe_core::{hooks::NoContext, object::Class};
   use laythe_env::{

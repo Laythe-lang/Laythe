@@ -1,14 +1,13 @@
-use laythe_core::module::Module;
 use laythe_core::{
   hooks::{GcHooks, NoContext},
+  module::Module,
   object::Class,
 };
 use laythe_env::{
   managed::Gc,
   memory::{Allocator, NO_GC},
 };
-use laythe_vm::compiler;
-use laythe_vm::parser::Parser;
+use laythe_vm::compiler::{Compiler, Parser};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -52,7 +51,7 @@ fn compiler_bench(src: &str) {
     let module = Module::from_path(&hooks, PathBuf::from("/Benchmark.ly"), class, 0).unwrap();
     let module = hooks.manage(module);
 
-    let compiler = compiler::Compiler::new(module, &ast, &line_offsets, 0, &NO_GC, gc);
+    let compiler = Compiler::new(module, &ast, &line_offsets, 0, &NO_GC, gc);
     compiler.compile().0.unwrap();
   }
 }

@@ -6,8 +6,6 @@ mod call_frame;
 pub mod compiler;
 mod constants;
 pub mod files;
-pub mod parser;
-pub mod scanner;
 pub mod token;
 pub mod vm;
 use codespan_reporting::diagnostic::Diagnostic;

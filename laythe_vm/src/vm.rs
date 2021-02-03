@@ -1,10 +1,9 @@
 use crate::{
   cache::InlineCache,
   call_frame::CallFrame,
-  compiler::Compiler,
+  compiler::{Compiler, Parser},
   constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
   files::{VmFileId, VmFiles},
-  parser::Parser,
   FeResult,
 };
 use codespan_reporting::term::{self, Config};

@@ -1,13 +1,14 @@
 use crate::{
   ast::*,
   files::LineOffsets,
-  scanner::Scanner,
   token::{Lexeme, Token, TokenKind},
   FeResult,
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{constants::INIT, object::FunKind};
 use std::mem;
+
+use super::Scanner;
 
 type ParseResult<T, F> = Result<T, Diagnostic<F>>;
 
@@ -84,7 +85,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::parser::Parser;
+  /// use laythe_vm::compiler::Parser;
   /// use laythe_native::stdio::StdioNative;
   ///
   /// // an expression
