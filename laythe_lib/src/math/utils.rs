@@ -1,7 +1,7 @@
 use crate::{
   native,
   support::{export_and_insert, to_dyn_native},
-  InitResult,
+  StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -42,7 +42,7 @@ const POW_META: NativeMetaBuilder = NativeMetaBuilder::fun("pow", Arity::Fixed(2
 
 const RAND_META: NativeMetaBuilder = NativeMetaBuilder::fun("rand", Arity::Fixed(0));
 
-pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> InitResult<()> {
+pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> StdResult<()> {
   export_and_insert(
     hooks,
     self_module,
@@ -107,7 +107,7 @@ pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> InitRes
   )
 }
 
-pub fn define_math_module(_: &GcHooks, _: &mut Module) -> InitResult<()> {
+pub fn define_math_module(_: &GcHooks, _: &mut Module) -> StdResult<()> {
   Ok(())
 }
 

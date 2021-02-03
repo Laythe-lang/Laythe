@@ -1,13 +1,12 @@
 use crate::{
   native,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -15,6 +14,8 @@ use laythe_core::{
 };
 use laythe_env::managed::Trace;
 use std::io::Write;
+
+use super::class_inheritance;
 
 pub const NATIVE_CLASS_NAME: &str = "Native";
 
@@ -24,16 +25,12 @@ const NATIVE_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::
   .with_params(&[ParameterBuilder::new("args", ParameterKind::Any)])
   .with_stack();
 
-pub fn declare_native_class(
-  hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
-) -> InitResult<()> {
-  let class = default_class_inheritance(hooks, package, NATIVE_CLASS_NAME)?;
+pub fn declare_native_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+  let class = class_inheritance(hooks, module, NATIVE_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_native_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
+pub fn define_native_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NATIVE_CLASS_NAME)?;
 
   class.add_method(

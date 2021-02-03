@@ -31,8 +31,9 @@ fn bool() -> Result<(), std::io::Error> {
 fn class() -> Result<(), std::io::Error> {
   test_files(
     &vec![
-      "std_lib/global/class/superCls.lay",
+      "std_lib/global/class/name.lay",
       "std_lib/global/class/str.lay",
+      "std_lib/global/class/superCls.lay",
     ],
     ExecuteResult::Ok,
   )?;
@@ -150,6 +151,13 @@ fn method() -> Result<(), std::io::Error> {
     ],
     ExecuteResult::Ok,
   )?;
+
+  test_files(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
+fn module() -> Result<(), std::io::Error> {
+  test_files(&vec!["std_lib/global/module/name.lay"], ExecuteResult::Ok)?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
 }

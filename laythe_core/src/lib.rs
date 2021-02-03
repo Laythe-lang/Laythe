@@ -6,7 +6,6 @@ pub mod iterator;
 pub mod module;
 pub mod native;
 pub mod object;
-pub mod package;
 pub mod signature;
 pub mod utils;
 pub mod value;

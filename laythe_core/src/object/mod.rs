@@ -15,3 +15,6 @@ pub use list::List;
 pub use map::Map;
 pub use method::Method;
 pub use upvalue::Upvalue;
+
+#[cfg(test)]
+pub use class::test_class;

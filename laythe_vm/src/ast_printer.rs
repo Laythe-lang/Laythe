@@ -266,10 +266,51 @@ impl<'a> Visitor<'a> for AstPrint {
   fn visit_import(&mut self, import: &Import) -> Self::Result {
     self.pad();
     self.buffer.push_str("import ");
-    self.buffer.push_str(&import.imported.str());
-    self.buffer.push_str(" from \"");
-    self.buffer.push_str(&import.path.str());
-    self.buffer.push_str("\";");
+    match import.path.split_last() {
+      Some((last, start)) => {
+        for segment in start {
+          self.buffer.push_str(segment.str());
+          self.buffer.push('.');
+        }
+        self.buffer.push_str(last.str());
+      }
+      None => self.buffer.push_str(import.path[0].str()),
+    }
+
+    fn visit_rename(printer: &mut AstPrint, import_symbol: &ImportSymbol) {
+      printer.buffer.push_str(import_symbol.symbol.str());
+
+      if let Some(rename) = &import_symbol.rename {
+        printer.buffer.push_str(" as ");
+        printer.buffer.push_str(rename.str())
+      }
+    }
+
+    match &import.stem {
+      ImportStem::None => {}
+      ImportStem::Rename(rename) => {
+        self.buffer.push_str(" as ");
+        self.buffer.push_str(rename.str());
+      }
+      ImportStem::Symbols(symbols) => {
+        self.buffer.push('{');
+        match symbols.split_last() {
+          Some((last, start)) => {
+            for symbol in start {
+              visit_rename(self, symbol);
+              self.buffer.push(',');
+            }
+
+            visit_rename(self, last);
+          }
+          None => visit_rename(self, &symbols[0]),
+        }
+
+        self.buffer.push('}');
+      }
+    }
+
+    self.buffer.push_str(";");
   }
 
   fn visit_for(&mut self, for_: &For) -> Self::Result {

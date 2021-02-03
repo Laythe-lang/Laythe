@@ -120,7 +120,7 @@ pub enum TokenKind {
   // modules
   Export,
   Import,
-  From,
+  As,
 
   // logical operators
   Amp,
@@ -196,7 +196,7 @@ impl fmt::Display for TokenKind {
       TokenKind::Arrow => "->",
       TokenKind::Export => "export",
       TokenKind::Import => "import",
-      TokenKind::From => "from",
+      TokenKind::As => "as",
       TokenKind::Amp => "&",
       TokenKind::Bang => "!",
       TokenKind::BangEqual => "!=",

@@ -1,1 +1,1 @@
-import time from "std/time"
+import std.time

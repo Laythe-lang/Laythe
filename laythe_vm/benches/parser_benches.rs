@@ -1,5 +1,5 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use laythe_vm::parser::Parser;
+use laythe_vm::compiler::Parser;
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};

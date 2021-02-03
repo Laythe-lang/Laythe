@@ -1,9 +1,8 @@
-use super::error::TYPE_ERROR_NAME;
+use super::{class_inheritance, error::TYPE_ERROR_NAME, error_inheritance};
 use crate::{
   native, native_with_error,
-  support::default_error_inheritance,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  StdResult,
 };
 use hashbrown::hash_map::Iter;
 use laythe_core::{
@@ -15,7 +14,6 @@ use laythe_core::{
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::{List, Map},
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   utils::use_sentinel_nan,
   val,
@@ -63,19 +61,15 @@ const MAP_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed
 const MAP_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const MAP_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
-pub fn declare_map_class(
-  hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
-) -> InitResult<()> {
-  let class = default_class_inheritance(hooks, package, MAP_CLASS_NAME)?;
-  let key_error = default_error_inheritance(hooks, package, KEY_ERROR_NAME)?;
+pub fn declare_map_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+  let class = class_inheritance(hooks, module, MAP_CLASS_NAME)?;
+  let key_error = error_inheritance(hooks, module, KEY_ERROR_NAME)?;
 
   export_and_insert(hooks, module, class.name(), val!(class))?;
   export_and_insert(hooks, module, key_error.name(), val!(key_error))
 }
 
-pub fn define_map_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
+pub fn define_map_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, MAP_CLASS_NAME)?;
   let key_error = val!(load_class_from_module(hooks, module, KEY_ERROR_NAME)?);
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);
@@ -464,7 +458,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::with_std(&[]);
+      let mut context = MockedContext::with_std(&[]).unwrap();
       let nil = val!(context
         .gc
         .borrow_mut()

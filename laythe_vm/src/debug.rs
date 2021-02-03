@@ -2,11 +2,12 @@ use laythe_core::chunk::{decode_u16, decode_u32, AlignedByteCode, Chunk, Upvalue
 use laythe_env::stdio::Stdio;
 use std::{io, io::Write, mem};
 
+#[cfg(feature = "debug")]
+use crate::call_frame::CallFrame;
+
 /// Indicate where and how an exception was caught
 #[cfg(feature = "debug")]
 pub fn exception_catch(stdout: &mut dyn Write, frame: &CallFrame, idx: usize) -> io::Result<()> {
-  use crate::call_frame::CallFrame;
-
   writeln!(
     stdout,
     "Exception popped {:0>4} frames caught by: {}",
@@ -83,6 +84,9 @@ pub fn disassemble_instruction(
     AlignedByteCode::Call(arg_count) => byte_instruction(stdio.stdout(), "Call", arg_count, offset),
     AlignedByteCode::Import(path) => {
       constant_instruction(stdio.stdout(), "Import", chunk, path, offset)
+    }
+    AlignedByteCode::ImportSymbol((path, slot)) => {
+      constant_pair_instruction(stdio.stdout(), "ImportSymbol", chunk, (path, slot), offset)
     }
     AlignedByteCode::Export(constant) => {
       constant_instruction(stdio.stdout(), "Export", chunk, constant, offset)
@@ -195,6 +199,24 @@ fn constant_instruction(
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ", name, constant)?;
   writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
+  Ok(offset)
+}
+
+/// print a constant
+fn constant_pair_instruction(
+  stdout: &mut dyn Write,
+  name: &str,
+  chunk: &Chunk,
+  constants: (u16, u16),
+  offset: usize,
+) -> io::Result<usize> {
+  write!(stdout, "{:13} {:5} {:5}", name, constants.0, constants.1)?;
+  writeln!(
+    stdout,
+    "{} {}",
+    &chunk.get_constant(constants.0 as usize),
+    &chunk.get_constant(constants.1 as usize)
+  )?;
   Ok(offset)
 }
 

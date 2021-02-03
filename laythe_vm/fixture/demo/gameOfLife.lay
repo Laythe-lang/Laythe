@@ -1,7 +1,5 @@
-import Math from 'std/math';
-import Stdio from 'std/io/stdio';
-
-let stdout = Stdio.stdout;
+import std.math:{rand, rem};
+import std.io.stdio:{stdout};
 
 let DEAD = 0;
 let ALIVE = 1;
@@ -42,7 +40,7 @@ class Universe {
     let cells = (DEFAULT * DEFAULT * 2)
       .times()
       .reduce([], |list, _| {
-        if Math.rand() > 0.5 {
+        if rand() > 0.5 {
           list.push(Cell.alive());
         } else {
           list.push(Cell.dead());
@@ -69,8 +67,8 @@ class Universe {
     for deltaRow in [self.height - 1, 0, 1] {
       for deltaCol in [self.width - 1, 0, 1] {
         if deltaRow != 0 or deltaCol != 0 {
-          let neighborRow = Math.rem(row + deltaRow, self.height);
-          let neighborCol = Math.rem(col + deltaCol, self.width);
+          let neighborRow = rem(row + deltaRow, self.height);
+          let neighborCol = rem(col + deltaCol, self.width);
 
           let idx = self.getIndex(neighborRow, neighborCol);
           count = count + self.cells[idx].status;

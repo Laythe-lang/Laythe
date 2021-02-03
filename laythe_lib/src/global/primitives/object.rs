@@ -1,21 +1,15 @@
-use crate::{
-  native,
-  support::{export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
-};
+use crate::{native, support::to_dyn_native};
 use laythe_core::{
   constants::OBJECT,
   hooks::{GcHooks, Hooks},
-  module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::Class,
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
   Call,
 };
-use laythe_env::managed::Trace;
+use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 
 pub const OBJECT_CLASS_NAME: &str = OBJECT;
@@ -27,35 +21,29 @@ const OBJECT_CLASS: NativeMetaBuilder = NativeMetaBuilder::method("cls", Arity::
 
 const OBJECT_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_object_class(hooks: &GcHooks, self_module: &mut Module) -> InitResult<()> {
+pub fn create_object_class(hooks: &GcHooks) -> Gc<Class> {
   let name = hooks.manage_str(OBJECT_CLASS_NAME);
-  let class = hooks.manage(Class::bare(name));
+  let mut object = hooks.manage(Class::bare(name));
 
-  export_and_insert(hooks, self_module, name, val!(class))
-}
-
-pub fn define_object_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
-  let mut class = load_class_from_module(hooks, module, OBJECT_CLASS_NAME)?;
-
-  class.add_method(
+  object.add_method(
     &hooks,
     hooks.manage_str(OBJECT_EQUALS.name),
     val!(to_dyn_native(hooks, ObjectEquals::from(hooks))),
   );
 
-  class.add_method(
+  object.add_method(
     &hooks,
     hooks.manage_str(OBJECT_CLASS.name),
     val!(to_dyn_native(hooks, ObjectCls::from(hooks))),
   );
 
-  class.add_method(
+  object.add_method(
     &hooks,
     hooks.manage_str(OBJECT_STR.name),
     val!(to_dyn_native(hooks, ObjectStr::from(hooks))),
   );
 
-  Ok(())
+  object
 }
 
 native!(ObjectEquals, OBJECT_EQUALS);
@@ -97,8 +85,12 @@ impl Native for ObjectStr {
         format!("<{} {:p}>", class.name(), &*this.to_instance())
       }
       laythe_core::value::ValueKind::Iter => format!("<{} {:p}>", class.name(), &*this.to_iter()),
-      laythe_core::value::ValueKind::Method => format!("<{} {:p}>", class.name(), &*this.to_method()),
-      laythe_core::value::ValueKind::Native => format!("<{} {:p}>", class.name(), &*this.to_native()),
+      laythe_core::value::ValueKind::Method => {
+        format!("<{} {:p}>", class.name(), &*this.to_method())
+      }
+      laythe_core::value::ValueKind::Native => {
+        format!("<{} {:p}>", class.name(), &*this.to_native())
+      }
       laythe_core::value::ValueKind::Upvalue => {
         format!("<{} {:p}>", class.name(), &*this.to_upvalue())
       }
@@ -172,7 +164,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::with_std(&[]);
+      let mut context = MockedContext::with_std(&[]).unwrap();
       let mut hooks = Hooks::new(&mut context);
       let object_cls = ObjectCls::from(&hooks);
 
@@ -200,7 +192,7 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::with_std(&[]);
+      let mut context = MockedContext::with_std(&[]).unwrap();
       let mut hooks = Hooks::new(&mut context);
       let object_str = ObjectStr::from(&hooks);
 

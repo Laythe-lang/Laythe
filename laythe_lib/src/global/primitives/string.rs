@@ -1,7 +1,7 @@
 use crate::{
   native, native_with_error,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  StdResult,
 };
 use laythe_core::{
   constants::INDEX_GET,
@@ -9,7 +9,6 @@ use laythe_core::{
   iterator::{LyIter, LyIterator},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  package::Package,
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
@@ -19,7 +18,7 @@ use laythe_env::managed::{GcStr, Trace};
 use std::{io::Write, str::Split};
 use std::{mem, str::Chars};
 
-use super::error::INDEX_ERROR_NAME;
+use super::{class_inheritance, error::INDEX_ERROR_NAME};
 
 pub const STRING_CLASS_NAME: &str = "String";
 
@@ -44,16 +43,12 @@ const STRING_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity
 
 const STRING_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
-pub fn declare_string_class(
-  hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
-) -> InitResult<()> {
-  let class = default_class_inheritance(hooks, package, STRING_CLASS_NAME)?;
+pub fn declare_string_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+  let class = class_inheritance(hooks, module, STRING_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_string_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
+pub fn define_string_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, STRING_CLASS_NAME)?;
   let index_error = val!(load_class_from_module(hooks, module, INDEX_ERROR_NAME)?);
 

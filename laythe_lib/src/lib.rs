@@ -8,10 +8,14 @@ mod regexp;
 mod support;
 
 use env::env_module;
-use global::add_global_module;
+use global::create_std_core;
 use io::add_io_package;
-use laythe_core::{hooks::GcHooks, package::Package, utils::IdEmitter};
-use laythe_env::managed::{Gc, GcStr};
+use laythe_core::{
+  hooks::GcHooks,
+  module::{ModuleError, Package},
+  utils::IdEmitter,
+};
+use laythe_env::managed::Gc;
 use math::add_math_module;
 use regexp::regexp_module;
 
@@ -19,7 +23,7 @@ pub use builtin::{
   builtin_from_module, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives,
 };
 
-type InitResult<T> = Result<T, GcStr>;
+type StdResult<T> = Result<T, StdError>;
 
 #[macro_export]
 macro_rules! native {
@@ -141,22 +145,36 @@ macro_rules! native_with_error {
   };
 }
 
+#[derive(Debug)]
+pub enum StdError {
+  ModuleError(ModuleError),
+  SymbolNotClass,
+  SymbolNotInstance,
+}
+
+impl From<ModuleError> for StdError {
+  fn from(err: ModuleError) -> Self {
+    StdError::ModuleError(err)
+  }
+}
+
 pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
-pub const GLOBAL_PATH: &str = "std/global.ly";
 
-pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> InitResult<Gc<Package>> {
-  let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
+pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Package>> {
+  // let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
 
-  add_global_module(hooks, &mut std, emitter)?;
+  let mut std = create_std_core(hooks, emitter)?;
 
   add_math_module(hooks, &mut std, emitter)?;
   add_io_package(hooks, &mut std, emitter)?;
   let env = env_module(hooks, &std, emitter)?;
   let regexp = regexp_module(hooks, &std, emitter)?;
 
-  std.add_module(hooks, env)?;
-  std.add_module(hooks, regexp)?;
+  let mut root_module = std.root_module();
+
+  root_module.insert_module(hooks, env)?;
+  root_module.insert_module(hooks, regexp)?;
 
   Ok(std)
 }
@@ -165,37 +183,33 @@ pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> InitResult<Gc
 mod test {
   use super::*;
   use crate::support::MockedContext;
-  use laythe_core::{package::PackageEntity, signature::Arity, value::ValueKind};
+  use laythe_core::{module::Module, signature::Arity, value::ValueKind};
 
-  fn check_inner(hooks: &GcHooks, package: Gc<Package>) {
-    package.entities().for_each(|(_key, entity)| match entity {
-      PackageEntity::Module(module) => {
-        let import = module.import(hooks);
-        import.fields().iter().for_each(|symbol| {
-          let option = match symbol.kind() {
-            ValueKind::Native => Some(symbol.to_native().meta().clone()),
-            _ => None,
-          };
+  fn check_inner(module: Gc<Module>) {
+    module.symbols().for_each(|(_key, symbol)| {
+      let option = match symbol.kind() {
+        ValueKind::Native => Some(symbol.to_native().meta().clone()),
+        _ => None,
+      };
 
-          if let Some(fun_meta) = option {
-            match fun_meta.signature.arity {
-              Arity::Default(_, total_count) => {
-                assert_eq!(fun_meta.signature.parameters.len(), total_count as usize);
-              }
-              Arity::Fixed(count) => {
-                assert_eq!(fun_meta.signature.parameters.len(), count as usize);
-              }
-              Arity::Variadic(min_count) => {
-                assert_eq!(fun_meta.signature.parameters.len(), min_count as usize + 1);
-              }
-            }
+      if let Some(fun_meta) = option {
+        match fun_meta.signature.arity {
+          Arity::Default(_, total_count) => {
+            assert_eq!(fun_meta.signature.parameters.len(), total_count as usize);
           }
-        });
+          Arity::Fixed(count) => {
+            assert_eq!(fun_meta.signature.parameters.len(), count as usize);
+          }
+          Arity::Variadic(min_count) => {
+            assert_eq!(fun_meta.signature.parameters.len(), min_count as usize + 1);
+          }
+        }
       }
-      PackageEntity::Package(package) => {
-        check_inner(hooks, *package);
-      }
-    })
+    });
+
+    module
+      .modules()
+      .for_each(|(_name, module)| check_inner(*module))
   }
 
   #[test]
@@ -208,6 +222,7 @@ mod test {
     assert!(std_lib.is_ok());
 
     let std_lib = std_lib.unwrap();
-    check_inner(&hooks, std_lib);
+    let root_module = std_lib.root_module();
+    check_inner(root_module);
   }
 }

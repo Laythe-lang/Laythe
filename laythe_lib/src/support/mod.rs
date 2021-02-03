@@ -1,9 +1,8 @@
 use laythe_core::{
   hooks::GcHooks,
-  module::Module,
+  module::{Import, Module, Package},
   native::Native,
   object::{Class, Instance},
-  package::{Import, Package},
   value::Value,
 };
 use laythe_env::managed::{Gc, GcStr};
@@ -16,29 +15,43 @@ pub fn default_class_inheritance(
   hooks: &GcHooks,
   package: &Package,
   class_name: &str,
-) -> Result<Gc<Class>, GcStr> {
+) -> StdResult<Gc<Class>> {
   let name = hooks.manage_str(class_name);
 
-  let import = Import::from_str(hooks, GLOBAL_PATH);
-  let module = package.import(hooks, import)?;
+  let import = Import::from_str(hooks, STD)?;
+  let object_class = package.import_symbol(hooks, import, hooks.manage_str(OBJECT_CLASS_NAME))?;
 
-  let object_class = load_class_from_module(hooks, &*module, "Object")?;
-
-  Ok(Class::with_inheritance(hooks, name, object_class))
+  if object_class.is_class() {
+    Ok(Class::with_inheritance(
+      hooks,
+      name,
+      object_class.to_class(),
+    ))
+  } else {
+    Err(StdError::SymbolNotClass)
+  }
 }
 
 pub fn default_error_inheritance(
   hooks: &GcHooks,
   package: &Package,
   class_name: &str,
-) -> Result<Gc<Class>, GcStr> {
+) -> StdResult<Gc<Class>> {
   let name = hooks.manage_str(class_name);
+  let object_name = hooks.manage_str(OBJECT_CLASS_NAME);
 
-  let import = Import::from_str(hooks, GLOBAL_PATH);
-  let module = package.import(hooks, import)?;
+  let import = Import::from_str(hooks, STD)?;
+  let object_class = package.import_symbol(hooks, import, object_name)?;
 
-  let error_class = load_class_from_module(hooks, &*module, "Error")?;
-  Ok(Class::with_inheritance(hooks, name, error_class))
+  if object_class.is_class() {
+    Ok(Class::with_inheritance(
+      hooks,
+      name,
+      object_class.to_class(),
+    ))
+  } else {
+    Err(StdError::SymbolNotClass)
+  }
 }
 
 pub fn load_class_from_package(
@@ -46,24 +59,15 @@ pub fn load_class_from_package(
   package: &Package,
   path: &str,
   name: &str,
-) -> Result<Gc<Class>, GcStr> {
+) -> StdResult<Gc<Class>> {
   let name = hooks.manage_str(name);
-  let import: Import = Import::from_str(hooks, path);
+  let import = Import::from_str(hooks, path)?;
 
-  let module = package.import(hooks, import)?;
-  match module.import_symbol(name) {
-    Some(symbol) => {
-      if symbol.is_class() {
-        Ok(symbol.to_class())
-      } else {
-        Err(hooks.manage_str(format!("Symbol {} is not a class.", name)))
-      }
-    }
-    None => Err(hooks.manage_str(format!(
-      "Could not find symbol {} in module {}.",
-      name,
-      module.name()
-    ))),
+  let symbol = package.import_symbol(hooks, import, name)?;
+  if symbol.is_class() {
+    Ok(symbol.to_class())
+  } else {
+    Err(StdError::SymbolNotClass)
   }
 }
 
@@ -71,21 +75,14 @@ pub fn load_class_from_module(
   hooks: &GcHooks,
   module: &Module,
   name: &str,
-) -> Result<Gc<Class>, GcStr> {
+) -> StdResult<Gc<Class>> {
   let name = hooks.manage_str(name);
-  match module.import_symbol(name) {
-    Some(symbol) => {
-      if symbol.is_class() {
-        Ok(symbol.to_class())
-      } else {
-        Err(hooks.manage_str(format!("Symbol {} is not a class.", name)))
-      }
-    }
-    None => Err(hooks.manage_str(format!(
-      "Could not find symbol {} in module {}.",
-      name,
-      module.name()
-    ))),
+  let symbol = module.get_exported_symbol(name)?;
+
+  if symbol.is_class() {
+    Ok(symbol.to_class())
+  } else {
+    Err(StdError::SymbolNotClass)
   }
 }
 
@@ -93,21 +90,17 @@ pub fn load_instance_from_module(
   hooks: &GcHooks,
   module: &Module,
   name: &str,
-) -> Result<Gc<Instance>, GcStr> {
+) -> StdResult<Gc<Instance>> {
   let name = hooks.manage_str(name);
-  match module.import_symbol(name) {
-    Some(symbol) => {
+  match module.get_exported_symbol(name) {
+    Ok(symbol) => {
       if symbol.is_instance() {
         Ok(symbol.to_instance())
       } else {
-        Err(hooks.manage_str(format!("Symbol {} is not a instance.", name)))
+        Err(StdError::SymbolNotClass)
       }
     }
-    None => Err(hooks.manage_str(format!(
-      "Could not find symbol {} in module {}.",
-      name,
-      module.name()
-    ))),
+    Err(err) => Err(StdError::from(err)),
   }
 }
 
@@ -116,31 +109,30 @@ pub fn export_and_insert(
   module: &mut Module,
   name: GcStr,
   symbol: Value,
-) -> Result<(), GcStr> {
-  module.insert_symbol(hooks, name, symbol);
-  module.export_symbol(hooks, name)
+) -> StdResult<()> {
+  module.insert_symbol(hooks, name, symbol)?;
+  module.export_symbol(hooks, name).map_err(StdError::from)
 }
 
 #[cfg(test)]
 pub use self::test::*;
-use crate::GLOBAL_PATH;
+use crate::{global::OBJECT_CLASS_NAME, StdError, StdResult, STD};
 
 #[cfg(test)]
 mod test {
   use crate::{
     builtin::{builtin_from_module, BuiltIn},
-    create_std_lib, native, GLOBAL_PATH,
+    create_std_lib, native,
   };
   use laythe_core::{
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
     iterator::LyIter,
-    module::Module,
+    module::{Module, ModuleResult},
     native::Native,
     native::{MetaData, NativeMeta, NativeMetaBuilder},
     object::Class,
     object::Fun,
     object::{FunBuilder, List},
-    package::Import,
     signature::Arity,
     signature::{ParameterBuilder, ParameterKind},
     utils::IdEmitter,
@@ -192,7 +184,7 @@ mod test {
       }
     }
 
-    pub fn with_std(responses: &[Value]) -> Self {
+    pub fn with_std(responses: &[Value]) -> ModuleResult<Self> {
       let mut context = Self {
         gc: RefCell::default(),
         no_gc: NoGc(),
@@ -205,14 +197,11 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let mut emitter = IdEmitter::default();
       let std = create_std_lib(&hooks, &mut emitter).unwrap();
-      let global = std
-        .import(&hooks, Import::from_str(&hooks, GLOBAL_PATH))
-        .expect("Could not retrieve global module");
 
-      let builtin = builtin_from_module(&hooks, &global);
+      let builtin = builtin_from_module(&hooks, &std.root_module());
 
       context.builtin = builtin;
-      context
+      Ok(context)
     }
 
     pub fn with_test_stdio(stdio_container: &Arc<StdioTestContainer>) -> Self {
@@ -387,9 +376,34 @@ mod test {
     Box::new(TestIterator::new())
   }
 
+  pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
+    let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+    let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+    class_class.inherit(hooks, object_class);
+
+    let class_copy = class_class;
+    class_class.set_meta(class_copy);
+
+    let object_meta_class = Class::with_inheritance(
+      hooks,
+      hooks.manage_str(format!("{} metaClass", object_class.name())),
+      class_class,
+    );
+
+    object_class.set_meta(object_meta_class);
+    Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
+  }
+
   pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Gc<Fun> {
-    let module = Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name)), 0)
-      .expect("TODO");
+    let module_class = test_class(hooks, name);
+
+    let module = Module::from_path(
+      &hooks,
+      PathBuf::from(format!("path/{}", module_name)),
+      module_class,
+      0,
+    )
+    .expect("TODO");
 
     let module = hooks.manage(module);
     let mut builder = FunBuilder::new(hooks.manage_str(name), module);
@@ -399,8 +413,15 @@ mod test {
   }
 
   pub fn fun_builder_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
-    let module = Module::from_path(&hooks, PathBuf::from(format!("path/{}.ly", module_name)), 0)
-      .expect("TODO");
+    let module_class = test_class(hooks, name);
+
+    let module = Module::from_path(
+      &hooks,
+      PathBuf::from(format!("path/{}.ly", module_name)),
+      module_class,
+      0,
+    )
+    .expect("TODO");
 
     let module = hooks.manage(module);
     FunBuilder::new(hooks.manage_str(name), module)

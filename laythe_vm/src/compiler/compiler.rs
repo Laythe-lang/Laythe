@@ -12,7 +12,7 @@ use laythe_core::{
   constants::{ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::{GcContext, GcHooks},
   module, object,
-  object::{FunBuilder, FunKind, Map},
+  object::{FunBuilder, FunKind, List, Map},
   signature::Arity,
   val,
   value::Value,
@@ -1070,18 +1070,51 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   }
 
   /// Compile an import statement
-  fn import(&mut self, import: &ast::Import) {
-    let name = self.identifier_constant(&import.imported.str());
-    let string = self.gc.borrow_mut().manage_str(import.path.str(), self);
-    let value = val!(string);
+  fn import(&mut self, import: &'a ast::Import<'a>) {
+    // let name = self.identifier_constant(&import.imported.str());
+    let mut list: Gc<List<Value>> = self
+      .gc
+      .borrow_mut()
+      .manage(List::with_capacity(import.path.len()), self);
+    self.gc.borrow_mut().push_root(list);
+
+    list.extend(
+      import
+        .path
+        .iter()
+        .map(|segment| val!(self.gc.borrow_mut().manage_str(segment.str(), self))),
+    );
+
+    let value = val!(list);
     let path = self.make_constant(value);
 
-    // emit error if not at module level
-    if self.scope_depth == 0 {
-      self.emit_byte(AlignedByteCode::Import(path), import.imported.start());
-      self.emit_byte(AlignedByteCode::DefineGlobal(name), import.imported.start());
-    } else {
-      self.error_at_current("Can only import from the module scope.", None)
+    match &import.stem {
+      ast::ImportStem::None => {
+        self.emit_byte(AlignedByteCode::Import(path), import.start());
+        let name = self.make_identifier(&import.path()[import.path().len() - 1]);
+        self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
+      }
+      ast::ImportStem::Rename(rename) => {
+        self.emit_byte(AlignedByteCode::Import(path), import.start());
+        let name = self.make_identifier(&rename);
+        self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
+      }
+      ast::ImportStem::Symbols(symbols) => {
+        for symbol in symbols {
+          let symbol_slot = self.make_identifier(&symbol.symbol);
+          self.emit_byte(
+            AlignedByteCode::ImportSymbol((path, symbol_slot)),
+            symbol.start(),
+          );
+
+          let name = match &symbol.rename {
+            Some(rename) => self.make_identifier(rename),
+            None => symbol_slot,
+          };
+
+          self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
+        }
+      }
     }
   }
 
@@ -1815,9 +1848,9 @@ impl<'a, FileId> TraceRoot for Compiler<'a, FileId> {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::{debug::disassemble_chunk, parser::Parser};
+  use crate::{compiler::Parser, debug::disassemble_chunk};
   use laythe_core::chunk::{decode_u16, decode_u32};
-  use laythe_core::hooks::NoContext;
+  use laythe_core::{hooks::NoContext, object::Class};
   use laythe_env::{
     memory::NO_GC,
     stdio::{support::StdioTestContainer, Stdio},
@@ -1833,6 +1866,24 @@ mod test {
     Fun((u16, Vec<ByteCodeTest>)),
   }
 
+  pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
+    let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+    let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+    class_class.inherit(hooks, object_class);
+
+    let class_copy = class_class;
+    class_class.set_meta(class_copy);
+
+    let object_meta_class = Class::with_inheritance(
+      hooks,
+      hooks.manage_str(format!("{} metaClass", object_class.name())),
+      class_class,
+    );
+
+    object_class.set_meta(object_meta_class);
+    Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
+  }
+
   fn test_compile<'a>(src: &str, context: &NoContext) -> Fun {
     let (ast, line_offsets) = Parser::new(src, 0).parse();
     assert!(ast.is_ok());
@@ -1842,7 +1893,8 @@ mod test {
 
     let path = PathBuf::from("path/module.ly");
 
-    let module = hooks.manage(Module::from_path(&hooks, path, 0).unwrap());
+    let module_class = test_class(hooks, "Module");
+    let module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
 
     let gc = context.gc.replace(Allocator::default());
 
@@ -1984,7 +2036,7 @@ mod test {
   #[test]
   fn import() {
     let example = r#"
-      import time from "std/time";
+      import std.time;
     "#;
 
     let context = NoContext::default();
@@ -1993,8 +2045,8 @@ mod test {
     assert_simple_bytecode(
       &fun,
       &vec![
-        AlignedByteCode::Import(1),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Import(0),
+        AlignedByteCode::DefineGlobal(1),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],

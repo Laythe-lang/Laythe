@@ -77,6 +77,9 @@ pub enum AlignedByteCode {
   /// Import all symbols
   Import(u16),
 
+  /// Import a single symbol
+  ImportSymbol((u16, u16)),
+
   /// Export a symbol from the current module
   Export(u16),
 
@@ -207,6 +210,9 @@ impl AlignedByteCode {
       Self::Constant(slot) => push_op_u8(code, ByteCode::Constant, slot),
       Self::ConstantLong(slot) => push_op_u16(code, ByteCode::ConstantLong, slot),
       Self::Import(path) => push_op_u16(code, ByteCode::Import, path),
+      Self::ImportSymbol((path, slot)) => {
+        push_op_u16_tuple(code, ByteCode::ImportSymbol, path, slot)
+      }
       Self::Export(slot) => push_op_u16(code, ByteCode::Export, slot),
       Self::DefineGlobal(slot) => push_op_u16(code, ByteCode::DefineGlobal, slot),
       Self::GetGlobal(slot) => push_op_u16(code, ByteCode::GetGlobal, slot),
@@ -293,6 +299,13 @@ impl AlignedByteCode {
       ByteCode::Import => (
         AlignedByteCode::Import(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
+      ),
+      ByteCode::ImportSymbol => (
+        AlignedByteCode::ImportSymbol((
+          decode_u16(&store[offset + 1..offset + 3]),
+          decode_u16(&store[offset + 3..offset + 5]),
+        )),
+        offset + 5,
       ),
       ByteCode::Export => (
         AlignedByteCode::Export(decode_u16(&store[offset + 1..offset + 3])),
@@ -457,6 +470,9 @@ pub enum ByteCode {
   /// Import all symbols
   Import,
 
+  /// Import a single symbol
+  ImportSymbol,
+
   /// Export a symbol from the current module
   Export,
 
@@ -595,6 +611,14 @@ fn push_op_u16(code: &mut Vec<u8>, byte: ByteCode, param: u16) {
   code.extend_from_slice(&param_bytes);
 }
 
+fn push_op_u16_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2: u16) {
+  code.push(byte.to_byte());
+  let param_bytes = param1.to_ne_bytes();
+  code.extend_from_slice(&param_bytes);
+  let param_bytes = param2.to_ne_bytes();
+  code.extend_from_slice(&param_bytes);
+}
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum UpvalueIndex {
   /// The upvalue is actually local
@@ -702,7 +726,7 @@ impl ChunkBuilder {
   /// builder.patch_instruction(2, 16);
   ///
   /// assert_eq!(builder.instructions().len(), 3);
-  /// assert_eq!(builder.instructions()[0], 34);
+  /// assert_eq!(builder.instructions()[0], 35);
   /// assert_eq!(builder.instructions()[1], 0);
   /// assert_eq!(builder.instructions()[2], 16);
   /// ```
@@ -798,10 +822,10 @@ impl Chunk {
 
   /// Retrieve a constant in the constants table at
   /// the provided offset without bounds checks
-  /// 
+  ///
   /// # Safety
-  /// This method assumes the index comes from a trusted 
-  /// source that is inbounds. 
+  /// This method assumes the index comes from a trusted
+  /// source that is inbounds.
   #[inline]
   pub unsafe fn get_constant_unchecked(&self, offset: usize) -> Value {
     *self.constants.get_unchecked(offset)
@@ -890,6 +914,7 @@ mod test {
         (2, AlignedByteCode::Constant(113)),
         (3, AlignedByteCode::ConstantLong(45863)),
         (3, AlignedByteCode::Import(2235)),
+        (5, AlignedByteCode::ImportSymbol((2235, 113))),
         (3, AlignedByteCode::Export(7811)),
         (1, AlignedByteCode::Nil),
         (1, AlignedByteCode::True),

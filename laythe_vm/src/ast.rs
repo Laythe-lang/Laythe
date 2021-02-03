@@ -1,6 +1,5 @@
-use std::{ops::Range, usize};
-
 use crate::token::Token;
+use std::{ops::Range, usize};
 
 /// A visitor pattern for the Laythe ast.
 /// Not sure if this currently provides any value as enum
@@ -418,24 +417,70 @@ impl<'a> Spanned for Stmt<'a> {
   }
 }
 
+pub enum ImportStem<'a> {
+  None,
+  Rename(Token<'a>),
+  Symbols(Vec<ImportSymbol<'a>>),
+}
+
+pub struct ImportSymbol<'a> {
+  pub symbol: Token<'a>,
+  pub rename: Option<Token<'a>>,
+}
+
+impl<'a> ImportSymbol<'a> {
+  pub fn new(symbol: Token<'a>, rename: Option<Token<'a>>) -> Self {
+    Self { symbol, rename }
+  }
+}
+
+impl<'a> Spanned for ImportSymbol<'a> {
+  fn start(&self) -> u32 {
+    self.symbol.start()
+  }
+
+  fn end(&self) -> u32 {
+    self
+      .rename
+      .as_ref()
+      .map(|rename| rename.end())
+      .unwrap_or_else(|| self.symbol.end())
+  }
+}
+
 pub struct Import<'a> {
-  pub imported: Token<'a>,
-  pub path: Token<'a>,
+  pub path: Vec<Token<'a>>,
+  pub stem: ImportStem<'a>,
 }
 
 impl<'a> Import<'a> {
-  pub fn new(imported: Token<'a>, path: Token<'a>) -> Self {
-    Self { imported, path }
+  pub fn new(path: Vec<Token<'a>>, stem: ImportStem<'a>) -> Self {
+    assert!(!path.is_empty());
+    Self { path, stem }
+  }
+
+  pub fn path(&'a self) -> &'a [Token<'a>] {
+    &self.path
   }
 }
 
 impl<'a> Spanned for Import<'a> {
   fn start(&self) -> u32 {
-    self.imported.start()
+    self.path.first().unwrap().start()
   }
 
   fn end(&self) -> u32 {
-    self.path.end()
+    match &self.stem {
+      ImportStem::None => self.path.last().unwrap().end(),
+      ImportStem::Rename(rename) => rename.end(),
+      ImportStem::Symbols(symbols) => {
+        if symbols.is_empty() {
+          self.path.last().unwrap().end()
+        } else {
+          symbols.last().unwrap().end()
+        }
+      }
+    }
   }
 }
 

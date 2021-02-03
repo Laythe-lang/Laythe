@@ -1,13 +1,13 @@
+use super::class_inheritance;
 use crate::{
   native,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
+  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  StdError, StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  package::Package,
   signature::Arity,
   val,
   value::{Value, VALUE_TRUE},
@@ -19,16 +19,12 @@ use std::io::Write;
 pub const BOOL_CLASS_NAME: &str = "Bool";
 const BOOL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_bool_class(
-  hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
-) -> InitResult<()> {
-  let bool_class = default_class_inheritance(hooks, package, BOOL_CLASS_NAME)?;
-  export_and_insert(hooks, module, bool_class.name(), val!(bool_class))
+pub fn declare_bool_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+  let bool_class = class_inheritance(hooks, module, BOOL_CLASS_NAME)?;
+  export_and_insert(hooks, module, bool_class.name(), val!(bool_class)).map_err(StdError::from)
 }
 
-pub fn define_bool_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
+pub fn define_bool_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut bool_class = load_class_from_module(hooks, module, BOOL_CLASS_NAME)?;
 
   bool_class.add_method(
