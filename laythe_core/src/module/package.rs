@@ -1,4 +1,4 @@
-use super::{error::ModuleResult, import::Import, module::Module, ModuleError};
+use super::{error::ModuleResult, import::Import, Module, ModuleError};
 use crate::{hooks::GcHooks, object::Instance, value::Value};
 use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::mem;
