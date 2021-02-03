@@ -237,9 +237,7 @@ impl Vm {
     let repl_path = self.root_dir.join(PathBuf::from(REPL_MODULE));
     let main_id = self.emitter.emit();
 
-    let main_module = self
-      .main_module(repl_path.clone(), main_id)
-      .expect("Could not retrieve main module");
+    let main_module = self.main_module(repl_path.clone(), main_id);
 
     loop {
       let mut buffer = String::new();
@@ -285,12 +283,7 @@ impl Vm {
         self.pop_roots(2);
 
         let main_id = self.emitter.emit();
-        let main_module = match self.main_module(module_path, main_id) {
-          Ok(module) => module,
-          Err(err) => {
-            return err;
-          }
-        };
+        let main_module = self.main_module(module_path, main_id);
 
         self.interpret(main_module, &managed_source, file_id)
       }
@@ -387,11 +380,7 @@ impl Vm {
   }
 
   /// Prepare the main module for use
-  fn main_module(
-    &mut self,
-    module_path: PathBuf,
-    main_id: usize,
-  ) -> Result<Gc<Module>, ExecuteResult> {
+  fn main_module(&mut self, module_path: PathBuf, main_id: usize) -> Gc<Module> {
     let hooks = GcHooks::new(self);
 
     let name = hooks.manage_str(SELF);
@@ -407,7 +396,7 @@ impl Vm {
     let package = hooks.manage(Package::new(name, module));
 
     self.packages.insert(name, package);
-    Ok(module)
+    module
   }
 
   /// Run a laythe function on top of the current stack.
@@ -1218,7 +1207,7 @@ impl Vm {
     let mut buffer = String::new();
     for segment in &path_segments[..path_segments.len() - 1] {
       buffer.push_str(segment);
-      buffer.push_str("/")
+      buffer.push('/')
     }
 
     buffer.push_str(&path_segments[path_segments.len() - 1]);
@@ -1280,7 +1269,7 @@ impl Vm {
     let mut buffer = String::new();
     for segment in &path_segments[..path_segments.len() - 1] {
       buffer.push_str(segment);
-      buffer.push_str("/")
+      buffer.push('/')
     }
 
     buffer.push_str(&path_segments[path_segments.len() - 1]);

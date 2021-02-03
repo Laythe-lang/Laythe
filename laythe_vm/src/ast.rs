@@ -455,7 +455,7 @@ pub struct Import<'a> {
 
 impl<'a> Import<'a> {
   pub fn new(path: Vec<Token<'a>>, stem: ImportStem<'a>) -> Self {
-    assert!(path.len() > 0);
+    assert!(!path.is_empty());
     Self { path, stem }
   }
 

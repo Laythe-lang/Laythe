@@ -86,17 +86,17 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
   declare_number_class(hooks, &mut module)?;
   declare_string_class(hooks, &mut module)?;
 
-  define_global_errors(hooks, &mut module)?;
-  define_bool_class(hooks, &mut module)?;
-  define_closure_class(hooks, &mut module)?;
-  define_iter_class(hooks, &mut module)?;
-  define_list_class(hooks, &mut module)?;
-  define_map_class(hooks, &mut module)?;
-  define_method_class(hooks, &mut module)?;
-  define_native_class(hooks, &mut module)?;
-  define_nil_class(hooks, &mut module)?;
-  define_number_class(hooks, &mut module)?;
-  define_string_class(hooks, &mut module)?;
+  define_global_errors(hooks, &module)?;
+  define_bool_class(hooks, &module)?;
+  define_closure_class(hooks, &module)?;
+  define_iter_class(hooks, &module)?;
+  define_list_class(hooks, &module)?;
+  define_map_class(hooks, &module)?;
+  define_method_class(hooks, &module)?;
+  define_native_class(hooks, &module)?;
+  define_nil_class(hooks, &module)?;
+  define_number_class(hooks, &module)?;
+  define_string_class(hooks, &module)?;
 
   Ok(module)
 }

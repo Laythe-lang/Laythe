@@ -17,7 +17,6 @@ use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write};
 use std::{mem, path::PathBuf};
 
-
 /// A struct representing a collection of class functions and variable of shared functionality
 #[derive(Clone)]
 pub struct Module {
@@ -154,7 +153,7 @@ impl Module {
 
   /// Get a reference to all exported symbols in this module
   pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ModuleResult<Gc<Instance>> {
-    if path.len() == 0 {
+    if path.is_empty() {
       Ok(self.module_instance(hooks))
     } else {
       self
@@ -167,7 +166,7 @@ impl Module {
 
   /// Get a reference to all exported symbols in this module
   pub fn import_symbol(&self, hooks: &GcHooks, path: &[GcStr], name: GcStr) -> ModuleResult<Value> {
-    if path.len() == 0 {
+    if path.is_empty() {
       self.get_exported_symbol(name)
     } else {
       self
