@@ -1,5 +1,5 @@
 use crate::managed::{
-  gc_array::{make_layout, GcArray, GcArrayHandle},
+  gc_array::{GcArray, GcArrayHandle},
   DebugHeap, Manage, Mark, Trace,
 };
 use std::{
@@ -13,7 +13,7 @@ use std::{
   slice, str,
 };
 
-use super::{Marked, Unmark};
+use super::{gc_array::Header, utils::make_array_layout, Marked, Unmark};
 
 /// A non owning reference to a Garbage collector
 /// allocated string. Note this string is the same size
@@ -77,8 +77,8 @@ impl GcStr {
   /// This functions assumes that the pointer was originally
   /// from a different instance of GcStr. Other pointer
   /// will likely crash immediately
-  pub unsafe fn from_alloc_ptr(buf: NonNull<u8>) -> Self {
-    GcStr(GcArray::from_alloc_ptr(buf))
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+    GcStr(GcArray::from_alloc_ptr(ptr))
   }
 }
 
@@ -124,7 +124,7 @@ impl DebugHeap for GcStr {
 
 impl Manage for GcStr {
   fn size(&self) -> usize {
-    mem::size_of::<Self>() + make_layout::<u8>(self.len()).size()
+    mem::size_of::<Self>() + make_array_layout::<Header, u8>(self.len()).size()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -268,7 +268,7 @@ impl GcStrHandle {
   /// ```
   #[inline]
   pub fn size(&self) -> usize {
-    mem::size_of::<Self>() + make_layout::<u8>(self.0.len()).size()
+    mem::size_of::<Self>() + make_array_layout::<Header, u8>(self.0.len()).size()
   }
 }
 

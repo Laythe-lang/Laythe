@@ -1,10 +1,8 @@
 extern crate alloc;
 
 use crate::managed::{Mark, Marked, Trace, Unmark};
-use alloc::alloc::Layout;
 use ptr::NonNull;
 use std::{
-  cmp,
   fmt::Debug,
   marker::PhantomData,
   mem,
@@ -13,41 +11,7 @@ use std::{
   sync::atomic::{AtomicBool, Ordering},
 };
 
-/// For a given offset determine the total offset until the next alignment
-pub const fn next_aligned(num_bytes: usize, alignment: usize) -> usize {
-  let remaining = num_bytes % alignment;
-  if remaining == 0 {
-    num_bytes
-  } else {
-    num_bytes + (alignment - remaining)
-  }
-}
-
-/// Get the offset to the start of the `GcArray<T>` data
-const fn get_offset<T>() -> usize {
-  next_aligned(mem::size_of::<Header>(), mem::align_of::<T>())
-}
-
-/// Determine the max alignment between the item `T`
-/// and the `GcArray` header `Header`
-pub fn max_align<T>() -> usize {
-  let align_t = mem::align_of::<T>();
-  let header_align = mem::align_of::<Header>();
-  cmp::max(align_t, header_align)
-}
-
-/// Create a rust `Layout` for a `GcArray` of `len` length.
-pub fn make_layout<T>(len: usize) -> Layout {
-  let alignment = max_align::<T>();
-
-  let header_size = mem::size_of::<Header>();
-  let num_bytes = if len == 0 {
-    header_size
-  } else {
-    next_aligned(header_size, mem::align_of::<T>()) + len * mem::size_of::<T>()
-  };
-  Layout::from_size_align(num_bytes, alignment).unwrap()
-}
+use super::utils::{get_offset, make_array_layout};
 
 /// A non owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
@@ -68,7 +32,7 @@ pub fn make_layout<T>(len: usize) -> Layout {
 /// ```
 pub struct GcArray<T> {
   /// Pointer to the header of the array
-  buf: NonNull<u8>,
+  ptr: NonNull<u8>,
 
   /// Phantom data to hold the type parameter
   phantom: PhantomData<T>,
@@ -80,7 +44,7 @@ pub struct GcArray<T> {
 /// ```markdown
 /// [Header (potential padding)| T | T | T | ...]
 /// ```
-struct Header {
+pub struct Header {
   // Has this array allocation been marked by the garbage collector
   marked: AtomicBool,
 
@@ -94,30 +58,30 @@ impl<T> GcArray<T> {
   fn header(&self) -> &Header {
     #[allow(clippy::cast_ptr_alignment)]
     unsafe {
-      &*(self.buf.as_ptr() as *const Header)
+      &*(self.ptr.as_ptr() as *const Header)
     }
   }
 
   /// Retrieve a pointer data array
   #[inline]
   fn data(&self) -> *mut T {
-    let count = get_offset::<T>();
-    unsafe { self.buf.as_ptr().add(count) as *mut T }
+    let count = get_offset::<Header, T>();
+    unsafe { self.ptr.as_ptr().add(count) as *mut T }
   }
 
   /// Get a raw pointer to allocation
   #[inline]
   pub fn as_alloc_ptr(&self) -> *const u8 {
-    self.buf.as_ptr()
+    self.ptr.as_ptr()
   }
 
   /// Construct a `GcArray<T>` from `NonNull<u8>`
   ///
   /// ## Safety
   /// This should only be constructed from a box value
-  pub unsafe fn from_alloc_ptr(buf: NonNull<u8>) -> Self {
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
     Self {
-      buf,
+      ptr,
       phantom: PhantomData,
     }
   }
@@ -272,7 +236,7 @@ impl<T: Copy> From<&[T]> for GcArrayHandle<T> {
     assert!(mem::size_of::<T>() > 0, "ZSTs currently not supported");
 
     let len = slice.len();
-    let new_layout = make_layout::<T>(len);
+    let new_layout = make_array_layout::<Header, T>(len);
     let buf = unsafe { alloc::alloc::alloc(new_layout) };
 
     if buf.is_null() {
@@ -289,7 +253,7 @@ impl<T: Copy> From<&[T]> for GcArrayHandle<T> {
       ptr::write(buf as *mut Header, header);
 
       GcArrayHandle(GcArray {
-        buf: NonNull::new_unchecked(buf),
+        ptr: NonNull::new_unchecked(buf),
         phantom: PhantomData,
       })
     };
@@ -302,86 +266,17 @@ impl<T: Copy> From<&[T]> for GcArrayHandle<T> {
 impl<T> Drop for GcArrayHandle<T> {
   fn drop(&mut self) {
     #[allow(clippy::cast_ptr_alignment)]
-    let header = unsafe { ptr::read(self.0.buf.as_ptr() as *const Header) };
+    let header = unsafe { ptr::read(self.0.ptr.as_ptr() as *const Header) };
 
     for i in 0..header.len {
       unsafe { ptr::read(self.0.data().add(i)) };
     }
 
-    unsafe { alloc::alloc::dealloc(self.0.buf.as_ptr(), make_layout::<T>(header.len)) };
-  }
-}
-
-#[cfg(test)]
-mod tests {
-  use super::*;
-  #[test]
-  fn next_aligned_test() {
-    assert_eq!(next_aligned(9, 4), 12);
-    assert_eq!(next_aligned(13, 4), 16);
-    assert_eq!(next_aligned(12, 4), 12);
-    assert_eq!(next_aligned(13, 1), 13);
-    assert_eq!(next_aligned(8, 8), 8);
-    assert_eq!(next_aligned(16, 32), 32);
-    assert_eq!(next_aligned(16, 512), 512);
-  }
-
-  #[repr(align(512))]
-  struct OverAligned {
-    _data: [u8; 512],
-  }
-
-  #[test]
-  fn max_align_test() {
-    let header_alignment = mem::align_of::<Header>();
-
-    assert!(mem::align_of::<i32>() <= mem::align_of::<Header>());
-    assert_eq!(max_align::<i32>(), header_alignment);
-
-    assert!(mem::align_of::<u8>() <= mem::align_of::<Header>());
-    assert_eq!(max_align::<u8>(), header_alignment);
-
-    assert!(mem::align_of::<OverAligned>() > mem::align_of::<Header>());
-    assert_eq!(max_align::<OverAligned>(), mem::align_of::<OverAligned>());
-  }
-
-  #[test]
-  fn make_layout_test() {
-    // empty
-    //
-    let layout = make_layout::<i32>(0);
-
-    assert_eq!(layout.align(), mem::align_of::<Header>());
-    assert_eq!(layout.size(), mem::size_of::<Header>());
-
-    // non-empty, less than
-    //
-    let layout = make_layout::<i32>(512);
-    assert!(mem::align_of::<i32>() < mem::align_of::<Header>());
-    assert_eq!(layout.align(), mem::align_of::<Header>());
-    assert_eq!(
-      layout.size(),
-      mem::size_of::<Header>() + 512 * mem::size_of::<i32>()
-    );
-
-    // non-empty, equal
-    //
-    let layout = make_layout::<i64>(512);
-    assert_eq!(mem::align_of::<i64>(), mem::align_of::<Header>());
-    assert_eq!(layout.align(), mem::align_of::<Header>());
-    assert_eq!(
-      layout.size(),
-      mem::size_of::<Header>() + 512 * mem::size_of::<i64>()
-    );
-
-    // non-empty, greater
-    let layout = make_layout::<OverAligned>(512);
-    assert!(mem::align_of::<OverAligned>() > mem::align_of::<Header>());
-    assert_eq!(layout.align(), mem::align_of::<OverAligned>());
-    assert_eq!(
-      layout.size(),
-      next_aligned(mem::size_of::<Header>(), mem::align_of::<OverAligned>())
-        + 512 * mem::size_of::<OverAligned>()
-    );
+    unsafe {
+      alloc::alloc::dealloc(
+        self.0.ptr.as_ptr(),
+        make_array_layout::<Header, T>(header.len),
+      )
+    };
   }
 }

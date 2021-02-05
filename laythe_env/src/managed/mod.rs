@@ -3,6 +3,7 @@ mod gc;
 mod gc_array;
 mod gc_str;
 mod manage;
+mod utils;
 
 pub use allocation::Allocation;
 pub use gc::Gc;
