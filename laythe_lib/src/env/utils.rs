@@ -1,13 +1,9 @@
-use crate::{
-  native,
-  support::{export_and_insert, to_dyn_native},
-  StdResult,
-};
+use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::{Gc, Trace},
   module::Module,
-  object::{List, MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{List, LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::Value,
@@ -23,14 +19,14 @@ pub fn declare_env_module(hooks: &GcHooks, self_module: &mut Module) -> StdResul
     hooks,
     self_module,
     hooks.manage_str(ARGS_META.name),
-    val!(to_dyn_native(hooks, Args::from(hooks))),
+    val!(Args::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(CWD_META.name),
-    val!(to_dyn_native(hooks, Cwd::from(hooks))),
+    val!(Cwd::native(hooks)),
   )
 }
 
@@ -40,7 +36,7 @@ pub fn define_env_module(_: &GcHooks, _: &mut Module) -> StdResult<()> {
 
 native!(Args, ARGS_META);
 
-impl Native for Args {
+impl LyNative for Args {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut list: Gc<List<Value>> = hooks.manage(List::new());
@@ -58,7 +54,7 @@ impl Native for Args {
 
 native!(Cwd, CWD_META);
 
-impl Native for Cwd {
+impl LyNative for Cwd {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     match io.env().current_dir() {
@@ -82,9 +78,9 @@ mod test {
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
+      let hooks = GcHooks::new(&mut context);
 
-      let stdout_write = Args::from(&hooks);
+      let stdout_write = Args::native(&hooks);
 
       assert_eq!(stdout_write.meta().name, "args");
       assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(0));
@@ -100,9 +96,9 @@ mod test {
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
+      let hooks = GcHooks::new(&mut context);
 
-      let stdout_write = Cwd::from(&hooks);
+      let stdout_write = Cwd::native(&hooks);
 
       assert_eq!(stdout_write.meta().name, "cwd");
       assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(0));

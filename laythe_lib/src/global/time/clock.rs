@@ -1,13 +1,10 @@
-use crate::{
-  native,
-  support::{export_and_insert, to_dyn_native},
-  StdResult,
-};
+use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Gc,
   managed::Trace,
   module::Module,
-  object::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::Value,
@@ -22,13 +19,13 @@ pub fn declare_clock_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()>
     hooks,
     module,
     hooks.manage_str(CLOCK_META.name),
-    val!(to_dyn_native(hooks, Clock::from(hooks))),
+    val!(Clock::native(hooks)),
   )
 }
 
 native!(Clock, CLOCK_META);
 
-impl Native for Clock {
+impl LyNative for Clock {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let time = io.time();
@@ -50,7 +47,7 @@ mod test {
     let mut context = MockedContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let clock = Clock::from(&hooks);
+    let clock = Clock::native(&hooks);
 
     assert_eq!(clock.meta().name, "clock");
     assert_eq!(clock.meta().signature.arity, Arity::Fixed(0));
@@ -60,7 +57,7 @@ mod test {
   fn call() {
     let mut context = MockedContext::default();
     let mut hooks = Hooks::new(&mut context);
-    let clock = Clock::from(&hooks);
+    let clock = Clock::native(&hooks.as_gc());
 
     let values = &[];
 

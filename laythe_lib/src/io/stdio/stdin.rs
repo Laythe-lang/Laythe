@@ -2,17 +2,16 @@ use crate::{
   io::{global::IO_ERROR, IO_MODULE_PATH},
   native_with_error,
   support::load_class_from_package,
-  support::{
-    default_class_inheritance, export_and_insert, load_instance_from_module, to_dyn_native,
-  },
+  support::{default_class_inheritance, export_and_insert, load_instance_from_module},
   StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::{Module, Package},
-  object::{Instance, MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{Instance, LyNative, Native, NativeMetaBuilder},
   signature::Arity,
+  managed::Gc,
   val,
   value::Value,
   Call,
@@ -50,13 +49,13 @@ pub fn define_stdin(hooks: &GcHooks, module: &Module, std: &Package) -> StdResul
   class.add_method(
     hooks,
     hooks.manage_str(STDIN_READ.name),
-    val!(to_dyn_native(hooks, StdinRead::new(hooks, io_error))),
+    val!(StdinRead::native(hooks, io_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(STDIN_READ_LINE.name),
-    val!(to_dyn_native(hooks, StdinReadLine::new(hooks, io_error))),
+    val!(StdinReadLine::native(hooks, io_error)),
   );
 
   Ok(())
@@ -64,7 +63,7 @@ pub fn define_stdin(hooks: &GcHooks, module: &Module, std: &Package) -> StdResul
 
 native_with_error!(StdinRead, STDIN_READ);
 
-impl Native for StdinRead {
+impl LyNative for StdinRead {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
@@ -80,7 +79,7 @@ impl Native for StdinRead {
 
 native_with_error!(StdinReadLine, STDIN_READ_LINE);
 
-impl Native for StdinReadLine {
+impl LyNative for StdinReadLine {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let stdio = io.stdio();
@@ -116,7 +115,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let stdin_read = StdinRead::new(&hooks, error);
+      let stdin_read = StdinRead::native(&hooks, error);
 
       assert_eq!(stdin_read.meta().name, "read");
       assert_eq!(stdin_read.meta().signature.arity, Arity::Fixed(0));
@@ -130,7 +129,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let stdin_read = StdinRead::new(&hooks.as_gc(), error);
+      let stdin_read = StdinRead::native(&hooks.as_gc(), error);
 
       let result = stdin_read.call(&mut hooks, Some(VALUE_NIL), &[]);
 
@@ -155,7 +154,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let stdin_readline = StdinReadLine::new(&hooks, error);
+      let stdin_readline = StdinReadLine::native(&hooks, error);
 
       assert_eq!(stdin_readline.meta().name, "readLine");
       assert_eq!(stdin_readline.meta().signature.arity, Arity::Fixed(0));
@@ -172,7 +171,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let stdin_readline = StdinReadLine::new(&hooks.as_gc(), error);
+      let stdin_readline = StdinReadLine::native(&hooks.as_gc(), error);
 
       let result = stdin_readline.call(&mut hooks, Some(VALUE_NIL), &[]);
 

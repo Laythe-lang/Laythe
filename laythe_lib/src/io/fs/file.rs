@@ -2,15 +2,16 @@ use crate::{
   io::{global::IO_ERROR, IO_MODULE_PATH},
   native_with_error,
   support::load_class_from_package,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
+  support::{default_class_inheritance, export_and_insert, load_class_from_module},
   StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::{Module, Package},
-  object::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
+  managed::Gc,
   val,
   value::Value,
   Call,
@@ -41,7 +42,7 @@ pub fn define_file(hooks: &GcHooks, module: &Module, std: &Package) -> StdResult
   class.meta_class().expect("Meta class not set.").add_method(
     hooks,
     hooks.manage_str(FILE_READ_ALL_TEXT.name),
-    val!(to_dyn_native(hooks, FileReadAllText::new(hooks, io_error))),
+    val!(FileReadAllText::native(hooks, io_error)),
   );
 
   Ok(())
@@ -49,7 +50,7 @@ pub fn define_file(hooks: &GcHooks, module: &Module, std: &Package) -> StdResult
 
 native_with_error!(FileReadAllText, FILE_READ_ALL_TEXT);
 
-impl Native for FileReadAllText {
+impl LyNative for FileReadAllText {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let path = args[0].to_str();
@@ -75,7 +76,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let stdout_write = FileReadAllText::new(&hooks, error);
+      let stdout_write = FileReadAllText::native(&hooks, error);
 
       assert_eq!(stdout_write.meta().name, "readAllText");
       assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(1));

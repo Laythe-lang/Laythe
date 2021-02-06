@@ -1,9 +1,9 @@
-use crate::{native, support::to_dyn_native};
+use crate::native;
 use laythe_core::{
   constants::OBJECT,
   hooks::{GcHooks, Hooks},
   managed::{Gc, Trace},
-  object::{Class, MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{Class, LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -27,19 +27,19 @@ pub fn create_object_class(hooks: &GcHooks) -> Gc<Class> {
   object.add_method(
     &hooks,
     hooks.manage_str(OBJECT_EQUALS.name),
-    val!(to_dyn_native(hooks, ObjectEquals::from(hooks))),
+    val!(ObjectEquals::native(hooks)),
   );
 
   object.add_method(
     &hooks,
     hooks.manage_str(OBJECT_CLASS.name),
-    val!(to_dyn_native(hooks, ObjectCls::from(hooks))),
+    val!(ObjectCls::native(hooks)),
   );
 
   object.add_method(
     &hooks,
     hooks.manage_str(OBJECT_STR.name),
-    val!(to_dyn_native(hooks, ObjectStr::from(hooks))),
+    val!(ObjectStr::native(hooks)),
   );
 
   object
@@ -47,7 +47,7 @@ pub fn create_object_class(hooks: &GcHooks) -> Gc<Class> {
 
 native!(ObjectEquals, OBJECT_EQUALS);
 
-impl Native for ObjectEquals {
+impl LyNative for ObjectEquals {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     Call::Ok(val!(this.unwrap() == args[0]))
   }
@@ -55,7 +55,7 @@ impl Native for ObjectEquals {
 
 native!(ObjectCls, OBJECT_CLASS);
 
-impl Native for ObjectCls {
+impl LyNative for ObjectCls {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     Call::Ok(hooks.get_class(this.unwrap()))
   }
@@ -63,7 +63,7 @@ impl Native for ObjectCls {
 
 native!(ObjectStr, OBJECT_STR);
 
-impl Native for ObjectStr {
+impl LyNative for ObjectStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let this = this.unwrap();
     let class = hooks.get_class(this).to_class();
@@ -112,7 +112,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let object_equals = ObjectEquals::from(&hooks);
+      let object_equals = ObjectEquals::native(&hooks);
 
       assert_eq!(object_equals.meta().name, "equals");
       assert_eq!(object_equals.meta().signature.arity, Arity::Fixed(1));
@@ -126,7 +126,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let bool_str = ObjectEquals::from(&hooks);
+      let bool_str = ObjectEquals::native(&hooks.as_gc());
 
       let ten_1 = val!(10.0);
       let b_false = val!(false);
@@ -155,7 +155,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let object_cls = ObjectCls::from(&hooks);
+      let object_cls = ObjectCls::native(&hooks);
 
       assert_eq!(object_cls.meta().name, "cls");
       assert_eq!(object_cls.meta().signature.arity, Arity::Fixed(0));
@@ -165,7 +165,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::with_std(&[]).unwrap();
       let mut hooks = Hooks::new(&mut context);
-      let object_cls = ObjectCls::from(&hooks);
+      let object_cls = ObjectCls::native(&hooks.as_gc());
 
       let ten = val!(10.0);
 
@@ -183,7 +183,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let object_equals = ObjectStr::from(&hooks);
+      let object_equals = ObjectStr::native(&hooks);
 
       assert_eq!(object_equals.meta().name, "str");
       assert_eq!(object_equals.meta().signature.arity, Arity::Fixed(0));
@@ -193,7 +193,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::with_std(&[]).unwrap();
       let mut hooks = Hooks::new(&mut context);
-      let object_str = ObjectStr::from(&hooks);
+      let object_str = ObjectStr::native(&hooks.as_gc());
 
       let ten = val!(10.0);
 

@@ -4,9 +4,10 @@ use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::{GcStr, Trace},
   module::Module,
-  object::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
+  managed::Gc,
   value::{Value, VALUE_NIL},
   Call,
 };
@@ -16,7 +17,7 @@ pub fn add_misc_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
   declare_misc_funs(hooks, module)
 }
 
-const PRINT_META: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Variadic(0))
+const PRINT: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Variadic(0))
   .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)])
   .with_stack();
 
@@ -29,15 +30,15 @@ pub fn declare_misc_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()> 
   export_and_insert(
     hooks,
     module,
-    hooks.manage_str(PRINT_META.name),
-    val!(hooks.manage(Box::new(Print::new(PRINT_META.to_meta(hooks), str_name)) as Box<dyn Native>)),
+    hooks.manage_str(PRINT.name),
+    val!(Print::native(hooks, str_name)),
   )?;
 
   export_and_insert(
     hooks,
     module,
     hooks.manage_str(EXIT_META.name),
-    val!(hooks.manage(Box::new(Exit::from(hooks)) as Box<dyn Native>)),
+    val!(Exit::native(hooks)),
   )
   .map_err(StdError::from)
 }
@@ -47,23 +48,18 @@ pub fn declare_misc_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()> 
 pub struct Print {
   /// reference to 'str'
   method_str: GcStr,
-  meta: NativeMeta,
 }
 
 impl Print {
   /// Construct a new instance of the native assert function
-  pub fn new(meta: NativeMeta, method_str: GcStr) -> Self {
-    Self { meta, method_str }
+  pub fn native(hooks: &GcHooks, method_str: GcStr) -> Gc<Native> {
+    let native = Box::new(Self { method_str }) as Box<dyn LyNative>;
+
+    hooks.manage(Native::new(PRINT.to_meta(hooks), native))
   }
 }
 
-impl MetaData for Print {
-  fn meta(&self) -> &NativeMeta {
-    &self.meta
-  }
-}
-
-impl Native for Print {
+impl LyNative for Print {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let str_method = get!(hooks.get_method(args[0], self.method_str));
     let mut output = String::from(&*get!(hooks.call_method(args[0], str_method, &[])).to_str());
@@ -85,19 +81,17 @@ impl Native for Print {
 
 impl Trace for Print {
   fn trace(&self) {
-    self.meta.trace();
     self.method_str.trace();
   }
 
   fn trace_debug(&self, stdout: &mut dyn Write) {
-    self.meta.trace_debug(stdout);
     self.method_str.trace_debug(stdout);
   }
 }
 
 native!(Exit, EXIT_META);
 
-impl Native for Exit {
+impl LyNative for Exit {
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let code = if args.is_empty() {
       0
@@ -123,9 +117,9 @@ mod test {
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
-      let assert = Print::new(
-        PRINT_META.to_meta(&hooks.as_gc()),
+      let hooks = GcHooks::new(&mut context);
+      let assert = Print::native(
+        &hooks,
         hooks.manage_str("str".to_string()),
       );
 
@@ -145,8 +139,8 @@ mod test {
 
       let mut hooks = Hooks::new(&mut context);
 
-      let print = Print::new(
-        PRINT_META.to_meta(&hooks.as_gc()),
+      let print = Print::native(
+        &hooks.as_gc(),
         hooks.manage_str("str".to_string()),
       );
       let values = &[val!(true)];

@@ -6,7 +6,7 @@ use crate::{
   Call,
 };
 use std::{fmt, io::Write};
-use std::{mem, ptr};
+use std::{mem};
 
 #[derive(Clone, Debug)]
 pub struct NativeMetaBuilder {
@@ -102,48 +102,55 @@ impl Trace for NativeMeta {
   }
 }
 
-pub trait Native: MetaData + Trace {
-  /// Call the native functions
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, values: &[Value]) -> Call;
+pub struct Native {
+  /// The meta data for this native function
+  meta: NativeMeta,
+
+  /// The underlying native function
+  native: Box<dyn LyNative>,
 }
 
-pub trait MetaData {
-  /// Meta data to this native function
-  fn meta(&self) -> &NativeMeta;
-}
+impl Native {
+  pub fn new(meta: NativeMeta, native: Box<dyn LyNative>) -> Self {
+    Self { meta, native }
+  }
 
-impl PartialEq<dyn Native> for dyn Native {
-  fn eq(&self, rhs: &dyn Native) -> bool {
-    ptr::eq(self.meta(), rhs.meta())
+  #[inline]
+  pub fn meta(&self) -> &NativeMeta {
+    &self.meta
+  }
+
+  #[inline]
+  pub fn call(&self, hooks: &mut Hooks, this: Option<Value>, values: &[Value]) -> Call {
+    self.native.call(hooks, this, values)
   }
 }
 
-impl fmt::Debug for Box<dyn Native> {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    self.fmt_heap(f, 1)
-  }
-}
-
-impl fmt::Display for Box<dyn Native> {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let meta = self.meta();
-    write!(f, "<native {}>", meta.name)
-  }
-}
-
-impl Trace for Box<dyn Native> {
+impl Trace for Native {
+  #[inline]
   fn trace(&self) {
-    let inner: &dyn Native = &**self;
-    inner.trace();
+    self.meta.trace();
+    self.native.trace();
   }
 
+  #[inline]
   fn trace_debug(&self, log: &mut dyn Write) {
-    let inner: &dyn Native = &**self;
-    inner.trace_debug(log);
+    self.meta.trace_debug(log);
+    self.native.trace_debug(log);
   }
 }
 
-impl DebugHeap for Box<dyn Native> {
+impl Manage for Native {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
+}
+
+impl DebugHeap for Native {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     let meta = self.meta();
     let depth = depth.saturating_sub(1);
@@ -155,12 +162,34 @@ impl DebugHeap for Box<dyn Native> {
   }
 }
 
-impl Manage for Box<dyn Native> {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
+impl fmt::Debug for Native {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    self.fmt_heap(f, 1)
+  }
+}
+
+impl fmt::Display for Native {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    let meta = self.meta();
+    write!(f, "<native {}>", meta.name)
+  }
+}
+
+pub trait LyNative: Trace {
+  /// Call the native functions
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, values: &[Value]) -> Call;
+}
+
+impl Trace for Box<dyn LyNative> {
+  #[inline]
+  fn trace(&self) {
+    let inner: &dyn LyNative = &**self;
+    inner.trace();
   }
 
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
+  #[inline]
+  fn trace_debug(&self, log: &mut dyn Write) {
+    let inner: &dyn LyNative = &**self;
+    inner.trace_debug(log);
   }
 }

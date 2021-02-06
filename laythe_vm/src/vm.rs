@@ -1666,7 +1666,7 @@ impl Vm {
   }
 
   /// call a native function immediately returning the result
-  fn call_native(&mut self, native: Gc<Box<dyn Native>>, arg_count: u8) -> Signal {
+  fn call_native(&mut self, native: Gc<Native>, arg_count: u8) -> Signal {
     let meta = native.meta();
 
     let args = unsafe {
@@ -2203,7 +2203,7 @@ impl Vm {
 }
 
 #[cfg(debug_assertions)]
-fn assert_roots(native: Gc<Box<dyn Native>>, roots_before: usize, roots_now: usize) {
+fn assert_roots(native: Gc<Native>, roots_before: usize, roots_now: usize) {
   assert!(
     roots_before == roots_now,
     "Native function {} increased roots by {}.",

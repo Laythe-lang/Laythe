@@ -1,13 +1,13 @@
 use crate::{
   create_error,
-  support::{default_error_inheritance, export_and_insert, to_dyn_native},
+  support::{default_error_inheritance, export_and_insert},
   StdError, StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{GcStr, Trace},
+  managed::{Gc, GcStr, Trace},
   module::{Module, Package},
-  object::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
@@ -32,30 +32,21 @@ pub(crate) fn add_assert_funs(
     hooks,
     module,
     hooks.manage_str(ASSERT_META.name),
-    val!(to_dyn_native(
-      hooks,
-      Assert::new(ASSERT_META.to_meta(hooks), str_name, error_val)
-    )),
+    val!(Assert::native(hooks, str_name, error_val)),
   )?;
 
   export_and_insert(
     hooks,
     module,
     hooks.manage_str(ASSERTEQ_META.name),
-    val!(to_dyn_native(
-      hooks,
-      AssertEq::new(ASSERTEQ_META.to_meta(hooks), str_name, error_val)
-    )),
+    val!(AssertEq::native(hooks, str_name, error_val)),
   )?;
 
   export_and_insert(
     hooks,
     module,
     hooks.manage_str(ASSERTNE_META.name),
-    val!(to_dyn_native(
-      hooks,
-      AssertNe::new(ASSERTNE_META.to_meta(hooks), str_name, error_val)
-    )),
+    val!(AssertNe::native(hooks, str_name, error_val)),
   )
   .map_err(StdError::from)
 }
@@ -96,28 +87,20 @@ fn to_str(hooks: &mut Hooks, value: Value) -> GcStr {
 pub struct Assert {
   /// reference to 'str'
   method_str: GcStr,
-  meta: NativeMeta,
   error: Value,
 }
 
 impl Assert {
   /// Construct a new instance of the native assert function
-  pub fn new(meta: NativeMeta, method_str: GcStr, error: Value) -> Self {
-    Self {
-      meta,
-      method_str,
-      error,
-    }
+  pub fn native(hooks: &GcHooks, method_str: GcStr, error: Value) -> Gc<Native> {
+    debug_assert!(error.is_class());
+    let native = Box::new(Self { method_str, error }) as Box<dyn LyNative>;
+
+    hooks.manage(Native::new(ASSERT_META.to_meta(hooks), native))
   }
 }
 
-impl MetaData for Assert {
-  fn meta(&self) -> &NativeMeta {
-    &self.meta
-  }
-}
-
-impl Native for Assert {
+impl LyNative for Assert {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     if args[0].to_bool() {
       Call::Ok(VALUE_NIL)
@@ -133,41 +116,31 @@ impl Native for Assert {
 
 impl Trace for Assert {
   fn trace(&self) {
-    self.meta.trace();
     self.method_str.trace();
   }
 
   fn trace_debug(&self, stdout: &mut dyn Write) {
-    self.meta.trace_debug(stdout);
     self.method_str.trace_debug(stdout);
   }
 }
 
 #[derive(Debug)]
 pub struct AssertEq {
-  meta: NativeMeta,
   method_str: GcStr,
   error: Value,
 }
 
 impl AssertEq {
   /// Construct a new instance of the native assertEq function
-  pub fn new(meta: NativeMeta, method_str: GcStr, error: Value) -> Self {
-    Self {
-      meta,
-      method_str,
-      error,
-    }
+  pub fn native(hooks: &GcHooks, method_str: GcStr, error: Value) -> Gc<Native> {
+    debug_assert!(error.is_class());
+    let native = Box::new(Self { method_str, error }) as Box<dyn LyNative>;
+
+    hooks.manage(Native::new(ASSERTEQ_META.to_meta(hooks), native))
   }
 }
 
-impl MetaData for AssertEq {
-  fn meta(&self) -> &NativeMeta {
-    &self.meta
-  }
-}
-
-impl Native for AssertEq {
+impl LyNative for AssertEq {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     if args[0] == args[1] {
       return Call::Ok(VALUE_NIL);
@@ -186,13 +159,11 @@ impl Native for AssertEq {
 
 impl Trace for AssertEq {
   fn trace(&self) {
-    self.meta.trace();
     self.method_str.trace();
     self.error.trace();
   }
 
   fn trace_debug(&self, stdout: &mut dyn Write) {
-    self.meta.trace_debug(stdout);
     self.method_str.trace_debug(stdout);
     self.error.trace_debug(stdout);
   }
@@ -200,29 +171,21 @@ impl Trace for AssertEq {
 
 #[derive(Debug)]
 pub struct AssertNe {
-  meta: NativeMeta,
   method_str: GcStr,
   error: Value,
 }
 
 impl AssertNe {
   /// Construct a new instance of the native assertNe function
-  pub fn new(meta: NativeMeta, method_str: GcStr, error: Value) -> Self {
-    Self {
-      meta,
-      method_str,
-      error,
-    }
+  pub fn native(hooks: &GcHooks, method_str: GcStr, error: Value) -> Gc<Native> {
+    debug_assert!(error.is_class());
+    let native = Box::new(Self { method_str, error }) as Box<dyn LyNative>;
+
+    hooks.manage(Native::new(ASSERTNE_META.to_meta(hooks), native))
   }
 }
 
-impl MetaData for AssertNe {
-  fn meta(&self) -> &NativeMeta {
-    &self.meta
-  }
-}
-
-impl Native for AssertNe {
+impl LyNative for AssertNe {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     if args[0] != args[1] {
       return Call::Ok(VALUE_NIL);
@@ -241,13 +204,11 @@ impl Native for AssertNe {
 
 impl Trace for AssertNe {
   fn trace(&self) {
-    self.meta.trace();
     self.method_str.trace();
     self.error.trace();
   }
 
   fn trace_debug(&self, stdout: &mut dyn Write) {
-    self.meta.trace_debug(stdout);
     self.method_str.trace_debug(stdout);
     self.error.trace_debug(stdout);
   }
@@ -270,11 +231,7 @@ mod test {
       let hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
-      let assert = Assert::new(
-        ASSERT_META.to_meta(&hooks.as_gc()),
-        hooks.manage_str("str".to_string()),
-        error,
-      );
+      let assert = Assert::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
 
       assert_eq!(&*assert.meta().name, "assert");
       assert_eq!(assert.meta().signature.arity, Arity::Fixed(1));
@@ -290,11 +247,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
-      let assert = Assert::new(
-        ASSERT_META.to_meta(&hooks.as_gc()),
-        hooks.manage_str("str".to_string()),
-        error,
-      );
+      let assert = Assert::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
       let values = &[val!(true)];
 
       let result = match assert.call(&mut hooks, None, values) {
@@ -318,11 +271,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks));
-      let assert_eq = AssertEq::new(
-        ASSERTEQ_META.to_meta(&hooks),
-        hooks.manage_str("str".to_string()),
-        error,
-      );
+      let assert_eq = AssertEq::native(&hooks, hooks.manage_str("str".to_string()), error);
 
       assert_eq!(&*assert_eq.meta().name, "assertEq");
       assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
@@ -342,11 +291,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
-      let assert_eq = AssertEq::new(
-        ASSERTEQ_META.to_meta(&hooks.as_gc()),
-        hooks.manage_str("str".to_string()),
-        error,
-      );
+      let assert_eq = AssertEq::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
 
       let values = &[val!(10.5), val!(10.5)];
 
@@ -371,11 +316,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks));
-      let assert_eq = AssertNe::new(
-        ASSERTNE_META.to_meta(&hooks),
-        hooks.manage_str("str".to_string()),
-        error,
-      );
+      let assert_eq = AssertNe::native(&hooks, hooks.manage_str("str".to_string()), error);
 
       assert_eq!(&*assert_eq.meta().name, "assertNe");
       assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
@@ -395,11 +336,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
-      let assert_ne = AssertNe::new(
-        ASSERTNE_META.to_meta(&hooks.as_gc()),
-        hooks.manage_str("str".to_string()),
-        error,
-      );
+      let assert_ne = AssertNe::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
 
       let values = &[val!(10.5), VALUE_NIL];
 

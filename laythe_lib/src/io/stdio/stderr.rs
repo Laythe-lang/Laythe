@@ -1,15 +1,22 @@
-use crate::{StdResult, io::{IO_MODULE_PATH, global::IO_ERROR}, native_with_error, support::load_class_from_package, support::{
-    default_class_inheritance, export_and_insert, load_instance_from_module, to_dyn_native,
-  }};
+use crate::{
+  io::{global::IO_ERROR, IO_MODULE_PATH},
+  native_with_error,
+  support::load_class_from_package,
+  support::{
+    default_class_inheritance, export_and_insert, load_instance_from_module,
+  },
+  StdResult,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   module::{Module, Package},
-  object::{MetaData, Instance, Native, NativeMeta, NativeMetaBuilder},
+  object::{Instance, LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
+  managed::Gc,
   val,
   value::{Value, VALUE_NIL},
   Call,
-  managed::Trace,
 };
 use std::io::Write;
 
@@ -49,19 +56,19 @@ pub fn define_stderr(hooks: &GcHooks, module: &Module, package: &Package) -> Std
   class.add_method(
     hooks,
     hooks.manage_str(STDERR_WRITE.name),
-    val!(to_dyn_native(hooks, StderrWrite::new(hooks, io_error))),
+    val!(StderrWrite::native(hooks, io_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(STDERR_WRITELN.name),
-    val!(to_dyn_native(hooks, StderrWriteln::new(hooks, io_error))),
+    val!(StderrWriteln::native(hooks, io_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(STDERR_FLUSH.name),
-    val!(to_dyn_native(hooks, StderrFlush::new(hooks, io_error))),
+    val!(StderrFlush::native(hooks, io_error)),
   );
 
   Ok(())
@@ -69,7 +76,7 @@ pub fn define_stderr(hooks: &GcHooks, module: &Module, package: &Package) -> Std
 
 native_with_error!(StderrWrite, STDERR_WRITE);
 
-impl Native for StderrWrite {
+impl LyNative for StderrWrite {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
@@ -84,7 +91,7 @@ impl Native for StderrWrite {
 
 native_with_error!(StderrWriteln, STDERR_WRITELN);
 
-impl Native for StderrWriteln {
+impl LyNative for StderrWriteln {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
@@ -99,7 +106,7 @@ impl Native for StderrWriteln {
 
 native_with_error!(StderrFlush, STDERR_FLUSH);
 
-impl Native for StderrFlush {
+impl LyNative for StderrFlush {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
@@ -128,7 +135,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let stderr_write = StderrWrite::new(&hooks, error);
+      let stderr_write = StderrWrite::native(&hooks, error);
 
       assert_eq!(stderr_write.meta().name, "write");
       assert_eq!(stderr_write.meta().signature.arity, Arity::Fixed(1));
@@ -146,7 +153,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let stderr_write = StderrWrite::new(&hooks.as_gc(), error);
+      let stderr_write = StderrWrite::native(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string".to_string()));
       let result = stderr_write.call(&mut hooks, Some(VALUE_NIL), &[string]);
@@ -172,7 +179,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let stderr_writeln = StderrWriteln::new(&hooks, error);
+      let stderr_writeln = StderrWriteln::native(&hooks, error);
 
       assert_eq!(stderr_writeln.meta().name, "writeln");
       assert_eq!(stderr_writeln.meta().signature.arity, Arity::Fixed(1));
@@ -190,7 +197,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let stderr_write = StderrWriteln::new(&hooks.as_gc(), error);
+      let stderr_write = StderrWriteln::native(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string".to_string()));
       let result = stderr_write.call(&mut hooks, Some(VALUE_NIL), &[string]);

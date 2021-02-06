@@ -17,7 +17,7 @@ pub use iterator::{LyIter, LyIterator};
 pub use list::List;
 pub use map::Map;
 pub use method::Method;
-pub use native::{MetaData, Native, NativeMeta, NativeMetaBuilder};
+pub use native::{LyNative, Native, NativeMeta, NativeMetaBuilder};
 pub use upvalue::Upvalue;
 
 #[cfg(test)]

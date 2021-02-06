@@ -1,8 +1,8 @@
-use crate::{native, support::to_dyn_native};
+use crate::native;
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::{Gc, Trace},
-  object::{Class, MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{Class, LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::{Value, VALUE_NIL},
@@ -24,19 +24,19 @@ pub fn create_class_class(hooks: &GcHooks, object: Gc<Class>) -> Gc<Class> {
   class.add_method(
     &hooks,
     hooks.manage_str(CLASS_SUPER_CLS.name),
-    val!(to_dyn_native(hooks, ClassSuperCls::from(hooks))),
+    val!(ClassSuperCls::native(hooks)),
   );
 
   class.add_method(
     &hooks,
     hooks.manage_str(CLASS_STR.name),
-    val!(to_dyn_native(hooks, ClassStr::from(hooks))),
+    val!(ClassStr::native(hooks)),
   );
 
   class.add_method(
     &hooks,
     hooks.manage_str(CLASS_NAME.name),
-    val!(to_dyn_native(hooks, ClassName::from(hooks))),
+    val!(ClassName::native(hooks)),
   );
 
   class
@@ -44,7 +44,7 @@ pub fn create_class_class(hooks: &GcHooks, object: Gc<Class>) -> Gc<Class> {
 
 native!(ClassSuperCls, CLASS_SUPER_CLS);
 
-impl Native for ClassSuperCls {
+impl LyNative for ClassSuperCls {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let super_class = this
       .unwrap()
@@ -59,7 +59,7 @@ impl Native for ClassSuperCls {
 
 native!(ClassStr, CLASS_STR);
 
-impl Native for ClassStr {
+impl LyNative for ClassStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let class = this.unwrap().to_class();
 
@@ -73,7 +73,7 @@ impl Native for ClassStr {
 
 native!(ClassName, CLASS_NAME);
 
-impl Native for ClassName {
+impl LyNative for ClassName {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let class = this.unwrap().to_class();
     Call::Ok(val!(class.name()))
@@ -93,7 +93,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let class_super_class = ClassSuperCls::from(&hooks);
+      let class_super_class = ClassSuperCls::native(&hooks);
 
       assert_eq!(class_super_class.meta().name, "superCls");
       assert_eq!(class_super_class.meta().signature.arity, Arity::Fixed(0));
@@ -103,7 +103,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let class_super_class = ClassSuperCls::from(&hooks);
+      let class_super_class = ClassSuperCls::native(&hooks.as_gc());
 
       let mut class = hooks.manage(Class::bare(hooks.manage_str("someClass")));
 
@@ -136,7 +136,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let class_str = ClassStr::from(&hooks);
+      let class_str = ClassStr::native(&hooks);
 
       assert_eq!(class_str.meta().name, "str");
       assert_eq!(class_str.meta().signature.arity, Arity::Fixed(0));
@@ -146,7 +146,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let class_str = ClassStr::from(&hooks);
+      let class_str = ClassStr::native(&hooks.as_gc());
 
       let class = hooks.manage(Class::bare(hooks.manage_str("someClass".to_string())));
 
@@ -165,7 +165,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let class_str = ClassName::from(&hooks);
+      let class_str = ClassName::native(&hooks);
 
       assert_eq!(class_str.meta().name, "name");
       assert_eq!(class_str.meta().signature.arity, Arity::Fixed(0));
@@ -175,7 +175,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let class_str = ClassName::from(&hooks);
+      let class_str = ClassName::native(&hooks.as_gc());
 
       let class = hooks.manage(Class::bare(hooks.manage_str("someClass".to_string())));
 

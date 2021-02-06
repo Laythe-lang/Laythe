@@ -2,14 +2,14 @@ use crate::{
   global::SYNTAX_ERROR_NAME,
   native, native_with_error,
   support::load_class_from_package,
-  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
+  support::{default_class_inheritance, export_and_insert, load_class_from_module},
   StdResult, STD,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::{Gc, Trace},
   module::{Module, Package},
-  object::{List, MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{List, LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -53,28 +53,25 @@ pub fn define_regexp_class(hooks: &GcHooks, module: &Module, std: &Package) -> S
   class.add_method(
     hooks,
     hooks.manage_str(REGEXP_INIT.name),
-    val!(to_dyn_native(hooks, RegExpInit::from(hooks))),
+    val!(RegExpInit::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(REGEXP_TEST.name),
-    val!(to_dyn_native(hooks, RegExpTest::new(hooks, syntax_error))),
+    val!(RegExpTest::native(hooks, syntax_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(REGEXP_MATCH.name),
-    val!(to_dyn_native(hooks, RegExpMatch::new(hooks, syntax_error))),
+    val!(RegExpMatch::native(hooks, syntax_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(REGEXP_CAPTURES.name),
-    val!(to_dyn_native(
-      hooks,
-      RegExpCaptures::new(hooks, syntax_error)
-    )),
+    val!(RegExpCaptures::native(hooks, syntax_error)),
   );
 
   Ok(())
@@ -82,7 +79,7 @@ pub fn define_regexp_class(hooks: &GcHooks, module: &Module, std: &Package) -> S
 
 native!(RegExpInit, REGEXP_INIT);
 
-impl Native for RegExpInit {
+impl LyNative for RegExpInit {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let mut this = this.unwrap().to_instance();
     this[0] = args[0];
@@ -107,7 +104,7 @@ macro_rules! get_regex {
 
 native_with_error!(RegExpTest, REGEXP_TEST);
 
-impl Native for RegExpTest {
+impl LyNative for RegExpTest {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let regexp = get_regex!(self, this, hooks);
 
@@ -117,7 +114,7 @@ impl Native for RegExpTest {
 
 native_with_error!(RegExpMatch, REGEXP_MATCH);
 
-impl Native for RegExpMatch {
+impl LyNative for RegExpMatch {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let regexp = get_regex!(self, this, hooks);
 
@@ -130,7 +127,7 @@ impl Native for RegExpMatch {
 
 native_with_error!(RegExpCaptures, REGEXP_CAPTURES);
 
-impl Native for RegExpCaptures {
+impl LyNative for RegExpCaptures {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let regexp = get_regex!(self, this, hooks);
 
@@ -165,7 +162,7 @@ mod test {
     regexp_class.add_field(&hooks.as_gc(), hooks.manage_str(REGEXP_FIELD_FLAGS));
 
     let regexp = hooks.manage(Instance::new(hooks.manage(regexp_class)));
-    let init = RegExpInit::from(&hooks.as_gc());
+    let init = RegExpInit::native(&hooks.as_gc());
     init
       .call(
         hooks,
@@ -192,7 +189,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks));
-      let regexp_test = RegExpTest::new(&hooks, error);
+      let regexp_test = RegExpTest::native(&hooks, error);
 
       assert_eq!(regexp_test.meta().name, "test");
       assert_eq!(regexp_test.meta().signature.arity, Arity::Fixed(1));
@@ -209,7 +206,7 @@ mod test {
 
       let error = val!(test_error_class(&hooks.as_gc()));
       let this = regexp_instance(&mut hooks, "[0-9]{3}");
-      let regexp_test = RegExpTest::new(&hooks.as_gc(), error);
+      let regexp_test = RegExpTest::native(&hooks.as_gc(), error);
 
       let pass = val!(hooks.manage_str("123"));
       let failure = val!(hooks.manage_str("abc"));
@@ -236,7 +233,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks));
-      let regexp_capture = RegExpMatch::new(&hooks, error);
+      let regexp_capture = RegExpMatch::native(&hooks, error);
 
       assert_eq!(regexp_capture.meta().name, "match");
       assert_eq!(regexp_capture.meta().signature.arity, Arity::Fixed(1));
@@ -253,7 +250,7 @@ mod test {
 
       let error = val!(test_error_class(&hooks.as_gc()));
       let this = regexp_instance(&mut hooks, "[0-9]{3}");
-      let regexp_capture = RegExpMatch::new(&hooks.as_gc(), error);
+      let regexp_capture = RegExpMatch::native(&hooks.as_gc(), error);
 
       let matched = val!(hooks.manage_str("   123 dude"));
       let unmatched = val!(hooks.manage_str("25 Main St."));
@@ -283,7 +280,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks));
-      let regexp_captures = RegExpCaptures::new(&hooks, error);
+      let regexp_captures = RegExpCaptures::native(&hooks, error);
 
       assert_eq!(regexp_captures.meta().name, "captures");
       assert_eq!(regexp_captures.meta().signature.arity, Arity::Fixed(1));
@@ -300,7 +297,7 @@ mod test {
 
       let error = val!(test_error_class(&hooks.as_gc()));
       let this = regexp_instance(&mut hooks, "([0-9]{3}) [a-zA-Z]+");
-      let regexp_captures = RegExpCaptures::new(&hooks.as_gc(), error);
+      let regexp_captures = RegExpCaptures::native(&hooks.as_gc(), error);
 
       let example = val!(hooks.manage_str("   123 dude"));
 

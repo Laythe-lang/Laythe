@@ -1,13 +1,9 @@
-use crate::{
-  native,
-  support::{export_and_insert, to_dyn_native},
-  StdError, StdResult,
-};
+use crate::{native, support::export_and_insert, StdError, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::{Gc, Trace},
   module::Module,
-  object::{Class, List, MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{Class, List, LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -49,7 +45,7 @@ pub fn create_error_class(hooks: &GcHooks, object: Gc<Class>) -> Gc<Class> {
   class.add_method(
     hooks,
     hooks.manage_str(ERROR_INIT.name),
-    val!(to_dyn_native(hooks, ErrorInit::from(hooks))),
+    val!(ErrorInit::native(hooks)),
   );
 
   class
@@ -91,7 +87,7 @@ pub fn define_global_errors(_hooks: &GcHooks, _module: &Module) -> StdResult<()>
 
 native!(ErrorInit, ERROR_INIT);
 
-impl Native for ErrorInit {
+impl LyNative for ErrorInit {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let mut this = this.unwrap().to_instance();
     this[0] = args[0];
@@ -120,7 +116,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let bool_str = ErrorInit::from(&hooks);
+      let bool_str = ErrorInit::native(&hooks);
 
       assert_eq!(bool_str.meta().name, "init");
       assert_eq!(bool_str.meta().signature.arity, Arity::Default(1, 2));
@@ -139,7 +135,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let error_init = ErrorInit::from(&hooks);
+      let error_init = ErrorInit::native(&hooks.as_gc());
       let mut test_class = hooks.manage(Class::bare(hooks.manage_str("test")));
       test_class.add_field(&hooks.as_gc(), hooks.manage_str(ERROR_FIELD_MESSAGE));
       test_class.add_field(&hooks.as_gc(), hooks.manage_str(ERROR_FIELD_STACK));

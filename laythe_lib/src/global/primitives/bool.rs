@@ -1,14 +1,15 @@
 use super::class_inheritance;
 use crate::{
   native,
-  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  support::{export_and_insert, load_class_from_module},
   StdError, StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Gc,
   managed::Trace,
   module::Module,
-  object::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::{Value, VALUE_TRUE},
@@ -30,7 +31,7 @@ pub fn define_bool_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   bool_class.add_method(
     &hooks,
     hooks.manage_str(String::from(BOOL_STR.name)),
-    val!(to_dyn_native(hooks, BoolStr::from(hooks))),
+    val!(BoolStr::native(hooks)),
   );
 
   Ok(())
@@ -38,7 +39,7 @@ pub fn define_bool_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
 
 native!(BoolStr, BOOL_STR);
 
-impl Native for BoolStr {
+impl LyNative for BoolStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     if this.unwrap() == VALUE_TRUE {
       Call::Ok(val!(hooks.manage_str("true")))
@@ -61,7 +62,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let bool_str = BoolStr::from(&hooks);
+      let bool_str = BoolStr::native(&hooks);
 
       assert_eq!(bool_str.meta().name, "str");
       assert_eq!(bool_str.meta().signature.arity, Arity::Fixed(0));
@@ -72,7 +73,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let bool_str = BoolStr::from(&hooks);
+      let bool_str = BoolStr::native(&hooks.as_gc());
 
       let b_true = val!(true);
       let b_false = val!(false);

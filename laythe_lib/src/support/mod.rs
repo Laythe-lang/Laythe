@@ -2,13 +2,9 @@ use laythe_core::{
   hooks::GcHooks,
   managed::{Gc, GcStr},
   module::{Import, Module, Package},
-  object::{Class, Instance, Native},
+  object::{Class, Instance},
   value::Value,
 };
-
-pub fn to_dyn_native<T: 'static + Native>(hooks: &GcHooks, method: T) -> Gc<Box<dyn Native>> {
-  hooks.manage(Box::new(method) as Box<dyn Native>)
-}
 
 pub fn default_class_inheritance(
   hooks: &GcHooks,
@@ -128,9 +124,7 @@ mod test {
     managed::{Gc, GcStr, Trace, TraceRoot},
     memory::{Allocator, NoGc},
     module::{Module, ModuleResult},
-    object::{
-      Class, Fun, FunBuilder, List, LyIter, MetaData, Native, NativeMeta, NativeMetaBuilder,
-    },
+    object::{Class, Fun, FunBuilder, List, LyIter, LyNative, Native, NativeMetaBuilder},
     signature::Arity,
     signature::{ParameterBuilder, ParameterKind},
     utils::IdEmitter,
@@ -143,8 +137,6 @@ mod test {
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
   use std::{cell::RefCell, io::Write, path::PathBuf, sync::Arc};
-
-  use super::to_dyn_native;
 
   pub struct MockedContext {
     pub gc: RefCell<Allocator>,
@@ -429,7 +421,7 @@ mod test {
     error_class.add_method(
       hooks,
       hooks.manage_str("init"),
-      val!(to_dyn_native(hooks, TestInit::from(hooks))),
+      val!(TestInit::native(hooks)),
     );
 
     hooks.manage(error_class)
@@ -443,7 +435,7 @@ mod test {
 
   native!(TestInit, ERROR_INIT);
 
-  impl Native for TestInit {
+  impl LyNative for TestInit {
     fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
       let mut this = this.unwrap().to_instance();
       this[0] = args[0];

@@ -1,7 +1,7 @@
 use crate::{
   global::VALUE_ERROR_NAME,
   native, native_with_error,
-  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  support::{export_and_insert, load_class_from_module},
   StdResult,
 };
 use laythe_core::{
@@ -9,7 +9,7 @@ use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::{Gc, Trace},
   module::Module,
-  object::{List, LyIter, LyIterator, MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{List, LyIter, LyIterator, LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   utils::is_falsey,
   val,
@@ -89,109 +89,109 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   class.add_method(
     hooks,
     hooks.manage_str(ITER_STR.name),
-    val!(to_dyn_native(hooks, IterStr::from(hooks))),
+    val!(IterStr::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_NEXT.name),
-    val!(to_dyn_native(hooks, IterNext::from(hooks))),
+    val!(IterNext::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_CURRENT.name),
-    val!(to_dyn_native(hooks, IterCurrent::from(hooks))),
+    val!(IterCurrent::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_ITER.name),
-    val!(to_dyn_native(hooks, IterIter::from(hooks))),
+    val!(IterIter::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_FIRST.name),
-    val!(to_dyn_native(hooks, IterFirst::from(hooks))),
+    val!(IterFirst::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_LAST.name),
-    val!(to_dyn_native(hooks, IterLast::from(hooks))),
+    val!(IterLast::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_TAKE.name),
-    val!(to_dyn_native(hooks, IterTake::new(hooks, value_error))),
+    val!(IterTake::native(hooks, value_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_SKIP.name),
-    val!(to_dyn_native(hooks, IterSkip::new(hooks, value_error))),
+    val!(IterSkip::native(hooks, value_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_MAP.name),
-    val!(to_dyn_native(hooks, IterMap::from(hooks))),
+    val!(IterMap::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_FILTER.name),
-    val!(to_dyn_native(hooks, IterFilter::from(hooks))),
+    val!(IterFilter::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_REDUCE.name),
-    val!(to_dyn_native(hooks, IterReduce::from(hooks))),
+    val!(IterReduce::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_LEN.name),
-    val!(to_dyn_native(hooks, IterLen::from(hooks))),
+    val!(IterLen::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_EACH.name),
-    val!(to_dyn_native(hooks, IterEach::from(hooks))),
+    val!(IterEach::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_ZIP.name),
-    val!(to_dyn_native(hooks, IterZip::from(hooks))),
+    val!(IterZip::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_CHAIN.name),
-    val!(to_dyn_native(hooks, IterChain::from(hooks))),
+    val!(IterChain::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_ALL.name),
-    val!(to_dyn_native(hooks, IterAll::from(hooks))),
+    val!(IterAll::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_ANY.name),
-    val!(to_dyn_native(hooks, IterAny::from(hooks))),
+    val!(IterAny::native(hooks)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(ITER_INTO.name),
-    val!(to_dyn_native(hooks, IterInto::from(hooks))),
+    val!(IterInto::native(hooks)),
   );
 
   Ok(())
@@ -199,7 +199,7 @@ pub fn define_iter_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
 
 native!(IterStr, ITER_STR);
 
-impl Native for IterStr {
+impl LyNative for IterStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     Call::Ok(val!(hooks.manage_str(this.unwrap().to_iter().name())))
   }
@@ -207,7 +207,7 @@ impl Native for IterStr {
 
 native!(IterNext, ITER_NEXT);
 
-impl Native for IterNext {
+impl LyNative for IterNext {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     this.unwrap().to_iter().next(hooks)
   }
@@ -215,7 +215,7 @@ impl Native for IterNext {
 
 native!(IterCurrent, ITER_CURRENT);
 
-impl Native for IterCurrent {
+impl LyNative for IterCurrent {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     Call::Ok(this.unwrap().to_iter().current())
   }
@@ -223,7 +223,7 @@ impl Native for IterCurrent {
 
 native!(IterIter, ITER_ITER);
 
-impl Native for IterIter {
+impl LyNative for IterIter {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     Call::Ok(this.unwrap())
   }
@@ -231,7 +231,7 @@ impl Native for IterIter {
 
 native!(IterFirst, ITER_FIRST);
 
-impl Native for IterFirst {
+impl LyNative for IterFirst {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let mut iter = this.unwrap().to_iter();
 
@@ -246,7 +246,7 @@ impl Native for IterFirst {
 
 native!(IterLast, ITER_LAST);
 
-impl Native for IterLast {
+impl LyNative for IterLast {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let mut iter = this.unwrap().to_iter();
     let mut result = VALUE_NIL;
@@ -261,7 +261,7 @@ impl Native for IterLast {
 
 native_with_error!(IterTake, ITER_TAKE);
 
-impl Native for IterTake {
+impl LyNative for IterTake {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let iter = this.unwrap().to_iter();
     let take_count = args[0].to_num();
@@ -337,7 +337,7 @@ impl Trace for TakeIterator {
 
 native_with_error!(IterSkip, ITER_SKIP);
 
-impl Native for IterSkip {
+impl LyNative for IterSkip {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let mut iter = this.unwrap().to_iter();
     let skip_count = args[0].to_num();
@@ -426,7 +426,7 @@ impl Trace for SkipIterator {
 
 native!(IterMap, ITER_MAP);
 
-impl Native for IterMap {
+impl LyNative for IterMap {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let inner_iter: Box<dyn LyIter> = Box::new(MapIterator::new(this.unwrap().to_iter(), args[0]));
     let iter = LyIterator::new(inner_iter);
@@ -497,7 +497,7 @@ impl Trace for MapIterator {
 
 native!(IterFilter, ITER_FILTER);
 
-impl Native for IterFilter {
+impl LyNative for IterFilter {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let inner_iter: Box<dyn LyIter> =
       Box::new(FilterIterator::new(this.unwrap().to_iter(), args[0]));
@@ -573,7 +573,7 @@ impl Trace for FilterIterator {
 
 native!(IterReduce, ITER_REDUCE);
 
-impl Native for IterReduce {
+impl LyNative for IterReduce {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let mut accumulator = args[0];
     let callable = args[1];
@@ -596,7 +596,7 @@ impl Native for IterReduce {
 
 native!(IterLen, ITER_LEN);
 
-impl Native for IterLen {
+impl LyNative for IterLen {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let mut iter = this.unwrap().to_iter();
 
@@ -616,7 +616,7 @@ impl Native for IterLen {
 
 native!(IterEach, ITER_EACH);
 
-impl Native for IterEach {
+impl LyNative for IterEach {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
@@ -636,7 +636,7 @@ impl Native for IterEach {
 
 native!(IterZip, ITER_ZIP);
 
-impl Native for IterZip {
+impl LyNative for IterZip {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let iters: Vec<Gc<LyIterator>> = [this.unwrap()]
       .iter()
@@ -727,7 +727,7 @@ impl Trace for ZipIterator {
 
 native!(IterChain, ITER_CHAIN);
 
-impl Native for IterChain {
+impl LyNative for IterChain {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let iters: Vec<Gc<LyIterator>> = [this.unwrap()]
       .iter()
@@ -821,7 +821,7 @@ impl Trace for ChainIterator {
 
 native!(IterAll, ITER_ALL);
 
-impl Native for IterAll {
+impl LyNative for IterAll {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
@@ -843,7 +843,7 @@ impl Native for IterAll {
 
 native!(IterAny, ITER_ANY);
 
-impl Native for IterAny {
+impl LyNative for IterAny {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let callable = args[0];
     let mut iter = this.unwrap().to_iter();
@@ -865,7 +865,7 @@ impl Native for IterAny {
 
 native!(IterInto, ITER_INTO);
 
-impl Native for IterInto {
+impl LyNative for IterInto {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let callable = args[0];
     let iter = this.unwrap().to_iter();
@@ -890,7 +890,7 @@ mod test {
 
   native!(TestFun, TEST_FUN);
 
-  impl Native for TestFun {
+  impl LyNative for TestFun {
     fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
       Call::Ok(args[0])
     }
@@ -905,7 +905,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_str = IterStr::from(&hooks);
+      let iter_str = IterStr::native(&hooks);
 
       assert_eq!(iter_str.meta().name, "str");
       assert_eq!(iter_str.meta().signature.arity, Arity::Fixed(0));
@@ -915,7 +915,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let iter_str = IterStr::from(&hooks.as_gc());
+      let iter_str = IterStr::native(&hooks.as_gc());
 
       let iter = test_iter();
       let this = hooks.manage(LyIterator::new(iter));
@@ -937,7 +937,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_next = IterNext::from(&hooks);
+      let iter_next = IterNext::native(&hooks);
 
       assert_eq!(iter_next.meta().name, "next");
       assert_eq!(iter_next.meta().signature.arity, Arity::Fixed(0));
@@ -947,7 +947,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let iter_next = IterNext::from(&hooks.as_gc());
+      let iter_next = IterNext::native(&hooks.as_gc());
 
       let iter = test_iter();
       let this = hooks.manage(LyIterator::new(iter));
@@ -969,7 +969,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_current = IterCurrent::from(&hooks);
+      let iter_current = IterCurrent::native(&hooks);
 
       assert_eq!(iter_current.meta().name, "current");
       assert_eq!(iter_current.meta().signature.arity, Arity::Fixed(0));
@@ -979,7 +979,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let iter_current = IterCurrent::from(&hooks.as_gc());
+      let iter_current = IterCurrent::native(&hooks.as_gc());
 
       let iter = test_iter();
       let this = hooks.manage(LyIterator::new(iter));
@@ -1000,7 +1000,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_iter = IterIter::from(&hooks);
+      let iter_iter = IterIter::native(&hooks);
 
       assert_eq!(iter_iter.meta().name, "iter");
       assert_eq!(iter_iter.meta().signature.arity, Arity::Fixed(0));
@@ -1011,7 +1011,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let iter_iter = IterIter::from(&hooks.as_gc());
+      let iter_iter = IterIter::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1034,7 +1034,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_first = IterFirst::from(&hooks);
+      let iter_first = IterFirst::native(&hooks);
 
       assert_eq!(iter_first.meta().name, "first");
       assert_eq!(iter_first.meta().signature.arity, Arity::Fixed(0));
@@ -1045,7 +1045,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let iter_first = IterFirst::from(&hooks.as_gc());
+      let iter_first = IterFirst::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1068,7 +1068,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let iter_take = IterTake::new(&hooks, error);
+      let iter_take = IterTake::native(&hooks, error);
 
       assert_eq!(iter_take.meta().name, "take");
       assert_eq!(iter_take.meta().signature.arity, Arity::Fixed(1));
@@ -1084,7 +1084,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let iter_take = IterTake::new(&hooks.as_gc(), error);
+      let iter_take = IterTake::native(&hooks.as_gc(), error);
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1115,7 +1115,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let iter_skip = IterSkip::new(&hooks, error);
+      let iter_skip = IterSkip::native(&hooks, error);
 
       assert_eq!(iter_skip.meta().name, "skip");
       assert_eq!(iter_skip.meta().signature.arity, Arity::Fixed(1));
@@ -1132,7 +1132,7 @@ mod test {
 
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let iter_skip = IterSkip::new(&hooks.as_gc(), error);
+      let iter_skip = IterSkip::native(&hooks.as_gc(), error);
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1160,7 +1160,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_last = IterLast::from(&hooks);
+      let iter_last = IterLast::native(&hooks);
 
       assert_eq!(iter_last.meta().name, "last");
       assert_eq!(iter_last.meta().signature.arity, Arity::Fixed(0));
@@ -1171,7 +1171,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let iter_last = IterLast::from(&hooks.as_gc());
+      let iter_last = IterLast::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1193,7 +1193,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_map = IterMap::from(&hooks);
+      let iter_map = IterMap::native(&hooks);
 
       assert_eq!(iter_map.meta().name, "map");
       assert_eq!(iter_map.meta().signature.arity, Arity::Fixed(1));
@@ -1207,7 +1207,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(5.0)]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_map = IterMap::from(&hooks.as_gc());
+      let iter_map = IterMap::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1239,7 +1239,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_filter = IterFilter::from(&hooks);
+      let iter_filter = IterFilter::native(&hooks);
 
       assert_eq!(iter_filter.meta().name, "filter");
       assert_eq!(iter_filter.meta().signature.arity, Arity::Fixed(1));
@@ -1253,7 +1253,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(false), val!(true), val!(true)]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_filter = IterFilter::from(&hooks.as_gc());
+      let iter_filter = IterFilter::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1287,7 +1287,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_reduce = IterReduce::from(&hooks);
+      let iter_reduce = IterReduce::native(&hooks);
 
       assert_eq!(iter_reduce.meta().name, "reduce");
       assert_eq!(iter_reduce.meta().signature.arity, Arity::Fixed(2));
@@ -1305,7 +1305,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(false), val!(false), val!(false), val!(10.1)]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_reduce = IterReduce::from(&hooks.as_gc());
+      let iter_reduce = IterReduce::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1337,7 +1337,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_size = IterLen::from(&hooks);
+      let iter_size = IterLen::native(&hooks);
 
       assert_eq!(iter_size.meta().name, "len");
       assert_eq!(iter_size.meta().signature.arity, Arity::Fixed(0));
@@ -1347,7 +1347,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let iter_size = IterLen::from(&hooks);
+      let iter_size = IterLen::native(&hooks.as_gc());
 
       let this = val!(hooks.manage(LyIterator::new(test_iter())));
       let result = iter_size.call(&mut hooks, Some(this), &[]);
@@ -1371,7 +1371,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_each = IterEach::from(&hooks);
+      let iter_each = IterEach::native(&hooks);
 
       assert_eq!(iter_each.meta().name, "each");
       assert_eq!(iter_each.meta().signature.arity, Arity::Fixed(1));
@@ -1385,7 +1385,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(false); 5]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_each = IterEach::from(&hooks.as_gc());
+      let iter_each = IterEach::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1414,7 +1414,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_zip = IterZip::from(&hooks);
+      let iter_zip = IterZip::native(&hooks);
 
       assert_eq!(iter_zip.meta().name, "zip");
       assert_eq!(iter_zip.meta().signature.arity, Arity::Variadic(0));
@@ -1428,7 +1428,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(1.0); 10]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_zip = IterZip::from(&hooks.as_gc());
+      let iter_zip = IterZip::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1463,7 +1463,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_chain = IterChain::from(&hooks);
+      let iter_chain = IterChain::native(&hooks);
 
       assert_eq!(iter_chain.meta().name, "chain");
       assert_eq!(iter_chain.meta().signature.arity, Arity::Variadic(0));
@@ -1477,7 +1477,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(1.0); 10]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_chain = IterChain::from(&hooks.as_gc());
+      let iter_chain = IterChain::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1516,7 +1516,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_all = IterAll::from(&hooks);
+      let iter_all = IterAll::native(&hooks);
 
       assert_eq!(iter_all.meta().name, "all");
       assert_eq!(iter_all.meta().signature.arity, Arity::Fixed(1));
@@ -1531,9 +1531,9 @@ mod test {
       let mut context = MockedContext::new(&[val!(1.0); 10]);
       let mut hooks = Hooks::new(&mut context);
       let gc_hooks = hooks.as_gc();
-      let iter_all = IterAll::from(&gc_hooks);
+      let iter_all = IterAll::native(&gc_hooks);
 
-      let identity = val!(to_dyn_native(&gc_hooks, TestFun::from(&gc_hooks)));
+      let identity = val!(TestFun::native(&gc_hooks));
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1557,7 +1557,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_any = IterAny::from(&hooks);
+      let iter_any = IterAny::native(&hooks);
 
       assert_eq!(iter_any.meta().name, "any");
       assert_eq!(iter_any.meta().signature.arity, Arity::Fixed(1));
@@ -1572,9 +1572,9 @@ mod test {
       let mut context = MockedContext::new(&[val!(0.0), val!(0.0), val!(1.0)]);
       let mut hooks = Hooks::new(&mut context);
       let gc_hooks = hooks.as_gc();
-      let iter_any = IterAny::from(&gc_hooks);
+      let iter_any = IterAny::native(&gc_hooks);
 
-      let identity = val!(to_dyn_native(&gc_hooks, TestFun::from(&gc_hooks)));
+      let identity = val!(TestFun::native(&gc_hooks));
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
@@ -1591,14 +1591,14 @@ mod test {
   mod into {
     use super::*;
     use crate::support::MockedContext;
-    use laythe_core::object::{LyIterator, Native};
+    use laythe_core::object::{LyIterator, LyNative};
 
     const M: NativeMetaBuilder = NativeMetaBuilder::fun("", Arity::Fixed(1))
       .with_params(&[ParameterBuilder::new("", ParameterKind::Any)]);
 
     native!(EchoFun, M);
 
-    impl Native for EchoFun {
+    impl LyNative for EchoFun {
       fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
         Call::Ok(args[0])
       }
@@ -1609,7 +1609,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let iter_into = IterInto::from(&hooks);
+      let iter_into = IterInto::native(&hooks);
 
       assert_eq!(iter_into.meta().name, "into");
       assert_eq!(iter_into.meta().signature.arity, Arity::Fixed(1));
@@ -1623,12 +1623,12 @@ mod test {
     fn call() {
       let mut context = MockedContext::new(&[val!(true); 5]);
       let mut hooks = Hooks::new(&mut context);
-      let iter_into = IterInto::from(&hooks);
+      let iter_into = IterInto::native(&hooks.as_gc());
 
       let iter = test_iter();
       let managed = hooks.manage(LyIterator::new(iter));
       let this = val!(managed);
-      let echo = val!(hooks.manage(Box::new(EchoFun::from(&hooks)) as Box<dyn Native>));
+      let echo = val!(EchoFun::native(&hooks.as_gc()));
 
       let result = iter_into.call(&mut hooks, Some(this), &[echo]);
       match result {

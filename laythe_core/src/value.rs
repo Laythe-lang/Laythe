@@ -64,7 +64,7 @@ mod unboxed {
     Instance(Gc<Instance>),
     Method(Gc<Method>),
     Iter(Gc<LyIterator>),
-    Native(Gc<Box<dyn Native>>),
+    Native(Gc<Native>),
     Upvalue(Gc<Upvalue>),
   }
 
@@ -306,7 +306,7 @@ mod unboxed {
 
     /// Unwrap a laythe native function, panics if not a native function
     #[inline]
-    pub fn to_native(&self) -> Gc<Box<dyn Native>> {
+    pub fn to_native(&self) -> Gc<Native> {
       match self {
         Self::Native(native_fun) => *native_fun,
         _ => panic!("Expected native function!"),
@@ -580,8 +580,8 @@ mod unboxed {
     }
   }
 
-  impl From<Gc<Box<dyn Native>>> for Value {
-    fn from(managed: Gc<Box<dyn Native>>) -> Value {
+  impl From<Gc<Native>> for Value {
+    fn from(managed: Gc<Native>) -> Value {
       Value::Native(managed)
     }
   }
@@ -800,7 +800,7 @@ mod unboxed {
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 32);
       assert_eq!(mem::size_of::<LyIterator>(), 32);
-      assert_eq!(mem::size_of::<Box<dyn Native>>(), 16);
+      assert_eq!(mem::size_of::<Native>(), 56);
       assert_eq!(mem::size_of::<Upvalue>(), 24);
     }
 
@@ -816,7 +816,7 @@ mod unboxed {
       assert_eq!(mem::align_of::<Instance>(), target);
       assert_eq!(mem::align_of::<Method>(), target);
       assert_eq!(mem::align_of::<LyIterator>(), target);
-      assert_eq!(mem::align_of::<Box<dyn Native>>(), target);
+      assert_eq!(mem::align_of::<Native>(), target);
       assert_eq!(mem::align_of::<Upvalue>(), target);
     }
   }
@@ -1048,7 +1048,7 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_native(&self) -> Gc<Box<dyn Native>> {
+    pub fn to_native(&self) -> Gc<Native> {
       self.to_obj_tag(TAG_NATIVE)
     }
 
@@ -1246,8 +1246,8 @@ mod boxed {
     }
   }
 
-  impl From<Gc<Box<dyn Native>>> for Value {
-    fn from(managed: Gc<Box<dyn Native>>) -> Value {
+  impl From<Gc<Native>> for Value {
+    fn from(managed: Gc<Native>) -> Value {
       Self(managed.to_usize() as u64 | TAG_NATIVE)
     }
   }
@@ -1316,7 +1316,7 @@ mod boxed {
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 16);
       assert_eq!(mem::size_of::<LyIterator>(), 24);
-      assert_eq!(mem::size_of::<Box<dyn Native>>(), 16);
+      assert_eq!(mem::size_of::<Native>(), 56);
       assert_eq!(mem::size_of::<Upvalue>(), 16);
     }
 
@@ -1332,7 +1332,7 @@ mod boxed {
       assert_eq!(mem::align_of::<Instance>(), target);
       assert_eq!(mem::align_of::<Method>(), target);
       assert_eq!(mem::align_of::<LyIterator>(), target);
-      assert_eq!(mem::align_of::<Box<dyn Native>>(), target);
+      assert_eq!(mem::align_of::<Native>(), target);
       assert_eq!(mem::align_of::<Upvalue>(), target);
     }
   }

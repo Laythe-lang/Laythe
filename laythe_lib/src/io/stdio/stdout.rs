@@ -2,17 +2,16 @@ use crate::{
   io::{global::IO_ERROR, IO_MODULE_PATH},
   native_with_error,
   support::load_class_from_package,
-  support::{
-    default_class_inheritance, export_and_insert, load_instance_from_module, to_dyn_native,
-  },
+  support::{default_class_inheritance, export_and_insert, load_instance_from_module},
   StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::{Module, Package},
-  object::{Instance, MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{Instance, LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
+  managed::Gc,
   val,
   value::{Value, VALUE_NIL},
   Call,
@@ -55,19 +54,19 @@ pub fn define_stdout(hooks: &GcHooks, module: &Module, std: &Package) -> StdResu
   class.add_method(
     hooks,
     hooks.manage_str(STDOUT_WRITE.name),
-    val!(to_dyn_native(hooks, StdoutWrite::new(hooks, io_error))),
+    val!(StdoutWrite::native(hooks, io_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(STDOUT_WRITELN.name),
-    val!(to_dyn_native(hooks, StdoutWriteln::new(hooks, io_error))),
+    val!(StdoutWriteln::native(hooks, io_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(STDOUT_FLUSH.name),
-    val!(to_dyn_native(hooks, StdoutFlush::new(hooks, io_error))),
+    val!(StdoutFlush::native(hooks, io_error)),
   );
 
   Ok(())
@@ -75,7 +74,7 @@ pub fn define_stdout(hooks: &GcHooks, module: &Module, std: &Package) -> StdResu
 
 native_with_error!(StdoutWrite, STDOUT_WRITE);
 
-impl Native for StdoutWrite {
+impl LyNative for StdoutWrite {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
@@ -90,7 +89,7 @@ impl Native for StdoutWrite {
 
 native_with_error!(StdoutWriteln, STDOUT_WRITELN);
 
-impl Native for StdoutWriteln {
+impl LyNative for StdoutWriteln {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
@@ -105,7 +104,7 @@ impl Native for StdoutWriteln {
 
 native_with_error!(StdoutFlush, STDOUT_FLUSH);
 
-impl Native for StdoutFlush {
+impl LyNative for StdoutFlush {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
@@ -134,7 +133,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let stdout_write = StdoutWrite::new(&hooks, error);
+      let stdout_write = StdoutWrite::native(&hooks, error);
 
       assert_eq!(stdout_write.meta().name, "write");
       assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(1));
@@ -152,7 +151,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let stdout_write = StdoutWrite::new(&hooks.as_gc(), error);
+      let stdout_write = StdoutWrite::native(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string".to_string()));
       let result = stdout_write.call(&mut hooks, Some(VALUE_NIL), &[string]);
@@ -178,7 +177,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let stdout_writeln = StdoutWriteln::new(&hooks, error);
+      let stdout_writeln = StdoutWriteln::native(&hooks, error);
 
       assert_eq!(stdout_writeln.meta().name, "writeln");
       assert_eq!(stdout_writeln.meta().signature.arity, Arity::Fixed(1));
@@ -196,7 +195,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let stdout_write = StdoutWriteln::new(&hooks.as_gc(), error);
+      let stdout_write = StdoutWriteln::native(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string".to_string()));
       let result = stdout_write.call(&mut hooks, Some(VALUE_NIL), &[string]);

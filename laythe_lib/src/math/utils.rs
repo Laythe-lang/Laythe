@@ -1,13 +1,10 @@
-use crate::{
-  native,
-  support::{export_and_insert, to_dyn_native},
-  StdResult,
-};
+use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Gc,
   managed::Trace,
   module::Module,
-  object::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -61,49 +58,49 @@ pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> StdResu
     hooks,
     self_module,
     hooks.manage_str(SIN_META.name),
-    val!(to_dyn_native(hooks, Sin::from(hooks))),
+    val!(Sin::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(COS_META.name),
-    val!(to_dyn_native(hooks, Cos::from(hooks))),
+    val!(Cos::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(LN_META.name),
-    val!(to_dyn_native(hooks, Ln::from(hooks))),
+    val!(Ln::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(ABS_META.name),
-    val!(to_dyn_native(hooks, Abs::from(hooks))),
+    val!(Abs::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(REM_META.name),
-    val!(to_dyn_native(hooks, Rem::from(hooks))),
+    val!(Rem::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(POW_META.name),
-    val!(to_dyn_native(hooks, Pow::from(hooks))),
+    val!(Pow::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(RAND_META.name),
-    val!(to_dyn_native(hooks, Rand::from(hooks))),
+    val!(Rand::native(hooks)),
   )
 }
 
@@ -113,7 +110,7 @@ pub fn define_math_module(_: &GcHooks, _: &mut Module) -> StdResult<()> {
 
 native!(Sin, SIN_META);
 
-impl Native for Sin {
+impl LyNative for Sin {
   #[cfg(not(feature = "wasm"))]
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     Call::Ok(val!(args[0].to_num().sin()))
@@ -128,7 +125,7 @@ impl Native for Sin {
 
 native!(Cos, COS_META);
 
-impl Native for Cos {
+impl LyNative for Cos {
   #[cfg(not(feature = "wasm"))]
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     Call::Ok(val!(args[0].to_num().cos()))
@@ -143,7 +140,7 @@ impl Native for Cos {
 
 native!(Ln, LN_META);
 
-impl Native for Ln {
+impl LyNative for Ln {
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     Call::Ok(val!(args[0].to_num().ln()))
   }
@@ -151,7 +148,7 @@ impl Native for Ln {
 
 native!(Abs, ABS_META);
 
-impl Native for Abs {
+impl LyNative for Abs {
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     Call::Ok(val!(args[0].to_num().abs()))
   }
@@ -159,7 +156,7 @@ impl Native for Abs {
 
 native!(Rem, REM_META);
 
-impl Native for Rem {
+impl LyNative for Rem {
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     Call::Ok(val!(args[0].to_num() % args[1].to_num()))
   }
@@ -167,7 +164,7 @@ impl Native for Rem {
 
 native!(Pow, POW_META);
 
-impl Native for Pow {
+impl LyNative for Pow {
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     Call::Ok(val!(args[0].to_num().powf(args[1].to_num())))
   }
@@ -175,7 +172,7 @@ impl Native for Pow {
 
 native!(Rand, RAND_META);
 
-impl Native for Rand {
+impl LyNative for Rand {
   #[cfg(not(feature = "wasm"))]
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     use rand::Rng;
@@ -204,7 +201,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let ln = Abs::from(&hooks);
+      let ln = Abs::native(&hooks);
 
       assert_eq!(ln.meta().name, "abs");
       assert_eq!(ln.meta().signature.arity, Arity::Fixed(1));
@@ -219,7 +216,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let abs = Abs::from(&hooks.as_gc());
+      let abs = Abs::native(&hooks.as_gc());
 
       let r = abs.call(&mut hooks, None, &[val!(-2.0)]).unwrap();
       assert_eq!(r.to_num(), 2.0);
@@ -237,7 +234,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let rem = Rem::from(&hooks);
+      let rem = Rem::native(&hooks);
 
       assert_eq!(rem.meta().name, "rem");
       assert_eq!(rem.meta().signature.arity, Arity::Fixed(2));
@@ -256,7 +253,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let rem = Rem::from(&hooks);
+      let rem = Rem::native(&hooks.as_gc());
       let values = &[val!(3.0), val!(2.0)];
 
       let r = rem.call(&mut hooks, None, values).unwrap();
@@ -281,7 +278,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let sin = Sin::from(&hooks);
+      let sin = Sin::native(&hooks);
 
       assert_eq!(sin.meta().name, "sin");
       assert_eq!(sin.meta().signature.arity, Arity::Fixed(1));
@@ -296,7 +293,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let sin = Sin::from(&hooks);
+      let sin = Sin::native(&hooks.as_gc());
       let values = &[val!(std::f64::consts::PI)];
 
       let r = sin.call(&mut hooks, None, values).unwrap();
@@ -312,7 +309,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let cos = Cos::from(&hooks);
+      let cos = Cos::native(&hooks);
 
       assert_eq!(cos.meta().name, "cos");
       assert_eq!(cos.meta().signature.arity, Arity::Fixed(1));
@@ -327,7 +324,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let cos = Cos::from(&hooks);
+      let cos = Cos::native(&hooks.as_gc());
       let values = &[val!(std::f64::consts::FRAC_PI_2)];
 
       let r = cos.call(&mut hooks, None, values).unwrap();
@@ -343,7 +340,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let ln = Ln::from(&hooks);
+      let ln = Ln::native(&hooks);
 
       assert_eq!(ln.meta().name, "ln");
       assert_eq!(ln.meta().signature.arity, Arity::Fixed(1));
@@ -358,7 +355,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let ln = Ln::from(&hooks);
+      let ln = Ln::native(&hooks.as_gc());
       let values = &[val!(std::f64::consts::E)];
       let r = ln.call(&mut hooks, None, values).unwrap();
       assert!((r.to_num() - 1.0).abs() < 0.0000001);
@@ -373,7 +370,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let rand = Rand::from(&hooks);
+      let rand = Rand::native(&hooks);
 
       assert_eq!(rand.meta().name, "rand");
       assert_eq!(rand.meta().signature.arity, Arity::Fixed(0));
@@ -384,7 +381,7 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let rand = Rand::from(&hooks);
+      let rand = Rand::native(&hooks.as_gc());
 
       for _ in 0..10 {
         let r = rand.call(&mut hooks, None, &[]).unwrap();
