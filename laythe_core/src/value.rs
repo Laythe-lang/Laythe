@@ -35,10 +35,8 @@ pub use self::boxed::*;
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
   use crate::{
-    iterator::LyIterator,
     managed::{DebugHeap, DebugWrap, Gc, GcStr, Trace},
-    native::Native,
-    object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
+    object::{Class, Closure, Fun, Instance, List, LyIterator, Map, Method, Native, Upvalue},
   };
 
   use super::{Nil, ValueKind};
@@ -828,10 +826,8 @@ mod unboxed {
 mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
-    iterator::LyIterator,
     managed::{Allocation, DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
-    native::Native,
-    object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
+    object::{Class, Closure, Fun, Instance, List, LyIterator, Map, Method, Native, Upvalue},
   };
 
   use std::ptr::NonNull;

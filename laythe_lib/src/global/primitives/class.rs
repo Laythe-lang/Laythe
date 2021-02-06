@@ -2,8 +2,7 @@ use crate::{native, support::to_dyn_native};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::{Gc, Trace},
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  object::Class,
+  object::{Class, MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::Arity,
   val,
   value::{Value, VALUE_NIL},

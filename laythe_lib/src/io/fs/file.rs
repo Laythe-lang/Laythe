@@ -1,13 +1,19 @@
-use crate::{StdResult, io::{IO_MODULE_PATH, global::{IO_ERROR}}, native_with_error, support::load_class_from_package, support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native}};
+use crate::{
+  io::{global::IO_ERROR, IO_MODULE_PATH},
+  native_with_error,
+  support::load_class_from_package,
+  support::{default_class_inheritance, export_and_insert, load_class_from_module, to_dyn_native},
+  StdResult,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   module::{Module, Package},
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
   Call,
-  managed::Trace
 };
 use std::io::Write;
 use std::path::Path;
@@ -25,7 +31,12 @@ pub fn declare_file(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdR
 
 pub fn define_file(hooks: &GcHooks, module: &Module, std: &Package) -> StdResult<()> {
   let class = load_class_from_module(hooks, module, FILE_CLASS_NAME)?;
-  let io_error = val!(load_class_from_package(hooks, std, IO_MODULE_PATH, IO_ERROR)?);
+  let io_error = val!(load_class_from_package(
+    hooks,
+    std,
+    IO_MODULE_PATH,
+    IO_ERROR
+  )?);
 
   class.meta_class().expect("Meta class not set.").add_method(
     hooks,

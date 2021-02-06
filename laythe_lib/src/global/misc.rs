@@ -4,7 +4,7 @@ use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::{GcStr, Trace},
   module::Module,
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},

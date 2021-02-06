@@ -4,8 +4,7 @@ use crate::{StdResult, io::{IO_MODULE_PATH, global::IO_ERROR}, native_with_error
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   module::{Module, Package},
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  object::Instance,
+  object::{MetaData, Instance, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},

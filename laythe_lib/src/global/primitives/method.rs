@@ -7,7 +7,7 @@ use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::{GcStr, Trace},
   module::Module,
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -110,7 +110,10 @@ mod test {
   mod name {
     use super::*;
     use crate::support::{fun_from_hooks, MockedContext};
-    use laythe_core::{memory::NO_GC, object::{Class, Closure, Instance, Method}};
+    use laythe_core::{
+      memory::NO_GC,
+      object::{Class, Closure, Instance, Method},
+    };
 
     #[test]
     fn new() {

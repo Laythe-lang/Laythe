@@ -7,11 +7,9 @@ use crate::{
 use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
-  iterator::{LyIter, LyIterator},
   managed::{Gc, Trace},
   module::Module,
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  object::List,
+  object::{List, LyIter, LyIterator, MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   utils::is_falsey,
   val,
@@ -885,7 +883,7 @@ impl Native for IterInto {
 mod test {
   use super::*;
   use crate::support::{test_iter, MockedContext};
-  use laythe_core::iterator::LyIterator;
+  use laythe_core::object::LyIterator;
 
   const TEST_FUN: NativeMetaBuilder = NativeMetaBuilder::fun("test", Arity::Fixed(1))
     .with_params(&[ParameterBuilder::new("any", ParameterKind::Any)]);
@@ -1234,7 +1232,7 @@ mod test {
   mod filter {
     use super::*;
     use crate::support::{fun_builder_from_hooks, MockedContext};
-    use laythe_core::{iterator::LyIterator, object::Closure};
+    use laythe_core::object::{Closure, LyIterator};
 
     #[test]
     fn new() {
@@ -1282,7 +1280,7 @@ mod test {
   mod reduce {
     use super::*;
     use crate::support::{fun_builder_from_hooks, MockedContext};
-    use laythe_core::{iterator::LyIterator, object::Closure};
+    use laythe_core::object::{Closure, LyIterator};
 
     #[test]
     fn new() {
@@ -1332,7 +1330,7 @@ mod test {
   mod len {
     use super::*;
     use crate::support::MockedContext;
-    use laythe_core::iterator::LyIterator;
+    use laythe_core::object::LyIterator;
 
     #[test]
     fn new() {
@@ -1366,7 +1364,7 @@ mod test {
   mod each {
     use super::*;
     use crate::support::{fun_builder_from_hooks, MockedContext};
-    use laythe_core::{iterator::LyIterator, object::Closure};
+    use laythe_core::object::{Closure, LyIterator};
 
     #[test]
     fn new() {
@@ -1409,7 +1407,7 @@ mod test {
   mod zip {
     use super::*;
     use crate::support::MockedContext;
-    use laythe_core::iterator::LyIterator;
+    use laythe_core::object::LyIterator;
 
     #[test]
     fn new() {
@@ -1458,7 +1456,7 @@ mod test {
   mod chain {
     use super::*;
     use crate::support::MockedContext;
-    use laythe_core::iterator::LyIterator;
+    use laythe_core::object::LyIterator;
 
     #[test]
     fn new() {
@@ -1511,7 +1509,7 @@ mod test {
   mod all {
     use super::*;
     use crate::support::MockedContext;
-    use laythe_core::{iterator::LyIterator, value::VALUE_TRUE};
+    use laythe_core::{object::LyIterator, value::VALUE_TRUE};
 
     #[test]
     fn new() {
@@ -1552,7 +1550,7 @@ mod test {
   mod any {
     use super::*;
     use crate::support::MockedContext;
-    use laythe_core::{iterator::LyIterator, value::VALUE_TRUE};
+    use laythe_core::{object::LyIterator, value::VALUE_TRUE};
 
     #[test]
     fn new() {
@@ -1593,7 +1591,7 @@ mod test {
   mod into {
     use super::*;
     use crate::support::MockedContext;
-    use laythe_core::{iterator::LyIterator, native::Native};
+    use laythe_core::object::{LyIterator, Native};
 
     const M: NativeMetaBuilder = NativeMetaBuilder::fun("", Arity::Fixed(1))
       .with_params(&[ParameterBuilder::new("", ParameterKind::Any)]);

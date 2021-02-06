@@ -6,10 +6,9 @@ use crate::{
 use laythe_core::{
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
-  iterator::{LyIter, LyIterator},
   managed::{GcStr, Trace},
   module::Module,
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{LyIter, LyIterator, MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},

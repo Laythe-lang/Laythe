@@ -1,16 +1,21 @@
-use crate::{StdResult, io::{IO_MODULE_PATH, global::{IO_ERROR}}, native_with_error, support::load_class_from_package, support::{
+use crate::{
+  io::{global::IO_ERROR, IO_MODULE_PATH},
+  native_with_error,
+  support::load_class_from_package,
+  support::{
     default_class_inheritance, export_and_insert, load_instance_from_module, to_dyn_native,
-  }};
+  },
+  StdResult,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   module::{Module, Package},
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  object::Instance,
+  object::{Instance, MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::Arity,
   val,
   value::Value,
   Call,
-  managed::Trace,
 };
 use std::io::Write;
 
@@ -35,7 +40,12 @@ pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> Std
 pub fn define_stdin(hooks: &GcHooks, module: &Module, std: &Package) -> StdResult<()> {
   let instance = load_instance_from_module(hooks, module, STDIN_INSTANCE_NAME)?;
   let mut class = instance.class();
-  let io_error = val!(load_class_from_package(hooks, std, IO_MODULE_PATH, IO_ERROR)?);
+  let io_error = val!(load_class_from_package(
+    hooks,
+    std,
+    IO_MODULE_PATH,
+    IO_ERROR
+  )?);
 
   class.add_method(
     hooks,

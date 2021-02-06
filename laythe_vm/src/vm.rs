@@ -14,9 +14,9 @@ use laythe_core::{
   managed::{Gc, GcStr, Manage, Trace, TraceRoot},
   memory::Allocator,
   module::{Import, Module, Package},
-  native::{Native, NativeMeta},
-  object::Map,
-  object::{Class, Closure, Fun, FunBuilder, Instance, List, Method, Upvalue},
+  object::{
+    Class, Closure, Fun, FunBuilder, Instance, List, Map, Method, Native, NativeMeta, Upvalue,
+  },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   utils::{is_falsey, ptr_len, IdEmitter},
   val,

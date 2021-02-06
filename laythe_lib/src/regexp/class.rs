@@ -7,15 +7,14 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::{Gc, Trace},
   module::{Module, Package},
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  object::List,
+  object::{List, MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
   value::VALUE_NIL,
   Call,
-  managed::{Gc, Trace},
 };
 use regex::Regex;
 use std::io::Write;

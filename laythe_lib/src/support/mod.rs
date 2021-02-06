@@ -2,8 +2,7 @@ use laythe_core::{
   hooks::GcHooks,
   managed::{Gc, GcStr},
   module::{Import, Module, Package},
-  native::Native,
-  object::{Class, Instance},
+  object::{Class, Instance, Native},
   value::Value,
 };
 
@@ -126,15 +125,12 @@ mod test {
   };
   use laythe_core::{
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
-    iterator::LyIter,
     managed::{Gc, GcStr, Trace, TraceRoot},
     memory::{Allocator, NoGc},
     module::{Module, ModuleResult},
-    native::Native,
-    native::{MetaData, NativeMeta, NativeMetaBuilder},
-    object::Class,
-    object::Fun,
-    object::{FunBuilder, List},
+    object::{
+      Class, Fun, FunBuilder, List, LyIter, MetaData, Native, NativeMeta, NativeMetaBuilder,
+    },
     signature::Arity,
     signature::{ParameterBuilder, ParameterKind},
     utils::IdEmitter,
