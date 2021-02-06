@@ -11,6 +11,7 @@ use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
+  managed::{Gc, GcStr, Trace},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::{List, Map},
@@ -20,7 +21,6 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Gc, GcStr, Trace};
 use std::io::Write;
 use std::mem;
 
@@ -433,10 +433,11 @@ impl Trace for MapIterator {
 mod test {
   use super::*;
   use laythe_core::object::Map;
-  use laythe_env::memory::NO_GC;
 
   #[cfg(test)]
   mod str {
+    use laythe_core::memory::NO_GC;
+
     use super::*;
     use crate::support::{test_error_class, MockedContext};
 

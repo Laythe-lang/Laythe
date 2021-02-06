@@ -2,7 +2,10 @@
 pub mod chunk;
 pub mod constants;
 pub mod hooks;
+pub mod impls;
 pub mod iterator;
+pub mod managed;
+pub mod memory;
 pub mod module;
 pub mod native;
 pub mod object;
@@ -17,7 +20,7 @@ use std::fmt;
 
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
-use laythe_env::managed::Gc;
+use managed::Gc;
 use object::Instance;
 
 #[derive(Clone, PartialEq, Debug)]

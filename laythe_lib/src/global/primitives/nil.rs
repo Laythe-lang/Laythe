@@ -11,8 +11,8 @@ use laythe_core::{
   val,
   value::Value,
   Call,
+  managed::Trace
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 use super::class_inheritance;

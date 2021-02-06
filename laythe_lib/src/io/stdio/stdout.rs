@@ -9,6 +9,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   module::{Module, Package},
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::Instance,
@@ -17,7 +18,6 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 const STDOUT_CLASS_NAME: &str = "Stdout";

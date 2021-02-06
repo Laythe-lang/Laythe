@@ -15,8 +15,8 @@ use laythe_core::{
   value::Value,
   value::VALUE_NIL,
   Call,
+  managed::{Gc, Trace},
 };
-use laythe_env::managed::{Gc, Trace};
 use regex::Regex;
 use std::io::Write;
 

@@ -7,6 +7,7 @@ use laythe_core::{
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
+  managed::{GcStr, Trace},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -14,7 +15,6 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyResult,
 };
-use laythe_env::managed::{GcStr, Trace};
 use std::{io::Write, str::Split};
 use std::{mem, str::Chars};
 

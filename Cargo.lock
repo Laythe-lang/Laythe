@@ -351,7 +351,6 @@ name = "laythe"
 version = "0.1.0"
 dependencies = [
  "jemallocator",
- "laythe_env",
  "laythe_vm",
 ]
 
@@ -379,7 +378,6 @@ name = "laythe_frontend_bench"
 version = "0.1.0"
 dependencies = [
  "laythe_core",
- "laythe_env",
  "laythe_native",
  "laythe_vm",
 ]

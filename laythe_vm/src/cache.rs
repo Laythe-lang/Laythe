@@ -1,8 +1,7 @@
 use core::panic;
 use std::vec;
 
-use laythe_core::{object::Class, utils::IdEmitter, value::Value};
-use laythe_env::managed::Gc;
+use laythe_core::{managed::Gc, object::Class, utils::IdEmitter, value::Value};
 
 /// The cache for property access and setting
 #[derive(Clone)]
@@ -197,12 +196,12 @@ mod test {
     use crate::cache::InlineCache;
     use laythe_core::{
       chunk::AlignedByteCode,
+      memory::{Allocator, NO_GC},
       module::Module,
       object::{Class, FunBuilder},
       val,
       value::Value,
     };
-    use laythe_env::memory::{Allocator, NO_GC};
     use std::path::PathBuf;
 
     #[test]

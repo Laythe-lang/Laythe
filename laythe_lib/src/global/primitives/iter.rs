@@ -8,7 +8,8 @@ use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
-  module::{Module},
+  managed::{Gc, Trace},
+  module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::List,
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -17,7 +18,6 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 use std::mem;
 

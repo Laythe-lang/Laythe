@@ -1,8 +1,7 @@
 use std::mem;
 
 use super::{ModuleError, ModuleResult};
-use crate::{hooks::GcHooks, object::List};
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
+use crate::{hooks::GcHooks, managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace}, object::List};
 
 /// An object representing an import request from a file
 pub struct Import {
@@ -68,7 +67,7 @@ impl Manage for Import {
     mem::size_of::<Self>()
   }
 
-  fn as_debug(&self) -> &dyn laythe_env::managed::DebugHeap {
+  fn as_debug(&self) -> &dyn DebugHeap {
     self
   }
 }

@@ -4,10 +4,10 @@ mod stdout;
 
 use laythe_core::{
   hooks::GcHooks,
+  managed::Gc,
   module::{Module, Package},
   utils::IdEmitter,
 };
-use laythe_env::managed::Gc;
 use std::path::PathBuf;
 use stderr::{declare_stderr, define_stderr};
 use stdin::{declare_stdin, define_stdin};

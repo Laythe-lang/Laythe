@@ -1,7 +1,9 @@
-use crate::value::Value;
+use crate::{
+  managed::{DebugHeap, DebugWrap, Manage, Trace},
+  value::Value,
+};
 use fnv::FnvBuildHasher;
 use hashbrown::{hash_map, HashMap};
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Trace};
 use std::{fmt, hash::Hash, io::Write, mem};
 
 #[derive(Clone, Debug)]

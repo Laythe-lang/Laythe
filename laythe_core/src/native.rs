@@ -1,10 +1,10 @@
 use crate::{
   hooks::{GcHooks, Hooks},
+  managed::{DebugHeap, DebugWrap, GcStr, Manage, Trace},
   signature::{Arity, Environment, ParameterBuilder, Signature, SignatureBuilder},
   value::Value,
   Call,
 };
-use laythe_env::managed::{DebugHeap, DebugWrap, GcStr, Manage, Trace};
 use std::{fmt, io::Write};
 use std::{mem, ptr};
 

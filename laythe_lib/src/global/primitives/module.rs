@@ -1,5 +1,4 @@
-use laythe_core::{hooks::GcHooks, object::Class};
-use laythe_env::managed::Gc;
+use laythe_core::{hooks::GcHooks, managed::Gc, object::Class};
 
 pub const MODULE_CLASS_NAME: &str = "Module";
 

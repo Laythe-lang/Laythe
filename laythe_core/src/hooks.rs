@@ -4,14 +4,12 @@ use std::{
 };
 
 use crate::{
+  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
+  memory::Allocator,
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::{
-  io::Io,
-  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
-  memory::Allocator,
-};
+use laythe_env::io::Io;
 
 /// A set of commands that a native function to request from it's surrounding
 /// context
@@ -130,7 +128,7 @@ impl<'a> GcHooks<'a> {
   /// ```
   /// use laythe_core::hooks::{GcHooks, NoContext};
   /// use laythe_core::value::Value;
-  /// use laythe_env::memory::Allocator;
+  /// use laythe_core::memory::Allocator;
   ///
   /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);

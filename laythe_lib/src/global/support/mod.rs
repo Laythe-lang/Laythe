@@ -1,12 +1,12 @@
 use crate::native;
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::Arity,
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 const TEST_META: NativeMetaBuilder = NativeMetaBuilder::fun("test", Arity::Fixed(0));

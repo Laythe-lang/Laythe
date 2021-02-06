@@ -5,6 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -12,7 +13,6 @@ use laythe_core::{
   value::Value,
   Call,
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 use super::class_inheritance;

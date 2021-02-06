@@ -8,12 +8,12 @@ pub use package::Package;
 
 use crate::{
   hooks::GcHooks,
+  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
   object::{Class, Instance, Map},
   value::Value,
   LyHashSet,
 };
 use hashbrown::hash_map;
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write};
 use std::{mem, path::PathBuf};
 

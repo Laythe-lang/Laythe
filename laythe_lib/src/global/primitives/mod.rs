@@ -25,9 +25,8 @@ use class::create_class_class;
 use closure::{declare_closure_class, define_closure_class};
 use iter::{declare_iter_class, define_iter_class};
 use laythe_core::{
-  hooks::GcHooks, module::Module, object::Class, utils::IdEmitter, val, value::Value,
+  hooks::GcHooks, managed::Gc, module::Module, object::Class, utils::IdEmitter, val, value::Value,
 };
-use laythe_env::managed::Gc;
 use list::{declare_list_class, define_list_class};
 use map::{declare_map_class, define_map_class};
 use method::{declare_method_class, define_method_class};

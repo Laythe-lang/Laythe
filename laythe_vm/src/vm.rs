@@ -11,6 +11,8 @@ use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
+  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
+  memory::Allocator,
   module::{Import, Module, Package},
   native::{Native, NativeMeta},
   object::Map,
@@ -21,11 +23,7 @@ use laythe_core::{
   value::{Value, ValueKind, VALUE_NIL, VALUE_TRUE},
   Call,
 };
-use laythe_env::{
-  io::Io,
-  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
-  memory::Allocator,
-};
+use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
 use laythe_native::io::io_native;
 use std::convert::TryInto;

@@ -39,7 +39,7 @@ mod unboxed {
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Trace};
+  use laythe_core::managed::{DebugHeap, DebugWrap, Gc, GcStr, Trace};
 
   use super::{Nil, ValueKind};
   use std::fmt;
@@ -198,7 +198,7 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::hooks::{Hooks, NoContext};
-    /// use laythe_env::memory::Allocator;
+    /// use laythe_core::memory::Allocator;
     ///
     /// let gc = Allocator::default();
     /// let mut context = NoContext::new(&gc);
@@ -222,7 +222,7 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::List;
-    /// use laythe_env::managed::{Allocation, Gc};
+    /// use laythe_core::managed::{Allocation, Gc};
     ///
     /// use std::ptr::NonNull;
     ///
@@ -247,7 +247,7 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_env::managed::{Allocation, Gc};
+    /// use laythe_core::managed::{Allocation, Gc};
     /// use laythe_core::object::Map;
     /// use laythe_core::hooks::{Hooks, support::TestContext};
     ///
@@ -282,7 +282,7 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::Fun;
     /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Gc;
+    /// use laythe_core::managed::Gc;
     ///
     /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
@@ -317,7 +317,7 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Fun};
     /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Gc;
+    /// use laythe_core::managed::Gc;
     ///
     /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
@@ -344,7 +344,7 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Closure, Method};
     /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Gc;
+    /// use laythe_core::managed::Gc;
     ///
     /// let mut context = TestContext::default();
     /// let hooks = Hooks::new(&mut context);
@@ -771,10 +771,10 @@ mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
     iterator::LyIterator,
+    managed::{Allocation, DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_env::managed::{Allocation, DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 
   use std::ptr::NonNull;
   use std::{fmt, io::Write};
@@ -1252,12 +1252,10 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
-    module::Module,
-    object::{Class, Closure, Fun, List, Map},
-  };
-  use laythe_env::{
     managed::{Allocation, Gc, GcStr},
     memory::{Allocator, NO_GC},
+    module::Module,
+    object::{Class, Closure, Fun, List, Map},
   };
   use std::{path::PathBuf, ptr::NonNull};
 

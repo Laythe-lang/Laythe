@@ -8,6 +8,7 @@ use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   iterator::{LyIter, LyIterator},
+  managed::{Gc, GcStr, Trace},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::List,
@@ -17,7 +18,6 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyResult,
 };
-use laythe_env::managed::{Gc, GcStr, Trace};
 use std::{cmp::Ordering, io::Write};
 use std::{mem, slice::Iter};
 
@@ -767,9 +767,10 @@ mod test {
   }
 
   mod str {
+    use laythe_core::memory::NO_GC;
+
     use super::*;
     use crate::support::{test_error_class, test_native_dependencies, MockedContext};
-    use laythe_env::memory::NO_GC;
 
     #[test]
     fn new() {

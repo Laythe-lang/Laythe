@@ -5,7 +5,7 @@ use crate::{
   LyHashSet,
 };
 use hashbrown::hash_map;
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
+use laythe_core::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write};
 use std::{mem, path::PathBuf};
 

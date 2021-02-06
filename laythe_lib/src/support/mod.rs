@@ -1,11 +1,11 @@
 use laythe_core::{
   hooks::GcHooks,
+  managed::{Gc, GcStr},
   module::{Import, Module, Package},
   native::Native,
   object::{Class, Instance},
   value::Value,
 };
-use laythe_env::managed::{Gc, GcStr};
 
 pub fn to_dyn_native<T: 'static + Native>(hooks: &GcHooks, method: T) -> Gc<Box<dyn Native>> {
   hooks.manage(Box::new(method) as Box<dyn Native>)
@@ -127,6 +127,8 @@ mod test {
   use laythe_core::{
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
     iterator::LyIter,
+    managed::{Gc, GcStr, Trace, TraceRoot},
+    memory::{Allocator, NoGc},
     module::{Module, ModuleResult},
     native::Native,
     native::{MetaData, NativeMeta, NativeMetaBuilder},
@@ -142,8 +144,6 @@ mod test {
   };
   use laythe_env::{
     io::Io,
-    managed::{Gc, GcStr, Trace, TraceRoot},
-    memory::{Allocator, NoGc},
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
   use std::{cell::RefCell, io::Write, path::PathBuf, sync::Arc};

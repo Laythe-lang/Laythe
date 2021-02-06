@@ -1,6 +1,10 @@
 use super::{error::ModuleResult, import::Import, Module, ModuleError};
-use crate::{hooks::GcHooks, object::Instance, value::Value};
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
+use crate::{
+  hooks::GcHooks,
+  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
+  object::Instance,
+  value::Value,
+};
 use std::mem;
 use std::{fmt, io::Write};
 
@@ -101,13 +105,11 @@ mod test {
 
   use super::Package;
   use crate::{
+    managed::Gc,
+    memory::{Allocator, NO_GC},
     module::{Import, Module, ModuleError},
     object::{test_class, Class},
     val,
-  };
-  use laythe_env::{
-    managed::Gc,
-    memory::{Allocator, NO_GC},
   };
 
   fn test_module(alloc: &mut Allocator, name: &str) -> Gc<Module> {
@@ -118,8 +120,6 @@ mod test {
 
   #[test]
   fn new() {
-    use laythe_env::memory::{Allocator, NO_GC};
-
     let mut gc = Allocator::default();
     let name = "example";
 
@@ -129,7 +129,6 @@ mod test {
 
   #[test]
   fn name() {
-    use laythe_env::memory::{Allocator, NO_GC};
 
     let mut gc = Allocator::default();
     let name = "example";

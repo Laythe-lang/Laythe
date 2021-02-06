@@ -32,7 +32,7 @@ impl<T: 'static + Manage> Allocation<T> {
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::managed::Allocation;
+  /// use laythe_core::managed::Allocation;
   /// use std::path::PathBuf;
   ///
   /// let alloc = Allocation::new(20u128);

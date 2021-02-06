@@ -1,12 +1,6 @@
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write, mem};
 
-use crate::{
-  chunk::{AlignedByteCode, Chunk, ChunkBuilder},
-  module::Module,
-  signature::Arity,
-  value::Value,
-};
+use crate::{chunk::{AlignedByteCode, Chunk, ChunkBuilder}, managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace}, module::Module, signature::Arity, value::Value};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FunKind {

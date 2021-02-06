@@ -1,5 +1,4 @@
-use laythe_core::{object::Closure, value::Value};
-use laythe_env::managed::Gc;
+use laythe_core::{managed::Gc, object::Closure, value::Value};
 
 /// A call frame in the space lox interpreter
 #[derive(Clone, Copy, PartialEq)]

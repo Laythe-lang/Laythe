@@ -1,9 +1,9 @@
 use crate::{
   hooks::Hooks,
+  managed::{DebugHeap, Manage, Trace},
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{DebugHeap, Manage, Trace};
 use std::mem;
 use std::{fmt, io::Write};
 
@@ -74,7 +74,7 @@ impl Manage for LyIterator {
     mem::size_of::<LyIterator>() + self.iterator.size()
   }
 
-  fn as_debug(&self) -> &dyn laythe_env::managed::DebugHeap {
+  fn as_debug(&self) -> &dyn DebugHeap {
     self
   }
 }

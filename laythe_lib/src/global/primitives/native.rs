@@ -5,6 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -12,7 +13,6 @@ use laythe_core::{
   value::Value,
   Call,
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 use super::class_inheritance;
@@ -68,11 +68,10 @@ impl Native for NativeCall {
 mod test {
   use super::*;
   use crate::{global::support::TestNative, support::MockedContext};
-  use laythe_env::managed::Gc;
 
   mod name {
     use super::*;
-    use laythe_core::native::Native;
+    use laythe_core::{managed::Gc, native::Native};
 
     #[test]
     fn new() {
@@ -103,7 +102,7 @@ mod test {
   mod call {
     use super::*;
     use crate::{global::support::TestNative, support::MockedContext};
-    use laythe_core::{native::Native, value::VALUE_NIL};
+    use laythe_core::{managed::Gc, native::Native, value::VALUE_NIL};
 
     #[test]
     fn new() {

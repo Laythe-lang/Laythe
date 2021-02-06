@@ -21,7 +21,7 @@ use super::{gc_array::Header, utils::make_array_layout, Marked, Unmark};
 ///
 /// ## Example
 /// ```
-/// use laythe_env::managed::{GcStr, GcStrHandle};
+/// use laythe_core::managed::{GcStr, GcStrHandle};
 /// use std::mem;
 ///
 /// let str = "my string";
@@ -45,7 +45,7 @@ impl GcStr {
   ///
   /// ## Example
   /// ```
-  /// use laythe_env::managed::{GcStr, GcStrHandle};
+  /// use laythe_core::managed::{GcStr, GcStrHandle};
   ///
   /// let handle = GcStrHandle::from("some string");
   /// let value = handle.value();
@@ -61,7 +61,7 @@ impl GcStr {
   ///
   /// ## Example
   /// ```
-  /// use laythe_env::managed::{GcStr, GcStrHandle};
+  /// use laythe_core::managed::{GcStr, GcStrHandle};
   ///
   /// let handle = GcStrHandle::from("some string");
   /// let value = handle.value();
@@ -221,7 +221,7 @@ impl AsRef<str> for GcStr {
 ///
 /// ## Example
 /// ```
-/// use laythe_env::managed::GcStrHandle;
+/// use laythe_core::managed::GcStrHandle;
 /// use std::mem;
 ///
 /// let data = &"example";
@@ -236,7 +236,7 @@ impl GcStrHandle {
   ///
   /// ## Examples
   /// ```
-  /// use laythe_env::managed::GcStrHandle;
+  /// use laythe_core::managed::GcStrHandle;
   /// use std::mem;
   ///
   /// let data = &"example";
@@ -258,7 +258,7 @@ impl GcStrHandle {
   ///
   /// ## Examples
   /// ```
-  /// use laythe_env::managed::GcStrHandle;
+  /// use laythe_core::managed::GcStrHandle;
   /// use std::mem;
   ///
   /// let data = &"example";

@@ -12,10 +12,10 @@ use global::create_std_core;
 use io::add_io_package;
 use laythe_core::{
   hooks::GcHooks,
+  managed::Gc,
   module::{ModuleError, Package},
   utils::IdEmitter,
 };
-use laythe_env::managed::Gc;
 use math::add_math_module;
 use regexp::regexp_module;
 

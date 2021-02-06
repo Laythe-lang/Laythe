@@ -5,6 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::Arity,
@@ -12,7 +13,6 @@ use laythe_core::{
   value::Value,
   Call,
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 const CLOCK_META: NativeMetaBuilder = NativeMetaBuilder::fun("clock", Arity::Fixed(0));
@@ -66,7 +66,7 @@ mod test {
 
     let result1 = clock.call(&mut hooks, None, values).unwrap();
     let result2 = clock.call(&mut hooks, None, values).unwrap();
-    
+
     if result1.is_num() && result2.is_num() {
       assert!(result1.to_num() <= result2.to_num());
     } else {

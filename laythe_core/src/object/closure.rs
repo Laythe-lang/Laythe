@@ -1,6 +1,5 @@
 use super::{Fun, Upvalue};
-use crate::value::Value;
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
+use crate::{managed::{DebugHeap, DebugWrap, Gc, Manage, Trace}, value::Value};
 use std::{fmt, io::Write, mem};
 
 #[derive(PartialEq, Clone)]

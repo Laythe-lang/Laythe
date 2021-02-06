@@ -5,6 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::{GcStr, Trace},
   module::{Module, Package},
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -12,7 +13,6 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{GcStr, Trace};
 use std::io::Write;
 
 pub const ASSERT_ERROR_NAME: &str = "AssertError";

@@ -19,7 +19,7 @@ use super::utils::{get_offset, make_array_layout};
 ///
 /// ## Example
 /// ```
-/// use laythe_env::managed::{GcArray, GcArrayHandle};
+/// use laythe_core::managed::{GcArray, GcArrayHandle};
 /// use std::mem;
 ///
 /// let data: &[u32] = &[1, 2, 3, 4];
@@ -168,7 +168,7 @@ unsafe impl<T: Sync> Sync for GcArray<T> {}
 ///
 /// ## Example
 /// ```
-/// use laythe_env::managed::GcArrayHandle;
+/// use laythe_core::managed::GcArrayHandle;
 /// use std::mem;
 ///
 /// let data: &[u32] = &[1, 2, 3, 4];
@@ -183,7 +183,7 @@ impl<T> GcArrayHandle<T> {
   ///
   /// ## Examples
   /// ```
-  /// use laythe_env::managed::GcArrayHandle;
+  /// use laythe_core::managed::GcArrayHandle;
   /// use std::mem;
   ///
   /// let data: &[u32] = &[1, 2, 3, 4];

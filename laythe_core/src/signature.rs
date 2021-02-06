@@ -1,8 +1,8 @@
 use crate::{
   hooks::GcHooks,
+  managed::{GcStr, Trace},
   value::{Value, ValueKind},
 };
-use laythe_env::managed::{GcStr, Trace};
 use std::{fmt::Display, io::Write};
 
 #[derive(Debug, PartialEq, Clone, Copy)]

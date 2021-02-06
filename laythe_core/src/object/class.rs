@@ -1,8 +1,7 @@
-use crate::constants::{INDEX_GET, INDEX_SET, INIT};
+use crate::{constants::{INDEX_GET, INDEX_SET, INIT}, managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace}};
 use crate::{hooks::GcHooks, value::Value};
 use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write, mem};
 
 #[derive(PartialEq, Clone)]

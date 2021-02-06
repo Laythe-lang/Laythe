@@ -1,5 +1,7 @@
-use crate::value::Value;
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Trace};
+use crate::{
+  managed::{DebugHeap, DebugWrap, Manage, Trace},
+  value::Value,
+};
 use std::{
   fmt,
   io::Write,

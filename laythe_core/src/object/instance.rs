@@ -1,13 +1,14 @@
+use super::Class;
+use crate::{
+  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
+  value::{Value, VALUE_NIL},
+};
 use std::{
   fmt,
   io::Write,
   mem,
   ops::{Index, IndexMut},
 };
-
-use super::Class;
-use crate::value::{Value, VALUE_NIL};
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 
 #[derive(PartialEq, Clone)]
 pub struct Instance {

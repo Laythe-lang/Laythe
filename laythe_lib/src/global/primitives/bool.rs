@@ -6,6 +6,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::Arity,
@@ -13,7 +14,6 @@ use laythe_core::{
   value::{Value, VALUE_TRUE},
   Call,
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 pub const BOOL_CLASS_NAME: &str = "Bool";

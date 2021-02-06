@@ -5,6 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::{Gc, Trace},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::List,
@@ -13,7 +14,6 @@ use laythe_core::{
   value::Value,
   Call,
 };
-use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 
 const ARGS_META: NativeMetaBuilder = NativeMetaBuilder::fun("args", Arity::Fixed(0));

@@ -2,6 +2,7 @@ use crate::{native, support::to_dyn_native};
 use laythe_core::{
   constants::OBJECT,
   hooks::{GcHooks, Hooks},
+  managed::{Gc, Trace},
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   object::Class,
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -9,7 +10,6 @@ use laythe_core::{
   value::Value,
   Call,
 };
-use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 
 pub const OBJECT_CLASS_NAME: &str = OBJECT;

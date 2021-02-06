@@ -2,11 +2,11 @@ use std::io::Write;
 
 use laythe_core::{
   hooks::GcHooks,
+  managed::{Gc, Trace},
   module::Module,
   object::Class,
   value::{Value, ValueKind},
 };
-use laythe_env::managed::{Gc, Trace};
 
 use crate::global::{
   BOOL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, EXPORT_ERROR_NAME, IMPORT_ERROR_NAME,

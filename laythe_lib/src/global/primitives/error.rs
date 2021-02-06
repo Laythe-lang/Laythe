@@ -12,8 +12,8 @@ use laythe_core::{
   val,
   value::Value,
   Call,
+  managed::{Gc, Trace}
 };
-use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 
 use super::error_inheritance;

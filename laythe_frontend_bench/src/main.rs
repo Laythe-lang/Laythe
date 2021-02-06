@@ -1,11 +1,9 @@
 use laythe_core::{
   hooks::{GcHooks, NoContext},
-  module::Module,
-  object::Class,
-};
-use laythe_env::{
   managed::Gc,
   memory::{Allocator, NO_GC},
+  module::Module,
+  object::Class,
 };
 use laythe_vm::compiler::{Compiler, Parser};
 use std::env;

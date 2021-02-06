@@ -2,6 +2,7 @@ use crate::{native, support::export_and_insert, StdError, StdResult};
 use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
+  managed::{GcStr, Trace},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -9,7 +10,6 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{GcStr, Trace};
 use std::io::Write;
 
 pub fn add_misc_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
@@ -115,7 +115,7 @@ mod test {
 
   #[cfg(test)]
   mod print {
-    use laythe_env::memory::NO_GC;
+    use laythe_core::memory::NO_GC;
 
     use super::*;
     use crate::support::MockedContext;

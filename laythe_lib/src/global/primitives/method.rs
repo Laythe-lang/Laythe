@@ -5,6 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::{GcStr, Trace},
   module::Module,
   native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -12,7 +13,6 @@ use laythe_core::{
   value::Value,
   Call,
 };
-use laythe_env::managed::{GcStr, Trace};
 use std::io::Write;
 
 use super::class_inheritance;
@@ -110,8 +110,7 @@ mod test {
   mod name {
     use super::*;
     use crate::support::{fun_from_hooks, MockedContext};
-    use laythe_core::object::{Class, Closure, Instance, Method};
-    use laythe_env::memory::NO_GC;
+    use laythe_core::{memory::NO_GC, object::{Class, Closure, Instance, Method}};
 
     #[test]
     fn new() {

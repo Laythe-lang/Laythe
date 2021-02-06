@@ -8,7 +8,7 @@ use std::{
   slice::{self, SliceIndex},
 };
 
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Trace};
+use crate::managed::{DebugHeap, DebugWrap, Manage, Trace};
 
 #[derive(Clone, Debug)]
 pub struct List<T>(Vec<T>);

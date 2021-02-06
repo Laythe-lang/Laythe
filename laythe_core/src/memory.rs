@@ -1,8 +1,8 @@
 use crate::managed::{
   Allocation, Gc, GcStr, GcStrHandle, Manage, Marked, Trace, TraceRoot, Unmark,
 };
-use crate::stdio::Stdio;
 use hashbrown::HashMap;
+use laythe_env::stdio::Stdio;
 use std::ptr::NonNull;
 use std::{cell::RefCell, io::Write};
 
@@ -52,7 +52,7 @@ impl<'a> Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::memory::Allocator;
+  /// use laythe_core::memory::Allocator;
   /// use laythe_env::stdio::Stdio;
   ///
   /// let gc = Allocator::new(Stdio::default());
@@ -87,7 +87,7 @@ impl<'a> Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::memory::{Allocator, NO_GC};
+  /// use laythe_core::memory::{Allocator, NO_GC};
   ///
   /// let mut gc = Allocator::default();
   /// let path = gc.manage(10u128, &NO_GC);
@@ -109,7 +109,7 @@ impl<'a> Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::memory::{Allocator, NO_GC};
+  /// use laythe_core::memory::{Allocator, NO_GC};
   ///
   /// let mut gc = Allocator::default();
   /// let str = gc.manage_str("hi!", &NO_GC);

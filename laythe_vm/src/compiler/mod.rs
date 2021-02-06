@@ -19,17 +19,15 @@ use laythe_core::{
   constants::OBJECT,
   constants::{ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::{GcContext, GcHooks},
+  managed::{DebugHeap, Gc, GcStr, Manage, Trace, TraceRoot},
+  memory::Allocator,
   module, object,
   object::{FunBuilder, FunKind, List, Map},
   signature::Arity,
   val,
   value::Value,
 };
-use laythe_env::{
-  io::Io,
-  managed::{DebugHeap, Gc, GcStr, Manage, Trace, TraceRoot},
-  memory::Allocator,
-};
+use laythe_env::io::Io;
 use object::{Fun, TryBlock};
 use std::{
   cell::{RefCell, RefMut},
@@ -228,8 +226,6 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   /// use laythe_core::{
   ///   module::Module,
   ///   object::Class,
-  /// };
-  /// use laythe_env::{
   ///   memory::{NO_GC, Allocator},
   /// };
   /// use std::path::PathBuf;
@@ -1857,12 +1853,13 @@ impl<'a, FileId> TraceRoot for Compiler<'a, FileId> {
 mod test {
   use super::*;
   use crate::{compiler::Parser, debug::disassemble_chunk};
-  use laythe_core::chunk::{decode_u16, decode_u32};
-  use laythe_core::{hooks::NoContext, object::Class};
-  use laythe_env::{
+  use laythe_core::{
+    chunk::{decode_u16, decode_u32},
+    hooks::NoContext,
     memory::NO_GC,
-    stdio::{support::StdioTestContainer, Stdio},
+    object::Class,
   };
+  use laythe_env::stdio::{support::StdioTestContainer, Stdio};
   use module::Module;
   use std::path::PathBuf;
 

@@ -2,9 +2,10 @@ use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use laythe_core::module::Module;
 use laythe_core::{
   hooks::{GcHooks, NoContext},
+  managed::Gc,
+  memory::NO_GC,
   object::Class,
 };
-use laythe_env::{managed::Gc, memory::NO_GC};
 use laythe_vm::compiler::Compiler;
 use laythe_vm::compiler::Parser;
 use std::fs::File;
