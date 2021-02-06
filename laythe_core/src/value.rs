@@ -36,10 +36,10 @@ pub use self::boxed::*;
 mod unboxed {
   use crate::{
     iterator::LyIterator,
+    managed::{DebugHeap, DebugWrap, Gc, GcStr, Trace},
     native::Native,
     object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
   };
-  use laythe_core::managed::{DebugHeap, DebugWrap, Gc, GcStr, Trace};
 
   use super::{Nil, ValueKind};
   use std::fmt;
@@ -201,7 +201,7 @@ mod unboxed {
     /// use laythe_core::memory::Allocator;
     ///
     /// let gc = Allocator::default();
-    /// let mut context = NoContext::new(&gc);
+    /// let mut context = NoContext::new(gc);
     /// let hooks = Hooks::new(&mut context);
     /// let managed =  hooks.manage_str("example");
     ///
@@ -249,9 +249,9 @@ mod unboxed {
     /// use laythe_core::value::Value;
     /// use laythe_core::managed::{Allocation, Gc};
     /// use laythe_core::object::Map;
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_core::hooks::{Hooks, NoContext};
     ///
-    /// let mut context = TestContext::default();
+    /// let mut context = NoContext::default();
     /// let hooks = Hooks::new(&mut context);
     /// let map: Map<Value, Value> = Map::default();
     ///
@@ -280,18 +280,23 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_core::object::Fun;
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_core::object::{Fun, FunBuilder, Class};
+    /// use laythe_core::module::Module;
+    /// use laythe_core::hooks::{Hooks, NoContext};
     /// use laythe_core::managed::Gc;
+    /// use std::path::PathBuf;
     ///
-    /// let mut context = TestContext::default();
+    /// let mut context = NoContext::default();
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Gc::dangling());
+    /// let class = Class::bare(hooks.manage_str("module"));
+    /// let module = Module::new(hooks.manage(class), PathBuf::new(), 0);
+    ///
+    /// let fun: Fun = FunBuilder::new(hooks.manage_str("add"), hooks.manage(module)).build();
     /// let managed = hooks.manage(fun);
     ///
     /// let value = Value::Fun(managed);
-    /// assert_eq!(&*value.to_fun().name, "add");
+    /// assert_eq!(&*value.to_fun().name(), "add");
     /// ```
     #[inline]
     pub fn to_fun(&self) -> Gc<Fun> {
@@ -315,20 +320,26 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_core::object::{Closure, Fun};
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_core::object::{Closure, Fun, FunBuilder, Class};
+    /// use laythe_core::hooks::{Hooks, NoContext};
+    /// use laythe_core::module::Module;
     /// use laythe_core::managed::Gc;
+    /// use std::path::PathBuf;
     ///
-    /// let mut context = TestContext::default();
+    /// let mut context = NoContext::default();
     /// let hooks = Hooks::new(&mut context);
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Gc::dangling());
+    ///
+    /// let class = Class::bare(hooks.manage_str("module"));
+    /// let module = Module::new(hooks.manage(class), PathBuf::new(), 0);
+    ///
+    /// let fun: Fun = FunBuilder::new(hooks.manage_str("add"), hooks.manage(module)).build();
     /// let managed_fun = hooks.manage(fun);
     ///
-    /// let closure = Closure::new(managed_fun);
+    /// let closure = Closure::new(managed_fun, vec![].into_boxed_slice());
     /// let managed_closure = hooks.manage(closure);
     ///
     /// let value = Value::Closure(managed_closure);
-    /// assert_eq!(&*value.to_closure().fun.name.clone(), "add");
+    /// assert_eq!(&*value.to_closure().fun().name().clone(), "add");
     /// ```
     pub fn to_closure(&self) -> Gc<Closure> {
       match self {
@@ -342,14 +353,25 @@ mod unboxed {
     /// # Examples
     /// ```
     /// use laythe_core::value::Value;
-    /// use laythe_core::object::{Closure, Method};
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_core::object::{Closure, Method, Class, Fun, FunBuilder};
+    /// use laythe_core::hooks::{Hooks, NoContext};
+    /// use laythe_core::module::Module;
     /// use laythe_core::managed::Gc;
+    /// use std::path::PathBuf;
     ///
-    /// let mut context = TestContext::default();
+    /// let mut context = NoContext::default();
     /// let hooks = Hooks::new(&mut context);
     ///
-    /// let method = Method::new(Value::Nil, Value::Closure(Gc::dangling()));
+    /// let class = Class::bare(hooks.manage_str("module"));
+    /// let module = Module::new(hooks.manage(class), PathBuf::new(), 0);
+    ///
+    /// let fun: Fun = FunBuilder::new(hooks.manage_str("add"), hooks.manage(module)).build();
+    /// let managed_fun = hooks.manage(fun);
+    ///
+    /// let closure = Closure::new(managed_fun, vec![].into_boxed_slice());
+    /// let managed_closure = hooks.manage(closure);
+    ///
+    /// let method = Method::new(Value::Nil, Value::Closure(managed_closure));
     /// let managed_method = hooks.manage(method);
     ///
     /// let value = Value::Method(managed_method);
@@ -368,10 +390,10 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::Upvalue;
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_core::hooks::{Hooks, NoContext};
     /// use std::ptr::NonNull;
     ///
-    /// let mut context = TestContext::default();
+    /// let mut context = NoContext::default();
     /// let hooks = Hooks::new(&mut context);
     /// let value = Value::Number(5.0);
     /// let upvalue = hooks.manage(Upvalue::Open(NonNull::from(&value)));
@@ -395,15 +417,15 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Instance, Class};
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_core::hooks::{Hooks, NoContext};
     ///
-    /// let mut context = TestContext::default();
+    /// let mut context = NoContext::default();
     /// let hooks = Hooks::new(&mut context);
     /// let name = hooks.manage_str("example");
     /// let class = hooks.manage(Class::bare(name));
     ///
     /// let value = Value::Class(class);
-    /// assert_eq!(value.to_class().name, name);
+    /// assert_eq!(value.to_class().name(), name);
     /// ```
     pub fn to_class(&self) -> Gc<Class> {
       match self {
@@ -418,16 +440,16 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::object::{Instance, Class};
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
+    /// use laythe_core::hooks::{Hooks, NoContext};
     ///
-    /// let mut context = TestContext::default();
+    /// let mut context = NoContext::default();
     /// let hooks = Hooks::new(&mut context);
     /// let name = hooks.manage_str("example".to_string());
     /// let class = hooks.manage(Class::bare(name));
     /// let instance = hooks.manage(Instance::new(class));
     ///
     /// let value = Value::Instance(instance);
-    /// assert_eq!(value.to_instance().class, class);
+    /// assert_eq!(value.to_instance().class(), class);
     pub fn to_instance(&self) -> Gc<Instance> {
       match self {
         Self::Instance(instance) => *instance,
@@ -762,6 +784,42 @@ mod unboxed {
         Value::Upvalue(upvalue) => f.write_fmt(format_args!("{:?}", DebugWrap(upvalue, depth))),
         Value::Native(native) => f.write_fmt(format_args!("{:?}", DebugWrap(native, depth))),
       }
+    }
+  }
+
+  #[cfg(test)]
+  mod test {
+    use super::*;
+    use std::mem;
+
+    #[test]
+    fn size() {
+      assert_eq!(mem::size_of::<List<Value>>(), 24);
+      assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
+      assert_eq!(mem::size_of::<Closure>(), 24);
+      assert_eq!(mem::size_of::<Fun>(), 104);
+      assert_eq!(mem::size_of::<Class>(), 136);
+      assert_eq!(mem::size_of::<Instance>(), 24);
+      assert_eq!(mem::size_of::<Method>(), 32);
+      assert_eq!(mem::size_of::<LyIterator>(), 32);
+      assert_eq!(mem::size_of::<Box<dyn Native>>(), 16);
+      assert_eq!(mem::size_of::<Upvalue>(), 24);
+    }
+
+    #[test]
+    fn alignment() {
+      let target: usize = 8;
+
+      assert_eq!(mem::align_of::<List<Value>>(), target);
+      assert_eq!(mem::align_of::<Map<Value, Value>>(), target);
+      assert_eq!(mem::align_of::<Closure>(), target);
+      assert_eq!(mem::align_of::<Fun>(), target);
+      assert_eq!(mem::align_of::<Class>(), target);
+      assert_eq!(mem::align_of::<Instance>(), target);
+      assert_eq!(mem::align_of::<Method>(), target);
+      assert_eq!(mem::align_of::<LyIterator>(), target);
+      assert_eq!(mem::align_of::<Box<dyn Native>>(), target);
+      assert_eq!(mem::align_of::<Upvalue>(), target);
     }
   }
 }
@@ -1244,6 +1302,42 @@ mod boxed {
         ValueKind::Iter => write!(f, "{}", &self.to_iter().name()),
         ValueKind::Native => write!(f, "<native {}>", self.to_native().meta().name),
       }
+    }
+  }
+
+  #[cfg(test)]
+  mod test {
+    use super::*;
+    use std::mem;
+
+    #[test]
+    fn size() {
+      assert_eq!(mem::size_of::<List<Value>>(), 24);
+      assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
+      assert_eq!(mem::size_of::<Closure>(), 24);
+      assert_eq!(mem::size_of::<Fun>(), 104);
+      assert_eq!(mem::size_of::<Class>(), 136);
+      assert_eq!(mem::size_of::<Instance>(), 24);
+      assert_eq!(mem::size_of::<Method>(), 16);
+      assert_eq!(mem::size_of::<LyIterator>(), 24);
+      assert_eq!(mem::size_of::<Box<dyn Native>>(), 16);
+      assert_eq!(mem::size_of::<Upvalue>(), 16);
+    }
+
+    #[test]
+    fn alignment() {
+      let target: usize = 8;
+
+      assert_eq!(mem::align_of::<List<Value>>(), target);
+      assert_eq!(mem::align_of::<Map<Value, Value>>(), target);
+      assert_eq!(mem::align_of::<Closure>(), target);
+      assert_eq!(mem::align_of::<Fun>(), target);
+      assert_eq!(mem::align_of::<Class>(), target);
+      assert_eq!(mem::align_of::<Instance>(), target);
+      assert_eq!(mem::align_of::<Method>(), target);
+      assert_eq!(mem::align_of::<LyIterator>(), target);
+      assert_eq!(mem::align_of::<Box<dyn Native>>(), target);
+      assert_eq!(mem::align_of::<Upvalue>(), target);
     }
   }
 }

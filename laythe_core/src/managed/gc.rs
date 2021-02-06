@@ -47,15 +47,6 @@ impl<T: 'static + Manage + ?Sized> Gc<T> {
   }
 }
 
-impl<T: 'static + Manage> Gc<T> {
-  /// Create a new Gc pointer that is dangling but well-aligned
-  pub fn dangling() -> Gc<T> {
-    Self {
-      ptr: NonNull::dangling(),
-    }
-  }
-}
-
 impl<T: 'static + Manage> Trace for Gc<T> {
   fn trace(&self) {
     if self.obj().mark() {
