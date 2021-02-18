@@ -58,6 +58,12 @@ impl<T, H> GcArray<T, H> {
     unsafe { *(self.ptr.as_ptr().add(count) as *mut usize) }
   }
 
+  /// Is this array empty
+  #[inline]
+  pub fn is_empty(&self) -> bool {
+    self.len() == 0
+  }
+
   /// Retrieve a pointer data array
   #[inline]
   fn data(&self) -> *mut T {

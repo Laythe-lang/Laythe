@@ -170,7 +170,7 @@ impl<T: 'static + Object> GcObj<T> {
 
   /// Retrieve a pointer data array
   #[inline]
-  fn data_mut(&self) -> &mut T {
+  fn data_mut(&mut self) -> &mut T {
     unsafe { &mut *(self.ptr.as_ptr() as *mut T) }
   }
 

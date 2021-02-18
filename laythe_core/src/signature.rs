@@ -142,19 +142,19 @@ impl ParameterKind {
       (ParameterKind::Bool, ValueKind::Bool) => true,
       (ParameterKind::Number, ValueKind::Number) => true,
       (_, ValueKind::Nil) => false,
-      (_, ValueKind::Obj) => match (self, value.to_obj().kind()) {
-        (ParameterKind::Class, ObjectKind::Class) => true,
-        (ParameterKind::Instance, ObjectKind::Instance) => true,
-        (ParameterKind::List, ObjectKind::List) => true,
-        (ParameterKind::Enumerator, ObjectKind::Enumerator) => true,
-        (ParameterKind::Map, ObjectKind::Map) => true,
-        (ParameterKind::Fun, ObjectKind::Closure) => true,
-        (ParameterKind::Fun, ObjectKind::Fun) => true,
-        (ParameterKind::Fun, ObjectKind::Method) => true,
-        (ParameterKind::Fun, ObjectKind::Native) => true,
-        (ParameterKind::String, ObjectKind::String) => true,
-        _ => false,
-      },
+      (_, ValueKind::Obj) => matches!(
+        (self, value.to_obj().kind()),
+        (ParameterKind::Class, ObjectKind::Class)
+          | (ParameterKind::Instance, ObjectKind::Instance)
+          | (ParameterKind::List, ObjectKind::List)
+          | (ParameterKind::Enumerator, ObjectKind::Enumerator)
+          | (ParameterKind::Map, ObjectKind::Map)
+          | (ParameterKind::Fun, ObjectKind::Closure)
+          | (ParameterKind::Fun, ObjectKind::Fun)
+          | (ParameterKind::Fun, ObjectKind::Method)
+          | (ParameterKind::Fun, ObjectKind::Native)
+          | (ParameterKind::String, ObjectKind::String)
+      ),
       _ => false,
     }
   }

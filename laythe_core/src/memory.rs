@@ -444,7 +444,7 @@ impl<'a> Allocator {
           remaining += obj.size();
         }
 
-        return retain;
+        retain
       }));
 
     remaining
@@ -465,7 +465,7 @@ impl<'a> Allocator {
         remaining += obj.size();
       }
 
-      return retain;
+      retain
     });
 
     self
@@ -480,7 +480,7 @@ impl<'a> Allocator {
           remaining += obj.size();
         }
 
-        return retain;
+        retain
       }));
 
     remaining
