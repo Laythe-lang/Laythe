@@ -143,27 +143,35 @@ pub struct GcObj<T: 'static + Object> {
 }
 
 impl<T: 'static + Object> GcObj<T> {
+  /// A const pointer to the header of this object
+  #[inline]
+  unsafe fn header_ptr(&self) -> *mut u8 {
+    let offset = get_offset::<ObjHeader, T>();
+    self.ptr.as_ptr().sub(offset)
+  }
+
   /// Retrieve the header from this array
   #[inline]
   fn header(&self) -> &ObjHeader {
     #[allow(clippy::cast_ptr_alignment)]
     unsafe {
-      &*(self.ptr.as_ptr() as *const ObjHeader)
+      &*(self.header_ptr() as *const ObjHeader)
     }
   }
 
   /// Retrieve a pointer data array
   #[inline]
   fn data(&self) -> &T {
-    let offset = get_offset::<ObjHeader, T>();
-    unsafe { &*(self.ptr.as_ptr().add(offset) as *const T) }
+    #[allow(clippy::cast_ptr_alignment)]
+    unsafe {
+      &*(self.ptr.as_ptr() as *const T)
+    }
   }
 
   /// Retrieve a pointer data array
   #[inline]
   fn data_mut(&self) -> &mut T {
-    let offset = get_offset::<ObjHeader, T>();
-    unsafe { &mut *(self.ptr.as_ptr().add(offset) as *mut T) }
+    unsafe { &mut *(self.ptr.as_ptr() as *mut T) }
   }
 
   /// Retrieve a static reference to the underlying data.
@@ -176,21 +184,21 @@ impl<T: 'static + Object> GcObj<T> {
   /// ended. If the allocator collects before this point we'll
   /// segfault or read unintended memory. In fewer word very bad
   pub unsafe fn data_static(&self) -> &'static T {
-    let offset = get_offset::<ObjHeader, T>();
-    &*(self.ptr.as_ptr().add(offset) as *const T)
+    &*(self.ptr.as_ptr() as *const T)
   }
 
   /// Degrade this `GcObj<T>` into a `GcObject`
   #[inline]
   pub fn degrade(self) -> GcObject {
-    GcObject::new(self.ptr)
+    let shifted = unsafe { NonNull::new_unchecked(self.header_ptr()) };
+    GcObject::new(shifted)
   }
 
   /// Return the underlying pointer as a usize. This is
   /// used by the nan boxing functionality
   #[inline]
   pub fn to_usize(&self) -> usize {
-    self.ptr.as_ptr() as *const () as usize
+    unsafe { self.header_ptr() as *const () as usize }
   }
 }
 
@@ -354,6 +362,12 @@ impl GcObject {
     GcObject { ptr }
   }
 
+  #[inline]
+  unsafe fn data_ptr<T>(&self) -> NonNull<u8> {
+    let offset = get_offset::<ObjHeader, T>();
+    NonNull::new_unchecked(self.ptr.as_ptr().add(offset))
+  }
+
   /// Retrieve the header from this array
   #[inline]
   fn header(&self) -> &ObjHeader {
@@ -381,7 +395,7 @@ impl GcObject {
   #[inline]
   pub fn to_class(&self) -> GcObj<Class> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<Class>() },
       phantom: PhantomData,
     }
   }
@@ -389,7 +403,7 @@ impl GcObject {
   #[inline]
   pub fn to_closure(&self) -> GcObj<Closure> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<Closure>() },
       phantom: PhantomData,
     }
   }
@@ -397,7 +411,7 @@ impl GcObject {
   #[inline]
   pub fn to_fun(&self) -> GcObj<Fun> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<Fun>() },
       phantom: PhantomData,
     }
   }
@@ -405,7 +419,7 @@ impl GcObject {
   #[inline]
   pub fn to_instance(&self) -> GcObj<Instance> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<Instance>() },
       phantom: PhantomData,
     }
   }
@@ -413,7 +427,7 @@ impl GcObject {
   #[inline]
   pub fn to_enumerator(&self) -> GcObj<Enumerator> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<Enumerator>() },
       phantom: PhantomData,
     }
   }
@@ -421,7 +435,7 @@ impl GcObject {
   #[inline]
   pub fn to_list(&self) -> GcObj<List<Value>> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<List<Value>>() },
       phantom: PhantomData,
     }
   }
@@ -429,7 +443,7 @@ impl GcObject {
   #[inline]
   pub fn to_map(&self) -> GcObj<Map<Value, Value>> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<Map<Value, Value>>() },
       phantom: PhantomData,
     }
   }
@@ -437,7 +451,7 @@ impl GcObject {
   #[inline]
   pub fn to_method(&self) -> GcObj<Method> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<Method>() },
       phantom: PhantomData,
     }
   }
@@ -445,7 +459,7 @@ impl GcObject {
   #[inline]
   pub fn to_native(&self) -> GcObj<Native> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<Native>() },
       phantom: PhantomData,
     }
   }
@@ -453,7 +467,7 @@ impl GcObject {
   #[inline]
   pub fn to_upvalue(&self) -> GcObj<Upvalue> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<Upvalue>() },
       phantom: PhantomData,
     }
   }
@@ -777,13 +791,18 @@ impl<T: 'static + Object> GcObjectHandleBuilder<T> {
   #[inline]
   pub fn value(&self) -> GcObj<T> {
     GcObj {
-      ptr: self.ptr,
+      ptr: unsafe { self.data_ptr::<T>() },
       phantom: PhantomData,
     }
   }
 }
 
 impl<T> GcObjectHandleBuilder<T> {
+  unsafe fn data_ptr<U>(&self) -> NonNull<u8> {
+    let offset = get_offset::<ObjHeader, U>();
+    NonNull::new_unchecked(self.ptr.as_ptr().add(offset))
+  }
+
   #[inline]
   pub fn degrade(self) -> GcObjectHandle {
     GcObjectHandle { ptr: self.ptr }
