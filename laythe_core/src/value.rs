@@ -6,17 +6,7 @@ pub enum ValueKind {
   Bool,
   Nil,
   Number,
-  String,
-  List,
-  Map,
-  Fun,
-  Closure,
-  Class,
-  Instance,
-  Iter,
-  Method,
-  Native,
-  Upvalue,
+  Obj,
 }
 
 #[macro_export]
@@ -24,6 +14,54 @@ macro_rules! val {
   ( $x:expr ) => {
     Value::from($x)
   };
+}
+
+#[macro_export]
+macro_rules! if_let_obj {
+  (ObjectKind::$obj_kind:ident($p:pat) = ($v:expr) $b:block) => {{
+    let val: Value = $v;
+    if val.is_obj() {
+      let obj = val.to_obj();
+
+      if obj.is_kind(ObjectKind::$obj_kind) {
+        let $p = to_obj_kind!(obj, $obj_kind);
+        $b
+      }
+    }
+  }};
+  (ObjectKind::$obj_kind:ident(mut $p:pat) = ($v:expr) $b:block) => {{
+    let val: Value = $v;
+    if val.is_obj() {
+      let obj = val.to_obj();
+
+      if obj.is_kind(ObjectKind::$obj_kind) {
+        let mut $p = to_obj_kind!(obj, $obj_kind);
+        $b
+      }
+    }
+  }};
+  (ObjectKind::$obj_kind:ident($p:pat) = ($v:expr) $b1:block else $b2:block) => {{
+    let val: Value = $v;
+    if val.is_obj() {
+      let obj = val.to_obj();
+
+      if obj.is_kind(ObjectKind::$obj_kind) {
+        let $p = to_obj_kind!(obj, $obj_kind);
+        $b1
+      } else $b2
+    } else $b2
+  }};
+  (ObjectKind::$obj_kind:ident(mut $p:pat) = ($v:expr) $b1:block else $b2:block) => {{
+    let val: Value = $v;
+    if val.is_obj() {
+      let obj = val.to_obj();
+
+      if obj.is_kind(ObjectKind::$obj_kind) {
+        let mut $p = to_obj_kind!(obj, $obj_kind);
+        $b1
+      } else $b2
+    } else $b2
+  }};
 }
 
 #[cfg(not(feature = "nan_boxing"))]
@@ -35,11 +73,11 @@ pub use self::boxed::*;
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
   use crate::{
-    iterator::LyIterator,
-    native::Native,
-    object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
+    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Trace},
+    object::{
+      Class, Closure, Enumerator, Fun, Instance, List, Map, Method, Native, ObjectKind, Upvalue,
+    },
   };
-  use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Trace};
 
   use super::{Nil, ValueKind};
   use std::fmt;
@@ -57,17 +95,7 @@ mod unboxed {
     Bool(bool),
     Nil,
     Number(f64),
-    String(GcStr),
-    List(Gc<List<Value>>),
-    Map(Gc<Map<Value, Value>>),
-    Fun(Gc<Fun>),
-    Closure(Gc<Closure>),
-    Class(Gc<Class>),
-    Instance(Gc<Instance>),
-    Method(Gc<Method>),
-    Iter(Gc<LyIterator>),
-    Native(Gc<Box<dyn Native>>),
-    Upvalue(Gc<Upvalue>),
+    Obj(GcObject),
   }
 
   impl Value {
@@ -104,58 +132,17 @@ mod unboxed {
     }
 
     #[inline]
-    pub fn is_str(&self) -> bool {
-      matches!(self, Value::String(_))
+    pub fn is_obj(&self) -> bool {
+      matches!(self, Value::Obj(_))
     }
 
     #[inline]
-    pub fn is_list(&self) -> bool {
-      matches!(self, Value::List(_))
-    }
+    pub fn is_obj_kind(&self, kind: ObjectKind) -> bool {
+      if let Value::Obj(obj) = self {
+        return obj.is_kind(kind);
+      }
 
-    #[inline]
-    pub fn is_map(&self) -> bool {
-      matches!(self, Value::Map(_))
-    }
-
-    #[inline]
-    pub fn is_iter(&self) -> bool {
-      matches!(self, Value::Iter(_))
-    }
-
-    #[inline]
-    pub fn is_closure(&self) -> bool {
-      matches!(self, Value::Closure(_))
-    }
-
-    #[inline]
-    pub fn is_fun(&self) -> bool {
-      matches!(self, Value::Fun(_))
-    }
-
-    #[inline]
-    pub fn is_class(&self) -> bool {
-      matches!(self, Value::Class(_))
-    }
-
-    #[inline]
-    pub fn is_instance(&self) -> bool {
-      matches!(self, Value::Instance(_))
-    }
-
-    #[inline]
-    pub fn is_method(&self) -> bool {
-      matches!(self, Value::Method(_))
-    }
-
-    #[inline]
-    pub fn is_native(&self) -> bool {
-      matches!(self, Value::Native(_))
-    }
-
-    #[inline]
-    pub fn is_upvalue(&self) -> bool {
-      matches!(self, Value::Upvalue(_))
+      false
     }
 
     /// Convert laythe value to number, panics if not a number
@@ -198,240 +185,21 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::hooks::{Hooks, NoContext};
-    /// use laythe_env::memory::Allocator;
+    /// use laythe_core::memory::Allocator;
     ///
     /// let gc = Allocator::default();
-    /// let mut context = NoContext::new(&gc);
+    /// let mut context = NoContext::new(gc);
     /// let hooks = Hooks::new(&mut context);
     /// let managed =  hooks.manage_str("example");
     ///
-    /// let value = Value::String(managed);
-    /// assert_eq!(&*value.to_str(), "example")
+    /// let value = Value::from(managed);
+    /// assert_eq!(&*value.to_obj().to_str(), "example")
     /// ```
     #[inline]
-    pub fn to_str(&self) -> GcStr {
+    pub fn to_obj(&self) -> GcObject {
       match self {
-        Self::String(str1) => *str1,
-        _ => panic!("Expected string."),
-      }
-    }
-
-    /// Unwrap and reference a laythe list, panics if not a list
-    ///
-    /// # Examples
-    /// ```
-    /// use laythe_core::value::Value;
-    /// use laythe_core::object::List;
-    /// use laythe_env::managed::{Allocation, Gc};
-    ///
-    /// use std::ptr::NonNull;
-    ///
-    /// let list = List::from(vec![Value::Nil]);
-    /// let mut alloc = Box::new(Allocation::new(list));
-    /// let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
-    /// let managed = Gc::from(ptr);
-    ///
-    /// let value = Value::List(managed);
-    /// assert_eq!(value.to_list()[0], Value::Nil)
-    /// ```
-    #[inline]
-    pub fn to_list(&self) -> Gc<List<Value>> {
-      match self {
-        Self::List(list) => *list,
-        _ => panic!("Expected list."),
-      }
-    }
-
-    /// Unwrap and reference a laythe list, panics if not a list
-    ///
-    /// # Examples
-    /// ```
-    /// use laythe_core::value::Value;
-    /// use laythe_env::managed::{Allocation, Gc};
-    /// use laythe_core::object::Map;
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
-    ///
-    /// let mut context = TestContext::default();
-    /// let hooks = Hooks::new(&mut context);
-    /// let map: Map<Value, Value> = Map::default();
-    ///
-    /// let value = Value::Map(hooks.manage(map));
-    /// assert_eq!(value.to_map().len(), 0)
-    /// ```
-    #[inline]
-    pub fn to_map(&self) -> Gc<Map<Value, Value>> {
-      match self {
-        Self::Map(map) => *map,
-        _ => panic!("Expected list."),
-      }
-    }
-
-    /// Unwrap and reference a laythe iterator, panics if not a iterator
-    #[inline]
-    pub fn to_iter(&self) -> Gc<LyIterator> {
-      match self {
-        Self::Iter(iter) => *iter,
-        _ => panic!("Expected iterator."),
-      }
-    }
-
-    /// Unwrap and reference a laythe function, panics if not a function
-    ///
-    /// # Examples
-    /// ```
-    /// use laythe_core::value::Value;
-    /// use laythe_core::object::Fun;
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Gc;
-    ///
-    /// let mut context = TestContext::default();
-    /// let hooks = Hooks::new(&mut context);
-    ///
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Gc::dangling());
-    /// let managed = hooks.manage(fun);
-    ///
-    /// let value = Value::Fun(managed);
-    /// assert_eq!(&*value.to_fun().name, "add");
-    /// ```
-    #[inline]
-    pub fn to_fun(&self) -> Gc<Fun> {
-      match self {
-        Self::Fun(fun) => *fun,
-        _ => panic!("Expected function!"),
-      }
-    }
-
-    /// Unwrap a laythe native function, panics if not a native function
-    #[inline]
-    pub fn to_native(&self) -> Gc<Box<dyn Native>> {
-      match self {
-        Self::Native(native_fun) => *native_fun,
-        _ => panic!("Expected native function!"),
-      }
-    }
-
-    /// Unwrap and reference a laythe closure, panics if not a closure
-    ///
-    /// # Examples
-    /// ```
-    /// use laythe_core::value::Value;
-    /// use laythe_core::object::{Closure, Fun};
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Gc;
-    ///
-    /// let mut context = TestContext::default();
-    /// let hooks = Hooks::new(&mut context);
-    /// let fun: Fun = Fun::new(hooks.manage_str("add"), Gc::dangling());
-    /// let managed_fun = hooks.manage(fun);
-    ///
-    /// let closure = Closure::new(managed_fun);
-    /// let managed_closure = hooks.manage(closure);
-    ///
-    /// let value = Value::Closure(managed_closure);
-    /// assert_eq!(&*value.to_closure().fun.name.clone(), "add");
-    /// ```
-    pub fn to_closure(&self) -> Gc<Closure> {
-      match self {
-        Self::Closure(closure) => *closure,
-        _ => panic!("Expected closure!"),
-      }
-    }
-
-    /// Unwrap and reference a laythe method, panics if not a method
-    ///
-    /// # Examples
-    /// ```
-    /// use laythe_core::value::Value;
-    /// use laythe_core::object::{Closure, Method};
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use laythe_env::managed::Gc;
-    ///
-    /// let mut context = TestContext::default();
-    /// let hooks = Hooks::new(&mut context);
-    ///
-    /// let method = Method::new(Value::Nil, Value::Closure(Gc::dangling()));
-    /// let managed_method = hooks.manage(method);
-    ///
-    /// let value = Value::Method(managed_method);
-    /// assert_eq!(value.to_method(), managed_method);
-    /// ```
-    pub fn to_method(&self) -> Gc<Method> {
-      match self {
-        Self::Method(method) => *method,
-        _ => panic!("Expected method!"),
-      }
-    }
-
-    /// Unwrap and reference a laythe upvalue, panics if not a upvalue.
-    ///
-    /// # Examples
-    /// ```
-    /// use laythe_core::value::Value;
-    /// use laythe_core::object::Upvalue;
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
-    /// use std::ptr::NonNull;
-    ///
-    /// let mut context = TestContext::default();
-    /// let hooks = Hooks::new(&mut context);
-    /// let value = Value::Number(5.0);
-    /// let upvalue = hooks.manage(Upvalue::Open(NonNull::from(&value)));
-    /// let value = Value::Upvalue(upvalue);
-    ///
-    /// match *value.to_upvalue() {
-    ///   Upvalue::Open(stack_ptr) => assert_eq!(*unsafe { stack_ptr.as_ref() }, Value::Number(5.0)),
-    ///   Upvalue::Closed(_) => assert!(false),
-    /// };
-    /// ```
-    pub fn to_upvalue(&self) -> Gc<Upvalue> {
-      match self {
-        Self::Upvalue(upvalue) => *upvalue,
-        _ => panic!("Expected upvalue!"),
-      }
-    }
-
-    /// Unwrap and reference a laythe instance, panics if not a instance
-    ///
-    /// # Examples
-    /// ```
-    /// use laythe_core::value::Value;
-    /// use laythe_core::object::{Instance, Class};
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
-    ///
-    /// let mut context = TestContext::default();
-    /// let hooks = Hooks::new(&mut context);
-    /// let name = hooks.manage_str("example");
-    /// let class = hooks.manage(Class::bare(name));
-    ///
-    /// let value = Value::Class(class);
-    /// assert_eq!(value.to_class().name, name);
-    /// ```
-    pub fn to_class(&self) -> Gc<Class> {
-      match self {
-        Self::Class(class) => *class,
-        _ => panic!("Expected class.",),
-      }
-    }
-
-    /// Unwrap and reference a laythe instance, panics if not a instance
-    ///
-    /// # Examples
-    /// ```
-    /// use laythe_core::value::Value;
-    /// use laythe_core::object::{Instance, Class};
-    /// use laythe_core::hooks::{Hooks, support::TestContext};
-    ///
-    /// let mut context = TestContext::default();
-    /// let hooks = Hooks::new(&mut context);
-    /// let name = hooks.manage_str("example".to_string());
-    /// let class = hooks.manage(Class::bare(name));
-    /// let instance = hooks.manage(Instance::new(class));
-    ///
-    /// let value = Value::Instance(instance);
-    /// assert_eq!(value.to_instance().class, class);
-    pub fn to_instance(&self) -> Gc<Instance> {
-      match self {
-        Self::Instance(instance) => *instance,
-        _ => panic!("Expected instance!"),
+        Self::Obj(obj) => *obj,
+        _ => panic!("Expected object."),
       }
     }
 
@@ -449,22 +217,24 @@ mod unboxed {
     /// assert_eq!(bool.value_type(), "bool");
     /// assert_eq!(number.value_type(), "number");
     /// ```
-    pub fn value_type(&self) -> String {
+    pub fn value_type(&self) -> &'static str {
       match self {
-        Value::Nil => "nil".to_string(),
-        Value::Bool(_) => "bool".to_string(),
-        Value::Number(_) => "number".to_string(),
-        Value::String(_) => "string".to_string(),
-        Value::List(_) => "list".to_string(),
-        Value::Map(_) => "map".to_string(),
-        Value::Fun(_) => "function".to_string(),
-        Value::Closure(_) => "closure".to_string(),
-        Value::Method(_) => "method".to_string(),
-        Value::Class(_) => "class".to_string(),
-        Value::Instance(_) => "instance".to_string(),
-        Value::Iter(_) => "iterator".to_string(),
-        Value::Upvalue(_) => "upvalue".to_string(),
-        Value::Native(_) => "native".to_string(),
+        Value::Nil => "nil",
+        Value::Bool(_) => "bool",
+        Value::Number(_) => "number",
+        Value::Obj(obj) => match obj.kind() {
+          ObjectKind::String => "string",
+          ObjectKind::List => "list",
+          ObjectKind::Map => "map",
+          ObjectKind::Fun => "function",
+          ObjectKind::Closure => "closure",
+          ObjectKind::Class => "class",
+          ObjectKind::Instance => "instance",
+          ObjectKind::Enumerator => "enumerator",
+          ObjectKind::Method => "method",
+          ObjectKind::Native => "native",
+          ObjectKind::Upvalue => "upvalue",
+        },
       }
     }
 
@@ -473,17 +243,7 @@ mod unboxed {
         Value::Nil => ValueKind::Nil,
         Value::Bool(_) => ValueKind::Bool,
         Value::Number(_) => ValueKind::Number,
-        Value::String(_) => ValueKind::String,
-        Value::List(_) => ValueKind::List,
-        Value::Map(_) => ValueKind::Map,
-        Value::Fun(_) => ValueKind::Fun,
-        Value::Closure(_) => ValueKind::Closure,
-        Value::Method(_) => ValueKind::Method,
-        Value::Class(_) => ValueKind::Class,
-        Value::Instance(_) => ValueKind::Instance,
-        Value::Iter(_) => ValueKind::Iter,
-        Value::Upvalue(_) => ValueKind::Upvalue,
-        Value::Native(_) => ValueKind::Native,
+        Value::Obj(_) => ValueKind::Obj,
       }
     }
   }
@@ -508,67 +268,67 @@ mod unboxed {
 
   impl From<GcStr> for Value {
     fn from(managed: GcStr) -> Value {
-      Value::String(managed)
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<List<Value>>> for Value {
-    fn from(managed: Gc<List<Value>>) -> Value {
-      Value::List(managed)
+  impl From<GcObj<List<Value>>> for Value {
+    fn from(managed: GcObj<List<Value>>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<Map<Value, Value>>> for Value {
-    fn from(managed: Gc<Map<Value, Value>>) -> Value {
-      Value::Map(managed)
+  impl From<GcObj<Map<Value, Value>>> for Value {
+    fn from(managed: GcObj<Map<Value, Value>>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<LyIterator>> for Value {
-    fn from(managed: Gc<LyIterator>) -> Value {
-      Value::Iter(managed)
+  impl From<GcObj<Enumerator>> for Value {
+    fn from(managed: GcObj<Enumerator>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<Closure>> for Value {
-    fn from(managed: Gc<Closure>) -> Value {
-      Value::Closure(managed)
+  impl From<GcObj<Closure>> for Value {
+    fn from(managed: GcObj<Closure>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<Fun>> for Value {
-    fn from(managed: Gc<Fun>) -> Value {
-      Value::Fun(managed)
+  impl From<GcObj<Fun>> for Value {
+    fn from(managed: GcObj<Fun>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<Class>> for Value {
-    fn from(managed: Gc<Class>) -> Value {
-      Value::Class(managed)
+  impl From<GcObj<Class>> for Value {
+    fn from(managed: GcObj<Class>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<Instance>> for Value {
-    fn from(managed: Gc<Instance>) -> Value {
-      Value::Instance(managed)
+  impl From<GcObj<Instance>> for Value {
+    fn from(managed: GcObj<Instance>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<Method>> for Value {
-    fn from(managed: Gc<Method>) -> Value {
-      Value::Method(managed)
+  impl From<GcObj<Method>> for Value {
+    fn from(managed: GcObj<Method>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<Box<dyn Native>>> for Value {
-    fn from(managed: Gc<Box<dyn Native>>) -> Value {
-      Value::Native(managed)
+  impl From<GcObj<Native>> for Value {
+    fn from(managed: GcObj<Native>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
-  impl From<Gc<Upvalue>> for Value {
-    fn from(managed: Gc<Upvalue>) -> Value {
-      Value::Upvalue(managed)
+  impl From<GcObj<Upvalue>> for Value {
+    fn from(managed: GcObj<Upvalue>) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
@@ -579,33 +339,7 @@ mod unboxed {
         Self::Number(num) => write!(f, "{}", num),
         Self::Bool(b) => write!(f, "{}", b),
         Self::Nil => write!(f, "nil"),
-        Self::String(string) => write!(f, "'{}'", string),
-        Self::List(list) => {
-          let mut strings: Vec<String> = Vec::with_capacity(list.len());
-          for item in list.iter() {
-            strings.push(format!("{}", item));
-          }
-
-          write!(f, "[{}]", strings.join(", "))
-        }
-        Self::Map(map) => {
-          let strings: Vec<String> = map
-            .iter()
-            .map(|(key, value)| format!("{}: {}", key, value))
-            .collect();
-          write!(f, "{{ {} }}", strings.join(", "))
-        }
-        Self::Fun(fun) => write!(f, "{}", fun),
-        Self::Upvalue(upvalue) => match &**upvalue {
-          Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
-          Upvalue::Closed(store) => write!(f, "{}", store),
-        },
-        Self::Closure(closure) => write!(f, "{}", *closure.fun()),
-        Self::Method(bound) => write!(f, "{}.{}", bound.receiver(), bound.method()),
-        Self::Class(class) => write!(f, "{}", class.name()),
-        Self::Instance(instance) => write!(f, "{} instance", instance.class().name()),
-        Self::Iter(iterator) => write!(f, "{} iterator", &iterator.name()),
-        Self::Native(native_fun) => write!(f, "<native {}>", native_fun.meta().name),
+        Self::Obj(obj) => write!(f, "{}", obj),
       }
     }
   }
@@ -629,17 +363,7 @@ mod unboxed {
         (Self::Number(num1), Self::Number(num2)) => num1 == num2,
         (Self::Bool(b1), Self::Bool(b2)) => b1 == b2,
         (Self::Nil, Self::Nil) => true,
-        (Self::String(string1), Self::String(string2)) => string1 == string2,
-        (Self::List(list1), Self::List(list2)) => list1 == list2,
-        (Self::Iter(iter1), Self::Iter(iter2)) => iter1 == iter2,
-        (Self::Map(map1), Self::Map(map2)) => map1 == map2,
-        (Self::Fun(fun1), Self::Fun(fun2)) => fun1 == fun2,
-        (Self::Closure(closure1), Self::Closure(closure2)) => closure1 == closure2,
-        (Self::Method(method1), Self::Method(method2)) => method1 == method2,
-        (Self::Native(native1), Self::Native(native2)) => native1 == native2,
-        (Self::Upvalue(upvalue1), Self::Upvalue(upvalue2)) => upvalue1 == upvalue2,
-        (Self::Class(class1), Self::Class(class2)) => class1 == class2,
-        (Self::Instance(instance1), Self::Instance(instance2)) => instance1 == instance2,
+        (Self::Obj(obj1), Self::Obj(obj2)) => obj1 == obj2,
         _ => false,
       }
     }
@@ -654,92 +378,30 @@ mod unboxed {
         Self::Number(num) => {
           ValueKind::Number.hash(state);
           (*num as u64).hash(state);
-        }
+        },
         Self::Bool(b) => {
           ValueKind::Bool.hash(state);
           b.hash(state);
-        }
+        },
         Self::Nil => ValueKind::Nil.hash(state),
-        Self::String(string) => {
-          ValueKind::String.hash(state);
-          string.hash(state);
-        }
-        Self::List(list) => {
-          ValueKind::List.hash(state);
-          list.hash(state);
-        }
-        Self::Map(map) => {
-          ValueKind::Map.hash(state);
-          map.hash(state);
-        }
-        Self::Fun(fun) => {
-          ValueKind::Fun.hash(state);
-          fun.hash(state);
-        }
-        Self::Closure(closure) => {
-          ValueKind::Closure.hash(state);
-          closure.hash(state);
-        }
-        Self::Method(method) => {
-          ValueKind::Method.hash(state);
-          method.hash(state);
-        }
-        Self::Native(native) => {
-          ValueKind::Native.hash(state);
-          native.hash(state);
-        }
-        Self::Upvalue(upvalue) => {
-          ValueKind::Upvalue.hash(state);
-          upvalue.hash(state);
-        }
-        Self::Class(class) => {
-          ValueKind::Class.hash(state);
-          class.hash(state);
-        }
-        Self::Instance(instance) => {
-          ValueKind::Instance.hash(state);
-          instance.hash(state);
-        }
-        Self::Iter(iter) => {
-          ValueKind::Iter.hash(state);
-          iter.hash(state);
-        }
+        Self::Obj(obj) => {
+          ValueKind::Obj.hash(state);
+          obj.hash(state);
+        },
       };
     }
   }
 
   impl Trace for Value {
     fn trace(&self) {
-      match self {
-        Value::String(string) => string.trace(),
-        Value::List(list) => list.trace(),
-        Value::Map(map) => map.trace(),
-        Value::Fun(fun) => fun.trace(),
-        Value::Closure(closure) => closure.trace(),
-        Value::Method(method) => method.trace(),
-        Value::Class(class) => class.trace(),
-        Value::Instance(instance) => instance.trace(),
-        Value::Iter(iter) => iter.trace(),
-        Value::Upvalue(upvalue) => upvalue.trace(),
-        Value::Native(native) => native.trace(),
-        _ => (),
+      if let Value::Obj(obj) = self {
+        obj.trace();
       }
     }
 
     fn trace_debug(&self, stdout: &mut dyn Write) {
-      match self {
-        Value::String(string) => string.trace_debug(stdout),
-        Value::List(list) => list.trace_debug(stdout),
-        Value::Map(map) => map.trace_debug(stdout),
-        Value::Fun(fun) => fun.trace_debug(stdout),
-        Value::Closure(closure) => closure.trace_debug(stdout),
-        Value::Method(method) => method.trace_debug(stdout),
-        Value::Class(class) => class.trace_debug(stdout),
-        Value::Instance(instance) => instance.trace_debug(stdout),
-        Value::Iter(iter) => iter.trace_debug(stdout),
-        Value::Upvalue(upvalue) => upvalue.trace_debug(stdout),
-        Value::Native(native) => native.trace_debug(stdout),
-        _ => (),
+      if let Value::Obj(obj) = self {
+        obj.trace_debug(stdout);
       }
     }
   }
@@ -750,18 +412,44 @@ mod unboxed {
         Value::Nil => f.write_str("nil"),
         Value::Bool(b) => f.write_fmt(format_args!("{}", b)),
         Value::Number(num) => f.write_fmt(format_args!("{}", num)),
-        Value::String(string) => f.write_fmt(format_args!("{:?}", DebugWrap(string, depth))),
-        Value::List(list) => f.write_fmt(format_args!("{:?}", DebugWrap(list, depth))),
-        Value::Map(map) => f.write_fmt(format_args!("{:?}", DebugWrap(map, depth))),
-        Value::Fun(fun) => f.write_fmt(format_args!("{:?}", DebugWrap(fun, depth))),
-        Value::Closure(closure) => f.write_fmt(format_args!("{:?}", DebugWrap(closure, depth))),
-        Value::Method(method) => f.write_fmt(format_args!("{:?}", DebugWrap(method, depth))),
-        Value::Class(class) => f.write_fmt(format_args!("{:?}", DebugWrap(class, depth))),
-        Value::Instance(instance) => f.write_fmt(format_args!("{:?}", DebugWrap(instance, depth))),
-        Value::Iter(iter) => f.write_fmt(format_args!("{:?}", DebugWrap(iter, depth))),
-        Value::Upvalue(upvalue) => f.write_fmt(format_args!("{:?}", DebugWrap(upvalue, depth))),
-        Value::Native(native) => f.write_fmt(format_args!("{:?}", DebugWrap(native, depth))),
+        Value::Obj(obj) => f.write_fmt(format_args!("{:?}", DebugWrap(obj, depth))),
       }
+    }
+  }
+
+  #[cfg(test)]
+  mod test {
+    use super::*;
+    use std::mem;
+
+    #[test]
+    fn size() {
+      assert_eq!(mem::size_of::<List<Value>>(), 24);
+      assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
+      assert_eq!(mem::size_of::<Closure>(), 24);
+      assert_eq!(mem::size_of::<Fun>(), 104);
+      assert_eq!(mem::size_of::<Class>(), 136);
+      assert_eq!(mem::size_of::<Instance>(), 24);
+      assert_eq!(mem::size_of::<Method>(), 32);
+      assert_eq!(mem::size_of::<Enumerator>(), 32);
+      assert_eq!(mem::size_of::<Native>(), 56);
+      assert_eq!(mem::size_of::<Upvalue>(), 24);
+    }
+
+    #[test]
+    fn alignment() {
+      let target: usize = 8;
+
+      assert_eq!(mem::align_of::<List<Value>>(), target);
+      assert_eq!(mem::align_of::<Map<Value, Value>>(), target);
+      assert_eq!(mem::align_of::<Closure>(), target);
+      assert_eq!(mem::align_of::<Fun>(), target);
+      assert_eq!(mem::align_of::<Class>(), target);
+      assert_eq!(mem::align_of::<Instance>(), target);
+      assert_eq!(mem::align_of::<Method>(), target);
+      assert_eq!(mem::align_of::<Enumerator>(), target);
+      assert_eq!(mem::align_of::<Native>(), target);
+      assert_eq!(mem::align_of::<Upvalue>(), target);
     }
   }
 }
@@ -770,51 +458,21 @@ mod unboxed {
 mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
-    iterator::LyIterator,
-    native::Native,
-    object::{Class, Closure, Fun, Instance, List, Map, Method, Upvalue},
+    managed::{DebugHeap, GcObj, GcObject, GcStr, Trace},
+    object::{
+      Class, Closure, Enumerator, Fun, Instance, List, Map, Method, Native, ObjectKind, Upvalue,
+    },
   };
-  use laythe_env::managed::{Allocation, DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 
   use std::ptr::NonNull;
   use std::{fmt, io::Write};
 
   const BIT_SIGN: u64 = 0xc000_0000_0000_0000;
-  const PTR_BITS: u64 = 0x0000_0000_0000_0007;
-  const VARIANT_MASK: u64 = BIT_SIGN | QNAN | PTR_BITS;
 
   const TAG_NIL: u64 = 1 | QNAN; // 001
   const TAG_FALSE: u64 = 2 | QNAN; // 010
   const TAG_TRUE: u64 = 3 | QNAN; // 011
-  const TAG_STRING: u64 = 4 | QNAN; // 100
-  const TAG_LIST: u64 = 5 | QNAN; // 101
-  const TAG_MAP: u64 = 6 | QNAN; // 110
-  const TAG_CLOSURE: u64 = 7 | QNAN; // 111
-  const TAG_FUN: u64 = BIT_SIGN | QNAN;
-  const TAG_CLASS: u64 = 1 | BIT_SIGN | QNAN;
-  const TAG_INSTANCE: u64 = 2 | BIT_SIGN | QNAN;
-  const TAG_METHOD: u64 = 3 | BIT_SIGN | QNAN;
-  const TAG_ITER: u64 = 4 | BIT_SIGN | QNAN;
-  const TAG_NATIVE: u64 = 5 | BIT_SIGN | QNAN;
-  const TAG_UPVALUE: u64 = 6 | BIT_SIGN | QNAN;
-
-  const VALUE_KIND_MAP: [ValueKind; 15] = [
-    ValueKind::Number,
-    ValueKind::Nil,
-    ValueKind::Bool,
-    ValueKind::Bool,
-    ValueKind::String,
-    ValueKind::List,
-    ValueKind::Map,
-    ValueKind::Closure,
-    ValueKind::Fun,
-    ValueKind::Class,
-    ValueKind::Instance,
-    ValueKind::Method,
-    ValueKind::Iter,
-    ValueKind::Native,
-    ValueKind::Upvalue,
-  ];
+  const TAG_OBJ: u64 = BIT_SIGN | QNAN; // 100
 
   #[derive(Clone, Copy)]
   #[repr(C)]
@@ -867,63 +525,16 @@ mod boxed {
     }
 
     #[inline]
-    fn is_obj_tag(&self, tag: u64) -> bool {
-      (self.0 & VARIANT_MASK) == tag
+    pub fn is_obj(&self) -> bool {
+      (self.0 & TAG_OBJ) == TAG_OBJ
     }
 
     #[inline]
-    pub fn is_str(&self) -> bool {
-      self.is_obj_tag(TAG_STRING)
-    }
-
-    #[inline]
-    pub fn is_list(&self) -> bool {
-      self.is_obj_tag(TAG_LIST)
-    }
-
-    #[inline]
-    pub fn is_map(&self) -> bool {
-      self.is_obj_tag(TAG_MAP)
-    }
-
-    #[inline]
-    pub fn is_iter(&self) -> bool {
-      self.is_obj_tag(TAG_ITER)
-    }
-
-    #[inline]
-    pub fn is_closure(&self) -> bool {
-      self.is_obj_tag(TAG_CLOSURE)
-    }
-
-    #[inline]
-    pub fn is_fun(&self) -> bool {
-      self.is_obj_tag(TAG_FUN)
-    }
-
-    #[inline]
-    pub fn is_class(&self) -> bool {
-      self.is_obj_tag(TAG_CLASS)
-    }
-
-    #[inline]
-    pub fn is_instance(&self) -> bool {
-      self.is_obj_tag(TAG_INSTANCE)
-    }
-
-    #[inline]
-    pub fn is_method(&self) -> bool {
-      self.is_obj_tag(TAG_METHOD)
-    }
-
-    #[inline]
-    pub fn is_native(&self) -> bool {
-      self.is_obj_tag(TAG_NATIVE)
-    }
-
-    #[inline]
-    pub fn is_upvalue(&self) -> bool {
-      self.is_obj_tag(TAG_UPVALUE)
+    pub fn is_obj_kind(&self, kind: ObjectKind) -> bool {
+      if !self.is_obj() {
+        return false;
+      }
+      self.to_obj().is_kind(kind)
     }
 
     #[inline]
@@ -938,69 +549,10 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_obj_tag<T: 'static + Manage>(&self, tag: u64) -> Gc<T> {
-      let as_unsigned = self.0 & !tag;
-      let ptr = unsafe { NonNull::new_unchecked(as_unsigned as usize as *mut Allocation<T>) };
-      Gc::from(ptr)
-    }
-
-    #[inline]
-    pub fn to_str(&self) -> GcStr {
-      let as_unsigned = self.0 & !TAG_STRING;
-      unsafe {
-        let ptr = NonNull::new_unchecked(as_unsigned as usize as *mut u8);
-        GcStr::from_alloc_ptr(ptr)
-      }
-    }
-
-    #[inline]
-    pub fn to_list(&self) -> Gc<List<Value>> {
-      self.to_obj_tag(TAG_LIST)
-    }
-
-    #[inline]
-    pub fn to_map(&self) -> Gc<Map<Value, Value>> {
-      self.to_obj_tag(TAG_MAP)
-    }
-
-    #[inline]
-    pub fn to_iter(&self) -> Gc<LyIterator> {
-      self.to_obj_tag(TAG_ITER)
-    }
-
-    #[inline]
-    pub fn to_closure(&self) -> Gc<Closure> {
-      self.to_obj_tag(TAG_CLOSURE)
-    }
-
-    #[inline]
-    pub fn to_fun(&self) -> Gc<Fun> {
-      self.to_obj_tag(TAG_FUN)
-    }
-
-    #[inline]
-    pub fn to_class(&self) -> Gc<Class> {
-      self.to_obj_tag(TAG_CLASS)
-    }
-
-    #[inline]
-    pub fn to_instance(&self) -> Gc<Instance> {
-      self.to_obj_tag(TAG_INSTANCE)
-    }
-
-    #[inline]
-    pub fn to_method(&self) -> Gc<Method> {
-      self.to_obj_tag(TAG_METHOD)
-    }
-
-    #[inline]
-    pub fn to_native(&self) -> Gc<Box<dyn Native>> {
-      self.to_obj_tag(TAG_NATIVE)
-    }
-
-    #[inline]
-    pub fn to_upvalue(&self) -> Gc<Upvalue> {
-      self.to_obj_tag(TAG_UPVALUE)
+    pub fn to_obj(&self) -> GcObject {
+      let as_unsigned = self.0 & !TAG_OBJ;
+      let ptr = unsafe { NonNull::new_unchecked(as_unsigned as usize as *mut u8) };
+      GcObject::new(ptr)
     }
 
     #[inline]
@@ -1009,13 +561,15 @@ mod boxed {
         return ValueKind::Number;
       }
 
-      let top_bit = self.0 >= BIT_SIGN;
-      let lower_byte = self.0 as u8 & 0x7;
+      if self.0 >= BIT_SIGN {
+        return ValueKind::Obj;
+      }
 
-      let index = lower_byte + (top_bit as u8) * 8;
-
-      debug_assert!(index > 0 && index < 15);
-      unsafe { *VALUE_KIND_MAP.get_unchecked(index as usize) }
+      match self.0 & 0x7 {
+        1 => ValueKind::Nil,
+        2 | 3 => ValueKind::Bool,
+        _ => panic!("Improperly encoded value"),
+      }
     }
 
     /// Get a string representation of the underlying type this value representing
@@ -1033,57 +587,37 @@ mod boxed {
     /// assert_eq!(bool.value_type(), "bool");
     /// assert_eq!(number.value_type(), "number");
     /// assert_eq!(string.value_type(), "string");
-    pub fn value_type(&self) -> String {
+    pub fn value_type(&self) -> &'static str {
       match self.kind() {
-        ValueKind::Nil => "nil".to_string(),
-        ValueKind::Bool => "bool".to_string(),
-        ValueKind::Number => "number".to_string(),
-        ValueKind::String => "string".to_string(),
-        ValueKind::List => "list".to_string(),
-        ValueKind::Map => "map".to_string(),
-        ValueKind::Fun => "function".to_string(),
-        ValueKind::Closure => "closure".to_string(),
-        ValueKind::Method => "method".to_string(),
-        ValueKind::Class => "class".to_string(),
-        ValueKind::Instance => "instance".to_string(),
-        ValueKind::Iter => "iterator".to_string(),
-        ValueKind::Upvalue => "upvalue".to_string(),
-        ValueKind::Native => "native".to_string(),
+        ValueKind::Nil => "nil",
+        ValueKind::Bool => "bool",
+        ValueKind::Number => "number",
+        ValueKind::Obj => match self.to_obj().kind() {
+          ObjectKind::String => "string",
+          ObjectKind::List => "list",
+          ObjectKind::Map => "map",
+          ObjectKind::Fun => "function",
+          ObjectKind::Closure => "closure",
+          ObjectKind::Class => "class",
+          ObjectKind::Instance => "instance",
+          ObjectKind::Enumerator => "enumerator",
+          ObjectKind::Method => "method",
+          ObjectKind::Native => "native",
+          ObjectKind::Upvalue => "upvalue",
+        },
       }
     }
   }
 
   impl Trace for Value {
     fn trace(&self) {
-      match self.kind() {
-        ValueKind::String => self.to_str().trace(),
-        ValueKind::List => self.to_list().trace(),
-        ValueKind::Map => self.to_map().trace(),
-        ValueKind::Fun => self.to_fun().trace(),
-        ValueKind::Closure => self.to_closure().trace(),
-        ValueKind::Method => self.to_method().trace(),
-        ValueKind::Class => self.to_class().trace(),
-        ValueKind::Instance => self.to_instance().trace(),
-        ValueKind::Iter => self.to_iter().trace(),
-        ValueKind::Upvalue => self.to_upvalue().trace(),
-        ValueKind::Native => self.to_native().trace(),
-        _ => (),
+      if self.is_obj() {
+        self.to_obj().trace();
       }
     }
-    fn trace_debug(&self, stdout: &mut dyn Write) {
-      match self.kind() {
-        ValueKind::String => self.to_str().trace_debug(stdout),
-        ValueKind::List => self.to_list().trace_debug(stdout),
-        ValueKind::Map => self.to_map().trace_debug(stdout),
-        ValueKind::Fun => self.to_fun().trace_debug(stdout),
-        ValueKind::Closure => self.to_closure().trace_debug(stdout),
-        ValueKind::Method => self.to_method().trace_debug(stdout),
-        ValueKind::Class => self.to_class().trace_debug(stdout),
-        ValueKind::Instance => self.to_instance().trace_debug(stdout),
-        ValueKind::Iter => self.to_iter().trace_debug(stdout),
-        ValueKind::Upvalue => self.to_upvalue().trace_debug(stdout),
-        ValueKind::Native => self.to_native().trace_debug(stdout),
-        _ => (),
+    fn trace_debug(&self, log: &mut dyn Write) {
+      if self.is_obj() {
+        self.to_obj().trace_debug(log);
       }
     }
   }
@@ -1094,23 +628,7 @@ mod boxed {
         ValueKind::Bool => f.write_fmt(format_args!("{}", self.to_bool())),
         ValueKind::Nil => f.write_str("nil"),
         ValueKind::Number => f.write_fmt(format_args!("{}", self.to_num())),
-        ValueKind::String => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_str(), depth))),
-        ValueKind::List => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_list(), depth))),
-        ValueKind::Map => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_map(), depth))),
-        ValueKind::Fun => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_fun(), depth))),
-        ValueKind::Closure => {
-          f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_closure(), depth)))
-        }
-        ValueKind::Class => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_class(), depth))),
-        ValueKind::Instance => {
-          f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_instance(), depth)))
-        }
-        ValueKind::Iter => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_iter(), depth))),
-        ValueKind::Method => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_method(), depth))),
-        ValueKind::Native => f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_native(), depth))),
-        ValueKind::Upvalue => {
-          f.write_fmt(format_args!("{:?}", DebugWrap(&self.to_upvalue(), depth)))
-        }
+        ValueKind::Obj => self.to_obj().fmt_heap(f, depth),
       }
     }
   }
@@ -1140,67 +658,67 @@ mod boxed {
 
   impl From<GcStr> for Value {
     fn from(managed: GcStr) -> Value {
-      Self(managed.to_usize() as u64 | TAG_STRING)
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<List<Value>>> for Value {
-    fn from(managed: Gc<List<Value>>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_LIST)
+  impl From<GcObj<List<Value>>> for Value {
+    fn from(managed: GcObj<List<Value>>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<Map<Value, Value>>> for Value {
-    fn from(managed: Gc<Map<Value, Value>>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_MAP)
+  impl From<GcObj<Map<Value, Value>>> for Value {
+    fn from(managed: GcObj<Map<Value, Value>>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<LyIterator>> for Value {
-    fn from(managed: Gc<LyIterator>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_ITER)
+  impl From<GcObj<Enumerator>> for Value {
+    fn from(managed: GcObj<Enumerator>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<Closure>> for Value {
-    fn from(managed: Gc<Closure>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_CLOSURE)
+  impl From<GcObj<Closure>> for Value {
+    fn from(managed: GcObj<Closure>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<Fun>> for Value {
-    fn from(managed: Gc<Fun>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_FUN)
+  impl From<GcObj<Fun>> for Value {
+    fn from(managed: GcObj<Fun>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<Class>> for Value {
-    fn from(managed: Gc<Class>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_CLASS)
+  impl From<GcObj<Class>> for Value {
+    fn from(managed: GcObj<Class>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<Instance>> for Value {
-    fn from(managed: Gc<Instance>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_INSTANCE)
+  impl From<GcObj<Instance>> for Value {
+    fn from(managed: GcObj<Instance>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<Method>> for Value {
-    fn from(managed: Gc<Method>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_METHOD)
+  impl From<GcObj<Method>> for Value {
+    fn from(managed: GcObj<Method>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<Box<dyn Native>>> for Value {
-    fn from(managed: Gc<Box<dyn Native>>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_NATIVE)
+  impl From<GcObj<Native>> for Value {
+    fn from(managed: GcObj<Native>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<Gc<Upvalue>> for Value {
-    fn from(managed: Gc<Upvalue>) -> Value {
-      Self(managed.to_usize() as u64 | TAG_UPVALUE)
+  impl From<GcObj<Upvalue>> for Value {
+    fn from(managed: GcObj<Upvalue>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
@@ -1211,39 +729,44 @@ mod boxed {
         ValueKind::Number => write!(f, "{}", self.to_num()),
         ValueKind::Bool => write!(f, "{}", self.to_bool()),
         ValueKind::Nil => write!(f, "nil"),
-        ValueKind::String => write!(f, "'{}'", self.to_str()),
-        ValueKind::List => {
-          let list = self.to_list();
-          let mut strings: Vec<String> = Vec::with_capacity(list.len());
-          for item in list.iter() {
-            strings.push(format!("{}", item));
-          }
-
-          write!(f, "[{}]", strings.join(", "))
-        }
-        ValueKind::Map => {
-          let map = self.to_map();
-          let strings: Vec<String> = map
-            .iter()
-            .map(|(key, value)| format!("{}: {}", key, value))
-            .collect();
-          write!(f, "{{ {} }}", strings.join(", "))
-        }
-        ValueKind::Fun => write!(f, "{}", self.to_fun()),
-        ValueKind::Upvalue => match &*self.to_upvalue() {
-          Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
-          Upvalue::Closed(store) => write!(f, "{}", store),
-        },
-        ValueKind::Closure => write!(f, "{}", *self.to_closure().fun()),
-        ValueKind::Method => {
-          let bound = self.to_method();
-          write!(f, "{}.{}", bound.receiver(), bound.method())
-        }
-        ValueKind::Class => write!(f, "{}", &self.to_class().name()),
-        ValueKind::Instance => write!(f, "{} instance", &self.to_instance().class().name()),
-        ValueKind::Iter => write!(f, "{}", &self.to_iter().name()),
-        ValueKind::Native => write!(f, "<native {}>", self.to_native().meta().name),
+        ValueKind::Obj => write!(f, "{}", self.to_obj()),
       }
+    }
+  }
+
+  #[cfg(test)]
+  mod test {
+    use super::*;
+    use std::mem;
+
+    #[test]
+    fn size() {
+      assert_eq!(mem::size_of::<List<Value>>(), 24);
+      assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
+      assert_eq!(mem::size_of::<Closure>(), 24);
+      assert_eq!(mem::size_of::<Fun>(), 104);
+      assert_eq!(mem::size_of::<Class>(), 136);
+      assert_eq!(mem::size_of::<Instance>(), 24);
+      assert_eq!(mem::size_of::<Method>(), 16);
+      assert_eq!(mem::size_of::<Enumerator>(), 24);
+      assert_eq!(mem::size_of::<Native>(), 56);
+      assert_eq!(mem::size_of::<Upvalue>(), 16);
+    }
+
+    #[test]
+    fn alignment() {
+      let target: usize = 8;
+
+      assert_eq!(mem::align_of::<List<Value>>(), target);
+      assert_eq!(mem::align_of::<Map<Value, Value>>(), target);
+      assert_eq!(mem::align_of::<Closure>(), target);
+      assert_eq!(mem::align_of::<Fun>(), target);
+      assert_eq!(mem::align_of::<Class>(), target);
+      assert_eq!(mem::align_of::<Instance>(), target);
+      assert_eq!(mem::align_of::<Method>(), target);
+      assert_eq!(mem::align_of::<Enumerator>(), target);
+      assert_eq!(mem::align_of::<Native>(), target);
+      assert_eq!(mem::align_of::<Upvalue>(), target);
     }
   }
 }
@@ -1252,57 +775,84 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
-    module::Module,
-    object::{Class, Closure, Fun, List, Map},
-  };
-  use laythe_env::{
-    managed::{Allocation, Gc, GcStr},
+    managed::{Gc, GcObj, GcStr},
     memory::{Allocator, NO_GC},
+    module::Module,
+    object::{Class, Closure, Fun, List, Map, ObjectKind},
   };
-  use std::{path::PathBuf, ptr::NonNull};
+  use std::path::PathBuf;
 
-  const VARIANTS: [ValueKind; 14] = [
+  const VALUE_VARIANTS: [ValueKind; 4] = [
     ValueKind::Bool,
     ValueKind::Nil,
     ValueKind::Number,
-    ValueKind::String,
-    ValueKind::List,
-    ValueKind::Map,
-    ValueKind::Fun,
-    ValueKind::Closure,
-    ValueKind::Class,
-    ValueKind::Instance,
-    ValueKind::Iter,
-    ValueKind::Method,
-    ValueKind::Native,
-    ValueKind::Upvalue,
+    ValueKind::Obj,
   ];
 
-  fn is_type(val: Value, variant: ValueKind) -> bool {
+  const OBJECT_VARIANTS: [ObjectKind; 11] = [
+    ObjectKind::Class,
+    ObjectKind::Closure,
+    ObjectKind::Enumerator,
+    ObjectKind::Fun,
+    ObjectKind::Instance,
+    ObjectKind::List,
+    ObjectKind::Map,
+    ObjectKind::Method,
+    ObjectKind::Native,
+    ObjectKind::String,
+    ObjectKind::Upvalue,
+  ];
+
+  fn is_value_type(val: Value, variant: ValueKind) -> bool {
     match variant {
       ValueKind::Bool => val.is_bool(),
       ValueKind::Nil => val.is_nil(),
       ValueKind::Number => val.is_num(),
-      ValueKind::String => val.is_str(),
-      ValueKind::List => val.is_list(),
-      ValueKind::Map => val.is_map(),
-      ValueKind::Fun => val.is_fun(),
-      ValueKind::Closure => val.is_closure(),
-      ValueKind::Class => val.is_class(),
-      ValueKind::Instance => val.is_instance(),
-      ValueKind::Iter => val.is_iter(),
-      ValueKind::Method => val.is_method(),
-      ValueKind::Native => val.is_native(),
-      ValueKind::Upvalue => val.is_upvalue(),
+      ValueKind::Obj => val.is_obj(),
     }
   }
 
-  fn assert_type(val: Value, target: ValueKind) {
-    VARIANTS.iter().for_each(|variant| {
+  fn is_object_type(val: Value, variant: ObjectKind) -> bool {
+    if !val.is_obj() {
+      return false;
+    }
+
+    let obj = val.to_obj();
+    obj.is_kind(variant)
+  }
+
+  fn assert_value_type(val: Value, target: ValueKind) {
+    VALUE_VARIANTS.iter().for_each(|variant| {
       if target == *variant {
-        assert!(is_type(val, *variant), "Expected to be {:?}", *variant);
+        assert!(
+          is_value_type(val, *variant),
+          "Expected to be {:?}",
+          *variant
+        );
       } else {
-        assert!(!is_type(val, *variant), "Expected not to be {:?}", *variant);
+        assert!(
+          !is_value_type(val, *variant),
+          "Expected not to be {:?}",
+          *variant
+        );
+      };
+    });
+  }
+
+  fn assert_object_type(val: Value, target: ObjectKind) {
+    OBJECT_VARIANTS.iter().for_each(|variant| {
+      if target == *variant {
+        assert!(
+          is_object_type(val, *variant),
+          "Expected to be {:?}",
+          *variant
+        );
+      } else {
+        assert!(
+          !is_object_type(val, *variant),
+          "Expected not to be {:?}",
+          *variant
+        );
       };
     });
   }
@@ -1322,23 +872,23 @@ mod test {
     gc.manage(Module::new(class, path, 0), &NO_GC)
   }
 
-  fn test_fun(gc: &mut Allocator) -> Gc<Fun> {
+  fn test_fun(gc: &mut Allocator) -> GcObj<Fun> {
     let name = test_string(gc);
     let module = test_module(gc);
 
-    gc.manage(Fun::test(name, module), &NO_GC)
+    gc.manage_obj(Fun::test(name, module), &NO_GC)
   }
 
-  fn test_closure(gc: &mut Allocator) -> Gc<Closure> {
+  fn test_closure(gc: &mut Allocator) -> GcObj<Closure> {
     let fun = test_fun(gc);
 
-    gc.manage(Closure::without_upvalues(fun), &NO_GC)
+    gc.manage_obj(Closure::without_upvalues(fun), &NO_GC)
   }
 
-  fn test_class(gc: &mut Allocator) -> Gc<Class> {
+  fn test_class(gc: &mut Allocator) -> GcObj<Class> {
     let name = test_string(gc);
 
-    gc.manage(Class::bare(name), &NO_GC)
+    gc.manage_obj(Class::bare(name), &NO_GC)
   }
 
   #[test]
@@ -1346,8 +896,8 @@ mod test {
     let val_true = val!(true);
     let val_false = val!(false);
 
-    assert_type(val_true, ValueKind::Bool);
-    assert_type(val_false, ValueKind::Bool);
+    assert_value_type(val_true, ValueKind::Bool);
+    assert_value_type(val_false, ValueKind::Bool);
 
     assert_eq!(val_true.to_bool(), true);
     assert_eq!(val_false.to_bool(), false);
@@ -1360,10 +910,10 @@ mod test {
     let val_neg_infinity = val!(f64::NEG_INFINITY);
     let val_normal = val!(5.3);
 
-    assert_type(val_div_zero, ValueKind::Number);
-    assert_type(val_nan, ValueKind::Number);
-    assert_type(val_neg_infinity, ValueKind::Number);
-    assert_type(val_normal, ValueKind::Number);
+    assert_value_type(val_div_zero, ValueKind::Number);
+    assert_value_type(val_nan, ValueKind::Number);
+    assert_value_type(val_neg_infinity, ValueKind::Number);
+    assert_value_type(val_normal, ValueKind::Number);
 
     assert_eq!(val_div_zero.to_num(), 1.0 / 0.0);
     assert!(val_nan.to_num().is_nan());
@@ -1377,50 +927,50 @@ mod test {
     let string = gc.manage_str("example", &NO_GC);
 
     let value = val!(string);
-    let string2: GcStr = value.to_str();
 
-    assert_type(value, ValueKind::String);
+    assert_value_type(value, ValueKind::Obj);
+    assert_object_type(value, ObjectKind::String);
 
+    let string2: GcStr = value.to_obj().to_str();
     assert_eq!(string, string2);
   }
 
   #[test]
   fn list() {
-    let list = List::from(vec![VALUE_NIL, VALUE_TRUE, VALUE_FALSE]);
-    let mut alloc = Box::new(Allocation::new(list));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+    let mut gc = Allocator::default();
+    let list = gc.manage_obj(List::from(vec![VALUE_NIL, VALUE_TRUE, VALUE_FALSE]), &NO_GC);
 
-    let managed = Gc::from(ptr);
-    let value = val!(managed);
-    let managed2 = value.to_list();
+    let value = val!(list);
 
-    assert_type(value, ValueKind::List);
+    assert_value_type(value, ValueKind::Obj);
+    assert_object_type(value, ObjectKind::List);
 
-    assert_eq!(managed.len(), managed2.len());
-    assert_eq!(managed[0], managed2[0]);
-    assert_eq!(managed[1], managed2[1]);
-    assert_eq!(managed[2], managed2[2]);
-    assert_eq!(managed, managed2);
+    let list2 = value.to_obj().to_list();
+
+    assert_eq!(list.len(), list2.len());
+    assert_eq!(list[0], list2[0]);
+    assert_eq!(list[1], list2[1]);
+    assert_eq!(list[2], list2[2]);
+    assert_eq!(list, list2);
   }
 
   #[test]
   fn map() {
+    let mut gc = Allocator::default();
     let mut map: Map<Value, Value> = Map::default();
     map.insert(VALUE_NIL, VALUE_TRUE);
     map.insert(val!(10.0), VALUE_FALSE);
 
-    let mut alloc = Box::new(Allocation::new(map));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+    let map = gc.manage_obj(map, &NO_GC);
+    let value = val!(map);
 
-    let managed = Gc::from(ptr);
-    let value = val!(managed);
-    let managed2 = value.to_map();
+    assert_value_type(value, ValueKind::Obj);
+    assert_object_type(value, ObjectKind::Map);
+    let map2 = value.to_obj().to_map();
 
-    assert_type(value, ValueKind::Map);
-
-    assert_eq!(managed.len(), managed2.len());
-    assert_eq!(managed.get(&VALUE_NIL), managed2.get(&VALUE_NIL));
-    assert_eq!(managed.get(&val!(10.0)), managed2.get(&val!(10.0)));
+    assert_eq!(map.len(), map2.len());
+    assert_eq!(map.get(&VALUE_NIL), map2.get(&VALUE_NIL));
+    assert_eq!(map.get(&val!(10.0)), map2.get(&val!(10.0)));
   }
 
   #[test]
@@ -1428,9 +978,10 @@ mod test {
     let mut gc = Allocator::default();
     let fun = test_fun(&mut gc);
     let value = val!(fun);
-    let fun2 = value.to_fun();
 
-    assert_type(value, ValueKind::Fun);
+    assert_value_type(value, ValueKind::Obj);
+    assert_object_type(value, ObjectKind::Fun);
+    let fun2 = value.to_obj().to_fun();
 
     assert_eq!(fun.name(), fun2.name());
     assert_eq!(fun.arity(), fun2.arity());
@@ -1442,9 +993,10 @@ mod test {
     let closure = test_closure(&mut gc);
 
     let value = val!(closure);
-    let closure2 = value.to_closure();
 
-    assert_type(value, ValueKind::Closure);
+    assert_value_type(value, ValueKind::Obj);
+    assert_object_type(value, ObjectKind::Closure);
+    let closure2 = value.to_obj().to_closure();
 
     assert_eq!(closure.fun(), closure2.fun());
     assert_eq!(closure.upvalues(), closure2.upvalues());
@@ -1456,10 +1008,10 @@ mod test {
     let class = test_class(&mut gc);
 
     let value = val!(class);
-    let class2 = value.to_class();
+    assert_value_type(value, ValueKind::Obj);
+    assert_object_type(value, ObjectKind::Class);
 
-    assert_type(value, ValueKind::Class);
-
+    let class2 = value.to_obj().to_class();
     assert_eq!(class.name(), class2.name());
   }
 }

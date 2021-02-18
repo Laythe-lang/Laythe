@@ -108,7 +108,7 @@ pub fn assert_file_exit_and_stdio(
 
     if let Err(err) = ly_assert_eq(&stdout_lines.len(), &stdout.len(), None) {
       stdio_container.log_stdio();
-      panic!(err.to_string())
+      panic!("{}", err)
     }
   }
 
@@ -131,7 +131,7 @@ pub fn assert_file_exit_and_stdio(
 
     if let Err(err) = ly_assert_eq(&stderr_lines.len(), &stderr.len(), None) {
       stdio_container.log_stdio();
-      panic!(err.to_string())
+      panic!("{}", err)
     }
   }
 
@@ -154,7 +154,7 @@ fn assert_files_exit_inner(
     Err(err) => {
       println!("Could not find {}", test_path.to_str().unwrap());
       return Err(err);
-    }
+    },
   };
   let mut source = String::new();
   file.read_to_string(&mut source)?;

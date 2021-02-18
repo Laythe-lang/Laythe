@@ -1,13 +1,24 @@
-use crate::value::Value;
+use crate::{
+  managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
+  value::Value,
+};
+use fmt::Display;
 use fnv::FnvBuildHasher;
 use hashbrown::{hash_map, HashMap};
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Trace};
 use std::{fmt, hash::Hash, io::Write, mem};
+
+use super::ObjectKind;
 
 #[derive(Clone, Debug)]
 pub struct Map<K, V>(HashMap<K, V, FnvBuildHasher>);
 
 impl<K, V> Map<K, V> {
+  pub fn new() -> Self {
+    Self(HashMap::<K, V, FnvBuildHasher>::with_hasher(
+      FnvBuildHasher::default(),
+    ))
+  }
+
   pub fn with_capacity(capacity: usize) -> Self {
     Self(HashMap::<K, V, FnvBuildHasher>::with_capacity_and_hasher(
       capacity,
@@ -73,6 +84,18 @@ where
   }
 }
 
+impl<K: Display, V: Display> Display for Map<K, V> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "{{")?;
+
+    for (key, val) in self.iter() {
+      write!(f, "{}: {}", key, val)?;
+    }
+
+    write!(f, "}}")
+  }
+}
+
 impl<K, V> Default for Map<K, V> {
   fn default() -> Self {
     Map(HashMap::default())
@@ -97,8 +120,6 @@ impl<K: 'static + Trace, V: 'static + Trace> Trace for Map<K, V> {
 
 impl<K: 'static + DebugHeap, V: 'static + DebugHeap> DebugHeap for Map<K, V> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_map()
       .entries(
         self
@@ -121,5 +142,11 @@ where
 
   fn as_debug(&self) -> &dyn DebugHeap {
     self
+  }
+}
+
+impl Object for Map<Value, Value> {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::Map
   }
 }

@@ -1,8 +1,10 @@
 use std::ops::Range;
 
 use codespan_reporting::files;
-use laythe_core::object::Map;
-use laythe_env::managed::{GcStr, Trace};
+use laythe_core::{
+  managed::{GcStr, Trace},
+  object::Map,
+};
 
 /// A struct for efficiently determine lines for an associated
 /// file.
@@ -152,7 +154,7 @@ impl VmFiles {
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::memory::{Allocator, NO_GC};
+  /// use laythe_core::memory::{Allocator, NO_GC};
   /// use laythe_vm::files::VmFiles;
   ///
   /// let mut alloc = Allocator::default();
@@ -200,7 +202,7 @@ impl VmFiles {
   ///
   /// # Examples
   /// ```
-  /// use laythe_env::memory::{Allocator, NO_GC};
+  /// use laythe_core::memory::{Allocator, NO_GC};
   /// use laythe_vm::files::{VmFiles, LineOffsets};
   ///
   /// let mut alloc = Allocator::default();

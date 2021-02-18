@@ -1,10 +1,13 @@
-use crate::managed::{
-  gc_array::{make_layout, GcArray, GcArrayHandle},
-  DebugHeap, Manage, Mark, Trace,
+use crate::{
+  managed::{
+    gc_array::{GcArray, GcArrayHandle},
+    DebugHeap, Manage, Mark, Trace,
+  },
+  object::ObjectKind,
 };
 use std::{
   cmp::Ordering,
-  fmt::{self, Debug, Display, Pointer},
+  fmt,
   hash::{Hash, Hasher},
   io::Write,
   mem,
@@ -13,7 +16,11 @@ use std::{
   slice, str,
 };
 
-use super::{Marked, Unmark};
+use super::{
+  gc_obj::{GcObject, ObjHeader},
+  utils::make_array_layout,
+  Marked, Unmark,
+};
 
 /// A non owning reference to a Garbage collector
 /// allocated string. Note this string is the same size
@@ -21,7 +28,7 @@ use super::{Marked, Unmark};
 ///
 /// ## Example
 /// ```
-/// use laythe_env::managed::{GcStr, GcStrHandle};
+/// use laythe_core::managed::{GcStr, GcStrHandle};
 /// use std::mem;
 ///
 /// let str = "my string";
@@ -32,9 +39,28 @@ use super::{Marked, Unmark};
 /// assert_eq!(string.len(), str.len());
 /// assert_eq!(string, str);
 /// ```
-pub struct GcStr(GcArray<u8>);
+pub struct GcStr(GcArray<u8, ObjHeader>);
 
 impl GcStr {
+  /// Create a usize from the buffer pointer. This is used
+  /// when the value is boxed
+  ///
+  /// ## Example
+  /// ```
+  /// use laythe_core::managed::{GcStr, GcStrHandle};
+  ///
+  /// let handle = GcStrHandle::from("some string");
+  /// let value = handle.value();
+  /// assert!(value.to_usize() > 0);
+  /// ```
+  pub fn to_usize(&self) -> usize {
+    self.0.as_alloc_ptr() as *const () as usize
+  }
+
+  pub fn degrade(&self) -> GcObject {
+    GcObject::new(self.0.ptr)
+  }
+
   /// Get a static reference to the underlying data str slice.
   ///
   /// ## Safety
@@ -45,7 +71,7 @@ impl GcStr {
   ///
   /// ## Example
   /// ```
-  /// use laythe_env::managed::{GcStr, GcStrHandle};
+  /// use laythe_core::managed::{GcStr, GcStrHandle};
   ///
   /// let handle = GcStrHandle::from("some string");
   /// let value = handle.value();
@@ -56,29 +82,14 @@ impl GcStr {
     str::from_utf8_unchecked(slice::from_raw_parts(self.as_ptr(), self.len()))
   }
 
-  /// Create a usize from the buffer pointer. This is used
-  /// when the value is boxed
-  ///
-  /// ## Example
-  /// ```
-  /// use laythe_env::managed::{GcStr, GcStrHandle};
-  ///
-  /// let handle = GcStrHandle::from("some string");
-  /// let value = handle.value();
-  /// assert!(value.to_usize() > 0);
-  /// ```
-  pub fn to_usize(&self) -> usize {
-    self.0.as_alloc_ptr() as *const () as usize
-  }
-
   /// Create a GcStr from a `NonNull<u8>`.
   ///
   /// ## Safety
   /// This functions assumes that the pointer was originally
   /// from a different instance of GcStr. Other pointer
   /// will likely crash immediately
-  pub unsafe fn from_alloc_ptr(buf: NonNull<u8>) -> Self {
-    GcStr(GcArray::from_alloc_ptr(buf))
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+    GcStr(GcArray::from_alloc_ptr(ptr))
   }
 }
 
@@ -107,24 +118,24 @@ impl Trace for GcStr {
     }
 
     log
-      .write_fmt(format_args!(
-        "{:p} mark {:?}\n",
-        self.0.as_alloc_ptr(),
-        self
-      ))
+      .write_fmt(format_args!("{:p} mark {}\n", self.0.as_alloc_ptr(), self))
       .expect("unable to write to stdout");
   }
 }
 
 impl DebugHeap for GcStr {
-  fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> std::fmt::Result {
-    f.write_fmt(format_args!("{:?}", self))
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> std::fmt::Result {
+    if depth == 0 {
+      f.write_str("*")
+    } else {
+      f.write_fmt(format_args!("{}", self))
+    }
   }
 }
 
 impl Manage for GcStr {
   fn size(&self) -> usize {
-    mem::size_of::<Self>() + make_layout::<u8>(self.len()).size()
+    mem::size_of::<Self>() + make_array_layout::<ObjHeader, u8>(self.len()).size()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -132,21 +143,21 @@ impl Manage for GcStr {
   }
 }
 
-impl Debug for GcStr {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl fmt::Debug for GcStr {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
     f.write_str(&self)
   }
 }
 
-impl Display for GcStr {
+impl fmt::Display for GcStr {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str(&self)
+    write!(f, "'{}'", self.deref())
   }
 }
 
-impl Pointer for GcStr {
+impl fmt::Pointer for GcStr {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    Pointer::fmt(&self.0.as_alloc_ptr(), f)
+    self.0.as_alloc_ptr().fmt(f)
   }
 }
 
@@ -221,7 +232,7 @@ impl AsRef<str> for GcStr {
 ///
 /// ## Example
 /// ```
-/// use laythe_env::managed::GcStrHandle;
+/// use laythe_core::managed::GcStrHandle;
 /// use std::mem;
 ///
 /// let data = &"example";
@@ -229,14 +240,14 @@ impl AsRef<str> for GcStr {
 ///
 /// assert_eq!(mem::size_of::<GcStrHandle>(), mem::size_of::<usize>());
 /// ```
-pub struct GcStrHandle(GcArrayHandle<u8>);
+pub struct GcStrHandle(GcArrayHandle<u8, ObjHeader>);
 
 impl GcStrHandle {
   /// Create a non owning reference to this string.
   ///
   /// ## Examples
   /// ```
-  /// use laythe_env::managed::GcStrHandle;
+  /// use laythe_core::managed::GcStrHandle;
   /// use std::mem;
   ///
   /// let data = &"example";
@@ -258,7 +269,7 @@ impl GcStrHandle {
   ///
   /// ## Examples
   /// ```
-  /// use laythe_env::managed::GcStrHandle;
+  /// use laythe_core::managed::GcStrHandle;
   /// use std::mem;
   ///
   /// let data = &"example";
@@ -268,13 +279,16 @@ impl GcStrHandle {
   /// ```
   #[inline]
   pub fn size(&self) -> usize {
-    mem::size_of::<Self>() + make_layout::<u8>(self.0.len()).size()
+    mem::size_of::<Self>() + make_array_layout::<ObjHeader, u8>(self.0.len()).size()
   }
 }
 
 impl<T: AsRef<str>> From<T> for GcStrHandle {
   fn from(string: T) -> Self {
-    GcStrHandle(GcArrayHandle::from(string.as_ref().as_bytes()))
+    GcStrHandle(GcArrayHandle::from_slice(
+      string.as_ref().as_bytes(),
+      ObjHeader::new(ObjectKind::String),
+    ))
   }
 }
 
@@ -298,8 +312,39 @@ impl DebugHeap for GcStrHandle {
   }
 }
 
-impl Pointer for GcStrHandle {
+impl fmt::Pointer for GcStrHandle {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    Pointer::fmt(&self.value().0.as_alloc_ptr(), f)
+    self.value().0.ptr.fmt(f)
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  mod value {
+    use super::*;
+
+    #[test]
+    fn deref_static() {
+      let handle = GcStrHandle::from("example");
+      let value = handle.value();
+
+      unsafe {
+        assert_eq!(value.deref_static(), "example");
+      }
+    }
+  }
+
+  mod handle {
+    use super::*;
+
+    #[test]
+    fn from() {
+      let handle = GcStrHandle::from("example");
+      let value = handle.value();
+
+      assert_eq!(&*value, "example");
+    }
   }
 }

@@ -29,14 +29,6 @@ pub struct Allocation<T: 'static + Trace + ?Sized> {
 
 impl<T: 'static + Manage> Allocation<T> {
   /// Create a new allocation from a struct that is Manage
-  ///
-  /// # Examples
-  /// ```
-  /// use laythe_env::managed::Allocation;
-  /// use std::path::PathBuf;
-  ///
-  /// let alloc = Allocation::new(20u128);
-  /// ```
   pub fn new(data: T) -> Self {
     Self {
       data,

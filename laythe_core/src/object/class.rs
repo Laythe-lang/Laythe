@@ -1,9 +1,13 @@
-use crate::constants::{INDEX_GET, INDEX_SET, INIT};
+use crate::{
+  constants::{INDEX_GET, INDEX_SET, INIT},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Object, Trace},
+};
 use crate::{hooks::GcHooks, value::Value};
 use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write, mem};
+
+use super::ObjectKind;
 
 #[derive(PartialEq, Clone)]
 pub struct Class {
@@ -13,19 +17,13 @@ pub struct Class {
   index_set: Option<Value>,
   methods: HashMap<GcStr, Value, FnvBuildHasher>,
   fields: HashMap<GcStr, u16, FnvBuildHasher>,
-  meta_class: Option<Gc<Class>>,
-  super_class: Option<Gc<Class>>,
-}
-
-impl fmt::Display for Class {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<cls {}>", self.name)
-  }
+  meta_class: Option<GcObj<Class>>,
+  super_class: Option<GcObj<Class>>,
 }
 
 impl Class {
-  pub fn with_inheritance(hooks: &GcHooks, name: GcStr, super_class: Gc<Class>) -> Gc<Self> {
-    let mut class = hooks.manage(Self {
+  pub fn with_inheritance(hooks: &GcHooks, name: GcStr, super_class: GcObj<Class>) -> GcObj<Self> {
+    let mut class = hooks.manage_obj(Self {
       name,
       init: None,
       index_get: None,
@@ -82,11 +80,11 @@ impl Class {
     self.index_set
   }
 
-  pub fn meta_class(&self) -> &Option<Gc<Class>> {
+  pub fn meta_class(&self) -> &Option<GcObj<Class>> {
     &self.meta_class
   }
 
-  pub fn super_class(&mut self) -> &Option<Gc<Class>> {
+  pub fn super_class(&self) -> &Option<GcObj<Class>> {
     &self.super_class
   }
 
@@ -101,7 +99,7 @@ impl Class {
     }
   }
 
-  pub fn set_meta(&mut self, meta_class: Gc<Class>) -> &mut Self {
+  pub fn set_meta(&mut self, meta_class: GcObj<Class>) -> &mut Self {
     if self.meta_class.is_some() {
       panic!("Meta class already set!");
     }
@@ -136,7 +134,7 @@ impl Class {
     self.fields.get(name).copied()
   }
 
-  pub fn inherit(&mut self, hooks: &GcHooks, super_class: Gc<Class>) {
+  pub fn inherit(&mut self, hooks: &GcHooks, super_class: GcObj<Class>) {
     debug_assert!(self.methods.is_empty());
     debug_assert!(self.fields.is_empty());
 
@@ -172,32 +170,46 @@ impl Class {
       .expect("Expected super class.")
       .meta_class()
       .expect("Expected super class to have meta class.");
-    let super_meta_meta_class = super_meta_class
+    let class_class = super_meta_class
       .meta_class()
       .expect("Expected super meta class to have meta class.");
 
-    let mut meta_class = hooks.manage(Self {
-      name: hooks.manage_str(format!("{} metaClass", self.name)),
+    debug_assert!(
+      &*class_class.name() == "Class",
+      "self: {}, super: {}, class: {}",
+      &*self.name(),
+      &*self.super_class.unwrap().name(),
+      &*class_class.name()
+    );
+
+    let mut meta_class = hooks.manage_obj(Self {
+      name: hooks.manage_str(format!("{} metaClass", &*self.name)),
       init: None,
       index_get: None,
       index_set: None,
       methods: HashMap::default(),
       fields: HashMap::default(),
-      meta_class: Some(super_meta_meta_class),
+      meta_class: Some(class_class),
       super_class: None,
     });
 
     hooks.push_root(meta_class);
-    meta_class.inherit(hooks, super_meta_meta_class);
+    meta_class.inherit(hooks, class_class);
     hooks.pop_roots(1);
 
     self.set_meta(meta_class);
   }
 }
 
+impl fmt::Display for Class {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "<{} {:p}>", &*self.name(), &self)
+  }
+}
+
 impl fmt::Debug for Class {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.fmt_heap(f, 1)
+    self.fmt_heap(f, 2)
   }
 }
 
@@ -243,8 +255,6 @@ impl Trace for Class {
 
 impl DebugHeap for Class {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_struct("Class")
       .field("name", &DebugWrap(&self.name, depth))
       .field("methods", &DebugWrap(&self.methods, depth))
@@ -264,20 +274,28 @@ impl Manage for Class {
   }
 }
 
+impl Object for Class {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::Class
+  }
+}
+
 #[cfg(test)]
-pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
-  let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
-  let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
+  let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
+  let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Class")));
   class_class.inherit(hooks, object_class);
 
   let class_copy = class_class;
   class_class.set_meta(class_copy);
 
-  let object_meta_class = Class::with_inheritance(
-    hooks,
-    hooks.manage_str(format!("{} metaClass", object_class.name())),
-    class_class,
-  );
+  // create object's meta class
+  let mut object_meta_class = hooks.manage_obj(Class::bare(
+    hooks.manage_str(format!("{} metaClass", &*object_class.name())),
+  ));
+
+  object_meta_class.inherit(hooks, class_class);
+  object_meta_class.set_meta(class_class);
 
   object_class.set_meta(object_meta_class);
   Class::with_inheritance(hooks, hooks.manage_str(name), object_class)

@@ -1,57 +1,53 @@
 use laythe_core::{
   hooks::GcHooks,
+  if_let_obj,
+  managed::{GcObj, GcStr},
   module::{Import, Module, Package},
-  native::Native,
-  object::{Class, Instance},
+  object::{Class, Instance, ObjectKind},
+  to_obj_kind,
   value::Value,
 };
-use laythe_env::managed::{Gc, GcStr};
-
-pub fn to_dyn_native<T: 'static + Native>(hooks: &GcHooks, method: T) -> Gc<Box<dyn Native>> {
-  hooks.manage(Box::new(method) as Box<dyn Native>)
-}
-
 pub fn default_class_inheritance(
   hooks: &GcHooks,
   package: &Package,
   class_name: &str,
-) -> StdResult<Gc<Class>> {
+) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, STD)?;
   let object_class = package.import_symbol(hooks, import, hooks.manage_str(OBJECT_CLASS_NAME))?;
 
-  if object_class.is_class() {
+  if_let_obj!(ObjectKind::Class(class) = (object_class) {
     Ok(Class::with_inheritance(
       hooks,
       name,
-      object_class.to_class(),
+      class,
     ))
   } else {
     Err(StdError::SymbolNotClass)
-  }
+  })
 }
 
 pub fn default_error_inheritance(
   hooks: &GcHooks,
   package: &Package,
   class_name: &str,
-) -> StdResult<Gc<Class>> {
+) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
-  let object_name = hooks.manage_str(OBJECT_CLASS_NAME);
+  let object_name = hooks.manage_str(ERROR_CLASS_NAME);
 
   let import = Import::from_str(hooks, STD)?;
   let object_class = package.import_symbol(hooks, import, object_name)?;
 
-  if object_class.is_class() {
+  if_let_obj!(ObjectKind::Class(class) = (object_class) {
     Ok(Class::with_inheritance(
       hooks,
       name,
-      object_class.to_class(),
+      class,
     ))
   } else {
     Err(StdError::SymbolNotClass)
-  }
+  })
 }
 
 pub fn load_class_from_package(
@@ -59,47 +55,47 @@ pub fn load_class_from_package(
   package: &Package,
   path: &str,
   name: &str,
-) -> StdResult<Gc<Class>> {
+) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(name);
   let import = Import::from_str(hooks, path)?;
 
   let symbol = package.import_symbol(hooks, import, name)?;
-  if symbol.is_class() {
-    Ok(symbol.to_class())
+  if_let_obj!(ObjectKind::Class(class) = (symbol) {
+    Ok(class)
   } else {
     Err(StdError::SymbolNotClass)
-  }
+  })
 }
 
 pub fn load_class_from_module(
   hooks: &GcHooks,
   module: &Module,
   name: &str,
-) -> StdResult<Gc<Class>> {
+) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(name);
   let symbol = module.get_exported_symbol(name)?;
 
-  if symbol.is_class() {
-    Ok(symbol.to_class())
+  if_let_obj!(ObjectKind::Class(class) = (symbol) {
+    Ok(class)
   } else {
     Err(StdError::SymbolNotClass)
-  }
+  })
 }
 
 pub fn load_instance_from_module(
   hooks: &GcHooks,
   module: &Module,
   name: &str,
-) -> StdResult<Gc<Instance>> {
+) -> StdResult<GcObj<Instance>> {
   let name = hooks.manage_str(name);
   match module.get_exported_symbol(name) {
     Ok(symbol) => {
-      if symbol.is_instance() {
-        Ok(symbol.to_instance())
+      if_let_obj!(ObjectKind::Instance(instance) = (symbol) {
+        Ok(instance)
       } else {
-        Err(StdError::SymbolNotClass)
-      }
-    }
+        Err(StdError::SymbolNotInstance)
+      })
+    },
     Err(err) => Err(StdError::from(err)),
   }
 }
@@ -116,39 +112,38 @@ pub fn export_and_insert(
 
 #[cfg(test)]
 pub use self::test::*;
-use crate::{global::OBJECT_CLASS_NAME, StdError, StdResult, STD};
+use crate::{
+  global::{ERROR_CLASS_NAME, OBJECT_CLASS_NAME},
+  StdError, StdResult, STD,
+};
 
 #[cfg(test)]
 mod test {
+  use super::*;
   use crate::{
     builtin::{builtin_from_module, BuiltIn},
     create_std_lib, native,
   };
   use laythe_core::{
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
-    iterator::LyIter,
+    managed::{GcObj, GcObject, GcStr, Trace, TraceRoot},
+    match_obj,
+    memory::{Allocator, NoGc},
     module::{Module, ModuleResult},
-    native::Native,
-    native::{MetaData, NativeMeta, NativeMetaBuilder},
-    object::Class,
-    object::Fun,
-    object::{FunBuilder, List},
+    object::{Class, Enumerate, Fun, FunBuilder, List, LyNative, Native, NativeMetaBuilder},
     signature::Arity,
     signature::{ParameterBuilder, ParameterKind},
+    to_obj_kind,
     utils::IdEmitter,
     val,
-    value::{Value, ValueKind, VALUE_NIL},
+    value::{Value, VALUE_NIL},
     Call,
   };
   use laythe_env::{
     io::Io,
-    managed::{Gc, GcStr, Trace, TraceRoot},
-    memory::{Allocator, NoGc},
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
   use std::{cell::RefCell, io::Write, path::PathBuf, sync::Arc};
-
-  use super::to_dyn_native;
 
   pub struct MockedContext {
     pub gc: RefCell<Allocator>,
@@ -242,18 +237,28 @@ mod test {
 
   impl ValueContext for MockedContext {
     fn call(&mut self, callable: Value, args: &[Value]) -> Call {
-      let arity = match callable.kind() {
-        ValueKind::Closure => *callable.to_closure().fun().arity(),
-        ValueKind::Method => *callable.to_method().method().to_closure().fun().arity(),
-        ValueKind::Native => callable.to_native().meta().signature.arity,
+      if !callable.is_obj() {
+        return Call::Exit(1);
+      }
+
+      let arity = match_obj!((&callable.to_obj()) {
+        ObjectKind::Closure(closure) => {
+          *closure.fun().arity()
+        },
+        ObjectKind::Method(method) => {
+          *method.method().to_obj().to_closure().fun().arity()
+        },
+        ObjectKind::Native(native) => {
+          native.meta().signature.arity
+        },
         _ => return Call::Exit(1),
-      };
+      });
 
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
           return Call::Exit(1);
-        }
+        },
       }
 
       if self.response_count < self.responses.len() {
@@ -266,20 +271,28 @@ mod test {
     }
 
     fn call_method(&mut self, _this: Value, method: Value, args: &[Value]) -> Call {
-      let arity = match method.kind() {
-        ValueKind::Closure => *method.to_closure().fun().arity(),
-        ValueKind::Method => *method.to_method().method().to_closure().fun().arity(),
-        ValueKind::Native => method.to_native().meta().signature.arity,
-        _ => {
-          return Call::Exit(1);
-        }
-      };
+      if !method.is_obj() {
+        return Call::Exit(1);
+      }
+
+      let arity = match_obj!((&method.to_obj()) {
+        ObjectKind::Closure(closure) => {
+          *closure.fun().arity()
+        },
+        ObjectKind::Method(method) => {
+          *method.method().to_obj().to_closure().fun().arity()
+        },
+        ObjectKind::Native(native) => {
+          native.meta().signature.arity
+        },
+        _ => return Call::Exit(1),
+      });
 
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
           return Call::Exit(1);
-        }
+        },
       }
 
       if self.response_count < self.responses.len() {
@@ -343,9 +356,9 @@ mod test {
     }
   }
 
-  impl LyIter for TestIterator {
+  impl Enumerate for TestIterator {
     fn name(&self) -> &str {
-      "Test Iterator"
+      "TestIterator"
     }
 
     fn current(&self) -> Value {
@@ -372,29 +385,31 @@ mod test {
 
   impl Trace for TestIterator {}
 
-  pub fn test_iter() -> Box<dyn LyIter> {
+  pub fn test_iter() -> Box<dyn Enumerate> {
     Box::new(TestIterator::new())
   }
 
-  pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
-    let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
-    let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+  pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
+    let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
+    let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Class")));
     class_class.inherit(hooks, object_class);
 
     let class_copy = class_class;
     class_class.set_meta(class_copy);
 
-    let object_meta_class = Class::with_inheritance(
-      hooks,
-      hooks.manage_str(format!("{} metaClass", object_class.name())),
-      class_class,
-    );
+    // create object's meta class
+    let mut object_meta_class = hooks.manage_obj(Class::bare(
+      hooks.manage_str(format!("{} metaClass", &*object_class.name())),
+    ));
+
+    object_meta_class.inherit(hooks, class_class);
+    object_meta_class.set_meta(class_class);
 
     object_class.set_meta(object_meta_class);
     Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
   }
 
-  pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> Gc<Fun> {
+  pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
     let module_class = test_class(hooks, name);
 
     let module = Module::from_path(
@@ -409,7 +424,7 @@ mod test {
     let mut builder = FunBuilder::new(hooks.manage_str(name), module);
     builder.set_arity(Arity::default());
 
-    hooks.manage(builder.build())
+    hooks.manage_obj(builder.build())
   }
 
   pub fn fun_builder_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
@@ -427,16 +442,16 @@ mod test {
     FunBuilder::new(hooks.manage_str(name), module)
   }
 
-  pub fn test_error_class(hooks: &GcHooks) -> Gc<Class> {
+  pub fn test_error_class(hooks: &GcHooks) -> GcObj<Class> {
     let mut error_class = Class::bare(hooks.manage_str("Error"));
 
     error_class.add_method(
       hooks,
       hooks.manage_str("init"),
-      val!(to_dyn_native(hooks, TestInit::from(hooks))),
+      val!(TestInit::native(hooks)),
     );
 
-    hooks.manage(error_class)
+    hooks.manage_obj(error_class)
   }
 
   const ERROR_INIT: NativeMetaBuilder = NativeMetaBuilder::method("init", Arity::Default(1, 2))
@@ -447,11 +462,11 @@ mod test {
 
   native!(TestInit, ERROR_INIT);
 
-  impl Native for TestInit {
+  impl LyNative for TestInit {
     fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-      let mut this = this.unwrap().to_instance();
+      let mut this = this.unwrap().to_obj().to_instance();
       this[0] = args[0];
-      this[1] = val!(_hooks.manage(List::new()));
+      this[1] = val!(_hooks.manage_obj(List::new()));
 
       if args.len() > 1 {
         this[2] = args[1];

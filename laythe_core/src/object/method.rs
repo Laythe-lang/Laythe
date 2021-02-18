@@ -1,6 +1,14 @@
-use crate::value::Value;
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Trace};
-use std::{fmt, io::Write, mem};
+use crate::{
+  managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
+  value::Value,
+};
+use std::{
+  fmt::{self, Display},
+  io::Write,
+  mem,
+};
+
+use super::ObjectKind;
 
 #[derive(PartialEq, Clone)]
 pub struct Method {
@@ -24,9 +32,15 @@ impl Method {
   }
 }
 
+impl Display for Method {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "{}.{}", self.receiver(), self.method())
+  }
+}
+
 impl fmt::Debug for Method {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.fmt_heap(f, 1)
+    self.fmt_heap(f, 2)
   }
 }
 
@@ -44,8 +58,6 @@ impl Trace for Method {
 
 impl DebugHeap for Method {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_struct("Method")
       .field("receiver", &DebugWrap(&self.receiver, depth))
       .field("method", &DebugWrap(&self.method, depth))
@@ -60,5 +72,11 @@ impl Manage for Method {
 
   fn as_debug(&self) -> &dyn DebugHeap {
     self
+  }
+}
+
+impl Object for Method {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::Method
   }
 }

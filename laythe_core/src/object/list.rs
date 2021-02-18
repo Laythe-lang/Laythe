@@ -1,6 +1,6 @@
 use std::{
   cmp::Ordering,
-  fmt,
+  fmt::{self, Display},
   io::Write,
   iter::FromIterator,
   mem,
@@ -8,7 +8,12 @@ use std::{
   slice::{self, SliceIndex},
 };
 
-use laythe_env::managed::{DebugHeap, DebugWrap, Manage, Trace};
+use crate::{
+  managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
+  value::Value,
+};
+
+use super::ObjectKind;
 
 #[derive(Clone, Debug)]
 pub struct List<T>(Vec<T>);
@@ -69,6 +74,22 @@ impl<T> List<T> {
 
   pub fn clear(&mut self) {
     self.0.clear()
+  }
+}
+
+impl<T: Display> Display for List<T> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "[")?;
+
+    if let Some((last, rest)) = self.split_last() {
+      for item in rest.iter() {
+        write!(f, "{}, ", item)?;
+      }
+
+      write!(f, "{}", last)?;
+    }
+
+    write!(f, "]")
   }
 }
 
@@ -153,8 +174,6 @@ impl<T: 'static + Trace> Trace for List<T> {
 
 impl<T: 'static + Trace + DebugHeap> DebugHeap for List<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_list()
       .entries(self.0.iter().map(|x| DebugWrap(x, depth)))
       .finish()
@@ -168,5 +187,11 @@ impl<T: 'static + Trace + DebugHeap> Manage for List<T> {
 
   fn as_debug(&self) -> &dyn DebugHeap {
     self
+  }
+}
+
+impl Object for List<Value> {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::List
   }
 }

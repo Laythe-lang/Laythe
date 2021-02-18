@@ -1,12 +1,14 @@
-use super::{Fun, Upvalue};
-use crate::value::Value;
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, Manage, Trace};
+use super::{Fun, ObjectKind, Upvalue};
+use crate::{
+  managed::{DebugHeap, DebugWrap, GcObj, Manage, Object, Trace},
+  value::Value,
+};
 use std::{fmt, io::Write, mem};
 
 #[derive(PartialEq, Clone)]
 pub struct Closure {
-  fun: Gc<Fun>,
-  upvalues: Box<[Gc<Upvalue>]>,
+  fun: GcObj<Fun>,
+  upvalues: Box<[GcObj<Upvalue>]>,
 }
 
 impl Closure {
@@ -25,21 +27,21 @@ impl Closure {
   /// let hooks = Hooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
-  ///   hooks.manage(Class::bare(hooks.manage_str("module"))),
+  ///   hooks.manage_obj(Class::bare(hooks.manage_str("module"))),
   ///   PathBuf::from("self/module.ly"),
   ///   0,
   /// ));
   /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module);
-  /// let managed_fun = hooks.manage(builder.build());
+  /// let managed_fun = hooks.manage_obj(builder.build());
   ///
   /// let closure = Closure::new(managed_fun, vec![].into_boxed_slice());
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```
-  pub fn new(fun: Gc<Fun>, upvalues: Box<[Gc<Upvalue>]>) -> Self {
+  pub fn new(fun: GcObj<Fun>, upvalues: Box<[GcObj<Upvalue>]>) -> Self {
     Closure { upvalues, fun }
   }
 
-  pub fn without_upvalues(fun: Gc<Fun>) -> Self {
+  pub fn without_upvalues(fun: GcObj<Fun>) -> Self {
     assert!(fun.upvalue_count() == 0);
     Closure {
       upvalues: vec![].into_boxed_slice(),
@@ -48,7 +50,7 @@ impl Closure {
   }
 
   #[inline]
-  pub fn fun(&self) -> Gc<Fun> {
+  pub fn fun(&self) -> GcObj<Fun> {
     self.fun
   }
 
@@ -58,7 +60,7 @@ impl Closure {
   }
 
   #[inline]
-  pub fn get_upvalue(&self, index: usize) -> Gc<Upvalue> {
+  pub fn get_upvalue(&self, index: usize) -> GcObj<Upvalue> {
     self.upvalues[index]
   }
 
@@ -73,9 +75,15 @@ impl Closure {
   }
 }
 
+impl fmt::Display for Closure {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "{}", self.fun())
+  }
+}
+
 impl fmt::Debug for Closure {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.fmt_heap(f, 1)
+    self.fmt_heap(f, 2)
   }
 }
 
@@ -99,8 +107,6 @@ impl Trace for Closure {
 
 impl DebugHeap for Closure {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_struct("Closure")
       .field("fun", &DebugWrap(&self.fun, depth))
       .field("upvalues", &DebugWrap(&&*self.upvalues, depth))
@@ -115,5 +121,11 @@ impl Manage for Closure {
 
   fn as_debug(&self) -> &dyn DebugHeap {
     self
+  }
+}
+
+impl Object for Closure {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::Closure
   }
 }

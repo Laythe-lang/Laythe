@@ -38,9 +38,6 @@ pub struct Parser<'a, FileId> {
   /// The previous token
   previous: Token<'a>,
 
-  /// Is the parser in panic mode
-  panic_mode: bool,
-
   /// All errors that have been during parsing
   errors: Vec<Diagnostic<FileId>>,
 
@@ -69,7 +66,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     Self {
       scanner: Scanner::new(source),
       file_id,
-      panic_mode: false,
       errors: vec![],
       fun_kind: FunKind::Script,
       block_return: BlockReturn::Cannot,
@@ -156,7 +152,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Synchronize the parser to a sentinel token
   fn synchronize(&mut self, error: Diagnostic<FileId>) -> ParseResult<Decl<'a>, FileId> {
-    self.panic_mode = false;
     self.errors.push(error);
 
     let mut tokens: Vec<Token> = vec![];
@@ -173,7 +168,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::While
         | TokenKind::Return => {
           break;
-        }
+        },
         _ => (),
       }
 
@@ -254,7 +249,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
-            }
+            },
             _ => {
               let (fun_kind, method) = self.method(name, false)?;
               match fun_kind {
@@ -262,9 +257,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 FunKind::Initializer => init = Some(method),
                 _ => unreachable!(),
               }
-            }
+            },
           }
-        }
+        },
 
         // static we know must be a method
         TokenKind::Static => {
@@ -276,7 +271,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let name = self.previous.clone();
           let (_, method) = self.method(name, true)?;
           static_methods.push(method);
-        }
+        },
         _ => return self.error_current("Expected method or member declaration inside of class."),
       }
     }
@@ -376,7 +371,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           members.push(TypeMember::new(name, type_));
-        }
+        },
         TokenKind::Less | TokenKind::LeftParen => {
           self.advance()?;
           let type_params = if self.match_kind(TokenKind::Less)? {
@@ -390,7 +385,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           methods.push(TypeMethod::new(name, call_sig));
-        }
+        },
         _ => self.error_at(
           self.current.clone(),
           "Expected member or method declaration inside trait.",
@@ -993,10 +988,10 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         TokenKind::StringSegment => {
           self.advance()?;
           segments.push(StringSegments::Token(self.previous.clone()))
-        }
+        },
         TokenKind::StringEnd => {
           break;
-        }
+        },
         _ => segments.push(StringSegments::Expr(Box::new(self.expr()?))),
       }
     }
@@ -1333,11 +1328,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
         Ok(Type::Ref(type_ref))
-      }
+      },
       _ => {
         // TODO: maybe
         self.error("Can only apply type argument to a non primitive type identifier.")
-      }
+      },
     }
   }
 
@@ -1433,8 +1428,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Print an error to the console for a user to address
   fn error_at<T>(&mut self, token: Token<'a>, message: &str) -> ParseResult<T, FileId> {
-    self.panic_mode = true;
-
     let error = Diagnostic::error()
       .with_message(message)
       .with_labels(vec![Label::primary(self.file_id, token.span())]);
@@ -2096,7 +2089,9 @@ mod test {
     let (ast2, _) = Parser::new(printer.str(), 0).parse();
     assert!(
       ast2.is_ok(),
-      format!("expected:\n{}, \ngenerated: \n{}", src, printer.str())
+      "expected:\n{}, \ngenerated: \n{}",
+      src,
+      printer.str()
     );
   }
 

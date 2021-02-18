@@ -1,19 +1,14 @@
-use crate::{
-  native,
-  support::{export_and_insert, to_dyn_native},
-  StdResult,
-};
+use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::{GcObj, Trace},
   module::Module,
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  object::List,
+  object::{List, LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::Value,
   Call,
 };
-use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 
 const ARGS_META: NativeMetaBuilder = NativeMetaBuilder::fun("args", Arity::Fixed(0));
@@ -24,14 +19,14 @@ pub fn declare_env_module(hooks: &GcHooks, self_module: &mut Module) -> StdResul
     hooks,
     self_module,
     hooks.manage_str(ARGS_META.name),
-    val!(to_dyn_native(hooks, Args::from(hooks))),
+    val!(Args::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
     self_module,
     hooks.manage_str(CWD_META.name),
-    val!(to_dyn_native(hooks, Cwd::from(hooks))),
+    val!(Cwd::native(hooks)),
   )
 }
 
@@ -41,10 +36,10 @@ pub fn define_env_module(_: &GcHooks, _: &mut Module) -> StdResult<()> {
 
 native!(Args, ARGS_META);
 
-impl Native for Args {
+impl LyNative for Args {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
-    let mut list: Gc<List<Value>> = hooks.manage(List::new());
+    let mut list: GcObj<List<Value>> = hooks.manage_obj(List::new());
     hooks.push_root(list);
 
     for arg in io.env().args() {
@@ -59,7 +54,7 @@ impl Native for Args {
 
 native!(Cwd, CWD_META);
 
-impl Native for Cwd {
+impl LyNative for Cwd {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     match io.env().current_dir() {
@@ -67,7 +62,7 @@ impl Native for Cwd {
         Some(path) => Call::Ok(val!(hooks.manage_str(path))),
         None => panic!("TODO: Unable to create string from current working directory"),
       },
-      Err(err) => panic!(err.to_string()),
+      Err(err) => panic!("{}", err),
     }
   }
 }
@@ -83,9 +78,9 @@ mod test {
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
+      let hooks = GcHooks::new(&mut context);
 
-      let stdout_write = Args::from(&hooks);
+      let stdout_write = Args::native(&hooks);
 
       assert_eq!(stdout_write.meta().name, "args");
       assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(0));
@@ -101,9 +96,9 @@ mod test {
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
+      let hooks = GcHooks::new(&mut context);
 
-      let stdout_write = Cwd::from(&hooks);
+      let stdout_write = Cwd::native(&hooks);
 
       assert_eq!(stdout_write.meta().name, "cwd");
       assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(0));

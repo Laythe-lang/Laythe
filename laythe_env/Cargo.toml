@@ -8,12 +8,6 @@ edition = "2018"
 name = "laythe_env"
 path = "src/lib.rs"
 
-[features]
-gc_log_mark = []
-gc_log_free = []
-gc_log_alloc = []
-gc_stress = []
-
 [dependencies]
 hashbrown = "0.9.1"
 fnv = "1.0.3"

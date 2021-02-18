@@ -1,19 +1,14 @@
-use crate::{
-  native,
-  support::{export_and_insert, to_dyn_native},
-  StdError, StdResult,
-};
+use crate::{native, support::export_and_insert, StdError, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::{GcObj, Trace},
   module::Module,
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  object::{Class, List},
+  object::{Class, List, LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
   Call,
 };
-use laythe_env::managed::{Gc, Trace};
 use std::io::Write;
 
 use super::error_inheritance;
@@ -40,7 +35,7 @@ const ERROR_INIT: NativeMetaBuilder = NativeMetaBuilder::method("init", Arity::D
     ParameterBuilder::new("inner", ParameterKind::Instance),
   ]);
 
-pub fn create_error_class(hooks: &GcHooks, object: Gc<Class>) -> Gc<Class> {
+pub fn create_error_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class> {
   let mut class = Class::with_inheritance(hooks, hooks.manage_str(ERROR_CLASS_NAME), object);
 
   class.add_field(hooks, hooks.manage_str(ERROR_FIELD_MESSAGE));
@@ -50,7 +45,7 @@ pub fn create_error_class(hooks: &GcHooks, object: Gc<Class>) -> Gc<Class> {
   class.add_method(
     hooks,
     hooks.manage_str(ERROR_INIT.name),
-    val!(to_dyn_native(hooks, ErrorInit::from(hooks))),
+    val!(ErrorInit::native(hooks)),
   );
 
   class
@@ -92,11 +87,11 @@ pub fn define_global_errors(_hooks: &GcHooks, _module: &Module) -> StdResult<()>
 
 native!(ErrorInit, ERROR_INIT);
 
-impl Native for ErrorInit {
+impl LyNative for ErrorInit {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let mut this = this.unwrap().to_instance();
+    let mut this = this.unwrap().to_obj().to_instance();
     this[0] = args[0];
-    this[1] = val!(_hooks.manage(List::new()));
+    this[1] = val!(_hooks.manage_obj(List::new()));
 
     if args.len() > 1 {
       this[2] = args[1];
@@ -111,7 +106,7 @@ mod test {
   use super::*;
 
   mod init {
-    use laythe_core::object::{Class, Instance};
+    use laythe_core::object::{Class, Instance, ObjectKind};
 
     use super::*;
     use crate::support::MockedContext;
@@ -121,7 +116,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let bool_str = ErrorInit::from(&hooks);
+      let bool_str = ErrorInit::native(&hooks);
 
       assert_eq!(bool_str.meta().name, "init");
       assert_eq!(bool_str.meta().signature.arity, Arity::Default(1, 2));
@@ -140,13 +135,13 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let error_init = ErrorInit::from(&hooks);
-      let mut test_class = hooks.manage(Class::bare(hooks.manage_str("test")));
+      let error_init = ErrorInit::native(&hooks.as_gc());
+      let mut test_class = hooks.manage_obj(Class::bare(hooks.manage_str("test")));
       test_class.add_field(&hooks.as_gc(), hooks.manage_str(ERROR_FIELD_MESSAGE));
       test_class.add_field(&hooks.as_gc(), hooks.manage_str(ERROR_FIELD_STACK));
       test_class.add_field(&hooks.as_gc(), hooks.manage_str(ERROR_FIELD_INNER));
 
-      let instance = hooks.manage(Instance::new(test_class));
+      let instance = hooks.manage_obj(Instance::new(test_class));
 
       let name = val!(hooks.manage_str("test"));
       let args = [name];
@@ -155,9 +150,10 @@ mod test {
         .call(&mut hooks, Some(val!(instance)), &args)
         .unwrap();
 
-      assert!(result.is_instance());
+      assert!(result.is_obj_kind(ObjectKind::Instance));
+      let result = result.to_obj();
       assert_eq!(result.to_instance()[0], val!(hooks.manage_str("test")));
-      assert!(result.to_instance()[1].is_list());
+      assert!(result.to_instance()[1].is_obj_kind(ObjectKind::List));
       assert!(result.to_instance()[2].is_nil());
     }
   }

@@ -4,14 +4,12 @@ use std::{
 };
 
 use crate::{
+  managed::{Gc, GcObj, GcStr, Manage, Object, Trace, TraceRoot},
+  memory::Allocator,
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::{
-  io::Io,
-  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
-  memory::Allocator,
-};
+use laythe_env::io::Io;
 
 /// A set of commands that a native function to request from it's surrounding
 /// context
@@ -82,6 +80,11 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request a string be managed by the context's garbage collector
+  pub fn manage_obj<T: 'static + Object>(&self, obj: T) -> GcObj<T> {
+    self.as_gc().manage_obj(obj)
+  }
+
+  /// Request a string be managed by the context's garbage collector
   pub fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
     self.as_gc().manage_str(string)
   }
@@ -130,7 +133,7 @@ impl<'a> GcHooks<'a> {
   /// ```
   /// use laythe_core::hooks::{GcHooks, NoContext};
   /// use laythe_core::value::Value;
-  /// use laythe_env::memory::Allocator;
+  /// use laythe_core::memory::Allocator;
   ///
   /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);
@@ -146,6 +149,12 @@ impl<'a> GcHooks<'a> {
   #[inline]
   pub fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
     self.context.gc().manage(data, self.context)
+  }
+
+  /// Request a string be managed by the context's garbage collector
+  #[inline]
+  pub fn manage_obj<T: 'static + Object>(&self, obj: T) -> GcObj<T> {
+    self.context.gc().manage_obj(obj, self.context)
   }
 
   /// Request a string be managed by the context's garbage collector

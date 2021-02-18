@@ -11,21 +11,23 @@ use laythe_core::{
   chunk::{AlignedByteCode, ByteCode, UpvalueIndex},
   constants::{PLACEHOLDER_NAME, SCRIPT, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
+  if_let_obj,
+  managed::{Gc, GcObj, GcObject, GcStr, Manage, Object, Trace, TraceRoot},
+  match_obj,
+  memory::Allocator,
   module::{Import, Module, Package},
-  native::{Native, NativeMeta},
-  object::Map,
-  object::{Class, Closure, Fun, FunBuilder, Instance, List, Method, Upvalue},
+  object::{
+    Class, Closure, Fun, FunBuilder, Instance, List, Map, Method, Native, NativeMeta, ObjectKind,
+    Upvalue,
+  },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
+  to_obj_kind,
   utils::{is_falsey, ptr_len, IdEmitter},
   val,
-  value::{Value, ValueKind, VALUE_NIL, VALUE_TRUE},
+  value::{Value, VALUE_NIL, VALUE_TRUE},
   Call,
 };
-use laythe_env::{
-  io::Io,
-  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
-  memory::Allocator,
-};
+use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
 use laythe_native::io::io_native;
 use std::convert::TryInto;
@@ -59,7 +61,7 @@ enum Signal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecuteResult {
-  Ok,
+  Ok(u16),
   FunResult(Value),
   InternalError,
   RuntimeError,
@@ -126,16 +128,16 @@ pub struct Vm {
   global: Gc<Module>,
 
   /// A collection of currently available upvalues
-  open_upvalues: Vec<Gc<Upvalue>>,
+  open_upvalues: Vec<GcObj<Upvalue>>,
 
   /// The current frame's function
-  current_fun: Gc<Fun>,
+  current_fun: GcObj<Fun>,
 
   /// The current frame's closure
   current_frame: *mut CallFrame,
 
   /// The current error if one is active
-  current_error: Option<Gc<Instance>>,
+  current_error: Option<GcObj<Instance>>,
 
   /// What exit code is currently set
   exit_code: u16,
@@ -149,7 +151,7 @@ pub struct Vm {
   /// TODO replace this. A fun to fill a call frame for higher order native functions
   /// may want to eventually have a function rental so native functions can set name / module
   /// for exception
-  native_fun_stub: Gc<Fun>,
+  native_fun_stub: GcObj<Fun>,
 
   /// The current frame depth of the program
   frame_count: usize,
@@ -172,8 +174,8 @@ impl Vm {
 
     let builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
 
-    let managed_fun = hooks.manage(builder.build());
-    let closure = hooks.manage(Closure::without_upvalues(managed_fun));
+    let managed_fun = hooks.manage_obj(builder.build());
+    let closure = hooks.manage_obj(Closure::without_upvalues(managed_fun));
 
     let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
     let mut stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
@@ -190,7 +192,7 @@ impl Vm {
     let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
     native_builder.write_instruction(AlignedByteCode::Nil, 0);
 
-    let native_fun_stub = hooks.manage(native_builder.build());
+    let native_fun_stub = hooks.manage_obj(native_builder.build());
 
     let gc = RefCell::new(no_gc_context.done());
     let inline_cache: Vec<InlineCache> = (0..emitter.id_count())
@@ -259,8 +261,8 @@ impl Vm {
           self.pop_roots(2);
 
           self.interpret(main_module, &managed_source, file_id);
-        }
-        Err(error) => panic!(error),
+        },
+        Err(error) => panic!("{}", error),
       }
     }
   }
@@ -286,12 +288,12 @@ impl Vm {
         let main_module = self.main_module(module_path, main_id);
 
         self.interpret(main_module, &managed_source, file_id)
-      }
+      },
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
           .expect("Unable to write to stderr");
         ExecuteResult::RuntimeError
-      }
+      },
     }
   }
 
@@ -311,7 +313,7 @@ impl Vm {
       Ok(fun) => {
         self.prepare(fun);
         self.execute(ExecuteMode::Normal)
-      }
+      },
       Err(errors) => {
         let mut stdio = self.io.stdio();
         let stderr_color = stdio.stderr_color();
@@ -320,7 +322,7 @@ impl Vm {
             .expect("Unable to write to stderr");
         }
         ExecuteResult::CompileError
-      }
+      },
     }
   }
 
@@ -330,7 +332,7 @@ impl Vm {
     module: Gc<Module>,
     source: &str,
     file_id: VmFileId,
-  ) -> FeResult<Gc<Fun>, VmFileId> {
+  ) -> FeResult<GcObj<Fun>, VmFileId> {
     let (ast, line_offsets) = Parser::new(&source, file_id).parse();
     self
       .files
@@ -358,13 +360,13 @@ impl Vm {
       } else {
         self.inline_cache.push(cache);
       }
-      self.manage(fun)
+      self.manage_obj(fun)
     })
   }
 
   /// Reset the vm to execute another script
-  fn prepare(&mut self, script: Gc<Fun>) {
-    let script = self.manage(Closure::without_upvalues(script));
+  fn prepare(&mut self, script: GcObj<Fun>) {
+    let script = self.manage_obj(Closure::without_upvalues(script));
 
     self.reset_stack();
     let result = self.call(script, 0);
@@ -448,13 +450,13 @@ impl Vm {
         let result = self.run_fun(val!(self.builtin.errors.import), &[error_message]);
 
         self.to_call_result(result)
-      }
+      },
     }
   }
 
   /// Get the class for this value
-  fn get_class(&mut self, this: Value) -> Value {
-    val!(self.builtin.primitives.for_value(this, this.kind()))
+  fn get_class(&mut self, this: Value) -> GcObj<Class> {
+    self.builtin.primitives.for_value(this, this.kind())
   }
 
   /// Main virtual machine execution loop. This will run the until the program interrupts
@@ -537,31 +539,36 @@ impl Vm {
               return ExecuteResult::FunResult(self.get_val(-1));
             }
           }
-        }
+        },
         Signal::Ok => (),
         Signal::RuntimeError => match self.current_error {
           Some(error) => {
             if let Some(execute_result) = self.stack_unwind(error) {
               return execute_result;
             }
-          }
+          },
           None => self.internal_error("Runtime error was not set."),
         },
         Signal::Exit => {
-          return ExecuteResult::Ok;
-        }
+          return ExecuteResult::Ok(self.exit_code);
+        },
       }
     }
   }
 
   #[inline]
-  fn value_class(&self, value: Value) -> Gc<Class> {
+  fn value_class(&self, value: Value) -> GcObj<Class> {
     self.builtin.primitives.for_value(value, value.kind())
   }
 
   #[inline]
   fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
     self.gc.borrow_mut().manage(data, self)
+  }
+
+  #[inline]
+  fn manage_obj<T: 'static + Object>(&self, data: T) -> GcObj<T> {
+    self.gc.borrow_mut().manage_obj(data, self)
   }
 
   #[inline]
@@ -617,7 +624,7 @@ impl Vm {
 
   /// Get the current closure
   #[inline]
-  fn closure(&self) -> Gc<Closure> {
+  fn closure(&self) -> GcObj<Closure> {
     unsafe { (*self.current_frame).closure }
   }
 
@@ -710,7 +717,7 @@ impl Vm {
   /// read a constant as a string from the current chunk
   #[inline]
   fn read_string(&self, index: u16) -> GcStr {
-    self.read_constant(index).to_str()
+    self.read_constant(index).to_obj().to_str()
   }
 
   /// reset the stack in case of interrupt
@@ -755,7 +762,7 @@ impl Vm {
         arg_count as usize,
       )
     };
-    let list = val!(self.manage(List::from(args)));
+    let list = val!(self.manage_obj(List::from(args)));
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
     self.push(list);
 
@@ -765,7 +772,7 @@ impl Vm {
   /// create a map from a map literal
   fn op_map(&mut self) -> Signal {
     let arg_count = self.read_short();
-    let mut map = self.manage(Map::with_capacity(arg_count as usize));
+    let mut map = self.manage_obj(Map::with_capacity(arg_count as usize));
 
     for i in 0..arg_count {
       let key = self.get_val(-(i as isize * 2) - 2);
@@ -791,12 +798,12 @@ impl Vm {
 
     let mut length: usize = 0;
     for arg in args {
-      length += arg.to_str().len();
+      length += arg.to_obj().to_str().len();
     }
 
     let mut buffers = String::with_capacity(length);
     for arg in args {
-      buffers.push_str(&arg.to_str())
+      buffers.push_str(&arg.to_obj().to_str())
     }
 
     self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
@@ -809,13 +816,13 @@ impl Vm {
   fn op_iter_next(&mut self) -> Signal {
     let receiver = self.peek(0);
 
-    if receiver.is_iter() {
+    if_let_obj!(ObjectKind::Enumerator(mut enumerator) = (receiver) {
       self.update_ip(2);
-      match receiver.to_iter().next(&mut Hooks::new(self)) {
+      match enumerator.next(&mut Hooks::new(self)) {
         Call::Ok(value) => {
           self.set_val(-1, value);
           Signal::Ok
-        }
+        },
         Call::Err(error) => self.set_error(error),
         Call::Exit(code) => self.set_exit(code),
       }
@@ -823,23 +830,23 @@ impl Vm {
       let constant = self.read_short();
       let method_name = self.read_string(constant);
       self.invoke(receiver, method_name, 0)
-    }
+    })
   }
 
   /// get the current value from an iterator
   fn op_iter_current(&mut self) -> Signal {
     let receiver = self.peek(0);
 
-    if receiver.is_iter() {
+    if_let_obj!(ObjectKind::Enumerator(enumerator) = (receiver) {
       self.update_ip(2);
-      let result = receiver.to_iter().current();
+      let result = enumerator.current();
       self.set_val(-1, result);
       Signal::Ok
     } else {
       let constant = self.read_short();
       let method_name = self.read_string(constant);
       self.invoke(receiver, method_name, 0)
-    }
+    })
   }
 
   /// call a function or method
@@ -863,14 +870,13 @@ impl Vm {
     match self.inline_cache().get_invoke_cache(inline_slot, class) {
       Some(method) => self.resolve_call(method, arg_count),
       None => {
-        if receiver.is_instance() {
-          let instance = receiver.to_instance();
+        if_let_obj!(ObjectKind::Instance(instance) = (receiver) {
           if let Some(field) = instance.get_field(&method_name) {
             self.set_val(-(arg_count as isize) - 1, *field);
             self.inline_cache_mut().clear_invoke_cache(inline_slot);
             return self.resolve_call(*field, arg_count);
           }
-        }
+        });
 
         match class.get_method(&method_name) {
           Some(method) => {
@@ -878,7 +884,7 @@ impl Vm {
               .inline_cache_mut()
               .set_invoke_cache(inline_slot, class, method);
             self.resolve_call(method, arg_count)
-          }
+          },
           None => self.runtime_error(
             self.builtin.errors.property,
             &format!(
@@ -888,19 +894,18 @@ impl Vm {
             ),
           ),
         }
-      }
+      },
     }
   }
 
   /// invoke a method
   fn invoke(&mut self, receiver: Value, method_name: GcStr, arg_count: u8) -> Signal {
-    if receiver.is_instance() {
-      let instance = receiver.to_instance();
+    if_let_obj!(ObjectKind::Instance(instance) = (receiver) {
       if let Some(field) = instance.get_field(&method_name) {
         self.set_val(-(arg_count as isize) - 1, *field);
         return self.resolve_call(*field, arg_count);
       }
-    }
+    });
 
     let class = self.value_class(receiver);
     self.invoke_from_class(class, method_name, arg_count)
@@ -913,7 +918,7 @@ impl Vm {
     let inline_slot = self.read_slot() as usize;
 
     let method_name = self.read_string(constant);
-    let super_class = self.pop().to_class();
+    let super_class = self.pop().to_obj().to_class();
 
     match self
       .inline_cache()
@@ -926,7 +931,7 @@ impl Vm {
             .inline_cache_mut()
             .set_invoke_cache(inline_slot, super_class, method);
           self.resolve_call(method, arg_count)
-        }
+        },
         None => self.runtime_error(
           self.builtin.errors.property,
           &format!(
@@ -944,7 +949,7 @@ impl Vm {
     let slot = self.read_short();
     let name = self.read_string(slot);
 
-    let class = val!(self.manage(Class::bare(name)));
+    let class = val!(self.manage_obj(Class::bare(name)));
     self.push(class);
     Signal::Ok
   }
@@ -952,14 +957,14 @@ impl Vm {
   fn op_inherit(&mut self) -> Signal {
     let super_class = self.peek(1);
 
-    if !super_class.is_class() {
+    if !super_class.is_obj_kind(ObjectKind::Class) {
       return self.runtime_error(self.builtin.errors.runtime, "Superclass must be a class.");
     }
 
     let hooks = GcHooks::new(self);
-    let mut sub_class = self.peek(0).to_class();
+    let mut sub_class = self.peek(0).to_obj().to_class();
 
-    sub_class.inherit(&hooks, super_class.to_class());
+    sub_class.inherit(&hooks, super_class.to_obj().to_class());
     sub_class.meta_from_super(&hooks);
 
     Signal::Ok
@@ -969,7 +974,7 @@ impl Vm {
   fn op_get_super(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
-    let super_class = self.pop().to_class();
+    let super_class = self.pop().to_obj().to_class();
 
     self.bind_method(super_class, name)
   }
@@ -1023,7 +1028,7 @@ impl Vm {
         self.drop();
         self.push(value);
         signal
-      }
+      },
       None => self.runtime_error(
         self.builtin.errors.method_not_found,
         &format!("No method []= on class {}.", class.name()),
@@ -1063,8 +1068,7 @@ impl Vm {
     let name = self.read_string(slot);
     let inline_slot = self.read_slot() as usize;
 
-    if instance.is_instance() {
-      let mut instance = instance.to_instance();
+    if_let_obj!(ObjectKind::Instance(mut instance) = (instance) {
       let class = instance.class();
 
       match self.inline_cache().get_property_cache(inline_slot, class) {
@@ -1076,7 +1080,7 @@ impl Vm {
 
           instance[property_slot] = value;
           return Signal::Ok;
-        }
+        },
         None => {
           let property_slot = class.get_field_index(&name);
           let value = self.pop();
@@ -1090,15 +1094,15 @@ impl Vm {
               cache.set_property_cache(inline_slot, class, property_slot as usize);
               instance[property_slot as usize] = value;
               Signal::Ok
-            }
+            },
             None => self.runtime_error(
               self.builtin.errors.property,
               &format!("Undefined property {} on class {}.", name, class.name()),
             ),
           };
-        }
+        },
       }
-    }
+    });
 
     self.runtime_error(
       self.builtin.errors.runtime,
@@ -1136,7 +1140,7 @@ impl Vm {
       Some(gbl) => {
         self.push(gbl);
         Signal::Ok
-      }
+      },
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined variable {}", string),
@@ -1165,27 +1169,25 @@ impl Vm {
     let name = self.read_string(slot);
     let inline_slot = self.read_slot() as usize;
 
-    if value.is_instance() {
-      let instance = value.to_instance();
+    if_let_obj!(ObjectKind::Instance(instance) = (value) {
       let class = instance.class();
       match self.inline_cache().get_property_cache(inline_slot, class) {
         Some(property_slot) => {
           self.set_val(-1, instance[property_slot]);
           return Signal::Ok;
-        }
+        },
         None => {
           if let Some(property_slot) = class.get_field_index(&name) {
             self
               .inline_cache_mut()
               .set_property_cache(inline_slot, class, property_slot as usize);
 
-            let instance = value.to_instance();
             self.set_val(-1, instance[property_slot as usize]);
             return Signal::Ok;
           }
-        }
+        },
       }
-    }
+    });
 
     let class = self.value_class(value);
     let cache = self.inline_cache_mut();
@@ -1195,14 +1197,11 @@ impl Vm {
 
   fn op_import(&mut self) -> Signal {
     let index_path = self.read_short();
-    let path = self.read_constant(index_path).to_list();
+    let path = self.read_constant(index_path).to_obj().to_list();
 
-    let mut path_segments: Gc<List<GcStr>> = self
-      .gc
-      .borrow_mut()
-      .manage(List::with_capacity(path.len()), self);
+    let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
 
-    path_segments.extend(path.iter().map(|segment| segment.to_str()));
+    path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
 
     let mut buffer = String::new();
     for segment in &path_segments[..path_segments.len() - 1] {
@@ -1223,14 +1222,14 @@ impl Vm {
     let import = match path_segments.split_first() {
       Some((package, path)) => {
         // generate a new import object
-        let path = self.gc().manage(List::from(path), self);
-        self.gc().manage(Import::new(*package, path), self)
-      }
+        let path = self.manage(List::from(path));
+        self.manage(Import::new(*package, path))
+      },
       None => {
         // generate a new import object
-        let path = self.gc().manage(List::new(), self);
-        self.gc().manage(Import::new(path_segments[0], path), self)
-      }
+        let path = self.manage(List::new());
+        self.manage(Import::new(path_segments[0], path))
+      },
     };
 
     self.gc().push_root(import);
@@ -1240,7 +1239,7 @@ impl Vm {
         Ok(module) => {
           self.push(val!(module));
           Signal::Ok
-        }
+        },
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1256,15 +1255,12 @@ impl Vm {
   fn op_import_symbol(&mut self) -> Signal {
     let index_path = self.read_short();
     let index_name = self.read_short();
-    let path = self.read_constant(index_path).to_list();
+    let path = self.read_constant(index_path).to_obj().to_list();
     let name = self.read_string(index_name);
 
-    let mut path_segments: Gc<List<GcStr>> = self
-      .gc
-      .borrow_mut()
-      .manage(List::with_capacity(path.len()), self);
+    let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
 
-    path_segments.extend(path.iter().map(|segment| segment.to_str()));
+    path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
 
     let mut buffer = String::new();
     for segment in &path_segments[..path_segments.len() - 1] {
@@ -1285,14 +1281,14 @@ impl Vm {
     let import = match path_segments.split_first() {
       Some((package, path)) => {
         // generate a new import object
-        let path = self.gc().manage(List::from(path), self);
-        self.gc().manage(Import::new(*package, path), self)
-      }
+        let path = self.manage(List::from(path));
+        self.manage(Import::new(*package, path))
+      },
       None => {
         // generate a new import object
-        let path = self.gc().manage(List::new(), self);
-        self.gc().manage(Import::new(path_segments[0], path), self)
-      }
+        let path = self.manage(List::new());
+        self.manage(Import::new(path_segments[0], path))
+      },
     };
 
     self.gc().push_root(import);
@@ -1302,7 +1298,7 @@ impl Vm {
         Ok(module) => {
           self.push(val!(module));
           Signal::Ok
-        }
+        },
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1364,9 +1360,9 @@ impl Vm {
     if right.is_num() && left.is_num() {
       self.push(val!(left.to_num() + right.to_num()));
       Signal::Ok
-    } else if right.is_str() && left.is_str() {
-      let left = left.to_str();
-      let right = right.to_str();
+    } else if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
+      let left = left.to_obj().to_str();
+      let right = right.to_obj().to_str();
 
       let mut buffer = String::with_capacity(left.len() + right.len());
       buffer.push_str(&*left);
@@ -1424,9 +1420,9 @@ impl Vm {
       return Signal::Ok;
     }
 
-    if right.is_str() && left.is_str() {
+    if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
       self.push(val!(
-        (*left.to_str()).cmp(&right.to_str()) == Ordering::Less
+        (*left.to_obj().to_str()).cmp(&right.to_obj().to_str()) == Ordering::Less
       ));
       return Signal::Ok;
     }
@@ -1442,12 +1438,12 @@ impl Vm {
       return Signal::Ok;
     }
 
-    if right.is_str() && left.is_str() {
+    if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
       if left == right {
         self.push(VALUE_TRUE);
       } else {
         self.push(val!(
-          (*left.to_str()).cmp(&right.to_str()) == Ordering::Less
+          (*left.to_obj().to_str()).cmp(&right.to_obj().to_str()) == Ordering::Less
         ));
       }
 
@@ -1468,9 +1464,9 @@ impl Vm {
       return Signal::Ok;
     }
 
-    if right.is_str() && left.is_str() {
+    if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
       self.push(val!(
-        (*left.to_str()).cmp(&right.to_str()) == Ordering::Greater
+        (*left.to_obj().to_str()).cmp(&right.to_obj().to_str()) == Ordering::Greater
       ));
       return Signal::Ok;
     }
@@ -1489,12 +1485,12 @@ impl Vm {
       return Signal::Ok;
     }
 
-    if right.is_str() && left.is_str() {
+    if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
       if left == right {
         self.push(VALUE_TRUE);
       } else {
         self.push(val!(
-          (*left.to_str()).cmp(&right.to_str()) == Ordering::Greater
+          (*left.to_obj().to_str()).cmp(&right.to_obj().to_str()) == Ordering::Greater
         ));
       }
 
@@ -1530,8 +1526,9 @@ impl Vm {
     let class = self.peek(1);
     let method = self.peek(0);
 
-    if class.is_class() && method.is_closure() {
+    if class.is_obj_kind(ObjectKind::Class) && method.is_obj_kind(ObjectKind::Closure) {
       class
+        .to_obj()
         .to_class()
         .add_method(&GcHooks::new(self), name, method);
     } else {
@@ -1548,11 +1545,11 @@ impl Vm {
 
     let class = self.peek(0);
 
-    if class.is_class() {
-      class.to_class().add_field(&GcHooks::new(self), name);
+    if_let_obj!(ObjectKind::Class(mut class) = (class) {
+      class.add_field(&GcHooks::new(self), name);
     } else {
       self.internal_error("Invalid Stack for op_method.");
-    }
+    });
 
     Signal::Ok
   }
@@ -1564,12 +1561,14 @@ impl Vm {
     let class = self.peek(1);
     let method = self.peek(0);
 
-    if class.is_class() && method.is_closure() {
-      match class.to_class().meta_class() {
+    if class.is_obj_kind(ObjectKind::Class) && method.is_obj_kind(ObjectKind::Closure) {
+      let class = class.to_obj().to_class();
+
+      match class.meta_class() {
         Some(mut meta) => {
           meta.add_method(&GcHooks::new(self), name, method);
-        }
-        None => self.internal_error(&format!("{} meta class not set.", class.to_class().name())),
+        },
+        None => self.internal_error(&format!("{} meta class not set.", class.name())),
       }
     } else {
       self.internal_error("Invalid Stack for op_static_method.");
@@ -1581,7 +1580,7 @@ impl Vm {
 
   fn op_closure(&mut self) -> Signal {
     let slot = self.read_short();
-    let fun = self.read_constant(slot).to_fun();
+    let fun = self.read_constant(slot).to_obj().to_fun();
 
     let upvalues = (0..fun.upvalue_count())
       .map(|_| {
@@ -1591,14 +1590,14 @@ impl Vm {
           UpvalueIndex::Local(index) => {
             let value = unsafe { &*self.slots().offset(index as isize) };
             self.capture_upvalue(NonNull::from(value))
-          }
+          },
           UpvalueIndex::Upvalue(upvalue) => self.closure().get_upvalue(upvalue as usize),
         }
       })
-      .collect::<Vec<Gc<Upvalue>>>()
+      .collect::<Vec<GcObj<Upvalue>>>()
       .into_boxed_slice();
 
-    let closure = self.manage(Closure::new(fun, upvalues));
+    let closure = self.manage_obj(Closure::new(fun, upvalues));
 
     self.push(val!(closure));
     Signal::Ok
@@ -1628,28 +1627,46 @@ impl Vm {
 
   /// resolve the current value and call in the appropriate manner
   fn resolve_call(&mut self, callee: Value, arg_count: u8) -> Signal {
-    match callee.kind() {
-      ValueKind::Closure => self.call(callee.to_closure(), arg_count),
-      ValueKind::Method => self.call_method(callee.to_method(), arg_count),
-      ValueKind::Native => self.call_native(callee.to_native(), arg_count),
-      ValueKind::Class => self.call_class(callee.to_class(), arg_count),
-      ValueKind::Fun => self.internal_error(&format!(
-        "Function {} was not wrapped in a closure.",
-        callee.to_fun().name()
-      )),
+    if !callee.is_obj() {
+      let class_name = self.get_class(callee).name();
+      return self.runtime_error(
+        self.builtin.errors.runtime,
+        &format!("{} is not callable.", class_name),
+      );
+    }
+
+    match_obj!((&callee.to_obj()) {
+      ObjectKind::Closure(closure) => {
+        self.call(closure, arg_count)
+      },
+      ObjectKind::Method(method) => {
+        self.call_method(method, arg_count)
+      },
+      ObjectKind::Native(native) => {
+        self.call_native(native, arg_count)
+      },
+      ObjectKind::Class(class) => {
+        self.call_class(class, arg_count)
+      },
+      ObjectKind::Fun(fun) => {
+        self.internal_error(&format!(
+          "Function {} was not wrapped in a closure.",
+          fun.name()
+        ))
+      },
       _ => {
-        let class_name = self.get_class(callee).to_class().name();
+        let class_name = self.get_class(callee).name();
         self.runtime_error(
           self.builtin.errors.runtime,
           &format!("{} is not callable.", class_name),
         )
-      }
-    }
+      },
+    })
   }
 
   /// call a class creating a new instance of that class
-  fn call_class(&mut self, class: Gc<Class>, arg_count: u8) -> Signal {
-    let instance = val!(self.manage(Instance::new(class)));
+  fn call_class(&mut self, class: GcObj<Class>, arg_count: u8) -> Signal {
+    let instance = val!(self.manage_obj(Instance::new(class)));
     self.set_val(-(arg_count as isize) - 1, instance);
 
     match class.init() {
@@ -1663,12 +1680,12 @@ impl Vm {
         } else {
           Signal::Ok
         }
-      }
+      },
     }
   }
 
   /// call a native function immediately returning the result
-  fn call_native(&mut self, native: Gc<Box<dyn Native>>, arg_count: u8) -> Signal {
+  fn call_native(&mut self, native: GcObj<Native>, arg_count: u8) -> Signal {
     let meta = native.meta();
 
     let args = unsafe {
@@ -1704,12 +1721,12 @@ impl Vm {
             assert_roots(native, roots_before, roots_current);
           }
           Signal::OkReturn
-        }
+        },
         Call::Err(error) => self.set_error(error),
         Call::Exit(code) => self.set_exit(code),
       },
       Environment::Normal => {
-        let native_closure = self.manage(Closure::without_upvalues(self.native_fun_stub));
+        let native_closure = self.manage_obj(Closure::without_upvalues(self.native_fun_stub));
         self.push_frame(native_closure, arg_count);
 
         match native.call(&mut Hooks::new(self), this, args) {
@@ -1723,16 +1740,16 @@ impl Vm {
               assert_roots(native, roots_before, roots_current);
             }
             Signal::OkReturn
-          }
+          },
           Call::Err(error) => self.set_error(error),
           Call::Exit(code) => self.set_exit(code),
         }
-      }
+      },
     }
   }
 
   /// call a laythe function setting it as the new call frame
-  fn call(&mut self, closure: Gc<Closure>, arg_count: u8) -> Signal {
+  fn call(&mut self, closure: GcObj<Closure>, arg_count: u8) -> Signal {
     // check that the current function is called with the right number of args
     if let Some(error) = self.check_arity(closure.fun(), arg_count) {
       return error;
@@ -1749,7 +1766,7 @@ impl Vm {
 
   /// Push a call frame onto the the call frame stack
   #[inline]
-  fn push_frame(&mut self, closure: Gc<Closure>, arg_count: u8) {
+  fn push_frame(&mut self, closure: GcObj<Closure>, arg_count: u8) {
     unsafe {
       self.store_ip();
       let frame = &mut *self.current_frame.offset(1);
@@ -1788,7 +1805,7 @@ impl Vm {
   }
 
   /// check that the number of args is valid for the function arity
-  fn check_arity(&mut self, fun: Gc<Fun>, arg_count: u8) -> Option<Signal> {
+  fn check_arity(&mut self, fun: GcObj<Fun>, arg_count: u8) -> Option<Signal> {
     match fun.arity().check(arg_count) {
       Ok(_) => None,
       Err(error) => match error {
@@ -1847,9 +1864,9 @@ impl Vm {
           SignatureError::LengthFixed(expected) => Some(self.runtime_error(
             self.builtin.errors.runtime,
             &format!(
-              "{} {} expected {} argument(s) but received {}.",
+              "{} \"{}\" expected {} argument(s) but received {}.",
               callable_type,
-              native_meta.name,
+              &*native_meta.name,
               expected,
               args.len(),
             ),
@@ -1857,9 +1874,9 @@ impl Vm {
           SignatureError::LengthVariadic(expected) => Some(self.runtime_error(
             self.builtin.errors.runtime,
             &format!(
-              "{} {} expected at least {} argument(s) but received {}.",
+              "{} \"{}\" expected at least {} argument(s) but received {}.",
               callable_type,
-              native_meta.name,
+              &*native_meta.name,
               expected,
               args.len(),
             ),
@@ -1867,9 +1884,9 @@ impl Vm {
           SignatureError::LengthDefaultLow(expected) => Some(self.runtime_error(
             self.builtin.errors.runtime,
             &format!(
-              "{} {} expected at least {} argument(s) but received {}.",
+              "{} \"{}\" expected at least {} argument(s) but received {}.",
               callable_type,
-              native_meta.name,
+              &*native_meta.name,
               expected,
               args.len(),
             ),
@@ -1877,9 +1894,9 @@ impl Vm {
           SignatureError::LengthDefaultHigh(expected) => Some(self.runtime_error(
             self.builtin.errors.runtime,
             &format!(
-              "{} {} expected at most {} argument(s) but received {}.",
+              "{} \"{}\" expected at most {} argument(s) but received {}.",
               callable_type,
-              native_meta.name,
+              &*native_meta.name,
               expected,
               args.len(),
             ),
@@ -1887,33 +1904,33 @@ impl Vm {
           SignatureError::TypeWrong(parameter) => Some(self.runtime_error(
             self.builtin.errors.runtime,
             &format!(
-              "{} {}'s parameter {} required a {} but received a {}.",
+              "{} \"{}\"'s parameter \"{}\" required a {} but received a {}.",
               callable_type,
-              native_meta.name,
-              native_meta.signature.parameters[parameter as usize].name,
+              &*native_meta.name,
+              &*native_meta.signature.parameters[parameter as usize].name,
               native_meta.signature.parameters[parameter as usize].kind,
               ParameterKind::from(args[parameter as usize])
             ),
           )),
         }
-      }
+      },
     }
   }
 
   /// Call a bound method
-  fn call_method(&mut self, bound: Gc<Method>, arg_count: u8) -> Signal {
+  fn call_method(&mut self, bound: GcObj<Method>, arg_count: u8) -> Signal {
     self.set_val(-(arg_count as isize) - 1, bound.receiver());
     self.resolve_call(bound.method(), arg_count)
   }
 
   /// bind a method to an instance
-  fn bind_method(&mut self, class: Gc<Class>, name: GcStr) -> Signal {
+  fn bind_method(&mut self, class: GcObj<Class>, name: GcStr) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
-        let bound = self.manage(Method::new(self.peek(0), method));
+        let bound = self.manage_obj(Method::new(self.peek(0), method));
         self.set_val(-1, val!(bound));
         Signal::Ok
-      }
+      },
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined property {}", name),
@@ -1922,7 +1939,12 @@ impl Vm {
   }
 
   /// invoke a method from the provided class
-  fn invoke_from_class(&mut self, class: Gc<Class>, method_name: GcStr, arg_count: u8) -> Signal {
+  fn invoke_from_class(
+    &mut self,
+    class: GcObj<Class>,
+    method_name: GcStr,
+    arg_count: u8,
+  ) -> Signal {
     match class.get_method(&method_name) {
       Some(method) => self.resolve_call(method, arg_count),
       None => self.runtime_error(
@@ -1937,7 +1959,7 @@ impl Vm {
   }
 
   /// capture an upvalue return an existing upvalue if already captured
-  fn capture_upvalue(&mut self, local_index: NonNull<Value>) -> Gc<Upvalue> {
+  fn capture_upvalue(&mut self, local_index: NonNull<Value>) -> GcObj<Upvalue> {
     let closest_upvalue = self
       .open_upvalues
       .iter()
@@ -1955,7 +1977,7 @@ impl Vm {
       }
     }
 
-    let created_upvalue = self.manage(Upvalue::Open(local_index));
+    let created_upvalue = self.manage_obj(Upvalue::Open(local_index));
     self.open_upvalues.push(created_upvalue);
 
     created_upvalue
@@ -2051,10 +2073,10 @@ impl Vm {
       match &**upvalue {
         Upvalue::Open(stack_ptr) => {
           write!(stdout, "[ stack {} ]", unsafe { *stack_ptr.as_ref() })?;
-        }
+        },
         Upvalue::Closed(closed) => {
           write!(stdout, "[ heap {} ]", closed)?;
-        }
+        },
       }
     }
 
@@ -2065,10 +2087,10 @@ impl Vm {
   fn to_call_result(&self, execute_result: ExecuteResult) -> Call {
     match execute_result {
       ExecuteResult::FunResult(value) => Call::Ok(value),
-      ExecuteResult::Ok => self.internal_error("Accidental early exit in hook call."),
+      ExecuteResult::Ok(_) => self.internal_error("Accidental early exit in hook call"),
       ExecuteResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
-      }
+      },
       ExecuteResult::RuntimeError => match self.current_error {
         Some(error) => Call::Err(error),
         None => self.internal_error("Error not set on vm executor."),
@@ -2079,11 +2101,11 @@ impl Vm {
 
   /// Report an internal issue to the user
   fn internal_error(&self, message: &str) -> ! {
-    panic!(format!("Internal Error: {}", message))
+    panic!("Internal Error: {}", message)
   }
 
   /// Report a known laythe runtime error to the user
-  fn runtime_error(&mut self, error: Gc<Class>, message: &str) -> Signal {
+  fn runtime_error(&mut self, error: GcObj<Class>, message: &str) -> Signal {
     let error_message = val!(self.manage_str(message));
     self.push(error_message);
 
@@ -2097,18 +2119,18 @@ impl Vm {
 
     match result {
       ExecuteResult::FunResult(error) => {
-        if error.is_instance() {
-          self.set_error(error.to_instance())
+        if_let_obj!(ObjectKind::Instance(instance) = (error) {
+          self.set_error(instance)
         } else {
           self.internal_error("Failed to construct error")
-        }
-      }
+        })
+      },
       _ => self.internal_error("Failed to construct error"),
     }
   }
 
   /// Set the current error place the vm signal a runtime error
-  fn set_error(&mut self, error: Gc<Instance>) -> Signal {
+  fn set_error(&mut self, error: GcObj<Instance>) -> Signal {
     self.current_error = Some(error);
     Signal::RuntimeError
   }
@@ -2120,7 +2142,7 @@ impl Vm {
   }
 
   /// Search for a catch block up the stack, printing the error if no catch is found
-  fn stack_unwind(&mut self, error: Gc<Instance>) -> Option<ExecuteResult> {
+  fn stack_unwind(&mut self, error: GcObj<Instance>) -> Option<ExecuteResult> {
     let mut popped_frames = None;
     let mut stack_top = None;
     self.store_ip();
@@ -2167,27 +2189,28 @@ impl Vm {
         }
 
         None
-      }
+      },
       None => {
         self.print_error(error);
         Some(ExecuteResult::RuntimeError)
-      }
+      },
     }
   }
 
   /// Print an error message and the current call stack to the user
-  fn print_error(&mut self, error: Gc<Instance>) {
-    let message = error[0].to_str();
+  fn print_error(&mut self, error: GcObj<Instance>) {
+    let message = error[0].to_obj().to_str();
 
     let mut stdio = self.io.stdio();
     let stderr = stdio.stderr();
-    writeln!(stderr, "{}: {}", error.class().name(), message).expect("Unable to write to stderr");
+    writeln!(stderr, "{}: {}", &*error.class().name(), &*message)
+      .expect("Unable to write to stderr");
 
     for frame in self.frames[1..self.frame_count].iter().rev() {
       let fun = frame.closure.fun();
       let location: String = match &*fun.name() {
         SCRIPT => SCRIPT.to_owned(),
-        _ => format!("{}()", fun.name()),
+        _ => format!("{}()", &*fun.name()),
       };
 
       let offset = ptr_len(&fun.chunk().instructions()[0], frame.ip);
@@ -2205,7 +2228,7 @@ impl Vm {
 }
 
 #[cfg(debug_assertions)]
-fn assert_roots(native: Gc<Box<dyn Native>>, roots_before: usize, roots_now: usize) {
+fn assert_roots(native: GcObj<Native>, roots_before: usize, roots_now: usize) {
   assert!(
     roots_before == roots_now,
     "Native function {} increased roots by {}.",
@@ -2226,8 +2249,8 @@ impl From<VmDependencies> for Vm {
 
     let fun = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
 
-    let managed_fun = hooks.manage(fun.build());
-    let closure = hooks.manage(Closure::without_upvalues(managed_fun));
+    let managed_fun = hooks.manage_obj(fun.build());
+    let closure = hooks.manage_obj(Closure::without_upvalues(managed_fun));
 
     let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
     let mut stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
@@ -2250,7 +2273,7 @@ impl From<VmDependencies> for Vm {
     let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
     native_builder.write_instruction(AlignedByteCode::Nil, 0);
 
-    let native_fun_stub = hooks.manage(native_builder.build());
+    let native_fun_stub = hooks.manage_obj(native_builder.build());
 
     let gc = RefCell::new(no_gc_context.done());
 
@@ -2381,6 +2404,6 @@ impl ValueContext for Vm {
   }
 
   fn get_class(&mut self, this: Value) -> Value {
-    self.get_class(this)
+    val!(self.get_class(this))
   }
 }

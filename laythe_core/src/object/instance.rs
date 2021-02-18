@@ -1,3 +1,8 @@
+use super::{Class, ObjectKind};
+use crate::{
+  managed::{DebugHeap, DebugWrap, GcObj, GcStr, Manage, Object, Trace},
+  value::{Value, VALUE_NIL},
+};
 use std::{
   fmt,
   io::Write,
@@ -5,19 +10,15 @@ use std::{
   ops::{Index, IndexMut},
 };
 
-use super::Class;
-use crate::value::{Value, VALUE_NIL};
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
-
 #[derive(PartialEq, Clone)]
 pub struct Instance {
-  class: Gc<Class>,
+  class: GcObj<Class>,
   fields: Box<[Value]>,
 }
 
 impl Instance {
   #[inline]
-  pub fn new(class: Gc<Class>) -> Self {
+  pub fn new(class: GcObj<Class>) -> Self {
     Instance {
       class,
       fields: vec![VALUE_NIL; class.fields()].into_boxed_slice(),
@@ -25,7 +26,7 @@ impl Instance {
   }
 
   #[inline]
-  pub fn class(&self) -> Gc<Class> {
+  pub fn class(&self) -> GcObj<Class> {
     self.class
   }
 
@@ -40,7 +41,7 @@ impl Instance {
       Some(index) => {
         self.fields[index as usize] = value;
         true
-      }
+      },
       None => false,
     }
   }
@@ -51,6 +52,12 @@ impl Instance {
       .class
       .get_field_index(&name)
       .map(|index| &self.fields[index as usize])
+  }
+}
+
+impl fmt::Display for Instance {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "<{} instance {:p}>", &*self.class().name(), &self)
   }
 }
 
@@ -96,8 +103,6 @@ impl Trace for Instance {
 
 impl DebugHeap for Instance {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_struct("Instance")
       .field("class", &DebugWrap(&self.class, depth))
       .field("fields", &DebugWrap(&&*self.fields, depth))
@@ -113,5 +118,11 @@ impl Manage for Instance {
 
   fn as_debug(&self) -> &dyn DebugHeap {
     self
+  }
+}
+
+impl Object for Instance {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::Instance
   }
 }

@@ -1,6 +1,4 @@
-use laythe_env::managed::Trace;
-
-use crate::value::Value;
+use crate::{managed::Trace, value::Value};
 use std::cmp;
 use std::convert::TryInto;
 use std::mem;

@@ -2,10 +2,10 @@ mod class;
 
 use laythe_core::{
   hooks::GcHooks,
+  managed::Gc,
   module::{Module, Package},
   utils::IdEmitter,
 };
-use laythe_env::managed::Gc;
 use std::path::PathBuf;
 
 use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};

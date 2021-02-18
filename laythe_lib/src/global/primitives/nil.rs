@@ -1,18 +1,19 @@
 use crate::{
   native,
-  support::{export_and_insert, load_class_from_module, to_dyn_native},
+  support::{export_and_insert, load_class_from_module},
   StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   module::Module,
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
+  object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
+  managed::GcObj,
   val,
   value::Value,
   Call,
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 use super::class_inheritance;
@@ -31,7 +32,7 @@ pub fn define_nil_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   class.add_method(
     hooks,
     hooks.manage_str(NIL_STR.name),
-    val!(to_dyn_native(hooks, NilStr::from(hooks))),
+    val!(NilStr::native(hooks)),
   );
 
   Ok(())
@@ -39,7 +40,7 @@ pub fn define_nil_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
 
 native!(NilStr, NIL_STR);
 
-impl Native for NilStr {
+impl LyNative for NilStr {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     Call::Ok(val!(hooks.manage_str("nil")))
   }
@@ -57,23 +58,23 @@ mod test {
     #[test]
     fn new() {
       let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
+      let hooks = GcHooks::new(&mut context);
 
-      let nil_str = NilStr::from(&hooks);
+      let nil_str = NilStr::native(&hooks);
 
-      assert_eq!(nil_str.meta.name, "str");
-      assert_eq!(nil_str.meta.signature.arity, Arity::Fixed(0));
+      assert_eq!(nil_str.meta().name, "str");
+      assert_eq!(nil_str.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let nil_str = NilStr::from(&hooks);
+      let nil_str = NilStr::native(&hooks.as_gc());
 
       let result = nil_str.call(&mut hooks, Some(VALUE_NIL), &[]);
       match result {
-        Call::Ok(r) => assert_eq!(*r.to_str(), "nil".to_string()),
+        Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "nil".to_string()),
         _ => assert!(false),
       }
     }

@@ -1,14 +1,13 @@
 use core::panic;
 use std::vec;
 
-use laythe_core::{object::Class, utils::IdEmitter, value::Value};
-use laythe_env::managed::Gc;
+use laythe_core::{managed::{GcObj}, object::Class, utils::IdEmitter, value::Value};
 
 /// The cache for property access and setting
 #[derive(Clone)]
 struct PropertyCache {
   /// The cached class
-  class: Gc<Class>,
+  class: GcObj<Class>,
 
   /// The expected index given the class
   property_index: usize,
@@ -18,7 +17,7 @@ struct PropertyCache {
 #[derive(Clone)]
 struct InvokeCache {
   /// The cached class
-  class: Gc<Class>,
+  class: GcObj<Class>,
 
   /// The expected method given the class
   method: Value,
@@ -51,7 +50,7 @@ impl InlineCache {
 
   /// Attempt to retrieve the property cache at a given slot
   /// for the provided class
-  pub fn get_property_cache(&self, inline_slot: usize, class: Gc<Class>) -> Option<usize> {
+  pub fn get_property_cache(&self, inline_slot: usize, class: GcObj<Class>) -> Option<usize> {
     debug_assert!(inline_slot < self.property.len());
     match unsafe { self.property.get_unchecked(inline_slot) } {
       Some(cache) => {
@@ -60,7 +59,7 @@ impl InlineCache {
         } else {
           None
         }
-      }
+      },
       None => None,
     }
   }
@@ -70,7 +69,7 @@ impl InlineCache {
   pub fn set_property_cache(
     &mut self,
     inline_slot: usize,
-    class: Gc<Class>,
+    class: GcObj<Class>,
     property_index: usize,
   ) {
     self.set_property(
@@ -89,7 +88,7 @@ impl InlineCache {
 
   /// Attempt to retrieve the invoke cache at a given slot
   /// for the provided class
-  pub fn get_invoke_cache(&self, inline_slot: usize, class: Gc<Class>) -> Option<Value> {
+  pub fn get_invoke_cache(&self, inline_slot: usize, class: GcObj<Class>) -> Option<Value> {
     debug_assert!(inline_slot < self.invoke.len());
     match unsafe { self.invoke.get_unchecked(inline_slot) } {
       Some(cache) => {
@@ -98,14 +97,14 @@ impl InlineCache {
         } else {
           None
         }
-      }
+      },
       None => None,
     }
   }
 
   /// Set the invoke cache at a given slot for the provided
   /// class and method
-  pub fn set_invoke_cache(&mut self, inline_slot: usize, class: Gc<Class>, method: Value) {
+  pub fn set_invoke_cache(&mut self, inline_slot: usize, class: GcObj<Class>, method: Value) {
     self.set_invoke(inline_slot, Some(InvokeCache { class, method }));
   }
 
@@ -197,12 +196,12 @@ mod test {
     use crate::cache::InlineCache;
     use laythe_core::{
       chunk::AlignedByteCode,
+      memory::{Allocator, NO_GC},
       module::Module,
       object::{Class, FunBuilder},
       val,
       value::Value,
     };
-    use laythe_env::memory::{Allocator, NO_GC};
     use std::path::PathBuf;
 
     #[test]
@@ -211,7 +210,7 @@ mod test {
       let mut alloc = Allocator::default();
 
       let class_name = alloc.manage_str("example", &NO_GC);
-      let class = alloc.manage(Class::bare(class_name), &NO_GC);
+      let class = alloc.manage_obj(Class::bare(class_name), &NO_GC);
 
       assert_eq!(inline_cache.get_property_cache(0, class), None);
       assert_eq!(inline_cache.get_property_cache(1, class), None);
@@ -239,12 +238,12 @@ mod test {
       let class_name = alloc.manage_str("class_example", &NO_GC);
       let fun_name = alloc.manage_str("fn_example", &NO_GC);
 
-      let class = alloc.manage(Class::bare(class_name), &NO_GC);
+      let class = alloc.manage_obj(Class::bare(class_name), &NO_GC);
       let module = alloc.manage(Module::new(class, PathBuf::new(), 0), &NO_GC);
 
       let mut fun = FunBuilder::new(fun_name, module);
       fun.write_instruction(AlignedByteCode::Nil, 0);
-      let fun = val!(alloc.manage(fun.build(), &NO_GC));
+      let fun = val!(alloc.manage_obj(fun.build(), &NO_GC));
 
       assert_eq!(inline_cache.get_invoke_cache(0, class), None);
       assert_eq!(inline_cache.get_invoke_cache(1, class), None);

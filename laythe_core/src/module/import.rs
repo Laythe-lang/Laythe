@@ -1,8 +1,11 @@
 use std::mem;
 
 use super::{ModuleError, ModuleResult};
-use crate::{hooks::GcHooks, object::List};
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
+use crate::{
+  hooks::GcHooks,
+  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
+  object::List,
+};
 
 /// An object representing an import request from a file
 pub struct Import {
@@ -68,15 +71,13 @@ impl Manage for Import {
     mem::size_of::<Self>()
   }
 
-  fn as_debug(&self) -> &dyn laythe_env::managed::DebugHeap {
+  fn as_debug(&self) -> &dyn DebugHeap {
     self
   }
 }
 
 impl DebugHeap for Import {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_struct("Import")
       .field("package", &DebugWrap(&self.package, depth))
       .field("path", &DebugWrap(&self.path, depth))

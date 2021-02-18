@@ -1,11 +1,10 @@
-use laythe_core::{object::Closure, value::Value};
-use laythe_env::managed::Gc;
+use laythe_core::{managed::GcObj, object::Closure, value::Value};
 
 /// A call frame in the space lox interpreter
 #[derive(Clone, Copy, PartialEq)]
 pub struct CallFrame {
   /// The function defining this call frame
-  pub closure: Gc<Closure>,
+  pub closure: GcObj<Closure>,
 
   /// The instruction pointer for this frame
   pub ip: *const u8,
@@ -15,7 +14,7 @@ pub struct CallFrame {
 }
 
 impl CallFrame {
-  pub fn new(closure: Gc<Closure>) -> Self {
+  pub fn new(closure: GcObj<Closure>) -> Self {
     CallFrame {
       closure,
       ip: std::ptr::null(),

@@ -3,8 +3,7 @@ use laythe_core::{
   module::{Module, Package},
   val,
 };
-use laythe_core::{utils::IdEmitter, value::Value};
-use laythe_env::managed::Gc;
+use laythe_core::{utils::IdEmitter, value::Value, managed::Gc};
 use std::path::PathBuf;
 
 use crate::{

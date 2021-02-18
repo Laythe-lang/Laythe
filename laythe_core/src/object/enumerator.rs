@@ -1,28 +1,30 @@
 use crate::{
   hooks::Hooks,
+  managed::{DebugHeap, Manage, Object, Trace},
   value::{Value, VALUE_NIL},
   Call,
 };
-use laythe_env::managed::{DebugHeap, Manage, Trace};
 use std::mem;
 use std::{fmt, io::Write};
+
+use super::ObjectKind;
 
 /// A container for iterators in laythe. The IterContainer
 /// is really a optimization for the Instance struct to avoid
 /// the need for hashing when the special IterCurrent and IterNext
 /// bytecodes are used
 #[derive(Debug)]
-pub struct LyIterator {
+pub struct Enumerator {
   /// The underlying iterator
-  iterator: Box<dyn LyIter>,
+  iterator: Box<dyn Enumerate>,
 
   /// The current value of the iterator
   current: Value,
 }
 
-impl LyIterator {
+impl Enumerator {
   /// Create a new iterator container
-  pub fn new(iterator: Box<dyn LyIter>) -> Self {
+  pub fn new(iterator: Box<dyn Enumerate>) -> Self {
     Self {
       iterator,
       current: VALUE_NIL,
@@ -51,7 +53,13 @@ impl LyIterator {
   }
 }
 
-impl Trace for LyIterator {
+impl fmt::Display for Enumerator {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "<{} iter {:p}>", self.name(), &self)
+  }
+}
+
+impl Trace for Enumerator {
   fn trace(&self) {
     self.current.trace();
     self.iterator.trace();
@@ -63,23 +71,29 @@ impl Trace for LyIterator {
   }
 }
 
-impl DebugHeap for LyIterator {
+impl DebugHeap for Enumerator {
   fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
     f.write_fmt(format_args!("{:?}", self))
   }
 }
 
-impl Manage for LyIterator {
+impl Manage for Enumerator {
   fn size(&self) -> usize {
-    mem::size_of::<LyIterator>() + self.iterator.size()
+    mem::size_of::<Enumerator>() + self.iterator.size()
   }
 
-  fn as_debug(&self) -> &dyn laythe_env::managed::DebugHeap {
+  fn as_debug(&self) -> &dyn DebugHeap {
     self
   }
 }
 
-pub trait LyIter: Trace + fmt::Debug {
+impl Object for Enumerator {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::Enumerator
+  }
+}
+
+pub trait Enumerate: Trace + fmt::Debug {
   /// The name of the iterator mostly for debugging purposes
   fn name(&self) -> &str;
 

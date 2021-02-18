@@ -1,8 +1,6 @@
-use std::{fmt, mem};
-
-use laythe_env::managed::{DebugHeap, Manage, Trace};
-
 use crate::ast::Spanned;
+use laythe_core::managed::{DebugHeap, Manage, Trace};
+use std::{fmt, mem};
 
 #[derive(Debug, Clone)]
 pub enum Lexeme<'a> {
@@ -76,7 +74,7 @@ impl Manage for Token<'static> {
     mem::size_of::<Self>() + string
   }
 
-  fn as_debug(&self) -> &dyn laythe_env::managed::DebugHeap {
+  fn as_debug(&self) -> &dyn DebugHeap {
     self
   }
 }

@@ -1,12 +1,14 @@
-use laythe_env::managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace};
 use std::{fmt, io::Write, mem};
 
 use crate::{
   chunk::{AlignedByteCode, Chunk, ChunkBuilder},
+  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Object, Trace},
   module::Module,
   signature::Arity,
   value::Value,
 };
+
+use super::ObjectKind;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FunKind {
@@ -250,7 +252,7 @@ impl fmt::Display for Fun {
 
 impl fmt::Debug for Fun {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.fmt_heap(f, 1)
+    self.fmt_heap(f, 2)
   }
 }
 
@@ -270,8 +272,6 @@ impl Trace for Fun {
 
 impl DebugHeap for Fun {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_struct("Fun")
       .field("name", &DebugWrap(&self.name, depth))
       .field("arity", &self.arity)
@@ -289,5 +289,11 @@ impl Manage for Fun {
 
   fn as_debug(&self) -> &dyn DebugHeap {
     self
+  }
+}
+
+impl Object for Fun {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::Fun
   }
 }
