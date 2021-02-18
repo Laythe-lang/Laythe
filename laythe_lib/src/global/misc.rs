@@ -82,7 +82,7 @@ impl LyNative for Print {
     let mut stdio = hooks.as_io().stdio();
     match writeln!(stdio.stdout(), "{}", output) {
       Ok(_) => Call::Ok(VALUE_NIL),
-      Err(err) => panic!(format!("TODO {}", err.to_string())),
+      Err(err) => panic!("TODO return some sort of io error {}", err.to_string()),
     }
   }
 }

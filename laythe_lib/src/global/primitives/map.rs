@@ -215,17 +215,17 @@ fn format_map_entry(
 
   if_let_obj!(ObjectKind::String(string) = (result) {
     buffer.push_str(&*string);
-    return Call::Ok(VALUE_NIL);
+    Call::Ok(VALUE_NIL)
   } else {
     // if error throw away temporary strings
-    return hooks.call(
+    hooks.call(
       error,
       &[val!(hooks.manage_str(format!(
         "Expected type str from {}.str()",
         item
       )))],
     )
-  });
+  })
 }
 
 impl Trace for MapStr {

@@ -64,26 +64,6 @@ macro_rules! if_let_obj {
   }};
 }
 
-#[macro_export]
-macro_rules! if_let_mut_obj {
-  (ObjectKind::$obj_kind:ident($p:pat) = ($v:expr) $b:block) => {{
-    let val: Value = $v;
-    if val.is_obj_kind(ObjectKind::$obj_kind) {
-      let obj = val.to_obj();
-      let mut $p = to_obj_kind!(obj, $obj_kind);
-      $b
-    }
-  }};
-  (ObjectKind::$obj_kind:ident($p:pat) = ($v:expr) $b1:block else $b2:block) => {{
-    let val: Value = $v;
-    if val.is_obj_kind(ObjectKind::$obj_kind) {
-      let mut obj = val.to_obj();
-      let mut $p = to_obj_kind!(obj, $obj_kind);
-      $b1
-    } else $b2
-  }};
-}
-
 #[cfg(not(feature = "nan_boxing"))]
 pub use self::unboxed::*;
 

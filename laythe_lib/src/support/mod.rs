@@ -18,14 +18,14 @@ pub fn default_class_inheritance(
   let object_class = package.import_symbol(hooks, import, hooks.manage_str(OBJECT_CLASS_NAME))?;
 
   if_let_obj!(ObjectKind::Class(class) = (object_class) {
-    return Ok(Class::with_inheritance(
+    Ok(Class::with_inheritance(
       hooks,
       name,
       class,
     ))
   } else {
-    return Err(StdError::SymbolNotClass)
-  });
+    Err(StdError::SymbolNotClass)
+  })
 }
 
 pub fn default_error_inheritance(
@@ -40,14 +40,14 @@ pub fn default_error_inheritance(
   let object_class = package.import_symbol(hooks, import, object_name)?;
 
   if_let_obj!(ObjectKind::Class(class) = (object_class) {
-    return Ok(Class::with_inheritance(
+    Ok(Class::with_inheritance(
       hooks,
       name,
       class,
     ))
   } else {
-    return Err(StdError::SymbolNotClass)
-  });
+    Err(StdError::SymbolNotClass)
+  })
 }
 
 pub fn load_class_from_package(
@@ -61,10 +61,10 @@ pub fn load_class_from_package(
 
   let symbol = package.import_symbol(hooks, import, name)?;
   if_let_obj!(ObjectKind::Class(class) = (symbol) {
-    return Ok(class)
+    Ok(class)
   } else {
-    return Err(StdError::SymbolNotClass)
-  });
+    Err(StdError::SymbolNotClass)
+  })
 }
 
 pub fn load_class_from_module(
@@ -76,10 +76,10 @@ pub fn load_class_from_module(
   let symbol = module.get_exported_symbol(name)?;
 
   if_let_obj!(ObjectKind::Class(class) = (symbol) {
-    return Ok(class)
+    Ok(class)
   } else {
-    return Err(StdError::SymbolNotClass)
-  });
+    Err(StdError::SymbolNotClass)
+  })
 }
 
 pub fn load_instance_from_module(
@@ -91,10 +91,10 @@ pub fn load_instance_from_module(
   match module.get_exported_symbol(name) {
     Ok(symbol) => {
       if_let_obj!(ObjectKind::Instance(instance) = (symbol) {
-        return Ok(instance)
+        Ok(instance)
       } else {
-        return Err(StdError::SymbolNotInstance)
-      });
+        Err(StdError::SymbolNotInstance)
+      })
     },
     Err(err) => Err(StdError::from(err)),
   }

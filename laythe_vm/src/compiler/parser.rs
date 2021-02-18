@@ -38,9 +38,6 @@ pub struct Parser<'a, FileId> {
   /// The previous token
   previous: Token<'a>,
 
-  /// Is the parser in panic mode
-  panic_mode: bool,
-
   /// All errors that have been during parsing
   errors: Vec<Diagnostic<FileId>>,
 
@@ -69,7 +66,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     Self {
       scanner: Scanner::new(source),
       file_id,
-      panic_mode: false,
       errors: vec![],
       fun_kind: FunKind::Script,
       block_return: BlockReturn::Cannot,
@@ -156,7 +152,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Synchronize the parser to a sentinel token
   fn synchronize(&mut self, error: Diagnostic<FileId>) -> ParseResult<Decl<'a>, FileId> {
-    self.panic_mode = false;
     self.errors.push(error);
 
     let mut tokens: Vec<Token> = vec![];
@@ -1433,8 +1428,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Print an error to the console for a user to address
   fn error_at<T>(&mut self, token: Token<'a>, message: &str) -> ParseResult<T, FileId> {
-    self.panic_mode = true;
-
     let error = Diagnostic::error()
       .with_message(message)
       .with_labels(vec![Label::primary(self.file_id, token.span())]);
@@ -2096,7 +2089,9 @@ mod test {
     let (ast2, _) = Parser::new(printer.str(), 0).parse();
     assert!(
       ast2.is_ok(),
-      format!("expected:\n{}, \ngenerated: \n{}", src, printer.str())
+      "expected:\n{}, \ngenerated: \n{}",
+      src,
+      printer.str()
     );
   }
 

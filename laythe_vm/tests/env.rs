@@ -13,6 +13,6 @@ const FILE_PATH: &str = file!();
 fn env() -> Result<(), std::io::Error> {
   test_files(
     &["std_lib/env/cwd.lay", "std_lib/env/args.lay"],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )
 }

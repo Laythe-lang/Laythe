@@ -299,7 +299,7 @@ impl LyNative for ListStr {
       })
     }
 
-    buf.push_str("]");
+    buf.push(']');
     Call::Ok(val!(hooks.manage_str(buf)))
   }
 }

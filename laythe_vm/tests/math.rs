@@ -20,7 +20,7 @@ fn utils() -> Result<(), std::io::Error> {
       "std_lib/math/utils/rem.lay",
       "std_lib/math/utils/sin.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(&vec![], ExecuteResult::CompileError)?;

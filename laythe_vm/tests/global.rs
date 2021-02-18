@@ -20,7 +20,7 @@ const FILE_PATH: &str = file!();
 
 #[test]
 fn bool() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/global/bool/str.lay"], ExecuteResult::Ok)?;
+  test_files(&vec!["std_lib/global/bool/str.lay"], ExecuteResult::Ok(0))?;
 
   test_files(&vec![], ExecuteResult::CompileError)?;
 
@@ -35,7 +35,7 @@ fn class() -> Result<(), std::io::Error> {
       "std_lib/global/class/str.lay",
       "std_lib/global/class/superCls.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
@@ -49,7 +49,7 @@ fn closure() -> Result<(), std::io::Error> {
       "std_lib/global/closure/call.lay",
       "std_lib/global/closure/len.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(
@@ -84,7 +84,7 @@ fn iter() -> Result<(), std::io::Error> {
       "std_lib/global/iter/take.lay",
       "std_lib/global/iter/zip.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
@@ -108,7 +108,7 @@ fn list() -> Result<(), std::io::Error> {
       "std_lib/global/list/slice.lay",
       "std_lib/global/list/str.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(
@@ -133,7 +133,7 @@ fn map() -> Result<(), std::io::Error> {
       "std_lib/global/map/len.lay",
       "std_lib/global/map/str.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(
@@ -149,7 +149,7 @@ fn method() -> Result<(), std::io::Error> {
       "std_lib/global/method/name.lay",
       "std_lib/global/method/call.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
@@ -157,14 +157,17 @@ fn method() -> Result<(), std::io::Error> {
 
 #[test]
 fn module() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/global/module/name.lay"], ExecuteResult::Ok)?;
+  test_files(
+    &vec!["std_lib/global/module/name.lay"],
+    ExecuteResult::Ok(0),
+  )?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
 fn nil() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/global/nil/str.lay"], ExecuteResult::Ok)?;
+  test_files(&vec!["std_lib/global/nil/str.lay"], ExecuteResult::Ok(0))?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
 }
@@ -181,7 +184,7 @@ fn number() -> Result<(), std::io::Error> {
       "std_lib/global/number/str.lay",
       // "std_lib/global/number/times.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)
@@ -195,7 +198,7 @@ fn object() -> Result<(), std::io::Error> {
       "std_lib/global/object/equals.lay",
       "std_lib/global/object/str.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )
 }
 
@@ -205,21 +208,21 @@ fn print() -> Result<(), std::io::Error> {
     "std_lib/global/print/basic.lay",
     Some(vec!["10", "true", "['cat']", "{}"]),
     None,
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_with_stdio(
     "std_lib/global/print/multi.lay",
     Some(vec!["10 false true ['dog'] { 'cat': nil }"]),
     None,
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_with_stdio(
     "std_lib/global/print/with_newline_char.lay",
     Some(vec!["hi!", "bye!"]),
     None,
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )
 }
 
@@ -235,7 +238,7 @@ fn str() -> Result<(), std::io::Error> {
       "std_lib/global/str/split.lay",
       "std_lib/global/str/str.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(&vec![], ExecuteResult::RuntimeError)

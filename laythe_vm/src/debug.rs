@@ -260,9 +260,8 @@ fn closure_instruction(
 
   let value = chunk.get_constant(constant as usize);
 
-  let mut upvalue_count = 0;
-  if_let_obj!(ObjectKind::Fun(fun) = (value) {
-    upvalue_count =  fun.upvalue_count()
+  let upvalue_count = if_let_obj!(ObjectKind::Fun(fun) = (value) {
+    fun.upvalue_count()
   } else {
     let stderr = stdio.stderr();
 

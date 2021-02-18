@@ -56,13 +56,13 @@ fn error_inheritance(
   let error_class = module.import_symbol(hooks, &[], error_name)?;
 
   if_let_obj!(ObjectKind::Class(class) = (error_class) {
-    return Ok(Class::with_inheritance(
+    Ok(Class::with_inheritance(
       hooks,
       name,
       class,
-    ));
+    ))
   } else {
-    return Err(StdError::SymbolNotClass);
+    Err(StdError::SymbolNotClass)
   })
 }
 

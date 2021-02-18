@@ -46,41 +46,41 @@ fn stdio() -> Result<(), std::io::Error> {
   test_file_with_stdout(
     "std_lib/io/stdio/stdout/write.lay",
     vec!["expected 1 expected 2"],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_with_stdout(
     "std_lib/io/stdio/stdout/writeln.lay",
     vec!["expected 1", "expected 2"],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_with_stderr(
     "std_lib/io/stdio/stderr/write.lay",
     vec!["expected 1 expected 2"],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_with_stderr(
     "std_lib/io/stdio/stderr/writeln.lay",
     vec!["expected 1", "expected 2"],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_with_stdin(
     "std_lib/io/stdio/stdin/read.lay",
     "expected".to_string(),
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_with_stdin_lines(
     "std_lib/io/stdio/stdin/readline.lay",
     vec!["expected 1".to_string(), "expected 2".to_string()],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )
 }
 
 #[test]
 fn fs() -> Result<(), std::io::Error> {
-  test_files(&["std_lib/io/fs/file/readAllText.lay"], ExecuteResult::Ok)
+  test_files(&["std_lib/io/fs/file/readAllText.lay"], ExecuteResult::Ok(0))
 }

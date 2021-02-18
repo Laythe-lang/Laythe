@@ -17,7 +17,7 @@ fn main() {
 
   match args.as_slice() {
     [_] => match vm.repl() {
-      ExecuteResult::Ok => process::exit(0),
+      ExecuteResult::Ok(code) => process::exit(code.into()),
       ExecuteResult::FunResult(_) => panic!("Fun result should only be returned internally"),
       ExecuteResult::CompileError => process::exit(2),
       ExecuteResult::RuntimeError => process::exit(3),
@@ -29,7 +29,7 @@ fn main() {
 
       match read_to_string(&path) {
         Ok(source) => match vm.run(path, &source) {
-          ExecuteResult::Ok => process::exit(0),
+          ExecuteResult::Ok(code) => process::exit(code.into()),
           ExecuteResult::FunResult(_) => panic!("Fun result should only be returned internally"),
           ExecuteResult::CompileError => process::exit(2),
           ExecuteResult::RuntimeError => process::exit(3),
@@ -38,8 +38,8 @@ fn main() {
         Err(e) => {
           eprintln!("{}", e);
           process::exit(4)
-        }
+        },
       }
-    }
+    },
   }
 }

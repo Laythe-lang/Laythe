@@ -62,7 +62,7 @@ impl LyNative for Cwd {
         Some(path) => Call::Ok(val!(hooks.manage_str(path))),
         None => panic!("TODO: Unable to create string from current working directory"),
       },
-      Err(err) => panic!(err.to_string()),
+      Err(err) => panic!("{}", err),
     }
   }
 }

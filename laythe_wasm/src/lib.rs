@@ -50,7 +50,7 @@ impl VmWasm {
     let result = self.0.run(PathBuf::from("script.ly"), source);
 
     match result {
-      ExecuteResult::Ok => 0.0,
+      ExecuteResult::Ok(code) => code.into(),
       ExecuteResult::FunResult(_) => 1.0,
       ExecuteResult::InternalError => 2.0,
       ExecuteResult::RuntimeError => 3.0,

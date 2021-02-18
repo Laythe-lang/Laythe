@@ -61,7 +61,7 @@ enum Signal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecuteResult {
-  Ok,
+  Ok(u16),
   FunResult(Value),
   InternalError,
   RuntimeError,
@@ -262,7 +262,7 @@ impl Vm {
 
           self.interpret(main_module, &managed_source, file_id);
         },
-        Err(error) => panic!(error),
+        Err(error) => panic!("{}", error),
       }
     }
   }
@@ -550,7 +550,7 @@ impl Vm {
           None => self.internal_error("Runtime error was not set."),
         },
         Signal::Exit => {
-          return ExecuteResult::Ok;
+          return ExecuteResult::Ok(self.exit_code);
         },
       }
     }
@@ -2087,7 +2087,7 @@ impl Vm {
   fn to_call_result(&self, execute_result: ExecuteResult) -> Call {
     match execute_result {
       ExecuteResult::FunResult(value) => Call::Ok(value),
-      ExecuteResult::Ok => self.internal_error("Accidental early exit in hook call."),
+      ExecuteResult::Ok(_) => self.internal_error("Accidental early exit in hook call"),
       ExecuteResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
       },
@@ -2101,7 +2101,7 @@ impl Vm {
 
   /// Report an internal issue to the user
   fn internal_error(&self, message: &str) -> ! {
-    panic!(format!("Internal Error: {}", message))
+    panic!("Internal Error: {}", message)
   }
 
   /// Report a known laythe runtime error to the user
@@ -2120,10 +2120,10 @@ impl Vm {
     match result {
       ExecuteResult::FunResult(error) => {
         if_let_obj!(ObjectKind::Instance(instance) = (error) {
-          return self.set_error(instance)
+          self.set_error(instance)
         } else {
           self.internal_error("Failed to construct error")
-        });
+        })
       },
       _ => self.internal_error("Failed to construct error"),
     }
