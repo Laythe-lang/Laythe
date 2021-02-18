@@ -173,7 +173,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::While
         | TokenKind::Return => {
           break;
-        }
+        },
         _ => (),
       }
 
@@ -254,7 +254,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
-            }
+            },
             _ => {
               let (fun_kind, method) = self.method(name, false)?;
               match fun_kind {
@@ -262,9 +262,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 FunKind::Initializer => init = Some(method),
                 _ => unreachable!(),
               }
-            }
+            },
           }
-        }
+        },
 
         // static we know must be a method
         TokenKind::Static => {
@@ -276,7 +276,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let name = self.previous.clone();
           let (_, method) = self.method(name, true)?;
           static_methods.push(method);
-        }
+        },
         _ => return self.error_current("Expected method or member declaration inside of class."),
       }
     }
@@ -376,7 +376,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           members.push(TypeMember::new(name, type_));
-        }
+        },
         TokenKind::Less | TokenKind::LeftParen => {
           self.advance()?;
           let type_params = if self.match_kind(TokenKind::Less)? {
@@ -390,7 +390,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           methods.push(TypeMethod::new(name, call_sig));
-        }
+        },
         _ => self.error_at(
           self.current.clone(),
           "Expected member or method declaration inside trait.",
@@ -993,10 +993,10 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         TokenKind::StringSegment => {
           self.advance()?;
           segments.push(StringSegments::Token(self.previous.clone()))
-        }
+        },
         TokenKind::StringEnd => {
           break;
-        }
+        },
         _ => segments.push(StringSegments::Expr(Box::new(self.expr()?))),
       }
     }
@@ -1333,11 +1333,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
         Ok(Type::Ref(type_ref))
-      }
+      },
       _ => {
         // TODO: maybe
         self.error("Can only apply type argument to a non primitive type identifier.")
-      }
+      },
     }
   }
 

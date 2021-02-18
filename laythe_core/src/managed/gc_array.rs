@@ -8,10 +8,9 @@ use std::{
   mem,
   ops::{Deref, DerefMut},
   ptr, slice,
-  sync::atomic::{AtomicBool, Ordering},
 };
 
-use super::utils::{get_offset, make_array_layout};
+use super::utils::{get_array_len_offset, get_array_offset, make_array_layout};
 
 /// A non owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
@@ -23,49 +22,46 @@ use super::utils::{get_offset, make_array_layout};
 /// use std::mem;
 ///
 /// let data: &[u32] = &[1, 2, 3, 4];
-/// let handle = GcArrayHandle::from(data);
+/// let handle = GcArrayHandle::<u32, u64>::from(data);
 /// let array = handle.value();
 ///
-/// assert_eq!(mem::size_of::<GcArray<u32>>(), mem::size_of::<&u32>());
+/// assert_eq!(mem::size_of::<GcArray<u32, u64>>(), mem::size_of::<&u32>());
 /// assert_eq!(data[0], array[0]);
 /// assert_eq!(data.len(), array.len());
 /// ```
-pub struct GcArray<T> {
+pub struct GcArray<T, H> {
   /// Pointer to the header of the array
-  ptr: NonNull<u8>,
+  pub(super) ptr: NonNull<u8>,
 
-  /// Phantom data to hold the type parameter
-  phantom: PhantomData<T>,
+  /// Phantom data to hold the array data type
+  data: PhantomData<T>,
+
+  /// Phantom data to hold the array header type
+  header: PhantomData<H>,
 }
 
-/// The `Header` meta data for `GcArray<T>`. This struct
-/// is positioned at the front of the array such that the layout looks like
-/// this
-/// ```markdown
-/// [Header (potential padding)| T | T | T | ...]
-/// ```
-pub struct Header {
-  // Has this array allocation been marked by the garbage collector
-  marked: AtomicBool,
-
-  // What is the length of this array
-  len: usize,
-}
-
-impl<T> GcArray<T> {
+impl<T, H> GcArray<T, H> {
   /// Retrieve the header from this array
   #[inline]
-  fn header(&self) -> &Header {
+  pub fn header(&self) -> &H {
     #[allow(clippy::cast_ptr_alignment)]
     unsafe {
-      &*(self.ptr.as_ptr() as *const Header)
+      &*(self.ptr.as_ptr() as *const H)
     }
+  }
+
+  /// Retrieve the header from this array
+  #[inline]
+  pub fn len(&self) -> usize {
+    #[allow(clippy::cast_ptr_alignment)]
+    let count = get_array_len_offset::<H>();
+    unsafe { *(self.ptr.as_ptr().add(count) as *mut usize) }
   }
 
   /// Retrieve a pointer data array
   #[inline]
   fn data(&self) -> *mut T {
-    let count = get_offset::<Header, T>();
+    let count = get_array_offset::<H, T>();
     unsafe { self.ptr.as_ptr().add(count) as *mut T }
   }
 
@@ -82,26 +78,29 @@ impl<T> GcArray<T> {
   pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
     Self {
       ptr,
-      phantom: PhantomData,
+      data: PhantomData,
+      header: PhantomData,
     }
   }
 }
 
-impl<T> Mark for GcArray<T> {
+impl<T, H: Mark> Mark for GcArray<T, H> {
+  /// Mark the array itself as visited
   #[inline]
   fn mark(&self) -> bool {
-    self.header().marked.swap(true, Ordering::Release)
+    self.header().mark()
   }
 }
 
-impl<T> Marked for GcArray<T> {
+impl<T, H: Marked> Marked for GcArray<T, H> {
+  /// Is this array marked
   #[inline]
   fn marked(&self) -> bool {
-    self.header().marked.load(Ordering::Acquire)
+    self.header().marked()
   }
 }
 
-impl<T: Trace> Trace for GcArray<T> {
+impl<T: Trace, H: Send + Mark> Trace for GcArray<T, H> {
   fn trace(&self) {
     if self.mark() {
       return;
@@ -119,48 +118,46 @@ impl<T: Trace> Trace for GcArray<T> {
   }
 }
 
-impl<T> Copy for GcArray<T> {}
-impl<T> Clone for GcArray<T> {
+impl<T, H> Copy for GcArray<T, H> {}
+impl<T, H> Clone for GcArray<T, H> {
   fn clone(&self) -> Self {
     *self
   }
 }
 
-impl<T> Deref for GcArray<T> {
+impl<T, H> Deref for GcArray<T, H> {
   type Target = [T];
 
   fn deref(&self) -> &Self::Target {
-    let header = self.header();
     let data = self.data();
-    let len = header.len;
+    let len = self.len();
     unsafe { slice::from_raw_parts(data, len) }
   }
 }
 
-impl<T> DerefMut for GcArray<T> {
+impl<T, H> DerefMut for GcArray<T, H> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    let header = self.header();
     let data = self.data();
-    let len = header.len;
+    let len = self.len();
     unsafe { slice::from_raw_parts_mut(data, len) }
   }
 }
 
-impl<T> PartialEq<GcArray<T>> for GcArray<T> {
+impl<T, H> PartialEq<GcArray<T, H>> for GcArray<T, H> {
   #[inline]
-  fn eq(&self, other: &GcArray<T>) -> bool {
+  fn eq(&self, other: &GcArray<T, H>) -> bool {
     ptr::eq(self.as_alloc_ptr(), other.as_alloc_ptr())
   }
 }
 
-impl<T: Debug> Debug for GcArray<T> {
+impl<T: Debug, H> Debug for GcArray<T, H> {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     f.debug_list().entry(self).finish()
   }
 }
 
-unsafe impl<T: Send> Send for GcArray<T> {}
-unsafe impl<T: Sync> Sync for GcArray<T> {}
+unsafe impl<T: Send, H: Send> Send for GcArray<T, H> {}
+unsafe impl<T: Sync, H: Sync> Sync for GcArray<T, H> {}
 
 /// A owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
@@ -172,13 +169,13 @@ unsafe impl<T: Sync> Sync for GcArray<T> {}
 /// use std::mem;
 ///
 /// let data: &[u32] = &[1, 2, 3, 4];
-/// let handle = GcArrayHandle::from(data);
+/// let handle = GcArrayHandle::<u32, u32>::from(data);
 ///
-/// assert_eq!(mem::size_of::<GcArrayHandle<u32>>(), mem::size_of::<&u32>());
+/// assert_eq!(mem::size_of::<GcArrayHandle<u32, u32>>(), mem::size_of::<&u32>());
 /// ```
-pub struct GcArrayHandle<T>(GcArray<T>);
+pub struct GcArrayHandle<T, H>(GcArray<T, H>);
 
-impl<T> GcArrayHandle<T> {
+impl<T, H> GcArrayHandle<T, H> {
   /// Create a non owning reference to this array.
   ///
   /// ## Examples
@@ -187,7 +184,7 @@ impl<T> GcArrayHandle<T> {
   /// use std::mem;
   ///
   /// let data: &[u32] = &[1, 2, 3, 4];
-  /// let handle = GcArrayHandle::from(data);
+  /// let handle = GcArrayHandle::<u32, u32>::from(data);
   ///
   /// let array1 = handle.value();
   /// let array2 = handle.value();
@@ -195,66 +192,34 @@ impl<T> GcArrayHandle<T> {
   /// assert_eq!(array1, array2);
   /// assert_eq!(handle[0], array1[0]);
   /// ```
-  pub fn value(&self) -> GcArray<T> {
+  pub fn value(&self) -> GcArray<T, H> {
     self.0
   }
 }
 
-impl<T> Unmark for GcArrayHandle<T> {
-  /// Unmark this allocation as visited, returning
-  /// the existing marked status
-  #[inline]
-  fn unmark(&self) -> bool {
-    self.0.header().marked.swap(false, Ordering::Release)
-  }
-}
-
-impl<T> Marked for GcArrayHandle<T> {
-  /// Is this allocation marked
-  #[inline]
-  fn marked(&self) -> bool {
-    self.0.marked()
-  }
-}
-
-impl<T> Deref for GcArrayHandle<T> {
-  type Target = [T];
-
-  fn deref(&self) -> &Self::Target {
-    self.0.deref()
-  }
-}
-
-impl<T> DerefMut for GcArrayHandle<T> {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    self.0.deref_mut()
-  }
-}
-
-impl<T: Copy> From<&[T]> for GcArrayHandle<T> {
-  fn from(slice: &[T]) -> Self {
+impl<T: Copy, H> GcArrayHandle<T, H> {
+  /// Create a new `GcArrayHandle` from the provided header
+  /// and a copyable slice
+  pub fn from_slice(slice: &[T], header: H) -> Self {
     assert!(mem::size_of::<T>() > 0, "ZSTs currently not supported");
 
     let len = slice.len();
-    let new_layout = make_array_layout::<Header, T>(len);
+    let new_layout = make_array_layout::<H, T>(len);
     let buf = unsafe { alloc::alloc::alloc(new_layout) };
 
     if buf.is_null() {
       alloc::alloc::handle_alloc_error(new_layout);
     }
 
-    let header = Header {
-      marked: AtomicBool::new(false),
-      len,
-    };
-
     #[allow(clippy::cast_ptr_alignment)]
     let mut array = unsafe {
-      ptr::write(buf as *mut Header, header);
+      ptr::write(buf as *mut H, header);
+      ptr::write(buf.add(get_array_len_offset::<H>()) as *mut usize, len);
 
       GcArrayHandle(GcArray {
         ptr: NonNull::new_unchecked(buf),
-        phantom: PhantomData,
+        data: PhantomData,
+        header: PhantomData,
       })
     };
 
@@ -263,20 +228,113 @@ impl<T: Copy> From<&[T]> for GcArrayHandle<T> {
   }
 }
 
-impl<T> Drop for GcArrayHandle<T> {
-  fn drop(&mut self) {
-    #[allow(clippy::cast_ptr_alignment)]
-    let header = unsafe { ptr::read(self.0.ptr.as_ptr() as *const Header) };
+impl<T, H: Unmark> Unmark for GcArrayHandle<T, H> {
+  /// Unmark this allocation as visited, returning
+  /// the existing marked status
+  #[inline]
+  fn unmark(&self) -> bool {
+    self.0.header().unmark()
+  }
+}
 
-    for i in 0..header.len {
-      unsafe { ptr::read(self.0.data().add(i)) };
+impl<T, H: Marked> Marked for GcArrayHandle<T, H> {
+  /// Is this allocation marked
+  #[inline]
+  fn marked(&self) -> bool {
+    self.0.marked()
+  }
+}
+
+impl<T, H> Deref for GcArrayHandle<T, H> {
+  type Target = [T];
+
+  fn deref(&self) -> &Self::Target {
+    self.0.deref()
+  }
+}
+
+impl<T, H> DerefMut for GcArrayHandle<T, H> {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    self.0.deref_mut()
+  }
+}
+
+impl<T: Copy, H: Default> From<&[T]> for GcArrayHandle<T, H> {
+  fn from(slice: &[T]) -> Self {
+    GcArrayHandle::from_slice(slice, H::default())
+  }
+}
+
+impl<T, H> Drop for GcArrayHandle<T, H> {
+  fn drop(&mut self) {
+    unsafe {
+      #[allow(clippy::cast_ptr_alignment)]
+      ptr::read(self.0.ptr.as_ptr() as *const H);
+      let len = self.0.len();
+
+      for i in 0..len {
+        ptr::read(self.0.data().add(i));
+      }
+
+      alloc::alloc::dealloc(self.0.ptr.as_ptr(), make_array_layout::<H, T>(len));
+    }
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  mod array {
+    use super::*;
+
+    #[test]
+    fn header() {
+      let handle = GcArrayHandle::from_slice(&[1, 2, 3, 4, 5], String::from("header"));
+      let array = handle.value();
+
+      assert_eq!(array.header(), "header");
     }
 
-    unsafe {
-      alloc::alloc::dealloc(
-        self.0.ptr.as_ptr(),
-        make_array_layout::<Header, T>(header.len),
-      )
-    };
+    #[test]
+    fn len() {
+      let handle = GcArrayHandle::from_slice(&[1, 2, 3, 4, 5], String::from("header"));
+      let array = handle.value();
+
+      assert_eq!(array.len(), 5);
+    }
+  }
+
+  mod handle {
+    use super::*;
+
+    #[test]
+    fn from_slice() {
+      let handle = GcArrayHandle::from_slice(&[1, 2, 3, 4, 5], String::from("header"));
+
+      assert_eq!(handle.len(), 5);
+      assert_eq!(handle[0], 1);
+      assert_eq!(handle[1], 2);
+      assert_eq!(handle[2], 3);
+      assert_eq!(handle[3], 4);
+      assert_eq!(handle[4], 5);
+    }
+
+    #[test]
+    fn from_value() {
+      let handle = GcArrayHandle::from_slice(&[1, 2, 3, 4, 5], String::from("header"));
+      let array = handle.value();
+
+      assert_eq!(array.len(), 5);
+      assert_eq!(array[0], 1);
+      assert_eq!(array[1], 2);
+      assert_eq!(array[2], 3);
+      assert_eq!(array[3], 4);
+      assert_eq!(array[4], 5);
+
+      drop(array);
+
+      assert_eq!(handle.len(), 5);
+    }
   }
 }

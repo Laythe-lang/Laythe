@@ -1,6 +1,7 @@
 use crate::{
   hooks::GcHooks,
   managed::{GcStr, Trace},
+  object::ObjectKind,
   value::{Value, ValueKind},
 };
 use std::{fmt::Display, io::Write};
@@ -47,13 +48,13 @@ impl Arity {
         if arg_count != arity {
           return Err(ArityError::Fixed(arity));
         }
-      }
+      },
       // if variadic and ending with ... take arity +
       Self::Variadic(arity) => {
         if arg_count < arity {
           return Err(ArityError::Variadic(arity));
         }
-      }
+      },
       // if defaulted we need between the min and max
       Self::Default(min_arity, max_arity) => {
         if arg_count < min_arity {
@@ -62,7 +63,7 @@ impl Arity {
         if arg_count > max_arity {
           return Err(ArityError::DefaultHigh(max_arity));
         }
-      }
+      },
     }
 
     Ok(())
@@ -126,7 +127,7 @@ pub enum ParameterKind {
   Map,
   Class,
   Instance,
-  Iter,
+  Enumerator,
   Nil,
   Fun,
 }
@@ -137,20 +138,25 @@ impl ParameterKind {
       return true;
     }
 
-    matches!(
-      (self, value.kind()),
-      (ParameterKind::Bool, ValueKind::Bool)
-        | (ParameterKind::Number, ValueKind::Number)
-        | (ParameterKind::String, ValueKind::String)
-        | (ParameterKind::List, ValueKind::List)
-        | (ParameterKind::Map, ValueKind::Map)
-        | (ParameterKind::Class, ValueKind::Class)
-        | (ParameterKind::Instance, ValueKind::Instance)
-        | (ParameterKind::Iter, ValueKind::Iter)
-        | (ParameterKind::Fun, ValueKind::Closure)
-        | (ParameterKind::Fun, ValueKind::Method)
-        | (ParameterKind::Fun, ValueKind::Native)
-    )
+    match (self, value.kind()) {
+      (ParameterKind::Bool, ValueKind::Bool) => true,
+      (ParameterKind::Number, ValueKind::Number) => true,
+      (_, ValueKind::Nil) => false,
+      (_, ValueKind::Obj) => match (self, value.to_obj().kind()) {
+        (ParameterKind::Class, ObjectKind::Class) => true,
+        (ParameterKind::Instance, ObjectKind::Instance) => true,
+        (ParameterKind::List, ObjectKind::List) => true,
+        (ParameterKind::Enumerator, ObjectKind::Enumerator) => true,
+        (ParameterKind::Map, ObjectKind::Map) => true,
+        (ParameterKind::Fun, ObjectKind::Closure) => true,
+        (ParameterKind::Fun, ObjectKind::Fun) => true,
+        (ParameterKind::Fun, ObjectKind::Method) => true,
+        (ParameterKind::Fun, ObjectKind::Native) => true,
+        (ParameterKind::String, ObjectKind::String) => true,
+        _ => false,
+      },
+      _ => false,
+    }
   }
 }
 
@@ -160,17 +166,19 @@ impl From<Value> for ParameterKind {
       ValueKind::Bool => ParameterKind::Bool,
       ValueKind::Nil => ParameterKind::Nil,
       ValueKind::Number => ParameterKind::Number,
-      ValueKind::String => ParameterKind::String,
-      ValueKind::List => ParameterKind::List,
-      ValueKind::Map => ParameterKind::Map,
-      ValueKind::Fun => ParameterKind::Fun,
-      ValueKind::Closure => ParameterKind::Fun,
-      ValueKind::Class => ParameterKind::Class,
-      ValueKind::Instance => ParameterKind::Instance,
-      ValueKind::Iter => ParameterKind::Iter,
-      ValueKind::Method => ParameterKind::Fun,
-      ValueKind::Native => ParameterKind::Fun,
-      ValueKind::Upvalue => panic!("Should not pass in upvalue directly"),
+      ValueKind::Obj => match value.to_obj().kind() {
+        ObjectKind::Class => ParameterKind::Class,
+        ObjectKind::Closure => ParameterKind::Fun,
+        ObjectKind::Enumerator => ParameterKind::Enumerator,
+        ObjectKind::Fun => ParameterKind::Fun,
+        ObjectKind::Instance => ParameterKind::Instance,
+        ObjectKind::List => ParameterKind::List,
+        ObjectKind::Map => ParameterKind::Map,
+        ObjectKind::Method => ParameterKind::Fun,
+        ObjectKind::Native => ParameterKind::Fun,
+        ObjectKind::String => ParameterKind::String,
+        ObjectKind::Upvalue => panic!("Should not pass in upvalue directly"),
+      },
     }
   }
 }
@@ -187,7 +195,7 @@ impl Display for ParameterKind {
       ParameterKind::Map => write!(f, "map"),
       ParameterKind::Class => write!(f, "class"),
       ParameterKind::Instance => write!(f, "instance"),
-      ParameterKind::Iter => write!(f, "iterator"),
+      ParameterKind::Enumerator => write!(f, "iterator"),
       ParameterKind::Fun => write!(f, "function"),
     }
   }
@@ -276,7 +284,7 @@ impl Signature {
             return Err(SignatureError::TypeWrong(index as u8));
           }
         }
-      }
+      },
       // if variadic and ending with ... take arity +
       Arity::Variadic(arity) => {
         if count < arity as usize {
@@ -307,7 +315,7 @@ impl Signature {
             return Err(SignatureError::TypeWrong(arity + index as u8));
           }
         }
-      }
+      },
       // if defaulted we need between the min and max
       Arity::Default(min_arity, max_arity) => {
         if count < min_arity as usize {
@@ -322,7 +330,7 @@ impl Signature {
             return Err(SignatureError::TypeWrong(index as u8));
           }
         }
-      }
+      },
     }
 
     Ok(())

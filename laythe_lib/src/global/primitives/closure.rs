@@ -5,13 +5,13 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::GcObj,
   managed::Trace,
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  managed::Gc,
   Call,
 };
 use std::io::Write;
@@ -60,7 +60,7 @@ native!(ClosureName, CLOSURE_NAME);
 
 impl LyNative for ClosureName {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_closure().fun().name()))
+    Call::Ok(val!(this.unwrap().to_obj().to_closure().fun().name()))
   }
 }
 
@@ -68,7 +68,7 @@ native!(ClosureLen, CLOSURE_LEN);
 
 impl LyNative for ClosureLen {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let req = match this.unwrap().to_closure().fun().arity() {
+    let req = match this.unwrap().to_obj().to_closure().fun().arity() {
       Arity::Default(req, _) => *req,
       Arity::Fixed(req) => *req,
       Arity::Variadic(req) => *req,
@@ -113,12 +113,12 @@ mod test {
       let closure_name = ClosureName::native(&hooks.as_gc());
 
       let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
-      let closure = hooks.manage(Closure::without_upvalues(fun));
+      let closure = hooks.manage_obj(Closure::without_upvalues(fun));
 
       let result1 = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
 
       match result1 {
-        Call::Ok(r) => assert_eq!(&*r.to_str(), "example"),
+        Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "example"),
         _ => assert!(false),
       }
     }
@@ -148,21 +148,21 @@ mod test {
 
       let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(4));
-      let closure = hooks.manage(Closure::without_upvalues(hooks.manage(builder.build())));
+      let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 4.0);
 
       let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Default(2, 2));
-      let closure = hooks.manage(Closure::without_upvalues(hooks.manage(builder.build())));
+      let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 2.0);
 
       let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Variadic(5));
-      let closure = hooks.manage(Closure::without_upvalues(hooks.manage(builder.build())));
+      let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 5.0);
@@ -198,7 +198,7 @@ mod test {
       let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(1));
 
-      let closure = hooks.manage(Closure::without_upvalues(hooks.manage(builder.build())));
+      let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
 
       let args = &[val!(hooks.manage_str("input".to_string()))];
       let result1 = closure_call.call(&mut hooks, Some(val!(closure)), args);

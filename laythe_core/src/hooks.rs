@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-  managed::{Gc, GcStr, Manage, Trace, TraceRoot},
+  managed::{Gc, GcObj, GcStr, Manage, Object, Trace, TraceRoot},
   memory::Allocator,
   value::{Value, VALUE_NIL},
   Call,
@@ -80,6 +80,11 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request a string be managed by the context's garbage collector
+  pub fn manage_obj<T: 'static + Object>(&self, obj: T) -> GcObj<T> {
+    self.as_gc().manage_obj(obj)
+  }
+
+  /// Request a string be managed by the context's garbage collector
   pub fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
     self.as_gc().manage_str(string)
   }
@@ -144,6 +149,12 @@ impl<'a> GcHooks<'a> {
   #[inline]
   pub fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
     self.context.gc().manage(data, self.context)
+  }
+
+  /// Request a string be managed by the context's garbage collector
+  #[inline]
+  pub fn manage_obj<T: 'static + Object>(&self, obj: T) -> GcObj<T> {
+    self.context.gc().manage_obj(obj, self.context)
   }
 
   /// Request a string be managed by the context's garbage collector

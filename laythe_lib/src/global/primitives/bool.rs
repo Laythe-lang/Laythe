@@ -6,7 +6,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::Gc,
+  managed::GcObj,
   managed::Trace,
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
@@ -81,8 +81,8 @@ mod test {
       let result1 = bool_str.call(&mut hooks, Some(b_true), &[]);
       let result2 = bool_str.call(&mut hooks, Some(b_false), &[]);
 
-      assert_eq!(result1.unwrap().to_str(), "true");
-      assert_eq!(result2.unwrap().to_str(), "false");
+      assert_eq!(result1.unwrap().to_obj().to_str(), "true");
+      assert_eq!(result2.unwrap().to_obj().to_str(), "false");
     }
   }
 }

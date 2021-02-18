@@ -5,7 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{Gc, GcStr, Trace},
+  managed::{GcObj, GcStr, Trace},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -57,19 +57,22 @@ struct MethodName {
 }
 
 impl MethodName {
-  fn native(hooks: &GcHooks, method_name: GcStr) -> Gc<Native> {
+  fn native(hooks: &GcHooks, method_name: GcStr) -> GcObj<Native> {
     let native = Box::new(Self { method_name }) as Box<dyn LyNative>;
 
-    hooks.manage(Native::new(METHOD_NAME.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(METHOD_NAME.to_meta(hooks), native))
   }
 }
 
 impl LyNative for MethodName {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let method = this.unwrap().to_method().method();
+    let method = this.unwrap().to_obj().to_method().method();
 
     hooks
-      .get_method(this.unwrap().to_method().method(), self.method_name)
+      .get_method(
+        this.unwrap().to_obj().to_method().method(),
+        self.method_name,
+      )
       .and_then(|method_name| hooks.call_method(method, method_name, args))
   }
 }
@@ -88,7 +91,7 @@ native!(MethodCall, METHOD_CALL);
 
 impl LyNative for MethodCall {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let method = this.unwrap().to_method();
+    let method = this.unwrap().to_obj().to_method();
     hooks.call_method(method.receiver(), method.method(), args)
   }
 }
@@ -126,15 +129,15 @@ mod test {
       let method_name = MethodName::native(&hooks.as_gc(), hooks.manage_str("name".to_string()));
 
       let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
-      let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
-      let closure = hooks.manage(Closure::without_upvalues(fun));
-      let instance = hooks.manage(Instance::new(class));
-      let method = hooks.manage(Method::new(val!(instance), val!(closure)));
+      let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
+      let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+      let instance = hooks.manage_obj(Instance::new(class));
+      let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 
       let result1 = method_name.call(&mut hooks, Some(val!(method)), &[]);
 
       match result1 {
-        Call::Ok(r) => assert_eq!(&*r.to_str(), "example"),
+        Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "example"),
         _ => assert!(false),
       }
     }
@@ -167,10 +170,10 @@ mod test {
       let method_call = MethodCall::native(&hooks.as_gc());
 
       let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
-      let class = hooks.manage(Class::bare(hooks.manage_str("exampleClass".to_string())));
-      let closure = hooks.manage(Closure::without_upvalues(fun));
-      let instance = hooks.manage(Instance::new(class));
-      let method = hooks.manage(Method::new(val!(instance), val!(closure)));
+      let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
+      let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+      let instance = hooks.manage_obj(Instance::new(class));
+      let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 
       let result1 = method_call.call(&mut hooks, Some(val!(method)), &[]);
 

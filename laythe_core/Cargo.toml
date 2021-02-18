@@ -6,6 +6,10 @@ edition = "2018"
 
 [features]
 nan_boxing = []
+gc_log_mark = []
+gc_log_free = []
+gc_log_alloc = []
+gc_stress = []
 
 [lib]
 name = "laythe_core"

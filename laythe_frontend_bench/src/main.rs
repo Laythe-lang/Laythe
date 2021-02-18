@@ -1,6 +1,6 @@
 use laythe_core::{
   hooks::{GcHooks, NoContext},
-  managed::Gc,
+  managed::{GcObj},
   memory::{Allocator, NO_GC},
   module::Module,
   object::Class,
@@ -19,9 +19,9 @@ fn load_source(path: &str) -> String {
   source
 }
 
-pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
-  let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
-  let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
+  let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
+  let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
   class_class.inherit(hooks, object_class);
 
   let class_copy = class_class;
@@ -71,7 +71,7 @@ fn main() {
       parser_bench(&src);
 
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));
-    }
+    },
     [_, bench_type, file_path] => {
       let src = load_source(file_path);
       let now = Instant::now();
@@ -83,10 +83,10 @@ fn main() {
       }
 
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));
-    }
+    },
     _ => {
       println!("Usage: laythe_compiler_bench [path]");
       process::exit(1);
-    }
+    },
   }
 }

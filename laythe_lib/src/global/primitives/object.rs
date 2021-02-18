@@ -2,11 +2,12 @@ use crate::native;
 use laythe_core::{
   constants::OBJECT,
   hooks::{GcHooks, Hooks},
-  managed::{Gc, Trace},
-  object::{Class, LyNative, Native, NativeMetaBuilder},
+  managed::{GcObj, GcObject, Trace},
+  match_obj,
+  object::{Class, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  val,
-  value::Value,
+  to_obj_kind, val,
+  value::{Value, ValueKind},
   Call,
 };
 use std::io::Write;
@@ -20,9 +21,9 @@ const OBJECT_CLASS: NativeMetaBuilder = NativeMetaBuilder::method("cls", Arity::
 
 const OBJECT_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn create_object_class(hooks: &GcHooks) -> Gc<Class> {
+pub fn create_object_class(hooks: &GcHooks) -> GcObj<Class> {
   let name = hooks.manage_str(OBJECT_CLASS_NAME);
-  let mut object = hooks.manage(Class::bare(name));
+  let mut object = hooks.manage_obj(Class::bare(name));
 
   object.add_method(
     &hooks,
@@ -66,33 +67,47 @@ native!(ObjectStr, OBJECT_STR);
 impl LyNative for ObjectStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let this = this.unwrap();
-    let class = hooks.get_class(this).to_class();
+    let class = hooks.get_class(this).to_obj().to_class();
 
     let string = match this.kind() {
-      laythe_core::value::ValueKind::Bool => format!("<{} {}>", class.name(), this.to_bool()),
-      laythe_core::value::ValueKind::Nil => format!("<{} nil>", class.name()),
-      laythe_core::value::ValueKind::Number => format!("<{} {}>", class.name(), this.to_num()),
-      laythe_core::value::ValueKind::String => format!("<{} {}>", class.name(), this.to_str()),
-      laythe_core::value::ValueKind::List => format!("<{} {:p}>", class.name(), &*this.to_list()),
-      laythe_core::value::ValueKind::Map => format!("<{} {:p}>", class.name(), &*this.to_map()),
-      laythe_core::value::ValueKind::Fun => format!("<{} {:p}>", class.name(), &*this.to_fun()),
-      laythe_core::value::ValueKind::Closure => {
-        format!("<{} {:p}>", class.name(), &*this.to_closure())
-      }
-      laythe_core::value::ValueKind::Class => format!("<{} {:p}>", class.name(), &this.to_class()),
-      laythe_core::value::ValueKind::Instance => {
-        format!("<{} {:p}>", class.name(), &*this.to_instance())
-      }
-      laythe_core::value::ValueKind::Iter => format!("<{} {:p}>", class.name(), &*this.to_iter()),
-      laythe_core::value::ValueKind::Method => {
-        format!("<{} {:p}>", class.name(), &*this.to_method())
-      }
-      laythe_core::value::ValueKind::Native => {
-        format!("<{} {:p}>", class.name(), &*this.to_native())
-      }
-      laythe_core::value::ValueKind::Upvalue => {
-        format!("<{} {:p}>", class.name(), &*this.to_upvalue())
-      }
+      ValueKind::Bool => format!("<{} {}>", &*class.name(), this.to_bool()),
+      ValueKind::Nil => format!("<{} nil>", &*class.name()),
+      ValueKind::Number => format!("<{} {}>", &*class.name(), this.to_num()),
+      ValueKind::Obj => match_obj!((&this.to_obj()) {
+        ObjectKind::Class(cls) => {
+          format!("<{} {:p}>", &*class.name(), &*cls)
+        },
+        ObjectKind::Closure(closure) => {
+          format!("<{} {:p}>", &*class.name(), &*closure)
+        },
+        ObjectKind::Enumerator(enumerator) => {
+          format!("<{} {:p}>", &*class.name(), &*enumerator)
+        },
+        ObjectKind::Fun(fun) => {
+          format!("<{} {:p}>", &*class.name(), &*fun)
+        },
+        ObjectKind::Instance(instance) => {
+          format!("<{} {:p}>", &*class.name(), &*instance)
+        },
+        ObjectKind::List(list) => {
+          format!("<{} {:p}>", &*class.name(), &*list)
+        },
+        ObjectKind::Map(map) => {
+          format!("<{} {:p}>", &*class.name(), &*map)
+        },
+        ObjectKind::Method(method) => {
+          format!("<{} {:p}>", &*class.name(), &*method)
+        },
+        ObjectKind::Native(native) => {
+          format!("<{} {:p}>", &*class.name(), &*native)
+        },
+        ObjectKind::String(string) => {
+          format!("<{} {}>", &*class.name(), string)
+        },
+        ObjectKind::Upvalue(upvalue) => {
+          format!("<{} {:p}>", &*class.name(), &upvalue)
+        },
+      }),
     };
 
     Call::Ok(val!(hooks.manage_str(&string)))
@@ -170,7 +185,10 @@ mod test {
       let ten = val!(10.0);
 
       let result = object_cls.call(&mut hooks, Some(ten), &[]).unwrap();
-      assert_eq!(result.to_class().name(), hooks.manage_str("Number"));
+      assert_eq!(
+        result.to_obj().to_class().name(),
+        hooks.manage_str("Number")
+      );
     }
   }
 
@@ -200,7 +218,7 @@ mod test {
       let result = object_str.call(&mut hooks, Some(ten), &[]);
 
       match result {
-        Call::Ok(r) => assert_eq!(r.to_str(), "<Number 10>"),
+        Call::Ok(r) => assert_eq!(r.to_obj().to_str(), "<Number 10>"),
         _ => assert!(false),
       }
     }

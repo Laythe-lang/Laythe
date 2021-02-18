@@ -5,7 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::Gc,
+  managed::GcObj,
   managed::Trace,
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
@@ -53,7 +53,7 @@ native!(NativeName, NATIVE_NAME);
 
 impl LyNative for NativeName {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_native().meta().name))
+    Call::Ok(val!(this.unwrap().to_obj().to_native().meta().name))
   }
 }
 
@@ -93,7 +93,7 @@ mod test {
       let managed = TestNative::native(&hooks.as_gc());
       let result = native_name.call(&mut hooks, Some(val!(managed)), &[]);
       match result {
-        Call::Ok(r) => assert_eq!(*r.to_str(), "test".to_string()),
+        Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "test".to_string()),
         _ => assert!(false),
       }
     }

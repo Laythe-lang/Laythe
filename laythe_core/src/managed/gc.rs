@@ -48,6 +48,7 @@ impl<T: 'static + Manage + ?Sized> Gc<T> {
 }
 
 impl<T: 'static + Manage> Trace for Gc<T> {
+  #[inline]
   fn trace(&self) {
     if self.obj().mark() {
       return;
@@ -65,7 +66,7 @@ impl<T: 'static + Manage> Trace for Gc<T> {
       .write_fmt(format_args!(
         "{:p} mark {:?}\n",
         &*self.obj(),
-        DebugWrap(self, 1)
+        DebugWrap(self, 2)
       ))
       .expect("unable to write to stdout");
     log.flush().expect("unable to flush stdout");
@@ -77,9 +78,9 @@ impl<T: 'static + Manage> Trace for Gc<T> {
 impl<T: 'static + Manage> DebugHeap for Gc<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
-      f.write_str("*()")
+      f.write_str("*")
     } else {
-      f.write_fmt(format_args!("*{:?}", DebugWrap(self.obj(), depth)))
+      f.write_fmt(format_args!("{:?}", DebugWrap(self.obj(), depth)))
     }
   }
 }

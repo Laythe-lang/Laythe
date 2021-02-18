@@ -5,7 +5,7 @@ use laythe_core::{
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   value::{Value, VALUE_NIL},
-  managed::Gc,
+  managed::GcObj,
   Call,
 };
 use std::io::Write;

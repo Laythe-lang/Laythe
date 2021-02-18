@@ -1,7 +1,7 @@
 use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::Gc,
+  managed::GcObj,
   managed::Trace,
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},

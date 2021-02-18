@@ -10,10 +10,12 @@ use laythe_core::{
   constants::INDEX_SET,
   get,
   hooks::{GcHooks, Hooks},
-  managed::{Gc, GcStr, Trace},
+  if_let_obj,
+  managed::{GcObj, GcStr, Trace},
   module::Module,
-  object::{List, LyIter, LyIterator, LyNative, Map, Native, NativeMetaBuilder},
+  object::{Enumerate, Enumerator, List, LyNative, Map, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
+  to_obj_kind,
   utils::use_sentinel_nan,
   val,
   value::{Value, VALUE_NIL},
@@ -146,17 +148,17 @@ struct MapStr {
 }
 
 impl MapStr {
-  fn native(hooks: &GcHooks, method_name: GcStr, error: Value) -> Gc<Native> {
-    debug_assert!(error.is_class());
+  fn native(hooks: &GcHooks, method_name: GcStr, error: Value) -> GcObj<Native> {
+    debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_name, error }) as Box<dyn LyNative>;
 
-    hooks.manage(Native::new(MAP_STR.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(MAP_STR.to_meta(hooks), native))
   }
 }
 
 impl LyNative for MapStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let map = this.unwrap().to_map();
+    let map = this.unwrap().to_obj().to_map();
 
     if map.len() == 0 {
       return Call::Ok(val!(hooks.manage_str("{}")));
@@ -169,7 +171,7 @@ impl LyNative for MapStr {
       let mut kvp_string = String::new();
 
       get!(format_map_entry(
-        key,
+        *key,
         self.method_name,
         self.error,
         &mut kvp_string,
@@ -177,7 +179,7 @@ impl LyNative for MapStr {
       ));
       kvp_string.push_str(": ");
       get!(format_map_entry(
-        value,
+        *value,
         self.method_name,
         self.error,
         &mut kvp_string,
@@ -194,36 +196,36 @@ impl LyNative for MapStr {
 }
 
 fn format_map_entry(
-  item: &Value,
+  item: Value,
   method_name: GcStr,
   error: Value,
   buffer: &mut String,
   hooks: &mut Hooks,
 ) -> Call {
   // if already string quote and add to temps
-  if item.is_str() {
-    buffer.push_str(&format!("'{}'", item.to_str()));
+  if_let_obj!(ObjectKind::String(string) = (item) {
+    buffer.push_str(&format!("{}", string));
     return Call::Ok(VALUE_NIL);
-  }
+  });
 
   // call '.str' method on each value
   let result = get!(hooks
-    .get_method(*item, method_name)
-    .and_then(|method| hooks.call_method(*item, method, &[])));
+    .get_method(item, method_name)
+    .and_then(|method| hooks.call_method(item, method, &[])));
 
-  if result.is_str() {
-    buffer.push_str(&*result.to_str());
-    Call::Ok(VALUE_NIL)
+  if_let_obj!(ObjectKind::String(string) = (result) {
+    buffer.push_str(&*string);
+    return Call::Ok(VALUE_NIL);
   } else {
     // if error throw away temporary strings
-    hooks.call(
+    return hooks.call(
       error,
       &[val!(hooks.manage_str(format!(
         "Expected type str from {}.str()",
         item
       )))],
     )
-  }
+  });
 }
 
 impl Trace for MapStr {
@@ -240,7 +242,7 @@ native!(MapLen, MAP_LEN);
 
 impl LyNative for MapLen {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_map().len() as f64))
+    Call::Ok(val!(this.unwrap().to_obj().to_map().len() as f64))
   }
 }
 
@@ -248,7 +250,7 @@ native!(MapHas, MAP_HAS);
 
 impl LyNative for MapHas {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_map().contains_key(&args[0])))
+    Call::Ok(val!(this.unwrap().to_obj().to_map().contains_key(&args[0])))
   }
 }
 
@@ -263,7 +265,7 @@ impl LyNative for MapIndexGet {
       index
     };
 
-    match this.unwrap().to_map().get(&key) {
+    match this.unwrap().to_obj().to_map().get(&key) {
       Some(value) => Call::Ok(*value),
       None => self.call_error(hooks, format!("Key not found. {} is not present", key)),
     }
@@ -281,7 +283,9 @@ impl LyNative for MapIndexSet {
       index
     };
 
-    hooks.grow(&mut *this.unwrap().to_map(), |map| map.insert(key, args[0]));
+    hooks.grow(&mut *this.unwrap().to_obj().to_map(), |map| {
+      map.insert(key, args[0])
+    });
     Call::Ok(VALUE_NIL)
   }
 }
@@ -297,7 +301,7 @@ impl LyNative for MapGet {
       index
     };
 
-    match this.unwrap().to_map().get(&key) {
+    match this.unwrap().to_obj().to_map().get(&key) {
       Some(value) => Call::Ok(*value),
       None => Call::Ok(VALUE_NIL),
     }
@@ -315,7 +319,9 @@ impl LyNative for MapSet {
       index
     };
 
-    let result = hooks.grow(&mut *this.unwrap().to_map(), |map| map.insert(key, args[1]));
+    let result = hooks.grow(&mut *this.unwrap().to_obj().to_map(), |map| {
+      map.insert(key, args[1])
+    });
     Call::Ok(result.unwrap_or(VALUE_NIL))
   }
 }
@@ -324,7 +330,7 @@ native!(MapInsert, MAP_INSERT);
 
 impl LyNative for MapInsert {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    match hooks.grow(&mut this.unwrap().to_map(), |map| {
+    match hooks.grow(&mut this.unwrap().to_obj().to_map(), |map| {
       map.insert(args[0], args[1])
     }) {
       Some(value) => Call::Ok(value),
@@ -337,7 +343,9 @@ native_with_error!(MapRemove, MAP_REMOVE);
 
 impl LyNative for MapRemove {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    match hooks.shrink(&mut this.unwrap().to_map(), |map| map.remove(&args[0])) {
+    match hooks.shrink(&mut this.unwrap().to_obj().to_map(), |map| {
+      map.remove(&args[0])
+    }) {
       Some(removed) => Call::Ok(removed),
       None => self.call_error(hooks, "Key not found in map."),
     }
@@ -348,9 +356,10 @@ native!(MapIter, MAP_ITER);
 
 impl LyNative for MapIter {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let inner_iter: Box<dyn LyIter> = Box::new(MapIterator::new(this.unwrap().to_map()));
-    let iter = LyIterator::new(inner_iter);
-    let iter = hooks.manage(iter);
+    let inner_iter: Box<dyn Enumerate> =
+      Box::new(MapIterator::new(this.unwrap().to_obj().to_map()));
+    let iter = Enumerator::new(inner_iter);
+    let iter = hooks.manage_obj(iter);
 
     Call::Ok(val!(iter))
   }
@@ -358,14 +367,14 @@ impl LyNative for MapIter {
 
 #[derive(Debug)]
 struct MapIterator {
-  map: Gc<Map<Value, Value>>,
+  map: GcObj<Map<Value, Value>>,
   iter: Iter<'static, Value, Value>,
   current: Value,
 }
 
 impl MapIterator {
-  fn new(map: Gc<Map<Value, Value>>) -> Self {
-    let iter = unsafe { map.deref_static().iter() };
+  fn new(map: GcObj<Map<Value, Value>>) -> Self {
+    let iter = unsafe { map.data_static().iter() };
 
     Self {
       map,
@@ -375,9 +384,9 @@ impl MapIterator {
   }
 }
 
-impl LyIter for MapIterator {
+impl Enumerate for MapIterator {
   fn name(&self) -> &str {
-    "Map Iterator"
+    "MapIterator"
   }
 
   fn current(&self) -> Value {
@@ -387,13 +396,13 @@ impl LyIter for MapIterator {
   fn next(&mut self, hooks: &mut Hooks) -> Call {
     match self.iter.next() {
       Some(next) => {
-        self.current = val!(hooks.manage(List::from(&[*next.0, *next.1] as &[Value])));
+        self.current = val!(hooks.manage_obj(List::from(&[*next.0, *next.1] as &[Value])));
         Call::Ok(val!(true))
-      }
+      },
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      }
+      },
     }
   }
 
@@ -459,11 +468,11 @@ mod test {
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, VALUE_NIL);
-      let this = hooks.manage(map);
+      let this = hooks.manage_obj(map);
 
       let result = map_str.call(&mut hooks, Some(val!(this)), values);
       match result {
-        Call::Ok(r) => assert_eq!(&*r.to_str(), "{ nil: nil }"),
+        Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "{ nil: nil }"),
         _ => assert!(false),
       }
     }
@@ -495,7 +504,7 @@ mod test {
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, VALUE_NIL);
-      let this = hooks.manage(map);
+      let this = hooks.manage_obj(map);
 
       let result = map_str.call(&mut hooks, Some(val!(this)), values);
       match result {
@@ -528,7 +537,7 @@ mod test {
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, VALUE_NIL);
-      let this = hooks.manage(map);
+      let this = hooks.manage_obj(map);
 
       let result = map_has.call(&mut hooks, Some(val!(this)), &[VALUE_NIL]);
       match result {
@@ -575,7 +584,7 @@ mod test {
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, val!(false));
-      let this = hooks.manage(map);
+      let this = hooks.manage_obj(map);
 
       let result = map_index_get.call(&mut hooks, Some(val!(this)), &[VALUE_NIL]);
       match result {
@@ -616,7 +625,7 @@ mod test {
       let map_set = MapIndexSet::native(&hooks.as_gc());
 
       let map = Map::default();
-      let this = hooks.manage(map);
+      let this = hooks.manage_obj(map);
 
       let result = map_set
         .call(&mut hooks, Some(val!(this)), &[val!(10.0), val!(true)])
@@ -664,7 +673,7 @@ mod test {
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, val!(false));
-      let this = hooks.manage(map);
+      let this = hooks.manage_obj(map);
 
       let result = map_get.call(&mut hooks, Some(val!(this)), &[VALUE_NIL]);
       match result {
@@ -711,7 +720,7 @@ mod test {
       let map_set = MapSet::native(&hooks.as_gc());
 
       let map = Map::default();
-      let this = hooks.manage(map);
+      let this = hooks.manage_obj(map);
 
       let result = map_set.call(&mut hooks, Some(val!(this)), &[val!(true), val!(10.0)]);
       match result {
@@ -765,7 +774,7 @@ mod test {
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, val!(false));
-      let this = hooks.manage(map);
+      let this = hooks.manage_obj(map);
 
       let result = map_insert.call(&mut hooks, Some(val!(this)), &[VALUE_NIL, val!(true)]);
       match result {
@@ -812,7 +821,7 @@ mod test {
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, val!(false));
-      let this = hooks.manage(map);
+      let this = hooks.manage_obj(map);
 
       let result = map_remove.call(&mut hooks, Some(val!(this)), &[val!(10.5)]);
       match result {

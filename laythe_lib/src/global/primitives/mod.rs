@@ -25,7 +25,15 @@ use class::create_class_class;
 use closure::{declare_closure_class, define_closure_class};
 use iter::{declare_iter_class, define_iter_class};
 use laythe_core::{
-  hooks::GcHooks, managed::Gc, module::Module, object::Class, utils::IdEmitter, val, value::Value,
+  hooks::GcHooks,
+  if_let_obj,
+  managed::{Gc, GcObj},
+  module::Module,
+  object::{Class, ObjectKind},
+  to_obj_kind,
+  utils::IdEmitter,
+  val,
+  value::Value,
 };
 use list::{declare_list_class, define_list_class};
 use map::{declare_map_class, define_map_class};
@@ -38,36 +46,44 @@ use string::{declare_string_class, define_string_class};
 
 use super::OBJECT_CLASS_NAME;
 
-fn error_inheritance(hooks: &GcHooks, module: &Module, class_name: &str) -> StdResult<Gc<Class>> {
+fn error_inheritance(
+  hooks: &GcHooks,
+  module: &Module,
+  class_name: &str,
+) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
-  let object_name = hooks.manage_str(ERROR_CLASS_NAME);
-  let object_class = module.import_symbol(hooks, &[], object_name)?;
+  let error_name = hooks.manage_str(ERROR_CLASS_NAME);
+  let error_class = module.import_symbol(hooks, &[], error_name)?;
 
-  if object_class.is_class() {
-    Ok(Class::with_inheritance(
+  if_let_obj!(ObjectKind::Class(class) = (error_class) {
+    return Ok(Class::with_inheritance(
       hooks,
       name,
-      object_class.to_class(),
-    ))
+      class,
+    ));
   } else {
-    Err(StdError::SymbolNotClass)
-  }
+    return Err(StdError::SymbolNotClass);
+  })
 }
 
-fn class_inheritance(hooks: &GcHooks, module: &Module, class_name: &str) -> StdResult<Gc<Class>> {
+fn class_inheritance(
+  hooks: &GcHooks,
+  module: &Module,
+  class_name: &str,
+) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
   let object_name = hooks.manage_str(OBJECT_CLASS_NAME);
   let object_class = module.import_symbol(hooks, &[], object_name)?;
 
-  if object_class.is_class() {
+  if_let_obj!(ObjectKind::Class(class) = (object_class) {
     Ok(Class::with_inheritance(
       hooks,
       name,
-      object_class.to_class(),
+      class,
     ))
   } else {
     Err(StdError::SymbolNotClass)
-  }
+  })
 }
 
 pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Module>> {
@@ -112,11 +128,14 @@ fn bootstrap_classes(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<M
   class_class.set_meta(class_copy);
 
   // create object's meta class
-  let object_meta_class = Class::with_inheritance(
-    hooks,
-    hooks.manage_str(format!("{} metaClass", object_class.name())),
-    class_class,
-  );
+  let mut object_meta_class = hooks.manage_obj(Class::bare(
+    hooks.manage_str(format!("{} metaClass", &*object_class.name())),
+  ));
+
+  // object meta class inherits from class class
+  // as well as it's meta class
+  object_meta_class.inherit(hooks, class_class);
+  object_meta_class.set_meta(class_class);
 
   // object meta class is object metaClass and it's is class
   object_class.set_meta(object_meta_class);

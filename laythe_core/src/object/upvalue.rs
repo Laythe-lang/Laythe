@@ -1,5 +1,7 @@
+use fmt::Display;
+
 use crate::{
-  managed::{DebugHeap, DebugWrap, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
   value::Value,
 };
 use std::{
@@ -8,6 +10,8 @@ use std::{
   mem,
   ptr::{self, NonNull},
 };
+
+use super::ObjectKind;
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Upvalue {
@@ -41,7 +45,7 @@ impl Upvalue {
       Upvalue::Open(stack_ptr) => {
         let value = *unsafe { stack_ptr.as_ref() };
         *self = Upvalue::Closed(value);
-      }
+      },
       Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
     }
   }
@@ -86,6 +90,15 @@ impl Upvalue {
   }
 }
 
+impl Display for Upvalue {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    match self {
+      Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
+      Upvalue::Closed(store) => write!(f, "{}", store),
+    }
+  }
+}
+
 impl Trace for Upvalue {
   fn trace(&self) {
     if let Upvalue::Closed(upvalue) = self {
@@ -102,8 +115,6 @@ impl Trace for Upvalue {
 
 impl DebugHeap for Upvalue {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     match self {
       Self::Open(v) => f.write_fmt(format_args!(
         "Upvalue::Open(*{:?})",
@@ -125,3 +136,9 @@ impl Manage for Upvalue {
 }
 
 unsafe impl Send for Upvalue {}
+
+impl Object for Upvalue {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::Upvalue
+  }
+}

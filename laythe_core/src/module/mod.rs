@@ -8,7 +8,7 @@ pub use package::Package;
 
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
   object::{Class, Instance, Map},
   value::Value,
   LyHashSet,
@@ -27,7 +27,7 @@ pub struct Module {
   id: usize,
 
   /// The class that represents this module when imported
-  module_class: Gc<Class>,
+  module_class: GcObj<Class>,
 
   /// A key value set of named exports from the provided modules
   exports: LyHashSet<GcStr>,
@@ -41,7 +41,7 @@ pub struct Module {
 
 impl Module {
   /// Create a new laythe module
-  pub fn new(module_class: Gc<Class>, path: PathBuf, id: usize) -> Self {
+  pub fn new(module_class: GcObj<Class>, path: PathBuf, id: usize) -> Self {
     Module {
       path,
       id,
@@ -71,7 +71,7 @@ impl Module {
   pub fn from_path(
     hooks: &GcHooks,
     path: PathBuf,
-    base_class: Gc<Class>,
+    base_class: GcObj<Class>,
     id: usize,
   ) -> ModuleResult<Self> {
     let module_name = path
@@ -103,10 +103,10 @@ impl Module {
   }
 
   /// Get the instance that represents
-  pub fn module_instance(&self, hooks: &GcHooks) -> Gc<Instance> {
+  pub fn module_instance(&self, hooks: &GcHooks) -> GcObj<Instance> {
     let class = self.module_class;
 
-    let mut import = hooks.manage(Instance::new(class));
+    let mut import = hooks.manage_obj(Instance::new(class));
     hooks.push_root(import);
 
     self.exports.iter().for_each(|export| {
@@ -152,7 +152,7 @@ impl Module {
   }
 
   /// Get a reference to all exported symbols in this module
-  pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ModuleResult<Gc<Instance>> {
+  pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ModuleResult<GcObj<Instance>> {
     if path.is_empty() {
       Ok(self.module_instance(hooks))
     } else {
@@ -288,8 +288,6 @@ impl Trace for Module {
 
 impl DebugHeap for Module {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_struct("Module")
       .field("path", &self.path)
       .field("module_class", &DebugWrap(&self.module_class, depth))
@@ -337,7 +335,7 @@ mod test {
     let path = PathBuf::from("self/path.ly");
 
     Module::new(
-      hooks.manage(Class::bare(hooks.manage_str("example".to_string()))),
+      hooks.manage_obj(Class::bare(hooks.manage_str("example".to_string()))),
       path,
       0,
     );
@@ -370,7 +368,7 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
-      hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
+      hooks.manage_obj(Class::bare(hooks.manage_str("module".to_string()))),
       PathBuf::from("self/module.ly"),
       0,
     );
@@ -502,7 +500,7 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
-      hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
+      hooks.manage_obj(Class::bare(hooks.manage_str("module".to_string()))),
       PathBuf::from("self/module.ly"),
       0,
     );
@@ -555,7 +553,7 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
-      hooks.manage(Class::bare(hooks.manage_str("module".to_string()))),
+      hooks.manage_obj(Class::bare(hooks.manage_str("module".to_string()))),
       PathBuf::from("self/module.ly"),
       0,
     );

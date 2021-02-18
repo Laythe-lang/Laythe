@@ -2,12 +2,12 @@ use crate::{native, support::export_and_insert, StdError, StdResult};
 use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
+  managed::GcObj,
   managed::{GcStr, Trace},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
-  managed::Gc,
   value::{Value, VALUE_NIL},
   Call,
 };
@@ -52,23 +52,31 @@ pub struct Print {
 
 impl Print {
   /// Construct a new instance of the native assert function
-  pub fn native(hooks: &GcHooks, method_str: GcStr) -> Gc<Native> {
+  pub fn native(hooks: &GcHooks, method_str: GcStr) -> GcObj<Native> {
     let native = Box::new(Self { method_str }) as Box<dyn LyNative>;
 
-    hooks.manage(Native::new(PRINT.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(PRINT.to_meta(hooks), native))
   }
 }
 
 impl LyNative for Print {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let str_method = get!(hooks.get_method(args[0], self.method_str));
-    let mut output = String::from(&*get!(hooks.call_method(args[0], str_method, &[])).to_str());
+    let mut output = String::from(
+      &*get!(hooks.call_method(args[0], str_method, &[]))
+        .to_obj()
+        .to_str(),
+    );
 
     for s in args.iter().skip(1) {
       let str_method = get!(hooks.get_method(*s, self.method_str));
 
       output.push(' ');
-      output.push_str(&get!(hooks.call_method(*s, str_method, &[])).to_str())
+      output.push_str(
+        &get!(hooks.call_method(*s, str_method, &[]))
+          .to_obj()
+          .to_str(),
+      )
     }
 
     let mut stdio = hooks.as_io().stdio();
@@ -118,10 +126,7 @@ mod test {
     fn new() {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
-      let assert = Print::native(
-        &hooks,
-        hooks.manage_str("str".to_string()),
-      );
+      let assert = Print::native(&hooks, hooks.manage_str("str".to_string()));
 
       assert_eq!(&*assert.meta().name, "print");
       assert_eq!(assert.meta().signature.arity, Arity::Variadic(0));
@@ -139,10 +144,7 @@ mod test {
 
       let mut hooks = Hooks::new(&mut context);
 
-      let print = Print::native(
-        &hooks.as_gc(),
-        hooks.manage_str("str".to_string()),
-      );
+      let print = Print::native(&hooks.as_gc(), hooks.manage_str("str".to_string()));
       let values = &[val!(true)];
 
       let result = print.call(&mut hooks, None, values).unwrap();

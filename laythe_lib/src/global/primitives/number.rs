@@ -5,10 +5,10 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::Gc,
+  managed::GcObj,
   managed::Trace,
   module::Module,
-  object::{LyIter, LyIterator, LyNative, Native, NativeMetaBuilder},
+  object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -142,7 +142,7 @@ native_with_error!(NumberParse, NUMBER_PARSE);
 
 impl LyNative for NumberParse {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
-    let str = args[0].to_str();
+    let str = args[0].to_obj().to_str();
     match str.parse::<f64>() {
       Ok(num) => Call::Ok(val!(num)),
       Err(_) => self.call_error(hooks, format!("Unable to parse number from {}", str)),
@@ -167,9 +167,9 @@ impl LyNative for NumberTimes {
       return self.call_error(hooks, "times requires a positive integer.");
     }
 
-    let inner_iter: Box<dyn LyIter> = Box::new(TimesIterator::new(max));
-    let iter = LyIterator::new(inner_iter);
-    let iter = hooks.manage(iter);
+    let inner_iter: Box<dyn Enumerate> = Box::new(TimesIterator::new(max));
+    let iter = Enumerator::new(inner_iter);
+    let iter = hooks.manage_obj(iter);
 
     Call::Ok(val!(iter))
   }
@@ -190,9 +190,9 @@ impl TimesIterator {
   }
 }
 
-impl LyIter for TimesIterator {
+impl Enumerate for TimesIterator {
   fn name(&self) -> &str {
-    "Times Iterator"
+    "TimesIterator"
   }
 
   fn current(&self) -> Value {
@@ -235,9 +235,9 @@ impl LyNative for NumberUntil {
       return self.call_error(hooks, "until requires a positive stride.");
     }
 
-    let inner_iter: Box<dyn LyIter> = Box::new(UntilIterator::new(start, end, stride));
-    let iter = LyIterator::new(inner_iter);
-    let iter = hooks.manage(iter);
+    let inner_iter: Box<dyn Enumerate> = Box::new(UntilIterator::new(start, end, stride));
+    let iter = Enumerator::new(inner_iter);
+    let iter = hooks.manage_obj(iter);
 
     Call::Ok(val!(iter))
   }
@@ -260,9 +260,9 @@ impl UntilIterator {
   }
 }
 
-impl LyIter for UntilIterator {
+impl Enumerate for UntilIterator {
   fn name(&self) -> &str {
-    "Times Iterator"
+    "TimesIterator"
   }
 
   fn current(&self) -> Value {
@@ -317,7 +317,7 @@ mod test {
 
       let result = number_str.call(&mut hooks, Some(val!(10.0)), &[]);
       match result {
-        Call::Ok(r) => assert_eq!(*r.to_str(), "10".to_string()),
+        Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "10".to_string()),
         _ => assert!(false),
       }
     }
@@ -350,7 +350,7 @@ mod test {
       let result = number_times.call(&mut hooks, Some(val!(3.0)), &[]);
       match result {
         Call::Ok(r) => {
-          let mut number_times = r.to_iter();
+          let mut number_times = r.to_obj().to_enumerator();
           assert_eq!(number_times.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(number_times.current(), val!(0.0));
 
@@ -361,7 +361,7 @@ mod test {
           assert_eq!(number_times.current(), val!(2.0));
 
           assert_eq!(number_times.next(&mut hooks).unwrap(), val!(false));
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -560,7 +560,7 @@ mod test {
       let result = number_until.call(&mut hooks, Some(val!(2.0)), &[val!(6.0), val!(2.0)]);
       match result {
         Call::Ok(r) => {
-          let mut number_until = r.to_iter();
+          let mut number_until = r.to_obj().to_enumerator();
           assert_eq!(number_until.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(number_until.current(), val!(2.0));
 
@@ -568,7 +568,7 @@ mod test {
           assert_eq!(number_until.current(), val!(4.0));
 
           assert_eq!(number_until.next(&mut hooks).unwrap(), val!(false));
-        }
+        },
         _ => assert!(false),
       }
     }

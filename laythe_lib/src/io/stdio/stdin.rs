@@ -9,9 +9,9 @@ use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::{Module, Package},
-  object::{Instance, LyNative, Native, NativeMetaBuilder},
+  object::{Instance, ObjectKind, LyNative, Native, NativeMetaBuilder},
   signature::Arity,
-  managed::Gc,
+  managed::GcObj,
   val,
   value::Value,
   Call,
@@ -26,7 +26,7 @@ const STDIN_READ_LINE: NativeMetaBuilder = NativeMetaBuilder::method("readLine",
 
 pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdResult<()> {
   let class = default_class_inheritance(hooks, std, STDIN_CLASS_NAME)?;
-  let instance = hooks.manage(Instance::new(class));
+  let instance = hooks.manage_obj(Instance::new(class));
 
   export_and_insert(
     hooks,
@@ -136,8 +136,8 @@ mod test {
       assert!(result.is_ok());
       let unwrapped = result.unwrap();
 
-      assert!(unwrapped.is_str());
-      assert_eq!(unwrapped.to_str(), "dude");
+      assert!(unwrapped.is_obj_kind(ObjectKind::String));
+      assert_eq!(unwrapped.to_obj().to_str(), "dude");
     }
   }
 
@@ -178,8 +178,8 @@ mod test {
       assert!(result.is_ok());
       let unwrapped = result.unwrap();
 
-      assert!(unwrapped.is_str());
-      assert_eq!(unwrapped.to_str(), "dude");
+      assert!(unwrapped.is_obj_kind(ObjectKind::String));
+      assert_eq!(unwrapped.to_obj().to_str(), "dude");
     }
   }
 }

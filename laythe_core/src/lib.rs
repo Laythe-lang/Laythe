@@ -18,13 +18,13 @@ use std::fmt;
 
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
-use managed::Gc;
+use managed::{GcObj};
 use object::Instance;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LyResult<T> {
   Ok(T),
-  Err(Gc<Instance>),
+  Err(GcObj<Instance>),
   Exit(u16),
 }
 
@@ -103,7 +103,7 @@ impl<T> LyResult<T> {
 impl<T: fmt::Debug> LyResult<T> {
   #[inline]
   #[track_caller]
-  pub fn expect_err(self, msg: &str) -> Gc<Instance> {
+  pub fn expect_err(self, msg: &str) -> GcObj<Instance> {
     match self {
       Self::Ok(t) => unwrap_failed(msg, &t),
       Self::Err(e) => e,

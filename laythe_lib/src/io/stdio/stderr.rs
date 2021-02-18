@@ -11,9 +11,9 @@ use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::{Module, Package},
-  object::{Instance, LyNative, Native, NativeMetaBuilder},
+  object::{Instance, ObjectKind, LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  managed::Gc,
+  managed::GcObj,
   val,
   value::{Value, VALUE_NIL},
   Call,
@@ -33,7 +33,7 @@ const STDERR_FLUSH: NativeMetaBuilder = NativeMetaBuilder::method("flush", Arity
 
 pub fn declare_stderr(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdResult<()> {
   let class = default_class_inheritance(hooks, std, STDERR_CLASS_NAME)?;
-  let instance = hooks.manage(Instance::new(class));
+  let instance = hooks.manage_obj(Instance::new(class));
 
   export_and_insert(
     hooks,
@@ -82,7 +82,7 @@ impl LyNative for StderrWrite {
     let mut stdio = io.stdio();
     let stderr = stdio.stderr();
 
-    match stderr.write(args[0].to_str().as_bytes()) {
+    match stderr.write(args[0].to_obj().to_str().as_bytes()) {
       Ok(_) => Call::Ok(VALUE_NIL),
       Err(err) => self.call_error(hooks, err.to_string()),
     }
@@ -97,7 +97,7 @@ impl LyNative for StderrWriteln {
     let mut stdio = io.stdio();
     let stderr = stdio.stderr();
 
-    match writeln!(stderr, "{}", args[0].to_str()) {
+    match writeln!(stderr, "{}", &*args[0].to_obj().to_str()) {
       Ok(_) => Call::Ok(VALUE_NIL),
       Err(err) => self.call_error(hooks, err.to_string()),
     }
@@ -199,7 +199,7 @@ mod test {
 
       let stderr_write = StderrWriteln::native(&hooks.as_gc(), error);
 
-      let string = val!(hooks.manage_str("some string".to_string()));
+      let string = val!(hooks.manage_str("some string"));
       let result = stderr_write.call(&mut hooks, Some(VALUE_NIL), &[string]);
 
       assert!(result.is_ok());

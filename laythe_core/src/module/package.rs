@@ -1,7 +1,7 @@
 use super::{error::ModuleResult, import::Import, Module, ModuleError};
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
   object::Instance,
   value::Value,
 };
@@ -36,7 +36,7 @@ impl Package {
 
   /// Get a set of symbols from this package using a requested import. This
   /// operation can fail if some or all of the symbols are not found.
-  pub fn import(&self, hooks: &GcHooks, import: Gc<Import>) -> ModuleResult<Gc<Instance>> {
+  pub fn import(&self, hooks: &GcHooks, import: Gc<Import>) -> ModuleResult<GcObj<Instance>> {
     if import.package() == self.name {
       self.root_module.import(hooks, import.path())
     } else {
@@ -62,7 +62,7 @@ impl Package {
 
 impl fmt::Debug for Package {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.fmt_heap(f, 4)
+    self.fmt_heap(f, 2)
   }
 }
 
@@ -74,14 +74,12 @@ impl Trace for Package {
 
   fn trace_debug(&self, log: &mut dyn Write) {
     self.name.trace_debug(log);
-    self.name.trace_debug(log);
+    self.root_module.trace_debug(log);
   }
 }
 
 impl DebugHeap for Package {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_struct("Package")
       .field("name", &DebugWrap(&self.name, depth))
       .field("module", &DebugWrap(&self.root_module, depth))
@@ -114,7 +112,7 @@ mod test {
 
   fn test_module(alloc: &mut Allocator, name: &str) -> Gc<Module> {
     let name = alloc.manage_str(name, &NO_GC);
-    let class = alloc.manage(Class::bare(name), &NO_GC);
+    let class = alloc.manage_obj(Class::bare(name), &NO_GC);
     alloc.manage(Module::new(class, PathBuf::new(), 0), &NO_GC)
   }
 
@@ -129,7 +127,6 @@ mod test {
 
   #[test]
   fn name() {
-
     let mut gc = Allocator::default();
     let name = "example";
 

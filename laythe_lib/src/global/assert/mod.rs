@@ -5,11 +5,12 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{Gc, GcStr, Trace},
+  if_let_obj,
+  managed::{GcObj, GcStr, Trace},
   module::{Module, Package},
-  object::{LyNative, Native, NativeMetaBuilder},
+  object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  val,
+  to_obj_kind, val,
   value::{Value, VALUE_NIL},
   Call,
 };
@@ -72,9 +73,9 @@ fn to_str(hooks: &mut Hooks, value: Value) -> GcStr {
     .map(|method| hooks.call_method(value, method, &[]))
     .map(|string| {
       if let Call::Ok(ok) = string {
-        if ok.is_str() {
-          return ok.to_str();
-        }
+        if_let_obj!(ObjectKind::String(string) = (ok) {
+          return string;
+        });
       }
 
       hooks.manage_str(format!("{:?}", string))
@@ -92,11 +93,11 @@ pub struct Assert {
 
 impl Assert {
   /// Construct a new instance of the native assert function
-  pub fn native(hooks: &GcHooks, method_str: GcStr, error: Value) -> Gc<Native> {
-    debug_assert!(error.is_class());
+  pub fn native(hooks: &GcHooks, method_str: GcStr, error: Value) -> GcObj<Native> {
+    debug_assert!(error.is_obj_kind(laythe_core::object::ObjectKind::Class));
     let native = Box::new(Self { method_str, error }) as Box<dyn LyNative>;
 
-    hooks.manage(Native::new(ASSERT_META.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(ASSERT_META.to_meta(hooks), native))
   }
 }
 
@@ -132,11 +133,11 @@ pub struct AssertEq {
 
 impl AssertEq {
   /// Construct a new instance of the native assertEq function
-  pub fn native(hooks: &GcHooks, method_str: GcStr, error: Value) -> Gc<Native> {
-    debug_assert!(error.is_class());
+  pub fn native(hooks: &GcHooks, method_str: GcStr, error: Value) -> GcObj<Native> {
+    debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_str, error }) as Box<dyn LyNative>;
 
-    hooks.manage(Native::new(ASSERTEQ_META.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(ASSERTEQ_META.to_meta(hooks), native))
   }
 }
 
@@ -177,11 +178,11 @@ pub struct AssertNe {
 
 impl AssertNe {
   /// Construct a new instance of the native assertNe function
-  pub fn native(hooks: &GcHooks, method_str: GcStr, error: Value) -> Gc<Native> {
-    debug_assert!(error.is_class());
+  pub fn native(hooks: &GcHooks, method_str: GcStr, error: Value) -> GcObj<Native> {
+    debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_str, error }) as Box<dyn LyNative>;
 
-    hooks.manage(Native::new(ASSERTNE_META.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(ASSERTNE_META.to_meta(hooks), native))
   }
 }
 

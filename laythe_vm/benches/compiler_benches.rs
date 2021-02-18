@@ -1,11 +1,10 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use laythe_core::module::Module;
 use laythe_core::{
   hooks::{GcHooks, NoContext},
-  managed::Gc,
   memory::NO_GC,
   object::Class,
 };
+use laythe_core::{managed::GcObj, module::Module};
 use laythe_vm::compiler::Compiler;
 use laythe_vm::compiler::Parser;
 use std::fs::File;
@@ -32,9 +31,9 @@ fn load_source<P: AsRef<Path>>(dir: P) -> String {
   source
 }
 
-pub fn test_class(hooks: &GcHooks, name: &str) -> Gc<Class> {
-  let mut object_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
-  let mut class_class = hooks.manage(Class::bare(hooks.manage_str("Object")));
+pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
+  let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
+  let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
   class_class.inherit(hooks, object_class);
 
   let class_copy = class_class;

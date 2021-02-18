@@ -6,10 +6,10 @@ use crate::{
 use laythe_core::{
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
-  managed::Gc,
+  managed::GcObj,
   managed::{GcStr, Trace},
   module::Module,
-  object::{LyIter, LyIterator, LyNative, Native, NativeMetaBuilder},
+  object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
@@ -109,7 +109,7 @@ native!(StringLen, STRING_LEN);
 
 impl LyNative for StringLen {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_str().chars().count() as f64))
+    Call::Ok(val!(this.unwrap().to_obj().to_str().chars().count() as f64))
   }
 }
 
@@ -117,7 +117,7 @@ native_with_error!(StringIndexGet, STRING_INDEX_GET);
 
 impl LyNative for StringIndexGet {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let this = this.unwrap().to_str();
+    let this = this.unwrap().to_obj().to_str();
     let index = args[0].to_num();
 
     // eliminate non integers
@@ -152,8 +152,8 @@ native!(StringHas, STRING_HAS);
 
 impl LyNative for StringHas {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let str = this.unwrap().to_str();
-    Call::Ok(val!(str.contains(&*args[0].to_str())))
+    let str = this.unwrap().to_obj().to_str();
+    Call::Ok(val!(str.contains(&*args[0].to_obj().to_str())))
   }
 }
 
@@ -161,13 +161,13 @@ native!(StringSplit, STRING_SPLIT);
 
 impl LyNative for StringSplit {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let separator = args[0].to_str();
-    let str = this.unwrap().to_str();
+    let separator = args[0].to_obj().to_str();
+    let str = this.unwrap().to_obj().to_str();
 
-    let inner_iter: Box<dyn LyIter> = Box::new(SplitIterator::new(str, separator));
-    let iter = LyIterator::new(inner_iter);
+    let inner_iter: Box<dyn Enumerate> = Box::new(SplitIterator::new(str, separator));
+    let iter = Enumerator::new(inner_iter);
 
-    Call::Ok(val!(hooks.manage(iter)))
+    Call::Ok(val!(hooks.manage_obj(iter)))
   }
 }
 
@@ -192,9 +192,9 @@ impl SplitIterator {
   }
 }
 
-impl LyIter for SplitIterator {
+impl Enumerate for SplitIterator {
   fn name(&self) -> &str {
-    "String Split Iterator"
+    "String SplitIterator"
   }
 
   fn current(&self) -> Value {
@@ -206,11 +206,11 @@ impl LyIter for SplitIterator {
       Some(next) => {
         self.current = val!(hooks.manage_str(next));
         Call::Ok(val!(true))
-      }
+      },
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      }
+      },
     }
   }
 
@@ -242,7 +242,7 @@ native_with_error!(StringSlice, STRING_SLICE);
 impl LyNative for StringSlice {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     // get underlying string slice
-    let string = this.unwrap().to_str();
+    let string = this.unwrap().to_obj().to_str();
 
     let (start, end) = match args.len() {
       0 => (0.0, string.len() as f64),
@@ -308,12 +308,12 @@ native!(StringIter, STRING_ITER);
 
 impl LyNative for StringIter {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let str = this.unwrap().to_str();
+    let str = this.unwrap().to_obj().to_str();
 
-    let inner_iter: Box<dyn LyIter> = Box::new(StringIterator::new(str));
-    let iter = LyIterator::new(inner_iter);
+    let inner_iter: Box<dyn Enumerate> = Box::new(StringIterator::new(str));
+    let iter = Enumerator::new(inner_iter);
 
-    Call::Ok(val!(hooks.manage(iter)))
+    Call::Ok(val!(hooks.manage_obj(iter)))
   }
 }
 
@@ -336,9 +336,9 @@ impl StringIterator {
   }
 }
 
-impl LyIter for StringIterator {
+impl Enumerate for StringIterator {
   fn name(&self) -> &str {
-    "String Iterator"
+    "StringIterator"
   }
 
   fn current(&self) -> Value {
@@ -352,11 +352,11 @@ impl LyIter for StringIterator {
       Some(next) => {
         self.current = val!(hooks.manage_str(next.encode_utf8(s)));
         Call::Ok(val!(true))
-      }
+      },
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      }
+      },
     }
   }
 
@@ -409,7 +409,7 @@ mod test {
       let this = val!(hooks.manage_str("test".to_string()));
       let result = string_str.call(&mut hooks, Some(this), &[]);
       match result {
-        Call::Ok(r) => assert_eq!(*r.to_str(), "test".to_string()),
+        Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "test".to_string()),
         _ => assert!(false),
       }
     }
@@ -446,7 +446,7 @@ mod test {
       let this = val!(hooks.manage_str("test".to_string()));
       let result = string_index_get.call(&mut hooks, Some(this), &[val!(0.0)]);
       match result {
-        Call::Ok(r) => assert_eq!(*r.to_str(), "t".to_string()),
+        Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "t".to_string()),
         _ => assert!(false),
       }
     }
@@ -480,7 +480,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 3.0);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -517,7 +517,7 @@ mod test {
 
       match result {
         Call::Ok(r) => {
-          let mut string_iter = r.to_iter();
+          let mut string_iter = r.to_obj().to_enumerator();
           assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(string_iter.current(), val!(hooks.manage_str("a")));
 
@@ -528,7 +528,7 @@ mod test {
           assert_eq!(string_iter.current(), val!(hooks.manage_str("c")));
 
           assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(false));
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -571,9 +571,9 @@ mod test {
 
       match result {
         Call::Ok(r) => {
-          assert!(r.is_str());
-          assert_eq!(r.to_str(), "bc");
-        }
+          assert!(r.is_obj_kind(ObjectKind::String));
+          assert_eq!(r.to_obj().to_str(), "bc");
+        },
         _ => assert!(false),
       }
     }
@@ -653,9 +653,9 @@ mod test {
       let result = string_split
         .call(&mut hooks, Some(this), &[separator])
         .unwrap();
-      assert!(result.is_iter());
+      assert!(result.is_obj_kind(ObjectKind::Enumerator));
 
-      let mut iter = result.to_iter();
+      let mut iter = result.to_obj().to_enumerator();
       assert_eq!(iter.current(), VALUE_NIL);
       assert_eq!(iter.next(&mut hooks).unwrap(), VALUE_TRUE);
 

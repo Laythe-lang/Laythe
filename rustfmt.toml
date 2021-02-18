@@ -1,1 +1,2 @@
 tab_spaces = 2
+match_block_trailing_comma = true

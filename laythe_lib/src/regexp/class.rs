@@ -7,9 +7,9 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{Gc, Trace},
+  managed::{GcObj, Trace},
   module::{Module, Package},
-  object::{List, LyNative, Native, NativeMetaBuilder},
+  object::{List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
@@ -81,7 +81,7 @@ native!(RegExpInit, REGEXP_INIT);
 
 impl LyNative for RegExpInit {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let mut this = this.unwrap().to_instance();
+    let mut this = this.unwrap().to_obj().to_instance();
     this[0] = args[0];
     if args.len() > 1 {
       this[1] = args[1];
@@ -93,9 +93,9 @@ impl LyNative for RegExpInit {
 
 macro_rules! get_regex {
   ( $self:ident, $this:ident, $hooks:ident ) => {{
-    let instance = $this.unwrap().to_instance();
+    let instance = $this.unwrap().to_obj().to_instance();
 
-    match Regex::new(&*instance[0].to_str()) {
+    match Regex::new(&*instance[0].to_obj().to_str()) {
       Ok(regexp) => regexp,
       Err(err) => return $self.call_error($hooks, err.to_string()),
     }
@@ -108,7 +108,7 @@ impl LyNative for RegExpTest {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let regexp = get_regex!(self, this, hooks);
 
-    Call::Ok(val!(regexp.is_match(&args[0].to_str())))
+    Call::Ok(val!(regexp.is_match(&args[0].to_obj().to_str())))
   }
 }
 
@@ -118,7 +118,7 @@ impl LyNative for RegExpMatch {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let regexp = get_regex!(self, this, hooks);
 
-    match regexp.find(&args[0].to_str()) {
+    match regexp.find(&args[0].to_obj().to_str()) {
       Some(found) => Call::Ok(val!(hooks.manage_str(found.as_str()))),
       None => Call::Ok(VALUE_NIL),
     }
@@ -131,9 +131,9 @@ impl LyNative for RegExpCaptures {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let regexp = get_regex!(self, this, hooks);
 
-    match regexp.captures(&args[0].to_str()) {
+    match regexp.captures(&args[0].to_obj().to_str()) {
       Some(captures) => {
-        let mut results: Gc<List<Value>> = hooks.manage(List::new());
+        let mut results: GcObj<List<Value>> = hooks.manage_obj(List::new());
         hooks.push_root(results);
 
         for capture in captures.iter().map(|sub_capture| match sub_capture {
@@ -145,7 +145,7 @@ impl LyNative for RegExpCaptures {
 
         hooks.pop_roots(1);
         Call::Ok(val!(results))
-      }
+      },
       None => Call::Ok(VALUE_NIL),
     }
   }
@@ -161,7 +161,7 @@ mod test {
     regexp_class.add_field(&hooks.as_gc(), hooks.manage_str(REGEXP_FIELD_PATTERN));
     regexp_class.add_field(&hooks.as_gc(), hooks.manage_str(REGEXP_FIELD_FLAGS));
 
-    let regexp = hooks.manage(Instance::new(hooks.manage(regexp_class)));
+    let regexp = hooks.manage_obj(Instance::new(hooks.manage_obj(regexp_class)));
     let init = RegExpInit::native(&hooks.as_gc());
     init
       .call(
@@ -258,8 +258,8 @@ mod test {
       let r = regexp_capture
         .call(&mut hooks, Some(this), &[matched])
         .unwrap();
-      assert!(r.is_str());
-      assert_eq!(r.to_str(), hooks.manage_str("123"));
+      assert!(r.is_obj_kind(ObjectKind::String));
+      assert_eq!(r.to_obj().to_str(), hooks.manage_str("123"));
 
       let r = regexp_capture
         .call(&mut hooks, Some(this), &[unmatched])
@@ -305,12 +305,12 @@ mod test {
         .call(&mut hooks, Some(this), &[example])
         .unwrap();
 
-      assert!(r.is_list());
-      let list = r.to_list();
+      assert!(r.is_obj_kind(ObjectKind::List));
+      let list = r.to_obj().to_list();
 
       assert_eq!(list.len(), 2);
-      assert_eq!(list[0].to_str(), hooks.manage_str("123 dude"));
-      assert_eq!(list[1].to_str(), hooks.manage_str("123"));
+      assert_eq!(list[0].to_obj().to_str(), hooks.manage_str("123 dude"));
+      assert_eq!(list[1].to_obj().to_str(), hooks.manage_str("123"));
     }
   }
 }

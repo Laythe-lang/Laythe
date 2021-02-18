@@ -7,11 +7,11 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::GcObj,
   managed::Trace,
   module::{Module, Package},
-  object::{LyNative, Native, NativeMetaBuilder},
+  object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  managed::Gc,
   val,
   value::Value,
   Call,
@@ -53,7 +53,7 @@ native_with_error!(FileReadAllText, FILE_READ_ALL_TEXT);
 impl LyNative for FileReadAllText {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let io = hooks.as_io();
-    let path = args[0].to_str();
+    let path = args[0].to_obj().to_str();
 
     match io.fs().read_to_string(&Path::new(&*path)) {
       Ok(result) => Call::Ok(val!(hooks.manage_str(result))),

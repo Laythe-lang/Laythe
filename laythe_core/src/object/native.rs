@@ -1,12 +1,14 @@
 use crate::{
   hooks::{GcHooks, Hooks},
-  managed::{DebugHeap, DebugWrap, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, GcStr, Manage, Object, Trace},
   signature::{Arity, Environment, ParameterBuilder, Signature, SignatureBuilder},
   value::Value,
   Call,
 };
+use std::mem;
 use std::{fmt, io::Write};
-use std::{mem};
+
+use super::ObjectKind;
 
 #[derive(Clone, Debug)]
 pub struct NativeMetaBuilder {
@@ -126,6 +128,18 @@ impl Native {
   }
 }
 
+impl fmt::Display for Native {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "<{} native {:p}>", &*self.meta().name, &self)
+  }
+}
+
+impl fmt::Debug for Native {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    self.fmt_heap(f, 2)
+  }
+}
+
 impl Trace for Native {
   #[inline]
   fn trace(&self) {
@@ -153,7 +167,6 @@ impl Manage for Native {
 impl DebugHeap for Native {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     let meta = self.meta();
-    let depth = depth.saturating_sub(1);
 
     f.debug_struct("Native")
       .field("name", &DebugWrap(&meta.name, depth))
@@ -162,16 +175,9 @@ impl DebugHeap for Native {
   }
 }
 
-impl fmt::Debug for Native {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    self.fmt_heap(f, 1)
-  }
-}
-
-impl fmt::Display for Native {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    let meta = self.meta();
-    write!(f, "<native {}>", meta.name)
+impl Object for Native {
+  fn kind(&self) -> ObjectKind {
+    ObjectKind::Native
   }
 }
 

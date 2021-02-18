@@ -9,7 +9,7 @@ use laythe_core::{
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
-  managed::Gc,
+  managed::GcObj,
   val,
   value::Value,
   Call,
@@ -74,7 +74,7 @@ mod test {
 
       let result = nil_str.call(&mut hooks, Some(VALUE_NIL), &[]);
       match result {
-        Call::Ok(r) => assert_eq!(*r.to_str(), "nil".to_string()),
+        Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "nil".to_string()),
         _ => assert!(false),
       }
     }

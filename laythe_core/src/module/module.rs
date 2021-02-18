@@ -282,8 +282,6 @@ impl Trace for Module {
 
 impl DebugHeap for Module {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let depth = depth.saturating_sub(1);
-
     f.debug_struct("Module")
       .field("path", &self.path)
       .field("module_class", &DebugWrap(&self.module_class, depth))

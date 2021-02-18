@@ -7,11 +7,11 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::GcObj,
   managed::Trace,
   module::{Module, Package},
-  object::{Instance, LyNative, Native, NativeMetaBuilder},
+  object::{Instance, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  managed::Gc,
   val,
   value::{Value, VALUE_NIL},
   Call,
@@ -31,7 +31,7 @@ const STDOUT_FLUSH: NativeMetaBuilder = NativeMetaBuilder::method("flush", Arity
 
 pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdResult<()> {
   let class = default_class_inheritance(hooks, std, STDOUT_CLASS_NAME)?;
-  let instance = hooks.manage(Instance::new(class));
+  let instance = hooks.manage_obj(Instance::new(class));
 
   export_and_insert(
     hooks,
@@ -80,7 +80,7 @@ impl LyNative for StdoutWrite {
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 
-    match stdout.write(args[0].to_str().as_bytes()) {
+    match stdout.write(args[0].to_obj().to_str().as_bytes()) {
       Ok(_) => Call::Ok(VALUE_NIL),
       Err(err) => self.call_error(hooks, err.to_string()),
     }
@@ -95,7 +95,7 @@ impl LyNative for StdoutWriteln {
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 
-    match writeln!(stdout, "{}", args[0].to_str()) {
+    match writeln!(stdout, "{}", &*args[0].to_obj().to_str()) {
       Ok(_) => Call::Ok(VALUE_NIL),
       Err(err) => self.call_error(hooks, err.to_string()),
     }
