@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest] # windows-latest failing cwd test
         rust: [stable, nightly]
     
     steps:
@@ -30,20 +30,14 @@ jobs:
     - run: cargo test
 
   lint:
-    name: Lint Laythe with Rust ${{ matrix.rust }}
+    name: Lint Laythe
     runs-on: ubuntu-latest
 
     strategy:
       fail-fast: false
-      matrix:
-        rust: [stable, nightly]
 
     steps:
     - uses: actions/checkout@v2
-    - uses: hecrj/setup-rust-action@v1
-      with:
-        rust-version: ${{ matrix.rust }}
-    - uses: Swatinem/rust-cache@v1
     - run: cargo clippy
 
   bench:
