@@ -27,7 +27,7 @@ jobs:
       with:
         rust-version: ${{ matrix.rust }}
     - uses: Swatinem/rust-cache@v1
-    - run: cargo test --workspace
+    - run: cargo test
 
   lint:
     name: Lint Laythe with Rust ${{ matrix.rust }}
