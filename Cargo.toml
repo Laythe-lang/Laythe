@@ -23,6 +23,6 @@ default-members = [
 opt-level = 0
 
 [profile.release]
-opt-level = 3
 debug = true
 lto = "fat"
+opt-level = 3

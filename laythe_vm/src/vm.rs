@@ -30,12 +30,12 @@ use laythe_core::{
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
 use laythe_native::io::io_native;
-use std::convert::TryInto;
 use std::io::Write;
 use std::mem;
+use std::path::PathBuf;
 use std::ptr;
 use std::{cell::RefCell, cmp::Ordering};
-use std::{path::PathBuf, ptr::NonNull};
+use std::{convert::TryInto, usize};
 
 #[cfg(feature = "debug")]
 use crate::debug::{disassemble_instruction, exception_catch};
@@ -454,11 +454,6 @@ impl Vm {
     }
   }
 
-  /// Get the class for this value
-  fn get_class(&mut self, this: Value) -> GcObj<Class> {
-    self.builtin.primitives.for_value(this, this.kind())
-  }
-
   /// Main virtual machine execution loop. This will run the until the program interrupts
   /// from a normal exit or from a runtime error.
   fn execute(&mut self, mode: ExecuteMode) -> ExecuteResult {
@@ -558,7 +553,7 @@ impl Vm {
 
   #[inline]
   fn value_class(&self, value: Value) -> GcObj<Class> {
-    self.builtin.primitives.for_value(value, value.kind())
+    self.builtin.primitives.for_value(value, &self.stack)
   }
 
   #[inline]
@@ -620,6 +615,18 @@ impl Vm {
   #[inline]
   fn slots(&self) -> *mut Value {
     unsafe { (*self.current_frame).slots }
+  }
+
+  /// Get the current frame slots
+  #[inline]
+  fn slot(&self, slot: isize) -> Value {
+    unsafe { *self.slots().offset(slot) }
+  }
+
+  /// Get the current frame slots
+  #[inline]
+  fn set_slot(&mut self, slot: isize, value: Value) {
+    unsafe { *self.slots().offset(slot) = value }
   }
 
   /// Get the current closure
@@ -1055,9 +1062,7 @@ impl Vm {
   fn op_set_local(&mut self) -> Signal {
     let slot = self.read_byte() as isize;
     let copy = self.peek(0);
-    let slots = self.slots();
-
-    unsafe { *slots.offset(slot) = copy }
+    self.set_slot(slot, copy);
 
     Signal::Ok
   }
@@ -1113,7 +1118,9 @@ impl Vm {
   fn op_set_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
     let value = self.peek(0);
-    self.closure().set_value(slot as usize, value);
+    self
+      .closure()
+      .set_value(slot as usize, &mut self.stack, value);
 
     Signal::Ok
   }
@@ -1150,15 +1157,13 @@ impl Vm {
 
   fn op_get_local(&mut self) -> Signal {
     let slot = self.read_byte() as isize;
-    let copy = unsafe { *self.slots().offset(slot) };
-
-    self.push(copy);
+    self.push(self.slot(slot));
     Signal::Ok
   }
 
   fn op_get_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
-    self.push(self.closure().get_value(slot as usize));
+    self.push(self.closure().get_value(slot as usize, &self.stack));
 
     Signal::Ok
   }
@@ -1587,10 +1592,7 @@ impl Vm {
         let upvalue_index: UpvalueIndex = unsafe { mem::transmute(self.read_short()) };
 
         match upvalue_index {
-          UpvalueIndex::Local(index) => {
-            let value = unsafe { &*self.slots().offset(index as isize) };
-            self.capture_upvalue(NonNull::from(value))
-          },
+          UpvalueIndex::Local(index) => self.capture_upvalue(index as usize),
           UpvalueIndex::Upvalue(upvalue) => self.closure().get_upvalue(upvalue as usize),
         }
       })
@@ -1604,7 +1606,7 @@ impl Vm {
   }
 
   fn op_close_upvalue(&mut self) -> Signal {
-    self.close_upvalues(NonNull::from(unsafe { &*self.stack_top.offset(-1) }));
+    self.close_upvalues(unsafe { self.stack_top.offset(-1) });
     self.drop();
     Signal::Ok
   }
@@ -1628,7 +1630,7 @@ impl Vm {
   /// resolve the current value and call in the appropriate manner
   fn resolve_call(&mut self, callee: Value, arg_count: u8) -> Signal {
     if !callee.is_obj() {
-      let class_name = self.get_class(callee).name();
+      let class_name = self.value_class(callee).name();
       return self.runtime_error(
         self.builtin.errors.runtime,
         &format!("{} is not callable.", class_name),
@@ -1655,7 +1657,7 @@ impl Vm {
         ))
       },
       _ => {
-        let class_name = self.get_class(callee).name();
+        let class_name = self.value_class(callee).name();
         self.runtime_error(
           self.builtin.errors.runtime,
           &format!("{} is not callable.", class_name),
@@ -1784,7 +1786,7 @@ impl Vm {
   /// Pop a frame off the call stack
   #[inline]
   fn pop_frame(&mut self) -> Option<Signal> {
-    self.close_upvalues(NonNull::from(unsafe { &*self.slots() }));
+    self.close_upvalues(unsafe { (*self.current_frame).slots });
     self.frame_count -= 1;
 
     // if the frame was the whole script signal an ok interrupt
@@ -1959,47 +1961,51 @@ impl Vm {
   }
 
   /// capture an upvalue return an existing upvalue if already captured
-  fn capture_upvalue(&mut self, local_index: NonNull<Value>) -> GcObj<Upvalue> {
+  fn capture_upvalue(&mut self, local_index: usize) -> GcObj<Upvalue> {
+    let slot_index = unsafe { self.slots().offset_from(self.stack.get_unchecked(0)) as usize };
+    let upvalue_index = slot_index + local_index;
+
     let closest_upvalue = self
       .open_upvalues
       .iter()
       .rev()
       .find(|upvalue| match ***upvalue {
-        Upvalue::Open(index) => index <= local_index,
+        Upvalue::Open(index) => index <= upvalue_index,
         Upvalue::Closed(_) => self.internal_error("Encountered closed upvalue."),
       });
 
     if let Some(upvalue) = closest_upvalue {
       if let Upvalue::Open(index) = **upvalue {
-        if index == local_index {
+        if index == upvalue_index {
           return *upvalue;
         }
       }
     }
 
-    let created_upvalue = self.manage_obj(Upvalue::Open(local_index));
+    let created_upvalue = self.manage_obj(Upvalue::Open(upvalue_index));
     self.open_upvalues.push(created_upvalue);
 
     created_upvalue
   }
 
   /// hoist all open upvalue above the last index
-  fn close_upvalues(&mut self, last_value: NonNull<Value>) {
+  fn close_upvalues(&mut self, last_value: *mut Value) {
     if !self.open_upvalues.is_empty() {
       let mut retain = self.open_upvalues.len();
 
+      let last_index = unsafe { last_value.offset_from(self.stack.get_unchecked(0)) as usize };
       for upvalue in self.open_upvalues.iter_mut().rev() {
-        let value = match **upvalue {
-          Upvalue::Open(value) => value,
+        let index = match **upvalue {
+          Upvalue::Open(index) => index,
           Upvalue::Closed(_) => self.internal_error("Unexpected closed upvalue."),
         };
 
-        if value < last_value {
+        if index < last_index {
           break;
         }
 
         retain -= 1;
-        upvalue.hoist();
+        upvalue.hoist(&self.stack)
       }
 
       self.open_upvalues.truncate(retain)
@@ -2071,8 +2077,8 @@ impl Vm {
     write!(stdout, "Open UpVal:   ")?;
     for upvalue in &self.open_upvalues {
       match &**upvalue {
-        Upvalue::Open(stack_ptr) => {
-          write!(stdout, "[ stack {} ]", unsafe { *stack_ptr.as_ref() })?;
+        Upvalue::Open(index) => {
+          write!(stdout, "[ stack {} ]", self.stack[*index])?;
         },
         Upvalue::Closed(closed) => {
           write!(stdout, "[ heap {} ]", closed)?;
@@ -2143,25 +2149,40 @@ impl Vm {
 
   /// Search for a catch block up the stack, printing the error if no catch is found
   fn stack_unwind(&mut self, error: GcObj<Instance>) -> Option<ExecuteResult> {
-    let mut popped_frames = None;
     let mut stack_top = None;
+    let mut jump_pair = None;
+
     self.store_ip();
 
     // travel down stack frames looking for an applicable handle
-    for (idx, frame) in self.frames[1..self.frame_count]
-      .iter_mut()
-      .rev()
-      .enumerate()
-    {
+    for (idx, frame) in self.frames[1..self.frame_count].iter().rev().enumerate() {
       let fun = frame.closure.fun();
       let instructions = &*fun.chunk().instructions();
 
       let offset = ptr_len(&instructions[0], frame.ip);
       if let Some(offset) = fun.has_catch_jump(offset as u16) {
-        // if found set all the stack information to the correct state
-        frame.ip = &instructions[offset as usize] as *const u8;
+        jump_pair = Some((self.frame_count - idx - 1, offset));
+        break;
+      }
 
-        self.frame_count -= idx;
+      stack_top = Some(frame.slots);
+    }
+
+    match jump_pair {
+      Some((idx, ip_offset)) => {
+        let frame = &mut self.frames[idx];
+        let fun = frame.closure.fun();
+        let instructions = &*fun.chunk().instructions();
+
+        // if found set all the stack information to the correct state
+        frame.ip = &instructions[ip_offset as usize] as *const u8;
+
+        let new_frame_count = idx + 1;
+
+        #[cfg(feature = "debug")]
+        let popped_frames = self.frame_count - new_frame_count;
+
+        self.frame_count = new_frame_count;
         self.current_frame = frame as *mut CallFrame;
         self.current_fun = frame.closure.fun();
         self.ip = frame.ip;
@@ -2170,20 +2191,10 @@ impl Vm {
           self.stack_top = top;
         }
 
-        // track frames popped for debugging info
-        popped_frames = Some(idx);
-        break;
-      }
-
-      stack_top = Some(frame.slots);
-    }
-
-    match popped_frames {
-      Some(_idx) => {
         #[cfg(feature = "debug")]
         {
           let frame = unsafe { &*self.current_frame };
-          if let Err(_) = self.print_exception_debug(frame, _idx) {
+          if let Err(_) = self.print_exception_debug(frame, popped_frames) {
             return Some(ExecuteResult::InternalError);
           }
         }
@@ -2404,6 +2415,6 @@ impl ValueContext for Vm {
   }
 
   fn get_class(&mut self, this: Value) -> Value {
-    val!(self.get_class(this))
+    val!(self.value_class(this))
   }
 }

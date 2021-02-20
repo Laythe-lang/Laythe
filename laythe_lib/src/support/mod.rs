@@ -310,7 +310,7 @@ mod test {
         None => return Call::Exit(1),
       };
 
-      let class = b.primitives.for_value(this, this.kind());
+      let class = b.primitives.for_value(this, &[]);
       match class.get_method(&method_name) {
         Some(method) => Call::Ok(method),
         None => Call::Exit(1),
@@ -323,7 +323,7 @@ mod test {
         None => return VALUE_NIL,
       };
 
-      val!(b.primitives.for_value(this, this.kind()))
+      val!(b.primitives.for_value(this, &[]))
     }
   }
 

@@ -108,7 +108,7 @@ impl<'a> Allocator {
   /// let mut gc = Allocator::default();
   /// let upvalue = gc.manage_obj(Upvalue::Closed(Value::from(10.0)), &NO_GC);
   ///
-  /// assert_eq!(upvalue.value(), Value::from(10.0));
+  /// assert_eq!(upvalue.value(&[]), Value::from(10.0));
   /// ```
   pub fn manage_obj<T: 'static + Object, C: TraceRoot + ?Sized>(
     &mut self,

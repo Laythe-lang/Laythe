@@ -65,13 +65,13 @@ impl Closure {
   }
 
   #[inline]
-  pub fn get_value(&self, index: usize) -> Value {
-    self.upvalues[index].value()
+  pub fn get_value(&self, index: usize, stack: &[Value]) -> Value {
+    self.upvalues[index].value(stack)
   }
 
   #[inline]
-  pub fn set_value(&mut self, index: usize, value: Value) {
-    self.upvalues[index].set_value(value);
+  pub fn set_value(&mut self, index: usize, stack: &mut [Value], value: Value) {
+    self.upvalues[index].set_value(stack, value);
   }
 }
 
