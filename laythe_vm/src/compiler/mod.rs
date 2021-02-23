@@ -149,6 +149,11 @@ impl Trace for LoopInfo {
   fn trace_debug(&self, _log: &mut dyn Write) {}
 }
 
+enum ScopeExit {
+  Normal,
+  Early,
+}
+
 pub struct Compiler<'a, FileId> {
   #[allow(dead_code)]
   io: Option<Io>,
@@ -184,6 +189,9 @@ pub struct Compiler<'a, FileId> {
   /// The info on the current loop
   loop_info: Option<Gc<LoopInfo>>,
 
+  /// Should we early exit scope (break / continue)
+  exit_scope: ScopeExit,
+
   /// The idea emmiter for
   cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
 
@@ -198,6 +206,9 @@ pub struct Compiler<'a, FileId> {
 
   /// Current scope depth
   scope_depth: i16,
+
+  /// The current number of slots in use,
+  slots: i32,
 
   /// locals in this function
   locals: Vec<Local<'a>>,
@@ -265,8 +276,10 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       errors: vec![],
       fun_kind: FunKind::Script,
       scope_depth: 0,
+      slots: 0,
       class_info: None,
       loop_info: None,
+      exit_scope: ScopeExit::Normal,
       gc: RefCell::new(gc),
       enclosing: None,
       local_count: 1,
@@ -290,7 +303,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
     let end = self.ast.end();
     let cache_id_emitter = self.cache_id_emitter.replace(CacheIdEmitter::default());
-    let (fun, errors, _, gc) = self.end_compiler(end);
+    let (fun, errors, _, gc) = self.end_compiler(end, ScopeExit::Normal);
     if errors.is_empty() {
       (Ok(fun), gc, cache_id_emitter)
     } else {
@@ -328,8 +341,10 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       root_trace: enclosing.root_trace,
       fun_kind,
       scope_depth: 0,
+      slots: 0,
       class_info: enclosing.class_info,
       loop_info: enclosing.loop_info,
+      exit_scope: ScopeExit::Normal,
       gc,
       enclosing: Some(NonNull::from(enclosing)),
       local_count: 1,
@@ -351,8 +366,11 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   fn end_compiler(
     mut self,
     line: u32,
+    exit: ScopeExit,
   ) -> (Fun, Vec<Diagnostic<FileId>>, Vec<UpvalueIndex>, Allocator) {
-    self.emit_return(line);
+    if let ScopeExit::Normal = exit {
+      self.emit_return(line);
+    }
 
     let fun = self.fun.build();
 
@@ -572,11 +590,11 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
         match parent.resolve_local(name) {
           Some(local) => {
             parent.locals[local as usize].is_captured = true;
-            Some(self.add_upvalue(UpvalueIndex::Local(local)) as u8)
+            Some(self.add_upvalue(UpvalueIndex::Local(local)))
           },
           None => parent
             .resolve_upvalue(name)
-            .map(|upvalue| self.add_upvalue(UpvalueIndex::Upvalue(upvalue)) as u8),
+            .map(|upvalue| self.add_upvalue(UpvalueIndex::Upvalue(upvalue))),
         }
       },
       None => None,
@@ -584,7 +602,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   }
 
   /// add an upvalue
-  fn add_upvalue(&mut self, upvalue: UpvalueIndex) -> usize {
+  fn add_upvalue(&mut self, upvalue: UpvalueIndex) -> u8 {
     // check for existing upvalues
     if let Some(i) =
       self
@@ -595,13 +613,13 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
           _ => false,
         })
     {
-      return i;
+      return i as u8;
     }
 
     let upvalue_count = self.fun.upvalue_count();
 
     // prevent overflow
-    if upvalue_count == std::u8::MAX as usize {
+    if upvalue_count == std::u8::MAX {
       self.error("Too many closure variables in function.", None);
       return 0;
     }
@@ -638,6 +656,9 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       .line_offsets
       .offset_line(offset as usize)
       .expect("Line offset out of bounds");
+
+    self.slots += op_code.stack_effect();
+    self.fun.update_max_slots(self.slots);
 
     self.write_instruction(op_code, line as u32 + 1);
   }
@@ -796,6 +817,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       Stmt::ImplicitReturn(expr) => {
         self.expr(expr);
         self.emit_byte(AlignedByteCode::Return, expr.end());
+        self.exit_scope = ScopeExit::Early
       },
       Stmt::Import(import) => self.import(import),
       Stmt::For(for_) => self.for_(for_),
@@ -1045,18 +1067,19 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     compiler.begin_scope();
     compiler.call_sig(&fun.call_sig);
 
-    match &fun.body {
+    let exit = match &fun.body {
       ast::FunBody::Block(block) => compiler.block(&block),
       ast::FunBody::Expr(expr) => {
         compiler.expr(&expr);
         compiler.emit_byte(AlignedByteCode::Return, expr.end());
+        ScopeExit::Early
       },
     };
 
     let end_line = fun.end();
 
     // end compilation of function chunk
-    let (fun, errors, upvalues, gc) = compiler.end_compiler(end_line);
+    let (fun, errors, upvalues, gc) = compiler.end_compiler(end_line, exit);
     self.gc.replace(gc);
 
     let fun = self.gc.borrow_mut().manage_obj(fun, self);
@@ -1187,7 +1210,6 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
       // check at end of iterator
       let exit_jump = self_.emit_jump(AlignedByteCode::JumpIfFalse(0), expr_line);
-      self_.emit_byte(AlignedByteCode::Drop, expr_line);
 
       // assign $iter.current to loop variable
       let loop_variable = self_
@@ -1205,7 +1227,6 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
       // loop back to top
       self_.patch_jump(exit_jump);
-      self_.emit_byte(AlignedByteCode::Drop, for_.end());
       self_.patch_breaks();
 
       self_.loop_info = enclosing_loop;
@@ -1234,13 +1255,11 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
     let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), while_.cond.end());
 
-    self.emit_byte(AlignedByteCode::Drop, while_.cond.end());
     self.scope(while_.end(), |self_| self_.block(&while_.body));
 
     self.emit_loop(loop_start, while_.end());
 
     self.patch_jump(exit_jump);
-    self.emit_byte(AlignedByteCode::Drop, while_.end());
     self.patch_breaks();
 
     if enclosing_loop.is_some() {
@@ -1255,23 +1274,26 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
 
     // parse then branch
     let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), if_.cond.end());
-    self.emit_byte(AlignedByteCode::Drop, if_.cond.end());
 
     self.scope(if_.body.end(), |self_| self_.block(&if_.body));
 
-    // emit else jump
-    let else_jump = self.emit_jump(AlignedByteCode::Jump(0), if_.body.end());
-    self.patch_jump(then_jump);
-    self.emit_byte(AlignedByteCode::Drop, if_.body.end());
+    match &if_.else_ {
+      Some(else_) => {
+        // emit else jump
+        let else_jump = self.emit_jump(AlignedByteCode::Jump(0), if_.body.end());
+        self.patch_jump(then_jump);
 
-    if let Some(else_) = &if_.else_ {
-      match else_ {
-        ast::Else::If(if_) => self.if_(if_),
-        ast::Else::Block(block) => self.scope(block.end(), |self_| self_.block(block)),
-      }
+        match else_ {
+          ast::Else::If(if_) => self.if_(if_),
+          ast::Else::Block(block) => self.scope(block.end(), |self_| {
+            self_.block(block);
+          }),
+        }
+
+        self.patch_jump(else_jump);
+      },
+      None => self.patch_jump(then_jump),
     }
-
-    self.patch_jump(else_jump);
   }
 
   /// Compile a return statement
@@ -1283,6 +1305,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       },
       None => self.emit_return(return_.start()),
     }
+    self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a return statement
@@ -1292,7 +1315,8 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       .expect("Parser should have caught the loop constraint");
 
     self.drop_locals(continue_.end(), loop_info.scope_depth);
-    self.emit_loop(loop_info.start, continue_.start())
+    self.emit_loop(loop_info.start, continue_.start());
+    self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a return statement
@@ -1304,6 +1328,7 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
     self.drop_locals(break_.end(), loop_info.scope_depth);
     let offset = self.emit_jump(AlignedByteCode::Jump(0), break_.start());
     loop_info.breaks.push(offset);
+    self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a try catch block
@@ -1322,10 +1347,15 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
   }
 
   /// Compile a block
-  fn block(&mut self, block: &'a ast::Block<'a>) {
+  fn block(&mut self, block: &'a ast::Block<'a>) -> ScopeExit {
     for decl in &block.decls {
+      if let ScopeExit::Early = self.exit_scope {
+        break;
+      }
       self.decl(&decl);
     }
+
+    mem::replace(&mut self.exit_scope, ScopeExit::Normal)
   }
 
   /// Compile an assignment expression
@@ -1480,22 +1510,14 @@ impl<'a, FileId: Copy> Compiler<'a, FileId> {
       ast::BinaryOp::Eq => self.emit_byte(AlignedByteCode::Equal, binary.rhs.end()),
       ast::BinaryOp::Ne => self.emit_byte(AlignedByteCode::NotEqual, binary.rhs.end()),
       ast::BinaryOp::And => {
-        let end_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), binary.lhs.end());
-
-        self.emit_byte(AlignedByteCode::Drop, binary.lhs.end());
+        let and_jump = self.emit_jump(AlignedByteCode::And(0), binary.lhs.end());
         self.expr(&binary.rhs);
-
-        self.patch_jump(end_jump);
+        self.patch_jump(and_jump);
       },
       ast::BinaryOp::Or => {
-        let else_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), binary.lhs.end());
-        let end_jump = self.emit_jump(AlignedByteCode::Jump(0), binary.lhs.end());
-
-        self.patch_jump(else_jump);
-        self.emit_byte(AlignedByteCode::Drop, binary.lhs.end());
-
+        let or_jump = self.emit_jump(AlignedByteCode::Or(0), binary.lhs.end());
         self.expr(&binary.rhs);
-        self.patch_jump(end_jump);
+        self.patch_jump(or_jump);
       },
     }
   }
@@ -1869,7 +1891,7 @@ mod test {
 
   enum ByteCodeTest {
     Code(AlignedByteCode),
-    Fun((u16, Vec<ByteCodeTest>)),
+    Fun((u16, usize, Vec<ByteCodeTest>)),
   }
 
   pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
@@ -1978,7 +2000,7 @@ mod test {
     offset + 4
   }
 
-  fn assert_simple_bytecode(fun: &Fun, code: &[AlignedByteCode]) {
+  fn assert_simple_bytecode(fun: &Fun, max_slots: usize, code: &[AlignedByteCode]) {
     let stdio_container = StdioTestContainer::default();
     let mut stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
 
@@ -2002,9 +2024,10 @@ mod test {
       });
 
     assert_eq!(decoded_byte_code.len(), code.len());
+    assert_eq!(fun.max_slots(), max_slots);
   }
 
-  fn assert_fun_bytecode(fun: &Fun, code: &[ByteCodeTest]) {
+  fn assert_fun_bytecode(fun: &Fun, max_slots: usize, code: &[ByteCodeTest]) {
     let stdio_container = StdioTestContainer::default();
     let mut stdio = Stdio::new(Box::new(stdio_container.make_stdio()));
 
@@ -2012,12 +2035,6 @@ mod test {
     stdio_container.log_stdio();
 
     let decoded_byte_code = decode_byte_code(fun);
-    assert_eq!(
-      decoded_byte_code.len(),
-      code.len(),
-      "for fun {}",
-      fun.name()
-    );
 
     for i in 0..code.len() {
       match decoded_byte_code[i] {
@@ -2025,9 +2042,9 @@ mod test {
           let fun = fun.chunk().get_constant(index as usize).to_obj().to_fun();
 
           match &code[i] {
-            ByteCodeTest::Fun((expected, inner)) => {
+            ByteCodeTest::Fun((expected, max_slots, inner)) => {
               assert_eq!(*expected, index);
-              assert_fun_bytecode(&*fun, &inner);
+              assert_fun_bytecode(&*fun, *max_slots, &inner);
             },
             _ => assert!(false),
           }
@@ -2040,6 +2057,19 @@ mod test {
         },
       }
     }
+
+    assert_eq!(
+      decoded_byte_code.len(),
+      code.len(),
+      "for fn {} instruction len",
+      fun.name()
+    );
+    assert_eq!(
+      fun.max_slots(),
+      max_slots,
+      "for fn {} max slots",
+      fun.name()
+    );
   }
 
   #[test]
@@ -2053,6 +2083,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Import(0),
         AlignedByteCode::DefineGlobal(1),
@@ -2073,6 +2104,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::DefineGlobal(0),
@@ -2094,8 +2126,10 @@ mod test {
 
     assert_fun_bytecode(
       &fun,
+      1,
       &vec![
         ByteCodeTest::Fun((
+          1,
           1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -2121,6 +2155,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2151,6 +2186,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Jump(0),
         AlignedByteCode::Nil,
@@ -2177,6 +2213,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      3,
       &vec![
         AlignedByteCode::Map(0),       // 0
         AlignedByteCode::GetLocal(1),  // 3
@@ -2217,6 +2254,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::List(0),      // 0
         AlignedByteCode::Constant(0),  // 3
@@ -2259,6 +2297,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2291,6 +2330,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Class(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2328,6 +2368,7 @@ mod test {
 
     assert_fun_bytecode(
       &fun,
+      3,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
@@ -2336,6 +2377,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
+          2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
@@ -2350,24 +2392,22 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Field(4)),
         ByteCodeTest::Fun((
           6,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Slot(1)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(5)),
         ByteCodeTest::Fun((
           8,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
             ByteCodeTest::Code(AlignedByteCode::Slot(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -2403,6 +2443,7 @@ mod test {
 
     assert_fun_bytecode(
       &fun,
+      3,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
@@ -2411,6 +2452,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
+          2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
@@ -2425,24 +2467,22 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Field(4)),
         ByteCodeTest::Fun((
           6,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Slot(1)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(5)),
         ByteCodeTest::Fun((
           8,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
             ByteCodeTest::Code(AlignedByteCode::Slot(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -2471,6 +2511,7 @@ mod test {
 
     assert_fun_bytecode(
       &fun,
+      3,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
@@ -2478,6 +2519,7 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
+          3,
           3,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
@@ -2527,6 +2569,7 @@ mod test {
 
     assert_fun_bytecode(
       &fun,
+      3,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
         ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
@@ -2535,20 +2578,18 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::StaticMethod(2)),
         ByteCodeTest::Fun((
           5,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -2573,6 +2614,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      3,
       &vec![
         AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(1),
@@ -2602,6 +2644,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      3,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -2632,6 +2675,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      3,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -2664,6 +2708,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      5,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -2689,6 +2734,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::List(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2712,6 +2758,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      4,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -2736,6 +2783,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Map(0),
         AlignedByteCode::DefineGlobal(0),
@@ -2756,14 +2804,14 @@ mod test {
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       &fun,
+      1,
       &vec![
         ByteCodeTest::Fun((
           // example
           1,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -2788,14 +2836,14 @@ mod test {
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       &fun,
+      1,
       &vec![
         ByteCodeTest::Fun((
           // example
           1,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -2823,18 +2871,18 @@ mod test {
 
     assert_fun_bytecode(
       &fun,
+      4,
       &vec![
         ByteCodeTest::Fun((
           // example
           1,
+          2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
             ByteCodeTest::Code(AlignedByteCode::Add),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(3)),
             ByteCodeTest::Code(AlignedByteCode::Add),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -2873,23 +2921,25 @@ mod test {
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       &fun,
+      1,
       &vec![
         ByteCodeTest::Fun((
           // example
           1,
+          3,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Fun((
               // middle
               2,
+              2,
               vec![
                 ByteCodeTest::Fun((
                   // inner
                   0,
+                  1,
                   vec![
                     ByteCodeTest::Code(AlignedByteCode::GetUpvalue(0)),
-                    ByteCodeTest::Code(AlignedByteCode::Return),
-                    ByteCodeTest::Code(AlignedByteCode::Nil),
                     ByteCodeTest::Code(AlignedByteCode::Return),
                   ],
                 )),
@@ -2897,15 +2947,11 @@ mod test {
                 ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
                 ByteCodeTest::Code(AlignedByteCode::Call(0)),
                 ByteCodeTest::Code(AlignedByteCode::Return),
-                ByteCodeTest::Code(AlignedByteCode::Nil),
-                ByteCodeTest::Code(AlignedByteCode::Return),
               ],
             )),
             ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))), //
             ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
             ByteCodeTest::Code(AlignedByteCode::Call(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -2937,24 +2983,23 @@ mod test {
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       &fun,
+      1,
       &vec![
         ByteCodeTest::Fun((
           1,
+          3,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Fun((
               2,
+              1,
               vec![
                 ByteCodeTest::Code(AlignedByteCode::GetUpvalue(0)),
-                ByteCodeTest::Code(AlignedByteCode::Return),
-                ByteCodeTest::Code(AlignedByteCode::Nil),
                 ByteCodeTest::Code(AlignedByteCode::Return),
               ],
             )),
             ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -2979,8 +3024,10 @@ mod test {
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       &fun,
+      1,
       &vec![
         ByteCodeTest::Fun((
+          1,
           1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -3011,13 +3058,13 @@ mod test {
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       &fun,
+      2,
       &vec![
         ByteCodeTest::Fun((
           1,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -3042,14 +3089,14 @@ mod test {
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       &fun,
+      1,
       &vec![
         ByteCodeTest::Fun((
           1,
+          2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -3071,13 +3118,13 @@ mod test {
     let fun = test_compile(example, &context);
     assert_fun_bytecode(
       &fun,
+      1,
       &vec![
         ByteCodeTest::Fun((
           1,
+          1,
           vec![
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -3100,6 +3147,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      4,
       &vec![
         AlignedByteCode::Constant(1),     // 1
         AlignedByteCode::Constant(2),     // 3
@@ -3122,6 +3170,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      4,
       &vec![
         AlignedByteCode::Constant(1),     // 1
         AlignedByteCode::Constant(2),     // 3
@@ -3144,6 +3193,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      4,
       &vec![
         AlignedByteCode::Nil,             // 0
         AlignedByteCode::Constant(0),     // 1   local 2 = [1, 2, 3].iter()
@@ -3154,8 +3204,7 @@ mod test {
         AlignedByteCode::Slot(0),         // 10  const 1 = 1
         AlignedByteCode::GetLocal(2),     // 13  const 2 = 2
         AlignedByteCode::IterNext(5),     // 15  const 3 = 3
-        AlignedByteCode::JumpIfFalse(20), // 17  const 4 = "iter"
-        AlignedByteCode::Drop,            // 20  const 5 = "next"
+        AlignedByteCode::JumpIfFalse(19), // 17  const 4 = "iter"
         AlignedByteCode::GetLocal(2),     // 21
         AlignedByteCode::IterCurrent(6),  // 23  const 6 = "current"
         AlignedByteCode::SetLocal(1),     // 25
@@ -3164,8 +3213,7 @@ mod test {
         AlignedByteCode::GetLocal(1), // 29
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::Loop(28), // 32
-        AlignedByteCode::Drop,     // 35
+        AlignedByteCode::Loop(27), // 32
         AlignedByteCode::DropN(2), // 36
         AlignedByteCode::Nil,      // 38
         AlignedByteCode::Return,   // 39
@@ -3181,16 +3229,15 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(12),
-        AlignedByteCode::Drop,
+        AlignedByteCode::JumpIfFalse(11),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::Loop(16),
-        AlignedByteCode::Drop,
+        AlignedByteCode::Loop(15),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3205,17 +3252,12 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(15),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Jump(12),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Loop(19),
-        AlignedByteCode::Drop,
+        AlignedByteCode::JumpIfFalse(6),
+        AlignedByteCode::Jump(3),
+        AlignedByteCode::Loop(10),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3230,17 +3272,12 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(15),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Loop(8),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Loop(19),
-        AlignedByteCode::Drop,
+        AlignedByteCode::JumpIfFalse(6),
+        AlignedByteCode::Loop(7),
+        AlignedByteCode::Loop(10),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3255,10 +3292,10 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(2),
-        AlignedByteCode::Drop,
+        AlignedByteCode::And(1),
         AlignedByteCode::False,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -3275,11 +3312,10 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::False,
-        AlignedByteCode::JumpIfFalse(3),
-        AlignedByteCode::Jump(2),
-        AlignedByteCode::Drop,
+        AlignedByteCode::Or(1),
         AlignedByteCode::True,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -3297,17 +3333,15 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Less,
-        AlignedByteCode::JumpIfFalse(12),
-        AlignedByteCode::Drop,
+        AlignedByteCode::JumpIfFalse(8),
         AlignedByteCode::GetGlobal(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Jump(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3324,18 +3358,17 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),     // 0
         AlignedByteCode::Constant(1),     // 2
         AlignedByteCode::Less,            // 4
-        AlignedByteCode::JumpIfFalse(12), // 5
-        AlignedByteCode::Drop,            // 8
+        AlignedByteCode::JumpIfFalse(11), // 5
         AlignedByteCode::GetGlobal(2),
         AlignedByteCode::Constant(3), // 9
         AlignedByteCode::Call(1),     // 11
         AlignedByteCode::Drop,
-        AlignedByteCode::Jump(9), // 12
-        AlignedByteCode::Drop,    // 15
+        AlignedByteCode::Jump(8), // 12
         AlignedByteCode::GetGlobal(2),
         AlignedByteCode::Constant(4), // 17
         AlignedByteCode::Call(1),
@@ -3354,6 +3387,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Drop,
@@ -3373,6 +3407,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      3,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::GetGlobal(2),
@@ -3397,6 +3432,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
@@ -3420,6 +3456,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Nil,
         AlignedByteCode::DefineGlobal(0),
@@ -3438,6 +3475,7 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::DefineGlobal(0),
@@ -3455,6 +3493,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::GetGlobal(1),
@@ -3474,6 +3513,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::SetGlobal(1),
@@ -3492,6 +3532,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::False,
         AlignedByteCode::Drop,
@@ -3507,7 +3548,11 @@ mod test {
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
-    assert_simple_bytecode(&fun, &vec![AlignedByteCode::Nil, AlignedByteCode::Return]);
+    assert_simple_bytecode(
+      &fun,
+      1,
+      &vec![AlignedByteCode::Nil, AlignedByteCode::Return],
+    );
   }
 
   #[test]
@@ -3518,6 +3563,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Drop,
@@ -3535,6 +3581,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Drop,
@@ -3552,6 +3599,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      5,
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::GetGlobal(2),
@@ -3578,6 +3626,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::False,
         AlignedByteCode::Drop,
@@ -3595,6 +3644,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::Drop,
@@ -3612,6 +3662,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Nil,
         AlignedByteCode::Drop,
@@ -3629,6 +3680,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::False,
         AlignedByteCode::Not,
@@ -3647,6 +3699,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      1,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Negate,
@@ -3665,6 +3718,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3684,6 +3738,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3703,6 +3758,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3722,6 +3778,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3741,6 +3798,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::Nil,
@@ -3760,6 +3818,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::Nil,
@@ -3779,6 +3838,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3798,6 +3858,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3817,6 +3878,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
@@ -3836,6 +3898,7 @@ mod test {
     let fun = test_compile(example, &context);
     assert_simple_bytecode(
       &fun,
+      2,
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),

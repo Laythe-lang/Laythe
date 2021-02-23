@@ -27,6 +27,12 @@ pub enum AlignedByteCode {
   /// Apply Not operator to top stack element
   Not,
 
+  /// Perform a logical and operator
+  And(u16),
+
+  /// Perform a logical or operator
+  Or(u16),
+
   /// Retrieve a constant from the constants table
   Constant(u8),
 
@@ -185,6 +191,8 @@ impl AlignedByteCode {
       Self::Subtract => push_op(code, ByteCode::Subtract),
       Self::Multiply => push_op(code, ByteCode::Multiply),
       Self::Divide => push_op(code, ByteCode::Divide),
+      Self::And(slot) => push_op_u16(code, ByteCode::And, slot),
+      Self::Or(slot) => push_op_u16(code, ByteCode::Or, slot),
       Self::Not => push_op(code, ByteCode::Not),
       Self::Nil => push_op(code, ByteCode::Nil),
       Self::True => push_op(code, ByteCode::True),
@@ -210,7 +218,7 @@ impl AlignedByteCode {
       Self::Import(path) => push_op_u16(code, ByteCode::Import, path),
       Self::ImportSymbol((path, slot)) => {
         push_op_u16_tuple(code, ByteCode::ImportSymbol, path, slot)
-      }
+      },
       Self::Export(slot) => push_op_u16(code, ByteCode::Export, slot),
       Self::DefineGlobal(slot) => push_op_u16(code, ByteCode::DefineGlobal, slot),
       Self::GetGlobal(slot) => push_op_u16(code, ByteCode::GetGlobal, slot),
@@ -228,7 +236,7 @@ impl AlignedByteCode {
       Self::Invoke((slot1, slot2)) => push_op_u16_u8_tuple(code, ByteCode::Invoke, slot1, slot2),
       Self::SuperInvoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2)
-      }
+      },
       Self::Closure(slot) => push_op_u16(code, ByteCode::Closure, slot),
       Self::Method(slot) => push_op_u16(code, ByteCode::Method, slot),
       Self::Field(slot) => push_op_u16(code, ByteCode::Field, slot),
@@ -241,11 +249,11 @@ impl AlignedByteCode {
         let encoded: u16 = unsafe { mem::transmute(index) };
         let bytes = encoded.to_ne_bytes();
         code.extend_from_slice(&bytes);
-      }
+      },
       Self::Slot(slot) => {
         let bytes = slot.to_ne_bytes();
         code.extend_from_slice(&bytes);
-      }
+      },
     }
   }
 
@@ -260,6 +268,14 @@ impl AlignedByteCode {
       ByteCode::Subtract => (AlignedByteCode::Subtract, offset + 1),
       ByteCode::Multiply => (AlignedByteCode::Multiply, offset + 1),
       ByteCode::Divide => (AlignedByteCode::Divide, offset + 1),
+      ByteCode::And => (
+        AlignedByteCode::And(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Or => (
+        AlignedByteCode::Or(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
       ByteCode::Not => (AlignedByteCode::Not, offset + 1),
       ByteCode::Constant => (AlignedByteCode::Constant(store[offset + 1]), offset + 2),
       ByteCode::ConstantLong => (
@@ -394,6 +410,70 @@ impl AlignedByteCode {
       ByteCode::LessEqual => (AlignedByteCode::LessEqual, offset + 1),
     }
   }
+
+  /// What effect will this instruction have on the stack
+  pub fn stack_effect(&self) -> i32 {
+    match self {
+      AlignedByteCode::Return => 0,
+      AlignedByteCode::Negate => 0,
+      AlignedByteCode::Add => -1,
+      AlignedByteCode::Subtract => -1,
+      AlignedByteCode::Multiply => -1,
+      AlignedByteCode::Divide => -1,
+      AlignedByteCode::Not => 0,
+      AlignedByteCode::And(_) => -1,
+      AlignedByteCode::Or(_) => -1,
+      AlignedByteCode::Constant(_) => 1,
+      AlignedByteCode::ConstantLong(_) => 1,
+      AlignedByteCode::Nil => 1,
+      AlignedByteCode::True => 1,
+      AlignedByteCode::False => 1,
+      AlignedByteCode::List(cnt) => -(*cnt as i32) + 1,
+      AlignedByteCode::Map(cnt) => -(*cnt as i32 * 2) + 1,
+      AlignedByteCode::Interpolate(cnt) => -(*cnt as i32) + 1,
+      AlignedByteCode::IterNext(_) => 0,
+      AlignedByteCode::IterCurrent(_) => 0,
+      AlignedByteCode::GetIndex => -1,
+      AlignedByteCode::SetIndex => -1,
+      AlignedByteCode::Drop => -1,
+      AlignedByteCode::DropN(cnt) => -(*cnt as i32),
+      AlignedByteCode::Dup => 1,
+      AlignedByteCode::Import(_) => 1,
+      AlignedByteCode::ImportSymbol(_) => 1,
+      AlignedByteCode::Export(_) => 0,
+      AlignedByteCode::DefineGlobal(_) => -1,
+      AlignedByteCode::GetGlobal(_) => 1,
+      AlignedByteCode::SetGlobal(_) => 0,
+      AlignedByteCode::GetUpvalue(_) => 1,
+      AlignedByteCode::SetUpvalue(_) => 0,
+      AlignedByteCode::GetLocal(_) => 1,
+      AlignedByteCode::SetLocal(_) => 0,
+      AlignedByteCode::GetProperty(_) => 0,
+      AlignedByteCode::SetProperty(_) => -1,
+      AlignedByteCode::JumpIfFalse(_) => -1,
+      AlignedByteCode::Jump(_) => 0,
+      AlignedByteCode::Loop(_) => 0,
+      AlignedByteCode::Call(args) => -(*args as i32),
+      AlignedByteCode::Invoke((_, args)) => -(*args as i32),
+      AlignedByteCode::SuperInvoke((_, args)) => -(*args as i32 + 1),
+      AlignedByteCode::Closure(_) => 1,
+      AlignedByteCode::Method(_) => -1,
+      AlignedByteCode::Field(_) => 0,
+      AlignedByteCode::StaticMethod(_) => -1,
+      AlignedByteCode::Class(_) => 1,
+      AlignedByteCode::Inherit => 0,
+      AlignedByteCode::GetSuper(_) => -1,
+      AlignedByteCode::CloseUpvalue => -1,
+      AlignedByteCode::UpvalueIndex(_) => 0,
+      AlignedByteCode::Slot(_) => 0,
+      AlignedByteCode::Equal => -1,
+      AlignedByteCode::NotEqual => -1,
+      AlignedByteCode::Greater => -1,
+      AlignedByteCode::GreaterEqual => -1,
+      AlignedByteCode::Less => -1,
+      AlignedByteCode::LessEqual => -1,
+    }
+  }
 }
 
 /// Space Lox virtual machine byte codes
@@ -419,6 +499,12 @@ pub enum ByteCode {
 
   /// Apply Not operator to top stack element
   Not,
+
+  /// Perform a logical and operator
+  And,
+
+  /// Perform a logical or operator
+  Or,
 
   /// Retrieve a constant from the constants table
   Constant,
@@ -689,7 +775,7 @@ impl ChunkBuilder {
   /// assert_eq!(builder.instructions().len(), 4);
   /// assert_eq!(builder.instructions()[0], 0);
   /// assert_eq!(builder.instructions()[1], 2);
-  /// assert_eq!(builder.instructions()[2], 7);
+  /// assert_eq!(builder.instructions()[2], 9);
   /// assert_eq!(builder.instructions()[3], 10);
   /// ```
   #[inline]
@@ -706,7 +792,7 @@ impl ChunkBuilder {
         } else {
           self.lines.push(Line::new(line, l2));
         }
-      }
+      },
       None => self.lines.push(Line::new(line, l2)),
     }
   }
@@ -724,7 +810,7 @@ impl ChunkBuilder {
   /// builder.patch_instruction(2, 16);
   ///
   /// assert_eq!(builder.instructions().len(), 3);
-  /// assert_eq!(builder.instructions()[0], 35);
+  /// assert_eq!(builder.instructions()[0], 37);
   /// assert_eq!(builder.instructions()[1], 0);
   /// assert_eq!(builder.instructions()[2], 16);
   /// ```
@@ -1005,7 +1091,7 @@ mod test {
 
       assert_eq!(chunk.instructions.len(), 1);
       match chunk.instructions[0] {
-        9 => assert!(true),
+        11 => assert!(true),
         _ => assert!(false),
       }
     }

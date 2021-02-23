@@ -477,6 +477,8 @@ impl Vm {
         ByteCode::Multiply => self.op_mul(),
         ByteCode::Divide => self.op_div(),
         ByteCode::Not => self.op_not(),
+        ByteCode::And => self.op_and(),
+        ByteCode::Or => self.op_or(),
         ByteCode::Equal => self.op_equal(),
         ByteCode::NotEqual => self.op_not_equal(),
         ByteCode::Greater => self.op_greater(),
@@ -998,8 +1000,8 @@ impl Vm {
     let jump = self.read_short();
     if is_falsey(self.peek(0)) {
       self.update_ip(jump as isize);
-      return Signal::Ok;
     }
+    self.drop();
 
     Signal::Ok
   }
@@ -1415,6 +1417,33 @@ impl Vm {
     }
 
     self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
+  }
+
+  fn op_and(&mut self) -> Signal {
+    let jump = self.read_short();
+    let left = self.peek(0);
+
+    if is_falsey(left) {
+      self.update_ip(jump as isize);
+    } else {
+      self.drop();
+    }
+
+    Signal::Ok
+  }
+
+
+  fn op_or(&mut self) -> Signal {
+    let jump = self.read_short();
+    let left = self.peek(0);
+
+    if is_falsey(left) {
+      self.drop();
+    } else {
+      self.update_ip(jump as isize);
+    }
+
+    Signal::Ok
   }
 
   fn op_less(&mut self) -> Signal {
