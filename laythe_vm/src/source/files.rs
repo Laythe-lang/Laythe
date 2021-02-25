@@ -28,7 +28,7 @@ impl LineOffsets {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::files::LineOffsets;
+  /// use laythe_vm::source::LineOffsets;
   ///
   /// let offsets = LineOffsets::new(vec![0, 10], 20);
   /// ```
@@ -43,7 +43,7 @@ impl LineOffsets {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::files::LineOffsets;
+  /// use laythe_vm::source::LineOffsets;
   ///
   /// let offsets = LineOffsets::new(vec![0, 10], 20);
   /// assert_eq!(offsets.lines(), 2);
@@ -56,7 +56,7 @@ impl LineOffsets {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::files::{LineOffsets, LineError};
+  /// use laythe_vm::source::{LineOffsets, LineError};
   ///
   /// let offsets = LineOffsets::new(vec![0, 10], 20);
   /// assert_eq!(offsets.offset_line(0), Ok(0));
@@ -81,7 +81,7 @@ impl LineOffsets {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::files::{LineOffsets, LineError};
+  /// use laythe_vm::source::{LineOffsets, LineError};
   ///
   /// let offsets = LineOffsets::new(vec![0, 10], 20);
   /// assert_eq!(offsets.line_range(0), Ok(0..10));
@@ -155,7 +155,7 @@ impl VmFiles {
   /// # Examples
   /// ```
   /// use laythe_core::memory::{Allocator, NO_GC};
-  /// use laythe_vm::files::VmFiles;
+  /// use laythe_vm::source::VmFiles;
   ///
   /// let mut alloc = Allocator::default();
   /// let name1 = alloc.manage_str("first.lay", &NO_GC);
@@ -183,7 +183,7 @@ impl VmFiles {
         };
 
         VmFileId(*id)
-      }
+      },
       None => {
         self.files.push(VmFile {
           name,
@@ -194,7 +194,7 @@ impl VmFiles {
         let id = self.files.len() - 1;
         self.name_map.insert(name, id);
         VmFileId(id)
-      }
+      },
     }
   }
 
@@ -203,7 +203,7 @@ impl VmFiles {
   /// # Examples
   /// ```
   /// use laythe_core::memory::{Allocator, NO_GC};
-  /// use laythe_vm::files::{VmFiles, LineOffsets};
+  /// use laythe_vm::source::{VmFiles, LineOffsets};
   ///
   /// let mut alloc = Allocator::default();
   ///
@@ -301,8 +301,9 @@ impl Trace for VmFiles {
 
 #[cfg(test)]
 mod test {
+  use super::*;
   mod line_offsets {
-    use crate::files::{LineError, LineOffsets};
+    use super::*;
 
     #[test]
     fn lines() {

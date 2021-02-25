@@ -1,11 +1,14 @@
 use laythe_core::{
   hooks::{GcHooks, NoContext},
-  managed::{GcObj},
+  managed::GcObj,
   memory::{Allocator, NO_GC},
   module::Module,
   object::Class,
 };
-use laythe_vm::compiler::{Compiler, Parser};
+use laythe_vm::{
+  compiler::{Compiler, Parser},
+  source::Source,
+};
 use std::env;
 use std::fs::File;
 use std::io::prelude::*;
@@ -41,10 +44,11 @@ fn compiler_bench(src: &str) {
   for _ in 0..1000000 {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
-    let gc = Allocator::default();
+    let mut gc = Allocator::default();
+    let source = Source::new(gc.manage_str(src, &NO_GC));
     let class = test_class(&hooks, "class");
 
-    let (ast, line_offsets) = Parser::new(&src, 0).parse();
+    let (ast, line_offsets) = Parser::new(&source, 0).parse();
     let ast = ast.unwrap();
     let module = Module::from_path(&hooks, PathBuf::from("/Benchmark.ly"), class, 0).unwrap();
     let module = hooks.manage(module);
@@ -55,8 +59,12 @@ fn compiler_bench(src: &str) {
 }
 
 fn parser_bench(src: &str) {
+  let mut gc = Allocator::default();
+  let src = gc.manage_str(src, &NO_GC);
+
   for _ in 0..1000000 {
-    let parser = Parser::new(src, 0);
+    let source = Source::new(src);
+    let parser = Parser::new(&source, 0);
     parser.parse().0.unwrap();
   }
 }

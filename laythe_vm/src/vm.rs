@@ -3,7 +3,7 @@ use crate::{
   call_frame::CallFrame,
   compiler::{Compiler, Parser},
   constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
-  files::{VmFileId, VmFiles},
+  source::{Source, VmFileId, VmFiles},
   FeResult,
 };
 use codespan_reporting::term::{self, Config};
@@ -251,16 +251,17 @@ impl Vm {
 
       match stdio.read_line(&mut buffer) {
         Ok(_) => {
-          let managed_source = self.manage_str(buffer);
-          self.push_root(managed_source);
+          let source_content = self.manage_str(buffer);
+          self.push_root(source_content);
+          let source = Source::new(source_content);
 
           let managed_path = self.manage_str(repl_path.to_string_lossy());
           self.push_root(managed_path);
 
-          let file_id = self.files.upsert(managed_path, managed_source);
+          let file_id = self.files.upsert(managed_path, source_content);
           self.pop_roots(2);
 
-          self.interpret(main_module, &managed_source, file_id);
+          self.interpret(main_module, &source, file_id);
         },
         Err(error) => panic!("{}", error),
       }
@@ -268,26 +269,27 @@ impl Vm {
   }
 
   /// Run the provided source file
-  pub fn run(&mut self, module_path: PathBuf, source: &str) -> ExecuteResult {
+  pub fn run(&mut self, module_path: PathBuf, source_content: &str) -> ExecuteResult {
     match self.io.fs().canonicalize(&module_path) {
       Ok(module_path) => {
         let mut directory = module_path.clone();
         directory.pop();
 
         self.root_dir = directory;
-        let managed_source = self.manage_str(source);
-        self.push_root(managed_source);
+        let source_content = self.manage_str(source_content);
+        self.push_root(source_content);
+        let source = Source::new(source_content);
 
         let managed_path = self.manage_str(module_path.to_string_lossy());
         self.push_root(managed_path);
 
-        let file_id = self.files.upsert(managed_path, managed_source);
+        let file_id = self.files.upsert(managed_path, source_content);
         self.pop_roots(2);
 
         let main_id = self.emitter.emit();
         let main_module = self.main_module(module_path, main_id);
 
-        self.interpret(main_module, &managed_source, file_id)
+        self.interpret(main_module, &source, file_id)
       },
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
@@ -306,7 +308,7 @@ impl Vm {
   fn interpret(
     &mut self,
     main_module: Gc<Module>,
-    source: &str,
+    source: &Source,
     file_id: VmFileId,
   ) -> ExecuteResult {
     match self.compile(main_module, source, file_id) {
@@ -330,7 +332,7 @@ impl Vm {
   fn compile(
     &mut self,
     module: Gc<Module>,
-    source: &str,
+    source: &Source,
     file_id: VmFileId,
   ) -> FeResult<GcObj<Fun>, VmFileId> {
     let (ast, line_offsets) = Parser::new(&source, file_id).parse();
@@ -349,6 +351,22 @@ impl Vm {
     let (result, gc, cache_id_emitter) = compiler.compile();
     self.gc.replace(gc);
 
+    // match result {
+    //   Ok(fun) => {
+    //     let cache = InlineCache::new(
+    //       cache_id_emitter.property_count(),
+    //       cache_id_emitter.invoke_count(),
+    //     );
+
+    //     if module.id() < self.inline_cache.len() {
+    //       self.inline_cache[module.id()] = cache;
+    //     } else {
+    //       self.inline_cache.push(cache);
+    //     }
+    //     Ok(self.manage_obj(fun))
+    //   },
+    //   Err(err) => Err(err),
+    // }
     result.map(|fun| {
       let cache = InlineCache::new(
         cache_id_emitter.property_count(),
@@ -1431,7 +1449,6 @@ impl Vm {
 
     Signal::Ok
   }
-
 
   fn op_or(&mut self) -> Signal {
     let jump = self.read_short();

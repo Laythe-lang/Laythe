@@ -1,7 +1,7 @@
 use std::usize;
 
 use crate::{
-  files::LineOffsets,
+  source::LineOffsets,
   token::{Lexeme, Token, TokenKind},
 };
 use laythe_core::utils::{next_boundary, previous_boundary};
@@ -149,7 +149,7 @@ impl<'a> Scanner<'a> {
           self.interpolations[end].brackets += 1;
         }
         self.make_token_source(TokenKind::LeftBrace)
-      }
+      },
       "}" => {
         if !self.interpolations.is_empty() {
           let end = self.interpolations.len() - 1;
@@ -162,7 +162,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.make_token_source(TokenKind::RightBrace)
-      }
+      },
       "[" => self.make_token_source(TokenKind::LeftBracket),
       "]" => self.make_token_source(TokenKind::RightBracket),
       ":" => self.make_token_source(TokenKind::Colon),
@@ -177,7 +177,7 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Minus)
         }
-      }
+      },
       "&" => self.make_token_source(TokenKind::Amp),
       "+" => {
         if self.match_char("=") {
@@ -185,7 +185,7 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Plus)
         }
-      }
+      },
       "|" => self.make_token_source(TokenKind::Pipe),
       "/" => {
         if self.match_char("=") {
@@ -193,42 +193,42 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Slash)
         }
-      }
+      },
       "*" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::StarEqual)
         } else {
           self.make_token_source(TokenKind::Star)
         }
-      }
+      },
       "=" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::EqualEqual)
         } else {
           self.make_token_source(TokenKind::Equal)
         }
-      }
+      },
       "<" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::LessEqual)
         } else {
           self.make_token_source(TokenKind::Less)
         }
-      }
+      },
       ">" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::GreaterEqual)
         } else {
           self.make_token_source(TokenKind::Greater)
         }
-      }
+      },
       "!" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::BangEqual)
         } else {
           self.make_token_source(TokenKind::Bang)
         }
-      }
+      },
       "\"" => self.string(TokenKind::String, "\""),
       "'" => self.string(TokenKind::String, "'"),
       _ => {
@@ -241,7 +241,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.error_token("Unexpected character.")
-      }
+      },
     }
   }
 
@@ -250,15 +250,20 @@ impl<'a> Scanner<'a> {
   ///
   /// # Examples
   /// ```
-  /// use laythe_vm::compiler::{Scanner};
-  /// use laythe_vm::token::TokenKind;
-  /// use laythe_vm::files::LineError;
+  /// use laythe_vm::{
+  ///   compiler::Scanner,
+  ///   source::Source,
+  ///   token::TokenKind,
+  ///   source::LineError,
+  /// };
+  /// use laythe_core::memory::{Allocator, NO_GC};
   ///
-  /// let source = String::from("
+  /// let mut gc = Allocator::default();
+  /// let source = Source::new(gc.manage_str("
   /// let x = \"something\";
   /// if x != \"something\" {
   ///   print(x);
-  /// }");
+  /// }", &NO_GC));
   ///
   /// let mut scanner = Scanner::new(&source);
   /// let token = scanner.scan_token();
@@ -281,10 +286,10 @@ impl<'a> Scanner<'a> {
           "\n" => {
             self.new_line();
             self.advance_indices();
-          }
+          },
           _ => {
             self.advance_indices();
-          }
+          },
         }
       }
     }
@@ -360,7 +365,7 @@ impl<'a> Scanner<'a> {
         "\n" => {
           self.new_line();
           buffer.push('\n');
-        }
+        },
         "\\" => {
           self.advance_indices();
 
@@ -410,24 +415,24 @@ impl<'a> Scanner<'a> {
                   Some(c) => buffer.push(c),
                   None => {
                     return self.error_token_owned(format!("Invalid unicode escape {}.", unicode));
-                  }
+                  },
                 },
                 Err(_) => {
                   return self.error_token_owned(format!(
                     "Invalid hexadecimal unicode escape sequence {}.",
                     unicode
                   ));
-                }
+                },
               }
-            }
+            },
             _ => {
               return self.error_token_owned(format!(
                 "Invalid escape character '{}'.",
                 self.current_slice()
               ));
-            }
+            },
           }
-        }
+        },
         "$" => {
           if self.peek_next().map(|c| c == "{").unwrap_or(false) {
             self.advance_indices();
@@ -443,7 +448,7 @@ impl<'a> Scanner<'a> {
           } else {
             buffer.push('$');
           }
-        }
+        },
         c => buffer.push_str(c),
       }
       self.advance_indices();
@@ -469,11 +474,11 @@ impl<'a> Scanner<'a> {
       match c {
         " " | "\r" | "\t" => {
           self.advance_indices();
-        }
+        },
         "\n" => {
           self.new_line();
           self.advance_indices();
-        }
+        },
         "/" => match self.peek_next() {
           Some(next) => {
             if next == "/" {
@@ -483,7 +488,7 @@ impl<'a> Scanner<'a> {
             } else {
               return;
             }
-          }
+          },
           None => return,
         },
         _ => return,
