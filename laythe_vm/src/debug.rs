@@ -65,6 +65,8 @@ pub fn disassemble_instruction(
     AlignedByteCode::Subtract => simple_instruction(stdio.stdout(), "Subtract", offset),
     AlignedByteCode::Multiply => simple_instruction(stdio.stdout(), "Multiply", offset),
     AlignedByteCode::Divide => simple_instruction(stdio.stdout(), "Divide", offset),
+    AlignedByteCode::And(jump) => jump_instruction(stdio.stdout(), "And", 1, jump, offset),
+    AlignedByteCode::Or(jump) => jump_instruction(stdio.stdout(), "Or", 1, jump, offset),
     AlignedByteCode::Not => simple_instruction(stdio.stdout(), "Not", offset),
     AlignedByteCode::Nil => simple_instruction(stdio.stdout(), "Nil", offset),
     AlignedByteCode::True => simple_instruction(stdio.stdout(), "True", offset),

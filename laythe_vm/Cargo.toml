@@ -19,9 +19,9 @@ laythe_lib = { path = "../laythe_lib" }
 laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }
 fnv = "1.0.3"
-smol_str = "0.1.17"
 codespan = "0.11.0"
 codespan-reporting = "0.11.0"
+bumpalo = { version = "3.6.1", features=["boxed"] }
 
 [dev-dependencies]
 criterion = "0.3.4"

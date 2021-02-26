@@ -2,8 +2,8 @@ use crate::{
   cache::InlineCache,
   call_frame::CallFrame,
   compiler::{Compiler, Parser},
-  constants::{DEFAULT_STACK_MAX, FRAME_MAX, REPL_MODULE},
-  files::{VmFileId, VmFiles},
+  constants::{INITIAL_FRAME_SIZE, INITIAL_STACK_SIZE, MAX_FRAME_SIZE, REPL_MODULE},
+  source::{Source, VmFileId, VmFiles},
   FeResult,
 };
 use codespan_reporting::term::{self, Config};
@@ -30,12 +30,12 @@ use laythe_core::{
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
 use laythe_native::io::io_native;
-use std::convert::TryInto;
 use std::io::Write;
 use std::mem;
+use std::path::PathBuf;
 use std::ptr;
 use std::{cell::RefCell, cmp::Ordering};
-use std::{path::PathBuf, ptr::NonNull};
+use std::{convert::TryInto, usize};
 
 #[cfg(feature = "debug")]
 use crate::debug::{disassemble_instruction, exception_catch};
@@ -152,9 +152,6 @@ pub struct Vm {
   /// may want to eventually have a function rental so native functions can set name / module
   /// for exception
   native_fun_stub: GcObj<Fun>,
-
-  /// The current frame depth of the program
-  frame_count: usize,
 }
 
 impl Vm {
@@ -173,22 +170,19 @@ impl Vm {
     let global = std_lib.root_module();
 
     let builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
-
     let managed_fun = hooks.manage_obj(builder.build());
     let closure = hooks.manage_obj(Closure::without_upvalues(managed_fun));
 
-    let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
-    let mut stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
+    let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
+    frames.push(CallFrame::new(closure));
+
+    let mut stack = vec![VALUE_NIL; INITIAL_STACK_SIZE];
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let current_frame = &mut frames[0];
-    let current_fun = current_frame.closure.fun();
     let stack_top = &mut stack[1] as *mut Value;
-    let ip = ptr::null();
 
-    let current_frame = current_frame as *mut CallFrame;
     let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
     native_builder.write_instruction(AlignedByteCode::Nil, 0);
 
@@ -212,13 +206,12 @@ impl Vm {
       module_cache: Map::default(),
       inline_cache,
       global,
-      frame_count: 1,
-      current_fun,
-      current_frame,
+      current_fun: managed_fun,
+      current_frame: ptr::null_mut(),
       current_error: None,
       exit_code: 0,
       stack_top,
-      ip,
+      ip: ptr::null(),
       native_fun_stub,
       open_upvalues: Vec::with_capacity(100),
     };
@@ -251,16 +244,17 @@ impl Vm {
 
       match stdio.read_line(&mut buffer) {
         Ok(_) => {
-          let managed_source = self.manage_str(buffer);
-          self.push_root(managed_source);
+          let source_content = self.manage_str(buffer);
+          self.push_root(source_content);
+          let source = Source::new(source_content);
 
           let managed_path = self.manage_str(repl_path.to_string_lossy());
           self.push_root(managed_path);
 
-          let file_id = self.files.upsert(managed_path, managed_source);
+          let file_id = self.files.upsert(managed_path, source_content);
           self.pop_roots(2);
 
-          self.interpret(main_module, &managed_source, file_id);
+          self.interpret(main_module, &source, file_id);
         },
         Err(error) => panic!("{}", error),
       }
@@ -268,26 +262,27 @@ impl Vm {
   }
 
   /// Run the provided source file
-  pub fn run(&mut self, module_path: PathBuf, source: &str) -> ExecuteResult {
+  pub fn run(&mut self, module_path: PathBuf, source_content: &str) -> ExecuteResult {
     match self.io.fs().canonicalize(&module_path) {
       Ok(module_path) => {
         let mut directory = module_path.clone();
         directory.pop();
 
         self.root_dir = directory;
-        let managed_source = self.manage_str(source);
-        self.push_root(managed_source);
+        let source_content = self.manage_str(source_content);
+        self.push_root(source_content);
+        let source = Source::new(source_content);
 
         let managed_path = self.manage_str(module_path.to_string_lossy());
         self.push_root(managed_path);
 
-        let file_id = self.files.upsert(managed_path, managed_source);
+        let file_id = self.files.upsert(managed_path, source_content);
         self.pop_roots(2);
 
         let main_id = self.emitter.emit();
         let main_module = self.main_module(module_path, main_id);
 
-        self.interpret(main_module, &managed_source, file_id)
+        self.interpret(main_module, &source, file_id)
       },
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
@@ -306,7 +301,7 @@ impl Vm {
   fn interpret(
     &mut self,
     main_module: Gc<Module>,
-    source: &str,
+    source: &Source,
     file_id: VmFileId,
   ) -> ExecuteResult {
     match self.compile(main_module, source, file_id) {
@@ -330,7 +325,7 @@ impl Vm {
   fn compile(
     &mut self,
     module: Gc<Module>,
-    source: &str,
+    source: &Source,
     file_id: VmFileId,
   ) -> FeResult<GcObj<Fun>, VmFileId> {
     let (ast, line_offsets) = Parser::new(&source, file_id).parse();
@@ -408,7 +403,7 @@ impl Vm {
       self.push(*arg);
     }
 
-    let mode = ExecuteMode::CallFunction(self.frame_count);
+    let mode = ExecuteMode::CallFunction(self.frames.len());
     match self.resolve_call(callable, args.len() as u8) {
       Signal::Ok => self.execute(mode),
       Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
@@ -425,7 +420,7 @@ impl Vm {
       self.push(*arg);
     }
 
-    let mode = ExecuteMode::CallFunction(self.frame_count);
+    let mode = ExecuteMode::CallFunction(self.frames.len());
     match self.resolve_call(method, args.len() as u8) {
       Signal::Ok => self.execute(mode),
       Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
@@ -454,11 +449,6 @@ impl Vm {
     }
   }
 
-  /// Get the class for this value
-  fn get_class(&mut self, this: Value) -> GcObj<Class> {
-    self.builtin.primitives.for_value(this, this.kind())
-  }
-
   /// Main virtual machine execution loop. This will run the until the program interrupts
   /// from a normal exit or from a runtime error.
   fn execute(&mut self, mode: ExecuteMode) -> ExecuteResult {
@@ -482,6 +472,8 @@ impl Vm {
         ByteCode::Multiply => self.op_mul(),
         ByteCode::Divide => self.op_div(),
         ByteCode::Not => self.op_not(),
+        ByteCode::And => self.op_and(),
+        ByteCode::Or => self.op_or(),
         ByteCode::Equal => self.op_equal(),
         ByteCode::NotEqual => self.op_not_equal(),
         ByteCode::Greater => self.op_greater(),
@@ -535,7 +527,7 @@ impl Vm {
       match result {
         Signal::OkReturn => {
           if let ExecuteMode::CallFunction(depth) = mode {
-            if depth == self.frame_count {
+            if depth == self.frames.len() {
               return ExecuteResult::FunResult(self.get_val(-1));
             }
           }
@@ -558,7 +550,7 @@ impl Vm {
 
   #[inline]
   fn value_class(&self, value: Value) -> GcObj<Class> {
-    self.builtin.primitives.for_value(value, value.kind())
+    self.builtin.primitives.for_value(value, &self.stack)
   }
 
   #[inline]
@@ -620,6 +612,18 @@ impl Vm {
   #[inline]
   fn slots(&self) -> *mut Value {
     unsafe { (*self.current_frame).slots }
+  }
+
+  /// Get the current frame slots
+  #[inline]
+  fn slot(&self, slot: isize) -> Value {
+    unsafe { *self.slots().offset(slot) }
+  }
+
+  /// Get the current frame slots
+  #[inline]
+  fn set_slot(&mut self, slot: isize, value: Value) {
+    unsafe { *self.slots().offset(slot) = value }
   }
 
   /// Get the current closure
@@ -720,11 +724,39 @@ impl Vm {
     self.read_constant(index).to_obj().to_str()
   }
 
+  /// Ensure the stack has enough space if not reserve more
+  /// and update pointers into the stack to their new location
+  unsafe fn ensure_stack(&mut self, additional: usize) {
+    let len = self.stack_top.offset_from(self.stack.as_ptr());
+
+    if self.stack.capacity() >= len as usize + additional - 1 {
+      return;
+    }
+
+    let stack_old = self.stack.as_ptr();
+    self.stack.reserve(additional);
+    let stack_new = self.stack.as_ptr();
+
+    if stack_old != stack_new {
+      let shift = stack_new.offset_from(stack_old);
+      self.stack_top = self.stack_top.offset(shift);
+
+      self.frames.iter_mut().skip(1).for_each(|frame| {
+        frame.slots = frame.slots.offset(shift);
+      });
+    }
+
+    while self.stack.len() != self.stack.capacity() {
+      self.stack.push(VALUE_NIL);
+    }
+    debug_assert_eq!(self.stack.len(), self.stack.capacity());
+  }
+
   /// reset the stack in case of interrupt
   fn reset_stack(&mut self) {
     self.stack_top = &mut self.stack[1] as *mut Value;
-    self.current_frame = &mut self.frames[0] as *mut CallFrame;
-    self.frame_count = 1;
+    self.frames.truncate(1);
+    self.current_frame = self.frames.as_mut_ptr();
     self.open_upvalues.clear();
   }
 
@@ -991,8 +1023,8 @@ impl Vm {
     let jump = self.read_short();
     if is_falsey(self.peek(0)) {
       self.update_ip(jump as isize);
-      return Signal::Ok;
     }
+    self.drop();
 
     Signal::Ok
   }
@@ -1055,9 +1087,7 @@ impl Vm {
   fn op_set_local(&mut self) -> Signal {
     let slot = self.read_byte() as isize;
     let copy = self.peek(0);
-    let slots = self.slots();
-
-    unsafe { *slots.offset(slot) = copy }
+    self.set_slot(slot, copy);
 
     Signal::Ok
   }
@@ -1113,7 +1143,9 @@ impl Vm {
   fn op_set_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
     let value = self.peek(0);
-    self.closure().set_value(slot as usize, value);
+    self
+      .closure()
+      .set_value(slot as usize, &mut self.stack, value);
 
     Signal::Ok
   }
@@ -1150,15 +1182,13 @@ impl Vm {
 
   fn op_get_local(&mut self) -> Signal {
     let slot = self.read_byte() as isize;
-    let copy = unsafe { *self.slots().offset(slot) };
-
-    self.push(copy);
+    self.push(self.slot(slot));
     Signal::Ok
   }
 
   fn op_get_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
-    self.push(self.closure().get_value(slot as usize));
+    self.push(self.closure().get_value(slot as usize, &self.stack));
 
     Signal::Ok
   }
@@ -1412,6 +1442,32 @@ impl Vm {
     self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
+  fn op_and(&mut self) -> Signal {
+    let jump = self.read_short();
+    let left = self.peek(0);
+
+    if is_falsey(left) {
+      self.update_ip(jump as isize);
+    } else {
+      self.drop();
+    }
+
+    Signal::Ok
+  }
+
+  fn op_or(&mut self) -> Signal {
+    let jump = self.read_short();
+    let left = self.peek(0);
+
+    if is_falsey(left) {
+      self.drop();
+    } else {
+      self.update_ip(jump as isize);
+    }
+
+    Signal::Ok
+  }
+
   fn op_less(&mut self) -> Signal {
     let (right, left) = (self.pop(), self.pop());
 
@@ -1587,10 +1643,7 @@ impl Vm {
         let upvalue_index: UpvalueIndex = unsafe { mem::transmute(self.read_short()) };
 
         match upvalue_index {
-          UpvalueIndex::Local(index) => {
-            let value = unsafe { &*self.slots().offset(index as isize) };
-            self.capture_upvalue(NonNull::from(value))
-          },
+          UpvalueIndex::Local(index) => self.capture_upvalue(index as usize),
           UpvalueIndex::Upvalue(upvalue) => self.closure().get_upvalue(upvalue as usize),
         }
       })
@@ -1604,7 +1657,7 @@ impl Vm {
   }
 
   fn op_close_upvalue(&mut self) -> Signal {
-    self.close_upvalues(NonNull::from(unsafe { &*self.stack_top.offset(-1) }));
+    self.close_upvalues(unsafe { self.stack_top.offset(-1) });
     self.drop();
     Signal::Ok
   }
@@ -1628,7 +1681,7 @@ impl Vm {
   /// resolve the current value and call in the appropriate manner
   fn resolve_call(&mut self, callee: Value, arg_count: u8) -> Signal {
     if !callee.is_obj() {
-      let class_name = self.get_class(callee).name();
+      let class_name = self.value_class(callee).name();
       return self.runtime_error(
         self.builtin.errors.runtime,
         &format!("{} is not callable.", class_name),
@@ -1655,7 +1708,7 @@ impl Vm {
         ))
       },
       _ => {
-        let class_name = self.get_class(callee).name();
+        let class_name = self.value_class(callee).name();
         self.runtime_error(
           self.builtin.errors.runtime,
           &format!("{} is not callable.", class_name),
@@ -1756,7 +1809,7 @@ impl Vm {
     }
 
     // set the current current instruction pointer. check for overflow
-    if self.frame_count == FRAME_MAX {
+    if self.frames.len() == MAX_FRAME_SIZE {
       return self.runtime_error(self.builtin.errors.runtime, "Stack overflow.");
     }
 
@@ -1769,26 +1822,28 @@ impl Vm {
   fn push_frame(&mut self, closure: GcObj<Closure>, arg_count: u8) {
     unsafe {
       self.store_ip();
-      let frame = &mut *self.current_frame.offset(1);
-      frame.closure = closure;
-      frame.ip = closure.fun().chunk().instructions().get_unchecked(0) as *const u8;
-      frame.slots = self.stack_top.offset(-(arg_count as isize) - 1);
-      self.current_frame = frame as *mut CallFrame;
+      self.ensure_stack(closure.fun().max_slots());
+
+      self.frames.push(CallFrame {
+        closure,
+        ip: closure.fun().chunk().instructions().as_ptr(),
+        slots: self.stack_top.offset(-(arg_count as isize) - 1),
+      });
+      self.current_frame = self.frames.as_mut_ptr().add(self.frames.len() - 1);
       self.load_ip();
     }
 
     self.current_fun = closure.fun();
-    self.frame_count += 1;
   }
 
   /// Pop a frame off the call stack
   #[inline]
   fn pop_frame(&mut self) -> Option<Signal> {
-    self.close_upvalues(NonNull::from(unsafe { &*self.slots() }));
-    self.frame_count -= 1;
+    self.close_upvalues(unsafe { (*self.current_frame).slots });
+    self.frames.pop();
 
     // if the frame was the whole script signal an ok interrupt
-    if self.frame_count == 1 {
+    if self.frames.len() == 1 {
       self.drop();
       return Some(Signal::Exit);
     }
@@ -1959,47 +2014,51 @@ impl Vm {
   }
 
   /// capture an upvalue return an existing upvalue if already captured
-  fn capture_upvalue(&mut self, local_index: NonNull<Value>) -> GcObj<Upvalue> {
+  fn capture_upvalue(&mut self, local_index: usize) -> GcObj<Upvalue> {
+    let slot_index = unsafe { self.slots().offset_from(self.stack.get_unchecked(0)) as usize };
+    let upvalue_index = slot_index + local_index;
+
     let closest_upvalue = self
       .open_upvalues
       .iter()
       .rev()
       .find(|upvalue| match ***upvalue {
-        Upvalue::Open(index) => index <= local_index,
+        Upvalue::Open(index) => index <= upvalue_index,
         Upvalue::Closed(_) => self.internal_error("Encountered closed upvalue."),
       });
 
     if let Some(upvalue) = closest_upvalue {
       if let Upvalue::Open(index) = **upvalue {
-        if index == local_index {
+        if index == upvalue_index {
           return *upvalue;
         }
       }
     }
 
-    let created_upvalue = self.manage_obj(Upvalue::Open(local_index));
+    let created_upvalue = self.manage_obj(Upvalue::Open(upvalue_index));
     self.open_upvalues.push(created_upvalue);
 
     created_upvalue
   }
 
   /// hoist all open upvalue above the last index
-  fn close_upvalues(&mut self, last_value: NonNull<Value>) {
+  fn close_upvalues(&mut self, last_value: *mut Value) {
     if !self.open_upvalues.is_empty() {
       let mut retain = self.open_upvalues.len();
 
+      let last_index = unsafe { last_value.offset_from(self.stack.get_unchecked(0)) as usize };
       for upvalue in self.open_upvalues.iter_mut().rev() {
-        let value = match **upvalue {
-          Upvalue::Open(value) => value,
+        let index = match **upvalue {
+          Upvalue::Open(index) => index,
           Upvalue::Closed(_) => self.internal_error("Unexpected closed upvalue."),
         };
 
-        if value < last_value {
+        if index < last_index {
           break;
         }
 
         retain -= 1;
-        upvalue.hoist();
+        upvalue.hoist(&self.stack)
       }
 
       self.open_upvalues.truncate(retain)
@@ -2025,8 +2084,8 @@ impl Vm {
     #[cfg(feature = "debug_upvalue")]
     self.print_upvalue_debug(&mut stdio)?;
 
-    let start = &self.current_fun.chunk().instructions()[0] as *const u8;
-    let offset = ptr_len(start, ip);
+    let start = self.current_fun.chunk().instructions().as_ptr();
+    let offset = unsafe { ip.offset_from(start) } as usize;
     disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, false)
   }
 
@@ -2035,9 +2094,9 @@ impl Vm {
   fn print_stack_debug(&self, stdio: &mut Stdio) -> io::Result<()> {
     let stdout = stdio.stdout();
 
-    if self.frame_count > 2 {
+    if self.frames.len() > 1 {
       write!(stdout, "Frame Stack:  ")?;
-      for frame in self.frames[1..(self.frame_count)].iter() {
+      for frame in self.frames.iter() {
         let fun = frame.closure.fun();
         write!(stdout, "[ {}:{} ]", fun.module().name(), fun.name())?;
       }
@@ -2071,8 +2130,8 @@ impl Vm {
     write!(stdout, "Open UpVal:   ")?;
     for upvalue in &self.open_upvalues {
       match &**upvalue {
-        Upvalue::Open(stack_ptr) => {
-          write!(stdout, "[ stack {} ]", unsafe { *stack_ptr.as_ref() })?;
+        Upvalue::Open(index) => {
+          write!(stdout, "[ stack {} ]", self.stack[*index])?;
         },
         Upvalue::Closed(closed) => {
           write!(stdout, "[ heap {} ]", closed)?;
@@ -2109,7 +2168,7 @@ impl Vm {
     let error_message = val!(self.manage_str(message));
     self.push(error_message);
 
-    let mode = ExecuteMode::CallFunction(self.frame_count);
+    let mode = ExecuteMode::CallFunction(self.frames.len());
     let result = match self.resolve_call(val!(error), 1) {
       Signal::Ok => self.execute(mode),
       Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
@@ -2143,47 +2202,50 @@ impl Vm {
 
   /// Search for a catch block up the stack, printing the error if no catch is found
   fn stack_unwind(&mut self, error: GcObj<Instance>) -> Option<ExecuteResult> {
-    let mut popped_frames = None;
     let mut stack_top = None;
+    let mut jump_pair = None;
+
     self.store_ip();
 
     // travel down stack frames looking for an applicable handle
-    for (idx, frame) in self.frames[1..self.frame_count]
-      .iter_mut()
-      .rev()
-      .enumerate()
-    {
+    for (idx, frame) in self.frames.iter().skip(1).rev().enumerate() {
       let fun = frame.closure.fun();
       let instructions = &*fun.chunk().instructions();
 
-      let offset = ptr_len(&instructions[0], frame.ip);
+      let offset = unsafe { frame.ip.offset_from(instructions.as_ptr()) as usize };
       if let Some(offset) = fun.has_catch_jump(offset as u16) {
-        // if found set all the stack information to the correct state
-        frame.ip = &instructions[offset as usize] as *const u8;
-
-        self.frame_count -= idx;
-        self.current_frame = frame as *mut CallFrame;
-        self.current_fun = frame.closure.fun();
-        self.ip = frame.ip;
-
-        if let Some(top) = stack_top {
-          self.stack_top = top;
-        }
-
-        // track frames popped for debugging info
-        popped_frames = Some(idx);
+        jump_pair = Some((self.frames.len() - idx - 1, offset));
         break;
       }
 
       stack_top = Some(frame.slots);
     }
 
-    match popped_frames {
-      Some(_idx) => {
+    match jump_pair {
+      Some((idx, ip_offset)) => {
+        let frame = &mut self.frames[idx];
+        let fun = frame.closure.fun();
+        let instructions = &*fun.chunk().instructions();
+
+        // if found set all the stack information to the correct state
+        frame.ip = &instructions[ip_offset as usize] as *const u8;
+
+        self.current_frame = frame as *mut CallFrame;
+        self.current_fun = frame.closure.fun();
+        self.ip = frame.ip;
+
+        #[cfg(feature = "debug")]
+        let popped_frames = self.frames.len() - (idx + 1);
+        self.frames.truncate(idx + 1);
+
+        if let Some(top) = stack_top {
+          self.stack_top = top;
+        }
+
         #[cfg(feature = "debug")]
         {
           let frame = unsafe { &*self.current_frame };
-          if let Err(_) = self.print_exception_debug(frame, _idx) {
+          if let Err(_) = self.print_exception_debug(frame, popped_frames) {
             return Some(ExecuteResult::InternalError);
           }
         }
@@ -2206,7 +2268,7 @@ impl Vm {
     writeln!(stderr, "{}: {}", &*error.class().name(), &*message)
       .expect("Unable to write to stderr");
 
-    for frame in self.frames[1..self.frame_count].iter().rev() {
+    for frame in self.frames.iter().skip(1).rev() {
       let fun = frame.closure.fun();
       let location: String = match &*fun.name() {
         SCRIPT => SCRIPT.to_owned(),
@@ -2250,10 +2312,9 @@ impl From<VmDependencies> for Vm {
     let fun = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
 
     let managed_fun = hooks.manage_obj(fun.build());
-    let closure = hooks.manage_obj(Closure::without_upvalues(managed_fun));
 
-    let mut frames = vec![CallFrame::new(closure); FRAME_MAX];
-    let mut stack = vec![VALUE_NIL; DEFAULT_STACK_MAX];
+    let frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
+    let mut stack = vec![VALUE_NIL; INITIAL_STACK_SIZE];
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
@@ -2264,12 +2325,9 @@ impl From<VmDependencies> for Vm {
       .current_dir()
       .expect("Could not obtain the current working directory.");
 
-    let current_frame = &mut frames[0];
-    let current_fun = current_frame.closure.fun();
     let stack_top = &mut stack[1] as *mut Value;
     let ip = ptr::null();
 
-    let current_frame = current_frame as *mut CallFrame;
     let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
     native_builder.write_instruction(AlignedByteCode::Nil, 0);
 
@@ -2290,9 +2348,8 @@ impl From<VmDependencies> for Vm {
       packages: Map::default(),
       module_cache: Map::default(),
       global,
-      frame_count: 1,
-      current_fun,
-      current_frame,
+      current_fun: managed_fun,
+      current_frame: ptr::null_mut(),
       current_error: None,
       exit_code: 0,
       stack_top,
@@ -2309,8 +2366,8 @@ impl From<VmDependencies> for Vm {
 impl TraceRoot for Vm {
   fn trace(&self) {
     unsafe {
-      let start = &self.stack[0] as *const Value;
-      let len = ptr_len(start, self.stack_top);
+      let start = self.stack.as_ptr();
+      let len = self.stack_top.offset_from(start) as usize;
       let slice = std::slice::from_raw_parts(start, len);
 
       slice.iter().for_each(|value| {
@@ -2318,7 +2375,7 @@ impl TraceRoot for Vm {
       });
     }
 
-    self.frames[0..self.frame_count].iter().for_each(|frame| {
+    self.frames.iter().skip(1).for_each(|frame| {
       frame.closure.trace();
     });
 
@@ -2337,8 +2394,8 @@ impl TraceRoot for Vm {
 
   fn trace_debug(&self, log: &mut dyn Write) {
     unsafe {
-      let start = &self.stack[0] as *const Value;
-      let len = ptr_len(start, self.stack_top) + 1;
+      let start = self.stack.as_ptr();
+      let len = self.stack_top.offset_from(start) as usize;
       let slice = std::slice::from_raw_parts(start, len);
 
       slice.iter().for_each(|value| {
@@ -2346,7 +2403,7 @@ impl TraceRoot for Vm {
       });
     }
 
-    self.frames[0..self.frame_count].iter().for_each(|frame| {
+    self.frames.iter().skip(1).for_each(|frame| {
       frame.closure.trace_debug(log);
     });
 
@@ -2404,6 +2461,6 @@ impl ValueContext for Vm {
   }
 
   fn get_class(&mut self, this: Value) -> Value {
-    val!(self.get_class(this))
+    val!(self.value_class(this))
   }
 }

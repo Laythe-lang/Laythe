@@ -5,7 +5,7 @@ mod cache;
 mod call_frame;
 pub mod compiler;
 mod constants;
-pub mod files;
+pub mod source;
 pub mod token;
 pub mod vm;
 use codespan_reporting::diagnostic::Diagnostic;

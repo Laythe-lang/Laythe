@@ -57,7 +57,10 @@ pub struct FunBuilder {
   arity: Arity,
 
   /// Number of upvalues
-  upvalue_count: usize,
+  upvalue_count: u8,
+
+  /// The max number of slots in this function
+  max_slots: i32,
 
   /// The module this function belongs to
   module: Gc<Module>,
@@ -74,6 +77,7 @@ impl FunBuilder {
     Self {
       arity: Arity::default(),
       upvalue_count: 0,
+      max_slots: 0,
       chunk: ChunkBuilder::default(),
       module,
       name,
@@ -88,6 +92,16 @@ impl FunBuilder {
     self.upvalue_count += 1;
   }
 
+  /// Update max slots if new count is greater than
+  /// previous
+  #[inline]
+  pub fn update_max_slots(&mut self, slots: i32) {
+    // debug_assert!(slots >= 0);
+    if slots > self.max_slots {
+      self.max_slots = slots
+    }
+  }
+
   /// Set the arity of this function
   pub fn set_arity(&mut self, arity: Arity) {
     self.arity = arity;
@@ -95,7 +109,7 @@ impl FunBuilder {
 
   /// Retrieve the current count of upvalues
   #[inline]
-  pub fn upvalue_count(&self) -> usize {
+  pub fn upvalue_count(&self) -> u8 {
     self.upvalue_count
   }
 
@@ -134,6 +148,7 @@ impl FunBuilder {
       name: self.name,
       arity: self.arity,
       upvalue_count: self.upvalue_count,
+      max_slot: self.max_slots as u32,
       module_id: self.module.id(),
       module: self.module,
       try_blocks: self.try_blocks.into_boxed_slice(),
@@ -165,7 +180,10 @@ pub struct Fun {
   arity: Arity,
 
   /// Number of upvalues
-  upvalue_count: usize,
+  upvalue_count: u8,
+
+  /// The max number of slots for this function
+  max_slot: u32,
 
   /// What is the idea of the associated module
   module_id: usize,
@@ -222,7 +240,13 @@ impl Fun {
   /// Number of upvalues
   #[inline]
   pub fn upvalue_count(&self) -> usize {
-    self.upvalue_count
+    self.upvalue_count as usize
+  }
+
+  /// Number of slots
+  #[inline]
+  pub fn max_slots(&self) -> usize {
+    self.max_slot as usize
   }
 
   pub fn has_catch_jump(&self, ip: u16) -> Option<u16> {

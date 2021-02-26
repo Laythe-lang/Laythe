@@ -94,8 +94,8 @@ pub struct BuiltInPrimitives {
 }
 
 impl BuiltInPrimitives {
-  pub fn for_value(&self, value: Value, kind: ValueKind) -> GcObj<Class> {
-    match kind {
+  pub fn for_value(&self, value: Value, stack: &[Value]) -> GcObj<Class> {
+    match value.kind() {
       ValueKind::Bool => self.bool,
       ValueKind::Nil => self.nil,
       ValueKind::Number => self.number,
@@ -114,11 +114,11 @@ impl BuiltInPrimitives {
           ObjectKind::Native => self.native_fun,
           ObjectKind::String => self.string,
           ObjectKind::Upvalue => {
-            let value = obj.to_upvalue().value();
-            self.for_value(value, value.kind())
+            let value = obj.to_upvalue().value(stack);
+            self.for_value(value, stack)
           },
         }
-      }
+      },
     }
   }
 }

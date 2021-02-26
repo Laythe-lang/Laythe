@@ -1,14 +1,14 @@
 let start = clock();
 
-for i in range(10000) {
+for i in 10000.times() {
   let collection = [];
-  for j in range(1000) {
+  for j in 1000.times() {
     collection.push(nil);
     collection[j] = j;
   }
 
   let sum = 0;
-  for j in range(1000) {
+  for j in 1000.times() {
     sum = sum + collection[1000 - j - 1];
     collection.pop();
   }

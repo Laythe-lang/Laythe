@@ -4,18 +4,13 @@ use crate::{
   managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
   value::Value,
 };
-use std::{
-  fmt,
-  io::Write,
-  mem,
-  ptr::{self, NonNull},
-};
+use std::{fmt, io::Write, mem, ptr};
 
 use super::ObjectKind;
 
 #[derive(PartialEq, Clone, Debug)]
 pub enum Upvalue {
-  Open(NonNull<Value>),
+  Open(usize),
   Closed(Value),
 }
 
@@ -30,21 +25,20 @@ impl Upvalue {
   /// use std::rc::Rc;
   /// use std::ptr::NonNull;
   ///
-  /// let value = val!(10.0);
+  /// let stack = &[val!(10.0)];
   ///
-  /// let mut upvalue = Upvalue::Open(NonNull::from(&value));
-  /// upvalue.hoist();
+  /// let mut upvalue = Upvalue::Open(0);
+  /// upvalue.hoist(stack);
   ///
   /// match upvalue {
   ///   Upvalue::Closed(store) => assert_eq!(store, val!(10.0)),
   ///   Upvalue::Open(_) => assert!(false),
   /// };
   /// ```
-  pub fn hoist(&mut self) {
+  pub fn hoist(&mut self, stack: &[Value]) {
     match self {
-      Upvalue::Open(stack_ptr) => {
-        let value = *unsafe { stack_ptr.as_ref() };
-        *self = Upvalue::Closed(value);
+      Upvalue::Open(index) => {
+        *self = Upvalue::Closed(stack[*index]);
       },
       Upvalue::Closed(_) => panic!("Attempted to hoist already hoisted upvalue."),
     }
@@ -54,13 +48,10 @@ impl Upvalue {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::value::{Value, VALUE_NIL};
   /// use laythe_core::object::Upvalue;
   /// use std::ptr::NonNull;
   ///
-  /// let value = VALUE_NIL;
-  ///
-  /// let upvalue = Upvalue::Open(NonNull::from(&value));
+  /// let upvalue = Upvalue::Open(0);
   /// assert_eq!(upvalue.is_open(), true);
   /// ```
   #[inline]
@@ -72,28 +63,29 @@ impl Upvalue {
   }
 
   #[inline]
-  pub fn value(&self) -> Value {
+  pub fn value(&self, stack: &[Value]) -> Value {
     match self {
-      Upvalue::Open(stack_ptr) => *unsafe { stack_ptr.as_ref() },
+      Upvalue::Open(index) => stack[*index],
       Upvalue::Closed(store) => *store,
     }
   }
 
   #[inline]
-  pub fn set_value(&self, value: Value) {
+  pub fn set_value(&mut self, stack: &mut [Value], value: Value) {
     let storage = match self {
-      Upvalue::Open(stack_ptr) => *stack_ptr,
-      Upvalue::Closed(store) => NonNull::from(store),
+      Upvalue::Open(index) => &mut stack[*index],
+      Upvalue::Closed(store) => store,
     };
 
-    unsafe { ptr::write(storage.as_ptr(), value) }
+    unsafe { ptr::write(storage, value) }
   }
 }
 
 impl Display for Upvalue {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    // TODO which we indicate this is an upvalue somehow
     match self {
-      Upvalue::Open(stack_ptr) => write!(f, "{}", unsafe { stack_ptr.as_ref() }),
+      Upvalue::Open(index) => write!(f, "{}", index),
       Upvalue::Closed(store) => write!(f, "{}", store),
     }
   }
@@ -116,10 +108,7 @@ impl Trace for Upvalue {
 impl DebugHeap for Upvalue {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     match self {
-      Self::Open(v) => f.write_fmt(format_args!(
-        "Upvalue::Open(*{:?})",
-        &DebugWrap(unsafe { v.as_ref() }, depth)
-      )),
+      Self::Open(index) => f.write_fmt(format_args!("Upvalue::Open(*{:?})", index)),
       Self::Closed(v) => f.write_fmt(format_args!("Upvalue::Closed({:?})", &DebugWrap(v, depth))),
     }
   }

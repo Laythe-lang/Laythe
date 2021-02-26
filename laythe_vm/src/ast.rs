@@ -1,4 +1,5 @@
 use crate::token::Token;
+use bumpalo::boxed::Box;
 use std::{ops::Range, usize};
 
 /// A visitor pattern for the Laythe ast.
@@ -135,10 +136,10 @@ impl<'a> Spanned for Module<'a> {
 }
 
 pub enum Decl<'a> {
-  Symbol(Box<Symbol<'a>>),
-  Export(Box<Symbol<'a>>),
-  Stmt(Box<Stmt<'a>>),
-  Error(Box<[Token<'a>]>),
+  Symbol(Box<'a, Symbol<'a>>),
+  Export(Box<'a, Symbol<'a>>),
+  Stmt(Box<'a, Stmt<'a>>),
+  Error(std::boxed::Box<[Token<'a>]>),
 }
 
 impl<'a> Spanned for Decl<'a> {
@@ -274,8 +275,8 @@ impl<'a> Spanned for Fun<'a> {
 }
 
 pub enum FunBody<'a> {
-  Block(Box<Block<'a>>),
-  Expr(Box<Expr<'a>>),
+  Block(Box<'a, Block<'a>>),
+  Expr(Box<'a, Expr<'a>>),
 }
 
 pub struct Let<'a> {
@@ -373,16 +374,16 @@ impl<'a> Spanned for TypeDecl<'a> {
 }
 
 pub enum Stmt<'a> {
-  Expr(Box<Expr<'a>>),
-  ImplicitReturn(Box<Expr<'a>>),
-  Import(Box<Import<'a>>),
-  For(Box<For<'a>>),
-  If(Box<If<'a>>),
-  Return(Box<Return<'a>>),
-  Continue(Box<Token<'a>>),
-  Break(Box<Token<'a>>),
-  While(Box<While<'a>>),
-  Try(Box<Try<'a>>),
+  Expr(Box<'a, Expr<'a>>),
+  ImplicitReturn(Box<'a, Expr<'a>>),
+  Import(Box<'a, Import<'a>>),
+  For(Box<'a, For<'a>>),
+  If(Box<'a, If<'a>>),
+  Return(Box<'a, Return<'a>>),
+  Continue(Box<'a, Token<'a>>),
+  Break(Box<'a, Token<'a>>),
+  While(Box<'a, While<'a>>),
+  Try(Box<'a, Try<'a>>),
 }
 
 impl<'a> Spanned for Stmt<'a> {
@@ -459,7 +460,7 @@ impl<'a> Import<'a> {
     Self { path, stem }
   }
 
-  pub fn path(&'a self) -> &'a [Token<'a>] {
+  pub fn path(&self) -> &[Token<'a>] {
     &self.path
   }
 }
@@ -479,7 +480,7 @@ impl<'a> Spanned for Import<'a> {
         } else {
           symbols.last().unwrap().end()
         }
-      }
+      },
     }
   }
 }
@@ -535,7 +536,7 @@ impl<'a> Spanned for If<'a> {
 }
 
 pub enum Else<'a> {
-  If(Box<If<'a>>),
+  If(Box<'a, If<'a>>),
   Block(Block<'a>),
 }
 
@@ -693,11 +694,11 @@ impl<'a> Spanned for Param<'a> {
 }
 
 pub enum Expr<'a> {
-  Assign(Box<Assign<'a>>),
-  AssignBinary(Box<AssignBinary<'a>>),
-  Binary(Box<Binary<'a>>),
-  Unary(Box<Unary<'a>>),
-  Atom(Box<Atom<'a>>),
+  Assign(Box<'a, Assign<'a>>),
+  AssignBinary(Box<'a, AssignBinary<'a>>),
+  Binary(Box<'a, Binary<'a>>),
+  Unary(Box<'a, Unary<'a>>),
+  Atom(Box<'a, Atom<'a>>),
 }
 
 impl<'a> Spanned for Expr<'a> {
@@ -867,9 +868,9 @@ impl<'a> Spanned for Atom<'a> {
 }
 
 pub enum Trailer<'a> {
-  Call(Box<Call<'a>>),
-  Index(Box<Index<'a>>),
-  Access(Box<Access<'a>>),
+  Call(Box<'a, Call<'a>>),
+  Index(Box<'a, Index<'a>>),
+  Access(Box<'a, Access<'a>>),
 }
 
 impl<'a> Spanned for Trailer<'a> {
@@ -965,13 +966,13 @@ pub enum Primary<'a> {
   False(Token<'a>),
   Nil(Token<'a>),
   Number(Token<'a>),
-  Grouping(Box<Expr<'a>>),
+  Grouping(Box<'a, Expr<'a>>),
   String(Token<'a>),
-  Interpolation(Box<Interpolation<'a>>),
+  Interpolation(Box<'a, Interpolation<'a>>),
   Ident(Token<'a>),
   Self_(Token<'a>),
   Super(Super<'a>),
-  Lambda(Box<Fun<'a>>),
+  Lambda(Box<'a, Fun<'a>>),
   List(List<'a>),
   Map(Map<'a>),
 }
@@ -1024,7 +1025,7 @@ pub struct Interpolation<'a> {
 
 pub enum StringSegments<'a> {
   Token(Token<'a>),
-  Expr(Box<Expr<'a>>),
+  Expr(Box<'a, Expr<'a>>),
 }
 
 impl<'a> Interpolation<'a> {
@@ -1146,11 +1147,11 @@ impl<'a> Spanned for TypeParam<'a> {
 }
 
 pub enum Type<'a> {
-  Union(Box<Union<'a>>),
-  Intersection(Box<Intersection<'a>>),
-  Fun(Box<CallSignature<'a>>),
-  List(Box<ListType<'a>>),
-  Ref(Box<TypeRef<'a>>),
+  Union(Box<'a, Union<'a>>),
+  Intersection(Box<'a, Intersection<'a>>),
+  Fun(Box<'a, CallSignature<'a>>),
+  List(Box<'a, ListType<'a>>),
+  Ref(Box<'a, TypeRef<'a>>),
   Primitive(Primitive<'a>),
 }
 
