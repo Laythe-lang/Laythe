@@ -1,7 +1,7 @@
 use std::{fmt, io::Write, mem};
 
 use crate::{
-  chunk::{AlignedByteCode, Chunk, ChunkBuilder},
+  chunk::{Chunk, ChunkBuilder, Encode},
   managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Object, Trace},
   module::Module,
   signature::Arity,
@@ -121,8 +121,8 @@ impl FunBuilder {
 
   /// Write an aligned byte code to this function
   #[inline]
-  pub fn write_instruction(&mut self, op_code: AlignedByteCode, line: u32) {
-    self.chunk.write_instruction(op_code, line)
+  pub fn write_instruction<T: Encode>(&mut self, item: T, line: u32) {
+    self.chunk.write_instruction(item, line)
   }
 
   /// Patch an instruction on this function

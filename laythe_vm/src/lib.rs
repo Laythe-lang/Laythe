@@ -1,6 +1,7 @@
 #![deny(clippy::all)]
 
 pub mod ast;
+mod byte_code;
 mod cache;
 mod call_frame;
 pub mod compiler;
