@@ -1,4 +1,4 @@
-use laythe_core::{managed::GcObj, object::Closure, value::Value};
+use crate::{managed::GcObj, object::Closure, value::Value};
 
 /// A call frame in the space lox interpreter
 #[derive(Clone, Copy, PartialEq)]

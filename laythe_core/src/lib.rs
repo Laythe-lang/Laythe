@@ -10,6 +10,7 @@ pub mod object;
 pub mod signature;
 pub mod utils;
 pub mod value;
+pub mod call_frame;
 
 pub type Call = LyResult<value::Value>;
 pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;

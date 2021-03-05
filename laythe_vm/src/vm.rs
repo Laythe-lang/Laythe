@@ -1,6 +1,14 @@
-use crate::{FeResult, byte_code::{AlignedByteCode, ByteCode, UpvalueIndex}, cache::InlineCache, call_frame::CallFrame, compiler::{Compiler, Parser}, constants::{INITIAL_FRAME_SIZE, INITIAL_STACK_SIZE, MAX_FRAME_SIZE, REPL_MODULE}, source::{Source, VmFileId, VmFiles}};
+use crate::{
+  byte_code::{AlignedByteCode, ByteCode, UpvalueIndex},
+  cache::InlineCache,
+  compiler::{Compiler, Parser},
+  constants::{INITIAL_FRAME_SIZE, INITIAL_STACK_SIZE, MAX_FRAME_SIZE, REPL_MODULE},
+  source::{Source, VmFileId, VmFiles},
+  FeResult,
+};
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
+  call_frame::CallFrame,
   constants::{PLACEHOLDER_NAME, SCRIPT, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   if_let_obj,
