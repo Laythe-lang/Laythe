@@ -1,4 +1,5 @@
 #![deny(clippy::all)]
+pub mod call_frame;
 pub mod chunk;
 pub mod constants;
 pub mod hooks;
@@ -8,9 +9,9 @@ pub mod memory;
 pub mod module;
 pub mod object;
 pub mod signature;
+pub mod support;
 pub mod utils;
 pub mod value;
-pub mod call_frame;
 
 pub type Call = LyResult<value::Value>;
 pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;
@@ -19,7 +20,7 @@ use std::fmt;
 
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
-use managed::{GcObj};
+use managed::GcObj;
 use object::Instance;
 
 #[derive(Clone, PartialEq, Debug)]

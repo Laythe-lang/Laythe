@@ -89,7 +89,7 @@ impl LyNative for ClosureCall {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{fun_from_hooks, MockedContext};
+  use crate::support::{test_fun, MockedContext};
   use laythe_core::object::Closure;
 
   mod name {
@@ -112,7 +112,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_name = ClosureName::native(&hooks.as_gc());
 
-      let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
+      let fun = test_fun(&hooks.as_gc(), "example", "module");
       let closure = hooks.manage_obj(Closure::without_upvalues(fun));
 
       let result1 = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
@@ -126,7 +126,7 @@ mod test {
 
   mod size {
     use super::*;
-    use crate::support::{fun_builder_from_hooks, MockedContext};
+    use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::object::Closure;
 
     #[test]
@@ -146,21 +146,21 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_name = ClosureLen::native(&hooks.as_gc());
 
-      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(4));
       let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 4.0);
 
-      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Default(2, 2));
       let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 2.0);
 
-      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Variadic(5));
       let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
 
@@ -171,7 +171,7 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::support::{fun_builder_from_hooks, MockedContext};
+    use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::object::Closure;
 
     #[test]
@@ -195,7 +195,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_call = ClosureCall::native(&hooks.as_gc());
 
-      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(1));
 
       let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));

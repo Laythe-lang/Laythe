@@ -2,14 +2,13 @@ use crate::{
   byte_code::{AlignedByteCode, ByteCode, UpvalueIndex},
   cache::InlineCache,
   compiler::{Compiler, Parser},
-  constants::{INITIAL_FRAME_SIZE, INITIAL_STACK_SIZE, MAX_FRAME_SIZE, REPL_MODULE},
+  constants::{MAX_FRAME_SIZE, REPL_MODULE},
   source::{Source, VmFileId, VmFiles},
   FeResult,
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
-  call_frame::CallFrame,
-  constants::{PLACEHOLDER_NAME, SCRIPT, SELF},
+  constants::{PLACEHOLDER_NAME, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   if_let_obj,
   managed::{Gc, GcObj, GcObject, GcStr, Manage, Object, Trace, TraceRoot},
@@ -17,12 +16,12 @@ use laythe_core::{
   memory::Allocator,
   module::{Import, Module, Package},
   object::{
-    Class, Closure, Fun, FunBuilder, Instance, List, Map, Method, Native, NativeMeta, ObjectKind,
-    Upvalue,
+    Class, Closure, Fiber, Fun, FunBuilder, Instance, List, Map, Method, Native, NativeMeta,
+    ObjectKind, Upvalue,
   },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   to_obj_kind,
-  utils::{is_falsey, ptr_len, IdEmitter},
+  utils::{is_falsey, IdEmitter},
   val,
   value::{Value, VALUE_NIL, VALUE_TRUE},
   Call,
@@ -43,11 +42,14 @@ use crate::debug::{disassemble_instruction, exception_catch};
 #[cfg(feature = "debug")]
 use std::io;
 
-#[cfg(feature = "debug_upvalues")]
-use std::{cmp::Ordering, io};
-
 #[cfg(feature = "debug")]
 use laythe_env::stdio::Stdio;
+
+#[cfg(feature = "debug")]
+use laythe_core::call_frame::CallFrame;
+
+#[cfg(feature = "debug_upvalues")]
+use std::{cmp::Ordering, io};
 
 const VERSION: &str = "0.1.0";
 
@@ -77,25 +79,16 @@ pub fn default_native_vm() -> Vm {
   Vm::new(io_native())
 }
 
-/// A set of dependencies needed by the virtual machine
-pub struct VmDependencies {
-  /// access to the environments io
-  io: Io,
-
-  /// The garbage collector
-  gc: Allocator,
-
-  /// The native functions
-  std_lib: Gc<Package>,
-}
-
 /// The virtual machine for the laythe programming language
 pub struct Vm {
   /// A stack holding all local variable currently in use
-  stack: Vec<Value>,
+  // stack: Vec<Value>,
 
   /// A stack holding call frames currently in use
-  frames: Vec<CallFrame>,
+  // frames: Vec<CallFrame>,
+
+  /// The current running fiber
+  fiber: GcObj<Fiber>,
 
   /// The vm's garbage collector
   gc: RefCell<Allocator>,
@@ -127,23 +120,24 @@ pub struct Vm {
   /// The global module
   global: Gc<Module>,
 
+  // fib
   /// A collection of currently available upvalues
-  open_upvalues: Vec<GcObj<Upvalue>>,
+  // open_upvalues: Vec<GcObj<Upvalue>>,
 
   /// The current frame's function
   current_fun: GcObj<Fun>,
 
   /// The current frame's closure
-  current_frame: *mut CallFrame,
+  // current_frame: *mut CallFrame,
 
   /// The current error if one is active
-  current_error: Option<GcObj<Instance>>,
+  // current_error: Option<GcObj<Instance>>,
 
   /// What exit code is currently set
   exit_code: u16,
 
   /// pointer to the top of the value stack
-  stack_top: *mut Value,
+  // stack_top: *mut Value,
 
   /// pointer to the current instruction
   ip: *const u8,
@@ -171,17 +165,17 @@ impl Vm {
 
     let builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
     let managed_fun = hooks.manage_obj(builder.build());
-    let closure = hooks.manage_obj(Closure::without_upvalues(managed_fun));
+    // let closure = hooks.manage_obj(Closure::without_upvalues(managed_fun));
 
-    let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
-    frames.push(CallFrame::new(closure));
+    // let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
+    // frames.push(CallFrame::new(closure));
 
-    let mut stack = vec![VALUE_NIL; INITIAL_STACK_SIZE];
+    // let mut stack = vec![VALUE_NIL; INITIAL_STACK_SIZE];
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let stack_top = &mut stack[1] as *mut Value;
+    // let stack_top = &mut stack[1] as *mut Value;
 
     let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
     native_builder.write_instruction(AlignedByteCode::Nil, 0);
@@ -195,8 +189,9 @@ impl Vm {
 
     let mut vm = Vm {
       io,
-      stack,
-      frames,
+      // stack,
+      fiber: GcObj::dangling(),
+      // frames,
       gc,
       files: VmFiles::default(),
       builtin,
@@ -207,13 +202,13 @@ impl Vm {
       inline_cache,
       global,
       current_fun: managed_fun,
-      current_frame: ptr::null_mut(),
-      current_error: None,
+      // current_frame: ptr::null_mut(),
+      // current_error: None,
       exit_code: 0,
-      stack_top,
+      // stack_top,
       ip: ptr::null(),
       native_fun_stub,
-      open_upvalues: Vec::with_capacity(100),
+      // open_upvalues: Vec::with_capacity(100),
     };
     vm.add_package(std_lib);
 
@@ -362,15 +357,18 @@ impl Vm {
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: GcObj<Fun>) {
     let script = self.manage_obj(Closure::without_upvalues(script));
+    let fiber = match Fiber::new(script) {
+      Ok(fiber) => fiber,
+      Err(_) => self.internal_error("Unable to generate initial fiber"),
+    };
 
-    self.reset_stack();
-    let result = self.call(script, 0);
+    self.fiber = self.manage_obj(fiber);
+    self.fiber.activate();
+    self.load_ip();
 
-    if result != Signal::Ok {
-      self.internal_error("Main script call failed.");
-    }
-
+    self.current_fun = script.fun();
     let mut current_module = self.current_fun.module();
+
     self
       .global
       .transfer_exported(&GcHooks::new(self), &mut current_module);
@@ -398,15 +396,16 @@ impl Vm {
 
   /// Run a laythe function on top of the current stack.
   /// This acts as a hook for native functions to execute laythe function
-  fn run_fun(&mut self, callable: Value, args: &[Value]) -> ExecuteResult {
+  unsafe fn run_fun(&mut self, callable: Value, args: &[Value]) -> ExecuteResult {
+    self.fiber.ensure_stack(args.len());
     for arg in args {
-      self.push(*arg);
+      self.fiber.push(*arg);
     }
 
-    let mode = ExecuteMode::CallFunction(self.frames.len());
+    let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
     match self.resolve_call(callable, args.len() as u8) {
       Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
+      Signal::OkReturn => ExecuteResult::FunResult(self.fiber.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_fun."),
     }
@@ -414,23 +413,24 @@ impl Vm {
 
   /// Run a laythe method on top of the current stack.
   /// This acts as a hook for native functions to execute laythe function
-  fn run_method(&mut self, this: Value, method: Value, args: &[Value]) -> ExecuteResult {
-    self.push(this);
+  unsafe fn run_method(&mut self, this: Value, method: Value, args: &[Value]) -> ExecuteResult {
+    self.fiber.ensure_stack(args.len() + 1);
+    self.fiber.push(this);
     for arg in args {
-      self.push(*arg);
+      self.fiber.push(*arg);
     }
 
-    let mode = ExecuteMode::CallFunction(self.frames.len());
+    let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
     match self.resolve_call(method, args.len() as u8) {
       Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
+      Signal::OkReturn => ExecuteResult::FunResult(self.fiber.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_method."),
     }
   }
 
   /// Get a method for this this value with a given method name
-  fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
+  unsafe fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
     let class = self.value_class(this);
 
     match class.get_method(&method_name) {
@@ -452,105 +452,107 @@ impl Vm {
   /// Main virtual machine execution loop. This will run the until the program interrupts
   /// from a normal exit or from a runtime error.
   fn execute(&mut self, mode: ExecuteMode) -> ExecuteResult {
-    loop {
-      // get the current instruction
-      let op_code: ByteCode = ByteCode::from(self.read_byte());
+    unsafe {
+      loop {
+        // get the current instruction
+        let op_code: ByteCode = ByteCode::from(self.read_byte());
 
-      #[cfg(feature = "debug")]
-      {
-        let ip = unsafe { self.ip.offset(-1) };
-        if let Err(_) = self.print_state(ip) {
-          return ExecuteResult::InternalError;
-        }
-      }
-
-      // execute the decoded instruction
-      let result = match op_code {
-        ByteCode::Negate => self.op_negate(),
-        ByteCode::Add => self.op_add(),
-        ByteCode::Subtract => self.op_sub(),
-        ByteCode::Multiply => self.op_mul(),
-        ByteCode::Divide => self.op_div(),
-        ByteCode::Not => self.op_not(),
-        ByteCode::And => self.op_and(),
-        ByteCode::Or => self.op_or(),
-        ByteCode::Equal => self.op_equal(),
-        ByteCode::NotEqual => self.op_not_equal(),
-        ByteCode::Greater => self.op_greater(),
-        ByteCode::GreaterEqual => self.op_greater_equal(),
-        ByteCode::Less => self.op_less(),
-        ByteCode::LessEqual => self.op_less_equal(),
-        ByteCode::JumpIfFalse => self.op_jump_if_false(),
-        ByteCode::Jump => self.op_jump(),
-        ByteCode::Loop => self.op_loop(),
-        ByteCode::DefineGlobal => self.op_define_global(),
-        ByteCode::GetIndex => self.op_get_index(),
-        ByteCode::SetIndex => self.op_set_index(),
-        ByteCode::GetGlobal => self.op_get_global(),
-        ByteCode::SetGlobal => self.op_set_global(),
-        ByteCode::GetLocal => self.op_get_local(),
-        ByteCode::SetLocal => self.op_set_local(),
-        ByteCode::GetUpvalue => self.op_get_upvalue(),
-        ByteCode::SetUpvalue => self.op_set_upvalue(),
-        ByteCode::GetProperty => self.op_get_property(),
-        ByteCode::SetProperty => self.op_set_property(),
-        ByteCode::Import => self.op_import(),
-        ByteCode::ImportSymbol => self.op_import_symbol(),
-        ByteCode::Export => self.op_export(),
-        ByteCode::Drop => self.op_drop(),
-        ByteCode::DropN => self.op_drop_n(),
-        ByteCode::Dup => self.op_dup(),
-        ByteCode::Nil => self.op_literal(VALUE_NIL),
-        ByteCode::True => self.op_literal(val!(true)),
-        ByteCode::False => self.op_literal(val!(false)),
-        ByteCode::List => self.op_list(),
-        ByteCode::Map => self.op_map(),
-        ByteCode::Interpolate => self.op_interpolate(),
-        ByteCode::IterNext => self.op_iter_next(),
-        ByteCode::IterCurrent => self.op_iter_current(),
-        ByteCode::Constant => self.op_constant(),
-        ByteCode::ConstantLong => self.op_constant_long(),
-        ByteCode::Call => self.op_call(),
-        ByteCode::Invoke => self.op_invoke(),
-        ByteCode::SuperInvoke => self.op_super_invoke(),
-        ByteCode::Closure => self.op_closure(),
-        ByteCode::Method => self.op_method(),
-        ByteCode::Field => self.op_field(),
-        ByteCode::StaticMethod => self.op_static_method(),
-        ByteCode::Class => self.op_class(),
-        ByteCode::Inherit => self.op_inherit(),
-        ByteCode::GetSuper => self.op_get_super(),
-        ByteCode::CloseUpvalue => self.op_close_upvalue(),
-        ByteCode::Return => self.op_return(),
-      };
-
-      match result {
-        Signal::OkReturn => {
-          if let ExecuteMode::CallFunction(depth) = mode {
-            if depth == self.frames.len() {
-              return ExecuteResult::FunResult(self.get_val(-1));
-            }
+        #[cfg(feature = "debug")]
+        {
+          let ip = self.ip.sub(1);
+          if let Err(_) = self.print_state(ip) {
+            return ExecuteResult::InternalError;
           }
-        },
-        Signal::Ok => (),
-        Signal::RuntimeError => match self.current_error {
-          Some(error) => {
-            if let Some(execute_result) = self.stack_unwind(error) {
-              return execute_result;
+        }
+
+        // execute the decoded instruction
+        let result = match op_code {
+          ByteCode::Negate => self.op_negate(),
+          ByteCode::Add => self.op_add(),
+          ByteCode::Subtract => self.op_sub(),
+          ByteCode::Multiply => self.op_mul(),
+          ByteCode::Divide => self.op_div(),
+          ByteCode::Not => self.op_not(),
+          ByteCode::And => self.op_and(),
+          ByteCode::Or => self.op_or(),
+          ByteCode::Equal => self.op_equal(),
+          ByteCode::NotEqual => self.op_not_equal(),
+          ByteCode::Greater => self.op_greater(),
+          ByteCode::GreaterEqual => self.op_greater_equal(),
+          ByteCode::Less => self.op_less(),
+          ByteCode::LessEqual => self.op_less_equal(),
+          ByteCode::JumpIfFalse => self.op_jump_if_false(),
+          ByteCode::Jump => self.op_jump(),
+          ByteCode::Loop => self.op_loop(),
+          ByteCode::DefineGlobal => self.op_define_global(),
+          ByteCode::GetIndex => self.op_get_index(),
+          ByteCode::SetIndex => self.op_set_index(),
+          ByteCode::GetGlobal => self.op_get_global(),
+          ByteCode::SetGlobal => self.op_set_global(),
+          ByteCode::GetLocal => self.op_get_local(),
+          ByteCode::SetLocal => self.op_set_local(),
+          ByteCode::GetUpvalue => self.op_get_upvalue(),
+          ByteCode::SetUpvalue => self.op_set_upvalue(),
+          ByteCode::GetProperty => self.op_get_property(),
+          ByteCode::SetProperty => self.op_set_property(),
+          ByteCode::Import => self.op_import(),
+          ByteCode::ImportSymbol => self.op_import_symbol(),
+          ByteCode::Export => self.op_export(),
+          ByteCode::Drop => self.op_drop(),
+          ByteCode::DropN => self.op_drop_n(),
+          ByteCode::Dup => self.op_dup(),
+          ByteCode::Nil => self.op_literal(VALUE_NIL),
+          ByteCode::True => self.op_literal(val!(true)),
+          ByteCode::False => self.op_literal(val!(false)),
+          ByteCode::List => self.op_list(),
+          ByteCode::Map => self.op_map(),
+          ByteCode::Interpolate => self.op_interpolate(),
+          ByteCode::IterNext => self.op_iter_next(),
+          ByteCode::IterCurrent => self.op_iter_current(),
+          ByteCode::Constant => self.op_constant(),
+          ByteCode::ConstantLong => self.op_constant_long(),
+          ByteCode::Call => self.op_call(),
+          ByteCode::Invoke => self.op_invoke(),
+          ByteCode::SuperInvoke => self.op_super_invoke(),
+          ByteCode::Closure => self.op_closure(),
+          ByteCode::Method => self.op_method(),
+          ByteCode::Field => self.op_field(),
+          ByteCode::StaticMethod => self.op_static_method(),
+          ByteCode::Class => self.op_class(),
+          ByteCode::Inherit => self.op_inherit(),
+          ByteCode::GetSuper => self.op_get_super(),
+          ByteCode::CloseUpvalue => self.op_close_upvalue(),
+          ByteCode::Return => self.op_return(),
+        };
+
+        match result {
+          Signal::OkReturn => {
+            if let ExecuteMode::CallFunction(depth) = mode {
+              if depth == self.fiber.frames().len() {
+                return ExecuteResult::FunResult(self.fiber.peek(0));
+              }
             }
           },
-          None => self.internal_error("Runtime error was not set."),
-        },
-        Signal::Exit => {
-          return ExecuteResult::Ok(self.exit_code);
-        },
+          Signal::Ok => (),
+          Signal::RuntimeError => match self.fiber.error() {
+            Some(error) => {
+              if let Some(execute_result) = self.stack_unwind(error) {
+                return execute_result;
+              }
+            },
+            None => self.internal_error("Runtime error was not set."),
+          },
+          Signal::Exit => {
+            return ExecuteResult::Ok(self.exit_code);
+          },
+        }
       }
     }
   }
 
   #[inline]
   fn value_class(&self, value: Value) -> GcObj<Class> {
-    self.builtin.primitives.for_value(value, &self.stack)
+    self.builtin.primitives.for_value(value, self.fiber.stack())
   }
 
   #[inline]
@@ -579,57 +581,51 @@ impl Vm {
   }
 
   /// Get an immutable reference to value on the stack
-  #[inline]
-  fn get_val(&self, offset: isize) -> Value {
-    unsafe { *self.stack_top.offset(offset) }
-  }
+  // #[inline]
+  // fn get_val(&self, offset: isize) -> Value {
+  //   unsafe { *self.stack_top.offset(offset) }
+  // }
 
   /// Set a value on the stack
-  #[inline]
-  fn set_val(&mut self, offset: isize, val: Value) {
-    unsafe { *self.stack_top.offset(offset) = val }
-  }
+  // #[inline]
+  // fn set_val(&mut self, offset: isize, val: Value) {
+  //   unsafe { *self.stack_top.offset(offset) = val }
+  // }
 
   /// Update the current instruction pointer
   #[inline]
-  fn update_ip(&mut self, offset: isize) {
-    unsafe { self.ip = self.ip.offset(offset) }
+  unsafe fn update_ip(&mut self, offset: isize) {
+    self.ip = self.ip.offset(offset)
   }
 
   /// Store the ip in the current frame
   #[inline]
   fn load_ip(&mut self) {
-    unsafe { self.ip = (*self.current_frame).ip }
+    self.ip = self.fiber.load_ip()
   }
 
   /// Store the ip in the current frame
   #[inline]
   fn store_ip(&mut self) {
-    unsafe { (*self.current_frame).ip = self.ip }
+    self.fiber.store_ip(self.ip)
   }
 
   /// Get the current frame slots
   #[inline]
-  fn slots(&self) -> *mut Value {
-    unsafe { (*self.current_frame).slots }
+  fn stack_start(&self) -> *mut Value {
+    self.fiber.stack_start()
   }
 
   /// Get the current frame slots
   #[inline]
-  fn slot(&self, slot: isize) -> Value {
-    unsafe { *self.slots().offset(slot) }
+  unsafe fn slot(&self, slot: isize) -> Value {
+    *self.stack_start().offset(slot)
   }
 
   /// Get the current frame slots
   #[inline]
-  fn set_slot(&mut self, slot: isize, value: Value) {
-    unsafe { *self.slots().offset(slot) = value }
-  }
-
-  /// Get the current closure
-  #[inline]
-  fn closure(&self) -> GcObj<Closure> {
-    unsafe { (*self.current_frame).closure }
+  unsafe fn set_slot(&mut self, slot: isize, value: Value) {
+    *self.stack_start().offset(slot) = value
   }
 
   /// Get the current closure
@@ -647,16 +643,16 @@ impl Vm {
   /// read a u8 out of the bytecode
   #[inline]
   #[no_mangle]
-  fn read_byte(&mut self) -> u8 {
-    let byte = unsafe { ptr::read(self.ip) };
+  unsafe fn read_byte(&mut self) -> u8 {
+    let byte = ptr::read(self.ip);
     self.update_ip(1);
     byte
   }
 
   /// read a u16 out of the bytecode
   #[inline]
-  fn read_short(&mut self) -> u16 {
-    let slice = unsafe { std::slice::from_raw_parts(self.ip, 2) };
+  unsafe fn read_short(&mut self) -> u16 {
+    let slice = std::slice::from_raw_parts(self.ip, 2);
     let buffer = slice.try_into().expect("slice of incorrect length.");
     let short = u16::from_ne_bytes(buffer);
     self.update_ip(2);
@@ -666,8 +662,8 @@ impl Vm {
 
   /// read a u32 out of the bytecode
   #[inline]
-  fn read_slot(&mut self) -> u32 {
-    let slice = unsafe { std::slice::from_raw_parts(self.ip, 4) };
+  unsafe fn read_slot(&mut self) -> u32 {
+    let slice = std::slice::from_raw_parts(self.ip, 4);
     let buffer = slice.try_into().expect("slice of incorrect length.");
     let short = u32::from_ne_bytes(buffer);
     self.update_ip(4);
@@ -675,158 +671,81 @@ impl Vm {
     short
   }
 
-  /// push a value onto the stack
-  #[inline]
-  fn push(&mut self, value: Value) {
-    self.set_val(0, value);
-    self.stack_top = unsafe { self.stack_top.offset(1) };
-  }
-
-  /// pop a value off the stack
-  #[inline]
-  fn pop(&mut self) -> Value {
-    self.drop();
-    self.get_val(0)
-  }
-
-  /// drop a value off the stack
-  #[inline]
-  fn drop(&mut self) {
-    self.stack_top = unsafe { self.stack_top.offset(-1) };
-  }
-
-  /// drop a value off the stack
-  #[inline]
-  fn drop_n(&mut self, count: u8) {
-    self.stack_top = unsafe { self.stack_top.offset(-(count as isize)) };
-  }
-
-  /// reference a value n slots from the stack head
-  #[inline]
-  fn peek(&self, distance: isize) -> Value {
-    self.get_val(-(distance as isize) - 1)
-  }
-
   /// read a constant from the current chunk
   #[inline]
-  fn read_constant(&self, index: u16) -> Value {
-    unsafe {
-      self
-        .current_fun
-        .chunk()
-        .get_constant_unchecked(index as usize)
-    }
+  unsafe fn read_constant(&self, index: u16) -> Value {
+    self
+      .current_fun
+      .chunk()
+      .get_constant_unchecked(index as usize)
   }
 
   /// read a constant as a string from the current chunk
   #[inline]
-  fn read_string(&self, index: u16) -> GcStr {
+  unsafe fn read_string(&self, index: u16) -> GcStr {
     self.read_constant(index).to_obj().to_str()
   }
 
-  /// Ensure the stack has enough space if not reserve more
-  /// and update pointers into the stack to their new location
-  unsafe fn ensure_stack(&mut self, additional: usize) {
-    let len = self.stack_top.offset_from(self.stack.as_ptr());
-
-    if self.stack.capacity() >= len as usize + additional - 1 {
-      return;
-    }
-
-    let stack_old = self.stack.as_ptr();
-    self.stack.reserve(additional);
-    let stack_new = self.stack.as_ptr();
-
-    if stack_old != stack_new {
-      let shift = stack_new.offset_from(stack_old);
-      self.stack_top = self.stack_top.offset(shift);
-
-      self.frames.iter_mut().skip(1).for_each(|frame| {
-        frame.slots = frame.slots.offset(shift);
-      });
-    }
-
-    while self.stack.len() != self.stack.capacity() {
-      self.stack.push(VALUE_NIL);
-    }
-    debug_assert_eq!(self.stack.len(), self.stack.capacity());
-  }
-
-  /// reset the stack in case of interrupt
-  fn reset_stack(&mut self) {
-    self.stack_top = &mut self.stack[1] as *mut Value;
-    self.frames.truncate(1);
-    self.current_frame = self.frames.as_mut_ptr();
-    self.open_upvalues.clear();
-  }
-
   /// push a literal value onto the stack
-  fn op_literal(&mut self, value: Value) -> Signal {
-    self.push(value);
+  unsafe fn op_literal(&mut self, value: Value) -> Signal {
+    self.fiber.push(value);
     Signal::Ok
   }
 
   /// drop a value off the stack
-  fn op_drop(&mut self) -> Signal {
-    self.drop();
+  unsafe fn op_drop(&mut self) -> Signal {
+    self.fiber.drop();
     Signal::Ok
   }
 
   /// drop a value off the stack
-  fn op_drop_n(&mut self) -> Signal {
-    let count = self.read_byte();
-    self.drop_n(count);
+  unsafe fn op_drop_n(&mut self) -> Signal {
+    let count = self.read_byte() as usize;
+    self.fiber.drop_n(count);
     Signal::Ok
   }
 
   /// duplicate the top value on the stack
-  fn op_dup(&mut self) -> Signal {
-    self.push(self.peek(0));
+  unsafe fn op_dup(&mut self) -> Signal {
+    let top = self.fiber.peek(0);
+    self.fiber.push(top);
     Signal::Ok
   }
 
   /// create a list from a list literal
-  fn op_list(&mut self) -> Signal {
-    let arg_count = self.read_short();
-    let args = unsafe {
-      std::slice::from_raw_parts(
-        self.stack_top.offset(-(arg_count as isize)),
-        arg_count as usize,
-      )
-    };
+  unsafe fn op_list(&mut self) -> Signal {
+    let arg_count = self.read_short() as usize;
+
+    let args = self.fiber.stack_slice(arg_count);
     let list = val!(self.manage_obj(List::from(args)));
-    self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
-    self.push(list);
+    self.fiber.drop_n(arg_count);
+    self.fiber.push(list);
 
     Signal::Ok
   }
 
   /// create a map from a map literal
-  fn op_map(&mut self) -> Signal {
-    let arg_count = self.read_short();
+  unsafe fn op_map(&mut self) -> Signal {
+    let arg_count = self.read_short() as usize;
     let mut map = self.manage_obj(Map::with_capacity(arg_count as usize));
 
     for i in 0..arg_count {
-      let key = self.get_val(-(i as isize * 2) - 2);
-      let value = self.get_val(-(i as isize * 2) - 1);
+      let key = self.fiber.peek(i * 2 + 1);
+      let value = self.fiber.peek(i * 2);
 
       map.insert(key, value);
     }
-    self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize * 2)) };
-    self.push(val!(map));
+
+    self.fiber.drop_n(arg_count * 2);
+    self.fiber.push(val!(map));
 
     Signal::Ok
   }
 
   /// create a map from a map literal
-  fn op_interpolate(&mut self) -> Signal {
-    let arg_count = self.read_short();
-    let args = unsafe {
-      std::slice::from_raw_parts(
-        self.stack_top.offset(-(arg_count as isize)),
-        arg_count as usize,
-      )
-    };
+  unsafe fn op_interpolate(&mut self) -> Signal {
+    let arg_count = self.read_short() as usize;
+    let args = self.fiber.stack_slice(arg_count as usize);
 
     let mut length: usize = 0;
     for arg in args {
@@ -838,21 +757,22 @@ impl Vm {
       buffers.push_str(&arg.to_obj().to_str())
     }
 
-    self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize)) };
+    self.fiber.drop_n(arg_count);
     let interpolated = val!(self.manage_str(buffers));
-    self.push(interpolated);
+    self.fiber.push(interpolated);
+
     Signal::Ok
   }
 
   /// move an iterator to the next element
-  fn op_iter_next(&mut self) -> Signal {
-    let receiver = self.peek(0);
+  unsafe fn op_iter_next(&mut self) -> Signal {
+    let receiver = self.fiber.peek(0);
 
     if_let_obj!(ObjectKind::Enumerator(mut enumerator) = (receiver) {
       self.update_ip(2);
       match enumerator.next(&mut Hooks::new(self)) {
         Call::Ok(value) => {
-          self.set_val(-1, value);
+          self.fiber.peek_set(0, value);
           Signal::Ok
         },
         Call::Err(error) => self.set_error(error),
@@ -866,13 +786,13 @@ impl Vm {
   }
 
   /// get the current value from an iterator
-  fn op_iter_current(&mut self) -> Signal {
-    let receiver = self.peek(0);
+  unsafe fn op_iter_current(&mut self) -> Signal {
+    let receiver = self.fiber.peek(0);
 
     if_let_obj!(ObjectKind::Enumerator(enumerator) = (receiver) {
       self.update_ip(2);
       let result = enumerator.current();
-      self.set_val(-1, result);
+      self.fiber.peek_set(0, result);
       Signal::Ok
     } else {
       let constant = self.read_short();
@@ -882,21 +802,21 @@ impl Vm {
   }
 
   /// call a function or method
-  fn op_call(&mut self) -> Signal {
+  unsafe fn op_call(&mut self) -> Signal {
     let arg_count = self.read_byte();
-    let callee = self.peek(arg_count as isize);
+    let callee = self.fiber.peek(arg_count as usize);
 
     self.resolve_call(callee, arg_count)
   }
 
   /// invoke a method on an instance's class
-  fn op_invoke(&mut self) -> Signal {
+  unsafe fn op_invoke(&mut self) -> Signal {
     let constant = self.read_short();
     let arg_count = self.read_byte();
     let inline_slot = self.read_slot() as usize;
 
     let method_name = self.read_string(constant);
-    let receiver = self.peek(arg_count as isize);
+    let receiver = self.fiber.peek(arg_count as usize);
 
     let class = self.value_class(receiver);
     match self.inline_cache().get_invoke_cache(inline_slot, class) {
@@ -904,7 +824,7 @@ impl Vm {
       None => {
         if_let_obj!(ObjectKind::Instance(instance) = (receiver) {
           if let Some(field) = instance.get_field(&method_name) {
-            self.set_val(-(arg_count as isize) - 1, *field);
+            self.fiber.peek_set(arg_count as usize, *field);
             self.inline_cache_mut().clear_invoke_cache(inline_slot);
             return self.resolve_call(*field, arg_count);
           }
@@ -931,10 +851,10 @@ impl Vm {
   }
 
   /// invoke a method
-  fn invoke(&mut self, receiver: Value, method_name: GcStr, arg_count: u8) -> Signal {
+  unsafe fn invoke(&mut self, receiver: Value, method_name: GcStr, arg_count: u8) -> Signal {
     if_let_obj!(ObjectKind::Instance(instance) = (receiver) {
       if let Some(field) = instance.get_field(&method_name) {
-        self.set_val(-(arg_count as isize) - 1, *field);
+        self.fiber.peek_set(arg_count as usize, *field);
         return self.resolve_call(*field, arg_count);
       }
     });
@@ -944,13 +864,13 @@ impl Vm {
   }
 
   /// Invoke a method on a instance's super class
-  fn op_super_invoke(&mut self) -> Signal {
+  unsafe fn op_super_invoke(&mut self) -> Signal {
     let constant = self.read_short();
     let arg_count = self.read_byte();
     let inline_slot = self.read_slot() as usize;
 
     let method_name = self.read_string(constant);
-    let super_class = self.pop().to_obj().to_class();
+    let super_class = self.fiber.pop().to_obj().to_class();
 
     match self
       .inline_cache()
@@ -977,24 +897,24 @@ impl Vm {
   }
 
   /// Generate a new class
-  fn op_class(&mut self) -> Signal {
+  unsafe fn op_class(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
 
     let class = val!(self.manage_obj(Class::bare(name)));
-    self.push(class);
+    self.fiber.push(class);
     Signal::Ok
   }
 
-  fn op_inherit(&mut self) -> Signal {
-    let super_class = self.peek(1);
+  unsafe fn op_inherit(&mut self) -> Signal {
+    let super_class = self.fiber.peek(1);
 
     if !super_class.is_obj_kind(ObjectKind::Class) {
       return self.runtime_error(self.builtin.errors.runtime, "Superclass must be a class.");
     }
 
     let hooks = GcHooks::new(self);
-    let mut sub_class = self.peek(0).to_obj().to_class();
+    let mut sub_class = self.fiber.peek(0).to_obj().to_class();
 
     sub_class.inherit(&hooks, super_class.to_obj().to_class());
     sub_class.meta_from_super(&hooks);
@@ -1003,44 +923,44 @@ impl Vm {
   }
 
   /// Get this classes super class
-  fn op_get_super(&mut self) -> Signal {
+  unsafe fn op_get_super(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
-    let super_class = self.pop().to_obj().to_class();
+    let super_class = self.fiber.pop().to_obj().to_class();
 
     self.bind_method(super_class, name)
   }
 
   /// Loop by performing an unconditional jump to a new instruction
-  fn op_loop(&mut self) -> Signal {
+  unsafe fn op_loop(&mut self) -> Signal {
     let jump = self.read_short() as isize;
     self.update_ip(-jump);
     Signal::Ok
   }
 
   /// Jump if the condition evaluates to a falsey value
-  fn op_jump_if_false(&mut self) -> Signal {
+  unsafe fn op_jump_if_false(&mut self) -> Signal {
     let jump = self.read_short();
-    if is_falsey(self.peek(0)) {
+    if is_falsey(self.fiber.peek(0)) {
       self.update_ip(jump as isize);
     }
-    self.drop();
+    self.fiber.drop();
 
     Signal::Ok
   }
 
   /// Unconditionally jump to some other instruction
-  fn op_jump(&mut self) -> Signal {
+  unsafe fn op_jump(&mut self) -> Signal {
     let jump = self.read_short();
     self.update_ip(jump as isize);
     Signal::Ok
   }
 
   /// Define a global variable
-  fn op_define_global(&mut self) -> Signal {
+  unsafe fn op_define_global(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
-    let global = self.pop();
+    let global = self.fiber.pop();
     let mut current_module = self.current_fun.module();
     match current_module.insert_symbol(&GcHooks::new(self), name, global) {
       Ok(_) => Signal::Ok,
@@ -1048,17 +968,17 @@ impl Vm {
     }
   }
 
-  fn op_set_index(&mut self) -> Signal {
-    let receiver = self.peek(2_isize);
+  unsafe fn op_set_index(&mut self) -> Signal {
+    let receiver = self.fiber.peek(2);
 
     let class = self.value_class(receiver);
 
     match class.index_set() {
       Some(index_set) => {
-        let value = self.peek(1);
+        let value = self.fiber.peek(1);
         let signal = self.resolve_call(index_set, 2);
-        self.drop();
-        self.push(value);
+        self.fiber.drop();
+        self.fiber.push(value);
         signal
       },
       None => self.runtime_error(
@@ -1068,10 +988,10 @@ impl Vm {
     }
   }
 
-  fn op_set_global(&mut self) -> Signal {
+  unsafe fn op_set_global(&mut self) -> Signal {
     let slot = self.read_short();
     let string = self.read_string(slot);
-    let peek = self.peek(0);
+    let peek = self.fiber.peek(0);
 
     let mut current_module = self.current_fun.module();
     if current_module.set_symbol(string, peek).is_err() {
@@ -1084,17 +1004,17 @@ impl Vm {
     Signal::Ok
   }
 
-  fn op_set_local(&mut self) -> Signal {
+  unsafe fn op_set_local(&mut self) -> Signal {
     let slot = self.read_byte() as isize;
-    let copy = self.peek(0);
+    let copy = self.fiber.peek(0);
     self.set_slot(slot, copy);
 
     Signal::Ok
   }
 
-  fn op_set_property(&mut self) -> Signal {
+  unsafe fn op_set_property(&mut self) -> Signal {
     let slot = self.read_short();
-    let instance = self.peek(1);
+    let instance = self.fiber.peek(1);
     let name = self.read_string(slot);
     let inline_slot = self.read_slot() as usize;
 
@@ -1103,20 +1023,20 @@ impl Vm {
 
       match self.inline_cache().get_property_cache(inline_slot, class) {
         Some(property_slot) => {
-          let value = self.pop();
+          let value = self.fiber.pop();
 
-          self.drop();
-          self.push(value);
+          self.fiber.drop();
+          self.fiber.push(value);
 
           instance[property_slot] = value;
           return Signal::Ok;
         },
         None => {
           let property_slot = class.get_field_index(&name);
-          let value = self.pop();
+          let value = self.fiber.pop();
 
-          self.drop();
-          self.push(value);
+          self.fiber.drop();
+          self.fiber.push(value);
 
           return match property_slot {
             Some(property_slot) => {
@@ -1140,18 +1060,19 @@ impl Vm {
     )
   }
 
-  fn op_set_upvalue(&mut self) -> Signal {
+  unsafe fn op_set_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
-    let value = self.peek(0);
+    let value = self.fiber.peek(0);
     self
+      .fiber
       .closure()
-      .set_value(slot as usize, &mut self.stack, value);
+      .set_value(slot as usize, self.fiber.stack_mut(), value);
 
     Signal::Ok
   }
 
-  fn op_get_index(&mut self) -> Signal {
-    let receiver = self.peek(1_isize);
+  unsafe fn op_get_index(&mut self) -> Signal {
+    let receiver = self.fiber.peek(1);
 
     let class = self.value_class(receiver);
 
@@ -1164,13 +1085,13 @@ impl Vm {
     }
   }
 
-  fn op_get_global(&mut self) -> Signal {
+  unsafe fn op_get_global(&mut self) -> Signal {
     let store_index = self.read_short();
     let string = self.read_string(store_index);
 
     match self.current_fun.module().get_symbol(string) {
       Some(gbl) => {
-        self.push(gbl);
+        self.fiber.push(gbl);
         Signal::Ok
       },
       None => self.runtime_error(
@@ -1180,22 +1101,28 @@ impl Vm {
     }
   }
 
-  fn op_get_local(&mut self) -> Signal {
+  unsafe fn op_get_local(&mut self) -> Signal {
     let slot = self.read_byte() as isize;
-    self.push(self.slot(slot));
+    let local = self.slot(slot);
+    self.fiber.push(local);
     Signal::Ok
   }
 
-  fn op_get_upvalue(&mut self) -> Signal {
+  unsafe fn op_get_upvalue(&mut self) -> Signal {
     let slot = self.read_byte();
-    self.push(self.closure().get_value(slot as usize, &self.stack));
+
+    let upvalue = self
+      .fiber
+      .closure()
+      .get_value(slot as usize, self.fiber.stack());
+    self.fiber.push(upvalue);
 
     Signal::Ok
   }
 
-  fn op_get_property(&mut self) -> Signal {
+  unsafe fn op_get_property(&mut self) -> Signal {
     let slot = self.read_short();
-    let value = self.peek(0);
+    let value = self.fiber.peek(0);
     let name = self.read_string(slot);
     let inline_slot = self.read_slot() as usize;
 
@@ -1203,7 +1130,7 @@ impl Vm {
       let class = instance.class();
       match self.inline_cache().get_property_cache(inline_slot, class) {
         Some(property_slot) => {
-          self.set_val(-1, instance[property_slot]);
+          self.fiber.peek_set(0, instance[property_slot]);
           return Signal::Ok;
         },
         None => {
@@ -1212,7 +1139,7 @@ impl Vm {
               .inline_cache_mut()
               .set_property_cache(inline_slot, class, property_slot as usize);
 
-            self.set_val(-1, instance[property_slot as usize]);
+            self.fiber.peek_set(0, instance[property_slot as usize]);
             return Signal::Ok;
           }
         },
@@ -1225,7 +1152,7 @@ impl Vm {
     self.bind_method(class, name)
   }
 
-  fn op_import(&mut self) -> Signal {
+  unsafe fn op_import(&mut self) -> Signal {
     let index_path = self.read_short();
     let path = self.read_constant(index_path).to_obj().to_list();
 
@@ -1245,7 +1172,7 @@ impl Vm {
     let resolved = self.manage_str(buffer);
     if let Some(module) = self.module_cache.get(&resolved) {
       let imported = module.module_instance(&GcHooks::new(self));
-      self.push(val!(imported));
+      self.fiber.push(val!(imported));
       return Signal::Ok;
     }
 
@@ -1267,7 +1194,7 @@ impl Vm {
     let result = match self.packages.get(&import.package()) {
       Some(package) => match package.import(&GcHooks::new(self), import) {
         Ok(module) => {
-          self.push(val!(module));
+          self.fiber.push(val!(module));
           Signal::Ok
         },
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
@@ -1282,7 +1209,7 @@ impl Vm {
     result
   }
 
-  fn op_import_symbol(&mut self) -> Signal {
+  unsafe fn op_import_symbol(&mut self) -> Signal {
     let index_path = self.read_short();
     let index_name = self.read_short();
     let path = self.read_constant(index_path).to_obj().to_list();
@@ -1304,7 +1231,7 @@ impl Vm {
     let resolved = self.manage_str(buffer);
     if let Some(module) = self.module_cache.get(&resolved) {
       let imported = module.module_instance(&GcHooks::new(self));
-      self.push(val!(imported));
+      self.fiber.push(val!(imported));
       return Signal::Ok;
     }
 
@@ -1326,7 +1253,7 @@ impl Vm {
     let result = match self.packages.get(&import.package()) {
       Some(package) => match package.import_symbol(&GcHooks::new(self), import, name) {
         Ok(module) => {
-          self.push(val!(module));
+          self.fiber.push(val!(module));
           Signal::Ok
         },
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
@@ -1341,7 +1268,7 @@ impl Vm {
     result
   }
 
-  fn op_export(&mut self) -> Signal {
+  unsafe fn op_export(&mut self) -> Signal {
     let index = self.read_short();
     let name = self.read_string(index);
     let mut current_module = self.current_fun.module();
@@ -1353,9 +1280,9 @@ impl Vm {
   }
 
   /// return from a laythe function placing the result on top of the stack
-  fn op_return(&mut self) -> Signal {
+  unsafe fn op_return(&mut self) -> Signal {
     // get the function result close upvalues and pop frame
-    let result = self.pop();
+    let result = self.fiber.pop();
 
     // pop a frame from the call stack return signal if provided
     if let Some(signal) = self.pop_frame() {
@@ -1363,32 +1290,32 @@ impl Vm {
     }
 
     // push result onto stack
-    self.push(result);
+    self.fiber.push(result);
     Signal::OkReturn
   }
 
-  fn op_negate(&mut self) -> Signal {
-    let pop = self.pop();
+  unsafe fn op_negate(&mut self) -> Signal {
+    let pop = self.fiber.pop();
 
     if pop.is_num() {
-      self.push(val!(-pop.to_num()));
+      self.fiber.push(val!(-pop.to_num()));
       Signal::Ok
     } else {
       self.runtime_error(self.builtin.errors.runtime, "Operand must be a number.")
     }
   }
 
-  fn op_not(&mut self) -> Signal {
-    let value = self.pop();
-    self.push(val!(is_falsey(value)));
+  unsafe fn op_not(&mut self) -> Signal {
+    let value = self.fiber.pop();
+    self.fiber.push(val!(is_falsey(value)));
     Signal::Ok
   }
 
-  fn op_add(&mut self) -> Signal {
-    let (right, left) = (self.pop(), self.pop());
+  unsafe fn op_add(&mut self) -> Signal {
+    let (right, left) = (self.fiber.pop(), self.fiber.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(val!(left.to_num() + right.to_num()));
+      self.fiber.push(val!(left.to_num() + right.to_num()));
       Signal::Ok
     } else if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
       let left = left.to_obj().to_str();
@@ -1399,7 +1326,7 @@ impl Vm {
       buffer.push_str(&*right);
 
       let string = self.manage_str(buffer);
-      self.push(val!(string));
+      self.fiber.push(val!(string));
       Signal::Ok
     } else {
       self.runtime_error(
@@ -1409,58 +1336,58 @@ impl Vm {
     }
   }
 
-  fn op_sub(&mut self) -> Signal {
-    let (right, left) = (self.pop(), self.pop());
+  unsafe fn op_sub(&mut self) -> Signal {
+    let (right, left) = (self.fiber.pop(), self.fiber.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(val!(left.to_num() - right.to_num()));
+      self.fiber.push(val!(left.to_num() - right.to_num()));
       return Signal::Ok;
     }
 
     self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
-  fn op_mul(&mut self) -> Signal {
-    let (right, left) = (self.pop(), self.pop());
+  unsafe fn op_mul(&mut self) -> Signal {
+    let (right, left) = (self.fiber.pop(), self.fiber.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(val!(left.to_num() * right.to_num()));
+      self.fiber.push(val!(left.to_num() * right.to_num()));
       return Signal::Ok;
     }
 
     self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
-  fn op_div(&mut self) -> Signal {
-    let (right, left) = (self.pop(), self.pop());
+  unsafe fn op_div(&mut self) -> Signal {
+    let (right, left) = (self.fiber.pop(), self.fiber.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(val!(left.to_num() / right.to_num()));
+      self.fiber.push(val!(left.to_num() / right.to_num()));
       return Signal::Ok;
     }
 
     self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
-  fn op_and(&mut self) -> Signal {
+  unsafe fn op_and(&mut self) -> Signal {
     let jump = self.read_short();
-    let left = self.peek(0);
+    let left = self.fiber.peek(0);
 
     if is_falsey(left) {
       self.update_ip(jump as isize);
     } else {
-      self.drop();
+      self.fiber.drop();
     }
 
     Signal::Ok
   }
 
-  fn op_or(&mut self) -> Signal {
+  unsafe fn op_or(&mut self) -> Signal {
     let jump = self.read_short();
-    let left = self.peek(0);
+    let left = self.fiber.peek(0);
 
     if is_falsey(left) {
-      self.drop();
+      self.fiber.drop();
     } else {
       self.update_ip(jump as isize);
     }
@@ -1468,16 +1395,16 @@ impl Vm {
     Signal::Ok
   }
 
-  fn op_less(&mut self) -> Signal {
-    let (right, left) = (self.pop(), self.pop());
+  unsafe fn op_less(&mut self) -> Signal {
+    let (right, left) = (self.fiber.pop(), self.fiber.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(val!(left.to_num() < right.to_num()));
+      self.fiber.push(val!(left.to_num() < right.to_num()));
       return Signal::Ok;
     }
 
     if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
-      self.push(val!(
+      self.fiber.push(val!(
         (*left.to_obj().to_str()).cmp(&right.to_obj().to_str()) == Ordering::Less
       ));
       return Signal::Ok;
@@ -1486,19 +1413,19 @@ impl Vm {
     self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
-  fn op_less_equal(&mut self) -> Signal {
-    let (right, left) = (self.pop(), self.pop());
+  unsafe fn op_less_equal(&mut self) -> Signal {
+    let (right, left) = (self.fiber.pop(), self.fiber.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(val!(left.to_num() <= right.to_num()));
+      self.fiber.push(val!(left.to_num() <= right.to_num()));
       return Signal::Ok;
     }
 
     if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
       if left == right {
-        self.push(VALUE_TRUE);
+        self.fiber.push(VALUE_TRUE);
       } else {
-        self.push(val!(
+        self.fiber.push(val!(
           (*left.to_obj().to_str()).cmp(&right.to_obj().to_str()) == Ordering::Less
         ));
       }
@@ -1512,16 +1439,16 @@ impl Vm {
     )
   }
 
-  fn op_greater(&mut self) -> Signal {
-    let (right, left) = (self.pop(), self.pop());
+  unsafe fn op_greater(&mut self) -> Signal {
+    let (right, left) = (self.fiber.pop(), self.fiber.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(val!(left.to_num() > right.to_num()));
+      self.fiber.push(val!(left.to_num() > right.to_num()));
       return Signal::Ok;
     }
 
     if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
-      self.push(val!(
+      self.fiber.push(val!(
         (*left.to_obj().to_str()).cmp(&right.to_obj().to_str()) == Ordering::Greater
       ));
       return Signal::Ok;
@@ -1533,19 +1460,19 @@ impl Vm {
     )
   }
 
-  fn op_greater_equal(&mut self) -> Signal {
-    let (right, left) = (self.pop(), self.pop());
+  unsafe fn op_greater_equal(&mut self) -> Signal {
+    let (right, left) = (self.fiber.pop(), self.fiber.pop());
 
     if right.is_num() && left.is_num() {
-      self.push(val!(left.to_num() >= right.to_num()));
+      self.fiber.push(val!(left.to_num() >= right.to_num()));
       return Signal::Ok;
     }
 
     if right.is_obj_kind(ObjectKind::String) && left.is_obj_kind(ObjectKind::String) {
       if left == right {
-        self.push(VALUE_TRUE);
+        self.fiber.push(VALUE_TRUE);
       } else {
-        self.push(val!(
+        self.fiber.push(val!(
           (*left.to_obj().to_str()).cmp(&right.to_obj().to_str()) == Ordering::Greater
         ));
       }
@@ -1559,28 +1486,28 @@ impl Vm {
     )
   }
 
-  fn op_equal(&mut self) -> Signal {
-    let right = self.pop();
-    let left = self.pop();
+  unsafe fn op_equal(&mut self) -> Signal {
+    let right = self.fiber.pop();
+    let left = self.fiber.pop();
 
-    self.push(val!(left == right));
+    self.fiber.push(val!(left == right));
     Signal::Ok
   }
 
-  fn op_not_equal(&mut self) -> Signal {
-    let right = self.pop();
-    let left = self.pop();
+  unsafe fn op_not_equal(&mut self) -> Signal {
+    let right = self.fiber.pop();
+    let left = self.fiber.pop();
 
-    self.push(val!(left != right));
+    self.fiber.push(val!(left != right));
     Signal::Ok
   }
 
-  fn op_method(&mut self) -> Signal {
+  unsafe fn op_method(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
 
-    let class = self.peek(1);
-    let method = self.peek(0);
+    let class = self.fiber.peek(1);
+    let method = self.fiber.peek(0);
 
     if class.is_obj_kind(ObjectKind::Class) && method.is_obj_kind(ObjectKind::Closure) {
       class
@@ -1591,15 +1518,15 @@ impl Vm {
       self.internal_error("Invalid Stack for op_method.");
     }
 
-    self.drop();
+    self.fiber.drop();
     Signal::Ok
   }
 
-  fn op_field(&mut self) -> Signal {
+  unsafe fn op_field(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
 
-    let class = self.peek(0);
+    let class = self.fiber.peek(0);
 
     if_let_obj!(ObjectKind::Class(mut class) = (class) {
       class.add_field(&GcHooks::new(self), name);
@@ -1610,12 +1537,12 @@ impl Vm {
     Signal::Ok
   }
 
-  fn op_static_method(&mut self) -> Signal {
+  unsafe fn op_static_method(&mut self) -> Signal {
     let slot = self.read_short();
     let name = self.read_string(slot);
 
-    let class = self.peek(1);
-    let method = self.peek(0);
+    let class = self.fiber.peek(1);
+    let method = self.fiber.peek(0);
 
     if class.is_obj_kind(ObjectKind::Class) && method.is_obj_kind(ObjectKind::Closure) {
       let class = class.to_obj().to_class();
@@ -1630,21 +1557,22 @@ impl Vm {
       self.internal_error("Invalid Stack for op_static_method.");
     }
 
-    self.drop();
+    self.fiber.drop();
     Signal::Ok
   }
 
-  fn op_closure(&mut self) -> Signal {
+  unsafe fn op_closure(&mut self) -> Signal {
     let slot = self.read_short();
     let fun = self.read_constant(slot).to_obj().to_fun();
+    let mut fiber = self.fiber;
 
     let upvalues = (0..fun.upvalue_count())
       .map(|_| {
-        let upvalue_index: UpvalueIndex = unsafe { mem::transmute(self.read_short()) };
+        let upvalue_index: UpvalueIndex = mem::transmute(self.read_short());
 
         match upvalue_index {
-          UpvalueIndex::Local(index) => self.capture_upvalue(index as usize),
-          UpvalueIndex::Upvalue(upvalue) => self.closure().get_upvalue(upvalue as usize),
+          UpvalueIndex::Local(index) => fiber.capture_upvalue(&GcHooks::new(self), index as usize),
+          UpvalueIndex::Upvalue(upvalue) => fiber.closure().get_upvalue(upvalue as usize),
         }
       })
       .collect::<Vec<GcObj<Upvalue>>>()
@@ -1652,34 +1580,34 @@ impl Vm {
 
     let closure = self.manage_obj(Closure::new(fun, upvalues));
 
-    self.push(val!(closure));
+    fiber.push(val!(closure));
     Signal::Ok
   }
 
-  fn op_close_upvalue(&mut self) -> Signal {
-    self.close_upvalues(unsafe { self.stack_top.offset(-1) });
-    self.drop();
+  unsafe fn op_close_upvalue(&mut self) -> Signal {
+    self.fiber.close_upvalues();
+    self.fiber.drop();
     Signal::Ok
   }
 
-  fn op_constant(&mut self) -> Signal {
+  unsafe fn op_constant(&mut self) -> Signal {
     let slot = self.read_byte();
     let constant = self.read_constant(slot as u16);
-    self.push(constant);
+    self.fiber.push(constant);
 
     Signal::Ok
   }
 
-  fn op_constant_long(&mut self) -> Signal {
+  unsafe fn op_constant_long(&mut self) -> Signal {
     let slot = self.read_short();
     let constant = self.read_constant(slot);
-    self.push(constant);
+    self.fiber.push(constant);
 
     Signal::Ok
   }
 
   /// resolve the current value and call in the appropriate manner
-  fn resolve_call(&mut self, callee: Value, arg_count: u8) -> Signal {
+  unsafe fn resolve_call(&mut self, callee: Value, arg_count: u8) -> Signal {
     if !callee.is_obj() {
       let class_name = self.value_class(callee).name();
       return self.runtime_error(
@@ -1718,9 +1646,9 @@ impl Vm {
   }
 
   /// call a class creating a new instance of that class
-  fn call_class(&mut self, class: GcObj<Class>, arg_count: u8) -> Signal {
+  unsafe fn call_class(&mut self, class: GcObj<Class>, arg_count: u8) -> Signal {
     let instance = val!(self.manage_obj(Instance::new(class)));
-    self.set_val(-(arg_count as isize) - 1, instance);
+    self.fiber.peek_set(arg_count as usize, instance);
 
     match class.init() {
       Some(init) => self.resolve_call(init, arg_count),
@@ -1738,15 +1666,10 @@ impl Vm {
   }
 
   /// call a native function immediately returning the result
-  fn call_native(&mut self, native: GcObj<Native>, arg_count: u8) -> Signal {
+  unsafe fn call_native(&mut self, native: GcObj<Native>, arg_count: u8) -> Signal {
     let meta = native.meta();
-
-    let args = unsafe {
-      std::slice::from_raw_parts(
-        self.stack_top.offset(-(arg_count as isize)),
-        arg_count as usize,
-      )
-    };
+    let mut fiber = self.fiber;
+    let args = fiber.stack_slice(arg_count as usize);
 
     // check that the current function is called with the right number of args and types
     if let Some(signal) = self.check_native_arity(meta, args) {
@@ -1754,7 +1677,7 @@ impl Vm {
     }
 
     let this = if meta.is_method {
-      Some(self.get_val(-(arg_count as isize) - 1))
+      Some(fiber.peek(arg_count as usize))
     } else {
       None
     };
@@ -1765,8 +1688,8 @@ impl Vm {
     match meta.environment {
       Environment::StackLess => match native.call(&mut Hooks::new(self), this, args) {
         Call::Ok(value) => {
-          self.stack_top = unsafe { self.stack_top.offset(-(arg_count as isize) - 1) };
-          self.push(value);
+          fiber.drop_n(arg_count as usize + 1);
+          fiber.push(value);
 
           #[cfg(debug_assertions)]
           {
@@ -1785,7 +1708,7 @@ impl Vm {
         match native.call(&mut Hooks::new(self), this, args) {
           Call::Ok(value) => {
             self.pop_frame();
-            self.push(value);
+            fiber.push(value);
 
             #[cfg(debug_assertions)]
             {
@@ -1802,14 +1725,14 @@ impl Vm {
   }
 
   /// call a laythe function setting it as the new call frame
-  fn call(&mut self, closure: GcObj<Closure>, arg_count: u8) -> Signal {
+  unsafe fn call(&mut self, closure: GcObj<Closure>, arg_count: u8) -> Signal {
     // check that the current function is called with the right number of args
     if let Some(error) = self.check_arity(closure.fun(), arg_count) {
       return error;
     }
 
     // set the current current instruction pointer. check for overflow
-    if self.frames.len() == MAX_FRAME_SIZE {
+    if self.fiber.frames().len() == MAX_FRAME_SIZE {
       return self.runtime_error(self.builtin.errors.runtime, "Stack overflow.");
     }
 
@@ -1819,48 +1742,35 @@ impl Vm {
 
   /// Push a call frame onto the the call frame stack
   #[inline]
-  fn push_frame(&mut self, closure: GcObj<Closure>, arg_count: u8) {
-    unsafe {
-      self.store_ip();
-      self.ensure_stack(closure.fun().max_slots());
+  unsafe fn push_frame(&mut self, closure: GcObj<Closure>, arg_count: u8) {
+    self.store_ip();
 
-      self.frames.push(CallFrame {
-        closure,
-        ip: closure.fun().chunk().instructions().as_ptr(),
-        slots: self.stack_top.offset(-(arg_count as isize) - 1),
-      });
-      self.current_frame = self.frames.as_mut_ptr().add(self.frames.len() - 1);
-      self.load_ip();
-    }
+    self.fiber.push_frame(closure, arg_count as usize);
+    self.load_ip();
 
     self.current_fun = closure.fun();
   }
 
-  /// Pop a frame off the call stack
+  /// Pop a frame off the call stack. If no frame remain
+  /// return the exit signal otherwise set the instruction
+  /// pointer and current function
   #[inline]
-  fn pop_frame(&mut self) -> Option<Signal> {
-    self.close_upvalues(unsafe { (*self.current_frame).slots });
-    self.frames.pop();
-
-    // if the frame was the whole script signal an ok interrupt
-    if self.frames.len() == 1 {
-      self.drop();
-      return Some(Signal::Exit);
+  unsafe fn pop_frame(&mut self) -> Option<Signal> {
+    match self.fiber.pop_frame() {
+      Some(current_fun) => match current_fun {
+        Some(current_fun) => {
+          self.current_fun = current_fun;
+          self.load_ip();
+          None
+        },
+        None => Some(Signal::Exit),
+      },
+      None => self.internal_error("Compilation failure attempted to pop last frame"),
     }
-
-    // pull the current frame out of the stack and set the cached frame
-    unsafe {
-      self.stack_top = self.slots();
-      self.current_frame = self.current_frame.offset(-1);
-      self.current_fun = self.closure().fun();
-      self.load_ip();
-    }
-
-    None
   }
 
   /// check that the number of args is valid for the function arity
-  fn check_arity(&mut self, fun: GcObj<Fun>, arg_count: u8) -> Option<Signal> {
+  unsafe fn check_arity(&mut self, fun: GcObj<Fun>, arg_count: u8) -> Option<Signal> {
     match fun.arity().check(arg_count) {
       Ok(_) => None,
       Err(error) => match error {
@@ -1905,7 +1815,11 @@ impl Vm {
   }
 
   /// Check the arity of a native functio
-  fn check_native_arity(&mut self, native_meta: &NativeMeta, args: &[Value]) -> Option<Signal> {
+  unsafe fn check_native_arity(
+    &mut self,
+    native_meta: &NativeMeta,
+    args: &[Value],
+  ) -> Option<Signal> {
     match native_meta.signature.check(args) {
       Ok(()) => None,
       Err(err) => {
@@ -1973,17 +1887,17 @@ impl Vm {
   }
 
   /// Call a bound method
-  fn call_method(&mut self, bound: GcObj<Method>, arg_count: u8) -> Signal {
-    self.set_val(-(arg_count as isize) - 1, bound.receiver());
+  unsafe fn call_method(&mut self, bound: GcObj<Method>, arg_count: u8) -> Signal {
+    self.fiber.peek_set(arg_count as usize, bound.receiver());
     self.resolve_call(bound.method(), arg_count)
   }
 
   /// bind a method to an instance
-  fn bind_method(&mut self, class: GcObj<Class>, name: GcStr) -> Signal {
+  unsafe fn bind_method(&mut self, class: GcObj<Class>, name: GcStr) -> Signal {
     match class.get_method(&name) {
       Some(method) => {
-        let bound = self.manage_obj(Method::new(self.peek(0), method));
-        self.set_val(-1, val!(bound));
+        let bound = self.manage_obj(Method::new(self.fiber.peek(0), method));
+        self.fiber.peek_set(0, val!(bound));
         Signal::Ok
       },
       None => self.runtime_error(
@@ -1994,7 +1908,7 @@ impl Vm {
   }
 
   /// invoke a method from the provided class
-  fn invoke_from_class(
+  unsafe fn invoke_from_class(
     &mut self,
     class: GcObj<Class>,
     method_name: GcStr,
@@ -2013,61 +1927,9 @@ impl Vm {
     }
   }
 
-  /// capture an upvalue return an existing upvalue if already captured
-  fn capture_upvalue(&mut self, local_index: usize) -> GcObj<Upvalue> {
-    let slot_index = unsafe { self.slots().offset_from(self.stack.get_unchecked(0)) as usize };
-    let upvalue_index = slot_index + local_index;
-
-    let closest_upvalue = self
-      .open_upvalues
-      .iter()
-      .rev()
-      .find(|upvalue| match ***upvalue {
-        Upvalue::Open(index) => index <= upvalue_index,
-        Upvalue::Closed(_) => self.internal_error("Encountered closed upvalue."),
-      });
-
-    if let Some(upvalue) = closest_upvalue {
-      if let Upvalue::Open(index) = **upvalue {
-        if index == upvalue_index {
-          return *upvalue;
-        }
-      }
-    }
-
-    let created_upvalue = self.manage_obj(Upvalue::Open(upvalue_index));
-    self.open_upvalues.push(created_upvalue);
-
-    created_upvalue
-  }
-
-  /// hoist all open upvalue above the last index
-  fn close_upvalues(&mut self, last_value: *mut Value) {
-    if !self.open_upvalues.is_empty() {
-      let mut retain = self.open_upvalues.len();
-
-      let last_index = unsafe { last_value.offset_from(self.stack.get_unchecked(0)) as usize };
-      for upvalue in self.open_upvalues.iter_mut().rev() {
-        let index = match **upvalue {
-          Upvalue::Open(index) => index,
-          Upvalue::Closed(_) => self.internal_error("Unexpected closed upvalue."),
-        };
-
-        if index < last_index {
-          break;
-        }
-
-        retain -= 1;
-        upvalue.hoist(&self.stack)
-      }
-
-      self.open_upvalues.truncate(retain)
-    }
-  }
-
   /// Print debugging information for a caught exceptions
   #[cfg(feature = "debug")]
-  fn print_exception_debug(&self, frame: &CallFrame, idx: usize) -> io::Result<()> {
+  unsafe fn print_exception_debug(&self, frame: &CallFrame, idx: usize) -> io::Result<()> {
     let mut stdio = self.io.stdio();
     let mut stdout = stdio.stdout();
 
@@ -2076,7 +1938,7 @@ impl Vm {
 
   /// Print debugging information for the current instruction
   #[cfg(feature = "debug")]
-  fn print_state(&self, ip: *const u8) -> io::Result<usize> {
+  unsafe fn print_state(&self, ip: *const u8) -> io::Result<usize> {
     let mut stdio = self.io.stdio();
 
     self.print_stack_debug(&mut stdio)?;
@@ -2085,38 +1947,32 @@ impl Vm {
     self.print_upvalue_debug(&mut stdio)?;
 
     let start = self.current_fun.chunk().instructions().as_ptr();
-    let offset = unsafe { ip.offset_from(start) } as usize;
+    let offset = ip.offset_from(start) as usize;
     disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, false)
   }
 
   /// Print the current stack
   #[cfg(feature = "debug")]
-  fn print_stack_debug(&self, stdio: &mut Stdio) -> io::Result<()> {
+  unsafe fn print_stack_debug(&self, stdio: &mut Stdio) -> io::Result<()> {
     let stdout = stdio.stdout();
 
-    if self.frames.len() > 1 {
+    if self.fiber.frames().len() > 1 {
       write!(stdout, "Frame Stack:  ")?;
-      for frame in self.frames.iter() {
+      for frame in self.fiber.frames().iter() {
         let fun = frame.closure.fun();
-        write!(stdout, "[ {}:{} ]", fun.module().name(), fun.name())?;
+        write!(stdout, "[ {:?}:{:?} ]", fun.module().name(), fun.name())?;
       }
       writeln!(stdout)?;
     }
 
     write!(stdout, "Local Stack:  ")?;
-    unsafe {
-      let start = self.slots();
-      let len = ptr_len(start, self.stack_top);
-      let slice = std::slice::from_raw_parts(start, len);
-
-      for value in slice {
-        let s = value.to_string();
-        write!(
-          stdout,
-          "[ {} ]",
-          s.chars().into_iter().take(60).collect::<String>()
-        )?;
-      }
+    for value in self.fiber.frame_stack() {
+      let s = value.to_string();
+      write!(
+        stdout,
+        "[ {} ]",
+        s.chars().into_iter().take(60).collect::<String>()
+      )?;
     }
 
     writeln!(stdout)
@@ -2150,7 +2006,7 @@ impl Vm {
       ExecuteResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
       },
-      ExecuteResult::RuntimeError => match self.current_error {
+      ExecuteResult::RuntimeError => match self.fiber.error() {
         Some(error) => Call::Err(error),
         None => self.internal_error("Error not set on vm executor."),
       },
@@ -2164,14 +2020,14 @@ impl Vm {
   }
 
   /// Report a known laythe runtime error to the user
-  fn runtime_error(&mut self, error: GcObj<Class>, message: &str) -> Signal {
+  unsafe fn runtime_error(&mut self, error: GcObj<Class>, message: &str) -> Signal {
     let error_message = val!(self.manage_str(message));
-    self.push(error_message);
+    self.fiber.push(error_message);
 
-    let mode = ExecuteMode::CallFunction(self.frames.len());
+    let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
     let result = match self.resolve_call(val!(error), 1) {
       Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::FunResult(self.pop()),
+      Signal::OkReturn => ExecuteResult::FunResult(self.fiber.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_fun."),
     };
@@ -2190,7 +2046,7 @@ impl Vm {
 
   /// Set the current error place the vm signal a runtime error
   fn set_error(&mut self, error: GcObj<Instance>) -> Signal {
-    self.current_error = Some(error);
+    self.fiber.set_error(error);
     Signal::RuntimeError
   }
 
@@ -2202,54 +2058,12 @@ impl Vm {
 
   /// Search for a catch block up the stack, printing the error if no catch is found
   fn stack_unwind(&mut self, error: GcObj<Instance>) -> Option<ExecuteResult> {
-    let mut stack_top = None;
-    let mut jump_pair = None;
-
     self.store_ip();
 
-    // travel down stack frames looking for an applicable handle
-    for (idx, frame) in self.frames.iter().skip(1).rev().enumerate() {
-      let fun = frame.closure.fun();
-      let instructions = &*fun.chunk().instructions();
-
-      let offset = unsafe { frame.ip.offset_from(instructions.as_ptr()) as usize };
-      if let Some(offset) = fun.has_catch_jump(offset as u16) {
-        jump_pair = Some((self.frames.len() - idx - 1, offset));
-        break;
-      }
-
-      stack_top = Some(frame.slots);
-    }
-
-    match jump_pair {
-      Some((idx, ip_offset)) => {
-        let frame = &mut self.frames[idx];
-        let fun = frame.closure.fun();
-        let instructions = &*fun.chunk().instructions();
-
-        // if found set all the stack information to the correct state
-        frame.ip = &instructions[ip_offset as usize] as *const u8;
-
-        self.current_frame = frame as *mut CallFrame;
+    match self.fiber.stack_unwind() {
+      Some(frame) => {
         self.current_fun = frame.closure.fun();
         self.ip = frame.ip;
-
-        #[cfg(feature = "debug")]
-        let popped_frames = self.frames.len() - (idx + 1);
-        self.frames.truncate(idx + 1);
-
-        if let Some(top) = stack_top {
-          self.stack_top = top;
-        }
-
-        #[cfg(feature = "debug")]
-        {
-          let frame = unsafe { &*self.current_frame };
-          if let Err(_) = self.print_exception_debug(frame, popped_frames) {
-            return Some(ExecuteResult::InternalError);
-          }
-        }
-
         None
       },
       None => {
@@ -2261,31 +2075,10 @@ impl Vm {
 
   /// Print an error message and the current call stack to the user
   fn print_error(&mut self, error: GcObj<Instance>) {
-    let message = error[0].to_obj().to_str();
-
     let mut stdio = self.io.stdio();
     let stderr = stdio.stderr();
-    writeln!(stderr, "{}: {}", &*error.class().name(), &*message)
-      .expect("Unable to write to stderr");
 
-    for frame in self.frames.iter().skip(1).rev() {
-      let fun = frame.closure.fun();
-      let location: String = match &*fun.name() {
-        SCRIPT => SCRIPT.to_owned(),
-        _ => format!("{}()", &*fun.name()),
-      };
-
-      let offset = ptr_len(&fun.chunk().instructions()[0], frame.ip);
-      writeln!(
-        stderr,
-        "  [line {}] in {}",
-        fun.chunk().get_line(offset),
-        location
-      )
-      .expect("Unable to write to stderr");
-    }
-
-    self.reset_stack();
+    self.fiber.print_error(stderr, error);
   }
 }
 
@@ -2299,125 +2092,21 @@ fn assert_roots(native: GcObj<Native>, roots_before: usize, roots_now: usize) {
   );
 }
 
-impl From<VmDependencies> for Vm {
-  /// Construct a vm from a set of dependencies. This is meant to be used when targeting
-  /// different environments
-  fn from(dependencies: VmDependencies) -> Self {
-    let no_gc_context = NoContext::new(dependencies.gc);
-    let hooks = GcHooks::new(&no_gc_context);
-
-    let std_lib = dependencies.std_lib;
-    let global = std_lib.root_module();
-
-    let fun = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
-
-    let managed_fun = hooks.manage_obj(fun.build());
-
-    let frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
-    let mut stack = vec![VALUE_NIL; INITIAL_STACK_SIZE];
-
-    let builtin = builtin_from_module(&hooks, &global)
-      .expect("Failed to generate builtin class from global module");
-
-    let root_dir = dependencies
-      .io
-      .env()
-      .current_dir()
-      .expect("Could not obtain the current working directory.");
-
-    let stack_top = &mut stack[1] as *mut Value;
-    let ip = ptr::null();
-
-    let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
-    native_builder.write_instruction(AlignedByteCode::Nil, 0);
-
-    let native_fun_stub = hooks.manage_obj(native_builder.build());
-
-    let gc = RefCell::new(no_gc_context.done());
-
-    let mut vm = Vm {
-      io: dependencies.io,
-      stack,
-      frames,
-      gc,
-      files: VmFiles::default(),
-      emitter: IdEmitter::default(),
-      inline_cache: vec![],
-      root_dir,
-      builtin,
-      packages: Map::default(),
-      module_cache: Map::default(),
-      global,
-      current_fun: managed_fun,
-      current_frame: ptr::null_mut(),
-      current_error: None,
-      exit_code: 0,
-      stack_top,
-      ip,
-      native_fun_stub,
-      open_upvalues: Vec::with_capacity(100),
-    };
-    vm.add_package(std_lib);
-
-    vm
-  }
-}
-
 impl TraceRoot for Vm {
   fn trace(&self) {
-    unsafe {
-      let start = self.stack.as_ptr();
-      let len = self.stack_top.offset_from(start) as usize;
-      let slice = std::slice::from_raw_parts(start, len);
-
-      slice.iter().for_each(|value| {
-        value.trace();
-      });
-    }
-
-    self.frames.iter().skip(1).for_each(|frame| {
-      frame.closure.trace();
-    });
-
-    self.open_upvalues.iter().for_each(|upvalue| {
-      upvalue.trace();
-    });
-
+    self.fiber.trace();
     self.files.trace();
     self.packages.trace();
     self.module_cache.trace();
     self.native_fun_stub.trace();
-    if let Some(current_error) = self.current_error {
-      current_error.trace()
-    }
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
-    unsafe {
-      let start = self.stack.as_ptr();
-      let len = self.stack_top.offset_from(start) as usize;
-      let slice = std::slice::from_raw_parts(start, len);
-
-      slice.iter().for_each(|value| {
-        value.trace_debug(log);
-      });
-    }
-
-    self.frames.iter().skip(1).for_each(|frame| {
-      frame.closure.trace_debug(log);
-    });
-
-    self.open_upvalues.iter().for_each(|upvalue| {
-      upvalue.trace_debug(log);
-    });
-
+    self.fiber.trace_debug(log);
     self.files.trace_debug(log);
     self.packages.trace_debug(log);
     self.module_cache.trace_debug(log);
     self.native_fun_stub.trace_debug(log);
-    if let Some(current_error) = self.current_error {
-      current_error.trace_debug(log)
-    }
   }
 
   fn can_collect(&self) -> bool {
@@ -2447,17 +2136,17 @@ impl GcContext for Vm {
 
 impl ValueContext for Vm {
   fn call(&mut self, callable: Value, args: &[Value]) -> Call {
-    let result = self.run_fun(callable, args);
+    let result = unsafe { self.run_fun(callable, args) };
     self.to_call_result(result)
   }
 
   fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> Call {
-    let result = self.run_method(this, method, args);
+    let result = unsafe { self.run_method(this, method, args) };
     self.to_call_result(result)
   }
 
   fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
-    self.get_method(this, method_name)
+    unsafe { self.get_method(this, method_name) }
   }
 
   fn get_class(&mut self, this: Value) -> Value {

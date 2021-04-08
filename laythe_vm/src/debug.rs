@@ -4,7 +4,7 @@ use std::{io, io::Write, mem};
 
 use crate::byte_code::{decode_u16, decode_u32, AlignedByteCode, UpvalueIndex};
 #[cfg(feature = "debug")]
-use crate::call_frame::CallFrame;
+use laythe_core::call_frame::CallFrame;
 
 /// Indicate where and how an exception was caught
 #[cfg(feature = "debug")]

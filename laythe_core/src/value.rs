@@ -75,7 +75,8 @@ mod unboxed {
   use crate::{
     managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Trace},
     object::{
-      Class, Closure, Enumerator, Fun, Instance, List, Map, Method, Native, ObjectKind, Upvalue,
+      Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native, ObjectKind,
+      Upvalue,
     },
   };
 
@@ -225,6 +226,7 @@ mod unboxed {
         Value::Obj(obj) => match obj.kind() {
           ObjectKind::String => "string",
           ObjectKind::List => "list",
+          ObjectKind::Fiber => "fiber",
           ObjectKind::Map => "map",
           ObjectKind::Fun => "function",
           ObjectKind::Closure => "closure",
@@ -268,6 +270,12 @@ mod unboxed {
 
   impl From<GcStr> for Value {
     fn from(managed: GcStr) -> Value {
+      Value::Obj(managed.degrade())
+    }
+  }
+
+  impl From<GcObj<Fiber>> for Value {
+    fn from(managed: GcObj<Fiber>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -460,7 +468,8 @@ mod boxed {
   use crate::{
     managed::{DebugHeap, GcObj, GcObject, GcStr, Trace},
     object::{
-      Class, Closure, Enumerator, Fun, Instance, List, Map, Method, Native, ObjectKind, Upvalue,
+      Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native, ObjectKind,
+      Upvalue,
     },
   };
 
@@ -597,6 +606,7 @@ mod boxed {
           ObjectKind::List => "list",
           ObjectKind::Map => "map",
           ObjectKind::Fun => "function",
+          ObjectKind::Fiber => "fiber",
           ObjectKind::Closure => "closure",
           ObjectKind::Class => "class",
           ObjectKind::Instance => "instance",
@@ -662,6 +672,11 @@ mod boxed {
     }
   }
 
+  impl From<GcObj<Fiber>> for Value {
+    fn from(managed: GcObj<Fiber>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
+    }
+  }
   impl From<GcObj<List<Value>>> for Value {
     fn from(managed: GcObj<List<Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)

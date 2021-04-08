@@ -86,6 +86,9 @@ impl LyNative for ObjectStr {
         ObjectKind::Fun(fun) => {
           format!("<{} {:p}>", &*class.name(), &*fun)
         },
+        ObjectKind::Fiber(fiber) => {
+          format!("<{} {:p}>", &*class.name(), &*fiber)
+        },
         ObjectKind::Instance(instance) => {
           format!("<{} {:p}>", &*class.name(), &*instance)
         },
