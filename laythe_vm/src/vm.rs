@@ -81,12 +81,6 @@ pub fn default_native_vm() -> Vm {
 
 /// The virtual machine for the laythe programming language
 pub struct Vm {
-  /// A stack holding all local variable currently in use
-  // stack: Vec<Value>,
-
-  /// A stack holding call frames currently in use
-  // frames: Vec<CallFrame>,
-
   /// The current running fiber
   fiber: GcObj<Fiber>,
 
@@ -120,24 +114,11 @@ pub struct Vm {
   /// The global module
   global: Gc<Module>,
 
-  // fib
-  /// A collection of currently available upvalues
-  // open_upvalues: Vec<GcObj<Upvalue>>,
-
   /// The current frame's function
   current_fun: GcObj<Fun>,
 
-  /// The current frame's closure
-  // current_frame: *mut CallFrame,
-
-  /// The current error if one is active
-  // current_error: Option<GcObj<Instance>>,
-
   /// What exit code is currently set
   exit_code: u16,
-
-  /// pointer to the top of the value stack
-  // stack_top: *mut Value,
 
   /// pointer to the current instruction
   ip: *const u8,
@@ -165,17 +146,9 @@ impl Vm {
 
     let builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
     let managed_fun = hooks.manage_obj(builder.build());
-    // let closure = hooks.manage_obj(Closure::without_upvalues(managed_fun));
-
-    // let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
-    // frames.push(CallFrame::new(closure));
-
-    // let mut stack = vec![VALUE_NIL; INITIAL_STACK_SIZE];
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
-
-    // let stack_top = &mut stack[1] as *mut Value;
 
     let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
     native_builder.write_instruction(AlignedByteCode::Nil, 0);
@@ -189,9 +162,7 @@ impl Vm {
 
     let mut vm = Vm {
       io,
-      // stack,
       fiber: GcObj::dangling(),
-      // frames,
       gc,
       files: VmFiles::default(),
       builtin,
@@ -202,13 +173,9 @@ impl Vm {
       inline_cache,
       global,
       current_fun: managed_fun,
-      // current_frame: ptr::null_mut(),
-      // current_error: None,
       exit_code: 0,
-      // stack_top,
       ip: ptr::null(),
       native_fun_stub,
-      // open_upvalues: Vec::with_capacity(100),
     };
     vm.add_package(std_lib);
 
@@ -579,18 +546,6 @@ impl Vm {
   fn pop_roots(&self, count: usize) {
     self.gc.borrow_mut().pop_roots(count)
   }
-
-  /// Get an immutable reference to value on the stack
-  // #[inline]
-  // fn get_val(&self, offset: isize) -> Value {
-  //   unsafe { *self.stack_top.offset(offset) }
-  // }
-
-  /// Set a value on the stack
-  // #[inline]
-  // fn set_val(&mut self, offset: isize, val: Value) {
-  //   unsafe { *self.stack_top.offset(offset) = val }
-  // }
 
   /// Update the current instruction pointer
   #[inline]
