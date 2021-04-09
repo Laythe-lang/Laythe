@@ -1045,15 +1045,13 @@ mod test {
 
     fiber.push_frame(closure, 2);
 
-    unsafe {
-      let slice = fiber.frame_stack();
+    let slice = fiber.frame_stack();
 
-      assert_eq!(slice[0], val!(closure));
-      assert_eq!(slice[1], val!(10.0));
-      assert_eq!(slice[2], val!(true));
+    assert_eq!(slice[0], val!(closure));
+    assert_eq!(slice[1], val!(10.0));
+    assert_eq!(slice[2], val!(true));
 
-      assert_eq!(fiber.frame().closure, closure);
-    }
+    assert_eq!(fiber.frame().closure, closure);
   }
 
   #[test]
@@ -1081,13 +1079,11 @@ mod test {
 
     assert_ne!(popped_frame, closure.fun());
 
-    unsafe {
-      let slice = fiber.frame_stack();
+    let slice = fiber.frame_stack();
 
-      assert_eq!(slice.len(), 2);
-      assert_eq!(slice[0], val!(fiber.frame().closure));
-      assert_eq!(slice[1], VALUE_NIL);
-    }
+    assert_eq!(slice.len(), 2);
+    assert_eq!(slice[0], val!(fiber.frame().closure));
+    assert_eq!(slice[1], VALUE_NIL);
   }
 
   #[test]

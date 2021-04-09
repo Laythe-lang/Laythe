@@ -177,14 +177,14 @@ impl LyNative for Rand {
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     use rand::Rng;
     let mut rng = rand::thread_rng();
-    let val: f64 = rng.gen_range(0.0, 1.0);
+    let val: f64 = rng.gen_range(0.0..1.0);
     Call::Ok(val!(val))
   }
 
   #[cfg(feature = "wasm")]
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     use js_sys::Math::random;
-    Call::Ok(val!(random()))
+    Call::Ok(val!(unsafe { random() }))
   }
 }
 
