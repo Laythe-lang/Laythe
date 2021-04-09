@@ -7,7 +7,8 @@ use super::{
 };
 use crate::{
   object::{
-    Class, Closure, Enumerator, Fun, Instance, List, Map, Method, Native, ObjectKind, Upvalue,
+    Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native, ObjectKind,
+    Upvalue,
   },
   value::Value,
 };
@@ -36,6 +37,9 @@ macro_rules! to_obj_kind {
   };
   ($o:expr, Fun) => {
     $o.to_fun()
+  };
+  ($o:expr, Fiber) => {
+    $o.to_fiber()
   };
   ($o:expr, Instance) => {
     $o.to_instance()
@@ -192,6 +196,14 @@ impl<T: 'static + Object> GcObj<T> {
   pub fn degrade(self) -> GcObject {
     let shifted = unsafe { NonNull::new_unchecked(self.header_ptr()) };
     GcObject::new(shifted)
+  }
+
+  /// Create a dangling GcObj pointer
+  pub fn dangling() -> GcObj<T> {
+    GcObj {
+      ptr: NonNull::dangling(),
+      phantom: PhantomData,
+    }
   }
 
   /// Return the underlying pointer as a usize. This is
@@ -417,6 +429,14 @@ impl GcObject {
   }
 
   #[inline]
+  pub fn to_fiber(&self) -> GcObj<Fiber> {
+    GcObj {
+      ptr: unsafe { self.data_ptr::<Fiber>() },
+      phantom: PhantomData,
+    }
+  }
+
+  #[inline]
   pub fn to_instance(&self) -> GcObj<Instance> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Instance>() },
@@ -480,6 +500,7 @@ impl fmt::Display for GcObject {
       ObjectKind::List(list) => write!(f, "{}", list),
       ObjectKind::Map(map) => write!(f, "{}", map),
       ObjectKind::Fun(fun) => write!(f, "{}", fun),
+      ObjectKind::Fiber(fiber) => write!(f, "{}", fiber),
       ObjectKind::Upvalue(upvalue) => write!(f, "{}", upvalue),
       ObjectKind::Closure(closure) => write!(f, "{}", closure),
       ObjectKind::Method(method) => write!(f, "{}", method),
@@ -498,6 +519,7 @@ impl fmt::Debug for GcObject {
       ObjectKind::List(list) => write!(f, "{:?}", list),
       ObjectKind::Map(map) => write!(f, "{:?}", map),
       ObjectKind::Fun(fun) => write!(f, "{:?}", fun),
+      ObjectKind::Fiber(fiber) => write!(f, "{:?}", fiber),
       ObjectKind::Upvalue(upvalue) => write!(f, "{:?}", upvalue),
       ObjectKind::Closure(closure) => write!(f, "{:?}", closure),
       ObjectKind::Method(method) => write!(f, "{:?}", method),
@@ -542,6 +564,9 @@ impl Trace for GcObject {
       },
       ObjectKind::Fun(fun) => {
         fun.trace();
+      },
+      ObjectKind::Fiber(fiber) => {
+        fiber.trace();
       },
       ObjectKind::Instance(instance) => {
         instance.trace();
@@ -599,6 +624,9 @@ impl Trace for GcObject {
       ObjectKind::Fun(fun) => {
         trace_debug!(fun);
       },
+      ObjectKind::Fiber(fiber) => {
+        trace_debug!(fiber);
+      },
       ObjectKind::Instance(instance) => {
         trace_debug!(instance);
       },
@@ -642,6 +670,9 @@ impl DebugHeap for GcObject {
       },
       ObjectKind::Fun(fun) => {
         fun.fmt_heap(f, depth)
+      },
+      ObjectKind::Fiber(fiber) => {
+        fiber.fmt_heap(f, depth)
       },
       ObjectKind::Instance(instance) => {
         instance.fmt_heap(f, depth)
@@ -705,6 +736,7 @@ impl GcObjectHandle {
 
     mem::size_of::<Self>()
       + match self.kind() {
+        ObjectKind::Fiber => kind_size!(Fiber),
         ObjectKind::List => kind_size!(List<Value>),
         ObjectKind::Map => kind_size!(Map<Value, Value>),
         ObjectKind::Fun => kind_size!(Fun),
@@ -740,6 +772,7 @@ impl Drop for GcObjectHandle {
       match kind {
         ObjectKind::List => drop_kind!(List<Value>),
         ObjectKind::Map => drop_kind!(Map<Value, Value>),
+        ObjectKind::Fiber => drop_kind!(Fiber),
         ObjectKind::Fun => drop_kind!(Fun),
         ObjectKind::Closure => drop_kind!(Closure),
         ObjectKind::Class => drop_kind!(Class),
@@ -748,7 +781,7 @@ impl Drop for GcObjectHandle {
         ObjectKind::Method => drop_kind!(Method),
         ObjectKind::Native => drop_kind!(Native),
         ObjectKind::Upvalue => drop_kind!(Upvalue),
-        _ => panic!("Boolean, number, string or nil should be in a GcObjectHandle"),
+        _ => panic!("Boolean, number, string or nil should not be in a GcObjectHandle"),
       }
     }
   }

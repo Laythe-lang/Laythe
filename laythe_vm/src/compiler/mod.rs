@@ -7,6 +7,7 @@ pub use scanner::Scanner;
 
 use crate::{
   ast::{self, Decl, Expr, Primary, Span, Spanned, Stmt, Symbol, Trailer},
+  byte_code::{AlignedByteCode, UpvalueIndex},
   cache::CacheIdEmitter,
   source::LineOffsets,
   token::{Lexeme, Token, TokenKind},
@@ -14,7 +15,7 @@ use crate::{
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
-  chunk::{AlignedByteCode, ChunkBuilder, UpvalueIndex},
+  chunk::ChunkBuilder,
   constants::OBJECT,
   constants::{ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::{GcContext, GcHooks},
@@ -1874,9 +1875,13 @@ impl<'a, 'src: 'a, FileId> TraceRoot for Compiler<'a, 'src, FileId> {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::{compiler::Parser, debug::disassemble_chunk, source::Source};
+  use crate::{
+    byte_code::{decode_u16, decode_u32},
+    compiler::Parser,
+    debug::disassemble_chunk,
+    source::Source,
+  };
   use laythe_core::{
-    chunk::{decode_u16, decode_u32},
     hooks::NoContext,
     managed::GcObj,
     memory::{NoGc, NO_GC},

@@ -1,15 +1,10 @@
-use laythe_core::{
-  chunk::{decode_u16, decode_u32, AlignedByteCode, Chunk, UpvalueIndex},
-  if_let_obj,
-  object::ObjectKind,
-  to_obj_kind,
-  value::Value,
-};
+use laythe_core::{chunk::Chunk, if_let_obj, object::ObjectKind, to_obj_kind, value::Value};
 use laythe_env::stdio::Stdio;
 use std::{io, io::Write, mem};
 
+use crate::byte_code::{decode_u16, decode_u32, AlignedByteCode, UpvalueIndex};
 #[cfg(feature = "debug")]
-use crate::call_frame::CallFrame;
+use laythe_core::call_frame::CallFrame;
 
 /// Indicate where and how an exception was caught
 #[cfg(feature = "debug")]
