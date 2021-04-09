@@ -125,6 +125,11 @@ impl Fiber {
   }
 
   /// push a value onto the stack
+  ///
+  /// ## Safety
+  /// A stack push makes no bounds checks and it's possible
+  /// to attempt to write a value past the end of the stack.
+  /// ensure sufficient stack space has been allocated
   #[inline]
   pub unsafe fn push(&mut self, value: Value) {
     self.set_val(0, value);
@@ -132,6 +137,11 @@ impl Fiber {
   }
 
   /// pop a value off the stack
+  ///
+  /// ## Safety
+  /// A stack pop makes no bounds checks and it's possible to
+  /// attempt to write a value prior the start of the stack.
+  /// ensure sufficient stack space has been allocated
   #[inline]
   pub unsafe fn pop(&mut self) -> Value {
     self.drop();
@@ -139,6 +149,10 @@ impl Fiber {
   }
 
   /// drop a value off the stack
+  ///
+  /// ## Safety
+  /// A stack drop makes not bounds checks and it's possible to
+  /// move the current stack top prior to the beginning of the stack
   #[inline]
   pub unsafe fn drop(&mut self) {
     self.stack_top = self.stack_top.offset(-1);
@@ -147,7 +161,11 @@ impl Fiber {
     self.assert_stack_inbounds();
   }
 
-  /// drop a value off the stack
+  /// drop n values off the stack
+  ///
+  /// ## Safety
+  /// Dropping n values the stack makes not bounds checks and it' possible
+  /// to move the current stack top prior to the beginning of the stack
   #[inline]
   pub unsafe fn drop_n(&mut self, count: usize) {
     self.stack_top = self.stack_top.sub(count);
@@ -156,13 +174,22 @@ impl Fiber {
     self.assert_stack_inbounds();
   }
 
-  /// reference a value n slots from the stack head
+  /// Retrieve a value n slots from the stack head
+  ///
+  /// ## Safety
+  /// Peeking n slot down make no bounds checks if distance is
+  /// greater than the current stack length
   #[inline]
   pub unsafe fn peek(&self, distance: usize) -> Value {
     self.get_val(distance + 1)
   }
 
-  /// reference a value n slots from the stack head
+  /// Set a value n slots from the stack head
+  ///
+  ///
+  /// ## Safety
+  /// Setting a value n slot down make no bounds checks if distance is
+  /// greater than the current stack length
   #[inline]
   pub unsafe fn peek_set(&mut self, distance: usize, val: Value) {
     self.set_val(distance + 1, val)
@@ -182,21 +209,28 @@ impl Fiber {
 
   /// Get a slice of the top count values on the stack
   #[inline]
-  pub unsafe fn frame_stack(&self) -> &[Value] {
-    let stack_start = (*self.frame).stack_start;
-    let len = self.stack_top.offset_from(stack_start);
+  pub fn frame_stack(&self) -> &[Value] {
+    unsafe {
+      let stack_start = (*self.frame).stack_start;
+      let len = self.stack_top.offset_from(stack_start);
 
-    #[cfg(debug_assertions)]
-    {
-      if len > 0 {
-        assert_inbounds(&self.stack, stack_start);
+      #[cfg(debug_assertions)]
+      {
+        if len > 0 {
+          assert_inbounds(&self.stack, stack_start);
+        }
       }
-    }
 
-    std::slice::from_raw_parts(stack_start, len as usize)
+      std::slice::from_raw_parts(stack_start, len as usize)
+    }
   }
 
   /// Get a slice of the top count values on the stack
+  ///
+  /// ## Safety
+  /// Not bounds checks are made against the lower bound
+  /// a value of len greater than the len will read past
+  /// the beginning of the stack
   #[inline]
   pub unsafe fn stack_slice(&self, len: usize) -> &[Value] {
     let start = self.stack_top.sub(len);
