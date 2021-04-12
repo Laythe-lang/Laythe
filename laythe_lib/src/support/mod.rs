@@ -1,3 +1,7 @@
+use crate::{
+  global::{ERROR_CLASS_NAME, OBJECT_CLASS_NAME},
+  StdError, StdResult, STD,
+};
 use laythe_core::{
   hooks::GcHooks,
   if_let_obj,
@@ -7,6 +11,7 @@ use laythe_core::{
   to_obj_kind,
   value::Value,
 };
+
 pub fn default_class_inheritance(
   hooks: &GcHooks,
   package: &Package,
@@ -112,10 +117,6 @@ pub fn export_and_insert(
 
 #[cfg(test)]
 pub use self::test::*;
-use crate::{
-  global::{ERROR_CLASS_NAME, OBJECT_CLASS_NAME},
-  StdError, StdResult, STD,
-};
 
 #[cfg(test)]
 mod test {
@@ -409,7 +410,7 @@ mod test {
     Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
   }
 
-  pub fn fun_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
+  pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
     let module_class = test_class(hooks, name);
 
     let module = Module::from_path(
@@ -427,7 +428,7 @@ mod test {
     hooks.manage_obj(builder.build())
   }
 
-  pub fn fun_builder_from_hooks(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
+  pub fn test_fun_builder(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
     let module_class = test_class(hooks, name);
 
     let module = Module::from_path(

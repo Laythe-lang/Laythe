@@ -152,7 +152,7 @@ fn assert_files_exit_inner(
   let mut file = match File::open(test_path.clone()) {
     Ok(file) => file,
     Err(err) => {
-      println!("Could not find {}", test_path.to_str().unwrap());
+      eprintln!("Could not find {}", test_path.to_str().unwrap());
       return Err(err);
     },
   };
