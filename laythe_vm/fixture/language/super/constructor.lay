@@ -1,6 +1,6 @@
 class Base {
   init(a, b) {
-    print("Base.init(" + a + ", " + b + ")");
+    print("Base.init(${a}, ${b})");
   }
 }
 

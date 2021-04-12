@@ -1,0 +1,2 @@
+let Fs = "example";
+import std.io.fs as Fs;

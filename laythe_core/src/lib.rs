@@ -1,14 +1,15 @@
 #![deny(clippy::all)]
+pub mod call_frame;
 pub mod chunk;
 pub mod constants;
-pub mod dynamic_map;
 pub mod hooks;
-pub mod iterator;
+pub mod impls;
+pub mod managed;
+pub mod memory;
 pub mod module;
-pub mod native;
 pub mod object;
-pub mod package;
 pub mod signature;
+pub mod support;
 pub mod utils;
 pub mod value;
 
@@ -19,13 +20,13 @@ use std::fmt;
 
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
-use laythe_env::managed::Gc;
+use managed::GcObj;
 use object::Instance;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum LyResult<T> {
   Ok(T),
-  Err(Gc<Instance>),
+  Err(GcObj<Instance>),
   Exit(u16),
 }
 
@@ -104,7 +105,7 @@ impl<T> LyResult<T> {
 impl<T: fmt::Debug> LyResult<T> {
   #[inline]
   #[track_caller]
-  pub fn expect_err(self, msg: &str) -> Gc<Instance> {
+  pub fn expect_err(self, msg: &str) -> GcObj<Instance> {
     match self {
       Self::Ok(t) => unwrap_failed(msg, &t),
       Self::Err(e) => e,

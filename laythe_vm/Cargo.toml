@@ -18,13 +18,13 @@ laythe_core = { path = "../laythe_core", features=["nan_boxing"] }
 laythe_lib = { path = "../laythe_lib" }
 laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }
-fnv = "1.0.3"
-smol_str = "0.1.17"
-codespan = "0.11.0"
-codespan-reporting = "0.11.0"
+fnv = "1.0.7"
+codespan = "0.11.1"
+codespan-reporting = "0.11.1"
+bumpalo = { version = "3.6.1", features=["boxed"] }
 
 [dev-dependencies]
-criterion = "0.3"
+criterion = "0.3.4"
 
 [[bench]]
 name = "vm_benches"

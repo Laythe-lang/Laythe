@@ -1,21 +1,15 @@
-use crate::{
-  native,
-  support::{export_and_insert, load_class_from_module, to_dyn_native},
-  InitResult,
-};
+use crate::native;
 use laythe_core::{
   constants::OBJECT,
   hooks::{GcHooks, Hooks},
-  module::Module,
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  object::Class,
-  package::Package,
+  managed::{GcObj, GcObject, Trace},
+  match_obj,
+  object::{Class, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  val,
-  value::Value,
+  to_obj_kind, val,
+  value::{Value, ValueKind},
   Call,
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 pub const OBJECT_CLASS_NAME: &str = OBJECT;
@@ -27,40 +21,34 @@ const OBJECT_CLASS: NativeMetaBuilder = NativeMetaBuilder::method("cls", Arity::
 
 const OBJECT_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_object_class(hooks: &GcHooks, self_module: &mut Module) -> InitResult<()> {
+pub fn create_object_class(hooks: &GcHooks) -> GcObj<Class> {
   let name = hooks.manage_str(OBJECT_CLASS_NAME);
-  let class = hooks.manage(Class::bare(name));
+  let mut object = hooks.manage_obj(Class::bare(name));
 
-  export_and_insert(hooks, self_module, name, val!(class))
-}
-
-pub fn define_object_class(hooks: &GcHooks, module: &Module, _: &Package) -> InitResult<()> {
-  let mut class = load_class_from_module(hooks, module, OBJECT_CLASS_NAME)?;
-
-  class.add_method(
+  object.add_method(
     &hooks,
     hooks.manage_str(OBJECT_EQUALS.name),
-    val!(to_dyn_native(hooks, ObjectEquals::from(hooks))),
+    val!(ObjectEquals::native(hooks)),
   );
 
-  class.add_method(
+  object.add_method(
     &hooks,
     hooks.manage_str(OBJECT_CLASS.name),
-    val!(to_dyn_native(hooks, ObjectCls::from(hooks))),
+    val!(ObjectCls::native(hooks)),
   );
 
-  class.add_method(
+  object.add_method(
     &hooks,
     hooks.manage_str(OBJECT_STR.name),
-    val!(to_dyn_native(hooks, ObjectStr::from(hooks))),
+    val!(ObjectStr::native(hooks)),
   );
 
-  Ok(())
+  object
 }
 
 native!(ObjectEquals, OBJECT_EQUALS);
 
-impl Native for ObjectEquals {
+impl LyNative for ObjectEquals {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     Call::Ok(val!(this.unwrap() == args[0]))
   }
@@ -68,7 +56,7 @@ impl Native for ObjectEquals {
 
 native!(ObjectCls, OBJECT_CLASS);
 
-impl Native for ObjectCls {
+impl LyNative for ObjectCls {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     Call::Ok(hooks.get_class(this.unwrap()))
   }
@@ -76,32 +64,53 @@ impl Native for ObjectCls {
 
 native!(ObjectStr, OBJECT_STR);
 
-impl Native for ObjectStr {
+impl LyNative for ObjectStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let this = this.unwrap();
-    let class = hooks.get_class(this).to_class();
+    let class = hooks.get_class(this).to_obj().to_class();
 
     let string = match this.kind() {
-      laythe_core::value::ValueKind::Bool => format!("<{} {}>", class.name, this.to_bool()),
-      laythe_core::value::ValueKind::Nil => format!("<{} nil>", class.name),
-      laythe_core::value::ValueKind::Number => format!("<{} {}>", class.name, this.to_num()),
-      laythe_core::value::ValueKind::String => format!("<{} {}>", class.name, this.to_str()),
-      laythe_core::value::ValueKind::List => format!("<{} {:p}>", class.name, &*this.to_list()),
-      laythe_core::value::ValueKind::Map => format!("<{} {:p}>", class.name, &*this.to_map()),
-      laythe_core::value::ValueKind::Fun => format!("<{} {:p}>", class.name, &*this.to_fun()),
-      laythe_core::value::ValueKind::Closure => {
-        format!("<{} {:p}>", class.name, &*this.to_closure())
-      }
-      laythe_core::value::ValueKind::Class => format!("<{} {:p}>", class.name, &this.to_class()),
-      laythe_core::value::ValueKind::Instance => {
-        format!("<{} {:p}>", class.name, &*this.to_instance())
-      }
-      laythe_core::value::ValueKind::Iter => format!("<{} {:p}>", class.name, &*this.to_iter()),
-      laythe_core::value::ValueKind::Method => format!("<{} {:p}>", class.name, &*this.to_method()),
-      laythe_core::value::ValueKind::Native => format!("<{} {:p}>", class.name, &*this.to_native()),
-      laythe_core::value::ValueKind::Upvalue => {
-        format!("<{} {:p}>", class.name, &*this.to_upvalue())
-      }
+      ValueKind::Bool => format!("<{} {}>", &*class.name(), this.to_bool()),
+      ValueKind::Nil => format!("<{} nil>", &*class.name()),
+      ValueKind::Number => format!("<{} {}>", &*class.name(), this.to_num()),
+      ValueKind::Obj => match_obj!((&this.to_obj()) {
+        ObjectKind::Class(cls) => {
+          format!("<{} {:p}>", &*class.name(), &*cls)
+        },
+        ObjectKind::Closure(closure) => {
+          format!("<{} {:p}>", &*class.name(), &*closure)
+        },
+        ObjectKind::Enumerator(enumerator) => {
+          format!("<{} {:p}>", &*class.name(), &*enumerator)
+        },
+        ObjectKind::Fun(fun) => {
+          format!("<{} {:p}>", &*class.name(), &*fun)
+        },
+        ObjectKind::Fiber(fiber) => {
+          format!("<{} {:p}>", &*class.name(), &*fiber)
+        },
+        ObjectKind::Instance(instance) => {
+          format!("<{} {:p}>", &*class.name(), &*instance)
+        },
+        ObjectKind::List(list) => {
+          format!("<{} {:p}>", &*class.name(), &*list)
+        },
+        ObjectKind::Map(map) => {
+          format!("<{} {:p}>", &*class.name(), &*map)
+        },
+        ObjectKind::Method(method) => {
+          format!("<{} {:p}>", &*class.name(), &*method)
+        },
+        ObjectKind::Native(native) => {
+          format!("<{} {:p}>", &*class.name(), &*native)
+        },
+        ObjectKind::String(string) => {
+          format!("<{} {}>", &*class.name(), string)
+        },
+        ObjectKind::Upvalue(upvalue) => {
+          format!("<{} {:p}>", &*class.name(), &upvalue)
+        },
+      }),
     };
 
     Call::Ok(val!(hooks.manage_str(&string)))
@@ -121,7 +130,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let object_equals = ObjectEquals::from(&hooks);
+      let object_equals = ObjectEquals::native(&hooks);
 
       assert_eq!(object_equals.meta().name, "equals");
       assert_eq!(object_equals.meta().signature.arity, Arity::Fixed(1));
@@ -135,7 +144,7 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let bool_str = ObjectEquals::from(&hooks);
+      let bool_str = ObjectEquals::native(&hooks.as_gc());
 
       let ten_1 = val!(10.0);
       let b_false = val!(false);
@@ -164,7 +173,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let object_cls = ObjectCls::from(&hooks);
+      let object_cls = ObjectCls::native(&hooks);
 
       assert_eq!(object_cls.meta().name, "cls");
       assert_eq!(object_cls.meta().signature.arity, Arity::Fixed(0));
@@ -172,14 +181,17 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::with_std(&[]);
+      let mut context = MockedContext::with_std(&[]).unwrap();
       let mut hooks = Hooks::new(&mut context);
-      let object_cls = ObjectCls::from(&hooks);
+      let object_cls = ObjectCls::native(&hooks.as_gc());
 
       let ten = val!(10.0);
 
       let result = object_cls.call(&mut hooks, Some(ten), &[]).unwrap();
-      assert_eq!(result.to_class().name, hooks.manage_str("Number"));
+      assert_eq!(
+        result.to_obj().to_class().name(),
+        hooks.manage_str("Number")
+      );
     }
   }
 
@@ -192,7 +204,7 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let object_equals = ObjectStr::from(&hooks);
+      let object_equals = ObjectStr::native(&hooks);
 
       assert_eq!(object_equals.meta().name, "str");
       assert_eq!(object_equals.meta().signature.arity, Arity::Fixed(0));
@@ -200,16 +212,16 @@ mod test {
 
     #[test]
     fn call() {
-      let mut context = MockedContext::with_std(&[]);
+      let mut context = MockedContext::with_std(&[]).unwrap();
       let mut hooks = Hooks::new(&mut context);
-      let object_str = ObjectStr::from(&hooks);
+      let object_str = ObjectStr::native(&hooks.as_gc());
 
       let ten = val!(10.0);
 
       let result = object_str.call(&mut hooks, Some(ten), &[]);
 
       match result {
-        Call::Ok(r) => assert_eq!(r.to_str(), "<Number 10>"),
+        Call::Ok(r) => assert_eq!(r.to_obj().to_str(), "<Number 10>"),
         _ => assert!(false),
       }
     }

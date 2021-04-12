@@ -8,10 +8,14 @@ mod regexp;
 mod support;
 
 use env::env_module;
-use global::add_global_module;
+use global::create_std_core;
 use io::add_io_package;
-use laythe_core::{hooks::GcHooks, package::Package};
-use laythe_env::managed::{Gc, GcStr};
+use laythe_core::{
+  hooks::GcHooks,
+  managed::Gc,
+  module::{ModuleError, Package},
+  utils::IdEmitter,
+};
 use math::add_math_module;
 use regexp::regexp_module;
 
@@ -19,46 +23,25 @@ pub use builtin::{
   builtin_from_module, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives,
 };
 
-type InitResult<T> = Result<T, GcStr>;
+type StdResult<T> = Result<T, StdError>;
 
 #[macro_export]
 macro_rules! native {
   ( $st:ident, $meta:ident ) => {
     #[derive(Debug)]
-    pub struct $st {
-      meta: NativeMeta,
-    }
+    pub struct $st {}
 
-    impl<'a> From<&GcHooks<'a>> for $st {
-      fn from(hooks: &GcHooks<'a>) -> Self {
-        Self {
-          meta: $meta.to_meta(hooks),
-        }
-      }
-    }
-
-    impl<'a> From<&Hooks<'a>> for $st {
-      fn from(hooks: &Hooks<'a>) -> Self {
-        Self {
-          meta: $meta.to_meta(&hooks.as_gc()),
-        }
-      }
-    }
-
-    impl MetaData for $st {
-      fn meta(&self) -> &NativeMeta {
-        &self.meta
+    impl $st {
+      pub fn native(hooks: &GcHooks) -> GcObj<Native> {
+        let native = Box::new(Self {}) as Box<dyn LyNative>;
+        hooks.manage_obj(Native::new($meta.to_meta(hooks), native))
       }
     }
 
     impl Trace for $st {
-      fn trace(&self) {
-        self.meta.trace()
-      }
+      fn trace(&self) {}
 
-      fn trace_debug(&self, stdio: &mut dyn Write) {
-        self.meta.trace_debug(stdio)
-      }
+      fn trace_debug(&self, _stdio: &mut dyn Write) {}
     }
   };
 }
@@ -68,15 +51,15 @@ macro_rules! create_error {
   ( $error:expr, $hooks:ident, $message:expr ) => {
     match $hooks.call($error, &[Value::from($hooks.manage_str($message))]) {
       Call::Ok(err) => {
-        if err.is_instance() {
-          Call::Err(err.to_instance())
+        if err.is_obj_kind(ObjectKind::Instance) {
+          Call::Err(err.to_obj().to_instance())
         } else {
           panic!(
             "Standard library failed to instantiate error instance\nFound value {:?}",
             err.kind()
           )
         }
-      }
+      },
       Call::Err(err) => Call::Err(err),
       Call::Exit(exit) => Call::Exit(exit),
     }
@@ -88,75 +71,77 @@ macro_rules! native_with_error {
   ( $st:ident, $meta:ident ) => {
     #[derive(Debug)]
     pub struct $st {
-      meta: NativeMeta,
       error: Value,
     }
 
     impl $st {
-      fn new(hooks: &GcHooks, error: Value) -> Self {
-        let native = Self {
-          meta: $meta.to_meta(hooks),
-          error,
-        };
+      fn native(hooks: &GcHooks, error: Value) -> GcObj<Native> {
+        debug_assert!(error.is_obj_kind(ObjectKind::Class));
+        let native = Box::new(Self { error }) as Box<dyn LyNative>;
 
-        debug_assert!(native.error.is_class());
-        native
+        hooks.manage_obj(Native::new($meta.to_meta(hooks), native))
       }
 
       fn call_error<T: Into<String> + AsRef<str>>(&self, hooks: &mut Hooks, message: T) -> Call {
         match hooks.call(self.error, &[val!(hooks.manage_str(message))]) {
           Call::Ok(err) => {
-            if err.is_instance() {
-              Call::Err(err.to_instance())
+            if err.is_obj_kind(ObjectKind::Instance) {
+              Call::Err(err.to_obj().to_instance())
             } else {
               panic!(
                 "Standard library failed to instantiate error instance\nFound value {:?}",
                 err.kind()
               )
             }
-          }
+          },
           Call::Err(err) => Call::Err(err),
           Call::Exit(err) => Call::Exit(err),
         }
       }
     }
 
-    impl MetaData for $st {
-      fn meta(&self) -> &NativeMeta {
-        &self.meta
-      }
-    }
-
     impl Trace for $st {
       fn trace(&self) {
-        self.meta.trace();
         self.error.trace();
       }
 
       fn trace_debug(&self, stdio: &mut dyn Write) {
-        self.meta.trace_debug(stdio);
-        self.meta.trace_debug(stdio);
+        self.error.trace_debug(stdio);
       }
     }
   };
 }
 
+#[derive(Debug)]
+pub enum StdError {
+  ModuleError(ModuleError),
+  SymbolNotClass,
+  SymbolNotInstance,
+}
+
+impl From<ModuleError> for StdError {
+  fn from(err: ModuleError) -> Self {
+    StdError::ModuleError(err)
+  }
+}
+
 pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
-pub const GLOBAL_PATH: &str = "std/global.ly";
 
-pub fn create_std_lib(hooks: &GcHooks) -> InitResult<Gc<Package>> {
-  let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
+pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Package>> {
+  // let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
 
-  add_global_module(hooks, &mut std)?;
+  let mut std = create_std_core(hooks, emitter)?;
 
-  add_math_module(hooks, &mut std)?;
-  add_io_package(hooks, &mut std)?;
-  let env = env_module(hooks, &std)?;
-  let regexp = regexp_module(hooks, &std)?;
+  add_math_module(hooks, &mut std, emitter)?;
+  add_io_package(hooks, &mut std, emitter)?;
+  let env = env_module(hooks, &std, emitter)?;
+  let regexp = regexp_module(hooks, &std, emitter)?;
 
-  std.add_module(hooks, env)?;
-  std.add_module(hooks, regexp)?;
+  let mut root_module = std.root_module();
+
+  root_module.insert_module(hooks, env)?;
+  root_module.insert_module(hooks, regexp)?;
 
   Ok(std)
 }
@@ -164,49 +149,116 @@ pub fn create_std_lib(hooks: &GcHooks) -> InitResult<Gc<Package>> {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::MockedContext;
-  use laythe_core::{package::PackageEntity, signature::Arity, value::ValueKind};
+  use crate::support::{load_class_from_module, MockedContext};
+  use global::CLASS_CLASS_NAME;
+  use laythe_core::{
+    managed::{GcObj, GcObject},
+    match_obj,
+    module::Module,
+    object::{Class, ObjectKind},
+    signature::Arity,
+    to_obj_kind,
+  };
 
-  fn check_inner(hooks: &GcHooks, package: Gc<Package>) {
-    package.entities().for_each(|(_key, entity)| match entity {
-      PackageEntity::Module(module) => {
-        let import = module.import(hooks);
-        import.fields().iter().for_each(|symbol| {
-          let option = match symbol.kind() {
-            ValueKind::Native => Some(symbol.to_native().meta().clone()),
-            _ => None,
-          };
+  fn new_inner(module: Gc<Module>) {
+    module.symbols().for_each(|(_key, symbol)| {
+      let option = if symbol.is_obj() {
+        match_obj!((&symbol.to_obj()) {
+          ObjectKind::Native(native) => Some(native.meta().clone()),
+          _ => None,
+        })
+      } else {
+        None
+      };
 
-          if let Some(fun_meta) = option {
-            match fun_meta.signature.arity {
-              Arity::Default(_, total_count) => {
-                assert_eq!(fun_meta.signature.parameters.len(), total_count as usize);
-              }
-              Arity::Fixed(count) => {
-                assert_eq!(fun_meta.signature.parameters.len(), count as usize);
-              }
-              Arity::Variadic(min_count) => {
-                assert_eq!(fun_meta.signature.parameters.len(), min_count as usize + 1);
-              }
-            }
-          }
-        });
+      if let Some(fun_meta) = option {
+        match fun_meta.signature.arity {
+          Arity::Default(_, total_count) => {
+            assert_eq!(fun_meta.signature.parameters.len(), total_count as usize);
+          },
+          Arity::Fixed(count) => {
+            assert_eq!(fun_meta.signature.parameters.len(), count as usize);
+          },
+          Arity::Variadic(min_count) => {
+            assert_eq!(fun_meta.signature.parameters.len(), min_count as usize + 1);
+          },
+        }
       }
-      PackageEntity::Package(package) => {
-        check_inner(hooks, *package);
+    });
+
+    module
+      .modules()
+      .for_each(|(_name, module)| new_inner(*module))
+  }
+
+  fn class_setup_inner(module: Gc<Module>, class_class: GcObj<Class>) {
+    module.symbols().for_each(|(_key, symbol)| {
+      let option = if symbol.is_obj() {
+        match_obj!((&symbol.to_obj()) {
+          ObjectKind::Class(class) => Some(class),
+          _ => None,
+        })
+      } else {
+        None
+      };
+
+      if let Some(class) = option {
+        if class.name() != "Object" {
+          assert!(class.super_class().is_some(), "{}", class.name());
+        }
+
+        assert!(class.meta_class().is_some(), "{}", class.name());
+
+        if class != class {
+          let meta_super = class
+            .meta_class()
+            .and_then(|cls| *cls.super_class())
+            .unwrap();
+
+          let meta_meta = class
+            .meta_class()
+            .and_then(|cls| *cls.meta_class())
+            .unwrap();
+
+          assert_eq!(meta_super, class_class);
+          assert_eq!(meta_meta, class_class);
+        }
       }
-    })
+    });
+
+    module
+      .modules()
+      .for_each(|(_name, module)| class_setup_inner(*module, class_class))
   }
 
   #[test]
   fn new() {
     let mut context = MockedContext::default();
     let hooks = GcHooks::new(&mut context);
+    let mut emitter = IdEmitter::default();
 
-    let std_lib = create_std_lib(&hooks);
+    let std_lib = create_std_lib(&hooks, &mut emitter);
     assert!(std_lib.is_ok());
 
     let std_lib = std_lib.unwrap();
-    check_inner(&hooks, std_lib);
+    let root_module = std_lib.root_module();
+    new_inner(root_module);
+  }
+
+  #[test]
+  fn class_setup() {
+    let mut context = MockedContext::default();
+    let hooks = GcHooks::new(&mut context);
+    let mut emitter = IdEmitter::default();
+
+    let std_lib = create_std_lib(&hooks, &mut emitter);
+    assert!(std_lib.is_ok());
+
+    let std_lib = std_lib.unwrap();
+    let root_module = std_lib.root_module();
+
+    let class_class = load_class_from_module(&hooks, &root_module, CLASS_CLASS_NAME).unwrap();
+
+    class_setup_inner(root_module, class_class);
   }
 }

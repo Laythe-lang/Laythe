@@ -39,7 +39,7 @@ impl Fs {
   }
 
   /// Get a relative path from a base
-  pub fn relative_path(&self, base: &PathBuf, import: &Path) -> io::Result<PathBuf> {
+  pub fn relative_path(&self, base: &Path, import: &Path) -> io::Result<PathBuf> {
     self.fs.relative_path(base, import)
   }
 }
@@ -50,7 +50,7 @@ pub trait FsImpl: Send + Sync {
   fn read_to_string(&self, path: &Path) -> io::Result<String>;
   fn read_directory(&self, path: &Path) -> io::Result<SlDirEntry>;
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
-  fn relative_path(&self, base: &PathBuf, import: &Path) -> io::Result<PathBuf>;
+  fn relative_path(&self, base: &Path, import: &Path) -> io::Result<PathBuf>;
 }
 
 #[derive(Debug)]
@@ -74,7 +74,7 @@ impl FsImpl for FsMock {
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
     Ok(path.to_path_buf())
   }
-  fn relative_path(&self, _base: &PathBuf, import: &Path) -> io::Result<PathBuf> {
+  fn relative_path(&self, _base: &Path, import: &Path) -> io::Result<PathBuf> {
     Ok(import.to_path_buf())
   }
 }

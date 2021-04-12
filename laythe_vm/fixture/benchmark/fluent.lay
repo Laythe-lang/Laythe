@@ -1,5 +1,4 @@
-import Math from 'std/math';
-let rem = Math.rem;
+import std.math:{rem};
 
 let start = clock();
 

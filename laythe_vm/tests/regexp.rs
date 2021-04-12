@@ -17,7 +17,7 @@ fn utils() -> Result<(), std::io::Error> {
       "std_lib/regexp/class/match.lay",
       "std_lib/regexp/class/test.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_files(&vec![], ExecuteResult::CompileError)?;

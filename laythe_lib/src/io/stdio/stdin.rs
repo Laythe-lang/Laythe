@@ -1,24 +1,21 @@
 use crate::{
-  io::global::{ERROR_PATH, IO_ERROR},
+  io::{global::IO_ERROR, IO_MODULE_PATH},
   native_with_error,
   support::load_class_from_package,
-  support::{
-    default_class_inheritance, export_and_insert, load_instance_from_module, to_dyn_native,
-  },
-  InitResult,
+  support::{default_class_inheritance, export_and_insert, load_instance_from_module},
+  StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  module::Module,
-  native::{MetaData, Native, NativeMeta, NativeMetaBuilder},
-  object::Instance,
-  package::Package,
+  managed::Trace,
+  module::{Module, Package},
+  object::{Instance, ObjectKind, LyNative, Native, NativeMetaBuilder},
   signature::Arity,
+  managed::GcObj,
   val,
   value::Value,
   Call,
 };
-use laythe_env::managed::Trace;
 use std::io::Write;
 
 const STDIN_CLASS_NAME: &str = "Stdin";
@@ -27,9 +24,9 @@ const STDIN_INSTANCE_NAME: &str = "stdin";
 const STDIN_READ: NativeMetaBuilder = NativeMetaBuilder::method("read", Arity::Fixed(0));
 const STDIN_READ_LINE: NativeMetaBuilder = NativeMetaBuilder::method("readLine", Arity::Fixed(0));
 
-pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> InitResult<()> {
+pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdResult<()> {
   let class = default_class_inheritance(hooks, std, STDIN_CLASS_NAME)?;
-  let instance = hooks.manage(Instance::new(class));
+  let instance = hooks.manage_obj(Instance::new(class));
 
   export_and_insert(
     hooks,
@@ -39,21 +36,26 @@ pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> Ini
   )
 }
 
-pub fn define_stdin(hooks: &GcHooks, module: &Module, std: &Package) -> InitResult<()> {
+pub fn define_stdin(hooks: &GcHooks, module: &Module, std: &Package) -> StdResult<()> {
   let instance = load_instance_from_module(hooks, module, STDIN_INSTANCE_NAME)?;
-  let mut class = instance.class;
-  let io_error = val!(load_class_from_package(hooks, std, ERROR_PATH, IO_ERROR)?);
+  let mut class = instance.class();
+  let io_error = val!(load_class_from_package(
+    hooks,
+    std,
+    IO_MODULE_PATH,
+    IO_ERROR
+  )?);
 
   class.add_method(
     hooks,
     hooks.manage_str(STDIN_READ.name),
-    val!(to_dyn_native(hooks, StdinRead::new(hooks, io_error))),
+    val!(StdinRead::native(hooks, io_error)),
   );
 
   class.add_method(
     hooks,
     hooks.manage_str(STDIN_READ_LINE.name),
-    val!(to_dyn_native(hooks, StdinReadLine::new(hooks, io_error))),
+    val!(StdinReadLine::native(hooks, io_error)),
   );
 
   Ok(())
@@ -61,7 +63,7 @@ pub fn define_stdin(hooks: &GcHooks, module: &Module, std: &Package) -> InitResu
 
 native_with_error!(StdinRead, STDIN_READ);
 
-impl Native for StdinRead {
+impl LyNative for StdinRead {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
@@ -77,7 +79,7 @@ impl Native for StdinRead {
 
 native_with_error!(StdinReadLine, STDIN_READ_LINE);
 
-impl Native for StdinReadLine {
+impl LyNative for StdinReadLine {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let stdio = io.stdio();
@@ -113,7 +115,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let stdin_read = StdinRead::new(&hooks, error);
+      let stdin_read = StdinRead::native(&hooks, error);
 
       assert_eq!(stdin_read.meta().name, "read");
       assert_eq!(stdin_read.meta().signature.arity, Arity::Fixed(0));
@@ -127,15 +129,15 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let stdin_read = StdinRead::new(&hooks.as_gc(), error);
+      let stdin_read = StdinRead::native(&hooks.as_gc(), error);
 
       let result = stdin_read.call(&mut hooks, Some(VALUE_NIL), &[]);
 
       assert!(result.is_ok());
       let unwrapped = result.unwrap();
 
-      assert!(unwrapped.is_str());
-      assert_eq!(unwrapped.to_str(), "dude");
+      assert!(unwrapped.is_obj_kind(ObjectKind::String));
+      assert_eq!(unwrapped.to_obj().to_str(), "dude");
     }
   }
 
@@ -152,7 +154,7 @@ mod test {
       let hooks = GcHooks::new(&mut context);
       let error = val!(test_error_class(&hooks));
 
-      let stdin_readline = StdinReadLine::new(&hooks, error);
+      let stdin_readline = StdinReadLine::native(&hooks, error);
 
       assert_eq!(stdin_readline.meta().name, "readLine");
       assert_eq!(stdin_readline.meta().signature.arity, Arity::Fixed(0));
@@ -169,15 +171,15 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
 
-      let stdin_readline = StdinReadLine::new(&hooks.as_gc(), error);
+      let stdin_readline = StdinReadLine::native(&hooks.as_gc(), error);
 
       let result = stdin_readline.call(&mut hooks, Some(VALUE_NIL), &[]);
 
       assert!(result.is_ok());
       let unwrapped = result.unwrap();
 
-      assert!(unwrapped.is_str());
-      assert_eq!(unwrapped.to_str(), "dude");
+      assert!(unwrapped.is_obj_kind(ObjectKind::String));
+      assert_eq!(unwrapped.to_obj().to_str(), "dude");
     }
   }
 }

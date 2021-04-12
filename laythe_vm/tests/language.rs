@@ -33,7 +33,7 @@ fn assignment() -> Result<(), std::io::Error> {
       "language/assignment/local.lay",
       "language/assignment/syntax.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -62,7 +62,7 @@ fn binary_assignment() -> Result<(), std::io::Error> {
       "language/binary_assignment/global.lay",
       "language/binary_assignment/operators.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -85,7 +85,7 @@ fn binary_assignment() -> Result<(), std::io::Error> {
 fn block() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec!["language/block/empty.lay", "language/block/empty.lay"],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )
 }
 
@@ -93,7 +93,7 @@ fn block() -> Result<(), std::io::Error> {
 fn bool() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec!["language/bool/equality.lay", "language/bool/not.lay"],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )
 }
 
@@ -107,7 +107,7 @@ fn break_() -> Result<(), std::io::Error> {
       "language/break/nested_while_loops.lay",
       "language/break/nested_for_loops.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -140,7 +140,7 @@ fn class() -> Result<(), std::io::Error> {
       "language/class/local_reference_self.lay",
       "language/class/reference_self.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -172,7 +172,7 @@ fn closure() -> Result<(), std::io::Error> {
       "language/closure/unused_closure.lay",
       "language/closure/unused_later_closure.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
@@ -190,7 +190,7 @@ fn continue_() -> Result<(), std::io::Error> {
       "language/continue/nested_while_loops.lay",
       "language/continue/nested_for_loops.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -208,7 +208,7 @@ fn comments() -> Result<(), std::io::Error> {
       "language/comments/only_line_comment.lay",
       "language/comments/unicode.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )
 }
 
@@ -223,7 +223,7 @@ fn constructor() -> Result<(), std::io::Error> {
       "language/constructor/early_return.lay",
       "language/constructor/return_in_nested_function.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -250,7 +250,7 @@ fn exception() -> Result<(), std::io::Error> {
       "language/exception/two_deep_catch.lay",
       "language/exception/top_level_catch_thrown.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -298,7 +298,7 @@ fn exception() -> Result<(), std::io::Error> {
 
 #[test]
 fn export() -> Result<(), std::io::Error> {
-  test_file_exits(&vec![], ExecuteResult::Ok)?;
+  test_file_exits(&vec![], ExecuteResult::Ok(0))?;
 
   test_file_exits(
     &vec![
@@ -318,7 +318,7 @@ fn export() -> Result<(), std::io::Error> {
 fn expressions() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec!["language/expressions/evaluate.lay"],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
@@ -331,13 +331,12 @@ fn field() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/field/call_function_field.lay",
-      "language/field/get_and_set_method.lay",
       "language/field/many.lay",
       "language/field/method_binds_self.lay",
       "language/field/method.lay",
       "language/field/on_instance.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
@@ -352,13 +351,14 @@ fn field() -> Result<(), std::io::Error> {
       "language/field/get_on_num.lay",
       "language/field/get_on_string.lay",
       "language/field/set_evaluation_order.lay",
+      "language/field/set_undefined.lay",
       "language/field/set_on_bool.lay",
       "language/field/set_on_class.lay",
       "language/field/set_on_function.lay",
       "language/field/set_on_nil.lay",
       "language/field/set_on_num.lay",
       "language/field/set_on_string.lay",
-      "language/field/undefined.lay",
+      "language/field/get_undefined.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -372,7 +372,7 @@ fn for_loop() -> Result<(), std::io::Error> {
       "language/for/scope.lay",
       "language/for/closure_in_body.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -400,7 +400,7 @@ fn function() -> Result<(), std::io::Error> {
       "language/function/print.lay",
       "language/function/recursion.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -432,7 +432,7 @@ fn hooks() -> Result<(), std::io::Error> {
       "language/hooks/call_ly_closure.lay",
       "language/hooks/call_ly_instance.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
@@ -457,7 +457,7 @@ fn if_stmt() -> Result<(), std::io::Error> {
       "language/if/if.lay",
       "language/if/truth.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -482,7 +482,7 @@ fn implicit_return() -> Result<(), std::io::Error> {
       "language/implicit_return/in_function.lay",
       "language/implicit_return/in_method.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -503,21 +503,28 @@ fn implicit_return() -> Result<(), std::io::Error> {
 
 #[test]
 fn import() -> Result<(), std::io::Error> {
-  test_file_exits(&vec![], ExecuteResult::Ok)?;
+  test_file_exits(&vec![], ExecuteResult::Ok(0))?;
 
   test_file_exits(
     &vec![
-      "language/import/missing_name.lay",
+      "language/import/missing_path.lay",
       "language/import/missing_semicolon.lay",
-      "language/import/non_identifier_name.lay",
-      "language/import/non_string_literal.lay",
-      "language/import/non_string_path.lay",
+      "language/import/non_identifier_path.lay",
+      "language/import/rename_missing.lay",
+      "language/import/rename_not_identifer.lay",
+      "language/import/symbols_rename_missing.lay",
+      "language/import/symbols_rename_not_identifer.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/import/std_lib_not_real.lay"],
+    &vec![
+      "language/import/module_not_real.lay",
+      // "language/import/rename_redefine.lay",
+      "language/import/symbols_not_real.lay",
+      // "language/import/symbols_redefine.lay",
+    ],
     ExecuteResult::RuntimeError,
   )
 }
@@ -537,7 +544,7 @@ fn indexing() -> Result<(), std::io::Error> {
       "language/indexing/map_nested_set.lay",
       "language/indexing/map_pass_through_set.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
@@ -559,7 +566,7 @@ fn inheritance() -> Result<(), std::io::Error> {
       "language/inheritance/inherit_methods.lay",
       "language/inheritance/set_fields_from_base_class.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -578,13 +585,30 @@ fn inheritance() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn inline_cache() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/inline_cache/invoke_thrash.lay",
+      "language/inline_cache/property_get_thrash.lay",
+      "language/inline_cache/property_set_thrash.lay",
+      "language/inline_cache/super_invoke_thrash.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
+
+  test_file_exits(&vec![], ExecuteResult::CompileError)?;
+
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
 fn iterator() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/iterator/equality.lay",
       "language/iterator/assign_iter_keep_state.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
@@ -596,7 +620,7 @@ fn iterator() -> Result<(), std::io::Error> {
 fn limit() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec!["language/limit/reuse_constants.lay"],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -626,7 +650,7 @@ fn lambda() -> Result<(), std::io::Error> {
       "language/lambda/parameters.lay",
       "language/lambda/str.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -658,7 +682,7 @@ fn list() -> Result<(), std::io::Error> {
       "language/list/homogeneous.lay",
       "language/list/mixed.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -681,7 +705,7 @@ fn logical_operator() -> Result<(), std::io::Error> {
       "language/logical_operator/or_truth.lay",
       "language/logical_operator/or.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
@@ -697,7 +721,7 @@ fn map() -> Result<(), std::io::Error> {
       "language/map/homogeneous.lay",
       "language/map/mixed.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -721,7 +745,7 @@ fn method() -> Result<(), std::io::Error> {
       "language/method/empty_block.lay",
       "language/method/print_bound_method.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -754,7 +778,7 @@ fn native() -> Result<(), std::io::Error> {
       "language/native/signature_fixed_arity.lay",
       "language/native/signature_type.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
@@ -764,7 +788,7 @@ fn native() -> Result<(), std::io::Error> {
 
 #[test]
 fn nil() -> Result<(), std::io::Error> {
-  test_file_exits(&vec!["language/nil/literal.lay"], ExecuteResult::Ok)?;
+  test_file_exits(&vec!["language/nil/literal.lay"], ExecuteResult::Ok(0))?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
@@ -773,7 +797,7 @@ fn nil() -> Result<(), std::io::Error> {
 
 #[test]
 fn number() -> Result<(), std::io::Error> {
-  test_file_exits(&vec!["language/number/literals.lay"], ExecuteResult::Ok)?;
+  test_file_exits(&vec!["language/number/literals.lay"], ExecuteResult::Ok(0))?;
 
   test_file_exits(
     &vec![
@@ -804,7 +828,7 @@ fn operator() -> Result<(), std::io::Error> {
       "language/operator/not.lay",
       "language/operator/subtract.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
@@ -845,7 +869,7 @@ fn regression() -> Result<(), std::io::Error> {
       "language/regression/394.lay",
       "language/regression/continue.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )
 }
 
@@ -860,7 +884,7 @@ fn return_test() -> Result<(), std::io::Error> {
       "language/return/return_nil_if_no_value.lay",
       "language/return/return_nil_if_no_value.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -880,7 +904,7 @@ fn static_method() -> Result<(), std::io::Error> {
       "language/static_method/empty_block.lay",
       "language/static_method/print_bound_method.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -914,7 +938,7 @@ fn string() -> Result<(), std::io::Error> {
       "language/string/escape.lay",
       "language/string/unicode_escape.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -952,7 +976,7 @@ fn super_() -> Result<(), std::io::Error> {
       "language/super/super_in_closure_in_inherited_method.lay",
       "language/super/super_in_inherited_method.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -994,7 +1018,7 @@ fn variable() -> Result<(), std::io::Error> {
       "language/variable/unreached_undefined.lay",
       "language/variable/use_global_in_initializer.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(
@@ -1029,7 +1053,7 @@ fn while_test() -> Result<(), std::io::Error> {
       "language/while/return_inside.lay",
       "language/while/syntax.lay",
     ],
-    ExecuteResult::Ok,
+    ExecuteResult::Ok(0),
   )?;
 
   test_file_exits(

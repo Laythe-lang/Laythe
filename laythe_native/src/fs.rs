@@ -39,7 +39,7 @@ impl FsImpl for FsNative {
     todo!()
   }
 
-  fn relative_path(&self, base: &PathBuf, import: &Path) -> io::Result<PathBuf> {
+  fn relative_path(&self, base: &Path, import: &Path) -> io::Result<PathBuf> {
     import
       .strip_prefix(base)
       .map(|prefix| prefix.to_path_buf())

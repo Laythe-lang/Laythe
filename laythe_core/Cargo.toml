@@ -6,6 +6,10 @@ edition = "2018"
 
 [features]
 nan_boxing = []
+gc_log_mark = []
+gc_log_free = []
+gc_log_alloc = []
+gc_stress = []
 
 [lib]
 name = "laythe_core"
@@ -13,6 +17,5 @@ path = "src/lib.rs"
 
 [dependencies]
 laythe_env = { path = "../laythe_env" }
-fnv = "1.0.3"
-linear-map = "1.2.0"
-hashbrown = "0.9.1"
+fnv = "1.0.7"
+hashbrown = "0.11.2"

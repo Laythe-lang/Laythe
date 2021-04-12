@@ -1,18 +1,26 @@
 mod file;
 
 use file::{declare_file, define_file};
-use laythe_core::{hooks::GcHooks, module::Module, package::Package};
-use laythe_env::managed::Gc;
+use laythe_core::{
+  hooks::GcHooks,
+  managed::Gc,
+  module::{Module, Package},
+  utils::IdEmitter,
+};
 use std::path::PathBuf;
 
-use crate::InitResult;
+use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
 
-const FS_PATH: &str = "std/io/fs.ly";
+const FS_PATH: &str = "std/io/fs";
 
-pub fn fs_module(hooks: &GcHooks, std: &Package) -> InitResult<Gc<Module>> {
+pub fn fs_module(hooks: &GcHooks, std: &Package, emitter: &mut IdEmitter) -> StdResult<Gc<Module>> {
+  let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
+
   let mut module = hooks.manage(Module::from_path(
     &hooks,
-    hooks.manage(PathBuf::from(FS_PATH)),
+    PathBuf::from(FS_PATH),
+    module_class,
+    emitter.emit(),
   )?);
 
   declare_file(hooks, &mut module, &*std)?;

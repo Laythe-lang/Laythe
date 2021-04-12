@@ -2,26 +2,26 @@ mod fs;
 mod global;
 mod stdio;
 
+use self::global::io_module;
+use crate::{StdError, StdResult};
 use fs::fs_module;
-use laythe_core::{hooks::GcHooks, package::Package};
+use laythe_core::{hooks::GcHooks, module::Package, utils::IdEmitter};
 use stdio::stdio_module;
+pub const IO_MODULE_PATH: &str = "std/io";
 
-use crate::InitResult;
+pub fn add_io_package(
+  hooks: &GcHooks,
+  std: &mut Package,
+  emitter: &mut IdEmitter,
+) -> StdResult<()> {
+  let mut root = std.root_module();
 
-use self::global::errors_module;
+  let mut io_module = io_module(hooks, std, emitter)?;
+  root.insert_module(hooks, io_module)?;
 
-const IO_PACKAGE_NAME: &str = "io";
+  let stdio = stdio_module(hooks, std, emitter)?;
+  let fs = fs_module(hooks, std, emitter)?;
 
-pub fn add_io_package(hooks: &GcHooks, std: &mut Package) -> InitResult<()> {
-  let mut package = hooks.manage(Package::new(hooks.manage_str(IO_PACKAGE_NAME)));
-  std.add_package(hooks, package)?;
-
-  let errors = errors_module(hooks, std)?;
-  package.add_module(hooks, errors)?;
-
-  let stdio = stdio_module(hooks, std)?;
-  let fs = fs_module(hooks, std)?;
-
-  package.add_module(hooks, stdio)?;
-  package.add_module(hooks, fs)
+  io_module.insert_module(hooks, stdio)?;
+  io_module.insert_module(hooks, fs).map_err(StdError::from)
 }

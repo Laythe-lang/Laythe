@@ -1,0 +1,2 @@
+class Foo {}
+assertEq(Foo.name(), "Foo");

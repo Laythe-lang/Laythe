@@ -1,12 +1,12 @@
-import Math from 'std/math';
+import std.math;
 
 fn almost(actual, expect) {
-  assert(Math.abs((actual - expect)) < 0.0000001);
+  assert(math.abs((actual - expect)) < 0.0000001);
 }
 
-almost(Math.cos(0), 1.0);
-almost(Math.cos(Math.pi), -1.0);
-almost(Math.cos(Math.pi * 2), 1.0);
+almost(math.cos(0), 1.0);
+almost(math.cos(math.pi), -1.0);
+almost(math.cos(math.pi * 2), 1.0);
 
-almost(Math.cos(Math.pi / 2), 0.0);
-almost(Math.cos(Math.pi * 3 / 2), 0.0);
+almost(math.cos(math.pi / 2), 0.0);
+almost(math.cos(math.pi * 3 / 2), 0.0);

@@ -20,7 +20,7 @@ class Tree:
         return self.item + self.left.check() - self.right.check()
 
 minDepth = 4
-maxDepth = 12
+maxDepth = 16
 stretchDepth = maxDepth + 1
 
 start = time.time()
@@ -36,8 +36,8 @@ longLivedTree = Tree(0, maxDepth)
 iterations = 1
 d = 0
 while d < maxDepth:
-  iterations = iterations * 2
-  d = d + 1
+  iterations *= 2
+  d += 1
 
 depth = minDepth
 while depth < stretchDepth:
@@ -45,7 +45,7 @@ while depth < stretchDepth:
   i = 1
   while i <= iterations:
     check = check + Tree(i, depth).check() + Tree(-i, depth).check()
-    i = i + 1
+    i += 1
 
   print("num trees:")
   print(iterations * 2)
@@ -54,8 +54,8 @@ while depth < stretchDepth:
   print("check:")
   print(check)
 
-  iterations = iterations / 4
-  depth = depth + 2
+  iterations /= 4
+  depth += 2
 
 print("long lived tree of depth:")
 print(maxDepth)

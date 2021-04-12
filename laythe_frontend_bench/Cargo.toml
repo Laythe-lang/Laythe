@@ -11,5 +11,4 @@ path = "src/main.rs"
 [dependencies]
 laythe_core = { path = "../laythe_core" }
 laythe_vm = { path = "../laythe_vm" }
-laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }

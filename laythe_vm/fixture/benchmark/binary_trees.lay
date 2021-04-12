@@ -2,9 +2,10 @@ class Tree {
   init(item, depth) {
     self.item = item;
     self.depth = depth;
+
     if depth > 0 {
       let item2 = item + item;
-      depth = depth - 1;
+      depth -= 1;
       self.left = Tree(item2 - 1, depth);
       self.right = Tree(item2, depth);
     } else {
@@ -14,7 +15,7 @@ class Tree {
   }
 
   check() {
-    if self.left == nil {
+    if !self.left {
       return self.item;
     }
 
@@ -39,7 +40,7 @@ let longLivedTree = Tree(0, maxDepth);
 let iterations = 1;
 let d = 0;
 while d < maxDepth {
-  iterations = iterations * 2;
+  iterations *= 2;
   d += 1;
 }
 
