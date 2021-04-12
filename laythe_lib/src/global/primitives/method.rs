@@ -102,7 +102,7 @@ mod test {
 
   mod name {
     use super::*;
-    use crate::support::{fun_from_hooks, MockedContext};
+    use crate::support::{test_fun, MockedContext};
     use laythe_core::{
       memory::NO_GC,
       object::{Class, Closure, Instance, Method},
@@ -128,7 +128,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let method_name = MethodName::native(&hooks.as_gc(), hooks.manage_str("name".to_string()));
 
-      let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
+      let fun = test_fun(&hooks.as_gc(), "example", "module");
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage_obj(Closure::without_upvalues(fun));
       let instance = hooks.manage_obj(Instance::new(class));
@@ -145,7 +145,7 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::support::{fun_from_hooks, MockedContext};
+    use crate::support::{test_fun, MockedContext};
     use laythe_core::object::{Class, Closure, Instance, Method};
 
     #[test]
@@ -169,7 +169,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let method_call = MethodCall::native(&hooks.as_gc());
 
-      let fun = fun_from_hooks(&hooks.as_gc(), "example", "module");
+      let fun = test_fun(&hooks.as_gc(), "example", "module");
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let closure = hooks.manage_obj(Closure::without_upvalues(fun));
       let instance = hooks.manage_obj(Instance::new(class));

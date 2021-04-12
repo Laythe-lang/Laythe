@@ -1,6 +1,7 @@
 pub mod bool;
 pub mod class;
 pub mod closure;
+pub mod fiber;
 pub mod error;
 pub mod iter;
 pub mod list;
@@ -15,11 +16,7 @@ pub mod string;
 
 use std::path::PathBuf;
 
-use self::{
-  bool::{declare_bool_class, define_bool_class},
-  error::{create_error_class, declare_global_errors, define_global_errors, ERROR_CLASS_NAME},
-  module::create_module_class,
-};
+use self::{bool::{declare_bool_class, define_bool_class}, error::{create_error_class, declare_global_errors, define_global_errors, ERROR_CLASS_NAME}, fiber::{declare_fiber_class, define_fiber_class}, module::create_module_class};
 use crate::{support::export_and_insert, StdError, StdResult, STD};
 use class::create_class_class;
 use closure::{declare_closure_class, define_closure_class};
@@ -100,6 +97,7 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
   declare_nil_class(hooks, &mut module)?;
   declare_number_class(hooks, &mut module)?;
   declare_string_class(hooks, &mut module)?;
+  declare_fiber_class(hooks, &mut module)?;
 
   define_global_errors(hooks, &module)?;
   define_bool_class(hooks, &module)?;
@@ -112,6 +110,7 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
   define_nil_class(hooks, &module)?;
   define_number_class(hooks, &module)?;
   define_string_class(hooks, &module)?;
+  define_fiber_class(hooks, &module)?;
 
   Ok(module)
 }

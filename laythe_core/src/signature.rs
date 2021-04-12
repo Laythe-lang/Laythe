@@ -130,6 +130,7 @@ pub enum ParameterKind {
   Enumerator,
   Nil,
   Fun,
+  Fiber,
 }
 
 impl ParameterKind {
@@ -171,6 +172,7 @@ impl From<Value> for ParameterKind {
         ObjectKind::Closure => ParameterKind::Fun,
         ObjectKind::Enumerator => ParameterKind::Enumerator,
         ObjectKind::Fun => ParameterKind::Fun,
+        ObjectKind::Fiber => ParameterKind::Fiber,
         ObjectKind::Instance => ParameterKind::Instance,
         ObjectKind::List => ParameterKind::List,
         ObjectKind::Map => ParameterKind::Map,
@@ -191,6 +193,7 @@ impl Display for ParameterKind {
       ParameterKind::Nil => write!(f, "nil"),
       ParameterKind::Number => write!(f, "number"),
       ParameterKind::String => write!(f, "string"),
+      ParameterKind::Fiber => write!(f, "fiber"),
       ParameterKind::List => write!(f, "list"),
       ParameterKind::Map => write!(f, "map"),
       ParameterKind::Class => write!(f, "class"),

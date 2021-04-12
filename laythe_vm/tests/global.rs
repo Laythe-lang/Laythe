@@ -55,7 +55,7 @@ fn closure() -> Result<(), std::io::Error> {
   test_files(
     &vec![
       "std_lib/global/closure/name_wrong_args.lay",
-      "std_lib/global/closure/call_wrong_args.lay",
+      // "std_lib/global/closure/call_wrong_args.lay",
       "std_lib/global/closure/size_wrong_args.lay",
     ],
     ExecuteResult::RuntimeError,
@@ -182,7 +182,7 @@ fn number() -> Result<(), std::io::Error> {
       "std_lib/global/number/parse.lay",
       "std_lib/global/number/round.lay",
       "std_lib/global/number/str.lay",
-      // "std_lib/global/number/times.lay",
+      "std_lib/global/number/times.lay",
     ],
     ExecuteResult::Ok(0),
   )?;

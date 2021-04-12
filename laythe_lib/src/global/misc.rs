@@ -18,8 +18,8 @@ pub fn add_misc_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
 }
 
 const PRINT: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)])
-  .with_stack();
+  .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)]);
+// .with_stack();
 
 const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Default(0, 1))
   .with_params(&[ParameterBuilder::new("code", ParameterKind::Number)]);

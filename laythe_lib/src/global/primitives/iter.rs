@@ -1198,7 +1198,7 @@ mod test {
   #[cfg(test)]
   mod map {
     use super::*;
-    use crate::support::fun_builder_from_hooks;
+    use crate::support::test_fun_builder;
     use laythe_core::object::Closure;
 
     #[test]
@@ -1225,7 +1225,7 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
-      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(1));
 
       let fun =
@@ -1245,7 +1245,7 @@ mod test {
 
   mod filter {
     use super::*;
-    use crate::support::{fun_builder_from_hooks, MockedContext};
+    use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::object::{Closure, Enumerator};
 
     #[test]
@@ -1272,7 +1272,7 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
-      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(1));
 
       let fun =
@@ -1294,7 +1294,7 @@ mod test {
 
   mod reduce {
     use super::*;
-    use crate::support::{fun_builder_from_hooks, MockedContext};
+    use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::object::{Closure, Enumerator};
 
     #[test]
@@ -1326,7 +1326,7 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
 
-      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(2));
 
       let fun =
@@ -1379,7 +1379,7 @@ mod test {
 
   mod each {
     use super::*;
-    use crate::support::{fun_builder_from_hooks, MockedContext};
+    use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::object::{Closure, Enumerator};
 
     #[test]
@@ -1407,7 +1407,7 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
 
-      let mut builder = fun_builder_from_hooks(&hooks.as_gc(), "example", "module");
+      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(1));
 
       let fun =
