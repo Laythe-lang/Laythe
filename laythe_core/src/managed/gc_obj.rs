@@ -7,8 +7,8 @@ use super::{
 };
 use crate::{
   object::{
-    Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native, ObjectKind,
-    Upvalue,
+    Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
+    ObjectKind, Upvalue,
   },
   value::Value,
 };
@@ -29,6 +29,9 @@ pub trait Object: Manage {
 
 #[macro_export]
 macro_rules! to_obj_kind {
+  ($o:expr, Channel) => {
+    $o.to_channel()
+  };
   ($o:expr, Class) => {
     $o.to_class()
   };
@@ -398,6 +401,13 @@ impl GcObject {
   }
 
   #[inline]
+  pub fn to_channel(self) -> GcObj<Channel> {
+    GcObj {
+      ptr: unsafe { self.data_ptr::<Channel>() },
+    }
+  }
+
+  #[inline]
   pub fn to_class(self) -> GcObj<Class> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Class>() },
@@ -479,6 +489,7 @@ impl fmt::Display for GcObject {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match_obj!((self) {
       ObjectKind::String(string) => write!(f, "{}", string),
+      ObjectKind::Channel(channel) => write!(f, "{}", channel),
       ObjectKind::List(list) => write!(f, "{}", list),
       ObjectKind::Map(map) => write!(f, "{}", map),
       ObjectKind::Fun(fun) => write!(f, "{}", fun),
@@ -498,6 +509,7 @@ impl fmt::Debug for GcObject {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match_obj!((self) {
       ObjectKind::String(string) => write!(f, "{:?}", string),
+      ObjectKind::Channel(channel) => write!(f, "{:?}", channel),
       ObjectKind::List(list) => write!(f, "{:?}", list),
       ObjectKind::Map(map) => write!(f, "{:?}", map),
       ObjectKind::Fun(fun) => write!(f, "{:?}", fun),
@@ -535,6 +547,9 @@ impl Trace for GcObject {
     }
 
     match_obj!((self) {
+      ObjectKind::Channel(channel) => {
+        channel.trace();
+      },
       ObjectKind::Class(class) => {
         class.trace();
       },
@@ -594,6 +609,9 @@ impl Trace for GcObject {
     }
 
     match_obj!((self) {
+      ObjectKind::Channel(channel) => {
+        trace_debug!(channel);
+      },
       ObjectKind::Class(class) => {
         trace_debug!(class);
       },
@@ -641,6 +659,9 @@ impl DebugHeap for GcObject {
     }
 
     match_obj!((self) {
+      ObjectKind::Channel(channel) => {
+        channel.fmt_heap(f, depth)
+      },
       ObjectKind::Class(class) => {
         class.fmt_heap(f, depth)
       },

@@ -123,6 +123,7 @@ pub enum ParameterKind {
   Bool,
   Number,
   String,
+  Channel,
   List,
   Map,
   Class,
@@ -168,6 +169,7 @@ impl From<Value> for ParameterKind {
       ValueKind::Nil => ParameterKind::Nil,
       ValueKind::Number => ParameterKind::Number,
       ValueKind::Obj => match value.to_obj().kind() {
+        ObjectKind::Channel => ParameterKind::Channel,
         ObjectKind::Class => ParameterKind::Class,
         ObjectKind::Closure => ParameterKind::Fun,
         ObjectKind::Enumerator => ParameterKind::Enumerator,
@@ -193,6 +195,7 @@ impl Display for ParameterKind {
       ParameterKind::Nil => write!(f, "nil"),
       ParameterKind::Number => write!(f, "number"),
       ParameterKind::String => write!(f, "string"),
+      ParameterKind::Channel => write!(f, "channel"),
       ParameterKind::Fiber => write!(f, "fiber"),
       ParameterKind::List => write!(f, "list"),
       ParameterKind::Map => write!(f, "map"),

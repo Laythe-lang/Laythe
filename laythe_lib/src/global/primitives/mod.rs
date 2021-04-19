@@ -1,8 +1,9 @@
 pub mod bool;
+pub mod channel;
 pub mod class;
 pub mod closure;
-pub mod fiber;
 pub mod error;
+pub mod fiber;
 pub mod iter;
 pub mod list;
 pub mod map;
@@ -16,7 +17,13 @@ pub mod string;
 
 use std::path::PathBuf;
 
-use self::{bool::{declare_bool_class, define_bool_class}, error::{create_error_class, declare_global_errors, define_global_errors, ERROR_CLASS_NAME}, fiber::{declare_fiber_class, define_fiber_class}, module::create_module_class};
+use self::{
+  bool::{declare_bool_class, define_bool_class},
+  channel::{declare_channel_class, define_channel_class},
+  error::{create_error_class, declare_global_errors, define_global_errors, ERROR_CLASS_NAME},
+  fiber::{declare_fiber_class, define_fiber_class},
+  module::create_module_class,
+};
 use crate::{support::export_and_insert, StdError, StdResult, STD};
 use class::create_class_class;
 use closure::{declare_closure_class, define_closure_class};
@@ -88,6 +95,7 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
 
   declare_global_errors(hooks, &mut module)?;
   declare_bool_class(hooks, &mut module)?;
+  declare_channel_class(hooks, &mut module)?;
   declare_closure_class(hooks, &mut module)?;
   declare_iter_class(hooks, &mut module)?;
   declare_list_class(hooks, &mut module)?;
@@ -101,6 +109,7 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
 
   define_global_errors(hooks, &module)?;
   define_bool_class(hooks, &module)?;
+  define_channel_class(hooks, &module)?;
   define_closure_class(hooks, &module)?;
   define_iter_class(hooks, &module)?;
   define_list_class(hooks, &module)?;
