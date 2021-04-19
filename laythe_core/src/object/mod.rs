@@ -1,3 +1,4 @@
+mod channel;
 mod class;
 mod closure;
 mod enumerator;
@@ -10,6 +11,7 @@ mod method;
 mod native;
 mod upvalue;
 
+pub use channel::Channel;
 pub use class::Class;
 pub use closure::Closure;
 pub use enumerator::{Enumerate, Enumerator};
@@ -28,6 +30,7 @@ pub use class::test_class;
 /// Enum of value types in laythe
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub enum ObjectKind {
+  Channel,
   Class,
   Closure,
   Enumerator,

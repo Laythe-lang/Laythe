@@ -8,7 +8,13 @@ use laythe_core::{
   value::{Value, ValueKind},
 };
 
-use crate::global::{BOOL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, EXPORT_ERROR_NAME, FIBER_CLASS_NAME, IMPORT_ERROR_NAME, ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME, MODULE_CLASS_NAME, NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME, PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, STRING_CLASS_NAME};
+use crate::global::{
+  BOOL_CLASS_NAME, CHANNEL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, EXPORT_ERROR_NAME,
+  FIBER_CLASS_NAME, IMPORT_ERROR_NAME, ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME,
+  METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME, MODULE_CLASS_NAME, NATIVE_CLASS_NAME,
+  NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME, PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME,
+  STRING_CLASS_NAME,
+};
 
 pub struct BuiltIn {
   /// built in classes related to dependencies
@@ -60,6 +66,9 @@ pub struct BuiltInPrimitives {
   /// the Bool class
   pub bool: GcObj<Class>,
 
+  /// The Channel class
+  pub channel: GcObj<Class>,
+
   /// the Class class
   pub class: GcObj<Class>,
 
@@ -101,6 +110,7 @@ impl BuiltInPrimitives {
         let obj = value.to_obj();
 
         match obj.kind() {
+          ObjectKind::Channel => self.channel,
           ObjectKind::Class => obj.to_class().meta_class().expect("Meta class not set."),
           ObjectKind::Closure => self.closure,
           ObjectKind::Enumerator => self.iter,
@@ -189,6 +199,10 @@ pub fn builtin_from_module(hooks: &GcHooks, module: &Module) -> Option<BuiltIn> 
         .to_class(),
       bool: module
         .get_symbol(hooks.manage_str(BOOL_CLASS_NAME))?
+        .to_obj()
+        .to_class(),
+      channel: module
+        .get_symbol(hooks.manage_str(CHANNEL_CLASS_NAME))?
         .to_obj()
         .to_class(),
       class: module

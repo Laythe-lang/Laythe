@@ -224,6 +224,7 @@ mod unboxed {
         Value::Bool(_) => "bool",
         Value::Number(_) => "number",
         Value::Obj(obj) => match obj.kind() {
+          ObjectKind::Channel => "channel",
           ObjectKind::String => "string",
           ObjectKind::List => "list",
           ObjectKind::Fiber => "fiber",
@@ -603,6 +604,7 @@ mod boxed {
         ValueKind::Number => "number",
         ValueKind::Obj => match self.to_obj().kind() {
           ObjectKind::String => "string",
+          ObjectKind::Channel => "channel",
           ObjectKind::List => "list",
           ObjectKind::Map => "map",
           ObjectKind::Fun => "function",

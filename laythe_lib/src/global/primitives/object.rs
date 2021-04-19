@@ -74,6 +74,9 @@ impl LyNative for ObjectStr {
       ValueKind::Nil => format!("<{} nil>", &*class.name()),
       ValueKind::Number => format!("<{} {}>", &*class.name(), this.to_num()),
       ValueKind::Obj => match_obj!((&this.to_obj()) {
+        ObjectKind::Channel(channel) => {
+          format!("<{} {:p}>", &*class.name(), &*channel)
+        },
         ObjectKind::Class(cls) => {
           format!("<{} {:p}>", &*class.name(), &*cls)
         },
