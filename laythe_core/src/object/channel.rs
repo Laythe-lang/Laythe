@@ -1,6 +1,6 @@
-use super::ObjectKind;
+use super::{Fiber, ObjectKind};
 use crate::{
-  managed::{DebugHeap, DebugWrap, Gc, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, Manage, Object, Trace},
   value::Value,
 };
 use std::collections::VecDeque;
@@ -13,9 +13,82 @@ enum ChannelKind {
   WriteOnly,
 }
 
+#[derive(PartialEq, Clone, Debug)]
+enum ChannelQueueState {
+  Ready,
+  Closed,
+}
+
+enum EnqueueResult {
+  Ok,
+  Full(Value),
+  Closed(Value),
+}
+
+enum DequeueResult {
+  Ok(Value),
+  Empty,
+  Closed,
+}
+
 #[derive(PartialEq, Clone)]
 struct ChannelQueue {
   queue: VecDeque<Value>,
+  send_waiters: Vec<GcObj<Fiber>>,
+  receive_waiters: Vec<GcObj<Fiber>>,
+  state: ChannelQueueState,
+}
+
+impl ChannelQueue {
+  /// Create with a fixed capacity
+  /// The channel queue will immediately be ready
+  pub fn new(capacity: usize) -> Self {
+    Self {
+      queue: VecDeque::with_capacity(capacity),
+      send_waiters: vec![],
+      receive_waiters: vec![],
+      state: ChannelQueueState::Ready,
+    }
+  }
+
+  /// Is this channel closed
+  pub fn is_closed(&self) -> bool {
+    matches!(self.state, ChannelQueueState::Closed)
+  }
+
+  /// Attempt to enqueue a value into this channel.
+  /// the value can be reject either because the
+  /// channel is saturated or because the channel
+  /// has already been closed
+  fn enqueue(&mut self, fiber: GcObj<Fiber>, val: Value) -> EnqueueResult {
+    match self.state {
+      ChannelQueueState::Ready => {
+        if self.queue.len() == self.queue.capacity() {
+          self.queue.push_back(val);
+          EnqueueResult::Ok
+        } else {
+          self.send_waiters.push(fiber);
+          EnqueueResult::Full(val)
+        }
+      },
+      ChannelQueueState::Closed => EnqueueResult::Closed(val),
+    }
+  }
+
+  /// Attempt to dequeue a value from this channel.
+  /// If the channel is empty
+  fn dequeue(&mut self, fiber: GcObj<Fiber>) -> DequeueResult {
+    match self.state {
+      ChannelQueueState::Ready => match self.queue.pop_front() {
+        Some(value) => DequeueResult::Ok(value),
+        None => {
+          self.receive_waiters.push(fiber);
+          DequeueResult::Empty
+        },
+      },
+      ChannelQueueState::Closed => DequeueResult::Closed,
+    }
+  }
 }
 
 impl Trace for ChannelQueue {
@@ -34,8 +107,9 @@ impl Trace for ChannelQueue {
 
 impl DebugHeap for ChannelQueue {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    f.debug_list()
-      .entries(self.queue.iter().map(|x| DebugWrap(x, depth)))
+    f.debug_struct("ChannelQueue")
+      .field("queue", &DebugWrap(&self.queue, depth))
+      .field("kind", &self.state)
       .finish()
   }
 }
