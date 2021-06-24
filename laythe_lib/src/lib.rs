@@ -129,8 +129,6 @@ pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 
 pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Package>> {
-  // let mut std = hooks.manage(Package::new(hooks.manage_str(STD.to_string())));
-
   let mut std = create_std_core(hooks, emitter)?;
 
   add_math_module(hooks, &mut std, emitter)?;
