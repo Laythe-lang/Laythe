@@ -19,6 +19,7 @@ impl<K, V> Map<K, V> {
     ))
   }
 
+  #[inline]
   pub fn with_capacity(capacity: usize) -> Self {
     Self(HashMap::<K, V, FnvBuildHasher>::with_capacity_and_hasher(
       capacity,

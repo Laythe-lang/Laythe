@@ -43,11 +43,13 @@ impl Enumerator {
     result
   }
 
+  #[inline]
   /// Get the current value of the iterator
   pub fn current(&self) -> Value {
     self.current
   }
 
+  #[inline]
   pub fn size_hint(&self) -> Option<usize> {
     self.iterator.size_hint()
   }
