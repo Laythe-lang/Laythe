@@ -775,6 +775,7 @@ impl Drop for GcObjectHandle {
         ObjectKind::List => drop_kind!(List<Value>),
         ObjectKind::Map => drop_kind!(Map<Value, Value>),
         ObjectKind::Fiber => drop_kind!(Fiber),
+        ObjectKind::Channel => drop_kind!(Channel),
         ObjectKind::Fun => drop_kind!(Fun),
         ObjectKind::Closure => drop_kind!(Closure),
         ObjectKind::Class => drop_kind!(Class),

@@ -75,8 +75,8 @@ mod unboxed {
   use crate::{
     managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Trace},
     object::{
-      Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native, ObjectKind,
-      Upvalue,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
+      ObjectKind, Upvalue,
     },
   };
 
@@ -281,6 +281,12 @@ mod unboxed {
     }
   }
 
+  impl From<GcObj<Channel>> for Value {
+    fn from(managed: GcObj<Channel>) -> Value {
+      Value::Obj(managed.degrade())
+    }
+  }
+
   impl From<GcObj<List<Value>>> for Value {
     fn from(managed: GcObj<List<Value>>) -> Value {
       Value::Obj(managed.degrade())
@@ -469,8 +475,8 @@ mod boxed {
   use crate::{
     managed::{DebugHeap, GcObj, GcObject, GcStr, Trace},
     object::{
-      Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native, ObjectKind,
-      Upvalue,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
+      ObjectKind, Upvalue,
     },
   };
 
@@ -679,6 +685,13 @@ mod boxed {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
+
+  impl From<GcObj<Channel>> for Value {
+    fn from(managed: GcObj<Channel>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
+    }
+  }
+
   impl From<GcObj<List<Value>>> for Value {
     fn from(managed: GcObj<List<Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
