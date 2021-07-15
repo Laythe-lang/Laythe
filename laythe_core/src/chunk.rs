@@ -97,14 +97,6 @@ impl ChunkBuilder {
     self.constants.len() - 1
   }
 
-  /// Get the approximate size of this chunk in bytes
-  pub fn size(&self) -> usize {
-    mem::size_of::<Self>()
-      + mem::size_of::<u8>() * self.instructions.capacity()
-      + mem::size_of::<Value>() * self.constants.capacity()
-      + mem::size_of::<Line>() * self.lines.capacity()
-  }
-
   /// Build the final chunk from this builder. Consumes this
   /// chunk builder in the process
   pub fn build(self) -> Chunk {
@@ -191,6 +183,7 @@ impl Chunk {
   }
 
   /// Get the size of this chunk in bytes
+  #[inline]
   pub fn size(&self) -> usize {
     mem::size_of::<Self>()
       + mem::size_of::<u8>() * self.instructions.len()

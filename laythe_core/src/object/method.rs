@@ -17,6 +17,7 @@ pub struct Method {
 }
 
 impl Method {
+  #[inline]
   pub fn new(receiver: Value, method: Value) -> Self {
     Self { receiver, method }
   }

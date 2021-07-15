@@ -35,6 +35,7 @@ impl Upvalue {
   ///   Upvalue::Open(_) => assert!(false),
   /// };
   /// ```
+  #[inline]
   pub fn hoist(&mut self, stack: &[Value]) {
     match self {
       Upvalue::Open(index) => {
