@@ -1,5 +1,5 @@
 use crate::{
-  constants::{INDEX_GET, INDEX_SET, INIT},
+  constants::INIT,
   managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Object, Trace},
 };
 use crate::{hooks::GcHooks, value::Value};
@@ -13,8 +13,6 @@ use super::ObjectKind;
 pub struct Class {
   name: GcStr,
   init: Option<Value>,
-  index_get: Option<Value>,
-  index_set: Option<Value>,
   methods: HashMap<GcStr, Value, FnvBuildHasher>,
   fields: HashMap<GcStr, u16, FnvBuildHasher>,
   meta_class: Option<GcObj<Class>>,
@@ -26,8 +24,6 @@ impl Class {
     let mut class = hooks.manage_obj(Self {
       name,
       init: None,
-      index_get: None,
-      index_set: None,
       methods: HashMap::default(),
       fields: HashMap::default(),
       meta_class: None,
@@ -46,8 +42,6 @@ impl Class {
     Self {
       name,
       init: None,
-      index_get: None,
-      index_set: None,
       methods: HashMap::default(),
       fields: HashMap::default(),
       meta_class: None,
@@ -68,16 +62,6 @@ impl Class {
   #[inline]
   pub fn init(&self) -> Option<Value> {
     self.init
-  }
-
-  #[inline]
-  pub fn index_get(&self) -> Option<Value> {
-    self.index_get
-  }
-
-  #[inline]
-  pub fn index_set(&self) -> Option<Value> {
-    self.index_set
   }
 
   pub fn meta_class(&self) -> &Option<GcObj<Class>> {
@@ -117,8 +101,6 @@ impl Class {
   pub fn add_method(&mut self, hooks: &GcHooks, name: GcStr, method: Value) -> Option<Value> {
     match &*name {
       INIT => self.init = Some(method),
-      INDEX_GET => self.index_get = Some(method),
-      INDEX_SET => self.index_set = Some(method),
       _ => (),
     }
 
@@ -185,8 +167,6 @@ impl Class {
     let mut meta_class = hooks.manage_obj(Self {
       name: hooks.manage_str(format!("{} metaClass", &*self.name)),
       init: None,
-      index_get: None,
-      index_set: None,
       methods: HashMap::default(),
       fields: HashMap::default(),
       meta_class: Some(class_class),

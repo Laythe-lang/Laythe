@@ -386,16 +386,16 @@ mod unboxed {
         Self::Number(num) => {
           ValueKind::Number.hash(state);
           (*num as u64).hash(state);
-        },
+        }
         Self::Bool(b) => {
           ValueKind::Bool.hash(state);
           b.hash(state);
-        },
+        }
         Self::Nil => ValueKind::Nil.hash(state),
         Self::Obj(obj) => {
           ValueKind::Obj.hash(state);
           obj.hash(state);
-        },
+        }
       };
     }
   }
@@ -760,7 +760,8 @@ mod boxed {
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 24);
       assert_eq!(mem::size_of::<Fun>(), 96);
-      assert_eq!(mem::size_of::<Class>(), 136);
+      assert_eq!(mem::size_of::<Fiber>(), 104);
+      assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 16);
       assert_eq!(mem::size_of::<Enumerator>(), 24);
