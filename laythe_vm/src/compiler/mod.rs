@@ -845,6 +845,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn primary(&mut self, primary: &'a Primary<'src>, trailers: &'a [Trailer<'src>]) -> bool {
     match primary {
       Primary::AssignBlock(block) => self.assign_block(block),
+      Primary::Channel(token) => self.channel(token),
       Primary::True(token) => self.true_(token),
       Primary::False(token) => self.false_(token),
       Primary::Nil(token) => self.nil(token),
@@ -1632,6 +1633,19 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self_.block(block);
     });
     self.emit_byte(AlignedByteCode::Nil, block.end());
+    false
+  }
+
+  /// Compile a channel declaration
+  fn channel(&mut self, channel: &'a ast::Channel<'src>) -> bool {
+    match &channel.expr {
+      Some(expr) => {
+        self.expr(&expr);
+        self.emit_byte(AlignedByteCode::BufferedChannel, channel.end());
+      }
+      None => self.emit_byte(AlignedByteCode::Channel, channel.end()),
+    }
+
     false
   }
 
@@ -3217,6 +3231,31 @@ mod test {
         AlignedByteCode::DefineGlobal(0), // 12
         AlignedByteCode::Nil,             // 14
         AlignedByteCode::Return,          // 15
+      ],
+    );
+  }
+
+  #[test]
+  fn channel() {
+    let example = "
+    let a = chan(5);
+    let b = chan();
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::Constant(1),     // 1
+        AlignedByteCode::BufferedChannel, // 3
+        AlignedByteCode::DefineGlobal(0), // 4
+        AlignedByteCode::Channel,         // 6
+        AlignedByteCode::DefineGlobal(2), // 7
+        AlignedByteCode::Nil,             // 9
+        AlignedByteCode::Return,          // 10
       ],
     );
   }

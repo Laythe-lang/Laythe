@@ -1,0 +1,3 @@
+let a = chan();
+assertEq(a.len(), 0);
+assertEq(a.capacity(), 1);

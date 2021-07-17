@@ -80,6 +80,7 @@ impl<'a> Visitor<'a> for AstPrint {
   fn visit_primary(&mut self, primary: &Primary) -> Self::Result {
     match primary {
       Primary::AssignBlock(block) => self.visit_assign_block(block),
+      Primary::Channel(token) => self.visit_channel(token),
       Primary::True(token) => self.visit_true(token),
       Primary::False(token) => self.visit_false(token),
       Primary::Nil(token) => self.visit_nil(token),
@@ -513,7 +514,13 @@ impl<'a> Visitor<'a> for AstPrint {
     self.buffer.push_str(&token.str());
     self.buffer.push('"');
   }
-
+  fn visit_channel(&mut self, channel: &Channel) -> Self::Result {
+    self.buffer.push_str("chan(");
+    if let Some(expr) = &channel.expr {
+      self.visit_expr(expr)
+    }
+    self.buffer.push(')');
+  }
   fn visit_interpolation(&mut self, string_interp: &Interpolation) -> Self::Result {
     self.buffer.push('"');
     self.buffer.push_str(&string_interp.start.str());
