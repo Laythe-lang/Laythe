@@ -38,7 +38,7 @@ impl Closure {
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```
   pub fn new(fun: GcObj<Fun>, upvalues: Box<[GcObj<Upvalue>]>) -> Self {
-    Closure { upvalues, fun }
+    Closure { fun, upvalues }
   }
 
   pub fn without_upvalues(fun: GcObj<Fun>) -> Self {

@@ -99,9 +99,8 @@ impl Class {
   }
 
   pub fn add_method(&mut self, hooks: &GcHooks, name: GcStr, method: Value) -> Option<Value> {
-    match &*name {
-      INIT => self.init = Some(method),
-      _ => (),
+    if &*name == INIT {
+      self.init = Some(method)
     }
 
     hooks.grow(self, |class| class.methods.insert(name, method))

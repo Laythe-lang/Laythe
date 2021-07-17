@@ -393,7 +393,7 @@ struct SkipIterator {
 
 impl SkipIterator {
   fn new(iter: GcObj<Enumerator>, skip_count: usize) -> Self {
-    Self { iter, skip_count }
+    Self { skip_count, iter }
   }
 }
 
@@ -622,7 +622,7 @@ impl LyNative for IterLen {
         }
 
         Call::Ok(val!(size as f64))
-      },
+      }
     }
   }
 }
@@ -1237,7 +1237,7 @@ mod test {
           let mut map_iter = r.to_obj().to_enumerator();
           assert_eq!(map_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(map_iter.current(), val!(5.0));
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -1286,7 +1286,7 @@ mod test {
           assert_eq!(filter_iter.current(), val!(2.0));
           assert_eq!(filter_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(filter_iter.current(), val!(3.0));
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -1337,7 +1337,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 10.1);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -1371,7 +1371,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 4.0);
-        },
+        }
         _ => assert!(false),
       }
     }
