@@ -182,7 +182,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::While
         | TokenKind::Return => {
           break;
-        },
+        }
         _ => (),
       }
 
@@ -263,7 +263,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
-            },
+            }
             _ => {
               let (fun_kind, method) = self.method(name, false)?;
               match fun_kind {
@@ -271,9 +271,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 FunKind::Initializer => init = Some(method),
                 _ => unreachable!(),
               }
-            },
+            }
           }
-        },
+        }
 
         // static we know must be a method
         TokenKind::Static => {
@@ -285,7 +285,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let name = self.previous.clone();
           let (_, method) = self.method(name, true)?;
           static_methods.push(method);
-        },
+        }
         _ => return self.error_current("Expected method or member declaration inside of class."),
       }
     }
@@ -385,7 +385,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           members.push(TypeMember::new(name, type_));
-        },
+        }
         TokenKind::Less | TokenKind::LeftParen => {
           self.advance()?;
           let type_params = if self.match_kind(TokenKind::Less)? {
@@ -399,7 +399,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           methods.push(TypeMethod::new(name, call_sig));
-        },
+        }
         _ => self.error_at(
           self.current.clone(),
           "Expected member or method declaration inside trait.",
@@ -680,18 +680,19 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   fn prefix(&mut self, action: Prefix, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
     match action {
       Prefix::AssignBlock => self.assign_block(),
-      Prefix::List => self.list(),
-      Prefix::Map => self.map(),
-      Prefix::Lambda => self.lambda(),
+      Prefix::Channel => self.channel(),
       Prefix::Grouping => self.grouping(),
-      Prefix::Literal => Ok(self.literal()),
-      Prefix::Number => Ok(self.number()),
-      Prefix::String => Ok(self.string()),
       Prefix::Interpolation => self.interpolation(),
-      Prefix::Super => self.super_(),
+      Prefix::Lambda => self.lambda(),
+      Prefix::List => self.list(),
+      Prefix::Literal => Ok(self.literal()),
+      Prefix::Map => self.map(),
+      Prefix::Number => Ok(self.number()),
       Prefix::Self_ => Ok(self.self_()),
-      Prefix::Variable => self.variable(can_assign),
+      Prefix::String => Ok(self.string()),
+      Prefix::Super => self.super_(),
       Prefix::Unary => self.unary(),
+      Prefix::Variable => self.variable(can_assign),
     }
   }
 
@@ -895,6 +896,24 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     lambda
   }
 
+  fn channel(&mut self) -> ParseResult<Expr<'a>, FileId> {
+    let start = self.previous.start();
+    self.consume_basic(TokenKind::LeftParen, "Expected '(' after 'chan'")?;
+
+    let mut expr = None;
+    if !self.match_kind(TokenKind::RightParen)? {
+      expr = Some(self.expr()?);
+      self.consume_basic(TokenKind::RightParen, "Expected ')'")?;
+    }
+
+    let span = Span {
+      start,
+      end: self.previous.end(),
+    };
+
+    Ok(self.atom(Primary::Channel(Channel::new(span, expr))))
+  }
+
   /// Parse a grouping expression
   fn grouping(&mut self) -> ParseResult<Expr<'a>, FileId> {
     let expr = self.expr()?;
@@ -1006,14 +1025,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         TokenKind::StringSegment => {
           self.advance()?;
           segments.push(StringSegments::Token(self.previous.clone()))
-        },
+        }
         TokenKind::StringEnd => {
           break;
-        },
+        }
         _ => {
           let expr = self.expr()?;
           segments.push(StringSegments::Expr(self.node(expr)))
-        },
+        }
       }
     }
     self.consume(TokenKind::StringEnd, "Unterminated interpolated string.")?;
@@ -1271,7 +1290,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TypePrefix::Fun => {
         let call_sig = self.call_signature(TokenKind::RightParen, vec![])?;
         Ok(Type::Fun(self.node(call_sig)))
-      },
+      }
       TypePrefix::Literal => self.type_literal(),
     }
   }
@@ -1346,11 +1365,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
         Ok(Type::Ref(type_ref))
-      },
+      }
       _ => {
         // TODO: maybe
         self.error("Can only apply type argument to a non primitive type identifier.")
-      },
+      }
     }
   }
 
@@ -1511,7 +1530,9 @@ impl<T, P> Rule<T, P> {
 #[derive(Clone, Copy)]
 enum Prefix {
   AssignBlock,
+  Channel,
   Grouping,
+  Interpolation,
   Lambda,
   List,
   Literal,
@@ -1519,7 +1540,6 @@ enum Prefix {
   Number,
   Self_,
   String,
-  Interpolation,
   Super,
   Unary,
   Variable,
@@ -1549,7 +1569,7 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 63;
+const TOKEN_VARIANTS: usize = 64;
 
 /// The rules for infix and prefix operators
 const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
@@ -1675,6 +1695,8 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   // TRAIT
   Rule::new(None, Precedence::None),
   // TYPE
+  Rule::new(Some(Prefix::Channel), Precedence::None),
+  // Channel
   Rule::new(None, Precedence::None),
   // ERROR
   Rule::new(None, Precedence::None),
@@ -1806,6 +1828,8 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // TYPE
   Rule::new(None, Precedence::None),
+  // Channel
+  Rule::new(None, Precedence::None),
   // ERROR
   Rule::new(None, Precedence::None),
   // EOF
@@ -1936,6 +1960,8 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // TYPE
   Rule::new(None, TypePrecedence::None),
+  // Channel
+  Rule::new(None, TypePrecedence::None),
   // ERROR
   Rule::new(None, TypePrecedence::None),
   // EOF
@@ -2065,6 +2091,8 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   // TRAIT
   Rule::new(None, TypePrecedence::None),
   // TYPE
+  Rule::new(None, TypePrecedence::None),
+  // Channel
   Rule::new(None, TypePrecedence::None),
   // ERROR
   Rule::new(None, TypePrecedence::None),
@@ -2614,6 +2642,24 @@ mod test {
   }
 
   #[test]
+  fn channel() {
+    let example = "
+      chan();
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn channel_buffered() {
+    let example = "
+      print(chan(5));
+    ";
+
+    test(example);
+  }
+
+  #[test]
   fn lambda_expr_body() {
     let example = "
     let example = || 10;
@@ -2669,11 +2715,12 @@ mod test {
     "man.dude.bro",
     "ten(\"false\")[10].bro",
   ];
-  const EXAMPLE_PRIMARIES: [&str; 12] = [
+  const EXAMPLE_PRIMARIES: [&str; 13] = [
     "true",
     "false",
     "nil",
     "10.3",
+    "chan(5)",
     "'hi'",
     "('bye')",
     "self",

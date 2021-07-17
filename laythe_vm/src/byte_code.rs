@@ -55,6 +55,12 @@ pub enum AlignedByteCode {
   /// Initialize map from literal
   Map(u16),
 
+  /// Initialize a channel
+  Channel,
+
+  /// Initialize a channel
+  BufferedChannel,
+
   /// Combine string interpolation
   Interpolate(u16),
 
@@ -214,6 +220,8 @@ impl AlignedByteCode {
         AlignedByteCode::Map(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
+      ByteCode::Channel => (AlignedByteCode::Channel, offset + 1),
+      ByteCode::BufferedChannel => (AlignedByteCode::BufferedChannel, offset + 1),
       ByteCode::Interpolate => (
         AlignedByteCode::Interpolate(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
@@ -349,6 +357,8 @@ impl AlignedByteCode {
       AlignedByteCode::False => 1,
       AlignedByteCode::List(cnt) => -(*cnt as i32) + 1,
       AlignedByteCode::Map(cnt) => -(*cnt as i32 * 2) + 1,
+      AlignedByteCode::Channel => 1,
+      AlignedByteCode::BufferedChannel => 0,
       AlignedByteCode::Interpolate(cnt) => -(*cnt as i32) + 1,
       AlignedByteCode::IterNext(_) => 0,
       AlignedByteCode::IterCurrent(_) => 0,
@@ -411,6 +421,8 @@ impl Encode for AlignedByteCode {
       Self::False => op(code, ByteCode::False),
       Self::List(slot) => op_short(code, ByteCode::List, slot),
       Self::Map(slot) => op_short(code, ByteCode::Map, slot),
+      Self::Channel => op(code, ByteCode::Channel),
+      Self::BufferedChannel => op(code, ByteCode::BufferedChannel),
       Self::Interpolate(slot) => op_short(code, ByteCode::Interpolate, slot),
       Self::IterNext(slot) => op_short(code, ByteCode::IterNext, slot),
       Self::IterCurrent(slot) => op_short(code, ByteCode::IterCurrent, slot),
@@ -540,6 +552,12 @@ pub enum ByteCode {
 
   /// Initialize map
   Map,
+
+  /// Initialize a channel
+  Channel,
+
+  /// Initialize a buffered channel
+  BufferedChannel,
 
   /// Combine string interpolation
   Interpolate,

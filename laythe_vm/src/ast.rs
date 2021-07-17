@@ -53,6 +53,7 @@ pub trait Visitor<'a> {
   fn visit_nil(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_number(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_string(&mut self, token: &Token<'a>) -> Self::Result;
+  fn visit_channel(&mut self, token: &Channel<'a>) -> Self::Result;
   fn visit_interpolation(&mut self, string_interp: &Interpolation) -> Self::Result;
   fn visit_ident(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_self(&mut self, token: &Token<'a>) -> Self::Result;
@@ -480,7 +481,7 @@ impl<'a> Spanned for Import<'a> {
         } else {
           symbols.last().unwrap().end()
         }
-      },
+      }
     }
   }
 }
@@ -962,57 +963,60 @@ impl<'a> Spanned for Access<'a> {
 
 pub enum Primary<'a> {
   AssignBlock(Block<'a>),
-  True(Token<'a>),
+  Channel(Channel<'a>),
   False(Token<'a>),
-  Nil(Token<'a>),
-  Number(Token<'a>),
   Grouping(Box<'a, Expr<'a>>),
-  String(Token<'a>),
-  Interpolation(Box<'a, Interpolation<'a>>),
   Ident(Token<'a>),
-  Self_(Token<'a>),
-  Super(Super<'a>),
+  Interpolation(Box<'a, Interpolation<'a>>),
   Lambda(Box<'a, Fun<'a>>),
   List(List<'a>),
   Map(Map<'a>),
+  Nil(Token<'a>),
+  Number(Token<'a>),
+  Self_(Token<'a>),
+  String(Token<'a>),
+  Super(Super<'a>),
+  True(Token<'a>),
 }
 
 impl<'a> Spanned for Primary<'a> {
   fn start(&self) -> u32 {
     match self {
       Primary::AssignBlock(block) => block.start(),
-      Primary::True(true_) => true_.start(),
+      Primary::Channel(channel) => channel.start(),
       Primary::False(false_) => false_.start(),
-      Primary::Nil(nil_) => nil_.start(),
-      Primary::Number(nil_) => nil_.start(),
       Primary::Grouping(grouping) => grouping.start(),
-      Primary::String(string) => string.start(),
-      Primary::Interpolation(string) => string.start(),
       Primary::Ident(ident) => ident.start(),
-      Primary::Self_(self_) => self_.start(),
-      Primary::Super(super_) => super_.start(),
+      Primary::Interpolation(string) => string.start(),
       Primary::Lambda(lambda) => lambda.start(),
       Primary::List(list) => list.start(),
       Primary::Map(map) => map.start(),
+      Primary::Nil(nil_) => nil_.start(),
+      Primary::Number(nil_) => nil_.start(),
+      Primary::Self_(self_) => self_.start(),
+      Primary::String(string) => string.start(),
+      Primary::Super(super_) => super_.start(),
+      Primary::True(true_) => true_.start(),
     }
   }
 
   fn end(&self) -> u32 {
     match self {
       Primary::AssignBlock(block) => block.end(),
-      Primary::True(true_) => true_.end(),
+      Primary::Channel(channel) => channel.end(),
       Primary::False(false_) => false_.end(),
-      Primary::Nil(nil_) => nil_.end(),
-      Primary::Number(nil_) => nil_.end(),
       Primary::Grouping(grouping) => grouping.end(),
-      Primary::String(string) => string.end(),
-      Primary::Interpolation(string) => string.end(),
       Primary::Ident(ident) => ident.end(),
-      Primary::Self_(self_) => self_.end(),
-      Primary::Super(super_) => super_.end(),
+      Primary::Interpolation(string) => string.end(),
       Primary::Lambda(lambda) => lambda.end(),
       Primary::List(list) => list.end(),
       Primary::Map(map) => map.end(),
+      Primary::Nil(nil_) => nil_.end(),
+      Primary::Number(nil_) => nil_.end(),
+      Primary::Self_(self_) => self_.end(),
+      Primary::String(string) => string.end(),
+      Primary::Super(super_) => super_.end(),
+      Primary::True(true_) => true_.end(),
     }
   }
 }
@@ -1119,6 +1123,27 @@ impl<'a> Spanned for Super<'a> {
 
   fn end(&self) -> u32 {
     self.access.end()
+  }
+}
+
+pub struct Channel<'a> {
+  pub span: Span,
+  pub expr: Option<Expr<'a>>,
+}
+
+impl<'a> Channel<'a> {
+  pub fn new(span: Span, expr: Option<Expr<'a>>) -> Self {
+    Self { span, expr }
+  }
+}
+
+impl<'a> Spanned for Channel<'a> {
+  fn start(&self) -> u32 {
+    self.span.start
+  }
+
+  fn end(&self) -> u32 {
+    self.span.end
   }
 }
 

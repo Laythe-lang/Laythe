@@ -163,6 +163,7 @@ pub enum TokenKind {
   Catch,
   Trait,
   Type,
+  Channel,
 
   // meta
   Error,
@@ -233,6 +234,7 @@ impl fmt::Display for TokenKind {
       TokenKind::Catch => "catch",
       TokenKind::Trait => "trait",
       TokenKind::Type => "type",
+      TokenKind::Channel => "channel",
       TokenKind::Error => "error",
       TokenKind::Eof => "eof",
     })

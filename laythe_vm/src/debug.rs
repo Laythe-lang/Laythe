@@ -70,6 +70,8 @@ pub fn disassemble_instruction(
       short_instruction(stdio.stdout(), "List", arg_count, offset)
     }
     AlignedByteCode::Map(arg_count) => short_instruction(stdio.stdout(), "Map", arg_count, offset),
+    AlignedByteCode::Channel => simple_instruction(stdio.stdout(), "Channel", offset),
+    AlignedByteCode::BufferedChannel => simple_instruction(stdio.stdout(), "BufferedChannel", offset),
     AlignedByteCode::Interpolate(arg_count) => {
       short_instruction(stdio.stdout(), "Interpolate", arg_count, offset)
     }

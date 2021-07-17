@@ -57,6 +57,7 @@ Call ::= Primary ( "(" Args? ")" | "[" Expr "]" | "." IDENTIFIER )* ;
 
 Primary ::= "true" | "false" | "nil" | "self"
   | NUMBER | STRING | IDENTIFIER | LAMBDA
+  | "chan" "(" Expr ")"
   | "(" Expr ")" | "[" Args? "]"
   | "super" "." IDENTIFIER ;
 
@@ -95,8 +96,9 @@ RequiredParam ::= IDENTIFIER TypeAnnotation? ;
 TypeAnnotation ::= ':' Type ;
 
 PREDEFINED_TYPE = 'nil'
-  | 'number' 
-  | 'bool' 
-  | 'string' 
-  | 'any' 
+  | 'chan'
+  | 'number'
+  | 'bool'
+  | 'string'
+  | 'any'
 

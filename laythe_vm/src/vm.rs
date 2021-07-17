@@ -16,8 +16,8 @@ use laythe_core::{
   memory::Allocator,
   module::{Import, Module, Package},
   object::{
-    Class, Closure, Fiber, Fun, FunBuilder, Instance, List, Map, Method, Native, NativeMeta,
-    ObjectKind, Upvalue,
+    Channel, Class, Closure, Fiber, Fun, FunBuilder, Instance, List, Map, Method, Native,
+    NativeMeta, ObjectKind, Upvalue,
   },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   to_obj_kind,
@@ -471,6 +471,8 @@ impl Vm {
           ByteCode::False => self.op_literal(val!(false)),
           ByteCode::List => self.op_list(),
           ByteCode::Map => self.op_map(),
+          ByteCode::Channel => self.op_channel(),
+          ByteCode::BufferedChannel => self.op_buffered_channel(),
           ByteCode::Interpolate => self.op_interpolate(),
           ByteCode::IterNext => self.op_iter_next(),
           ByteCode::IterCurrent => self.op_iter_current(),
@@ -691,6 +693,44 @@ impl Vm {
 
     self.fiber.drop_n(arg_count * 2);
     self.fiber.push(val!(map));
+
+    Signal::Ok
+  }
+
+  /// create a map from a map literal
+  unsafe fn op_channel(&mut self) -> Signal {
+    let hooks = GcHooks::new(self);
+    let channel = self.manage_obj(Channel::with_capacity(&hooks, 1));
+    self.fiber.push(val!(channel));
+
+    Signal::Ok
+  }
+
+  /// create a map from a map literal
+  unsafe fn op_buffered_channel(&mut self) -> Signal {
+    let capacity = self.fiber.pop();
+
+    if !capacity.is_num() {
+      return self.runtime_error(
+        self.builtin.errors.type_,
+        &format!(
+          "function \"chan\"'s parameter \"capacity\" required a number but received a {}.",
+          ParameterKind::from(capacity)
+        ),
+      );
+    }
+
+    let capacity = capacity.to_num();
+    if capacity.fract() != 0.0 || capacity < 1.0 {
+      return self.runtime_error(
+        self.builtin.errors.type_,
+        "buffer must be an positive integer.",
+      );
+    }
+
+    let hooks = GcHooks::new(self);
+    let channel = self.manage_obj(Channel::with_capacity(&hooks, capacity as usize));
+    self.fiber.push(val!(channel));
 
     Signal::Ok
   }
@@ -1790,7 +1830,7 @@ impl Vm {
             ),
           )),
           SignatureError::TypeWrong(parameter) => Some(self.runtime_error(
-            self.builtin.errors.runtime,
+            self.builtin.errors.type_,
             &format!(
               "{} \"{}\"'s parameter \"{}\" required a {} but received a {}.",
               callable_type,

@@ -20,6 +20,7 @@ use std::io::Write;
 pub const CHANNEL_CLASS_NAME: &str = "Channel";
 const CHANNEL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const CHANNEL_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
+const CHANNEL_CAPACITY: NativeMetaBuilder = NativeMetaBuilder::method("capacity", Arity::Fixed(0));
 
 pub fn declare_channel_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
   let channel_class = class_inheritance(hooks, module, CHANNEL_CLASS_NAME)?;
@@ -40,6 +41,12 @@ pub fn define_channel_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
     &hooks,
     hooks.manage_str(String::from(CHANNEL_LEN.name)),
     val!(ChannelLen::native(hooks)),
+  );
+
+  channel_class.add_method(
+    &hooks,
+    hooks.manage_str(String::from(CHANNEL_CAPACITY.name)),
+    val!(ChannelCapacity::native(hooks)),
   );
 
   Ok(())
@@ -66,6 +73,14 @@ native!(ChannelLen, CHANNEL_LEN);
 impl LyNative for ChannelLen {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     Call::Ok(val!(this.unwrap().to_obj().to_channel().len() as f64))
+  }
+}
+
+native!(ChannelCapacity, CHANNEL_CAPACITY);
+
+impl LyNative for ChannelCapacity {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    Call::Ok(val!(this.unwrap().to_obj().to_channel().capacity() as f64))
   }
 }
 
@@ -146,6 +161,39 @@ mod test {
         .call(&mut hooks, Some(val!(channel)), &[])
         .unwrap();
       assert_eq!(result, val!(1.0));
+    }
+  }
+
+  mod capacity {
+    use laythe_core::object::Channel;
+
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let channel_capacity = ChannelCapacity::native(&hooks);
+
+      assert_eq!(channel_capacity.meta().name, "capacity");
+      assert_eq!(channel_capacity.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::with_std(&[]).expect("std lib failure");
+      let mut hooks = Hooks::new(&mut context);
+
+      let channel_capacity = ChannelCapacity::native(&hooks.as_gc());
+      let channel = hooks.manage_obj(Channel::with_capacity(&hooks.as_gc(), 4));
+
+      let result = channel_capacity
+        .call(&mut hooks, Some(val!(channel)), &[])
+        .unwrap();
+
+      assert_eq!(result, val!(4.0));
     }
   }
 }
