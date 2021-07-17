@@ -79,8 +79,6 @@ pub fn disassemble_instruction(
     AlignedByteCode::IterCurrent(constant) => {
       constant_instruction(stdio.stdout(), "IterCurrent", chunk, constant, offset)
     },
-    AlignedByteCode::GetIndex => simple_instruction(stdio.stdout(), "GetIndex", offset),
-    AlignedByteCode::SetIndex => simple_instruction(stdio.stdout(), "SetIndex", offset),
     AlignedByteCode::Drop => simple_instruction(stdio.stdout(), "Drop", offset),
     AlignedByteCode::DropN(count) => byte_instruction(stdio.stdout(), "DropN", count, offset),
     AlignedByteCode::Dup => simple_instruction(stdio.stdout(), "Dup", offset),
