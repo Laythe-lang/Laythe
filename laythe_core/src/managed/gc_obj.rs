@@ -202,7 +202,7 @@ impl<T: 'static + Object> GcObj<T> {
   /// Return the underlying pointer as a usize. This is
   /// used by the nan boxing functionality
   #[inline]
-  pub fn to_usize(&self) -> usize {
+  pub fn to_usize(self) -> usize {
     unsafe { self.header_ptr() as *const () as usize }
   }
 }
@@ -393,82 +393,82 @@ impl GcObject {
   }
 
   #[inline]
-  pub fn to_str(&self) -> GcStr {
+  pub fn to_str(self) -> GcStr {
     unsafe { GcStr::from_alloc_ptr(self.ptr) }
   }
 
   #[inline]
-  pub fn to_class(&self) -> GcObj<Class> {
+  pub fn to_class(self) -> GcObj<Class> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Class>() },
     }
   }
 
   #[inline]
-  pub fn to_closure(&self) -> GcObj<Closure> {
+  pub fn to_closure(self) -> GcObj<Closure> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Closure>() },
     }
   }
 
   #[inline]
-  pub fn to_fun(&self) -> GcObj<Fun> {
+  pub fn to_fun(self) -> GcObj<Fun> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Fun>() },
     }
   }
 
   #[inline]
-  pub fn to_fiber(&self) -> GcObj<Fiber> {
+  pub fn to_fiber(self) -> GcObj<Fiber> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Fiber>() },
     }
   }
 
   #[inline]
-  pub fn to_instance(&self) -> GcObj<Instance> {
+  pub fn to_instance(self) -> GcObj<Instance> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Instance>() },
     }
   }
 
   #[inline]
-  pub fn to_enumerator(&self) -> GcObj<Enumerator> {
+  pub fn to_enumerator(self) -> GcObj<Enumerator> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Enumerator>() },
     }
   }
 
   #[inline]
-  pub fn to_list(&self) -> GcObj<List<Value>> {
+  pub fn to_list(self) -> GcObj<List<Value>> {
     GcObj {
       ptr: unsafe { self.data_ptr::<List<Value>>() },
     }
   }
 
   #[inline]
-  pub fn to_map(&self) -> GcObj<Map<Value, Value>> {
+  pub fn to_map(self) -> GcObj<Map<Value, Value>> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Map<Value, Value>>() },
     }
   }
 
   #[inline]
-  pub fn to_method(&self) -> GcObj<Method> {
+  pub fn to_method(self) -> GcObj<Method> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Method>() },
     }
   }
 
   #[inline]
-  pub fn to_native(&self) -> GcObj<Native> {
+  pub fn to_native(self) -> GcObj<Native> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Native>() },
     }
   }
 
   #[inline]
-  pub fn to_upvalue(&self) -> GcObj<Upvalue> {
+  pub fn to_upvalue(self) -> GcObj<Upvalue> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Upvalue>() },
     }
