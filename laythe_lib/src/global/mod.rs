@@ -7,7 +7,7 @@ mod time;
 mod support;
 
 use crate::{StdResult, STD};
-use assert::add_assert_funs;
+use self::assert::add_assert_funs;
 use laythe_core::{hooks::GcHooks, managed::Gc, module::Package, utils::IdEmitter};
 use misc::add_misc_funs;
 use time::add_clock_funs;

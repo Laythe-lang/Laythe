@@ -84,7 +84,7 @@ impl ParameterBuilder {
   }
 
   /// Build a parameter from this builder
-  pub fn to_param(&self, hooks: &GcHooks) -> Parameter {
+  pub fn to_param(self, hooks: &GcHooks) -> Parameter {
     Parameter {
       name: hooks.manage_str(self.name),
       kind: self.kind,

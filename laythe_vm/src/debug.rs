@@ -68,35 +68,33 @@ pub fn disassemble_instruction(
     AlignedByteCode::False => simple_instruction(stdio.stdout(), "False", offset),
     AlignedByteCode::List(arg_count) => {
       short_instruction(stdio.stdout(), "List", arg_count, offset)
-    },
+    }
     AlignedByteCode::Map(arg_count) => short_instruction(stdio.stdout(), "Map", arg_count, offset),
     AlignedByteCode::Interpolate(arg_count) => {
       short_instruction(stdio.stdout(), "Interpolate", arg_count, offset)
-    },
+    }
     AlignedByteCode::IterNext(constant) => {
       invoke_instruction(stdio.stdout(), "IterNext", chunk, constant, 0, offset)
-    },
+    }
     AlignedByteCode::IterCurrent(constant) => {
       constant_instruction(stdio.stdout(), "IterCurrent", chunk, constant, offset)
-    },
-    AlignedByteCode::GetIndex => simple_instruction(stdio.stdout(), "GetIndex", offset),
-    AlignedByteCode::SetIndex => simple_instruction(stdio.stdout(), "SetIndex", offset),
+    }
     AlignedByteCode::Drop => simple_instruction(stdio.stdout(), "Drop", offset),
     AlignedByteCode::DropN(count) => byte_instruction(stdio.stdout(), "DropN", count, offset),
     AlignedByteCode::Dup => simple_instruction(stdio.stdout(), "Dup", offset),
     AlignedByteCode::Call(arg_count) => byte_instruction(stdio.stdout(), "Call", arg_count, offset),
     AlignedByteCode::Import(path) => {
       constant_instruction(stdio.stdout(), "Import", chunk, path, offset)
-    },
+    }
     AlignedByteCode::ImportSymbol((path, slot)) => {
       constant_pair_instruction(stdio.stdout(), "ImportSymbol", chunk, (path, slot), offset)
-    },
+    }
     AlignedByteCode::Export(constant) => {
       constant_instruction(stdio.stdout(), "Export", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::Invoke((constant, arg_count)) => {
       invoke_instruction(stdio.stdout(), "Invoke", chunk, constant, arg_count, offset)
-    },
+    }
     AlignedByteCode::SuperInvoke((constant, arg_count)) => invoke_instruction(
       stdio.stdout(),
       "SuperInvoke",
@@ -107,57 +105,57 @@ pub fn disassemble_instruction(
     ),
     AlignedByteCode::Class(constant) => {
       constant_instruction(stdio.stdout(), "Class", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::Inherit => simple_instruction(stdio.stdout(), "Inherit", offset),
     AlignedByteCode::GetSuper(constant) => {
       constant_instruction(stdio.stdout(), "GetSuper", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::Closure(constant) => {
       closure_instruction(stdio, "Closure", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::Method(constant) => {
       constant_instruction(stdio.stdout(), "Method", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::Field(constant) => {
       constant_instruction(stdio.stdout(), "Field", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::StaticMethod(constant) => {
       constant_instruction(stdio.stdout(), "StaticMethod", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::CloseUpvalue => simple_instruction(stdio.stdout(), "CloseUpvalue", offset),
     AlignedByteCode::UpvalueIndex(_) => {
       simple_instruction(stdio.stdout(), "!=== UpValueIndex - Invalid ===!", offset)
-    },
+    }
     AlignedByteCode::Slot(_) => {
       simple_instruction(stdio.stdout(), "!=== Slot - Invalid ===!", offset)
-    },
+    }
     AlignedByteCode::DefineGlobal(constant) => {
       constant_instruction(stdio.stdout(), "DefineGlobal", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::GetGlobal(constant) => {
       constant_instruction(stdio.stdout(), "GetGlobal", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::SetGlobal(constant) => {
       constant_instruction(stdio.stdout(), "SetGlobal", chunk, constant, offset)
-    },
+    }
     AlignedByteCode::GetLocal(slot) => byte_instruction(stdio.stdout(), "GetLocal", slot, offset),
     AlignedByteCode::SetLocal(slot) => byte_instruction(stdio.stdout(), "SetLocal", slot, offset),
     AlignedByteCode::GetUpvalue(slot) => {
       byte_instruction(stdio.stdout(), "GetUpvalue", slot, offset)
-    },
+    }
     AlignedByteCode::SetUpvalue(slot) => {
       byte_instruction(stdio.stdout(), "SetUpvalue", slot, offset)
-    },
+    }
     AlignedByteCode::SetProperty(slot) => {
       constant_instruction_with_slot(stdio.stdout(), "SetProperty", chunk, slot, offset)
-    },
+    }
     AlignedByteCode::GetProperty(slot) => {
       constant_instruction_with_slot(stdio.stdout(), "GetProperty", chunk, slot, offset)
-    },
+    }
     AlignedByteCode::Jump(jump) => jump_instruction(stdio.stdout(), "Jump", 1, jump, offset),
     AlignedByteCode::JumpIfFalse(jump) => {
       jump_instruction(stdio.stdout(), "JumpIfFalse", 1, jump, offset)
-    },
+    }
     AlignedByteCode::Loop(jump) => jump_instruction(stdio.stdout(), "Loop", -1, jump, offset),
     AlignedByteCode::Equal => simple_instruction(stdio.stdout(), "Equal", offset),
     AlignedByteCode::NotEqual => simple_instruction(stdio.stdout(), "NotEqual", offset),
@@ -167,10 +165,10 @@ pub fn disassemble_instruction(
     AlignedByteCode::LessEqual => simple_instruction(stdio.stdout(), "LessEqual", offset),
     AlignedByteCode::Constant(constant) => {
       constant_instruction(stdio.stdout(), "Constant", chunk, constant as u16, offset)
-    },
+    }
     AlignedByteCode::ConstantLong(constant) => {
       constant_instruction(stdio.stdout(), "ConstantLong", chunk, constant, offset)
-    },
+    }
   }
 }
 
@@ -232,10 +230,10 @@ fn constant_instruction_with_slot(
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ", name, constant)?;
-  write!(stdout, "{} ", &chunk.get_constant(constant as usize))?;
+  write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   writeln!(
     stdout,
-    "cache slot {}",
+    " cache slot {}",
     &decode_u32(&chunk.instructions()[offset..offset + 4])
   )?;
 

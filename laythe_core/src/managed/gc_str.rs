@@ -53,11 +53,11 @@ impl GcStr {
   /// let value = handle.value();
   /// assert!(value.to_usize() > 0);
   /// ```
-  pub fn to_usize(&self) -> usize {
+  pub fn to_usize(self) -> usize {
     self.0.as_alloc_ptr() as *const () as usize
   }
 
-  pub fn degrade(&self) -> GcObject {
+  pub fn degrade(self) -> GcObject {
     GcObject::new(self.0.ptr)
   }
 
