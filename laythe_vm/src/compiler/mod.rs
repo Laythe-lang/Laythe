@@ -16,7 +16,7 @@ use crate::{
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
   chunk::ChunkBuilder,
-  constants::OBJECT,
+  constants::{INDEX_GET, INDEX_SET, OBJECT},
   constants::{ITER, ITER_VAR, SCRIPT, SELF, SUPER},
   hooks::{GcContext, GcHooks},
   managed::{DebugHeap, Gc, GcObj, GcStr, Manage, Trace, TraceRoot},
@@ -396,7 +396,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       FunKind::Method | FunKind::StaticMethod | FunKind::Initializer => {
         let name = class_info.expect("Class info not set").name;
         format!("{}:{}", name, fun.name())
-      },
+      }
     };
 
     let mut stdio = io.as_ref().unwrap().stdio();
@@ -549,7 +549,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             AlignedByteCode::GetGlobal(global_index),
             AlignedByteCode::SetGlobal(global_index),
           )
-        },
+        }
       },
     };
 
@@ -591,12 +591,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           Some(local) => {
             parent.locals[local as usize].is_captured = true;
             Some(self.add_upvalue(UpvalueIndex::Local(local)))
-          },
+          }
           None => parent
             .resolve_upvalue(name)
             .map(|upvalue| self.add_upvalue(UpvalueIndex::Upvalue(upvalue))),
         }
-      },
+      }
       None => None,
     }
   }
@@ -751,7 +751,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
         self.constants.insert(value, index);
         index as u16
-      },
+      }
     }
   }
 
@@ -813,12 +813,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Stmt::Expr(expr) => {
         self.expr(expr);
         self.emit_byte(AlignedByteCode::Drop, expr.end());
-      },
+      }
       Stmt::ImplicitReturn(expr) => {
         self.expr(expr);
         self.emit_byte(AlignedByteCode::Return, expr.end());
         self.exit_scope = ScopeExit::Early
-      },
+      }
       Stmt::Import(import) => self.import(import),
       Stmt::For(for_) => self.for_(for_),
       Stmt::If(if_) => self.if_(if_),
@@ -852,7 +852,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Primary::Grouping(expr) => {
         self.expr(expr);
         false
-      },
+      }
       Primary::String(token) => self.string(token),
       Primary::Interpolation(interpolation) => self.interpolation(interpolation),
       Primary::Ident(token) => self.identifier(token),
@@ -1073,7 +1073,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         compiler.expr(&expr);
         compiler.emit_byte(AlignedByteCode::Return, expr.end());
         ScopeExit::Early
-      },
+      }
     };
 
     let end_line = fun.end();
@@ -1121,12 +1121,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
         let name = self.make_identifier(&import.path()[import.path().len() - 1]);
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
-      },
+      }
       ast::ImportStem::Rename(rename) => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
         let name = self.make_identifier(&rename);
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
-      },
+      }
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
           let symbol_slot = self.make_identifier(&symbol.symbol);
@@ -1142,7 +1142,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
           self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
         }
-      },
+      }
     }
   }
 
@@ -1292,7 +1292,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         }
 
         self.patch_jump(else_jump);
-      },
+      }
       None => self.patch_jump(then_jump),
     }
   }
@@ -1303,7 +1303,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Some(v) => {
         self.expr(&v);
         self.emit_byte(AlignedByteCode::Return, v.end());
-      },
+      }
       None => self.emit_return(return_.start()),
     }
     self.exit_scope = ScopeExit::Early;
@@ -1373,8 +1373,14 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             Trailer::Index(index) => {
               self.expr(&assign.rhs);
               self.expr(&index.index);
-              self.emit_byte(AlignedByteCode::SetIndex, assign.rhs.end())
-            },
+
+              let name = self.identifier_constant(INDEX_SET);
+              self.emit_byte(AlignedByteCode::Invoke((name, 2)), assign.rhs.end());
+              self.emit_byte(
+                AlignedByteCode::Slot(self.emit_invoke_id()),
+                assign.rhs.end(),
+              )
+            }
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
@@ -1392,12 +1398,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               self.expr(&assign.rhs);
               self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
               self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
-            },
+            }
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
-            },
+            }
           }
-        },
+        }
         None => {
           if let Primary::Ident(name) = &atom.primary {
             self.expr(&assign.rhs);
@@ -1405,7 +1411,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
-        },
+        }
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
     }
@@ -1417,10 +1423,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       ast::AssignBinaryOp::Add => comp.emit_byte(AlignedByteCode::Add, assign_binary.rhs.end()),
       ast::AssignBinaryOp::Sub => {
         comp.emit_byte(AlignedByteCode::Subtract, assign_binary.rhs.end())
-      },
+      }
       ast::AssignBinaryOp::Mul => {
         comp.emit_byte(AlignedByteCode::Multiply, assign_binary.rhs.end())
-      },
+      }
       ast::AssignBinaryOp::Div => comp.emit_byte(AlignedByteCode::Divide, assign_binary.rhs.end()),
     };
 
@@ -1437,13 +1443,26 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               self.emit_byte(AlignedByteCode::Dup, assign_binary.lhs.end());
 
               self.expr(&index.index);
-              self.emit_byte(AlignedByteCode::GetIndex, assign_binary.lhs.end());
+
+              let name = self.identifier_constant(INDEX_GET);
+              self.emit_byte(AlignedByteCode::Invoke((name, 1)), assign_binary.rhs.end());
+              self.emit_byte(
+                AlignedByteCode::Slot(self.emit_invoke_id()),
+                assign_binary.rhs.end(),
+              );
+
               self.expr(&assign_binary.rhs);
               binary_op(self);
 
               self.expr(&index.index);
-              self.emit_byte(AlignedByteCode::SetIndex, assign_binary.rhs.end())
-            },
+
+              let name = self.identifier_constant(INDEX_SET);
+              self.emit_byte(AlignedByteCode::Invoke((name, 2)), assign_binary.rhs.end());
+              self.emit_byte(
+                AlignedByteCode::Slot(self.emit_invoke_id()),
+                assign_binary.rhs.end(),
+              );
+            }
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
@@ -1467,12 +1486,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
               self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
               self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
-            },
+            }
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
-            },
+            }
           }
-        },
+        }
         None => {
           if let Primary::Ident(name) = &atom.primary {
             self.variable(name, false);
@@ -1482,7 +1501,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
-        },
+        }
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
     }
@@ -1514,12 +1533,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         let and_jump = self.emit_jump(AlignedByteCode::And(0), binary.lhs.end());
         self.expr(&binary.rhs);
         self.patch_jump(and_jump);
-      },
+      }
       ast::BinaryOp::Or => {
         let or_jump = self.emit_jump(AlignedByteCode::Or(0), binary.lhs.end());
         self.expr(&binary.rhs);
         self.patch_jump(or_jump);
-      },
+      }
     }
   }
 
@@ -1546,7 +1565,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Compile an indexing expression
   fn index(&mut self, index: &'a ast::Index<'src>) -> bool {
     self.expr(&index.index);
-    self.emit_byte(AlignedByteCode::GetIndex, index.end());
+
+    let name = self.identifier_constant(INDEX_GET);
+    self.emit_byte(AlignedByteCode::Invoke((name, 1)), index.end());
+    self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), index.end());
+
     false
   }
 
@@ -1571,12 +1594,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
           false
         }
-      },
+      }
       None => {
         self.emit_byte(AlignedByteCode::GetProperty(name), access.prop.end());
         self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
         false
-      },
+      }
     }
   }
 
@@ -1660,12 +1683,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         ast::StringSegments::Token(token) => {
           let value = val!(self.gc.borrow_mut().manage_str(token.str(), self));
           self.emit_constant(value, token.end());
-        },
+        }
         ast::StringSegments::Expr(expr) => {
           self.expr(expr);
           self.emit_byte(AlignedByteCode::Invoke((str_constant, 0)), expr.end());
           self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), expr.end());
-        },
+        }
       }
     }
 
@@ -1698,7 +1721,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           FunKind::Method | FunKind::Initializer => {
             self.variable(&self_, false);
             Some(())
-          },
+          }
           _ => None,
         })
       })
@@ -1752,19 +1775,19 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             super_.access.end(),
           );
           true
-        },
+        }
         _ => {
           self.variable(&super_.super_, false);
           self.emit_byte(AlignedByteCode::GetSuper(name), super_.end());
           false
-        },
+        }
       },
       None => {
         self.variable(&super_.super_, false);
 
         self.emit_byte(AlignedByteCode::GetSuper(name), super_.access.end());
         false
-      },
+      }
     }
   }
 
@@ -1959,18 +1982,18 @@ mod test {
         AlignedByteCode::Closure(closure) => {
           decoded.push(byte_code);
           offset = decode_byte_code_closure(fun, &mut decoded, new_offset, closure)
-        },
+        }
         AlignedByteCode::GetProperty(_)
         | AlignedByteCode::SetProperty(_)
         | AlignedByteCode::Invoke(_)
         | AlignedByteCode::SuperInvoke(_) => {
           decoded.push(byte_code);
           offset = decode_byte_code_slot(fun, &mut decoded, new_offset)
-        },
+        }
         _ => {
           decoded.push(byte_code);
           offset = new_offset;
-        },
+        }
       }
     }
 
@@ -2052,14 +2075,14 @@ mod test {
             ByteCodeTest::Fun((expected, max_slots, inner)) => {
               assert_eq!(*expected, index);
               assert_fun_bytecode(&*fun, *max_slots, &inner);
-            },
+            }
             _ => assert!(false),
           }
-        },
+        }
         _ => match &code[i] {
           ByteCodeTest::Code(byte_code) => {
             assert_eq!(&decoded_byte_code[i], byte_code);
-          },
+          }
           _ => assert!(false),
         },
       }
@@ -2222,23 +2245,24 @@ mod test {
       &fun,
       4,
       &vec![
-        AlignedByteCode::Map(0),       // 0
-        AlignedByteCode::GetLocal(1),  // 3
-        AlignedByteCode::Constant(1),  // 5
-        AlignedByteCode::GetIndex,     // 7
-        AlignedByteCode::Drop,         // 8
-        AlignedByteCode::Drop,         // 9
-        AlignedByteCode::Jump(8),      // 10
-        AlignedByteCode::GetGlobal(2), // 13
-        AlignedByteCode::Constant(3),  // 16
-        AlignedByteCode::Call(1),      // 18
-        AlignedByteCode::Drop,         // 20
-        AlignedByteCode::Nil,          // 21
-        AlignedByteCode::Return,       // 22
+        AlignedByteCode::Map(0),         // 0
+        AlignedByteCode::GetLocal(1),    // 3
+        AlignedByteCode::Constant(1),    // 5
+        AlignedByteCode::Invoke((2, 1)), // 7
+        AlignedByteCode::Slot(0),        // 7
+        AlignedByteCode::Drop,           // 8
+        AlignedByteCode::Drop,           // 9
+        AlignedByteCode::Jump(8),        // 10
+        AlignedByteCode::GetGlobal(3),   // 13
+        AlignedByteCode::Constant(4),    // 16
+        AlignedByteCode::Call(1),        // 18
+        AlignedByteCode::Drop,           // 20
+        AlignedByteCode::Nil,            // 21
+        AlignedByteCode::Return,         // 22
       ],
     );
 
-    assert_eq!(fun.has_catch_jump(0), Some(13));
+    assert_eq!(fun.has_catch_jump(0), Some(20));
   }
 
   #[test]
@@ -2263,32 +2287,34 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::List(0),      // 0
-        AlignedByteCode::Constant(0),  // 3
-        AlignedByteCode::GetIndex,     // 5
-        AlignedByteCode::Drop,         // 6
-        AlignedByteCode::List(0),      // 7
-        AlignedByteCode::Constant(1),  // 10
-        AlignedByteCode::GetIndex,     // 12
-        AlignedByteCode::Drop,         // 13
-        AlignedByteCode::Jump(8),      // 14
-        AlignedByteCode::GetGlobal(2), // 17
-        AlignedByteCode::Constant(3),  // 20
-        AlignedByteCode::Call(1),      // 22
-        AlignedByteCode::Drop,         // 24
-        AlignedByteCode::Jump(8),      // 25
-        AlignedByteCode::GetGlobal(2), // 28
-        AlignedByteCode::Constant(4),  // 31
-        AlignedByteCode::Call(1),      // 33
-        AlignedByteCode::Drop,         // 35
-        AlignedByteCode::Nil,          // 36
-        AlignedByteCode::Return,       // 37
+        AlignedByteCode::List(0),        // 0
+        AlignedByteCode::Constant(0),    // 3
+        AlignedByteCode::Invoke((1, 1)), // 5
+        AlignedByteCode::Slot(0),        // 9
+        AlignedByteCode::Drop,           // 13
+        AlignedByteCode::List(0),        // 16
+        AlignedByteCode::Constant(2),    // 19
+        AlignedByteCode::Invoke((1, 1)), // 22
+        AlignedByteCode::Slot(1),        // 26
+        AlignedByteCode::Drop,           // 31
+        AlignedByteCode::Jump(8),        // 32
+        AlignedByteCode::GetGlobal(3),   // 35
+        AlignedByteCode::Constant(4),    // 38
+        AlignedByteCode::Call(1),        // 40
+        AlignedByteCode::Drop,           // 42
+        AlignedByteCode::Jump(8),        // 43
+        AlignedByteCode::GetGlobal(3),   // 46
+        AlignedByteCode::Constant(5),    // 49
+        AlignedByteCode::Call(1),        // 52
+        AlignedByteCode::Drop,           // 54
+        AlignedByteCode::Nil,            // 55
+        AlignedByteCode::Return,         // 56
       ],
     );
 
-    assert_eq!(fun.has_catch_jump(5), Some(28));
-    assert_eq!(fun.has_catch_jump(20), Some(28));
-    assert_eq!(fun.has_catch_jump(12), Some(17));
+    assert_eq!(fun.has_catch_jump(5), Some(42));
+    assert_eq!(fun.has_catch_jump(31), Some(42));
+    assert_eq!(fun.has_catch_jump(19), Some(31));
   }
 
   #[test]
@@ -2631,7 +2657,8 @@ mod test {
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
-        AlignedByteCode::SetIndex,
+        AlignedByteCode::Invoke((4, 2)),
+        AlignedByteCode::Slot(0),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -2661,7 +2688,8 @@ mod test {
         AlignedByteCode::GetGlobal(4),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Constant(5),
-        AlignedByteCode::GetIndex,
+        AlignedByteCode::Invoke((6, 1)),
+        AlignedByteCode::Slot(0),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -2692,11 +2720,13 @@ mod test {
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Dup,
         AlignedByteCode::Constant(1),
-        AlignedByteCode::GetIndex,
-        AlignedByteCode::Constant(4),
+        AlignedByteCode::Invoke((4, 1)),
+        AlignedByteCode::Slot(0),
+        AlignedByteCode::Constant(5),
         AlignedByteCode::Add,
         AlignedByteCode::Constant(1),
-        AlignedByteCode::SetIndex,
+        AlignedByteCode::Invoke((6, 2)),
+        AlignedByteCode::Slot(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
