@@ -156,7 +156,7 @@ mod unboxed {
     /// assert_eq!(val1.to_num(), 20.0);
     /// ```
     #[inline]
-    pub fn to_num(&self) -> f64 {
+    pub fn to_num(self) -> f64 {
       match self {
         Value::Number(num) => *num,
         _ => panic!("Value is not number"),
@@ -173,7 +173,7 @@ mod unboxed {
     /// assert_eq!(b1.to_bool(), false);
     /// ```
     #[inline]
-    pub fn to_bool(&self) -> bool {
+    pub fn to_bool(self) -> bool {
       match self {
         Value::Bool(b1) => *b1,
         _ => panic!("Value is not boolean"),
@@ -197,7 +197,7 @@ mod unboxed {
     /// assert_eq!(&*value.to_obj().to_str(), "example")
     /// ```
     #[inline]
-    pub fn to_obj(&self) -> GcObject {
+    pub fn to_obj(self) -> GcObject {
       match self {
         Self::Obj(obj) => *obj,
         _ => panic!("Expected object."),
@@ -386,16 +386,16 @@ mod unboxed {
         Self::Number(num) => {
           ValueKind::Number.hash(state);
           (*num as u64).hash(state);
-        },
+        }
         Self::Bool(b) => {
           ValueKind::Bool.hash(state);
           b.hash(state);
-        },
+        }
         Self::Nil => ValueKind::Nil.hash(state),
         Self::Obj(obj) => {
           ValueKind::Obj.hash(state);
           obj.hash(state);
-        },
+        }
       };
     }
   }
@@ -547,18 +547,18 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_bool(&self) -> bool {
-      *self == VALUE_TRUE
+    pub fn to_bool(self) -> bool {
+      self == VALUE_TRUE
     }
 
     #[inline]
-    pub fn to_num(&self) -> f64 {
+    pub fn to_num(self) -> f64 {
       let union = NumberUnion { bits: self.0 };
       unsafe { union.num }
     }
 
     #[inline]
-    pub fn to_obj(&self) -> GcObject {
+    pub fn to_obj(self) -> GcObject {
       let as_unsigned = self.0 & !TAG_OBJ;
       let ptr = unsafe { NonNull::new_unchecked(as_unsigned as usize as *mut u8) };
       GcObject::new(ptr)
@@ -760,7 +760,8 @@ mod boxed {
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 24);
       assert_eq!(mem::size_of::<Fun>(), 96);
-      assert_eq!(mem::size_of::<Class>(), 136);
+      assert_eq!(mem::size_of::<Fiber>(), 104);
+      assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 16);
       assert_eq!(mem::size_of::<Enumerator>(), 24);

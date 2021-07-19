@@ -286,7 +286,7 @@ impl LyNative for MapIndexSet {
     hooks.grow(&mut *this.unwrap().to_obj().to_map(), |map| {
       map.insert(key, args[0])
     });
-    Call::Ok(VALUE_NIL)
+    Call::Ok(args[0])
   }
 }
 
@@ -398,11 +398,11 @@ impl Enumerate for MapIterator {
       Some(next) => {
         self.current = val!(hooks.manage_obj(List::from(&[*next.0, *next.1] as &[Value])));
         Call::Ok(val!(true))
-      },
+      }
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      },
+      }
     }
   }
 
@@ -630,7 +630,7 @@ mod test {
       let result = map_set
         .call(&mut hooks, Some(val!(this)), &[val!(10.0), val!(true)])
         .unwrap();
-      assert!(result.is_nil());
+      assert_eq!(result, val!(10.0));
 
       assert_eq!(this.len(), 1);
       assert_eq!(*this.get(&val!(true)).unwrap(), val!(10.0));
@@ -638,7 +638,7 @@ mod test {
       let result = map_set
         .call(&mut hooks, Some(val!(this)), &[val!(false), val!(true)])
         .unwrap();
-      assert!(result.is_nil());
+      assert_eq!(result, val!(false));
 
       assert_eq!(this.len(), 1);
       assert_eq!(*this.get(&val!(true)).unwrap(), val!(false));

@@ -64,12 +64,6 @@ pub enum AlignedByteCode {
   /// Get the current value from an iterator
   IterCurrent(u16),
 
-  /// Get from an index
-  GetIndex,
-
-  /// Set to an index
-  SetIndex,
-
   /// Drop a value
   Drop,
 
@@ -232,8 +226,6 @@ impl AlignedByteCode {
         AlignedByteCode::IterCurrent(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::GetIndex => (AlignedByteCode::GetIndex, offset + 1),
-      ByteCode::SetIndex => (AlignedByteCode::SetIndex, offset + 1),
       ByteCode::Drop => (AlignedByteCode::Drop, offset + 1),
       ByteCode::DropN => (AlignedByteCode::DropN(store[offset + 1]), offset + 2),
       ByteCode::Dup => (AlignedByteCode::Dup, offset + 1),
@@ -360,8 +352,6 @@ impl AlignedByteCode {
       AlignedByteCode::Interpolate(cnt) => -(*cnt as i32) + 1,
       AlignedByteCode::IterNext(_) => 0,
       AlignedByteCode::IterCurrent(_) => 0,
-      AlignedByteCode::GetIndex => -1,
-      AlignedByteCode::SetIndex => -1,
       AlignedByteCode::Drop => -1,
       AlignedByteCode::DropN(cnt) => -(*cnt as i32),
       AlignedByteCode::Dup => 1,
@@ -424,8 +414,6 @@ impl Encode for AlignedByteCode {
       Self::Interpolate(slot) => op_short(code, ByteCode::Interpolate, slot),
       Self::IterNext(slot) => op_short(code, ByteCode::IterNext, slot),
       Self::IterCurrent(slot) => op_short(code, ByteCode::IterCurrent, slot),
-      Self::GetIndex => op(code, ByteCode::GetIndex),
-      Self::SetIndex => op(code, ByteCode::SetIndex),
       Self::Equal => op(code, ByteCode::Equal),
       Self::NotEqual => op(code, ByteCode::NotEqual),
       Self::Greater => op(code, ByteCode::Greater),
@@ -441,7 +429,7 @@ impl Encode for AlignedByteCode {
       Self::ImportSymbol((path, slot)) => {
         push_op_u16_tuple(code, ByteCode::ImportSymbol, path, slot);
         4
-      },
+      }
       Self::Export(slot) => op_short(code, ByteCode::Export, slot),
       Self::DefineGlobal(slot) => op_short(code, ByteCode::DefineGlobal, slot),
       Self::GetGlobal(slot) => op_short(code, ByteCode::GetGlobal, slot),
@@ -459,11 +447,11 @@ impl Encode for AlignedByteCode {
       Self::Invoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::Invoke, slot1, slot2);
         4
-      },
+      }
       Self::SuperInvoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2);
         4
-      },
+      }
       Self::Closure(slot) => op_short(code, ByteCode::Closure, slot),
       Self::Method(slot) => op_short(code, ByteCode::Method, slot),
       Self::Field(slot) => op_short(code, ByteCode::Field, slot),
@@ -477,12 +465,12 @@ impl Encode for AlignedByteCode {
         let bytes = encoded.to_ne_bytes();
         code.extend_from_slice(&bytes);
         3
-      },
+      }
       Self::Slot(slot) => {
         let bytes = slot.to_ne_bytes();
         code.extend_from_slice(&bytes);
         5
-      },
+      }
     }
   }
 }
@@ -561,12 +549,6 @@ pub enum ByteCode {
 
   /// Get the current value from an iterator
   IterCurrent,
-
-  /// Get an index
-  GetIndex,
-
-  /// Set an index
-  SetIndex,
 
   /// Drop a value
   Drop,
@@ -775,8 +757,6 @@ mod test {
       (2, AlignedByteCode::SetUpvalue(56)),
       (2, AlignedByteCode::GetLocal(96)),
       (2, AlignedByteCode::SetLocal(149)),
-      (1, AlignedByteCode::GetIndex),
-      (1, AlignedByteCode::SetIndex),
       (3, AlignedByteCode::GetProperty(18273)),
       (3, AlignedByteCode::SetProperty(253)),
       (3, AlignedByteCode::JumpIfFalse(8941)),

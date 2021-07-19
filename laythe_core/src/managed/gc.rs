@@ -30,7 +30,7 @@ impl<T: 'static + Manage + ?Sized> Gc<T> {
 
   /// Return the underlying pointer as a usize. This is
   /// used by the nan boxing functionality
-  pub fn to_usize(&self) -> usize {
+  pub fn to_usize(self) -> usize {
     self.ptr.as_ptr() as *const () as usize
   }
 

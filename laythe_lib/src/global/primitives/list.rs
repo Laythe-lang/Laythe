@@ -422,7 +422,7 @@ impl LyNative for ListIndexSet {
     }
 
     list[index] = args[0];
-    Call::Ok(VALUE_NIL)
+    Call::Ok(args[0])
   }
 }
 
@@ -785,7 +785,7 @@ mod test {
       let result = list_index_set
         .call(&mut hooks, Some(val!(this)), values)
         .unwrap();
-      assert_eq!(result, VALUE_NIL);
+      assert_eq!(result, val!(false));
       assert_eq!(this[1], val!(false))
     }
   }
