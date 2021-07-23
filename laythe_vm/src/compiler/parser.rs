@@ -1105,7 +1105,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       stop_kind,
       &format!("Expected {} after parameter list.", stop_char),
     )?;
-    let return_type = if self.match_kind(TokenKind::Arrow)? {
+    let return_type = if self.match_kind(TokenKind::RightArrow)? {
       Some(self.type_()?)
     } else {
       None
@@ -1124,6 +1124,10 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         .advance()
         .and_then(|()| self.expr())
         .map(|rhs| Expr::Assign(self.node(Assign::new(expr, rhs)))),
+      TokenKind::LeftArrow => self
+        .advance()
+        .and_then(|()| self.expr())
+        .map(|rhs| Expr::Drain(self.node(Drain::new(expr, rhs)))),
       TokenKind::PlusEqual => self.advance().and_then(|()| self.expr()).map(|rhs| {
         Expr::AssignBinary(self.node(AssignBinary::new(expr, AssignBinaryOp::Add, rhs)))
       }),
@@ -1569,7 +1573,7 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 64;
+const TOKEN_VARIANTS: usize = 65;
 
 /// The rules for infix and prefix operators
 const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
@@ -1612,7 +1616,9 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // STAR_EQUAL
   Rule::new(None, Precedence::None),
-  // ARROW
+  // RIGHT_ARROW
+  Rule::new(None, Precedence::None),
+  // LEFT_ARROW
   Rule::new(None, Precedence::None),
   // EXPORT
   Rule::new(None, Precedence::None),
@@ -1744,7 +1750,9 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // STAR_EQUAL
   Rule::new(None, Precedence::None),
-  // ARROW
+  // RIGHT_ARROW
+  Rule::new(None, Precedence::None),
+  // LEFT_ARROW
   Rule::new(None, Precedence::None),
   // EXPORT
   Rule::new(None, Precedence::None),
@@ -1876,7 +1884,9 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // STAR_EQUAL
   Rule::new(None, TypePrecedence::None),
-  // ARROW
+  // RIGHT_ARROW
+  Rule::new(None, TypePrecedence::None),
+  // LEFT_ARROW
   Rule::new(None, TypePrecedence::None),
   // EXPORT
   Rule::new(None, TypePrecedence::None),
@@ -2008,7 +2018,9 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // STAR_EQUAL
   Rule::new(None, TypePrecedence::None),
-  // ARROW
+  // RIGHT_ARROW
+  Rule::new(None, TypePrecedence::None),
+  // LEFT_ARROW
   Rule::new(None, TypePrecedence::None),
   // EXPORT
   Rule::new(None, TypePrecedence::None),

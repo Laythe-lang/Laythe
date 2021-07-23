@@ -113,7 +113,8 @@ pub enum TokenKind {
   MinusEqual,
   SlashEqual,
   StarEqual,
-  Arrow,
+  RightArrow,
+  LeftArrow,
 
   // modules
   Export,
@@ -192,7 +193,8 @@ impl fmt::Display for TokenKind {
       TokenKind::MinusEqual => "-=",
       TokenKind::SlashEqual => "/=",
       TokenKind::StarEqual => "*=",
-      TokenKind::Arrow => "->",
+      TokenKind::RightArrow => "->",
+      TokenKind::LeftArrow => "<-",
       TokenKind::Export => "export",
       TokenKind::Import => "import",
       TokenKind::As => "as",

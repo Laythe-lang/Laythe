@@ -70,6 +70,7 @@ impl<'a> Visitor<'a> for AstPrint {
   fn visit_expr(&mut self, expr: &Expr) -> Self::Result {
     match expr {
       Expr::Assign(assign) => self.visit_assign(assign),
+      Expr::Drain(drain) => self.visit_drain(drain),
       Expr::AssignBinary(assign_binary) => self.visit_assign_binary(assign_binary),
       Expr::Binary(binary) => self.visit_binary(binary),
       Expr::Unary(unary) => self.visit_unary(unary),
@@ -390,6 +391,12 @@ impl<'a> Visitor<'a> for AstPrint {
   fn visit_assign(&mut self, assign: &Assign) -> Self::Result {
     self.visit_expr(&assign.lhs);
     self.buffer.push_str(" = ");
+    self.visit_expr(&assign.rhs);
+  }
+
+  fn visit_drain(&mut self, assign: &Drain) -> Self::Result {
+    self.visit_expr(&assign.lhs);
+    self.buffer.push_str(" <- ");
     self.visit_expr(&assign.rhs);
   }
 

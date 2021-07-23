@@ -40,7 +40,7 @@ AssignBlock ::= ":" Block ;
 Block ::= "{" Decl* "}" ;
 Expr ::= Assign ;
 
-Assign ::= ( Call "." )? IDENTIFIER "=" Assign | LogicOr;
+Assign ::= ( Call "." )? IDENTIFIER ( "=" | "<-" | "+=" | "-=" | "*=" | "/=" ) Assign | LogicOr;
 
 LogicOr ::= LogicAnd ( "or" LogicAnd )* ;
 LogicAnd ::= Equality ( "and" Equality )* ;
