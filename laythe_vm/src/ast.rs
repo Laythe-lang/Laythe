@@ -37,6 +37,7 @@ pub trait Visitor<'a> {
   fn visit_block(&mut self, block: &Block) -> Self::Result;
 
   fn visit_assign(&mut self, assign: &Assign) -> Self::Result;
+  fn visit_drain(&mut self, drain: &Drain) -> Self::Result;
   fn visit_assign_binary(&mut self, assign: &AssignBinary) -> Self::Result;
   fn visit_binary(&mut self, binary: &Binary) -> Self::Result;
   fn visit_unary(&mut self, unary: &Unary) -> Self::Result;
@@ -697,9 +698,10 @@ impl<'a> Spanned for Param<'a> {
 pub enum Expr<'a> {
   Assign(Box<'a, Assign<'a>>),
   AssignBinary(Box<'a, AssignBinary<'a>>),
-  Binary(Box<'a, Binary<'a>>),
-  Unary(Box<'a, Unary<'a>>),
   Atom(Box<'a, Atom<'a>>),
+  Binary(Box<'a, Binary<'a>>),
+  Drain(Box<'a, Drain<'a>>),
+  Unary(Box<'a, Unary<'a>>),
 }
 
 impl<'a> Spanned for Expr<'a> {
@@ -707,9 +709,10 @@ impl<'a> Spanned for Expr<'a> {
     match self {
       Expr::Assign(assign) => assign.start(),
       Expr::AssignBinary(assign_binary) => assign_binary.start(),
-      Expr::Binary(binary) => binary.start(),
-      Expr::Unary(unary) => unary.start(),
       Expr::Atom(atom) => atom.start(),
+      Expr::Binary(binary) => binary.start(),
+      Expr::Drain(drain) => drain.start(),
+      Expr::Unary(unary) => unary.start(),
     }
   }
 
@@ -717,9 +720,10 @@ impl<'a> Spanned for Expr<'a> {
     match self {
       Expr::Assign(assign) => assign.end(),
       Expr::AssignBinary(assign_binary) => assign_binary.end(),
-      Expr::Binary(binary) => binary.end(),
-      Expr::Unary(unary) => unary.end(),
       Expr::Atom(atom) => atom.end(),
+      Expr::Binary(binary) => binary.end(),
+      Expr::Drain(drain) => drain.end(),
+      Expr::Unary(unary) => unary.end(),
     }
   }
 }
@@ -736,6 +740,28 @@ impl<'a> Assign<'a> {
 }
 
 impl<'a> Spanned for Assign<'a> {
+  fn start(&self) -> u32 {
+    self.lhs.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.rhs.end()
+  }
+}
+
+
+pub struct Drain<'a> {
+  pub lhs: Expr<'a>,
+  pub rhs: Expr<'a>,
+}
+
+impl<'a> Drain<'a> {
+  pub fn new(lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
+    Self { lhs, rhs }
+  }
+}
+
+impl<'a> Spanned for Drain<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }

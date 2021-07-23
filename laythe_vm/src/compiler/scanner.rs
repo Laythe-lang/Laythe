@@ -149,7 +149,7 @@ impl<'a> Scanner<'a> {
           self.interpolations[end].brackets += 1;
         }
         self.make_token_source(TokenKind::LeftBrace)
-      },
+      }
       "}" => {
         if !self.interpolations.is_empty() {
           let end = self.interpolations.len() - 1;
@@ -162,7 +162,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.make_token_source(TokenKind::RightBrace)
-      },
+      }
       "[" => self.make_token_source(TokenKind::LeftBracket),
       "]" => self.make_token_source(TokenKind::RightBracket),
       ":" => self.make_token_source(TokenKind::Colon),
@@ -171,13 +171,13 @@ impl<'a> Scanner<'a> {
       "." => self.make_token_source(TokenKind::Dot),
       "-" => {
         if self.match_char(">") {
-          self.make_token_source(TokenKind::Arrow)
+          self.make_token_source(TokenKind::RightArrow)
         } else if self.match_char("=") {
           self.make_token_source(TokenKind::MinusEqual)
         } else {
           self.make_token_source(TokenKind::Minus)
         }
-      },
+      }
       "&" => self.make_token_source(TokenKind::Amp),
       "+" => {
         if self.match_char("=") {
@@ -185,7 +185,7 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Plus)
         }
-      },
+      }
       "|" => self.make_token_source(TokenKind::Pipe),
       "/" => {
         if self.match_char("=") {
@@ -193,42 +193,44 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Slash)
         }
-      },
+      }
       "*" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::StarEqual)
         } else {
           self.make_token_source(TokenKind::Star)
         }
-      },
+      }
       "=" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::EqualEqual)
         } else {
           self.make_token_source(TokenKind::Equal)
         }
-      },
+      }
       "<" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::LessEqual)
+        } else if self.match_char("-") {
+          self.make_token_source(TokenKind::LeftArrow)
         } else {
           self.make_token_source(TokenKind::Less)
         }
-      },
+      }
       ">" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::GreaterEqual)
         } else {
           self.make_token_source(TokenKind::Greater)
         }
-      },
+      }
       "!" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::BangEqual)
         } else {
           self.make_token_source(TokenKind::Bang)
         }
-      },
+      }
       "\"" => self.string(TokenKind::String, "\""),
       "'" => self.string(TokenKind::String, "'"),
       _ => {
@@ -241,7 +243,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.error_token("Unexpected character.")
-      },
+      }
     }
   }
 
@@ -286,10 +288,10 @@ impl<'a> Scanner<'a> {
           "\n" => {
             self.new_line();
             self.advance_indices();
-          },
+          }
           _ => {
             self.advance_indices();
-          },
+          }
         }
       }
     }
@@ -365,7 +367,7 @@ impl<'a> Scanner<'a> {
         "\n" => {
           self.new_line();
           buffer.push('\n');
-        },
+        }
         "\\" => {
           self.advance_indices();
 
@@ -415,24 +417,24 @@ impl<'a> Scanner<'a> {
                   Some(c) => buffer.push(c),
                   None => {
                     return self.error_token_owned(format!("Invalid unicode escape {}.", unicode));
-                  },
+                  }
                 },
                 Err(_) => {
                   return self.error_token_owned(format!(
                     "Invalid hexadecimal unicode escape sequence {}.",
                     unicode
                   ));
-                },
+                }
               }
-            },
+            }
             _ => {
               return self.error_token_owned(format!(
                 "Invalid escape character '{}'.",
                 self.current_slice()
               ));
-            },
+            }
           }
-        },
+        }
         "$" => {
           if self.peek_next().map(|c| c == "{").unwrap_or(false) {
             self.advance_indices();
@@ -448,7 +450,7 @@ impl<'a> Scanner<'a> {
           } else {
             buffer.push('$');
           }
-        },
+        }
         c => buffer.push_str(c),
       }
       self.advance_indices();
@@ -474,11 +476,11 @@ impl<'a> Scanner<'a> {
       match c {
         " " | "\r" | "\t" => {
           self.advance_indices();
-        },
+        }
         "\n" => {
           self.new_line();
           self.advance_indices();
-        },
+        }
         "/" => match self.peek_next() {
           Some(next) => {
             if next == "/" {
@@ -488,7 +490,7 @@ impl<'a> Scanner<'a> {
             } else {
               return;
             }
-          },
+          }
           None => return,
         },
         _ => return,
@@ -770,7 +772,7 @@ mod test {
       TokenGen::Symbol(Box::new(|| "&".to_string())),
     );
     map.insert(
-      TokenKind::Arrow,
+      TokenKind::RightArrow,
       TokenGen::Symbol(Box::new(|| "->".to_string())),
     );
     map.insert(
