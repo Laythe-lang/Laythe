@@ -1,5 +1,3 @@
-extern crate alloc;
-
 use crate::managed::{Mark, Marked, Trace, Unmark};
 use ptr::NonNull;
 use std::{
@@ -8,6 +6,7 @@ use std::{
   mem,
   ops::{Deref, DerefMut},
   ptr, slice,
+  alloc::{alloc, dealloc, handle_alloc_error}
 };
 
 use super::utils::{get_array_len_offset, get_array_offset, make_array_layout};
@@ -211,10 +210,10 @@ impl<T: Copy, H> GcArrayHandle<T, H> {
 
     let len = slice.len();
     let new_layout = make_array_layout::<H, T>(len);
-    let buf = unsafe { alloc::alloc::alloc(new_layout) };
+    let buf = unsafe { alloc(new_layout) };
 
     if buf.is_null() {
-      alloc::alloc::handle_alloc_error(new_layout);
+      handle_alloc_error(new_layout);
     }
 
     #[allow(clippy::cast_ptr_alignment)]
@@ -282,7 +281,7 @@ impl<T, H> Drop for GcArrayHandle<T, H> {
         ptr::read(self.0.data().add(i));
       }
 
-      alloc::alloc::dealloc(self.0.ptr.as_ptr(), make_array_layout::<H, T>(len));
+      dealloc(self.0.ptr.as_ptr(), make_array_layout::<H, T>(len));
     }
   }
 }

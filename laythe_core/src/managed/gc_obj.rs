@@ -1,5 +1,3 @@
-extern crate alloc;
-
 use super::{
   manage::{DebugHeap, DebugWrap, Manage, Trace},
   utils::{get_offset, make_layout},
@@ -13,6 +11,7 @@ use crate::{
   value::Value,
 };
 use std::{
+  alloc::{alloc, dealloc, handle_alloc_error},
   cmp, fmt,
   hash::{Hash, Hasher},
   io::Write,
@@ -747,7 +746,7 @@ impl Drop for GcObjectHandle {
         ($o:ty) => {{
           let offset = get_offset::<ObjHeader, $o>();
           ptr::read(self.ptr.as_ptr().add(offset) as *const $o);
-          alloc::alloc::dealloc(self.ptr.as_ptr(), make_layout::<ObjHeader, $o>());
+          dealloc(self.ptr.as_ptr(), make_layout::<ObjHeader, $o>());
         }};
       }
 
@@ -832,10 +831,10 @@ impl<T: 'static + Object> From<T> for GcObjectHandleBuilder<T> {
   #[inline]
   fn from(item: T) -> Self {
     let new_layout = make_layout::<ObjHeader, T>();
-    let buf = unsafe { alloc::alloc::alloc(new_layout) };
+    let buf = unsafe { alloc(new_layout) };
 
     if buf.is_null() {
-      alloc::alloc::handle_alloc_error(new_layout);
+      handle_alloc_error(new_layout);
     }
 
     let header = ObjHeader::new(item.kind());
