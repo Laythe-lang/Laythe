@@ -72,6 +72,7 @@ pub fn disassemble_instruction(
     AlignedByteCode::Map(arg_count) => short_instruction(stdio.stdout(), "Map", arg_count, offset),
     AlignedByteCode::Channel => simple_instruction(stdio.stdout(), "Channel", offset),
     AlignedByteCode::BufferedChannel => simple_instruction(stdio.stdout(), "BufferedChannel", offset),
+    AlignedByteCode::ChannelDequeue => simple_instruction(stdio.stdout(), "ChannelDequeue", offset),
     AlignedByteCode::Interpolate(arg_count) => {
       short_instruction(stdio.stdout(), "Interpolate", arg_count, offset)
     }
@@ -80,7 +81,7 @@ pub fn disassemble_instruction(
     }
     AlignedByteCode::IterCurrent(constant) => {
       constant_instruction(stdio.stdout(), "IterCurrent", chunk, constant, offset)
-    }
+    },
     AlignedByteCode::Drop => simple_instruction(stdio.stdout(), "Drop", offset),
     AlignedByteCode::DropN(count) => byte_instruction(stdio.stdout(), "DropN", count, offset),
     AlignedByteCode::Dup => simple_instruction(stdio.stdout(), "Dup", offset),

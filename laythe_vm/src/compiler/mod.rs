@@ -834,6 +834,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn expr(&mut self, expr: &'a Expr<'src>) {
     match expr {
       Expr::Assign(assign) => self.assign(assign),
+      Expr::Drain(drain) => self.drain(drain),
       Expr::AssignBinary(assign_binary) => self.assign_binary(assign_binary),
       Expr::Binary(binary) => self.binary(binary),
       Expr::Unary(unary) => self.unary(unary),
@@ -1408,6 +1409,68 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         None => {
           if let Primary::Ident(name) = &atom.primary {
             self.expr(&assign.rhs);
+            self.variable(name, true);
+          } else {
+            unreachable!("Unexpected expression on left hand side of assignment.");
+          }
+        }
+      },
+      _ => unreachable!("Unexpected expression on left hand side of assignment."),
+    }
+  }
+
+  fn drain(&mut self, drain: &'a ast::Drain<'src>) {
+    match &drain.lhs {
+      Expr::Atom(atom) => match atom.trailers.last() {
+        // if we have trailers compile to last trailer and emit specialized
+        // set instruction
+        Some(last) => {
+          let skip_first = self.primary(&atom.primary, &atom.trailers);
+          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+
+          match last {
+            Trailer::Index(index) => {
+              self.expr(&drain.rhs);
+              self.emit_byte(AlignedByteCode::ChannelDequeue, drain.rhs.end());
+
+              self.expr(&index.index);
+
+              let name = self.identifier_constant(INDEX_GET);
+              self.emit_byte(AlignedByteCode::Invoke((name, 1)), index.end());
+              self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), index.end());
+
+              
+            }
+            Trailer::Access(access) => {
+              if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
+                if let Primary::Self_(_) = atom.primary {
+                  let mut class_info = self.class_info.unwrap();
+
+                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
+                    let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
+                    class_info.add_field(&GcHooks::new(self), field);
+                  }
+                }
+              }
+
+              let name = self.identifier_constant(access.prop.str());
+
+              self.expr(&drain.rhs);
+              self.emit_byte(AlignedByteCode::ChannelDequeue, drain.rhs.end());
+
+              self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
+              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
+            }
+            Trailer::Call(_) => {
+              unreachable!("Unexpected expression on left hand side of assignment.")
+            }
+          }
+        }
+        None => {
+          if let Primary::Ident(name) = &atom.primary {
+            self.expr(&drain.rhs);
+            self.emit_byte(AlignedByteCode::ChannelDequeue, drain.rhs.end());
+
             self.variable(name, true);
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
@@ -2912,7 +2975,7 @@ mod test {
   fn fn_with_variables() {
     let example = "
     fn example(a, b, c) {
-      return a + b + c; 
+      return a + b + c;
     }
     example(1, 2, 3);
     ";

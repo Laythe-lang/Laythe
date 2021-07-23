@@ -121,7 +121,8 @@ impl ChannelQueue {
   }
 
   /// Attempt to dequeue a value from this channel.
-  /// If the channel is empty
+  /// If the channel is empty return potentially a send
+  /// waiter. If 
   fn dequeue(&mut self, fiber: GcObj<Fiber>) -> DequeueResult {
     match self.state {
       ChannelQueueState::Ready => match self.queue.pop_front() {

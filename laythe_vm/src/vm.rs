@@ -473,6 +473,7 @@ impl Vm {
           ByteCode::Map => self.op_map(),
           ByteCode::Channel => self.op_channel(),
           ByteCode::BufferedChannel => self.op_buffered_channel(),
+          ByteCode::ChannelDequeue => self.op_channel_dequeue(),
           ByteCode::Interpolate => self.op_interpolate(),
           ByteCode::IterNext => self.op_iter_next(),
           ByteCode::IterCurrent => self.op_iter_current(),
@@ -736,6 +737,47 @@ impl Vm {
   }
 
   /// create a map from a map literal
+  unsafe fn op_channel_dequeue(&mut self) -> Signal {
+    let channel = self.fiber.pop();
+
+    if !channel.is_obj_kind(ObjectKind::Channel) {
+      return self.runtime_error(
+        self.builtin.errors.type_,
+        &format!(
+          "Expected Channel after dequeue operator '<-' received {}",
+          ParameterKind::from(channel)
+        ),
+      );
+    }
+
+    let mut channel = channel.to_obj().to_channel();
+    match channel.dequeue(self.fiber) {
+      laythe_core::object::DequeueResult::Ok(value) => {
+        self.fiber.push(value);
+        Signal::Ok
+      }
+      laythe_core::object::DequeueResult::NoReadAccess => {
+        self.runtime_error(self.builtin.errors.value, "todo no read access")
+      }
+      laythe_core::object::DequeueResult::Empty(fiber) => match fiber {
+        Some(_fiber) => {
+          // we need to move the ip back 1?
+          // put this fiber as the active fiber?
+          todo!();
+        }
+        None => {
+          // probably need to do something like go's deadlock error?
+          todo!()
+        }
+      },
+      laythe_core::object::DequeueResult::Closed => self.runtime_error(
+        self.builtin.errors.runtime,
+        "todo attempted to read closed channel",
+      ),
+    }
+  }
+
+  /// create a map from a map literal
   unsafe fn op_interpolate(&mut self) -> Signal {
     let arg_count = self.read_short() as usize;
     let args = self.fiber.stack_slice(arg_count as usize);
@@ -962,6 +1004,22 @@ impl Vm {
   }
 
   unsafe fn op_set_global(&mut self) -> Signal {
+    let slot = self.read_short();
+    let string = self.read_string(slot);
+    let peek = self.fiber.peek(0);
+
+    let mut current_module = self.current_fun.module();
+    if current_module.set_symbol(string, peek).is_err() {
+      return self.runtime_error(
+        self.builtin.errors.property,
+        &format!("Undefined variable {}", string),
+      );
+    }
+
+    Signal::Ok
+  }
+
+  unsafe fn op_enqueue_global(&mut self) -> Signal {
     let slot = self.read_short();
     let string = self.read_string(slot);
     let peek = self.fiber.peek(0);
