@@ -41,6 +41,25 @@ fn class() -> Result<(), std::io::Error> {
   test_files(&vec![], ExecuteResult::RuntimeError)
 }
 
+
+#[test]
+fn channel() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "std_lib/global/channel/capacity.lay",
+      "std_lib/global/channel/close.lay",
+      "std_lib/global/channel/len.lay",
+      "std_lib/global/channel/str.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
+
+  test_files(&vec![
+    "std_lib/global/channel/close_close.lay",
+  ], ExecuteResult::RuntimeError)
+}
+
+
 #[test]
 fn closure() -> Result<(), std::io::Error> {
   test_files(

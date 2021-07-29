@@ -12,7 +12,7 @@ use crate::{
 
 const INITIAL_FRAME_SIZE: usize = 4;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FiberState {
   Running,
   Pending,
@@ -119,9 +119,30 @@ impl Fiber {
     self.frame().closure
   }
 
+  #[inline]
+  pub fn state(&mut self) -> FiberState {
+    self.state
+  }
+
   /// Activate the current fiber
+  #[inline]
   pub fn activate(&mut self) {
+    assert_eq!(self.state, FiberState::Pending);
     self.state = FiberState::Running;
+  }
+
+  /// Put the current fiber to sleep
+  #[inline]
+  pub fn sleep(&mut self) {
+    assert_eq!(self.state, FiberState::Running);
+    self.state = FiberState::Pending;
+  }
+
+  /// Activate the current fiber
+  #[inline]
+  pub fn complete(&mut self) {
+    assert_eq!(self.state, FiberState::Running);
+    self.state = FiberState::Complete;
   }
 
   /// push a value onto the stack
@@ -296,11 +317,11 @@ impl Fiber {
         self.assert_frame_inbounds();
 
         Some(frame.closure.fun())
-      },
+      }
       None => {
         self.state = FiberState::Complete;
         None
-      },
+      }
     })
   }
 
@@ -413,7 +434,7 @@ impl Fiber {
         self.stack_top = stack_top;
 
         Some(frame)
-      },
+      }
       None => None,
     }
   }

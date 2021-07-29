@@ -130,10 +130,19 @@ fn call() -> Result<(), std::io::Error> {
   )
 }
 
+#[test]
 fn channel() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/channel/buffered.lay",
+      "language/channel/in_collection.lay",
+      "language/channel/in_function.lay",
+      "language/channel/in_instance.lay",
+      "language/channel/receive_buffered.lay",
+      "language/channel/receive_closed.lay",
+      "language/channel/receive_unbuffered.lay",
+      "language/channel/send_buffered.lay",
+      "language/channel/send_unbuffered.lay",
       "language/channel/unbuffered.lay",
     ],
     ExecuteResult::Ok(0),
@@ -141,15 +150,17 @@ fn channel() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/channel/missing_open_paren.lay",
       "language/channel/missing_closing_paren.lay",
+      "language/channel/missing_open_paren.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(&vec![
+    "language/channel/close_closed.lay",
     "language/channel/non_integer_capacity.lay",
     "language/channel/non_number_capacity.lay",
+    "language/channel/send_closed.lay",
   ], ExecuteResult::RuntimeError)
 }
 

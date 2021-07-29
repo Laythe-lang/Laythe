@@ -1,25 +1,12 @@
 use super::class_inheritance;
-use crate::{
-  native,
-  support::{export_and_insert, load_class_from_module},
-  StdError, StdResult,
-};
-use laythe_core::{
-  hooks::{GcHooks, Hooks},
-  managed::GcObj,
-  managed::Trace,
-  module::Module,
-  object::{LyNative, Native, NativeMetaBuilder},
-  signature::Arity,
-  val,
-  value::Value,
-  Call,
-};
+use crate::{StdError, StdResult, global::primitives::error::CHANNEL_ERROR_NAME, native, native_with_error, support::{export_and_insert, load_class_from_module}};
+use laythe_core::{Call, hooks::{GcHooks, Hooks}, managed::GcObj, managed::Trace, module::Module, object::{CloseResult, LyNative, Native, NativeMetaBuilder, ObjectKind}, signature::Arity, val, value::{VALUE_NIL, Value}};
 use std::io::Write;
 
 pub const CHANNEL_CLASS_NAME: &str = "Channel";
 const CHANNEL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const CHANNEL_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
+const CHANNEL_CLOSE: NativeMetaBuilder = NativeMetaBuilder::method("close", Arity::Fixed(0));
 const CHANNEL_CAPACITY: NativeMetaBuilder = NativeMetaBuilder::method("capacity", Arity::Fixed(0));
 
 pub fn declare_channel_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
@@ -30,6 +17,7 @@ pub fn declare_channel_class(hooks: &GcHooks, module: &mut Module) -> StdResult<
 
 pub fn define_channel_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut channel_class = load_class_from_module(hooks, module, CHANNEL_CLASS_NAME)?;
+  let channel_error = val!(load_class_from_module(hooks, module, CHANNEL_ERROR_NAME)?);
 
   channel_class.add_method(
     &hooks,
@@ -47,6 +35,12 @@ pub fn define_channel_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
     &hooks,
     hooks.manage_str(String::from(CHANNEL_CAPACITY.name)),
     val!(ChannelCapacity::native(hooks)),
+  );
+
+  channel_class.add_method(
+    &hooks,
+    hooks.manage_str(String::from(CHANNEL_CLOSE.name)),
+    val!(ChannelClose::native(hooks, channel_error)),
   );
 
   Ok(())
@@ -81,6 +75,18 @@ native!(ChannelCapacity, CHANNEL_CAPACITY);
 impl LyNative for ChannelCapacity {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     Call::Ok(val!(this.unwrap().to_obj().to_channel().capacity() as f64))
+  }
+}
+
+native_with_error!(ChannelClose, CHANNEL_CLOSE);
+
+impl LyNative for ChannelClose {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let mut channel = this.unwrap().to_obj().to_channel();
+    match channel.close() {
+      CloseResult::Ok => Call::Ok(VALUE_NIL),
+      CloseResult::AlreadyClosed => self.call_error(hooks, "Channel already closed."),
+    }
   }
 }
 
@@ -155,7 +161,7 @@ mod test {
         .unwrap();
       assert_eq!(result, val!(0.0));
 
-      channel.enqueue(fiber, val!(1.0));
+      channel.send(fiber, val!(1.0));
 
       let result = channel_len
         .call(&mut hooks, Some(val!(channel)), &[])
@@ -194,6 +200,42 @@ mod test {
         .unwrap();
 
       assert_eq!(result, val!(4.0));
+    }
+  }
+
+  mod close {
+    use laythe_core::object::Channel;
+
+    use super::*;
+    use crate::support::{MockedContext, test_error_class};
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+      let error = val!(test_error_class(&hooks));
+
+      let channel_close = ChannelClose::native(&hooks, error);
+
+      assert_eq!(channel_close.meta().name, "close");
+      assert_eq!(channel_close.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::with_std(&[]).expect("std lib failure");
+      let mut hooks = Hooks::new(&mut context);
+      let error = val!(test_error_class(&hooks.as_gc()));
+
+      let channel_close = ChannelClose::native(&hooks.as_gc(), error);
+      let channel = hooks.manage_obj(Channel::with_capacity(&hooks.as_gc(), 4));
+
+      let result = channel_close
+        .call(&mut hooks, Some(val!(channel)), &[])
+        .unwrap();
+
+      assert_eq!(result, VALUE_NIL);
+      assert!(channel.is_closed());
     }
   }
 }

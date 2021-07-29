@@ -1,0 +1,4 @@
+let x = chan();
+
+x <- 1;
+assertEq(x.len(), 1);

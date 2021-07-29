@@ -49,7 +49,7 @@ Comparison ::= Addition ( ( ">" | ">=" | "<" | "<=" ) Addition )* ;
 Addition ::= Multiplication ( ( "-" | "+" ) Multiplication )* ;
 Multiplication ::= Unary ( ( "/" | "*" ) Unary )* ;
 
-Unary ::= ( "!" | "-" ) Unary | Call | Map | List ;
+Unary ::= ( "<-" | "!" | "-" ) Unary | Call | Map | List ;
 List ::= "[" ( Expr ( "," Expr )* ","? )? "]"
 Map ::= "{" ( MapEntry ( "," MapEntry )* ","? )? "}"
 MapEntry ::= Expr ":" Expr

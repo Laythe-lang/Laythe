@@ -29,11 +29,11 @@ use laythe_core::{
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
 use laythe_native::io::io_native;
-use std::io::Write;
 use std::mem;
 use std::path::PathBuf;
 use std::ptr;
 use std::{cell::RefCell, cmp::Ordering};
+use std::{collections::VecDeque, io::Write};
 use std::{convert::TryInto, usize};
 
 #[cfg(feature = "debug")]
@@ -57,6 +57,7 @@ const VERSION: &str = "0.1.0";
 enum Signal {
   Ok,
   OkReturn,
+  ContextSwitch,
   Exit,
   RuntimeError,
 }
@@ -92,6 +93,9 @@ pub struct Vm {
 
   /// The currently loaded files
   files: VmFiles,
+
+  /// The queue of runnable fibers
+  fiber_queue: VecDeque<GcObj<Fiber>>,
 
   /// The root directory
   root_dir: PathBuf,
@@ -165,6 +169,7 @@ impl Vm {
       fiber: GcObj::dangling(),
       gc,
       files: VmFiles::default(),
+      fiber_queue: VecDeque::new(),
       builtin,
       root_dir,
       packages: Map::default(),
@@ -473,6 +478,8 @@ impl Vm {
           ByteCode::Map => self.op_map(),
           ByteCode::Channel => self.op_channel(),
           ByteCode::BufferedChannel => self.op_buffered_channel(),
+          ByteCode::Receive => self.op_receive(),
+          ByteCode::Send => self.op_send(),
           ByteCode::Interpolate => self.op_interpolate(),
           ByteCode::IterNext => self.op_iter_next(),
           ByteCode::IterCurrent => self.op_iter_current(),
@@ -501,6 +508,24 @@ impl Vm {
             }
           }
           Signal::Ok => (),
+          Signal::ContextSwitch => match self.fiber_queue.pop_front() {
+            Some(fiber) => {
+              self.fiber.sleep();
+              self.fiber = fiber;
+              self.fiber.activate();
+              self.load_ip();
+            }
+            None => {
+              self.runtime_error(
+                self.builtin.errors.runtime,
+                "TODO make it's own deadlock error",
+              );
+
+              if let Some(execute_result) = self.stack_unwind(self.fiber.error().unwrap()) {
+                return execute_result;
+              }
+            }
+          },
           Signal::RuntimeError => match self.fiber.error() {
             Some(error) => {
               if let Some(execute_result) = self.stack_unwind(error) {
@@ -736,6 +761,40 @@ impl Vm {
   }
 
   /// create a map from a map literal
+  unsafe fn op_receive(&mut self) -> Signal {
+    let channel = self.fiber.pop();
+
+    if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
+      match channel.receive(self.fiber) {
+        laythe_core::object::ReceiveResult::Ok(value) => {
+          self.fiber.push(value);
+          Signal::Ok
+        }
+        laythe_core::object::ReceiveResult::NoReceiveAccess => {
+          self.runtime_error(self.builtin.errors.value, "todo no read access")
+        }
+        laythe_core::object::ReceiveResult::Empty(fiber) => {
+          if let Some(fiber) = fiber  {
+            self.fiber_queue.push_back(fiber);
+          }
+
+          self.update_ip(-1);
+          Signal::ContextSwitch
+        },
+        laythe_core::object::ReceiveResult::Closed => {
+          self.fiber.push(VALUE_NIL);
+          Signal::Ok
+        }
+      }
+    } else {
+      self.runtime_error(
+        self.builtin.errors.type_,
+        "Can only drain from a channel.",
+      )
+    })
+  }
+
+  /// create a map from a map literal
   unsafe fn op_interpolate(&mut self) -> Signal {
     let arg_count = self.read_short() as usize;
     let args = self.fiber.stack_slice(arg_count as usize);
@@ -963,14 +1022,14 @@ impl Vm {
 
   unsafe fn op_set_global(&mut self) -> Signal {
     let slot = self.read_short();
-    let string = self.read_string(slot);
-    let peek = self.fiber.peek(0);
+    let name = self.read_string(slot);
+    let value = self.fiber.peek(0);
 
     let mut current_module = self.current_fun.module();
-    if current_module.set_symbol(string, peek).is_err() {
+    if current_module.set_symbol(name, value).is_err() {
       return self.runtime_error(
         self.builtin.errors.property,
-        &format!("Undefined variable {}", string),
+        &format!("Undefined variable {}", name),
       );
     }
 
@@ -1042,6 +1101,40 @@ impl Vm {
       .set_value(slot as usize, self.fiber.stack_mut(), value);
 
     Signal::Ok
+  }
+
+  unsafe fn op_send(&mut self) -> Signal {
+    let channel = self.fiber.pop();
+    let value = self.fiber.peek(0);
+
+    if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
+      match channel.send(self.fiber, value) {
+        laythe_core::object::SendResult::Ok => Signal::Ok,
+        laythe_core::object::SendResult::NoSendAccess => self.runtime_error(
+          self.builtin.errors.runtime,
+          &"Attempted to send into a receive only channel.",
+        ),
+        laythe_core::object::SendResult::Full(fiber) => {
+          // if channel has a waiter put into
+          // the fiber queue
+          if let Some(fiber) = fiber {
+            self.fiber_queue.push_back(fiber);
+          }
+
+          // replace the channel on the stack and rewind the
+          // ip to the beginning of this instruction
+          self.fiber.push(val!(channel));
+          self.update_ip(-1);
+          Signal::ContextSwitch
+        }
+        laythe_core::object::SendResult::Closed => self.runtime_error(
+          self.builtin.errors.runtime,
+          &"Attempted to send into a closed channel.",
+        ),
+      }
+    } else {
+      self.runtime_error(self.builtin.errors.runtime, "Attempted to send into a non channel.")
+    })
   }
 
   unsafe fn op_get_global(&mut self) -> Signal {
@@ -2054,6 +2147,9 @@ fn assert_roots(native: GcObj<Native>, roots_before: usize, roots_now: usize) {
 impl TraceRoot for Vm {
   fn trace(&self) {
     self.fiber.trace();
+    for fiber in &self.fiber_queue {
+      fiber.trace();
+    }
     self.files.trace();
     self.packages.trace();
     self.module_cache.trace();
@@ -2062,6 +2158,9 @@ impl TraceRoot for Vm {
 
   fn trace_debug(&self, log: &mut dyn Write) {
     self.fiber.trace_debug(log);
+    for fiber in &self.fiber_queue {
+      fiber.trace_debug(log);
+    }
     self.files.trace_debug(log);
     self.packages.trace_debug(log);
     self.module_cache.trace_debug(log);

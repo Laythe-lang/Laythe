@@ -61,6 +61,12 @@ pub enum AlignedByteCode {
   /// Initialize a channel
   BufferedChannel,
 
+  /// Receive from a channel
+  Receive,
+
+  /// Send to a channel
+  Send,
+
   /// Combine string interpolation
   Interpolate(u16),
 
@@ -222,6 +228,8 @@ impl AlignedByteCode {
       ),
       ByteCode::Channel => (AlignedByteCode::Channel, offset + 1),
       ByteCode::BufferedChannel => (AlignedByteCode::BufferedChannel, offset + 1),
+      ByteCode::Receive => (AlignedByteCode::Receive, offset + 1),
+      ByteCode::Send => (AlignedByteCode::Send, offset + 1),
       ByteCode::Interpolate => (
         AlignedByteCode::Interpolate(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
@@ -359,6 +367,8 @@ impl AlignedByteCode {
       AlignedByteCode::Map(cnt) => -(*cnt as i32 * 2) + 1,
       AlignedByteCode::Channel => 1,
       AlignedByteCode::BufferedChannel => 0,
+      AlignedByteCode::Receive => 0,
+      AlignedByteCode::Send => 0,
       AlignedByteCode::Interpolate(cnt) => -(*cnt as i32) + 1,
       AlignedByteCode::IterNext(_) => 0,
       AlignedByteCode::IterCurrent(_) => 0,
@@ -423,6 +433,8 @@ impl Encode for AlignedByteCode {
       Self::Map(slot) => op_short(code, ByteCode::Map, slot),
       Self::Channel => op(code, ByteCode::Channel),
       Self::BufferedChannel => op(code, ByteCode::BufferedChannel),
+      Self::Receive => op(code, ByteCode::Receive),
+      Self::Send => op(code, ByteCode::Send),
       Self::Interpolate(slot) => op_short(code, ByteCode::Interpolate, slot),
       Self::IterNext(slot) => op_short(code, ByteCode::IterNext, slot),
       Self::IterCurrent(slot) => op_short(code, ByteCode::IterCurrent, slot),
@@ -558,6 +570,12 @@ pub enum ByteCode {
 
   /// Initialize a buffered channel
   BufferedChannel,
+
+  /// Receive from a  channel
+  Receive,
+
+  /// Send to a  channel
+  Send,
 
   /// Combine string interpolation
   Interpolate,
@@ -764,6 +782,10 @@ mod test {
       (1, AlignedByteCode::False),
       (3, AlignedByteCode::List(54782)),
       (3, AlignedByteCode::Map(1923)),
+      (1, AlignedByteCode::Channel),
+      (1, AlignedByteCode::BufferedChannel),
+      (1, AlignedByteCode::Receive),
+      (1, AlignedByteCode::Send),
       (3, AlignedByteCode::Interpolate(3389)),
       (3, AlignedByteCode::IterNext(81)),
       (3, AlignedByteCode::IterCurrent(49882)),
@@ -771,8 +793,10 @@ mod test {
       (3, AlignedByteCode::DefineGlobal(42)),
       (3, AlignedByteCode::GetGlobal(14119)),
       (3, AlignedByteCode::SetGlobal(2043)),
+      (3, AlignedByteCode::SetGlobal(38231)),
       (2, AlignedByteCode::GetUpvalue(183)),
       (2, AlignedByteCode::SetUpvalue(56)),
+      (2, AlignedByteCode::SetUpvalue(11)),
       (2, AlignedByteCode::GetLocal(96)),
       (2, AlignedByteCode::SetLocal(149)),
       (3, AlignedByteCode::GetProperty(18273)),

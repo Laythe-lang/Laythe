@@ -154,6 +154,11 @@ enum ScopeExit {
   Early,
 }
 
+enum VariableKind {
+  Get,
+  Set,
+}
+
 pub struct Compiler<'a, 'src, FileId> {
   #[allow(dead_code)]
   io: Option<Io>,
@@ -530,33 +535,28 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// retrieve a named variable from either local or global scope
-  fn variable(&mut self, name: &Token<'src>, can_assign: bool) {
+  fn variable(&mut self, name: &Token<'src>, kind: VariableKind) {
     let index = self.resolve_local(&name);
 
-    let (get_byte, set_byte) = match index {
-      Some(local) => (
-        AlignedByteCode::GetLocal(local),
-        AlignedByteCode::SetLocal(local),
-      ),
+    match index {
+      Some(local) => match kind {
+        VariableKind::Get => self.emit_byte(AlignedByteCode::GetLocal(local), name.end()),
+        VariableKind::Set => self.emit_byte(AlignedByteCode::SetLocal(local), name.end()),
+      }
       None => match self.resolve_upvalue(&name) {
-        Some(upvalue) => (
-          AlignedByteCode::GetUpvalue(upvalue),
-          AlignedByteCode::SetUpvalue(upvalue),
-        ),
+        Some(upvalue) => match kind {
+          VariableKind::Get => self.emit_byte(AlignedByteCode::GetUpvalue(upvalue), name.end()),
+          VariableKind::Set => self.emit_byte(AlignedByteCode::SetUpvalue(upvalue), name.end()),
+        }
         None => {
           let global_index = self.identifier_constant(name.str());
-          (
-            AlignedByteCode::GetGlobal(global_index),
-            AlignedByteCode::SetGlobal(global_index),
-          )
+
+          match kind {
+            VariableKind::Get => self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end()),
+            VariableKind::Set => self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end()),
+          }
         }
       },
-    };
-
-    if can_assign {
-      self.emit_byte(set_byte, name.end());
-    } else {
-      self.emit_byte(get_byte, name.end());
     }
   }
 
@@ -834,6 +834,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn expr(&mut self, expr: &'a Expr<'src>) {
     match expr {
       Expr::Assign(assign) => self.assign(assign),
+      Expr::Send(drain) => self.send(drain),
       Expr::AssignBinary(assign_binary) => self.assign_binary(assign_binary),
       Expr::Binary(binary) => self.binary(binary),
       Expr::Unary(unary) => self.unary(unary),
@@ -914,7 +915,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     // handle the case where a super class exists
     let span = if let Some(super_class) = &class.super_class {
-      self.variable(&super_class.type_ref.name, false);
+      self.variable(&super_class.type_ref.name, VariableKind::Get);
       super_class.type_ref.name.span()
     } else {
       self.variable(
@@ -924,7 +925,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           class.name.start(),
           class.name.end(),
         ),
-        false,
+        VariableKind::Get,
       );
       class.name.span()
     };
@@ -940,7 +941,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.add_local(unsafe { super_token.deref_static() });
 
     self.define_variable(0, span.end);
-    self.variable(&name, false);
+    self.variable(&name, VariableKind::Get);
     self.emit_byte(AlignedByteCode::Inherit, span.end);
 
     // process the initializer
@@ -1408,7 +1409,67 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         None => {
           if let Primary::Ident(name) = &atom.primary {
             self.expr(&assign.rhs);
-            self.variable(name, true);
+            self.variable(name, VariableKind::Set);
+          } else {
+            unreachable!("Unexpected expression on left hand side of assignment.");
+          }
+        }
+      },
+      _ => unreachable!("Unexpected expression on left hand side of assignment."),
+    }
+  }
+
+  fn send(&mut self, send: &'a ast::Send<'src>) {
+    self.expr(&send.rhs);
+
+    match &send.lhs {
+      Expr::Atom(atom) => match atom.trailers.last() {
+        // if we have trailers compile to last trailer and emit specialized
+        // set instruction
+        Some(last) => {
+          let skip_first = self.primary(&atom.primary, &atom.trailers);
+          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+
+          match last {
+            Trailer::Index(index) => {
+              // self.expr(&send.rhs);
+              self.expr(&index.index);
+
+              let name = self.identifier_constant(INDEX_GET);
+              self.emit_byte(AlignedByteCode::Invoke((name, 1)), index.end());
+              self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), index.end());
+
+              self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+            }
+            Trailer::Access(access) => {
+              if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
+                if let Primary::Self_(_) = atom.primary {
+                  let mut class_info = self.class_info.unwrap();
+
+                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
+                    let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
+                    class_info.add_field(&GcHooks::new(self), field);
+                  }
+                }
+              }
+
+              let name = self.identifier_constant(access.prop.str());
+
+              self.emit_byte(AlignedByteCode::GetProperty(name), access.end());
+              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
+
+              self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+            }
+            Trailer::Call(_) => {
+              unreachable!("Unexpected expression on left hand side of send.")
+            }
+          }
+        }
+        None => {
+          if let Primary::Ident(name) = &atom.primary {
+            self.variable(name, VariableKind::Get);
+
+            self.emit_byte(AlignedByteCode::Send, send.lhs.end())
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
@@ -1495,10 +1556,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         }
         None => {
           if let Primary::Ident(name) = &atom.primary {
-            self.variable(name, false);
+            self.variable(name, VariableKind::Get);
             self.expr(&assign_binary.rhs);
             binary_op(self);
-            self.variable(name, true);
+            self.variable(name, VariableKind::Set);
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
@@ -1550,6 +1611,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     match &unary.op {
       ast::UnaryOp::Not => self.emit_byte(AlignedByteCode::Not, unary.expr.end()),
       ast::UnaryOp::Negate => self.emit_byte(AlignedByteCode::Negate, unary.expr.end()),
+      ast::UnaryOp::Receive => self.emit_byte(AlignedByteCode::Receive, unary.expr.end()),
     }
   }
 
@@ -1721,7 +1783,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile a identifer token
   fn identifier(&mut self, token: &Token<'src>) -> bool {
-    self.variable(&token, false);
+    self.variable(&token, VariableKind::Get);
     false
   }
 
@@ -1733,7 +1795,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .and_then(|fun_kind| {
         fun_kind.and_then(|fun_kind| match fun_kind {
           FunKind::Method | FunKind::Initializer => {
-            self.variable(&self_, false);
+            self.variable(&self_, VariableKind::Get);
             Some(())
           }
           _ => None,
@@ -1769,7 +1831,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         super_.end(),
         super_.end(),
       ),
-      false,
+      VariableKind::Get,
     );
 
     match trailers.first() {
@@ -1779,7 +1841,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             self.expr(arg);
           }
 
-          self.variable(&super_.super_, false);
+          self.variable(&super_.super_, VariableKind::Get);
           self.emit_byte(
             AlignedByteCode::SuperInvoke((name, call.args.len() as u8)),
             super_.access.end(),
@@ -1791,13 +1853,13 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           true
         }
         _ => {
-          self.variable(&super_.super_, false);
+          self.variable(&super_.super_, VariableKind::Get);
           self.emit_byte(AlignedByteCode::GetSuper(name), super_.end());
           false
         }
       },
       None => {
-        self.variable(&super_.super_, false);
+        self.variable(&super_.super_, VariableKind::Get);
 
         self.emit_byte(AlignedByteCode::GetSuper(name), super_.access.end());
         false
@@ -2650,6 +2712,80 @@ mod test {
   }
 
   #[test]
+  fn channel_send_index() {
+    let example = "
+      a[5] <- 5;
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      4,
+      &vec![
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::Invoke((2, 1)),
+        AlignedByteCode::Slot(0),
+        AlignedByteCode::Send,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn channel_send_property() {
+    let example = "
+      b.b <- 5;
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      3,
+      &vec![
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::GetProperty(1),
+        AlignedByteCode::Slot(0),
+        AlignedByteCode::Send,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn channel_send_variable() {
+    let example = "
+      b <- 5;
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      3,
+      &vec![
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::Send,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
   fn list_index_set() {
     let example = "
       let a = [clock, clock, clock];
@@ -2912,7 +3048,7 @@ mod test {
   fn fn_with_variables() {
     let example = "
     fn example(a, b, c) {
-      return a + b + c; 
+      return a + b + c;
     }
     example(1, 2, 3);
     ";
@@ -3731,6 +3867,43 @@ mod test {
   }
 
   #[test]
+  fn op_channel() {
+    let example = "chan();";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::Channel,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn op_buffered_channel() {
+    let example = "chan(5);";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::BufferedChannel,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
   fn op_nil() {
     let example = "nil;";
 
@@ -3785,6 +3958,27 @@ mod test {
       ],
     );
   }
+
+  #[test]
+  fn op_receive() {
+    let example = "<- true;";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::Receive,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+
 
   #[test]
   fn op_add() {

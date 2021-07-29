@@ -1,0 +1,27 @@
+let l = [chan(3), chan(3)];
+let h = { 0: chan(3), 1: chan(3) };
+
+fn fill(c) {
+  c[0] <- 1;
+  c[0] <- 2;
+  c[0] <- 3;
+
+  c[1] <- 'cat';
+  c[1] <- 'dog';
+  c[1] <- 'parrot';
+}
+
+fn drain(c) {
+  assertEq(<- c[1], 'cat');
+  assertEq(<- c[1], 'dog');
+  assertEq(<- c[0], 1);
+  assertEq(<- c[1], 'parrot');
+  assertEq(<- c[0], 2);
+  assertEq(<- c[0], 3);
+}
+
+fill(l);
+fill(h);
+
+drain(h);
+drain(l);

@@ -37,7 +37,7 @@ pub trait Visitor<'a> {
   fn visit_block(&mut self, block: &Block) -> Self::Result;
 
   fn visit_assign(&mut self, assign: &Assign) -> Self::Result;
-  fn visit_drain(&mut self, drain: &Drain) -> Self::Result;
+  fn visit_drain(&mut self, drain: &Send) -> Self::Result;
   fn visit_assign_binary(&mut self, assign: &AssignBinary) -> Self::Result;
   fn visit_binary(&mut self, binary: &Binary) -> Self::Result;
   fn visit_unary(&mut self, unary: &Unary) -> Self::Result;
@@ -700,7 +700,7 @@ pub enum Expr<'a> {
   AssignBinary(Box<'a, AssignBinary<'a>>),
   Atom(Box<'a, Atom<'a>>),
   Binary(Box<'a, Binary<'a>>),
-  Drain(Box<'a, Drain<'a>>),
+  Send(Box<'a, Send<'a>>),
   Unary(Box<'a, Unary<'a>>),
 }
 
@@ -711,7 +711,7 @@ impl<'a> Spanned for Expr<'a> {
       Expr::AssignBinary(assign_binary) => assign_binary.start(),
       Expr::Atom(atom) => atom.start(),
       Expr::Binary(binary) => binary.start(),
-      Expr::Drain(drain) => drain.start(),
+      Expr::Send(drain) => drain.start(),
       Expr::Unary(unary) => unary.start(),
     }
   }
@@ -722,7 +722,7 @@ impl<'a> Spanned for Expr<'a> {
       Expr::AssignBinary(assign_binary) => assign_binary.end(),
       Expr::Atom(atom) => atom.end(),
       Expr::Binary(binary) => binary.end(),
-      Expr::Drain(drain) => drain.end(),
+      Expr::Send(drain) => drain.end(),
       Expr::Unary(unary) => unary.end(),
     }
   }
@@ -750,18 +750,18 @@ impl<'a> Spanned for Assign<'a> {
 }
 
 
-pub struct Drain<'a> {
+pub struct Send<'a> {
   pub lhs: Expr<'a>,
   pub rhs: Expr<'a>,
 }
 
-impl<'a> Drain<'a> {
+impl<'a> Send<'a> {
   pub fn new(lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
     Self { lhs, rhs }
   }
 }
 
-impl<'a> Spanned for Drain<'a> {
+impl<'a> Spanned for Send<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -840,6 +840,7 @@ impl<'a> Spanned for Binary<'a> {
 pub enum UnaryOp {
   Not,
   Negate,
+  Receive,
 }
 
 pub struct Unary<'a> {

@@ -158,7 +158,7 @@ mod unboxed {
     #[inline]
     pub fn to_num(self) -> f64 {
       match self {
-        Value::Number(num) => *num,
+        Value::Number(num) => num,
         _ => panic!("Value is not number"),
       }
     }
@@ -175,7 +175,7 @@ mod unboxed {
     #[inline]
     pub fn to_bool(self) -> bool {
       match self {
-        Value::Bool(b1) => *b1,
+        Value::Bool(b1) => b1,
         _ => panic!("Value is not boolean"),
       }
     }
@@ -199,7 +199,7 @@ mod unboxed {
     #[inline]
     pub fn to_obj(self) -> GcObject {
       match self {
-        Self::Obj(obj) => *obj,
+        Self::Obj(obj) => obj,
         _ => panic!("Expected object."),
       }
     }

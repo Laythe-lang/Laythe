@@ -1,0 +1,15 @@
+fn fill(ch) {
+  ch <- 1;
+  ch <- 2;
+  ch <- 3;
+}
+
+fn drain(ch) {
+  assertEq(<- ch, 1);
+  assertEq(<- ch, 2);
+  assertEq(<- ch, 3);
+}
+
+let ch = chan(3);
+fill(ch);
+drain(ch);

@@ -815,6 +815,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let op = match operator_kind {
       TokenKind::Minus => UnaryOp::Negate,
       TokenKind::Bang => UnaryOp::Not,
+      TokenKind::LeftArrow => UnaryOp::Receive,
       _ => unimplemented!("Unexpected unary operator"),
     };
 
@@ -1127,7 +1128,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TokenKind::LeftArrow => self
         .advance()
         .and_then(|()| self.expr())
-        .map(|rhs| Expr::Drain(self.node(Drain::new(expr, rhs)))),
+        .map(|rhs| Expr::Send(self.node(Send::new(expr, rhs)))),
       TokenKind::PlusEqual => self.advance().and_then(|()| self.expr()).map(|rhs| {
         Expr::AssignBinary(self.node(AssignBinary::new(expr, AssignBinaryOp::Add, rhs)))
       }),
@@ -1617,7 +1618,7 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   // STAR_EQUAL
   Rule::new(None, Precedence::None),
   // RIGHT_ARROW
-  Rule::new(None, Precedence::None),
+  Rule::new(Some(Prefix::Unary), Precedence::None),
   // LEFT_ARROW
   Rule::new(None, Precedence::None),
   // EXPORT
@@ -2168,38 +2169,38 @@ mod test {
       init(startState) {
         self.state = startState;
       }
-    
+
       value() { self.state }
-    
+
       activate() {
         self.state = !self.state;
         return self;
       }
     }
-    
+
     class NthToggle : Toggle {
       init(startState, maxCounter) {
         super.init(startState);
         self.countMax = maxCounter;
         self.count = 0;
       }
-    
+
       activate() {
         self.count = self.count + 1;
         if self.count >= self.countMax {
           super.activate();
           self.count = 0;
         }
-    
+
         return self;
       }
     }
-    
+
     let start = clock();
     let n = 500;
     let val = true;
     let toggle = Toggle(val);
-    
+
     for i in range(n) {
       val = toggle.activate().value();
       val = toggle.activate().value();
@@ -2212,12 +2213,12 @@ mod test {
       val = toggle.activate().value();
       val = toggle.activate().value();
     }
-    
+
     toggle.value();
-    
+
     val = true;
     let ntoggle = NthToggle(val, 3);
-    
+
     for i in range(n) {
       val = ntoggle.activate().value();
       val = ntoggle.activate().value();
@@ -2230,9 +2231,9 @@ mod test {
       val = ntoggle.activate().value();
       val = ntoggle.activate().value();
     }
-    
+
     ntoggle.value();
-    
+
     ";
 
     test(example);
@@ -2304,14 +2305,14 @@ mod test {
       }",
       "export class Dude<T, V: Car> {
         field1: V;
-        
+
         someMethod<K>(a: T, b: string & Bro<T>) -> K {
 
         }
       }",
       "export class Dawg<T> : Bro<T> {
         field1: V;
-        
+
         someMethod<K>(a: T, b: string & Bro<T>) -> K {
 
         }
@@ -2744,8 +2745,8 @@ mod test {
   ];
   const EXAMPLE_TRAILERS: [&str; 3] = ["[2]", "(true, 10)", ".someProp"];
   const BINARY_OPS: [&str; 10] = ["!=", "==", ">", ">=", "<", "<=", "+", "-", "*", "/"];
-  const ASSIGNMENTS: [&str; 5] = ["=", "+=", "-=", "/=", "*="];
-  const UNARY_OPS: [&str; 2] = ["!", "-"];
+  const ASSIGNMENTS: [&str; 6] = ["=", "<-", "+=", "-=", "/=", "*="];
+  const UNARY_OPS: [&str; 3] = ["<-", "!", "-"];
 
   #[test]
   fn expr_stmt() {

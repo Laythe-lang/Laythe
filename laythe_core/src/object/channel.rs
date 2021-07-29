@@ -10,8 +10,8 @@ use std::{fmt, io::Write, mem};
 #[derive(PartialEq, Clone, Debug)]
 enum ChannelKind {
   BiDirectional,
-  ReadOnly,
-  WriteOnly,
+  ReceiveOnly,
+  SendOnly,
 }
 
 #[derive(PartialEq, Clone, Debug)]
@@ -22,17 +22,17 @@ enum ChannelQueueState {
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub enum EnqueueResult {
+pub enum SendResult {
   Ok,
-  NoWriteAccess,
+  NoSendAccess,
   Full(Option<GcObj<Fiber>>),
   Closed,
 }
 
 #[derive(PartialEq, Clone, Debug)]
-pub enum DequeueResult {
+pub enum ReceiveResult {
   Ok(Value),
-  NoReadAccess,
+  NoReceiveAccess,
   Empty(Option<GcObj<Fiber>>),
   Closed,
 }
@@ -69,6 +69,11 @@ impl ChannelQueue {
     }
   }
 
+  /// Is this queue empty
+  fn is_empty(&self) -> bool {
+    self.queue.is_empty()
+  }
+
   /// How many items are currently in the queue
   fn len(&self) -> usize {
     self.queue.len()
@@ -101,44 +106,45 @@ impl ChannelQueue {
     CloseResult::Ok
   }
 
-  /// Attempt to enqueue a value into this channel.
+  /// Attempt to send a value into this channel.
   /// the value can be reject either because the
   /// channel is saturated or because the channel
   /// has already been closed
-  fn enqueue(&mut self, fiber: GcObj<Fiber>, val: Value) -> EnqueueResult {
+  fn send(&mut self, fiber: GcObj<Fiber>, val: Value) -> SendResult {
     match self.state {
       ChannelQueueState::Ready => {
         if self.queue.len() < self.capacity {
           self.queue.push_back(val);
-          EnqueueResult::Ok
+          SendResult::Ok
         } else {
           self.send_waiters.push_back(fiber);
-          EnqueueResult::Full(self.receive_waiters.pop_front())
+          SendResult::Full(self.receive_waiters.pop_front())
         }
       }
-      ChannelQueueState::Closed | ChannelQueueState::ClosedEmpty => EnqueueResult::Closed,
+      ChannelQueueState::Closed | ChannelQueueState::ClosedEmpty => SendResult::Closed,
     }
   }
 
-  /// Attempt to dequeue a value from this channel.
-  /// If the channel is empty
-  fn dequeue(&mut self, fiber: GcObj<Fiber>) -> DequeueResult {
+  /// Attempt to receive a value from this channel.
+  /// If the channel is empty return potentially a send
+  /// waiter. If
+  fn receive(&mut self, fiber: GcObj<Fiber>) -> ReceiveResult {
     match self.state {
       ChannelQueueState::Ready => match self.queue.pop_front() {
-        Some(value) => DequeueResult::Ok(value),
+        Some(value) => ReceiveResult::Ok(value),
         None => {
           self.receive_waiters.push_back(fiber);
-          DequeueResult::Empty(self.send_waiters.pop_front())
+          ReceiveResult::Empty(self.send_waiters.pop_front())
         }
       },
       ChannelQueueState::Closed => match self.queue.pop_front() {
-        Some(value) => DequeueResult::Ok(value),
+        Some(value) => ReceiveResult::Ok(value),
         None => {
           self.state = ChannelQueueState::ClosedEmpty;
-          DequeueResult::Closed
+          ReceiveResult::Closed
         }
       },
-      ChannelQueueState::ClosedEmpty => DequeueResult::Closed,
+      ChannelQueueState::ClosedEmpty => ReceiveResult::Closed,
     }
   }
 }
@@ -194,23 +200,29 @@ impl Channel {
   /// Create a read only channel
   pub fn read_only(&self) -> Option<Self> {
     match self.kind {
-      ChannelKind::BiDirectional | ChannelKind::ReadOnly => Some(Self {
+      ChannelKind::BiDirectional | ChannelKind::ReceiveOnly => Some(Self {
         queue: self.queue,
-        kind: ChannelKind::ReadOnly,
+        kind: ChannelKind::ReceiveOnly,
       }),
-      ChannelKind::WriteOnly => None,
+      ChannelKind::SendOnly => None,
     }
   }
 
   /// Create a write only channel
   pub fn write_only(&self) -> Option<Self> {
     match self.kind {
-      ChannelKind::BiDirectional | ChannelKind::WriteOnly => Some(Self {
+      ChannelKind::BiDirectional | ChannelKind::SendOnly => Some(Self {
         queue: self.queue,
-        kind: ChannelKind::WriteOnly,
+        kind: ChannelKind::SendOnly,
       }),
-      ChannelKind::ReadOnly => None,
+      ChannelKind::ReceiveOnly => None,
     }
+  }
+
+  /// Is this queue empty
+  #[inline]
+  pub fn is_empty(&self) -> bool {
+    self.queue.is_empty()
   }
 
   /// The capacity of the associated channel queue
@@ -232,29 +244,29 @@ impl Channel {
 
   /// Is this channel queue closed
   #[inline]
-  pub fn is_closed(&mut self) -> bool {
+  pub fn is_closed(&self) -> bool {
     self.queue.is_closed()
   }
 
-  /// Attempt to enqueue a value into this channel.
+  /// Attempt to send a value into this channel.
   /// the value can be reject either because the
   /// channel is saturated or because the channel
   /// has already been closed
   #[inline]
-  pub fn enqueue(&mut self, fiber: GcObj<Fiber>, val: Value) -> EnqueueResult {
+  pub fn send(&mut self, fiber: GcObj<Fiber>, val: Value) -> SendResult {
     match self.kind {
-      ChannelKind::BiDirectional | ChannelKind::WriteOnly => self.queue.enqueue(fiber, val),
-      ChannelKind::ReadOnly => EnqueueResult::NoWriteAccess,
+      ChannelKind::BiDirectional | ChannelKind::SendOnly => self.queue.send(fiber, val),
+      ChannelKind::ReceiveOnly => SendResult::NoSendAccess,
     }
   }
 
-  /// Attempt to dequeue a value from this channel.
+  /// Attempt to receive a value from this channel.
   /// If the channel is empty
   #[inline]
-  pub fn dequeue(&mut self, fiber: GcObj<Fiber>) -> DequeueResult {
+  pub fn receive(&mut self, fiber: GcObj<Fiber>) -> ReceiveResult {
     match self.kind {
-      ChannelKind::BiDirectional | ChannelKind::ReadOnly => self.queue.dequeue(fiber),
-      ChannelKind::WriteOnly => DequeueResult::NoReadAccess,
+      ChannelKind::BiDirectional | ChannelKind::ReceiveOnly => self.queue.receive(fiber),
+      ChannelKind::SendOnly => ReceiveResult::NoReceiveAccess,
     }
   }
 }
@@ -342,11 +354,11 @@ mod test {
       let mut queue = ChannelQueue::with_capacity(5);
 
       assert_eq!(queue.len(), 0);
-      queue.enqueue(fiber, val!(0.0));
-      queue.enqueue(fiber, val!(0.0));
+      queue.send(fiber, val!(0.0));
+      queue.send(fiber, val!(0.0));
 
       assert_eq!(queue.len(), 2);
-      queue.dequeue(fiber);
+      queue.receive(fiber);
 
       assert_eq!(queue.len(), 1);
     }
@@ -367,8 +379,8 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut queue = ChannelQueue::with_capacity(3);
 
-      let r = queue.enqueue(fiber, val!(1.0));
-      assert_eq!(r, EnqueueResult::Ok);
+      let r = queue.send(fiber, val!(1.0));
+      assert_eq!(r, SendResult::Ok);
       assert_eq!(queue.len(), 1);
     }
 
@@ -380,9 +392,9 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut queue = ChannelQueue::with_capacity(1);
 
-      queue.enqueue(fiber, val!(1.0));
-      let r = queue.enqueue(fiber, val!(1.0));
-      assert_eq!(r, EnqueueResult::Full(None));
+      queue.send(fiber, val!(1.0));
+      let r = queue.send(fiber, val!(1.0));
+      assert_eq!(r, SendResult::Full(None));
       assert_eq!(queue.len(), 1);
     }
 
@@ -395,11 +407,11 @@ mod test {
       let fiber_waiter = FiberBuilder::<u8>::default().build(&hooks).unwrap();
 
       let mut queue = ChannelQueue::with_capacity(1);
-      queue.dequeue(fiber_waiter);
-      queue.enqueue(fiber, val!(1.0));
-      let r = queue.enqueue(fiber, val!(1.0));
+      queue.receive(fiber_waiter);
+      queue.send(fiber, val!(1.0));
+      let r = queue.send(fiber, val!(1.0));
 
-      assert_eq!(r, EnqueueResult::Full(Some(fiber_waiter)));
+      assert_eq!(r, SendResult::Full(Some(fiber_waiter)));
       assert_eq!(queue.len(), 1);
     }
 
@@ -412,9 +424,9 @@ mod test {
       let mut queue = ChannelQueue::with_capacity(1);
 
       assert_eq!(queue.close(), CloseResult::Ok);
-      let r = queue.enqueue(fiber, val!(10.0));
+      let r = queue.send(fiber, val!(10.0));
 
-      assert_eq!(r, EnqueueResult::Closed);
+      assert_eq!(r, SendResult::Closed);
       assert_eq!(queue.len(), 0);
     }
 
@@ -426,8 +438,8 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut queue = ChannelQueue::with_capacity(3);
 
-      let r = queue.dequeue(fiber);
-      assert_eq!(r, DequeueResult::Empty(None));
+      let r = queue.receive(fiber);
+      assert_eq!(r, ReceiveResult::Empty(None));
       assert_eq!(queue.len(), 0);
     }
 
@@ -440,12 +452,12 @@ mod test {
       let fiber_waiter = FiberBuilder::<u8>::default().build(&hooks).unwrap();
 
       let mut queue = ChannelQueue::with_capacity(1);
-      queue.enqueue(fiber_waiter, val!(1.0));
-      queue.enqueue(fiber_waiter, val!(1.0));
+      queue.send(fiber_waiter, val!(1.0));
+      queue.send(fiber_waiter, val!(1.0));
 
-      queue.dequeue(fiber);
-      let r = queue.dequeue(fiber);
-      assert_eq!(r, DequeueResult::Empty(Some(fiber_waiter)));
+      queue.receive(fiber);
+      let r = queue.receive(fiber);
+      assert_eq!(r, ReceiveResult::Empty(Some(fiber_waiter)));
       assert_eq!(queue.len(), 0);
     }
 
@@ -457,10 +469,10 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut queue = ChannelQueue::with_capacity(3);
 
-      queue.enqueue(fiber, val!(1.0));
-      queue.enqueue(fiber, val!(2.0));
-      let r = queue.dequeue(fiber);
-      assert_eq!(r, DequeueResult::Ok(val!(1.0)));
+      queue.send(fiber, val!(1.0));
+      queue.send(fiber, val!(2.0));
+      let r = queue.receive(fiber);
+      assert_eq!(r, ReceiveResult::Ok(val!(1.0)));
       assert_eq!(queue.len(), 1);
     }
 
@@ -472,11 +484,11 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut queue = ChannelQueue::with_capacity(3);
 
-      queue.enqueue(fiber, val!(10.0));
+      queue.send(fiber, val!(10.0));
       assert_eq!(queue.close(), CloseResult::Ok);
-      let r = queue.dequeue(fiber);
+      let r = queue.receive(fiber);
 
-      assert_eq!(r, DequeueResult::Ok(val!(10.0)));
+      assert_eq!(r, ReceiveResult::Ok(val!(10.0)));
       assert_eq!(queue.len(), 0);
     }
 
@@ -489,9 +501,9 @@ mod test {
       let mut queue = ChannelQueue::with_capacity(1);
 
       assert_eq!(queue.close(), CloseResult::Ok);
-      let r = queue.dequeue(fiber);
+      let r = queue.receive(fiber);
 
-      assert_eq!(r, DequeueResult::Closed);
+      assert_eq!(r, ReceiveResult::Closed);
       assert_eq!(queue.len(), 0);
     }
   }
@@ -533,12 +545,12 @@ mod test {
 
       assert_eq!(channel.len(), 0);
 
-      channel.enqueue(fiber, val!(1.0));
+      channel.send(fiber, val!(1.0));
       assert_eq!(channel.len(), 1);
 
-      channel.enqueue(fiber, val!(1.0));
-      channel.enqueue(fiber, val!(1.0));
-      channel.enqueue(fiber, val!(1.0));
+      channel.send(fiber, val!(1.0));
+      channel.send(fiber, val!(1.0));
+      channel.send(fiber, val!(1.0));
       assert_eq!(channel.len(), 4);
     }
 
@@ -560,8 +572,8 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut channel = Channel::with_capacity(&hooks, 5);
 
-      let r = channel.enqueue(fiber, val!(1.0));
-      assert_eq!(r, EnqueueResult::Ok);
+      let r = channel.send(fiber, val!(1.0));
+      assert_eq!(r, SendResult::Ok);
     }
 
     #[test]
@@ -572,9 +584,9 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut channel = Channel::with_capacity(&hooks, 1);
 
-      channel.enqueue(fiber, val!(1.0));
-      let r = channel.enqueue(fiber, val!(1.0));
-      assert_eq!(r, EnqueueResult::Full(None));
+      channel.send(fiber, val!(1.0));
+      let r = channel.send(fiber, val!(1.0));
+      assert_eq!(r, SendResult::Full(None));
       assert_eq!(channel.len(), 1);
     }
 
@@ -587,11 +599,11 @@ mod test {
       let fiber_waiter = FiberBuilder::<u8>::default().build(&hooks).unwrap();
 
       let mut channel = Channel::with_capacity(&hooks, 1);
-      channel.dequeue(fiber_waiter);
-      channel.enqueue(fiber, val!(1.0));
-      let r = channel.enqueue(fiber, val!(1.0));
+      channel.receive(fiber_waiter);
+      channel.send(fiber, val!(1.0));
+      let r = channel.send(fiber, val!(1.0));
 
-      assert_eq!(r, EnqueueResult::Full(Some(fiber_waiter)));
+      assert_eq!(r, SendResult::Full(Some(fiber_waiter)));
       assert_eq!(channel.len(), 1);
     }
 
@@ -604,9 +616,9 @@ mod test {
       let mut channel = Channel::with_capacity(&hooks, 1);
 
       assert_eq!(channel.close(), CloseResult::Ok);
-      let r = channel.enqueue(fiber, val!(10.0));
+      let r = channel.send(fiber, val!(10.0));
 
-      assert_eq!(r, EnqueueResult::Closed);
+      assert_eq!(r, SendResult::Closed);
       assert_eq!(channel.len(), 0);
     }
 
@@ -618,9 +630,9 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut channel = Channel::with_capacity(&hooks, 1).read_only().unwrap();
 
-      let r = channel.enqueue(fiber, val!(10.0));
+      let r = channel.send(fiber, val!(10.0));
 
-      assert_eq!(r, EnqueueResult::NoWriteAccess);
+      assert_eq!(r, SendResult::NoSendAccess);
       assert_eq!(channel.len(), 0);
     }
 
@@ -632,8 +644,8 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut channel = Channel::with_capacity(&hooks, 3);
 
-      let r = channel.dequeue(fiber);
-      assert_eq!(r, DequeueResult::Empty(None));
+      let r = channel.receive(fiber);
+      assert_eq!(r, ReceiveResult::Empty(None));
       assert_eq!(channel.len(), 0);
     }
 
@@ -646,12 +658,12 @@ mod test {
       let fiber_waiter = FiberBuilder::<u8>::default().build(&hooks).unwrap();
 
       let mut channel = Channel::with_capacity(&hooks, 1);
-      channel.enqueue(fiber_waiter, val!(1.0));
-      channel.enqueue(fiber_waiter, val!(1.0));
+      channel.send(fiber_waiter, val!(1.0));
+      channel.send(fiber_waiter, val!(1.0));
 
-      channel.dequeue(fiber);
-      let r = channel.dequeue(fiber);
-      assert_eq!(r, DequeueResult::Empty(Some(fiber_waiter)));
+      channel.receive(fiber);
+      let r = channel.receive(fiber);
+      assert_eq!(r, ReceiveResult::Empty(Some(fiber_waiter)));
       assert_eq!(channel.len(), 0);
     }
 
@@ -663,10 +675,10 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut channel = Channel::with_capacity(&hooks, 3);
 
-      channel.enqueue(fiber, val!(1.0));
-      channel.enqueue(fiber, val!(2.0));
-      let r = channel.dequeue(fiber);
-      assert_eq!(r, DequeueResult::Ok(val!(1.0)));
+      channel.send(fiber, val!(1.0));
+      channel.send(fiber, val!(2.0));
+      let r = channel.receive(fiber);
+      assert_eq!(r, ReceiveResult::Ok(val!(1.0)));
       assert_eq!(channel.len(), 1);
     }
 
@@ -678,11 +690,11 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut channel = Channel::with_capacity(&hooks, 3);
 
-      channel.enqueue(fiber, val!(10.0));
+      channel.send(fiber, val!(10.0));
       assert_eq!(channel.close(), CloseResult::Ok);
-      let r = channel.dequeue(fiber);
+      let r = channel.receive(fiber);
 
-      assert_eq!(r, DequeueResult::Ok(val!(10.0)));
+      assert_eq!(r, ReceiveResult::Ok(val!(10.0)));
       assert_eq!(channel.len(), 0);
     }
 
@@ -695,9 +707,9 @@ mod test {
       let mut queue = Channel::with_capacity(&hooks, 1);
 
       assert_eq!(queue.close(), CloseResult::Ok);
-      let r = queue.dequeue(fiber);
+      let r = queue.receive(fiber);
 
-      assert_eq!(r, DequeueResult::Closed);
+      assert_eq!(r, ReceiveResult::Closed);
       assert_eq!(queue.len(), 0);
     }
 
@@ -709,9 +721,9 @@ mod test {
       let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
       let mut channel = Channel::with_capacity(&hooks, 1).write_only().unwrap();
 
-      let r = channel.dequeue(fiber);
+      let r = channel.receive(fiber);
 
-      assert_eq!(r, DequeueResult::NoReadAccess);
+      assert_eq!(r, ReceiveResult::NoReceiveAccess);
       assert_eq!(channel.len(), 0);
     }
 
