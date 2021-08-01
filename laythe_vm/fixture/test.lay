@@ -1,0 +1,13 @@
+fn printer(ch) {
+  while true {
+    print(<- ch);
+  }
+}
+
+let ch = chan();
+launch printer(ch);
+
+while true {
+  ch <- "Hello";
+  ch <- "World";
+}

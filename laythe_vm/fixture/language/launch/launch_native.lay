@@ -1,0 +1,2 @@
+launch print("hi");
+launch [1, 2, 3].iter().map(|x| x * 2).into(List.collect);

@@ -476,6 +476,7 @@ impl Vm {
           ByteCode::False => self.op_literal(val!(false)),
           ByteCode::List => self.op_list(),
           ByteCode::Map => self.op_map(),
+          ByteCode::Launch => self.op_launch(),
           ByteCode::Channel => self.op_channel(),
           ByteCode::BufferedChannel => self.op_buffered_channel(),
           ByteCode::Receive => self.op_receive(),
@@ -509,12 +510,7 @@ impl Vm {
           }
           Signal::Ok => (),
           Signal::ContextSwitch => match self.fiber_queue.pop_front() {
-            Some(fiber) => {
-              self.fiber.sleep();
-              self.fiber = fiber;
-              self.fiber.activate();
-              self.load_ip();
-            }
+            Some(fiber) => self.context_switch(fiber),
             None => {
               self.runtime_error(
                 self.builtin.errors.runtime,
@@ -723,6 +719,36 @@ impl Vm {
   }
 
   /// create a map from a map literal
+  unsafe fn op_launch(&mut self) -> Signal {
+    let arg_count = self.read_byte();
+    let callee = self.fiber.peek(arg_count as usize);
+    let frame_count = self.fiber.frames().len();
+    let current_fun = self.current_fun;
+
+    // call function as normal to get setup
+    let signal = self.resolve_call(callee, arg_count);
+    match signal {
+      Signal::Ok => (),
+      Signal::OkReturn => (),
+      _ => return signal,
+    };
+
+    let hooks = GcHooks::new(self);
+    let mut fiber = self.fiber;
+
+    // call init fiber which will peel off the last frame if it's above the previous
+    // water mark
+    if let Some(new_fiber) = fiber.split_fiber(&hooks, frame_count, arg_count as usize) {
+      // put the fiber in the queue
+      self.fiber_queue.push_back(new_fiber);
+      self.current_fun = current_fun;
+      self.load_ip();
+    }
+
+    Signal::Ok
+  }
+
+  /// create a map from a map literal
   unsafe fn op_channel(&mut self) -> Signal {
     let hooks = GcHooks::new(self);
     let channel = self.manage_obj(Channel::with_capacity(&hooks, 1));
@@ -778,6 +804,7 @@ impl Vm {
             self.fiber_queue.push_back(fiber);
           }
 
+          self.fiber.push(val!(channel));
           self.update_ip(-1);
           Signal::ContextSwitch
         },
@@ -1790,6 +1817,19 @@ impl Vm {
 
     self.push_frame(closure, arg_count);
     Signal::Ok
+  }
+
+  /// Swap between the current fiber and the provided fiber
+  #[inline]
+  unsafe fn context_switch(&mut self, fiber: GcObj<Fiber>) {
+    self.store_ip();
+    self.fiber.sleep();
+
+    self.fiber = fiber;
+    self.fiber.activate();
+
+    self.load_ip();
+    self.current_fun = fiber.closure().fun();
   }
 
   /// Push a call frame onto the the call frame stack

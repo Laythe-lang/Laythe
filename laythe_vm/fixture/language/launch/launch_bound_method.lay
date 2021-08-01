@@ -1,0 +1,14 @@
+class Foo {
+  init() {
+    self.x = 10;
+  }
+
+  bar() {
+    self.x
+  }
+}
+
+let foo = Foo();
+let bar = foo.bar;
+
+launch bar();

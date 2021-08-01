@@ -198,6 +198,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TokenKind::Import => self.advance().and_then(|()| self.import()),
       TokenKind::Try => self.advance().and_then(|()| self.try_block()),
       TokenKind::If => self.advance().and_then(|()| self.if_()),
+      TokenKind::Launch => self.advance().and_then(|()| self.launch()),
       TokenKind::For => self.advance().and_then(|()| self.for_()),
       TokenKind::While => self.advance().and_then(|()| self.while_()),
       TokenKind::Return => self.advance().and_then(|()| self.return_()),
@@ -521,6 +522,23 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       .and_then(|()| self.consume_basic(TokenKind::LeftBrace, "Expected '{' after catch."))
       .and_then(|()| self.block(BlockReturn::Cannot))
       .map(|catch| Stmt::Try(self.node(Try::new(block, catch))))
+  }
+
+  /// Parse a launch statement
+  fn launch(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+    let closure = self.expr()?;
+
+    if let Expr::Atom(atom) = &closure {
+      match atom.trailers.last() {
+        Some(Trailer::Call(_)) => {
+          self.consume_basic(TokenKind::Semicolon, "Expected ';' launch call.")?;
+          Ok(Stmt::Launch(self.node(Launch::new(closure))))
+        }
+        _ => self.error("Expected call following 'launch'."),
+      }
+    } else {
+      self.error("Expected call following 'launch'.")
+    }
   }
 
   /// Parse a if statement
@@ -1574,7 +1592,7 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 65;
+const TOKEN_VARIANTS: usize = 66;
 
 /// The rules for infix and prefix operators
 const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
@@ -1703,7 +1721,9 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // TYPE
   Rule::new(Some(Prefix::Channel), Precedence::None),
-  // Channel
+  // CHANNEL
+  Rule::new(None, Precedence::None),
+  // LAUNCH
   Rule::new(None, Precedence::None),
   // ERROR
   Rule::new(None, Precedence::None),
@@ -1837,7 +1857,9 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // TYPE
   Rule::new(None, Precedence::None),
-  // Channel
+  // CHANNEL
+  Rule::new(None, Precedence::None),
+  // LAUNCH
   Rule::new(None, Precedence::None),
   // ERROR
   Rule::new(None, Precedence::None),
@@ -1971,7 +1993,9 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // TYPE
   Rule::new(None, TypePrecedence::None),
-  // Channel
+  // CHANNEL
+  Rule::new(None, TypePrecedence::None),
+  // LAUNCH
   Rule::new(None, TypePrecedence::None),
   // ERROR
   Rule::new(None, TypePrecedence::None),
@@ -2105,7 +2129,9 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // TYPE
   Rule::new(None, TypePrecedence::None),
-  // Channel
+  // CHANNEL
+  Rule::new(None, TypePrecedence::None),
+  // LAUNCH
   Rule::new(None, TypePrecedence::None),
   // ERROR
   Rule::new(None, TypePrecedence::None),
@@ -2407,6 +2433,15 @@ mod test {
           return 'bye';
         }
       }
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn launch() {
+    let example = "
+      launch something(1, 2, 'cat');
     ";
 
     test(example);

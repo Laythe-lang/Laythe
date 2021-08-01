@@ -165,6 +165,7 @@ pub enum TokenKind {
   Trait,
   Type,
   Channel,
+  Launch,
 
   // meta
   Error,
@@ -237,6 +238,7 @@ impl fmt::Display for TokenKind {
       TokenKind::Trait => "trait",
       TokenKind::Type => "type",
       TokenKind::Channel => "channel",
+      TokenKind::Launch => "launch",
       TokenKind::Error => "error",
       TokenKind::Eof => "eof",
     })

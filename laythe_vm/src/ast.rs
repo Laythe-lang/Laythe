@@ -30,6 +30,7 @@ pub trait Visitor<'a> {
   fn visit_for(&mut self, for_: &For) -> Self::Result;
   fn visit_while(&mut self, while_: &While) -> Self::Result;
   fn visit_if(&mut self, if_: &If) -> Self::Result;
+  fn visit_launch(&mut self, launch: &Launch) -> Self::Result;
   fn visit_return(&mut self, return_: &Return) -> Self::Result;
   fn visit_continue(&mut self, continue_: &Token<'a>) -> Self::Result;
   fn visit_break(&mut self, break_: &Token<'a>) -> Self::Result;
@@ -381,6 +382,7 @@ pub enum Stmt<'a> {
   Import(Box<'a, Import<'a>>),
   For(Box<'a, For<'a>>),
   If(Box<'a, If<'a>>),
+  Launch(Box<'a, Launch<'a>>),
   Return(Box<'a, Return<'a>>),
   Continue(Box<'a, Token<'a>>),
   Break(Box<'a, Token<'a>>),
@@ -396,6 +398,7 @@ impl<'a> Spanned for Stmt<'a> {
       Stmt::Import(import) => import.start(),
       Stmt::For(for_) => for_.start(),
       Stmt::If(if_) => if_.start(),
+      Stmt::Launch(launch) => launch.start(),
       Stmt::Return(return_) => return_.start(),
       Stmt::Continue(continue_) => continue_.start(),
       Stmt::Break(break_) => break_.start(),
@@ -411,6 +414,7 @@ impl<'a> Spanned for Stmt<'a> {
       Stmt::Import(import) => import.end(),
       Stmt::For(for_) => for_.end(),
       Stmt::If(if_) => if_.end(),
+      Stmt::Launch(launch) => launch.end(),
       Stmt::Return(return_) => return_.end(),
       Stmt::Continue(continue_) => continue_.end(),
       Stmt::Break(break_) => break_.end(),
@@ -540,6 +544,26 @@ impl<'a> Spanned for If<'a> {
 pub enum Else<'a> {
   If(Box<'a, If<'a>>),
   Block(Block<'a>),
+}
+
+pub struct Launch<'a> {
+  pub closure: Expr<'a>,
+}
+
+impl<'a> Launch<'a> {
+  pub fn new(closure: Expr<'a>) -> Self {
+    Self { closure }
+  }
+}
+
+impl<'a> Spanned for Launch<'a> {
+  fn start(&self) -> u32 {
+    self.closure.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.closure.end()
+  }
 }
 
 pub struct Return<'a> {
@@ -748,7 +772,6 @@ impl<'a> Spanned for Assign<'a> {
     self.rhs.end()
   }
 }
-
 
 pub struct Send<'a> {
   pub lhs: Expr<'a>,

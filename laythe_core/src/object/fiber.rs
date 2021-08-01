@@ -1,4 +1,4 @@
-use std::{fmt, io::Write, mem, usize};
+use std::{fmt, io::Write, mem, ptr, usize};
 
 use super::{Closure, Fun, Instance, ObjectKind, Upvalue};
 use crate::{
@@ -54,10 +54,25 @@ impl Fiber {
   /// this initial closure to determine how much stack space to initially
   /// reserve
   pub fn new(closure: GcObj<Closure>) -> FiberResult<Self> {
+    let fun = closure.fun();
+    Fiber::new_inner(closure, fun.max_slots() + 1)
+  }
+
+  /// Create a new from the provided closure, used by split_fiber to use
+  /// the top call frame to initialize a new fiber. This reserves stack space
+  /// for the initial frame slots and arguments.
+  fn split(closure: GcObj<Closure>, arg_count: usize) -> FiberResult<Self> {
+    let fun = closure.fun();
+    Fiber::new_inner(closure, fun.max_slots() + arg_count + 1)
+  }
+
+  /// Inner initialization function that actually reserver and create
+  /// each structure
+  fn new_inner(closure: GcObj<Closure>, stack_count: usize) -> FiberResult<Self> {
     // reserve resources
     let fun = closure.fun();
     let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
-    let mut stack = vec![VALUE_NIL; fun.max_slots() + 1];
+    let mut stack = vec![VALUE_NIL; stack_count];
 
     let instructions = fun.chunk().instructions();
     if instructions.is_empty() {
@@ -323,6 +338,46 @@ impl Fiber {
         None
       }
     })
+  }
+
+  /// Attempt to create a new fiber using the most recent call frame
+  pub fn split_fiber(
+    &mut self,
+    hooks: &GcHooks,
+    frame_count: usize,
+    arg_count: usize,
+  ) -> Option<GcObj<Fiber>> {
+    if self.frames().len() != frame_count + 1 {
+      return None;
+    }
+
+    unsafe {
+      self.close_upvalues_internal(self.frame().stack_start);
+    }
+
+    let frame = self.frames.pop().expect("Expected call frame");
+    let mut fiber =
+      hooks.manage_obj(Fiber::split(frame.closure, arg_count).expect("Assumed valid closure"));
+
+    let slots = self.frame_stack().len();
+    assert_eq!(slots, arg_count + 1);
+
+    // if we have any argument bulk copy them to the fiber
+    if slots > 1 {
+      unsafe {
+        ptr::copy_nonoverlapping(self.frame().stack_start.add(1), fiber.stack_top, arg_count);
+        fiber.stack_top = fiber.stack_top.add(arg_count);
+      }
+    }
+
+    // Effectively pop the current fibers frame so they're 'moved'
+    // to the new fiber
+    unsafe {
+      self.stack_top = self.frame().stack_start;
+      self.frame = self.frame.sub(1);
+    }
+
+    Some(fiber)
   }
 
   /// Ensure the stack has enough space. If more space is required

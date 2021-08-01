@@ -548,7 +548,14 @@ impl<'a> Scanner<'a> {
           },
           None => TokenKind::Identifier,
         },
-        "l" => self.check_keyword(1, "et", TokenKind::Let),
+        "l" => match self.nth_char_from(self.start, 1) {
+          Some(c2) => match c2 {
+            "a" => self.check_keyword(2, "unch", TokenKind::Launch),
+            "e" =>  self.check_keyword(2, "t", TokenKind::Let),
+            _ => TokenKind::Identifier,
+          }
+          None => TokenKind::Identifier,
+        }
         "n" => self.check_keyword(1, "il", TokenKind::Nil),
         "o" => self.check_keyword(1, "r", TokenKind::Or),
         "r" => self.check_keyword(1, "eturn", TokenKind::Return),
@@ -914,6 +921,10 @@ mod test {
     map.insert(
       TokenKind::Or,
       TokenGen::ALpha(Box::new(|| "or".to_string())),
+    );
+    map.insert(
+      TokenKind::Launch,
+      TokenGen::ALpha(Box::new(|| "launch".to_string())),
     );
     map.insert(
       TokenKind::Return,

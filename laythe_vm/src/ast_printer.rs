@@ -59,6 +59,7 @@ impl<'a> Visitor<'a> for AstPrint {
       Stmt::Import(import) => self.visit_import(import),
       Stmt::For(for_) => self.visit_for(for_),
       Stmt::If(if_) => self.visit_if(if_),
+      Stmt::Launch(launch) => self.visit_launch(launch),
       Stmt::Return(return_) => self.visit_return(return_),
       Stmt::Continue(continue_) => self.visit_continue(continue_),
       Stmt::Break(break_) => self.visit_break(break_),
@@ -345,6 +346,14 @@ impl<'a> Visitor<'a> for AstPrint {
       }
     }
   }
+
+  fn visit_launch(&mut self, launch: &Launch) -> Self::Result {
+    self.pad();
+    self.buffer.push_str("launch ");
+    self.visit_expr(&launch.closure);
+    self.buffer.push(';')
+  }
+
   fn visit_return(&mut self, return_: &Return) -> Self::Result {
     self.pad();
     match &return_.value {

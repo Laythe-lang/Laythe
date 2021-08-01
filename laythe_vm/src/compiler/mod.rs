@@ -542,18 +542,22 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Some(local) => match kind {
         VariableKind::Get => self.emit_byte(AlignedByteCode::GetLocal(local), name.end()),
         VariableKind::Set => self.emit_byte(AlignedByteCode::SetLocal(local), name.end()),
-      }
+      },
       None => match self.resolve_upvalue(&name) {
         Some(upvalue) => match kind {
           VariableKind::Get => self.emit_byte(AlignedByteCode::GetUpvalue(upvalue), name.end()),
           VariableKind::Set => self.emit_byte(AlignedByteCode::SetUpvalue(upvalue), name.end()),
-        }
+        },
         None => {
           let global_index = self.identifier_constant(name.str());
 
           match kind {
-            VariableKind::Get => self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end()),
-            VariableKind::Set => self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end()),
+            VariableKind::Get => {
+              self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
+            }
+            VariableKind::Set => {
+              self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
+            }
           }
         }
       },
@@ -823,6 +827,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Stmt::For(for_) => self.for_(for_),
       Stmt::If(if_) => self.if_(if_),
       Stmt::Return(return_) => self.return_(return_),
+      Stmt::Launch(launch) => self.launch(launch),
       Stmt::Break(break_) => self.break_(break_),
       Stmt::Continue(continue_) => self.continue_(continue_),
       Stmt::While(while_) => self.while_(while_),
@@ -1296,6 +1301,30 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         self.patch_jump(else_jump);
       }
       None => self.patch_jump(then_jump),
+    }
+  }
+
+  /// Compile a launch statement
+  fn launch(&mut self, launch: &'a ast::Launch<'src>) {
+    match &launch.closure {
+      // we assume an atom from the parser
+      Expr::Atom(atom) => match atom.trailers.last() {
+        Some(Trailer::Call(call)) => {
+          // emit instruction for everything but the actual call
+          let skip_first = self.primary(&atom.primary, &atom.trailers);
+          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+
+          // emit for each argument for the launch call
+          for expr in &call.args {
+            self.expr(expr);
+          }
+
+          // emit for the actual launch
+          self.emit_byte(AlignedByteCode::Launch(call.args.len() as u8), call.end());
+        }
+        _ => unreachable!("Unexpected expression after launch."),
+      },
+      _ => unreachable!("Unexpected expression after launch."),
     }
   }
 
@@ -2712,6 +2741,27 @@ mod test {
   }
 
   #[test]
+  fn launch() {
+    let example = "
+      launch thing();
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Launch(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
   fn channel_send_index() {
     let example = "
       a[5] <- 5;
@@ -3977,8 +4027,6 @@ mod test {
       ],
     );
   }
-
-
 
   #[test]
   fn op_add() {

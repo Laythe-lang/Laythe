@@ -1,0 +1,3 @@
+fn single() {}
+
+launch single();

@@ -156,12 +156,15 @@ fn channel() -> Result<(), std::io::Error> {
     ExecuteResult::CompileError,
   )?;
 
-  test_file_exits(&vec![
-    "language/channel/close_closed.lay",
-    "language/channel/non_integer_capacity.lay",
-    "language/channel/non_number_capacity.lay",
-    "language/channel/send_closed.lay",
-  ], ExecuteResult::RuntimeError)
+  test_file_exits(
+    &vec![
+      "language/channel/close_closed.lay",
+      "language/channel/non_integer_capacity.lay",
+      "language/channel/non_number_capacity.lay",
+      "language/channel/send_closed.lay",
+    ],
+    ExecuteResult::RuntimeError,
+  )
 }
 
 #[test]
@@ -648,6 +651,37 @@ fn iterator() -> Result<(), std::io::Error> {
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
   test_file_exits(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
+fn launch() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/launch/launch_bound_method.lay",
+      "language/launch/launch_exit.lay",
+      "language/launch/launch_init.lay",
+      "language/launch/launch_method.lay",
+      "language/launch/launch_multi.lay",
+      "language/launch/launch_multi_channel_join.lay",
+      "language/launch/launch_native.lay",
+      "language/launch/launch_single.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/launch/no_call.lay",
+      "language/launch/no_expr.lay",
+      "language/launch/no_semi.lay",
+    ],
+    ExecuteResult::CompileError,
+  )?;
+
+  test_file_exits(
+    &vec!["language/launch/launch_error.lay"],
+    ExecuteResult::RuntimeError,
+  )
 }
 
 #[test]

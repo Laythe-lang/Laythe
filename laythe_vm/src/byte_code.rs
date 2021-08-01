@@ -55,6 +55,9 @@ pub enum AlignedByteCode {
   /// Initialize map from literal
   Map(u16),
 
+  /// Launch a fiber
+  Launch(u8),
+
   /// Initialize a channel
   Channel,
 
@@ -226,6 +229,7 @@ impl AlignedByteCode {
         AlignedByteCode::Map(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
+      ByteCode::Launch => (AlignedByteCode::Launch(store[offset + 1]), offset + 2),
       ByteCode::Channel => (AlignedByteCode::Channel, offset + 1),
       ByteCode::BufferedChannel => (AlignedByteCode::BufferedChannel, offset + 1),
       ByteCode::Receive => (AlignedByteCode::Receive, offset + 1),
@@ -365,6 +369,7 @@ impl AlignedByteCode {
       AlignedByteCode::False => 1,
       AlignedByteCode::List(cnt) => -(*cnt as i32) + 1,
       AlignedByteCode::Map(cnt) => -(*cnt as i32 * 2) + 1,
+      AlignedByteCode::Launch(args) => -(*args as i32 + 1),
       AlignedByteCode::Channel => 1,
       AlignedByteCode::BufferedChannel => 0,
       AlignedByteCode::Receive => 0,
@@ -431,6 +436,7 @@ impl Encode for AlignedByteCode {
       Self::False => op(code, ByteCode::False),
       Self::List(slot) => op_short(code, ByteCode::List, slot),
       Self::Map(slot) => op_short(code, ByteCode::Map, slot),
+      Self::Launch(slot) => op_byte(code, ByteCode::Launch, slot),
       Self::Channel => op(code, ByteCode::Channel),
       Self::BufferedChannel => op(code, ByteCode::BufferedChannel),
       Self::Receive => op(code, ByteCode::Receive),
@@ -564,6 +570,9 @@ pub enum ByteCode {
 
   /// Initialize map
   Map,
+
+  /// Launch a fiber
+  Launch,
 
   /// Initialize a channel
   Channel,
@@ -782,6 +791,7 @@ mod test {
       (1, AlignedByteCode::False),
       (3, AlignedByteCode::List(54782)),
       (3, AlignedByteCode::Map(1923)),
+      (2, AlignedByteCode::Launch(197)),
       (1, AlignedByteCode::Channel),
       (1, AlignedByteCode::BufferedChannel),
       (1, AlignedByteCode::Receive),

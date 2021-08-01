@@ -1,0 +1,5 @@
+fn dude(chRec, chSend) { chSend <- 2 * <- chRec; }
+let ch1 = chan(20);
+let ch2 = chan(20);
+launch dude(ch1, ch2);
+for i in 10.times() { ch1 <- i; print(<- ch2); }
