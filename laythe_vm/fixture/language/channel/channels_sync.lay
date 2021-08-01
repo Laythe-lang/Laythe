@@ -1,0 +1,20 @@
+let index = 0;
+let asserts = [0, 1, 2, 3, 4, 5, 6];
+
+fn foo(ch) {
+  for i in 3.times() {
+    <- ch;
+    assertEq(asserts[index], i * 2 + 1);
+    index += 1;
+  }
+}
+
+let ch = chan();
+launch foo(ch);
+
+for i in 3.times() {
+  assertEq(asserts[index], i * 2);
+  index += 1;
+
+  ch <- nil;
+}

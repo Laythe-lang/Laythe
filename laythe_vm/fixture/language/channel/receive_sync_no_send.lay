@@ -1,0 +1,8 @@
+fn takeOne(ch) {
+  assert(false);
+  <- ch;
+}
+
+let ch = chan();
+launch takeOne(ch);
+assert(true);

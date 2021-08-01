@@ -20,6 +20,15 @@ pub use primitives::{
   object::OBJECT_CLASS_NAME, string::STRING_CLASS_NAME,
 };
 
+
+pub use primitives::error::{
+  ERROR_CLASS_NAME, EXPORT_ERROR_NAME, IMPORT_ERROR_NAME, INDEX_ERROR_NAME,
+  METHOD_NOT_FOUND_ERROR_NAME, PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, SYNTAX_ERROR_NAME,
+  TYPE_ERROR_NAME, VALUE_ERROR_NAME, DEADLOCK_ERROR_NAME
+};
+
+use self::primitives::create_primitives;
+
 pub fn create_std_core(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Package>> {
   let mut global_module = create_primitives(hooks, emitter)?;
   let std = hooks.manage(Package::new(
@@ -34,10 +43,3 @@ pub fn create_std_core(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc
   Ok(std)
 }
 
-pub use primitives::error::{
-  ERROR_CLASS_NAME, EXPORT_ERROR_NAME, IMPORT_ERROR_NAME, INDEX_ERROR_NAME,
-  METHOD_NOT_FOUND_ERROR_NAME, PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, SYNTAX_ERROR_NAME,
-  TYPE_ERROR_NAME, VALUE_ERROR_NAME,
-};
-
-use self::primitives::create_primitives;

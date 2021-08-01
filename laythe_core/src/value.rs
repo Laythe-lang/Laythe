@@ -442,7 +442,7 @@ mod unboxed {
       assert_eq!(mem::size_of::<List<Value>>(), 24);
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 24);
-      assert_eq!(mem::size_of::<Fun>(), 104);
+      assert_eq!(mem::size_of::<Fun>(), 128);
       assert_eq!(mem::size_of::<Class>(), 136);
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 32);
@@ -775,7 +775,7 @@ mod boxed {
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 24);
       assert_eq!(mem::size_of::<Fun>(), 96);
-      assert_eq!(mem::size_of::<Fiber>(), 104);
+      assert_eq!(mem::size_of::<Fiber>(), 128);
       assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 16);

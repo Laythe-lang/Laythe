@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "compiler/arm_compiler.lay"
+        "language/channel/receive_unbuffered.lay"
         // "lox_interpreter/lox.lay",
         // "../../../craftinginterpreters/test/benchmark/binary_trees.lox"
       ],

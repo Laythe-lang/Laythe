@@ -17,7 +17,7 @@ use laythe_core::{
   module::{Import, Module, Package},
   object::{
     Channel, Class, Closure, Fiber, Fun, FunBuilder, Instance, List, Map, Method, Native,
-    NativeMeta, ObjectKind, Upvalue,
+    NativeMeta, ObjectKind, ReceiveResult, SendResult, Upvalue,
   },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   to_obj_kind,
@@ -84,6 +84,9 @@ pub fn default_native_vm() -> Vm {
 pub struct Vm {
   /// The current running fiber
   fiber: GcObj<Fiber>,
+
+  /// The main fiber
+  main_fiber: GcObj<Fiber>,
 
   /// The vm's garbage collector
   gc: RefCell<Allocator>,
@@ -167,6 +170,7 @@ impl Vm {
     let mut vm = Vm {
       io,
       fiber: GcObj::dangling(),
+      main_fiber: GcObj::dangling(),
       gc,
       files: VmFiles::default(),
       fiber_queue: VecDeque::new(),
@@ -222,7 +226,7 @@ impl Vm {
           self.pop_roots(2);
 
           self.interpret(main_module, &source, file_id);
-        }
+        },
         Err(error) => panic!("{}", error),
       }
     }
@@ -250,12 +254,12 @@ impl Vm {
         let main_module = self.main_module(module_path, main_id);
 
         self.interpret(main_module, &source, file_id)
-      }
+      },
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
           .expect("Unable to write to stderr");
         ExecuteResult::RuntimeError
-      }
+      },
     }
   }
 
@@ -275,7 +279,7 @@ impl Vm {
       Ok(fun) => {
         self.prepare(fun);
         self.execute(ExecuteMode::Normal)
-      }
+      },
       Err(errors) => {
         let mut stdio = self.io.stdio();
         let stderr_color = stdio.stderr_color();
@@ -284,7 +288,7 @@ impl Vm {
             .expect("Unable to write to stderr");
         }
         ExecuteResult::CompileError
-      }
+      },
     }
   }
 
@@ -335,6 +339,7 @@ impl Vm {
     };
 
     self.fiber = self.manage_obj(fiber);
+    self.main_fiber = self.fiber;
     self.fiber.activate();
     self.load_ip();
 
@@ -417,7 +422,7 @@ impl Vm {
         let result = self.run_fun(val!(self.builtin.errors.import), &[error_message]);
 
         self.to_call_result(result)
-      }
+      },
     }
   }
 
@@ -501,38 +506,34 @@ impl Vm {
         };
 
         match result {
+          Signal::Ok => (),
           Signal::OkReturn => {
             if let ExecuteMode::CallFunction(depth) = mode {
               if depth == self.fiber.frames().len() {
                 return ExecuteResult::FunResult(self.fiber.peek(0));
               }
             }
-          }
-          Signal::Ok => (),
+          },
           Signal::ContextSwitch => match self.fiber_queue.pop_front() {
             Some(fiber) => self.context_switch(fiber),
             None => {
-              self.runtime_error(
-                self.builtin.errors.runtime,
-                "TODO make it's own deadlock error",
-              );
-
-              if let Some(execute_result) = self.stack_unwind(self.fiber.error().unwrap()) {
-                return execute_result;
-              }
-            }
+              let mut stdio = self.io().stdio();
+              let stderr = stdio.stderr();
+              writeln!(stderr, "Fatal error deadlock.").expect("Unable to write to stderr");
+              return ExecuteResult::RuntimeError;
+            },
           },
           Signal::RuntimeError => match self.fiber.error() {
             Some(error) => {
               if let Some(execute_result) = self.stack_unwind(error) {
                 return execute_result;
               }
-            }
+            },
             None => self.internal_error("Runtime error was not set."),
           },
           Signal::Exit => {
             return ExecuteResult::Ok(self.exit_code);
-          }
+          },
         }
       }
     }
@@ -748,16 +749,16 @@ impl Vm {
     Signal::Ok
   }
 
-  /// create a map from a map literal
+  /// create synchronous channel
   unsafe fn op_channel(&mut self) -> Signal {
     let hooks = GcHooks::new(self);
-    let channel = self.manage_obj(Channel::with_capacity(&hooks, 1));
+    let channel = self.manage_obj(Channel::sync(&hooks));
     self.fiber.push(val!(channel));
 
     Signal::Ok
   }
 
-  /// create a map from a map literal
+  /// create a buffered channel
   unsafe fn op_buffered_channel(&mut self) -> Signal {
     let capacity = self.fiber.pop();
 
@@ -786,29 +787,44 @@ impl Vm {
     Signal::Ok
   }
 
-  /// create a map from a map literal
+  /// receive from a channel
   unsafe fn op_receive(&mut self) -> Signal {
     let channel = self.fiber.pop();
 
     if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
+      self.fiber.add_used_channel(channel);
+
       match channel.receive(self.fiber) {
-        laythe_core::object::ReceiveResult::Ok(value) => {
+        ReceiveResult::Ok(value) => {
           self.fiber.push(value);
           Signal::Ok
         }
-        laythe_core::object::ReceiveResult::NoReceiveAccess => {
+        ReceiveResult::NoReceiveAccess => {
           self.runtime_error(self.builtin.errors.value, "todo no read access")
         }
-        laythe_core::object::ReceiveResult::Empty(fiber) => {
-          if let Some(fiber) = fiber  {
+        ReceiveResult::EmptyBlock(fiber) => {
+          if let Some(mut fiber) = fiber  {
+            fiber.unblock();
             self.fiber_queue.push_back(fiber);
           }
 
           self.fiber.push(val!(channel));
           self.update_ip(-1);
+          self.fiber.block();
           Signal::ContextSwitch
         },
-        laythe_core::object::ReceiveResult::Closed => {
+        ReceiveResult::Empty(fiber) => {
+          if let Some(mut fiber) = fiber {
+            fiber.unblock();
+            self.fiber_queue.push_back(fiber);
+          }
+
+          self.fiber.push(val!(channel));
+          self.update_ip(-1);
+          self.fiber.sleep();
+          Signal::ContextSwitch
+        },
+        ReceiveResult::Closed => {
           self.fiber.push(VALUE_NIL);
           Signal::Ok
         }
@@ -818,6 +834,57 @@ impl Vm {
         self.builtin.errors.type_,
         "Can only drain from a channel.",
       )
+    })
+  }
+
+  /// send to a channel
+  unsafe fn op_send(&mut self) -> Signal {
+    let channel = self.fiber.pop();
+    let value = self.fiber.peek(0);
+
+    if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
+      self.fiber.add_used_channel(channel);
+
+      match channel.send(self.fiber, value) {
+        SendResult::Ok => Signal::Ok,
+        SendResult::NoSendAccess => self.runtime_error(
+          self.builtin.errors.runtime,
+          &"Attempted to send into a receive only channel.",
+        ),
+        SendResult::FullBlock(fiber) => {
+          // if channel has a waiter put into
+          // the fiber queue
+          if let Some(mut fiber) = fiber {
+            fiber.unblock();
+            self.fiber_queue.push_back(fiber);
+          }
+
+          // the channel enqueued the result but is now full so we need to switch
+          self.fiber.block();
+          Signal::ContextSwitch
+        }
+        SendResult::Full(fiber) => {
+          // if channel has a waiter put into
+          // the fiber queue
+          if let Some(mut fiber) = fiber {
+            fiber.unblock();
+            self.fiber_queue.push_back(fiber);
+          }
+
+          // replace the channel on the stack and rewind the
+          // ip to the beginning of this instruction
+          self.fiber.push(val!(channel));
+          self.update_ip(-1);
+          self.fiber.sleep();
+          Signal::ContextSwitch
+        }
+        SendResult::Closed => self.runtime_error(
+          self.builtin.errors.runtime,
+          &"Attempted to send into a closed channel.",
+        ),
+      }
+    } else {
+      self.runtime_error(self.builtin.errors.runtime, "Attempted to send into a non channel.")
     })
   }
 
@@ -915,7 +982,7 @@ impl Vm {
               .inline_cache_mut()
               .set_invoke_cache(inline_slot, class, method);
             self.resolve_call(method, arg_count)
-          }
+          },
           None => self.runtime_error(
             self.builtin.errors.property,
             &format!(
@@ -925,7 +992,7 @@ impl Vm {
             ),
           ),
         }
-      }
+      },
     }
   }
 
@@ -962,7 +1029,7 @@ impl Vm {
             .inline_cache_mut()
             .set_invoke_cache(inline_slot, super_class, method);
           self.resolve_call(method, arg_count)
-        }
+        },
         None => self.runtime_error(
           self.builtin.errors.property,
           &format!(
@@ -1130,40 +1197,6 @@ impl Vm {
     Signal::Ok
   }
 
-  unsafe fn op_send(&mut self) -> Signal {
-    let channel = self.fiber.pop();
-    let value = self.fiber.peek(0);
-
-    if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
-      match channel.send(self.fiber, value) {
-        laythe_core::object::SendResult::Ok => Signal::Ok,
-        laythe_core::object::SendResult::NoSendAccess => self.runtime_error(
-          self.builtin.errors.runtime,
-          &"Attempted to send into a receive only channel.",
-        ),
-        laythe_core::object::SendResult::Full(fiber) => {
-          // if channel has a waiter put into
-          // the fiber queue
-          if let Some(fiber) = fiber {
-            self.fiber_queue.push_back(fiber);
-          }
-
-          // replace the channel on the stack and rewind the
-          // ip to the beginning of this instruction
-          self.fiber.push(val!(channel));
-          self.update_ip(-1);
-          Signal::ContextSwitch
-        }
-        laythe_core::object::SendResult::Closed => self.runtime_error(
-          self.builtin.errors.runtime,
-          &"Attempted to send into a closed channel.",
-        ),
-      }
-    } else {
-      self.runtime_error(self.builtin.errors.runtime, "Attempted to send into a non channel.")
-    })
-  }
-
   unsafe fn op_get_global(&mut self) -> Signal {
     let store_index = self.read_short();
     let string = self.read_string(store_index);
@@ -1172,7 +1205,7 @@ impl Vm {
       Some(gbl) => {
         self.fiber.push(gbl);
         Signal::Ok
-      }
+      },
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined variable {}", string),
@@ -1260,12 +1293,12 @@ impl Vm {
         // generate a new import object
         let path = self.manage(List::from(path));
         self.manage(Import::new(*package, path))
-      }
+      },
       None => {
         // generate a new import object
         let path = self.manage(List::new());
         self.manage(Import::new(path_segments[0], path))
-      }
+      },
     };
 
     self.gc().push_root(import);
@@ -1275,7 +1308,7 @@ impl Vm {
         Ok(module) => {
           self.fiber.push(val!(module));
           Signal::Ok
-        }
+        },
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1319,12 +1352,12 @@ impl Vm {
         // generate a new import object
         let path = self.manage(List::from(path));
         self.manage(Import::new(*package, path))
-      }
+      },
       None => {
         // generate a new import object
         let path = self.manage(List::new());
         self.manage(Import::new(path_segments[0], path))
-      }
+      },
     };
 
     self.gc().push_root(import);
@@ -1334,7 +1367,7 @@ impl Vm {
         Ok(module) => {
           self.fiber.push(val!(module));
           Signal::Ok
-        }
+        },
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1629,7 +1662,7 @@ impl Vm {
       match class.meta_class() {
         Some(mut meta) => {
           meta.add_method(&GcHooks::new(self), name, method);
-        }
+        },
         None => self.internal_error(&format!("{} meta class not set.", class.name())),
       }
     } else {
@@ -1740,7 +1773,7 @@ impl Vm {
         } else {
           Signal::Ok
         }
-      }
+      },
     }
   }
 
@@ -1776,7 +1809,7 @@ impl Vm {
             assert_roots(native, roots_before, roots_current);
           }
           Signal::OkReturn
-        }
+        },
         Call::Err(error) => self.set_error(error),
         Call::Exit(code) => self.set_exit(code),
       },
@@ -1795,11 +1828,11 @@ impl Vm {
               assert_roots(native, roots_before, roots_current);
             }
             Signal::OkReturn
-          }
+          },
           Call::Err(error) => self.set_error(error),
           Call::Exit(code) => self.set_exit(code),
         }
-      }
+      },
     }
   }
 
@@ -1823,7 +1856,6 @@ impl Vm {
   #[inline]
   unsafe fn context_switch(&mut self, fiber: GcObj<Fiber>) {
     self.store_ip();
-    self.fiber.sleep();
 
     self.fiber = fiber;
     self.fiber.activate();
@@ -1854,8 +1886,18 @@ impl Vm {
           self.current_fun = current_fun;
           self.load_ip();
           None
-        }
-        None => Some(Signal::Exit),
+        },
+        None => {
+          if self.fiber == self.main_fiber {
+            Some(Signal::Exit)
+          } else {
+            if let Some(mut fiber) = self.fiber.complete() {
+              fiber.unblock();
+              self.fiber_queue.push_back(fiber);
+            }
+            Some(Signal::ContextSwitch)
+          }
+        },
       },
       None => self.internal_error("Compilation failure attempted to pop last frame"),
     }
@@ -1974,7 +2016,7 @@ impl Vm {
             ),
           )),
         }
-      }
+      },
     }
   }
 
@@ -1991,7 +2033,7 @@ impl Vm {
         let bound = self.manage_obj(Method::new(self.fiber.peek(0), method));
         self.fiber.peek_set(0, val!(bound));
         Signal::Ok
-      }
+      },
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined property {}", name),
@@ -2080,10 +2122,10 @@ impl Vm {
       match &**upvalue {
         Upvalue::Open(index) => {
           write!(stdout, "[ stack {} ]", self.stack[*index])?;
-        }
+        },
         Upvalue::Closed(closed) => {
           write!(stdout, "[ heap {} ]", closed)?;
-        }
+        },
       }
     }
 
@@ -2097,7 +2139,7 @@ impl Vm {
       ExecuteResult::Ok(_) => self.internal_error("Accidental early exit in hook call"),
       ExecuteResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
-      }
+      },
       ExecuteResult::RuntimeError => match self.fiber.error() {
         Some(error) => Call::Err(error),
         None => self.internal_error("Error not set on vm executor."),
@@ -2131,7 +2173,7 @@ impl Vm {
         } else {
           self.internal_error("Failed to construct error")
         })
-      }
+      },
       _ => self.internal_error("Failed to construct error"),
     }
   }
@@ -2157,11 +2199,11 @@ impl Vm {
         self.current_fun = frame.closure.fun();
         self.ip = frame.ip;
         None
-      }
+      },
       None => {
         self.print_error(error);
         Some(ExecuteResult::RuntimeError)
-      }
+      },
     }
   }
 
@@ -2187,6 +2229,7 @@ fn assert_roots(native: GcObj<Native>, roots_before: usize, roots_now: usize) {
 impl TraceRoot for Vm {
   fn trace(&self) {
     self.fiber.trace();
+    self.main_fiber.trace();
     for fiber in &self.fiber_queue {
       fiber.trace();
     }
@@ -2198,6 +2241,7 @@ impl TraceRoot for Vm {
 
   fn trace_debug(&self, log: &mut dyn Write) {
     self.fiber.trace_debug(log);
+    self.main_fiber.trace_debug(log);
     for fiber in &self.fiber_queue {
       fiber.trace_debug(log);
     }

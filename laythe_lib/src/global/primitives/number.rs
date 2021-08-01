@@ -19,7 +19,7 @@ use std::mem;
 
 use super::{
   class_inheritance,
-  error::{FORMAT_CLASS_NAME, VALUE_ERROR_NAME},
+  error::{FORMAT_ERROR_NAME, VALUE_ERROR_NAME},
 };
 
 pub const NUMBER_CLASS_NAME: &str = "Number";
@@ -52,7 +52,7 @@ pub fn declare_number_class(hooks: &GcHooks, module: &mut Module) -> StdResult<(
 
 pub fn define_number_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NUMBER_CLASS_NAME)?;
-  let format_error = val!(load_class_from_module(hooks, module, FORMAT_CLASS_NAME)?);
+  let format_error = val!(load_class_from_module(hooks, module, FORMAT_ERROR_NAME)?);
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);
 
   class.add_method(

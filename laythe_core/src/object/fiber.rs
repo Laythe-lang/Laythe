@@ -1,6 +1,6 @@
 use std::{fmt, io::Write, mem, ptr, usize};
 
-use super::{Closure, Fun, Instance, ObjectKind, Upvalue};
+use super::{Channel, Closure, Fun, Instance, ObjectKind, Upvalue};
 use crate::{
   call_frame::CallFrame,
   constants::SCRIPT,
@@ -16,6 +16,7 @@ const INITIAL_FRAME_SIZE: usize = 4;
 pub enum FiberState {
   Running,
   Pending,
+  Blocked,
   Complete,
 }
 
@@ -32,6 +33,9 @@ pub struct Fiber {
 
   /// A stack holding call frames currently in use
   frames: Vec<CallFrame>,
+
+  /// A list of channels executed on this fiber
+  channels: Vec<GcObj<Channel>>,
 
   /// pointer to the top of the value stack
   stack_top: *mut Value,
@@ -94,6 +98,7 @@ impl Fiber {
     Ok(Self {
       stack,
       frames,
+      channels: vec![],
       state: FiberState::Pending,
       error: None,
       open_upvalues: vec![],
@@ -153,11 +158,53 @@ impl Fiber {
     self.state = FiberState::Pending;
   }
 
+  /// Put the current fiber to sleep
+  #[inline]
+  pub fn block(&mut self) {
+    assert_eq!(self.state, FiberState::Running);
+    self.state = FiberState::Blocked;
+  }
+
+  /// Put the current fiber to sleep
+  #[inline]
+  pub fn unblock(&mut self) {
+    assert!(matches!(
+      self.state,
+      FiberState::Blocked | FiberState::Pending
+    ));
+    if let FiberState::Blocked = self.state {
+      self.state = FiberState::Pending;
+    }
+  }
+
   /// Activate the current fiber
   #[inline]
-  pub fn complete(&mut self) {
-    assert_eq!(self.state, FiberState::Running);
-    self.state = FiberState::Complete;
+  pub fn complete(&mut self) -> Option<GcObj<Fiber>> {
+    assert!(matches!(
+      self.state,
+      FiberState::Running | FiberState::Complete
+    ));
+    if let FiberState::Complete = self.state {
+      self.state = FiberState::Complete;
+    }
+
+    let fiber = self
+      .channels
+      .iter_mut()
+      .map(|channel| channel.runnable_waiter())
+      .find(|fiber| fiber.is_some())
+      .unwrap_or(None);
+
+    // clear channel reference for gc
+    self.channels.clear();
+
+    fiber
+  }
+
+  /// A a channel to the list of used channels by
+  /// this fiber
+  pub fn add_used_channel(&mut self, channel: GcObj<Channel>) {
+    self.channels.push(channel);
   }
 
   /// push a value onto the stack
@@ -332,11 +379,11 @@ impl Fiber {
         self.assert_frame_inbounds();
 
         Some(frame.closure.fun())
-      }
+      },
       None => {
         self.state = FiberState::Complete;
         None
-      }
+      },
     })
   }
 
@@ -489,7 +536,7 @@ impl Fiber {
         self.stack_top = stack_top;
 
         Some(frame)
-      }
+      },
       None => None,
     }
   }

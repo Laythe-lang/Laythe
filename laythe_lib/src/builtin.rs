@@ -8,7 +8,7 @@ use laythe_core::{
   value::{Value, ValueKind},
 };
 
-use crate::global::{BOOL_CLASS_NAME, CHANNEL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, EXPORT_ERROR_NAME, FIBER_CLASS_NAME, IMPORT_ERROR_NAME, ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME, MODULE_CLASS_NAME, NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME, PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, STRING_CLASS_NAME, TYPE_ERROR_NAME, VALUE_ERROR_NAME};
+use crate::global::{BOOL_CLASS_NAME, CHANNEL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, EXPORT_ERROR_NAME, FIBER_CLASS_NAME, IMPORT_ERROR_NAME, ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME, MODULE_CLASS_NAME, NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME, PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, STRING_CLASS_NAME, TYPE_ERROR_NAME, DEADLOCK_ERROR_NAME, VALUE_ERROR_NAME};
 
 pub struct BuiltIn {
   /// built in classes related to dependencies
@@ -167,6 +167,8 @@ pub struct BuiltInErrors {
 
   pub value: GcObj<Class>,
 
+  pub deadlock: GcObj<Class>,
+
   pub property: GcObj<Class>,
 
   pub import: GcObj<Class>,
@@ -261,6 +263,10 @@ pub fn builtin_from_module(hooks: &GcHooks, module: &Module) -> Option<BuiltIn> 
         .to_class(),
       type_: module
         .get_symbol(hooks.manage_str(TYPE_ERROR_NAME))?
+        .to_obj()
+        .to_class(),
+        deadlock: module
+        .get_symbol(hooks.manage_str(DEADLOCK_ERROR_NAME))?
         .to_obj()
         .to_class(),
       value: module

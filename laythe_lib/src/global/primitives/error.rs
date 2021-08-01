@@ -19,7 +19,8 @@ const ERROR_FIELD_STACK: &str = "stack";
 const ERROR_FIELD_INNER: &str = "inner";
 
 pub const TYPE_ERROR_NAME: &str = "TypeError";
-pub const FORMAT_CLASS_NAME: &str = "FormatError";
+pub const FORMAT_ERROR_NAME: &str = "FormatError";
+pub const DEADLOCK_ERROR_NAME: &str = "DeadLockError";
 pub const VALUE_ERROR_NAME: &str = "ValueError";
 pub const INDEX_ERROR_NAME: &str = "IndexError";
 pub const CHANNEL_ERROR_NAME: &str = "ChannelError";
@@ -54,9 +55,10 @@ pub fn create_error_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class>
 
 pub fn declare_global_errors(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
   let type_error = error_inheritance(hooks, module, TYPE_ERROR_NAME)?;
-  let format_error = error_inheritance(hooks, module, FORMAT_CLASS_NAME)?;
+  let format_error = error_inheritance(hooks, module, FORMAT_ERROR_NAME)?;
   let value_error = error_inheritance(hooks, module, VALUE_ERROR_NAME)?;
   let index_error = error_inheritance(hooks, module, INDEX_ERROR_NAME)?;
+  let deadlock_error = error_inheritance(hooks, module, DEADLOCK_ERROR_NAME)?;
   let channel_error = error_inheritance(hooks, module, CHANNEL_ERROR_NAME)?;
   let syntax_error = error_inheritance(hooks, module, SYNTAX_ERROR_NAME)?;
   let import_error = error_inheritance(hooks, module, IMPORT_ERROR_NAME)?;
@@ -69,6 +71,7 @@ pub fn declare_global_errors(hooks: &GcHooks, module: &mut Module) -> StdResult<
   export_and_insert(hooks, module, format_error.name(), val!(format_error))?;
   export_and_insert(hooks, module, value_error.name(), val!(value_error))?;
   export_and_insert(hooks, module, index_error.name(), val!(index_error))?;
+  export_and_insert(hooks, module, deadlock_error.name(), val!(deadlock_error))?;
   export_and_insert(hooks, module, channel_error.name(), val!(channel_error))?;
   export_and_insert(hooks, module, syntax_error.name(), val!(syntax_error))?;
   export_and_insert(hooks, module, import_error.name(), val!(import_error))?;
