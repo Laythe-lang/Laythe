@@ -524,6 +524,12 @@ impl fmt::Debug for GcObject {
   }
 }
 
+impl fmt::Pointer for GcObject {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    self.ptr.fmt(f)
+  }
+}
+
 impl Mark for GcObject {
   #[inline]
   fn mark(&self) -> bool {

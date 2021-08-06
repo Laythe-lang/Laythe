@@ -182,7 +182,7 @@ impl Class {
 
 impl fmt::Display for Class {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<{} {:p}>", &*self.name(), &self)
+    write!(f, "<class {} {:p}>", &*self.name(), &*self)
   }
 }
 

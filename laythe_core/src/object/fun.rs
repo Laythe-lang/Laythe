@@ -270,7 +270,7 @@ impl Fun {
 
 impl fmt::Display for Fun {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<fn {:?}>", self.name)
+    write!(f, "<fn {:?} {:p}>", self.name, &*self)
   }
 }
 

@@ -37,16 +37,13 @@ use std::{collections::VecDeque, io::Write};
 use std::{convert::TryInto, usize};
 
 #[cfg(feature = "debug")]
-use crate::debug::{disassemble_instruction, exception_catch};
+use crate::debug::disassemble_instruction;
 
 #[cfg(feature = "debug")]
 use std::io;
 
 #[cfg(feature = "debug")]
 use laythe_env::stdio::Stdio;
-
-#[cfg(feature = "debug")]
-use laythe_core::call_frame::CallFrame;
 
 #[cfg(feature = "debug_upvalues")]
 use std::{cmp::Ordering, io};
@@ -803,7 +800,7 @@ impl Vm {
           self.runtime_error(self.builtin.errors.value, "todo no read access")
         }
         ReceiveResult::EmptyBlock(fiber) => {
-          if let Some(mut fiber) = fiber  {
+          if let Some(mut fiber) = fiber.or_else(|| self.fiber.get_runnable())  {
             fiber.unblock();
             self.fiber_queue.push_back(fiber);
           }
@@ -814,7 +811,7 @@ impl Vm {
           Signal::ContextSwitch
         },
         ReceiveResult::Empty(fiber) => {
-          if let Some(mut fiber) = fiber {
+          if let Some(mut fiber) = fiber.or_else(|| self.fiber.get_runnable()) {
             fiber.unblock();
             self.fiber_queue.push_back(fiber);
           }
@@ -854,7 +851,7 @@ impl Vm {
         SendResult::FullBlock(fiber) => {
           // if channel has a waiter put into
           // the fiber queue
-          if let Some(mut fiber) = fiber {
+          if let Some(mut fiber) = fiber.or_else(|| self.fiber.get_runnable()) {
             fiber.unblock();
             self.fiber_queue.push_back(fiber);
           }
@@ -866,7 +863,7 @@ impl Vm {
         SendResult::Full(fiber) => {
           // if channel has a waiter put into
           // the fiber queue
-          if let Some(mut fiber) = fiber {
+          if let Some(mut fiber) = fiber.or_else(|| self.fiber.get_runnable()) {
             fiber.unblock();
             self.fiber_queue.push_back(fiber);
           }
@@ -2059,15 +2056,6 @@ impl Vm {
         ),
       ),
     }
-  }
-
-  /// Print debugging information for a caught exceptions
-  #[cfg(feature = "debug")]
-  unsafe fn print_exception_debug(&self, frame: &CallFrame, idx: usize) -> io::Result<()> {
-    let mut stdio = self.io.stdio();
-    let mut stdout = stdio.stdout();
-
-    exception_catch(&mut stdout, frame, idx)
   }
 
   /// Print debugging information for the current instruction

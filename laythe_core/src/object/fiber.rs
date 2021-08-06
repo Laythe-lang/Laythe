@@ -188,17 +188,23 @@ impl Fiber {
       self.state = FiberState::Complete;
     }
 
-    let fiber = self
-      .channels
-      .iter_mut()
-      .map(|channel| channel.runnable_waiter())
-      .find(|fiber| fiber.is_some())
-      .unwrap_or(None);
+    let fiber = self.get_runnable();
 
     // clear channel reference for gc
     self.channels.clear();
 
     fiber
+  }
+
+  /// Try to get a runnable fiber
+  #[inline]
+  pub fn get_runnable(&mut self) -> Option<GcObj<Fiber>> {
+    self
+      .channels
+      .iter_mut()
+      .map(|channel| channel.runnable_waiter())
+      .find(|fiber| fiber.is_some())
+      .unwrap_or(None)
   }
 
   /// A a channel to the list of used channels by

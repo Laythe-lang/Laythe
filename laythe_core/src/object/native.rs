@@ -130,7 +130,7 @@ impl Native {
 
 impl fmt::Display for Native {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<{} native {:p}>", &*self.meta().name, &self)
+    write!(f, "<{} native {:p}>", &*self.meta().name, &*self)
   }
 }
 

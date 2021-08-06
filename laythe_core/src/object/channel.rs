@@ -357,7 +357,7 @@ impl Channel {
 
 impl fmt::Display for Channel {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<Channel {:p}>", &self)
+    write!(f, "<Channel {:p}>", &*self)
   }
 }
 

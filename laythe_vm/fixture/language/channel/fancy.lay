@@ -1,0 +1,20 @@
+fn left(mainCh, sendCh, RecCh) {
+  sendCh <- <- mainCh;
+  assertEq(<- RecCh, "right");
+}
+
+fn right(mainCh, sendCh, RecCh) {
+  assertEq(<- RecCh, "left");
+  sendCh <- <- mainCh;
+}
+
+let main1Ch = chan();
+let main2Ch = chan();
+let leftCh = chan();
+let rightCh = chan();
+
+launch left(main1Ch, leftCh, rightCh);
+launch right(main2Ch, rightCh, leftCh);
+
+main1Ch <- "left";
+main2Ch <- "right";
