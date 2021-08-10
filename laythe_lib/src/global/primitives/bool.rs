@@ -29,7 +29,7 @@ pub fn define_bool_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut bool_class = load_class_from_module(hooks, module, BOOL_CLASS_NAME)?;
 
   bool_class.add_method(
-    &hooks,
+    hooks,
     hooks.manage_str(String::from(BOOL_STR.name)),
     val!(BoolStr::native(hooks)),
   );

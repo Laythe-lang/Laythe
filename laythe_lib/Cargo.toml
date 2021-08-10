@@ -5,7 +5,9 @@ authors = ["John Chabot <johnchabot2013@gmail.com>"]
 edition = "2018"
 
 [features]
+default = ["desktop"]
 wasm = ["js-sys"]
+desktop = ["rand"]
 
 [lib]
 name = "laythe_lib"

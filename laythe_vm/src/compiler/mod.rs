@@ -289,7 +289,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       enclosing: None,
       local_count: 1,
       locals: vec![Local {
-        name: &UNINITIALIZED_TOKEN,
+        name: UNINITIALIZED_TOKEN,
         depth: 0,
         is_captured: false,
       }],
@@ -536,14 +536,14 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// retrieve a named variable from either local or global scope
   fn variable(&mut self, name: &Token<'src>, kind: VariableKind) {
-    let index = self.resolve_local(&name);
+    let index = self.resolve_local(name);
 
     match index {
       Some(local) => match kind {
         VariableKind::Get => self.emit_byte(AlignedByteCode::GetLocal(local), name.end()),
         VariableKind::Set => self.emit_byte(AlignedByteCode::SetLocal(local), name.end()),
       },
-      None => match self.resolve_upvalue(&name) {
+      None => match self.resolve_upvalue(name) {
         Some(upvalue) => match kind {
           VariableKind::Get => self.emit_byte(AlignedByteCode::GetUpvalue(upvalue), name.end()),
           VariableKind::Set => self.emit_byte(AlignedByteCode::SetUpvalue(upvalue), name.end()),
@@ -905,7 +905,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     // declare the class by name
     let name = &class.name;
     let name_constant = self.identifier_constant(name.str());
-    self.declare_variable(&name);
+    self.declare_variable(name);
 
     self.emit_byte(AlignedByteCode::Class(name_constant), name.end());
     self.define_variable(name_constant, name.end());
@@ -946,12 +946,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.add_local(unsafe { super_token.deref_static() });
 
     self.define_variable(0, span.end);
-    self.variable(&name, VariableKind::Get);
+    self.variable(name, VariableKind::Get);
     self.emit_byte(AlignedByteCode::Inherit, span.end);
 
     // process the initializer
     let field_line = if let Some(init) = &class.init {
-      self.method(&init, FunKind::Initializer);
+      self.method(init, FunKind::Initializer);
       init.start()
     } else {
       class.start()
@@ -961,12 +961,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     // process methods
     for method in &class.methods {
-      self.method(&method, FunKind::Method);
+      self.method(method, FunKind::Method);
     }
 
     // process static methods
     for static_method in &class.static_methods {
-      self.static_method(&static_method);
+      self.static_method(static_method);
     }
 
     self.emit_byte(AlignedByteCode::Drop, class.end());
@@ -1064,7 +1064,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     };
 
     let first_local = Local {
-      name: &token,
+      name: token,
       depth: 0,
       is_captured: false,
     };
@@ -1075,9 +1075,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     compiler.call_sig(&fun.call_sig);
 
     let exit = match &fun.body {
-      ast::FunBody::Block(block) => compiler.block(&block),
+      ast::FunBody::Block(block) => compiler.block(block),
       ast::FunBody::Expr(expr) => {
-        compiler.expr(&expr);
+        compiler.expr(expr);
         compiler.emit_byte(AlignedByteCode::Return, expr.end());
         ScopeExit::Early
       },
@@ -1131,7 +1131,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       },
       ast::ImportStem::Rename(rename) => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
-        let name = self.make_identifier(&rename);
+        let name = self.make_identifier(rename);
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
       },
       ast::ImportStem::Symbols(symbols) => {
@@ -1185,7 +1185,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       let iter_const = self_.string_constant(ITER);
 
       // declare the hidden local $iter variable
-      let iterator_const = self_.identifier_constant(&iterator_token.str());
+      let iterator_const = self_.identifier_constant(iterator_token.str());
       self_.declare_variable(unsafe { iterator_token.deref_static() });
       self_.emit_byte(AlignedByteCode::Invoke((iter_const, 0)), expr_line);
       self_.emit_byte(AlignedByteCode::Slot(self_.emit_invoke_id()), expr_line);
@@ -1332,7 +1332,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn return_(&mut self, return_: &'a ast::Return<'src>) {
     match &return_.value {
       Some(v) => {
-        self.expr(&v);
+        self.expr(v);
         self.emit_byte(AlignedByteCode::Return, v.end());
       },
       None => self.emit_return(return_.start()),
@@ -1384,7 +1384,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       if let ScopeExit::Early = self.exit_scope {
         break;
       }
-      self.decl(&decl);
+      self.decl(decl);
     }
 
     mem::replace(&mut self.exit_scope, ScopeExit::Normal)
@@ -1566,7 +1566,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
                 }
               }
 
-              let name = self.identifier_constant(&access.prop.str());
+              let name = self.identifier_constant(access.prop.str());
 
               self.emit_byte(AlignedByteCode::Dup, access.end());
               self.emit_byte(AlignedByteCode::GetProperty(name), access.end());
@@ -1711,9 +1711,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       }
 
       skip = match trailer {
-        Trailer::Call(call) => self.call(&call),
-        Trailer::Index(index) => self.index(&index),
-        Trailer::Access(access) => self.access(&access, &trailers[(idx + 1)..]),
+        Trailer::Call(call) => self.call(call),
+        Trailer::Index(index) => self.index(index),
+        Trailer::Access(access) => self.access(access, &trailers[(idx + 1)..]),
       }
     }
   }
@@ -1731,7 +1731,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn channel(&mut self, channel: &'a ast::Channel<'src>) -> bool {
     match &channel.expr {
       Some(expr) => {
-        self.expr(&expr);
+        self.expr(expr);
         self.emit_byte(AlignedByteCode::BufferedChannel, channel.end());
       },
       None => self.emit_byte(AlignedByteCode::Channel, channel.end()),
@@ -1812,7 +1812,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile a identifer token
   fn identifier(&mut self, token: &Token<'src>) -> bool {
-    self.variable(&token, VariableKind::Get);
+    self.variable(token, VariableKind::Get);
     false
   }
 
@@ -1824,7 +1824,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .and_then(|fun_kind| {
         fun_kind.and_then(|fun_kind| match fun_kind {
           FunKind::Method | FunKind::Initializer => {
-            self.variable(&self_, VariableKind::Get);
+            self.variable(self_, VariableKind::Get);
             Some(())
           },
           _ => None,

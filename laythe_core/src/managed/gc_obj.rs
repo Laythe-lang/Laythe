@@ -292,7 +292,7 @@ impl<T: 'static + Object> Deref for GcObj<T> {
 
   #[inline]
   fn deref(&self) -> &T {
-    &self.data()
+    self.data()
   }
 }
 

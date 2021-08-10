@@ -178,7 +178,7 @@ mod test {
     assert_eq!(symbols2, Err(ModuleError::ModuleDoesNotExist));
 
     if let Ok(result) = symbols1 {
-      assert_eq!(*result.get_field(&export_name).unwrap(), val!(true));
+      assert_eq!(*result.get_field(export_name).unwrap(), val!(true));
     }
   }
 

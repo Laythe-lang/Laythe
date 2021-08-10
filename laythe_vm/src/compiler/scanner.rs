@@ -68,7 +68,7 @@ impl<'a> Scanner<'a> {
       std::u32::MAX
     );
 
-    let current = next_boundary(&source, 0);
+    let current = next_boundary(source, 0);
 
     let mut line_offsets = Vec::with_capacity(source_line_heuristic_guess(source.len()));
     line_offsets.push(0);
@@ -126,7 +126,7 @@ impl<'a> Scanner<'a> {
     self.skip_white_space();
 
     // find the previous unicode boundary
-    self.start = previous_boundary(&self.source, self.current);
+    self.start = previous_boundary(self.source, self.current);
     self.char_start = self.start;
 
     // if at end return oef token
@@ -149,7 +149,7 @@ impl<'a> Scanner<'a> {
           self.interpolations[end].brackets += 1;
         }
         self.make_token_source(TokenKind::LeftBrace)
-      }
+      },
       "}" => {
         if !self.interpolations.is_empty() {
           let end = self.interpolations.len() - 1;
@@ -162,7 +162,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.make_token_source(TokenKind::RightBrace)
-      }
+      },
       "[" => self.make_token_source(TokenKind::LeftBracket),
       "]" => self.make_token_source(TokenKind::RightBracket),
       ":" => self.make_token_source(TokenKind::Colon),
@@ -177,7 +177,7 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Minus)
         }
-      }
+      },
       "&" => self.make_token_source(TokenKind::Amp),
       "+" => {
         if self.match_char("=") {
@@ -185,7 +185,7 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Plus)
         }
-      }
+      },
       "|" => self.make_token_source(TokenKind::Pipe),
       "/" => {
         if self.match_char("=") {
@@ -193,21 +193,21 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Slash)
         }
-      }
+      },
       "*" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::StarEqual)
         } else {
           self.make_token_source(TokenKind::Star)
         }
-      }
+      },
       "=" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::EqualEqual)
         } else {
           self.make_token_source(TokenKind::Equal)
         }
-      }
+      },
       "<" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::LessEqual)
@@ -216,21 +216,21 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Less)
         }
-      }
+      },
       ">" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::GreaterEqual)
         } else {
           self.make_token_source(TokenKind::Greater)
         }
-      }
+      },
       "!" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::BangEqual)
         } else {
           self.make_token_source(TokenKind::Bang)
         }
-      }
+      },
       "\"" => self.string(TokenKind::String, "\""),
       "'" => self.string(TokenKind::String, "'"),
       _ => {
@@ -243,7 +243,7 @@ impl<'a> Scanner<'a> {
         }
 
         self.error_token("Unexpected character.")
-      }
+      },
     }
   }
 
@@ -288,10 +288,10 @@ impl<'a> Scanner<'a> {
           "\n" => {
             self.new_line();
             self.advance_indices();
-          }
+          },
           _ => {
             self.advance_indices();
-          }
+          },
         }
       }
     }
@@ -367,7 +367,7 @@ impl<'a> Scanner<'a> {
         "\n" => {
           self.new_line();
           buffer.push('\n');
-        }
+        },
         "\\" => {
           self.advance_indices();
 
@@ -417,24 +417,24 @@ impl<'a> Scanner<'a> {
                   Some(c) => buffer.push(c),
                   None => {
                     return self.error_token_owned(format!("Invalid unicode escape {}.", unicode));
-                  }
+                  },
                 },
                 Err(_) => {
                   return self.error_token_owned(format!(
                     "Invalid hexadecimal unicode escape sequence {}.",
                     unicode
                   ));
-                }
+                },
               }
-            }
+            },
             _ => {
               return self.error_token_owned(format!(
                 "Invalid escape character '{}'.",
                 self.current_slice()
               ));
-            }
+            },
           }
-        }
+        },
         "$" => {
           if self.peek_next().map(|c| c == "{").unwrap_or(false) {
             self.advance_indices();
@@ -450,7 +450,7 @@ impl<'a> Scanner<'a> {
           } else {
             buffer.push('$');
           }
-        }
+        },
         c => buffer.push_str(c),
       }
       self.advance_indices();
@@ -476,11 +476,11 @@ impl<'a> Scanner<'a> {
       match c {
         " " | "\r" | "\t" => {
           self.advance_indices();
-        }
+        },
         "\n" => {
           self.new_line();
           self.advance_indices();
-        }
+        },
         "/" => match self.peek_next() {
           Some(next) => {
             if next == "/" {
@@ -490,7 +490,7 @@ impl<'a> Scanner<'a> {
             } else {
               return;
             }
-          }
+          },
           None => return,
         },
         _ => return,
@@ -551,11 +551,11 @@ impl<'a> Scanner<'a> {
         "l" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "a" => self.check_keyword(2, "unch", TokenKind::Launch),
-            "e" =>  self.check_keyword(2, "t", TokenKind::Let),
+            "e" => self.check_keyword(2, "t", TokenKind::Let),
             _ => TokenKind::Identifier,
-          }
+          },
           None => TokenKind::Identifier,
-        }
+        },
         "n" => self.check_keyword(1, "il", TokenKind::Nil),
         "o" => self.check_keyword(1, "r", TokenKind::Or),
         "r" => self.check_keyword(1, "eturn", TokenKind::Return),
@@ -622,7 +622,7 @@ impl<'a> Scanner<'a> {
   /// Peek the next token
   fn peek_next(&self) -> Option<&str> {
     let start = self.current;
-    let end = next_boundary(&self.source, self.current);
+    let end = next_boundary(self.source, self.current);
 
     if self.char_index_at_end(end) {
       return None;
@@ -642,12 +642,12 @@ impl<'a> Scanner<'a> {
 
   /// Find the nth char from the current index
   fn nth_char_from(&self, start: usize, n: u8) -> Option<&str> {
-    let mut current_index = next_boundary(&self.source, start);
+    let mut current_index = next_boundary(self.source, start);
     let mut start_index = start;
 
     for _ in 0..n {
       start_index = current_index;
-      current_index = next_boundary(&self.source, current_index);
+      current_index = next_boundary(self.source, current_index);
     }
 
     if self.char_index_at_end(current_index) {
@@ -665,14 +665,14 @@ impl<'a> Scanner<'a> {
   /// Advance the housekeeping indices
   fn advance_indices(&mut self) {
     self.char_start = self.current;
-    self.current = next_boundary(&self.source, self.current);
+    self.current = next_boundary(self.source, self.current);
   }
 
   /// Find the nth next char boundary
   fn nth_next_boundary(&self, start: usize, n: usize) -> usize {
     let mut current = start;
     for _ in 0..n {
-      current = next_boundary(&self.source, current);
+      current = next_boundary(self.source, current);
     }
 
     current

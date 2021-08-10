@@ -22,19 +22,19 @@ pub fn create_class_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class>
   class.inherit(hooks, object);
 
   class.add_method(
-    &hooks,
+    hooks,
     hooks.manage_str(CLASS_SUPER_CLS.name),
     val!(ClassSuperCls::native(hooks)),
   );
 
   class.add_method(
-    &hooks,
+    hooks,
     hooks.manage_str(CLASS_STR.name),
     val!(ClassStr::native(hooks)),
   );
 
   class.add_method(
-    &hooks,
+    hooks,
     hooks.manage_str(CLASS_NAME.name),
     val!(ClassName::native(hooks)),
   );

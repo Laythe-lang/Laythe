@@ -140,7 +140,7 @@ impl<'a> Allocator {
 
     let managed = self.allocate_str(string, context);
     let static_str: &'static str = unsafe { &*(&*managed as *const str) };
-    self.intern_cache.insert(&static_str, managed);
+    self.intern_cache.insert(static_str, managed);
     managed
   }
 

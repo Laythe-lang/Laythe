@@ -142,7 +142,7 @@ pub fn define_list_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
     hooks,
     hooks.manage_str(LIST_STR.name),
     val!(ListStr::native(
-      &hooks,
+      hooks,
       hooks.manage_str(LIST_STR.name),
       type_error,
     )),

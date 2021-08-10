@@ -47,7 +47,7 @@ impl Instance {
   }
 
   #[inline]
-  pub fn get_field(&self, name: &GcStr) -> Option<&Value> {
+  pub fn get_field(&self, name: GcStr) -> Option<&Value> {
     self
       .class
       .get_field_index(&name)

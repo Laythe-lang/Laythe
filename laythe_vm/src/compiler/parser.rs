@@ -764,7 +764,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
               return self.error_at::<Block<'a>>(
                 Token::new(
                   TokenKind::Error,
-                  Lexeme::Slice(&""),
+                  Lexeme::Slice(""),
                   return_.start(),
                   return_.end(),
                 ),

@@ -145,7 +145,7 @@ impl Manage for GcStr {
 
 impl fmt::Debug for GcStr {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str(&self)
+    f.write_str(self)
   }
 }
 
@@ -222,7 +222,7 @@ impl Clone for GcStr {
 
 impl AsRef<str> for GcStr {
   fn as_ref(&self) -> &str {
-    &self
+    self
   }
 }
 

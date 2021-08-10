@@ -203,15 +203,11 @@ impl ChannelQueue {
       ChannelQueueKind::Buffered => {
         if self.is_empty() && !self.is_closed() {
           get_runnable_from_set(&mut self.send_waiters)
-        } else if self.len() == self.capacity {
+        } else if self.len() == self.capacity || self.is_closed() {
           get_runnable_from_set(&mut self.receive_waiters)
         } else {
-          if self.is_closed() {
-            get_runnable_from_set(&mut self.receive_waiters)
-          } else {
-            get_runnable_from_set(&mut self.receive_waiters)
-              .or_else(|| get_runnable_from_set(&mut self.send_waiters))
-          }
+          get_runnable_from_set(&mut self.receive_waiters)
+            .or_else(|| get_runnable_from_set(&mut self.send_waiters))
         }
       },
     }

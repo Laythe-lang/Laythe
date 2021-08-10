@@ -387,7 +387,7 @@ mod test {
 
     let symbols = module.module_instance(&hooks);
 
-    if let Some(result) = symbols.get_field(&export_name) {
+    if let Some(result) = symbols.get_field(export_name) {
       assert_eq!(*result, val!(true));
     } else {
       assert!(false);

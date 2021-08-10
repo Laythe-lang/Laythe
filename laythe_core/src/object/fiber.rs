@@ -185,7 +185,7 @@ impl Fiber {
 
     let waiter = fiber.get_runnable();
 
-    let channels = mem::replace(&mut fiber.channels, vec![]);
+    let channels = mem::take(&mut fiber.channels);
     for mut channel in channels {
       channel.remove_waiter(fiber);
     }
@@ -211,7 +211,7 @@ impl Fiber {
   /// A a channel to the list of used channels by
   /// this fiber
   pub fn add_used_channel(&mut self, channel: GcObj<Channel>) {
-    if self.channels.iter().find(|c| **c == channel).is_none() {
+    if !self.channels.iter().any(|c| *c == channel) {
       self.channels.push(channel);
     }
   }

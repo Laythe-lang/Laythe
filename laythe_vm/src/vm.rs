@@ -301,7 +301,7 @@ impl Vm {
     source: &Source,
     file_id: VmFileId,
   ) -> FeResult<GcObj<Fun>, VmFileId> {
-    let (ast, line_offsets) = Parser::new(&source, file_id).parse();
+    let (ast, line_offsets) = Parser::new(source, file_id).parse();
     self
       .files
       .update_line_offsets(file_id, line_offsets.clone())
@@ -851,7 +851,7 @@ impl Vm {
         SendResult::Ok => Signal::Ok,
         SendResult::NoSendAccess => self.runtime_error(
           self.builtin.errors.runtime,
-          &"Attempted to send into a receive only channel.",
+          "Attempted to send into a receive only channel.",
         ),
         SendResult::FullBlock(fiber) => {
           // if channel has a waiter put into
@@ -882,7 +882,7 @@ impl Vm {
         }
         SendResult::Closed => self.runtime_error(
           self.builtin.errors.runtime,
-          &"Attempted to send into a closed channel.",
+          "Attempted to send into a closed channel.",
         ),
       }
     } else {
@@ -971,7 +971,7 @@ impl Vm {
       Some(method) => self.resolve_call(method, arg_count),
       None => {
         if_let_obj!(ObjectKind::Instance(instance) = (receiver) {
-          if let Some(field) = instance.get_field(&method_name) {
+          if let Some(field) = instance.get_field(method_name) {
             self.fiber.peek_set(arg_count as usize, *field);
             self.inline_cache_mut().clear_invoke_cache(inline_slot);
             return self.resolve_call(*field, arg_count);
@@ -1001,7 +1001,7 @@ impl Vm {
   /// invoke a method
   unsafe fn invoke(&mut self, receiver: Value, method_name: GcStr, arg_count: u8) -> Signal {
     if_let_obj!(ObjectKind::Instance(instance) = (receiver) {
-      if let Some(field) = instance.get_field(&method_name) {
+      if let Some(field) = instance.get_field(method_name) {
         self.fiber.peek_set(arg_count as usize, *field);
         return self.resolve_call(*field, arg_count);
       }
