@@ -9,7 +9,7 @@
   },
   "scripts": {
     "build": "webpack --config webpack.config.js",
-    "start": "webpack-dev-server"
+    "start": "webpack serve --config webpack.config.js --progress"
   },
   "repository": {
     "type": "git",
@@ -29,21 +29,21 @@
   "homepage": "https://github.com/rustwasm/create-wasm-app#readme",
   "dependencies": {
     "laythe": "file:../pkg",
-    "monaco-editor": "^0.20.0",
-    "xterm": "^4.8.1",
-    "xterm-addon-fit": "^0.4.0"
+    "monaco-editor": "^0.26.1",
+    "xterm": "^4.13.0",
+    "xterm-addon-fit": "^0.5.0"
   },
   "devDependencies": {
-    "copy-webpack-plugin": "^5.0.0",
-    "css-loader": "^3.6.0",
-    "file-loader": "^6.0.0",
+    "copy-webpack-plugin": "^9.0.1",
+    "css-loader": "^6.2.0",
+    "file-loader": "^6.2.0",
     "hello-wasm-pack": "^0.1.0",
-    "monaco-editor-webpack-plugin": "^1.9.0",
-    "style-loader": "^1.2.1",
-    "ts-loader": "^8.0.0",
-    "typescript": "^3.9.6",
-    "webpack": "^4.29.3",
-    "webpack-cli": "^3.1.0",
-    "webpack-dev-server": "^3.1.5"
+    "monaco-editor-webpack-plugin": "^4.1.1",
+    "style-loader": "^3.2.1",
+    "ts-loader": "^9.2.5",
+    "typescript": "^4.3.5",
+    "webpack": "^5.49.0",
+    "webpack-cli": "^4.7.2",
+    "webpack-dev-server": "^3.11.2"
   }
 }

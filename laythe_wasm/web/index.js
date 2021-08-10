@@ -10,10 +10,10 @@ const terminalElement = document.getElementById("terminal");
 let repl = false;
 let curr_line = "";
 
-const editor = editorInit(editorElement);
-const term = terminalInit(terminalElement, VmWasm.version());
-
 let timeoutHandle;
+const editor = editorInit(editorElement);
+
+const term = terminalInit(terminalElement, VmWasm.version());
 
 const runScript = () => {
   repl = false;
@@ -24,7 +24,7 @@ const runScript = () => {
   term.clear();
   const vm = VmWasm.with_stdout((str) => term.writeln(str));
 
-  setImmediate(() => vm.run(source));
+  setTimeout(() => vm.run(source));
 };
 
 const startRepl = () => {
@@ -33,7 +33,7 @@ const startRepl = () => {
 
     clearTimeout(timeoutHandle);
     term.clear();
-    setImmediate(() => term.write('> '));
+    setTimeout(() => term.write("> "));
   }
 };
 
@@ -56,17 +56,17 @@ term.onKey(({ key, domEvent: { keyCode } }) => {
 
     switch (keyCode) {
       case 13:
-        term.write('\r\n');
+        term.write("\r\n");
         replVm.run(curr_line);
-        term.write('\r\n> ');
+        term.write("\r\n> ");
         curr_line = "";
-        break
+        break;
       case 8:
         if (curr_line) {
           curr_line = curr_line.slice(0, curr_line.length - 1);
-          term.write('\b \b');
+          term.write("\b \b");
         }
-        break
+        break;
       default:
         curr_line += key;
         term.write(key);
@@ -78,4 +78,3 @@ term.attachCustomKeyEventHandler((event) => {
   console.log(event);
   return true;
 });
-

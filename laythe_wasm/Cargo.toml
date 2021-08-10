@@ -17,8 +17,8 @@ laythe_vm = { path = "../laythe_vm", features=["wasm"] }
 laythe_env = { path = "../laythe_env" }
 laythe_core = { path = "../laythe_core" }
 
-wasm-bindgen = "0.2.73"
-js-sys = "0.3.50"
+wasm-bindgen = "0.2.75"
+js-sys = "0.3.52"
 termcolor = "1.1.2"
-web-sys = { version = "0.3.50", features = ["console"] }
+web-sys = { version = "0.3.52", features = ["console"] }
 console_error_panic_hook = { version = "0.1.6", optional = true }
