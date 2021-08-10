@@ -36,7 +36,7 @@ impl<T: 'static + Manage + ?Sized> Gc<T> {
 
   /// Return an immutable reference to the pointed
   /// to allocation.
-  pub(crate) fn obj(&self) -> &Allocation<T> {
+  fn obj(&self) -> &Allocation<T> {
     unsafe { self.ptr.as_ref() }
   }
 

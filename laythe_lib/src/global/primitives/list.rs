@@ -8,7 +8,7 @@ use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   if_let_obj,
-  managed::{GcObj, GcStr, Trace},
+  managed::{DebugHeap, DebugWrap, GcObj, GcStr, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -660,7 +660,7 @@ impl ListIterator {
 
 impl Enumerate for ListIterator {
   fn name(&self) -> &str {
-    "ListIterator"
+    "List"
   }
 
   fn current(&self) -> Value {
@@ -683,10 +683,6 @@ impl Enumerate for ListIterator {
   fn size_hint(&self) -> Option<usize> {
     Some(self.list.len())
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for ListIterator {
@@ -696,6 +692,26 @@ impl Trace for ListIterator {
 
   fn trace_debug(&self, stdout: &mut dyn Write) {
     self.list.trace_debug(stdout);
+  }
+}
+
+impl DebugHeap for ListIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    f.debug_struct("ListIterator")
+      .field("list", &DebugWrap(&self.list, depth))
+      .field("current", &DebugWrap(&self.current, depth))
+      .field("iter", &"*")
+      .finish()
+  }
+}
+
+impl Manage for ListIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 

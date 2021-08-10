@@ -15,13 +15,9 @@ name = "laythe"
 path = "src/main.rs"
 
 [dependencies]
-laythe_vm = { path = "../laythe_vm" }
-jemallocator = { version = "0.3.2", optional = true }
-
+laythe_vm = { path = "../laythe_vm", features=[] }
 # laythe_vm features
 # debug
 # debug_upvalue
-# gc_stress
-# gc_log_alloc
-# gc_log_free
-# gc_log_mark
+
+jemallocator = { version = "0.3.2", optional = true }

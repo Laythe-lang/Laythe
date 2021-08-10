@@ -11,7 +11,7 @@ use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   if_let_obj,
-  managed::{GcObj, GcStr, Trace},
+  managed::{DebugHeap, DebugWrap, GcObj, GcStr, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Map, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -386,7 +386,7 @@ impl MapIterator {
 
 impl Enumerate for MapIterator {
   fn name(&self) -> &str {
-    "MapIterator"
+    "Map"
   }
 
   fn current(&self) -> Value {
@@ -398,20 +398,16 @@ impl Enumerate for MapIterator {
       Some(next) => {
         self.current = val!(hooks.manage_obj(List::from(&[*next.0, *next.1] as &[Value])));
         Call::Ok(val!(true))
-      }
+      },
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      }
+      },
     }
   }
 
   fn size_hint(&self) -> Option<usize> {
     Some(self.map.len())
-  }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
   }
 }
 
@@ -425,6 +421,25 @@ impl Trace for MapIterator {
   }
 }
 
+impl DebugHeap for MapIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    f.debug_struct("MapIterator")
+      .field("map", &DebugWrap(&self.map, depth))
+      .field("iter", &"*")
+      .field("current", &DebugWrap(&self.current, depth))
+      .finish()
+  }
+}
+
+impl Manage for MapIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
+}
 #[cfg(test)]
 mod test {
   use super::*;

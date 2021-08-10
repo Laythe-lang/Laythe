@@ -7,7 +7,7 @@ use laythe_core::{
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
   managed::GcObj,
-  managed::{GcStr, Trace},
+  managed::{DebugHeap, DebugWrap, GcStr, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -194,7 +194,7 @@ impl SplitIterator {
 
 impl Enumerate for SplitIterator {
   fn name(&self) -> &str {
-    "String SplitIterator"
+    "Split"
   }
 
   fn current(&self) -> Value {
@@ -217,10 +217,6 @@ impl Enumerate for SplitIterator {
   fn size_hint(&self) -> Option<usize> {
     None
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for SplitIterator {
@@ -234,6 +230,27 @@ impl Trace for SplitIterator {
     self.string.trace_debug(stdout);
     self.separator.trace_debug(stdout);
     self.current.trace_debug(stdout);
+  }
+}
+
+impl DebugHeap for SplitIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    f.debug_struct("SplitIterator")
+      .field("string", &DebugWrap(&self.string, depth))
+      .field("separator", &DebugWrap(&self.separator, depth))
+      .field("iter", &"*")
+      .field("current", &DebugWrap(&self.current, depth))
+      .finish()
+  }
+}
+
+impl Manage for SplitIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -338,7 +355,7 @@ impl StringIterator {
 
 impl Enumerate for StringIterator {
   fn name(&self) -> &str {
-    "StringIterator"
+    "String"
   }
 
   fn current(&self) -> Value {
@@ -363,10 +380,6 @@ impl Enumerate for StringIterator {
   fn size_hint(&self) -> Option<usize> {
     None
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for StringIterator {
@@ -378,6 +391,26 @@ impl Trace for StringIterator {
   fn trace_debug(&self, stdout: &mut dyn Write) {
     self.string.trace_debug(stdout);
     self.current.trace_debug(stdout);
+  }
+}
+
+impl DebugHeap for StringIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    f.debug_struct("StringIterator")
+      .field("string", &DebugWrap(&self.string, depth))
+      .field("iter", &"*")
+      .field("current", &DebugWrap(&self.current, depth))
+      .finish()
+  }
+}
+
+impl Manage for StringIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 

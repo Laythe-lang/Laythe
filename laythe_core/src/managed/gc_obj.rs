@@ -498,7 +498,7 @@ impl fmt::Display for GcObject {
       ObjectKind::Method(method) => write!(f, "{}", method),
       ObjectKind::Class(class) => write!(f, "{}", class),
       ObjectKind::Instance(instance) => write!(f, "{}", instance),
-      ObjectKind::Enumerator(enumerator) => write!(f, "{}", enumerator.name()),
+      ObjectKind::Enumerator(enumerator) => write!(f, "{}", enumerator),
       ObjectKind::Native(native) => write!(f, "{}", native),
     })
   }
@@ -745,6 +745,7 @@ impl GcObjectHandle {
     mem::size_of::<Self>()
       + match self.kind() {
         ObjectKind::Fiber => kind_size!(Fiber),
+        ObjectKind::Channel => kind_size!(Channel),
         ObjectKind::List => kind_size!(List<Value>),
         ObjectKind::Map => kind_size!(Map<Value, Value>),
         ObjectKind::Fun => kind_size!(Fun),

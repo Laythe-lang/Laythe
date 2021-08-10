@@ -1,2 +1,2 @@
-assertEq([].iter().str(), "ListIterator");
-assertEq({}.iter().str(), "MapIterator");
+assertEq([].iter().str(), "List");
+assertEq({}.iter().str(), "Map");

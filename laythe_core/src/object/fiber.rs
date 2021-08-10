@@ -140,7 +140,7 @@ impl Fiber {
   }
 
   #[inline]
-  pub fn state(&mut self) -> FiberState {
+  pub fn state(&self) -> FiberState {
     self.state
   }
 
@@ -179,26 +179,27 @@ impl Fiber {
 
   /// Activate the current fiber
   #[inline]
-  pub fn complete(&mut self) -> Option<GcObj<Fiber>> {
-    assert!(matches!(
-      self.state,
-      FiberState::Running | FiberState::Complete
-    ));
-    if let FiberState::Complete = self.state {
-      self.state = FiberState::Complete;
+  pub fn complete(mut fiber: GcObj<Fiber>) -> Option<GcObj<Fiber>> {
+    assert_eq!(fiber.state, FiberState::Running);
+    fiber.state = FiberState::Complete;
+
+    let waiter = fiber.get_runnable();
+
+    let channels = mem::replace(&mut fiber.channels, vec![]);
+    for mut channel in channels {
+      channel.remove_waiter(fiber);
     }
 
-    let fiber = self.get_runnable();
-
-    // clear channel reference for gc
-    self.channels.clear();
-
-    fiber
+    waiter
   }
 
   /// Try to get a runnable fiber
   #[inline]
   pub fn get_runnable(&mut self) -> Option<GcObj<Fiber>> {
+    if self.channels.is_empty() {
+      return None;
+    }
+
     self
       .channels
       .iter_mut()
@@ -210,7 +211,9 @@ impl Fiber {
   /// A a channel to the list of used channels by
   /// this fiber
   pub fn add_used_channel(&mut self, channel: GcObj<Channel>) {
-    self.channels.push(channel);
+    if self.channels.iter().find(|c| **c == channel).is_none() {
+      self.channels.push(channel);
+    }
   }
 
   /// push a value onto the stack
@@ -386,10 +389,7 @@ impl Fiber {
 
         Some(frame.closure.fun())
       },
-      None => {
-        self.state = FiberState::Complete;
-        None
-      },
+      None => None,
     })
   }
 
@@ -409,8 +409,10 @@ impl Fiber {
     }
 
     let frame = self.frames.pop().expect("Expected call frame");
+    hooks.push_root(frame.closure);
     let mut fiber =
       hooks.manage_obj(Fiber::split(frame.closure, arg_count).expect("Assumed valid closure"));
+    hooks.pop_roots(1);
 
     let slots = self.frame_stack().len();
     assert_eq!(slots, arg_count + 1);
@@ -709,7 +711,11 @@ impl Trace for Fiber {
       });
     }
 
-    self.frames.iter().skip(1).for_each(|frame| {
+    self.channels.iter().for_each(|channel| {
+      channel.trace();
+    });
+
+    self.frames.iter().for_each(|frame| {
       frame.closure.trace();
     });
 
@@ -733,7 +739,11 @@ impl Trace for Fiber {
       });
     }
 
-    self.frames.iter().skip(1).for_each(|frame| {
+    self.channels.iter().for_each(|channel| {
+      channel.trace_debug(log);
+    });
+
+    self.frames.iter().for_each(|frame| {
       frame.closure.trace_debug(log);
     });
 

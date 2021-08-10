@@ -148,8 +148,13 @@ impl Vm {
     let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
     let global = std_lib.root_module();
 
-    let builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
-    let managed_fun = hooks.manage_obj(builder.build());
+    let mut builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
+    builder.write_instruction(AlignedByteCode::Nil, 0);
+
+    let current_fun = hooks.manage_obj(builder.build());
+    let closure = hooks.manage_obj(Closure::without_upvalues(current_fun));
+    let fiber =
+      hooks.manage_obj(Fiber::new(closure).expect("Unable to generate placeholder fiber"));
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
@@ -166,8 +171,8 @@ impl Vm {
 
     let mut vm = Vm {
       io,
-      fiber: GcObj::dangling(),
-      main_fiber: GcObj::dangling(),
+      fiber,
+      main_fiber: fiber,
       gc,
       files: VmFiles::default(),
       fiber_queue: VecDeque::new(),
@@ -178,7 +183,7 @@ impl Vm {
       module_cache: Map::default(),
       inline_cache,
       global,
-      current_fun: managed_fun,
+      current_fun,
       exit_code: 0,
       ip: ptr::null(),
       native_fun_stub,
@@ -1266,6 +1271,7 @@ impl Vm {
     let path = self.read_constant(index_path).to_obj().to_list();
 
     let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
+    self.push_root(path_segments);
 
     path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
 
@@ -1279,9 +1285,12 @@ impl Vm {
 
     // check if fully resolved module has already been loaded
     let resolved = self.manage_str(buffer);
+    self.push_root(resolved);
+
     if let Some(module) = self.module_cache.get(&resolved) {
       let imported = module.module_instance(&GcHooks::new(self));
       self.fiber.push(val!(imported));
+      self.pop_roots(2);
       return Signal::Ok;
     }
 
@@ -1298,7 +1307,7 @@ impl Vm {
       },
     };
 
-    self.gc().push_root(import);
+    self.push_root(import);
 
     let result = match self.packages.get(&import.package()) {
       Some(package) => match package.import(&GcHooks::new(self), import) {
@@ -1314,7 +1323,7 @@ impl Vm {
       ),
     };
 
-    self.gc().pop_roots(1);
+    self.pop_roots(3);
     result
   }
 
@@ -1325,6 +1334,7 @@ impl Vm {
     let name = self.read_string(index_name);
 
     let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
+    self.push_root(path_segments);
 
     path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
 
@@ -1338,9 +1348,12 @@ impl Vm {
 
     // check if fully resolved module has already been loaded
     let resolved = self.manage_str(buffer);
+    self.push_root(resolved);
+
     if let Some(module) = self.module_cache.get(&resolved) {
       let imported = module.module_instance(&GcHooks::new(self));
       self.fiber.push(val!(imported));
+      self.pop_roots(2);
       return Signal::Ok;
     }
 
@@ -1357,7 +1370,7 @@ impl Vm {
       },
     };
 
-    self.gc().push_root(import);
+    self.push_root(import);
 
     let result = match self.packages.get(&import.package()) {
       Some(package) => match package.import_symbol(&GcHooks::new(self), import, name) {
@@ -1373,7 +1386,7 @@ impl Vm {
       ),
     };
 
-    self.gc().pop_roots(1);
+    self.pop_roots(3);
     result
   }
 
@@ -1888,7 +1901,7 @@ impl Vm {
           if self.fiber == self.main_fiber {
             Some(Signal::Exit)
           } else {
-            if let Some(mut fiber) = self.fiber.complete() {
+            if let Some(mut fiber) = Fiber::complete(self.fiber) {
               fiber.unblock();
               self.fiber_queue.push_back(fiber);
             }

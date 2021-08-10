@@ -1,1 +1,0 @@
-let dude = '10 10 5'.split(' ').map(Number.parse).into(List.collect);

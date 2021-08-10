@@ -3,6 +3,7 @@ use crate::{
   hooks::GcHooks,
   managed::{DebugHeap, DebugWrap, Gc, GcObj, Manage, Object, Trace},
   value::Value,
+  LyHashSet,
 };
 use std::{collections::VecDeque, usize};
 use std::{fmt, io::Write, mem};
@@ -58,8 +59,8 @@ struct ChannelQueue {
   state: ChannelQueueState,
   kind: ChannelQueueKind,
 
-  send_waiters: VecDeque<GcObj<Fiber>>,
-  receive_waiters: VecDeque<GcObj<Fiber>>,
+  send_waiters: LyHashSet<GcObj<Fiber>>,
+  receive_waiters: LyHashSet<GcObj<Fiber>>,
 }
 
 impl ChannelQueue {
@@ -72,8 +73,8 @@ impl ChannelQueue {
       state: ChannelQueueState::Ready,
       kind: ChannelQueueKind::Sync,
 
-      send_waiters: VecDeque::new(),
-      receive_waiters: VecDeque::new(),
+      send_waiters: LyHashSet::default(),
+      receive_waiters: LyHashSet::default(),
     }
   }
 
@@ -88,8 +89,8 @@ impl ChannelQueue {
       state: ChannelQueueState::Ready,
       kind: ChannelQueueKind::Buffered,
 
-      send_waiters: VecDeque::new(),
-      receive_waiters: VecDeque::new(),
+      send_waiters: LyHashSet::default(),
+      receive_waiters: LyHashSet::default(),
     }
   }
 
@@ -144,16 +145,16 @@ impl ChannelQueue {
       ChannelQueueState::Ready => {
         if self.is_sync() && self.queue.is_empty() {
           self.queue.push_back(val);
-          self.send_waiters.push_back(fiber);
-          return SendResult::FullBlock(self.receive_waiters.pop_front());
+          self.send_waiters.insert(fiber);
+          return SendResult::FullBlock(get_runnable_from_set(&mut self.receive_waiters));
         }
 
         if self.queue.len() < self.capacity {
           self.queue.push_back(val);
           SendResult::Ok
         } else {
-          self.send_waiters.push_back(fiber);
-          SendResult::Full(self.receive_waiters.pop_front())
+          self.send_waiters.insert(fiber);
+          SendResult::Full(get_runnable_from_set(&mut self.receive_waiters))
         }
       },
       ChannelQueueState::Closed | ChannelQueueState::ClosedEmpty => SendResult::Closed,
@@ -168,12 +169,12 @@ impl ChannelQueue {
       ChannelQueueState::Ready => match self.queue.pop_front() {
         Some(value) => ReceiveResult::Ok(value),
         None => {
-          self.receive_waiters.push_back(fiber);
+          self.receive_waiters.insert(fiber);
 
           if self.is_sync() {
-            ReceiveResult::EmptyBlock(self.send_waiters.pop_front())
+            ReceiveResult::EmptyBlock(get_runnable_from_set(&mut self.send_waiters))
           } else {
-            ReceiveResult::Empty(self.send_waiters.pop_front())
+            ReceiveResult::Empty(get_runnable_from_set(&mut self.send_waiters))
           }
         },
       },
@@ -194,28 +195,32 @@ impl ChannelQueue {
     match self.kind {
       ChannelQueueKind::Sync => {
         if self.is_empty() && !self.is_closed() {
-          self.send_waiters.pop_front()
+          get_runnable_from_set(&mut self.send_waiters)
         } else {
-          self.receive_waiters.pop_front()
+          get_runnable_from_set(&mut self.receive_waiters)
         }
       },
       ChannelQueueKind::Buffered => {
         if self.is_empty() && !self.is_closed() {
-          self.send_waiters.pop_front()
+          get_runnable_from_set(&mut self.send_waiters)
         } else if self.len() == self.capacity {
-          self.receive_waiters.pop_front()
+          get_runnable_from_set(&mut self.receive_waiters)
         } else {
           if self.is_closed() {
-            self.receive_waiters.pop_front()
+            get_runnable_from_set(&mut self.receive_waiters)
           } else {
-            self
-              .receive_waiters
-              .pop_front()
-              .or_else(|| self.send_waiters.pop_front())
+            get_runnable_from_set(&mut self.receive_waiters)
+              .or_else(|| get_runnable_from_set(&mut self.send_waiters))
           }
         }
       },
     }
+  }
+
+  /// Remove waiter from this channel
+  fn remove_waiter(&mut self, fiber: GcObj<Fiber>) {
+    self.send_waiters.remove(&fiber);
+    self.receive_waiters.remove(&fiber);
   }
 }
 
@@ -224,11 +229,23 @@ impl Trace for ChannelQueue {
     for value in &self.queue {
       value.trace()
     }
+    for waiter in &self.send_waiters {
+      waiter.trace();
+    }
+    for waiter in &self.receive_waiters {
+      waiter.trace();
+    }
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
     for value in &self.queue {
-      value.trace_debug(log)
+      value.trace_debug(log);
+    }
+    for waiter in &self.send_waiters {
+      waiter.trace_debug(log);
+    }
+    for waiter in &self.receive_waiters {
+      waiter.trace_debug(log);
     }
   }
 }
@@ -353,6 +370,11 @@ impl Channel {
   pub fn runnable_waiter(&mut self) -> Option<GcObj<Fiber>> {
     self.queue.runnable_waiter()
   }
+
+  /// Remove waiter from this channel
+  pub fn remove_waiter(&mut self, fiber: GcObj<Fiber>) {
+    self.queue.remove_waiter(fiber)
+  }
 }
 
 impl fmt::Display for Channel {
@@ -400,6 +422,20 @@ impl Object for Channel {
   fn kind(&self) -> ObjectKind {
     ObjectKind::Channel
   }
+}
+
+fn get_runnable_from_set(set: &mut LyHashSet<GcObj<Fiber>>) -> Option<GcObj<Fiber>> {
+  if set.is_empty() {
+    return None;
+  }
+
+  let fiber = set.iter().next().cloned();
+
+  if let Some(fiber) = fiber {
+    assert!(set.remove(&fiber));
+  }
+
+  fiber
 }
 
 #[cfg(test)]
@@ -537,10 +573,28 @@ mod test {
         let mut queue = ChannelQueue::sync();
         queue.receive(fiber_waiter1);
         queue.receive(fiber_waiter2);
-        queue.send(fiber, val!(1.0));
-        let r = queue.send(fiber, val!(1.0));
+        let r1 = queue.send(fiber, val!(1.0));
+        let r2 = queue.send(fiber, val!(1.0));
 
-        assert_eq!(r, SendResult::Full(Some(fiber_waiter2)));
+        match r1 {
+          SendResult::FullBlock(Some(waiter)) => {
+            if waiter == fiber_waiter1 {
+              match r2 {
+                SendResult::Full(Some(waiter)) => assert_eq!(waiter, fiber_waiter2),
+                _ => assert!(false),
+              }
+            } else if waiter == fiber_waiter2 {
+              match r2 {
+                SendResult::Full(Some(waiter)) => assert_eq!(waiter, fiber_waiter1),
+                _ => assert!(false),
+              }
+            } else {
+              assert!(false)
+            }
+          },
+          _ => assert!(false),
+        }
+
         assert_eq!(queue.len(), 1);
       }
 
