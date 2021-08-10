@@ -1,6 +1,6 @@
-use std::{fmt, io::Write, mem, usize};
+use std::{fmt, io::Write, mem, ptr, usize};
 
-use super::{Closure, Fun, Instance, ObjectKind, Upvalue};
+use super::{Channel, Closure, Fun, Instance, ObjectKind, Upvalue};
 use crate::{
   call_frame::CallFrame,
   constants::SCRIPT,
@@ -12,10 +12,11 @@ use crate::{
 
 const INITIAL_FRAME_SIZE: usize = 4;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum FiberState {
   Running,
   Pending,
+  Blocked,
   Complete,
 }
 
@@ -32,6 +33,9 @@ pub struct Fiber {
 
   /// A stack holding call frames currently in use
   frames: Vec<CallFrame>,
+
+  /// A list of channels executed on this fiber
+  channels: Vec<GcObj<Channel>>,
 
   /// pointer to the top of the value stack
   stack_top: *mut Value,
@@ -54,10 +58,25 @@ impl Fiber {
   /// this initial closure to determine how much stack space to initially
   /// reserve
   pub fn new(closure: GcObj<Closure>) -> FiberResult<Self> {
+    let fun = closure.fun();
+    Fiber::new_inner(closure, fun.max_slots() + 1)
+  }
+
+  /// Create a new from the provided closure, used by split_fiber to use
+  /// the top call frame to initialize a new fiber. This reserves stack space
+  /// for the initial frame slots and arguments.
+  fn split(closure: GcObj<Closure>, arg_count: usize) -> FiberResult<Self> {
+    let fun = closure.fun();
+    Fiber::new_inner(closure, fun.max_slots() + arg_count + 1)
+  }
+
+  /// Inner initialization function that actually reserver and create
+  /// each structure
+  fn new_inner(closure: GcObj<Closure>, stack_count: usize) -> FiberResult<Self> {
     // reserve resources
     let fun = closure.fun();
     let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
-    let mut stack = vec![VALUE_NIL; fun.max_slots() + 1];
+    let mut stack = vec![VALUE_NIL; stack_count];
 
     let instructions = fun.chunk().instructions();
     if instructions.is_empty() {
@@ -79,6 +98,7 @@ impl Fiber {
     Ok(Self {
       stack,
       frames,
+      channels: vec![],
       state: FiberState::Pending,
       error: None,
       open_upvalues: vec![],
@@ -119,9 +139,81 @@ impl Fiber {
     self.frame().closure
   }
 
+  #[inline]
+  pub fn state(&self) -> FiberState {
+    self.state
+  }
+
   /// Activate the current fiber
+  #[inline]
   pub fn activate(&mut self) {
+    assert_eq!(self.state, FiberState::Pending);
     self.state = FiberState::Running;
+  }
+
+  /// Put the current fiber to sleep
+  #[inline]
+  pub fn sleep(&mut self) {
+    assert_eq!(self.state, FiberState::Running);
+    self.state = FiberState::Pending;
+  }
+
+  /// Put the current fiber to sleep
+  #[inline]
+  pub fn block(&mut self) {
+    assert_eq!(self.state, FiberState::Running);
+    self.state = FiberState::Blocked;
+  }
+
+  /// Put the current fiber to sleep
+  #[inline]
+  pub fn unblock(&mut self) {
+    assert!(matches!(
+      self.state,
+      FiberState::Blocked | FiberState::Pending
+    ));
+    if let FiberState::Blocked = self.state {
+      self.state = FiberState::Pending;
+    }
+  }
+
+  /// Activate the current fiber
+  #[inline]
+  pub fn complete(mut fiber: GcObj<Fiber>) -> Option<GcObj<Fiber>> {
+    assert_eq!(fiber.state, FiberState::Running);
+    fiber.state = FiberState::Complete;
+
+    let waiter = fiber.get_runnable();
+
+    let channels = mem::take(&mut fiber.channels);
+    for mut channel in channels {
+      channel.remove_waiter(fiber);
+    }
+
+    waiter
+  }
+
+  /// Try to get a runnable fiber
+  #[inline]
+  pub fn get_runnable(&mut self) -> Option<GcObj<Fiber>> {
+    if self.channels.is_empty() {
+      return None;
+    }
+
+    self
+      .channels
+      .iter_mut()
+      .map(|channel| channel.runnable_waiter())
+      .find(|fiber| fiber.is_some())
+      .unwrap_or(None)
+  }
+
+  /// A a channel to the list of used channels by
+  /// this fiber
+  pub fn add_used_channel(&mut self, channel: GcObj<Channel>) {
+    if !self.channels.iter().any(|c| *c == channel) {
+      self.channels.push(channel);
+    }
   }
 
   /// push a value onto the stack
@@ -297,11 +389,50 @@ impl Fiber {
 
         Some(frame.closure.fun())
       },
-      None => {
-        self.state = FiberState::Complete;
-        None
-      },
+      None => None,
     })
+  }
+
+  /// Attempt to create a new fiber using the most recent call frame
+  pub fn split_fiber(
+    &mut self,
+    hooks: &GcHooks,
+    frame_count: usize,
+    arg_count: usize,
+  ) -> Option<GcObj<Fiber>> {
+    if self.frames().len() != frame_count + 1 {
+      return None;
+    }
+
+    unsafe {
+      self.close_upvalues_internal(self.frame().stack_start);
+    }
+
+    let frame = self.frames.pop().expect("Expected call frame");
+    hooks.push_root(frame.closure);
+    let mut fiber =
+      hooks.manage_obj(Fiber::split(frame.closure, arg_count).expect("Assumed valid closure"));
+    hooks.pop_roots(1);
+
+    let slots = self.frame_stack().len();
+    assert_eq!(slots, arg_count + 1);
+
+    // if we have any argument bulk copy them to the fiber
+    if slots > 1 {
+      unsafe {
+        ptr::copy_nonoverlapping(self.frame().stack_start.add(1), fiber.stack_top, arg_count);
+        fiber.stack_top = fiber.stack_top.add(arg_count);
+      }
+    }
+
+    // Effectively pop the current fibers frame so they're 'moved'
+    // to the new fiber
+    unsafe {
+      self.stack_top = self.frame().stack_start;
+      self.frame = self.frame.sub(1);
+    }
+
+    Some(fiber)
   }
 
   /// Ensure the stack has enough space. If more space is required
@@ -580,7 +711,11 @@ impl Trace for Fiber {
       });
     }
 
-    self.frames.iter().skip(1).for_each(|frame| {
+    self.channels.iter().for_each(|channel| {
+      channel.trace();
+    });
+
+    self.frames.iter().for_each(|frame| {
       frame.closure.trace();
     });
 
@@ -604,7 +739,11 @@ impl Trace for Fiber {
       });
     }
 
-    self.frames.iter().skip(1).for_each(|frame| {
+    self.channels.iter().for_each(|channel| {
+      channel.trace_debug(log);
+    });
+
+    self.frames.iter().for_each(|frame| {
       frame.closure.trace_debug(log);
     });
 

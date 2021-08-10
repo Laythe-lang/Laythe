@@ -182,7 +182,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::While
         | TokenKind::Return => {
           break;
-        },
+        }
         _ => (),
       }
 
@@ -198,6 +198,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TokenKind::Import => self.advance().and_then(|()| self.import()),
       TokenKind::Try => self.advance().and_then(|()| self.try_block()),
       TokenKind::If => self.advance().and_then(|()| self.if_()),
+      TokenKind::Launch => self.advance().and_then(|()| self.launch()),
       TokenKind::For => self.advance().and_then(|()| self.for_()),
       TokenKind::While => self.advance().and_then(|()| self.while_()),
       TokenKind::Return => self.advance().and_then(|()| self.return_()),
@@ -263,7 +264,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
-            },
+            }
             _ => {
               let (fun_kind, method) = self.method(name, false)?;
               match fun_kind {
@@ -271,9 +272,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 FunKind::Initializer => init = Some(method),
                 _ => unreachable!(),
               }
-            },
+            }
           }
-        },
+        }
 
         // static we know must be a method
         TokenKind::Static => {
@@ -285,7 +286,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let name = self.previous.clone();
           let (_, method) = self.method(name, true)?;
           static_methods.push(method);
-        },
+        }
         _ => return self.error_current("Expected method or member declaration inside of class."),
       }
     }
@@ -385,7 +386,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           members.push(TypeMember::new(name, type_));
-        },
+        }
         TokenKind::Less | TokenKind::LeftParen => {
           self.advance()?;
           let type_params = if self.match_kind(TokenKind::Less)? {
@@ -399,7 +400,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           methods.push(TypeMethod::new(name, call_sig));
-        },
+        }
         _ => self.error_at(
           self.current.clone(),
           "Expected member or method declaration inside trait.",
@@ -521,6 +522,23 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       .and_then(|()| self.consume_basic(TokenKind::LeftBrace, "Expected '{' after catch."))
       .and_then(|()| self.block(BlockReturn::Cannot))
       .map(|catch| Stmt::Try(self.node(Try::new(block, catch))))
+  }
+
+  /// Parse a launch statement
+  fn launch(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+    let closure = self.expr()?;
+
+    if let Expr::Atom(atom) = &closure {
+      match atom.trailers.last() {
+        Some(Trailer::Call(_)) => {
+          self.consume_basic(TokenKind::Semicolon, "Expected ';' launch call.")?;
+          Ok(Stmt::Launch(self.node(Launch::new(closure))))
+        }
+        _ => self.error("Expected call following 'launch'."),
+      }
+    } else {
+      self.error("Expected call following 'launch'.")
+    }
   }
 
   /// Parse a if statement
@@ -680,18 +698,19 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   fn prefix(&mut self, action: Prefix, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
     match action {
       Prefix::AssignBlock => self.assign_block(),
-      Prefix::List => self.list(),
-      Prefix::Map => self.map(),
-      Prefix::Lambda => self.lambda(),
+      Prefix::Channel => self.channel(),
       Prefix::Grouping => self.grouping(),
-      Prefix::Literal => Ok(self.literal()),
-      Prefix::Number => Ok(self.number()),
-      Prefix::String => Ok(self.string()),
       Prefix::Interpolation => self.interpolation(),
-      Prefix::Super => self.super_(),
+      Prefix::Lambda => self.lambda(),
+      Prefix::List => self.list(),
+      Prefix::Literal => Ok(self.literal()),
+      Prefix::Map => self.map(),
+      Prefix::Number => Ok(self.number()),
       Prefix::Self_ => Ok(self.self_()),
-      Prefix::Variable => self.variable(can_assign),
+      Prefix::String => Ok(self.string()),
+      Prefix::Super => self.super_(),
       Prefix::Unary => self.unary(),
+      Prefix::Variable => self.variable(can_assign),
     }
   }
 
@@ -745,7 +764,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
               return self.error_at::<Block<'a>>(
                 Token::new(
                   TokenKind::Error,
-                  Lexeme::Slice(&""),
+                  Lexeme::Slice(""),
                   return_.start(),
                   return_.end(),
                 ),
@@ -814,6 +833,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let op = match operator_kind {
       TokenKind::Minus => UnaryOp::Negate,
       TokenKind::Bang => UnaryOp::Not,
+      TokenKind::LeftArrow => UnaryOp::Receive,
       _ => unimplemented!("Unexpected unary operator"),
     };
 
@@ -893,6 +913,24 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
     self.fun_kind = previous;
     lambda
+  }
+
+  fn channel(&mut self) -> ParseResult<Expr<'a>, FileId> {
+    let start = self.previous.start();
+    self.consume_basic(TokenKind::LeftParen, "Expected '(' after 'chan'")?;
+
+    let mut expr = None;
+    if !self.match_kind(TokenKind::RightParen)? {
+      expr = Some(self.expr()?);
+      self.consume_basic(TokenKind::RightParen, "Expected ')'")?;
+    }
+
+    let span = Span {
+      start,
+      end: self.previous.end(),
+    };
+
+    Ok(self.atom(Primary::Channel(Channel::new(span, expr))))
   }
 
   /// Parse a grouping expression
@@ -1006,14 +1044,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         TokenKind::StringSegment => {
           self.advance()?;
           segments.push(StringSegments::Token(self.previous.clone()))
-        },
+        }
         TokenKind::StringEnd => {
           break;
-        },
+        }
         _ => {
           let expr = self.expr()?;
           segments.push(StringSegments::Expr(self.node(expr)))
-        },
+        }
       }
     }
     self.consume(TokenKind::StringEnd, "Unterminated interpolated string.")?;
@@ -1086,7 +1124,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       stop_kind,
       &format!("Expected {} after parameter list.", stop_char),
     )?;
-    let return_type = if self.match_kind(TokenKind::Arrow)? {
+    let return_type = if self.match_kind(TokenKind::RightArrow)? {
       Some(self.type_()?)
     } else {
       None
@@ -1105,6 +1143,10 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         .advance()
         .and_then(|()| self.expr())
         .map(|rhs| Expr::Assign(self.node(Assign::new(expr, rhs)))),
+      TokenKind::LeftArrow => self
+        .advance()
+        .and_then(|()| self.expr())
+        .map(|rhs| Expr::Send(self.node(Send::new(expr, rhs)))),
       TokenKind::PlusEqual => self.advance().and_then(|()| self.expr()).map(|rhs| {
         Expr::AssignBinary(self.node(AssignBinary::new(expr, AssignBinaryOp::Add, rhs)))
       }),
@@ -1271,7 +1313,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TypePrefix::Fun => {
         let call_sig = self.call_signature(TokenKind::RightParen, vec![])?;
         Ok(Type::Fun(self.node(call_sig)))
-      },
+      }
       TypePrefix::Literal => self.type_literal(),
     }
   }
@@ -1346,11 +1388,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
         Ok(Type::Ref(type_ref))
-      },
+      }
       _ => {
         // TODO: maybe
         self.error("Can only apply type argument to a non primitive type identifier.")
-      },
+      }
     }
   }
 
@@ -1511,7 +1553,9 @@ impl<T, P> Rule<T, P> {
 #[derive(Clone, Copy)]
 enum Prefix {
   AssignBlock,
+  Channel,
   Grouping,
+  Interpolation,
   Lambda,
   List,
   Literal,
@@ -1519,7 +1563,6 @@ enum Prefix {
   Number,
   Self_,
   String,
-  Interpolation,
   Super,
   Unary,
   Variable,
@@ -1549,7 +1592,7 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 63;
+const TOKEN_VARIANTS: usize = 66;
 
 /// The rules for infix and prefix operators
 const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
@@ -1592,7 +1635,9 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // STAR_EQUAL
   Rule::new(None, Precedence::None),
-  // ARROW
+  // RIGHT_ARROW
+  Rule::new(Some(Prefix::Unary), Precedence::None),
+  // LEFT_ARROW
   Rule::new(None, Precedence::None),
   // EXPORT
   Rule::new(None, Precedence::None),
@@ -1675,6 +1720,10 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   // TRAIT
   Rule::new(None, Precedence::None),
   // TYPE
+  Rule::new(Some(Prefix::Channel), Precedence::None),
+  // CHANNEL
+  Rule::new(None, Precedence::None),
+  // LAUNCH
   Rule::new(None, Precedence::None),
   // ERROR
   Rule::new(None, Precedence::None),
@@ -1722,7 +1771,9 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // STAR_EQUAL
   Rule::new(None, Precedence::None),
-  // ARROW
+  // RIGHT_ARROW
+  Rule::new(None, Precedence::None),
+  // LEFT_ARROW
   Rule::new(None, Precedence::None),
   // EXPORT
   Rule::new(None, Precedence::None),
@@ -1806,6 +1857,10 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // TYPE
   Rule::new(None, Precedence::None),
+  // CHANNEL
+  Rule::new(None, Precedence::None),
+  // LAUNCH
+  Rule::new(None, Precedence::None),
   // ERROR
   Rule::new(None, Precedence::None),
   // EOF
@@ -1852,7 +1907,9 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // STAR_EQUAL
   Rule::new(None, TypePrecedence::None),
-  // ARROW
+  // RIGHT_ARROW
+  Rule::new(None, TypePrecedence::None),
+  // LEFT_ARROW
   Rule::new(None, TypePrecedence::None),
   // EXPORT
   Rule::new(None, TypePrecedence::None),
@@ -1936,6 +1993,10 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // TYPE
   Rule::new(None, TypePrecedence::None),
+  // CHANNEL
+  Rule::new(None, TypePrecedence::None),
+  // LAUNCH
+  Rule::new(None, TypePrecedence::None),
   // ERROR
   Rule::new(None, TypePrecedence::None),
   // EOF
@@ -1982,7 +2043,9 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // STAR_EQUAL
   Rule::new(None, TypePrecedence::None),
-  // ARROW
+  // RIGHT_ARROW
+  Rule::new(None, TypePrecedence::None),
+  // LEFT_ARROW
   Rule::new(None, TypePrecedence::None),
   // EXPORT
   Rule::new(None, TypePrecedence::None),
@@ -2066,6 +2129,10 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // TYPE
   Rule::new(None, TypePrecedence::None),
+  // CHANNEL
+  Rule::new(None, TypePrecedence::None),
+  // LAUNCH
+  Rule::new(None, TypePrecedence::None),
   // ERROR
   Rule::new(None, TypePrecedence::None),
   // EOF
@@ -2128,38 +2195,38 @@ mod test {
       init(startState) {
         self.state = startState;
       }
-    
+
       value() { self.state }
-    
+
       activate() {
         self.state = !self.state;
         return self;
       }
     }
-    
+
     class NthToggle : Toggle {
       init(startState, maxCounter) {
         super.init(startState);
         self.countMax = maxCounter;
         self.count = 0;
       }
-    
+
       activate() {
         self.count = self.count + 1;
         if self.count >= self.countMax {
           super.activate();
           self.count = 0;
         }
-    
+
         return self;
       }
     }
-    
+
     let start = clock();
     let n = 500;
     let val = true;
     let toggle = Toggle(val);
-    
+
     for i in range(n) {
       val = toggle.activate().value();
       val = toggle.activate().value();
@@ -2172,12 +2239,12 @@ mod test {
       val = toggle.activate().value();
       val = toggle.activate().value();
     }
-    
+
     toggle.value();
-    
+
     val = true;
     let ntoggle = NthToggle(val, 3);
-    
+
     for i in range(n) {
       val = ntoggle.activate().value();
       val = ntoggle.activate().value();
@@ -2190,9 +2257,9 @@ mod test {
       val = ntoggle.activate().value();
       val = ntoggle.activate().value();
     }
-    
+
     ntoggle.value();
-    
+
     ";
 
     test(example);
@@ -2264,14 +2331,14 @@ mod test {
       }",
       "export class Dude<T, V: Car> {
         field1: V;
-        
+
         someMethod<K>(a: T, b: string & Bro<T>) -> K {
 
         }
       }",
       "export class Dawg<T> : Bro<T> {
         field1: V;
-        
+
         someMethod<K>(a: T, b: string & Bro<T>) -> K {
 
         }
@@ -2366,6 +2433,15 @@ mod test {
           return 'bye';
         }
       }
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn launch() {
+    let example = "
+      launch something(1, 2, 'cat');
     ";
 
     test(example);
@@ -2614,6 +2690,24 @@ mod test {
   }
 
   #[test]
+  fn channel() {
+    let example = "
+      chan();
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn channel_buffered() {
+    let example = "
+      print(chan(5));
+    ";
+
+    test(example);
+  }
+
+  #[test]
   fn lambda_expr_body() {
     let example = "
     let example = || 10;
@@ -2669,11 +2763,12 @@ mod test {
     "man.dude.bro",
     "ten(\"false\")[10].bro",
   ];
-  const EXAMPLE_PRIMARIES: [&str; 12] = [
+  const EXAMPLE_PRIMARIES: [&str; 13] = [
     "true",
     "false",
     "nil",
     "10.3",
+    "chan(5)",
     "'hi'",
     "('bye')",
     "self",
@@ -2685,8 +2780,8 @@ mod test {
   ];
   const EXAMPLE_TRAILERS: [&str; 3] = ["[2]", "(true, 10)", ".someProp"];
   const BINARY_OPS: [&str; 10] = ["!=", "==", ">", ">=", "<", "<=", "+", "-", "*", "/"];
-  const ASSIGNMENTS: [&str; 5] = ["=", "+=", "-=", "/=", "*="];
-  const UNARY_OPS: [&str; 2] = ["!", "-"];
+  const ASSIGNMENTS: [&str; 6] = ["=", "<-", "+=", "-=", "/=", "*="];
+  const UNARY_OPS: [&str; 3] = ["<-", "!", "-"];
 
   #[test]
   fn expr_stmt() {

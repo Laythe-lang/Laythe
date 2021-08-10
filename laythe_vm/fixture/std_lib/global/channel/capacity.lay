@@ -1,0 +1,2 @@
+assertEq(chan().capacity(), 1);
+assertEq(chan(3).capacity(), 3);

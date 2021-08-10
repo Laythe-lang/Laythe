@@ -129,7 +129,7 @@ impl Class {
 
       class.fields.reserve(super_class.fields.len());
       super_class.fields.iter().for_each(|(field, _index)| {
-        if class.fields.get(&field).is_none() {
+        if class.fields.get(field).is_none() {
           let len = class.fields.len();
           class.fields.insert(*field, len as u16);
         }
@@ -182,7 +182,7 @@ impl Class {
 
 impl fmt::Display for Class {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<{} {:p}>", &*self.name(), &self)
+    write!(f, "<class {} {:p}>", &*self.name(), &*self)
   }
 }
 

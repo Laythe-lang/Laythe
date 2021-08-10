@@ -113,7 +113,8 @@ pub enum TokenKind {
   MinusEqual,
   SlashEqual,
   StarEqual,
-  Arrow,
+  RightArrow,
+  LeftArrow,
 
   // modules
   Export,
@@ -163,6 +164,8 @@ pub enum TokenKind {
   Catch,
   Trait,
   Type,
+  Channel,
+  Launch,
 
   // meta
   Error,
@@ -191,7 +194,8 @@ impl fmt::Display for TokenKind {
       TokenKind::MinusEqual => "-=",
       TokenKind::SlashEqual => "/=",
       TokenKind::StarEqual => "*=",
-      TokenKind::Arrow => "->",
+      TokenKind::RightArrow => "->",
+      TokenKind::LeftArrow => "<-",
       TokenKind::Export => "export",
       TokenKind::Import => "import",
       TokenKind::As => "as",
@@ -233,6 +237,8 @@ impl fmt::Display for TokenKind {
       TokenKind::Catch => "catch",
       TokenKind::Trait => "trait",
       TokenKind::Type => "type",
+      TokenKind::Channel => "channel",
+      TokenKind::Launch => "launch",
       TokenKind::Error => "error",
       TokenKind::Eof => "eof",
     })

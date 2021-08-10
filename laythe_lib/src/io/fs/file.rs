@@ -55,7 +55,7 @@ impl LyNative for FileReadAllText {
     let io = hooks.as_io();
     let path = args[0].to_obj().to_str();
 
-    match io.fs().read_to_string(&Path::new(&*path)) {
+    match io.fs().read_to_string(Path::new(&*path)) {
       Ok(result) => Call::Ok(val!(hooks.manage_str(result))),
       Err(err) => self.call_error(hooks, err.to_string()),
     }

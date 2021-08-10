@@ -62,7 +62,7 @@ where
   }
 
   pub fn build(self, hooks: &GcHooks) -> FiberResult<GcObj<Fiber>> {
-    let mut fun = test_fun_builder(&hooks, &self.name, &self.module_name);
+    let mut fun = test_fun_builder(hooks, &self.name, &self.module_name);
 
     for instruction in self.instructions {
       fun.write_instruction(instruction, 0);
@@ -137,7 +137,7 @@ pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
   let module_class = test_class(hooks, name);
 
   let module = Module::from_path(
-    &hooks,
+    hooks,
     PathBuf::from(format!("path/{}", module_name)),
     module_class,
     0,
@@ -155,7 +155,7 @@ pub fn test_fun_builder(hooks: &GcHooks, name: &str, module_name: &str) -> FunBu
   let module_class = test_class(hooks, name);
 
   let module = Module::from_path(
-    &hooks,
+    hooks,
     PathBuf::from(format!("path/{}.ly", module_name)),
     module_class,
     0,

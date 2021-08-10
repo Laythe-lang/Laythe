@@ -68,7 +68,7 @@ impl<'a> Scanner<'a> {
       std::u32::MAX
     );
 
-    let current = next_boundary(&source, 0);
+    let current = next_boundary(source, 0);
 
     let mut line_offsets = Vec::with_capacity(source_line_heuristic_guess(source.len()));
     line_offsets.push(0);
@@ -126,7 +126,7 @@ impl<'a> Scanner<'a> {
     self.skip_white_space();
 
     // find the previous unicode boundary
-    self.start = previous_boundary(&self.source, self.current);
+    self.start = previous_boundary(self.source, self.current);
     self.char_start = self.start;
 
     // if at end return oef token
@@ -171,7 +171,7 @@ impl<'a> Scanner<'a> {
       "." => self.make_token_source(TokenKind::Dot),
       "-" => {
         if self.match_char(">") {
-          self.make_token_source(TokenKind::Arrow)
+          self.make_token_source(TokenKind::RightArrow)
         } else if self.match_char("=") {
           self.make_token_source(TokenKind::MinusEqual)
         } else {
@@ -211,6 +211,8 @@ impl<'a> Scanner<'a> {
       "<" => {
         if self.match_char("=") {
           self.make_token_source(TokenKind::LessEqual)
+        } else if self.match_char("-") {
+          self.make_token_source(TokenKind::LeftArrow)
         } else {
           self.make_token_source(TokenKind::Less)
         }
@@ -513,6 +515,7 @@ impl<'a> Scanner<'a> {
         "c" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "a" => self.check_keyword(2, "tch", TokenKind::Catch),
+            "h" => self.check_keyword(2, "an", TokenKind::Channel),
             "o" => self.check_keyword(2, "ntinue", TokenKind::Continue),
             "l" => self.check_keyword(2, "ass", TokenKind::Class),
             _ => TokenKind::Identifier,
@@ -545,7 +548,14 @@ impl<'a> Scanner<'a> {
           },
           None => TokenKind::Identifier,
         },
-        "l" => self.check_keyword(1, "et", TokenKind::Let),
+        "l" => match self.nth_char_from(self.start, 1) {
+          Some(c2) => match c2 {
+            "a" => self.check_keyword(2, "unch", TokenKind::Launch),
+            "e" => self.check_keyword(2, "t", TokenKind::Let),
+            _ => TokenKind::Identifier,
+          },
+          None => TokenKind::Identifier,
+        },
         "n" => self.check_keyword(1, "il", TokenKind::Nil),
         "o" => self.check_keyword(1, "r", TokenKind::Or),
         "r" => self.check_keyword(1, "eturn", TokenKind::Return),
@@ -612,7 +622,7 @@ impl<'a> Scanner<'a> {
   /// Peek the next token
   fn peek_next(&self) -> Option<&str> {
     let start = self.current;
-    let end = next_boundary(&self.source, self.current);
+    let end = next_boundary(self.source, self.current);
 
     if self.char_index_at_end(end) {
       return None;
@@ -632,12 +642,12 @@ impl<'a> Scanner<'a> {
 
   /// Find the nth char from the current index
   fn nth_char_from(&self, start: usize, n: u8) -> Option<&str> {
-    let mut current_index = next_boundary(&self.source, start);
+    let mut current_index = next_boundary(self.source, start);
     let mut start_index = start;
 
     for _ in 0..n {
       start_index = current_index;
-      current_index = next_boundary(&self.source, current_index);
+      current_index = next_boundary(self.source, current_index);
     }
 
     if self.char_index_at_end(current_index) {
@@ -655,14 +665,14 @@ impl<'a> Scanner<'a> {
   /// Advance the housekeeping indices
   fn advance_indices(&mut self) {
     self.char_start = self.current;
-    self.current = next_boundary(&self.source, self.current);
+    self.current = next_boundary(self.source, self.current);
   }
 
   /// Find the nth next char boundary
   fn nth_next_boundary(&self, start: usize, n: usize) -> usize {
     let mut current = start;
     for _ in 0..n {
-      current = next_boundary(&self.source, current);
+      current = next_boundary(self.source, current);
     }
 
     current
@@ -769,7 +779,7 @@ mod test {
       TokenGen::Symbol(Box::new(|| "&".to_string())),
     );
     map.insert(
-      TokenKind::Arrow,
+      TokenKind::RightArrow,
       TokenGen::Symbol(Box::new(|| "->".to_string())),
     );
     map.insert(
@@ -857,6 +867,10 @@ mod test {
       TokenGen::ALpha(Box::new(|| "catch".to_string())),
     );
     map.insert(
+      TokenKind::Channel,
+      TokenGen::ALpha(Box::new(|| "chan".to_string())),
+    );
+    map.insert(
       TokenKind::Class,
       TokenGen::ALpha(Box::new(|| "class".to_string())),
     );
@@ -907,6 +921,10 @@ mod test {
     map.insert(
       TokenKind::Or,
       TokenGen::ALpha(Box::new(|| "or".to_string())),
+    );
+    map.insert(
+      TokenKind::Launch,
+      TokenGen::ALpha(Box::new(|| "launch".to_string())),
     );
     map.insert(
       TokenKind::Return,

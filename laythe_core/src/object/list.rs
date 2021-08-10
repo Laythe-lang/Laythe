@@ -19,10 +19,12 @@ use super::ObjectKind;
 pub struct List<T>(Vec<T>);
 
 impl<T> List<T> {
+  #[inline]
   pub fn new() -> Self {
     Self(Vec::new())
   }
 
+  #[inline]
   pub fn with_capacity(capacity: usize) -> Self {
     Self(Vec::with_capacity(capacity))
   }

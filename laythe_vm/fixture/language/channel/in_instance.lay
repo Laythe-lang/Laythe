@@ -1,0 +1,30 @@
+class A {
+  init() {
+    self.ch1 = chan(5);
+    self.ch2 = chan(5);
+  }
+
+  fill() {
+    self.ch1 <- 1;
+    self.ch1 <- 2;
+    self.ch1 <- 3;
+
+    self.ch2 <- 'cat';
+    self.ch2 <- 'dog';
+    self.ch2 <- 'parrot';
+  }
+
+  drain() {
+    assertEq(<- self.ch2, 'cat');
+    assertEq(<- self.ch2, 'dog');
+    assertEq(<- self.ch1, 1);
+    assertEq(<- self.ch2, 'parrot');
+    assertEq(<- self.ch1, 2);
+    assertEq(<- self.ch1, 3);
+  }
+}
+
+let a = A();
+
+a.fill();
+a.drain();

@@ -5,7 +5,9 @@ authors = ["John Chabot <johnchabot2013@gmail.com>"]
 edition = "2018"
 
 [features]
+default = ["desktop"]
 wasm = ["js-sys"]
+desktop = ["rand"]
 
 [lib]
 name = "laythe_lib"
@@ -16,10 +18,10 @@ laythe_core = { path = "../laythe_core" } # , features = ["nan_boxing"]
 laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }
 hashbrown = "0.11.2"
-js-sys = { version = "0.3.50", optional = true }
+js-sys = { version = "0.3.52", optional = true }
 fnv = "1.0.7"
-rand = "0.8.3"
-regex = "1.4.5"
+rand = { version = "0.8.4", optional = true }
+regex = "1.5.4"
 
 [dev-dependencies]
-criterion = "0.3.4"
+criterion = "0.3.5"

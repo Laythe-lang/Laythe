@@ -20,7 +20,7 @@ pub fn add_math_module(
   let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
 
   let mut module = hooks.manage(Module::from_path(
-    &hooks,
+    hooks,
     PathBuf::from(MATH_PATH),
     module_class,
     emitter.emit(),

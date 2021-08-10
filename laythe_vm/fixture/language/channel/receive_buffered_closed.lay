@@ -1,0 +1,12 @@
+let x = chan(3);
+
+x <- 1;
+x <- 2;
+x <- 3;
+
+x.close();
+
+assertEq(<- x, 1);
+assertEq(<- x, 2);
+assertEq(<- x, 3);
+assertEq(<- x, nil);

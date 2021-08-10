@@ -1,0 +1,7 @@
+fn multi() {}
+
+launch multi();
+launch multi();
+launch multi();
+launch multi();
+launch multi();

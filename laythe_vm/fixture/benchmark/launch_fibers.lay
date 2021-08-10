@@ -1,0 +1,18 @@
+let start = clock();
+
+fn test(ch) {
+  <- ch;
+}
+
+let ch = chan();
+let fibers = 10000;
+
+for i in fibers.times() {
+  launch test(ch);
+}
+
+for i in fibers.times() {
+  ch <- i;
+}
+
+print(clock() - start);

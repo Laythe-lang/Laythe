@@ -154,6 +154,11 @@ enum ScopeExit {
   Early,
 }
 
+enum VariableKind {
+  Get,
+  Set,
+}
+
 pub struct Compiler<'a, 'src, FileId> {
   #[allow(dead_code)]
   io: Option<Io>,
@@ -284,7 +289,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       enclosing: None,
       local_count: 1,
       locals: vec![Local {
-        name: &UNINITIALIZED_TOKEN,
+        name: UNINITIALIZED_TOKEN,
         depth: 0,
         is_captured: false,
       }],
@@ -396,7 +401,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       FunKind::Method | FunKind::StaticMethod | FunKind::Initializer => {
         let name = class_info.expect("Class info not set").name;
         format!("{}:{}", name, fun.name())
-      }
+      },
     };
 
     let mut stdio = io.as_ref().unwrap().stdio();
@@ -530,33 +535,32 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// retrieve a named variable from either local or global scope
-  fn variable(&mut self, name: &Token<'src>, can_assign: bool) {
-    let index = self.resolve_local(&name);
+  fn variable(&mut self, name: &Token<'src>, kind: VariableKind) {
+    let index = self.resolve_local(name);
 
-    let (get_byte, set_byte) = match index {
-      Some(local) => (
-        AlignedByteCode::GetLocal(local),
-        AlignedByteCode::SetLocal(local),
-      ),
-      None => match self.resolve_upvalue(&name) {
-        Some(upvalue) => (
-          AlignedByteCode::GetUpvalue(upvalue),
-          AlignedByteCode::SetUpvalue(upvalue),
-        ),
+    match index {
+      Some(local) => match kind {
+        VariableKind::Get => self.emit_byte(AlignedByteCode::GetLocal(local), name.end()),
+        VariableKind::Set => self.emit_byte(AlignedByteCode::SetLocal(local), name.end()),
+      },
+      None => match self.resolve_upvalue(name) {
+        Some(upvalue) => match kind {
+          VariableKind::Get => self.emit_byte(AlignedByteCode::GetUpvalue(upvalue), name.end()),
+          VariableKind::Set => self.emit_byte(AlignedByteCode::SetUpvalue(upvalue), name.end()),
+        },
         None => {
           let global_index = self.identifier_constant(name.str());
-          (
-            AlignedByteCode::GetGlobal(global_index),
-            AlignedByteCode::SetGlobal(global_index),
-          )
-        }
-      },
-    };
 
-    if can_assign {
-      self.emit_byte(set_byte, name.end());
-    } else {
-      self.emit_byte(get_byte, name.end());
+          match kind {
+            VariableKind::Get => {
+              self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
+            },
+            VariableKind::Set => {
+              self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
+            },
+          }
+        },
+      },
     }
   }
 
@@ -591,12 +595,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           Some(local) => {
             parent.locals[local as usize].is_captured = true;
             Some(self.add_upvalue(UpvalueIndex::Local(local)))
-          }
+          },
           None => parent
             .resolve_upvalue(name)
             .map(|upvalue| self.add_upvalue(UpvalueIndex::Upvalue(upvalue))),
         }
-      }
+      },
       None => None,
     }
   }
@@ -751,7 +755,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
         self.constants.insert(value, index);
         index as u16
-      }
+      },
     }
   }
 
@@ -813,16 +817,17 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Stmt::Expr(expr) => {
         self.expr(expr);
         self.emit_byte(AlignedByteCode::Drop, expr.end());
-      }
+      },
       Stmt::ImplicitReturn(expr) => {
         self.expr(expr);
         self.emit_byte(AlignedByteCode::Return, expr.end());
         self.exit_scope = ScopeExit::Early
-      }
+      },
       Stmt::Import(import) => self.import(import),
       Stmt::For(for_) => self.for_(for_),
       Stmt::If(if_) => self.if_(if_),
       Stmt::Return(return_) => self.return_(return_),
+      Stmt::Launch(launch) => self.launch(launch),
       Stmt::Break(break_) => self.break_(break_),
       Stmt::Continue(continue_) => self.continue_(continue_),
       Stmt::While(while_) => self.while_(while_),
@@ -834,6 +839,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn expr(&mut self, expr: &'a Expr<'src>) {
     match expr {
       Expr::Assign(assign) => self.assign(assign),
+      Expr::Send(drain) => self.send(drain),
       Expr::AssignBinary(assign_binary) => self.assign_binary(assign_binary),
       Expr::Binary(binary) => self.binary(binary),
       Expr::Unary(unary) => self.unary(unary),
@@ -845,6 +851,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn primary(&mut self, primary: &'a Primary<'src>, trailers: &'a [Trailer<'src>]) -> bool {
     match primary {
       Primary::AssignBlock(block) => self.assign_block(block),
+      Primary::Channel(token) => self.channel(token),
       Primary::True(token) => self.true_(token),
       Primary::False(token) => self.false_(token),
       Primary::Nil(token) => self.nil(token),
@@ -852,7 +859,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Primary::Grouping(expr) => {
         self.expr(expr);
         false
-      }
+      },
       Primary::String(token) => self.string(token),
       Primary::Interpolation(interpolation) => self.interpolation(interpolation),
       Primary::Ident(token) => self.identifier(token),
@@ -898,7 +905,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     // declare the class by name
     let name = &class.name;
     let name_constant = self.identifier_constant(name.str());
-    self.declare_variable(&name);
+    self.declare_variable(name);
 
     self.emit_byte(AlignedByteCode::Class(name_constant), name.end());
     self.define_variable(name_constant, name.end());
@@ -913,7 +920,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     // handle the case where a super class exists
     let span = if let Some(super_class) = &class.super_class {
-      self.variable(&super_class.type_ref.name, false);
+      self.variable(&super_class.type_ref.name, VariableKind::Get);
       super_class.type_ref.name.span()
     } else {
       self.variable(
@@ -923,7 +930,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           class.name.start(),
           class.name.end(),
         ),
-        false,
+        VariableKind::Get,
       );
       class.name.span()
     };
@@ -939,12 +946,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.add_local(unsafe { super_token.deref_static() });
 
     self.define_variable(0, span.end);
-    self.variable(&name, false);
+    self.variable(name, VariableKind::Get);
     self.emit_byte(AlignedByteCode::Inherit, span.end);
 
     // process the initializer
     let field_line = if let Some(init) = &class.init {
-      self.method(&init, FunKind::Initializer);
+      self.method(init, FunKind::Initializer);
       init.start()
     } else {
       class.start()
@@ -954,12 +961,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     // process methods
     for method in &class.methods {
-      self.method(&method, FunKind::Method);
+      self.method(method, FunKind::Method);
     }
 
     // process static methods
     for static_method in &class.static_methods {
-      self.static_method(&static_method);
+      self.static_method(static_method);
     }
 
     self.emit_byte(AlignedByteCode::Drop, class.end());
@@ -1057,7 +1064,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     };
 
     let first_local = Local {
-      name: &token,
+      name: token,
       depth: 0,
       is_captured: false,
     };
@@ -1068,12 +1075,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     compiler.call_sig(&fun.call_sig);
 
     let exit = match &fun.body {
-      ast::FunBody::Block(block) => compiler.block(&block),
+      ast::FunBody::Block(block) => compiler.block(block),
       ast::FunBody::Expr(expr) => {
-        compiler.expr(&expr);
+        compiler.expr(expr);
         compiler.emit_byte(AlignedByteCode::Return, expr.end());
         ScopeExit::Early
-      }
+      },
     };
 
     let end_line = fun.end();
@@ -1121,12 +1128,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
         let name = self.make_identifier(&import.path()[import.path().len() - 1]);
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
-      }
+      },
       ast::ImportStem::Rename(rename) => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
-        let name = self.make_identifier(&rename);
+        let name = self.make_identifier(rename);
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
-      }
+      },
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
           let symbol_slot = self.make_identifier(&symbol.symbol);
@@ -1142,7 +1149,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
           self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
         }
-      }
+      },
     }
   }
 
@@ -1178,7 +1185,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       let iter_const = self_.string_constant(ITER);
 
       // declare the hidden local $iter variable
-      let iterator_const = self_.identifier_constant(&iterator_token.str());
+      let iterator_const = self_.identifier_constant(iterator_token.str());
       self_.declare_variable(unsafe { iterator_token.deref_static() });
       self_.emit_byte(AlignedByteCode::Invoke((iter_const, 0)), expr_line);
       self_.emit_byte(AlignedByteCode::Slot(self_.emit_invoke_id()), expr_line);
@@ -1292,8 +1299,32 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         }
 
         self.patch_jump(else_jump);
-      }
+      },
       None => self.patch_jump(then_jump),
+    }
+  }
+
+  /// Compile a launch statement
+  fn launch(&mut self, launch: &'a ast::Launch<'src>) {
+    match &launch.closure {
+      // we assume an atom from the parser
+      Expr::Atom(atom) => match atom.trailers.last() {
+        Some(Trailer::Call(call)) => {
+          // emit instruction for everything but the actual call
+          let skip_first = self.primary(&atom.primary, &atom.trailers);
+          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+
+          // emit for each argument for the launch call
+          for expr in &call.args {
+            self.expr(expr);
+          }
+
+          // emit for the actual launch
+          self.emit_byte(AlignedByteCode::Launch(call.args.len() as u8), call.end());
+        },
+        _ => unreachable!("Unexpected expression after launch."),
+      },
+      _ => unreachable!("Unexpected expression after launch."),
     }
   }
 
@@ -1301,9 +1332,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn return_(&mut self, return_: &'a ast::Return<'src>) {
     match &return_.value {
       Some(v) => {
-        self.expr(&v);
+        self.expr(v);
         self.emit_byte(AlignedByteCode::Return, v.end());
-      }
+      },
       None => self.emit_return(return_.start()),
     }
     self.exit_scope = ScopeExit::Early;
@@ -1353,7 +1384,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       if let ScopeExit::Early = self.exit_scope {
         break;
       }
-      self.decl(&decl);
+      self.decl(decl);
     }
 
     mem::replace(&mut self.exit_scope, ScopeExit::Normal)
@@ -1380,7 +1411,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
                 AlignedByteCode::Slot(self.emit_invoke_id()),
                 assign.rhs.end(),
               )
-            }
+            },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
@@ -1398,20 +1429,80 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               self.expr(&assign.rhs);
               self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
               self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
-            }
+            },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
-            }
+            },
           }
-        }
+        },
         None => {
           if let Primary::Ident(name) = &atom.primary {
             self.expr(&assign.rhs);
-            self.variable(name, true);
+            self.variable(name, VariableKind::Set);
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
-        }
+        },
+      },
+      _ => unreachable!("Unexpected expression on left hand side of assignment."),
+    }
+  }
+
+  fn send(&mut self, send: &'a ast::Send<'src>) {
+    self.expr(&send.rhs);
+
+    match &send.lhs {
+      Expr::Atom(atom) => match atom.trailers.last() {
+        // if we have trailers compile to last trailer and emit specialized
+        // set instruction
+        Some(last) => {
+          let skip_first = self.primary(&atom.primary, &atom.trailers);
+          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+
+          match last {
+            Trailer::Index(index) => {
+              // self.expr(&send.rhs);
+              self.expr(&index.index);
+
+              let name = self.identifier_constant(INDEX_GET);
+              self.emit_byte(AlignedByteCode::Invoke((name, 1)), index.end());
+              self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), index.end());
+
+              self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+            },
+            Trailer::Access(access) => {
+              if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
+                if let Primary::Self_(_) = atom.primary {
+                  let mut class_info = self.class_info.unwrap();
+
+                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
+                    let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
+                    class_info.add_field(&GcHooks::new(self), field);
+                  }
+                }
+              }
+
+              let name = self.identifier_constant(access.prop.str());
+
+              self.emit_byte(AlignedByteCode::GetProperty(name), access.end());
+              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
+
+              self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+            },
+            Trailer::Call(_) => {
+              unreachable!("Unexpected expression on left hand side of send.")
+            },
+          }
+        },
+        None => {
+          if let Primary::Ident(name) = &atom.primary {
+            self.variable(name, VariableKind::Get);
+
+            self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+          } else {
+            unreachable!("Unexpected expression on left hand side of assignment.");
+          }
+        },
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
     }
@@ -1423,10 +1514,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       ast::AssignBinaryOp::Add => comp.emit_byte(AlignedByteCode::Add, assign_binary.rhs.end()),
       ast::AssignBinaryOp::Sub => {
         comp.emit_byte(AlignedByteCode::Subtract, assign_binary.rhs.end())
-      }
+      },
       ast::AssignBinaryOp::Mul => {
         comp.emit_byte(AlignedByteCode::Multiply, assign_binary.rhs.end())
-      }
+      },
       ast::AssignBinaryOp::Div => comp.emit_byte(AlignedByteCode::Divide, assign_binary.rhs.end()),
     };
 
@@ -1462,7 +1553,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
                 AlignedByteCode::Slot(self.emit_invoke_id()),
                 assign_binary.rhs.end(),
               );
-            }
+            },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
@@ -1475,7 +1566,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
                 }
               }
 
-              let name = self.identifier_constant(&access.prop.str());
+              let name = self.identifier_constant(access.prop.str());
 
               self.emit_byte(AlignedByteCode::Dup, access.end());
               self.emit_byte(AlignedByteCode::GetProperty(name), access.end());
@@ -1486,22 +1577,22 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
               self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
               self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
-            }
+            },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
-            }
+            },
           }
-        }
+        },
         None => {
           if let Primary::Ident(name) = &atom.primary {
-            self.variable(name, false);
+            self.variable(name, VariableKind::Get);
             self.expr(&assign_binary.rhs);
             binary_op(self);
-            self.variable(name, true);
+            self.variable(name, VariableKind::Set);
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
-        }
+        },
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
     }
@@ -1533,12 +1624,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         let and_jump = self.emit_jump(AlignedByteCode::And(0), binary.lhs.end());
         self.expr(&binary.rhs);
         self.patch_jump(and_jump);
-      }
+      },
       ast::BinaryOp::Or => {
         let or_jump = self.emit_jump(AlignedByteCode::Or(0), binary.lhs.end());
         self.expr(&binary.rhs);
         self.patch_jump(or_jump);
-      }
+      },
     }
   }
 
@@ -1549,6 +1640,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     match &unary.op {
       ast::UnaryOp::Not => self.emit_byte(AlignedByteCode::Not, unary.expr.end()),
       ast::UnaryOp::Negate => self.emit_byte(AlignedByteCode::Negate, unary.expr.end()),
+      ast::UnaryOp::Receive => self.emit_byte(AlignedByteCode::Receive, unary.expr.end()),
     }
   }
 
@@ -1594,12 +1686,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
           false
         }
-      }
+      },
       None => {
         self.emit_byte(AlignedByteCode::GetProperty(name), access.prop.end());
         self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
         false
-      }
+      },
     }
   }
 
@@ -1619,9 +1711,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       }
 
       skip = match trailer {
-        Trailer::Call(call) => self.call(&call),
-        Trailer::Index(index) => self.index(&index),
-        Trailer::Access(access) => self.access(&access, &trailers[(idx + 1)..]),
+        Trailer::Call(call) => self.call(call),
+        Trailer::Index(index) => self.index(index),
+        Trailer::Access(access) => self.access(access, &trailers[(idx + 1)..]),
       }
     }
   }
@@ -1632,6 +1724,19 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self_.block(block);
     });
     self.emit_byte(AlignedByteCode::Nil, block.end());
+    false
+  }
+
+  /// Compile a channel declaration
+  fn channel(&mut self, channel: &'a ast::Channel<'src>) -> bool {
+    match &channel.expr {
+      Some(expr) => {
+        self.expr(expr);
+        self.emit_byte(AlignedByteCode::BufferedChannel, channel.end());
+      },
+      None => self.emit_byte(AlignedByteCode::Channel, channel.end()),
+    }
+
     false
   }
 
@@ -1683,12 +1788,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         ast::StringSegments::Token(token) => {
           let value = val!(self.gc.borrow_mut().manage_str(token.str(), self));
           self.emit_constant(value, token.end());
-        }
+        },
         ast::StringSegments::Expr(expr) => {
           self.expr(expr);
           self.emit_byte(AlignedByteCode::Invoke((str_constant, 0)), expr.end());
           self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), expr.end());
-        }
+        },
       }
     }
 
@@ -1707,7 +1812,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile a identifer token
   fn identifier(&mut self, token: &Token<'src>) -> bool {
-    self.variable(&token, false);
+    self.variable(token, VariableKind::Get);
     false
   }
 
@@ -1719,9 +1824,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .and_then(|fun_kind| {
         fun_kind.and_then(|fun_kind| match fun_kind {
           FunKind::Method | FunKind::Initializer => {
-            self.variable(&self_, false);
+            self.variable(self_, VariableKind::Get);
             Some(())
-          }
+          },
           _ => None,
         })
       })
@@ -1755,7 +1860,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         super_.end(),
         super_.end(),
       ),
-      false,
+      VariableKind::Get,
     );
 
     match trailers.first() {
@@ -1765,7 +1870,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             self.expr(arg);
           }
 
-          self.variable(&super_.super_, false);
+          self.variable(&super_.super_, VariableKind::Get);
           self.emit_byte(
             AlignedByteCode::SuperInvoke((name, call.args.len() as u8)),
             super_.access.end(),
@@ -1775,19 +1880,19 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             super_.access.end(),
           );
           true
-        }
+        },
         _ => {
-          self.variable(&super_.super_, false);
+          self.variable(&super_.super_, VariableKind::Get);
           self.emit_byte(AlignedByteCode::GetSuper(name), super_.end());
           false
-        }
+        },
       },
       None => {
-        self.variable(&super_.super_, false);
+        self.variable(&super_.super_, VariableKind::Get);
 
         self.emit_byte(AlignedByteCode::GetSuper(name), super_.access.end());
         false
-      }
+      },
     }
   }
 
@@ -1946,6 +2051,8 @@ mod test {
   fn test_compile(src: &str, context: &NoContext) -> Fun {
     let hooks = &GcHooks::new(context);
 
+    let src = hooks.manage_str(src);
+    hooks.push_root(src);
     let src = Source::new(hooks.manage_str(src));
     let (ast, line_offsets) = Parser::new(&src, 0).parse();
     assert!(ast.is_ok());
@@ -1954,12 +2061,14 @@ mod test {
     let path = PathBuf::from("path/module.ly");
 
     let module_class = test_class(hooks, "Module");
+    hooks.push_root(module_class);
     let module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
+    hooks.push_root(module);
 
     let gc = context.gc.replace(Allocator::default());
 
-    let stuff: &NoGc = &NO_GC;
-    let compiler = Compiler::new(module, &ast, &line_offsets, 0, stuff, gc);
+    let fake_vm_root: &NoGc = &NO_GC;
+    let compiler = Compiler::new(module, &ast, &line_offsets, 0, fake_vm_root, gc);
     #[cfg(feature = "debug")]
     let compiler = compiler.with_io(io_native());
 
@@ -1982,18 +2091,18 @@ mod test {
         AlignedByteCode::Closure(closure) => {
           decoded.push(byte_code);
           offset = decode_byte_code_closure(fun, &mut decoded, new_offset, closure)
-        }
+        },
         AlignedByteCode::GetProperty(_)
         | AlignedByteCode::SetProperty(_)
         | AlignedByteCode::Invoke(_)
         | AlignedByteCode::SuperInvoke(_) => {
           decoded.push(byte_code);
           offset = decode_byte_code_slot(fun, &mut decoded, new_offset)
-        }
+        },
         _ => {
           decoded.push(byte_code);
           offset = new_offset;
-        }
+        },
       }
     }
 
@@ -2075,14 +2184,14 @@ mod test {
             ByteCodeTest::Fun((expected, max_slots, inner)) => {
               assert_eq!(*expected, index);
               assert_fun_bytecode(&*fun, *max_slots, &inner);
-            }
+            },
             _ => assert!(false),
           }
-        }
+        },
         _ => match &code[i] {
           ByteCodeTest::Code(byte_code) => {
             assert_eq!(&decoded_byte_code[i], byte_code);
-          }
+          },
           _ => assert!(false),
         },
       }
@@ -2102,733 +2211,828 @@ mod test {
     );
   }
 
-  #[test]
-  fn import() {
-    let example = r#"
-      import std.time;
-    "#;
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Import(0),
-        AlignedByteCode::DefineGlobal(1),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn export_variable() {
-    let example = "
-      export let x = 10;
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::Export(0),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn export_fun() {
-    let example = "
-      export fn example() {}
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_fun_bytecode(
-      &fun,
-      2,
-      &vec![
-        ByteCodeTest::Fun((
-          1,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::Nil),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Export(0)),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn export_class() {
-    let example = "
-      export class example {}
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Class(0),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Inherit,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Export(0),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn empty_try_catch() {
-    let example = "
-      try {
-
-      } catch {
-
-      }
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Jump(0),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-
-    assert_eq!(fun.has_catch_jump(0), Some(3));
-  }
-
-  #[test]
-  fn filled_try_catch() {
-    let example = r#"
-      try {
-        let empty = {};
-        empty["missing"];
-      } catch {
-        print("no!");
-      }
-    "#;
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      4,
-      &vec![
-        AlignedByteCode::Map(0),         // 0
-        AlignedByteCode::GetLocal(1),    // 3
-        AlignedByteCode::Constant(1),    // 5
-        AlignedByteCode::Invoke((2, 1)), // 7
-        AlignedByteCode::Slot(0),        // 7
-        AlignedByteCode::Drop,           // 8
-        AlignedByteCode::Drop,           // 9
-        AlignedByteCode::Jump(8),        // 10
-        AlignedByteCode::GetGlobal(3),   // 13
-        AlignedByteCode::Constant(4),    // 16
-        AlignedByteCode::Call(1),        // 18
-        AlignedByteCode::Drop,           // 20
-        AlignedByteCode::Nil,            // 21
-        AlignedByteCode::Return,         // 22
-      ],
-    );
-
-    assert_eq!(fun.has_catch_jump(0), Some(20));
-  }
-
-  #[test]
-  fn nested_try_catch() {
-    let example = r#"
-      try {
-        [][3];
-        try {
-          [][1];
-        } catch {
-          print("woops!");
-        }
-      } catch {
-        print("no!");
-      }
-    "#;
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::List(0),        // 0
-        AlignedByteCode::Constant(0),    // 3
-        AlignedByteCode::Invoke((1, 1)), // 5
-        AlignedByteCode::Slot(0),        // 9
-        AlignedByteCode::Drop,           // 13
-        AlignedByteCode::List(0),        // 16
-        AlignedByteCode::Constant(2),    // 19
-        AlignedByteCode::Invoke((1, 1)), // 22
-        AlignedByteCode::Slot(1),        // 26
-        AlignedByteCode::Drop,           // 31
-        AlignedByteCode::Jump(8),        // 32
-        AlignedByteCode::GetGlobal(3),   // 35
-        AlignedByteCode::Constant(4),    // 38
-        AlignedByteCode::Call(1),        // 40
-        AlignedByteCode::Drop,           // 42
-        AlignedByteCode::Jump(8),        // 43
-        AlignedByteCode::GetGlobal(3),   // 46
-        AlignedByteCode::Constant(5),    // 49
-        AlignedByteCode::Call(1),        // 52
-        AlignedByteCode::Drop,           // 54
-        AlignedByteCode::Nil,            // 55
-        AlignedByteCode::Return,         // 56
-      ],
-    );
-
-    assert_eq!(fun.has_catch_jump(5), Some(42));
-    assert_eq!(fun.has_catch_jump(31), Some(42));
-    assert_eq!(fun.has_catch_jump(19), Some(31));
-  }
-
-  #[test]
-  fn class_with_inherit() {
-    let example = "
-      class A {}
-
-      class B : A {}
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Class(0),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Inherit,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Class(2),
-        AlignedByteCode::DefineGlobal(2),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::Inherit,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn class_empty() {
-    let example = "
-      class A {}
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Class(0),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Inherit,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn class_with_methods() {
-    let example = "
-      class A {
-        init() {
-          self.field = true;
-        }
-
-        getField() {
-          return self.field;
-        }
-
-        getGetField() {
-          return self.getField();
-        }
-      }
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_fun_bytecode(
-      &fun,
-      4,
-      &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Inherit),
-        ByteCodeTest::Fun((
-          3,
-          3,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
-            ByteCodeTest::Code(AlignedByteCode::Drop),
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::Method(2)),
-        ByteCodeTest::Code(AlignedByteCode::Field(4)),
-        ByteCodeTest::Fun((
-          6,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::Method(5)),
-        ByteCodeTest::Fun((
-          8,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::Method(7)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn class_with_methods_implicit() {
-    let example = "
-      class A {
-        init() {
-          self.field = true;
-        }
-
-        getField() {
-          self.field
-        }
-
-        getGetField() {
-          self.getField()
-        }
-      }
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_fun_bytecode(
-      &fun,
-      4,
-      &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Inherit),
-        ByteCodeTest::Fun((
-          3,
-          3,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
-            ByteCodeTest::Code(AlignedByteCode::Drop),
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::Method(2)),
-        ByteCodeTest::Code(AlignedByteCode::Field(4)),
-        ByteCodeTest::Fun((
-          6,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::Method(5)),
-        ByteCodeTest::Fun((
-          8,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::Method(7)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn class_property_assign_set() {
-    let example = "
-    class A {
-      init() {
-        self.a = 10;
-        self.a /= 5;
-      }
-    }
-  ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_fun_bytecode(
-      &fun,
-      4,
-      &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Inherit),
-        ByteCodeTest::Fun((
-          3,
-          4,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
-            ByteCodeTest::Code(AlignedByteCode::Drop),
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::Dup),
-            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
-            ByteCodeTest::Code(AlignedByteCode::Constant(2)),
-            ByteCodeTest::Code(AlignedByteCode::Divide),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(2)),
-            ByteCodeTest::Code(AlignedByteCode::Drop),
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::Method(2)),
-        ByteCodeTest::Code(AlignedByteCode::Field(4)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn class_with_static_methods() {
-    let example = "
-      class A {
-        static sayHi() {
-          return 'hi';
-        }
-
-        static sayBye() {
-          return 'bye';
-        }
-      }
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_fun_bytecode(
-      &fun,
-      4,
-      &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Inherit),
-        ByteCodeTest::Fun((
-          3,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::StaticMethod(2)),
-        ByteCodeTest::Fun((
-          5,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::StaticMethod(4)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn list_index_set() {
-    let example = "
-      let a = [clock, clock, clock];
-      a[1] = 5;
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      4,
-      &vec![
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::List(3),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Constant(2),
-        AlignedByteCode::Constant(3),
-        AlignedByteCode::Invoke((4, 2)),
-        AlignedByteCode::Slot(0),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn list_index_get() {
-    let example = "
-      let a = [\"john\", \"joe\", \"jim\"];
-      print(a[1]);
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      4,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Constant(2),
-        AlignedByteCode::Constant(3),
-        AlignedByteCode::List(3),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(4),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Constant(5),
-        AlignedByteCode::Invoke((6, 1)),
-        AlignedByteCode::Slot(0),
-        AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn list_index_assign_set() {
-    let example = "
-    let a = [1, 2, 3];
-    a[1] += 5;
-  ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      4,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Constant(2),
-        AlignedByteCode::Constant(3),
-        AlignedByteCode::List(3),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Dup,
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Invoke((4, 1)),
-        AlignedByteCode::Slot(0),
-        AlignedByteCode::Constant(5),
-        AlignedByteCode::Add,
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Invoke((6, 2)),
-        AlignedByteCode::Slot(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn list_initializer() {
-    let example = "
-      let a = [1, 2, nil, false, \"cat\"];
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      6,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Constant(2),
-        AlignedByteCode::Nil,
-        AlignedByteCode::False,
-        AlignedByteCode::Constant(3),
-        AlignedByteCode::List(5),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn list_empty() {
-    let example = "
-      let a = [];
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::List(0),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn map_initializer() {
-    let example = "
-      let a = {
-        \"key1\": 10,
-        \"key2\": nil,
-      };
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      5,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Constant(2),
-        AlignedByteCode::Constant(3),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Map(2),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn map_empty() {
-    let example = "
-      let a = {};
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Map(0),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
+  // #[test]
+  // fn import() {
+  //   let example = r#"
+  //     import std.time;
+  //   "#;
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Import(0),
+  //       AlignedByteCode::DefineGlobal(1),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn export_variable() {
+  //   let example = "
+  //     export let x = 10;
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::Export(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn export_fun() {
+  //   let example = "
+  //     export fn example() {}
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       ByteCodeTest::Fun((
+  //         1,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::Nil),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Export(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn export_class() {
+  //   let example = "
+  //     export class example {}
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Class(0),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::Inherit,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Export(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn empty_try_catch() {
+  //   let example = "
+  //     try {
+
+  //     } catch {
+
+  //     }
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Jump(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+
+  //   assert_eq!(fun.has_catch_jump(0), Some(3));
+  // }
+
+  // #[test]
+  // fn filled_try_catch() {
+  //   let example = r#"
+  //     try {
+  //       let empty = {};
+  //       empty["missing"];
+  //     } catch {
+  //       print("no!");
+  //     }
+  //   "#;
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       AlignedByteCode::Map(0),         // 0
+  //       AlignedByteCode::GetLocal(1),    // 3
+  //       AlignedByteCode::Constant(1),    // 5
+  //       AlignedByteCode::Invoke((2, 1)), // 7
+  //       AlignedByteCode::Slot(0),        // 7
+  //       AlignedByteCode::Drop,           // 8
+  //       AlignedByteCode::Drop,           // 9
+  //       AlignedByteCode::Jump(8),        // 10
+  //       AlignedByteCode::GetGlobal(3),   // 13
+  //       AlignedByteCode::Constant(4),    // 16
+  //       AlignedByteCode::Call(1),        // 18
+  //       AlignedByteCode::Drop,           // 20
+  //       AlignedByteCode::Nil,            // 21
+  //       AlignedByteCode::Return,         // 22
+  //     ],
+  //   );
+
+  //   assert_eq!(fun.has_catch_jump(0), Some(20));
+  // }
+
+  // #[test]
+  // fn nested_try_catch() {
+  //   let example = r#"
+  //     try {
+  //       [][3];
+  //       try {
+  //         [][1];
+  //       } catch {
+  //         print("woops!");
+  //       }
+  //     } catch {
+  //       print("no!");
+  //     }
+  //   "#;
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::List(0),        // 0
+  //       AlignedByteCode::Constant(0),    // 3
+  //       AlignedByteCode::Invoke((1, 1)), // 5
+  //       AlignedByteCode::Slot(0),        // 9
+  //       AlignedByteCode::Drop,           // 13
+  //       AlignedByteCode::List(0),        // 16
+  //       AlignedByteCode::Constant(2),    // 19
+  //       AlignedByteCode::Invoke((1, 1)), // 22
+  //       AlignedByteCode::Slot(1),        // 26
+  //       AlignedByteCode::Drop,           // 31
+  //       AlignedByteCode::Jump(8),        // 32
+  //       AlignedByteCode::GetGlobal(3),   // 35
+  //       AlignedByteCode::Constant(4),    // 38
+  //       AlignedByteCode::Call(1),        // 40
+  //       AlignedByteCode::Drop,           // 42
+  //       AlignedByteCode::Jump(8),        // 43
+  //       AlignedByteCode::GetGlobal(3),   // 46
+  //       AlignedByteCode::Constant(5),    // 49
+  //       AlignedByteCode::Call(1),        // 52
+  //       AlignedByteCode::Drop,           // 54
+  //       AlignedByteCode::Nil,            // 55
+  //       AlignedByteCode::Return,         // 56
+  //     ],
+  //   );
+
+  //   assert_eq!(fun.has_catch_jump(5), Some(42));
+  //   assert_eq!(fun.has_catch_jump(31), Some(42));
+  //   assert_eq!(fun.has_catch_jump(19), Some(31));
+  // }
+
+  // #[test]
+  // fn class_with_inherit() {
+  //   let example = "
+  //     class A {}
+
+  //     class B : A {}
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Class(0),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::Inherit,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Class(2),
+  //       AlignedByteCode::DefineGlobal(2),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::GetGlobal(2),
+  //       AlignedByteCode::Inherit,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn class_empty() {
+  //   let example = "
+  //     class A {}
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Class(0),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::Inherit,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn class_with_methods() {
+  //   let example = "
+  //     class A {
+  //       init() {
+  //         self.field = true;
+  //       }
+
+  //       getField() {
+  //         return self.field;
+  //       }
+
+  //       getGetField() {
+  //         return self.getField();
+  //       }
+  //     }
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       ByteCodeTest::Code(AlignedByteCode::Class(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Inherit),
+  //       ByteCodeTest::Fun((
+  //         3,
+  //         3,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::True),
+  //           ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Drop),
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::Method(2)),
+  //       ByteCodeTest::Code(AlignedByteCode::Field(4)),
+  //       ByteCodeTest::Fun((
+  //         6,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::Method(5)),
+  //       ByteCodeTest::Fun((
+  //         8,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
+  //           ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::Method(7)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn class_with_methods_implicit() {
+  //   let example = "
+  //     class A {
+  //       init() {
+  //         self.field = true;
+  //       }
+
+  //       getField() {
+  //         self.field
+  //       }
+
+  //       getGetField() {
+  //         self.getField()
+  //       }
+  //     }
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       ByteCodeTest::Code(AlignedByteCode::Class(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Inherit),
+  //       ByteCodeTest::Fun((
+  //         3,
+  //         3,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::True),
+  //           ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Drop),
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::Method(2)),
+  //       ByteCodeTest::Code(AlignedByteCode::Field(4)),
+  //       ByteCodeTest::Fun((
+  //         6,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::Method(5)),
+  //       ByteCodeTest::Fun((
+  //         8,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
+  //           ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::Method(7)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn class_property_assign_set() {
+  //   let example = "
+  //   class A {
+  //     init() {
+  //       self.a = 10;
+  //       self.a /= 5;
+  //     }
+  //   }
+  // ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       ByteCodeTest::Code(AlignedByteCode::Class(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Inherit),
+  //       ByteCodeTest::Fun((
+  //         3,
+  //         4,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+  //           ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Drop),
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Dup),
+  //           ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+  //           ByteCodeTest::Code(AlignedByteCode::Constant(2)),
+  //           ByteCodeTest::Code(AlignedByteCode::Divide),
+  //           ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Slot(2)),
+  //           ByteCodeTest::Code(AlignedByteCode::Drop),
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::Method(2)),
+  //       ByteCodeTest::Code(AlignedByteCode::Field(4)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn class_with_static_methods() {
+  //   let example = "
+  //     class A {
+  //       static sayHi() {
+  //         return 'hi';
+  //       }
+
+  //       static sayBye() {
+  //         return 'bye';
+  //       }
+  //     }
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       ByteCodeTest::Code(AlignedByteCode::Class(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Inherit),
+  //       ByteCodeTest::Fun((
+  //         3,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::StaticMethod(2)),
+  //       ByteCodeTest::Fun((
+  //         5,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::StaticMethod(4)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn launch() {
+  //   let example = "
+  //     launch thing();
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::Launch(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn channel_send_index() {
+  //   let example = "
+  //     a[5] <- 5;
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Invoke((2, 1)),
+  //       AlignedByteCode::Slot(0),
+  //       AlignedByteCode::Send,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn channel_send_property() {
+  //   let example = "
+  //     b.b <- 5;
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::GetProperty(1),
+  //       AlignedByteCode::Slot(0),
+  //       AlignedByteCode::Send,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn channel_send_variable() {
+  //   let example = "
+  //     b <- 5;
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::Send,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn list_index_set() {
+  //   let example = "
+  //     let a = [clock, clock, clock];
+  //     a[1] = 5;
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::List(3),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::Constant(2),
+  //       AlignedByteCode::Constant(3),
+  //       AlignedByteCode::Invoke((4, 2)),
+  //       AlignedByteCode::Slot(0),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn list_index_get() {
+  //   let example = "
+  //     let a = [\"john\", \"joe\", \"jim\"];
+  //     print(a[1]);
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Constant(2),
+  //       AlignedByteCode::Constant(3),
+  //       AlignedByteCode::List(3),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::GetGlobal(4),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::Constant(5),
+  //       AlignedByteCode::Invoke((6, 1)),
+  //       AlignedByteCode::Slot(0),
+  //       AlignedByteCode::Call(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn list_index_assign_set() {
+  //   let example = "
+  //   let a = [1, 2, 3];
+  //   a[1] += 5;
+  // ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Constant(2),
+  //       AlignedByteCode::Constant(3),
+  //       AlignedByteCode::List(3),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::Dup,
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Invoke((4, 1)),
+  //       AlignedByteCode::Slot(0),
+  //       AlignedByteCode::Constant(5),
+  //       AlignedByteCode::Add,
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Invoke((6, 2)),
+  //       AlignedByteCode::Slot(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn list_initializer() {
+  //   let example = "
+  //     let a = [1, 2, nil, false, \"cat\"];
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     6,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Constant(2),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::False,
+  //       AlignedByteCode::Constant(3),
+  //       AlignedByteCode::List(5),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn list_empty() {
+  //   let example = "
+  //     let a = [];
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::List(0),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn map_initializer() {
+  //   let example = "
+  //     let a = {
+  //       \"key1\": 10,
+  //       \"key2\": nil,
+  //     };
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     5,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Constant(2),
+  //       AlignedByteCode::Constant(3),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Map(2),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn map_empty() {
+  //   let example = "
+  //     let a = {};
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Map(0),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
 
   #[test]
   fn lambda_expression_body() {
@@ -2862,1030 +3066,1111 @@ mod test {
     );
   }
 
-  #[test]
-  fn lambda_block_body() {
-    let example = "
-    let example = || { return 10; };
-    example();
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_fun_bytecode(
-      &fun,
-      2,
-      &vec![
-        ByteCodeTest::Fun((
-          // example
-          1,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn fn_with_variables() {
-    let example = "
-    fn example(a, b, c) {
-      return a + b + c; 
-    }
-    example(1, 2, 3);
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_fun_bytecode(
-      &fun,
-      5,
-      &vec![
-        ByteCodeTest::Fun((
-          // example
-          1,
-          3,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
-            ByteCodeTest::Code(AlignedByteCode::Add),
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(3)),
-            ByteCodeTest::Code(AlignedByteCode::Add),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Constant(2)),
-        ByteCodeTest::Code(AlignedByteCode::Constant(3)),
-        ByteCodeTest::Code(AlignedByteCode::Constant(4)),
-        ByteCodeTest::Code(AlignedByteCode::Call(3)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn open_upvalue() {
-    let example = "
-    fn example() {
-      let x = 0;
-      fn middle() {
-        fn inner() {
-          return x;
-        }
-
-        return inner();
-      }
-
-      return middle();
-    }
-    example();
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_fun_bytecode(
-      &fun,
-      2,
-      &vec![
-        ByteCodeTest::Fun((
-          // example
-          1,
-          4,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
-            ByteCodeTest::Fun((
-              // middle
-              2,
-              3,
-              vec![
-                ByteCodeTest::Fun((
-                  // inner
-                  0,
-                  2,
-                  vec![
-                    ByteCodeTest::Code(AlignedByteCode::GetUpvalue(0)),
-                    ByteCodeTest::Code(AlignedByteCode::Return),
-                  ],
-                )),
-                ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Upvalue(0))),
-                ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
-                ByteCodeTest::Code(AlignedByteCode::Call(0)),
-                ByteCodeTest::Code(AlignedByteCode::Return),
-              ],
-            )),
-            ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))), //
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
-            ByteCodeTest::Code(AlignedByteCode::Call(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn close_upvalue() {
-    let example = "
-    fn example() {
-      let a = 10;
-      fn inner() {
-        return a;
-      }
-      return inner;
-    }
-    let inner = example();
-    inner();
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_fun_bytecode(
-      &fun,
-      2,
-      &vec![
-        ByteCodeTest::Fun((
-          1,
-          4,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
-            ByteCodeTest::Fun((
-              2,
-              2,
-              vec![
-                ByteCodeTest::Code(AlignedByteCode::GetUpvalue(0)),
-                ByteCodeTest::Code(AlignedByteCode::Return),
-              ],
-            )),
-            ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))),
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
-        ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn empty_fun() {
-    let example = "fn example() {} example();";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_fun_bytecode(
-      &fun,
-      2,
-      &vec![
-        ByteCodeTest::Fun((
-          1,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::Nil),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn param_fun() {
-    let example = "
-    fn example(a) {
-      return a;
-    }
-    let a = 1;
-    example(a);
-    ";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_fun_bytecode(
-      &fun,
-      3,
-      &vec![
-        ByteCodeTest::Fun((
-          1,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Constant(3)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
-        ByteCodeTest::Code(AlignedByteCode::Call(1)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn empty_fun_basic() {
-    let example = "fn example() { let a = 10; return a; } example();";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_fun_bytecode(
-      &fun,
-      2,
-      &vec![
-        ByteCodeTest::Fun((
-          1,
-          3,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
-            ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn implicit_return() {
-    let example = "fn example() { 10 } example();";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_fun_bytecode(
-      &fun,
-      2,
-      &vec![
-        ByteCodeTest::Fun((
-          1,
-          2,
-          vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::Return),
-          ],
-        )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Nil),
-        ByteCodeTest::Code(AlignedByteCode::Return),
-      ],
-    );
-  }
-
-  #[test]
-  fn map() {
-    let example = "let a = { \"cat\": \"bat\", 10: nil };";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      5,
-      &vec![
-        AlignedByteCode::Constant(1),     // 1
-        AlignedByteCode::Constant(2),     // 3
-        AlignedByteCode::Constant(3),     // 5
-        AlignedByteCode::Nil,             // 7
-        AlignedByteCode::Map(2),          // 8
-        AlignedByteCode::DefineGlobal(0), // 11
-        AlignedByteCode::Nil,             // 13
-        AlignedByteCode::Return,          // 14
-      ],
-    );
-  }
-
-  #[test]
-  fn list() {
-    let example = "let a = [1, 2, 3, \"cat\"];";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      5,
-      &vec![
-        AlignedByteCode::Constant(1),     // 1
-        AlignedByteCode::Constant(2),     // 3
-        AlignedByteCode::Constant(3),     // 5
-        AlignedByteCode::Constant(4),     // 7
-        AlignedByteCode::List(4),         // 9
-        AlignedByteCode::DefineGlobal(0), // 12
-        AlignedByteCode::Nil,             // 14
-        AlignedByteCode::Return,          // 15
-      ],
-    );
-  }
-
-  #[test]
-  fn for_loop() {
-    let example = "for x in [1, 2, 3] { print(x); }";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      5,
-      &vec![
-        AlignedByteCode::Nil,             // 0
-        AlignedByteCode::Constant(0),     // 1   local 2 = [1, 2, 3].iter()
-        AlignedByteCode::Constant(1),     // 3   local 3 =
-        AlignedByteCode::Constant(2),     // 5
-        AlignedByteCode::List(3),         // 7
-        AlignedByteCode::Invoke((3, 0)),  // 10  const 1 = 1
-        AlignedByteCode::Slot(0),         // 10  const 1 = 1
-        AlignedByteCode::GetLocal(2),     // 13  const 2 = 2
-        AlignedByteCode::IterNext(5),     // 15  const 3 = 3
-        AlignedByteCode::JumpIfFalse(19), // 17  const 4 = "iter"
-        AlignedByteCode::GetLocal(2),     // 21
-        AlignedByteCode::IterCurrent(6),  // 23  const 6 = "current"
-        AlignedByteCode::SetLocal(1),     // 25
-        AlignedByteCode::Drop,            // 27
-        AlignedByteCode::GetGlobal(7),
-        AlignedByteCode::GetLocal(1), // 29
-        AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Loop(27), // 32
-        AlignedByteCode::DropN(2), // 36
-        AlignedByteCode::Nil,      // 38
-        AlignedByteCode::Return,   // 39
-      ],
-    );
-  }
-
-  #[test]
-  fn while_loop() {
-    let example = "while true { print(10); }";
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(11),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Loop(15),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn break_() {
-    let example = "while true { break; print(10); }";
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(6),
-        AlignedByteCode::Jump(3),
-        AlignedByteCode::Loop(10),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn continue_() {
-    let example = "while true { continue; print(10); }";
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(6),
-        AlignedByteCode::Loop(7),
-        AlignedByteCode::Loop(10),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn and_operator() {
-    let example = "true and false;";
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::True,
-        AlignedByteCode::And(1),
-        AlignedByteCode::False,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn or_operator() {
-    let example = "false or true;";
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::False,
-        AlignedByteCode::Or(1),
-        AlignedByteCode::True,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn if_condition() {
-    let example = "if (3 < 10) { print(\"hi\"); }";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Less,
-        AlignedByteCode::JumpIfFalse(8),
-        AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::Constant(3),
-        AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn if_else_condition() {
-    let example = "if (3 < 10) { print(\"hi\"); } else { print(\"bye\"); }";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Constant(0),     // 0
-        AlignedByteCode::Constant(1),     // 2
-        AlignedByteCode::Less,            // 4
-        AlignedByteCode::JumpIfFalse(11), // 5
-        AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::Constant(3), // 9
-        AlignedByteCode::Call(1),     // 11
-        AlignedByteCode::Drop,
-        AlignedByteCode::Jump(8), // 12
-        AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::Constant(4), // 17
-        AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,    // 19
-        AlignedByteCode::Return, // 20
-      ],
-    );
-  }
-
-  #[test]
-  fn declare_local() {
-    let example = ":{ let x = 10; };";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_get_local() {
-    let example = ":{ let x = 10; print(x); };";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      4,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::GetLocal(1),
-        AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_set_local() {
-    let example = ":{ let x = 10; x = 5; };";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Constant(2),
-        AlignedByteCode::SetLocal(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_define_global_nil() {
-    let example = "let x;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Nil,
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_define_global_val() {
-    let example = "let x = 10;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_get_global() {
-    let example = "print(x);";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_set_global() {
-    let example = "x = \"cat\";";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::SetGlobal(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_pop() {
-    let example = "false;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::False,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_return() {
-    let example = "";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![AlignedByteCode::Nil, AlignedByteCode::Return],
-    );
-  }
-
-  #[test]
-  fn op_number() {
-    let example = "5.18;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_string() {
-    let example = "\"example\";";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_interpolate() {
-    let example = "\"${firstName} ${lastName}\";";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      6,
-      &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::Invoke((0, 0)),
-        AlignedByteCode::Slot(0),
-        AlignedByteCode::Constant(3),
-        AlignedByteCode::GetGlobal(4),
-        AlignedByteCode::Invoke((0, 0)),
-        AlignedByteCode::Slot(1),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Interpolate(5),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_false() {
-    let example = "false;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::False,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_true() {
-    let example = "true;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::True,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_nil() {
-    let example = "nil;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Nil,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_not() {
-    let example = "!false;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::False,
-        AlignedByteCode::Not,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_negate() {
-    let example = "-(15);";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      2,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Negate,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_add() {
-    let example = "10 + 4;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Add,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_subtract() {
-    let example = "10 - 4;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Subtract,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_divide() {
-    let example = "10 / 4;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Divide,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_multi() {
-    let example = "10 * 4;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Multiply,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_equal() {
-    let example = "true == nil;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::True,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Equal,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_not_equal() {
-    let example = "true != nil;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::True,
-        AlignedByteCode::Nil,
-        AlignedByteCode::NotEqual,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
-
-  #[test]
-  fn op_less() {
-    let example = "3 < 5;";
-
-    let context = NoContext::default();
-    let fun = test_compile(example, &context);
-    assert_simple_bytecode(
-      &fun,
-      3,
-      &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Less,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
-        AlignedByteCode::Return,
-      ],
-    );
-  }
+  // #[test]
+  // fn lambda_block_body() {
+  //   let example = "
+  //   let example = || { return 10; };
+  //   example();
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       ByteCodeTest::Fun((
+  //         // example
+  //         1,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Call(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn fn_with_variables() {
+  //   let example = "
+  //   fn example(a, b, c) {
+  //     return a + b + c;
+  //   }
+  //   example(1, 2, 3);
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     5,
+  //     &vec![
+  //       ByteCodeTest::Fun((
+  //         // example
+  //         1,
+  //         3,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
+  //           ByteCodeTest::Code(AlignedByteCode::Add),
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(3)),
+  //           ByteCodeTest::Code(AlignedByteCode::Add),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Constant(2)),
+  //       ByteCodeTest::Code(AlignedByteCode::Constant(3)),
+  //       ByteCodeTest::Code(AlignedByteCode::Constant(4)),
+  //       ByteCodeTest::Code(AlignedByteCode::Call(3)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn open_upvalue() {
+  //   let example = "
+  //   fn example() {
+  //     let x = 0;
+  //     fn middle() {
+  //       fn inner() {
+  //         return x;
+  //       }
+
+  //       return inner();
+  //     }
+
+  //     return middle();
+  //   }
+  //   example();
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       ByteCodeTest::Fun((
+  //         // example
+  //         1,
+  //         4,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+  //           ByteCodeTest::Fun((
+  //             // middle
+  //             2,
+  //             3,
+  //             vec![
+  //               ByteCodeTest::Fun((
+  //                 // inner
+  //                 0,
+  //                 2,
+  //                 vec![
+  //                   ByteCodeTest::Code(AlignedByteCode::GetUpvalue(0)),
+  //                   ByteCodeTest::Code(AlignedByteCode::Return),
+  //                 ],
+  //               )),
+  //               ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Upvalue(0))),
+  //               ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+  //               ByteCodeTest::Code(AlignedByteCode::Call(0)),
+  //               ByteCodeTest::Code(AlignedByteCode::Return),
+  //             ],
+  //           )),
+  //           ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))), //
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
+  //           ByteCodeTest::Code(AlignedByteCode::Call(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Call(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn close_upvalue() {
+  //   let example = "
+  //   fn example() {
+  //     let a = 10;
+  //     fn inner() {
+  //       return a;
+  //     }
+  //     return inner;
+  //   }
+  //   let inner = example();
+  //   inner();
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       ByteCodeTest::Fun((
+  //         1,
+  //         4,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+  //           ByteCodeTest::Fun((
+  //             2,
+  //             2,
+  //             vec![
+  //               ByteCodeTest::Code(AlignedByteCode::GetUpvalue(0)),
+  //               ByteCodeTest::Code(AlignedByteCode::Return),
+  //             ],
+  //           )),
+  //           ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))),
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Call(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(2)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
+  //       ByteCodeTest::Code(AlignedByteCode::Call(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn empty_fun() {
+  //   let example = "fn example() {} example();";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       ByteCodeTest::Fun((
+  //         1,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::Nil),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Call(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn param_fun() {
+  //   let example = "
+  //   fn example(a) {
+  //     return a;
+  //   }
+  //   let a = 1;
+  //   example(a);
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       ByteCodeTest::Fun((
+  //         1,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Constant(3)),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(2)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
+  //       ByteCodeTest::Code(AlignedByteCode::Call(1)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn empty_fun_basic() {
+  //   let example = "fn example() { let a = 10; return a; } example();";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       ByteCodeTest::Fun((
+  //         1,
+  //         3,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+  //           ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Call(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn implicit_return() {
+  //   let example = "fn example() { 10 } example();";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_fun_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       ByteCodeTest::Fun((
+  //         1,
+  //         2,
+  //         vec![
+  //           ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+  //           ByteCodeTest::Code(AlignedByteCode::Return),
+  //         ],
+  //       )),
+  //       ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Call(0)),
+  //       ByteCodeTest::Code(AlignedByteCode::Drop),
+  //       ByteCodeTest::Code(AlignedByteCode::Nil),
+  //       ByteCodeTest::Code(AlignedByteCode::Return),
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn map() {
+  //   let example = "let a = { \"cat\": \"bat\", 10: nil };";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     5,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),     // 1
+  //       AlignedByteCode::Constant(2),     // 3
+  //       AlignedByteCode::Constant(3),     // 5
+  //       AlignedByteCode::Nil,             // 7
+  //       AlignedByteCode::Map(2),          // 8
+  //       AlignedByteCode::DefineGlobal(0), // 11
+  //       AlignedByteCode::Nil,             // 13
+  //       AlignedByteCode::Return,          // 14
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn list() {
+  //   let example = "let a = [1, 2, 3, \"cat\"];";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     5,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),     // 1
+  //       AlignedByteCode::Constant(2),     // 3
+  //       AlignedByteCode::Constant(3),     // 5
+  //       AlignedByteCode::Constant(4),     // 7
+  //       AlignedByteCode::List(4),         // 9
+  //       AlignedByteCode::DefineGlobal(0), // 12
+  //       AlignedByteCode::Nil,             // 14
+  //       AlignedByteCode::Return,          // 15
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn channel() {
+  //   let example = "
+  //   let a = chan(5);
+  //   let b = chan();
+  //   ";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),     // 1
+  //       AlignedByteCode::BufferedChannel, // 3
+  //       AlignedByteCode::DefineGlobal(0), // 4
+  //       AlignedByteCode::Channel,         // 6
+  //       AlignedByteCode::DefineGlobal(2), // 7
+  //       AlignedByteCode::Nil,             // 9
+  //       AlignedByteCode::Return,          // 10
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn for_loop() {
+  //   let example = "for x in [1, 2, 3] { print(x); }";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     5,
+  //     &vec![
+  //       AlignedByteCode::Nil,             // 0
+  //       AlignedByteCode::Constant(0),     // 1   local 2 = [1, 2, 3].iter()
+  //       AlignedByteCode::Constant(1),     // 3   local 3 =
+  //       AlignedByteCode::Constant(2),     // 5
+  //       AlignedByteCode::List(3),         // 7
+  //       AlignedByteCode::Invoke((3, 0)),  // 10  const 1 = 1
+  //       AlignedByteCode::Slot(0),         // 10  const 1 = 1
+  //       AlignedByteCode::GetLocal(2),     // 13  const 2 = 2
+  //       AlignedByteCode::IterNext(5),     // 15  const 3 = 3
+  //       AlignedByteCode::JumpIfFalse(19), // 17  const 4 = "iter"
+  //       AlignedByteCode::GetLocal(2),     // 21
+  //       AlignedByteCode::IterCurrent(6),  // 23  const 6 = "current"
+  //       AlignedByteCode::SetLocal(1),     // 25
+  //       AlignedByteCode::Drop,            // 27
+  //       AlignedByteCode::GetGlobal(7),
+  //       AlignedByteCode::GetLocal(1), // 29
+  //       AlignedByteCode::Call(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Loop(27), // 32
+  //       AlignedByteCode::DropN(2), // 36
+  //       AlignedByteCode::Nil,      // 38
+  //       AlignedByteCode::Return,   // 39
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn while_loop() {
+  //   let example = "while true { print(10); }";
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::True,
+  //       AlignedByteCode::JumpIfFalse(11),
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Call(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Loop(15),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn break_() {
+  //   let example = "while true { break; print(10); }";
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::True,
+  //       AlignedByteCode::JumpIfFalse(6),
+  //       AlignedByteCode::Jump(3),
+  //       AlignedByteCode::Loop(10),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn continue_() {
+  //   let example = "while true { continue; print(10); }";
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::True,
+  //       AlignedByteCode::JumpIfFalse(6),
+  //       AlignedByteCode::Loop(7),
+  //       AlignedByteCode::Loop(10),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn and_operator() {
+  //   let example = "true and false;";
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::True,
+  //       AlignedByteCode::And(1),
+  //       AlignedByteCode::False,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn or_operator() {
+  //   let example = "false or true;";
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::False,
+  //       AlignedByteCode::Or(1),
+  //       AlignedByteCode::True,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn if_condition() {
+  //   let example = "if (3 < 10) { print(\"hi\"); }";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Less,
+  //       AlignedByteCode::JumpIfFalse(8),
+  //       AlignedByteCode::GetGlobal(2),
+  //       AlignedByteCode::Constant(3),
+  //       AlignedByteCode::Call(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn if_else_condition() {
+  //   let example = "if (3 < 10) { print(\"hi\"); } else { print(\"bye\"); }";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),     // 0
+  //       AlignedByteCode::Constant(1),     // 2
+  //       AlignedByteCode::Less,            // 4
+  //       AlignedByteCode::JumpIfFalse(11), // 5
+  //       AlignedByteCode::GetGlobal(2),
+  //       AlignedByteCode::Constant(3), // 9
+  //       AlignedByteCode::Call(1),     // 11
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Jump(8), // 12
+  //       AlignedByteCode::GetGlobal(2),
+  //       AlignedByteCode::Constant(4), // 17
+  //       AlignedByteCode::Call(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,    // 19
+  //       AlignedByteCode::Return, // 20
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn declare_local() {
+  //   let example = ":{ let x = 10; };";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_get_local() {
+  //   let example = ":{ let x = 10; print(x); };";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     4,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::GetGlobal(2),
+  //       AlignedByteCode::GetLocal(1),
+  //       AlignedByteCode::Call(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_set_local() {
+  //   let example = ":{ let x = 10; x = 5; };";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Constant(2),
+  //       AlignedByteCode::SetLocal(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_define_global_nil() {
+  //   let example = "let x;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_define_global_val() {
+  //   let example = "let x = 10;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::DefineGlobal(0),
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_get_global() {
+  //   let example = "print(x);";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::GetGlobal(0),
+  //       AlignedByteCode::GetGlobal(1),
+  //       AlignedByteCode::Call(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_set_global() {
+  //   let example = "x = \"cat\";";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::SetGlobal(1),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_pop() {
+  //   let example = "false;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::False,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_return() {
+  //   let example = "";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![AlignedByteCode::Nil, AlignedByteCode::Return],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_number() {
+  //   let example = "5.18;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_string() {
+  //   let example = "\"example\";";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_interpolate() {
+  //   let example = "\"${firstName} ${lastName}\";";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     6,
+  //     &vec![
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::GetGlobal(2),
+  //       AlignedByteCode::Invoke((0, 0)),
+  //       AlignedByteCode::Slot(0),
+  //       AlignedByteCode::Constant(3),
+  //       AlignedByteCode::GetGlobal(4),
+  //       AlignedByteCode::Invoke((0, 0)),
+  //       AlignedByteCode::Slot(1),
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Interpolate(5),
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_false() {
+  //   let example = "false;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::False,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_true() {
+  //   let example = "true;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::True,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_channel() {
+  //   let example = "chan();";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Channel,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_buffered_channel() {
+  //   let example = "chan(5);";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::BufferedChannel,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_nil() {
+  //   let example = "nil;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_not() {
+  //   let example = "!false;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::False,
+  //       AlignedByteCode::Not,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_negate() {
+  //   let example = "-(15);";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Negate,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_receive() {
+  //   let example = "<- true;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     2,
+  //     &vec![
+  //       AlignedByteCode::True,
+  //       AlignedByteCode::Receive,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_add() {
+  //   let example = "10 + 4;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Add,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_subtract() {
+  //   let example = "10 - 4;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Subtract,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_divide() {
+  //   let example = "10 / 4;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Divide,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_multi() {
+  //   let example = "10 * 4;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Multiply,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_equal() {
+  //   let example = "true == nil;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::True,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Equal,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_not_equal() {
+  //   let example = "true != nil;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::True,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::NotEqual,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
+
+  // #[test]
+  // fn op_less() {
+  //   let example = "3 < 5;";
+
+  //   let context = NoContext::default();
+  //   let fun = test_compile(example, &context);
+  //   assert_simple_bytecode(
+  //     &fun,
+  //     3,
+  //     &vec![
+  //       AlignedByteCode::Constant(0),
+  //       AlignedByteCode::Constant(1),
+  //       AlignedByteCode::Less,
+  //       AlignedByteCode::Drop,
+  //       AlignedByteCode::Nil,
+  //       AlignedByteCode::Return,
+  //     ],
+  //   );
+  // }
 
   #[test]
   fn op_less_equal() {

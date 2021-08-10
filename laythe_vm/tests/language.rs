@@ -131,6 +131,53 @@ fn call() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn channel() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/channel/buffered.lay",
+      "language/channel/channel_send_channel.lay",
+      "language/channel/channels_sync.lay",
+      "language/channel/fancy.lay",
+      "language/channel/in_collection.lay",
+      "language/channel/in_function.lay",
+      "language/channel/in_instance.lay",
+      "language/channel/receive_buffered.lay",
+      "language/channel/receive_buffered_closed.lay",
+      "language/channel/receive_sync.lay",
+      "language/channel/receive_sync_closed.lay",
+      "language/channel/receive_sync_no_send.lay",
+      "language/channel/send_buffered.lay",
+      "language/channel/send_sync.lay",
+      "language/channel/sync.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/channel/missing_closing_paren.lay",
+      "language/channel/missing_open_paren.lay",
+    ],
+    ExecuteResult::CompileError,
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/channel/close_closed.lay",
+      "language/channel/non_integer_capacity.lay",
+      "language/channel/non_number_capacity.lay",
+      "language/channel/receive_buffered_deadlock.lay",
+      "language/channel/receive_sync_deadlock.lay",
+      "language/channel/send_buffered_closed.lay",
+      "language/channel/send_buffered_deadlock.lay",
+      "language/channel/send_sync_closed.lay",
+      "language/channel/send_sync_deadlock.lay",
+    ],
+    ExecuteResult::RuntimeError,
+  )
+}
+
+#[test]
 fn class() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
@@ -614,6 +661,37 @@ fn iterator() -> Result<(), std::io::Error> {
   test_file_exits(&vec![], ExecuteResult::CompileError)?;
 
   test_file_exits(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
+fn launch() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/launch/launch_bound_method.lay",
+      "language/launch/launch_exit.lay",
+      "language/launch/launch_init.lay",
+      "language/launch/launch_method.lay",
+      "language/launch/launch_multi.lay",
+      "language/launch/launch_multi_channel_join.lay",
+      "language/launch/launch_native.lay",
+      "language/launch/launch_single.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/launch/no_call.lay",
+      "language/launch/no_expr.lay",
+      "language/launch/no_semi.lay",
+    ],
+    ExecuteResult::CompileError,
+  )?;
+
+  test_file_exits(
+    &vec!["language/launch/launch_error.lay"],
+    ExecuteResult::RuntimeError,
+  )
 }
 
 #[test]

@@ -30,6 +30,7 @@ pub trait Visitor<'a> {
   fn visit_for(&mut self, for_: &For) -> Self::Result;
   fn visit_while(&mut self, while_: &While) -> Self::Result;
   fn visit_if(&mut self, if_: &If) -> Self::Result;
+  fn visit_launch(&mut self, launch: &Launch) -> Self::Result;
   fn visit_return(&mut self, return_: &Return) -> Self::Result;
   fn visit_continue(&mut self, continue_: &Token<'a>) -> Self::Result;
   fn visit_break(&mut self, break_: &Token<'a>) -> Self::Result;
@@ -37,6 +38,7 @@ pub trait Visitor<'a> {
   fn visit_block(&mut self, block: &Block) -> Self::Result;
 
   fn visit_assign(&mut self, assign: &Assign) -> Self::Result;
+  fn visit_drain(&mut self, drain: &Send) -> Self::Result;
   fn visit_assign_binary(&mut self, assign: &AssignBinary) -> Self::Result;
   fn visit_binary(&mut self, binary: &Binary) -> Self::Result;
   fn visit_unary(&mut self, unary: &Unary) -> Self::Result;
@@ -53,6 +55,7 @@ pub trait Visitor<'a> {
   fn visit_nil(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_number(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_string(&mut self, token: &Token<'a>) -> Self::Result;
+  fn visit_channel(&mut self, token: &Channel<'a>) -> Self::Result;
   fn visit_interpolation(&mut self, string_interp: &Interpolation) -> Self::Result;
   fn visit_ident(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_self(&mut self, token: &Token<'a>) -> Self::Result;
@@ -379,6 +382,7 @@ pub enum Stmt<'a> {
   Import(Box<'a, Import<'a>>),
   For(Box<'a, For<'a>>),
   If(Box<'a, If<'a>>),
+  Launch(Box<'a, Launch<'a>>),
   Return(Box<'a, Return<'a>>),
   Continue(Box<'a, Token<'a>>),
   Break(Box<'a, Token<'a>>),
@@ -394,6 +398,7 @@ impl<'a> Spanned for Stmt<'a> {
       Stmt::Import(import) => import.start(),
       Stmt::For(for_) => for_.start(),
       Stmt::If(if_) => if_.start(),
+      Stmt::Launch(launch) => launch.start(),
       Stmt::Return(return_) => return_.start(),
       Stmt::Continue(continue_) => continue_.start(),
       Stmt::Break(break_) => break_.start(),
@@ -409,6 +414,7 @@ impl<'a> Spanned for Stmt<'a> {
       Stmt::Import(import) => import.end(),
       Stmt::For(for_) => for_.end(),
       Stmt::If(if_) => if_.end(),
+      Stmt::Launch(launch) => launch.end(),
       Stmt::Return(return_) => return_.end(),
       Stmt::Continue(continue_) => continue_.end(),
       Stmt::Break(break_) => break_.end(),
@@ -480,7 +486,7 @@ impl<'a> Spanned for Import<'a> {
         } else {
           symbols.last().unwrap().end()
         }
-      },
+      }
     }
   }
 }
@@ -538,6 +544,26 @@ impl<'a> Spanned for If<'a> {
 pub enum Else<'a> {
   If(Box<'a, If<'a>>),
   Block(Block<'a>),
+}
+
+pub struct Launch<'a> {
+  pub closure: Expr<'a>,
+}
+
+impl<'a> Launch<'a> {
+  pub fn new(closure: Expr<'a>) -> Self {
+    Self { closure }
+  }
+}
+
+impl<'a> Spanned for Launch<'a> {
+  fn start(&self) -> u32 {
+    self.closure.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.closure.end()
+  }
 }
 
 pub struct Return<'a> {
@@ -696,9 +722,10 @@ impl<'a> Spanned for Param<'a> {
 pub enum Expr<'a> {
   Assign(Box<'a, Assign<'a>>),
   AssignBinary(Box<'a, AssignBinary<'a>>),
-  Binary(Box<'a, Binary<'a>>),
-  Unary(Box<'a, Unary<'a>>),
   Atom(Box<'a, Atom<'a>>),
+  Binary(Box<'a, Binary<'a>>),
+  Send(Box<'a, Send<'a>>),
+  Unary(Box<'a, Unary<'a>>),
 }
 
 impl<'a> Spanned for Expr<'a> {
@@ -706,9 +733,10 @@ impl<'a> Spanned for Expr<'a> {
     match self {
       Expr::Assign(assign) => assign.start(),
       Expr::AssignBinary(assign_binary) => assign_binary.start(),
-      Expr::Binary(binary) => binary.start(),
-      Expr::Unary(unary) => unary.start(),
       Expr::Atom(atom) => atom.start(),
+      Expr::Binary(binary) => binary.start(),
+      Expr::Send(drain) => drain.start(),
+      Expr::Unary(unary) => unary.start(),
     }
   }
 
@@ -716,9 +744,10 @@ impl<'a> Spanned for Expr<'a> {
     match self {
       Expr::Assign(assign) => assign.end(),
       Expr::AssignBinary(assign_binary) => assign_binary.end(),
-      Expr::Binary(binary) => binary.end(),
-      Expr::Unary(unary) => unary.end(),
       Expr::Atom(atom) => atom.end(),
+      Expr::Binary(binary) => binary.end(),
+      Expr::Send(drain) => drain.end(),
+      Expr::Unary(unary) => unary.end(),
     }
   }
 }
@@ -735,6 +764,27 @@ impl<'a> Assign<'a> {
 }
 
 impl<'a> Spanned for Assign<'a> {
+  fn start(&self) -> u32 {
+    self.lhs.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.rhs.end()
+  }
+}
+
+pub struct Send<'a> {
+  pub lhs: Expr<'a>,
+  pub rhs: Expr<'a>,
+}
+
+impl<'a> Send<'a> {
+  pub fn new(lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
+    Self { lhs, rhs }
+  }
+}
+
+impl<'a> Spanned for Send<'a> {
   fn start(&self) -> u32 {
     self.lhs.start()
   }
@@ -813,6 +863,7 @@ impl<'a> Spanned for Binary<'a> {
 pub enum UnaryOp {
   Not,
   Negate,
+  Receive,
 }
 
 pub struct Unary<'a> {
@@ -962,57 +1013,60 @@ impl<'a> Spanned for Access<'a> {
 
 pub enum Primary<'a> {
   AssignBlock(Block<'a>),
-  True(Token<'a>),
+  Channel(Channel<'a>),
   False(Token<'a>),
-  Nil(Token<'a>),
-  Number(Token<'a>),
   Grouping(Box<'a, Expr<'a>>),
-  String(Token<'a>),
-  Interpolation(Box<'a, Interpolation<'a>>),
   Ident(Token<'a>),
-  Self_(Token<'a>),
-  Super(Super<'a>),
+  Interpolation(Box<'a, Interpolation<'a>>),
   Lambda(Box<'a, Fun<'a>>),
   List(List<'a>),
   Map(Map<'a>),
+  Nil(Token<'a>),
+  Number(Token<'a>),
+  Self_(Token<'a>),
+  String(Token<'a>),
+  Super(Super<'a>),
+  True(Token<'a>),
 }
 
 impl<'a> Spanned for Primary<'a> {
   fn start(&self) -> u32 {
     match self {
       Primary::AssignBlock(block) => block.start(),
-      Primary::True(true_) => true_.start(),
+      Primary::Channel(channel) => channel.start(),
       Primary::False(false_) => false_.start(),
-      Primary::Nil(nil_) => nil_.start(),
-      Primary::Number(nil_) => nil_.start(),
       Primary::Grouping(grouping) => grouping.start(),
-      Primary::String(string) => string.start(),
-      Primary::Interpolation(string) => string.start(),
       Primary::Ident(ident) => ident.start(),
-      Primary::Self_(self_) => self_.start(),
-      Primary::Super(super_) => super_.start(),
+      Primary::Interpolation(string) => string.start(),
       Primary::Lambda(lambda) => lambda.start(),
       Primary::List(list) => list.start(),
       Primary::Map(map) => map.start(),
+      Primary::Nil(nil_) => nil_.start(),
+      Primary::Number(nil_) => nil_.start(),
+      Primary::Self_(self_) => self_.start(),
+      Primary::String(string) => string.start(),
+      Primary::Super(super_) => super_.start(),
+      Primary::True(true_) => true_.start(),
     }
   }
 
   fn end(&self) -> u32 {
     match self {
       Primary::AssignBlock(block) => block.end(),
-      Primary::True(true_) => true_.end(),
+      Primary::Channel(channel) => channel.end(),
       Primary::False(false_) => false_.end(),
-      Primary::Nil(nil_) => nil_.end(),
-      Primary::Number(nil_) => nil_.end(),
       Primary::Grouping(grouping) => grouping.end(),
-      Primary::String(string) => string.end(),
-      Primary::Interpolation(string) => string.end(),
       Primary::Ident(ident) => ident.end(),
-      Primary::Self_(self_) => self_.end(),
-      Primary::Super(super_) => super_.end(),
+      Primary::Interpolation(string) => string.end(),
       Primary::Lambda(lambda) => lambda.end(),
       Primary::List(list) => list.end(),
       Primary::Map(map) => map.end(),
+      Primary::Nil(nil_) => nil_.end(),
+      Primary::Number(nil_) => nil_.end(),
+      Primary::Self_(self_) => self_.end(),
+      Primary::String(string) => string.end(),
+      Primary::Super(super_) => super_.end(),
+      Primary::True(true_) => true_.end(),
     }
   }
 }
@@ -1119,6 +1173,27 @@ impl<'a> Spanned for Super<'a> {
 
   fn end(&self) -> u32 {
     self.access.end()
+  }
+}
+
+pub struct Channel<'a> {
+  pub span: Span,
+  pub expr: Option<Expr<'a>>,
+}
+
+impl<'a> Channel<'a> {
+  pub fn new(span: Span, expr: Option<Expr<'a>>) -> Self {
+    Self { span, expr }
+  }
+}
+
+impl<'a> Spanned for Channel<'a> {
+  fn start(&self) -> u32 {
+    self.span.start
+  }
+
+  fn end(&self) -> u32 {
+    self.span.end
   }
 }
 

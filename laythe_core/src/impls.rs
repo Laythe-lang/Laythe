@@ -1,7 +1,10 @@
 use crate::managed::{DebugHeap, DebugWrap};
 use fnv::FnvBuildHasher;
 use hashbrown::{HashMap, HashSet};
-use std::fmt::{self};
+use std::{
+  collections::VecDeque,
+  fmt::{self},
+};
 
 impl<K: DebugHeap, V: DebugHeap> DebugHeap for HashMap<K, V, FnvBuildHasher> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
@@ -36,6 +39,16 @@ impl<K: DebugHeap> DebugHeap for HashSet<K, FnvBuildHasher> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_set()
       .entries(self.iter().map(|x| DebugWrap(x, depth)))
+      .finish()
+  }
+}
+
+impl<T: DebugHeap> DebugHeap for VecDeque<T> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    let (head, tail) = self.as_slices();
+
+    f.debug_list()
+      .entries(head.iter().chain(tail.iter()).map(|x| DebugWrap(x, depth)))
       .finish()
   }
 }

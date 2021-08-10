@@ -47,7 +47,7 @@ impl Instance {
   }
 
   #[inline]
-  pub fn get_field(&self, name: &GcStr) -> Option<&Value> {
+  pub fn get_field(&self, name: GcStr) -> Option<&Value> {
     self
       .class
       .get_field_index(&name)
@@ -57,7 +57,7 @@ impl Instance {
 
 impl fmt::Display for Instance {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<{} instance {:p}>", &*self.class().name(), &self)
+    write!(f, "<{} {:p}>", &*self.class().name(), &*self)
   }
 }
 

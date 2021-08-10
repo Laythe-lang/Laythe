@@ -1,11 +1,11 @@
 use crate::{
   hooks::Hooks,
-  managed::{DebugHeap, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, DebugWrapDyn, Manage, Object, Trace},
   value::{Value, VALUE_NIL},
   Call,
 };
-use std::mem;
 use std::{fmt, io::Write};
+use std::{fmt::Debug, mem};
 
 use super::ObjectKind;
 
@@ -43,11 +43,13 @@ impl Enumerator {
     result
   }
 
+  #[inline]
   /// Get the current value of the iterator
   pub fn current(&self) -> Value {
     self.current
   }
 
+  #[inline]
   pub fn size_hint(&self) -> Option<usize> {
     self.iterator.size_hint()
   }
@@ -55,7 +57,7 @@ impl Enumerator {
 
 impl fmt::Display for Enumerator {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<{} iter {:p}>", self.name(), &self)
+    write!(f, "<iter {} {:p}>", self.name(), &*self)
   }
 }
 
@@ -72,8 +74,11 @@ impl Trace for Enumerator {
 }
 
 impl DebugHeap for Enumerator {
-  fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
-    f.write_fmt(format_args!("{:?}", self))
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    f.debug_struct("Enumerator")
+      .field("current", &DebugWrap(&self.current, depth))
+      .field("iterator", &DebugWrapDyn(self.iterator.as_debug(), depth))
+      .finish()
   }
 }
 
@@ -93,7 +98,7 @@ impl Object for Enumerator {
   }
 }
 
-pub trait Enumerate: Trace + fmt::Debug {
+pub trait Enumerate: Manage + fmt::Debug {
   /// The name of the iterator mostly for debugging purposes
   fn name(&self) -> &str;
 
@@ -106,6 +111,6 @@ pub trait Enumerate: Trace + fmt::Debug {
   /// If known how many elements will this iterator produce
   fn size_hint(&self) -> Option<usize>;
 
-  /// What is the size of this iterator
-  fn size(&self) -> usize;
+  // /// What is the size of this iterator
+  // fn size(&self) -> usize;
 }

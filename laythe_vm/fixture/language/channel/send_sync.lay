@@ -1,0 +1,9 @@
+fn assert(ch) {
+  assertEq(ch.len(), 1);
+  assertEq(<- ch, 'foo');
+}
+
+let ch = chan();
+launch assert(ch);
+
+ch <- 'foo';

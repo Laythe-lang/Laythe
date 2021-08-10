@@ -42,6 +42,7 @@ fn test_file_with_stdin_lines(
 const FILE_PATH: &str = file!();
 
 #[test]
+#[cfg(not(feature = "debug"))]
 fn stdio() -> Result<(), std::io::Error> {
   test_file_with_stdout(
     "std_lib/io/stdio/stdout/write.lay",

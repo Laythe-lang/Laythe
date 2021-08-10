@@ -9,6 +9,8 @@ use std::{fmt, hash::Hash, io::Write, mem};
 
 use super::ObjectKind;
 
+pub type MapEntry<'a, K, V> = hash_map::Entry<'a, K, V, FnvBuildHasher>;
+
 #[derive(Clone, Debug)]
 pub struct Map<K, V>(HashMap<K, V, FnvBuildHasher>);
 
@@ -19,6 +21,7 @@ impl<K, V> Map<K, V> {
     ))
   }
 
+  #[inline]
   pub fn with_capacity(capacity: usize) -> Self {
     Self(HashMap::<K, V, FnvBuildHasher>::with_capacity_and_hasher(
       capacity,
@@ -75,7 +78,7 @@ where
     self.0.remove(key)
   }
 
-  pub fn entry(&mut self, key: K) -> hash_map::Entry<'_, K, V, FnvBuildHasher> {
+  pub fn entry(&mut self, key: K) -> MapEntry<'_, K, V> {
     self.0.entry(key)
   }
 

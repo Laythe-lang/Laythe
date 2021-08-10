@@ -1,0 +1,15 @@
+let x = chan(10);
+
+assertEq(x.len(), 0);
+
+x <- 1;
+x <- 1;
+x <- 1;
+
+assertEq(x.len(), 3);
+
+<- x;
+<- x;
+
+assertEq(x.len(), 1);
+

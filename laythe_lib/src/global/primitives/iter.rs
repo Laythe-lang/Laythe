@@ -7,7 +7,7 @@ use crate::{
 use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
-  managed::{GcObj, Trace},
+  managed::{DebugHeap, DebugWrap, GcObj, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -308,7 +308,7 @@ impl TakeIterator {
 
 impl Enumerate for TakeIterator {
   fn name(&self) -> &str {
-    "TakeIterator"
+    "Take"
   }
 
   fn current(&self) -> Value {
@@ -327,10 +327,6 @@ impl Enumerate for TakeIterator {
   fn size_hint(&self) -> Option<usize> {
     self.iter.size_hint().map(|hint| hint.min(self.take_count))
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for TakeIterator {
@@ -340,6 +336,26 @@ impl Trace for TakeIterator {
 
   fn trace_debug(&self, log: &mut dyn Write) {
     self.iter.trace_debug(log)
+  }
+}
+
+impl DebugHeap for TakeIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    f.debug_struct("TakeIterator")
+      .field("current", &self.current)
+      .field("iter", &DebugWrap(&self.iter, depth))
+      .field("take_count", &self.take_count)
+      .finish()
+  }
+}
+
+impl Manage for TakeIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -399,7 +415,7 @@ impl SkipIterator {
 
 impl Enumerate for SkipIterator {
   fn name(&self) -> &str {
-    "SkipIterator"
+    "Skip"
   }
 
   fn current(&self) -> Value {
@@ -416,10 +432,6 @@ impl Enumerate for SkipIterator {
       .size_hint()
       .map(|hint| hint.saturating_sub(self.skip_count))
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for SkipIterator {
@@ -429,6 +441,25 @@ impl Trace for SkipIterator {
 
   fn trace_debug(&self, log: &mut dyn Write) {
     self.iter.trace_debug(log)
+  }
+}
+
+impl DebugHeap for SkipIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    f.debug_struct("SkipIterator")
+      .field("skip_count", &self.skip_count)
+      .field("iter", &DebugWrap(&self.iter, depth))
+      .finish()
+  }
+}
+
+impl Manage for SkipIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -466,7 +497,7 @@ impl MapIterator {
 
 impl Enumerate for MapIterator {
   fn name(&self) -> &str {
-    "MapIterator"
+    "Map"
   }
 
   fn current(&self) -> Value {
@@ -486,10 +517,6 @@ impl Enumerate for MapIterator {
   fn size_hint(&self) -> Option<usize> {
     self.iter.size_hint()
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for MapIterator {
@@ -503,6 +530,26 @@ impl Trace for MapIterator {
     self.current.trace_debug(stdout);
     self.iter.trace_debug(stdout);
     self.callable.trace_debug(stdout);
+  }
+}
+
+impl DebugHeap for MapIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    f.debug_struct("MapIterator")
+      .field("current", &DebugWrap(&self.current, depth))
+      .field("iter", &DebugWrap(&self.iter, depth))
+      .field("callable", &DebugWrap(&self.callable, depth))
+      .finish()
+  }
+}
+
+impl Manage for MapIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -540,7 +587,7 @@ impl FilterIterator {
 
 impl Enumerate for FilterIterator {
   fn name(&self) -> &str {
-    "FilterIterator"
+    "Filter"
   }
 
   fn current(&self) -> Value {
@@ -564,10 +611,6 @@ impl Enumerate for FilterIterator {
   fn size_hint(&self) -> Option<usize> {
     None
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for FilterIterator {
@@ -581,6 +624,26 @@ impl Trace for FilterIterator {
     self.current.trace_debug(stdout);
     self.iter.trace_debug(stdout);
     self.callable.trace_debug(stdout);
+  }
+}
+
+impl DebugHeap for FilterIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    f.debug_struct("FilterIterator")
+      .field("current", &DebugWrap(&self.current, depth))
+      .field("iter", &DebugWrap(&self.iter, depth))
+      .field("callable", &DebugWrap(&self.callable, depth))
+      .finish()
+  }
+}
+
+impl Manage for FilterIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -622,7 +685,7 @@ impl LyNative for IterLen {
         }
 
         Call::Ok(val!(size as f64))
-      }
+      },
     }
   }
 }
@@ -682,7 +745,7 @@ impl ZipIterator {
 
 impl Enumerate for ZipIterator {
   fn name(&self) -> &str {
-    "ZipIterator"
+    "Zip"
   }
 
   fn current(&self) -> Value {
@@ -716,10 +779,6 @@ impl Enumerate for ZipIterator {
       acc.and_then(|acc| curr.size_hint().map(|curr| cmp::min(acc, curr)))
     })
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for ZipIterator {
@@ -735,6 +794,30 @@ impl Trace for ZipIterator {
     self.iters.iter().for_each(|iter| {
       iter.trace_debug(stdout);
     });
+  }
+}
+
+impl DebugHeap for ZipIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    let iter = &f
+      .debug_list()
+      .entries(self.iters.iter().map(|iter| DebugWrap(iter, depth)))
+      .finish();
+
+    f.debug_struct("ZipIterator")
+      .field("current", &DebugWrap(&self.current, depth))
+      .field("iter", iter)
+      .finish()
+  }
+}
+
+impl Manage for ZipIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>() + mem::size_of::<Value>() * self.iters.capacity()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -775,7 +858,7 @@ impl ChainIterator {
 
 impl Enumerate for ChainIterator {
   fn name(&self) -> &str {
-    "ChainIterator"
+    "Chain"
   }
 
   fn current(&self) -> Value {
@@ -810,10 +893,6 @@ impl Enumerate for ChainIterator {
         _ => None,
       })
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for ChainIterator {
@@ -829,6 +908,31 @@ impl Trace for ChainIterator {
     self.iters.iter().for_each(|iter| {
       iter.trace_debug(stdout);
     });
+  }
+}
+
+impl DebugHeap for ChainIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    let iter = &f
+      .debug_list()
+      .entries(self.iters.iter().map(|iter| DebugWrap(iter, depth)))
+      .finish();
+
+    f.debug_struct("ChainIterator")
+      .field("current", &DebugWrap(&self.current, depth))
+      .field("iter_index", &self.iter_index)
+      .field("iter", iter)
+      .finish()
+  }
+}
+
+impl Manage for ChainIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>() + mem::size_of::<Value>() * self.iters.capacity()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
   }
 }
 
@@ -935,7 +1039,7 @@ mod test {
 
       let result = iter_str.call(&mut hooks, Some(val!(this)), &[]);
       match result {
-        Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "TestIterator"),
+        Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "Test"),
         _ => assert!(false),
       }
     }
@@ -1237,7 +1341,7 @@ mod test {
           let mut map_iter = r.to_obj().to_enumerator();
           assert_eq!(map_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(map_iter.current(), val!(5.0));
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1286,7 +1390,7 @@ mod test {
           assert_eq!(filter_iter.current(), val!(2.0));
           assert_eq!(filter_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(filter_iter.current(), val!(3.0));
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1337,7 +1441,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 10.1);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1371,7 +1475,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 4.0);
-        }
+        },
         _ => assert!(false),
       }
     }

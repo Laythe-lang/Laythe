@@ -1,0 +1,6 @@
+fn doNothing(ch) {}
+
+let ch = chan();
+launch doNothing(ch);
+
+ch <- "stuff";

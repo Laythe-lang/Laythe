@@ -1,0 +1,8 @@
+fn assert(ch) {
+  assertEq(<- ch, 1);
+}
+
+let ch = chan();
+launch assert(ch);
+
+ch <- 1;

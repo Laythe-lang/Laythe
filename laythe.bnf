@@ -40,7 +40,7 @@ AssignBlock ::= ":" Block ;
 Block ::= "{" Decl* "}" ;
 Expr ::= Assign ;
 
-Assign ::= ( Call "." )? IDENTIFIER "=" Assign | LogicOr;
+Assign ::= ( Call "." )? IDENTIFIER ( "=" | "<-" | "+=" | "-=" | "*=" | "/=" ) Assign | LogicOr;
 
 LogicOr ::= LogicAnd ( "or" LogicAnd )* ;
 LogicAnd ::= Equality ( "and" Equality )* ;
@@ -49,7 +49,7 @@ Comparison ::= Addition ( ( ">" | ">=" | "<" | "<=" ) Addition )* ;
 Addition ::= Multiplication ( ( "-" | "+" ) Multiplication )* ;
 Multiplication ::= Unary ( ( "/" | "*" ) Unary )* ;
 
-Unary ::= ( "!" | "-" ) Unary | Call | Map | List ;
+Unary ::= ( "<-" | "!" | "-" ) Unary | Call | Map | List ;
 List ::= "[" ( Expr ( "," Expr )* ","? )? "]"
 Map ::= "{" ( MapEntry ( "," MapEntry )* ","? )? "}"
 MapEntry ::= Expr ":" Expr
@@ -57,6 +57,7 @@ Call ::= Primary ( "(" Args? ")" | "[" Expr "]" | "." IDENTIFIER )* ;
 
 Primary ::= "true" | "false" | "nil" | "self"
   | NUMBER | STRING | IDENTIFIER | LAMBDA
+  | "chan" "(" Expr ")"
   | "(" Expr ")" | "[" Args? "]"
   | "super" "." IDENTIFIER ;
 
@@ -95,8 +96,9 @@ RequiredParam ::= IDENTIFIER TypeAnnotation? ;
 TypeAnnotation ::= ':' Type ;
 
 PREDEFINED_TYPE = 'nil'
-  | 'number' 
-  | 'bool' 
-  | 'string' 
-  | 'any' 
+  | 'chan'
+  | 'number'
+  | 'bool'
+  | 'string'
+  | 'any'
 

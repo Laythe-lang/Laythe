@@ -75,8 +75,8 @@ mod unboxed {
   use crate::{
     managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Trace},
     object::{
-      Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native, ObjectKind,
-      Upvalue,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
+      ObjectKind, Upvalue,
     },
   };
 
@@ -158,7 +158,7 @@ mod unboxed {
     #[inline]
     pub fn to_num(self) -> f64 {
       match self {
-        Value::Number(num) => *num,
+        Value::Number(num) => num,
         _ => panic!("Value is not number"),
       }
     }
@@ -175,7 +175,7 @@ mod unboxed {
     #[inline]
     pub fn to_bool(self) -> bool {
       match self {
-        Value::Bool(b1) => *b1,
+        Value::Bool(b1) => b1,
         _ => panic!("Value is not boolean"),
       }
     }
@@ -199,7 +199,7 @@ mod unboxed {
     #[inline]
     pub fn to_obj(self) -> GcObject {
       match self {
-        Self::Obj(obj) => *obj,
+        Self::Obj(obj) => obj,
         _ => panic!("Expected object."),
       }
     }
@@ -224,6 +224,7 @@ mod unboxed {
         Value::Bool(_) => "bool",
         Value::Number(_) => "number",
         Value::Obj(obj) => match obj.kind() {
+          ObjectKind::Channel => "channel",
           ObjectKind::String => "string",
           ObjectKind::List => "list",
           ObjectKind::Fiber => "fiber",
@@ -276,6 +277,12 @@ mod unboxed {
 
   impl From<GcObj<Fiber>> for Value {
     fn from(managed: GcObj<Fiber>) -> Value {
+      Value::Obj(managed.degrade())
+    }
+  }
+
+  impl From<GcObj<Channel>> for Value {
+    fn from(managed: GcObj<Channel>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -435,7 +442,7 @@ mod unboxed {
       assert_eq!(mem::size_of::<List<Value>>(), 24);
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 24);
-      assert_eq!(mem::size_of::<Fun>(), 104);
+      assert_eq!(mem::size_of::<Fun>(), 128);
       assert_eq!(mem::size_of::<Class>(), 136);
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 32);
@@ -468,8 +475,8 @@ mod boxed {
   use crate::{
     managed::{DebugHeap, GcObj, GcObject, GcStr, Trace},
     object::{
-      Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native, ObjectKind,
-      Upvalue,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
+      ObjectKind, Upvalue,
     },
   };
 
@@ -603,6 +610,7 @@ mod boxed {
         ValueKind::Number => "number",
         ValueKind::Obj => match self.to_obj().kind() {
           ObjectKind::String => "string",
+          ObjectKind::Channel => "channel",
           ObjectKind::List => "list",
           ObjectKind::Map => "map",
           ObjectKind::Fun => "function",
@@ -677,6 +685,13 @@ mod boxed {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
+
+  impl From<GcObj<Channel>> for Value {
+    fn from(managed: GcObj<Channel>) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
+    }
+  }
+
   impl From<GcObj<List<Value>>> for Value {
     fn from(managed: GcObj<List<Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
@@ -760,7 +775,7 @@ mod boxed {
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 24);
       assert_eq!(mem::size_of::<Fun>(), 96);
-      assert_eq!(mem::size_of::<Fiber>(), 104);
+      assert_eq!(mem::size_of::<Fiber>(), 128);
       assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 16);

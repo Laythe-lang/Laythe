@@ -17,7 +17,7 @@ pub fn fs_module(hooks: &GcHooks, std: &Package, emitter: &mut IdEmitter) -> Std
   let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
 
   let mut module = hooks.manage(Module::from_path(
-    &hooks,
+    hooks,
     PathBuf::from(FS_PATH),
     module_class,
     emitter.emit(),

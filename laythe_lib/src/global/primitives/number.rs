@@ -5,8 +5,8 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::GcObj,
-  managed::Trace,
+  managed::{DebugHeap, GcObj},
+  managed::{Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -19,7 +19,7 @@ use std::mem;
 
 use super::{
   class_inheritance,
-  error::{FORMAT_CLASS_NAME, VALUE_ERROR_NAME},
+  error::{FORMAT_ERROR_NAME, VALUE_ERROR_NAME},
 };
 
 pub const NUMBER_CLASS_NAME: &str = "Number";
@@ -52,7 +52,7 @@ pub fn declare_number_class(hooks: &GcHooks, module: &mut Module) -> StdResult<(
 
 pub fn define_number_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NUMBER_CLASS_NAME)?;
-  let format_error = val!(load_class_from_module(hooks, module, FORMAT_CLASS_NAME)?);
+  let format_error = val!(load_class_from_module(hooks, module, FORMAT_ERROR_NAME)?);
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);
 
   class.add_method(
@@ -192,7 +192,7 @@ impl TimesIterator {
 
 impl Enumerate for TimesIterator {
   fn name(&self) -> &str {
-    "TimesIterator"
+    "Times"
   }
 
   fn current(&self) -> Value {
@@ -211,13 +211,25 @@ impl Enumerate for TimesIterator {
   fn size_hint(&self) -> Option<usize> {
     Some((self.max + 1.0) as usize)
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for TimesIterator {}
+
+impl DebugHeap for TimesIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
+    f.write_fmt(format_args!("{:?}", self))
+  }
+}
+
+impl Manage for TimesIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
+}
 
 native_with_error!(NumberUntil, NUMBER_UNTIL);
 
@@ -262,7 +274,7 @@ impl UntilIterator {
 
 impl Enumerate for UntilIterator {
   fn name(&self) -> &str {
-    "TimesIterator"
+    "Until"
   }
 
   fn current(&self) -> Value {
@@ -281,13 +293,25 @@ impl Enumerate for UntilIterator {
   fn size_hint(&self) -> Option<usize> {
     None
   }
-
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
 }
 
 impl Trace for UntilIterator {}
+
+impl DebugHeap for UntilIterator {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
+    f.write_fmt(format_args!("{:?}", self))
+  }
+}
+
+impl Manage for UntilIterator {
+  fn size(&self) -> usize {
+    mem::size_of::<Self>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
+}
 
 #[cfg(test)]
 mod test {

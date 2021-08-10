@@ -1,0 +1,13 @@
+fn launched(ch) {
+  ch <- "wait"
+}
+
+let ch = chan(3);
+
+launch launched(ch);
+launch launched(ch);
+launch launched(ch);
+
+assertEq(<- ch, "wait");
+assertEq(<- ch, "wait");
+assertEq(<- ch, "wait");

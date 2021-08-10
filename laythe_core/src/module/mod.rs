@@ -9,7 +9,7 @@ pub use package::Package;
 use crate::{
   hooks::GcHooks,
   managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
-  object::{Class, Instance, Map},
+  object::{Class, Instance, Map, MapEntry},
   value::Value,
   LyHashSet,
 };
@@ -225,6 +225,12 @@ impl Module {
     self.symbols.get(&name).copied()
   }
 
+  /// Get this symbol entry if it exists
+  #[inline]
+  pub fn symbol_entry(&mut self, name: GcStr) -> MapEntry<'_, GcStr, Value> {
+    self.symbols.entry(name)
+  }
+
   /// Import a single symbol from this module
   pub fn get_exported_symbol(&self, name: GcStr) -> ModuleResult<Value> {
     self
@@ -381,7 +387,7 @@ mod test {
 
     let symbols = module.module_instance(&hooks);
 
-    if let Some(result) = symbols.get_field(&export_name) {
+    if let Some(result) = symbols.get_field(export_name) {
       assert_eq!(*result, val!(true));
     } else {
       assert!(false);

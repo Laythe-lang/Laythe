@@ -1,0 +1,17 @@
+fn test(ch) {
+  assertEq(<- ch, 1);
+  assertEq(<- ch, 2);
+  assertEq(<- ch, 3);
+  assertEq(<- ch, nil);
+}
+
+let ch = chan();
+
+launch test(ch);
+
+ch <- 1;
+ch <- 2;
+ch <- 3;
+
+ch.close();
+

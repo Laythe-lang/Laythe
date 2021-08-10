@@ -5,8 +5,8 @@ use super::{
 };
 use crate::{
   object::{
-    Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native, ObjectKind,
-    Upvalue,
+    Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
+    ObjectKind, Upvalue,
   },
   value::Value,
 };
@@ -28,6 +28,9 @@ pub trait Object: Manage {
 
 #[macro_export]
 macro_rules! to_obj_kind {
+  ($o:expr, Channel) => {
+    $o.to_channel()
+  };
   ($o:expr, Class) => {
     $o.to_class()
   };
@@ -289,7 +292,7 @@ impl<T: 'static + Object> Deref for GcObj<T> {
 
   #[inline]
   fn deref(&self) -> &T {
-    &self.data()
+    self.data()
   }
 }
 
@@ -397,6 +400,13 @@ impl GcObject {
   }
 
   #[inline]
+  pub fn to_channel(self) -> GcObj<Channel> {
+    GcObj {
+      ptr: unsafe { self.data_ptr::<Channel>() },
+    }
+  }
+
+  #[inline]
   pub fn to_class(self) -> GcObj<Class> {
     GcObj {
       ptr: unsafe { self.data_ptr::<Class>() },
@@ -478,6 +488,7 @@ impl fmt::Display for GcObject {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match_obj!((self) {
       ObjectKind::String(string) => write!(f, "{}", string),
+      ObjectKind::Channel(channel) => write!(f, "{}", channel),
       ObjectKind::List(list) => write!(f, "{}", list),
       ObjectKind::Map(map) => write!(f, "{}", map),
       ObjectKind::Fun(fun) => write!(f, "{}", fun),
@@ -487,7 +498,7 @@ impl fmt::Display for GcObject {
       ObjectKind::Method(method) => write!(f, "{}", method),
       ObjectKind::Class(class) => write!(f, "{}", class),
       ObjectKind::Instance(instance) => write!(f, "{}", instance),
-      ObjectKind::Enumerator(enumerator) => write!(f, "{}", enumerator.name()),
+      ObjectKind::Enumerator(enumerator) => write!(f, "{}", enumerator),
       ObjectKind::Native(native) => write!(f, "{}", native),
     })
   }
@@ -497,6 +508,7 @@ impl fmt::Debug for GcObject {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match_obj!((self) {
       ObjectKind::String(string) => write!(f, "{:?}", string),
+      ObjectKind::Channel(channel) => write!(f, "{:?}", channel),
       ObjectKind::List(list) => write!(f, "{:?}", list),
       ObjectKind::Map(map) => write!(f, "{:?}", map),
       ObjectKind::Fun(fun) => write!(f, "{:?}", fun),
@@ -509,6 +521,12 @@ impl fmt::Debug for GcObject {
       ObjectKind::Enumerator(enumerator) => write!(f, "{:?}", enumerator.name()),
       ObjectKind::Native(native) => write!(f, "{:?}", native),
     })
+  }
+}
+
+impl fmt::Pointer for GcObject {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    self.ptr.fmt(f)
   }
 }
 
@@ -534,6 +552,9 @@ impl Trace for GcObject {
     }
 
     match_obj!((self) {
+      ObjectKind::Channel(channel) => {
+        channel.trace();
+      },
       ObjectKind::Class(class) => {
         class.trace();
       },
@@ -593,6 +614,9 @@ impl Trace for GcObject {
     }
 
     match_obj!((self) {
+      ObjectKind::Channel(channel) => {
+        trace_debug!(channel);
+      },
       ObjectKind::Class(class) => {
         trace_debug!(class);
       },
@@ -640,6 +664,9 @@ impl DebugHeap for GcObject {
     }
 
     match_obj!((self) {
+      ObjectKind::Channel(channel) => {
+        channel.fmt_heap(f, depth)
+      },
       ObjectKind::Class(class) => {
         class.fmt_heap(f, depth)
       },
@@ -718,6 +745,7 @@ impl GcObjectHandle {
     mem::size_of::<Self>()
       + match self.kind() {
         ObjectKind::Fiber => kind_size!(Fiber),
+        ObjectKind::Channel => kind_size!(Channel),
         ObjectKind::List => kind_size!(List<Value>),
         ObjectKind::Map => kind_size!(Map<Value, Value>),
         ObjectKind::Fun => kind_size!(Fun),
@@ -754,6 +782,7 @@ impl Drop for GcObjectHandle {
         ObjectKind::List => drop_kind!(List<Value>),
         ObjectKind::Map => drop_kind!(Map<Value, Value>),
         ObjectKind::Fiber => drop_kind!(Fiber),
+        ObjectKind::Channel => drop_kind!(Channel),
         ObjectKind::Fun => drop_kind!(Fun),
         ObjectKind::Closure => drop_kind!(Closure),
         ObjectKind::Class => drop_kind!(Class),
