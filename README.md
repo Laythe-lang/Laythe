@@ -1,8 +1,8 @@
 # Laythe
 
-A programming language originally based on the 2nd book of [Crafting Interpreters](https://craftinginterpreters.com/). See git tag [v0.1.0](https://github.com/Laythe-lang/Laythe/releases/tag/v0.1.0) for a fully compliant lox implementations. Since v0.1.0 I've continued adding features and exploring what's possible to learn and do in the PL world. 
+A gradual typed scripting language aimed at making concurrent programming through channels and fibers. The language was originally based on the 2nd book of [Crafting Interpreters](https://craftinginterpreters.com/). See git tag [v0.1.0](https://github.com/Laythe-lang/Laythe/releases/tag/v0.1.0) for a fully compliant lox implementations. 
 
-# Getting Started
+## Getting Started
 
 Laythe is built in rust and as such uses the typical set of cargo commands for building, testing, running and benchmarks. If you don't have cargo on your system it us recommended you us [rustup](https://rustup.rs/) to get setup.
 
@@ -36,14 +36,13 @@ cargo run [--release]
 cargo run [--release] [filepath]
 ```
 
-# Notable differences from Lox
+## Notable differences from Lox
 
-At this point laythe should probably be considered a cousin to Lox. Primarily there are extensions but a few features have been removed as well.
+Laythe should probably be considered a cousin to Lox. There have been primarily additions but a few features of Lox have also been removed
 
+### Additions
 
-## Additions
-
-### Built in Classes
+#### Built in Classes
 Laythe now has machinery to give all types methods. Some simple examples include `.str()` methods to get a string representation of each type.
 
 ```laythe
@@ -52,8 +51,8 @@ laythe:> x.str()
 'true'
 ```
 
-### Lambdas
-There are now function expressions. This was actually a very minimal change to enable this as it reuses almost all the the function machinery.
+#### Lambdas
+There are now function expressions. These are primarily useful for higher order functions like `.map` and `.filter`
 
 ```laythe
 laythe:> let func = |x| x * 2;
@@ -70,7 +69,7 @@ Classes now support static methods using the `static` keyword.
 ```laythe
 class WithStatic {
   static example() { 
-    return 'example';
+    'example'
   }
 }
 
@@ -89,10 +88,10 @@ nil
 laythe:> map[false];
 15
 ```
-Map support all types with objects supported by reference equality. Since strings are interned this gives the desire value comparison results most would expect.
+Lists can be heterogenous, and internally are resizable arrays. Map support all types with objects supported by reference equality.
 
 ### Type Annotations
-Laythe now supports a basic set of type annotations. Long term this will eventually turn into optional typing, but the parser will now ingest some Typescript like annotations.
+Laythe now supports a basic set of type annotations. Long term this will eventually turn into gradual typing, but the parser will now ingest some Typescript like annotations.
 
 ```laythe
 // let type def
@@ -127,7 +126,7 @@ trait NumHolder {
 ```
 
 ### Implicit Return
-Like ruby Laythe now supports implicit returns in a few cases. These included lambda, functions, methods and static methods
+Like many other languages Laythe now supports implicit returns in a few cases. These included lambda, functions, methods and static methods
 
 ```laythe
 laythe:> let f1 = || { 10 };
@@ -139,7 +138,7 @@ laythe:> print(f2());
 ```
 
 ### String Interpolation
-Laythe largely borrowed Javascript's string interpolation syntax. The primarily difference is we don't introduce a new quoting character 
+Laythe include string interpolation with `${expr}` to interpolate in a value
 
 ```laythe
 class Person {
@@ -157,6 +156,40 @@ class Person {
 
 print(Person("Jim", "Smith", 29).str())
 // "Jim Smith is 29 years old"
+```
+
+### Fibers and Channels
+
+Laythe concurrent model builds around fibers and channels. Fibers as known by a number of terms such as green threads, and stackfull coroutines. These are separate and lightweight units of execution that in many ways act like an os thread. Laythe currently only runs a single fiber at a time switch between fibers on channel send's and receives.
+
+```
+fn printer(ch) {
+  print(<- ch)
+}
+
+fn writer(ch) {
+  let strings = ["foo", "bar", "baz"];
+
+  for i in 100.times() {
+    for string in strings {
+      ch <- string;
+    }
+  }
+}
+
+// create a buffered channel that can hold 10 elements
+let ch = chan(10);
+
+// "launch" the printer function as a fiber passing in the channel
+launch printer(ch)
+
+// send 3 strings to the channel to eventually be written
+ch <- "foo";
+ch <- "bar";
+ch <- "baz";
+
+// send many string to the channel to eventually be written
+writer(ch);
 ```
 
 ## Modified
@@ -297,6 +330,3 @@ print(increment2(10));
 // a new list
 [1, 2, 3].iter().map(sum(_, 2)).into(List.collect);
 ```
-
-## Fibers
-They are all the rage, and I pattern I haven't used before but they feel like they several solve different problems for single threaded concurrency. Generally it seems fibers can be both used as generators and to handle async programming. I'm not exactly sure what I want to go with here but generally I think this is the approach I want to take.
