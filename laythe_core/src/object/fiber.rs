@@ -93,7 +93,7 @@ impl Fiber {
 
     // get pointers to the call frame and stack top
     let current_frame = frames.as_mut_ptr();
-    let stack_top = unsafe { stack.as_mut_ptr().add(1) };
+    let stack_top = unsafe { stack.as_mut_ptr().offset(1) };
 
     Ok(Self {
       stack,
@@ -378,7 +378,7 @@ impl Fiber {
     unsafe {
       self.close_upvalues_internal(self.frame().stack_start);
       self.stack_top = self.frame().stack_start;
-      self.frame = self.frame.sub(1);
+      self.frame = self.frame.offset(-1);
     }
 
     self.frames.pop();
@@ -420,7 +420,11 @@ impl Fiber {
     // if we have any argument bulk copy them to the fiber
     if slots > 1 {
       unsafe {
-        ptr::copy_nonoverlapping(self.frame().stack_start.add(1), fiber.stack_top, arg_count);
+        ptr::copy_nonoverlapping(
+          self.frame().stack_start.offset(1),
+          fiber.stack_top,
+          arg_count,
+        );
         fiber.stack_top = fiber.stack_top.add(arg_count);
       }
     }
