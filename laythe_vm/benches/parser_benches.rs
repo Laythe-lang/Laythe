@@ -43,6 +43,12 @@ fn criterion_benchmark(c: &mut Criterion) {
       .join("criterion")
       .join("binary_trees.lay"),
   );
+  let channel = load_source(
+    &mut gc,
+    PathBuf::from("fixture")
+      .join("criterion")
+      .join("channel.lay"),
+  );
   let equality = load_source(
     &mut gc,
     PathBuf::from("fixture")
@@ -52,6 +58,12 @@ fn criterion_benchmark(c: &mut Criterion) {
   let fib = load_source(
     &mut gc,
     PathBuf::from("fixture").join("criterion").join("fib.lay"),
+  );
+  let fibers = load_source(
+    &mut gc,
+    PathBuf::from("fixture")
+      .join("criterion")
+      .join("fibers.lay"),
   );
   let instantiation = load_source(
     &mut gc,
@@ -105,10 +117,16 @@ fn criterion_benchmark(c: &mut Criterion) {
       b.iter(|| parse_source(*s));
     },
   );
+  c.bench_with_input(BenchmarkId::new("parse", "channel"), &channel, |b, s| {
+    b.iter(|| parse_source(*s));
+  });
   c.bench_with_input(BenchmarkId::new("parse", "equality"), &equality, |b, s| {
     b.iter(|| parse_source(*s));
   });
   c.bench_with_input(BenchmarkId::new("parse", "fib"), &fib, |b, s| {
+    b.iter(|| parse_source(*s));
+  });
+  c.bench_with_input(BenchmarkId::new("parse", "fibers"), &fibers, |b, s| {
     b.iter(|| parse_source(*s));
   });
   c.bench_with_input(

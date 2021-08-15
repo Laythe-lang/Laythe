@@ -1,0 +1,51 @@
+fn test(ch) {
+  while <- ch { }
+}
+
+let sync = chan();
+let buffered = chan(100);
+
+launch test(sync);
+launch test(buffered);
+
+let n = 1000000;
+
+let syncStart = clock();
+
+for i in n.times() {
+  sync <- true;
+  sync <- true;
+  sync <- true;
+  sync <- true;
+  sync <- true;
+  sync <- true;
+  sync <- true;
+  sync <- true;
+  sync <- true;
+  sync <- true;
+}
+sync <- false;
+sync.close();
+
+let syncTime = clock() - syncStart;
+
+let bufferedStart = clock();
+
+for i in n.times() {
+  buffered <- true;
+  buffered <- true;
+  buffered <- true;
+  buffered <- true;
+  buffered <- true;
+  buffered <- true;
+  buffered <- true;
+  buffered <- true;
+  buffered <- true;
+  buffered <- true;
+}
+buffered <- false;
+buffered.close();
+
+let bufferedTime = clock() - bufferedStart;
+print("sync: ${syncTime}");
+print("buffered: ${bufferedTime}");
