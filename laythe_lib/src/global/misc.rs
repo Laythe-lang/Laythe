@@ -3,7 +3,7 @@ use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   managed::GcObj,
-  managed::{GcStr, Trace},
+  managed::{Gc, GcStr, Trace},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -13,7 +13,7 @@ use laythe_core::{
 };
 use std::io::Write;
 
-pub fn add_misc_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn add_misc_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   declare_misc_funs(hooks, module)
 }
 
@@ -24,7 +24,7 @@ const PRINT: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Variadic
 const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Default(0, 1))
   .with_params(&[ParameterBuilder::new("code", ParameterKind::Number)]);
 
-pub fn declare_misc_funs(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_misc_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let str_name = hooks.manage_str("str");
 
   export_and_insert(

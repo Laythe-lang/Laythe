@@ -1,7 +1,7 @@
 use crate::{native, support::export_and_insert, StdError, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{GcObj, Trace},
+  managed::{Gc, GcObj, Trace},
   module::Module,
   object::{Class, List, LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -53,7 +53,7 @@ pub fn create_error_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class>
   class
 }
 
-pub fn declare_global_errors(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_global_errors(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let type_error = error_inheritance(hooks, module, TYPE_ERROR_NAME)?;
   let format_error = error_inheritance(hooks, module, FORMAT_ERROR_NAME)?;
   let value_error = error_inheritance(hooks, module, VALUE_ERROR_NAME)?;

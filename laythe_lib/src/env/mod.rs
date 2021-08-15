@@ -15,7 +15,7 @@ const ENV_PATH: &str = "std/env";
 
 pub fn env_module(
   hooks: &GcHooks,
-  std: &Package,
+  std: Gc<Package>,
   emitter: &mut IdEmitter,
 ) -> StdResult<Gc<Module>> {
   let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
@@ -27,7 +27,7 @@ pub fn env_module(
     emitter.emit(),
   )?);
 
-  declare_env_module(hooks, &mut module)?;
+  declare_env_module(hooks, module)?;
   define_env_module(hooks, &mut module)?;
 
   Ok(module)

@@ -6,7 +6,7 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   if_let_obj,
-  managed::{GcObj, GcStr, Trace},
+  managed::{Gc, GcObj, GcStr, Trace},
   module::{Module, Package},
   object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -20,8 +20,8 @@ pub const ASSERT_ERROR_NAME: &str = "AssertError";
 
 pub(crate) fn add_assert_funs(
   hooks: &GcHooks,
-  module: &mut Module,
-  package: &Package,
+  module: Gc<Module>,
+  package: Gc<Package>,
 ) -> StdResult<()> {
   let error = default_error_inheritance(hooks, package, ASSERT_ERROR_NAME)?;
 

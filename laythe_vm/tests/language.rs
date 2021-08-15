@@ -136,7 +136,7 @@ fn channel() -> Result<(), std::io::Error> {
     &vec![
       "language/channel/buffered.lay",
       "language/channel/channel_send_channel.lay",
-      "language/channel/channels_sync.lay",
+      "language/channel/channel_sync.lay",
       "language/channel/fancy.lay",
       "language/channel/in_collection.lay",
       "language/channel/in_function.lay",

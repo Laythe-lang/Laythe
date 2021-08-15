@@ -6,8 +6,8 @@ mod time;
 #[cfg(test)]
 mod support;
 
-use crate::{StdResult, STD};
 use self::assert::add_assert_funs;
+use crate::{StdResult, STD};
 use laythe_core::{hooks::GcHooks, managed::Gc, module::Package, utils::IdEmitter};
 use misc::add_misc_funs;
 use time::add_clock_funs;
@@ -20,26 +20,24 @@ pub use primitives::{
   object::OBJECT_CLASS_NAME, string::STRING_CLASS_NAME,
 };
 
-
 pub use primitives::error::{
-  ERROR_CLASS_NAME, EXPORT_ERROR_NAME, IMPORT_ERROR_NAME, INDEX_ERROR_NAME,
+  DEADLOCK_ERROR_NAME, ERROR_CLASS_NAME, EXPORT_ERROR_NAME, IMPORT_ERROR_NAME, INDEX_ERROR_NAME,
   METHOD_NOT_FOUND_ERROR_NAME, PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, SYNTAX_ERROR_NAME,
-  TYPE_ERROR_NAME, VALUE_ERROR_NAME, DEADLOCK_ERROR_NAME
+  TYPE_ERROR_NAME, VALUE_ERROR_NAME,
 };
 
 use self::primitives::create_primitives;
 
 pub fn create_std_core(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Package>> {
-  let mut global_module = create_primitives(hooks, emitter)?;
+  let global_module = create_primitives(hooks, emitter)?;
   let std = hooks.manage(Package::new(
     hooks.manage_str(STD.to_string()),
     global_module,
   ));
 
-  add_assert_funs(hooks, &mut global_module, &std)?;
-  add_clock_funs(hooks, &mut global_module)?;
-  add_misc_funs(hooks, &mut global_module)?;
+  add_assert_funs(hooks, global_module, std)?;
+  add_clock_funs(hooks, global_module)?;
+  add_misc_funs(hooks, global_module)?;
 
   Ok(std)
 }
-

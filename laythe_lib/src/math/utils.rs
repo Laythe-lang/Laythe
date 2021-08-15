@@ -1,8 +1,8 @@
 use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::GcObj,
   managed::Trace,
+  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -39,72 +39,72 @@ const POW_META: NativeMetaBuilder = NativeMetaBuilder::fun("pow", Arity::Fixed(2
 
 const RAND_META: NativeMetaBuilder = NativeMetaBuilder::fun("rand", Arity::Fixed(0));
 
-pub fn declare_math_module(hooks: &GcHooks, self_module: &mut Module) -> StdResult<()> {
+pub fn declare_math_module(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(PI),
     val!(std::f64::consts::PI),
   )?;
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(E),
     val!(std::f64::consts::E),
   )?;
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(SIN_META.name),
     val!(Sin::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(COS_META.name),
     val!(Cos::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(LN_META.name),
     val!(Ln::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(ABS_META.name),
     val!(Abs::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(REM_META.name),
     val!(Rem::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(POW_META.name),
     val!(Pow::native(hooks)),
   )?;
 
   export_and_insert(
     hooks,
-    self_module,
+    module,
     hooks.manage_str(RAND_META.name),
     val!(Rand::native(hooks)),
   )
 }
 
-pub fn define_math_module(_: &GcHooks, _: &mut Module) -> StdResult<()> {
+pub fn define_math_module(_: &GcHooks, _: Gc<Module>) -> StdResult<()> {
   Ok(())
 }
 

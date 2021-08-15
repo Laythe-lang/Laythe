@@ -7,7 +7,7 @@ use laythe_core::{
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
   managed::GcObj,
-  managed::{DebugHeap, DebugWrap, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -43,12 +43,12 @@ const STRING_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity
 
 const STRING_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
-pub fn declare_string_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_string_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, STRING_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_string_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_string_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, STRING_CLASS_NAME)?;
   let index_error = val!(load_class_from_module(hooks, module, INDEX_ERROR_NAME)?);
 

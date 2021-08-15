@@ -492,7 +492,6 @@ impl<'a> Allocator {
     let mut remaining: usize = 0;
 
     self.heap.retain(|item| {
-      #[allow(clippy::let_and_return)]
       let retain = item.unmark();
 
       #[cfg(feature = "gc_log_free")]

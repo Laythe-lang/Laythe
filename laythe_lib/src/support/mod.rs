@@ -5,7 +5,7 @@ use crate::{
 use laythe_core::{
   hooks::GcHooks,
   if_let_obj,
-  managed::{GcObj, GcStr},
+  managed::{Gc, GcObj, GcStr},
   module::{Import, Module, Package},
   object::{Class, Instance, ObjectKind},
   to_obj_kind,
@@ -14,7 +14,7 @@ use laythe_core::{
 
 pub fn default_class_inheritance(
   hooks: &GcHooks,
-  package: &Package,
+  package: Gc<Package>,
   class_name: &str,
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
@@ -35,7 +35,7 @@ pub fn default_class_inheritance(
 
 pub fn default_error_inheritance(
   hooks: &GcHooks,
-  package: &Package,
+  package: Gc<Package>,
   class_name: &str,
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
@@ -57,7 +57,7 @@ pub fn default_error_inheritance(
 
 pub fn load_class_from_package(
   hooks: &GcHooks,
-  package: &Package,
+  package: Gc<Package>,
   path: &str,
   name: &str,
 ) -> StdResult<GcObj<Class>> {
@@ -74,7 +74,7 @@ pub fn load_class_from_package(
 
 pub fn load_class_from_module(
   hooks: &GcHooks,
-  module: &Module,
+  module: Gc<Module>,
   name: &str,
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(name);
@@ -89,7 +89,7 @@ pub fn load_class_from_module(
 
 pub fn load_instance_from_module(
   hooks: &GcHooks,
-  module: &Module,
+  module: Gc<Module>,
   name: &str,
 ) -> StdResult<GcObj<Instance>> {
   let name = hooks.manage_str(name);
@@ -107,7 +107,7 @@ pub fn load_instance_from_module(
 
 pub fn export_and_insert(
   hooks: &GcHooks,
-  module: &mut Module,
+  mut module: Gc<Module>,
   name: GcStr,
   symbol: Value,
 ) -> StdResult<()> {

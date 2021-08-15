@@ -7,8 +7,8 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::GcObj,
   managed::Trace,
+  managed::{Gc, GcObj},
   module::{Module, Package},
   object::{Instance, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -29,8 +29,8 @@ const STDOUT_WRITELN: NativeMetaBuilder = NativeMetaBuilder::method("writeln", A
 
 const STDOUT_FLUSH: NativeMetaBuilder = NativeMetaBuilder::method("flush", Arity::Fixed(0));
 
-pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdResult<()> {
-  let class = default_class_inheritance(hooks, std, STDOUT_CLASS_NAME)?;
+pub fn declare_stdout(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
+  let class = default_class_inheritance(hooks, package, STDOUT_CLASS_NAME)?;
   let instance = hooks.manage_obj(Instance::new(class));
 
   export_and_insert(
@@ -41,12 +41,12 @@ pub fn declare_stdout(hooks: &GcHooks, module: &mut Module, std: &Package) -> St
   )
 }
 
-pub fn define_stdout(hooks: &GcHooks, module: &Module, std: &Package) -> StdResult<()> {
+pub fn define_stdout(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let instance = load_instance_from_module(hooks, module, STDOUT_INSTANCE_NAME)?;
   let mut class = instance.class();
   let io_error = val!(load_class_from_package(
     hooks,
-    std,
+    package,
     IO_MODULE_PATH,
     IO_ERROR
   )?);

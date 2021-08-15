@@ -7,6 +7,7 @@ fn test_files(paths: &[&str], result: ExecuteResult) -> Result<(), std::io::Erro
   assert_files_exit(paths, FILE_PATH, result)
 }
 
+#[cfg(not(feature = "debug"))]
 fn test_file_with_stdout(
   path: &str,
   stdout: Vec<&str>,
@@ -15,6 +16,7 @@ fn test_file_with_stdout(
   assert_file_exit_and_stdio(path, FILE_PATH, None, None, Some(stdout), None, result)
 }
 
+#[cfg(not(feature = "debug"))]
 fn test_file_with_stderr(
   path: &str,
   stderr: Vec<&str>,
@@ -23,6 +25,7 @@ fn test_file_with_stderr(
   assert_file_exit_and_stdio(path, FILE_PATH, None, None, None, Some(stderr), result)
 }
 
+#[cfg(not(feature = "debug"))]
 fn test_file_with_stdin(
   path: &str,
   stdin: String,
@@ -31,6 +34,7 @@ fn test_file_with_stdin(
   assert_file_exit_and_stdio(path, FILE_PATH, Some(stdin), None, None, None, result)
 }
 
+#[cfg(not(feature = "debug"))]
 fn test_file_with_stdin_lines(
   path: &str,
   lines: Vec<String>,

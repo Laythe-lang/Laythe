@@ -140,8 +140,8 @@ impl Fiber {
   }
 
   #[inline]
-  pub fn state(&self) -> FiberState {
-    self.state
+  pub fn is_complete(&self) -> bool {
+    self.state == FiberState::Complete
   }
 
   /// Activate the current fiber
@@ -378,18 +378,24 @@ impl Fiber {
     unsafe {
       self.close_upvalues_internal(self.frame().stack_start);
       self.stack_top = self.frame().stack_start;
-      self.frame = self.frame.offset(-1);
     }
 
     self.frames.pop();
     Some(match self.frames.last() {
       Some(frame) => {
+        unsafe {
+          self.frame = self.frame.offset(-1);
+        }
+
         #[cfg(debug_assertions)]
         self.assert_frame_inbounds();
 
         Some(frame.closure.fun())
       },
-      None => None,
+      None => {
+        self.frame = ptr::null_mut();
+        None
+      },
     })
   }
 
@@ -449,18 +455,17 @@ impl Fiber {
       return;
     }
 
-    let stack_old = self.stack.as_ptr();
+    let stack_old = self.stack.as_mut_ptr();
     self.stack.reserve(additional);
-    let stack_new = self.stack.as_ptr();
+    let stack_new = self.stack.as_mut_ptr();
 
-    // If we relocated instead of extended updated pointers
+    // If we relocated update pointers
     if stack_old != stack_new {
       unsafe {
-        let offset = stack_new.offset_from(stack_old);
-        self.stack_top = self.stack_top.offset(offset);
+        self.stack_top = stack_new.offset(self.stack_top.offset_from(stack_old));
 
         self.frames.iter_mut().for_each(|frame| {
-          frame.stack_start = frame.stack_start.offset(offset);
+          frame.stack_start = stack_new.offset(frame.stack_start.offset_from(stack_old));
         });
       }
     }

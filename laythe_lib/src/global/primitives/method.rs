@@ -5,7 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{GcObj, GcStr, Trace},
+  managed::{Gc, GcObj, GcStr, Trace},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -25,12 +25,12 @@ const METHOD_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::
   .with_params(&[ParameterBuilder::new("args", ParameterKind::Any)])
   .with_stack();
 
-pub fn declare_method_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_method_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let method_class = class_inheritance(hooks, module, METHOD_CLASS_NAME)?;
   export_and_insert(hooks, module, method_class.name(), val!(method_class))
 }
 
-pub fn define_method_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_method_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, METHOD_CLASS_NAME)?;
 
   class.add_method(

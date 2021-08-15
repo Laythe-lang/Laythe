@@ -11,7 +11,7 @@ use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   if_let_obj,
-  managed::{DebugHeap, DebugWrap, GcObj, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Map, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -61,7 +61,7 @@ const MAP_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed
 const MAP_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const MAP_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
-pub fn declare_map_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, MAP_CLASS_NAME)?;
   let key_error = error_inheritance(hooks, module, KEY_ERROR_NAME)?;
 
@@ -69,7 +69,7 @@ pub fn declare_map_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> 
   export_and_insert(hooks, module, key_error.name(), val!(key_error))
 }
 
-pub fn define_map_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, MAP_CLASS_NAME)?;
   let key_error = val!(load_class_from_module(hooks, module, KEY_ERROR_NAME)?);
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);

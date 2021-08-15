@@ -5,7 +5,7 @@ fn test(ch) {
 }
 
 let ch = chan();
-let fibers = 10000;
+let fibers = 100000;
 
 for i in fibers.times() {
   launch test(ch);

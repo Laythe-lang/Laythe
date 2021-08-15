@@ -1,6 +1,21 @@
 use super::class_inheritance;
-use crate::{StdError, StdResult, global::primitives::error::CHANNEL_ERROR_NAME, native, native_with_error, support::{export_and_insert, load_class_from_module}};
-use laythe_core::{Call, hooks::{GcHooks, Hooks}, managed::GcObj, managed::Trace, module::Module, object::{CloseResult, LyNative, Native, NativeMetaBuilder, ObjectKind}, signature::Arity, val, value::{VALUE_NIL, Value}};
+use crate::{
+  global::primitives::error::CHANNEL_ERROR_NAME,
+  native, native_with_error,
+  support::{export_and_insert, load_class_from_module},
+  StdError, StdResult,
+};
+use laythe_core::{
+  hooks::{GcHooks, Hooks},
+  managed::Trace,
+  managed::{Gc, GcObj},
+  module::Module,
+  object::{CloseResult, LyNative, Native, NativeMetaBuilder, ObjectKind},
+  signature::Arity,
+  val,
+  value::{Value, VALUE_NIL},
+  Call,
+};
 use std::io::Write;
 
 pub const CHANNEL_CLASS_NAME: &str = "Channel";
@@ -9,13 +24,13 @@ const CHANNEL_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::F
 const CHANNEL_CLOSE: NativeMetaBuilder = NativeMetaBuilder::method("close", Arity::Fixed(0));
 const CHANNEL_CAPACITY: NativeMetaBuilder = NativeMetaBuilder::method("capacity", Arity::Fixed(0));
 
-pub fn declare_channel_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let channel_class = class_inheritance(hooks, module, CHANNEL_CLASS_NAME)?;
   export_and_insert(hooks, module, channel_class.name(), val!(channel_class))
     .map_err(StdError::from)
 }
 
-pub fn define_channel_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut channel_class = load_class_from_module(hooks, module, CHANNEL_CLASS_NAME)?;
   let channel_error = val!(load_class_from_module(hooks, module, CHANNEL_ERROR_NAME)?);
 
@@ -207,7 +222,7 @@ mod test {
     use laythe_core::object::Channel;
 
     use super::*;
-    use crate::support::{MockedContext, test_error_class};
+    use crate::support::{test_error_class, MockedContext};
 
     #[test]
     fn new() {
