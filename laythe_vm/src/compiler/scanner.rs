@@ -506,7 +506,7 @@ impl<'a> Scanner<'a> {
         "a" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
             "n" => self.check_keyword(2, "d", TokenKind::And),
-            "s" => self.check_keyword(2, "", TokenKind::As),
+            "s" => self.check_keyword_len(2, TokenKind::As),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
@@ -534,16 +534,16 @@ impl<'a> Scanner<'a> {
           Some(c2) => match c2 {
             "a" => self.check_keyword(2, "lse", TokenKind::False),
             "o" => self.check_keyword(2, "r", TokenKind::For),
-            "n" => self.check_keyword(2, "", TokenKind::Fun),
+            "n" => self.check_keyword_len(2, TokenKind::Fun),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
         },
         "i" => match self.nth_char_from(self.start, 1) {
           Some(c2) => match c2 {
-            "f" => self.check_keyword(2, "", TokenKind::If),
+            "f" => self.check_keyword_len(2, TokenKind::If),
             "m" => self.check_keyword(2, "port", TokenKind::Import),
-            "n" => self.check_keyword(2, "", TokenKind::In),
+            "n" => self.check_keyword_len(2, TokenKind::In),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
@@ -574,7 +574,7 @@ impl<'a> Scanner<'a> {
               Some(c3) => match c3 {
                 "a" => self.check_keyword(3, "it", TokenKind::Trait),
                 "u" => self.check_keyword(3, "e", TokenKind::True),
-                "y" => self.check_keyword(3, "", TokenKind::Try),
+                "y" => self.check_keyword_len(3, TokenKind::Try),
                 _ => TokenKind::Identifier,
               },
               None => TokenKind::Identifier,
@@ -594,10 +594,24 @@ impl<'a> Scanner<'a> {
   /// Check if the remainder of the current slice matches the rest
   /// of the keyword
   fn check_keyword(&self, start: usize, rest: &str, kind: TokenKind) -> TokenKind {
-    let start_index = self.nth_next_boundary(self.start, start);
+    // we can do a straight addition here because all keywords are ascii characters
+    let start_index = self.start + start;
+    debug_assert!(self.nth_next_boundary(self.start, start) == start_index);
+
     let len = self.current - start_index - 1;
 
     if len == rest.len() && rest == &self.source[start_index..self.current - 1] {
+      return kind;
+    }
+
+    TokenKind::Identifier
+  }
+
+  /// Check if token is the correct length for this provided token kind
+  fn check_keyword_len(&self, len: usize, kind: TokenKind) -> TokenKind {
+    let token_len = self.current - self.start - 1;
+
+    if len == token_len {
       return kind;
     }
 
@@ -628,7 +642,7 @@ impl<'a> Scanner<'a> {
       return None;
     }
 
-    Some(&self.source[start..end])
+    Some(unsafe { self.source.get_unchecked(start..end) })
   }
 
   /// Peek the current token
@@ -715,12 +729,15 @@ fn make_token_owned<'a>(kind: TokenKind, lexeme: String, start: usize, end: usiz
 
 /// Is the str slice a digit. Assumes single char
 fn is_digit(c: &str) -> bool {
-  ("0"..="9").contains(&c)
+  let bytes = c.as_bytes();
+  bytes.len() == 1 && (48..=57).contains(&bytes[0])
 }
 
 /// Is the str slice a alphabetic. Assumes single char
 fn is_alpha(c: &str) -> bool {
-  ("a"..="z").contains(&c) || ("A"..="Z").contains(&c) || c == "_"
+  let bytes = c.as_bytes();
+  bytes.len() == 1
+    && ((65..=90).contains(&bytes[0]) || (97..=122).contains(&bytes[0]) || bytes[0] == 95)
 }
 
 /// A loose estimate for how many characters are in a typical line
