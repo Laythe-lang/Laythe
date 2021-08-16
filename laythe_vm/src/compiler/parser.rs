@@ -182,7 +182,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::While
         | TokenKind::Return => {
           break;
-        }
+        },
         _ => (),
       }
 
@@ -264,7 +264,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
-            }
+            },
             _ => {
               let (fun_kind, method) = self.method(name, false)?;
               match fun_kind {
@@ -272,9 +272,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 FunKind::Initializer => init = Some(method),
                 _ => unreachable!(),
               }
-            }
+            },
           }
-        }
+        },
 
         // static we know must be a method
         TokenKind::Static => {
@@ -286,7 +286,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let name = self.previous.clone();
           let (_, method) = self.method(name, true)?;
           static_methods.push(method);
-        }
+        },
         _ => return self.error_current("Expected method or member declaration inside of class."),
       }
     }
@@ -386,7 +386,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           members.push(TypeMember::new(name, type_));
-        }
+        },
         TokenKind::Less | TokenKind::LeftParen => {
           self.advance()?;
           let type_params = if self.match_kind(TokenKind::Less)? {
@@ -400,7 +400,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           methods.push(TypeMethod::new(name, call_sig));
-        }
+        },
         _ => self.error_at(
           self.current.clone(),
           "Expected member or method declaration inside trait.",
@@ -533,7 +533,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         Some(Trailer::Call(_)) => {
           self.consume_basic(TokenKind::Semicolon, "Expected ';' launch call.")?;
           Ok(Stmt::Launch(self.node(Launch::new(closure))))
-        }
+        },
         _ => self.error("Expected call following 'launch'."),
       }
     } else {
@@ -1044,14 +1044,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         TokenKind::StringSegment => {
           self.advance()?;
           segments.push(StringSegments::Token(self.previous.clone()))
-        }
+        },
         TokenKind::StringEnd => {
           break;
-        }
+        },
         _ => {
           let expr = self.expr()?;
           segments.push(StringSegments::Expr(self.node(expr)))
-        }
+        },
       }
     }
     self.consume(TokenKind::StringEnd, "Unterminated interpolated string.")?;
@@ -1313,7 +1313,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TypePrefix::Fun => {
         let call_sig = self.call_signature(TokenKind::RightParen, vec![])?;
         Ok(Type::Fun(self.node(call_sig)))
-      }
+      },
       TypePrefix::Literal => self.type_literal(),
     }
   }
@@ -1388,11 +1388,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
         Ok(Type::Ref(type_ref))
-      }
+      },
       _ => {
         // TODO: maybe
         self.error("Can only apply type argument to a non primitive type identifier.")
-      }
+      },
     }
   }
 
@@ -2164,13 +2164,13 @@ mod test {
   use crate::ast_printer::AstPrint;
   use laythe_core::memory::{Allocator, NO_GC};
 
-  fn test(source: &str) {
+  fn test(src: &str) {
     let mut gc = Allocator::default();
-    let source = gc.manage_str(source, &NO_GC);
+    let source = gc.manage_str(src, &NO_GC);
     let source = Source::new(source);
 
     let (ast, _) = Parser::new(&source, 0).parse();
-    assert!(ast.is_ok());
+    assert!(ast.is_ok(), "{}", src);
     let ast = ast.unwrap();
 
     let mut printer = AstPrint::default();

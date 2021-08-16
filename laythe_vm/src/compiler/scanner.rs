@@ -1,18 +1,18 @@
-use std::usize;
+use std::{iter::Peekable, str::CharIndices, usize};
 
 use crate::{
   source::LineOffsets,
   token::{Lexeme, Token, TokenKind},
 };
-use laythe_core::utils::{next_boundary, previous_boundary};
+use laythe_core::utils::next_boundary;
 
 /// Tracking information for one layer of string interpolation
-struct Interpolation<'a> {
+struct Interpolation {
   // the bracket depth for the current string interpolation
   brackets: u32,
 
   // the quoting character for this string interpolation
-  quote_char: &'a str,
+  quote_char: char,
 }
 
 /// A scanner for the lox language. This struct is
@@ -21,8 +21,11 @@ pub struct Scanner<'a> {
   /// The input source string
   source: &'a str,
 
+  /// A peekable char indicies iterator
+  char_indices: Peekable<CharIndices<'a>>,
+
   /// The current string interpolation depth
-  interpolations: Vec<Interpolation<'a>>,
+  interpolations: Vec<Interpolation>,
 
   /// The current line number
   line_offsets: Vec<usize>,
@@ -30,11 +33,11 @@ pub struct Scanner<'a> {
   /// The start of the current token
   start: usize,
 
-  /// The current index into the source str
+  /// The start of the current token
   current: usize,
 
-  /// The start of the current character
-  char_start: usize,
+  /// The current char
+  current_char: char,
 }
 
 impl<'a> Scanner<'a> {
@@ -68,22 +71,26 @@ impl<'a> Scanner<'a> {
       std::u32::MAX
     );
 
-    let current = next_boundary(source, 0);
+    let char_indices = source.char_indices().peekable();
 
     let mut line_offsets = Vec::with_capacity(source_line_heuristic_guess(source.len()));
     line_offsets.push(0);
 
-    Scanner {
+    let mut scanner = Scanner {
       source,
+      char_indices,
 
       interpolations: Vec::new(),
 
       start: 0,
-      current,
-      char_start: 0,
+      current: 0,
+      current_char: 'a',
 
       line_offsets,
-    }
+    };
+
+    scanner.initial_skip_comment();
+    scanner
   }
 
   /// Scan the next token from the space lox source
@@ -125,32 +132,26 @@ impl<'a> Scanner<'a> {
     // advance whitespace
     self.skip_white_space();
 
-    // find the previous unicode boundary
-    self.start = previous_boundary(self.source, self.current);
-    self.char_start = self.start;
+    let maybe_char = self.next();
+    self.start = self.current;
 
     // if at end return oef token
-    if self.is_at_end() {
-      return make_token(TokenKind::Eof, "", self.start, self.current - 1);
+    if maybe_char.is_none() {
+      return make_token(TokenKind::Eof, "", self.start, self.current_offset());
     }
 
-    // move scanner index and get current unicode character
-    let char_start = self.char_start;
-    let current = self.current;
-
-    self.advance_indices();
-    let char_slice = &self.source[char_start..current];
-    match char_slice {
-      "(" => self.make_token_source(TokenKind::LeftParen),
-      ")" => self.make_token_source(TokenKind::RightParen),
-      "{" => {
+    let c = maybe_char.unwrap();
+    match c {
+      '(' => self.make_token_source(TokenKind::LeftParen),
+      ')' => self.make_token_source(TokenKind::RightParen),
+      '{' => {
         if !self.interpolations.is_empty() {
           let end = self.interpolations.len() - 1;
           self.interpolations[end].brackets += 1;
         }
         self.make_token_source(TokenKind::LeftBrace)
       },
-      "}" => {
+      '}' => {
         if !self.interpolations.is_empty() {
           let end = self.interpolations.len() - 1;
           self.interpolations[end].brackets -= 1;
@@ -163,82 +164,82 @@ impl<'a> Scanner<'a> {
 
         self.make_token_source(TokenKind::RightBrace)
       },
-      "[" => self.make_token_source(TokenKind::LeftBracket),
-      "]" => self.make_token_source(TokenKind::RightBracket),
-      ":" => self.make_token_source(TokenKind::Colon),
-      ";" => self.make_token_source(TokenKind::Semicolon),
-      "," => self.make_token_source(TokenKind::Comma),
-      "." => self.make_token_source(TokenKind::Dot),
-      "-" => {
-        if self.match_char(">") {
+      '[' => self.make_token_source(TokenKind::LeftBracket),
+      ']' => self.make_token_source(TokenKind::RightBracket),
+      ':' => self.make_token_source(TokenKind::Colon),
+      ';' => self.make_token_source(TokenKind::Semicolon),
+      ',' => self.make_token_source(TokenKind::Comma),
+      '.' => self.make_token_source(TokenKind::Dot),
+      '-' => {
+        if self.match_char('>') {
           self.make_token_source(TokenKind::RightArrow)
-        } else if self.match_char("=") {
+        } else if self.match_char('=') {
           self.make_token_source(TokenKind::MinusEqual)
         } else {
           self.make_token_source(TokenKind::Minus)
         }
       },
-      "&" => self.make_token_source(TokenKind::Amp),
-      "+" => {
-        if self.match_char("=") {
+      '&' => self.make_token_source(TokenKind::Amp),
+      '+' => {
+        if self.match_char('=') {
           self.make_token_source(TokenKind::PlusEqual)
         } else {
           self.make_token_source(TokenKind::Plus)
         }
       },
-      "|" => self.make_token_source(TokenKind::Pipe),
-      "/" => {
-        if self.match_char("=") {
+      '|' => self.make_token_source(TokenKind::Pipe),
+      '/' => {
+        if self.match_char('=') {
           self.make_token_source(TokenKind::SlashEqual)
         } else {
           self.make_token_source(TokenKind::Slash)
         }
       },
-      "*" => {
-        if self.match_char("=") {
+      '*' => {
+        if self.match_char('=') {
           self.make_token_source(TokenKind::StarEqual)
         } else {
           self.make_token_source(TokenKind::Star)
         }
       },
-      "=" => {
-        if self.match_char("=") {
+      '=' => {
+        if self.match_char('=') {
           self.make_token_source(TokenKind::EqualEqual)
         } else {
           self.make_token_source(TokenKind::Equal)
         }
       },
-      "<" => {
-        if self.match_char("=") {
+      '<' => {
+        if self.match_char('=') {
           self.make_token_source(TokenKind::LessEqual)
-        } else if self.match_char("-") {
+        } else if self.match_char('-') {
           self.make_token_source(TokenKind::LeftArrow)
         } else {
           self.make_token_source(TokenKind::Less)
         }
       },
-      ">" => {
-        if self.match_char("=") {
+      '>' => {
+        if self.match_char('=') {
           self.make_token_source(TokenKind::GreaterEqual)
         } else {
           self.make_token_source(TokenKind::Greater)
         }
       },
-      "!" => {
-        if self.match_char("=") {
+      '!' => {
+        if self.match_char('=') {
           self.make_token_source(TokenKind::BangEqual)
         } else {
           self.make_token_source(TokenKind::Bang)
         }
       },
-      "\"" => self.string(TokenKind::String, "\""),
-      "'" => self.string(TokenKind::String, "'"),
+      '"' => self.string(TokenKind::String, '"'),
+      '\'' => self.string(TokenKind::String, '\''),
       _ => {
-        if is_digit(char_slice) {
+        if is_digit(c) {
           return self.number();
         }
 
-        if is_alpha(char_slice) {
+        if is_alpha(c) {
           return self.identifier();
         }
 
@@ -280,19 +281,9 @@ impl<'a> Scanner<'a> {
   /// assert_eq!(offsets.line_range(5), Err(LineError::LineOutOfBounds));
   /// ```
   pub fn line_offsets(mut self) -> LineOffsets {
-    if !self.source.is_empty() {
-      while !self.is_at_end() {
-        let c = self.peek();
-
-        match c {
-          "\n" => {
-            self.new_line();
-            self.advance_indices();
-          },
-          _ => {
-            self.advance_indices();
-          },
-        }
+    while let Some(c) = self.next() {
+      if c == '\n' {
+        self.new_line();
       }
     }
 
@@ -303,18 +294,7 @@ impl<'a> Scanner<'a> {
   /// Generate an identifier token
   fn identifier(&mut self) -> Token<'a> {
     // advance until we hit whitespace or a special char
-    loop {
-      if self.is_at_end() {
-        break;
-      }
-
-      let peek = self.peek();
-      if !(is_alpha(peek) || is_digit(peek)) {
-        break;
-      }
-
-      self.advance_indices();
-    }
+    while self.next_if(|c| is_alpha(*c) || is_digit(*c)).is_some() {}
 
     // identifier if we are actually a keyword
     self.make_token_source(self.identifier_type())
@@ -323,77 +303,79 @@ impl<'a> Scanner<'a> {
   /// Generate a number token
   fn number(&mut self) -> Token<'a> {
     // advance consecutive digits
-    while !self.is_at_end() && is_digit(self.peek()) {
-      self.advance_indices();
-    }
+    while self.next_if(|c| is_digit(*c)).is_some() {}
 
     // check if floating point format
-    if !self.is_at_end() && self.peek() == "." {
-      if let Some(next) = self.peek_next() {
-        if is_digit(next) {
-          self.advance_indices();
-          while !self.is_at_end() && is_digit(self.peek()) {
-            self.advance_indices();
-          }
+    if let Some('.') = self.peek() {
+      let mut chars = self.source[self.current_offset()..].chars();
+      chars.next();
+
+      if let Some(peek_next) = chars.next() {
+        if is_digit(peek_next) {
+          self.next();
+
+          while self.next_if(|c| is_digit(*c)).is_some() {}
         }
       }
     }
 
-    if self.match_char("e") || self.match_char("E") {
-      match self.peek() {
-        "+" | "-" => self.advance_indices(),
-        _ => (),
+    if self.match_char('e') || self.match_char('E') {
+      if self.match_char('+') || self.match_char('-') {}
+
+      if self.next_if(|c| is_digit(*c)).is_none() {
+        return self.error_token("Unterminated scientific notation.");
       }
 
-      if !is_digit(self.peek()) {
-        self.error_token("Unterminated scientific notation.");
-      }
-
-      while !self.is_at_end() && is_digit(self.peek()) {
-        self.advance_indices();
-      }
+      while self.next_if(|c| is_digit(*c)).is_some() {}
     }
 
     self.make_token_source(TokenKind::Number)
   }
 
   /// Generate a string token
-  fn string(&mut self, kind: TokenKind, quote_char: &'a str) -> Token<'a> {
+  fn string(&mut self, kind: TokenKind, quote_char: char) -> Token<'a> {
     let mut buffer = String::with_capacity(8);
     let mut kind = kind;
 
-    while !self.is_at_end() && self.peek() != quote_char {
-      match self.peek() {
-        "\n" => {
+    loop {
+      match self.next() {
+        Some('\n') => {
           self.new_line();
           buffer.push('\n');
         },
-        "\\" => {
-          self.advance_indices();
-
-          match self.peek() {
-            "0" => buffer.push('\0'),
-            "n" => buffer.push('\n'),
-            "t" => buffer.push('\t'),
-            "r" => buffer.push('\r'),
-            "\\" => buffer.push('\\'),
-            "'" => buffer.push('\''),
-            "\"" => buffer.push('"'),
-            "u" => {
-              self.advance_indices();
-              let start = self.current;
-
+        Some('\\') => {
+          match self.next() {
+            Some('0') => buffer.push('\0'),
+            Some('n') => buffer.push('\n'),
+            Some('t') => buffer.push('\t'),
+            Some('r') => buffer.push('\r'),
+            Some('\\') => buffer.push('\\'),
+            Some('\'') => buffer.push('\''),
+            Some('"') => buffer.push('"'),
+            Some('u') => {
               // assert we have opening bracket
-              if self.peek() != "{" {
-                return self.error_token("Expected '{' unicode escape '\\u'");
+              match self.next() {
+                Some('{') => {},
+                _ => return self.error_token("Expected '{' unicode escape '\\u'"),
               }
-              self.advance_indices();
 
+              let start = self.current_offset();
               let mut len = 0u8;
 
               // continue until we hit ending } or we're over the valid length
-              while !self.is_at_end() && self.peek() != quote_char && self.peek() != "}" {
-                self.advance_indices();
+              loop {
+                match self.next() {
+                  Some(c) => {
+                    if c == '}' {
+                      break;
+                    }
+                    if c == quote_char {
+                      return self.error_token("Expected '}' after unicode escape sequence.");
+                    }
+                  },
+                  None => return self.error_token("Unterminated string."),
+                }
+
                 if len > 6 {
                   return self.error_token(
                     "Unicode escape sequence has a hexidecimal longer than length 6.",
@@ -403,14 +385,7 @@ impl<'a> Scanner<'a> {
                 len += 1;
               }
 
-              if self.peek() == quote_char {
-                return self.error_token("Expected '}' after unicode escape sequence.");
-              }
-
-              if self.is_at_end() {
-                return self.error_token("Unterminated string.");
-              }
-              let unicode = &self.source[start..self.current - 1];
+              let unicode = &self.source[start..self.current];
 
               match u32::from_str_radix(unicode, 16) {
                 Ok(code_point) => match std::char::from_u32(code_point) {
@@ -427,18 +402,22 @@ impl<'a> Scanner<'a> {
                 },
               }
             },
-            _ => {
+            Some(_) => {
               return self.error_token_owned(format!(
                 "Invalid escape character '{}'.",
                 self.current_slice()
-              ));
+              ))
+            },
+            None => {
+              return self.error_token_owned(format!(
+                "Invalid escape character '{}'.",
+                self.current_slice()
+              ))
             },
           }
         },
-        "$" => {
-          if self.peek_next().map(|c| c == "{").unwrap_or(false) {
-            self.advance_indices();
-
+        Some('$') => {
+          if self.next_if(|c| *c == '{').is_some() {
             if let TokenKind::String = kind {
               kind = TokenKind::StringStart
             }
@@ -451,47 +430,72 @@ impl<'a> Scanner<'a> {
             buffer.push('$');
           }
         },
-        c => buffer.push_str(c),
+        Some(c) => {
+          if c == quote_char {
+            if let TokenKind::StringSegment = kind {
+              kind = TokenKind::StringEnd;
+            }
+            break;
+          } else {
+            buffer.push(c)
+          }
+        },
+        None => return self.error_token("Unterminated string."),
       }
-      self.advance_indices();
     }
 
-    if self.is_at_end() {
-      return self.error_token("Unterminated string.");
-    }
-
-    if self.peek() == quote_char && kind == TokenKind::StringSegment {
-      kind = TokenKind::StringEnd;
-    }
-
-    self.advance_indices();
-    make_token_owned(kind, buffer, self.start, self.current - 1)
+    make_token_owned(kind, buffer, self.start, self.current_offset())
   }
 
   /// Advance through whitespace effectively throwing it away
   fn skip_white_space(&mut self) {
-    while !self.is_at_end() {
-      let c = self.peek();
-
+    while let Some(c) = self.peek() {
       match c {
-        " " | "\r" | "\t" => {
-          self.advance_indices();
+        ' ' | '\r' | '\t' => {
+          self.next();
         },
-        "\n" => {
+        '\n' => {
           self.new_line();
-          self.advance_indices();
+          self.next();
         },
-        "/" => match self.peek_next() {
-          Some(next) => {
-            if next == "/" {
-              while !self.is_at_end() && self.peek() != "\n" {
-                self.advance_indices();
+        '/' => {
+          let mut chars = self.source[self.current_offset()..].chars();
+          chars.next();
+
+          match chars.next() {
+            Some(c) => {
+              if c == '/' {
+                while self.next_if(|c| *c != '\n').is_some() {}
+              } else {
+                return;
               }
-            } else {
-              return;
-            }
-          },
-          None => return,
+            },
+            None => return,
+          }
+        },
+        _ => return,
+      }
+    }
+  }
+
+  // skip a comment if it appears first in the source file
+  fn initial_skip_comment(&mut self) {
+    while let Some(c) = self.peek() {
+      match c {
+        '/' => {
+          let mut chars = self.source.chars();
+          chars.next();
+
+          match chars.next() {
+            Some(c) => {
+              if c == '/' {
+                while self.next_if(|c| *c != '\n').is_some() {}
+              } else {
+                return;
+              }
+            },
+            None => return,
+          }
         },
         _ => return,
       }
@@ -501,90 +505,92 @@ impl<'a> Scanner<'a> {
   /// Identify if the current slice is a keyword.
   /// This uses a short of hard coded trie
   fn identifier_type(&self) -> TokenKind {
-    match self.nth_char_from(self.start, 0) {
+    let mut chars = self.current_slice().chars();
+
+    match chars.next() {
       Some(c1) => match c1 {
-        "a" => match self.nth_char_from(self.start, 1) {
+        'a' => match chars.next() {
           Some(c2) => match c2 {
-            "n" => self.check_keyword(2, "d", TokenKind::And),
-            "s" => self.check_keyword(2, "", TokenKind::As),
+            'n' => self.check_keyword(2, "d", TokenKind::And),
+            's' => self.check_keyword_len(2, TokenKind::As),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
         },
-        "b" => self.check_keyword(1, "reak", TokenKind::Break),
-        "c" => match self.nth_char_from(self.start, 1) {
+        'b' => self.check_keyword(1, "reak", TokenKind::Break),
+        'c' => match chars.next() {
           Some(c2) => match c2 {
-            "a" => self.check_keyword(2, "tch", TokenKind::Catch),
-            "h" => self.check_keyword(2, "an", TokenKind::Channel),
-            "o" => self.check_keyword(2, "ntinue", TokenKind::Continue),
-            "l" => self.check_keyword(2, "ass", TokenKind::Class),
+            'a' => self.check_keyword(2, "tch", TokenKind::Catch),
+            'h' => self.check_keyword(2, "an", TokenKind::Channel),
+            'o' => self.check_keyword(2, "ntinue", TokenKind::Continue),
+            'l' => self.check_keyword(2, "ass", TokenKind::Class),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
         },
-        "e" => match self.nth_char_from(self.start, 1) {
+        'e' => match chars.next() {
           Some(c2) => match c2 {
-            "l" => self.check_keyword(2, "se", TokenKind::Else),
-            "x" => self.check_keyword(2, "port", TokenKind::Export),
+            'l' => self.check_keyword(2, "se", TokenKind::Else),
+            'x' => self.check_keyword(2, "port", TokenKind::Export),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
         },
-        "f" => match self.nth_char_from(self.start, 1) {
+        'f' => match chars.next() {
           Some(c2) => match c2 {
-            "a" => self.check_keyword(2, "lse", TokenKind::False),
-            "o" => self.check_keyword(2, "r", TokenKind::For),
-            "n" => self.check_keyword(2, "", TokenKind::Fun),
+            'a' => self.check_keyword(2, "lse", TokenKind::False),
+            'o' => self.check_keyword(2, "r", TokenKind::For),
+            'n' => self.check_keyword_len(2, TokenKind::Fun),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
         },
-        "i" => match self.nth_char_from(self.start, 1) {
+        'i' => match chars.next() {
           Some(c2) => match c2 {
-            "f" => self.check_keyword(2, "", TokenKind::If),
-            "m" => self.check_keyword(2, "port", TokenKind::Import),
-            "n" => self.check_keyword(2, "", TokenKind::In),
+            'f' => self.check_keyword_len(2, TokenKind::If),
+            'm' => self.check_keyword(2, "port", TokenKind::Import),
+            'n' => self.check_keyword_len(2, TokenKind::In),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
         },
-        "l" => match self.nth_char_from(self.start, 1) {
+        'l' => match chars.next() {
           Some(c2) => match c2 {
-            "a" => self.check_keyword(2, "unch", TokenKind::Launch),
-            "e" => self.check_keyword(2, "t", TokenKind::Let),
+            'a' => self.check_keyword(2, "unch", TokenKind::Launch),
+            'e' => self.check_keyword(2, "t", TokenKind::Let),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
         },
-        "n" => self.check_keyword(1, "il", TokenKind::Nil),
-        "o" => self.check_keyword(1, "r", TokenKind::Or),
-        "r" => self.check_keyword(1, "eturn", TokenKind::Return),
-        "s" => match self.nth_char_from(self.start, 1) {
+        'n' => self.check_keyword(1, "il", TokenKind::Nil),
+        'o' => self.check_keyword(1, "r", TokenKind::Or),
+        'r' => self.check_keyword(1, "eturn", TokenKind::Return),
+        's' => match chars.next() {
           Some(c2) => match c2 {
-            "e" => self.check_keyword(2, "lf", TokenKind::Self_),
-            "u" => self.check_keyword(2, "per", TokenKind::Super),
-            "t" => self.check_keyword(2, "atic", TokenKind::Static),
+            'e' => self.check_keyword(2, "lf", TokenKind::Self_),
+            'u' => self.check_keyword(2, "per", TokenKind::Super),
+            't' => self.check_keyword(2, "atic", TokenKind::Static),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
         },
-        "t" => match self.nth_char_from(self.start, 1) {
+        't' => match chars.next() {
           Some(c2) => match c2 {
-            "r" => match self.nth_char_from(self.start, 2) {
+            'r' => match chars.next() {
               Some(c3) => match c3 {
-                "a" => self.check_keyword(3, "it", TokenKind::Trait),
-                "u" => self.check_keyword(3, "e", TokenKind::True),
-                "y" => self.check_keyword(3, "", TokenKind::Try),
+                'a' => self.check_keyword(3, "it", TokenKind::Trait),
+                'u' => self.check_keyword(3, "e", TokenKind::True),
+                'y' => self.check_keyword_len(3, TokenKind::Try),
                 _ => TokenKind::Identifier,
               },
               None => TokenKind::Identifier,
             },
-            "y" => self.check_keyword(2, "pe", TokenKind::Type),
+            'y' => self.check_keyword(2, "pe", TokenKind::Type),
             _ => TokenKind::Identifier,
           },
           None => TokenKind::Identifier,
         },
-        "w" => self.check_keyword(1, "hile", TokenKind::While),
+        'w' => self.check_keyword(1, "hile", TokenKind::While),
         _ => TokenKind::Identifier,
       },
       None => panic!(""),
@@ -594,10 +600,24 @@ impl<'a> Scanner<'a> {
   /// Check if the remainder of the current slice matches the rest
   /// of the keyword
   fn check_keyword(&self, start: usize, rest: &str, kind: TokenKind) -> TokenKind {
-    let start_index = self.nth_next_boundary(self.start, start);
-    let len = self.current - start_index - 1;
+    // we can do a straight addition here because all keywords are ascii characters
+    let start_index = self.start + start;
+    debug_assert!(self.nth_next_boundary(self.start, start) == start_index);
 
-    if len == rest.len() && rest == &self.source[start_index..self.current - 1] {
+    let len = self.current_offset() - start_index;
+
+    if len == rest.len() && rest == &self.source[start_index..self.current_offset()] {
+      return kind;
+    }
+
+    TokenKind::Identifier
+  }
+
+  /// Check if token is the correct length for this provided token kind
+  fn check_keyword_len(&self, len: usize, kind: TokenKind) -> TokenKind {
+    let token_len = self.current_offset() - self.start;
+
+    if len == token_len {
       return kind;
     }
 
@@ -606,66 +626,65 @@ impl<'a> Scanner<'a> {
 
   /// Make a token from the current state of the scanner
   fn make_token_source(&self, kind: TokenKind) -> Token<'a> {
-    make_token(kind, self.current_slice(), self.start, self.current - 1)
+    make_token(
+      kind,
+      self.current_slice(),
+      self.start,
+      self.current_offset(),
+    )
   }
 
   /// Make a new error token
   fn error_token(&self, message: &'a str) -> Token<'a> {
-    make_token(TokenKind::Error, message, self.start, self.current - 1)
+    make_token(TokenKind::Error, message, self.start, self.current_offset())
   }
 
   /// Make a owned error error token
   fn error_token_owned(&self, message: String) -> Token<'static> {
-    make_token_owned(TokenKind::Error, message, self.start, self.current - 1)
+    make_token_owned(
+      TokenKind::Error,
+      message,
+      self.start,
+      next_boundary(self.source, self.current),
+    )
   }
 
-  /// Peek the next token
-  fn peek_next(&self) -> Option<&str> {
-    let start = self.current;
-    let end = next_boundary(self.source, self.current);
-
-    if self.char_index_at_end(end) {
-      return None;
-    }
-
-    Some(&self.source[start..end])
+  /// Advance the character iterator if condition is met
+  fn next_if(&mut self, f: impl FnOnce(&char) -> bool) -> Option<char> {
+    self.char_indices.next_if(|(_, c)| f(c)).map(|(index, c)| {
+      self.current = index;
+      self.current_char = c;
+      c
+    })
   }
 
-  /// Peek the current token
-  fn peek(&self) -> &str {
-    unsafe { self.source.get_unchecked(self.char_start..self.current) }
+  /// Get the next character
+  fn next(&mut self) -> Option<char> {
+    self.char_indices.next().map(|(index, c)| {
+      self.current = index;
+      self.current_char = c;
+      c
+    })
   }
 
+  /// Peek the current character
+  fn peek(&mut self) -> Option<char> {
+    self.char_indices.peek().map(|(_, c)| *c)
+  }
+
+  /// Insert a new line
   fn new_line(&mut self) {
-    self.line_offsets.push(self.current);
-  }
-
-  /// Find the nth char from the current index
-  fn nth_char_from(&self, start: usize, n: u8) -> Option<&str> {
-    let mut current_index = next_boundary(self.source, start);
-    let mut start_index = start;
-
-    for _ in 0..n {
-      start_index = current_index;
-      current_index = next_boundary(self.source, current_index);
-    }
-
-    if self.char_index_at_end(current_index) {
-      None
-    } else {
-      Some(&self.source[start_index..current_index])
-    }
+    self.line_offsets.push(self.current_offset());
   }
 
   /// Get the current str slice
   fn current_slice(&self) -> &'a str {
-    &self.source[self.start..self.current - 1]
+    &self.source[self.start..self.current_offset()]
   }
 
-  /// Advance the housekeeping indices
-  fn advance_indices(&mut self) {
-    self.char_start = self.current;
-    self.current = next_boundary(self.source, self.current);
+  /// Get the current offset
+  fn current_offset(&self) -> usize {
+    self.current + self.current_char.len_utf8()
   }
 
   /// Find the nth next char boundary
@@ -679,27 +698,8 @@ impl<'a> Scanner<'a> {
   }
 
   /// match the current token against an expected
-  fn match_char(&mut self, expected: &str) -> bool {
-    if self.is_at_end() {
-      return false;
-    }
-
-    if self.peek() != expected {
-      return false;
-    }
-
-    self.advance_indices();
-    true
-  }
-
-  /// Is the scanner at eof
-  fn is_at_end(&self) -> bool {
-    self.current > self.source.len()
-  }
-
-  /// Is the index at eof
-  fn char_index_at_end(&self, index: usize) -> bool {
-    index > self.source.len()
+  fn match_char(&mut self, expected: char) -> bool {
+    self.next_if(|c| *c == expected).is_some()
   }
 }
 
@@ -714,13 +714,13 @@ fn make_token_owned<'a>(kind: TokenKind, lexeme: String, start: usize, end: usiz
 }
 
 /// Is the str slice a digit. Assumes single char
-fn is_digit(c: &str) -> bool {
-  ("0"..="9").contains(&c)
+fn is_digit(c: char) -> bool {
+  ('0'..='9').contains(&c)
 }
 
-/// Is the str slice a alphabetic. Assumes single char
-fn is_alpha(c: &str) -> bool {
-  ("a"..="z").contains(&c) || ("A"..="Z").contains(&c) || c == "_"
+/// Is the str slice a digit. Assumes single char
+fn is_alpha(c: char) -> bool {
+  ('A'..='Z').contains(&c) || ('a'..='z').contains(&c) || c == '_'
 }
 
 /// A loose estimate for how many characters are in a typical line
