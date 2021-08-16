@@ -294,7 +294,7 @@ impl<'a> Scanner<'a> {
   /// Generate an identifier token
   fn identifier(&mut self) -> Token<'a> {
     // advance until we hit whitespace or a special char
-    while let Some(_) = self.next_if(|c| is_alpha(*c) || is_digit(*c)) {}
+    while self.next_if(|c| is_alpha(*c) || is_digit(*c)).is_some() {}
 
     // identifier if we are actually a keyword
     self.make_token_source(self.identifier_type())
@@ -303,7 +303,7 @@ impl<'a> Scanner<'a> {
   /// Generate a number token
   fn number(&mut self) -> Token<'a> {
     // advance consecutive digits
-    while let Some(_) = self.next_if(|c| is_digit(*c)) {}
+    while self.next_if(|c| is_digit(*c)).is_some() {}
 
     // check if floating point format
     if let Some('.') = self.peek() {
@@ -314,7 +314,7 @@ impl<'a> Scanner<'a> {
         if is_digit(peek_next) {
           self.next();
 
-          while let Some(_) = self.next_if(|c| is_digit(*c)) {}
+          while self.next_if(|c| is_digit(*c)).is_some() {}
         }
       }
     }
@@ -322,11 +322,11 @@ impl<'a> Scanner<'a> {
     if self.match_char('e') || self.match_char('E') {
       if self.match_char('+') || self.match_char('-') {}
 
-      if let None = self.next_if(|c| is_digit(*c)) {
+      if self.next_if(|c| is_digit(*c)).is_none() {
         return self.error_token("Unterminated scientific notation.");
       }
 
-      while let Some(_) = self.next_if(|c| is_digit(*c)) {}
+      while self.next_if(|c| is_digit(*c)).is_some() {}
     }
 
     self.make_token_source(TokenKind::Number)
@@ -465,7 +465,7 @@ impl<'a> Scanner<'a> {
           match chars.next() {
             Some(c) => {
               if c == '/' {
-                while let Some(_) = self.next_if(|c| *c != '\n') {}
+                while self.next_if(|c| *c != '\n').is_some() {}
               } else {
                 return;
               }
@@ -489,7 +489,7 @@ impl<'a> Scanner<'a> {
           match chars.next() {
             Some(c) => {
               if c == '/' {
-                while let Some(_) = self.next_if(|c| *c != '\n') {}
+                while self.next_if(|c| *c != '\n').is_some() {}
               } else {
                 return;
               }
