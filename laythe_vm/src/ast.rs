@@ -1,5 +1,6 @@
 use crate::token::Token;
 use bumpalo::boxed::Box;
+use bumpalo::collections::vec::Vec;
 use std::{ops::Range, usize};
 
 /// A visitor pattern for the Laythe ast.
@@ -117,13 +118,12 @@ impl From<Span> for Range<usize> {
   }
 }
 
-#[derive(Default)]
 pub struct Module<'a> {
-  pub decls: Vec<Decl<'a>>,
+  pub decls: Vec<'a, Decl<'a>>,
 }
 
 impl<'a> Module<'a> {
-  pub fn new(decls: Vec<Decl<'a>>) -> Self {
+  pub fn new(decls: Vec<'a, Decl<'a>>) -> Self {
     Self { decls }
   }
 }
@@ -142,7 +142,7 @@ pub enum Decl<'a> {
   Symbol(Box<'a, Symbol<'a>>),
   Export(Box<'a, Symbol<'a>>),
   Stmt(Box<'a, Stmt<'a>>),
-  Error(std::boxed::Box<[Token<'a>]>),
+  Error(Box<'a, [Token<'a>]>),
 }
 
 impl<'a> Spanned for Decl<'a> {
@@ -198,12 +198,12 @@ impl<'a> Spanned for Symbol<'a> {
 pub struct Class<'a> {
   pub name: Token<'a>,
   pub range: Span,
-  pub type_params: Vec<TypeParam<'a>>,
+  pub type_params: Vec<'a, TypeParam<'a>>,
   pub super_class: Option<ClassType<'a>>,
-  pub type_members: Vec<TypeMember<'a>>,
+  pub type_members: Vec<'a, TypeMember<'a>>,
   pub init: Option<Fun<'a>>,
-  pub methods: Vec<Fun<'a>>,
-  pub static_methods: Vec<Fun<'a>>,
+  pub methods: Vec<'a, Fun<'a>>,
+  pub static_methods: Vec<'a, Fun<'a>>,
 }
 
 impl<'a> Class<'a> {
@@ -211,12 +211,12 @@ impl<'a> Class<'a> {
   pub fn new(
     name: Token<'a>,
     range: Span,
-    type_params: Vec<TypeParam<'a>>,
+    type_params: Vec<'a, TypeParam<'a>>,
     super_class: Option<ClassType<'a>>,
-    type_members: Vec<TypeMember<'a>>,
+    type_members: Vec<'a, TypeMember<'a>>,
     init: Option<Fun<'a>>,
-    methods: Vec<Fun<'a>>,
-    static_methods: Vec<Fun<'a>>,
+    methods: Vec<'a, Fun<'a>>,
+    static_methods: Vec<'a, Fun<'a>>,
   ) -> Self {
     Self {
       name,
@@ -313,18 +313,18 @@ impl<'a> Spanned for Let<'a> {
 pub struct Trait<'a> {
   pub range: Span,
   pub name: Token<'a>,
-  pub params: Vec<TypeParam<'a>>,
-  pub members: Vec<TypeMember<'a>>,
-  pub methods: Vec<TypeMethod<'a>>,
+  pub params: Vec<'a, TypeParam<'a>>,
+  pub members: Vec<'a, TypeMember<'a>>,
+  pub methods: Vec<'a, TypeMethod<'a>>,
 }
 
 impl<'a> Trait<'a> {
   pub fn new(
     range: Span,
     name: Token<'a>,
-    params: Vec<TypeParam<'a>>,
-    members: Vec<TypeMember<'a>>,
-    methods: Vec<TypeMethod<'a>>,
+    params: Vec<'a, TypeParam<'a>>,
+    members: Vec<'a, TypeMember<'a>>,
+    methods: Vec<'a, TypeMethod<'a>>,
   ) -> Self {
     Self {
       range,
@@ -352,12 +352,12 @@ impl<'a> Spanned for Trait<'a> {
 
 pub struct TypeDecl<'a> {
   pub name: Token<'a>,
-  pub type_params: Vec<TypeParam<'a>>,
+  pub type_params: Vec<'a, TypeParam<'a>>,
   pub type_: Type<'a>,
 }
 
 impl<'a> TypeDecl<'a> {
-  pub fn new(name: Token<'a>, type_params: Vec<TypeParam<'a>>, type_: Type<'a>) -> Self {
+  pub fn new(name: Token<'a>, type_params: Vec<'a, TypeParam<'a>>, type_: Type<'a>) -> Self {
     Self {
       name,
       type_params,
@@ -427,7 +427,7 @@ impl<'a> Spanned for Stmt<'a> {
 pub enum ImportStem<'a> {
   None,
   Rename(Token<'a>),
-  Symbols(Vec<ImportSymbol<'a>>),
+  Symbols(Vec<'a, ImportSymbol<'a>>),
 }
 
 pub struct ImportSymbol<'a> {
@@ -456,12 +456,12 @@ impl<'a> Spanned for ImportSymbol<'a> {
 }
 
 pub struct Import<'a> {
-  pub path: Vec<Token<'a>>,
+  pub path: Vec<'a, Token<'a>>,
   pub stem: ImportStem<'a>,
 }
 
 impl<'a> Import<'a> {
-  pub fn new(path: Vec<Token<'a>>, stem: ImportStem<'a>) -> Self {
+  pub fn new(path: Vec<'a, Token<'a>>, stem: ImportStem<'a>) -> Self {
     assert!(!path.is_empty());
     Self { path, stem }
   }
@@ -486,7 +486,7 @@ impl<'a> Spanned for Import<'a> {
         } else {
           symbols.last().unwrap().end()
         }
-      }
+      },
     }
   }
 }
@@ -634,11 +634,11 @@ impl<'a> Spanned for Try<'a> {
 
 pub struct Block<'a> {
   pub range: Span,
-  pub decls: Vec<Decl<'a>>,
+  pub decls: Vec<'a, Decl<'a>>,
 }
 
 impl<'a> Block<'a> {
-  pub fn new(range: Span, decls: Vec<Decl<'a>>) -> Self {
+  pub fn new(range: Span, decls: Vec<'a, Decl<'a>>) -> Self {
     Self { range, decls }
   }
 }
@@ -657,19 +657,18 @@ impl<'a> Spanned for Block<'a> {
   }
 }
 
-#[derive(Default)]
 pub struct CallSignature<'a> {
   pub range: Span,
-  pub type_params: Vec<TypeParam<'a>>,
-  pub params: Vec<Param<'a>>,
+  pub type_params: Vec<'a, TypeParam<'a>>,
+  pub params: Vec<'a, Param<'a>>,
   pub return_type: Option<Type<'a>>,
 }
 
 impl<'a> CallSignature<'a> {
   pub fn new(
     range: Span,
-    type_params: Vec<TypeParam<'a>>,
-    params: Vec<Param<'a>>,
+    type_params: Vec<'a, TypeParam<'a>>,
+    params: Vec<'a, Param<'a>>,
     return_type: Option<Type<'a>>,
   ) -> Self {
     Self {
@@ -893,15 +892,12 @@ impl<'a> Spanned for Unary<'a> {
 
 pub struct Atom<'a> {
   pub primary: Primary<'a>,
-  pub trailers: Vec<Trailer<'a>>,
+  pub trailers: Vec<'a, Trailer<'a>>,
 }
 
 impl<'a> Atom<'a> {
-  pub fn new(primary: Primary<'a>) -> Self {
-    Self {
-      primary,
-      trailers: vec![],
-    }
+  pub fn new(primary: Primary<'a>, trailers: Vec<'a, Trailer<'a>>) -> Self {
+    Self { primary, trailers }
   }
 }
 
@@ -944,11 +940,11 @@ impl<'a> Spanned for Trailer<'a> {
 
 pub struct Call<'a> {
   pub range: Span,
-  pub args: Vec<Expr<'a>>,
+  pub args: Vec<'a, Expr<'a>>,
 }
 
 impl<'a> Call<'a> {
-  pub fn new(range: Span, args: Vec<Expr<'a>>) -> Self {
+  pub fn new(range: Span, args: Vec<'a, Expr<'a>>) -> Self {
     Self { range, args }
   }
 }
@@ -1073,7 +1069,7 @@ impl<'a> Spanned for Primary<'a> {
 
 pub struct Interpolation<'a> {
   pub start: Token<'a>,
-  pub segments: Vec<StringSegments<'a>>,
+  pub segments: Vec<'a, StringSegments<'a>>,
   pub end: Token<'a>,
 }
 
@@ -1083,7 +1079,7 @@ pub enum StringSegments<'a> {
 }
 
 impl<'a> Interpolation<'a> {
-  pub fn new(start: Token<'a>, segments: Vec<StringSegments<'a>>, end: Token<'a>) -> Self {
+  pub fn new(start: Token<'a>, segments: Vec<'a, StringSegments<'a>>, end: Token<'a>) -> Self {
     Self {
       start,
       segments,
@@ -1104,11 +1100,11 @@ impl<'a> Spanned for Interpolation<'a> {
 
 pub struct List<'a> {
   pub range: Span,
-  pub items: Vec<Expr<'a>>,
+  pub items: Vec<'a, Expr<'a>>,
 }
 
 impl<'a> List<'a> {
-  pub fn new(range: Span, items: Vec<Expr<'a>>) -> Self {
+  pub fn new(range: Span, items: Vec<'a, Expr<'a>>) -> Self {
     Self { range, items }
   }
 }
@@ -1129,11 +1125,11 @@ impl<'a> Spanned for List<'a> {
 
 pub struct Map<'a> {
   pub range: Span,
-  pub entries: Vec<(Expr<'a>, Expr<'a>)>,
+  pub entries: Vec<'a, (Expr<'a>, Expr<'a>)>,
 }
 
 impl<'a> Map<'a> {
-  pub fn new(range: Span, kvp: Vec<(Expr<'a>, Expr<'a>)>) -> Self {
+  pub fn new(range: Span, kvp: Vec<'a, (Expr<'a>, Expr<'a>)>) -> Self {
     Self {
       range,
       entries: kvp,
@@ -1276,11 +1272,11 @@ impl<'a> Spanned for ClassType<'a> {
 
 pub struct TypeRef<'a> {
   pub name: Token<'a>,
-  pub type_args: Vec<Type<'a>>,
+  pub type_args: Vec<'a, Type<'a>>,
 }
 
 impl<'a> TypeRef<'a> {
-  pub fn new(name: Token<'a>, type_args: Vec<Type<'a>>) -> Self {
+  pub fn new(name: Token<'a>, type_args: Vec<'a, Type<'a>>) -> Self {
     Self { name, type_args }
   }
 }

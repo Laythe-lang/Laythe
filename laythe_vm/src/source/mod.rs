@@ -1,7 +1,7 @@
 mod files;
 pub use files::{LineError, LineOffsets, VmFileId, VmFiles};
 
-use bumpalo::{boxed::Box, Bump};
+use bumpalo::{boxed::Box, collections::Vec, Bump};
 use laythe_core::managed::{GcStr, Trace};
 use std::ops::Deref;
 
@@ -14,12 +14,16 @@ impl Source {
   pub fn new(content: GcStr) -> Self {
     Self {
       content,
-      alloc: Bump::with_capacity(content.len()),
+      alloc: Bump::with_capacity(content.len() * 2),
     }
   }
 
   pub fn node<T>(&self, node: T) -> Box<T> {
     Box::new_in(node, &self.alloc)
+  }
+
+  pub fn vec<T>(&self) -> Vec<T> {
+    Vec::new_in(&self.alloc)
   }
 }
 
