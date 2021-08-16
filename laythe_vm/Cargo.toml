@@ -25,7 +25,7 @@ laythe_native = { path = "../laythe_native" }
 fnv = "1.0.7"
 codespan = "0.11.1"
 codespan-reporting = "0.11.1"
-bumpalo = { version = "3.7.0", features=["boxed"] }
+bumpalo = { version = "3.7.0", features=["boxed", "collections"] }
 
 [dev-dependencies]
 criterion = "0.3.5"

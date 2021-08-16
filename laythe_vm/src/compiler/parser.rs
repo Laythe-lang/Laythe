@@ -5,6 +5,7 @@ use crate::{
   FeResult,
 };
 use bumpalo::boxed::Box;
+use bumpalo::collections::vec::Vec;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{constants::INIT, object::FunKind};
 use std::mem;
@@ -43,7 +44,7 @@ pub struct Parser<'a, FileId> {
   source: &'a Source,
 
   /// All errors that have been during parsing
-  errors: Vec<Diagnostic<FileId>>,
+  errors: std::vec::Vec<Diagnostic<FileId>>,
 
   /// Can we currently implicitly return
   block_return: BlockReturn,
@@ -71,7 +72,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       scanner: Scanner::new(source),
       file_id,
       source,
-      errors: vec![],
+      errors: std::vec::Vec::new(),
       fun_kind: FunKind::Script,
       block_return: BlockReturn::Cannot,
       scope_depth: 0,
@@ -81,8 +82,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     }
   }
 
+  /// Allocate a node using the Source's bump allocator
   fn node<T>(&self, node: T) -> Box<'a, T> {
     self.source.node(node)
+  }
+
+  /// Allocate a vec using the Source's bump allocator
+  fn vec<T>(&self) -> Vec<'a, T> {
+    self.source.vec()
   }
 
   /// Parse the provide source string into a Laythe AST
@@ -114,10 +121,10 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
     // early exit if ""
     if let TokenKind::Eof = self.current.kind() {
-      return Ok(Module::default());
+      return Ok(Module::new(self.vec()));
     }
 
-    let mut decls = Vec::new();
+    let mut decls = self.vec();
     while !to_fe_result(self.match_kind(TokenKind::Eof))? {
       decls.push(to_fe_result(self.decl())?)
     }
@@ -168,7 +175,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   fn synchronize(&mut self, error: Diagnostic<FileId>) -> ParseResult<Decl<'a>, FileId> {
     self.errors.push(error);
 
-    let mut tokens: Vec<Token> = vec![];
+    let mut tokens: Vec<Token> = self.vec();
 
     while self.current.kind() != TokenKind::Eof || self.previous.kind() == TokenKind::Semicolon {
       tokens.push(self.previous.clone());
@@ -221,7 +228,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let type_params = if self.match_kind(TokenKind::Less)? {
       self.type_params()?
     } else {
-      vec![]
+      self.vec()
     };
 
     // see if this class inherits from another
@@ -240,9 +247,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
     // collect and categories all methods in the class
     self.consume_basic(TokenKind::LeftBrace, "Expected '{' before class body.")?;
-    let mut type_members: Vec<TypeMember> = vec![];
-    let mut methods: Vec<Fun> = vec![];
-    let mut static_methods: Vec<Fun> = vec![];
+    let mut type_members: Vec<TypeMember> = self.vec();
+    let mut methods: Vec<Fun> = self.vec();
+    let mut static_methods: Vec<Fun> = self.vec();
     let mut init: Option<Fun> = None;
     let start = self.previous.start();
 
@@ -316,7 +323,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let type_params = if self.match_kind(TokenKind::Less)? {
       self.type_params()
     } else {
-      Ok(vec![])
+      Ok(self.vec())
     }?;
 
     let fun = self
@@ -360,13 +367,13 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let params = if self.match_kind(TokenKind::Less)? {
       self.type_params()
     } else {
-      Ok(vec![])
+      Ok(self.vec())
     }?;
 
     self.consume_basic(TokenKind::LeftBrace, "Expected '{' after trait name.")?;
 
-    let mut members: Vec<TypeMember> = vec![];
-    let mut methods: Vec<TypeMethod> = vec![];
+    let mut members: Vec<TypeMember> = self.vec();
+    let mut methods: Vec<TypeMethod> = self.vec();
 
     while !self.check(TokenKind::RightBrace) && !self.check(TokenKind::Eof) {
       // We need to do a lookahead for ':' to determine
@@ -392,7 +399,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let type_params = if self.match_kind(TokenKind::Less)? {
             self.type_params()?
           } else {
-            vec![]
+            self.vec()
           };
           let call_sig = self.call_signature(TokenKind::RightParen, type_params)?;
           self.consume_basic(
@@ -427,7 +434,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let params = if self.match_kind(TokenKind::Less)? {
       self.type_params()
     } else {
-      Ok(vec![])
+      Ok(self.vec())
     }?;
 
     self.consume_basic(TokenKind::Equal, "Expected '=' after type name.")?;
@@ -462,7 +469,8 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TokenKind::Identifier,
       "Expected package name following import.",
     )?;
-    let mut path = vec![self.previous.clone()];
+    let mut path = self.vec();
+    path.push(self.previous.clone());
 
     while self.match_kind(TokenKind::Dot)? {
       self.consume(TokenKind::Identifier, "Expect import path after '.'")?;
@@ -472,7 +480,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let stem = match self.current.kind() {
       TokenKind::Colon => self.advance().and_then(|()| {
         self.consume(TokenKind::LeftBrace, "Expected '{' after ':'.")?;
-        let mut symbols = vec![];
+        let mut symbols = self.vec();
 
         while !self.check(TokenKind::RightBrace) {
           self.consume(
@@ -748,7 +756,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     self.scope_depth += 1;
     let block_return = mem::replace(&mut self.block_return, block_return);
 
-    let mut decls: Vec<Decl> = vec![];
+    let mut decls: Vec<Decl> = self.vec();
     while !self.check(TokenKind::RightBrace) && !self.check(TokenKind::Eof) {
       decls.push(self.decl().map_err(|err| {
         self.scope_depth -= 1;
@@ -904,7 +912,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// Parse a lambda expression
   fn lambda(&mut self) -> ParseResult<Expr<'a>, FileId> {
     // parse function parameters
-    let call_sig = self.call_signature(TokenKind::Pipe, vec![])?;
+    let call_sig = self.call_signature(TokenKind::Pipe, self.vec())?;
 
     let previous = mem::replace(&mut self.fun_kind, FunKind::Fun);
     let lambda = self
@@ -983,7 +991,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// Parse a map literal
   fn map(&mut self) -> ParseResult<Expr<'a>, FileId> {
     let start = self.previous.start();
-    let mut entries: Vec<(Expr, Expr)> = vec![];
+    let mut entries: Vec<(Expr, Expr)> = self.vec();
 
     while !self.check(TokenKind::RightBrace) {
       let key = self.expr()?;
@@ -1031,7 +1039,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   fn interpolation(&mut self) -> ParseResult<Expr<'a>, FileId> {
     let start = self.previous.clone();
 
-    let mut segments: Vec<StringSegments> = vec![];
+    let mut segments: Vec<StringSegments> = self.vec();
     loop {
       if segments.len() == std::u16::MAX as usize {
         return self.error(&format!(
@@ -1075,19 +1083,19 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Create an atom from a primary
   fn atom(&self, primary: Primary<'a>) -> Expr<'a> {
-    Expr::Atom(self.node(Atom::new(primary)))
+    Expr::Atom(self.node(Atom::new(primary, self.vec())))
   }
 
   /// Parse the current functions call signature
   fn call_signature(
     &mut self,
     stop_kind: TokenKind,
-    type_params: Vec<TypeParam<'a>>,
+    type_params: Vec<'a, TypeParam<'a>>,
   ) -> ParseResult<CallSignature<'a>, FileId> {
     let start = type_params
       .first()
       .map_or_else(|| self.previous.start(), |first| first.start());
-    let mut params = vec![];
+    let mut params = self.vec();
     let mut arity: u16 = 0;
 
     if !self.check(stop_kind) {
@@ -1168,8 +1176,8 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     &mut self,
     stop_token: TokenKind,
     max: usize,
-  ) -> ParseResult<Vec<Expr<'a>>, FileId> {
-    let mut args = vec![];
+  ) -> ParseResult<Vec<'a, Expr<'a>>, FileId> {
+    let mut args = self.vec();
 
     while !self.check(stop_token) {
       args.push(self.expr()?);
@@ -1202,7 +1210,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   fn function(
     &mut self,
     name: Token<'a>,
-    type_params: Vec<TypeParam<'a>>,
+    type_params: Vec<'a, TypeParam<'a>>,
     block_return: BlockReturn,
   ) -> ParseResult<Fun<'a>, FileId> {
     if !self.match_kind(TokenKind::LeftParen)? {
@@ -1238,7 +1246,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let type_params = if self.match_kind(TokenKind::Less)? {
       self.type_params()?
     } else {
-      vec![]
+      self.vec()
     };
 
     let method = self
@@ -1249,8 +1257,8 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse type parameters
-  fn type_params(&mut self) -> ParseResult<Vec<TypeParam<'a>>, FileId> {
-    let mut type_params: Vec<TypeParam> = vec![];
+  fn type_params(&mut self) -> ParseResult<Vec<'a, TypeParam<'a>>, FileId> {
+    let mut type_params: Vec<TypeParam> = self.vec();
 
     while !self.check(TokenKind::Greater) {
       self.consume_basic(
@@ -1311,7 +1319,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   fn type_prefix(&mut self, action: TypePrefix) -> ParseResult<Type<'a>, FileId> {
     match action {
       TypePrefix::Fun => {
-        let call_sig = self.call_signature(TokenKind::RightParen, vec![])?;
+        let call_sig = self.call_signature(TokenKind::RightParen, self.vec())?;
         Ok(Type::Fun(self.node(call_sig)))
       },
       TypePrefix::Literal => self.type_literal(),
@@ -1358,7 +1366,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         ANY_TYPE => Ok(Type::Primitive(Primitive::Any(token))),
 
         // if we're not a primitive type then we're a type ref
-        _ => Ok(Type::Ref(self.node(TypeRef::new(token, vec![])))),
+        _ => Ok(Type::Ref(self.node(TypeRef::new(token, self.vec())))),
       },
 
       // This should not occur it means the table is messed up
@@ -1376,7 +1384,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let type_args = if self.match_kind(TokenKind::Less)? {
       self.type_args()?
     } else {
-      vec![]
+      self.vec()
     };
 
     Ok(ClassType::new(TypeRef::new(name, type_args)))
@@ -1397,7 +1405,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a set of type args
-  fn type_args(&mut self) -> ParseResult<Vec<Type<'a>>, FileId> {
+  fn type_args(&mut self) -> ParseResult<Vec<'a, Type<'a>>, FileId> {
     let args = self.consume_type_args(std::u8::MAX as usize)?;
     self.consume_basic(TokenKind::Greater, "Expected '>' after arguments")?;
 
@@ -1418,8 +1426,8 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Consume a comma separated set of arguments for calls and lists
-  fn consume_type_args(&mut self, max: usize) -> ParseResult<Vec<Type<'a>>, FileId> {
-    let mut args = vec![];
+  fn consume_type_args(&mut self, max: usize) -> ParseResult<Vec<'a, Type<'a>>, FileId> {
+    let mut args = self.vec();
 
     while !self.check(TokenKind::Greater) {
       args.push(self.type_()?);
