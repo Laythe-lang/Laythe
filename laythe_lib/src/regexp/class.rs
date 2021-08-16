@@ -7,7 +7,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{GcObj, Trace},
+  managed::{Gc, GcObj, Trace},
   module::{Module, Package},
   object::{List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -38,14 +38,27 @@ const REGEXP_MATCH: NativeMetaBuilder = NativeMetaBuilder::method("match", Arity
 const REGEXP_CAPTURES: NativeMetaBuilder = NativeMetaBuilder::method("captures", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
 
-pub fn declare_regexp_class(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdResult<()> {
-  let class = default_class_inheritance(hooks, std, REGEXP_CLASS_NAME)?;
+pub fn declare_regexp_class(
+  hooks: &GcHooks,
+  module: Gc<Module>,
+  package: Gc<Package>,
+) -> StdResult<()> {
+  let class = default_class_inheritance(hooks, package, REGEXP_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_regexp_class(hooks: &GcHooks, module: &Module, std: &Package) -> StdResult<()> {
+pub fn define_regexp_class(
+  hooks: &GcHooks,
+  module: Gc<Module>,
+  package: Gc<Package>,
+) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, REGEXP_CLASS_NAME)?;
-  let syntax_error = val!(load_class_from_package(hooks, std, STD, SYNTAX_ERROR_NAME)?);
+  let syntax_error = val!(load_class_from_package(
+    hooks,
+    package,
+    STD,
+    SYNTAX_ERROR_NAME
+  )?);
 
   class.add_field(hooks, hooks.manage_str(REGEXP_FIELD_PATTERN));
   class.add_field(hooks, hooks.manage_str(REGEXP_FIELD_FLAGS));

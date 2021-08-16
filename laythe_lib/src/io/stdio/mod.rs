@@ -19,25 +19,25 @@ const STDIO_PATH: &str = "std/io/stdio";
 
 pub fn stdio_module(
   hooks: &GcHooks,
-  std: &Package,
+  std: Gc<Package>,
   emitter: &mut IdEmitter,
 ) -> StdResult<Gc<Module>> {
   let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
 
-  let mut module = hooks.manage(Module::from_path(
+  let module = hooks.manage(Module::from_path(
     hooks,
     PathBuf::from(STDIO_PATH),
     module_class,
     emitter.emit(),
   )?);
 
-  declare_stderr(hooks, &mut module, std)?;
-  declare_stdin(hooks, &mut module, std)?;
-  declare_stdout(hooks, &mut module, std)?;
+  declare_stderr(hooks, module, std)?;
+  declare_stdin(hooks, module, std)?;
+  declare_stdout(hooks, module, std)?;
 
-  define_stderr(hooks, &module, &*std)?;
-  define_stdin(hooks, &module, &*std)?;
-  define_stdout(hooks, &module, &*std)?;
+  define_stderr(hooks, module, std)?;
+  define_stdin(hooks, module, std)?;
+  define_stdout(hooks, module, std)?;
 
   Ok(module)
 }

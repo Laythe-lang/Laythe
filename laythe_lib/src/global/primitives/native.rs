@@ -5,8 +5,8 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::GcObj,
   managed::Trace,
+  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -26,12 +26,12 @@ const NATIVE_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::
   .with_params(&[ParameterBuilder::new("args", ParameterKind::Any)])
   .with_stack();
 
-pub fn declare_native_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_native_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, NATIVE_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_native_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_native_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NATIVE_CLASS_NAME)?;
 
   class.add_method(
@@ -102,7 +102,7 @@ mod test {
   mod call {
     use super::*;
     use crate::{global::support::TestNative, support::MockedContext};
-    use laythe_core::{value::VALUE_NIL};
+    use laythe_core::value::VALUE_NIL;
 
     #[test]
     fn new() {

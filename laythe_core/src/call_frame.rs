@@ -5,7 +5,7 @@ use crate::{
 };
 
 /// A call frame in the space lox interpreter
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CallFrame {
   /// The function defining this call frame
   pub closure: GcObj<Closure>,

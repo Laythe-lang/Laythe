@@ -52,7 +52,7 @@ use super::OBJECT_CLASS_NAME;
 
 fn error_inheritance(
   hooks: &GcHooks,
-  module: &Module,
+  module: Gc<Module>,
   class_name: &str,
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
@@ -72,7 +72,7 @@ fn error_inheritance(
 
 fn class_inheritance(
   hooks: &GcHooks,
-  module: &Module,
+  module: Gc<Module>,
   class_name: &str,
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
@@ -91,35 +91,35 @@ fn class_inheritance(
 }
 
 pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Module>> {
-  let mut module = bootstrap_classes(hooks, emitter)?;
+  let module = bootstrap_classes(hooks, emitter)?;
 
-  declare_global_errors(hooks, &mut module)?;
-  declare_bool_class(hooks, &mut module)?;
-  declare_channel_class(hooks, &mut module)?;
-  declare_closure_class(hooks, &mut module)?;
-  declare_iter_class(hooks, &mut module)?;
-  declare_list_class(hooks, &mut module)?;
-  declare_map_class(hooks, &mut module)?;
-  declare_method_class(hooks, &mut module)?;
-  declare_native_class(hooks, &mut module)?;
-  declare_nil_class(hooks, &mut module)?;
-  declare_number_class(hooks, &mut module)?;
-  declare_string_class(hooks, &mut module)?;
-  declare_fiber_class(hooks, &mut module)?;
+  declare_global_errors(hooks, module)?;
+  declare_bool_class(hooks, module)?;
+  declare_channel_class(hooks, module)?;
+  declare_closure_class(hooks, module)?;
+  declare_iter_class(hooks, module)?;
+  declare_list_class(hooks, module)?;
+  declare_map_class(hooks, module)?;
+  declare_method_class(hooks, module)?;
+  declare_native_class(hooks, module)?;
+  declare_nil_class(hooks, module)?;
+  declare_number_class(hooks, module)?;
+  declare_string_class(hooks, module)?;
+  declare_fiber_class(hooks, module)?;
 
   define_global_errors(hooks, &module)?;
-  define_bool_class(hooks, &module)?;
-  define_channel_class(hooks, &module)?;
-  define_closure_class(hooks, &module)?;
-  define_iter_class(hooks, &module)?;
-  define_list_class(hooks, &module)?;
-  define_map_class(hooks, &module)?;
-  define_method_class(hooks, &module)?;
-  define_native_class(hooks, &module)?;
-  define_nil_class(hooks, &module)?;
-  define_number_class(hooks, &module)?;
-  define_string_class(hooks, &module)?;
-  define_fiber_class(hooks, &module)?;
+  define_bool_class(hooks, module)?;
+  define_channel_class(hooks, module)?;
+  define_closure_class(hooks, module)?;
+  define_iter_class(hooks, module)?;
+  define_list_class(hooks, module)?;
+  define_map_class(hooks, module)?;
+  define_method_class(hooks, module)?;
+  define_native_class(hooks, module)?;
+  define_nil_class(hooks, module)?;
+  define_number_class(hooks, module)?;
+  define_string_class(hooks, module)?;
+  define_fiber_class(hooks, module)?;
 
   Ok(module)
 }
@@ -153,16 +153,16 @@ fn bootstrap_classes(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<M
   let module_class = create_module_class(hooks, object_class);
   let std_module_class = Class::with_inheritance(hooks, hooks.manage_str(STD), module_class);
 
-  let mut module = hooks.manage(Module::new(
+  let module = hooks.manage(Module::new(
     std_module_class,
     PathBuf::from(STD),
     emitter.emit(),
   ));
 
-  export_and_insert(hooks, &mut module, object_class.name(), val!(object_class))?;
-  export_and_insert(hooks, &mut module, class_class.name(), val!(class_class))?;
-  export_and_insert(hooks, &mut module, error_class.name(), val!(error_class))?;
-  export_and_insert(hooks, &mut module, module_class.name(), val!(module_class))?;
+  export_and_insert(hooks, module, object_class.name(), val!(object_class))?;
+  export_and_insert(hooks, module, class_class.name(), val!(class_class))?;
+  export_and_insert(hooks, module, error_class.name(), val!(error_class))?;
+  export_and_insert(hooks, module, module_class.name(), val!(module_class))?;
 
   Ok(module)
 }

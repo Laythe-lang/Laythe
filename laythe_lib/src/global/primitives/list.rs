@@ -8,7 +8,7 @@ use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
   if_let_obj,
-  managed::{DebugHeap, DebugWrap, GcObj, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -79,13 +79,13 @@ const LIST_SORT: NativeMetaBuilder = NativeMetaBuilder::method("sort", Arity::Fi
 const LIST_COLLECT: NativeMetaBuilder = NativeMetaBuilder::fun("collect", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("iter", ParameterKind::Enumerator)]);
 
-pub fn declare_list_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, LIST_CLASS_NAME)?;
 
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_list_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, LIST_CLASS_NAME)?;
   let index_error = val!(load_class_from_module(hooks, module, INDEX_ERROR_NAME)?);
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);

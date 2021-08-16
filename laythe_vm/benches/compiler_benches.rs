@@ -76,6 +76,12 @@ fn criterion_benchmark(c: &mut Criterion) {
       .join("criterion")
       .join("binary_trees.lay"),
   );
+  let channel = load_source(
+    &mut gc,
+    PathBuf::from("fixture")
+      .join("criterion")
+      .join("channel.lay"),
+  );
   let equality = load_source(
     &mut gc,
     PathBuf::from("fixture")
@@ -85,6 +91,12 @@ fn criterion_benchmark(c: &mut Criterion) {
   let fib = load_source(
     &mut gc,
     PathBuf::from("fixture").join("criterion").join("fib.lay"),
+  );
+  let fibers = load_source(
+    &mut gc,
+    PathBuf::from("fixture")
+      .join("criterion")
+      .join("fibers.lay"),
   );
   let instantiation = load_source(
     &mut gc,
@@ -120,54 +132,64 @@ fn criterion_benchmark(c: &mut Criterion) {
   );
 
   c.bench_with_input(
-    BenchmarkId::new("compile binary_trees", 201),
+    BenchmarkId::new("compile", "binary_trees"),
     &binary_trees,
     |b, s| {
       b.iter(|| compile_source(*s));
     },
   );
   c.bench_with_input(
-    BenchmarkId::new("compile equality", 202),
+    BenchmarkId::new("compile", "channel"),
+    &channel,
+    |b, s| {
+      b.iter(|| compile_source(*s));
+    },
+  );
+  c.bench_with_input(
+    BenchmarkId::new("compile", "equality"),
     &equality,
     |b, s| {
       b.iter(|| compile_source(*s));
     },
   );
-  c.bench_with_input(BenchmarkId::new("compile fib", 203), &fib, |b, s| {
+  c.bench_with_input(BenchmarkId::new("compile", "fib"), &fib, |b, s| {
+    b.iter(|| compile_source(*s));
+  });
+  c.bench_with_input(BenchmarkId::new("compile", "fibers"), &fibers, |b, s| {
     b.iter(|| compile_source(*s));
   });
   c.bench_with_input(
-    BenchmarkId::new("compile invocation", 204),
+    BenchmarkId::new("compile", "invocation"),
     &invocation,
     |b, s| {
       b.iter(|| compile_source(*s));
     },
   );
   c.bench_with_input(
-    BenchmarkId::new("compile instantiation", 205),
+    BenchmarkId::new("compile", "instantiation"),
     &instantiation,
     |b, s| {
       b.iter(|| compile_source(*s));
     },
   );
   c.bench_with_input(
-    BenchmarkId::new("compile method_call", 206),
+    BenchmarkId::new("compile", "method_call"),
     &method_call,
     |b, s| {
       b.iter(|| compile_source(*s));
     },
   );
   c.bench_with_input(
-    BenchmarkId::new("compile properties", 207),
+    BenchmarkId::new("compile", "properties"),
     &properties,
     |b, s| {
       b.iter(|| compile_source(*s));
     },
   );
-  c.bench_with_input(BenchmarkId::new("compile trees", 208), &trees, |b, s| {
+  c.bench_with_input(BenchmarkId::new("compile", "trees"), &trees, |b, s| {
     b.iter(|| compile_source(*s));
   });
-  c.bench_with_input(BenchmarkId::new("compile zoo", 209), &zoo, |b, s| {
+  c.bench_with_input(BenchmarkId::new("compile", "zoo"), &zoo, |b, s| {
     b.iter(|| compile_source(*s));
   });
 }

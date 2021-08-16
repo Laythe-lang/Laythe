@@ -8,10 +8,10 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
+  managed::{Gc, GcObj},
   module::{Module, Package},
-  object::{Instance, ObjectKind, LyNative, Native, NativeMetaBuilder},
+  object::{Instance, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::Arity,
-  managed::GcObj,
   val,
   value::Value,
   Call,
@@ -24,8 +24,8 @@ const STDIN_INSTANCE_NAME: &str = "stdin";
 const STDIN_READ: NativeMetaBuilder = NativeMetaBuilder::method("read", Arity::Fixed(0));
 const STDIN_READ_LINE: NativeMetaBuilder = NativeMetaBuilder::method("readLine", Arity::Fixed(0));
 
-pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdResult<()> {
-  let class = default_class_inheritance(hooks, std, STDIN_CLASS_NAME)?;
+pub fn declare_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
+  let class = default_class_inheritance(hooks, package, STDIN_CLASS_NAME)?;
   let instance = hooks.manage_obj(Instance::new(class));
 
   export_and_insert(
@@ -36,12 +36,12 @@ pub fn declare_stdin(hooks: &GcHooks, module: &mut Module, std: &Package) -> Std
   )
 }
 
-pub fn define_stdin(hooks: &GcHooks, module: &Module, std: &Package) -> StdResult<()> {
+pub fn define_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let instance = load_instance_from_module(hooks, module, STDIN_INSTANCE_NAME)?;
   let mut class = instance.class();
   let io_error = val!(load_class_from_package(
     hooks,
-    std,
+    package,
     IO_MODULE_PATH,
     IO_ERROR
   )?);
@@ -92,7 +92,7 @@ impl LyNative for StdinReadLine {
           buf.pop();
         }
         Call::Ok(val!(hooks.manage_str(buf)))
-      }
+      },
       Err(err) => self.call_error(hooks, err.to_string()),
     }
   }

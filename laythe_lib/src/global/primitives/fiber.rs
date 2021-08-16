@@ -6,8 +6,8 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::GcObj,
   managed::Trace,
+  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
@@ -20,12 +20,12 @@ use std::io::Write;
 pub const FIBER_CLASS_NAME: &str = "Fiber";
 const FIBER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_fiber_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_fiber_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let bool_class = class_inheritance(hooks, module, FIBER_CLASS_NAME)?;
   export_and_insert(hooks, module, bool_class.name(), val!(bool_class)).map_err(StdError::from)
 }
 
-pub fn define_fiber_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_fiber_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut bool_class = load_class_from_module(hooks, module, FIBER_CLASS_NAME)?;
 
   bool_class.add_method(
@@ -61,7 +61,7 @@ mod test {
     use laythe_core::support::FiberBuilder;
 
     use super::*;
-    use crate::support::{MockedContext};
+    use crate::support::MockedContext;
 
     #[test]
     fn new() {

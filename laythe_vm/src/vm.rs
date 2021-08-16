@@ -1865,7 +1865,9 @@ impl Vm {
   /// Swap between the current fiber and the provided fiber
   #[inline]
   unsafe fn context_switch(&mut self, fiber: GcObj<Fiber>) {
-    self.store_ip();
+    if !self.fiber.is_complete() {
+      self.store_ip();
+    }
 
     self.fiber = fiber;
     self.fiber.activate();

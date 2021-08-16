@@ -7,7 +7,7 @@ use crate::{
 use laythe_core::{
   get,
   hooks::{GcHooks, Hooks},
-  managed::{DebugHeap, DebugWrap, GcObj, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -83,12 +83,12 @@ const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fi
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
   .with_stack();
 
-pub fn declare_iter_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, ITER_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_iter_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, ITER_CLASS_NAME)?;
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);
 

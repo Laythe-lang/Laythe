@@ -5,7 +5,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{DebugHeap, GcObj},
+  managed::{DebugHeap, Gc, GcObj},
   managed::{Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
@@ -45,12 +45,12 @@ const NUMBER_CMP: NativeMetaBuilder =
 const NUMBER_PARSE: NativeMetaBuilder = NativeMetaBuilder::fun("parse", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("str", ParameterKind::String)]);
 
-pub fn declare_number_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, NUMBER_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_number_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NUMBER_CLASS_NAME)?;
   let format_error = val!(load_class_from_module(hooks, module, FORMAT_ERROR_NAME)?);
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);

@@ -6,10 +6,10 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
+  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
-  managed::GcObj,
   val,
   value::Value,
   Call,
@@ -21,12 +21,12 @@ use super::class_inheritance;
 pub const NIL_CLASS_NAME: &str = "Nil";
 const NIL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_nil_class(hooks: &GcHooks, module: &mut Module) -> StdResult<()> {
+pub fn declare_nil_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, NIL_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_nil_class(hooks: &GcHooks, module: &Module) -> StdResult<()> {
+pub fn define_nil_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NIL_CLASS_NAME)?;
 
   class.add_method(

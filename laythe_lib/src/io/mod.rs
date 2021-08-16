@@ -5,13 +5,13 @@ mod stdio;
 use self::global::io_module;
 use crate::{StdError, StdResult};
 use fs::fs_module;
-use laythe_core::{hooks::GcHooks, module::Package, utils::IdEmitter};
+use laythe_core::{hooks::GcHooks, managed::Gc, module::Package, utils::IdEmitter};
 use stdio::stdio_module;
 pub const IO_MODULE_PATH: &str = "std/io";
 
 pub fn add_io_package(
   hooks: &GcHooks,
-  std: &mut Package,
+  std: Gc<Package>,
   emitter: &mut IdEmitter,
 ) -> StdResult<()> {
   let mut root = std.root_module();

@@ -129,12 +129,12 @@ pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 
 pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Package>> {
-  let mut std = create_std_core(hooks, emitter)?;
+  let std = create_std_core(hooks, emitter)?;
 
-  add_math_module(hooks, &mut std, emitter)?;
-  add_io_package(hooks, &mut std, emitter)?;
-  let env = env_module(hooks, &std, emitter)?;
-  let regexp = regexp_module(hooks, &std, emitter)?;
+  add_math_module(hooks, std, emitter)?;
+  add_io_package(hooks, std, emitter)?;
+  let env = env_module(hooks, std, emitter)?;
+  let regexp = regexp_module(hooks, std, emitter)?;
 
   let mut root_module = std.root_module();
 
@@ -255,7 +255,7 @@ mod test {
     let std_lib = std_lib.unwrap();
     let root_module = std_lib.root_module();
 
-    let class_class = load_class_from_module(&hooks, &root_module, CLASS_CLASS_NAME).unwrap();
+    let class_class = load_class_from_module(&hooks, root_module, CLASS_CLASS_NAME).unwrap();
 
     class_setup_inner(root_module, class_class);
   }

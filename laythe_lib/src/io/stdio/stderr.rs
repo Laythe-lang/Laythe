@@ -2,18 +2,16 @@ use crate::{
   io::{global::IO_ERROR, IO_MODULE_PATH},
   native_with_error,
   support::load_class_from_package,
-  support::{
-    default_class_inheritance, export_and_insert, load_instance_from_module,
-  },
+  support::{default_class_inheritance, export_and_insert, load_instance_from_module},
   StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
+  managed::{Gc, GcObj},
   module::{Module, Package},
-  object::{Instance, ObjectKind, LyNative, Native, NativeMetaBuilder},
+  object::{Instance, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  managed::GcObj,
   val,
   value::{Value, VALUE_NIL},
   Call,
@@ -31,8 +29,8 @@ const STDERR_WRITELN: NativeMetaBuilder = NativeMetaBuilder::method("writeln", A
 
 const STDERR_FLUSH: NativeMetaBuilder = NativeMetaBuilder::method("flush", Arity::Fixed(0));
 
-pub fn declare_stderr(hooks: &GcHooks, module: &mut Module, std: &Package) -> StdResult<()> {
-  let class = default_class_inheritance(hooks, std, STDERR_CLASS_NAME)?;
+pub fn declare_stderr(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
+  let class = default_class_inheritance(hooks, package, STDERR_CLASS_NAME)?;
   let instance = hooks.manage_obj(Instance::new(class));
 
   export_and_insert(
@@ -43,7 +41,7 @@ pub fn declare_stderr(hooks: &GcHooks, module: &mut Module, std: &Package) -> St
   )
 }
 
-pub fn define_stderr(hooks: &GcHooks, module: &Module, package: &Package) -> StdResult<()> {
+pub fn define_stderr(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let instance = load_instance_from_module(hooks, module, STDERR_INSTANCE_NAME)?;
   let mut class = instance.class();
   let io_error = val!(load_class_from_package(
