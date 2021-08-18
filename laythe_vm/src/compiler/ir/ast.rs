@@ -1,7 +1,8 @@
-use crate::token::Token;
 use bumpalo::boxed::Box;
 use bumpalo::collections::vec::Vec;
 use std::{ops::Range, usize};
+
+use super::token::Token;
 
 /// A visitor pattern for the Laythe ast.
 /// Not sure if this currently provides any value as enum

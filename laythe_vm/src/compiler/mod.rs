@@ -1,19 +1,21 @@
 // mod compiler;
+mod ir;
 mod parser;
 mod scanner;
 
 pub use parser::Parser;
-pub use scanner::Scanner;
 
 use crate::{
-  ast::{self, Decl, Expr, Primary, Span, Spanned, Stmt, Symbol, Trailer},
   byte_code::{AlignedByteCode, UpvalueIndex},
   cache::CacheIdEmitter,
   source::LineOffsets,
-  token::{Lexeme, Token, TokenKind},
   FeResult,
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};
+use ir::{
+  ast::{self, Decl, Expr, Primary, Span, Spanned, Stmt, Symbol, Trailer},
+  token::{Lexeme, Token, TokenKind},
+};
 use laythe_core::{
   chunk::ChunkBuilder,
   constants::{INDEX_GET, INDEX_SET, OBJECT},
@@ -235,9 +237,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// # Examples
   /// ```
   /// use laythe_vm::{
-  ///   compiler::Compiler,
-  ///   source::LineOffsets,
-  ///   ast,
+  ///   compiler::{Compiler, Parser},
+  ///   source::Source,
   /// };
   /// use laythe_core::{
   ///   module::Module,
@@ -245,18 +246,19 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   ///   memory::{NO_GC, Allocator},
   /// };
   /// use std::path::PathBuf;
-  /// use bumpalo::{Bump, collections::Vec};
   ///
   /// let mut gc = Allocator::default();
+  ///
   /// let name = gc.manage_str("module", &NO_GC);
   /// let class = gc.manage_obj(Class::bare(name), &NO_GC);
   /// let path = PathBuf::from("./module.ly");
-  /// let bump = Bump::new();
-  ///
   /// let module = gc.manage(Module::new(class, path, 0), &NO_GC);
-  /// let ast = ast::Module::new(Vec::new_in(&bump));
   ///
-  /// let compiler = Compiler::new(module, &ast, &LineOffsets::default(), 0, &NO_GC, gc);
+  /// let file_id = 0;
+  /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
+  /// let (ast, line_offsets) = Parser::new(&source, file_id).parse();
+  ///
+  /// let compiler = Compiler::new(module, &ast.unwrap(), &line_offsets, file_id, &NO_GC, gc);
   /// ```
   pub fn new(
     module: Gc<module::Module>,

@@ -1,5 +1,4 @@
-use crate::ast::*;
-use crate::token::Token;
+use super::{ast::*, token::Token};
 
 #[derive(Default)]
 pub struct AstPrint {

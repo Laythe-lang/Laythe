@@ -1,9 +1,7 @@
 use std::{iter::Peekable, str::CharIndices, usize};
 
-use crate::{
-  source::LineOffsets,
-  token::{Lexeme, Token, TokenKind},
-};
+use super::ir::token::{Lexeme, Token, TokenKind};
+use crate::source::LineOffsets;
 use laythe_core::utils::next_boundary;
 
 /// Tracking information for one layer of string interpolation
@@ -41,29 +39,9 @@ pub struct Scanner<'a> {
 }
 
 impl<'a> Scanner<'a> {
-  /// Create a new scanner that can be used to tokenize
-  /// a lox source string
-  ///
-  /// # Examples
-  /// ```
-  /// use laythe_vm::compiler::Scanner;
-  /// use laythe_vm::token::TokenKind;
-  /// use laythe_vm::ast::Spanned;
-  ///
-  /// let source = String::from("
-  /// let x = \"something\";
-  /// if x != \"something\" {
-  ///   print(x);
-  /// }
-  /// ");
-  ///
-  /// let mut scanner = Scanner::new(&source);
-  /// let token = scanner.scan_token();
-  /// assert_eq!(token.start(), 1);
-  /// assert_eq!(token.end(), 4);
-  /// assert_eq!(token.kind(), TokenKind::Let);
-  /// assert_eq!(token.str(), "let");
-  /// ```
+  /// Create a new scanner from the provided source string.
+  /// The scanner produces a sequence of tokens
+  /// by calling the `scan_token` method
   pub fn new(source: &'a str) -> Scanner<'a> {
     assert!(
       source.len() < std::u32::MAX as usize,
@@ -93,41 +71,8 @@ impl<'a> Scanner<'a> {
     scanner
   }
 
-  /// Scan the next token from the space lox source
-  /// string provide.
-  ///
-  /// # Examples
-  /// ```
-  /// use laythe_vm::compiler::{Scanner};
-  /// use laythe_vm::token::TokenKind;
-  /// use laythe_vm::ast::Spanned;
-  ///
-  /// let source = String::from("
-  /// let x = \"something\";
-  /// if x != \"something\" {
-  ///   print(x);
-  /// }
-  /// ");
-  ///
-  /// let mut scanner = Scanner::new(&source);
-  /// let mut token = scanner.scan_token();
-  /// assert_eq!(token.start(), 1);
-  /// assert_eq!(token.end(), 4);
-  /// assert_eq!(token.kind(), TokenKind::Let);
-  /// assert_eq!(token.str(), "let");
-  ///
-  /// token = scanner.scan_token();
-  /// assert_eq!(token.start(), 5);
-  /// assert_eq!(token.end(), 6);
-  /// assert_eq!(token.kind(), TokenKind::Identifier);
-  /// assert_eq!(token.str(), "x");
-  ///
-  /// token = scanner.scan_token();
-  /// assert_eq!(token.start(), 7);
-  /// assert_eq!(token.end(), 8);
-  /// assert_eq!(token.kind(), TokenKind::Equal);
-  /// assert_eq!(token.str(), "=");
-  /// ```
+  /// Scan the next token from the source
+  /// string provided.
   pub fn scan_token(&mut self) -> Token<'a> {
     // advance whitespace
     self.skip_white_space();
@@ -250,36 +195,6 @@ impl<'a> Scanner<'a> {
 
   /// Retrieve this files line offsets after it has
   /// been scanned
-  ///
-  /// # Examples
-  /// ```
-  /// use laythe_vm::{
-  ///   compiler::Scanner,
-  ///   source::Source,
-  ///   token::TokenKind,
-  ///   source::LineError,
-  /// };
-  /// use laythe_core::memory::{Allocator, NO_GC};
-  ///
-  /// let mut gc = Allocator::default();
-  /// let source = Source::new(gc.manage_str("
-  /// let x = \"something\";
-  /// if x != \"something\" {
-  ///   print(x);
-  /// }", &NO_GC));
-  ///
-  /// let mut scanner = Scanner::new(&source);
-  /// let token = scanner.scan_token();
-  ///
-  /// let mut offsets = scanner.line_offsets();
-  /// assert_eq!(offsets.lines(), 5);
-  /// assert_eq!(offsets.line_range(0), Ok(0..1));
-  /// assert_eq!(offsets.line_range(1), Ok(1..22));
-  /// assert_eq!(offsets.line_range(2), Ok(22..44));
-  /// assert_eq!(offsets.line_range(3), Ok(44..56));
-  /// assert_eq!(offsets.line_range(4), Ok(56..57));
-  /// assert_eq!(offsets.line_range(5), Err(LineError::LineOutOfBounds));
-  /// ```
   pub fn line_offsets(mut self) -> LineOffsets {
     while let Some(c) = self.next() {
       if c == '\n' {
@@ -730,7 +645,9 @@ const fn source_line_heuristic_guess(len: usize) -> usize {
 
 #[cfg(test)]
 mod test {
+  use super::super::ir::ast::Spanned;
   use super::*;
+  use crate::source::LineError;
   use std::collections::HashMap;
 
   enum TokenGen {
@@ -973,6 +890,75 @@ mod test {
     map.insert(TokenKind::Eof, TokenGen::ALpha(Box::new(|| "".to_string())));
 
     map
+  }
+
+  #[test]
+  fn new() {
+    let source = "
+    let x = \"something\";
+    if x != \"something\" {
+      print(x);
+    }
+    ";
+
+    let mut scanner = Scanner::new(source);
+    let token = scanner.scan_token();
+
+    assert_eq!(token.start(), 5);
+    assert_eq!(token.end(), 8);
+    assert_eq!(token.kind(), TokenKind::Let);
+    assert_eq!(token.str(), "let");
+  }
+
+  #[test]
+  fn scan_token() {
+    let source = "
+    let x = \"something\";
+    if x != \"something\" {
+      print(x);
+    }
+    ";
+
+    let mut scanner = Scanner::new(&source);
+    let mut token = scanner.scan_token();
+    assert_eq!(token.start(), 5);
+    assert_eq!(token.end(), 8);
+    assert_eq!(token.kind(), TokenKind::Let);
+    assert_eq!(token.str(), "let");
+
+    token = scanner.scan_token();
+    assert_eq!(token.start(), 9);
+    assert_eq!(token.end(), 10);
+    assert_eq!(token.kind(), TokenKind::Identifier);
+    assert_eq!(token.str(), "x");
+
+    token = scanner.scan_token();
+    assert_eq!(token.start(), 11);
+    assert_eq!(token.end(), 12);
+    assert_eq!(token.kind(), TokenKind::Equal);
+    assert_eq!(token.str(), "=");
+  }
+
+  #[test]
+  fn line_offsets() {
+    let source = "
+    let x = \"something\";
+    if x != \"something\" {
+      print(x);
+    }";
+
+    let mut scanner = Scanner::new(&source);
+
+    scanner.scan_token();
+    let offsets = scanner.line_offsets();
+
+    assert_eq!(offsets.lines(), 5);
+    assert_eq!(offsets.line_range(0), Ok(0..1));
+    assert_eq!(offsets.line_range(1), Ok(1..26));
+    assert_eq!(offsets.line_range(2), Ok(26..52));
+    assert_eq!(offsets.line_range(3), Ok(52..68));
+    assert_eq!(offsets.line_range(4), Ok(68..73));
+    assert_eq!(offsets.line_range(5), Err(LineError::LineOutOfBounds));
   }
 
   #[test]
