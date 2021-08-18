@@ -2057,9 +2057,9 @@ mod test {
 
     let src = hooks.manage_str(src);
     hooks.push_root(src);
-    let src = Source::new(hooks.manage_str(src));
-    let (ast, line_offsets) = Parser::new(&src, 0).parse();
-    assert!(ast.is_ok());
+    let source = Source::new(hooks.manage_str(src));
+    let (ast, line_offsets) = Parser::new(&source, 0).parse();
+    assert!(ast.is_ok(), "{}", src);
     let ast = ast.unwrap();
 
     let path = PathBuf::from("path/module.ly");
