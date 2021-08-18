@@ -130,6 +130,12 @@ fn criterion_benchmark(c: &mut Criterion) {
     &mut gc,
     PathBuf::from("fixture").join("criterion").join("zoo.lay"),
   );
+  let lox = load_source(
+    &mut gc,
+    PathBuf::from("fixture")
+      .join("lox_interpreter")
+      .join("lox.lay"),
+  );
 
   c.bench_with_input(
     BenchmarkId::new("compile", "binary_trees"),
@@ -138,13 +144,9 @@ fn criterion_benchmark(c: &mut Criterion) {
       b.iter(|| compile_source(*s));
     },
   );
-  c.bench_with_input(
-    BenchmarkId::new("compile", "channel"),
-    &channel,
-    |b, s| {
-      b.iter(|| compile_source(*s));
-    },
-  );
+  c.bench_with_input(BenchmarkId::new("compile", "channel"), &channel, |b, s| {
+    b.iter(|| compile_source(*s));
+  });
   c.bench_with_input(
     BenchmarkId::new("compile", "equality"),
     &equality,
@@ -190,6 +192,9 @@ fn criterion_benchmark(c: &mut Criterion) {
     b.iter(|| compile_source(*s));
   });
   c.bench_with_input(BenchmarkId::new("compile", "zoo"), &zoo, |b, s| {
+    b.iter(|| compile_source(*s));
+  });
+  c.bench_with_input(BenchmarkId::new("compile", "lox"), &lox, |b, s| {
     b.iter(|| compile_source(*s));
   });
 }
