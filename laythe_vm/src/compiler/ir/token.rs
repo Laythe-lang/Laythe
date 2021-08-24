@@ -1,6 +1,7 @@
-use crate::ast::Spanned;
 use laythe_core::managed::{DebugHeap, Manage, Trace};
 use std::{fmt, mem};
+
+use super::ast::Spanned;
 
 #[derive(Debug, Clone)]
 pub enum Lexeme<'a> {

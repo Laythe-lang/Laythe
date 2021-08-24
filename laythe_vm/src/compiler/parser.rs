@@ -1,7 +1,12 @@
+use super::{
+  ir::{
+    ast::*,
+    token::{Lexeme, Token, TokenKind},
+  },
+  scanner::Scanner,
+};
 use crate::{
-  ast::*,
   source::{LineOffsets, Source},
-  token::{Lexeme, Token, TokenKind},
   FeResult,
 };
 use bumpalo::boxed::Box;
@@ -9,8 +14,6 @@ use bumpalo::collections::vec::Vec;
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{constants::INIT, object::FunKind};
 use std::mem;
-
-use super::Scanner;
 
 type ParseResult<T, F> = Result<T, Diagnostic<F>>;
 
@@ -82,16 +85,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     }
   }
 
-  /// Allocate a node using the Source's bump allocator
-  fn node<T>(&self, node: T) -> Box<'a, T> {
-    self.source.node(node)
-  }
-
-  /// Allocate a vec using the Source's bump allocator
-  fn vec<T>(&self) -> Vec<'a, T> {
-    self.source.vec()
-  }
-
   /// Parse the provide source string into a Laythe AST
   /// Return the top level module struct if successful
   ///
@@ -114,6 +107,16 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// ```
   pub fn parse(mut self) -> (FeResult<Module<'a>, FileId>, LineOffsets) {
     (self.parse_inner(), self.scanner.line_offsets())
+  }
+
+  /// Allocate a node using the Source's bump allocator
+  fn node<T>(&self, node: T) -> Box<'a, T> {
+    self.source.node(node)
+  }
+
+  /// Allocate a vec using the Source's bump allocator
+  fn vec<T>(&self) -> Vec<'a, T> {
+    self.source.vec()
   }
 
   fn parse_inner(&mut self) -> FeResult<Module<'a>, FileId> {
@@ -2168,8 +2171,8 @@ const fn get_type_infix(kind: TokenKind) -> &'static Rule<TypeInfix, TypePrecede
 
 #[cfg(test)]
 mod test {
+  use super::super::ir::AstPrint;
   use super::*;
-  use crate::ast_printer::AstPrint;
   use laythe_core::memory::{Allocator, NO_GC};
 
   fn test(src: &str) {
