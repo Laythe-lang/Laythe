@@ -2,7 +2,7 @@ use bumpalo::boxed::Box;
 use bumpalo::collections::vec::Vec;
 use std::{ops::Range, usize};
 
-use super::token::Token;
+use super::{symbol_table::SymbolTable, token::Token};
 
 /// A visitor pattern for the Laythe ast.
 /// Not sure if this currently provides any value as enum
@@ -487,7 +487,7 @@ impl<'a> Spanned for Import<'a> {
         } else {
           symbols.last().unwrap().end()
         }
-      },
+      }
     }
   }
 }
@@ -495,12 +495,18 @@ impl<'a> Spanned for Import<'a> {
 pub struct For<'a> {
   pub item: Token<'a>,
   pub iter: Expr<'a>,
+  pub symbols: SymbolTable<'a>,
   pub body: Block<'a>,
 }
 
 impl<'a> For<'a> {
   pub fn new(item: Token<'a>, iter: Expr<'a>, body: Block<'a>) -> Self {
-    Self { item, iter, body }
+    Self {
+      item,
+      symbols: Default::default(),
+      iter,
+      body,
+    }
   }
 }
 
@@ -635,12 +641,17 @@ impl<'a> Spanned for Try<'a> {
 
 pub struct Block<'a> {
   pub range: Span,
+  pub symbols: SymbolTable<'a>,
   pub decls: Vec<'a, Decl<'a>>,
 }
 
 impl<'a> Block<'a> {
   pub fn new(range: Span, decls: Vec<'a, Decl<'a>>) -> Self {
-    Self { range, decls }
+    Self {
+      range,
+      symbols: Default::default(),
+      decls,
+    }
   }
 }
 
