@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "language/channel/receive_unbuffered.lay"
+        "language/binary_assignment/syntax.lay"
         // "lox_interpreter/lox.lay",
         // "../../../craftinginterpreters/test/benchmark/binary_trees.lox"
       ],

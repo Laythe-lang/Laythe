@@ -1,6 +1,7 @@
 use super::{
   ir::{
     ast::*,
+    symbol_table::SymbolTable,
     token::{Lexeme, Token, TokenKind},
   },
   scanner::Scanner,
@@ -119,12 +120,17 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     self.source.vec()
   }
 
+  /// Allocate a new symbol table
+  fn table(&self) -> SymbolTable<'a> {
+    SymbolTable::new(self.vec())
+  }
+
   fn parse_inner(&mut self) -> FeResult<Module<'a>, FileId> {
     to_fe_result(self.advance())?;
 
     // early exit if ""
     if let TokenKind::Eof = self.current.kind() {
-      return Ok(Module::new(self.vec()));
+      return Ok(Module::new(self.vec(), self.table()));
     }
 
     let mut decls = self.vec();
@@ -137,7 +143,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       .map_err(|err| vec![err])?;
 
     if self.errors.is_empty() {
-      Ok(Module::new(decls))
+      Ok(Module::new(decls, self.table()))
     } else {
       Err(self.errors.clone())
     }
@@ -192,7 +198,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::While
         | TokenKind::Return => {
           break;
-        },
+        }
         _ => (),
       }
 
@@ -225,6 +231,8 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Parse a class declaration
   fn class(&mut self) -> ParseResult<Symbol<'a>, FileId> {
+    let start = self.previous.start();
+
     self.consume(TokenKind::Identifier, "Expected class name.")?;
     let name = self.previous.clone();
 
@@ -254,7 +262,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let mut methods: Vec<Fun> = self.vec();
     let mut static_methods: Vec<Fun> = self.vec();
     let mut init: Option<Fun> = None;
-    let start = self.previous.start();
 
     while !self.check(TokenKind::RightBrace) && !self.check(TokenKind::Eof) {
       // We need to do a lookahead for ':' to determine
@@ -274,7 +281,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
-            },
+            }
             _ => {
               let (fun_kind, method) = self.method(name, false)?;
               match fun_kind {
@@ -282,9 +289,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 FunKind::Initializer => init = Some(method),
                 _ => unreachable!(),
               }
-            },
+            }
           }
-        },
+        }
 
         // static we know must be a method
         TokenKind::Static => {
@@ -296,7 +303,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let name = self.previous.clone();
           let (_, method) = self.method(name, true)?;
           static_methods.push(method);
-        },
+        }
         _ => return self.error_current("Expected method or member declaration inside of class."),
       }
     }
@@ -310,6 +317,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       type_params,
       super_class,
       type_members,
+      self.table(),
       init,
       methods,
       static_methods,
@@ -396,7 +404,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           members.push(TypeMember::new(name, type_));
-        },
+        }
         TokenKind::Less | TokenKind::LeftParen => {
           self.advance()?;
           let type_params = if self.match_kind(TokenKind::Less)? {
@@ -410,7 +418,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           methods.push(TypeMethod::new(name, call_sig));
-        },
+        }
         _ => self.error_at(
           self.current.clone(),
           "Expected member or method declaration inside trait.",
@@ -544,7 +552,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         Some(Trailer::Call(_)) => {
           self.consume_basic(TokenKind::Semicolon, "Expected ';' launch call.")?;
           Ok(Stmt::Launch(self.node(Launch::new(closure))))
-        },
+        }
         _ => self.error("Expected call following 'launch'."),
       }
     } else {
@@ -591,6 +599,8 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Parse a for loop
   fn for_(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+    let table = self.table();
+
     self.loop_(|self_| {
       self_.consume(TokenKind::Identifier, "Expected identifer after 'for'.")?;
       let item = self_.previous.clone();
@@ -601,7 +611,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       self_
         .consume(TokenKind::LeftBrace, "Expected '{' after iterable.")
         .and_then(|()| self_.block(BlockReturn::Cannot))
-        .map(|body| Stmt::For(self_.node(For::new(item, iter, body))))
+        .map(|body| Stmt::For(self_.node(For::new(item, iter, table, body))))
     })
   }
 
@@ -794,7 +804,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
     self
       .consume(TokenKind::RightBrace, "Expected '}' after block.")
-      .map(|()| Block::new(Span { start, end }, decls))
+      .map(|()| Block::new(Span { start, end }, self.table(), decls))
   }
 
   /// Parse a binary expression
@@ -920,7 +930,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let previous = mem::replace(&mut self.fun_kind, FunKind::Fun);
     let lambda = self
       .fun_body(BlockReturn::Can)
-      .map(|body| self.atom(Primary::Lambda(self.node(Fun::new(None, call_sig, body)))));
+      .map(|body| self.atom(Primary::Lambda(self.node(Fun::new(None, call_sig, self.table(), body)))));
 
     self.fun_kind = previous;
     lambda
@@ -1055,14 +1065,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         TokenKind::StringSegment => {
           self.advance()?;
           segments.push(StringSegments::Token(self.previous.clone()))
-        },
+        }
         TokenKind::StringEnd => {
           break;
-        },
+        }
         _ => {
           let expr = self.expr()?;
           segments.push(StringSegments::Expr(self.node(expr)))
-        },
+        }
       }
     }
     self.consume(TokenKind::StringEnd, "Unterminated interpolated string.")?;
@@ -1228,7 +1238,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     }
     self
       .block(block_return)
-      .map(|body| Fun::new(Some(name), call_sig, FunBody::Block(self.node(body))))
+      .map(|body| Fun::new(Some(name), call_sig, self.table(), FunBody::Block(self.node(body))))
   }
 
   /// Parse a method declaration and body
@@ -1324,7 +1334,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TypePrefix::Fun => {
         let call_sig = self.call_signature(TokenKind::RightParen, self.vec())?;
         Ok(Type::Fun(self.node(call_sig)))
-      },
+      }
       TypePrefix::Literal => self.type_literal(),
     }
   }
@@ -1399,11 +1409,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
         Ok(Type::Ref(type_ref))
-      },
+      }
       _ => {
         // TODO: maybe
         self.error("Can only apply type argument to a non primitive type identifier.")
-      },
+      }
     }
   }
 

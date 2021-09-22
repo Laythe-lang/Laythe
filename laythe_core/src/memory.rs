@@ -144,6 +144,22 @@ impl<'a> Allocator {
     managed
   }
 
+  /// Checks if a string is in the gc's intern cache.
+  ///
+  /// # Examples
+  /// ```
+  /// use laythe_core::memory::{Allocator, NO_GC};
+  ///
+  /// let mut gc = Allocator::default();
+  /// gc.manage_str("hi!", &NO_GC);
+  ///
+  /// assert!(gc.has_str("hi!").is_some());
+  /// ```
+  pub fn has_str<S: AsRef<str>>(&self, src: S) -> Option<GcStr> {
+    let string = src.as_ref();
+    self.intern_cache.get(string).copied()
+  }
+
   /// track events that may grow the size of the heap. If
   /// a heap grows beyond the current threshold will trigger a gc
   pub fn grow<T: 'static + Manage, R, F: FnOnce(&mut T) -> R, C: TraceRoot + ?Sized>(

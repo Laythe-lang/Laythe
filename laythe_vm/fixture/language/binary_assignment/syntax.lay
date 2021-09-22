@@ -1,5 +1,5 @@
 // Assignment on RHS of variable.
 let a = "before";
-let c += a += "let";
+let c = a += "let";
 assertEq(a, "beforelet"); // expect: let
-assertEq(c, "beforeletlet"); // expect: let
+assertEq(c, "beforelet"); // expect: let

@@ -42,12 +42,13 @@ fn assignment() -> Result<(), std::io::Error> {
       "language/assignment/infix_operator.lay",
       "language/assignment/prefix_operator.lay",
       "language/assignment/to_this.lay",
+      "language/assignment/undefined.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/assignment/undefined.lay"],
+    &vec![],
     ExecuteResult::RuntimeError,
   )
 }
@@ -56,8 +57,8 @@ fn assignment() -> Result<(), std::io::Error> {
 fn binary_assignment() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/assignment/local.lay",
-      "language/assignment/syntax.lay",
+      "language/binary_assignment/local.lay",
+      "language/binary_assignment/syntax.lay",
       "language/binary_assignment/associativity.lay",
       "language/binary_assignment/global.lay",
       "language/binary_assignment/operators.lay",
@@ -67,16 +68,17 @@ fn binary_assignment() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/assignment/grouping.lay",
-      "language/assignment/infix_operator.lay",
-      "language/assignment/prefix_operator.lay",
-      "language/assignment/to_this.lay",
+      "language/binary_assignment/grouping.lay",
+      "language/binary_assignment/infix_operator.lay",
+      "language/binary_assignment/prefix_operator.lay",
+      "language/binary_assignment/to_this.lay",
+      "language/binary_assignment/undefined.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
   test_file_exits(
-    &vec!["language/assignment/undefined.lay"],
+    &vec![],
     ExecuteResult::RuntimeError,
   )
 }
@@ -345,14 +347,18 @@ fn exception() -> Result<(), std::io::Error> {
 
 #[test]
 fn export() -> Result<(), std::io::Error> {
-  test_file_exits(&vec![], ExecuteResult::Ok(0))?;
+  test_file_exits(&vec![
+    "language/export/declaration_class.lay",
+    "language/export/declaration_fn.lay",
+    "language/export/declaration_let.lay",
+  ], ExecuteResult::Ok(0))?;
 
   test_file_exits(
     &vec![
       "language/export/literal.lay",
       "language/export/local.lay",
       "language/export/non_declaration_class.lay",
-      "language/export/non_declaration_fun.lay",
+      "language/export/non_declaration_fn.lay",
       "language/export/non_declaration_let.lay",
     ],
     ExecuteResult::CompileError,
@@ -386,7 +392,9 @@ fn field() -> Result<(), std::io::Error> {
     ExecuteResult::Ok(0),
   )?;
 
-  test_file_exits(&vec![], ExecuteResult::CompileError)?;
+  test_file_exits(&vec![
+    "language/field/set_evaluation_order.lay"
+  ], ExecuteResult::CompileError)?;
 
   test_file_exits(
     &vec![
@@ -397,7 +405,6 @@ fn field() -> Result<(), std::io::Error> {
       "language/field/get_on_nil.lay",
       "language/field/get_on_num.lay",
       "language/field/get_on_string.lay",
-      "language/field/set_evaluation_order.lay",
       "language/field/set_undefined.lay",
       "language/field/set_on_bool.lay",
       "language/field/set_on_class.lay",
@@ -456,6 +463,7 @@ fn function() -> Result<(), std::io::Error> {
       "language/function/missing_comma_in_parameters.lay",
       "language/function/too_many_arguments.lay",
       "language/function/too_many_parameters.lay",
+      "language/function/local_mutual_recursion.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -463,7 +471,6 @@ fn function() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/function/extra_arguments.lay",
-      "language/function/local_mutual_recursion.lay",
       "language/function/missing_arguments.lay",
     ],
     ExecuteResult::RuntimeError,
@@ -738,6 +745,7 @@ fn lambda() -> Result<(), std::io::Error> {
       "language/lambda/missing_comma_in_parameters.lay",
       "language/lambda/too_many_parameters.lay",
       "language/lambda/too_many_arguments.lay",
+      "language/lambda/local_mutual_recursion.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -746,7 +754,6 @@ fn lambda() -> Result<(), std::io::Error> {
     &vec![
       "language/lambda/extra_arguments.lay",
       "language/lambda/missing_arguments.lay",
-      "language/lambda/local_mutual_recursion.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -830,6 +837,7 @@ fn method() -> Result<(), std::io::Error> {
     &vec![
       "language/method/too_many_arguments.lay",
       "language/method/too_many_parameters.lay",
+      "language/method/refer_to_name.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -839,7 +847,6 @@ fn method() -> Result<(), std::io::Error> {
       "language/method/extra_arguments.lay",
       "language/method/missing_arguments.lay",
       "language/method/not_found.lay",
-      "language/method/refer_to_name.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -991,6 +998,7 @@ fn static_method() -> Result<(), std::io::Error> {
       "language/static_method/not_inherited.lay",
       "language/static_method/too_many_arguments.lay",
       "language/static_method/too_many_parameters.lay",
+      "language/static_method/refer_to_name.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -1000,7 +1008,6 @@ fn static_method() -> Result<(), std::io::Error> {
       "language/static_method/extra_arguments.lay",
       "language/static_method/missing_arguments.lay",
       "language/static_method/not_found.lay",
-      "language/static_method/refer_to_name.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -1030,14 +1037,12 @@ fn string() -> Result<(), std::io::Error> {
       "language/string/invalid_unicode_too_long.lay",
       "language/string/unterminated_double.lay",
       "language/string/unterminated_single.lay",
+      "language/string/error_after_multiline.lay",
     ],
     ExecuteResult::CompileError,
   )?;
 
-  test_file_exits(
-    &vec!["language/string/error_after_multiline.lay"],
-    ExecuteResult::RuntimeError,
-  )
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
@@ -1086,15 +1091,11 @@ fn variable() -> Result<(), std::io::Error> {
       "language/variable/in_middle_of_block.lay",
       "language/variable/in_nested_block.lay",
       "language/variable/local_from_method.lay",
-      "language/variable/redeclare_global.lay",
-      "language/variable/redefine_global.lay",
       "language/variable/scope_reuse_in_different_blocks.lay",
       "language/variable/shadow_and_local.lay",
       "language/variable/shadow_global.lay",
       "language/variable/shadow_local.lay",
       "language/variable/uninitialized.lay",
-      "language/variable/unreached_undefined.lay",
-      "language/variable/use_global_in_initializer.lay",
     ],
     ExecuteResult::Ok(0),
   )?;
@@ -1104,7 +1105,13 @@ fn variable() -> Result<(), std::io::Error> {
       "language/variable/collide_with_parameter.lay",
       "language/variable/duplicate_local.lay",
       "language/variable/duplicate_parameter.lay",
+      "language/variable/redeclare_global.lay",
+      "language/variable/redefine_global.lay",
+      "language/variable/undefined_global.lay",
+      "language/variable/undefined_local.lay",
+      "language/variable/unreached_undefined.lay",
       "language/variable/use_false_as_var.lay",
+      "language/variable/use_global_in_initializer.lay",
       "language/variable/use_local_in_initializer.lay",
       "language/variable/use_nil_as_var.lay",
       "language/variable/use_this_as_var.lay",
@@ -1114,9 +1121,6 @@ fn variable() -> Result<(), std::io::Error> {
 
   test_file_exits(
     &vec![
-      "language/variable/undefined_global.lay",
-      "language/variable/undefined_local.lay",
-      "language/variable/undefined_local.lay",
     ],
     ExecuteResult::RuntimeError,
   )

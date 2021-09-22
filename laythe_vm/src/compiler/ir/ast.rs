@@ -107,7 +107,7 @@ pub trait Spanned {
 
 /// Representing the start and end of a node. Typically this would
 /// be a multi line control flow or a function declaration
-#[derive(Default, Debug, Copy, Clone)]
+#[derive(Default, PartialEq, Debug, Copy, Clone)]
 pub struct Span {
   pub start: u32,
   pub end: u32,
@@ -120,12 +120,16 @@ impl From<Span> for Range<usize> {
 }
 
 pub struct Module<'a> {
+  pub symbols: SymbolTable<'a>,
   pub decls: Vec<'a, Decl<'a>>,
 }
 
 impl<'a> Module<'a> {
-  pub fn new(decls: Vec<'a, Decl<'a>>) -> Self {
-    Self { decls }
+  pub fn new(decls: Vec<'a, Decl<'a>>, symbols: SymbolTable<'a>) -> Self {
+    Self {
+      symbols,
+      decls,
+    }
   }
 }
 
@@ -202,6 +206,8 @@ pub struct Class<'a> {
   pub type_params: Vec<'a, TypeParam<'a>>,
   pub super_class: Option<ClassType<'a>>,
   pub type_members: Vec<'a, TypeMember<'a>>,
+  pub symbols: SymbolTable<'a>,
+  // pub fields:
   pub init: Option<Fun<'a>>,
   pub methods: Vec<'a, Fun<'a>>,
   pub static_methods: Vec<'a, Fun<'a>>,
@@ -215,6 +221,7 @@ impl<'a> Class<'a> {
     type_params: Vec<'a, TypeParam<'a>>,
     super_class: Option<ClassType<'a>>,
     type_members: Vec<'a, TypeMember<'a>>,
+    symbols: SymbolTable<'a>,
     init: Option<Fun<'a>>,
     methods: Vec<'a, Fun<'a>>,
     static_methods: Vec<'a, Fun<'a>>,
@@ -225,6 +232,7 @@ impl<'a> Class<'a> {
       type_params,
       super_class,
       type_members,
+      symbols,
       init,
       methods,
       static_methods,
@@ -249,14 +257,21 @@ impl<'a> Spanned for Class<'a> {
 pub struct Fun<'a> {
   pub name: Option<Token<'a>>,
   pub call_sig: CallSignature<'a>,
+  pub symbols: SymbolTable<'a>,
   pub body: FunBody<'a>,
 }
 
 impl<'a> Fun<'a> {
-  pub fn new(name: Option<Token<'a>>, call_sig: CallSignature<'a>, body: FunBody<'a>) -> Self {
+  pub fn new(
+    name: Option<Token<'a>>,
+    call_sig: CallSignature<'a>,
+    symbols: SymbolTable<'a>,
+    body: FunBody<'a>
+  ) -> Self {
     Self {
       name,
       call_sig,
+      symbols,
       body,
     }
   }
@@ -500,11 +515,16 @@ pub struct For<'a> {
 }
 
 impl<'a> For<'a> {
-  pub fn new(item: Token<'a>, iter: Expr<'a>, body: Block<'a>) -> Self {
+  pub fn new(
+    item: Token<'a>,
+    iter: Expr<'a>,
+    symbols: SymbolTable<'a>,
+    body: Block<'a>
+  ) -> Self {
     Self {
       item,
-      symbols: Default::default(),
       iter,
+      symbols,
       body,
     }
   }
@@ -646,10 +666,10 @@ pub struct Block<'a> {
 }
 
 impl<'a> Block<'a> {
-  pub fn new(range: Span, decls: Vec<'a, Decl<'a>>) -> Self {
+  pub fn new(range: Span, symbols: SymbolTable<'a>, decls: Vec<'a, Decl<'a>>) -> Self {
     Self {
       range,
-      symbols: Default::default(),
+      symbols,
       decls,
     }
   }

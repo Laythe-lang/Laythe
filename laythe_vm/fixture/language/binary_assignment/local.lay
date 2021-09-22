@@ -5,6 +5,6 @@
   a += "after";
   assertEq(a, "beforeafter"); // expect: after
 
-  assertEq(a = "arg", "beforeafterarg"); // expect: arg
+  assertEq(a += "arg", "beforeafterarg"); // expect: arg
   assertEq(a, "beforeafterarg"); // expect: arg
 };
