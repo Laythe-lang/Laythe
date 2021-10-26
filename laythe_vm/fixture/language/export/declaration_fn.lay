@@ -1,1 +1,1 @@
-export fn a() 10
+export fn a() { 10 }

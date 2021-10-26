@@ -12,7 +12,7 @@ fn sum(iter) {
 }
 
 let intoList = makeIter().into(List.collect);
-let sum = makeIter().into(sum);
+let total = makeIter().into(sum);
 
 assertEq(intoList[4], 4);
-assertEq(sum, 45);
+assertEq(total, 45);

@@ -183,7 +183,7 @@ impl VmFiles {
         };
 
         VmFileId(*id)
-      },
+      }
       None => {
         self.files.push(VmFile {
           name,
@@ -194,7 +194,7 @@ impl VmFiles {
         let id = self.files.len() - 1;
         self.name_map.insert(name, id);
         VmFileId(id)
-      },
+      }
     }
   }
 

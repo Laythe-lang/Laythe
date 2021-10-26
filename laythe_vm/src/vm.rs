@@ -1,7 +1,7 @@
 use crate::{
   byte_code::{AlignedByteCode, ByteCode, UpvalueIndex},
   cache::InlineCache,
-  compiler::{Compiler, Parser},
+  compiler::{Compiler, Parser, Resolver},
   constants::{MAX_FRAME_SIZE, REPL_MODULE},
   source::{Source, VmFileId, VmFiles},
   FeResult,
@@ -227,8 +227,8 @@ impl Vm {
           let file_id = self.files.upsert(managed_path, source_content);
           self.pop_roots(2);
 
-          self.interpret(main_module, &source, file_id);
-        },
+          self.interpret(true, main_module, &source, file_id);
+        }
         Err(error) => panic!("{}", error),
       }
     }
@@ -255,13 +255,13 @@ impl Vm {
         let main_id = self.emitter.emit();
         let main_module = self.main_module(module_path, main_id);
 
-        self.interpret(main_module, &source, file_id)
-      },
+        self.interpret(false, main_module, &source, file_id)
+      }
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
           .expect("Unable to write to stderr");
         ExecuteResult::RuntimeError
-      },
+      }
     }
   }
 
@@ -273,15 +273,16 @@ impl Vm {
   /// Interpret the provided laythe script returning the execution result
   fn interpret(
     &mut self,
+    repl: bool,
     main_module: Gc<Module>,
     source: &Source,
     file_id: VmFileId,
   ) -> ExecuteResult {
-    match self.compile(main_module, source, file_id) {
+    match self.compile(repl, main_module, source, file_id) {
       Ok(fun) => {
         self.prepare(fun);
         self.execute(ExecuteMode::Normal)
-      },
+      }
       Err(errors) => {
         let mut stdio = self.io.stdio();
         let stderr_color = stdio.stderr_color();
@@ -290,13 +291,14 @@ impl Vm {
             .expect("Unable to write to stderr");
         }
         ExecuteResult::CompileError
-      },
+      }
     }
   }
 
   /// Compile the provided laythe source into the virtual machine's bytecode
   fn compile(
     &mut self,
+    repl: bool,
     module: Gc<Module>,
     source: &Source,
     file_id: VmFileId,
@@ -307,7 +309,10 @@ impl Vm {
       .update_line_offsets(file_id, line_offsets.clone())
       .expect("File id not set for line offsets");
 
-    let ast = ast?;
+    let mut ast = ast?;
+
+    Resolver::new(self.global, &self.gc.borrow(), source, file_id, repl).resolve(&mut ast)?;
+
     let gc = self.gc.replace(Allocator::default());
     let compiler = Compiler::new(module, &ast, &line_offsets, file_id, self, gc);
 
@@ -424,7 +429,7 @@ impl Vm {
         let result = self.run_fun(val!(self.builtin.errors.import), &[error_message]);
 
         self.to_call_result(result)
-      },
+      }
     }
   }
 
@@ -515,7 +520,7 @@ impl Vm {
                 return ExecuteResult::FunResult(self.fiber.peek(0));
               }
             }
-          },
+          }
           Signal::ContextSwitch => match self.fiber_queue.pop_front() {
             Some(fiber) => self.context_switch(fiber),
             None => {
@@ -523,19 +528,19 @@ impl Vm {
               let stderr = stdio.stderr();
               writeln!(stderr, "Fatal error deadlock.").expect("Unable to write to stderr");
               return ExecuteResult::RuntimeError;
-            },
+            }
           },
           Signal::RuntimeError => match self.fiber.error() {
             Some(error) => {
               if let Some(execute_result) = self.stack_unwind(error) {
                 return execute_result;
               }
-            },
+            }
             None => self.internal_error("Runtime error was not set."),
           },
           Signal::Exit => {
             return ExecuteResult::Ok(self.exit_code);
-          },
+          }
         }
       }
     }
@@ -984,7 +989,7 @@ impl Vm {
               .inline_cache_mut()
               .set_invoke_cache(inline_slot, class, method);
             self.resolve_call(method, arg_count)
-          },
+          }
           None => self.runtime_error(
             self.builtin.errors.property,
             &format!(
@@ -994,7 +999,7 @@ impl Vm {
             ),
           ),
         }
-      },
+      }
     }
   }
 
@@ -1031,7 +1036,7 @@ impl Vm {
             .inline_cache_mut()
             .set_invoke_cache(inline_slot, super_class, method);
           self.resolve_call(method, arg_count)
-        },
+        }
         None => self.runtime_error(
           self.builtin.errors.property,
           &format!(
@@ -1207,7 +1212,7 @@ impl Vm {
       Some(gbl) => {
         self.fiber.push(gbl);
         Signal::Ok
-      },
+      }
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined variable {}", string),
@@ -1299,12 +1304,12 @@ impl Vm {
         // generate a new import object
         let path = self.manage(List::from(path));
         self.manage(Import::new(*package, path))
-      },
+      }
       None => {
         // generate a new import object
         let path = self.manage(List::new());
         self.manage(Import::new(path_segments[0], path))
-      },
+      }
     };
 
     self.push_root(import);
@@ -1314,7 +1319,7 @@ impl Vm {
         Ok(module) => {
           self.fiber.push(val!(module));
           Signal::Ok
-        },
+        }
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1362,12 +1367,12 @@ impl Vm {
         // generate a new import object
         let path = self.manage(List::from(path));
         self.manage(Import::new(*package, path))
-      },
+      }
       None => {
         // generate a new import object
         let path = self.manage(List::new());
         self.manage(Import::new(path_segments[0], path))
-      },
+      }
     };
 
     self.push_root(import);
@@ -1377,7 +1382,7 @@ impl Vm {
         Ok(module) => {
           self.fiber.push(val!(module));
           Signal::Ok
-        },
+        }
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1672,7 +1677,7 @@ impl Vm {
       match class.meta_class() {
         Some(mut meta) => {
           meta.add_method(&GcHooks::new(self), name, method);
-        },
+        }
         None => self.internal_error(&format!("{} meta class not set.", class.name())),
       }
     } else {
@@ -1783,7 +1788,7 @@ impl Vm {
         } else {
           Signal::Ok
         }
-      },
+      }
     }
   }
 
@@ -1819,7 +1824,7 @@ impl Vm {
             assert_roots(native, roots_before, roots_current);
           }
           Signal::OkReturn
-        },
+        }
         Call::Err(error) => self.set_error(error),
         Call::Exit(code) => self.set_exit(code),
       },
@@ -1838,11 +1843,11 @@ impl Vm {
               assert_roots(native, roots_before, roots_current);
             }
             Signal::OkReturn
-          },
+          }
           Call::Err(error) => self.set_error(error),
           Call::Exit(code) => self.set_exit(code),
         }
-      },
+      }
     }
   }
 
@@ -1898,7 +1903,7 @@ impl Vm {
           self.current_fun = current_fun;
           self.load_ip();
           None
-        },
+        }
         None => {
           if self.fiber == self.main_fiber {
             Some(Signal::Exit)
@@ -1909,7 +1914,7 @@ impl Vm {
             }
             Some(Signal::ContextSwitch)
           }
-        },
+        }
       },
       None => self.internal_error("Compilation failure attempted to pop last frame"),
     }
@@ -2028,7 +2033,7 @@ impl Vm {
             ),
           )),
         }
-      },
+      }
     }
   }
 
@@ -2045,7 +2050,7 @@ impl Vm {
         let bound = self.manage_obj(Method::new(self.fiber.peek(0), method));
         self.fiber.peek_set(0, val!(bound));
         Signal::Ok
-      },
+      }
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined property {}", name),
@@ -2125,10 +2130,10 @@ impl Vm {
       match &**upvalue {
         Upvalue::Open(index) => {
           write!(stdout, "[ stack {} ]", self.stack[*index])?;
-        },
+        }
         Upvalue::Closed(closed) => {
           write!(stdout, "[ heap {} ]", closed)?;
-        },
+        }
       }
     }
 
@@ -2142,7 +2147,7 @@ impl Vm {
       ExecuteResult::Ok(_) => self.internal_error("Accidental early exit in hook call"),
       ExecuteResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
-      },
+      }
       ExecuteResult::RuntimeError => match self.fiber.error() {
         Some(error) => Call::Err(error),
         None => self.internal_error("Error not set on vm executor."),
@@ -2176,7 +2181,7 @@ impl Vm {
         } else {
           self.internal_error("Failed to construct error")
         })
-      },
+      }
       _ => self.internal_error("Failed to construct error"),
     }
   }
@@ -2202,11 +2207,11 @@ impl Vm {
         self.current_fun = frame.closure.fun();
         self.ip = frame.ip;
         None
-      },
+      }
       None => {
         self.print_error(error);
         Some(ExecuteResult::RuntimeError)
-      },
+      }
     }
   }
 

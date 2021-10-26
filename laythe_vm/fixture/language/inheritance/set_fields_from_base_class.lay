@@ -32,7 +32,7 @@ assertEq(r[0], "foo 1");
 assertEq(r[1], "foo 2");
 
 bar.bar("bar 1", "bar 2");
-let r = bar.barFn();
+r = bar.barFn();
 assertEq(r[0], "bar 1");
 assertEq(r[1], "bar 2");
 
