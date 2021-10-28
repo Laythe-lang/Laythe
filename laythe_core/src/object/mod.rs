@@ -9,7 +9,7 @@ mod list;
 mod map;
 mod method;
 mod native;
-mod upvalue;
+mod capture;
 
 pub use channel::{Channel, ReceiveResult, SendResult, CloseResult};
 pub use class::Class;
@@ -22,7 +22,7 @@ pub use list::List;
 pub use map::{Map, MapEntry};
 pub use method::Method;
 pub use native::{LyNative, Native, NativeMeta, NativeMetaBuilder};
-pub use upvalue::Upvalue;
+pub use capture::Capture;
 
 #[cfg(test)]
 pub use class::test_class;
@@ -41,6 +41,6 @@ pub enum ObjectKind {
   Method,
   Native,
   String,
-  Upvalue,
+  Capture,
   Fiber,
 }

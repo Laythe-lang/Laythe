@@ -6,7 +6,7 @@ use super::{
 use crate::{
   object::{
     Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
-    ObjectKind, Upvalue,
+    ObjectKind, Capture,
   },
   value::Value,
 };
@@ -64,8 +64,8 @@ macro_rules! to_obj_kind {
   ($o:expr, String) => {
     $o.to_str()
   };
-  ($o:expr, Upvalue) => {
-    $o.to_upvalue()
+  ($o:expr, Capture) => {
+    $o.to_capture()
   };
 }
 
@@ -477,9 +477,9 @@ impl GcObject {
   }
 
   #[inline]
-  pub fn to_upvalue(self) -> GcObj<Upvalue> {
+  pub fn to_capture(self) -> GcObj<Capture> {
     GcObj {
-      ptr: unsafe { self.data_ptr::<Upvalue>() },
+      ptr: unsafe { self.data_ptr::<Capture>() },
     }
   }
 }
@@ -493,7 +493,7 @@ impl fmt::Display for GcObject {
       ObjectKind::Map(map) => write!(f, "{}", map),
       ObjectKind::Fun(fun) => write!(f, "{}", fun),
       ObjectKind::Fiber(fiber) => write!(f, "{}", fiber),
-      ObjectKind::Upvalue(upvalue) => write!(f, "{}", upvalue),
+      ObjectKind::Capture(capture) => write!(f, "{}", capture),
       ObjectKind::Closure(closure) => write!(f, "{}", closure),
       ObjectKind::Method(method) => write!(f, "{}", method),
       ObjectKind::Class(class) => write!(f, "{}", class),
@@ -513,7 +513,7 @@ impl fmt::Debug for GcObject {
       ObjectKind::Map(map) => write!(f, "{:?}", map),
       ObjectKind::Fun(fun) => write!(f, "{:?}", fun),
       ObjectKind::Fiber(fiber) => write!(f, "{:?}", fiber),
-      ObjectKind::Upvalue(upvalue) => write!(f, "{:?}", upvalue),
+      ObjectKind::Capture(capture) => write!(f, "{:?}", capture),
       ObjectKind::Closure(closure) => write!(f, "{:?}", closure),
       ObjectKind::Method(method) => write!(f, "{:?}", method),
       ObjectKind::Class(class) => write!(f, "{:?}", class),
@@ -588,8 +588,8 @@ impl Trace for GcObject {
       ObjectKind::String(string) => {
         string.trace();
       },
-      ObjectKind::Upvalue(upvalue) => {
-        upvalue.trace();
+      ObjectKind::Capture(capture) => {
+        capture.trace();
       },
     });
   }
@@ -650,8 +650,8 @@ impl Trace for GcObject {
       ObjectKind::String(string) => {
         trace_debug!(string);
       },
-      ObjectKind::Upvalue(upvalue) => {
-        trace_debug!(upvalue);
+      ObjectKind::Capture(capture) => {
+        trace_debug!(capture);
       },
     });
   }
@@ -700,8 +700,8 @@ impl DebugHeap for GcObject {
       ObjectKind::String(string) => {
         string.fmt_heap(f, depth)
       },
-      ObjectKind::Upvalue(upvalue) => {
-        upvalue.fmt_heap(f, depth)
+      ObjectKind::Capture(capture) => {
+        capture.fmt_heap(f, depth)
       },
     })
   }
@@ -755,7 +755,7 @@ impl GcObjectHandle {
         ObjectKind::Enumerator => kind_size!(Enumerator),
         ObjectKind::Method => kind_size!(Method),
         ObjectKind::Native => kind_size!(Native),
-        ObjectKind::Upvalue => kind_size!(Upvalue),
+        ObjectKind::Capture => kind_size!(Capture),
         _ => panic!("Boolean, number, string or nil should be in a GcObjectHandle"),
       }
   }
@@ -790,7 +790,7 @@ impl Drop for GcObjectHandle {
         ObjectKind::Enumerator => drop_kind!(Enumerator),
         ObjectKind::Method => drop_kind!(Method),
         ObjectKind::Native => drop_kind!(Native),
-        ObjectKind::Upvalue => drop_kind!(Upvalue),
+        ObjectKind::Capture => drop_kind!(Capture),
         _ => panic!("Boolean, number, string or nil should not be in a GcObjectHandle"),
       }
     }
@@ -979,11 +979,11 @@ mod test {
     fn drop_obj() {
       let handle_list = create_object(List::<Value>::new());
       let handle_map = create_object(Map::<Value, Value>::new());
-      let handle_upvalue = create_object(Upvalue::Closed(VALUE_NIL));
+      let handle_capture = create_object(Capture::new(VALUE_NIL));
 
       drop(handle_list);
       drop(handle_map);
-      drop(handle_upvalue);
+      drop(handle_capture);
     }
   }
 }

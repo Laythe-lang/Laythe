@@ -181,7 +181,7 @@ impl From<Value> for ParameterKind {
         ObjectKind::Method => ParameterKind::Fun,
         ObjectKind::Native => ParameterKind::Fun,
         ObjectKind::String => ParameterKind::String,
-        ObjectKind::Upvalue => panic!("Should not pass in upvalue directly"),
+        ObjectKind::Capture => panic!("Should not pass in capture directly"),
       },
     }
   }

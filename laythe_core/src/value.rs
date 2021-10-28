@@ -76,7 +76,7 @@ mod unboxed {
     managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Trace},
     object::{
       Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
-      ObjectKind, Upvalue,
+      ObjectKind, Capture,
     },
   };
 
@@ -236,7 +236,7 @@ mod unboxed {
           ObjectKind::Enumerator => "enumerator",
           ObjectKind::Method => "method",
           ObjectKind::Native => "native",
-          ObjectKind::Upvalue => "upvalue",
+          ObjectKind::Capture => "capture",
         },
       }
     }
@@ -341,8 +341,8 @@ mod unboxed {
     }
   }
 
-  impl From<GcObj<Upvalue>> for Value {
-    fn from(managed: GcObj<Upvalue>) -> Value {
+  impl From<GcObj<Capture>> for Value {
+    fn from(managed: GcObj<Capture>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -448,7 +448,7 @@ mod unboxed {
       assert_eq!(mem::size_of::<Method>(), 32);
       assert_eq!(mem::size_of::<Enumerator>(), 32);
       assert_eq!(mem::size_of::<Native>(), 56);
-      assert_eq!(mem::size_of::<Upvalue>(), 24);
+      assert_eq!(mem::size_of::<Capture>(), 16);
     }
 
     #[test]
@@ -464,7 +464,7 @@ mod unboxed {
       assert_eq!(mem::align_of::<Method>(), target);
       assert_eq!(mem::align_of::<Enumerator>(), target);
       assert_eq!(mem::align_of::<Native>(), target);
-      assert_eq!(mem::align_of::<Upvalue>(), target);
+      assert_eq!(mem::align_of::<Capture>(), target);
     }
   }
 }
@@ -476,7 +476,7 @@ mod boxed {
     managed::{DebugHeap, GcObj, GcObject, GcStr, Trace},
     object::{
       Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
-      ObjectKind, Upvalue,
+      ObjectKind, Capture,
     },
   };
 
@@ -621,7 +621,7 @@ mod boxed {
           ObjectKind::Enumerator => "enumerator",
           ObjectKind::Method => "method",
           ObjectKind::Native => "native",
-          ObjectKind::Upvalue => "upvalue",
+          ObjectKind::Capture => "capture",
         },
       }
     }
@@ -746,8 +746,8 @@ mod boxed {
     }
   }
 
-  impl From<GcObj<Upvalue>> for Value {
-    fn from(managed: GcObj<Upvalue>) -> Value {
+  impl From<GcObj<Capture>> for Value {
+    fn from(managed: GcObj<Capture>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
@@ -766,6 +766,8 @@ mod boxed {
 
   #[cfg(test)]
   mod test {
+    use crate::Call;
+
     use super::*;
     use std::mem;
 
@@ -781,7 +783,7 @@ mod boxed {
       assert_eq!(mem::size_of::<Method>(), 16);
       assert_eq!(mem::size_of::<Enumerator>(), 24);
       assert_eq!(mem::size_of::<Native>(), 56);
-      assert_eq!(mem::size_of::<Upvalue>(), 16);
+      assert_eq!(mem::size_of::<Capture>(), 8);
     }
 
     #[test]
@@ -797,7 +799,7 @@ mod boxed {
       assert_eq!(mem::align_of::<Method>(), target);
       assert_eq!(mem::align_of::<Enumerator>(), target);
       assert_eq!(mem::align_of::<Native>(), target);
-      assert_eq!(mem::align_of::<Upvalue>(), target);
+      assert_eq!(mem::align_of::<Capture>(), target);
     }
   }
 }
@@ -831,7 +833,7 @@ mod test {
     ObjectKind::Method,
     ObjectKind::Native,
     ObjectKind::String,
-    ObjectKind::Upvalue,
+    ObjectKind::Capture,
   ];
 
   fn is_value_type(val: Value, variant: ValueKind) -> bool {
@@ -913,7 +915,7 @@ mod test {
   fn test_closure(gc: &mut Allocator) -> GcObj<Closure> {
     let fun = test_fun(gc);
 
-    gc.manage_obj(Closure::without_upvalues(fun), &NO_GC)
+    gc.manage_obj(Closure::without_captures(fun), &NO_GC)
   }
 
   fn test_class(gc: &mut Allocator) -> GcObj<Class> {
@@ -1030,7 +1032,7 @@ mod test {
     let closure2 = value.to_obj().to_closure();
 
     assert_eq!(closure.fun(), closure2.fun());
-    assert_eq!(closure.upvalues(), closure2.upvalues());
+    assert_eq!(closure.captures(), closure2.captures());
   }
 
   #[test]

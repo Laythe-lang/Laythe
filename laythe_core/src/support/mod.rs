@@ -70,7 +70,7 @@ where
     fun.update_max_slots(self.max_slots);
 
     let fun = hooks.manage_obj(fun.build());
-    let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+    let closure = hooks.manage_obj(Closure::without_captures(fun));
 
     Fiber::new(closure).map(|fiber| hooks.manage_obj(fiber))
   }

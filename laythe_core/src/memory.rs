@@ -102,13 +102,13 @@ impl<'a> Allocator {
   /// # Examples
   /// ```
   /// use laythe_core::memory::{Allocator, NO_GC};
-  /// use laythe_core::object::Upvalue;
+  /// use laythe_core::object::Capture;
   /// use laythe_core::value::Value;
   ///
   /// let mut gc = Allocator::default();
-  /// let upvalue = gc.manage_obj(Upvalue::Closed(Value::from(10.0)), &NO_GC);
+  /// let capture = gc.manage_obj(Capture::new(Value::from(10.0)), &NO_GC);
   ///
-  /// assert_eq!(upvalue.value(&[]), Value::from(10.0));
+  /// assert_eq!(capture.value, Value::from(10.0));
   /// ```
   pub fn manage_obj<T: 'static + Object, C: TraceRoot + ?Sized>(
     &mut self,

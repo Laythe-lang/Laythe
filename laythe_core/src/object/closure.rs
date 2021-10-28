@@ -1,4 +1,4 @@
-use super::{Fun, ObjectKind, Upvalue};
+use super::{Capture, Fun, ObjectKind};
 use crate::{
   managed::{DebugHeap, DebugWrap, GcObj, Manage, Object, Trace},
   value::Value,
@@ -8,7 +8,7 @@ use std::{fmt, io::Write, mem};
 #[derive(PartialEq, Clone)]
 pub struct Closure {
   fun: GcObj<Fun>,
-  upvalues: Box<[GcObj<Upvalue>]>,
+  captures: Box<[GcObj<Capture>]>,
 }
 
 impl Closure {
@@ -37,14 +37,14 @@ impl Closure {
   /// let closure = Closure::new(managed_fun, vec![].into_boxed_slice());
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```
-  pub fn new(fun: GcObj<Fun>, upvalues: Box<[GcObj<Upvalue>]>) -> Self {
-    Closure { fun, upvalues }
+  pub fn new(fun: GcObj<Fun>, captures: Box<[GcObj<Capture>]>) -> Self {
+    Closure { fun, captures }
   }
 
-  pub fn without_upvalues(fun: GcObj<Fun>) -> Self {
-    assert!(fun.upvalue_count() == 0);
+  pub fn without_captures(fun: GcObj<Fun>) -> Self {
+    assert!(fun.capture_count() == 0);
     Closure {
-      upvalues: vec![].into_boxed_slice(),
+      captures: vec![].into_boxed_slice(),
       fun,
     }
   }
@@ -55,23 +55,23 @@ impl Closure {
   }
 
   #[inline]
-  pub fn upvalues(&self) -> usize {
-    self.upvalues.len()
+  pub fn captures(&self) -> usize {
+    self.captures.len()
   }
 
   #[inline]
-  pub fn get_upvalue(&self, index: usize) -> GcObj<Upvalue> {
-    self.upvalues[index]
+  pub fn get_capture(&self, index: usize) -> GcObj<Capture> {
+    self.captures[index]
   }
 
   #[inline]
-  pub fn get_value(&self, index: usize, stack: &[Value]) -> Value {
-    self.upvalues[index].value(stack)
+  pub fn get_capture_value(&self, index: usize) -> Value {
+    self.captures[index].value
   }
 
   #[inline]
-  pub fn set_value(&mut self, index: usize, stack: &mut [Value], value: Value) {
-    self.upvalues[index].set_value(stack, value);
+  pub fn set_value(&mut self, index: usize, value: Value) {
+    self.captures[index].value = value;
   }
 }
 
@@ -89,16 +89,16 @@ impl fmt::Debug for Closure {
 
 impl Trace for Closure {
   fn trace(&self) {
-    self.upvalues.iter().for_each(|upvalue| {
-      upvalue.trace();
+    self.captures.iter().for_each(|capture| {
+      capture.trace();
     });
 
     self.fun.trace();
   }
 
   fn trace_debug(&self, stdio: &mut dyn Write) {
-    self.upvalues.iter().for_each(|upvalue| {
-      upvalue.trace_debug(stdio);
+    self.captures.iter().for_each(|capture| {
+      capture.trace_debug(stdio);
     });
 
     self.fun.trace_debug(stdio);
@@ -109,14 +109,14 @@ impl DebugHeap for Closure {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_struct("Closure")
       .field("fun", &DebugWrap(&self.fun, depth))
-      .field("upvalues", &DebugWrap(&&*self.upvalues, depth))
+      .field("captures", &DebugWrap(&&*self.captures, depth))
       .finish()
   }
 }
 
 impl Manage for Closure {
   fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.upvalues.len()
+    mem::size_of::<Self>() + mem::size_of::<Value>() * self.captures.len()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
