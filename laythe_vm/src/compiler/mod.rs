@@ -8,7 +8,7 @@ pub use parser::Parser;
 pub use resolver::Resolver;
 
 use crate::{
-  byte_code::{AlignedByteCode, UpvalueIndex},
+  byte_code::{AlignedByteCode, CaptureIndex},
   cache::CacheIdEmitter,
   source::LineOffsets,
   FeResult,
@@ -222,8 +222,8 @@ pub struct Compiler<'a, 'src, FileId> {
   /// locals in this function
   locals: Vec<Local<'a, 'src>>,
 
-  /// upvalues in this function
-  upvalues: Vec<UpvalueIndex>,
+  /// captures in this function
+  captures: Vec<CaptureIndex>,
 
   /// temporary tokens
   temp_tokens: Vec<Gc<Token<'static>>>,
@@ -299,7 +299,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         depth: 0,
         is_captured: false,
       }],
-      upvalues: vec![],
+      captures: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
     }
@@ -360,7 +360,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       enclosing: Some(NonNull::from(enclosing)),
       local_count: 1,
       locals: vec![first_local],
-      upvalues: vec![],
+      captures: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
     }
@@ -378,7 +378,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     mut self,
     line: u32,
     exit: ScopeExit,
-  ) -> (Fun, Vec<Diagnostic<FileId>>, Vec<UpvalueIndex>, Allocator) {
+  ) -> (Fun, Vec<Diagnostic<FileId>>, Vec<CaptureIndex>, Allocator) {
     if let ScopeExit::Normal = exit {
       self.emit_return(line);
     }
@@ -390,7 +390,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Compiler::<FileId>::print_chunk(&fun, &self.class_info, &self.io, self.fun_kind);
     }
 
-    (fun, self.errors, self.upvalues, self.gc.into_inner())
+    (fun, self.errors, self.captures, self.gc.into_inner())
   }
 
   /// Print the chunk if debug and an error occurred
@@ -447,40 +447,21 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Drop all locals to a specified scope depth
   fn drop_locals(&mut self, line: u32, scope_depth: i16) -> usize {
     let mut drop_idx = self.local_count;
-    let mut no_captures = true;
 
     while drop_idx > 0 && self.locals[drop_idx - 1].depth > scope_depth {
-      no_captures = no_captures && !self.locals[drop_idx - 1].is_captured;
       drop_idx -= 1;
     }
 
     // if we didn't capture anything emit dropN instruction
-    if no_captures {
-      let dropped = self.local_count - drop_idx;
+    let dropped = self.local_count - drop_idx;
 
-      match dropped {
-        0 => (),
-        1 => self.emit_byte(AlignedByteCode::Drop, line),
-        _ => self.emit_byte(AlignedByteCode::DropN(dropped as u8), line),
-      }
-
-      return drop_idx;
+    match dropped {
+      0 => (),
+      1 => self.emit_byte(AlignedByteCode::Drop, line),
+      _ => self.emit_byte(AlignedByteCode::DropN(dropped as u8), line),
     }
 
-    let mut idx = self.local_count;
-
-    // otherwise emit normal drop and close upvalues
-    while idx > 0 && self.locals[idx - 1].depth > scope_depth {
-      if self.locals[idx - 1].is_captured {
-        self.emit_byte(AlignedByteCode::CloseUpvalue, line)
-      } else {
-        self.emit_byte(AlignedByteCode::Drop, line);
-      }
-
-      idx -= 1;
-    }
-
-    drop_idx
+    return drop_idx;
   }
 
   /// Mark a variable initialized
@@ -549,10 +530,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         VariableKind::Get => self.emit_byte(AlignedByteCode::GetLocal(local), name.end()),
         VariableKind::Set => self.emit_byte(AlignedByteCode::SetLocal(local), name.end()),
       },
-      None => match self.resolve_upvalue(name) {
-        Some(upvalue) => match kind {
-          VariableKind::Get => self.emit_byte(AlignedByteCode::GetUpvalue(upvalue), name.end()),
-          VariableKind::Set => self.emit_byte(AlignedByteCode::SetUpvalue(upvalue), name.end()),
+      None => match self.resolve_capture(name) {
+        Some(capture) => match kind {
+          VariableKind::Get => self.emit_byte(AlignedByteCode::GetCapture(capture), name.end()),
+          VariableKind::Set => self.emit_byte(AlignedByteCode::SetCapture(capture), name.end()),
         },
         None => {
           let global_index = self.identifier_constant(name.str());
@@ -592,52 +573,52 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     Option::None
   }
 
-  /// resolve a token to an upvalue in an enclosing scope if it exists
-  fn resolve_upvalue(&mut self, name: &Token<'src>) -> Option<u8> {
+  /// resolve a token to an capture in an enclosing scope if it exists
+  fn resolve_capture(&mut self, name: &Token<'src>) -> Option<u8> {
     match self.enclosing {
       Some(mut parent_ptr) => {
         let parent = unsafe { parent_ptr.as_mut() };
         match parent.resolve_local(name) {
           Some(local) => {
             parent.locals[local as usize].is_captured = true;
-            Some(self.add_upvalue(UpvalueIndex::Local(local)))
+            Some(self.add_capture(CaptureIndex::Local(local)))
           }
           None => parent
-            .resolve_upvalue(name)
-            .map(|upvalue| self.add_upvalue(UpvalueIndex::Upvalue(upvalue))),
+            .resolve_capture(name)
+            .map(|capture| self.add_capture(CaptureIndex::Enclosing(capture))),
         }
       }
       None => None,
     }
   }
 
-  /// add an upvalue
-  fn add_upvalue(&mut self, upvalue: UpvalueIndex) -> u8 {
-    // check for existing upvalues
+  /// add an capture
+  fn add_capture(&mut self, capture: CaptureIndex) -> u8 {
+    // check for existing captures
     if let Some(i) =
       self
-        .upvalues
+        .captures
         .iter()
-        .position(|existing_upvalue| match (&existing_upvalue, &upvalue) {
-          (UpvalueIndex::Local(existing), UpvalueIndex::Local(new)) => *existing == *new,
+        .position(|existing_capture| match (&existing_capture, &capture) {
+          (CaptureIndex::Local(existing), CaptureIndex::Local(new)) => *existing == *new,
           _ => false,
         })
     {
       return i as u8;
     }
 
-    let upvalue_count = self.fun.upvalue_count();
+    let capture_count = self.fun.capture_count();
 
     // prevent overflow
-    if upvalue_count == std::u8::MAX {
+    if capture_count == std::u8::MAX {
       self.error("Too many closure variables in function.", None);
       return 0;
     }
 
-    self.upvalues.push(upvalue);
-    self.fun.inc_upvalue();
+    self.captures.push(capture);
+    self.fun.inc_capture();
 
-    upvalue_count
+    capture_count
   }
 
   /// Define a variable
@@ -1090,7 +1071,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let end_line = fun.end();
 
     // end compilation of function chunk
-    let (fun, errors, upvalues, gc) = compiler.end_compiler(end_line, exit);
+    let (fun, errors, captures, gc) = compiler.end_compiler(end_line, exit);
 
     self.gc.replace(gc);
 
@@ -1102,10 +1083,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     if !errors.is_empty() {
       self.errors.extend_from_slice(&errors);
     }
-    // emit upvalue index instructions
-    upvalues
+    // emit capture index instructions
+    captures
       .iter()
-      .for_each(|upvalue| self.emit_byte(AlignedByteCode::UpvalueIndex(*upvalue), end_line));
+      .for_each(|capture| self.emit_byte(AlignedByteCode::CaptureIndex(*capture), end_line));
   }
 
   /// Compile an import statement
@@ -2123,11 +2104,11 @@ mod test {
     let mut current_offset = offset;
 
     let byte_slice = &fun.chunk().instructions();
-    for _ in 0..inner_fun.upvalue_count() {
+    for _ in 0..inner_fun.capture_count() {
       let scalar = decode_u16(&byte_slice[offset..offset + 2]);
 
-      let upvalue_index: UpvalueIndex = unsafe { mem::transmute(scalar) };
-      decoded.push(AlignedByteCode::UpvalueIndex(upvalue_index));
+      let capture_index: CaptureIndex = unsafe { mem::transmute(scalar) };
+      decoded.push(AlignedByteCode::CaptureIndex(capture_index));
       current_offset = current_offset + 2;
     }
 
@@ -3145,7 +3126,7 @@ mod test {
   }
 
   #[test]
-  fn open_upvalue() {
+  fn open_capture() {
     let example = "
     fn example() {
       let x = 0;
@@ -3184,17 +3165,17 @@ mod test {
                   0,
                   2,
                   vec![
-                    ByteCodeTest::Code(AlignedByteCode::GetUpvalue(0)),
+                    ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
                     ByteCodeTest::Code(AlignedByteCode::Return),
                   ],
                 )),
-                ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Upvalue(0))),
+                ByteCodeTest::Code(AlignedByteCode::CaptureIndex(CaptureIndex::Enclosing(0))),
                 ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
                 ByteCodeTest::Code(AlignedByteCode::Call(0)),
                 ByteCodeTest::Code(AlignedByteCode::Return),
               ],
             )),
-            ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))), //
+            ByteCodeTest::Code(AlignedByteCode::CaptureIndex(CaptureIndex::Local(1))), //
             ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
             ByteCodeTest::Code(AlignedByteCode::Call(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3211,7 +3192,7 @@ mod test {
   }
 
   #[test]
-  fn close_upvalue() {
+  fn close_capture() {
     let example = "
     fn example() {
       let a = 10;
@@ -3239,11 +3220,11 @@ mod test {
               2,
               2,
               vec![
-                ByteCodeTest::Code(AlignedByteCode::GetUpvalue(0)),
+                ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
                 ByteCodeTest::Code(AlignedByteCode::Return),
               ],
             )),
-            ByteCodeTest::Code(AlignedByteCode::UpvalueIndex(UpvalueIndex::Local(1))),
+            ByteCodeTest::Code(AlignedByteCode::CaptureIndex(CaptureIndex::Local(1))),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],

@@ -6,7 +6,6 @@ edition = "2018"
 
 [features]
 debug = []
-debug_upvalue = []
 wasm = ["laythe_lib/wasm"]
 
 [lib]

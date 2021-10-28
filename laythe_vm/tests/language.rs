@@ -713,7 +713,7 @@ fn limit() -> Result<(), std::io::Error> {
       "language/limit/loop_too_large.lay",
       "language/limit/too_many_constants.lay",
       "language/limit/too_many_locals.lay",
-      "language/limit/too_many_upvalues.lay",
+      "language/limit/too_many_captures.lay",
     ],
     ExecuteResult::CompileError,
   )?;

@@ -1333,7 +1333,7 @@ mod test {
       builder.set_arity(Arity::Fixed(1));
 
       let fun =
-        val!(hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build()))));
+        val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
 
       let result = iter_map.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1380,7 +1380,7 @@ mod test {
       builder.set_arity(Arity::Fixed(1));
 
       let fun =
-        val!(hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build()))));
+        val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
 
       let result = iter_filter.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1434,7 +1434,7 @@ mod test {
       builder.set_arity(Arity::Fixed(2));
 
       let fun =
-        val!(hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build()))));
+        val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
 
       let result = iter_reduce.call(&mut hooks, Some(this), &[val!(0.0), fun]);
       match result {
@@ -1515,7 +1515,7 @@ mod test {
       builder.set_arity(Arity::Fixed(1));
 
       let fun =
-        val!(hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build()))));
+        val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
 
       let result = iter_each.call(&mut hooks, Some(this), &[fun]);
       match result {

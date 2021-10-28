@@ -130,7 +130,7 @@ mod test {
 
       let fun = test_fun(&hooks.as_gc(), "example", "module");
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
-      let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+      let closure = hooks.manage_obj(Closure::without_captures(fun));
       let instance = hooks.manage_obj(Instance::new(class));
       let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 
@@ -171,7 +171,7 @@ mod test {
 
       let fun = test_fun(&hooks.as_gc(), "example", "module");
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
-      let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+      let closure = hooks.manage_obj(Closure::without_captures(fun));
       let instance = hooks.manage_obj(Instance::new(class));
       let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 

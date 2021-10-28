@@ -1,5 +1,5 @@
 use crate::{
-  byte_code::{AlignedByteCode, ByteCode, UpvalueIndex},
+  byte_code::{AlignedByteCode, ByteCode, CaptureIndex},
   cache::InlineCache,
   compiler::{Compiler, Parser, Resolver},
   constants::{MAX_FRAME_SIZE, REPL_MODULE},
@@ -16,8 +16,8 @@ use laythe_core::{
   memory::Allocator,
   module::{Import, Module, Package},
   object::{
-    Channel, Class, Closure, Fiber, Fun, FunBuilder, Instance, List, Map, Method, Native,
-    NativeMeta, ObjectKind, ReceiveResult, SendResult, Upvalue,
+    Capture, Channel, Class, Closure, Fiber, Fun, FunBuilder, Instance, List, Map, Method, Native,
+    NativeMeta, ObjectKind, ReceiveResult, SendResult,
   },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   to_obj_kind,
@@ -44,9 +44,6 @@ use std::io;
 
 #[cfg(feature = "debug")]
 use laythe_env::stdio::Stdio;
-
-#[cfg(feature = "debug_upvalues")]
-use std::{cmp::Ordering, io};
 
 const VERSION: &str = "0.1.0";
 
@@ -152,7 +149,7 @@ impl Vm {
     builder.write_instruction(AlignedByteCode::Nil, 0);
 
     let current_fun = hooks.manage_obj(builder.build());
-    let closure = hooks.manage_obj(Closure::without_upvalues(current_fun));
+    let closure = hooks.manage_obj(Closure::without_captures(current_fun));
     let fiber =
       hooks.manage_obj(Fiber::new(closure).expect("Unable to generate placeholder fiber"));
 
@@ -339,7 +336,7 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: GcObj<Fun>) {
-    let script = self.manage_obj(Closure::without_upvalues(script));
+    let script = self.manage_obj(Closure::without_captures(script));
     let fiber = match Fiber::new(script) {
       Ok(fiber) => fiber,
       Err(_) => self.internal_error("Unable to generate initial fiber"),
@@ -473,8 +470,8 @@ impl Vm {
           ByteCode::SetGlobal => self.op_set_global(),
           ByteCode::GetLocal => self.op_get_local(),
           ByteCode::SetLocal => self.op_set_local(),
-          ByteCode::GetUpvalue => self.op_get_upvalue(),
-          ByteCode::SetUpvalue => self.op_set_upvalue(),
+          ByteCode::GetCapture => self.op_get_capture(),
+          ByteCode::SetCapture => self.op_set_capture(),
           ByteCode::GetProperty => self.op_get_property(),
           ByteCode::SetProperty => self.op_set_property(),
           ByteCode::Import => self.op_import(),
@@ -508,7 +505,6 @@ impl Vm {
           ByteCode::Class => self.op_class(),
           ByteCode::Inherit => self.op_inherit(),
           ByteCode::GetSuper => self.op_get_super(),
-          ByteCode::CloseUpvalue => self.op_close_upvalue(),
           ByteCode::Return => self.op_return(),
         };
 
@@ -548,7 +544,7 @@ impl Vm {
 
   #[inline]
   fn value_class(&self, value: Value) -> GcObj<Class> {
-    self.builtin.primitives.for_value(value, self.fiber.stack())
+    self.builtin.primitives.for_value(value)
   }
 
   #[inline]
@@ -1193,13 +1189,10 @@ impl Vm {
     )
   }
 
-  unsafe fn op_set_upvalue(&mut self) -> Signal {
+  unsafe fn op_set_capture(&mut self) -> Signal {
     let slot = self.read_byte();
     let value = self.fiber.peek(0);
-    self
-      .fiber
-      .closure()
-      .set_value(slot as usize, self.fiber.stack_mut(), value);
+    self.fiber.closure().set_value(slot as usize, value);
 
     Signal::Ok
   }
@@ -1227,14 +1220,11 @@ impl Vm {
     Signal::Ok
   }
 
-  unsafe fn op_get_upvalue(&mut self) -> Signal {
+  unsafe fn op_get_capture(&mut self) -> Signal {
     let slot = self.read_byte();
 
-    let upvalue = self
-      .fiber
-      .closure()
-      .get_value(slot as usize, self.fiber.stack());
-    self.fiber.push(upvalue);
+    let capture = self.fiber.closure().get_capture_value(slot as usize);
+    self.fiber.push(capture);
 
     Signal::Ok
   }
@@ -1408,7 +1398,7 @@ impl Vm {
 
   /// return from a laythe function placing the result on top of the stack
   unsafe fn op_return(&mut self) -> Signal {
-    // get the function result close upvalues and pop frame
+    // get the function result and pop frame
     let result = self.fiber.pop();
 
     // pop a frame from the call stack return signal if provided
@@ -1691,29 +1681,23 @@ impl Vm {
   unsafe fn op_closure(&mut self) -> Signal {
     let slot = self.read_short();
     let fun = self.read_constant(slot).to_obj().to_fun();
-    let mut fiber = self.fiber;
 
-    let upvalues = (0..fun.upvalue_count())
+    let captures = (0..fun.capture_count())
       .map(|_| {
-        let upvalue_index: UpvalueIndex = mem::transmute(self.read_short());
-
-        match upvalue_index {
-          UpvalueIndex::Local(index) => fiber.capture_upvalue(&GcHooks::new(self), index as usize),
-          UpvalueIndex::Upvalue(upvalue) => fiber.closure().get_upvalue(upvalue as usize),
+        let capture_index: CaptureIndex = mem::transmute(self.read_short());
+        match capture_index {
+          CaptureIndex::Local(index) => (*self.fiber.stack_start().offset(index as isize))
+            .to_obj()
+            .to_capture(),
+          CaptureIndex::Enclosing(index) => self.fiber.closure().get_capture(index as usize),
         }
       })
-      .collect::<Vec<GcObj<Upvalue>>>()
+      .collect::<Vec<GcObj<Capture>>>()
       .into_boxed_slice();
 
-    let closure = self.manage_obj(Closure::new(fun, upvalues));
+    let closure = self.manage_obj(Closure::new(fun, captures));
 
-    fiber.push(val!(closure));
-    Signal::Ok
-  }
-
-  unsafe fn op_close_upvalue(&mut self) -> Signal {
-    self.fiber.close_upvalues();
-    self.fiber.drop();
+    self.fiber.push(val!(closure));
     Signal::Ok
   }
 
@@ -1829,7 +1813,7 @@ impl Vm {
         Call::Exit(code) => self.set_exit(code),
       },
       Environment::Normal => {
-        let native_closure = self.manage_obj(Closure::without_upvalues(self.native_fun_stub));
+        let native_closure = self.manage_obj(Closure::without_captures(self.native_fun_stub));
         self.push_frame(native_closure, arg_count);
 
         match native.call(&mut Hooks::new(self), this, args) {
@@ -2085,9 +2069,6 @@ impl Vm {
 
     self.print_stack_debug(&mut stdio)?;
 
-    #[cfg(feature = "debug_upvalue")]
-    self.print_upvalue_debug(&mut stdio)?;
-
     let start = self.current_fun.chunk().instructions().as_ptr();
     let offset = ip.offset_from(start) as usize;
     disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, false)
@@ -2115,26 +2096,6 @@ impl Vm {
         "[ {} ]",
         s.chars().into_iter().take(60).collect::<String>()
       )?;
-    }
-
-    writeln!(stdout)
-  }
-
-  /// Print the current upvalues
-  #[cfg(feature = "debug_upvalue")]
-  fn print_upvalue_debug(&self, stdio: &mut Stdio) -> io::Result<()> {
-    let stdout = stdio.stdout();
-
-    write!(stdout, "Open UpVal:   ")?;
-    for upvalue in &self.open_upvalues {
-      match &**upvalue {
-        Upvalue::Open(index) => {
-          write!(stdout, "[ stack {} ]", self.stack[*index])?;
-        }
-        Upvalue::Closed(closed) => {
-          write!(stdout, "[ heap {} ]", closed)?;
-        }
-      }
     }
 
     writeln!(stdout)

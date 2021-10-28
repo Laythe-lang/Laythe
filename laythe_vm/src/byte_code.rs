@@ -106,11 +106,11 @@ pub enum AlignedByteCode {
   /// Set a global at the given index
   SetGlobal(u16),
 
-  /// Retrieve an upvalue at the given index
-  GetUpvalue(u8),
+  /// Retrieve an capture at the given index
+  GetCapture(u8),
 
-  /// Set an upvalue at the given index
-  SetUpvalue(u8),
+  /// Set an capture at the given index
+  SetCapture(u8),
 
   /// Get a local at the given index
   GetLocal(u8),
@@ -163,11 +163,8 @@ pub enum AlignedByteCode {
   /// Access this classes super
   GetSuper(u16),
 
-  /// Close an upvalue by moving it to the stack
-  CloseUpvalue,
-
-  // An upvalue index for a closure
-  UpvalueIndex(UpvalueIndex),
+  // An capture index for a closure
+  CaptureIndex(CaptureIndex),
 
   /// A inline cache slot
   Slot(u32),
@@ -276,8 +273,8 @@ impl AlignedByteCode {
         AlignedByteCode::SetGlobal(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::GetUpvalue => (AlignedByteCode::GetUpvalue(store[offset + 1]), offset + 2),
-      ByteCode::SetUpvalue => (AlignedByteCode::SetUpvalue(store[offset + 1]), offset + 2),
+      ByteCode::GetCapture => (AlignedByteCode::GetCapture(store[offset + 1]), offset + 2),
+      ByteCode::SetCapture => (AlignedByteCode::SetCapture(store[offset + 1]), offset + 2),
       ByteCode::GetLocal => (AlignedByteCode::GetLocal(store[offset + 1]), offset + 2),
       ByteCode::SetLocal => (AlignedByteCode::SetLocal(store[offset + 1]), offset + 2),
       ByteCode::GetProperty => (
@@ -340,7 +337,6 @@ impl AlignedByteCode {
         AlignedByteCode::GetSuper(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::CloseUpvalue => (AlignedByteCode::CloseUpvalue, offset + 1),
       ByteCode::Equal => (AlignedByteCode::Equal, offset + 1),
       ByteCode::NotEqual => (AlignedByteCode::NotEqual, offset + 1),
       ByteCode::Greater => (AlignedByteCode::Greater, offset + 1),
@@ -386,8 +382,8 @@ impl AlignedByteCode {
       AlignedByteCode::DefineGlobal(_) => -1,
       AlignedByteCode::GetGlobal(_) => 1,
       AlignedByteCode::SetGlobal(_) => 0,
-      AlignedByteCode::GetUpvalue(_) => 1,
-      AlignedByteCode::SetUpvalue(_) => 0,
+      AlignedByteCode::GetCapture(_) => 1,
+      AlignedByteCode::SetCapture(_) => 0,
       AlignedByteCode::GetLocal(_) => 1,
       AlignedByteCode::SetLocal(_) => 0,
       AlignedByteCode::GetProperty(_) => 0,
@@ -405,8 +401,7 @@ impl AlignedByteCode {
       AlignedByteCode::Class(_) => 1,
       AlignedByteCode::Inherit => 0,
       AlignedByteCode::GetSuper(_) => -1,
-      AlignedByteCode::CloseUpvalue => -1,
-      AlignedByteCode::UpvalueIndex(_) => 0,
+      AlignedByteCode::CaptureIndex(_) => 0,
       AlignedByteCode::Slot(_) => 0,
       AlignedByteCode::Equal => -1,
       AlignedByteCode::NotEqual => -1,
@@ -464,8 +459,8 @@ impl Encode for AlignedByteCode {
       Self::DefineGlobal(slot) => op_short(code, ByteCode::DefineGlobal, slot),
       Self::GetGlobal(slot) => op_short(code, ByteCode::GetGlobal, slot),
       Self::SetGlobal(slot) => op_short(code, ByteCode::SetGlobal, slot),
-      Self::GetUpvalue(slot) => op_byte(code, ByteCode::GetUpvalue, slot),
-      Self::SetUpvalue(slot) => op_byte(code, ByteCode::SetUpvalue, slot),
+      Self::GetCapture(slot) => op_byte(code, ByteCode::GetCapture, slot),
+      Self::SetCapture(slot) => op_byte(code, ByteCode::SetCapture, slot),
       Self::GetLocal(slot) => op_byte(code, ByteCode::GetLocal, slot),
       Self::SetLocal(slot) => op_byte(code, ByteCode::SetLocal, slot),
       Self::GetProperty(slot) => op_short(code, ByteCode::GetProperty, slot),
@@ -489,8 +484,7 @@ impl Encode for AlignedByteCode {
       Self::Class(slot) => op_short(code, ByteCode::Class, slot),
       Self::Inherit => op(code, ByteCode::Inherit),
       Self::GetSuper(slot) => op_short(code, ByteCode::GetSuper, slot),
-      Self::CloseUpvalue => op(code, ByteCode::CloseUpvalue),
-      Self::UpvalueIndex(index) => {
+      Self::CaptureIndex(index) => {
         let encoded: u16 = unsafe { mem::transmute(index) };
         let bytes = encoded.to_ne_bytes();
         code.extend_from_slice(&bytes);
@@ -622,11 +616,11 @@ pub enum ByteCode {
   /// Set a global at the given index
   SetGlobal,
 
-  /// Retrieve an upvalue at the given index
-  GetUpvalue,
+  /// Retrieve an capture at the given index
+  GetCapture,
 
-  /// Set an upvalue at the given index
-  SetUpvalue,
+  /// Set an capture at the given index
+  SetCapture,
 
   /// Get a local at the given index
   GetLocal,
@@ -679,9 +673,6 @@ pub enum ByteCode {
   /// Access this classes super
   GetSuper,
 
-  /// Close an upvalue by moving it to the stack
-  CloseUpvalue,
-
   /// Apply equality between the top two operands on the stack
   Equal,
 
@@ -717,12 +708,12 @@ impl From<u8> for ByteCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum UpvalueIndex {
-  /// The upvalue is actually local
+pub enum CaptureIndex {
+  /// The capture is in the local function
   Local(u8),
 
-  /// The upvalue points to the enclosing function
-  Upvalue(u8),
+  /// The capture points to the enclosing function
+  Enclosing(u8),
 }
 
 #[cfg(any(test, feature = "debug"))]
@@ -804,9 +795,9 @@ mod test {
       (3, AlignedByteCode::GetGlobal(14119)),
       (3, AlignedByteCode::SetGlobal(2043)),
       (3, AlignedByteCode::SetGlobal(38231)),
-      (2, AlignedByteCode::GetUpvalue(183)),
-      (2, AlignedByteCode::SetUpvalue(56)),
-      (2, AlignedByteCode::SetUpvalue(11)),
+      (2, AlignedByteCode::GetCapture(183)),
+      (2, AlignedByteCode::SetCapture(56)),
+      (2, AlignedByteCode::SetCapture(11)),
       (2, AlignedByteCode::GetLocal(96)),
       (2, AlignedByteCode::SetLocal(149)),
       (3, AlignedByteCode::GetProperty(18273)),
@@ -824,7 +815,6 @@ mod test {
       (3, AlignedByteCode::Class(64136)),
       (1, AlignedByteCode::Inherit),
       (3, AlignedByteCode::GetSuper(24)),
-      (1, AlignedByteCode::CloseUpvalue),
       (1, AlignedByteCode::Equal),
       (1, AlignedByteCode::NotEqual),
       (1, AlignedByteCode::Greater),

@@ -2,7 +2,7 @@ use laythe_core::{chunk::Chunk, if_let_obj, object::ObjectKind, to_obj_kind, val
 use laythe_env::stdio::Stdio;
 use std::{io, io::Write, mem};
 
-use crate::byte_code::{decode_u16, decode_u32, AlignedByteCode, UpvalueIndex};
+use crate::byte_code::{decode_u16, decode_u32, AlignedByteCode, CaptureIndex};
 
 /// Write a chunk to console
 pub fn disassemble_chunk(stdio: &mut Stdio, chunk: &Chunk, name: &str) -> io::Result<()> {
@@ -118,9 +118,8 @@ pub fn disassemble_instruction(
     AlignedByteCode::StaticMethod(constant) => {
       constant_instruction(stdio.stdout(), "StaticMethod", chunk, constant, offset)
     },
-    AlignedByteCode::CloseUpvalue => simple_instruction(stdio.stdout(), "CloseUpvalue", offset),
-    AlignedByteCode::UpvalueIndex(_) => {
-      simple_instruction(stdio.stdout(), "!=== UpValueIndex - Invalid ===!", offset)
+    AlignedByteCode::CaptureIndex(_) => {
+      simple_instruction(stdio.stdout(), "!=== CaptureIndex - Invalid ===!", offset)
     },
     AlignedByteCode::Slot(_) => {
       simple_instruction(stdio.stdout(), "!=== Slot - Invalid ===!", offset)
@@ -136,11 +135,11 @@ pub fn disassemble_instruction(
     },
     AlignedByteCode::GetLocal(slot) => byte_instruction(stdio.stdout(), "GetLocal", slot, offset),
     AlignedByteCode::SetLocal(slot) => byte_instruction(stdio.stdout(), "SetLocal", slot, offset),
-    AlignedByteCode::GetUpvalue(slot) => {
-      byte_instruction(stdio.stdout(), "GetUpvalue", slot, offset)
+    AlignedByteCode::GetCapture(slot) => {
+      byte_instruction(stdio.stdout(), "GetCapture", slot, offset)
     },
-    AlignedByteCode::SetUpvalue(slot) => {
-      byte_instruction(stdio.stdout(), "SetUpvalue", slot, offset)
+    AlignedByteCode::SetCapture(slot) => {
+      byte_instruction(stdio.stdout(), "SetCapture", slot, offset)
     },
     AlignedByteCode::SetProperty(slot) => {
       constant_instruction_with_slot(stdio.stdout(), "SetProperty", chunk, slot, offset)
@@ -251,8 +250,8 @@ fn closure_instruction(
 
   let value = chunk.get_constant(constant as usize);
 
-  let upvalue_count = if_let_obj!(ObjectKind::Fun(fun) = (value) {
-    fun.upvalue_count()
+  let capture_count = if_let_obj!(ObjectKind::Fun(fun) = (value) {
+    fun.capture_count()
   } else {
     let stderr = stdio.stderr();
 
@@ -265,23 +264,23 @@ fn closure_instruction(
   });
 
   let mut current_offset = offset;
-  for _ in 0..upvalue_count {
-    let upvalue_index: UpvalueIndex = unsafe {
+  for _ in 0..capture_count {
+    let capture_index: CaptureIndex = unsafe {
       mem::transmute(decode_u16(
         &chunk.instructions()[current_offset..current_offset + 2],
       ))
     };
 
-    match upvalue_index {
-      UpvalueIndex::Local(local) => writeln!(
+    match capture_index {
+      CaptureIndex::Local(local) => writeln!(
         stdout,
         "  {:0>4}      |                  local {}",
         current_offset, local
       ),
-      UpvalueIndex::Upvalue(upvalue) => writeln!(
+      CaptureIndex::Enclosing(capture) => writeln!(
         stdout,
-        "  {:0>4}      |                  upvalue {}",
-        current_offset, upvalue
+        "  {:0>4}      |                  capture {}",
+        current_offset, capture
       ),
     }?;
 

@@ -18,6 +18,5 @@ path = "src/main.rs"
 laythe_vm = { path = "../laythe_vm", features=[] }
 # laythe_vm features
 # debug
-# debug_upvalue
 
 jemallocator = { version = "0.3.2", optional = true }

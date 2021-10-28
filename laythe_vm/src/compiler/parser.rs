@@ -2545,7 +2545,7 @@ mod test {
   }
 
   #[test]
-  fn open_upvalue() {
+  fn open_capture() {
     let example = "
     fn example() {
       let x = 0;
@@ -2566,7 +2566,7 @@ mod test {
   }
 
   #[test]
-  fn close_upvalue() {
+  fn close_capture() {
     let example = "
     fn example() {
       let a = 10;

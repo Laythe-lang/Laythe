@@ -113,7 +113,7 @@ mod test {
       let closure_name = ClosureName::native(&hooks.as_gc());
 
       let fun = test_fun(&hooks.as_gc(), "example", "module");
-      let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+      let closure = hooks.manage_obj(Closure::without_captures(fun));
 
       let result1 = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
 
@@ -148,21 +148,21 @@ mod test {
 
       let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(4));
-      let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
+      let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 4.0);
 
       let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Default(2, 2));
-      let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
+      let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 2.0);
 
       let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Variadic(5));
-      let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
+      let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 5.0);
@@ -198,7 +198,7 @@ mod test {
       let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
       builder.set_arity(Arity::Fixed(1));
 
-      let closure = hooks.manage_obj(Closure::without_upvalues(hooks.manage_obj(builder.build())));
+      let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
 
       let args = &[val!(hooks.manage_str("input".to_string()))];
       let result1 = closure_call.call(&mut hooks, Some(val!(closure)), args);
