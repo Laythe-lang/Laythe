@@ -73,7 +73,7 @@ fn closure() -> Result<(), std::io::Error> {
   test_files(
     &vec![
       "std_lib/global/closure/name_wrong_args.lay",
-      // "std_lib/global/closure/call_wrong_args.lay",
+      "std_lib/global/closure/call_wrong_args.lay",
       "std_lib/global/closure/size_wrong_args.lay",
     ],
     ExecuteResult::RuntimeError,

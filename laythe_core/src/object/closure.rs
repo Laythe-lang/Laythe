@@ -1,4 +1,4 @@
-use super::{Capture, Fun, ObjectKind};
+use super::{Fun, LyBox, ObjectKind};
 use crate::{
   managed::{DebugHeap, DebugWrap, GcObj, Manage, Object, Trace},
   value::Value,
@@ -8,7 +8,7 @@ use std::{fmt, io::Write, mem};
 #[derive(PartialEq, Clone)]
 pub struct Closure {
   fun: GcObj<Fun>,
-  captures: Box<[GcObj<Capture>]>,
+  captures: Box<[GcObj<LyBox>]>,
 }
 
 impl Closure {
@@ -34,15 +34,14 @@ impl Closure {
   /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module);
   /// let managed_fun = hooks.manage_obj(builder.build());
   ///
-  /// let closure = Closure::new(managed_fun, vec![].into_boxed_slice());
+  /// let closure = Closure::without_captures(managed_fun);
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```
-  pub fn new(fun: GcObj<Fun>, captures: Box<[GcObj<Capture>]>) -> Self {
-    Closure { fun, captures }
+  pub fn new(fun: GcObj<Fun>, captures: Box<[GcObj<LyBox>]>) -> Self {
+    Closure { captures, fun }
   }
 
   pub fn without_captures(fun: GcObj<Fun>) -> Self {
-    assert!(fun.capture_count() == 0);
     Closure {
       captures: vec![].into_boxed_slice(),
       fun,
@@ -60,7 +59,7 @@ impl Closure {
   }
 
   #[inline]
-  pub fn get_capture(&self, index: usize) -> GcObj<Capture> {
+  pub fn get_capture(&self, index: usize) -> GcObj<LyBox> {
     self.captures[index]
   }
 
@@ -70,7 +69,7 @@ impl Closure {
   }
 
   #[inline]
-  pub fn set_value(&mut self, index: usize, value: Value) {
+  pub fn set_capture_value(&mut self, index: usize, value: Value) {
     self.captures[index].value = value;
   }
 }

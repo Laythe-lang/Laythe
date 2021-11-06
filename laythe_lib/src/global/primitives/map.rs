@@ -204,7 +204,9 @@ fn format_map_entry(
 ) -> Call {
   // if already string quote and add to temps
   if_let_obj!(ObjectKind::String(string) = (item) {
-    buffer.push_str(&format!("{}", string));
+    buffer.push('\'');
+    buffer.push_str(&string);
+    buffer.push('\'');
     return Call::Ok(VALUE_NIL);
   });
 

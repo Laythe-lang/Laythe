@@ -2,31 +2,36 @@ use fmt::Display;
 
 use crate::{
   managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
-  value::Value,
+  value::{Value, VALUE_NIL},
 };
 use std::{fmt, io::Write, mem};
 
 use super::ObjectKind;
 
 #[derive(PartialEq, Clone, Debug)]
-pub struct Capture {
+pub struct LyBox {
   pub value: Value,
 }
 
-impl Capture {
+impl LyBox {
   pub fn new(value: Value) -> Self {
     Self { value }
   }
 }
 
-impl Display for Capture {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    // TODO which we indicate this is an capture somehow
-    write!(f, "{}", self.value)
+impl Default for LyBox {
+  fn default() -> Self {
+    Self { value: VALUE_NIL }
   }
 }
 
-impl Trace for Capture {
+impl Display for LyBox {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "*{}", self.value)
+  }
+}
+
+impl Trace for LyBox {
   fn trace(&self) {
     self.value.trace();
   }
@@ -36,7 +41,7 @@ impl Trace for Capture {
   }
 }
 
-impl DebugHeap for Capture {
+impl DebugHeap for LyBox {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_struct("Capture")
       .field("value", &DebugWrap(&self.value, depth))
@@ -44,7 +49,7 @@ impl DebugHeap for Capture {
   }
 }
 
-impl Manage for Capture {
+impl Manage for LyBox {
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }
@@ -54,10 +59,10 @@ impl Manage for Capture {
   }
 }
 
-unsafe impl Send for Capture {}
+unsafe impl Send for LyBox {}
 
-impl Object for Capture {
+impl Object for LyBox {
   fn kind(&self) -> ObjectKind {
-    ObjectKind::Capture
+    ObjectKind::LyBox
   }
 }

@@ -75,8 +75,8 @@ mod unboxed {
   use crate::{
     managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Trace},
     object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
-      ObjectKind, Capture,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
+      ObjectKind,
     },
   };
 
@@ -236,7 +236,7 @@ mod unboxed {
           ObjectKind::Enumerator => "enumerator",
           ObjectKind::Method => "method",
           ObjectKind::Native => "native",
-          ObjectKind::Capture => "capture",
+          ObjectKind::LyBox => "box",
         },
       }
     }
@@ -475,8 +475,8 @@ mod boxed {
   use crate::{
     managed::{DebugHeap, GcObj, GcObject, GcStr, Trace},
     object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, Map, Method, Native,
-      ObjectKind, Capture,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
+      ObjectKind,
     },
   };
 
@@ -621,7 +621,7 @@ mod boxed {
           ObjectKind::Enumerator => "enumerator",
           ObjectKind::Method => "method",
           ObjectKind::Native => "native",
-          ObjectKind::Capture => "capture",
+          ObjectKind::LyBox => "box",
         },
       }
     }
@@ -746,8 +746,8 @@ mod boxed {
     }
   }
 
-  impl From<GcObj<Capture>> for Value {
-    fn from(managed: GcObj<Capture>) -> Value {
+  impl From<GcObj<LyBox>> for Value {
+    fn from(managed: GcObj<LyBox>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
@@ -766,8 +766,6 @@ mod boxed {
 
   #[cfg(test)]
   mod test {
-    use crate::Call;
-
     use super::*;
     use std::mem;
 
@@ -777,13 +775,13 @@ mod boxed {
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 24);
       assert_eq!(mem::size_of::<Fun>(), 96);
-      assert_eq!(mem::size_of::<Fiber>(), 128);
+      assert_eq!(mem::size_of::<Fiber>(), 104);
       assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 16);
       assert_eq!(mem::size_of::<Enumerator>(), 24);
       assert_eq!(mem::size_of::<Native>(), 56);
-      assert_eq!(mem::size_of::<Capture>(), 8);
+      assert_eq!(mem::size_of::<LyBox>(), 8);
     }
 
     #[test]
@@ -799,7 +797,7 @@ mod boxed {
       assert_eq!(mem::align_of::<Method>(), target);
       assert_eq!(mem::align_of::<Enumerator>(), target);
       assert_eq!(mem::align_of::<Native>(), target);
-      assert_eq!(mem::align_of::<Capture>(), target);
+      assert_eq!(mem::align_of::<LyBox>(), target);
     }
   }
 }
@@ -833,7 +831,7 @@ mod test {
     ObjectKind::Method,
     ObjectKind::Native,
     ObjectKind::String,
-    ObjectKind::Capture,
+    ObjectKind::LyBox,
   ];
 
   fn is_value_type(val: Value, variant: ValueKind) -> bool {

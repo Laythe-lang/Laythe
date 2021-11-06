@@ -375,6 +375,7 @@ name = "laythe_frontend_bench"
 version = "0.1.0"
 dependencies = [
  "laythe_core",
+ "laythe_lib",
  "laythe_native",
  "laythe_vm",
 ]

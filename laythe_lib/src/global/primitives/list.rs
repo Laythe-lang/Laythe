@@ -231,7 +231,9 @@ impl LyNative for ListStr {
         // if already string quote and add to temps
         let item = *item;
         if_let_obj!(ObjectKind::String(string) = (item) {
-          buf.push_str(&format!("{}", string));
+          buf.push('\'');
+          buf.push_str(&string);
+          buf.push('\'');
           buf.push_str(", ");
           continue;
         });
@@ -267,7 +269,9 @@ impl LyNative for ListStr {
       }
 
       if_let_obj!(ObjectKind::String(string) = (*last) {
-        buf.push_str(&format!("{}", string));
+        buf.push('\'');
+        buf.push_str(&string);
+        buf.push('\'');
       } else {
         // call '.str' method on each value
         let str_result = hooks

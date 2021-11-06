@@ -122,7 +122,7 @@ impl BuiltInPrimitives {
           ObjectKind::Method => self.method,
           ObjectKind::Native => self.native_fun,
           ObjectKind::String => self.string,
-          ObjectKind::Capture => self.for_value(obj.to_capture().value),
+          ObjectKind::LyBox => self.for_value(obj.to_box().value),
         }
       }
     }

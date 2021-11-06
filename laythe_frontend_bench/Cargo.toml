@@ -12,3 +12,4 @@ path = "src/main.rs"
 laythe_core = { path = "../laythe_core" }
 laythe_vm = { path = "../laythe_vm" }
 laythe_native = { path = "../laythe_native" }
+laythe_lib = { path = "../laythe_lib" }

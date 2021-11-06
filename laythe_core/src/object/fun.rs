@@ -85,6 +85,10 @@ impl FunBuilder {
     }
   }
 
+  pub fn name(&self) -> &str {
+    &self.name
+  }
+
   /// Increment the capture count of this function
   /// builder
   #[inline]
@@ -270,7 +274,7 @@ impl Fun {
 
 impl fmt::Display for Fun {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<fn {:?} {:p}>", self.name, &*self)
+    write!(f, "<fn {} {:p}>", self.name, &*self)
   }
 }
 

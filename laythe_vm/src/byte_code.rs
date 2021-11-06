@@ -106,17 +106,32 @@ pub enum AlignedByteCode {
   /// Set a global at the given index
   SetGlobal(u16),
 
-  /// Retrieve an capture at the given index
-  GetCapture(u8),
+  /// Box a local at a given index,
+  Box(u8),
 
-  /// Set an capture at the given index
-  SetCapture(u8),
+  /// Create a new empty box
+  EmptyBox,
+
+  /// Move top of stack into box
+  FillBox,
+
+  /// Get a box local at the given index
+  GetBox(u8),
+
+  /// Set a box local at the given index
+  SetBox(u8),
 
   /// Get a local at the given index
   GetLocal(u8),
 
   /// Set a local at the given index
   SetLocal(u8),
+
+  /// Get a box local at the given index
+  GetCapture(u8),
+
+  /// Set a box local at the given index
+  SetCapture(u8),
 
   /// Get a property off a class instance
   GetProperty(u16),
@@ -273,10 +288,15 @@ impl AlignedByteCode {
         AlignedByteCode::SetGlobal(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::GetCapture => (AlignedByteCode::GetCapture(store[offset + 1]), offset + 2),
-      ByteCode::SetCapture => (AlignedByteCode::SetCapture(store[offset + 1]), offset + 2),
+      ByteCode::Box => (AlignedByteCode::Box(store[offset + 1]), offset + 2),
+      ByteCode::EmptyBox => (AlignedByteCode::EmptyBox, offset + 1),
+      ByteCode::FillBox => (AlignedByteCode::FillBox, offset + 1),
+      ByteCode::GetBox => (AlignedByteCode::GetBox(store[offset + 1]), offset + 2),
+      ByteCode::SetBox => (AlignedByteCode::SetBox(store[offset + 1]), offset + 2),
       ByteCode::GetLocal => (AlignedByteCode::GetLocal(store[offset + 1]), offset + 2),
       ByteCode::SetLocal => (AlignedByteCode::SetLocal(store[offset + 1]), offset + 2),
+      ByteCode::GetCapture => (AlignedByteCode::GetCapture(store[offset + 1]), offset + 2),
+      ByteCode::SetCapture => (AlignedByteCode::SetCapture(store[offset + 1]), offset + 2),
       ByteCode::GetProperty => (
         AlignedByteCode::GetProperty(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
@@ -382,10 +402,15 @@ impl AlignedByteCode {
       AlignedByteCode::DefineGlobal(_) => -1,
       AlignedByteCode::GetGlobal(_) => 1,
       AlignedByteCode::SetGlobal(_) => 0,
-      AlignedByteCode::GetCapture(_) => 1,
-      AlignedByteCode::SetCapture(_) => 0,
+      AlignedByteCode::Box(_) => 0,
+      AlignedByteCode::EmptyBox => 1,
+      AlignedByteCode::FillBox => -1,
+      AlignedByteCode::GetBox(_) => 1,
+      AlignedByteCode::SetBox(_) => 0,
       AlignedByteCode::GetLocal(_) => 1,
       AlignedByteCode::SetLocal(_) => 0,
+      AlignedByteCode::GetCapture(_) => 1,
+      AlignedByteCode::SetCapture(_) => 0,
       AlignedByteCode::GetProperty(_) => 0,
       AlignedByteCode::SetProperty(_) => -1,
       AlignedByteCode::JumpIfFalse(_) => -1,
@@ -454,15 +479,20 @@ impl Encode for AlignedByteCode {
       Self::ImportSymbol((path, slot)) => {
         push_op_u16_tuple(code, ByteCode::ImportSymbol, path, slot);
         4
-      }
+      },
       Self::Export(slot) => op_short(code, ByteCode::Export, slot),
       Self::DefineGlobal(slot) => op_short(code, ByteCode::DefineGlobal, slot),
       Self::GetGlobal(slot) => op_short(code, ByteCode::GetGlobal, slot),
       Self::SetGlobal(slot) => op_short(code, ByteCode::SetGlobal, slot),
-      Self::GetCapture(slot) => op_byte(code, ByteCode::GetCapture, slot),
-      Self::SetCapture(slot) => op_byte(code, ByteCode::SetCapture, slot),
+      Self::Box(slot) => op_byte(code, ByteCode::Box, slot),
+      Self::EmptyBox => op(code, ByteCode::EmptyBox),
+      Self::FillBox => op(code, ByteCode::FillBox),
+      Self::GetBox(slot) => op_byte(code, ByteCode::GetBox, slot),
+      Self::SetBox(slot) => op_byte(code, ByteCode::SetBox, slot),
       Self::GetLocal(slot) => op_byte(code, ByteCode::GetLocal, slot),
       Self::SetLocal(slot) => op_byte(code, ByteCode::SetLocal, slot),
+      Self::GetCapture(slot) => op_byte(code, ByteCode::GetCapture, slot),
+      Self::SetCapture(slot) => op_byte(code, ByteCode::SetCapture, slot),
       Self::GetProperty(slot) => op_short(code, ByteCode::GetProperty, slot),
       Self::SetProperty(slot) => op_short(code, ByteCode::SetProperty, slot),
       Self::JumpIfFalse(slot) => op_short(code, ByteCode::JumpIfFalse, slot),
@@ -472,11 +502,11 @@ impl Encode for AlignedByteCode {
       Self::Invoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::Invoke, slot1, slot2);
         4
-      }
+      },
       Self::SuperInvoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2);
         4
-      }
+      },
       Self::Closure(slot) => op_short(code, ByteCode::Closure, slot),
       Self::Method(slot) => op_short(code, ByteCode::Method, slot),
       Self::Field(slot) => op_short(code, ByteCode::Field, slot),
@@ -489,12 +519,12 @@ impl Encode for AlignedByteCode {
         let bytes = encoded.to_ne_bytes();
         code.extend_from_slice(&bytes);
         3
-      }
+      },
       Self::Slot(slot) => {
         let bytes = slot.to_ne_bytes();
         code.extend_from_slice(&bytes);
         5
-      }
+      },
     }
   }
 }
@@ -616,17 +646,32 @@ pub enum ByteCode {
   /// Set a global at the given index
   SetGlobal,
 
-  /// Retrieve an capture at the given index
-  GetCapture,
+  /// Box a local at a given index,
+  Box,
 
-  /// Set an capture at the given index
-  SetCapture,
+  /// Create a new empty box
+  EmptyBox,
+
+  /// Move top of stack into box
+  FillBox,
+
+  /// Get a boxed local at the given index
+  GetBox,
+
+  /// Set a boxed local at the given index
+  SetBox,
 
   /// Get a local at the given index
   GetLocal,
 
   /// Set a local at the given index
   SetLocal,
+
+  /// Get a local at the given index
+  GetCapture,
+
+  /// Set a local at the given index
+  SetCapture,
 
   /// Get a property off a class instance
   GetProperty,
@@ -787,6 +832,9 @@ mod test {
       (1, AlignedByteCode::BufferedChannel),
       (1, AlignedByteCode::Receive),
       (1, AlignedByteCode::Send),
+      (2, AlignedByteCode::Box(66)),
+      (1, AlignedByteCode::EmptyBox),
+      (1, AlignedByteCode::FillBox),
       (3, AlignedByteCode::Interpolate(3389)),
       (3, AlignedByteCode::IterNext(81)),
       (3, AlignedByteCode::IterCurrent(49882)),
@@ -795,11 +843,12 @@ mod test {
       (3, AlignedByteCode::GetGlobal(14119)),
       (3, AlignedByteCode::SetGlobal(2043)),
       (3, AlignedByteCode::SetGlobal(38231)),
-      (2, AlignedByteCode::GetCapture(183)),
-      (2, AlignedByteCode::SetCapture(56)),
-      (2, AlignedByteCode::SetCapture(11)),
+      (2, AlignedByteCode::GetBox(183)),
+      (2, AlignedByteCode::SetBox(56)),
       (2, AlignedByteCode::GetLocal(96)),
       (2, AlignedByteCode::SetLocal(149)),
+      (2, AlignedByteCode::GetBox(11)),
+      (2, AlignedByteCode::SetBox(197)),
       (3, AlignedByteCode::GetProperty(18273)),
       (3, AlignedByteCode::SetProperty(253)),
       (3, AlignedByteCode::JumpIfFalse(8941)),

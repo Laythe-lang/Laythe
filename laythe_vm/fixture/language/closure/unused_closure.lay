@@ -1,5 +1,5 @@
 // this is a regression test. There was a bug where the VM would try to close
-// an capture even if the capture was never created because the codepath for
+// a box even if the box was never created because the codepath for
 // the closure was not executed.
 
 :{

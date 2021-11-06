@@ -15,13 +15,13 @@ use crate::{
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use ir::{
-  ast::{self, Decl, Expr, Primary, Span, Spanned, Stmt, Symbol, Trailer},
+  ast::{self, Decl, Expr, Primary, Spanned, Stmt, Trailer},
   token::{Lexeme, Token, TokenKind},
 };
 use laythe_core::{
   chunk::ChunkBuilder,
-  constants::{INDEX_GET, INDEX_SET, OBJECT},
-  constants::{ITER, ITER_VAR, SCRIPT, SELF, SUPER},
+  constants::{INDEX_GET, INDEX_SET, OBJECT, SUPER, UNINITIALIZED_VAR},
+  constants::{ITER, ITER_VAR, SCRIPT, SELF},
   hooks::{GcContext, GcHooks},
   managed::{DebugHeap, Gc, GcObj, GcStr, Manage, Trace, TraceRoot},
   memory::Allocator,
@@ -42,35 +42,29 @@ use std::{
   rc::Rc,
 };
 
+use self::ir::symbol_table::{Symbol, SymbolState, SymbolTable};
+
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_chunk;
 
-/// This local local is uninitialized
-const UNINITIALIZED: i16 = -1;
-
-/// A placeholder token to fill the first slot for non method functions
-const UNINITIALIZED_TOKEN: &Token<'static> =
-  &Token::new(TokenKind::Error, Lexeme::Slice("@##@"), 0, 0);
-
-/// A placeholder token to fill the first slot for non method functions
-const SELF_TOKEN: &Token<'static> = &Token::new(TokenKind::Error, Lexeme::Slice(SELF), 0, 0);
-
-#[derive(Debug, Clone)]
-pub struct Local<'a, 'src: 'a> {
+#[derive(Debug)]
+pub struct Local<'a> {
   /// name of the local
-  name: &'a Token<'src>,
+  symbol: &'a Symbol,
 
   /// depth of the local
-  depth: i16,
-
-  /// is this local captured
-  is_captured: bool,
+  depth: usize,
 }
 
 #[derive(Debug, Clone)]
 pub struct ClassInfo {
+  /// kind of current function in this class
   fun_kind: Option<FunKind>,
+
+  /// the fields present on this class
   fields: Vec<GcStr>,
+
+  /// The name of this class
   name: GcStr,
 }
 
@@ -122,7 +116,7 @@ impl Trace for ClassInfo {
 
 #[derive(Debug, Clone)]
 pub struct LoopInfo {
-  scope_depth: i16,
+  scope_depth: usize,
   start: usize,
   breaks: Vec<usize>,
 }
@@ -158,11 +152,6 @@ enum ScopeExit {
   Early,
 }
 
-enum VariableKind {
-  Get,
-  Set,
-}
-
 pub struct Compiler<'a, 'src, FileId> {
   #[allow(dead_code)]
   io: Option<Io>,
@@ -178,9 +167,6 @@ pub struct Compiler<'a, 'src, FileId> {
 
   /// The current module
   module: Gc<module::Module>,
-
-  /// The ast for this module
-  ast: &'a ast::Module<'src>,
 
   /// line offsets for the current file
   line_offsets: &'a LineOffsets,
@@ -210,17 +196,23 @@ pub struct Compiler<'a, 'src, FileId> {
   /// The file id for the current file
   file_id: FileId,
 
-  /// Number of locals
-  local_count: usize,
-
   /// Current scope depth
-  scope_depth: i16,
+  scope_depth: usize,
+
+  /// Are we currently compile for a repl
+  repl: bool,
 
   /// The current number of slots in use,
   slots: i32,
 
-  /// locals in this function
-  locals: Vec<Local<'a, 'src>>,
+  /// The local variables currently in scope
+  locals: Vec<Local<'a>>,
+
+  /// local tables to this function
+  local_tables: Vec<&'a SymbolTable<'src>>,
+
+  /// is this function the script with the global table
+  global_table: Option<&'a SymbolTable<'src>>,
 
   /// captures in this function
   captures: Vec<CaptureIndex>,
@@ -258,15 +250,15 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   ///
   /// let file_id = 0;
   /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
-  /// let (ast, line_offsets) = Parser::new(&source, file_id).parse();
+  /// let (_, line_offsets) = Parser::new(&source, file_id).parse();
   ///
-  /// let compiler = Compiler::new(module, &ast.unwrap(), &line_offsets, file_id, &NO_GC, gc);
+  /// let compiler = Compiler::new(module, &line_offsets, file_id, false, &NO_GC, gc);
   /// ```
   pub fn new(
     module: Gc<module::Module>,
-    ast: &'a ast::Module<'src>,
     line_offsets: &'a LineOffsets,
     file_id: FileId,
+    repl: bool,
     root_trace: &'a dyn TraceRoot,
     mut gc: Allocator,
   ) -> Self {
@@ -281,24 +273,21 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       file_id,
       root_trace,
       module,
-      ast,
       line_offsets,
       cache_id_emitter: Rc::new(RefCell::new(CacheIdEmitter::default())),
       errors: vec![],
       fun_kind: FunKind::Script,
       scope_depth: 0,
       slots: 1,
+      repl,
       class_info: None,
       loop_info: None,
       exit_scope: ScopeExit::Normal,
       gc: RefCell::new(gc),
       enclosing: None,
-      local_count: 1,
-      locals: vec![Local {
-        name: UNINITIALIZED_TOKEN,
-        depth: 0,
-        is_captured: false,
-      }],
+      local_tables: vec![],
+      global_table: None,
+      locals: vec![],
       captures: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
@@ -307,12 +296,18 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile the provided ast into managed function objects that
   /// contain the vm bytecode
-  pub fn compile(mut self) -> (FeResult<Fun, FileId>, Allocator, CacheIdEmitter) {
-    for decl in &self.ast.decls {
+  pub fn compile(
+    mut self,
+    ast: &'a ast::Module<'src>,
+  ) -> (FeResult<Fun, FileId>, Allocator, CacheIdEmitter) {
+    self.begin_global_scope(&ast.symbols);
+    self.declare_script();
+
+    for decl in &ast.decls {
       self.decl(decl);
     }
 
-    let end = self.ast.end();
+    let end = ast.end();
     let cache_id_emitter = self.cache_id_emitter.replace(CacheIdEmitter::default());
     let (fun, errors, _, gc) = self.end_compiler(end, ScopeExit::Normal);
     if errors.is_empty() {
@@ -326,7 +321,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn child<'b>(
     name: GcStr,
     fun_kind: FunKind,
-    first_local: Local<'b, 'src>,
     enclosing: &mut Compiler<'b, 'src, FileId>,
   ) -> Compiler<'b, 'src, FileId> {
     let fun = FunBuilder::new(name, enclosing.module);
@@ -345,21 +339,22 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       fun,
       file_id: enclosing.file_id,
       module: enclosing.module,
-      ast: enclosing.ast,
       line_offsets: enclosing.line_offsets,
       cache_id_emitter: Rc::clone(&enclosing.cache_id_emitter),
       errors: vec![],
       root_trace: enclosing.root_trace,
       fun_kind,
-      scope_depth: 0,
+      scope_depth: enclosing.scope_depth,
       slots: 1,
+      repl: enclosing.repl,
       class_info: enclosing.class_info,
       loop_info: enclosing.loop_info,
       exit_scope: ScopeExit::Normal,
       gc,
+      locals: vec![],
+      global_table: None,
       enclosing: Some(NonNull::from(enclosing)),
-      local_count: 1,
-      locals: vec![first_local],
+      local_tables: vec![],
       captures: vec![],
       temp_tokens: vec![],
       constants: object::Map::default(),
@@ -425,35 +420,51 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// scope the provide closure
-  fn scope<T>(&mut self, end_line: u32, cb: impl FnOnce(&mut Self) -> T) -> T {
-    self.begin_scope();
+  fn scope<T>(
+    &mut self,
+    end_line: u32,
+    table: &'a SymbolTable<'src>,
+    cb: impl FnOnce(&mut Self) -> T,
+  ) -> T {
+    self.begin_scope(table);
+
     let result = cb(self);
     self.end_scope(end_line);
     result
   }
 
   /// Increase the scope depth by 1
-  fn begin_scope(&mut self) {
+  fn begin_scope(&mut self, table: &'a SymbolTable<'src>) {
     self.scope_depth += 1;
+    self.local_tables.push(table);
+  }
+
+  fn begin_global_scope(&mut self, table: &'a SymbolTable<'src>) {
+    assert!(self.global_table.is_none());
+    assert!(self.local_tables.is_empty());
+    assert!(self.scope_depth == 0);
+
+    self.scope_depth += 1;
+    self.global_table = Some(table);
   }
 
   /// Decrease the scope depth by 1
   fn end_scope(&mut self, end_line: u32) {
     self.scope_depth -= 1;
-    self.local_count = self.drop_locals(end_line, self.scope_depth);
-    self.locals.truncate(self.local_count);
+    let local_count = self.drop_locals(end_line, self.scope_depth);
+    self.locals.truncate(local_count);
+    self.local_tables.pop();
   }
 
   /// Drop all locals to a specified scope depth
-  fn drop_locals(&mut self, line: u32, scope_depth: i16) -> usize {
-    let mut drop_idx = self.local_count;
+  fn drop_locals(&mut self, line: u32, scope_depth: usize) -> usize {
+    let mut drop_idx = self.locals.len();
 
     while drop_idx > 0 && self.locals[drop_idx - 1].depth > scope_depth {
       drop_idx -= 1;
     }
 
-    // if we didn't capture anything emit dropN instruction
-    let dropped = self.local_count - drop_idx;
+    let dropped = self.locals.len() - drop_idx;
 
     match dropped {
       0 => (),
@@ -464,108 +475,143 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     return drop_idx;
   }
 
-  /// Mark a variable initialized
-  fn mark_initialized(&mut self) {
-    if self.scope_depth > 0 {
-      self.locals[self.local_count - 1].depth = self.scope_depth;
-    }
-  }
-
-  /// Add a local variable to the current scope
-  fn add_local(&mut self, name: &'a Token<'src>) {
-    if self.local_count == std::u8::MAX as usize {
-      self.error("Too many local variables in function.", Some(name));
-      return;
-    }
-
-    self.local_count += 1;
-    self.locals.push(Local {
-      name,
-      depth: -1,
-      is_captured: false,
-    });
-  }
-
-  ///  declare a variable
-  fn declare_variable(&mut self, name: &'a Token<'src>) {
-    // if global exit
-    if self.scope_depth == 0 {
-      return;
-    }
-
-    let mut conflict: Option<Span> = None;
-
-    for local in self.locals.iter().rev() {
-      // If we in a lower scope break
-      if local.depth != UNINITIALIZED && local.depth < self.scope_depth {
-        break;
-      }
-
-      // check that the same variable wasn't declared twice in the same scope
-      if name.str() == local.name.str() {
-        conflict = Some(local.name.span());
-        break;
-      }
-    }
-
-    match conflict {
-      Some(span) => self.error_with_context(
-        "Variable with this name already declared in this scope.",
-        vec![
-          Label::primary(self.file_id, name.span()).with_message("Declared a second time here"),
-          Label::secondary(self.file_id, span)
-            .with_message(&format!("{} was originally declared here", &name.str())),
-        ],
-      ),
-      None => self.add_local(name),
-    }
-  }
-
   /// retrieve a named variable from either local or global scope
-  fn variable(&mut self, name: &Token<'src>, kind: VariableKind) {
-    let index = self.resolve_local(name);
-
-    match index {
-      Some(local) => match kind {
-        VariableKind::Get => self.emit_byte(AlignedByteCode::GetLocal(local), name.end()),
-        VariableKind::Set => self.emit_byte(AlignedByteCode::SetLocal(local), name.end()),
+  fn variable_get(&mut self, name: &Token<'src>) {
+    match self.resolve_local(name.str()) {
+      Some((local, state)) => match state {
+        SymbolState::Initialized => self.emit_byte(AlignedByteCode::GetLocal(local), name.end()),
+        SymbolState::Captured => self.emit_byte(AlignedByteCode::GetBox(local), name.end()),
+        SymbolState::GlobalInitialized => {
+          let global_index = self.identifier_constant(name.str());
+          self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
+        }
+        SymbolState::Uninitialized => panic!(
+          "Unexpected uninitialized symbol {} in {}.",
+          name.str(),
+          self.fun.name()
+        ),
       },
-      None => match self.resolve_capture(name) {
-        Some(capture) => match kind {
-          VariableKind::Get => self.emit_byte(AlignedByteCode::GetCapture(capture), name.end()),
-          VariableKind::Set => self.emit_byte(AlignedByteCode::SetCapture(capture), name.end()),
+      None => match self.resolve_capture(name.str()) {
+        Some((local, state)) => match state {
+          SymbolState::Captured => self.emit_byte(AlignedByteCode::GetCapture(local), name.end()),
+          SymbolState::GlobalInitialized => {
+            let global_index = self.identifier_constant(name.str());
+            self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
+          }
+          SymbolState::Initialized => panic!(
+            "Unexpected local symbol {} in {}.",
+            name.str(),
+            self.fun.name()
+          ),
+          SymbolState::Uninitialized => panic!(
+            "Unexpected uninitialized symbol {} in {}.",
+            name.str(),
+            self.fun.name()
+          ),
         },
         None => {
-          let global_index = self.identifier_constant(name.str());
-
-          match kind {
-            VariableKind::Get => {
-              self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
-            }
-            VariableKind::Set => {
-              self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
-            }
+          if self.repl {
+            let global_index = self.identifier_constant(name.str());
+            self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
+          } else {
+            panic!("Symbol {} not found in {}.", name.str(), self.fun.name());
           }
         }
       },
     }
   }
 
-  /// resolve a token to a local if it exists
-  fn resolve_local(&mut self, name: &Token<'src>) -> Option<u8> {
-    for i in (0..self.local_count).rev() {
-      let local = &self.locals[i];
-
-      if name.str() == local.name.str() {
-        // handle the case were `let a = a;`
-        if local.depth == UNINITIALIZED {
-          self.error(
-            "Cannot read local variable in its own initializer.",
-            Some(name),
-          )
+  fn variable_set(&mut self, name: &Token<'src>) {
+    match self.resolve_local(name.str()) {
+      Some((local, state)) => match state {
+        SymbolState::Initialized => self.emit_byte(AlignedByteCode::SetLocal(local), name.end()),
+        SymbolState::Captured => self.emit_byte(AlignedByteCode::SetBox(local), name.end()),
+        SymbolState::GlobalInitialized => {
+          let global_index = self.identifier_constant(name.str());
+          self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
         }
+        SymbolState::Uninitialized => panic!(
+          "Unexpected uninitialized symbol {} in {}.",
+          name.str(),
+          self.fun.name()
+        ),
+      },
+      None => match self.resolve_capture(name.str()) {
+        Some((local, state)) => match state {
+          SymbolState::Captured => self.emit_byte(AlignedByteCode::SetCapture(local), name.end()),
+          SymbolState::GlobalInitialized => {
+            let global_index = self.identifier_constant(name.str());
+            self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
+          }
+          SymbolState::Initialized => panic!(
+            "Unexpected local symbol {} in {}.",
+            name.str(),
+            self.fun.name()
+          ),
+          SymbolState::Uninitialized => panic!(
+            "Unexpected uninitialized symbol {} in {}.",
+            name.str(),
+            self.fun.name()
+          ),
+        },
+        None => {
+          if self.repl {
+            let global_index = self.identifier_constant(name.str());
+            self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
+          } else {
+            panic!("Symbol {} not found in {}.", name.str(), self.fun.name())
+          }
+        }
+      },
+    }
+  }
 
-        return Some(i as u8);
+  fn symbol_state(&self, name: &str) -> SymbolState {
+    match self
+      .locals
+      .iter()
+      .rev()
+      .find(|local| local.symbol.name() == name)
+    {
+      Some(local) => Some(local.symbol.state()),
+      None => self
+        .global_table
+        .and_then(|table| table.get(name).map(|symbol| symbol.state())),
+    }
+    .expect("Expected symbol.")
+  }
+
+  fn emit_local_get(&mut self, state: SymbolState, index: u8, end: u32) {
+    let byte = match state {
+      SymbolState::Initialized => AlignedByteCode::GetLocal(index),
+      SymbolState::Captured => AlignedByteCode::GetBox(index),
+      _ => panic!("Expected local symbol"),
+    };
+    self.emit_byte(byte, end);
+  }
+
+  fn emit_local_set(&mut self, state: SymbolState, index: u8, end: u32) {
+    let byte = match state {
+      SymbolState::Initialized => AlignedByteCode::SetLocal(index),
+      SymbolState::Captured => AlignedByteCode::SetBox(index),
+      _ => panic!("Expected local symbol"),
+    };
+    self.emit_byte(byte, end);
+  }
+
+  /// resolve a token to a local if it exists
+  fn resolve_local(&mut self, name: &str) -> Option<(u8, SymbolState)> {
+    let local_count = self.locals.len();
+
+    for (i, local) in self.locals.iter().rev().enumerate() {
+      if name == local.symbol.name() {
+        return Some(((local_count - i - 1) as u8, local.symbol.state()));
+      }
+    }
+
+    if let Some(global_table) = self.global_table {
+      if let Some(symbol) = global_table.get(name) {
+        return Some((0, symbol.state()));
       }
     }
 
@@ -574,18 +620,21 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// resolve a token to an capture in an enclosing scope if it exists
-  fn resolve_capture(&mut self, name: &Token<'src>) -> Option<u8> {
+  fn resolve_capture(&mut self, name: &str) -> Option<(u8, SymbolState)> {
     match self.enclosing {
       Some(mut parent_ptr) => {
         let parent = unsafe { parent_ptr.as_mut() };
         match parent.resolve_local(name) {
-          Some(local) => {
-            parent.locals[local as usize].is_captured = true;
-            Some(self.add_capture(CaptureIndex::Local(local)))
-          }
+          Some((local, state)) => match state {
+            SymbolState::GlobalInitialized => Some((0, state)),
+            _ => Some((self.add_capture(CaptureIndex::Local(local)), state)),
+          },
           None => parent
             .resolve_capture(name)
-            .map(|capture| self.add_capture(CaptureIndex::Enclosing(capture))),
+            .map(|(capture, state)| match state {
+              SymbolState::GlobalInitialized => (0, state),
+              _ => (self.add_capture(CaptureIndex::Enclosing(capture)), state),
+            }),
         }
       }
       None => None,
@@ -622,13 +671,91 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// Define a variable
-  fn define_variable(&mut self, variable: u16, offset: u32) {
-    if self.scope_depth > 0 {
-      self.mark_initialized();
+  fn declare_variable(&mut self, name: &Token<'src>, offset: u32) {
+    // if global exit
+    if self.scope_depth == 1 {
+      return;
+    }
+
+    if self.locals.len() == std::u8::MAX as usize {
+      self.error(
+        &format!("Too many local variables in function {}.", self.fun.name()),
+        Some(name),
+      );
+    }
+
+    let table = self
+      .local_tables
+      .last()
+      .expect("Expected local symbol table.");
+
+    let symbol = table.get(name.str()).expect("Expected symbol.");
+
+    self.locals.push(Local {
+      symbol: symbol,
+      depth: self.scope_depth,
+    });
+
+    if let SymbolState::Captured = symbol.state() {
+      self.emit_byte(AlignedByteCode::EmptyBox, offset);
+    }
+  }
+
+  /// declare variable only variable
+  fn declare_local_variable(&mut self, name: &str) {
+    assert!(self.scope_depth > 1);
+
+    if self.locals.len() == std::u8::MAX as usize {
+      self.error(
+        &format!("Too many local variables in function {}.", self.fun.name()),
+        None,
+      );
+    }
+
+    let table = self
+      .local_tables
+      .last()
+      .expect("Expected local symbol table.");
+
+    let symbol = table.get(name).expect("Expected symbol.");
+
+    self.locals.push(Local {
+      symbol: symbol,
+      depth: self.scope_depth,
+    });
+  }
+
+  // declare the script
+  fn declare_script(&mut self) {
+    let table = self.global_table.expect("Expected global symbol table.");
+
+    self.locals.push(Local {
+      symbol: table.get(UNINITIALIZED_VAR).expect("Expected symbol."),
+      depth: self.scope_depth,
+    });
+  }
+
+  /// Define a variable
+  fn define_variable(&mut self, variable: u16, state: SymbolState, offset: u32) {
+    if let SymbolState::Captured = state {
+      self.emit_byte(AlignedByteCode::FillBox, offset);
+    }
+
+    if self.scope_depth > 1 {
       return;
     }
 
     self.emit_byte(AlignedByteCode::DefineGlobal(variable), offset);
+  }
+
+  /// Define a local only variable
+  fn define_local_variable(&mut self, name: &str, state: SymbolState, offset: u32) {
+    assert!(self.scope_depth > 1);
+
+    if let SymbolState::Captured = state {
+      let (slot, _) = self.resolve_local(name).expect("Expected local symbol.");
+      self.emit_byte(AlignedByteCode::Box(slot), offset);
+    }
   }
 
   /// Get inline cache property id
@@ -710,9 +837,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Parse a variable from the provided token return it's new constant
   /// identifer if an identifer was identified
-  fn make_identifier(&mut self, name: &'a Token<'src>) -> u16 {
-    self.declare_variable(name);
-    if self.scope_depth > 0 {
+  fn make_identifier(&mut self, name: &Token<'src>, offset: u32) -> u16 {
+    self.declare_variable(name, offset);
+    if self.scope_depth > 1 {
       return 0;
     }
     self.identifier_constant(name.str())
@@ -755,15 +882,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     } else {
       self.emit_byte(AlignedByteCode::ConstantLong(index), line);
     }
-  }
-
-  /// Indicate an error with additional context
-  fn error_with_context(&mut self, message_primary: &str, labels: Vec<Label<FileId>>) {
-    let error = Diagnostic::error()
-      .with_message(message_primary)
-      .with_labels(labels);
-
-    self.errors.push(error);
   }
 
   /// Indicate an error occurred at he current index
@@ -859,26 +977,26 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// Compile a symbol declaration
-  fn symbol(&mut self, symbol: &'a Symbol<'src>) {
+  fn symbol(&mut self, symbol: &'a ast::Symbol<'src>) {
     match symbol {
-      Symbol::Class(class) => self.class(class),
-      Symbol::Fun(fun) => self.fun(fun),
-      Symbol::Let(let_) => self.let_(let_),
+      ast::Symbol::Class(class) => self.class(class),
+      ast::Symbol::Fun(fun) => self.fun(fun),
+      ast::Symbol::Let(let_) => self.let_(let_),
       _ => 0,
     };
   }
 
   /// Compile an export declaration
-  fn export(&mut self, export: &'a Symbol<'src>) {
+  fn export(&mut self, export: &'a ast::Symbol<'src>) {
     let symbol = match &export {
-      Symbol::Class(class) => Some(self.class(class)),
-      Symbol::Fun(fun) => Some(self.fun(fun)),
-      Symbol::Let(let_) => Some(self.let_(let_)),
+      ast::Symbol::Class(class) => Some(self.class(class)),
+      ast::Symbol::Fun(fun) => Some(self.fun(fun)),
+      ast::Symbol::Let(let_) => Some(self.let_(let_)),
       _ => None,
     };
 
     // emit error if not at module level
-    if self.scope_depth == 0 {
+    if self.scope_depth == 1 {
       if let Some(symbol) = symbol {
         self.emit_byte(AlignedByteCode::Export(symbol), export.end());
       }
@@ -890,50 +1008,51 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Compile a class declaration
   fn class(&mut self, class: &'a ast::Class<'src>) -> u16 {
     // declare the class by name
-    let name = &class.name;
-    let name_constant = self.identifier_constant(name.str());
-    self.declare_variable(name);
+    let class_name = &class.name;
+    self.declare_variable(class_name, class.start());
 
-    self.emit_byte(AlignedByteCode::Class(name_constant), name.end());
-    self.define_variable(name_constant, name.end());
+    let class_constant = self.identifier_constant(class_name.str());
+    let class_state = self.symbol_state(class_name.str());
+
+    self.emit_byte(AlignedByteCode::Class(class_constant), class_name.end());
+    self.define_variable(class_constant, class_state, class_name.end());
 
     // set this class as the current class compiler
-    let class_info_name = self.gc.borrow_mut().manage_str(name.str(), self);
+    let class_info_name = self.gc.borrow_mut().manage_str(class_name.str(), self);
     let class_compiler = self
       .gc
       .borrow_mut()
       .manage(ClassInfo::new(class_info_name), self);
     let enclosing_class = mem::replace(&mut self.class_info, Some(class_compiler));
 
-    // handle the case where a super class exists
+    // start a new scope with the super keyword present
+    self.begin_scope(&class.symbols);
+
+    // Load an explicit or implicit super class
     let span = if let Some(super_class) = &class.super_class {
-      self.variable(&super_class.type_ref.name, VariableKind::Get);
       super_class.type_ref.name.span()
     } else {
-      self.variable(
-        &Token::new(
-          TokenKind::Identifier,
-          Lexeme::Slice(OBJECT),
-          class.name.start(),
-          class.name.end(),
-        ),
-        VariableKind::Get,
-      );
       class.name.span()
     };
 
-    let super_token = self.gc().manage(
-      Token::new(TokenKind::Super, Lexeme::Slice(SUPER), span.start, span.end),
-      self,
-    );
-    self.temp_tokens.push(super_token);
+    self.declare_local_variable(SUPER);
+    let super_state = self.symbol_state(SUPER);
 
-    // start a new scope with the super keyword present
-    self.begin_scope();
-    self.add_local(unsafe { super_token.deref_static() });
+    // Load an explicit or implicit super class
+    if let Some(super_class) = &class.super_class {
+      self.variable_get(&super_class.type_ref.name);
+    } else {
+      self.variable_get(&Token::new(
+        TokenKind::Identifier,
+        Lexeme::Slice(OBJECT),
+        class.name.start(),
+        class.name.end(),
+      ));
+    };
 
-    self.define_variable(0, span.end);
-    self.variable(name, VariableKind::Get);
+    self.define_local_variable(SUPER, super_state, span.end);
+
+    self.variable_get(class_name);
     self.emit_byte(AlignedByteCode::Inherit, span.end);
 
     // process the initializer
@@ -963,7 +1082,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     // restore the enclosing class compiler
     self.class_info = enclosing_class;
-    name_constant
+    class_constant
   }
 
   /// Emit field instructions
@@ -1006,30 +1125,35 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile a plain function
   fn fun(&mut self, fun: &'a ast::Fun<'src>) -> u16 {
-    let constant = fun
+    let (constant, fun_state) = fun
       .name
       .as_ref()
-      .map(|name| self.make_identifier(name))
+      .map(|name| {
+        (
+          self.make_identifier(name, fun.end()),
+          self.symbol_state(name.str()),
+        )
+      })
       .expect("Expected function name");
 
-    self.mark_initialized();
     self.function(fun, FunKind::Fun);
-    self.define_variable(constant, fun.end());
+    self.define_variable(constant, fun_state, fun.end());
 
     constant
   }
 
   /// Compile a let binding
   fn let_(&mut self, let_: &'a ast::Let<'src>) -> u16 {
-    self.declare_variable(&let_.name);
+    self.declare_variable(&let_.name, let_.end());
     let variable = self.identifier_constant(let_.name.str());
+    let var_state = self.symbol_state(let_.name.str());
 
     match &let_.value {
       Some(v) => self.expr(v),
       None => self.emit_byte(AlignedByteCode::Nil, let_.name.end()),
     }
 
-    self.define_variable(variable, let_.end());
+    self.define_variable(variable, var_state, let_.end());
     variable
   }
 
@@ -1043,20 +1167,21 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .map(|name| self.gc.borrow_mut().manage_str(name.str(), self))
       .unwrap_or_else(|| self.gc.borrow_mut().manage_str("lambda", self));
 
-    let token = match fun_kind {
-      FunKind::Fun | FunKind::Script | FunKind::StaticMethod => UNINITIALIZED_TOKEN,
-      FunKind::Method | FunKind::Initializer => SELF_TOKEN,
-    };
-
-    let first_local = Local {
-      name: token,
-      depth: 0,
-      is_captured: false,
-    };
-
     // create a new child compiler for this function
-    let mut compiler = Compiler::child(name, fun_kind, first_local, self);
-    compiler.begin_scope();
+    let mut compiler = Compiler::child(name, fun_kind, self);
+
+    compiler.begin_scope(&fun.symbols);
+
+    match fun_kind {
+      FunKind::Method | FunKind::Initializer => {
+        compiler.declare_local_variable(SELF);
+        let self_state = compiler.symbol_state(SELF);
+        compiler.define_local_variable(SELF, self_state, fun.start());
+      }
+      FunKind::Fun | FunKind::StaticMethod => compiler.declare_local_variable(UNINITIALIZED_VAR),
+      _ => panic!("Did not expect script."),
+    };
+
     compiler.call_sig(&fun.call_sig);
 
     let exit = match &fun.body {
@@ -1083,6 +1208,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     if !errors.is_empty() {
       self.errors.extend_from_slice(&errors);
     }
+
     // emit capture index instructions
     captures
       .iter()
@@ -1111,24 +1237,24 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     match &import.stem {
       ast::ImportStem::None => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
-        let name = self.make_identifier(&import.path()[import.path().len() - 1]);
+        let name = self.make_identifier(&import.path()[import.path().len() - 1], import.start());
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
       }
       ast::ImportStem::Rename(rename) => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
-        let name = self.make_identifier(rename);
+        let name = self.make_identifier(rename, import.start());
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
       }
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
-          let symbol_slot = self.make_identifier(&symbol.symbol);
+          let symbol_slot = self.make_identifier(&symbol.symbol, import.start());
           self.emit_byte(
             AlignedByteCode::ImportSymbol((path, symbol_slot)),
             symbol.start(),
           );
 
           let name = match &symbol.rename {
-            Some(rename) => self.make_identifier(rename),
+            Some(rename) => self.make_identifier(rename, import.start()),
             None => symbol_slot,
           };
 
@@ -1144,37 +1270,27 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     const CURRENT: &str = "current";
 
     // new scope for full loop including loop variables
-    self.scope(for_.end(), |self_| {
-      let item = self_.make_identifier(&for_.item);
-      let item_line = for_.item.end();
-
-      self_.emit_byte(AlignedByteCode::Nil, item_line);
-      self_.define_variable(item, item_line);
+    self.scope(for_.end(), &for_.symbols, |self_| {
+      // push iterable onto stack
       self_.expr(&for_.iter);
-
       let expr_line = for_.iter.end();
 
-      // token for hidden $iter variable
-      let iterator_token = self_.gc().manage(
-        Token::new(
-          TokenKind::Identifier,
-          Lexeme::Slice(ITER_VAR),
-          for_.iter.start(),
-          for_.iter.end(),
-        ),
-        self_,
-      );
-      self_.temp_tokens.push(iterator_token);
-
       // get constant for 'iter' method
-      let iter_const = self_.string_constant(ITER);
+      let iter_method_const = self_.string_constant(ITER);
 
       // declare the hidden local $iter variable
-      let iterator_const = self_.identifier_constant(iterator_token.str());
-      self_.declare_variable(unsafe { iterator_token.deref_static() });
-      self_.emit_byte(AlignedByteCode::Invoke((iter_const, 0)), expr_line);
+      self_.declare_local_variable(ITER_VAR);
+      self_.emit_byte(AlignedByteCode::Invoke((iter_method_const, 0)), expr_line);
       self_.emit_byte(AlignedByteCode::Slot(self_.emit_invoke_id()), expr_line);
-      self_.define_variable(iterator_const, expr_line);
+      self_.define_local_variable(ITER_VAR, SymbolState::Initialized, expr_line);
+
+      let item_line = for_.item.end();
+      self_.declare_local_variable(for_.item.str());
+      let item_state = self_.symbol_state(for_.item.str());
+
+      // initial fill iteration item with nil and define
+      self_.emit_byte(AlignedByteCode::Nil, item_line);
+      self_.define_local_variable(for_.item.str(), item_state, item_line);
 
       // mark start of loop
       let loop_start = self_.current_chunk().instructions().len();
@@ -1194,28 +1310,30 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       let current_const = self_.string_constant(CURRENT);
 
       // call next on iterator
-      let iterator_variable = self_
-        .resolve_local(&iterator_token)
+      let (iterator_variable, iterator_state) = self_
+        .resolve_local(ITER_VAR)
         .expect("Iterator variable was not defined.");
 
-      self_.emit_byte(AlignedByteCode::GetLocal(iterator_variable), expr_line);
+      self_.emit_local_get(iterator_state, iterator_variable, expr_line);
       self_.emit_byte(AlignedByteCode::IterNext(next_const), expr_line);
 
       // check at end of iterator
       let exit_jump = self_.emit_jump(AlignedByteCode::JumpIfFalse(0), expr_line);
 
       // assign $iter.current to loop variable
-      let loop_variable = self_
-        .resolve_local(&for_.item)
+      let (loop_variable, loop_state) = self_
+        .resolve_local(&for_.item.str())
         .expect("Loop variable was not defined.");
 
-      self_.emit_byte(AlignedByteCode::GetLocal(iterator_variable), expr_line);
+      self_.emit_local_get(iterator_state, iterator_variable, expr_line);
       self_.emit_byte(AlignedByteCode::IterCurrent(current_const), expr_line);
-      self_.emit_byte(AlignedByteCode::SetLocal(loop_variable), expr_line);
+      self_.emit_local_set(loop_state, loop_variable, expr_line);
       self_.emit_byte(AlignedByteCode::Drop, expr_line);
 
       // loop body
-      self_.scope(for_.body.end(), |self_| self_.block(&for_.body));
+      self_.scope(for_.body.end(), &for_.body.symbols, |self_| {
+        self_.block(&for_.body)
+      });
       self_.emit_loop(loop_start, for_.end());
 
       // loop back to top
@@ -1248,7 +1366,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), while_.cond.end());
 
-    self.scope(while_.end(), |self_| self_.block(&while_.body));
+    self.scope(while_.end(), &while_.body.symbols, |self_| {
+      self_.block(&while_.body)
+    });
 
     self.emit_loop(loop_start, while_.end());
 
@@ -1268,7 +1388,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     // parse then branch
     let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), if_.cond.end());
 
-    self.scope(if_.body.end(), |self_| self_.block(&if_.body));
+    self.scope(if_.body.end(), &if_.body.symbols, |self_| {
+      self_.block(&if_.body)
+    });
 
     match &if_.else_ {
       Some(else_) => {
@@ -1278,7 +1400,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
         match else_ {
           ast::Else::If(if_) => self.if_(if_),
-          ast::Else::Block(block) => self.scope(block.end(), |self_| {
+          ast::Else::Block(block) => self.scope(block.end(), &block.symbols, |self_| {
             self_.block(block);
           }),
         }
@@ -1352,12 +1474,16 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn try_(&mut self, try_: &'a ast::Try<'src>) {
     let start = self.current_chunk().instructions().len();
 
-    self.scope(try_.block.end(), |self_| self_.block(&try_.block));
+    self.scope(try_.block.end(), &try_.block.symbols, |self_| {
+      self_.block(&try_.block)
+    });
 
     let catch_jump = self.emit_jump(AlignedByteCode::Jump(0), try_.block.end());
     let end = self.current_chunk().instructions().len();
 
-    self.scope(try_.catch.end(), |self_| self_.block(&try_.catch));
+    self.scope(try_.catch.end(), &try_.catch.symbols, |self_| {
+      self_.block(&try_.catch)
+    });
 
     self.patch_jump(catch_jump);
     self.fun.add_try(TryBlock::new(start as u16, end as u16));
@@ -1423,7 +1549,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         None => {
           if let Primary::Ident(name) = &atom.primary {
             self.expr(&assign.rhs);
-            self.variable(name, VariableKind::Set);
+            self.variable_set(name);
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
@@ -1481,7 +1607,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         }
         None => {
           if let Primary::Ident(name) = &atom.primary {
-            self.variable(name, VariableKind::Get);
+            self.variable_get(name);
 
             self.emit_byte(AlignedByteCode::Send, send.lhs.end())
           } else {
@@ -1570,10 +1696,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         }
         None => {
           if let Primary::Ident(name) = &atom.primary {
-            self.variable(name, VariableKind::Get);
+            self.variable_get(name);
             self.expr(&assign_binary.rhs);
             binary_op(self);
-            self.variable(name, VariableKind::Set);
+            self.variable_set(name);
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
@@ -1705,7 +1831,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile an assignment block
   fn assign_block(&mut self, block: &'a ast::Block<'src>) -> bool {
-    self.scope(block.end(), |self_| {
+    self.scope(block.end(), &block.symbols, |self_| {
       self_.block(block);
     });
     self.emit_byte(AlignedByteCode::Nil, block.end());
@@ -1797,7 +1923,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile a identifer token
   fn identifier(&mut self, token: &Token<'src>) -> bool {
-    self.variable(token, VariableKind::Get);
+    self.variable_get(token);
     false
   }
 
@@ -1809,7 +1935,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .and_then(|fun_kind| {
         fun_kind.and_then(|fun_kind| match fun_kind {
           FunKind::Method | FunKind::Initializer => {
-            self.variable(self_, VariableKind::Get);
+            self.variable_get(self_);
             Some(())
           }
           _ => None,
@@ -1838,15 +1964,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let name = self.identifier_constant(super_.access.str());
 
     // load self on top of stack
-    self.variable(
-      &Token::new(
-        TokenKind::Self_,
-        Lexeme::Slice(SELF),
-        super_.end(),
-        super_.end(),
-      ),
-      VariableKind::Get,
-    );
+    self.variable_get(&Token::new(
+      TokenKind::Self_,
+      Lexeme::Slice(SELF),
+      super_.end(),
+      super_.end(),
+    ));
 
     match trailers.first() {
       Some(trailer) => match trailer {
@@ -1855,7 +1978,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             self.expr(arg);
           }
 
-          self.variable(&super_.super_, VariableKind::Get);
+          self.variable_get(&super_.super_);
           self.emit_byte(
             AlignedByteCode::SuperInvoke((name, call.args.len() as u8)),
             super_.access.end(),
@@ -1867,13 +1990,13 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           true
         }
         _ => {
-          self.variable(&super_.super_, VariableKind::Get);
+          self.variable_get(&super_.super_);
           self.emit_byte(AlignedByteCode::GetSuper(name), super_.end());
           false
         }
       },
       None => {
-        self.variable(&super_.super_, VariableKind::Get);
+        self.variable_get(&super_.super_);
 
         self.emit_byte(AlignedByteCode::GetSuper(name), super_.access.end());
         false
@@ -1913,8 +2036,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Set the functions arity from the call signature
   fn call_sig(&mut self, call_sig: &'a ast::CallSignature<'src>) {
     for param in &call_sig.params {
-      let param_constant = self.make_identifier(&param.name);
-      self.define_variable(param_constant, param.name.end());
+      self.declare_local_variable(param.name.str());
+      let param_state = self.symbol_state(param.name.str());
+
+      self.define_local_variable(param.name.str(), param_state, param.name.end());
     }
 
     self
@@ -2033,34 +2158,67 @@ mod test {
     Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
   }
 
+  pub fn test_fun(hooks: &GcHooks, module: Gc<Module>) -> GcObj<Fun> {
+    let mut fun_builder = FunBuilder::new(hooks.manage_str("print"), module);
+
+    fun_builder.set_arity(Arity::Variadic(0));
+    fun_builder.write_instruction(AlignedByteCode::Return, 0);
+    hooks.manage_obj(fun_builder.build())
+  }
+
+  fn dummy_module(hooks: &GcHooks) -> Gc<Module> {
+    let path = PathBuf::from("path/module.ly");
+
+    let module_class = test_class(&hooks, "Module");
+    let object_class = module_class.super_class().expect("Expected Object");
+    hooks.push_root(module_class);
+    let mut module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
+    hooks.pop_roots(1);
+    hooks.push_root(module);
+
+    let print = test_fun(hooks, module);
+    assert!(module
+      .insert_symbol(hooks, print.name(), val!(print))
+      .is_ok());
+    assert!(module
+      .insert_symbol(hooks, object_class.name(), val!(object_class))
+      .is_ok());
+    assert!(module.export_symbol(hooks, print.name()).is_ok());
+    assert!(module.export_symbol(hooks, object_class.name()).is_ok());
+
+    hooks.pop_roots(1);
+
+    module
+  }
+
   fn test_compile(src: &str, context: &NoContext) -> Fun {
     let hooks = &GcHooks::new(context);
+    let repl = false;
 
     let src = hooks.manage_str(src);
     hooks.push_root(src);
     let source = Source::new(hooks.manage_str(src));
     let (ast, line_offsets) = Parser::new(&source, 0).parse();
     assert!(ast.is_ok(), "{}", src);
-    let ast = ast.unwrap();
+    let mut ast = ast.unwrap();
 
-    let path = PathBuf::from("path/module.ly");
-
-    let module_class = test_class(hooks, "Module");
-    hooks.push_root(module_class);
-    let module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
-    hooks.push_root(module);
+    let module = dummy_module(hooks);
 
     let gc = context.gc.replace(Allocator::default());
 
+    assert!(Resolver::new(module, &gc, &source, 0, repl)
+      .resolve(&mut ast)
+      .is_ok());
+
     let fake_vm_root: &NoGc = &NO_GC;
-    let compiler = Compiler::new(module, &ast, &line_offsets, 0, fake_vm_root, gc);
+    let compiler = Compiler::new(module, &line_offsets, 0, repl, fake_vm_root, gc);
     #[cfg(feature = "debug")]
     let compiler = compiler.with_io(io_native());
 
-    let (result, gc, _) = compiler.compile();
+    let (result, gc, _) = compiler.compile(&ast);
     context.gc.replace(gc);
 
-    assert_eq!(result.is_ok(), true);
+    assert!(result.is_ok());
     result.unwrap()
   }
 
@@ -2730,9 +2888,64 @@ mod test {
   }
 
   #[test]
+  fn class_with_captures() {
+    let example = "
+      class A {
+        foo() {
+          fn bar(a) {
+            return [self, a];
+          }
+
+          return bar;
+        }
+      }
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      &fun,
+      4,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
+        ByteCodeTest::Fun((
+          3,
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Box(0)),
+            ByteCodeTest::Fun((
+              0,
+              3,
+              vec![
+                ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
+                ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+                ByteCodeTest::Code(AlignedByteCode::List(2)),
+                ByteCodeTest::Code(AlignedByteCode::Return),
+              ],
+            )),
+            ByteCodeTest::Code(AlignedByteCode::CaptureIndex(CaptureIndex::Local(0))),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
   fn launch() {
     let example = "
-      launch thing();
+      launch print();
     ";
 
     let context = NoContext::default();
@@ -2753,7 +2966,8 @@ mod test {
   #[test]
   fn channel_send_index() {
     let example = "
-      a[5] <- 5;
+      let a = [chan()];
+      a[0] <- 5;
     ";
 
     let context = NoContext::default();
@@ -2763,10 +2977,13 @@ mod test {
       &fun,
       4,
       &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Invoke((2, 1)),
+        AlignedByteCode::Channel,
+        AlignedByteCode::List(1),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Invoke((3, 1)),
         AlignedByteCode::Slot(0),
         AlignedByteCode::Send,
         AlignedByteCode::Drop,
@@ -2779,6 +2996,7 @@ mod test {
   #[test]
   fn channel_send_property() {
     let example = "
+      let b = 10;
       b.b <- 5;
     ";
 
@@ -2789,9 +3007,11 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetProperty(1),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetProperty(0),
         AlignedByteCode::Slot(0),
         AlignedByteCode::Send,
         AlignedByteCode::Drop,
@@ -2804,6 +3024,7 @@ mod test {
   #[test]
   fn channel_send_variable() {
     let example = "
+      let b = chan();
       b <- 5;
     ";
 
@@ -2814,8 +3035,10 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::Channel,
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Send,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -2827,7 +3050,7 @@ mod test {
   #[test]
   fn list_index_set() {
     let example = "
-      let a = [clock, clock, clock];
+      let a = [print, print, print];
       a[1] = 5;
     ";
 
@@ -3154,7 +3377,9 @@ mod test {
           1,
           4,
           vec![
+            ByteCodeTest::Code(AlignedByteCode::EmptyBox),
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+            ByteCodeTest::Code(AlignedByteCode::FillBox),
             ByteCodeTest::Fun((
               // middle
               2,
@@ -3215,7 +3440,9 @@ mod test {
           1,
           4,
           vec![
+            ByteCodeTest::Code(AlignedByteCode::EmptyBox),
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+            ByteCodeTest::Code(AlignedByteCode::FillBox),
             ByteCodeTest::Fun((
               2,
               2,
@@ -3446,25 +3673,60 @@ mod test {
       &fun,
       5,
       &vec![
-        AlignedByteCode::Nil,             // 0
-        AlignedByteCode::Constant(0),     // 1   local 2 = [1, 2, 3].iter()
-        AlignedByteCode::Constant(1),     // 3   local 3 =
+        AlignedByteCode::Constant(0),     // 1   local 1 = [1, 2, 3].iter()
+        AlignedByteCode::Constant(1),     // 3   local 2 =
         AlignedByteCode::Constant(2),     // 5
         AlignedByteCode::List(3),         // 7
         AlignedByteCode::Invoke((3, 0)),  // 10  const 1 = 1
         AlignedByteCode::Slot(0),         // 10  const 1 = 1
-        AlignedByteCode::GetLocal(2),     // 13  const 2 = 2
-        AlignedByteCode::IterNext(5),     // 15  const 3 = 3
+        AlignedByteCode::Nil,             // 0
+        AlignedByteCode::GetLocal(1),     // 13  const 2 = 2
+        AlignedByteCode::IterNext(4),     // 15  const 3 = 3
         AlignedByteCode::JumpIfFalse(19), // 17  const 4 = "iter"
-        AlignedByteCode::GetLocal(2),     // 21
-        AlignedByteCode::IterCurrent(6),  // 23  const 6 = "current"
-        AlignedByteCode::SetLocal(1),     // 25
+        AlignedByteCode::GetLocal(1),     // 21
+        AlignedByteCode::IterCurrent(5),  // 23  const 6 = "current"
+        AlignedByteCode::SetLocal(2),     // 25
         AlignedByteCode::Drop,            // 27
-        AlignedByteCode::GetGlobal(7),
-        AlignedByteCode::GetLocal(1), // 29
+        AlignedByteCode::GetGlobal(6),
+        AlignedByteCode::GetLocal(2), // 29
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Loop(27), // 32
+        AlignedByteCode::DropN(2), // 36
+        AlignedByteCode::Nil,      // 38
+        AlignedByteCode::Return,   // 39
+      ],
+    );
+  }
+
+  #[test]
+  fn for_loop_with_locals() {
+    let example = "for x in [1, 2, 3] { let x = 10; let y = 10; }";
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      5,
+      &vec![
+        AlignedByteCode::Constant(0),     // 1   local 1 = [1, 2, 3].iter()
+        AlignedByteCode::Constant(1),     // 3   local 2 =
+        AlignedByteCode::Constant(2),     // 5
+        AlignedByteCode::List(3),         // 7
+        AlignedByteCode::Invoke((3, 0)),  // 10  const 1 = 1
+        AlignedByteCode::Slot(0),         // 10  const 1 = 1
+        AlignedByteCode::Nil,             // 0
+        AlignedByteCode::GetLocal(1),     // 13  const 2 = 2
+        AlignedByteCode::IterNext(4),     // 15  const 3 = 3
+        AlignedByteCode::JumpIfFalse(17), // 17  const 4 = "iter"
+        AlignedByteCode::GetLocal(1),     // 21
+        AlignedByteCode::IterCurrent(5),  // 23  const 6 = "current"
+        AlignedByteCode::SetLocal(2),     // 25
+        AlignedByteCode::Drop,            // 27
+        AlignedByteCode::Constant(7),
+        AlignedByteCode::Constant(7), // 29
+        AlignedByteCode::DropN(2),
+        AlignedByteCode::Loop(25), // 32
         AlignedByteCode::DropN(2), // 36
         AlignedByteCode::Nil,      // 38
         AlignedByteCode::Return,   // 39
@@ -3496,6 +3758,28 @@ mod test {
   }
 
   #[test]
+  fn while_loop_with_locals() {
+    let example = "while true { let x = 10; let y = 10; }";
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      3,
+      &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(9),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::DropN(2),
+        AlignedByteCode::Loop(13),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
   fn break_() {
     let example = "while true { break; print(10); }";
     let context = NoContext::default();
@@ -3516,6 +3800,39 @@ mod test {
   }
 
   #[test]
+  fn break_fun_nested() {
+    let example = "
+      fn f() {
+        while true { break; let x; }
+      }
+    ";
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      &fun,
+      2,
+      &vec![
+        ByteCodeTest::Fun((
+          1,
+          2,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::True),
+            ByteCodeTest::Code(AlignedByteCode::JumpIfFalse(6)),
+            ByteCodeTest::Code(AlignedByteCode::Jump(3)),
+            ByteCodeTest::Code(AlignedByteCode::Loop(10)),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
   fn continue_() {
     let example = "while true { continue; print(10); }";
     let context = NoContext::default();
@@ -3531,6 +3848,39 @@ mod test {
         AlignedByteCode::Loop(10),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn continue_fun_nested() {
+    let example = "
+      fn f() {
+        while true { continue; let x; }
+      }
+    ";
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      &fun,
+      2,
+      &vec![
+        ByteCodeTest::Fun((
+          1,
+          2,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::True),
+            ByteCodeTest::Code(AlignedByteCode::JumpIfFalse(6)),
+            ByteCodeTest::Code(AlignedByteCode::Loop(7)),
+            ByteCodeTest::Code(AlignedByteCode::Loop(10)),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
       ],
     );
   }
@@ -3738,7 +4088,10 @@ mod test {
 
   #[test]
   fn op_get_global() {
-    let example = "print(x);";
+    let example = "
+      let x = 10;
+      print(x);
+    ";
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
@@ -3746,8 +4099,10 @@ mod test {
       &fun,
       3,
       &vec![
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::GetGlobal(2),
         AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::GetGlobal(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -3758,7 +4113,10 @@ mod test {
 
   #[test]
   fn op_set_global() {
-    let example = "x = \"cat\";";
+    let example = "
+      let x;
+      x = \"cat\";
+    ";
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
@@ -3766,8 +4124,10 @@ mod test {
       &fun,
       2,
       &vec![
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::SetGlobal(1),
+        AlignedByteCode::Nil,
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::SetGlobal(0),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3844,7 +4204,7 @@ mod test {
 
   #[test]
   fn op_interpolate() {
-    let example = "\"${firstName} ${lastName}\";";
+    let example = "\"${10} ${\"stuff\"}\";";
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
@@ -3853,11 +4213,11 @@ mod test {
       6,
       &vec![
         AlignedByteCode::Constant(1),
-        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::Constant(2),
         AlignedByteCode::Invoke((0, 0)),
         AlignedByteCode::Slot(0),
         AlignedByteCode::Constant(3),
-        AlignedByteCode::GetGlobal(4),
+        AlignedByteCode::Constant(4),
         AlignedByteCode::Invoke((0, 0)),
         AlignedByteCode::Slot(1),
         AlignedByteCode::Constant(1),

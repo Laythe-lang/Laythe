@@ -47,10 +47,7 @@ fn assignment() -> Result<(), std::io::Error> {
     ExecuteResult::CompileError,
   )?;
 
-  test_file_exits(
-    &vec![],
-    ExecuteResult::RuntimeError,
-  )
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
@@ -77,10 +74,7 @@ fn binary_assignment() -> Result<(), std::io::Error> {
     ExecuteResult::CompileError,
   )?;
 
-  test_file_exits(
-    &vec![],
-    ExecuteResult::RuntimeError,
-  )
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
@@ -347,11 +341,14 @@ fn exception() -> Result<(), std::io::Error> {
 
 #[test]
 fn export() -> Result<(), std::io::Error> {
-  test_file_exits(&vec![
-    "language/export/declaration_class.lay",
-    "language/export/declaration_fn.lay",
-    "language/export/declaration_let.lay",
-  ], ExecuteResult::Ok(0))?;
+  test_file_exits(
+    &vec![
+      "language/export/declaration_class.lay",
+      "language/export/declaration_fn.lay",
+      "language/export/declaration_let.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
 
   test_file_exits(
     &vec![
@@ -392,9 +389,10 @@ fn field() -> Result<(), std::io::Error> {
     ExecuteResult::Ok(0),
   )?;
 
-  test_file_exits(&vec![
-    "language/field/set_evaluation_order.lay"
-  ], ExecuteResult::CompileError)?;
+  test_file_exits(
+    &vec!["language/field/set_evaluation_order.lay"],
+    ExecuteResult::CompileError,
+  )?;
 
   test_file_exits(
     &vec![
@@ -1119,11 +1117,7 @@ fn variable() -> Result<(), std::io::Error> {
     ExecuteResult::CompileError,
   )?;
 
-  test_file_exits(
-    &vec![
-    ],
-    ExecuteResult::RuntimeError,
-  )
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]

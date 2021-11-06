@@ -1,6 +1,6 @@
-// self is a regression test. There was a bug where if an capture for an
-// earlier local (here "a") was captured *after* a later one ("b"), then it
-// would crash because it walked to the end of the capture list (correct), but
+// self is a regression test. There was a bug where if an box for an
+// earlier local (here "a") was boxd *after* a later one ("b"), then it
+// would crash because it walked to the end of the box list (correct), but
 // then didn't handle not finding the variable.
 
 fn f() {

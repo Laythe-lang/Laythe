@@ -1,12 +1,12 @@
 use laythe_core::{
   hooks::{GcHooks, NoContext},
-  managed::GcObj,
   memory::{Allocator, NO_GC},
   module::Module,
-  object::Class,
+  utils::IdEmitter,
 };
+use laythe_lib::create_std_lib;
 use laythe_vm::{
-  compiler::{Compiler, Parser},
+  compiler::{Compiler, Parser, Resolver},
   source::Source,
 };
 use std::env;
@@ -22,39 +22,36 @@ fn load_source(path: &str) -> String {
   source
 }
 
-pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
-  let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
-  let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
-  class_class.inherit(hooks, object_class);
-
-  let class_copy = class_class;
-  class_class.set_meta(class_copy);
-
-  let object_meta_class = Class::with_inheritance(
-    hooks,
-    hooks.manage_str(format!("{} metaClass", object_class.name())),
-    class_class,
-  );
-
-  object_class.set_meta(object_meta_class);
-  Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
-}
-
 fn compiler_bench(src: &str) {
   for _ in 0..1000000 {
-    let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
-    let mut gc = Allocator::default();
-    let source = Source::new(gc.manage_str(src, &NO_GC));
-    let class = test_class(&hooks, "class");
+    let mut context = NoContext::default();
+    let hooks = GcHooks::new(&mut context);
+    let source = Source::new(hooks.manage_str(src));
+
+    let mut emitter = IdEmitter::default();
+    let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
+    let global_module = std_lib.root_module();
+
+    let module_name = hooks.manage_str("Module");
+    let module_class = global_module
+      .get_symbol(module_name)
+      .unwrap()
+      .to_obj()
+      .to_class();
 
     let (ast, line_offsets) = Parser::new(&source, 0).parse();
-    let ast = ast.unwrap();
-    let module = Module::from_path(&hooks, PathBuf::from("/Benchmark.ly"), class, 0).unwrap();
+    let mut ast = ast.unwrap();
+    let module =
+      Module::from_path(&hooks, PathBuf::from("/Benchmark.ly"), module_class, 0).unwrap();
     let module = hooks.manage(module);
 
-    let compiler = Compiler::new(module, &ast, &line_offsets, 0, &NO_GC, gc);
-    compiler.compile().0.unwrap();
+    let gc = context.done();
+    assert!(Resolver::new(global_module, &gc, &source, 0, false)
+      .resolve(&mut ast)
+      .is_ok());
+
+    let compiler = Compiler::new(module, &line_offsets, 0, false, &NO_GC, gc);
+    compiler.compile(&ast).0.unwrap();
   }
 }
 
@@ -79,7 +76,7 @@ fn main() {
       parser_bench(&src);
 
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));
-    },
+    }
     [_, bench_type, file_path] => {
       let src = load_source(file_path);
       let now = Instant::now();
@@ -91,10 +88,10 @@ fn main() {
       }
 
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));
-    },
+    }
     _ => {
       println!("Usage: laythe_compiler_bench [path]");
       process::exit(1);
-    },
+    }
   }
 }
