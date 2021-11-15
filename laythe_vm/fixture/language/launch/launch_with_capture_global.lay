@@ -1,0 +1,22 @@
+let a = 10;
+
+fn read(ch) {
+  ch <- a;
+}
+
+fn mut(ch) {
+  a = 20;
+  ch <- a;
+}
+
+let ch = chan();
+launch read(ch);
+
+a = 5;
+assertEq(<- ch, 5);
+
+launch mut(ch);
+
+assertEq(<- ch, 20);
+assertEq(a, 20);
+

@@ -137,6 +137,7 @@ fn channel() -> Result<(), std::io::Error> {
       "language/channel/in_collection.lay",
       "language/channel/in_function.lay",
       "language/channel/in_instance.lay",
+      "language/channel/multi_capture_increment.lay",
       "language/channel/receive_buffered.lay",
       "language/channel/receive_buffered_closed.lay",
       "language/channel/receive_sync.lay",
@@ -680,6 +681,8 @@ fn launch() -> Result<(), std::io::Error> {
       "language/launch/launch_multi_channel_join.lay",
       "language/launch/launch_native.lay",
       "language/launch/launch_single.lay",
+      "language/launch/launch_with_capture_global.lay",
+      "language/launch/launch_with_capture_local.lay",
     ],
     ExecuteResult::Ok(0),
   )?;
