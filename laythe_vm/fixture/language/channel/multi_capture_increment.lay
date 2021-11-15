@@ -1,0 +1,20 @@
+if true {
+  let ch = chan();
+  let a = 0;
+
+  fn inc(ch) {
+    a += 1;
+    ch <- nil
+  }
+
+  let n = 10;
+  for _ in n.times() {
+    launch inc(ch);
+  }
+
+  for _ in n.times() {
+    assertEq(<- ch, nil);
+  }
+
+  assertEq(a, n);
+}

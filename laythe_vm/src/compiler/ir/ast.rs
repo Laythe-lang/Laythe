@@ -113,6 +113,12 @@ pub struct Span {
   pub end: u32,
 }
 
+impl Span {
+  pub fn new(start: u32, end: u32) -> Self {
+    Self { start, end }
+  }
+}
+
 impl From<Span> for Range<usize> {
   fn from(span: Span) -> Self {
     (span.start as usize)..(span.end as usize)
@@ -126,10 +132,7 @@ pub struct Module<'a> {
 
 impl<'a> Module<'a> {
   pub fn new(decls: Vec<'a, Decl<'a>>, symbols: SymbolTable<'a>) -> Self {
-    Self {
-      symbols,
-      decls,
-    }
+    Self { symbols, decls }
   }
 }
 
@@ -266,7 +269,7 @@ impl<'a> Fun<'a> {
     name: Option<Token<'a>>,
     call_sig: CallSignature<'a>,
     symbols: SymbolTable<'a>,
-    body: FunBody<'a>
+    body: FunBody<'a>,
   ) -> Self {
     Self {
       name,
@@ -502,7 +505,7 @@ impl<'a> Spanned for Import<'a> {
         } else {
           symbols.last().unwrap().end()
         }
-      }
+      },
     }
   }
 }
@@ -515,12 +518,7 @@ pub struct For<'a> {
 }
 
 impl<'a> For<'a> {
-  pub fn new(
-    item: Token<'a>,
-    iter: Expr<'a>,
-    symbols: SymbolTable<'a>,
-    body: Block<'a>
-  ) -> Self {
+  pub fn new(item: Token<'a>, iter: Expr<'a>, symbols: SymbolTable<'a>, body: Block<'a>) -> Self {
     Self {
       item,
       iter,

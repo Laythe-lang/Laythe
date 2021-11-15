@@ -145,13 +145,13 @@ impl Manage for GcStr {
 
 impl fmt::Debug for GcStr {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
-    f.write_str(self)
+    write!(f, "'{}'", self.deref())
   }
 }
 
 impl fmt::Display for GcStr {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "'{}'", self.deref())
+    f.write_str(self)
   }
 }
 

@@ -56,8 +56,8 @@ pub struct FunBuilder {
   /// Arity of this function
   arity: Arity,
 
-  /// Number of upvalues
-  upvalue_count: u8,
+  /// Number of captures
+  capture_count: u8,
 
   /// The max number of slots in this function
   max_slots: i32,
@@ -76,7 +76,7 @@ impl FunBuilder {
   pub fn new(name: GcStr, module: Gc<Module>) -> Self {
     Self {
       arity: Arity::default(),
-      upvalue_count: 0,
+      capture_count: 0,
       max_slots: 0,
       chunk: ChunkBuilder::default(),
       module,
@@ -85,11 +85,15 @@ impl FunBuilder {
     }
   }
 
-  /// Increment the upvalue count of this function
+  pub fn name(&self) -> &str {
+    &self.name
+  }
+
+  /// Increment the capture count of this function
   /// builder
   #[inline]
-  pub fn inc_upvalue(&mut self) {
-    self.upvalue_count += 1;
+  pub fn inc_capture(&mut self) {
+    self.capture_count += 1;
   }
 
   /// Update max slots if new count is greater than
@@ -107,10 +111,10 @@ impl FunBuilder {
     self.arity = arity;
   }
 
-  /// Retrieve the current count of upvalues
+  /// Retrieve the current count of captures
   #[inline]
-  pub fn upvalue_count(&self) -> u8 {
-    self.upvalue_count
+  pub fn capture_count(&self) -> u8 {
+    self.capture_count
   }
 
   /// Retrieve a reference to the underlying chunk builder
@@ -147,7 +151,7 @@ impl FunBuilder {
     Fun {
       name: self.name,
       arity: self.arity,
-      upvalue_count: self.upvalue_count,
+      capture_count: self.capture_count,
       max_slot: self.max_slots as u32,
       module_id: self.module.id(),
       module: self.module,
@@ -179,8 +183,8 @@ pub struct Fun {
   /// Arity of this function
   arity: Arity,
 
-  /// Number of upvalues
-  upvalue_count: u8,
+  /// Number of captures
+  capture_count: u8,
 
   /// The max number of slots for this function
   max_slot: u32,
@@ -237,10 +241,10 @@ impl Fun {
     self.module
   }
 
-  /// Number of upvalues
+  /// Number of captures
   #[inline]
-  pub fn upvalue_count(&self) -> usize {
-    self.upvalue_count as usize
+  pub fn capture_count(&self) -> usize {
+    self.capture_count as usize
   }
 
   /// Number of slots
@@ -270,7 +274,7 @@ impl Fun {
 
 impl fmt::Display for Fun {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<fn {:?} {:p}>", self.name, &*self)
+    write!(f, "<fn {} {:p}>", self.name, &*self)
   }
 }
 
@@ -299,7 +303,7 @@ impl DebugHeap for Fun {
     f.debug_struct("Fun")
       .field("name", &DebugWrap(&self.name, depth))
       .field("arity", &self.arity)
-      .field("upvalue_count", &self.upvalue_count)
+      .field("capture_count", &self.capture_count)
       .field("Module", &DebugWrap(&self.module, depth))
       .field("chunk", &self.chunk)
       .finish()

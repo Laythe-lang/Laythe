@@ -48,13 +48,13 @@ impl Arity {
         if arg_count != arity {
           return Err(ArityError::Fixed(arity));
         }
-      },
+      }
       // if variadic and ending with ... take arity +
       Self::Variadic(arity) => {
         if arg_count < arity {
           return Err(ArityError::Variadic(arity));
         }
-      },
+      }
       // if defaulted we need between the min and max
       Self::Default(min_arity, max_arity) => {
         if arg_count < min_arity {
@@ -63,7 +63,7 @@ impl Arity {
         if arg_count > max_arity {
           return Err(ArityError::DefaultHigh(max_arity));
         }
-      },
+      }
     }
 
     Ok(())
@@ -181,7 +181,7 @@ impl From<Value> for ParameterKind {
         ObjectKind::Method => ParameterKind::Fun,
         ObjectKind::Native => ParameterKind::Fun,
         ObjectKind::String => ParameterKind::String,
-        ObjectKind::Upvalue => panic!("Should not pass in upvalue directly"),
+        ObjectKind::LyBox => panic!("Should not pass in box directly"),
       },
     }
   }
@@ -290,7 +290,7 @@ impl Signature {
             return Err(SignatureError::TypeWrong(index as u8));
           }
         }
-      },
+      }
       // if variadic and ending with ... take arity +
       Arity::Variadic(arity) => {
         if count < arity as usize {
@@ -321,7 +321,7 @@ impl Signature {
             return Err(SignatureError::TypeWrong(arity + index as u8));
           }
         }
-      },
+      }
       // if defaulted we need between the min and max
       Arity::Default(min_arity, max_arity) => {
         if count < min_arity as usize {
@@ -336,7 +336,7 @@ impl Signature {
             return Err(SignatureError::TypeWrong(index as u8));
           }
         }
-      },
+      }
     }
 
     Ok(())

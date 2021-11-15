@@ -1,12 +1,13 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use laythe_core::module::Module;
 use laythe_core::{
   hooks::{GcHooks, NoContext},
   managed::GcStr,
   memory::{Allocator, NO_GC},
-  object::Class,
+  utils::IdEmitter,
 };
-use laythe_core::{managed::GcObj, module::Module};
-use laythe_vm::compiler::Parser;
+use laythe_lib::create_std_lib;
+use laythe_vm::compiler::{Parser, Resolver};
 use laythe_vm::{compiler::Compiler, source::Source};
 use std::fs::File;
 use std::io::prelude::*;
@@ -32,39 +33,34 @@ fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> GcStr {
   gc.manage_str(source, &NO_GC)
 }
 
-pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
-  let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
-  let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
-  class_class.inherit(hooks, object_class);
-
-  let class_copy = class_class;
-  class_class.set_meta(class_copy);
-
-  let object_meta_class = Class::with_inheritance(
-    hooks,
-    hooks.manage_str(format!("{} metaClass", object_class.name())),
-    class_class,
-  );
-
-  object_class.set_meta(object_meta_class);
-  Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
-}
-
 fn compile_source(source: GcStr) {
   let mut context = NoContext::default();
   let hooks = GcHooks::new(&mut context);
 
   let path = PathBuf::from("./Benchmark.lay");
 
-  let module_class = test_class(&hooks, "Module");
+  let mut emitter = IdEmitter::default();
+  let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
+  let global_module = std_lib.root_module();
+
+  let module_name = hooks.manage_str("Module");
+  let module_class = global_module
+    .get_symbol(module_name)
+    .unwrap()
+    .to_obj()
+    .to_class();
   let module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
   let source = Source::new(source);
   let (ast, line_offsets) = Parser::new(&source, 0).parse();
-  let ast = ast.unwrap();
+  let mut ast = ast.unwrap();
 
   let gc = context.done();
-  let compiler = Compiler::new(module, &ast, &line_offsets, 0, &NO_GC, gc);
-  compiler.compile().0.unwrap();
+  assert!(Resolver::new(global_module, &gc, &source, 0, false)
+    .resolve(&mut ast)
+    .is_ok());
+
+  let compiler = Compiler::new(module, &line_offsets, 0, false, &NO_GC, gc);
+  compiler.compile(&ast).0.unwrap();
 }
 
 fn criterion_benchmark(c: &mut Criterion) {

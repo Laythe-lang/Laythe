@@ -110,8 +110,8 @@ impl LyNative for ObjectStr {
         ObjectKind::String(string) => {
           format!("<{} {}>", &*class.name(), string)
         },
-        ObjectKind::Upvalue(upvalue) => {
-          format!("<{} {:p}>", &*class.name(), &upvalue)
+        ObjectKind::LyBox(ly_box) => {
+          format!("<{} {:p}>", &*class.name(), &ly_box)
         },
       }),
     };

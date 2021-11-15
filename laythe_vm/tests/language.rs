@@ -47,10 +47,7 @@ fn assignment() -> Result<(), std::io::Error> {
     ExecuteResult::CompileError,
   )?;
 
-  test_file_exits(
-    &vec![],
-    ExecuteResult::RuntimeError,
-  )
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
@@ -77,10 +74,7 @@ fn binary_assignment() -> Result<(), std::io::Error> {
     ExecuteResult::CompileError,
   )?;
 
-  test_file_exits(
-    &vec![],
-    ExecuteResult::RuntimeError,
-  )
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]
@@ -143,6 +137,7 @@ fn channel() -> Result<(), std::io::Error> {
       "language/channel/in_collection.lay",
       "language/channel/in_function.lay",
       "language/channel/in_instance.lay",
+      "language/channel/multi_capture_increment.lay",
       "language/channel/receive_buffered.lay",
       "language/channel/receive_buffered_closed.lay",
       "language/channel/receive_sync.lay",
@@ -347,11 +342,14 @@ fn exception() -> Result<(), std::io::Error> {
 
 #[test]
 fn export() -> Result<(), std::io::Error> {
-  test_file_exits(&vec![
-    "language/export/declaration_class.lay",
-    "language/export/declaration_fn.lay",
-    "language/export/declaration_let.lay",
-  ], ExecuteResult::Ok(0))?;
+  test_file_exits(
+    &vec![
+      "language/export/declaration_class.lay",
+      "language/export/declaration_fn.lay",
+      "language/export/declaration_let.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
 
   test_file_exits(
     &vec![
@@ -392,9 +390,10 @@ fn field() -> Result<(), std::io::Error> {
     ExecuteResult::Ok(0),
   )?;
 
-  test_file_exits(&vec![
-    "language/field/set_evaluation_order.lay"
-  ], ExecuteResult::CompileError)?;
+  test_file_exits(
+    &vec!["language/field/set_evaluation_order.lay"],
+    ExecuteResult::CompileError,
+  )?;
 
   test_file_exits(
     &vec![
@@ -682,6 +681,8 @@ fn launch() -> Result<(), std::io::Error> {
       "language/launch/launch_multi_channel_join.lay",
       "language/launch/launch_native.lay",
       "language/launch/launch_single.lay",
+      "language/launch/launch_with_capture_global.lay",
+      "language/launch/launch_with_capture_local.lay",
     ],
     ExecuteResult::Ok(0),
   )?;
@@ -713,7 +714,7 @@ fn limit() -> Result<(), std::io::Error> {
       "language/limit/loop_too_large.lay",
       "language/limit/too_many_constants.lay",
       "language/limit/too_many_locals.lay",
-      "language/limit/too_many_upvalues.lay",
+      "language/limit/too_many_captures.lay",
     ],
     ExecuteResult::CompileError,
   )?;
@@ -1119,11 +1120,7 @@ fn variable() -> Result<(), std::io::Error> {
     ExecuteResult::CompileError,
   )?;
 
-  test_file_exits(
-    &vec![
-    ],
-    ExecuteResult::RuntimeError,
-  )
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
 }
 
 #[test]

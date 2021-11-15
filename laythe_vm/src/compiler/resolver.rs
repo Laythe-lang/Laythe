@@ -7,7 +7,7 @@ use crate::{source::Source, FeResult};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
   constants::OBJECT,
-  constants::{ITER_VAR, SELF, SUPER},
+  constants::{ITER_VAR, SELF, SUPER, UNINITIALIZED_VAR},
   managed::Gc,
   memory::Allocator,
   module,
@@ -17,6 +17,8 @@ use std::vec;
 
 /// A placeholder token to fill the first slot for non method functions
 const SELF_TOKEN: &Token<'static> = &Token::new(TokenKind::Error, Lexeme::Slice(SELF), 0, 0);
+const UNINITIALIZED_TOKEN: &Token<'static> =
+  &Token::new(TokenKind::Error, Lexeme::Slice(UNINITIALIZED_VAR), 0, 0);
 
 /// Tracks data about a class
 #[derive(Debug, Clone, Default)]
@@ -161,6 +163,9 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
 
   /// Declare all module scoped variables
   fn declare_module_scoped(&mut self, ast: &mut ast::Module<'src>) {
+    self.declare_variable_module(UNINITIALIZED_TOKEN);
+    self.define_variable(UNINITIALIZED_TOKEN);
+
     for decl in &mut ast.decls {
       self.decl_module(decl);
     }
@@ -199,9 +204,9 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     self.classes.last_mut()
   }
 
-  /// Get a mutable reference to the current symbol table
-  fn table_mut(&mut self) -> &mut SymbolTable<'src> {
-    &mut self.tables.last_mut().expect("Expected symbol table").table
+  /// Get a mutable reference to the current tacked symbol table
+  fn table_mut(&mut self) -> &mut TrackedSymbolTable<'src> {
+    self.tables.last_mut().expect("Expected symbol table")
   }
 
   /// Declare a variable
@@ -212,7 +217,8 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     }
 
     let table = self.table_mut();
-    if let AddSymbolResult::DuplicateSymbol(local) = table.add_symbol(name.str(), name.span()) {
+    if let AddSymbolResult::DuplicateSymbol(local) = table.table.add_symbol(name.str(), name.span())
+    {
       self.duplicate_declaration(&local, name)
     }
   }
@@ -221,8 +227,8 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   fn declare_variable_module(&mut self, name: &Token<'src>) {
     debug_assert!(self.tables.len() == 1);
     let table = self.table_mut();
-
-    if let AddSymbolResult::DuplicateSymbol(local) = table.add_symbol(name.str(), name.span()) {
+    if let AddSymbolResult::DuplicateSymbol(local) = table.table.add_symbol(name.str(), name.span())
+    {
       self.duplicate_declaration(&local, name)
     }
   }
@@ -270,32 +276,35 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     // if we're resolving a file be more strict about finding symbols
     if !self.repl {
       if let Some(interned_name) = self.gc.has_str(name.str()) {
-        if self.global_module.get_exported_symbol(interned_name).is_ok() {
-          let table = &mut self.tables.first_mut().unwrap().table;
-
-          if let AddSymbolResult::DuplicateSymbol(local) =
-            table.add_global_symbol(name.str(), name.span())
-          {
-            self.duplicate_declaration(&local, name)
-          }
-          return;
+        if self
+          .global_module
+          .get_exported_symbol(interned_name)
+          .is_ok()
+        {
+          let table = &mut self.tables.first_mut().unwrap();
+          table.table.add_global_symbol(name.str(), name.span());
         }
+      } else {
+        self.error(
+          &format!("Attempted to access undeclared variable {}", name.str()),
+          Some(name.span()),
+        )
       }
-
-      self.error(
-        &format!("Attempted to access undeclared variable {}", name.str()),
-        Some(name.span()),
-      )
     }
   }
 
   /// Define a variable
   fn define_variable(&mut self, name: &Token<'src>) {
-    self
-      .table_mut()
-      .get_mut(name.str())
-      .expect("Expected symbol")
-      .initialize()
+    let scope_depth = self.tables.len();
+
+    let table = self.table_mut();
+    let symbol = table.table.get_mut(name.str()).expect("Expected symbol");
+
+    if scope_depth == 1 {
+      symbol.global_initialize()
+    } else {
+      symbol.initialize()
+    }
   }
 
   /// Indicate an error with additional context
@@ -545,15 +554,19 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   fn function(&mut self, fun: &mut ast::Fun<'src>, fun_kind: FunKind) {
     self.fun_depth += 1;
     self.begin_scope();
-    self.call_sig(&fun.call_sig);
 
     match fun_kind {
       FunKind::Method | FunKind::Initializer => {
         self.declare_variable(SELF_TOKEN);
         self.define_variable(SELF_TOKEN)
       }
+      FunKind::Fun | FunKind::StaticMethod => {
+        self.declare_variable(UNINITIALIZED_TOKEN);
+        self.define_variable(UNINITIALIZED_TOKEN)
+      }
       _ => (),
     }
+    self.call_sig(&fun.call_sig);
 
     match &mut fun.body {
       ast::FunBody::Block(block) => self.block(block),
@@ -613,10 +626,6 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   fn for_(&mut self, for_: &mut ast::For<'src>) {
     // new scope for full loop including loop variables
     for_.symbols = self.scope(|self_| {
-      self_.declare_variable(&for_.item);
-      self_.define_variable(&for_.item);
-      self_.expr(&mut for_.iter);
-
       // token for hidden $iter variable
       let iterator_token = Token::new(
         TokenKind::Identifier,
@@ -628,6 +637,10 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       // declare the hidden local $iter variable
       self_.declare_variable(&iterator_token);
       self_.define_variable(&iterator_token);
+
+      self_.declare_variable(&for_.item);
+      self_.define_variable(&for_.item);
+      self_.expr(&mut for_.iter);
 
       // loop body
       for_.body.symbols = self_.scope(|self_| self_.block(&mut for_.body));
@@ -820,13 +833,14 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       );
     }
 
-    // TODO we can potentially remove this
+    // load self on top of stack
     self.resolve_variable(&Token::new(
       TokenKind::Self_,
       Lexeme::Slice(SELF),
       super_.end(),
       super_.end(),
     ));
+    self.resolve_variable(&super_.super_);
   }
 
   /// Compile a lambda expression
@@ -1114,18 +1128,33 @@ mod test {
       assert!(result.is_ok());
       assert_eq!(ast.decls.len(), 1);
       match &ast.decls[0] {
-        Decl::Stmt(stmt) => {
-          match &**stmt {
-            Stmt::If(if_) => {
-              assert!(if_.body.symbols.get("example1").is_some());
-              assert!(if_.body.symbols.get("example2").is_some());
-              assert!(if_.body.symbols.get("example3").is_some());
-            }
-            _ => panic!()
+        Decl::Stmt(stmt) => match &**stmt {
+          Stmt::If(if_) => {
+            assert!(if_.body.symbols.get("example1").is_some());
+            assert!(if_.body.symbols.get("example2").is_some());
+            assert!(if_.body.symbols.get("example3").is_some());
           }
-        }
-        _ => panic!()
+          _ => panic!(),
+        },
+        _ => panic!(),
       }
+    });
+  }
+
+  #[test]
+  fn multiple_global_resolves() {
+    let example = "
+      print();
+      print();
+    ";
+
+    test_file_std_resolve(example, |ast, result| {
+      assert!(result.is_ok());
+      assert!(ast.symbols.get("print").is_some());
+      assert_eq!(
+        ast.symbols.get("print").unwrap().state(),
+        SymbolState::GlobalInitialized
+      );
     });
   }
 }

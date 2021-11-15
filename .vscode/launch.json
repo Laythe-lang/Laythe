@@ -100,13 +100,10 @@
         }
       },
       "args": [
-        "language/binary_assignment/syntax.lay"
-        // "lox_interpreter/lox.lay",
-        // "../../../craftinginterpreters/test/benchmark/binary_trees.lox"
+        "laythe_vm/fixture/language/limit/too_many_locals.lay"
       ],
       "sourceLanguages": ["rust"],
-      "cwd": "${workspaceFolder}/laythe_vm/fixture",
-      "preLaunchTask": "laythe build"
+      "cwd": "${workspaceFolder}"
     }
   ]
 }

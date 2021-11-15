@@ -44,6 +44,9 @@ pub struct Parser<'a, FileId> {
   /// The previous token
   previous: Token<'a>,
 
+  /// The current name let statement
+  let_name: Option<Token<'a>>,
+
   /// The source
   source: &'a Source,
 
@@ -81,6 +84,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       block_return: BlockReturn::Cannot,
       scope_depth: 0,
       loop_depth: 0,
+      let_name: None,
       previous: Token::new(TokenKind::Error, Lexeme::Slice("error"), 0, 0),
       current: Token::new(TokenKind::Error, Lexeme::Slice("error"), 0, 0),
     }
@@ -198,7 +202,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::While
         | TokenKind::Return => {
           break;
-        }
+        },
         _ => (),
       }
 
@@ -281,7 +285,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
-            }
+            },
             _ => {
               let (fun_kind, method) = self.method(name, false)?;
               match fun_kind {
@@ -289,9 +293,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 FunKind::Initializer => init = Some(method),
                 _ => unreachable!(),
               }
-            }
+            },
           }
-        }
+        },
 
         // static we know must be a method
         TokenKind::Static => {
@@ -303,7 +307,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let name = self.previous.clone();
           let (_, method) = self.method(name, true)?;
           static_methods.push(method);
-        }
+        },
         _ => return self.error_current("Expected method or member declaration inside of class."),
       }
     }
@@ -349,6 +353,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   fn let_(&mut self) -> ParseResult<Symbol<'a>, FileId> {
     self.consume(TokenKind::Identifier, "Expected variable name.")?;
     let name = self.previous.clone();
+    let previous_let_name = self.let_name.replace(name.clone());
 
     let type_ = if self.match_kind(TokenKind::Colon)? {
       Some(self.type_()?)
@@ -361,6 +366,8 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     } else {
       None
     };
+
+    self.let_name = previous_let_name;
 
     self
       .consume_basic(
@@ -404,7 +411,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           members.push(TypeMember::new(name, type_));
-        }
+        },
         TokenKind::Less | TokenKind::LeftParen => {
           self.advance()?;
           let type_params = if self.match_kind(TokenKind::Less)? {
@@ -418,7 +425,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           methods.push(TypeMethod::new(name, call_sig));
-        }
+        },
         _ => self.error_at(
           self.current.clone(),
           "Expected member or method declaration inside trait.",
@@ -552,7 +559,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         Some(Trailer::Call(_)) => {
           self.consume_basic(TokenKind::Semicolon, "Expected ';' launch call.")?;
           Ok(Stmt::Launch(self.node(Launch::new(closure))))
-        }
+        },
         _ => self.error("Expected call following 'launch'."),
       }
     } else {
@@ -928,9 +935,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     let call_sig = self.call_signature(TokenKind::Pipe, self.vec())?;
 
     let previous = mem::replace(&mut self.fun_kind, FunKind::Fun);
-    let lambda = self
-      .fun_body(BlockReturn::Can)
-      .map(|body| self.atom(Primary::Lambda(self.node(Fun::new(None, call_sig, self.table(), body)))));
+    let lambda = self.fun_body(BlockReturn::Can).map(|body| {
+      self.atom(Primary::Lambda(self.node(Fun::new(
+        self.let_name.clone(),
+        call_sig,
+        self.table(),
+        body,
+      ))))
+    });
 
     self.fun_kind = previous;
     lambda
@@ -1065,14 +1077,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         TokenKind::StringSegment => {
           self.advance()?;
           segments.push(StringSegments::Token(self.previous.clone()))
-        }
+        },
         TokenKind::StringEnd => {
           break;
-        }
+        },
         _ => {
           let expr = self.expr()?;
           segments.push(StringSegments::Expr(self.node(expr)))
-        }
+        },
       }
     }
     self.consume(TokenKind::StringEnd, "Unterminated interpolated string.")?;
@@ -1236,9 +1248,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     if !self.match_kind(TokenKind::LeftBrace)? {
       return self.error_current(&format!("Expected '{{' after {} signature.", self.fun_kind));
     }
-    self
-      .block(block_return)
-      .map(|body| Fun::new(Some(name), call_sig, self.table(), FunBody::Block(self.node(body))))
+    self.block(block_return).map(|body| {
+      Fun::new(
+        Some(name),
+        call_sig,
+        self.table(),
+        FunBody::Block(self.node(body)),
+      )
+    })
   }
 
   /// Parse a method declaration and body
@@ -1334,7 +1351,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TypePrefix::Fun => {
         let call_sig = self.call_signature(TokenKind::RightParen, self.vec())?;
         Ok(Type::Fun(self.node(call_sig)))
-      }
+      },
       TypePrefix::Literal => self.type_literal(),
     }
   }
@@ -1409,11 +1426,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
         Ok(Type::Ref(type_ref))
-      }
+      },
       _ => {
         // TODO: maybe
         self.error("Can only apply type argument to a non primitive type identifier.")
-      }
+      },
     }
   }
 
@@ -2545,7 +2562,7 @@ mod test {
   }
 
   #[test]
-  fn open_upvalue() {
+  fn open_capture() {
     let example = "
     fn example() {
       let x = 0;
@@ -2566,7 +2583,7 @@ mod test {
   }
 
   #[test]
-  fn close_upvalue() {
+  fn close_capture() {
     let example = "
     fn example() {
       let a = 10;

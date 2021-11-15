@@ -1,6 +1,6 @@
 use std::{fmt, io::Write, mem, ptr, usize};
 
-use super::{Channel, Closure, Fun, Instance, ObjectKind, Upvalue};
+use super::{Channel, Closure, Fun, Instance, ObjectKind};
 use crate::{
   call_frame::CallFrame,
   constants::SCRIPT,
@@ -45,9 +45,6 @@ pub struct Fiber {
 
   /// The current state of this fiber
   state: FiberState,
-
-  /// A collection of currently available upvalues
-  open_upvalues: Vec<GcObj<Upvalue>>,
 
   /// The current error if one is active
   error: Option<GcObj<Instance>>,
@@ -101,24 +98,9 @@ impl Fiber {
       channels: vec![],
       state: FiberState::Pending,
       error: None,
-      open_upvalues: vec![],
       frame: current_frame,
       stack_top,
     })
-  }
-
-  /// TODO remove, convert upvalue back to straight pointer
-  /// Get an immutable stack slice
-  #[inline]
-  pub fn stack(&self) -> &[Value] {
-    &self.stack
-  }
-
-  /// TODO remove, convert upvalue back to straight pointer
-  /// Get a mutable stack slice
-  #[inline]
-  pub fn stack_mut(&mut self) -> &mut [Value] {
-    &mut self.stack
   }
 
   /// Get the current slice call frame slice
@@ -375,10 +357,7 @@ impl Fiber {
       return None;
     }
 
-    unsafe {
-      self.close_upvalues_internal(self.frame().stack_start);
-      self.stack_top = self.frame().stack_start;
-    }
+    self.stack_top = self.frame().stack_start;
 
     self.frames.pop();
     Some(match self.frames.last() {
@@ -391,11 +370,11 @@ impl Fiber {
         self.assert_frame_inbounds();
 
         Some(frame.closure.fun())
-      },
+      }
       None => {
         self.frame = ptr::null_mut();
         None
-      },
+      }
     })
   }
 
@@ -408,10 +387,6 @@ impl Fiber {
   ) -> Option<GcObj<Fiber>> {
     if self.frames().len() != frame_count + 1 {
       return None;
-    }
-
-    unsafe {
-      self.close_upvalues_internal(self.frame().stack_start);
     }
 
     let frame = self.frames.pop().expect("Expected call frame");
@@ -477,39 +452,6 @@ impl Fiber {
     debug_assert_eq!(self.stack.len(), self.stack.capacity());
   }
 
-  // hoist all upvalues above the the stack top
-  pub fn close_upvalues(&mut self) {
-    unsafe { self.close_upvalues_internal(self.stack_top.offset(-1)) }
-  }
-
-  /// Capture an upvalue return an existing upvalue if already captured
-  pub fn capture_upvalue(&mut self, hooks: &GcHooks, local_index: usize) -> GcObj<Upvalue> {
-    let slot_index = unsafe { self.stack_start().offset_from(self.stack.as_ptr()) as usize };
-    let upvalue_index = slot_index + local_index;
-
-    let closest_upvalue = self
-      .open_upvalues
-      .iter()
-      .rev()
-      .find(|upvalue| match ***upvalue {
-        Upvalue::Open(index) => index <= upvalue_index,
-        Upvalue::Closed(_) => panic!("Unexpected closed upvalue"),
-      });
-
-    if let Some(upvalue) = closest_upvalue {
-      if let Upvalue::Open(index) = **upvalue {
-        if index == upvalue_index {
-          return *upvalue;
-        }
-      }
-    }
-
-    let created_upvalue = hooks.manage_obj(Upvalue::Open(upvalue_index));
-    self.open_upvalues.push(created_upvalue);
-
-    created_upvalue
-  }
-
   /// Unwind the stack searching for catch blocks to handle the unwind.
   /// If a handler is found returns the call frame that handles the exception
   /// if not found returns none
@@ -553,7 +495,7 @@ impl Fiber {
         self.stack_top = stack_top;
 
         Some(frame)
-      },
+      }
       None => None,
     }
   }
@@ -615,32 +557,6 @@ impl Fiber {
     unsafe { &mut *self.frame }
   }
 
-  /// Hoist all open upvalue above the last index
-  unsafe fn close_upvalues_internal(&mut self, last_value: *mut Value) {
-    if self.open_upvalues.is_empty() {
-      return;
-    }
-
-    let mut retain = self.open_upvalues.len();
-
-    let last_index = last_value.offset_from(self.stack.as_ptr()) as usize;
-    for upvalue in self.open_upvalues.iter_mut().rev() {
-      let index = match **upvalue {
-        Upvalue::Open(index) => index,
-        Upvalue::Closed(_) => panic!("Unexpected closed upvalue."),
-      };
-
-      if index < last_index {
-        break;
-      }
-
-      retain -= 1;
-      upvalue.hoist(&self.stack)
-    }
-
-    self.open_upvalues.truncate(retain)
-  }
-
   // assert the stack_top is currently pointing inbounds
   #[cfg(debug_assertions)]
   fn assert_stack_inbounds(&self) {
@@ -684,7 +600,6 @@ impl Object for Fiber {
 impl Manage for Fiber {
   fn size(&self) -> usize {
     mem::size_of::<Self>()
-      + mem::size_of::<GcObj<Upvalue>>() * self.open_upvalues.capacity()
       + mem::size_of::<CallFrame>() * self.frames.capacity()
       + mem::size_of::<Value>() * self.stack.capacity()
   }
@@ -702,7 +617,6 @@ impl DebugHeap for Fiber {
       .field("stack_top", &format_args!("{:p}", self.stack_top))
       .field("current_frame", &format_args!("{:p}", self.frame))
       .field("state", &self.state)
-      .field("open_upvalues", &DebugWrap(&&*self.open_upvalues, depth))
       .field("current_error", &DebugWrap(&self.error, depth))
       .finish()
   }
@@ -728,10 +642,6 @@ impl Trace for Fiber {
       frame.closure.trace();
     });
 
-    self.open_upvalues.iter().for_each(|upvalue| {
-      upvalue.trace();
-    });
-
     if let Some(error) = self.error {
       error.trace();
     }
@@ -754,10 +664,6 @@ impl Trace for Fiber {
 
     self.frames.iter().for_each(|frame| {
       frame.closure.trace_debug(log);
-    });
-
-    self.open_upvalues.iter().for_each(|upvalue| {
-      upvalue.trace_debug(log);
     });
 
     if let Some(error) = self.error {
@@ -1071,7 +977,7 @@ mod test {
       .expect("Expected to build");
 
     let fun = test_fun(&hooks, "next", "next module");
-    let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+    let closure = hooks.manage_obj(Closure::without_captures(fun));
 
     unsafe {
       fiber.push(val!(10.5));
@@ -1109,7 +1015,7 @@ mod test {
       .expect("Expected to build");
 
     let fun = test_fun(&hooks, "next", "next module");
-    let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+    let closure = hooks.manage_obj(Closure::without_captures(fun));
 
     unsafe {
       fiber.push(val!(10.5));
@@ -1178,7 +1084,7 @@ mod test {
     let hooks = GcHooks::new(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
-    let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+    let closure = hooks.manage_obj(Closure::without_captures(fun));
 
     let mut fiber = FiberBuilder::<u8>::default()
       .max_slots(3)
@@ -1208,7 +1114,7 @@ mod test {
     let hooks = GcHooks::new(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
-    let closure = hooks.manage_obj(Closure::without_upvalues(fun));
+    let closure = hooks.manage_obj(Closure::without_captures(fun));
 
     let mut fiber = FiberBuilder::<u8>::default()
       .max_slots(4)
@@ -1259,78 +1165,6 @@ mod test {
       assert_eq!(fiber.peek(1), val!(false));
       assert_eq!(fiber.peek(2), val!(10.0));
       assert_eq!(fiber.peek(3), VALUE_NIL);
-    }
-  }
-
-  #[test]
-  fn capture_upvalue() {
-    let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
-
-    let mut fiber = FiberBuilder::<u8>::default()
-      .max_slots(5)
-      .build(&hooks)
-      .expect("Expected to build");
-
-    unsafe {
-      fiber.push(val!(10.0));
-      fiber.push(val!(true));
-
-      let capture1 = fiber.capture_upvalue(&hooks, 1);
-      let capture2 = fiber.capture_upvalue(&hooks, 1);
-      let capture3 = fiber.capture_upvalue(&hooks, 2);
-
-      assert_eq!(capture1, capture2);
-      assert_ne!(capture3, capture1);
-
-      assert!(capture1.is_open());
-      assert!(capture2.is_open());
-
-      assert_eq!(capture1.value(fiber.stack()), val!(10.0));
-      assert_eq!(capture2.value(fiber.stack()), val!(10.0));
-      assert_eq!(capture3.value(fiber.stack()), val!(true));
-    }
-  }
-
-  #[test]
-  fn close_upvalues() {
-    let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
-
-    let mut fiber = FiberBuilder::<u8>::default()
-      .max_slots(4)
-      .build(&hooks)
-      .expect("Expected to build");
-
-    unsafe {
-      fiber.push(val!(10.0));
-      fiber.push(val!(hooks.manage_str("test")));
-
-      let capture1 = fiber.capture_upvalue(&hooks, 1);
-      let capture2 = fiber.capture_upvalue(&hooks, 2);
-
-      assert!(capture1.is_open());
-      assert!(capture2.is_open());
-
-      let fun = test_fun(&hooks, "next", "next module");
-      let closure = hooks.manage_obj(Closure::new(
-        fun,
-        vec![capture1, capture2].into_boxed_slice(),
-      ));
-
-      fiber.push(val!(closure));
-      fiber.push(val!(true));
-
-      fiber.pop_frame();
-
-      assert!(!capture1.is_open());
-      assert!(!capture2.is_open());
-
-      assert_eq!(capture1.value(fiber.stack()), val!(10.0));
-      assert_eq!(
-        capture2.value(fiber.stack()),
-        val!(hooks.manage_str("test"))
-      );
     }
   }
 }
