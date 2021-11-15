@@ -38,7 +38,7 @@ impl Closure {
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```
   pub fn new(fun: GcObj<Fun>, captures: Box<[GcObj<LyBox>]>) -> Self {
-    Closure { captures, fun }
+    Closure { fun, captures }
   }
 
   pub fn without_captures(fun: GcObj<Fun>) -> Self {

@@ -472,7 +472,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       _ => self.emit_byte(AlignedByteCode::DropN(dropped as u8), line),
     }
 
-    return drop_idx;
+    drop_idx
   }
 
   /// retrieve a named variable from either local or global scope
@@ -692,7 +692,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let symbol = table.get(name.str()).expect("Expected symbol.");
 
     self.locals.push(Local {
-      symbol: symbol,
+      symbol,
       depth: self.scope_depth,
     });
 
@@ -720,7 +720,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let symbol = table.get(name).expect("Expected symbol.");
 
     self.locals.push(Local {
-      symbol: symbol,
+      symbol,
       depth: self.scope_depth,
     });
   }
@@ -1322,7 +1322,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
       // assign $iter.current to loop variable
       let (loop_variable, loop_state) = self_
-        .resolve_local(&for_.item.str())
+        .resolve_local(for_.item.str())
         .expect("Loop variable was not defined.");
 
       self_.emit_local_get(iterator_state, iterator_variable, expr_line);
