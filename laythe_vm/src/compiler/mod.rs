@@ -566,21 +566,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     }
   }
 
-  fn symbol_state(&self, name: &str) -> SymbolState {
-    match self
-      .locals
-      .iter()
-      .rev()
-      .find(|local| local.symbol.name() == name)
-    {
-      Some(local) => Some(local.symbol.state()),
-      None => self
-        .global_table
-        .and_then(|table| table.get(name).map(|symbol| symbol.state())),
-    }
-    .expect("Expected symbol.")
-  }
-
   fn emit_local_get(&mut self, state: SymbolState, index: u8, end: u32) {
     let byte = match state {
       SymbolState::Initialized => AlignedByteCode::GetLocal(index),
@@ -671,10 +656,13 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// Define a variable
-  fn declare_variable(&mut self, name: &Token<'src>, offset: u32) {
+  fn declare_variable(&mut self, name: &Token<'src>, offset: u32) -> SymbolState {
     // if global exit
     if self.scope_depth == 1 {
-      return;
+      return self
+        .global_table
+        .and_then(|table| table.get(name.str()).map(|symbol| symbol.state()))
+        .expect("Expected global symbol");
     }
 
     if self.locals.len() == std::u8::MAX as usize {
@@ -699,10 +687,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     if let SymbolState::Captured = symbol.state() {
       self.emit_byte(AlignedByteCode::EmptyBox, offset);
     }
+
+    symbol.state()
   }
 
   /// declare variable only variable
-  fn declare_local_variable(&mut self, name: &str) {
+  fn declare_local_variable(&mut self, name: &str) -> SymbolState {
     assert!(self.scope_depth > 1);
 
     if self.locals.len() == std::u8::MAX as usize {
@@ -723,6 +713,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       symbol,
       depth: self.scope_depth,
     });
+
+    symbol.state()
   }
 
   // declare the script
@@ -837,12 +829,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Parse a variable from the provided token return it's new constant
   /// identifer if an identifer was identified
-  fn make_identifier(&mut self, name: &Token<'src>, offset: u32) -> u16 {
-    self.declare_variable(name, offset);
+  fn make_identifier(&mut self, name: &Token<'src>, offset: u32) -> (u16, SymbolState) {
+    let state = self.declare_variable(name, offset);
     if self.scope_depth > 1 {
-      return 0;
+      return (0, state);
     }
-    self.identifier_constant(name.str())
+    (self.identifier_constant(name.str()), state)
   }
 
   /// Generate a constant from the provided identifier token
@@ -1009,10 +1001,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn class(&mut self, class: &'a ast::Class<'src>) -> u16 {
     // declare the class by name
     let class_name = &class.name;
-    self.declare_variable(class_name, class.start());
+    let class_state = self.declare_variable(class_name, class.start());
 
     let class_constant = self.identifier_constant(class_name.str());
-    let class_state = self.symbol_state(class_name.str());
 
     self.emit_byte(AlignedByteCode::Class(class_constant), class_name.end());
     self.define_variable(class_constant, class_state, class_name.end());
@@ -1035,8 +1026,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       class.name.span()
     };
 
-    self.declare_local_variable(SUPER);
-    let super_state = self.symbol_state(SUPER);
+    let super_state = self.declare_local_variable(SUPER);
 
     // Load an explicit or implicit super class
     if let Some(super_class) = &class.super_class {
@@ -1128,12 +1118,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let (constant, fun_state) = fun
       .name
       .as_ref()
-      .map(|name| {
-        (
-          self.make_identifier(name, fun.end()),
-          self.symbol_state(name.str()),
-        )
-      })
+      .map(|name| self.make_identifier(name, fun.end()))
       .expect("Expected function name");
 
     self.function(fun, FunKind::Fun);
@@ -1144,9 +1129,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile a let binding
   fn let_(&mut self, let_: &'a ast::Let<'src>) -> u16 {
-    self.declare_variable(&let_.name, let_.end());
+    let var_state = self.declare_variable(&let_.name, let_.end());
     let variable = self.identifier_constant(let_.name.str());
-    let var_state = self.symbol_state(let_.name.str());
 
     match &let_.value {
       Some(v) => self.expr(v),
@@ -1174,11 +1158,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     match fun_kind {
       FunKind::Method | FunKind::Initializer => {
-        compiler.declare_local_variable(SELF);
-        let self_state = compiler.symbol_state(SELF);
+        let self_state = compiler.declare_local_variable(SELF);
         compiler.define_local_variable(SELF, self_state, fun.start());
       }
-      FunKind::Fun | FunKind::StaticMethod => compiler.declare_local_variable(UNINITIALIZED_VAR),
+      FunKind::Fun | FunKind::StaticMethod => {
+        compiler.declare_local_variable(UNINITIALIZED_VAR);
+      }
       _ => panic!("Did not expect script."),
     };
 
@@ -1237,24 +1222,25 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     match &import.stem {
       ast::ImportStem::None => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
-        let name = self.make_identifier(&import.path()[import.path().len() - 1], import.start());
+        let (name, _) =
+          self.make_identifier(&import.path()[import.path().len() - 1], import.start());
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
       }
       ast::ImportStem::Rename(rename) => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
-        let name = self.make_identifier(rename, import.start());
+        let (name, _) = self.make_identifier(rename, import.start());
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
       }
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
-          let symbol_slot = self.make_identifier(&symbol.symbol, import.start());
+          let (symbol_slot, _) = self.make_identifier(&symbol.symbol, import.start());
           self.emit_byte(
             AlignedByteCode::ImportSymbol((path, symbol_slot)),
             symbol.start(),
           );
 
           let name = match &symbol.rename {
-            Some(rename) => self.make_identifier(rename, import.start()),
+            Some(rename) => self.make_identifier(rename, import.start()).0,
             None => symbol_slot,
           };
 
@@ -1285,8 +1271,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self_.define_local_variable(ITER_VAR, SymbolState::Initialized, expr_line);
 
       let item_line = for_.item.end();
-      self_.declare_local_variable(for_.item.str());
-      let item_state = self_.symbol_state(for_.item.str());
+      let item_state = self_.declare_local_variable(for_.item.str());
 
       // initial fill iteration item with nil and define
       self_.emit_byte(AlignedByteCode::Nil, item_line);
@@ -2036,9 +2021,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Set the functions arity from the call signature
   fn call_sig(&mut self, call_sig: &'a ast::CallSignature<'src>) {
     for param in &call_sig.params {
-      self.declare_local_variable(param.name.str());
-      let param_state = self.symbol_state(param.name.str());
-
+      let param_state = self.declare_local_variable(param.name.str());
       self.define_local_variable(param.name.str(), param_state, param.name.end());
     }
 
