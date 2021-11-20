@@ -390,6 +390,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       Expr::Assign(assign) => self.assign(assign),
       Expr::Send(drain) => self.send(drain),
       Expr::AssignBinary(assign_binary) => self.assign_binary(assign_binary),
+      Expr::Ternary(ternary) => self.ternary(ternary),
       Expr::Binary(binary) => self.binary(binary),
       Expr::Unary(unary) => self.unary(unary),
       Expr::Atom(atom) => self.atom(atom),
@@ -497,28 +498,28 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     self.classes.pop();
   }
 
-  /// Compile a class declaration
+  /// Resolve a class declaration
   fn class_module(&mut self, class: &ast::Class<'src>) {
     // declare the class by name
     let name = &class.name;
     self.declare_variable_module(name);
   }
 
-  /// Compile a method
+  /// Resolve a method
   fn method(&mut self, method: &mut ast::Fun<'src>, fun_kind: FunKind) {
     self.class_info_mut().expect("Expected class info").fun_kind = Some(fun_kind);
 
     self.function(method, fun_kind);
   }
 
-  /// Compile a static method
+  /// Resolve a static method
   fn static_method(&mut self, static_method: &mut ast::Fun<'src>) {
     self.class_info_mut().expect("Expected class info").fun_kind = Some(FunKind::StaticMethod);
 
     self.function(static_method, FunKind::StaticMethod);
   }
 
-  /// Compile a plain function
+  /// Resolve a plain function
   fn fun(&mut self, fun: &mut ast::Fun<'src>) {
     let name = fun.name.as_ref().expect("Expected function name");
     self.declare_variable(name);
@@ -527,13 +528,13 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     self.function(fun, FunKind::Fun);
   }
 
-  /// Compile a plain function
+  /// Resolve a plain function
   fn fun_module(&mut self, fun: &ast::Fun<'src>) {
     let name = fun.name.as_ref().expect("Expected function name");
     self.declare_variable_module(name);
   }
 
-  /// Compile a let binding
+  /// Resolve a let binding
   fn let_(&mut self, let_: &mut ast::Let<'src>) {
     self.declare_variable(&let_.name);
 
@@ -544,12 +545,12 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     self.define_variable(&let_.name);
   }
 
-  /// Compile a let binding
+  /// Resolve a let binding
   fn let_module(&mut self, let_: &ast::Let<'src>) {
     self.declare_variable_module(&let_.name);
   }
 
-  /// Compile a function objects that presents, functions, methods
+  /// Resolve a function objects that presents, functions, methods
   /// and lambdas
   fn function(&mut self, fun: &mut ast::Fun<'src>, fun_kind: FunKind) {
     self.fun_depth += 1;
@@ -622,7 +623,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     }
   }
 
-  /// Compile a for loop
+  /// Resolve a for loop
   fn for_(&mut self, for_: &mut ast::For<'src>) {
     // new scope for full loop including loop variables
     for_.symbols = self.scope(|self_| {
@@ -647,13 +648,13 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     });
   }
 
-  /// Compile a while loop
+  /// Resolve a while loop
   fn while_(&mut self, while_: &mut ast::While<'src>) {
     self.expr(&mut while_.cond);
     while_.body.symbols = self.scope(|self_| self_.block(&mut while_.body));
   }
 
-  /// Compile a if statement
+  /// Resolve a if statement
   fn if_(&mut self, if_: &mut ast::If<'src>) {
     self.expr(&mut if_.cond);
     if_.body.symbols = self.scope(|self_| self_.block(&mut if_.body));
@@ -670,32 +671,32 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     }
   }
 
-  /// Compile a launch statement
+  /// Resolve a launch statement
   fn launch(&mut self, launch: &mut ast::Launch<'src>) {
     self.expr(&mut launch.closure);
   }
 
-  /// Compile a return statement
+  /// Resolve a return statement
   fn return_(&mut self, return_: &mut ast::Return<'src>) {
     if let Some(v) = &mut return_.value {
       self.expr(v);
     }
   }
 
-  /// Compile a try catch block
+  /// Resolve a try catch block
   fn try_(&mut self, try_: &mut ast::Try<'src>) {
     try_.block.symbols = self.scope(|self_| self_.block(&mut try_.block));
     try_.catch.symbols = self.scope(|self_| self_.block(&mut try_.catch));
   }
 
-  /// Compile a block
+  /// Resolve a block
   fn block(&mut self, block: &mut ast::Block<'src>) {
     for decl in &mut block.decls {
       self.decl(decl);
     }
   }
 
-  /// Compile an assignment expression
+  /// Resolve an assignment expression
   fn assign(&mut self, assign: &mut ast::Assign<'src>) {
     self.expr(&mut assign.lhs);
     self.expr(&mut assign.rhs);
@@ -706,36 +707,43 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     self.expr(&mut send.rhs);
   }
 
-  /// Compile a binary assignment expression
+  /// Resolve a binary assignment expression
   fn assign_binary(&mut self, assign_binary: &mut ast::AssignBinary<'src>) {
     self.expr(&mut assign_binary.lhs);
     self.expr(&mut assign_binary.rhs);
   }
 
-  /// Compile a binary expression
+  /// Resolve a binary expression
+  fn ternary(&mut self, ternary: &mut ast::Ternary<'src>) {
+    self.expr(&mut ternary.cond);
+    self.expr(&mut ternary.then);
+    self.expr(&mut ternary.else_);
+  }
+
+  /// Resolve a binary expression
   fn binary(&mut self, binary: &mut ast::Binary<'src>) {
     self.expr(&mut binary.lhs);
     self.expr(&mut binary.rhs);
   }
 
-  /// Compile a unary expression
+  /// Resolve a unary expression
   fn unary(&mut self, unary: &mut ast::Unary<'src>) {
     self.expr(&mut unary.expr);
   }
 
-  /// Compile a call expression
+  /// Resolve a call expression
   fn call(&mut self, call: &mut ast::Call<'src>) {
     for expr in &mut call.args {
       self.expr(expr);
     }
   }
 
-  /// Compile an indexing expression
+  /// Resolve an indexing expression
   fn index(&mut self, index: &mut ast::Index<'src>) {
     self.expr(&mut index.index);
   }
 
-  /// Compile an atom expression
+  /// Resolve an atom expression
   fn atom(&mut self, atom: &mut ast::Atom<'src>) {
     match &mut atom.primary {
       Primary::AssignBlock(block) => self.assign_block(block),
@@ -775,19 +783,19 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     }
   }
 
-  /// Compile an assignment block
+  /// Resolve an assignment block
   fn assign_block(&mut self, block: &mut ast::Block<'src>) {
     block.symbols = self.scope(|self_| self_.block(block));
   }
 
-  /// Compile a channel declaration
+  /// Resolve a channel declaration
   fn channel(&mut self, channel: &mut ast::Channel<'src>) {
     if let Some(expr) = &mut channel.expr {
       self.expr(expr);
     }
   }
 
-  /// Compile a string token
+  /// Resolve a string token
   fn interpolation(&mut self, interpolation: &mut ast::Interpolation<'src>) {
     for segment in interpolation.segments.iter_mut() {
       if let ast::StringSegments::Expr(expr) = segment {
@@ -796,7 +804,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     }
   }
 
-  /// Compile a identifer token
+  /// Resolve a identifer token
   fn identifier(&mut self, token: &Token<'src>) {
     self.resolve_variable(token);
   }
@@ -843,19 +851,19 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     self.resolve_variable(&super_.super_);
   }
 
-  /// Compile a lambda expression
+  /// Resolve a lambda expression
   fn lambda(&mut self, fun: &mut ast::Fun<'src>) {
     self.function(fun, FunKind::Fun);
   }
 
-  /// Compile a list literal
+  /// Resolve a list literal
   fn list(&mut self, list: &mut ast::List<'src>) {
     for item in list.items.iter_mut() {
       self.expr(item);
     }
   }
 
-  /// Compile a map literal
+  /// Resolve a map literal
   fn map(&mut self, map: &mut ast::Map<'src>) {
     for (key, value) in map.entries.iter_mut() {
       self.expr(key);

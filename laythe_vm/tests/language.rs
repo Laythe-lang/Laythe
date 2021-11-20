@@ -786,10 +786,12 @@ fn list() -> Result<(), std::io::Error> {
 fn logical_operator() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
-      "language/logical_operator/and_truth.lay",
       "language/logical_operator/and.lay",
-      "language/logical_operator/or_truth.lay",
+      "language/logical_operator/and_truth.lay",
+      "language/logical_operator/nested_ternary.lay",
       "language/logical_operator/or.lay",
+      "language/logical_operator/or_truth.lay",
+      "language/logical_operator/ternary.lay",
     ],
     ExecuteResult::Ok(0),
   )?;

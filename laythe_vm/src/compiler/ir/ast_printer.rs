@@ -72,6 +72,7 @@ impl<'a> Visitor<'a> for AstPrint {
       Expr::Assign(assign) => self.visit_assign(assign),
       Expr::Send(drain) => self.visit_drain(drain),
       Expr::AssignBinary(assign_binary) => self.visit_assign_binary(assign_binary),
+      Expr::Ternary(ternary) => self.visit_ternary(ternary),
       Expr::Binary(binary) => self.visit_binary(binary),
       Expr::Unary(unary) => self.visit_unary(unary),
       Expr::Atom(atom) => self.visit_atom(atom),
@@ -420,7 +421,13 @@ impl<'a> Visitor<'a> for AstPrint {
     self.buffer.push(' ');
     self.visit_expr(&assign_binary.rhs);
   }
-
+  fn visit_ternary(&mut self, ternary: &Ternary) -> Self::Result {
+    self.visit_expr(&ternary.cond);
+    self.buffer.push_str(" ? ");
+    self.visit_expr(&ternary.then);
+    self.buffer.push_str(" : ");
+    self.visit_expr(&ternary.else_);
+  }
   fn visit_binary(&mut self, binary: &Binary) -> Self::Result {
     self.visit_expr(&binary.lhs);
 

@@ -112,6 +112,7 @@ impl<'a> Scanner<'a> {
       '[' => self.make_token_source(TokenKind::LeftBracket),
       ']' => self.make_token_source(TokenKind::RightBracket),
       ':' => self.make_token_source(TokenKind::Colon),
+      '?' => self.make_token_source(TokenKind::QuestionMark),
       ';' => self.make_token_source(TokenKind::Semicolon),
       ',' => self.make_token_source(TokenKind::Comma),
       '.' => self.make_token_source(TokenKind::Dot),
@@ -690,6 +691,10 @@ mod test {
     map.insert(
       TokenKind::MinusEqual,
       TokenGen::Symbol(Box::new(|| "-=".to_string())),
+    );
+    map.insert(
+      TokenKind::QuestionMark,
+      TokenGen::Symbol(Box::new(|| "?".to_string())),
     );
     map.insert(
       TokenKind::Amp,

@@ -1,0 +1,5 @@
+assertEq(true ? 1 : 2, 1);
+assertEq(false ? 1 : 2, 2);
+assertEq(nil ? 1 : 2, 2);
+
+assertEq((!"example" ? || 10 : || "stuff")(), "stuff");

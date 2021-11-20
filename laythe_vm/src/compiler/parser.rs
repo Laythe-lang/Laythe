@@ -202,7 +202,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::While
         | TokenKind::Return => {
           break;
-        },
+        }
         _ => (),
       }
 
@@ -285,7 +285,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
-            },
+            }
             _ => {
               let (fun_kind, method) = self.method(name, false)?;
               match fun_kind {
@@ -293,9 +293,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 FunKind::Initializer => init = Some(method),
                 _ => unreachable!(),
               }
-            },
+            }
           }
-        },
+        }
 
         // static we know must be a method
         TokenKind::Static => {
@@ -307,7 +307,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let name = self.previous.clone();
           let (_, method) = self.method(name, true)?;
           static_methods.push(method);
-        },
+        }
         _ => return self.error_current("Expected method or member declaration inside of class."),
       }
     }
@@ -411,7 +411,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           members.push(TypeMember::new(name, type_));
-        },
+        }
         TokenKind::Less | TokenKind::LeftParen => {
           self.advance()?;
           let type_params = if self.match_kind(TokenKind::Less)? {
@@ -425,7 +425,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           methods.push(TypeMethod::new(name, call_sig));
-        },
+        }
         _ => self.error_at(
           self.current.clone(),
           "Expected member or method declaration inside trait.",
@@ -559,7 +559,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         Some(Trailer::Call(_)) => {
           self.consume_basic(TokenKind::Semicolon, "Expected ';' launch call.")?;
           Ok(Stmt::Launch(self.node(Launch::new(closure))))
-        },
+        }
         _ => self.error("Expected call following 'launch'."),
       }
     } else {
@@ -752,6 +752,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     match action {
       Infix::And => self.and(lhs),
       Infix::Binary => self.binary(lhs),
+      Infix::Ternary => self.ternary(lhs),
       Infix::Call => self.call(lhs),
       Infix::Index => self.index(lhs, can_assign),
       Infix::Dot => self.dot(lhs, can_assign),
@@ -812,6 +813,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     self
       .consume(TokenKind::RightBrace, "Expected '}' after block.")
       .map(|()| Block::new(Span { start, end }, self.table(), decls))
+  }
+
+  fn ternary(&mut self, cond: Expr<'a>) -> ParseResult<Expr<'a>, FileId> {
+    let then = self.expr()?;
+    self.consume_basic(TokenKind::Colon, "Expected ':' after return value.")?;
+    let else_ = self.expr()?;
+
+    Ok(Expr::Ternary(self.node(Ternary::new(cond, then, else_))))
   }
 
   /// Parse a binary expression
@@ -1077,14 +1086,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         TokenKind::StringSegment => {
           self.advance()?;
           segments.push(StringSegments::Token(self.previous.clone()))
-        },
+        }
         TokenKind::StringEnd => {
           break;
-        },
+        }
         _ => {
           let expr = self.expr()?;
           segments.push(StringSegments::Expr(self.node(expr)))
-        },
+        }
       }
     }
     self.consume(TokenKind::StringEnd, "Unterminated interpolated string.")?;
@@ -1351,7 +1360,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TypePrefix::Fun => {
         let call_sig = self.call_signature(TokenKind::RightParen, self.vec())?;
         Ok(Type::Fun(self.node(call_sig)))
-      },
+      }
       TypePrefix::Literal => self.type_literal(),
     }
   }
@@ -1426,11 +1435,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
         Ok(Type::Ref(type_ref))
-      },
+      }
       _ => {
         // TODO: maybe
         self.error("Can only apply type argument to a non primitive type identifier.")
-      },
+      }
     }
   }
 
@@ -1538,6 +1547,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 enum Precedence {
   None,
   Assignment,
+  Ternary,
   Or,
   And,
   Equality,
@@ -1553,7 +1563,8 @@ impl Precedence {
   fn higher(&self) -> Precedence {
     match self {
       Precedence::None => Precedence::Assignment,
-      Precedence::Assignment => Precedence::Or,
+      Precedence::Assignment => Precedence::Ternary,
+      Precedence::Ternary => Precedence::Or,
       Precedence::Or => Precedence::And,
       Precedence::And => Precedence::Equality,
       Precedence::Equality => Precedence::Comparison,
@@ -1610,6 +1621,7 @@ enum Prefix {
 enum Infix {
   And,
   Binary,
+  Ternary,
   Call,
   Dot,
   Index,
@@ -1630,7 +1642,7 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 66;
+const TOKEN_VARIANTS: usize = 67;
 
 /// The rules for infix and prefix operators
 const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
@@ -1654,6 +1666,8 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   // MINUS
   Rule::new(None, Precedence::None),
   // PLUS
+  Rule::new(None, Precedence::None),
+  // QUESTION_MARK
   Rule::new(Some(Prefix::AssignBlock), Precedence::None),
   // COLON
   Rule::new(None, Precedence::None),
@@ -1790,6 +1804,8 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   // MINUS
   Rule::new(Some(Infix::Binary), Precedence::Term),
   // PLUS
+  Rule::new(Some(Infix::Ternary), Precedence::Ternary),
+  // QUESTION_MARK
   Rule::new(None, Precedence::None),
   // COLON
   Rule::new(None, Precedence::None),
@@ -1929,6 +1945,8 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(None, TypePrecedence::None),
   // COLON
   Rule::new(None, TypePrecedence::None),
+  // COLON
+  Rule::new(None, TypePrecedence::None),
   // SEMICOLON
   Rule::new(None, TypePrecedence::None),
   // PIPE
@@ -2060,6 +2078,8 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   // DOT
   Rule::new(None, TypePrecedence::None),
   // MINUS
+  Rule::new(None, TypePrecedence::None),
+  // COLON
   Rule::new(None, TypePrecedence::None),
   // PLUS
   Rule::new(None, TypePrecedence::None),
@@ -2823,7 +2843,7 @@ mod test {
 
   #[test]
   fn expr_stmt() {
-    for expr in EXAMPLE_EXPR.iter() {
+    for expr in EXAMPLE_EXPR.iter().chain(EXAMPLE_ATOMS.iter()).chain(EXAMPLE_PRIMARIES.iter()) {
       let example = format!("{};", expr);
       test(&example);
     }
@@ -2842,9 +2862,21 @@ mod test {
   }
 
   #[test]
+  fn ternary() {
+    for cond in EXAMPLE_EXPR.iter().chain(EXAMPLE_ATOMS.iter()).chain(EXAMPLE_PRIMARIES.iter()) {
+      for then in EXAMPLE_EXPR.iter().chain(EXAMPLE_ATOMS.iter()).chain(EXAMPLE_PRIMARIES.iter()) {
+        for else_ in EXAMPLE_EXPR.iter().chain(EXAMPLE_ATOMS.iter()).chain(EXAMPLE_PRIMARIES.iter()) {
+          let example = format!("{}?{}:{};", cond, then, else_);
+          test(&example);
+        }
+      }
+    }
+  }
+
+  #[test]
   fn binary() {
-    for p1 in EXAMPLE_PRIMARIES.iter() {
-      for p2 in EXAMPLE_PRIMARIES.iter() {
+    for p1 in EXAMPLE_ATOMS.iter().chain(EXAMPLE_PRIMARIES.iter()) {
+      for p2 in EXAMPLE_ATOMS.iter().chain(EXAMPLE_PRIMARIES.iter()) {
         for op in BINARY_OPS.iter() {
           let example = format!("{}{}{};", p1, op, p2);
           test(&example);

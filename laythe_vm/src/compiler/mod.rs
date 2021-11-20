@@ -938,6 +938,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Expr::Assign(assign) => self.assign(assign),
       Expr::Send(drain) => self.send(drain),
       Expr::AssignBinary(assign_binary) => self.assign_binary(assign_binary),
+      Expr::Ternary(ternary) => self.ternary(ternary),
       Expr::Binary(binary) => self.binary(binary),
       Expr::Unary(unary) => self.unary(unary),
       Expr::Atom(atom) => self.atom(atom),
@@ -1692,6 +1693,22 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
     }
+  }
+
+  /// Compile a ternary expression
+  fn ternary(&mut self, ternary: &'a ast::Ternary<'src>) {
+    self.expr(&ternary.cond);
+
+    // parse then branch
+    let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), ternary.cond.end());
+    self.expr(&ternary.then);
+
+    // emit else jump
+    let else_jump = self.emit_jump(AlignedByteCode::Jump(0), ternary.then.end());
+    self.patch_jump(then_jump);
+
+    self.expr(&ternary.else_);
+    self.patch_jump(else_jump);
   }
 
   /// Compile a binary expression
@@ -4334,6 +4351,30 @@ mod test {
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Negate,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn ternary() {
+    let example = "10 > 5 ? \"example\" : nil;";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+    assert_simple_bytecode(
+      &fun,
+      3,
+      &vec![
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Greater,
+        AlignedByteCode::JumpIfFalse(5),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Jump(1),
+        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
