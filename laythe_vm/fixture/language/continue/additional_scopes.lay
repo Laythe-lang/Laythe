@@ -1,13 +1,13 @@
 for i in 10.times() {
-  :{
-    :{
-      :{
-        :{
+  if true {
+    if true {
+      if true {
+        if true {
           continue;
-        };
-      };
-    };
-  };
+        }
+      }
+    }
+  }
 
   assert(false);
 }
@@ -17,15 +17,15 @@ assert(true);
 let i = 0;
 while i < 10 {
   i = i + 1;
-  :{
-    :{
-      :{
-        :{
+  if true {
+    if true {
+      if true {
+        if true {
           continue;
-        };
-      };
-    };
-  };
+        }
+      }
+    }
+  }
 
   assert(false);
 }

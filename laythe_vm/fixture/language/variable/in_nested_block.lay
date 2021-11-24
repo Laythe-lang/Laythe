@@ -1,6 +1,6 @@
-:{
+if true {
   let a = "outer";
-  :{
+  if true {
     assertEq(a, "outer"); // expect: outer
-  };
-};
+  }
+}

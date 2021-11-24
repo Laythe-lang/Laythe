@@ -1,8 +1,8 @@
-:{
+if true {
   let a = "local";
-  :{
+  if true {
     let a = "shadow";
     assertEq(a, "shadow"); // expect: shadow
-  };
+  }
   assertEq(a, "local"); // expect: local
-};
+}

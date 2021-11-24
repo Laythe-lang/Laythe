@@ -1,13 +1,13 @@
 for i in 100.times() {
-  :{
-    :{
-      :{
-        :{
+  if true {
+    if true {
+      if true {
+        if true {
           break;
-        };
-      };
-    };
-  };
+        }
+      }
+    }
+  }
 
   assert(false);
 }
@@ -15,15 +15,15 @@ for i in 100.times() {
 assert(true);
 
 while true {
-  :{
-    :{
-      :{
-        :{
+  if true {
+    if true {
+      if true {
+        if true {
           break;
-        };
-      };
-    };
-  };
+        }
+      }
+    }
+  }
 
   assert(false);
 }

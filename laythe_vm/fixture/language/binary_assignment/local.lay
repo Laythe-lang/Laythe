@@ -1,4 +1,4 @@
-:{
+if true {
   let a = "before";
   assertEq(a, "before"); // expect: before
 
@@ -7,4 +7,4 @@
 
   assertEq(a += "arg", "beforeafterarg"); // expect: arg
   assertEq(a, "beforeafterarg"); // expect: arg
-};
+}

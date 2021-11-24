@@ -147,9 +147,11 @@ impl Trace for LoopInfo {
   fn trace_debug(&self, _log: &mut dyn Write) {}
 }
 
+#[derive(Debug)]
 enum ScopeExit {
   Normal,
   Early,
+  Implicit,
 }
 
 pub struct Compiler<'a, 'src, FileId> {
@@ -217,9 +219,6 @@ pub struct Compiler<'a, 'src, FileId> {
   /// captures in this function
   captures: Vec<CaptureIndex>,
 
-  /// temporary tokens
-  temp_tokens: Vec<Gc<Token<'static>>>,
-
   /// A set of constants used in the current function
   constants: Map<Value, usize>,
 }
@@ -264,7 +263,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   ) -> Self {
     gc.push_root(module);
     let fun_name = gc.manage_str(SCRIPT, root_trace);
-    let fun = FunBuilder::new(fun_name, module);
+    let fun = FunBuilder::new(fun_name, module, Arity::default());
     gc.pop_roots(1);
 
     Self {
@@ -289,7 +288,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       global_table: None,
       locals: vec![],
       captures: vec![],
-      temp_tokens: vec![],
       constants: object::Map::default(),
     }
   }
@@ -320,10 +318,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   // create a child compiler to compile a function inside the enclosing module
   fn child<'b>(
     name: GcStr,
+    arity: Arity,
     fun_kind: FunKind,
     enclosing: &mut Compiler<'b, 'src, FileId>,
   ) -> Compiler<'b, 'src, FileId> {
-    let fun = FunBuilder::new(name, enclosing.module);
+    let fun = FunBuilder::new(name, enclosing.module, arity);
 
     let gc = RefCell::new(Allocator::default());
     gc.swap(&enclosing.gc);
@@ -356,7 +355,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       enclosing: Some(NonNull::from(enclosing)),
       local_tables: vec![],
       captures: vec![],
-      temp_tokens: vec![],
       constants: object::Map::default(),
     }
   }
@@ -374,8 +372,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     line: u32,
     exit: ScopeExit,
   ) -> (Fun, Vec<Diagnostic<FileId>>, Vec<CaptureIndex>, Allocator) {
-    if let ScopeExit::Normal = exit {
-      self.emit_return(line);
+    match exit {
+      ScopeExit::Normal => self.emit_return(line),
+      ScopeExit::Implicit => self.emit_byte(AlignedByteCode::Return, line),
+      ScopeExit::Early => (),
     }
 
     let fun = self.fun.build();
@@ -420,17 +420,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// scope the provide closure
-  fn scope<T>(
-    &mut self,
-    end_line: u32,
-    table: &'a SymbolTable<'src>,
-    cb: impl FnOnce(&mut Self) -> T,
-  ) -> T {
+  fn scope(&mut self, end_line: u32, table: &'a SymbolTable<'src>, cb: impl FnOnce(&mut Self)) {
     self.begin_scope(table);
 
-    let result = cb(self);
+    cb(self);
     self.end_scope(end_line);
-    result
   }
 
   /// Increase the scope depth by 1
@@ -917,8 +911,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       }
       Stmt::ImplicitReturn(expr) => {
         self.expr(expr);
-        self.emit_byte(AlignedByteCode::Return, expr.end());
-        self.exit_scope = ScopeExit::Early
+        self.exit_scope = ScopeExit::Implicit
       }
       Stmt::Import(import) => self.import(import),
       Stmt::For(for_) => self.for_(for_),
@@ -948,7 +941,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Compile a the base of an expression
   fn primary(&mut self, primary: &'a Primary<'src>, trailers: &'a [Trailer<'src>]) -> bool {
     match primary {
-      Primary::AssignBlock(block) => self.assign_block(block),
       Primary::Channel(token) => self.channel(token),
       Primary::True(token) => self.true_(token),
       Primary::False(token) => self.false_(token),
@@ -1152,8 +1144,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .map(|name| self.gc.borrow_mut().manage_str(name.str(), self))
       .unwrap_or_else(|| self.gc.borrow_mut().manage_str("lambda", self));
 
+    let arity = Arity::Fixed(fun.call_sig.params.len() as u8);
+
     // create a new child compiler for this function
-    let mut compiler = Compiler::child(name, fun_kind, self);
+    let mut compiler = Compiler::child(name, arity, fun_kind, self);
 
     compiler.begin_scope(&fun.symbols);
 
@@ -1318,7 +1312,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
       // loop body
       self_.scope(for_.body.end(), &for_.body.symbols, |self_| {
-        self_.block(&for_.body)
+        self_.block(&for_.body);
       });
       self_.emit_loop(loop_start, for_.end());
 
@@ -1353,7 +1347,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), while_.cond.end());
 
     self.scope(while_.end(), &while_.body.symbols, |self_| {
-      self_.block(&while_.body)
+      self_.block(&while_.body);
     });
 
     self.emit_loop(loop_start, while_.end());
@@ -1375,7 +1369,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), if_.cond.end());
 
     self.scope(if_.body.end(), &if_.body.symbols, |self_| {
-      self_.block(&if_.body)
+      self_.block(&if_.body);
     });
 
     match &if_.else_ {
@@ -1461,14 +1455,14 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let start = self.current_chunk().instructions().len();
 
     self.scope(try_.block.end(), &try_.block.symbols, |self_| {
-      self_.block(&try_.block)
+      self_.block(&try_.block);
     });
 
     let catch_jump = self.emit_jump(AlignedByteCode::Jump(0), try_.block.end());
     let end = self.current_chunk().instructions().len();
 
     self.scope(try_.catch.end(), &try_.catch.symbols, |self_| {
-      self_.block(&try_.catch)
+      self_.block(&try_.catch);
     });
 
     self.patch_jump(catch_jump);
@@ -1831,15 +1825,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     }
   }
 
-  /// Compile an assignment block
-  fn assign_block(&mut self, block: &'a ast::Block<'src>) -> bool {
-    self.scope(block.end(), &block.symbols, |self_| {
-      self_.block(block);
-    });
-    self.emit_byte(AlignedByteCode::Nil, block.end());
-    false
-  }
-
   /// Compile a channel declaration
   fn channel(&mut self, channel: &'a ast::Channel<'src>) -> bool {
     match &channel.expr {
@@ -2041,10 +2026,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       let param_state = self.declare_local_variable(param.name.str());
       self.define_local_variable(param.name.str(), param_state, param.name.end());
     }
-
-    self
-      .fun
-      .set_arity(Arity::Fixed(call_sig.params.len() as u8))
   }
 
   /// Do nothing if we encounter an error token
@@ -2077,7 +2058,6 @@ impl<'a, 'src: 'a, FileId> TraceRoot for Compiler<'a, 'src, FileId> {
     self.constants.keys().for_each(|key| {
       key.trace();
     });
-    self.temp_tokens.iter().for_each(|token| token.trace());
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
@@ -2099,10 +2079,6 @@ impl<'a, 'src: 'a, FileId> TraceRoot for Compiler<'a, 'src, FileId> {
     self.constants.keys().for_each(|key| {
       key.trace_debug(log);
     });
-    self
-      .temp_tokens
-      .iter()
-      .for_each(|token| token.trace_debug(log));
   }
 
   fn can_collect(&self) -> bool {
@@ -2159,11 +2135,8 @@ mod test {
   }
 
   pub fn test_fun(hooks: &GcHooks, module: Gc<Module>) -> GcObj<Fun> {
-    let mut fun_builder = FunBuilder::new(hooks.manage_str("print"), module);
-
-    fun_builder.set_arity(Arity::Variadic(0));
-    fun_builder.write_instruction(AlignedByteCode::Return, 0);
-    hooks.manage_obj(fun_builder.build())
+    let fun = Fun::stub(hooks.manage_str("print"), module, AlignedByteCode::Return);
+    hooks.manage_obj(fun)
   }
 
   fn dummy_module(hooks: &GcHooks) -> Gc<Module> {
@@ -3982,7 +3955,7 @@ mod test {
 
   #[test]
   fn declare_local() {
-    let example = ":{ let x = 10; };";
+    let example = "if true { let x = 10; }";
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
@@ -3990,9 +3963,9 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(3),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -4002,7 +3975,7 @@ mod test {
 
   #[test]
   fn op_get_local() {
-    let example = ":{ let x = 10; print(x); };";
+    let example = "if true { let x = 10; print(x); }";
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
@@ -4010,13 +3983,13 @@ mod test {
       &fun,
       4,
       &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(11),
         AlignedByteCode::Constant(1),
         AlignedByteCode::GetGlobal(2),
         AlignedByteCode::GetLocal(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -4026,7 +3999,7 @@ mod test {
 
   #[test]
   fn op_set_local() {
-    let example = ":{ let x = 10; x = 5; };";
+    let example = "if true { let x = 10; x = 5; }";
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
@@ -4035,12 +4008,12 @@ mod test {
       &fun,
       3,
       &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(8),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::SetLocal(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,

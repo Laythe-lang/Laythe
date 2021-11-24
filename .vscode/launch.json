@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "laythe_vm/fixture/language/limit/too_many_locals.lay"
+        "test.lay"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}"

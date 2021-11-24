@@ -50,11 +50,11 @@ impl<'a> Visitor<'a> for AstPrint {
         self.pad();
         self.visit_expr(expr);
         self.buffer.push(';');
-      },
+      }
       Stmt::ImplicitReturn(expr) => {
         self.pad();
         self.visit_expr(expr);
-      },
+      }
       Stmt::Import(import) => self.visit_import(import),
       Stmt::For(for_) => self.visit_for(for_),
       Stmt::If(if_) => self.visit_if(if_),
@@ -81,7 +81,6 @@ impl<'a> Visitor<'a> for AstPrint {
 
   fn visit_primary(&mut self, primary: &Primary) -> Self::Result {
     match primary {
-      Primary::AssignBlock(block) => self.visit_assign_block(block),
       Primary::Channel(token) => self.visit_channel(token),
       Primary::True(token) => self.visit_true(token),
       Primary::False(token) => self.visit_false(token),
@@ -91,7 +90,7 @@ impl<'a> Visitor<'a> for AstPrint {
         self.buffer.push('(');
         self.visit_expr(expr);
         self.buffer.push(')');
-      },
+      }
       Primary::String(token) => self.visit_string(token),
       Primary::Interpolation(string_interp) => self.visit_interpolation(string_interp),
       Primary::Ident(token) => self.visit_ident(token),
@@ -170,7 +169,7 @@ impl<'a> Visitor<'a> for AstPrint {
     match &method.name {
       Some(name) => {
         self.buffer.push_str(&name.str());
-      },
+      }
       None => unreachable!(),
     }
 
@@ -202,7 +201,7 @@ impl<'a> Visitor<'a> for AstPrint {
       Some(name) => {
         self.buffer.push_str("static ");
         self.buffer.push_str(&name.str());
-      },
+      }
       None => unreachable!(),
     }
 
@@ -234,7 +233,7 @@ impl<'a> Visitor<'a> for AstPrint {
       Some(name) => {
         self.buffer.push_str("fn ");
         self.buffer.push_str(&name.str());
-      },
+      }
       None => self.buffer.push_str("fn"),
     }
 
@@ -261,7 +260,7 @@ impl<'a> Visitor<'a> for AstPrint {
         self.buffer.push_str(" = ");
         self.visit_expr(&v);
         self.buffer.push(';');
-      },
+      }
       None => self.buffer.push(';'),
     }
   }
@@ -276,7 +275,7 @@ impl<'a> Visitor<'a> for AstPrint {
           self.buffer.push('.');
         }
         self.buffer.push_str(last.str());
-      },
+      }
       None => self.buffer.push_str(import.path[0].str()),
     }
 
@@ -290,11 +289,11 @@ impl<'a> Visitor<'a> for AstPrint {
     }
 
     match &import.stem {
-      ImportStem::None => {},
+      ImportStem::None => {}
       ImportStem::Rename(rename) => {
         self.buffer.push_str(" as ");
         self.buffer.push_str(rename.str());
-      },
+      }
       ImportStem::Symbols(symbols) => {
         self.buffer.push('{');
         match symbols.split_last() {
@@ -305,12 +304,12 @@ impl<'a> Visitor<'a> for AstPrint {
             }
 
             visit_rename(self, last);
-          },
+          }
           None => visit_rename(self, &symbols[0]),
         }
 
         self.buffer.push('}');
-      },
+      }
     }
 
     self.buffer.push_str(";");
@@ -361,7 +360,7 @@ impl<'a> Visitor<'a> for AstPrint {
         self.buffer.push_str("return ");
         self.visit_expr(&v);
         self.buffer.push(';');
-      },
+      }
       None => self.buffer.push_str("return;"),
     }
   }
@@ -516,10 +515,6 @@ impl<'a> Visitor<'a> for AstPrint {
       }
     }
   }
-  fn visit_assign_block(&mut self, block: &Block) -> Self::Result {
-    self.buffer.push(':');
-    self.visit_block(block);
-  }
   fn visit_true(&mut self, _: &Token) -> Self::Result {
     self.buffer.push_str("true");
   }
@@ -555,7 +550,7 @@ impl<'a> Visitor<'a> for AstPrint {
           self.buffer.push_str("${");
           self.buffer.push_str(&segment.str());
           self.buffer.push('}');
-        },
+        }
         StringSegments::Expr(expr) => self.visit_expr(&expr),
       }
     }

@@ -1,4 +1,4 @@
-:{
+if true {
   let i = "before";
 
   for i in [0] {
@@ -13,9 +13,9 @@
     let i = -1;
     assertEq(i, -1); // expect: -1
   }
-};
+}
 
-:{
+if true {
   // New variable shadows outer variable.
   for i in [0] {}
 
@@ -27,4 +27,4 @@
   for i in [0] {
     assertEq(i, 0); // expect: 0
   }
-};
+}

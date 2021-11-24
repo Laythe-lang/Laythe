@@ -146,22 +146,19 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_name = ClosureLen::native(&hooks.as_gc());
 
-      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
-      builder.set_arity(Arity::Fixed(4));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(4));
       let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 4.0);
 
-      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
-      builder.set_arity(Arity::Default(2, 2));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
       let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 2.0);
 
-      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
-      builder.set_arity(Arity::Variadic(5));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Variadic(5));
       let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
@@ -195,8 +192,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_call = ClosureCall::native(&hooks.as_gc());
 
-      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
-      builder.set_arity(Arity::Fixed(1));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
 
       let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
 

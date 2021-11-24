@@ -16,7 +16,7 @@ use laythe_core::{
   memory::Allocator,
   module::{Import, Module, Package},
   object::{
-    Channel, Class, Closure, Fiber, Fun, FunBuilder, Instance, List, LyBox, Map, Method, Native,
+    Channel, Class, Closure, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
     NativeMeta, ObjectKind, ReceiveResult, SendResult,
   },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
@@ -145,10 +145,13 @@ impl Vm {
     let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
     let global = std_lib.root_module();
 
-    let mut builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
-    builder.write_instruction(AlignedByteCode::Nil, 0);
+    let current_fun = Fun::stub(
+      hooks.manage_str(PLACEHOLDER_NAME),
+      global,
+      AlignedByteCode::Nil,
+    );
 
-    let current_fun = hooks.manage_obj(builder.build());
+    let current_fun = hooks.manage_obj(current_fun);
     let closure = hooks.manage_obj(Closure::without_captures(current_fun));
     let fiber =
       hooks.manage_obj(Fiber::new(closure).expect("Unable to generate placeholder fiber"));
@@ -156,10 +159,8 @@ impl Vm {
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
-    native_builder.write_instruction(AlignedByteCode::Nil, 0);
-
-    let native_fun_stub = hooks.manage_obj(native_builder.build());
+    let native_fun_stub = Fun::stub(hooks.manage_str("native"), global, AlignedByteCode::Nil);
+    let native_fun_stub = hooks.manage_obj(native_fun_stub);
 
     let gc = RefCell::new(no_gc_context.done());
     let inline_cache: Vec<InlineCache> = (0..emitter.id_count())
@@ -484,6 +485,7 @@ impl Vm {
           ByteCode::Export => self.op_export(),
           ByteCode::Drop => self.op_drop(),
           ByteCode::DropN => self.op_drop_n(),
+          ByteCode::BlockReturn => self.op_block_return(),
           ByteCode::Dup => self.op_dup(),
           ByteCode::Nil => self.op_literal(VALUE_NIL),
           ByteCode::True => self.op_literal(val!(true)),
@@ -658,6 +660,15 @@ impl Vm {
   unsafe fn op_drop_n(&mut self) -> Signal {
     let count = self.read_byte() as usize;
     self.fiber.drop_n(count);
+    Signal::Ok
+  }
+
+  /// pop the top value drop n then push the top value
+  unsafe fn op_block_return(&mut self) -> Signal {
+    let count = self.read_byte() as usize;
+    let top = self.fiber.pop();
+    self.fiber.drop_n(count);
+    self.fiber.push(top);
     Signal::Ok
   }
 

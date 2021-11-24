@@ -145,8 +145,7 @@ pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
   .expect("TODO");
 
   let module = hooks.manage(module);
-  let mut builder = FunBuilder::new(hooks.manage_str(name), module);
-  builder.set_arity(Arity::default());
+  let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
 
   hooks.manage_obj(builder.build())
 }
@@ -163,7 +162,7 @@ pub fn test_fun_builder(hooks: &GcHooks, name: &str, module_name: &str) -> FunBu
   .expect("TODO");
 
   let module = hooks.manage(module);
-  FunBuilder::new(hooks.manage_str(name), module)
+  FunBuilder::new(hooks.manage_str(name), module, Arity::default())
 }
 
 fn test_object_class(hooks: &GcHooks) -> GcObj<Class> {

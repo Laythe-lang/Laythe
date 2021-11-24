@@ -80,7 +80,7 @@ fn binary_assignment() -> Result<(), std::io::Error> {
 #[test]
 fn block() -> Result<(), std::io::Error> {
   test_file_exits(
-    &vec!["language/block/empty.lay", "language/block/empty.lay"],
+    &vec!["language/block/empty.lay", "language/block/scope.lay"],
     ExecuteResult::Ok(0),
   )
 }

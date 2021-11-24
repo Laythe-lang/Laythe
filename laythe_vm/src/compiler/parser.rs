@@ -25,6 +25,7 @@ fn to_fe_result<T, F>(result: ParseResult<T, F>) -> FeResult<T, F> {
   }
 }
 
+#[derive(Debug)]
 enum BlockReturn {
   Can,
   Cannot,
@@ -725,7 +726,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// Execute an prefix action
   fn prefix(&mut self, action: Prefix, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
     match action {
-      Prefix::AssignBlock => self.assign_block(),
       Prefix::Channel => self.channel(),
       Prefix::Grouping => self.grouping(),
       Prefix::Interpolation => self.interpolation(),
@@ -758,16 +758,6 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Infix::Dot => self.dot(lhs, can_assign),
       Infix::Or => self.or(lhs),
     }
-  }
-
-  /// Parse an assignment block
-  fn assign_block(&mut self) -> ParseResult<Expr<'a>, FileId> {
-    self.consume_basic(
-      TokenKind::LeftBrace,
-      "Expected '{' after assignment block ':'",
-    )?;
-    let block = self.block(BlockReturn::Cannot)?;
-    Ok(self.atom(Primary::AssignBlock(block)))
   }
 
   /// Parse a block statement
@@ -1601,7 +1591,6 @@ impl<T, P> Rule<T, P> {
 
 #[derive(Clone, Copy)]
 enum Prefix {
-  AssignBlock,
   Channel,
   Grouping,
   Interpolation,
@@ -1668,7 +1657,7 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   // PLUS
   Rule::new(None, Precedence::None),
   // QUESTION_MARK
-  Rule::new(Some(Prefix::AssignBlock), Precedence::None),
+  Rule::new(None, Precedence::None),
   // COLON
   Rule::new(None, Precedence::None),
   // SEMICOLON
@@ -2714,20 +2703,6 @@ mod test {
   }
 
   #[test]
-  fn block_empty() {
-    let example = ":{};";
-
-    test(example);
-  }
-
-  #[test]
-  fn block_filled() {
-    let example = ":{ print(10); };";
-
-    test(example);
-  }
-
-  #[test]
   fn list_index_set() {
     let example = "
       let a = [clock, clock, clock];
@@ -2821,7 +2796,7 @@ mod test {
     "man.dude.bro",
     "ten(\"false\")[10].bro",
   ];
-  const EXAMPLE_PRIMARIES: [&str; 13] = [
+  const EXAMPLE_PRIMARIES: [&str; 12] = [
     "true",
     "false",
     "nil",
@@ -2832,7 +2807,6 @@ mod test {
     "self",
     "super.man",
     "|| print()",
-    ":{ let x = 10; }",
     "[false, true, nil]",
     "{nil: 10, 4.3: false, \"cat\": 'hat'}",
   ];
@@ -2843,7 +2817,11 @@ mod test {
 
   #[test]
   fn expr_stmt() {
-    for expr in EXAMPLE_EXPR.iter().chain(EXAMPLE_ATOMS.iter()).chain(EXAMPLE_PRIMARIES.iter()) {
+    for expr in EXAMPLE_EXPR
+      .iter()
+      .chain(EXAMPLE_ATOMS.iter())
+      .chain(EXAMPLE_PRIMARIES.iter())
+    {
       let example = format!("{};", expr);
       test(&example);
     }
@@ -2863,9 +2841,21 @@ mod test {
 
   #[test]
   fn ternary() {
-    for cond in EXAMPLE_EXPR.iter().chain(EXAMPLE_ATOMS.iter()).chain(EXAMPLE_PRIMARIES.iter()) {
-      for then in EXAMPLE_EXPR.iter().chain(EXAMPLE_ATOMS.iter()).chain(EXAMPLE_PRIMARIES.iter()) {
-        for else_ in EXAMPLE_EXPR.iter().chain(EXAMPLE_ATOMS.iter()).chain(EXAMPLE_PRIMARIES.iter()) {
+    for cond in EXAMPLE_EXPR
+      .iter()
+      .chain(EXAMPLE_ATOMS.iter())
+      .chain(EXAMPLE_PRIMARIES.iter())
+    {
+      for then in EXAMPLE_EXPR
+        .iter()
+        .chain(EXAMPLE_ATOMS.iter())
+        .chain(EXAMPLE_PRIMARIES.iter())
+      {
+        for else_ in EXAMPLE_EXPR
+          .iter()
+          .chain(EXAMPLE_ATOMS.iter())
+          .chain(EXAMPLE_PRIMARIES.iter())
+        {
           let example = format!("{}?{}:{};", cond, then, else_);
           test(&example);
         }

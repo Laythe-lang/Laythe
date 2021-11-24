@@ -73,9 +73,9 @@ pub struct FunBuilder {
 }
 
 impl FunBuilder {
-  pub fn new(name: GcStr, module: Gc<Module>) -> Self {
+  pub fn new(name: GcStr, module: Gc<Module>, arity: Arity) -> Self {
     Self {
-      arity: Arity::default(),
+      arity,
       capture_count: 0,
       max_slots: 0,
       chunk: ChunkBuilder::default(),
@@ -104,11 +104,6 @@ impl FunBuilder {
     if slots > self.max_slots {
       self.max_slots = slots
     }
-  }
-
-  /// Set the arity of this function
-  pub fn set_arity(&mut self, arity: Arity) {
-    self.arity = arity;
   }
 
   /// Retrieve the current count of captures
@@ -203,10 +198,9 @@ pub struct Fun {
 }
 
 impl Fun {
-  #[cfg(test)]
-  pub fn test(name: GcStr, module: Gc<Module>) -> Fun {
-    let mut builder = FunBuilder::new(name, module);
-    builder.set_arity(Arity::default());
+  pub fn stub<T: Encode>(name: GcStr, module: Gc<Module>, instruction: T) -> Fun {
+    let mut builder = FunBuilder::new(name, module, Arity::Variadic(0));
+    builder.write_instruction(instruction, 0);
 
     builder.build()
   }

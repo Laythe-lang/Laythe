@@ -15,7 +15,7 @@ name = "laythe"
 path = "src/main.rs"
 
 [dependencies]
-laythe_vm = { path = "../laythe_vm", features=[] }
+laythe_vm = { path = "../laythe_vm", features=["debug"] }
 # laythe_vm features
 # debug
 

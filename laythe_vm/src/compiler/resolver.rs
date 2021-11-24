@@ -746,7 +746,6 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   /// Resolve an atom expression
   fn atom(&mut self, atom: &mut ast::Atom<'src>) {
     match &mut atom.primary {
-      Primary::AssignBlock(block) => self.assign_block(block),
       Primary::Channel(token) => self.channel(token),
       Primary::Grouping(expr) => self.expr(expr),
       Primary::Interpolation(interpolation) => self.interpolation(interpolation),
@@ -781,11 +780,6 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
         };
       }
     }
-  }
-
-  /// Resolve an assignment block
-  fn assign_block(&mut self, block: &mut ast::Block<'src>) {
-    block.symbols = self.scope(|self_| self_.block(block));
   }
 
   /// Resolve a channel declaration

@@ -907,7 +907,7 @@ mod test {
     let name = test_string(gc);
     let module = test_module(gc);
 
-    gc.manage_obj(Fun::test(name, module), &NO_GC)
+    gc.manage_obj(Fun::stub(name, module, 0), &NO_GC)
   }
 
   fn test_closure(gc: &mut Allocator) -> GcObj<Closure> {
