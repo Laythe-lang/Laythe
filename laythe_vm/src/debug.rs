@@ -80,7 +80,6 @@ pub fn disassemble_instruction(
     AlignedByteCode::FillBox => simple_instruction(stdio.stdout(), "FillBox", offset),
     AlignedByteCode::Drop => simple_instruction(stdio.stdout(), "Drop", offset),
     AlignedByteCode::DropN(count) => byte_instruction(stdio.stdout(), "DropN", count, offset),
-    AlignedByteCode::BlockReturn(count) => byte_instruction(stdio.stdout(), "BlockReturn", count, offset),
     AlignedByteCode::Dup => simple_instruction(stdio.stdout(), "Dup", offset),
     AlignedByteCode::Call(arg_count) => byte_instruction(stdio.stdout(), "Call", arg_count, offset),
     AlignedByteCode::Import(path) => {

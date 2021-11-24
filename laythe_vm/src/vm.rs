@@ -16,8 +16,8 @@ use laythe_core::{
   memory::Allocator,
   module::{Import, Module, Package},
   object::{
-    Channel, Class, Closure, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
-    NativeMeta, ObjectKind, ReceiveResult, SendResult,
+    Channel, Class, Closure, Fiber, Fun, Instance, List, LyBox, Map, Method, Native, NativeMeta,
+    ObjectKind, ReceiveResult, SendResult,
   },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   to_obj_kind,
@@ -442,7 +442,7 @@ impl Vm {
         #[cfg(feature = "debug")]
         {
           let ip = self.ip.sub(1);
-          if let Err(_) = self.print_state(ip) {
+          if self.print_state(ip).is_err() {
             return ExecuteResult::InternalError;
           }
         }
@@ -485,7 +485,6 @@ impl Vm {
           ByteCode::Export => self.op_export(),
           ByteCode::Drop => self.op_drop(),
           ByteCode::DropN => self.op_drop_n(),
-          ByteCode::BlockReturn => self.op_block_return(),
           ByteCode::Dup => self.op_dup(),
           ByteCode::Nil => self.op_literal(VALUE_NIL),
           ByteCode::True => self.op_literal(val!(true)),
@@ -660,15 +659,6 @@ impl Vm {
   unsafe fn op_drop_n(&mut self) -> Signal {
     let count = self.read_byte() as usize;
     self.fiber.drop_n(count);
-    Signal::Ok
-  }
-
-  /// pop the top value drop n then push the top value
-  unsafe fn op_block_return(&mut self) -> Signal {
-    let count = self.read_byte() as usize;
-    let top = self.fiber.pop();
-    self.fiber.drop_n(count);
-    self.fiber.push(top);
     Signal::Ok
   }
 

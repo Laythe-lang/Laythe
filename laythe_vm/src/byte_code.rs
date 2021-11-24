@@ -85,9 +85,6 @@ pub enum AlignedByteCode {
   /// Drop n values
   DropN(u8),
 
-  /// Drop n value below stack top
-  BlockReturn(u8),
-
   /// Duplicate top of the stack
   Dup,
 
@@ -263,7 +260,6 @@ impl AlignedByteCode {
       ),
       ByteCode::Drop => (AlignedByteCode::Drop, offset + 1),
       ByteCode::DropN => (AlignedByteCode::DropN(store[offset + 1]), offset + 2),
-      ByteCode::BlockReturn => (AlignedByteCode::BlockReturn(store[offset + 1]), offset + 2),
       ByteCode::Dup => (AlignedByteCode::Dup, offset + 1),
       ByteCode::Import => (
         AlignedByteCode::Import(decode_u16(&store[offset + 1..offset + 3])),
@@ -399,7 +395,6 @@ impl AlignedByteCode {
       AlignedByteCode::IterCurrent(_) => 0,
       AlignedByteCode::Drop => -1,
       AlignedByteCode::DropN(cnt) => -(*cnt as i32),
-      AlignedByteCode::BlockReturn(cnt) => -(*cnt as i32),
       AlignedByteCode::Dup => 1,
       AlignedByteCode::Import(_) => 1,
       AlignedByteCode::ImportSymbol(_) => 1,
@@ -477,7 +472,6 @@ impl Encode for AlignedByteCode {
       Self::LessEqual => op(code, ByteCode::LessEqual),
       Self::Drop => op(code, ByteCode::Drop),
       Self::DropN(slot) => op_byte(code, ByteCode::DropN, slot),
-      Self::BlockReturn(slot) => op_byte(code, ByteCode::BlockReturn, slot),
       Self::Dup => op(code, ByteCode::Dup),
       Self::Constant(slot) => op_byte(code, ByteCode::Constant, slot),
       Self::ConstantLong(slot) => op_short(code, ByteCode::ConstantLong, slot),
@@ -485,7 +479,7 @@ impl Encode for AlignedByteCode {
       Self::ImportSymbol((path, slot)) => {
         push_op_u16_tuple(code, ByteCode::ImportSymbol, path, slot);
         4
-      },
+      }
       Self::Export(slot) => op_short(code, ByteCode::Export, slot),
       Self::DefineGlobal(slot) => op_short(code, ByteCode::DefineGlobal, slot),
       Self::GetGlobal(slot) => op_short(code, ByteCode::GetGlobal, slot),
@@ -508,11 +502,11 @@ impl Encode for AlignedByteCode {
       Self::Invoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::Invoke, slot1, slot2);
         4
-      },
+      }
       Self::SuperInvoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2);
         4
-      },
+      }
       Self::Closure(slot) => op_short(code, ByteCode::Closure, slot),
       Self::Method(slot) => op_short(code, ByteCode::Method, slot),
       Self::Field(slot) => op_short(code, ByteCode::Field, slot),
@@ -525,12 +519,12 @@ impl Encode for AlignedByteCode {
         let bytes = encoded.to_ne_bytes();
         code.extend_from_slice(&bytes);
         3
-      },
+      }
       Self::Slot(slot) => {
         let bytes = slot.to_ne_bytes();
         code.extend_from_slice(&bytes);
         5
-      },
+      }
     }
   }
 }
@@ -630,9 +624,6 @@ pub enum ByteCode {
 
   /// Drop n values
   DropN,
-
-  /// Drop n value below stack top
-  BlockReturn,
 
   /// Duplicate top of the stack
   Dup,
