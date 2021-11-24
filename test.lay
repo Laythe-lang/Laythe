@@ -1,9 +1,0 @@
-fn example() {
-  let a = 10;
-  fn inner() {
-    return a;
-  }
-  return inner;
-}
-let inner = example();
-inner();

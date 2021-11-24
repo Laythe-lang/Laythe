@@ -100,7 +100,7 @@ pub fn load_instance_from_module(
       } else {
         Err(StdError::SymbolNotInstance)
       })
-    },
+    }
     Err(err) => Err(StdError::from(err)),
   }
 }
@@ -259,7 +259,7 @@ mod test {
         Ok(_) => (),
         Err(_) => {
           return Call::Exit(1);
-        },
+        }
       }
 
       if self.response_count < self.responses.len() {
@@ -293,7 +293,7 @@ mod test {
         Ok(_) => (),
         Err(_) => {
           return Call::Exit(1);
-        },
+        }
       }
 
       if self.response_count < self.responses.len() {
@@ -434,13 +434,17 @@ mod test {
     .expect("TODO");
 
     let module = hooks.manage(module);
-    let mut builder = FunBuilder::new(hooks.manage_str(name), module);
-    builder.set_arity(Arity::default());
+    let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
 
     hooks.manage_obj(builder.build())
   }
 
-  pub fn test_fun_builder(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
+  pub fn test_fun_builder(
+    hooks: &GcHooks,
+    name: &str,
+    module_name: &str,
+    arity: Arity,
+  ) -> FunBuilder {
     let module_class = test_class(hooks, name);
 
     let module = Module::from_path(
@@ -452,7 +456,7 @@ mod test {
     .expect("TODO");
 
     let module = hooks.manage(module);
-    FunBuilder::new(hooks.manage_str(name), module)
+    FunBuilder::new(hooks.manage_str(name), module, arity)
   }
 
   pub fn test_error_class(hooks: &GcHooks) -> GcObj<Class> {

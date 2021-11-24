@@ -1,0 +1,11 @@
+let a = "before";
+let b = "before";
+let c = "before";
+let d = "before";
+
+assertEq("example" ? (a = 5) ? (c = 15) : (d = 20) : (b = 10), 15);
+
+assertEq(a, 5);
+assertEq(b, "before");
+assertEq(c, 15);
+assertEq(d, "before");

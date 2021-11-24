@@ -1,6 +1,6 @@
 let a = "global";
 
-:{
+if true {
   fn assign() {
     a = "assigned";
   }
@@ -8,6 +8,6 @@ let a = "global";
   let a = "inner";
   assign();
   assertEq(a, "inner"); // expect: inner
-};
+}
 
 assertEq(a, "assigned"); // expect: assigned

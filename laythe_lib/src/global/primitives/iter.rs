@@ -1329,8 +1329,7 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
-      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
-      builder.set_arity(Arity::Fixed(1));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
 
       let fun =
         val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
@@ -1376,8 +1375,7 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
-      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
-      builder.set_arity(Arity::Fixed(1));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
 
       let fun =
         val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
@@ -1430,8 +1428,7 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
 
-      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
-      builder.set_arity(Arity::Fixed(2));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(2));
 
       let fun =
         val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
@@ -1511,8 +1508,7 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
 
-      let mut builder = test_fun_builder(&hooks.as_gc(), "example", "module");
-      builder.set_arity(Arity::Fixed(1));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
 
       let fun =
         val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));

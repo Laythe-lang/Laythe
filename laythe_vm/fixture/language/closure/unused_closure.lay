@@ -2,12 +2,12 @@
 // a box even if the box was never created because the codepath for
 // the closure was not executed.
 
-:{
+if true {
   let a = "a";
   if false {
     fn foo() { a; }
   }
-};
+}
 
 // If we get here, we didn't segfault when a went out of scope.
 assert(true); // expect: ok

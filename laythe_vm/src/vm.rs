@@ -16,8 +16,8 @@ use laythe_core::{
   memory::Allocator,
   module::{Import, Module, Package},
   object::{
-    Channel, Class, Closure, Fiber, Fun, FunBuilder, Instance, List, LyBox, Map, Method, Native,
-    NativeMeta, ObjectKind, ReceiveResult, SendResult,
+    Channel, Class, Closure, Fiber, Fun, Instance, List, LyBox, Map, Method, Native, NativeMeta,
+    ObjectKind, ReceiveResult, SendResult,
   },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   to_obj_kind,
@@ -145,10 +145,13 @@ impl Vm {
     let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
     let global = std_lib.root_module();
 
-    let mut builder = FunBuilder::new(hooks.manage_str(PLACEHOLDER_NAME), global);
-    builder.write_instruction(AlignedByteCode::Nil, 0);
+    let current_fun = Fun::stub(
+      hooks.manage_str(PLACEHOLDER_NAME),
+      global,
+      AlignedByteCode::Nil,
+    );
 
-    let current_fun = hooks.manage_obj(builder.build());
+    let current_fun = hooks.manage_obj(current_fun);
     let closure = hooks.manage_obj(Closure::without_captures(current_fun));
     let fiber =
       hooks.manage_obj(Fiber::new(closure).expect("Unable to generate placeholder fiber"));
@@ -156,10 +159,8 @@ impl Vm {
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let mut native_builder = FunBuilder::new(hooks.manage_str("native"), global);
-    native_builder.write_instruction(AlignedByteCode::Nil, 0);
-
-    let native_fun_stub = hooks.manage_obj(native_builder.build());
+    let native_fun_stub = Fun::stub(hooks.manage_str("native"), global, AlignedByteCode::Nil);
+    let native_fun_stub = hooks.manage_obj(native_fun_stub);
 
     let gc = RefCell::new(no_gc_context.done());
     let inline_cache: Vec<InlineCache> = (0..emitter.id_count())
@@ -441,7 +442,7 @@ impl Vm {
         #[cfg(feature = "debug")]
         {
           let ip = self.ip.sub(1);
-          if let Err(_) = self.print_state(ip) {
+          if self.print_state(ip).is_err() {
             return ExecuteResult::InternalError;
           }
         }

@@ -341,8 +341,8 @@ mod unboxed {
     }
   }
 
-  impl From<GcObj<Capture>> for Value {
-    fn from(managed: GcObj<Capture>) -> Value {
+  impl From<GcObj<LyBox>> for Value {
+    fn from(managed: GcObj<LyBox>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -442,13 +442,13 @@ mod unboxed {
       assert_eq!(mem::size_of::<List<Value>>(), 24);
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 24);
-      assert_eq!(mem::size_of::<Fun>(), 128);
-      assert_eq!(mem::size_of::<Class>(), 136);
+      assert_eq!(mem::size_of::<Fun>(), 96);
+      assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 32);
       assert_eq!(mem::size_of::<Enumerator>(), 32);
       assert_eq!(mem::size_of::<Native>(), 56);
-      assert_eq!(mem::size_of::<Capture>(), 16);
+      assert_eq!(mem::size_of::<LyBox>(), 16);
     }
 
     #[test]
@@ -464,7 +464,7 @@ mod unboxed {
       assert_eq!(mem::align_of::<Method>(), target);
       assert_eq!(mem::align_of::<Enumerator>(), target);
       assert_eq!(mem::align_of::<Native>(), target);
-      assert_eq!(mem::align_of::<Capture>(), target);
+      assert_eq!(mem::align_of::<LyBox>(), target);
     }
   }
 }
@@ -907,7 +907,7 @@ mod test {
     let name = test_string(gc);
     let module = test_module(gc);
 
-    gc.manage_obj(Fun::test(name, module), &NO_GC)
+    gc.manage_obj(Fun::stub(name, module, 0), &NO_GC)
   }
 
   fn test_closure(gc: &mut Allocator) -> GcObj<Closure> {

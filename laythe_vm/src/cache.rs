@@ -59,7 +59,7 @@ impl InlineCache {
         } else {
           None
         }
-      },
+      }
       None => None,
     }
   }
@@ -97,7 +97,7 @@ impl InlineCache {
         } else {
           None
         }
-      },
+      }
       None => None,
     }
   }
@@ -194,13 +194,7 @@ mod test {
 
   mod inline_cache {
     use crate::{byte_code::AlignedByteCode, cache::InlineCache};
-    use laythe_core::{
-      memory::{Allocator, NO_GC},
-      module::Module,
-      object::{Class, FunBuilder},
-      val,
-      value::Value,
-    };
+    use laythe_core::{memory::{Allocator, NO_GC}, module::Module, object::{Class, Fun}, val, value::Value};
     use std::path::PathBuf;
 
     #[test]
@@ -240,9 +234,8 @@ mod test {
       let class = alloc.manage_obj(Class::bare(class_name), &NO_GC);
       let module = alloc.manage(Module::new(class, PathBuf::new(), 0), &NO_GC);
 
-      let mut fun = FunBuilder::new(fun_name, module);
-      fun.write_instruction(AlignedByteCode::Nil, 0);
-      let fun = val!(alloc.manage_obj(fun.build(), &NO_GC));
+      let fun = Fun::stub(fun_name, module, AlignedByteCode::Nil);
+      let fun = val!(alloc.manage_obj(fun, &NO_GC));
 
       assert_eq!(inline_cache.get_invoke_cache(0, class), None);
       assert_eq!(inline_cache.get_invoke_cache(1, class), None);

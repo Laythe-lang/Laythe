@@ -1,4 +1,4 @@
-:{
+if true {
   let a = "a";
   assertEq(a, "a"); // expect: a
   let b = a + " b";
@@ -7,4 +7,4 @@
   assertEq(c, "a c"); // expect: a c
   let d = b + " d";
   assertEq(d, "a b d"); // expect: a b d
-};
+}

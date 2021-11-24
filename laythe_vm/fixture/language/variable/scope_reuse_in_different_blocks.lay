@@ -1,9 +1,9 @@
-:{
+if true {
   let a = "first";
   assertEq(a, "first"); // expect: first
-};
+}
 
-:{
+if true {
   let a = "second";
   assertEq(a, "second"); // expect: second
-};
+}

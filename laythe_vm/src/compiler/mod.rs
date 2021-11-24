@@ -147,9 +147,11 @@ impl Trace for LoopInfo {
   fn trace_debug(&self, _log: &mut dyn Write) {}
 }
 
+#[derive(Debug)]
 enum ScopeExit {
   Normal,
   Early,
+  Implicit,
 }
 
 pub struct Compiler<'a, 'src, FileId> {
@@ -217,9 +219,6 @@ pub struct Compiler<'a, 'src, FileId> {
   /// captures in this function
   captures: Vec<CaptureIndex>,
 
-  /// temporary tokens
-  temp_tokens: Vec<Gc<Token<'static>>>,
-
   /// A set of constants used in the current function
   constants: Map<Value, usize>,
 }
@@ -264,7 +263,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   ) -> Self {
     gc.push_root(module);
     let fun_name = gc.manage_str(SCRIPT, root_trace);
-    let fun = FunBuilder::new(fun_name, module);
+    let fun = FunBuilder::new(fun_name, module, Arity::default());
     gc.pop_roots(1);
 
     Self {
@@ -289,7 +288,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       global_table: None,
       locals: vec![],
       captures: vec![],
-      temp_tokens: vec![],
       constants: object::Map::default(),
     }
   }
@@ -320,10 +318,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   // create a child compiler to compile a function inside the enclosing module
   fn child<'b>(
     name: GcStr,
+    arity: Arity,
     fun_kind: FunKind,
     enclosing: &mut Compiler<'b, 'src, FileId>,
   ) -> Compiler<'b, 'src, FileId> {
-    let fun = FunBuilder::new(name, enclosing.module);
+    let fun = FunBuilder::new(name, enclosing.module, arity);
 
     let gc = RefCell::new(Allocator::default());
     gc.swap(&enclosing.gc);
@@ -356,7 +355,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       enclosing: Some(NonNull::from(enclosing)),
       local_tables: vec![],
       captures: vec![],
-      temp_tokens: vec![],
       constants: object::Map::default(),
     }
   }
@@ -374,8 +372,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     line: u32,
     exit: ScopeExit,
   ) -> (Fun, Vec<Diagnostic<FileId>>, Vec<CaptureIndex>, Allocator) {
-    if let ScopeExit::Normal = exit {
-      self.emit_return(line);
+    match exit {
+      ScopeExit::Normal => self.emit_return(line),
+      ScopeExit::Implicit => self.emit_byte(AlignedByteCode::Return, line),
+      ScopeExit::Early => (),
     }
 
     let fun = self.fun.build();
@@ -420,17 +420,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// scope the provide closure
-  fn scope<T>(
-    &mut self,
-    end_line: u32,
-    table: &'a SymbolTable<'src>,
-    cb: impl FnOnce(&mut Self) -> T,
-  ) -> T {
+  fn scope(&mut self, end_line: u32, table: &'a SymbolTable<'src>, cb: impl FnOnce(&mut Self)) {
     self.begin_scope(table);
 
-    let result = cb(self);
+    cb(self);
     self.end_scope(end_line);
-    result
   }
 
   /// Increase the scope depth by 1
@@ -566,21 +560,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     }
   }
 
-  fn symbol_state(&self, name: &str) -> SymbolState {
-    match self
-      .locals
-      .iter()
-      .rev()
-      .find(|local| local.symbol.name() == name)
-    {
-      Some(local) => Some(local.symbol.state()),
-      None => self
-        .global_table
-        .and_then(|table| table.get(name).map(|symbol| symbol.state())),
-    }
-    .expect("Expected symbol.")
-  }
-
   fn emit_local_get(&mut self, state: SymbolState, index: u8, end: u32) {
     let byte = match state {
       SymbolState::Initialized => AlignedByteCode::GetLocal(index),
@@ -671,10 +650,13 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// Define a variable
-  fn declare_variable(&mut self, name: &Token<'src>, offset: u32) {
+  fn declare_variable(&mut self, name: &Token<'src>, offset: u32) -> SymbolState {
     // if global exit
     if self.scope_depth == 1 {
-      return;
+      return self
+        .global_table
+        .and_then(|table| table.get(name.str()).map(|symbol| symbol.state()))
+        .expect("Expected global symbol");
     }
 
     if self.locals.len() == std::u8::MAX as usize {
@@ -699,10 +681,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     if let SymbolState::Captured = symbol.state() {
       self.emit_byte(AlignedByteCode::EmptyBox, offset);
     }
+
+    symbol.state()
   }
 
   /// declare variable only variable
-  fn declare_local_variable(&mut self, name: &str) {
+  fn declare_local_variable(&mut self, name: &str) -> SymbolState {
     assert!(self.scope_depth > 1);
 
     if self.locals.len() == std::u8::MAX as usize {
@@ -723,6 +707,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       symbol,
       depth: self.scope_depth,
     });
+
+    symbol.state()
   }
 
   // declare the script
@@ -837,12 +823,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Parse a variable from the provided token return it's new constant
   /// identifer if an identifer was identified
-  fn make_identifier(&mut self, name: &Token<'src>, offset: u32) -> u16 {
-    self.declare_variable(name, offset);
+  fn make_identifier(&mut self, name: &Token<'src>, offset: u32) -> (u16, SymbolState) {
+    let state = self.declare_variable(name, offset);
     if self.scope_depth > 1 {
-      return 0;
+      return (0, state);
     }
-    self.identifier_constant(name.str())
+    (self.identifier_constant(name.str()), state)
   }
 
   /// Generate a constant from the provided identifier token
@@ -925,8 +911,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       }
       Stmt::ImplicitReturn(expr) => {
         self.expr(expr);
-        self.emit_byte(AlignedByteCode::Return, expr.end());
-        self.exit_scope = ScopeExit::Early
+        self.exit_scope = ScopeExit::Implicit
       }
       Stmt::Import(import) => self.import(import),
       Stmt::For(for_) => self.for_(for_),
@@ -946,6 +931,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Expr::Assign(assign) => self.assign(assign),
       Expr::Send(drain) => self.send(drain),
       Expr::AssignBinary(assign_binary) => self.assign_binary(assign_binary),
+      Expr::Ternary(ternary) => self.ternary(ternary),
       Expr::Binary(binary) => self.binary(binary),
       Expr::Unary(unary) => self.unary(unary),
       Expr::Atom(atom) => self.atom(atom),
@@ -955,7 +941,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Compile a the base of an expression
   fn primary(&mut self, primary: &'a Primary<'src>, trailers: &'a [Trailer<'src>]) -> bool {
     match primary {
-      Primary::AssignBlock(block) => self.assign_block(block),
       Primary::Channel(token) => self.channel(token),
       Primary::True(token) => self.true_(token),
       Primary::False(token) => self.false_(token),
@@ -1009,10 +994,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn class(&mut self, class: &'a ast::Class<'src>) -> u16 {
     // declare the class by name
     let class_name = &class.name;
-    self.declare_variable(class_name, class.start());
+    let class_state = self.declare_variable(class_name, class.start());
 
     let class_constant = self.identifier_constant(class_name.str());
-    let class_state = self.symbol_state(class_name.str());
 
     self.emit_byte(AlignedByteCode::Class(class_constant), class_name.end());
     self.define_variable(class_constant, class_state, class_name.end());
@@ -1035,8 +1019,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       class.name.span()
     };
 
-    self.declare_local_variable(SUPER);
-    let super_state = self.symbol_state(SUPER);
+    let super_state = self.declare_local_variable(SUPER);
 
     // Load an explicit or implicit super class
     if let Some(super_class) = &class.super_class {
@@ -1128,12 +1111,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let (constant, fun_state) = fun
       .name
       .as_ref()
-      .map(|name| {
-        (
-          self.make_identifier(name, fun.end()),
-          self.symbol_state(name.str()),
-        )
-      })
+      .map(|name| self.make_identifier(name, fun.end()))
       .expect("Expected function name");
 
     self.function(fun, FunKind::Fun);
@@ -1144,9 +1122,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile a let binding
   fn let_(&mut self, let_: &'a ast::Let<'src>) -> u16 {
-    self.declare_variable(&let_.name, let_.end());
+    let var_state = self.declare_variable(&let_.name, let_.end());
     let variable = self.identifier_constant(let_.name.str());
-    let var_state = self.symbol_state(let_.name.str());
 
     match &let_.value {
       Some(v) => self.expr(v),
@@ -1167,18 +1144,21 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .map(|name| self.gc.borrow_mut().manage_str(name.str(), self))
       .unwrap_or_else(|| self.gc.borrow_mut().manage_str("lambda", self));
 
+    let arity = Arity::Fixed(fun.call_sig.params.len() as u8);
+
     // create a new child compiler for this function
-    let mut compiler = Compiler::child(name, fun_kind, self);
+    let mut compiler = Compiler::child(name, arity, fun_kind, self);
 
     compiler.begin_scope(&fun.symbols);
 
     match fun_kind {
       FunKind::Method | FunKind::Initializer => {
-        compiler.declare_local_variable(SELF);
-        let self_state = compiler.symbol_state(SELF);
+        let self_state = compiler.declare_local_variable(SELF);
         compiler.define_local_variable(SELF, self_state, fun.start());
       }
-      FunKind::Fun | FunKind::StaticMethod => compiler.declare_local_variable(UNINITIALIZED_VAR),
+      FunKind::Fun | FunKind::StaticMethod => {
+        compiler.declare_local_variable(UNINITIALIZED_VAR);
+      }
       _ => panic!("Did not expect script."),
     };
 
@@ -1237,24 +1217,25 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     match &import.stem {
       ast::ImportStem::None => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
-        let name = self.make_identifier(&import.path()[import.path().len() - 1], import.start());
+        let (name, _) =
+          self.make_identifier(&import.path()[import.path().len() - 1], import.start());
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
       }
       ast::ImportStem::Rename(rename) => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
-        let name = self.make_identifier(rename, import.start());
+        let (name, _) = self.make_identifier(rename, import.start());
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
       }
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
-          let symbol_slot = self.make_identifier(&symbol.symbol, import.start());
+          let (symbol_slot, _) = self.make_identifier(&symbol.symbol, import.start());
           self.emit_byte(
             AlignedByteCode::ImportSymbol((path, symbol_slot)),
             symbol.start(),
           );
 
           let name = match &symbol.rename {
-            Some(rename) => self.make_identifier(rename, import.start()),
+            Some(rename) => self.make_identifier(rename, import.start()).0,
             None => symbol_slot,
           };
 
@@ -1285,8 +1266,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self_.define_local_variable(ITER_VAR, SymbolState::Initialized, expr_line);
 
       let item_line = for_.item.end();
-      self_.declare_local_variable(for_.item.str());
-      let item_state = self_.symbol_state(for_.item.str());
+      let item_state = self_.declare_local_variable(for_.item.str());
 
       // initial fill iteration item with nil and define
       self_.emit_byte(AlignedByteCode::Nil, item_line);
@@ -1332,7 +1312,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
       // loop body
       self_.scope(for_.body.end(), &for_.body.symbols, |self_| {
-        self_.block(&for_.body)
+        self_.block(&for_.body);
       });
       self_.emit_loop(loop_start, for_.end());
 
@@ -1367,7 +1347,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), while_.cond.end());
 
     self.scope(while_.end(), &while_.body.symbols, |self_| {
-      self_.block(&while_.body)
+      self_.block(&while_.body);
     });
 
     self.emit_loop(loop_start, while_.end());
@@ -1389,7 +1369,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), if_.cond.end());
 
     self.scope(if_.body.end(), &if_.body.symbols, |self_| {
-      self_.block(&if_.body)
+      self_.block(&if_.body);
     });
 
     match &if_.else_ {
@@ -1475,14 +1455,14 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let start = self.current_chunk().instructions().len();
 
     self.scope(try_.block.end(), &try_.block.symbols, |self_| {
-      self_.block(&try_.block)
+      self_.block(&try_.block);
     });
 
     let catch_jump = self.emit_jump(AlignedByteCode::Jump(0), try_.block.end());
     let end = self.current_chunk().instructions().len();
 
     self.scope(try_.catch.end(), &try_.catch.symbols, |self_| {
-      self_.block(&try_.catch)
+      self_.block(&try_.catch);
     });
 
     self.patch_jump(catch_jump);
@@ -1709,6 +1689,22 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     }
   }
 
+  /// Compile a ternary expression
+  fn ternary(&mut self, ternary: &'a ast::Ternary<'src>) {
+    self.expr(&ternary.cond);
+
+    // parse then branch
+    let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), ternary.cond.end());
+    self.expr(&ternary.then);
+
+    // emit else jump
+    let else_jump = self.emit_jump(AlignedByteCode::Jump(0), ternary.then.end());
+    self.patch_jump(then_jump);
+
+    self.expr(&ternary.else_);
+    self.patch_jump(else_jump);
+  }
+
   /// Compile a binary expression
   fn binary(&mut self, binary: &'a ast::Binary<'src>) {
     self.expr(&binary.lhs);
@@ -1827,15 +1823,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         Trailer::Access(access) => self.access(access, &trailers[(idx + 1)..]),
       }
     }
-  }
-
-  /// Compile an assignment block
-  fn assign_block(&mut self, block: &'a ast::Block<'src>) -> bool {
-    self.scope(block.end(), &block.symbols, |self_| {
-      self_.block(block);
-    });
-    self.emit_byte(AlignedByteCode::Nil, block.end());
-    false
   }
 
   /// Compile a channel declaration
@@ -2036,15 +2023,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Set the functions arity from the call signature
   fn call_sig(&mut self, call_sig: &'a ast::CallSignature<'src>) {
     for param in &call_sig.params {
-      self.declare_local_variable(param.name.str());
-      let param_state = self.symbol_state(param.name.str());
-
+      let param_state = self.declare_local_variable(param.name.str());
       self.define_local_variable(param.name.str(), param_state, param.name.end());
     }
-
-    self
-      .fun
-      .set_arity(Arity::Fixed(call_sig.params.len() as u8))
   }
 
   /// Do nothing if we encounter an error token
@@ -2077,7 +2058,6 @@ impl<'a, 'src: 'a, FileId> TraceRoot for Compiler<'a, 'src, FileId> {
     self.constants.keys().for_each(|key| {
       key.trace();
     });
-    self.temp_tokens.iter().for_each(|token| token.trace());
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
@@ -2099,10 +2079,6 @@ impl<'a, 'src: 'a, FileId> TraceRoot for Compiler<'a, 'src, FileId> {
     self.constants.keys().for_each(|key| {
       key.trace_debug(log);
     });
-    self
-      .temp_tokens
-      .iter()
-      .for_each(|token| token.trace_debug(log));
   }
 
   fn can_collect(&self) -> bool {
@@ -2159,11 +2135,8 @@ mod test {
   }
 
   pub fn test_fun(hooks: &GcHooks, module: Gc<Module>) -> GcObj<Fun> {
-    let mut fun_builder = FunBuilder::new(hooks.manage_str("print"), module);
-
-    fun_builder.set_arity(Arity::Variadic(0));
-    fun_builder.write_instruction(AlignedByteCode::Return, 0);
-    hooks.manage_obj(fun_builder.build())
+    let fun = Fun::stub(hooks.manage_str("print"), module, AlignedByteCode::Return);
+    hooks.manage_obj(fun)
   }
 
   fn dummy_module(hooks: &GcHooks) -> Gc<Module> {
@@ -3982,7 +3955,7 @@ mod test {
 
   #[test]
   fn declare_local() {
-    let example = ":{ let x = 10; };";
+    let example = "if true { let x = 10; }";
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
@@ -3990,9 +3963,9 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(3),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -4002,7 +3975,7 @@ mod test {
 
   #[test]
   fn op_get_local() {
-    let example = ":{ let x = 10; print(x); };";
+    let example = "if true { let x = 10; print(x); }";
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
@@ -4010,13 +3983,13 @@ mod test {
       &fun,
       4,
       &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(11),
         AlignedByteCode::Constant(1),
         AlignedByteCode::GetGlobal(2),
         AlignedByteCode::GetLocal(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -4026,7 +3999,7 @@ mod test {
 
   #[test]
   fn op_set_local() {
-    let example = ":{ let x = 10; x = 5; };";
+    let example = "if true { let x = 10; x = 5; }";
 
     let context = NoContext::default();
     let fun = test_compile(example, &context);
@@ -4035,12 +4008,12 @@ mod test {
       &fun,
       3,
       &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(8),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::SetLocal(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -4351,6 +4324,30 @@ mod test {
       &vec![
         AlignedByteCode::Constant(0),
         AlignedByteCode::Negate,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn ternary() {
+    let example = "10 > 5 ? \"example\" : nil;";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+    assert_simple_bytecode(
+      &fun,
+      3,
+      &vec![
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Greater,
+        AlignedByteCode::JumpIfFalse(5),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Jump(1),
+        AlignedByteCode::Nil,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,

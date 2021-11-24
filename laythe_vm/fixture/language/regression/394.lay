@@ -1,5 +1,5 @@
-:{
+if true {
   class A {}
   class B : A {}
   assert(B.str().has("<class B")); // expect: B
-};
+}

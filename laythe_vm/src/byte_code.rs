@@ -479,7 +479,7 @@ impl Encode for AlignedByteCode {
       Self::ImportSymbol((path, slot)) => {
         push_op_u16_tuple(code, ByteCode::ImportSymbol, path, slot);
         4
-      },
+      }
       Self::Export(slot) => op_short(code, ByteCode::Export, slot),
       Self::DefineGlobal(slot) => op_short(code, ByteCode::DefineGlobal, slot),
       Self::GetGlobal(slot) => op_short(code, ByteCode::GetGlobal, slot),
@@ -502,11 +502,11 @@ impl Encode for AlignedByteCode {
       Self::Invoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::Invoke, slot1, slot2);
         4
-      },
+      }
       Self::SuperInvoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2);
         4
-      },
+      }
       Self::Closure(slot) => op_short(code, ByteCode::Closure, slot),
       Self::Method(slot) => op_short(code, ByteCode::Method, slot),
       Self::Field(slot) => op_short(code, ByteCode::Field, slot),
@@ -519,12 +519,12 @@ impl Encode for AlignedByteCode {
         let bytes = encoded.to_ne_bytes();
         code.extend_from_slice(&bytes);
         3
-      },
+      }
       Self::Slot(slot) => {
         let bytes = slot.to_ne_bytes();
         code.extend_from_slice(&bytes);
         5
-      },
+      }
     }
   }
 }

@@ -1,4 +1,4 @@
-:{
+if true {
   fn isEven(n) {
     if n == 0 { return true; }
     return isOdd(n - 1); // expect runtime error: Undefined variable 'isOdd'.
@@ -9,4 +9,4 @@
   }
 
   isEven(4);
-};
+}

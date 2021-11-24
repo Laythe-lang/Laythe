@@ -42,6 +42,7 @@ pub trait Visitor<'a> {
   fn visit_assign(&mut self, assign: &Assign) -> Self::Result;
   fn visit_drain(&mut self, drain: &Send) -> Self::Result;
   fn visit_assign_binary(&mut self, assign: &AssignBinary) -> Self::Result;
+  fn visit_ternary(&mut self, ternary: &Ternary) -> Self::Result;
   fn visit_binary(&mut self, binary: &Binary) -> Self::Result;
   fn visit_unary(&mut self, unary: &Unary) -> Self::Result;
   fn visit_atom(&mut self, atom: &Atom) -> Self::Result;
@@ -51,7 +52,6 @@ pub trait Visitor<'a> {
   fn visit_access(&mut self, access: &Access) -> Self::Result;
   fn visit_call_sig(&mut self, call_sig: &CallSignature) -> Self::Result;
 
-  fn visit_assign_block(&mut self, block: &Block) -> Self::Result;
   fn visit_true(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_false(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_nil(&mut self, token: &Token<'a>) -> Self::Result;
@@ -505,7 +505,7 @@ impl<'a> Spanned for Import<'a> {
         } else {
           symbols.last().unwrap().end()
         }
-      },
+      }
     }
   }
 }
@@ -753,6 +753,7 @@ pub enum Expr<'a> {
   AssignBinary(Box<'a, AssignBinary<'a>>),
   Atom(Box<'a, Atom<'a>>),
   Binary(Box<'a, Binary<'a>>),
+  Ternary(Box<'a, Ternary<'a>>),
   Send(Box<'a, Send<'a>>),
   Unary(Box<'a, Unary<'a>>),
 }
@@ -764,6 +765,7 @@ impl<'a> Spanned for Expr<'a> {
       Expr::AssignBinary(assign_binary) => assign_binary.start(),
       Expr::Atom(atom) => atom.start(),
       Expr::Binary(binary) => binary.start(),
+      Expr::Ternary(ternary) => ternary.start(),
       Expr::Send(drain) => drain.start(),
       Expr::Unary(unary) => unary.start(),
     }
@@ -775,6 +777,7 @@ impl<'a> Spanned for Expr<'a> {
       Expr::AssignBinary(assign_binary) => assign_binary.end(),
       Expr::Atom(atom) => atom.end(),
       Expr::Binary(binary) => binary.end(),
+      Expr::Ternary(ternary) => ternary.end(),
       Expr::Send(drain) => drain.end(),
       Expr::Unary(unary) => unary.end(),
     }
@@ -820,6 +823,28 @@ impl<'a> Spanned for Send<'a> {
 
   fn end(&self) -> u32 {
     self.rhs.end()
+  }
+}
+
+pub struct Ternary<'a> {
+  pub cond: Expr<'a>,
+  pub then: Expr<'a>,
+  pub else_: Expr<'a>,
+}
+
+impl<'a> Ternary<'a> {
+  pub fn new(cond: Expr<'a>, then: Expr<'a>, else_: Expr<'a>) -> Ternary<'a> {
+    Self { cond, then, else_ }
+  }
+}
+
+impl<'a> Spanned for Ternary<'a> {
+  fn start(&self) -> u32 {
+    self.cond.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.else_.end()
   }
 }
 
@@ -1038,7 +1063,6 @@ impl<'a> Spanned for Access<'a> {
 }
 
 pub enum Primary<'a> {
-  AssignBlock(Block<'a>),
   Channel(Channel<'a>),
   False(Token<'a>),
   Grouping(Box<'a, Expr<'a>>),
@@ -1058,7 +1082,6 @@ pub enum Primary<'a> {
 impl<'a> Spanned for Primary<'a> {
   fn start(&self) -> u32 {
     match self {
-      Primary::AssignBlock(block) => block.start(),
       Primary::Channel(channel) => channel.start(),
       Primary::False(false_) => false_.start(),
       Primary::Grouping(grouping) => grouping.start(),
@@ -1078,7 +1101,6 @@ impl<'a> Spanned for Primary<'a> {
 
   fn end(&self) -> u32 {
     match self {
-      Primary::AssignBlock(block) => block.end(),
       Primary::Channel(channel) => channel.end(),
       Primary::False(false_) => false_.end(),
       Primary::Grouping(grouping) => grouping.end(),
