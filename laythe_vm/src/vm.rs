@@ -627,7 +627,6 @@ impl Vm {
   }
 
   /// read a u8 out of the bytecode
-  #[no_mangle]
   unsafe fn read_byte(&mut self) -> u8 {
     let byte = ptr::read(self.ip);
     self.update_ip(1);
@@ -1338,21 +1337,11 @@ impl Vm {
     let index_path = self.read_short();
     let path = self.read_constant(index_path).to_obj().to_list();
 
-    let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
+    let path_segments = self.extract_import_path(path);
     self.push_root(path_segments);
 
-    path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
-
-    let mut buffer = String::new();
-    for segment in &path_segments[..path_segments.len() - 1] {
-      buffer.push_str(segment);
-      buffer.push('/')
-    }
-
-    buffer.push_str(&path_segments[path_segments.len() - 1]);
-
     // check if fully resolved module has already been loaded
-    let resolved = self.manage_str(buffer);
+    let resolved = self.full_import_path(path_segments);
     self.push_root(resolved);
 
     if let Some(module) = self.module_cache.get(&resolved) {
@@ -1362,19 +1351,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    let import = match path_segments.split_first() {
-      Some((package, path)) => {
-        // generate a new import object
-        let path = self.manage(List::from(path));
-        self.manage(Import::new(*package, path))
-      },
-      None => {
-        // generate a new import object
-        let path = self.manage(List::new());
-        self.manage(Import::new(path_segments[0], path))
-      },
-    };
-
+    let import = self.build_import(path_segments);
     self.push_root(import);
 
     let result = match self.packages.get(&import.package()) {
@@ -1401,21 +1378,11 @@ impl Vm {
     let path = self.read_constant(index_path).to_obj().to_list();
     let name = self.read_string(index_name);
 
-    let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
+    let path_segments = self.extract_import_path(path);
     self.push_root(path_segments);
 
-    path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
-
-    let mut buffer = String::new();
-    for segment in &path_segments[..path_segments.len() - 1] {
-      buffer.push_str(segment);
-      buffer.push('/')
-    }
-
-    buffer.push_str(&path_segments[path_segments.len() - 1]);
-
     // check if fully resolved module has already been loaded
-    let resolved = self.manage_str(buffer);
+    let resolved = self.full_import_path(path_segments);
     self.push_root(resolved);
 
     if let Some(module) = self.module_cache.get(&resolved) {
@@ -1425,19 +1392,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    let import = match path_segments.split_first() {
-      Some((package, path)) => {
-        // generate a new import object
-        let path = self.manage(List::from(path));
-        self.manage(Import::new(*package, path))
-      },
-      None => {
-        // generate a new import object
-        let path = self.manage(List::new());
-        self.manage(Import::new(path_segments[0], path))
-      },
-    };
-
+    let import = self.build_import(path_segments);
     self.push_root(import);
 
     let result = match self.packages.get(&import.package()) {
@@ -1456,6 +1411,41 @@ impl Vm {
 
     self.pop_roots(3);
     result
+  }
+
+  fn extract_import_path(&mut self, path: GcObj<List<Value>>) -> Gc<List<GcStr>> {
+    let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
+    self.push_root(path_segments);
+
+    path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
+    path_segments
+  }
+
+  fn full_import_path(&mut self, path_segments: Gc<List<GcStr>>) -> GcStr {
+    let mut buffer = String::new();
+    for segment in &path_segments[..path_segments.len() - 1] {
+      buffer.push_str(segment);
+      buffer.push('/');
+    }
+
+    buffer.push_str(&path_segments[path_segments.len() - 1]);
+
+    self.manage_str(buffer)
+  }
+
+  fn build_import(&mut self, path_segments: Gc<List<GcStr>>) -> Gc<Import> {
+    match path_segments.split_first() {
+      Some((package, path)) => {
+        // generate a new import object
+        let path = self.manage(List::from(path));
+        self.manage(Import::new(*package, path))
+      }
+      None => {
+        // generate a new import object
+        let path = self.manage(List::new());
+        self.manage(Import::new(path_segments[0], path))
+      }
+    }
   }
 
   unsafe fn op_export(&mut self) -> Signal {
