@@ -384,6 +384,16 @@ impl Vm {
       self.fiber.push(*arg);
     }
 
+    #[cfg(feature = "debug")]
+    {
+      if self
+        .print_hook_state("run_fun", &format!("{}", callable))
+        .is_err()
+      {
+        return ExecuteResult::InternalError;
+      }
+    }
+
     let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
     match self.resolve_call(callable, args.len() as u8) {
       Signal::Ok => self.execute(mode),
@@ -400,6 +410,16 @@ impl Vm {
     self.fiber.push(this);
     for arg in args {
       self.fiber.push(*arg);
+    }
+
+    #[cfg(feature = "debug")]
+    {
+      if self
+        .print_hook_state("fun_method", &format!("{}:{}", this, method))
+        .is_err()
+      {
+        return ExecuteResult::InternalError;
+      }
     }
 
     let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
@@ -2106,6 +2126,17 @@ impl Vm {
     let start = self.current_fun.chunk().instructions().as_ptr();
     let offset = ip.offset_from(start) as usize;
     disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, false)
+  }
+
+  /// Print debugging information for the current hook
+  #[cfg(feature = "debug")]
+  unsafe fn print_hook_state(&self, hook_name: &str, with: &str) -> io::Result<()> {
+    let mut stdio = self.io.stdio();
+
+    self.print_stack_debug(&mut stdio)?;
+
+    let stdout = stdio.stdout();
+    writeln!(stdout, "  Vm Hook {}: {}", hook_name, with)
   }
 
   /// Print the current stack
