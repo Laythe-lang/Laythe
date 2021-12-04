@@ -311,6 +311,7 @@ fn exception() -> Result<(), std::io::Error> {
     None,
     Some(vec![
       "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
+      "  [line 0] in []()",
       "  [line 1] in script",
     ]),
     ExecuteResult::RuntimeError,
@@ -321,6 +322,7 @@ fn exception() -> Result<(), std::io::Error> {
     None,
     Some(vec![
       "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
+      "  [line 0] in []()",
       "  [line 2] in thrower()",
       "  [line 5] in script",
     ]),
@@ -332,6 +334,7 @@ fn exception() -> Result<(), std::io::Error> {
     None,
     Some(vec![
       "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
+      "  [line 0] in []()",
       "  [line 6] in thrower()",
       "  [line 2] in outer()",
       "  [line 9] in script",

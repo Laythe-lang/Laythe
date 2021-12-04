@@ -138,7 +138,7 @@ mod test {
     utils::IdEmitter,
     val,
     value::{Value, VALUE_NIL},
-    Call,
+    Call, LyError,
   };
   use laythe_env::{
     io::Io,
@@ -239,7 +239,7 @@ mod test {
   impl ValueContext for MockedContext {
     fn call(&mut self, callable: Value, args: &[Value]) -> Call {
       if !callable.is_obj() {
-        return Call::Exit(1);
+        return Err(LyError::Exit(1));
       }
 
       let arity = match_obj!((&callable.to_obj()) {
@@ -252,13 +252,13 @@ mod test {
         ObjectKind::Native(native) => {
           native.meta().signature.arity
         },
-        _ => return Call::Exit(1),
+        _ => return Err(LyError::Exit(1)),
       });
 
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
-          return Call::Exit(1);
+          return Err(LyError::Exit(1));
         }
       }
 
@@ -268,12 +268,12 @@ mod test {
         return Call::Ok(response);
       }
 
-      Call::Exit(1)
+      Err(LyError::Exit(1))
     }
 
     fn call_method(&mut self, _this: Value, method: Value, args: &[Value]) -> Call {
       if !method.is_obj() {
-        return Call::Exit(1);
+        return Err(LyError::Exit(1));
       }
 
       let arity = match_obj!((&method.to_obj()) {
@@ -286,13 +286,13 @@ mod test {
         ObjectKind::Native(native) => {
           native.meta().signature.arity
         },
-        _ => return Call::Exit(1),
+        _ => return Err(LyError::Exit(1)),
       });
 
       match arity.check(args.len() as u8) {
         Ok(_) => (),
         Err(_) => {
-          return Call::Exit(1);
+          return Err(LyError::Exit(1));
         }
       }
 
@@ -302,19 +302,19 @@ mod test {
         return Call::Ok(response);
       }
 
-      Call::Exit(1)
+      Err(LyError::Exit(1))
     }
 
     fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
       let b = match &self.builtin {
         Some(b) => b,
-        None => return Call::Exit(1),
+        None => return Err(LyError::Exit(1)),
       };
 
       let class = b.primitives.for_value(this);
       match class.get_method(&method_name) {
         Some(method) => Call::Ok(method),
-        None => Call::Exit(1),
+        None => Err(LyError::Exit(1)),
       }
     }
 

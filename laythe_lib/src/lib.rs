@@ -52,16 +52,15 @@ macro_rules! create_error {
     match $hooks.call($error, &[Value::from($hooks.manage_str($message))]) {
       Call::Ok(err) => {
         if err.is_obj_kind(ObjectKind::Instance) {
-          Call::Err(err.to_obj().to_instance())
+          Call::Err(LyError::Err(err.to_obj().to_instance()))
         } else {
           panic!(
             "Standard library failed to instantiate error instance\nFound value {:?}",
             err.kind()
           )
         }
-      },
+      }
       Call::Err(err) => Call::Err(err),
-      Call::Exit(exit) => Call::Exit(exit),
     }
   };
 }
@@ -86,16 +85,15 @@ macro_rules! native_with_error {
         match hooks.call(self.error, &[val!(hooks.manage_str(message))]) {
           Call::Ok(err) => {
             if err.is_obj_kind(ObjectKind::Instance) {
-              Call::Err(err.to_obj().to_instance())
+              Call::Err(LyError::Err(err.to_obj().to_instance()))
             } else {
               panic!(
                 "Standard library failed to instantiate error instance\nFound value {:?}",
                 err.kind()
               )
             }
-          },
+          }
           Call::Err(err) => Call::Err(err),
-          Call::Exit(err) => Call::Exit(err),
         }
       }
     }
@@ -173,13 +171,13 @@ mod test {
         match fun_meta.signature.arity {
           Arity::Default(_, total_count) => {
             assert_eq!(fun_meta.signature.parameters.len(), total_count as usize);
-          },
+          }
           Arity::Fixed(count) => {
             assert_eq!(fun_meta.signature.parameters.len(), count as usize);
-          },
+          }
           Arity::Variadic(min_count) => {
             assert_eq!(fun_meta.signature.parameters.len(), min_count as usize + 1);
-          },
+          }
         }
       }
     });

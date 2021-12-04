@@ -5,7 +5,6 @@ use crate::{
 };
 use laythe_core::{
   constants::{INDEX_GET, INDEX_SET},
-  get,
   hooks::{GcHooks, Hooks},
   if_let_obj,
   managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
@@ -16,7 +15,7 @@ use laythe_core::{
   utils::is_falsey,
   val,
   value::{Value, VALUE_NIL},
-  Call, LyResult,
+  Call, LyError, LyResult,
 };
 use std::{cmp::Ordering, io::Write};
 use std::{mem, slice::Iter};
@@ -29,13 +28,15 @@ use super::{
 pub const LIST_CLASS_NAME: &str = "List";
 
 const LIST_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)]);
+  .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)])
+  .with_stack();
 
 const LIST_INDEX_SET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_SET, Arity::Fixed(2))
   .with_params(&[
     ParameterBuilder::new("val", ParameterKind::Any),
     ParameterBuilder::new("index", ParameterKind::Number),
-  ]);
+  ])
+  .with_stack();
 
 const LIST_CLEAR: NativeMetaBuilder = NativeMetaBuilder::method("clear", Arity::Fixed(0));
 
@@ -46,7 +47,8 @@ const LIST_INSERT: NativeMetaBuilder = NativeMetaBuilder::method("insert", Arity
   .with_params(&[
     ParameterBuilder::new("index", ParameterKind::Number),
     ParameterBuilder::new("val", ParameterKind::Any),
-  ]);
+  ])
+  .with_stack();
 
 const LIST_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 const LIST_POP: NativeMetaBuilder = NativeMetaBuilder::method("pop", Arity::Fixed(0));
@@ -55,19 +57,21 @@ const LIST_PUSH: NativeMetaBuilder = NativeMetaBuilder::method("push", Arity::Va
   .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)]);
 
 const LIST_REMOVE: NativeMetaBuilder = NativeMetaBuilder::method("remove", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)]);
+  .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)])
+  .with_stack();
 
 const LIST_INDEX: NativeMetaBuilder = NativeMetaBuilder::method("index", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("value", ParameterKind::Any)]);
 
 const LIST_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
-const LIST_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
+const LIST_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0)).with_stack();
 
 const LIST_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity::Default(0, 2))
   .with_params(&[
     ParameterBuilder::new("start", ParameterKind::Number),
     ParameterBuilder::new("end", ParameterKind::Number),
-  ]);
+  ])
+  .with_stack();
 
 const LIST_REV: NativeMetaBuilder = NativeMetaBuilder::method("rev", Arity::Fixed(0));
 
@@ -218,6 +222,12 @@ impl Trace for ListStr {
   }
 }
 
+fn quote_string(buf: &mut String, string: &str) {
+  buf.push('\'');
+  buf.push_str(&string);
+  buf.push('\'');
+}
+
 impl LyNative for ListStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let list = this.unwrap().to_obj().to_list();
@@ -231,75 +241,51 @@ impl LyNative for ListStr {
         // if already string quote and add to temps
         let item = *item;
         if_let_obj!(ObjectKind::String(string) = (item) {
-          buf.push('\'');
-          buf.push_str(&string);
-          buf.push('\'');
+          quote_string(&mut buf, &string);
           buf.push_str(", ");
           continue;
         });
 
         // call '.str' method on each value
-        let str_result = hooks
+        let result = hooks
           .get_method(item, self.method_name)
-          .and_then(|method| hooks.call_method(item, method, &[]));
+          .and_then(|method| hooks.call_method(item, method, &[]))?;
 
-        match str_result {
-          Call::Ok(result) => {
-            if_let_obj!(ObjectKind::String(string) = (result) {
-              buf.push_str(&*string);
-              buf.push_str(", ");
-            } else {
-              // if error throw away temporary strings
-              return hooks.call(
-                self.error,
-                &[val!(hooks.manage_str(format!(
-                  "Expected type str from {}.str()",
-                  item
-                )))],
-              );
-            });
-          },
-          Call::Err(err) => {
-            return Call::Err(err);
-          },
-          Call::Exit(exit) => {
-            return Call::Exit(exit);
-          },
-        }
+        if_let_obj!(ObjectKind::String(string) = (result) {
+          buf.push_str(&*string);
+          buf.push_str(", ");
+        } else {
+          // if error throw away temporary strings
+          return hooks.call(
+            self.error,
+            &[val!(hooks.manage_str(format!(
+              "Expected type str from {}.str()",
+              item
+            )))],
+          );
+        });
       }
 
       if_let_obj!(ObjectKind::String(string) = (*last) {
-        buf.push('\'');
-        buf.push_str(&string);
-        buf.push('\'');
+        quote_string(&mut buf, &string);
       } else {
         // call '.str' method on each value
-        let str_result = hooks
+        let result = hooks
           .get_method(*last, self.method_name)
-          .and_then(|method| hooks.call_method(*last, method, &[]));
+          .and_then(|method| hooks.call_method(*last, method, &[]))?;
 
-        match str_result {
-          Call::Ok(result) => {
-            if_let_obj!(ObjectKind::String(string) = (result) {
-              buf.push_str(&*string);
-            } else {
-              // if error throw away temporary strings
-              return hooks.call(
-                self.error,
-                &[val!(hooks.manage_str(format!(
-                  "Expected type str from {}.str()",
-                  *last
-                )))],
-              );
-            });
-          },
-          Call::Err(err) => {
-            return Call::Err(err);
-          },
-          Call::Exit(exit) => {
-            return Call::Exit(exit);
-          },
-        }
+        if_let_obj!(ObjectKind::String(string) = (result) {
+          buf.push_str(&*string);
+        } else {
+          // if error throw away temporary strings
+          return hooks.call(
+            self.error,
+            &[val!(hooks.manage_str(format!(
+              "Expected type str from {}.str()",
+              *last
+            )))],
+          );
+        });
       })
     }
 
@@ -323,17 +309,8 @@ impl LyNative for ListSlice {
     };
 
     // get start and end indices
-    let start_index = match self.index(hooks, &list, start) {
-      LyResult::Ok(index) => index,
-      LyResult::Err(err) => return LyResult::Err(err),
-      LyResult::Exit(exit) => return LyResult::Exit(exit),
-    };
-
-    let end_index = match self.index(hooks, &list, end) {
-      LyResult::Ok(index) => index,
-      LyResult::Err(err) => return LyResult::Err(err),
-      LyResult::Exit(exit) => return LyResult::Exit(exit),
-    };
+    let start_index = self.index(hooks, &list, start)?;
+    let end_index = self.index(hooks, &list, end)?;
 
     let start_index = start_index.max(0);
     let end_index = end_index.min(list.len());
@@ -375,11 +352,7 @@ impl LyNative for ListIndexGet {
     let list = this.unwrap().to_obj().to_list();
 
     if index.fract() != 0.0 {
-      return LyResult::Err(
-        self
-          .call_error(hooks, "Index must be an integer.")
-          .expect_err("Expected error"),
-      );
+      return self.call_error(hooks, "Index must be an integer.");
     }
 
     let index = index as usize;
@@ -406,11 +379,7 @@ impl LyNative for ListIndexSet {
     let mut list = this.unwrap().to_obj().to_list();
 
     if index.fract() != 0.0 {
-      return LyResult::Err(
-        self
-          .call_error(hooks, "Index must be an integer.")
-          .expect_err("Expected error"),
-      );
+      return self.call_error(hooks, "Index must be an integer.");
     }
 
     let index = index as usize;
@@ -588,7 +557,7 @@ impl LyNative for ListSort {
       }
 
       match hooks.call(comparator, &[*a, *b]) {
-        laythe_core::LyResult::Ok(result) => {
+        Call::Ok(result) => {
           if result.is_num() {
             match result.to_num().partial_cmp(&0.0) {
               Some(ord) => ord,
@@ -597,22 +566,18 @@ impl LyNative for ListSort {
                   self.call_error(hooks, "comparator must return a valid number.")
                 });
                 Ordering::Equal
-              },
+              }
             }
           } else {
             failure
               .get_or_insert_with(|| self.call_error(hooks, "comparator must return a number."));
             Ordering::Equal
           }
-        },
-        laythe_core::LyResult::Err(err) => {
-          failure.get_or_insert(Call::Err(err));
+        }
+        Call::Err(err) => {
+          failure.get_or_insert(Err(err));
           Ordering::Equal
-        },
-        laythe_core::LyResult::Exit(code) => {
-          failure.get_or_insert(Call::Exit(code));
-          Ordering::Equal
-        },
+        }
       }
     });
 
@@ -633,7 +598,7 @@ impl LyNative for ListCollect {
 
     hooks.push_root(list);
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
       hooks.grow(&mut *list, |list| list.push(current));
     }
@@ -676,11 +641,11 @@ impl Enumerate for ListIterator {
       Some(value) => {
         self.current = *value;
         Call::Ok(val!(true))
-      },
+      }
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      },
+      }
     }
   }
 
@@ -975,7 +940,7 @@ mod test {
           assert_eq!(r, VALUE_NIL);
           assert_eq!(list_value.unwrap().to_obj().to_list().len(), 3);
           assert_eq!(list_value.unwrap().to_obj().to_list()[2], val!(false));
-        },
+        }
         _ => assert!(false),
       }
 
@@ -986,7 +951,7 @@ mod test {
           assert_eq!(list_value.unwrap().to_obj().to_list().len(), 5);
           assert_eq!(list_value.unwrap().to_obj().to_list()[3], val!(10.3));
           assert_eq!(list_value.unwrap().to_obj().to_list()[4], VALUE_NIL);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -1023,7 +988,7 @@ mod test {
         Call::Ok(r) => {
           assert_eq!(r.to_bool(), true);
           assert_eq!(this.len(), 0);
-        },
+        }
         _ => assert!(false),
       }
 
@@ -1032,7 +997,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_nil());
           assert_eq!(this.len(), 0);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -1075,7 +1040,7 @@ mod test {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 10.0);
           assert_eq!(this.len(), 2);
-        },
+        }
         _ => assert!(false),
       }
 
@@ -1127,7 +1092,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 1.0);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -1175,7 +1140,7 @@ mod test {
           assert!(r.is_nil());
           assert_eq!(this[1], val!(false));
           assert_eq!(this.len(), 4);
-        },
+        }
         _ => assert!(false),
       }
 
@@ -1224,7 +1189,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_nil());
           assert_eq!(this.len(), 0);
-        },
+        }
         _ => assert!(false),
       }
 
@@ -1233,7 +1198,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_nil());
           assert_eq!(this.len(), 0);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -1273,7 +1238,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert!(r.to_bool());
-        },
+        }
         _ => assert!(false),
       }
 
@@ -1281,7 +1246,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert!(!r.to_bool());
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -1319,7 +1284,7 @@ mod test {
           assert_eq!(iter.current(), VALUE_NIL);
           assert_eq!(iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(iter.current(), VALUE_NIL);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -1445,7 +1410,7 @@ mod test {
         Call::Ok(r) => {
           let list = r.to_obj().to_list();
           assert_eq!(list.len(), 4);
-        },
+        }
         _ => assert!(false),
       }
     }

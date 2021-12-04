@@ -211,6 +211,11 @@ impl Fun {
     self.name
   }
 
+  /// Name of this function
+  pub fn set_name(&mut self, new_name: GcStr) {
+    self.name = new_name;
+  }
+
   /// Arity of this function
   #[inline]
   pub fn arity(&self) -> &Arity {

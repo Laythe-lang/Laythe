@@ -14,14 +14,15 @@ use laythe_core::{
   signature::Arity,
   val,
   value::{Value, VALUE_NIL},
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 
 pub const CHANNEL_CLASS_NAME: &str = "Channel";
 const CHANNEL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const CHANNEL_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
-const CHANNEL_CLOSE: NativeMetaBuilder = NativeMetaBuilder::method("close", Arity::Fixed(0));
+const CHANNEL_CLOSE: NativeMetaBuilder =
+  NativeMetaBuilder::method("close", Arity::Fixed(0)).with_stack();
 const CHANNEL_CAPACITY: NativeMetaBuilder = NativeMetaBuilder::method("capacity", Arity::Fixed(0));
 
 pub fn declare_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

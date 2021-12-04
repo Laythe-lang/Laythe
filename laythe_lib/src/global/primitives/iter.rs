@@ -5,16 +5,17 @@ use crate::{
   StdResult,
 };
 use laythe_core::{
-  get,
   hooks::{GcHooks, Hooks},
+  if_let_obj,
   managed::{DebugHeap, DebugWrap, Gc, GcObj, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
+  to_obj_kind,
   utils::is_falsey,
   val,
   value::{Value, VALUE_NIL},
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 use std::mem;
@@ -33,10 +34,12 @@ const ITER_FIRST: NativeMetaBuilder = NativeMetaBuilder::method("first", Arity::
 const ITER_LAST: NativeMetaBuilder = NativeMetaBuilder::method("last", Arity::Fixed(0));
 
 const ITER_TAKE: NativeMetaBuilder = NativeMetaBuilder::method("take", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)]);
+  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)])
+  .with_stack();
 
 const ITER_SKIP: NativeMetaBuilder = NativeMetaBuilder::method("skip", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)]);
+  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)])
+  .with_stack();
 
 const ITER_MAP: NativeMetaBuilder = NativeMetaBuilder::method("map", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
@@ -243,7 +246,7 @@ impl LyNative for IterFirst {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let mut iter = this.unwrap().to_obj().to_enumerator();
 
-    if !is_falsey(get!(iter.next(hooks))) {
+    if !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
       Call::Ok(current)
     } else {
@@ -259,7 +262,7 @@ impl LyNative for IterLast {
     let mut iter = this.unwrap().to_obj().to_enumerator();
     let mut result = VALUE_NIL;
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       result = iter.current();
     }
 
@@ -316,7 +319,7 @@ impl Enumerate for TakeIterator {
   }
 
   fn next(&mut self, hooks: &mut Hooks) -> Call {
-    if self.current >= self.take_count || is_falsey(get!(self.iter.next(hooks))) {
+    if self.current >= self.take_count || is_falsey(self.iter.next(hooks)?) {
       Call::Ok(val!(false))
     } else {
       self.current += 1;
@@ -391,7 +394,7 @@ impl LyNative for IterSkip {
     let mut current = 0usize;
     let skip_count = skip_count as usize;
 
-    while current < skip_count && !is_falsey(get!(iter.next(hooks))) {
+    while current < skip_count && !is_falsey(iter.next(hooks)?) {
       current += 1;
     }
 
@@ -505,11 +508,15 @@ impl Enumerate for MapIterator {
   }
 
   fn next(&mut self, hooks: &mut Hooks) -> Call {
-    if is_falsey(get!(self.iter.next(hooks))) {
+    if is_falsey(self.iter.next(hooks)?) {
       Call::Ok(val!(false))
     } else {
       let current = self.iter.current();
-      self.current = get!(hooks.call(self.callable, &[current]));
+      if_let_obj!(ObjectKind::Method(method) = (self.callable) {
+        self.current = hooks.call_method(method.receiver(), method.method(), &[current])?;
+      } else {
+        self.current = hooks.call(self.callable, &[current])?;
+      });
       Call::Ok(val!(true))
     }
   }
@@ -595,9 +602,14 @@ impl Enumerate for FilterIterator {
   }
 
   fn next(&mut self, hooks: &mut Hooks) -> Call {
-    while !is_falsey(get!(self.iter.next(hooks))) {
+    while !is_falsey(self.iter.next(hooks)?) {
       let current = self.iter.current();
-      let should_keep = get!(hooks.call(self.callable, &[current]));
+
+      let should_keep = if_let_obj!(ObjectKind::Method(method) = (self.callable) {
+        hooks.call_method(method.receiver(), method.method(), &[current])
+      } else {
+        hooks.call(self.callable, &[current])
+      })?;
 
       if !is_falsey(should_keep) {
         self.current = current;
@@ -659,9 +671,9 @@ impl LyNative for IterReduce {
 
     let mut iter = this.unwrap().to_obj().to_enumerator();
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      accumulator = get!(hooks.call(callable, &[accumulator, current]));
+      accumulator = hooks.call(callable, &[accumulator, current])?;
     }
 
     hooks.pop_roots(2);
@@ -680,7 +692,7 @@ impl LyNative for IterLen {
       Some(size) => Call::Ok(val!(size as f64)),
       None => {
         let mut size: usize = 0;
-        while !is_falsey(get!(iter.next(hooks))) {
+        while !is_falsey(iter.next(hooks)?) {
           size += 1;
         }
 
@@ -699,9 +711,9 @@ impl LyNative for IterEach {
 
     hooks.push_root(callable);
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      get!(hooks.call(callable, &[current]));
+      hooks.call(callable, &[current])?;
     }
 
     hooks.pop_roots(1);
@@ -757,7 +769,7 @@ impl Enumerate for ZipIterator {
 
     hooks.push_root(results);
     for iter in &mut self.iters {
-      let next = get!(iter.next(hooks));
+      let next = iter.next(hooks)?;
 
       if is_falsey(next) {
         hooks.pop_roots(1);
@@ -872,7 +884,7 @@ impl Enumerate for ChainIterator {
       }
 
       let mut iter = self.iters[self.iter_index];
-      let next = get!(iter.next(hooks));
+      let next = iter.next(hooks)?;
       if !is_falsey(next) {
         self.current = iter.current();
         break;
@@ -945,9 +957,9 @@ impl LyNative for IterAll {
 
     hooks.push_root(callable);
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      if is_falsey(get!(hooks.call(callable, &[current]))) {
+      if is_falsey(hooks.call(callable, &[current])?) {
         hooks.pop_roots(1);
         return Call::Ok(val!(false));
       }
@@ -967,9 +979,9 @@ impl LyNative for IterAny {
 
     hooks.push_root(callable);
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      if !is_falsey(get!(hooks.call(callable, &[current]))) {
+      if !is_falsey(hooks.call(callable, &[current])?) {
         hooks.pop_roots(1);
         return Call::Ok(val!(true));
       }

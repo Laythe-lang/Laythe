@@ -14,7 +14,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 
@@ -22,12 +22,15 @@ const STDERR_CLASS_NAME: &str = "Stderr";
 const STDERR_INSTANCE_NAME: &str = "stderr";
 
 const STDERR_WRITE: NativeMetaBuilder = NativeMetaBuilder::method("write", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
+  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
+  .with_stack();
 
 const STDERR_WRITELN: NativeMetaBuilder = NativeMetaBuilder::method("writeln", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
+  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
+  .with_stack();
 
-const STDERR_FLUSH: NativeMetaBuilder = NativeMetaBuilder::method("flush", Arity::Fixed(0));
+const STDERR_FLUSH: NativeMetaBuilder =
+  NativeMetaBuilder::method("flush", Arity::Fixed(0)).with_stack();
 
 pub fn declare_stderr(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDERR_CLASS_NAME)?;

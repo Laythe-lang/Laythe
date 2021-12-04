@@ -13,7 +13,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  Call, LyResult,
+  Call, LyError, LyResult,
 };
 use std::{io::Write, str::Split};
 use std::{mem, str::Chars};
@@ -23,7 +23,8 @@ use super::{class_inheritance, error::INDEX_ERROR_NAME};
 pub const STRING_CLASS_NAME: &str = "String";
 
 const STRING_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)]);
+  .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)])
+  .with_stack();
 
 const STRING_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
@@ -39,7 +40,8 @@ const STRING_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity
   .with_params(&[
     ParameterBuilder::new("start", ParameterKind::Number),
     ParameterBuilder::new("end", ParameterKind::Number),
-  ]);
+  ])
+  .with_stack();
 
 const STRING_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
@@ -206,11 +208,11 @@ impl Enumerate for SplitIterator {
       Some(next) => {
         self.current = val!(hooks.manage_str(next));
         Call::Ok(val!(true))
-      },
+      }
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      },
+      }
     }
   }
 
@@ -269,18 +271,8 @@ impl LyNative for StringSlice {
     };
 
     // get start and end indices
-    let start_index = match self.string_index(hooks, &string, start) {
-      LyResult::Ok(index) => index,
-      LyResult::Err(err) => return LyResult::Err(err),
-      LyResult::Exit(exit) => return LyResult::Exit(exit),
-    };
-
-    // let end_index = if let Some(end) = end {
-    let end_index = match self.string_index(hooks, &string, end) {
-      LyResult::Ok(index) => index,
-      LyResult::Err(err) => return LyResult::Err(err),
-      LyResult::Exit(exit) => return LyResult::Exit(exit),
-    };
+    let start_index = self.string_index(hooks, &string, start)?;
+    let end_index = self.string_index(hooks, &string, end)?;
 
     if start_index <= end_index {
       // TODO investigate special case where slice is full string
@@ -369,11 +361,11 @@ impl Enumerate for StringIterator {
       Some(next) => {
         self.current = val!(hooks.manage_str(next.encode_utf8(s)));
         Call::Ok(val!(true))
-      },
+      }
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      },
+      }
     }
   }
 
@@ -513,7 +505,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 3.0);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -561,7 +553,7 @@ mod test {
           assert_eq!(string_iter.current(), val!(hooks.manage_str("c")));
 
           assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(false));
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -606,7 +598,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_obj_kind(ObjectKind::String));
           assert_eq!(r.to_obj().to_str(), "bc");
-        },
+        }
         _ => assert!(false),
       }
     }

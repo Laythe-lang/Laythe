@@ -14,7 +14,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 
@@ -22,12 +22,15 @@ const STDOUT_CLASS_NAME: &str = "Stdout";
 const STDOUT_INSTANCE_NAME: &str = "stdout";
 
 const STDOUT_WRITE: NativeMetaBuilder = NativeMetaBuilder::method("write", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
+  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
+  .with_stack();
 
 const STDOUT_WRITELN: NativeMetaBuilder = NativeMetaBuilder::method("writeln", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
+  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
+  .with_stack();
 
-const STDOUT_FLUSH: NativeMetaBuilder = NativeMetaBuilder::method("flush", Arity::Fixed(0));
+const STDOUT_FLUSH: NativeMetaBuilder =
+  NativeMetaBuilder::method("flush", Arity::Fixed(0)).with_stack();
 
 pub fn declare_stdout(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDOUT_CLASS_NAME)?;
