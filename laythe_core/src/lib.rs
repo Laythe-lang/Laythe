@@ -16,7 +16,7 @@ pub mod value;
 pub type Call = LyResult<value::Value>;
 pub type LyResult<T> = Result<T, LyError>;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum LyError {
   Err(GcObj<Instance>),
   Exit(u16),

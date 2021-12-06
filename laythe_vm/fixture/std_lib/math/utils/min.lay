@@ -1,0 +1,4 @@
+import std.math:{min};
+
+assertEq(min(1, 2, 3, 4), 1);
+assertEq(min(3), 3);

@@ -27,6 +27,18 @@ const LN_META: NativeMetaBuilder = NativeMetaBuilder::fun("ln", Arity::Fixed(1))
 const ABS_META: NativeMetaBuilder = NativeMetaBuilder::fun("abs", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("val", ParameterKind::Number)]);
 
+const MAX_META: NativeMetaBuilder =
+  NativeMetaBuilder::fun("max", Arity::Variadic(1)).with_params(&[
+    ParameterBuilder::new("val", ParameterKind::Number),
+    ParameterBuilder::new("vals", ParameterKind::Number),
+  ]);
+
+const MIN_META: NativeMetaBuilder =
+  NativeMetaBuilder::fun("min", Arity::Variadic(1)).with_params(&[
+    ParameterBuilder::new("val", ParameterKind::Number),
+    ParameterBuilder::new("vals", ParameterKind::Number),
+  ]);
+
 const REM_META: NativeMetaBuilder = NativeMetaBuilder::fun("rem", Arity::Fixed(2)).with_params(&[
   ParameterBuilder::new("val", ParameterKind::Number),
   ParameterBuilder::new("divisor", ParameterKind::Number),
@@ -80,6 +92,20 @@ pub fn declare_math_module(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
     module,
     hooks.manage_str(ABS_META.name),
     val!(Abs::native(hooks)),
+  )?;
+
+  export_and_insert(
+    hooks,
+    module,
+    hooks.manage_str(MAX_META.name),
+    val!(Max::native(hooks)),
+  )?;
+
+  export_and_insert(
+    hooks,
+    module,
+    hooks.manage_str(MIN_META.name),
+    val!(Min::native(hooks)),
   )?;
 
   export_and_insert(
@@ -167,6 +193,28 @@ native!(Pow, POW_META);
 impl LyNative for Pow {
   fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     Call::Ok(val!(args[0].to_num().powf(args[1].to_num())))
+  }
+}
+
+native!(Max, MAX_META);
+
+impl LyNative for Max {
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+    Call::Ok(val!(args[1..]
+      .iter()
+      .map(|x| x.to_num())
+      .fold(args[0].to_num(), |max, curr| f64::max(max, curr))))
+  }
+}
+
+native!(Min, MIN_META);
+
+impl LyNative for Min {
+  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+    Call::Ok(val!(args[1..]
+      .iter()
+      .map(|x| x.to_num())
+      .fold(args[0].to_num(), |max, curr| f64::min(max, curr))))
   }
 }
 
@@ -390,6 +438,74 @@ mod test {
         let num = r.to_num();
         assert!(num >= 0.0 && num < 1.0);
       }
+    }
+  }
+
+  mod max {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let max = Max::native(&hooks);
+
+      assert_eq!(max.meta().name, "max");
+      assert_eq!(max.meta().signature.arity, Arity::Variadic(1));
+      assert_eq!(
+        max.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+      assert_eq!(
+        max.meta().signature.parameters[1].kind,
+        ParameterKind::Number
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let max = Max::native(&hooks.as_gc());
+
+      assert_eq!(Ok(val!(1.0)), max.call(&mut hooks, None, &[val!(1.0)]));
+      assert_eq!(Ok(val!(10.0)), max.call(&mut hooks, None, &[val!(1.0), val!(10.0), val!(5.0)]));
+    }
+  }
+
+  mod min {
+    use super::*;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let min = Min::native(&hooks);
+
+      assert_eq!(min.meta().name, "min");
+      assert_eq!(min.meta().signature.arity, Arity::Variadic(1));
+      assert_eq!(
+        min.meta().signature.parameters[0].kind,
+        ParameterKind::Number
+      );
+      assert_eq!(
+        min.meta().signature.parameters[1].kind,
+        ParameterKind::Number
+      );
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let min = Min::native(&hooks.as_gc());
+
+      assert_eq!(Ok(val!(1.0)), min.call(&mut hooks, None, &[val!(1.0)]));
+      assert_eq!(Ok(val!(1.0)), min.call(&mut hooks, None, &[val!(1.0), val!(10.0), val!(5.0)]));
     }
   }
 }

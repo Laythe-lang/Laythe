@@ -1,0 +1,5 @@
+import std.math:{max};
+
+assertEq(max(1, 2, 3, 4), 4);
+assertEq(max(3), 3);
+
