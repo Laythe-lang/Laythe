@@ -79,7 +79,6 @@ const LIST_SORT: NativeMetaBuilder = NativeMetaBuilder::method("sort", Arity::Fi
   .with_params(&[ParameterBuilder::new("comparator", ParameterKind::Fun)])
   .with_stack();
 
-// this may need a stack
 const LIST_COLLECT: NativeMetaBuilder = NativeMetaBuilder::fun("collect", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("iter", ParameterKind::Enumerator)]);
 
@@ -344,6 +343,38 @@ impl ListSlice {
   }
 }
 
+fn determine_index(list: &List<Value>, index: f64) -> Result<usize, String> {
+  if index.fract() != 0.0 {
+    return Err("Index must be an integer.".to_string());
+  }
+
+  if index < 0.0 {
+    let negated_index = (-index) as usize;
+
+    if negated_index > list.len() {
+      return Err(format!(
+        "Index out of bounds. list was length {} but attempted to index with -{}.",
+        list.len(),
+        negated_index
+      ));
+    }
+
+    Ok(list.len() - negated_index)
+  } else {
+    let index = index as usize;
+
+    if index >= list.len() {
+      return Err(format!(
+        "Index out of bounds. list was length {} but attempted to index with {}.",
+        list.len(),
+        index
+      ));
+    }
+
+    Ok(index)
+  }
+}
+
 native_with_error!(ListIndexGet, LIST_INDEX_GET);
 
 impl LyNative for ListIndexGet {
@@ -351,23 +382,10 @@ impl LyNative for ListIndexGet {
     let index = args[0].to_num();
     let list = this.unwrap().to_obj().to_list();
 
-    if index.fract() != 0.0 {
-      return self.call_error(hooks, "Index must be an integer.");
+    match determine_index(&list, index) {
+      Ok(index) => Ok(list[index]),
+      Err(message) => return self.call_error(hooks, message),
     }
-
-    let index = index as usize;
-    if index >= list.len() {
-      return self.call_error(
-        hooks,
-        format!(
-          "Index out of bounds. list was length {} but attempted to index with {}.",
-          list.len(),
-          index
-        ),
-      );
-    }
-
-    Call::Ok(list[index])
   }
 }
 
@@ -378,24 +396,13 @@ impl LyNative for ListIndexSet {
     let index = args[1].to_num();
     let mut list = this.unwrap().to_obj().to_list();
 
-    if index.fract() != 0.0 {
-      return self.call_error(hooks, "Index must be an integer.");
+    match determine_index(&list, index) {
+      Ok(index) => {
+        list[index] = args[0];
+        Call::Ok(args[0])
+      }
+      Err(message) => return self.call_error(hooks, message),
     }
-
-    let index = index as usize;
-    if index >= list.len() {
-      return self.call_error(
-        hooks,
-        &format!(
-          "Index out of bounds. list was length {} but attempted to index with {}.",
-          list.len(),
-          index
-        ),
-      );
-    }
-
-    list[index] = args[0];
-    Call::Ok(args[0])
   }
 }
 

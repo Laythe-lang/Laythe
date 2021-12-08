@@ -1867,10 +1867,9 @@ impl Vm {
         Call::Err(LyError::Exit(code)) => self.set_exit(code),
       },
       Environment::Normal => {
-        let mut stub = self
-          .native_fun_stubs
-          .pop()
-          .unwrap_or(self.manage_obj(Fun::stub(meta.name, self.global, AlignedByteCode::Nil)));
+        let mut stub = self.native_fun_stubs.pop().unwrap_or_else(|| {
+          self.manage_obj(Fun::stub(meta.name, self.global, AlignedByteCode::Nil))
+        });
 
         stub.set_name(meta.name);
 

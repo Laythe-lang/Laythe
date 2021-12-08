@@ -100,7 +100,10 @@ fn iter() -> Result<(), std::io::Error> {
       "std_lib/global/iter/skip.lay",
       "std_lib/global/iter/str.lay",
       "std_lib/global/iter/take.lay",
+      "std_lib/global/iter/to_list.lay",
       "std_lib/global/iter/zip.lay",
+      // "std_lib/global/iter/filter_method.lay",
+      // "std_lib/global/iter/map_method.lay",
     ],
     ExecuteResult::Ok(0),
   )?;
@@ -116,6 +119,13 @@ fn list() -> Result<(), std::io::Error> {
       "std_lib/global/list/collect.lay",
       "std_lib/global/list/has.lay",
       "std_lib/global/list/index.lay",
+      "std_lib/global/list/index_get.lay",
+      "std_lib/global/list/index_get_negative.lay",
+      "std_lib/global/list/index_get_nested.lay",
+      "std_lib/global/list/index_set.lay",
+      "std_lib/global/list/index_set_negative.lay",
+      "std_lib/global/list/index_set_nested.lay",
+      "std_lib/global/list/index_set_pass_through.lay",
       "std_lib/global/list/insert.lay",
       "std_lib/global/list/iter.lay",
       "std_lib/global/list/len.lay",
@@ -131,6 +141,14 @@ fn list() -> Result<(), std::io::Error> {
 
   test_files(
     &vec![
+      "std_lib/global/list/index_get_fractional.lay",
+      "std_lib/global/list/index_get_fractional_negative.lay",
+      "std_lib/global/list/index_get_out_of_range.lay",
+      "std_lib/global/list/index_get_out_of_range_negative.lay",
+      "std_lib/global/list/index_set_fractional.lay",
+      "std_lib/global/list/index_set_fractional_negative.lay",
+      "std_lib/global/list/index_set_out_of_range.lay",
+      "std_lib/global/list/index_set_out_of_range_negative.lay",
       "std_lib/global/list/insert_out_of_bounds.lay",
       "std_lib/global/list/remove_out_of_bounds.lay",
     ],
@@ -144,18 +162,29 @@ fn map() -> Result<(), std::io::Error> {
     &vec![
       "std_lib/global/map/get.lay",
       "std_lib/global/map/has.lay",
+      "std_lib/global/map/index_get.lay",
+      "std_lib/global/map/index_get_nan.lay",
+      "std_lib/global/map/index_get_nested.lay",
+      "std_lib/global/map/index_get_nested.lay",
+      "std_lib/global/map/index_get_ref_equal.lay",
+      "std_lib/global/map/index_set.lay",
+      "std_lib/global/map/index_set_pass_through.lay",
       "std_lib/global/map/insert.lay",
       "std_lib/global/map/iter.lay",
+      "std_lib/global/map/len.lay",
       "std_lib/global/map/remove.lay",
       "std_lib/global/map/set.lay",
-      "std_lib/global/map/len.lay",
       "std_lib/global/map/str.lay",
     ],
     ExecuteResult::Ok(0),
   )?;
 
   test_files(
-    &vec!["std_lib/global/map/remove_missing_key.lay"],
+    &vec![
+      "std_lib/global/map/remove_missing_key.lay",
+      "std_lib/global/map/index_get_key_not_found.lay",
+
+    ],
     ExecuteResult::RuntimeError,
   )
 }

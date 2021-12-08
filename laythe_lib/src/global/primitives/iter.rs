@@ -82,6 +82,8 @@ const ITER_ANY: NativeMetaBuilder = NativeMetaBuilder::method("any", Arity::Fixe
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
   .with_stack();
 
+const ITER_TO_LIST: NativeMetaBuilder = NativeMetaBuilder::method("toList", Arity::Fixed(0));
+
 const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
   .with_stack();
@@ -195,6 +197,12 @@ pub fn define_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
     hooks,
     hooks.manage_str(ITER_ANY.name),
     val!(IterAny::native(hooks)),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(ITER_TO_LIST.name),
+    val!(IterToList::native(hooks)),
   );
 
   class.add_method(
@@ -992,6 +1000,27 @@ impl LyNative for IterAny {
   }
 }
 
+native!(IterToList, ITER_TO_LIST);
+
+impl LyNative for IterToList {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let mut iter = this.unwrap().to_obj().to_enumerator();
+    let mut list = match iter.size_hint() {
+      Some(size) => hooks.manage_obj(List::with_capacity(size)),
+      None => hooks.manage_obj(List::new()),
+    };
+
+    hooks.push_root(list);
+
+    while !is_falsey(iter.next(hooks)?) {
+      list.push(iter.current());
+    }
+
+    hooks.pop_roots(1);
+    Call::Ok(val!(list))
+  }
+}
+
 native!(IterInto, ITER_INTO);
 
 impl LyNative for IterInto {
@@ -1764,6 +1793,45 @@ mod test {
         Call::Ok(r) => assert_eq!(r.to_bool(), true),
         _ => assert!(false),
       }
+    }
+  }
+
+  mod to_list {
+    use super::*;
+    use crate::support::MockedContext;
+    use laythe_core::object::Enumerator;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let iter_to_list = IterToList::native(&hooks);
+
+      assert_eq!(iter_to_list.meta().name, "toList");
+      assert_eq!(iter_to_list.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::new(&[val!(true); 5]);
+      let mut hooks = Hooks::new(&mut context);
+      let iter_to_list = IterToList::native(&hooks.as_gc());
+
+      let iter = test_iter();
+      let managed = hooks.manage_obj(Enumerator::new(iter));
+      let this = val!(managed);
+
+      let result = iter_to_list.call(&mut hooks, Some(this), &[]).unwrap();
+
+      assert!(result.is_obj_kind(ObjectKind::List));
+      let list = result.to_obj().to_list();
+
+      assert_eq!(list.len(), 4);
+      assert_eq!(list[0], val!(1.0));
+      assert_eq!(list[1], val!(2.0));
+      assert_eq!(list[2], val!(3.0));
+      assert_eq!(list[3], val!(4.0));
     }
   }
 }
