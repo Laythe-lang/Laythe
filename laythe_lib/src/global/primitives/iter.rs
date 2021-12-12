@@ -82,7 +82,7 @@ const ITER_ANY: NativeMetaBuilder = NativeMetaBuilder::method("any", Arity::Fixe
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
   .with_stack();
 
-const ITER_TO_LIST: NativeMetaBuilder = NativeMetaBuilder::method("toList", Arity::Fixed(0));
+const ITER_LIST: NativeMetaBuilder = NativeMetaBuilder::method("list", Arity::Fixed(0));
 
 const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
@@ -201,7 +201,7 @@ pub fn define_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 
   class.add_method(
     hooks,
-    hooks.manage_str(ITER_TO_LIST.name),
+    hooks.manage_str(ITER_LIST.name),
     val!(IterToList::native(hooks)),
   );
 
@@ -1000,7 +1000,7 @@ impl LyNative for IterAny {
   }
 }
 
-native!(IterToList, ITER_TO_LIST);
+native!(IterToList, ITER_LIST);
 
 impl LyNative for IterToList {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
@@ -1808,7 +1808,7 @@ mod test {
 
       let iter_to_list = IterToList::native(&hooks);
 
-      assert_eq!(iter_to_list.meta().name, "toList");
+      assert_eq!(iter_to_list.meta().name, "list");
       assert_eq!(iter_to_list.meta().signature.arity, Arity::Fixed(0));
     }
 

@@ -1,7 +1,7 @@
-let l1 = (-5).until(10).toList();
-let l2 = 4.times().toList();
-let l3 = [1, 2, 3].iter().toList();
-let l4 = "example".iter().toList();
+let l1 = (-5).until(10).list();
+let l2 = 4.times().list();
+let l3 = [1, 2, 3].iter().list();
+let l4 = "example".iter().list();
 
 assertEq(l1.len(), 15);
 assertEq(l1[0], -5);
