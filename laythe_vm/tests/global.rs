@@ -278,6 +278,7 @@ fn print() -> Result<(), std::io::Error> {
 fn str() -> Result<(), std::io::Error> {
   test_files(
     &vec![
+      "std_lib/global/str/down_case.lay",
       "std_lib/global/str/has.lay",
       "std_lib/global/str/index.lay",
       "std_lib/global/str/iter.lay",
@@ -285,6 +286,7 @@ fn str() -> Result<(), std::io::Error> {
       "std_lib/global/str/slice.lay",
       "std_lib/global/str/split.lay",
       "std_lib/global/str/str.lay",
+      "std_lib/global/str/up_case.lay",
     ],
     ExecuteResult::Ok(0),
   )?;
