@@ -2097,7 +2097,7 @@ impl Vm {
       }
       None => self.runtime_error(
         self.builtin.errors.runtime,
-        &format!("Undefined property {}", name),
+        &format!("Undefined property {} on class {}.", name, class.name()),
       ),
     }
   }
