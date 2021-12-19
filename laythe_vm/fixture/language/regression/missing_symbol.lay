@@ -1,0 +1,8 @@
+class Foo {
+  pop() {
+  }
+
+  bar() {
+    pop;
+  }
+}

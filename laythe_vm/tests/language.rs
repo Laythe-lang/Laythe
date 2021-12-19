@@ -932,6 +932,11 @@ fn regression() -> Result<(), std::io::Error> {
       "language/regression/continue.lay",
     ],
     ExecuteResult::Ok(0),
+  )?;
+
+  test_file_exits(
+    &vec!["language/regression/missing_symbol.lay"],
+    ExecuteResult::CompileError,
   )
 }
 

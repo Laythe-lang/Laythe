@@ -10,7 +10,7 @@ use laythe_core::{
   constants::{ITER_VAR, SELF, SUPER, UNINITIALIZED_VAR},
   managed::Gc,
   memory::Allocator,
-  module,
+  module::{self, ModuleError},
   object::FunKind,
 };
 use std::vec;
@@ -275,15 +275,15 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
 
     // if we're resolving a file be more strict about finding symbols
     if !self.repl {
-      if let Some(interned_name) = self.gc.has_str(name.str()) {
-        if self
-          .global_module
-          .get_exported_symbol(interned_name)
-          .is_ok()
-        {
-          let table = &mut self.tables.first_mut().unwrap();
-          table.table.add_global_symbol(name.str(), name.span());
-        }
+      if self
+        .gc
+        .has_str(name.str())
+        .ok_or(ModuleError::SymbolDoesNotExist)
+        .and_then(|interned_name| self.global_module.get_exported_symbol(interned_name))
+        .is_ok()
+      {
+        let table = &mut self.tables.first_mut().unwrap();
+        table.table.add_global_symbol(name.str(), name.span());
       } else {
         self.error(
           &format!("Attempted to access undeclared variable {}", name.str()),
