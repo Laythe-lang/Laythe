@@ -57,7 +57,7 @@ pub struct Local<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct ClassInfo {
+pub struct ClassAttributes {
   /// kind of current function in this class
   fun_kind: Option<FunKind>,
 
@@ -68,9 +68,9 @@ pub struct ClassInfo {
   name: GcStr,
 }
 
-impl ClassInfo {
+impl ClassAttributes {
   fn new(name: GcStr) -> Self {
-    ClassInfo {
+    ClassAttributes {
       fun_kind: None,
       fields: vec![],
       name,
@@ -82,7 +82,7 @@ impl ClassInfo {
   }
 }
 
-impl DebugHeap for ClassInfo {
+impl DebugHeap for ClassAttributes {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
     f.debug_struct("ClassInfo")
       .field("fun_kind", &self.fun_kind)
@@ -92,7 +92,7 @@ impl DebugHeap for ClassInfo {
   }
 }
 
-impl Manage for ClassInfo {
+impl Manage for ClassAttributes {
   fn size(&self) -> usize {
     mem::size_of::<Self>() + mem::size_of::<GcStr>() * self.fields.capacity()
   }
@@ -102,7 +102,7 @@ impl Manage for ClassInfo {
   }
 }
 
-impl Trace for ClassInfo {
+impl Trace for ClassAttributes {
   fn trace(&self) {
     self.name.trace();
     self.fields.iter().for_each(|field| field.trace());
@@ -115,13 +115,13 @@ impl Trace for ClassInfo {
 }
 
 #[derive(Debug, Clone)]
-pub struct LoopInfo {
+pub struct LoopAttributes {
   scope_depth: usize,
   start: usize,
   breaks: Vec<usize>,
 }
 
-impl DebugHeap for LoopInfo {
+impl DebugHeap for LoopAttributes {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
     f.debug_struct("LoopInfo")
       .field("scope_depth", &self.scope_depth)
@@ -131,7 +131,7 @@ impl DebugHeap for LoopInfo {
   }
 }
 
-impl Manage for LoopInfo {
+impl Manage for LoopAttributes {
   fn size(&self) -> usize {
     mem::size_of::<Self>()
   }
@@ -141,7 +141,7 @@ impl Manage for LoopInfo {
   }
 }
 
-impl Trace for LoopInfo {
+impl Trace for LoopAttributes {
   fn trace(&self) {}
 
   fn trace_debug(&self, _log: &mut dyn Write) {}
@@ -181,10 +181,10 @@ pub struct Compiler<'a, 'src, FileId> {
   enclosing: Option<NonNull<Compiler<'a, 'src, FileId>>>,
 
   /// The info on the current class
-  class_info: Option<Gc<ClassInfo>>,
+  class_attributes: Option<Gc<ClassAttributes>>,
 
   /// The info on the current loop
-  loop_info: Option<Gc<LoopInfo>>,
+  loop_attributes: Option<Gc<LoopAttributes>>,
 
   /// Should we early exit scope (break / continue)
   exit_scope: ScopeExit,
@@ -279,8 +279,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       scope_depth: 0,
       slots: 1,
       repl,
-      class_info: None,
-      loop_info: None,
+      class_attributes: None,
+      loop_attributes: None,
       exit_scope: ScopeExit::Normal,
       gc: RefCell::new(gc),
       enclosing: None,
@@ -346,8 +346,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       scope_depth: enclosing.scope_depth,
       slots: 1,
       repl: enclosing.repl,
-      class_info: enclosing.class_info,
-      loop_info: enclosing.loop_info,
+      class_attributes: enclosing.class_attributes,
+      loop_attributes: enclosing.loop_attributes,
       exit_scope: ScopeExit::Normal,
       gc,
       locals: vec![],
@@ -392,7 +392,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   #[cfg(feature = "debug")]
   fn print_chunk(
     fun: &Fun,
-    class_info: &Option<Gc<ClassInfo>>,
+    class_info: &Option<Gc<ClassAttributes>>,
     io: &Option<Io>,
     fun_kind: FunKind,
   ) {
@@ -419,7 +419,37 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.emit_byte(AlignedByteCode::Return, line);
   }
 
-  /// scope the provide closure
+  fn loop_scope(
+    &mut self,
+    end_line: u32,
+    loop_start: usize,
+    table: &'a SymbolTable<'src>,
+    cb: impl FnOnce(&mut Self),
+  ) -> Gc<LoopAttributes> {
+    // set this class as the current class compiler
+    let loop_attributes = self.gc.borrow_mut().manage(
+      LoopAttributes {
+        scope_depth: self.scope_depth,
+        start: loop_start,
+        breaks: vec![],
+      },
+      self,
+    );
+    let enclosing_loop = mem::replace(&mut self.loop_attributes, Some(loop_attributes));
+    if let Some(enclosing_loop) = enclosing_loop {
+      self.gc.borrow_mut().push_root(enclosing_loop);
+    }
+
+    self.scope(end_line, table, cb);
+
+    if enclosing_loop.is_some() {
+      self.gc.borrow_mut().pop_roots(1);
+    }
+    self.loop_attributes = enclosing_loop;
+    loop_attributes
+  }
+
+  /// scope the provided closure
   fn scope(&mut self, end_line: u32, table: &'a SymbolTable<'src>, cb: impl FnOnce(&mut Self)) {
     self.begin_scope(table);
 
@@ -775,8 +805,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// Patch any break statements at the end of a loop
-  fn patch_breaks(&mut self) {
-    let loop_info = self.loop_info.expect("loop info not set");
+  fn patch_breaks(&mut self, loop_info: &LoopAttributes) {
     for break_ in loop_info.breaks.iter() {
       self.patch_jump(*break_);
     }
@@ -1002,12 +1031,15 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.define_variable(class_constant, class_state, class_name.end());
 
     // set this class as the current class compiler
-    let class_info_name = self.gc.borrow_mut().manage_str(class_name.str(), self);
-    let class_compiler = self
+    let managed_class_name = self.gc.borrow_mut().manage_str(class_name.str(), self);
+    let class_attributes = self
       .gc
       .borrow_mut()
-      .manage(ClassInfo::new(class_info_name), self);
-    let enclosing_class = mem::replace(&mut self.class_info, Some(class_compiler));
+      .manage(ClassAttributes::new(managed_class_name), self);
+    let enclosing_class = mem::replace(&mut self.class_attributes, Some(class_attributes));
+    if let Some(enclosing_class) = enclosing_class {
+      self.gc.borrow_mut().push_root(enclosing_class);
+    }
 
     // start a new scope with the super keyword present
     self.begin_scope(&class.symbols);
@@ -1064,13 +1096,16 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.end_scope(class.end());
 
     // restore the enclosing class compiler
-    self.class_info = enclosing_class;
+    if let Some(enclosing_class) = enclosing_class {
+      self.gc.borrow_mut().pop_roots(1);
+    }
+    self.class_attributes = enclosing_class;
     class_constant
   }
 
   /// Emit field instructions
   fn emit_fields(&mut self, line: u32) {
-    let class_info = self.class_info.expect("Current class unset");
+    let class_info = self.class_attributes.expect("Current class unset");
 
     class_info.fields.iter().for_each(|f| {
       let constant = self.make_constant(val!(*f));
@@ -1086,7 +1121,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .map(|name| self.identifier_constant(name.str()))
       .expect("Expect method name");
 
-    self.class_info.expect("Class compiler not set").fun_kind = Some(fun_kind);
+    self.class_attributes.expect("Class compiler not set").fun_kind = Some(fun_kind);
 
     self.function(method, fun_kind);
     self.emit_byte(AlignedByteCode::Method(constant), method.end());
@@ -1100,7 +1135,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .map(|name| self.identifier_constant(name.str()))
       .expect("Expected method name.");
 
-    self.class_info.expect("Class compiler not set").fun_kind = Some(FunKind::StaticMethod);
+    self.class_attributes.expect("Class compiler not set").fun_kind = Some(FunKind::StaticMethod);
 
     self.function(static_method, FunKind::StaticMethod);
     self.emit_byte(AlignedByteCode::StaticMethod(constant), static_method.end());
@@ -1275,16 +1310,6 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       // mark start of loop
       let loop_start = self_.current_chunk().instructions().len();
 
-      let loop_info = self_.gc.borrow_mut().manage(
-        LoopInfo {
-          scope_depth: self_.scope_depth,
-          start: loop_start,
-          breaks: vec![],
-        },
-        self_,
-      );
-      let enclosing_loop = mem::replace(&mut self_.loop_info, Some(loop_info));
-
       // define iterator method constants
       let next_const = self_.string_constant(NEXT);
       let current_const = self_.string_constant(CURRENT);
@@ -1311,16 +1336,14 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self_.emit_byte(AlignedByteCode::Drop, expr_line);
 
       // loop body
-      self_.scope(for_.body.end(), &for_.body.symbols, |self_| {
+      let loop_info = self_.loop_scope(for_.body.end(), loop_start, &for_.body.symbols, |self_| {
         self_.block(&for_.body);
       });
       self_.emit_loop(loop_start, for_.end());
 
       // loop back to top
       self_.patch_jump(exit_jump);
-      self_.patch_breaks();
-
-      self_.loop_info = enclosing_loop;
+      self_.patch_breaks(&loop_info);
     });
   }
 
@@ -1328,37 +1351,17 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn while_(&mut self, while_: &'a ast::While<'src>) {
     let loop_start = self.current_chunk().instructions().len();
 
-    // set this class as the current class compiler
-    let loop_info = self.gc.borrow_mut().manage(
-      LoopInfo {
-        scope_depth: self.scope_depth,
-        start: loop_start,
-        breaks: vec![],
-      },
-      self,
-    );
-    let enclosing_loop = mem::replace(&mut self.loop_info, Some(loop_info));
-    if let Some(enclosing_loop) = enclosing_loop {
-      self.gc.borrow_mut().push_root(enclosing_loop)
-    }
-
     self.expr(&while_.cond);
-
     let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), while_.cond.end());
 
-    self.scope(while_.end(), &while_.body.symbols, |self_| {
+    let loop_info = self.loop_scope(while_.end(), loop_start, &while_.body.symbols, |self_| {
       self_.block(&while_.body);
     });
 
     self.emit_loop(loop_start, while_.end());
 
     self.patch_jump(exit_jump);
-    self.patch_breaks();
-
-    if enclosing_loop.is_some() {
-      self.gc.borrow_mut().pop_roots(1);
-    }
-    self.loop_info = enclosing_loop;
+    self.patch_breaks(&loop_info);
   }
 
   /// Compile a if statement
@@ -1430,7 +1433,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Compile a return statement
   fn continue_(&mut self, continue_: &Token) {
     let loop_info = self
-      .loop_info
+      .loop_attributes
       .expect("Parser should have caught the loop constraint");
 
     self.drop_locals(continue_.end(), loop_info.scope_depth);
@@ -1441,7 +1444,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Compile a return statement
   fn break_(&mut self, break_: &Token) {
     let mut loop_info = self
-      .loop_info
+      .loop_attributes
       .expect("Parser should have caught the loop constraint");
 
     self.drop_locals(break_.end(), loop_info.scope_depth);
@@ -1506,7 +1509,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
-                  let mut class_info = self.class_info.unwrap();
+                  let mut class_info = self.class_attributes.unwrap();
 
                   if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
@@ -1564,7 +1567,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
-                  let mut class_info = self.class_info.unwrap();
+                  let mut class_info = self.class_attributes.unwrap();
 
                   if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
@@ -1648,7 +1651,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
-                  let mut class_info = self.class_info.unwrap();
+                  let mut class_info = self.class_attributes.unwrap();
 
                   if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
@@ -1917,7 +1920,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Compile the self token
   fn self_(&mut self, self_: &Token<'src>) -> bool {
     self
-      .class_info
+      .class_attributes
       .map(|class_compiler| class_compiler.fun_kind)
       .and_then(|fun_kind| {
         fun_kind.and_then(|fun_kind| match fun_kind {
@@ -1941,7 +1944,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile the super token
   fn super_(&mut self, super_: &ast::Super<'src>, trailers: &'a [Trailer<'src>]) -> bool {
-    if self.class_info.is_none() {
+    if self.class_attributes.is_none() {
       self.error(
         "Cannot use 'super' outside of a class.",
         Some(&super_.super_),
@@ -2048,10 +2051,10 @@ impl<'a, 'src: 'a, FileId> TraceRoot for Compiler<'a, 'src, FileId> {
     self.fun.trace();
     self.module.trace();
 
-    if let Some(class_info) = self.class_info {
+    if let Some(class_info) = self.class_attributes {
       class_info.trace();
     }
-    if let Some(loop_info) = self.loop_info {
+    if let Some(loop_info) = self.loop_attributes {
       loop_info.trace();
     }
 
@@ -2069,10 +2072,10 @@ impl<'a, 'src: 'a, FileId> TraceRoot for Compiler<'a, 'src, FileId> {
     self.fun.trace_debug(log);
     self.module.trace_debug(log);
 
-    if let Some(class_info) = self.class_info {
+    if let Some(class_info) = self.class_attributes {
       class_info.trace_debug(log)
     }
-    if let Some(loop_info) = self.loop_info {
+    if let Some(loop_info) = self.loop_attributes {
       loop_info.trace_debug(log)
     }
 
