@@ -223,7 +223,7 @@ impl Trace for ListStr {
 
 fn quote_string(buf: &mut String, string: &str) {
   buf.push('\'');
-  buf.push_str(&string);
+  buf.push_str(string);
   buf.push('\'');
 }
 
@@ -384,7 +384,7 @@ impl LyNative for ListIndexGet {
 
     match determine_index(&list, index) {
       Ok(index) => Ok(list[index]),
-      Err(message) => return self.call_error(hooks, message),
+      Err(message) => self.call_error(hooks, message),
     }
   }
 }
@@ -401,7 +401,7 @@ impl LyNative for ListIndexSet {
         list[index] = args[0];
         Call::Ok(args[0])
       }
-      Err(message) => return self.call_error(hooks, message),
+      Err(message) => self.call_error(hooks, message),
     }
   }
 }

@@ -17,14 +17,8 @@ impl IoImpl<Fs> for IoFsNative {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct FsNative();
-
-impl Default for FsNative {
-  fn default() -> Self {
-    Self()
-  }
-}
 
 impl FsImpl for FsNative {
   fn read_to_string(&self, path: &Path) -> io::Result<String> {

@@ -1096,7 +1096,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.end_scope(class.end());
 
     // restore the enclosing class compiler
-    if let Some(enclosing_class) = enclosing_class {
+    if enclosing_class.is_some() {
       self.gc.borrow_mut().pop_roots(1);
     }
     self.class_attributes = enclosing_class;

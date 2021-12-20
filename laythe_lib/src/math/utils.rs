@@ -203,7 +203,7 @@ impl LyNative for Max {
     Call::Ok(val!(args[1..]
       .iter()
       .map(|x| x.to_num())
-      .fold(args[0].to_num(), |max, curr| f64::max(max, curr))))
+      .fold(args[0].to_num(), f64::max)))
   }
 }
 
@@ -214,7 +214,7 @@ impl LyNative for Min {
     Call::Ok(val!(args[1..]
       .iter()
       .map(|x| x.to_num())
-      .fold(args[0].to_num(), |max, curr| f64::min(max, curr))))
+      .fold(args[0].to_num(), f64::min)))
   }
 }
 
@@ -471,7 +471,10 @@ mod test {
       let max = Max::native(&hooks.as_gc());
 
       assert_eq!(Ok(val!(1.0)), max.call(&mut hooks, None, &[val!(1.0)]));
-      assert_eq!(Ok(val!(10.0)), max.call(&mut hooks, None, &[val!(1.0), val!(10.0), val!(5.0)]));
+      assert_eq!(
+        Ok(val!(10.0)),
+        max.call(&mut hooks, None, &[val!(1.0), val!(10.0), val!(5.0)])
+      );
     }
   }
 
@@ -505,7 +508,10 @@ mod test {
       let min = Min::native(&hooks.as_gc());
 
       assert_eq!(Ok(val!(1.0)), min.call(&mut hooks, None, &[val!(1.0)]));
-      assert_eq!(Ok(val!(1.0)), min.call(&mut hooks, None, &[val!(1.0), val!(10.0), val!(5.0)]));
+      assert_eq!(
+        Ok(val!(1.0)),
+        min.call(&mut hooks, None, &[val!(1.0), val!(10.0), val!(5.0)])
+      );
     }
   }
 }

@@ -174,7 +174,7 @@ impl<'a> Spanned for Decl<'a> {
 }
 
 pub enum Symbol<'a> {
-  Class(Class<'a>),
+  Class(Box<'a, Class<'a>>),
   Fun(Fun<'a>),
   Let(Let<'a>),
   Trait(Trait<'a>),
