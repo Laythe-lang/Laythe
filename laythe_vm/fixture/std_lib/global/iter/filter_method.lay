@@ -1,0 +1,13 @@
+class A {
+  foo(x) { x[0] == "key" }
+}
+
+let iter = {
+  "key": 10,
+  "bad key": 5,
+}.iter().filter(A().foo);
+
+assertEq(iter.next(), true);
+assertEq(iter.current()[1], 10);
+
+assertEq(iter.next(), false);

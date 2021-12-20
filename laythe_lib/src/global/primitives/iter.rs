@@ -6,12 +6,10 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  if_let_obj,
   managed::{DebugHeap, DebugWrap, Gc, GcObj, Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  to_obj_kind,
   utils::is_falsey,
   val,
   value::{Value, VALUE_NIL},
@@ -520,11 +518,7 @@ impl Enumerate for MapIterator {
       Call::Ok(val!(false))
     } else {
       let current = self.iter.current();
-      if_let_obj!(ObjectKind::Method(method) = (self.callable) {
-        self.current = hooks.call_method(method.receiver(), method.method(), &[current])?;
-      } else {
-        self.current = hooks.call(self.callable, &[current])?;
-      });
+      self.current = hooks.call(self.callable, &[current])?;
       Call::Ok(val!(true))
     }
   }
@@ -613,13 +607,7 @@ impl Enumerate for FilterIterator {
     while !is_falsey(self.iter.next(hooks)?) {
       let current = self.iter.current();
 
-      let should_keep = if_let_obj!(ObjectKind::Method(method) = (self.callable) {
-        hooks.call_method(method.receiver(), method.method(), &[current])
-      } else {
-        hooks.call(self.callable, &[current])
-      })?;
-
-      if !is_falsey(should_keep) {
+      if !is_falsey(hooks.call(self.callable, &[current])?) {
         self.current = current;
         return Call::Ok(val!(true));
       }
@@ -1013,7 +1001,7 @@ impl LyNative for IterToList {
     hooks.push_root(list);
 
     while !is_falsey(iter.next(hooks)?) {
-      list.push(iter.current());
+      hooks.grow(&mut list, |list| list.push(iter.current()));
     }
 
     hooks.pop_roots(1);

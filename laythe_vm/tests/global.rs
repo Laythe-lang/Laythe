@@ -89,12 +89,14 @@ fn iter() -> Result<(), std::io::Error> {
       "std_lib/global/iter/chain.lay",
       "std_lib/global/iter/each.lay",
       "std_lib/global/iter/filter.lay",
+      "std_lib/global/iter/filter_method.lay",
       "std_lib/global/iter/first.lay",
       "std_lib/global/iter/into.lay",
       "std_lib/global/iter/iter.lay",
       "std_lib/global/iter/last.lay",
       "std_lib/global/iter/len.lay",
       "std_lib/global/iter/map.lay",
+      "std_lib/global/iter/map_method.lay",
       "std_lib/global/iter/next.lay",
       "std_lib/global/iter/reduce.lay",
       "std_lib/global/iter/skip.lay",
@@ -102,8 +104,6 @@ fn iter() -> Result<(), std::io::Error> {
       "std_lib/global/iter/take.lay",
       "std_lib/global/iter/to_list.lay",
       "std_lib/global/iter/zip.lay",
-      // "std_lib/global/iter/filter_method.lay",
-      // "std_lib/global/iter/map_method.lay",
     ],
     ExecuteResult::Ok(0),
   )?;
@@ -183,7 +183,6 @@ fn map() -> Result<(), std::io::Error> {
     &vec![
       "std_lib/global/map/remove_missing_key.lay",
       "std_lib/global/map/index_get_key_not_found.lay",
-
     ],
     ExecuteResult::RuntimeError,
   )

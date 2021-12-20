@@ -376,7 +376,8 @@ impl Vm {
   /// Run a laythe function on top of the current stack.
   /// This acts as a hook for native functions to execute laythe function
   unsafe fn run_fun(&mut self, callable: Value, args: &[Value]) -> ExecuteResult {
-    self.fiber.ensure_stack(args.len());
+    self.fiber.ensure_stack(args.len() + 1);
+    self.fiber.push(callable);
     for arg in args {
       self.fiber.push(*arg);
     }
@@ -536,7 +537,7 @@ impl Vm {
           Signal::OkReturn => {
             if let ExecuteMode::CallFunction(depth) = mode {
               if depth == self.fiber.frames().len() {
-                return ExecuteResult::FunResult(self.fiber.peek(0));
+                return ExecuteResult::FunResult(self.fiber.pop());
               }
             }
           }
