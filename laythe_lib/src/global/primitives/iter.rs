@@ -5,7 +5,6 @@ use crate::{
   StdResult,
 };
 use laythe_core::{
-  get,
   hooks::{GcHooks, Hooks},
   managed::{DebugHeap, DebugWrap, Gc, GcObj, Manage, Trace},
   module::Module,
@@ -14,7 +13,7 @@ use laythe_core::{
   utils::is_falsey,
   val,
   value::{Value, VALUE_NIL},
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 use std::mem;
@@ -33,10 +32,12 @@ const ITER_FIRST: NativeMetaBuilder = NativeMetaBuilder::method("first", Arity::
 const ITER_LAST: NativeMetaBuilder = NativeMetaBuilder::method("last", Arity::Fixed(0));
 
 const ITER_TAKE: NativeMetaBuilder = NativeMetaBuilder::method("take", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)]);
+  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)])
+  .with_stack();
 
 const ITER_SKIP: NativeMetaBuilder = NativeMetaBuilder::method("skip", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)]);
+  .with_params(&[ParameterBuilder::new("count", ParameterKind::Number)])
+  .with_stack();
 
 const ITER_MAP: NativeMetaBuilder = NativeMetaBuilder::method("map", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
@@ -78,6 +79,8 @@ const ITER_ALL: NativeMetaBuilder = NativeMetaBuilder::method("all", Arity::Fixe
 const ITER_ANY: NativeMetaBuilder = NativeMetaBuilder::method("any", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
   .with_stack();
+
+const ITER_LIST: NativeMetaBuilder = NativeMetaBuilder::method("list", Arity::Fixed(0));
 
 const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Fun)])
@@ -196,6 +199,12 @@ pub fn define_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 
   class.add_method(
     hooks,
+    hooks.manage_str(ITER_LIST.name),
+    val!(IterToList::native(hooks)),
+  );
+
+  class.add_method(
+    hooks,
     hooks.manage_str(ITER_INTO.name),
     val!(IterInto::native(hooks)),
   );
@@ -243,7 +252,7 @@ impl LyNative for IterFirst {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let mut iter = this.unwrap().to_obj().to_enumerator();
 
-    if !is_falsey(get!(iter.next(hooks))) {
+    if !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
       Call::Ok(current)
     } else {
@@ -259,7 +268,7 @@ impl LyNative for IterLast {
     let mut iter = this.unwrap().to_obj().to_enumerator();
     let mut result = VALUE_NIL;
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       result = iter.current();
     }
 
@@ -316,7 +325,7 @@ impl Enumerate for TakeIterator {
   }
 
   fn next(&mut self, hooks: &mut Hooks) -> Call {
-    if self.current >= self.take_count || is_falsey(get!(self.iter.next(hooks))) {
+    if self.current >= self.take_count || is_falsey(self.iter.next(hooks)?) {
       Call::Ok(val!(false))
     } else {
       self.current += 1;
@@ -391,7 +400,7 @@ impl LyNative for IterSkip {
     let mut current = 0usize;
     let skip_count = skip_count as usize;
 
-    while current < skip_count && !is_falsey(get!(iter.next(hooks))) {
+    while current < skip_count && !is_falsey(iter.next(hooks)?) {
       current += 1;
     }
 
@@ -505,11 +514,11 @@ impl Enumerate for MapIterator {
   }
 
   fn next(&mut self, hooks: &mut Hooks) -> Call {
-    if is_falsey(get!(self.iter.next(hooks))) {
+    if is_falsey(self.iter.next(hooks)?) {
       Call::Ok(val!(false))
     } else {
       let current = self.iter.current();
-      self.current = get!(hooks.call(self.callable, &[current]));
+      self.current = hooks.call(self.callable, &[current])?;
       Call::Ok(val!(true))
     }
   }
@@ -595,11 +604,10 @@ impl Enumerate for FilterIterator {
   }
 
   fn next(&mut self, hooks: &mut Hooks) -> Call {
-    while !is_falsey(get!(self.iter.next(hooks))) {
+    while !is_falsey(self.iter.next(hooks)?) {
       let current = self.iter.current();
-      let should_keep = get!(hooks.call(self.callable, &[current]));
 
-      if !is_falsey(should_keep) {
+      if !is_falsey(hooks.call(self.callable, &[current])?) {
         self.current = current;
         return Call::Ok(val!(true));
       }
@@ -659,9 +667,9 @@ impl LyNative for IterReduce {
 
     let mut iter = this.unwrap().to_obj().to_enumerator();
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      accumulator = get!(hooks.call(callable, &[accumulator, current]));
+      accumulator = hooks.call(callable, &[accumulator, current])?;
     }
 
     hooks.pop_roots(2);
@@ -680,7 +688,7 @@ impl LyNative for IterLen {
       Some(size) => Call::Ok(val!(size as f64)),
       None => {
         let mut size: usize = 0;
-        while !is_falsey(get!(iter.next(hooks))) {
+        while !is_falsey(iter.next(hooks)?) {
           size += 1;
         }
 
@@ -699,9 +707,9 @@ impl LyNative for IterEach {
 
     hooks.push_root(callable);
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      get!(hooks.call(callable, &[current]));
+      hooks.call(callable, &[current])?;
     }
 
     hooks.pop_roots(1);
@@ -757,7 +765,7 @@ impl Enumerate for ZipIterator {
 
     hooks.push_root(results);
     for iter in &mut self.iters {
-      let next = get!(iter.next(hooks));
+      let next = iter.next(hooks)?;
 
       if is_falsey(next) {
         hooks.pop_roots(1);
@@ -872,7 +880,7 @@ impl Enumerate for ChainIterator {
       }
 
       let mut iter = self.iters[self.iter_index];
-      let next = get!(iter.next(hooks));
+      let next = iter.next(hooks)?;
       if !is_falsey(next) {
         self.current = iter.current();
         break;
@@ -945,9 +953,9 @@ impl LyNative for IterAll {
 
     hooks.push_root(callable);
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      if is_falsey(get!(hooks.call(callable, &[current]))) {
+      if is_falsey(hooks.call(callable, &[current])?) {
         hooks.pop_roots(1);
         return Call::Ok(val!(false));
       }
@@ -967,9 +975,9 @@ impl LyNative for IterAny {
 
     hooks.push_root(callable);
 
-    while !is_falsey(get!(iter.next(hooks))) {
+    while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      if !is_falsey(get!(hooks.call(callable, &[current]))) {
+      if !is_falsey(hooks.call(callable, &[current])?) {
         hooks.pop_roots(1);
         return Call::Ok(val!(true));
       }
@@ -977,6 +985,27 @@ impl LyNative for IterAny {
 
     hooks.pop_roots(1);
     Call::Ok(val!(false))
+  }
+}
+
+native!(IterToList, ITER_LIST);
+
+impl LyNative for IterToList {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let mut iter = this.unwrap().to_obj().to_enumerator();
+    let mut list = match iter.size_hint() {
+      Some(size) => hooks.manage_obj(List::with_capacity(size)),
+      None => hooks.manage_obj(List::new()),
+    };
+
+    hooks.push_root(list);
+
+    while !is_falsey(iter.next(hooks)?) {
+      hooks.grow(&mut list, |list| list.push(iter.current()));
+    }
+
+    hooks.pop_roots(1);
+    Call::Ok(val!(list))
   }
 }
 
@@ -1752,6 +1781,45 @@ mod test {
         Call::Ok(r) => assert_eq!(r.to_bool(), true),
         _ => assert!(false),
       }
+    }
+  }
+
+  mod to_list {
+    use super::*;
+    use crate::support::MockedContext;
+    use laythe_core::object::Enumerator;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let iter_to_list = IterToList::native(&hooks);
+
+      assert_eq!(iter_to_list.meta().name, "list");
+      assert_eq!(iter_to_list.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::new(&[val!(true); 5]);
+      let mut hooks = Hooks::new(&mut context);
+      let iter_to_list = IterToList::native(&hooks.as_gc());
+
+      let iter = test_iter();
+      let managed = hooks.manage_obj(Enumerator::new(iter));
+      let this = val!(managed);
+
+      let result = iter_to_list.call(&mut hooks, Some(this), &[]).unwrap();
+
+      assert!(result.is_obj_kind(ObjectKind::List));
+      let list = result.to_obj().to_list();
+
+      assert_eq!(list.len(), 4);
+      assert_eq!(list[0], val!(1.0));
+      assert_eq!(list[1], val!(2.0));
+      assert_eq!(list[2], val!(3.0));
+      assert_eq!(list[3], val!(4.0));
     }
   }
 }

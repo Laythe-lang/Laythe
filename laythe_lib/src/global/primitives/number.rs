@@ -12,7 +12,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 use std::mem;
@@ -30,7 +30,8 @@ const NUMBER_UNTIL: NativeMetaBuilder = NativeMetaBuilder::method("until", Arity
   .with_params(&[
     ParameterBuilder::new("upper", ParameterKind::Number),
     ParameterBuilder::new("stride", ParameterKind::Number),
-  ]);
+  ])
+  .with_stack();
 
 const NUMBER_FLOOR: NativeMetaBuilder = NativeMetaBuilder::method("floor", Arity::Fixed(0));
 const NUMBER_CEIL: NativeMetaBuilder = NativeMetaBuilder::method("ceil", Arity::Fixed(0));
@@ -43,7 +44,8 @@ const NUMBER_CMP: NativeMetaBuilder =
   ]);
 
 const NUMBER_PARSE: NativeMetaBuilder = NativeMetaBuilder::fun("parse", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("str", ParameterKind::String)]);
+  .with_params(&[ParameterBuilder::new("str", ParameterKind::String)])
+  .with_stack();
 
 pub fn declare_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, NUMBER_CLASS_NAME)?;
@@ -385,7 +387,7 @@ mod test {
           assert_eq!(number_times.current(), val!(2.0));
 
           assert_eq!(number_times.next(&mut hooks).unwrap(), val!(false));
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -592,7 +594,7 @@ mod test {
           assert_eq!(number_until.current(), val!(4.0));
 
           assert_eq!(number_until.next(&mut hooks).unwrap(), val!(false));
-        },
+        }
         _ => assert!(false),
       }
     }

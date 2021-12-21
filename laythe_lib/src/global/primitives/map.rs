@@ -8,7 +8,6 @@ use hashbrown::hash_map::Iter;
 use laythe_core::{
   constants::INDEX_GET,
   constants::INDEX_SET,
-  get,
   hooks::{GcHooks, Hooks},
   if_let_obj,
   managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
@@ -19,7 +18,7 @@ use laythe_core::{
   utils::use_sentinel_nan,
   val,
   value::{Value, VALUE_NIL},
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 use std::mem;
@@ -28,7 +27,8 @@ pub const MAP_CLASS_NAME: &str = "Map";
 pub const KEY_ERROR_NAME: &str = "KeyError";
 
 const MAP_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)]);
+  .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)])
+  .with_stack();
 
 const MAP_INDEX_SET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_SET, Arity::Fixed(2))
   .with_params(&[
@@ -55,10 +55,11 @@ const MAP_INSERT: NativeMetaBuilder = NativeMetaBuilder::method("insert", Arity:
   ]);
 
 const MAP_REMOVE: NativeMetaBuilder = NativeMetaBuilder::method("remove", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)]);
+  .with_params(&[ParameterBuilder::new("key", ParameterKind::Any)])
+  .with_stack();
 
 const MAP_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
-const MAP_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
+const MAP_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0)).with_stack();
 const MAP_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
 pub fn declare_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
@@ -170,21 +171,9 @@ impl LyNative for MapStr {
     for (key, value) in map.iter() {
       let mut kvp_string = String::new();
 
-      get!(format_map_entry(
-        *key,
-        self.method_name,
-        self.error,
-        &mut kvp_string,
-        hooks
-      ));
+      format_map_entry(*key, self.method_name, self.error, &mut kvp_string, hooks)?;
       kvp_string.push_str(": ");
-      get!(format_map_entry(
-        *value,
-        self.method_name,
-        self.error,
-        &mut kvp_string,
-        hooks
-      ));
+      format_map_entry(*value, self.method_name, self.error, &mut kvp_string, hooks)?;
 
       strings.push(kvp_string)
     }
@@ -211,9 +200,9 @@ fn format_map_entry(
   });
 
   // call '.str' method on each value
-  let result = get!(hooks
+  let result = hooks
     .get_method(item, method_name)
-    .and_then(|method| hooks.call_method(item, method, &[])));
+    .and_then(|method| hooks.call_method(item, method, &[]))?;
 
   if_let_obj!(ObjectKind::String(string) = (result) {
     buffer.push_str(&*string);
@@ -400,11 +389,11 @@ impl Enumerate for MapIterator {
       Some(next) => {
         self.current = val!(hooks.manage_obj(List::from(&[*next.0, *next.1] as &[Value])));
         Call::Ok(val!(true))
-      },
+      }
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      },
+      }
     }
   }
 

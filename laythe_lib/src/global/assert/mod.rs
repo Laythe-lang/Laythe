@@ -12,7 +12,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   to_obj_kind, val,
   value::{Value, VALUE_NIL},
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 
@@ -59,13 +59,15 @@ const ASSERTEQ_META: NativeMetaBuilder = NativeMetaBuilder::fun("assertEq", Arit
   .with_params(&[
     ParameterBuilder::new("actual", ParameterKind::Any),
     ParameterBuilder::new("expected", ParameterKind::Any),
-  ]);
+  ])
+  .with_stack();
 
 const ASSERTNE_META: NativeMetaBuilder = NativeMetaBuilder::fun("assertNe", Arity::Fixed(2))
   .with_params(&[
     ParameterBuilder::new("actual", ParameterKind::Any),
     ParameterBuilder::new("unexpected", ParameterKind::Any),
-  ]);
+  ])
+  .with_stack();
 
 fn to_str(hooks: &mut Hooks, value: Value) -> GcStr {
   hooks

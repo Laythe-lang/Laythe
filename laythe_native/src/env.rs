@@ -13,14 +13,8 @@ impl IoImpl<Env> for IoEnvNative {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct EnvNative();
-
-impl Default for EnvNative {
-  fn default() -> Self {
-    Self()
-  }
-}
 
 impl EnvImpl for EnvNative {
   fn current_dir(&self) -> io::Result<PathBuf> {

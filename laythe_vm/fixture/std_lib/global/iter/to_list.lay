@@ -1,0 +1,27 @@
+let l1 = (-5).until(10).list();
+let l2 = 4.times().list();
+let l3 = [1, 2, 3].iter().list();
+let l4 = "example".iter().list();
+
+assertEq(l1.len(), 15);
+assertEq(l1[0], -5);
+assertEq(l1[1], -4);
+assertEq(l1[-2], 8);
+assertEq(l1[-1], 9);
+
+assertEq(l2.len(), 4);
+assertEq(l2[0], 0);
+assertEq(l2[1], 1);
+assertEq(l2[2], 2);
+assertEq(l2[3], 3);
+
+assertEq(l3.len(), 3);
+assertEq(l3[0], 1);
+assertEq(l3[1], 2);
+assertEq(l3[2], 3);
+
+assertEq(l4.len(), 7);
+assertEq(l4[0], "e");
+assertEq(l4[1], "x");
+assertEq(l4[-2], "l");
+assertEq(l4[-1], "e");

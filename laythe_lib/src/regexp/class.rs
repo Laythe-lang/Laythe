@@ -14,7 +14,7 @@ use laythe_core::{
   val,
   value::Value,
   value::VALUE_NIL,
-  Call,
+  Call, LyError,
 };
 use regex::Regex;
 use std::io::Write;
@@ -30,13 +30,16 @@ const REGEXP_INIT: NativeMetaBuilder = NativeMetaBuilder::method("init", Arity::
   ]);
 
 const REGEXP_TEST: NativeMetaBuilder = NativeMetaBuilder::method("test", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
+  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
+  .with_stack();
 
 const REGEXP_MATCH: NativeMetaBuilder = NativeMetaBuilder::method("match", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
+  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
+  .with_stack();
 
 const REGEXP_CAPTURES: NativeMetaBuilder = NativeMetaBuilder::method("captures", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
+  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
+  .with_stack();
 
 pub fn declare_regexp_class(
   hooks: &GcHooks,
@@ -158,7 +161,7 @@ impl LyNative for RegExpCaptures {
 
         hooks.pop_roots(1);
         Call::Ok(val!(results))
-      },
+      }
       None => Call::Ok(VALUE_NIL),
     }
   }

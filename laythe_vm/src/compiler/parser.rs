@@ -316,7 +316,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     self.consume_basic(TokenKind::RightBrace, "Expected '}' after class body.")?;
     let end = self.previous.end();
 
-    Ok(Symbol::Class(Class::new(
+    Ok(Symbol::Class(self.node(Class::new(
       name,
       Span { start, end },
       type_params,
@@ -326,7 +326,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       init,
       methods,
       static_methods,
-    )))
+    ))))
   }
 
   /// Parse a function declaration

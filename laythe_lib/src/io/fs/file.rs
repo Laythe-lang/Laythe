@@ -14,7 +14,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 use std::path::Path;
@@ -23,7 +23,8 @@ const FILE_CLASS_NAME: &str = "File";
 
 const FILE_READ_ALL_TEXT: NativeMetaBuilder =
   NativeMetaBuilder::fun("readAllText", Arity::Fixed(1))
-    .with_params(&[ParameterBuilder::new("path", ParameterKind::String)]);
+    .with_params(&[ParameterBuilder::new("path", ParameterKind::String)])
+    .with_stack();
 
 pub fn declare_file(hooks: &GcHooks, module: Gc<Module>, std: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, std, FILE_CLASS_NAME)?;

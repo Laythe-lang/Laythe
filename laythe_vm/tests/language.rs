@@ -311,6 +311,7 @@ fn exception() -> Result<(), std::io::Error> {
     None,
     Some(vec![
       "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
+      "  [line 0] in []()",
       "  [line 1] in script",
     ]),
     ExecuteResult::RuntimeError,
@@ -321,6 +322,7 @@ fn exception() -> Result<(), std::io::Error> {
     None,
     Some(vec![
       "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
+      "  [line 0] in []()",
       "  [line 2] in thrower()",
       "  [line 5] in script",
     ]),
@@ -332,6 +334,7 @@ fn exception() -> Result<(), std::io::Error> {
     None,
     Some(vec![
       "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
+      "  [line 0] in []()",
       "  [line 6] in thrower()",
       "  [line 2] in outer()",
       "  [line 9] in script",
@@ -577,35 +580,6 @@ fn import() -> Result<(), std::io::Error> {
       // "language/import/rename_redefine.lay",
       "language/import/symbols_not_real.lay",
       // "language/import/symbols_redefine.lay",
-    ],
-    ExecuteResult::RuntimeError,
-  )
-}
-
-#[test]
-fn indexing() -> Result<(), std::io::Error> {
-  test_file_exits(
-    &vec![
-      "language/indexing/list_get.lay",
-      "language/indexing/list_set.lay",
-      "language/indexing/list_nested_get.lay",
-      "language/indexing/list_nested_set.lay",
-      "language/indexing/list_pass_through_set.lay",
-      "language/indexing/map_na_get.lay",
-      "language/indexing/map_ref_equal_get.lay",
-      "language/indexing/map_nested_get.lay",
-      "language/indexing/map_nested_set.lay",
-      "language/indexing/map_pass_through_set.lay",
-    ],
-    ExecuteResult::Ok(0),
-  )?;
-
-  test_file_exits(&vec![], ExecuteResult::CompileError)?;
-
-  test_file_exits(
-    &vec![
-      "language/indexing/list_out_of_range.lay",
-      "language/indexing/map_key_not_found.lay",
     ],
     ExecuteResult::RuntimeError,
   )
@@ -958,6 +932,11 @@ fn regression() -> Result<(), std::io::Error> {
       "language/regression/continue.lay",
     ],
     ExecuteResult::Ok(0),
+  )?;
+
+  test_file_exits(
+    &vec!["language/regression/missing_symbol.lay"],
+    ExecuteResult::CompileError,
   )
 }
 

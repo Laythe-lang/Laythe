@@ -24,7 +24,7 @@ use laythe_core::{
   utils::{is_falsey, IdEmitter},
   val,
   value::{Value, VALUE_NIL, VALUE_TRUE},
-  Call,
+  Call, LyError,
 };
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
@@ -127,7 +127,7 @@ pub struct Vm {
   /// TODO replace this. A fun to fill a call frame for higher order native functions
   /// may want to eventually have a function rental so native functions can set name / module
   /// for exception
-  native_fun_stub: GcObj<Fun>,
+  native_fun_stubs: Vec<GcObj<Fun>>,
 }
 
 impl Vm {
@@ -159,9 +159,6 @@ impl Vm {
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let native_fun_stub = Fun::stub(hooks.manage_str("native"), global, AlignedByteCode::Nil);
-    let native_fun_stub = hooks.manage_obj(native_fun_stub);
-
     let gc = RefCell::new(no_gc_context.done());
     let inline_cache: Vec<InlineCache> = (0..emitter.id_count())
       .map(|_| InlineCache::new(0, 0))
@@ -184,7 +181,7 @@ impl Vm {
       current_fun,
       exit_code: 0,
       ip: ptr::null(),
-      native_fun_stub,
+      native_fun_stubs: vec![],
     };
     vm.add_package(std_lib);
 
@@ -379,9 +376,20 @@ impl Vm {
   /// Run a laythe function on top of the current stack.
   /// This acts as a hook for native functions to execute laythe function
   unsafe fn run_fun(&mut self, callable: Value, args: &[Value]) -> ExecuteResult {
-    self.fiber.ensure_stack(args.len());
+    self.fiber.ensure_stack(args.len() + 1);
+    self.fiber.push(callable);
     for arg in args {
       self.fiber.push(*arg);
+    }
+
+    #[cfg(feature = "debug")]
+    {
+      if self
+        .print_hook_state("run_fun", &format!("{}", callable))
+        .is_err()
+      {
+        return ExecuteResult::InternalError;
+      }
     }
 
     let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
@@ -400,6 +408,16 @@ impl Vm {
     self.fiber.push(this);
     for arg in args {
       self.fiber.push(*arg);
+    }
+
+    #[cfg(feature = "debug")]
+    {
+      if self
+        .print_hook_state("fun_method", &format!("{}:{}", this, method))
+        .is_err()
+      {
+        return ExecuteResult::InternalError;
+      }
     }
 
     let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
@@ -519,7 +537,7 @@ impl Vm {
           Signal::OkReturn => {
             if let ExecuteMode::CallFunction(depth) = mode {
               if depth == self.fiber.frames().len() {
-                return ExecuteResult::FunResult(self.fiber.peek(0));
+                return ExecuteResult::FunResult(self.fiber.pop());
               }
             }
           }
@@ -901,8 +919,8 @@ impl Vm {
           self.fiber.peek_set(0, value);
           Signal::Ok
         },
-        Call::Err(error) => self.set_error(error),
-        Call::Exit(code) => self.set_exit(code),
+        Call::Err(LyError::Err(error)) => self.set_error(error),
+        Call::Err(LyError::Exit(code)) => self.set_exit(code),
       }
     } else {
       let constant = self.read_short();
@@ -1846,14 +1864,23 @@ impl Vm {
           }
           Signal::OkReturn
         }
-        Call::Err(error) => self.set_error(error),
-        Call::Exit(code) => self.set_exit(code),
+        Call::Err(LyError::Err(error)) => self.set_error(error),
+        Call::Err(LyError::Exit(code)) => self.set_exit(code),
       },
       Environment::Normal => {
-        let native_closure = self.manage_obj(Closure::without_captures(self.native_fun_stub));
+        let mut stub = self.native_fun_stubs.pop().unwrap_or_else(|| {
+          self.manage_obj(Fun::stub(meta.name, self.global, AlignedByteCode::Nil))
+        });
+
+        stub.set_name(meta.name);
+
+        let native_closure = self.manage_obj(Closure::without_captures(stub));
         self.push_frame(native_closure, arg_count);
 
-        match native.call(&mut Hooks::new(self), this, args) {
+        let result = native.call(&mut Hooks::new(self), this, args);
+        self.native_fun_stubs.push(stub);
+
+        match result {
           Call::Ok(value) => {
             self.pop_frame();
             fiber.push(value);
@@ -1865,8 +1892,8 @@ impl Vm {
             }
             Signal::OkReturn
           }
-          Call::Err(error) => self.set_error(error),
-          Call::Exit(code) => self.set_exit(code),
+          Call::Err(LyError::Err(error)) => self.set_error(error),
+          Call::Err(LyError::Exit(code)) => self.set_exit(code),
         }
       }
     }
@@ -2071,7 +2098,7 @@ impl Vm {
       }
       None => self.runtime_error(
         self.builtin.errors.runtime,
-        &format!("Undefined property {}", name),
+        &format!("Undefined property {} on class {}.", name, class.name()),
       ),
     }
   }
@@ -2106,6 +2133,17 @@ impl Vm {
     let start = self.current_fun.chunk().instructions().as_ptr();
     let offset = ip.offset_from(start) as usize;
     disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, false)
+  }
+
+  /// Print debugging information for the current hook
+  #[cfg(feature = "debug")]
+  unsafe fn print_hook_state(&self, hook_name: &str, with: &str) -> io::Result<()> {
+    let mut stdio = self.io.stdio();
+
+    self.print_stack_debug(&mut stdio)?;
+
+    let stdout = stdio.stdout();
+    writeln!(stdout, "  Vm Hook {}: {}", hook_name, with)
   }
 
   /// Print the current stack
@@ -2144,7 +2182,7 @@ impl Vm {
         self.internal_error("Compiler error should occur before code is executed.")
       }
       ExecuteResult::RuntimeError => match self.fiber.error() {
-        Some(error) => Call::Err(error),
+        Some(error) => Call::Err(LyError::Err(error)),
         None => self.internal_error("Error not set on vm executor."),
       },
       ExecuteResult::InternalError => self.internal_error("Internal error encountered"),
@@ -2239,7 +2277,10 @@ impl TraceRoot for Vm {
     self.files.trace();
     self.packages.trace();
     self.module_cache.trace();
-    self.native_fun_stub.trace();
+
+    for stub in &self.native_fun_stubs {
+      stub.trace();
+    }
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
@@ -2251,7 +2292,10 @@ impl TraceRoot for Vm {
     self.files.trace_debug(log);
     self.packages.trace_debug(log);
     self.module_cache.trace_debug(log);
-    self.native_fun_stub.trace_debug(log);
+
+    for stub in &self.native_fun_stubs {
+      stub.trace_debug(log);
+    }
   }
 
   fn can_collect(&self) -> bool {

@@ -1,0 +1,16 @@
+fn f() {}
+let list = [];
+
+let map = {
+  1: 4,
+  "cat": "dog",
+  f: "foo",
+  list: true,
+  nil: false,
+};
+
+assertEq(map[1], 4);
+assertEq(map["cat"], "dog");
+assertEq(map[f], "foo");
+assertEq(map[list], true);
+assertEq(map[nil], false);

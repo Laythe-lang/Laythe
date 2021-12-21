@@ -13,7 +13,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  Call, LyResult,
+  Call, LyError, LyResult,
 };
 use std::{io::Write, str::Split};
 use std::{mem, str::Chars};
@@ -23,7 +23,8 @@ use super::{class_inheritance, error::INDEX_ERROR_NAME};
 pub const STRING_CLASS_NAME: &str = "String";
 
 const STRING_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)]);
+  .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)])
+  .with_stack();
 
 const STRING_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
@@ -32,6 +33,10 @@ const STRING_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fi
 const STRING_HAS: NativeMetaBuilder = NativeMetaBuilder::method("has", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("string", ParameterKind::String)]);
 
+const STRING_DOWN_CASE: NativeMetaBuilder = NativeMetaBuilder::method("downCase", Arity::Fixed(0));
+
+const STRING_UP_CASE: NativeMetaBuilder = NativeMetaBuilder::method("upCase", Arity::Fixed(0));
+
 const STRING_SPLIT: NativeMetaBuilder = NativeMetaBuilder::method("split", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("separator", ParameterKind::String)]);
 
@@ -39,7 +44,8 @@ const STRING_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity
   .with_params(&[
     ParameterBuilder::new("start", ParameterKind::Number),
     ParameterBuilder::new("end", ParameterKind::Number),
-  ]);
+  ])
+  .with_stack();
 
 const STRING_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
@@ -74,6 +80,18 @@ pub fn define_string_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
     hooks,
     hooks.manage_str(STRING_HAS.name),
     val!(StringHas::native(hooks)),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(STRING_UP_CASE.name),
+    val!(StringUpCase::native(hooks)),
+  );
+
+  class.add_method(
+    hooks,
+    hooks.manage_str(STRING_DOWN_CASE.name),
+    val!(StringDownCase::native(hooks)),
   );
 
   class.add_method(
@@ -157,6 +175,24 @@ impl LyNative for StringHas {
   }
 }
 
+native!(StringUpCase, STRING_UP_CASE);
+
+impl LyNative for StringUpCase {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let str = this.unwrap().to_obj().to_str();
+    Call::Ok(val!(hooks.manage_str(str.to_uppercase())))
+  }
+}
+
+native!(StringDownCase, STRING_DOWN_CASE);
+
+impl LyNative for StringDownCase {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let str = this.unwrap().to_obj().to_str();
+    Call::Ok(val!(hooks.manage_str(str.to_lowercase())))
+  }
+}
+
 native!(StringSplit, STRING_SPLIT);
 
 impl LyNative for StringSplit {
@@ -206,11 +242,11 @@ impl Enumerate for SplitIterator {
       Some(next) => {
         self.current = val!(hooks.manage_str(next));
         Call::Ok(val!(true))
-      },
+      }
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      },
+      }
     }
   }
 
@@ -269,18 +305,8 @@ impl LyNative for StringSlice {
     };
 
     // get start and end indices
-    let start_index = match self.string_index(hooks, &string, start) {
-      LyResult::Ok(index) => index,
-      LyResult::Err(err) => return LyResult::Err(err),
-      LyResult::Exit(exit) => return LyResult::Exit(exit),
-    };
-
-    // let end_index = if let Some(end) = end {
-    let end_index = match self.string_index(hooks, &string, end) {
-      LyResult::Ok(index) => index,
-      LyResult::Err(err) => return LyResult::Err(err),
-      LyResult::Exit(exit) => return LyResult::Exit(exit),
-    };
+    let start_index = self.string_index(hooks, &string, start)?;
+    let end_index = self.string_index(hooks, &string, end)?;
 
     if start_index <= end_index {
       // TODO investigate special case where slice is full string
@@ -369,11 +395,11 @@ impl Enumerate for StringIterator {
       Some(next) => {
         self.current = val!(hooks.manage_str(next.encode_utf8(s)));
         Call::Ok(val!(true))
-      },
+      }
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      },
+      }
     }
   }
 
@@ -513,7 +539,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 3.0);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -528,12 +554,12 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let string_str = StringHas::native(&hooks);
+      let string_has = StringHas::native(&hooks);
 
-      assert_eq!(string_str.meta().name, "has");
-      assert_eq!(string_str.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(string_has.meta().name, "has");
+      assert_eq!(string_has.meta().signature.arity, Arity::Fixed(1));
       assert_eq!(
-        string_str.meta().signature.parameters[0].kind,
+        string_has.meta().signature.parameters[0].kind,
         ParameterKind::String
       );
     }
@@ -543,27 +569,72 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
-      let string_iter = StringIter::native(&hooks.as_gc());
+      let string_has = StringHas::native(&hooks.as_gc());
+      let this = val!(hooks.manage_str("abc"));
+      let arg1 = val!(hooks.manage_str("a"));
+      let arg2 = val!(hooks.manage_str("z"));
+
+      let r = string_has.call(&mut hooks, Some(this), &[arg1]).unwrap();
+      assert_eq!(r, val!(true));
+
+      let r = string_has.call(&mut hooks, Some(this), &[arg2]).unwrap();
+      assert_eq!(r, val!(false));
+    }
+  }
+
+  mod up_case {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let string_up_case = StringUpCase::native(&hooks);
+
+      assert_eq!(string_up_case.meta().name, "upCase");
+      assert_eq!(string_up_case.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let string_up_case = StringUpCase::native(&hooks.as_gc());
       let this = val!(hooks.manage_str("abc"));
 
-      let result = string_iter.call(&mut hooks, Some(this), &[]);
+      let result = string_up_case.call(&mut hooks, Some(this), &[]).unwrap();
+      assert_eq!(result, val!(hooks.manage_str("ABC")));
+    }
+  }
 
-      match result {
-        Call::Ok(r) => {
-          let mut string_iter = r.to_obj().to_enumerator();
-          assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(true));
-          assert_eq!(string_iter.current(), val!(hooks.manage_str("a")));
+  mod down_case {
+    use super::*;
+    use crate::support::MockedContext;
 
-          assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(true));
-          assert_eq!(string_iter.current(), val!(hooks.manage_str("b")));
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
 
-          assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(true));
-          assert_eq!(string_iter.current(), val!(hooks.manage_str("c")));
+      let string_down_case = StringDownCase::native(&hooks);
 
-          assert_eq!(string_iter.next(&mut hooks).unwrap(), val!(false));
-        },
-        _ => assert!(false),
-      }
+      assert_eq!(string_down_case.meta().name, "downCase");
+      assert_eq!(string_down_case.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let string_down_case = StringDownCase::native(&hooks.as_gc());
+      let this = val!(hooks.manage_str("ABC"));
+
+      let result = string_down_case.call(&mut hooks, Some(this), &[]).unwrap();
+      assert_eq!(result, val!(hooks.manage_str("abc")));
     }
   }
 
@@ -600,15 +671,11 @@ mod test {
       let string_slice = StringSlice::native(&hooks.as_gc(), error);
       let this = val!(hooks.manage_str("abc123"));
 
-      let result = string_slice.call(&mut hooks, Some(this), &[val!(-5.0), val!(3.0)]);
-
-      match result {
-        Call::Ok(r) => {
-          assert!(r.is_obj_kind(ObjectKind::String));
-          assert_eq!(r.to_obj().to_str(), "bc");
-        },
-        _ => assert!(false),
-      }
+      let r = string_slice
+        .call(&mut hooks, Some(this), &[val!(-5.0), val!(3.0)])
+        .unwrap();
+      assert!(r.is_obj_kind(ObjectKind::String));
+      assert_eq!(r.to_obj().to_str(), "bc");
     }
   }
 

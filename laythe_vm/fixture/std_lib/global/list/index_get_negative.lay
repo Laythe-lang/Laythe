@@ -1,0 +1,6 @@
+let list = [1, 2, 3, 4, "5"];
+assertEq(list[-5], 1);
+assertEq(list[-4], 2);
+assertEq(list[-3], 3);
+assertEq(list[-2], 4);
+assertEq(list[-1], "5");

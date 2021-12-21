@@ -14,15 +14,17 @@ use laythe_core::{
   signature::Arity,
   val,
   value::Value,
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 
 const STDIN_CLASS_NAME: &str = "Stdin";
 const STDIN_INSTANCE_NAME: &str = "stdin";
 
-const STDIN_READ: NativeMetaBuilder = NativeMetaBuilder::method("read", Arity::Fixed(0));
-const STDIN_READ_LINE: NativeMetaBuilder = NativeMetaBuilder::method("readLine", Arity::Fixed(0));
+const STDIN_READ: NativeMetaBuilder =
+  NativeMetaBuilder::method("read", Arity::Fixed(0)).with_stack();
+const STDIN_READ_LINE: NativeMetaBuilder =
+  NativeMetaBuilder::method("readLine", Arity::Fixed(0)).with_stack();
 
 pub fn declare_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDIN_CLASS_NAME)?;
@@ -92,7 +94,7 @@ impl LyNative for StdinReadLine {
           buf.pop();
         }
         Call::Ok(val!(hooks.manage_str(buf)))
-      },
+      }
       Err(err) => self.call_error(hooks, err.to_string()),
     }
   }

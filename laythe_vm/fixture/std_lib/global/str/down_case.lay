@@ -1,0 +1,4 @@
+assertEq("ABC".downCase(), "abc");
+assertEq("123".downCase(), "123");
+assertEq("ΑΠ".downCase(), "απ");
+assertEq("A2Π".downCase(), "a2π");

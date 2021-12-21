@@ -1,6 +1,5 @@
 use crate::{native, support::export_and_insert, StdError, StdResult};
 use laythe_core::{
-  get,
   hooks::{GcHooks, Hooks},
   managed::GcObj,
   managed::{Gc, GcStr, Trace},
@@ -9,7 +8,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  Call,
+  Call, LyError,
 };
 use std::io::Write;
 
@@ -18,8 +17,8 @@ pub fn add_misc_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 }
 
 const PRINT: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)]);
-// .with_stack();
+  .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)])
+  .with_stack();
 
 const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Default(0, 1))
   .with_params(&[ParameterBuilder::new("code", ParameterKind::Number)]);
@@ -61,22 +60,19 @@ impl Print {
 
 impl LyNative for Print {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
-    let str_method = get!(hooks.get_method(args[0], self.method_str));
+    let str_method = hooks.get_method(args[0], self.method_str)?;
     let mut output = String::from(
-      &*get!(hooks.call_method(args[0], str_method, &[]))
+      &*hooks
+        .call_method(args[0], str_method, &[])?
         .to_obj()
         .to_str(),
     );
 
     for s in args.iter().skip(1) {
-      let str_method = get!(hooks.get_method(*s, self.method_str));
+      let str_method = hooks.get_method(*s, self.method_str)?;
 
       output.push(' ');
-      output.push_str(
-        &get!(hooks.call_method(*s, str_method, &[]))
-          .to_obj()
-          .to_str(),
-      )
+      output.push_str(&hooks.call_method(*s, str_method, &[])?.to_obj().to_str())
     }
 
     let mut stdio = hooks.as_io().stdio();
@@ -107,7 +103,7 @@ impl LyNative for Exit {
       args[0].to_num() as u16
     };
 
-    Call::Exit(code)
+    Err(LyError::Exit(code))
   }
 }
 
