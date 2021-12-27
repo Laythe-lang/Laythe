@@ -63,7 +63,8 @@ pub trait Visitor<'a> {
   fn visit_self(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_super(&mut self, token: &Super) -> Self::Result;
   fn visit_lambda(&mut self, fun: &Fun) -> Self::Result;
-  fn visit_list(&mut self, items: &List) -> Self::Result;
+  fn visit_list(&mut self, items: &Collection) -> Self::Result;
+  fn visit_tuple(&mut self, items: &Collection) -> Self::Result;
   fn visit_map(&mut self, kvps: &Map) -> Self::Result;
 }
 
@@ -1066,10 +1067,11 @@ pub enum Primary<'a> {
   Channel(Channel<'a>),
   False(Token<'a>),
   Grouping(Box<'a, Expr<'a>>),
+  Tuple(Collection<'a>),
   Ident(Token<'a>),
   Interpolation(Box<'a, Interpolation<'a>>),
   Lambda(Box<'a, Fun<'a>>),
-  List(List<'a>),
+  List(Collection<'a>),
   Map(Map<'a>),
   Nil(Token<'a>),
   Number(Token<'a>),
@@ -1089,6 +1091,7 @@ impl<'a> Spanned for Primary<'a> {
       Primary::Interpolation(string) => string.start(),
       Primary::Lambda(lambda) => lambda.start(),
       Primary::List(list) => list.start(),
+      Primary::Tuple(tuple) => tuple.start(),
       Primary::Map(map) => map.start(),
       Primary::Nil(nil_) => nil_.start(),
       Primary::Number(nil_) => nil_.start(),
@@ -1108,6 +1111,7 @@ impl<'a> Spanned for Primary<'a> {
       Primary::Interpolation(string) => string.end(),
       Primary::Lambda(lambda) => lambda.end(),
       Primary::List(list) => list.end(),
+      Primary::Tuple(tuple) => tuple.end(),
       Primary::Map(map) => map.end(),
       Primary::Nil(nil_) => nil_.end(),
       Primary::Number(nil_) => nil_.end(),
@@ -1150,18 +1154,18 @@ impl<'a> Spanned for Interpolation<'a> {
   }
 }
 
-pub struct List<'a> {
+pub struct Collection<'a> {
   pub range: Span,
   pub items: Vec<'a, Expr<'a>>,
 }
 
-impl<'a> List<'a> {
+impl<'a> Collection<'a> {
   pub fn new(range: Span, items: Vec<'a, Expr<'a>>) -> Self {
     Self { range, items }
   }
 }
 
-impl<'a> Spanned for List<'a> {
+impl<'a> Spanned for Collection<'a> {
   fn span(&self) -> Span {
     self.range
   }

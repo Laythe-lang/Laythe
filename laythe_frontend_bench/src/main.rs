@@ -24,8 +24,8 @@ fn load_source(path: &str) -> String {
 
 fn compiler_bench(src: &str) {
   for _ in 0..1000000 {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
     let source = Source::new(hooks.manage_str(src));
 
     let mut emitter = IdEmitter::default();
@@ -76,7 +76,7 @@ fn main() {
       parser_bench(&src);
 
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));
-    }
+    },
     [_, bench_type, file_path] => {
       let src = load_source(file_path);
       let now = Instant::now();
@@ -88,10 +88,10 @@ fn main() {
       }
 
       println!("{}", ((now.elapsed().as_micros() as f64) / 1000000.0));
-    }
+    },
     _ => {
       println!("Usage: laythe_compiler_bench [path]");
       process::exit(1);
-    }
+    },
   }
 }

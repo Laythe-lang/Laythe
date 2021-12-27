@@ -181,6 +181,7 @@ impl From<Value> for ParameterKind {
         ObjectKind::Method => ParameterKind::Fun,
         ObjectKind::Native => ParameterKind::Fun,
         ObjectKind::String => ParameterKind::String,
+        ObjectKind::Tuple => ParameterKind::List, // TODO: ??
         ObjectKind::LyBox => panic!("Should not pass in box directly"),
       },
     }

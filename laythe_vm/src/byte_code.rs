@@ -52,6 +52,9 @@ pub enum AlignedByteCode {
   /// Initialize list from literal
   List(u16),
 
+  /// Initialize list from literal
+  Tuple(u16),
+
   /// Initialize map from literal
   Map(u16),
 
@@ -237,6 +240,10 @@ impl AlignedByteCode {
         AlignedByteCode::List(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
+      ByteCode::Tuple => (
+        AlignedByteCode::Tuple(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
       ByteCode::Map => (
         AlignedByteCode::Map(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
@@ -384,6 +391,7 @@ impl AlignedByteCode {
       AlignedByteCode::True => 1,
       AlignedByteCode::False => 1,
       AlignedByteCode::List(cnt) => -(*cnt as i32) + 1,
+      AlignedByteCode::Tuple(cnt) => -(*cnt as i32) + 1,
       AlignedByteCode::Map(cnt) => -(*cnt as i32 * 2) + 1,
       AlignedByteCode::Launch(args) => -(*args as i32 + 1),
       AlignedByteCode::Channel => 1,
@@ -455,6 +463,7 @@ impl Encode for AlignedByteCode {
       Self::True => op(code, ByteCode::True),
       Self::False => op(code, ByteCode::False),
       Self::List(slot) => op_short(code, ByteCode::List, slot),
+      Self::Tuple(slot) => op_short(code, ByteCode::Tuple, slot),
       Self::Map(slot) => op_short(code, ByteCode::Map, slot),
       Self::Launch(slot) => op_byte(code, ByteCode::Launch, slot),
       Self::Channel => op(code, ByteCode::Channel),
@@ -591,6 +600,9 @@ pub enum ByteCode {
 
   /// Initialize List
   List,
+
+  /// Initialize Tuple
+  Tuple,
 
   /// Initialize map
   Map,
@@ -826,6 +838,7 @@ mod test {
       (1, AlignedByteCode::True),
       (1, AlignedByteCode::False),
       (3, AlignedByteCode::List(54782)),
+      (3, AlignedByteCode::Tuple(52782)),
       (3, AlignedByteCode::Map(1923)),
       (2, AlignedByteCode::Launch(197)),
       (1, AlignedByteCode::Channel),

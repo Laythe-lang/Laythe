@@ -1,0 +1,8 @@
+let tuple = ((1, 2, 3), ("cat", "dog"));
+
+assertEq(tuple[0][0], 1);
+assertEq(tuple[0][1], 2);
+assertEq(tuple[0][2], 3);
+
+assertEq(tuple[1][0], "cat");
+assertEq(tuple[1][1], "dog");

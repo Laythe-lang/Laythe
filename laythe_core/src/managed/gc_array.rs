@@ -1,15 +1,30 @@
-use crate::managed::{Mark, Marked, Trace, Unmark};
+use crate::{
+  managed::{Mark, Marked, Trace, Unmark},
+  object::ObjectKind,
+  value::Value,
+};
 use ptr::NonNull;
 use std::{
-  fmt::Debug,
+  alloc::{alloc, dealloc, handle_alloc_error},
+  fmt::{self, Debug, Display},
   marker::PhantomData,
   mem,
   ops::{Deref, DerefMut},
-  ptr, slice,
-  alloc::{alloc, dealloc, handle_alloc_error}
+  ptr,
+  slice::{self},
 };
 
-use super::utils::{get_array_len_offset, get_array_offset, make_array_layout};
+use super::{
+  gc_obj::ObjHeader,
+  utils::{get_array_len_offset, get_array_offset, make_array_layout},
+  DebugHeap, DebugWrap, GcObject, GcObjectHandle,
+};
+
+pub type Tuple = GcArray<Value, ObjHeader>;
+
+pub fn tuple_handle(slice: &[Value]) -> GcArrayHandle<Value, ObjHeader> {
+  GcArrayHandle::from_slice(slice, ObjHeader::new(ObjectKind::Tuple))
+}
 
 /// A non owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
@@ -63,6 +78,30 @@ impl<T, H> GcArray<T, H> {
     self.len() == 0
   }
 
+  /// Get a static lifetime reference to the underlying slice.
+  ///
+  /// ## Safety
+  /// This method is truly only safe in the context for an alice
+  /// allocated by the allocator. This method also assumes that
+  /// whichever object hold this slice also hold a reference to
+  /// the GcArray itself in order to keep it alive. This is primarily
+  /// to use rust method requiring a lifetime, typically for iterators
+  ///
+  /// ## Example
+  /// ```
+  /// use laythe_core::managed::{GcArray, GcArrayHandle};
+  /// use std::mem;
+  ///
+  /// let data: &[u32] = &[1, 2, 3, 4];
+  /// let handle = GcArrayHandle::<u32, u64>::from(data);
+  /// let array = handle.value();
+  ///
+  /// unsafe { array.deref_static().iter(); }
+  /// ```
+  pub unsafe fn deref_static(&self) -> &'static [T] {
+    slice::from_raw_parts(self.as_ptr(), self.len())
+  }
+
   /// Retrieve a pointer data array
   #[inline]
   fn data(&self) -> *mut T {
@@ -76,6 +115,22 @@ impl<T, H> GcArray<T, H> {
     self.ptr.as_ptr()
   }
 
+  /// Create a usize from the buffer pointer. This is used
+  /// when the value is boxed
+  ///
+  /// ## Example
+  /// ```
+  /// use laythe_core::managed::{GcArray, GcArrayHandle};
+  ///
+  /// let data: &[u32] = &[1, 2, 3, 4];
+  /// let handle = GcArrayHandle::<u32, u64>::from(data);
+  /// let array = handle.value();
+  /// assert!(array.to_usize() > 0);
+  /// ```
+  pub fn to_usize(self) -> usize {
+    self.as_alloc_ptr() as *const () as usize
+  }
+
   /// Construct a `GcArray<T>` from `NonNull<u8>`
   ///
   /// ## Safety
@@ -86,6 +141,15 @@ impl<T, H> GcArray<T, H> {
       data: PhantomData,
       header: PhantomData,
     }
+  }
+}
+
+impl<T> GcArray<T, ObjHeader> {
+  /// Degrade this GcArray into the more generic GcObject.
+  /// This allows the array to meet the same interface
+  /// as the other managed objects
+  pub fn degrade(self) -> GcObject {
+    GcObject::new(self.ptr)
   }
 }
 
@@ -123,6 +187,14 @@ impl<T: Trace, H: Send + Mark> Trace for GcArray<T, H> {
   }
 }
 
+impl<T: 'static + Trace + DebugHeap, H> DebugHeap for GcArray<T, H> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    f.debug_list()
+      .entries(self.iter().map(|x| DebugWrap(x, depth)))
+      .finish()
+  }
+}
+
 impl<T, H> Copy for GcArray<T, H> {}
 impl<T, H> Clone for GcArray<T, H> {
   fn clone(&self) -> Self {
@@ -155,8 +227,24 @@ impl<T, H> PartialEq<GcArray<T, H>> for GcArray<T, H> {
   }
 }
 
+impl<T: Display, H> Display for GcArray<T, H> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    write!(f, "(")?;
+
+    if let Some((last, rest)) = self.split_last() {
+      for item in rest.iter() {
+        write!(f, "{}, ", item)?;
+      }
+
+      write!(f, "{}", last)?;
+    }
+
+    write!(f, ")")
+  }
+}
+
 impl<T: Debug, H> Debug for GcArray<T, H> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_list().entry(self).finish()
   }
 }
@@ -186,7 +274,6 @@ impl<T, H> GcArrayHandle<T, H> {
   /// ## Examples
   /// ```
   /// use laythe_core::managed::GcArrayHandle;
-  /// use std::mem;
   ///
   /// let data: &[u32] = &[1, 2, 3, 4];
   /// let handle = GcArrayHandle::<u32, u32>::from(data);
@@ -199,6 +286,33 @@ impl<T, H> GcArrayHandle<T, H> {
   /// ```
   pub fn value(&self) -> GcArray<T, H> {
     self.0
+  }
+
+  /// Determine the size of the handle and the pointed to
+  /// allocation
+  ///
+  /// ## Examples
+  /// ```
+  /// use laythe_core::managed::GcArrayHandle;
+  ///
+  /// let data: &[u32] = &[1, 2, 3, 4];
+  /// let handle = GcArrayHandle::<u32, u64>::from(data);
+  /// let array = handle.value();
+  ///
+  /// assert_eq!(handle.size(), 32);
+  /// ```
+  #[inline]
+  pub fn size(&self) -> usize {
+    make_array_layout::<H, T>(self.0.len()).size()
+  }
+}
+
+impl<T> GcArrayHandle<T, ObjHeader> {
+  /// Degrade this handle into
+  pub fn degrade(self) -> GcObjectHandle {
+    let handle = GcObjectHandle { ptr: self.0.ptr };
+    mem::forget(self);
+    handle
   }
 }
 

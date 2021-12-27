@@ -73,7 +73,7 @@ pub use self::boxed::*;
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
   use crate::{
-    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Trace},
+    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Trace, Tuple},
     object::{
       Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
       ObjectKind,
@@ -226,6 +226,7 @@ mod unboxed {
         Value::Obj(obj) => match obj.kind() {
           ObjectKind::Channel => "channel",
           ObjectKind::String => "string",
+          ObjectKind::Tuple => "tuple",
           ObjectKind::List => "list",
           ObjectKind::Fiber => "fiber",
           ObjectKind::Map => "map",
@@ -266,6 +267,12 @@ mod unboxed {
   impl From<f64> for Value {
     fn from(num: f64) -> Self {
       Value::Number(num)
+    }
+  }
+
+  impl From<Tuple> for Value {
+    fn from(managed: Tuple) -> Value {
+      Value::Obj(managed.degrade())
     }
   }
 
@@ -393,16 +400,16 @@ mod unboxed {
         Self::Number(num) => {
           ValueKind::Number.hash(state);
           (*num as u64).hash(state);
-        }
+        },
         Self::Bool(b) => {
           ValueKind::Bool.hash(state);
           b.hash(state);
-        }
+        },
         Self::Nil => ValueKind::Nil.hash(state),
         Self::Obj(obj) => {
           ValueKind::Obj.hash(state);
           obj.hash(state);
-        }
+        },
       };
     }
   }
@@ -473,7 +480,7 @@ mod unboxed {
 mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
-    managed::{DebugHeap, GcObj, GcObject, GcStr, Trace},
+    managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, Tuple},
     object::{
       Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
       ObjectKind,
@@ -622,6 +629,7 @@ mod boxed {
           ObjectKind::Method => "method",
           ObjectKind::Native => "native",
           ObjectKind::LyBox => "box",
+          ObjectKind::Tuple => "tuple",
         },
       }
     }
@@ -671,6 +679,12 @@ mod boxed {
     fn from(num: f64) -> Self {
       let union = NumberUnion { num };
       unsafe { Self(union.bits) }
+    }
+  }
+
+  impl From<Tuple> for Value {
+    fn from(managed: Tuple) -> Value {
+      Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 

@@ -1,0 +1,5 @@
+let t = (1, 2, 3, 4, 5);
+
+assertEq(t.index(3), 2);
+assertEq(t.index(5), 4);
+assertEq(t.index(6), nil);

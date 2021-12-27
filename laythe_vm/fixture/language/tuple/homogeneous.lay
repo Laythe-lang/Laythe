@@ -1,0 +1,7 @@
+class Foo {}
+
+assertEq((true, false).cls(), Tuple);
+assertEq((1, 2, 3, 4).cls(), Tuple);
+assertEq(("John", "Jain", "Mary").cls(), Tuple);
+assertEq((Foo(), Foo(), Foo()).cls(), Tuple);
+assertEq((clock, clock, clock).cls(), Tuple);

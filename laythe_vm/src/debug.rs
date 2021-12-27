@@ -56,6 +56,9 @@ pub fn disassemble_instruction(
     AlignedByteCode::List(arg_count) => {
       short_instruction(stdio.stdout(), "List", arg_count, offset)
     }
+    AlignedByteCode::Tuple(arg_count) => {
+      short_instruction(stdio.stdout(), "Tuple", arg_count, offset)
+    }
     AlignedByteCode::Map(arg_count) => short_instruction(stdio.stdout(), "Map", arg_count, offset),
     AlignedByteCode::Launch(arg_count) => {
       byte_instruction(stdio.stdout(), "Launch", arg_count, offset)

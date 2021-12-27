@@ -98,6 +98,7 @@ impl<'a> Visitor<'a> for AstPrint {
       Primary::Super(token) => self.visit_super(token),
       Primary::Lambda(fun) => self.visit_lambda(fun),
       Primary::List(items) => self.visit_list(items),
+      Primary::Tuple(items) => self.visit_tuple(items),
       Primary::Map(kvps) => self.visit_map(kvps),
     }
   }
@@ -591,7 +592,7 @@ impl<'a> Visitor<'a> for AstPrint {
       FunBody::Expr(expr) => self.visit_expr(&expr),
     };
   }
-  fn visit_list(&mut self, list: &List) -> Self::Result {
+  fn visit_list(&mut self, list: &Collection) -> Self::Result {
     self.buffer.push('[');
     let len = list.items.len();
     for (idx, arg) in list.items.iter().enumerate() {
@@ -603,6 +604,19 @@ impl<'a> Visitor<'a> for AstPrint {
     }
 
     self.buffer.push(']');
+  }
+  fn visit_tuple(&mut self, list: &Collection) -> Self::Result {
+    self.buffer.push('(');
+    let len = list.items.len();
+    for (idx, arg) in list.items.iter().enumerate() {
+      self.visit_expr(&arg);
+
+      if idx < len - 1 {
+        self.buffer.push_str(", ");
+      }
+    }
+
+    self.buffer.push(')');
   }
   fn visit_map(&mut self, map: &Map) -> Self::Result {
     self.buffer.push('{');

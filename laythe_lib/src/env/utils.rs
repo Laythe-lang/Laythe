@@ -86,7 +86,7 @@ mod test {
       assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(0));
     }
 
-    // TODO call
+    // TODO: call
   }
 
   mod cwd {
@@ -104,6 +104,6 @@ mod test {
       assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(0));
     }
 
-    // TODO call
+    // TODO: call
   }
 }

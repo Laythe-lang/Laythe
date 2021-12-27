@@ -203,7 +203,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::While
         | TokenKind::Return => {
           break;
-        }
+        },
         _ => (),
       }
 
@@ -286,7 +286,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 "Expected ';' after class member declaration.",
               )?;
               type_members.push(TypeMember::new(name, type_));
-            }
+            },
             _ => {
               let (fun_kind, method) = self.method(name, false)?;
               match fun_kind {
@@ -294,9 +294,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
                 FunKind::Initializer => init = Some(method),
                 _ => unreachable!(),
               }
-            }
+            },
           }
-        }
+        },
 
         // static we know must be a method
         TokenKind::Static => {
@@ -308,7 +308,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
           let name = self.previous.clone();
           let (_, method) = self.method(name, true)?;
           static_methods.push(method);
-        }
+        },
         _ => return self.error_current("Expected method or member declaration inside of class."),
       }
     }
@@ -412,7 +412,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           members.push(TypeMember::new(name, type_));
-        }
+        },
         TokenKind::Less | TokenKind::LeftParen => {
           self.advance()?;
           let type_params = if self.match_kind(TokenKind::Less)? {
@@ -426,7 +426,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
             "Expected ';' after class member declaration.",
           )?;
           methods.push(TypeMethod::new(name, call_sig));
-        }
+        },
         _ => self.error_at(
           self.current.clone(),
           "Expected member or method declaration inside trait.",
@@ -560,7 +560,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         Some(Trailer::Call(_)) => {
           self.consume_basic(TokenKind::Semicolon, "Expected ';' launch call.")?;
           Ok(Stmt::Launch(self.node(Launch::new(closure))))
-        }
+        },
         _ => self.error("Expected call following 'launch'."),
       }
     } else {
@@ -870,7 +870,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// Parse a call invocation
   fn call(&mut self, mut lhs: Expr<'a>) -> ParseResult<Expr<'a>, FileId> {
     let start = self.previous.start();
-    let args = self.consume_arguments(TokenKind::RightParen, std::u8::MAX as usize)?;
+    let args = self.consume_arguments(None, TokenKind::RightParen, std::u8::MAX as usize)?;
     self.consume_basic(TokenKind::RightParen, "Expected ')' after arguments")?;
 
     let range = Span {
@@ -967,10 +967,33 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Parse a grouping expression
   fn grouping(&mut self) -> ParseResult<Expr<'a>, FileId> {
-    let expr = self.expr()?;
-    self.consume_basic(TokenKind::RightParen, "Expected ')' after expression")?;
+    let start = self.previous.start();
+    if self.match_kind(TokenKind::RightParen)? {
+      let range = Span {
+        start,
+        end: self.previous.end(),
+      };
 
-    Ok(self.atom(Primary::Grouping(self.node(expr))))
+      return Ok(self.atom(Primary::Tuple(Collection::new(range, self.vec()))));
+    }
+
+    let expr = self.expr()?;
+    if self.match_kind(TokenKind::Comma)? {
+      let items =
+        self.consume_arguments(Some(expr), TokenKind::RightParen, std::u16::MAX as usize)?;
+      self.consume_basic(TokenKind::RightParen, "Expected ')' after expression")?;
+
+      let range = Span {
+        start,
+        end: self.previous.end(),
+      };
+
+      Ok(self.atom(Primary::Tuple(Collection::new(range, items))))
+    } else {
+      self.consume_basic(TokenKind::RightParen, "Expected ')' after expression")?;
+
+      Ok(self.atom(Primary::Grouping(self.node(expr))))
+    }
   }
 
   /// Compile a variable statement
@@ -1002,14 +1025,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// Parse a list literal
   fn list(&mut self) -> ParseResult<Expr<'a>, FileId> {
     let start = self.previous.start();
-    let items = self.consume_arguments(TokenKind::RightBracket, std::u16::MAX as usize)?;
+    let items = self.consume_arguments(None, TokenKind::RightBracket, std::u16::MAX as usize)?;
     self.consume_basic(TokenKind::RightBracket, "Expected ']' after arguments")?;
 
     let range = Span {
       start,
       end: self.previous.end(),
     };
-    Ok(self.atom(Primary::List(List::new(range, items))))
+    Ok(self.atom(Primary::List(Collection::new(range, items))))
   }
 
   /// Parse a map literal
@@ -1076,14 +1099,14 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         TokenKind::StringSegment => {
           self.advance()?;
           segments.push(StringSegments::Token(self.previous.clone()))
-        }
+        },
         TokenKind::StringEnd => {
           break;
-        }
+        },
         _ => {
           let expr = self.expr()?;
           segments.push(StringSegments::Expr(self.node(expr)))
-        }
+        },
       }
     }
     self.consume(TokenKind::StringEnd, "Unterminated interpolated string.")?;
@@ -1198,10 +1221,15 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// Consume a comma separated set of arguments for a call or list
   fn consume_arguments(
     &mut self,
+    first_value: Option<Expr<'a>>,
     stop_token: TokenKind,
     max: usize,
   ) -> ParseResult<Vec<'a, Expr<'a>>, FileId> {
     let mut args = self.vec();
+
+    if let Some(value) = first_value {
+      args.push(value);
+    }
 
     while !self.check(stop_token) {
       args.push(self.expr()?);
@@ -1350,7 +1378,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TypePrefix::Fun => {
         let call_sig = self.call_signature(TokenKind::RightParen, self.vec())?;
         Ok(Type::Fun(self.node(call_sig)))
-      }
+      },
       TypePrefix::Literal => self.type_literal(),
     }
   }
@@ -1425,11 +1453,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
         Ok(Type::Ref(type_ref))
-      }
+      },
       _ => {
         // TODO: maybe
         self.error("Can only apply type argument to a non primitive type identifier.")
-      }
+      },
     }
   }
 
@@ -2768,6 +2796,20 @@ mod test {
   }
 
   #[test]
+  fn tuple_single() {
+    let example = "let a = ([1, 2],);";
+
+    test(example);
+  }
+
+  #[test]
+  fn tuple() {
+    let example = "let a = (1, \"cat\", nil, false);";
+
+    test(example);
+  }
+
+  #[test]
   fn list() {
     let example = "let a = [1, 2, 3, \"cat\"];";
 
@@ -2796,7 +2838,7 @@ mod test {
     "man.dude.bro",
     "ten(\"false\")[10].bro",
   ];
-  const EXAMPLE_PRIMARIES: [&str; 12] = [
+  const EXAMPLE_PRIMARIES: [&str; 13] = [
     "true",
     "false",
     "nil",
@@ -2807,6 +2849,7 @@ mod test {
     "self",
     "super.man",
     "|| print()",
+    "((false), 'dog', false)",
     "[false, true, nil]",
     "{nil: 10, 4.3: false, \"cat\": 'hat'}",
   ];
