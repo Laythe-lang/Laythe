@@ -1,0 +1,1 @@
+assertEq((nil, true, 10.3, "cat").cls(), Tuple);

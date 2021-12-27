@@ -292,3 +292,32 @@ fn str() -> Result<(), std::io::Error> {
 
   test_files(&vec![], ExecuteResult::RuntimeError)
 }
+
+#[test]
+fn tuple() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "std_lib/global/tuple/collect.lay",
+      "std_lib/global/tuple/has.lay",
+      "std_lib/global/tuple/index.lay",
+      "std_lib/global/tuple/index_get.lay",
+      "std_lib/global/tuple/index_get_negative.lay",
+      "std_lib/global/tuple/index_get_nested.lay",
+      "std_lib/global/tuple/iter.lay",
+      "std_lib/global/tuple/len.lay",
+      "std_lib/global/tuple/slice.lay",
+      "std_lib/global/tuple/str.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
+
+  test_files(
+    &vec![
+      "std_lib/global/tuple/index_get_fractional.lay",
+      "std_lib/global/tuple/index_get_fractional_negative.lay",
+      "std_lib/global/tuple/index_get_out_of_range.lay",
+      "std_lib/global/tuple/index_get_out_of_range_negative.lay",
+    ],
+    ExecuteResult::RuntimeError,
+  )
+}

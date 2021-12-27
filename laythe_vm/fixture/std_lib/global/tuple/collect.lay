@@ -1,0 +1,7 @@
+let t1 = Tuple.collect(10.times());
+let t2 = Tuple.collect([1, 2, 3].iter());
+let t3 = Tuple.collect({ "dude": 1, "bro": 2, "cat": 3 }.iter());
+
+assertEq(t1.len(), 10);
+assertEq(t2.len(), 3);
+assertEq(t3.len(), 3);

@@ -1,0 +1,15 @@
+let a = (1, 2, 3);
+let b = a.slice();
+
+assertEq(b.len(), 3);
+assertEq(b[0], 1);
+assertEq(b[1], 2);
+assertEq(b[2], 3);
+
+let c = a.slice(-1);
+assertEq(c.len(), 1);
+assertEq(c[0], 3);
+
+let d = a.slice(1, 4);
+assertEq(c.len(), 1);
+assertEq(c[0], 3);

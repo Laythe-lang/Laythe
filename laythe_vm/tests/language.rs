@@ -1105,6 +1105,29 @@ fn variable() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn tuple() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/tuple/empty.lay",
+      "language/tuple/homogeneous.lay",
+      "language/tuple/mixed.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/tuple/empty_comma.lay",
+      "language/tuple/missing_comma_in_initializer.lay",
+      "language/tuple/missing_closing_bracket.lay",
+    ],
+    ExecuteResult::CompileError,
+  )?;
+
+  test_file_exits(&vec![], ExecuteResult::RuntimeError)
+}
+
+#[test]
 fn while_test() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![

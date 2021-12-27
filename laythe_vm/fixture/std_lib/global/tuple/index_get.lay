@@ -1,0 +1,6 @@
+let tuple = (1, 2, 3, 4, "5");
+assertEq(tuple[0], 1);
+assertEq(tuple[1], 2);
+assertEq(tuple[2], 3);
+assertEq(tuple[3], 4);
+assertEq(tuple[4], "5");
