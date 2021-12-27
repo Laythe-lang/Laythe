@@ -986,6 +986,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Primary::Super(token) => self.super_(token, trailers),
       Primary::Lambda(fun) => self.lambda(fun),
       Primary::List(list) => self.list(list),
+      Primary::Tuple(tuple) => self.tuple(tuple),
       Primary::Map(map) => self.map(map),
     }
   }
@@ -2001,12 +2002,23 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// Compile a list literal
-  fn list(&mut self, list: &'a ast::List<'src>) -> bool {
+  fn list(&mut self, list: &'a ast::Collection<'src>) -> bool {
     for item in list.items.iter() {
       self.expr(item);
     }
 
     self.emit_byte(AlignedByteCode::List(list.items.len() as u16), list.end());
+
+    false
+  }
+
+  /// Compile a list literal
+  fn tuple(&mut self, list: &'a ast::Collection<'src>) -> bool {
+    for item in list.items.iter() {
+      self.expr(item);
+    }
+
+    self.emit_byte(AlignedByteCode::Tuple(list.items.len() as u16), list.end());
 
     false
   }
@@ -3162,6 +3174,53 @@ mod test {
       2,
       &vec![
         AlignedByteCode::List(0),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn tuple_initializer() {
+    let example = "
+      let a = (1, 2, nil, false, \"cat\");
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      6,
+      &vec![
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Nil,
+        AlignedByteCode::False,
+        AlignedByteCode::Constant(3),
+        AlignedByteCode::Tuple(5),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn tuple_empty() {
+    let example = "
+      let a = ();
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::Tuple(0),
         AlignedByteCode::DefineGlobal(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,

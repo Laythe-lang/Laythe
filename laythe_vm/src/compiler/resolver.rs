@@ -260,12 +260,12 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
                 Some(name.span()),
               );
             }
-          }
+          },
           SymbolState::Initialized => {
             if table.fun_depth < self.fun_depth {
               symbol.capture();
             }
-          }
+          },
           _ => (),
         }
 
@@ -359,7 +359,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
         if let Stmt::Import(import) = &**stmt {
           self.import_module(import);
         }
-      }
+      },
       _ => (),
     }
   }
@@ -369,10 +369,10 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     match stmt {
       Stmt::Expr(expr) => {
         self.expr(expr);
-      }
+      },
       Stmt::ImplicitReturn(expr) => {
         self.expr(expr);
-      }
+      },
       Stmt::Import(import) => self.import(import),
       Stmt::For(for_) => self.for_(for_),
       Stmt::If(if_) => self.if_(if_),
@@ -560,11 +560,11 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       FunKind::Method | FunKind::Initializer => {
         self.declare_variable(SELF_TOKEN);
         self.define_variable(SELF_TOKEN)
-      }
+      },
       FunKind::Fun | FunKind::StaticMethod => {
         self.declare_variable(UNINITIALIZED_TOKEN);
         self.define_variable(UNINITIALIZED_TOKEN)
-      }
+      },
       _ => (),
     }
     self.call_sig(&fun.call_sig);
@@ -573,7 +573,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       ast::FunBody::Block(block) => self.block(block),
       ast::FunBody::Expr(expr) => {
         self.expr(expr);
-      }
+      },
     };
 
     fun.symbols = self.end_scope();
@@ -587,11 +587,11 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
         let name = import.path().last().expect("Expected path to be filled");
         self.declare_variable(name);
         self.define_variable(name)
-      }
+      },
       ast::ImportStem::Rename(rename) => {
         self.declare_variable(rename);
         self.define_variable(rename);
-      }
+      },
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
           let name = symbol.rename.as_ref().unwrap_or(&symbol.symbol);
@@ -599,7 +599,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
           self.declare_variable(name);
           self.define_variable(name);
         }
-      }
+      },
     }
   }
 
@@ -609,17 +609,17 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       ast::ImportStem::None => {
         let name = import.path().last().expect("Expected path to be filled");
         self.declare_variable_module(name);
-      }
+      },
       ast::ImportStem::Rename(rename) => {
         self.declare_variable_module(rename);
-      }
+      },
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
           let name = symbol.rename.as_ref().unwrap_or(&symbol.symbol);
 
           self.declare_variable_module(name);
         }
-      }
+      },
     }
   }
 
@@ -666,7 +666,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
           block.symbols = self.scope(|self_| {
             self_.block(block);
           });
-        }
+        },
       }
     }
   }
@@ -753,7 +753,8 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       Primary::Self_(token) => self.self_(token),
       Primary::Super(token) => self.super_(token),
       Primary::Lambda(fun) => self.lambda(fun),
-      Primary::List(list) => self.list(list),
+      Primary::List(list) => self.collection(list),
+      Primary::Tuple(tuple) => self.collection(tuple),
       Primary::Map(map) => self.map(map),
       _ => (),
     }
@@ -769,7 +770,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
               .expect("Expected class info")
               .add_field(access.prop.str());
           }
-        }
+        },
       }
 
       for trailer in rest.iter_mut() {
@@ -813,7 +814,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
           FunKind::Method | FunKind::Initializer => {
             self.resolve_variable(self_);
             Some(())
-          }
+          },
           _ => None,
         })
       })
@@ -851,7 +852,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   }
 
   /// Resolve a list literal
-  fn list(&mut self, list: &mut ast::List<'src>) {
+  fn collection(&mut self, list: &mut ast::Collection<'src>) {
     for item in list.items.iter_mut() {
       self.expr(item);
     }
@@ -1135,7 +1136,7 @@ mod test {
             assert!(if_.body.symbols.get("example1").is_some());
             assert!(if_.body.symbols.get("example2").is_some());
             assert!(if_.body.symbols.get("example3").is_some());
-          }
+          },
           _ => panic!(),
         },
         _ => panic!(),
