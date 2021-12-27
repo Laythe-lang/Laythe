@@ -14,6 +14,7 @@ pub mod nil;
 pub mod number;
 pub mod object;
 pub mod string;
+pub mod tuple;
 
 use std::path::PathBuf;
 
@@ -22,7 +23,7 @@ use self::{
   channel::{declare_channel_class, define_channel_class},
   error::{create_error_class, declare_global_errors, define_global_errors, ERROR_CLASS_NAME},
   fiber::{declare_fiber_class, define_fiber_class},
-  module::create_module_class,
+  module::create_module_class, tuple::{declare_tuple_class, define_tuple_class},
 };
 use crate::{support::export_and_insert, StdError, StdResult, STD};
 use class::create_class_class;
@@ -106,6 +107,7 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
   declare_number_class(hooks, module)?;
   declare_string_class(hooks, module)?;
   declare_fiber_class(hooks, module)?;
+  declare_tuple_class(hooks, module)?;
 
   define_global_errors(hooks, &module)?;
   define_bool_class(hooks, module)?;
@@ -120,6 +122,7 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
   define_number_class(hooks, module)?;
   define_string_class(hooks, module)?;
   define_fiber_class(hooks, module)?;
+  define_tuple_class(hooks, module)?;
 
   Ok(module)
 }

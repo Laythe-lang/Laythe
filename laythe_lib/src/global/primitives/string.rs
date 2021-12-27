@@ -309,7 +309,7 @@ impl LyNative for StringSlice {
     let end_index = self.string_index(hooks, &string, end)?;
 
     if start_index <= end_index {
-      // TODO investigate special case where slice is full string
+      // TODO: investigate special case where slice is full string
       Call::Ok(val!(hooks.manage_str(&string[start_index..end_index])))
     } else {
       Call::Ok(val!(hooks.manage_str("")))
