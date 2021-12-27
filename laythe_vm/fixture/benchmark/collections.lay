@@ -1,0 +1,56 @@
+
+let list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+let tuple = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+
+let n = 1000000;
+
+let sum = 0;
+let start = clock();
+for i in n.times() {
+  for x in list {
+    sum += x;
+  }
+}
+print("List loop", clock() - start);
+
+sum = 0;
+start = clock();
+for i in n.times() {
+  for x in tuple {
+    sum += x;
+  }
+}
+print("Tuple loop", clock() - start);
+
+
+sum = 0;
+start = clock();
+for i in n.times() {
+  for i in list.len().times() {
+    sum += list[i];
+  }
+}
+print("List loop index", clock() - start);
+
+sum = 0;
+start = clock();
+for i in n.times() {
+  for i in tuple.len().times() {
+    sum += tuple[i];
+  }
+}
+print("Tuple loop index", clock() - start);
+
+start = clock();
+
+for i in n.times() {
+  [1, 2];
+}
+print("List create", clock() - start);
+
+start = clock();
+for i in n.times() {
+  (1, 2);
+}
+print("Tuple create", clock() - start);
+
