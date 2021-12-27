@@ -1,9 +1,11 @@
 use super::{
+  gc_array::Tuple,
   manage::{DebugHeap, DebugWrap, Manage, Trace},
-  utils::{get_offset, make_layout},
-  GcStr, Mark, Marked, Unmark,
+  utils::{get_array_len_offset, get_offset, make_array_layout, make_layout},
+  GcArray, GcStr, Mark, Marked, Unmark,
 };
 use crate::{
+  managed::utils::get_array_offset,
   object::{
     Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
     ObjectKind,
@@ -66,6 +68,9 @@ macro_rules! to_obj_kind {
   };
   ($o:expr, LyBox) => {
     $o.to_box()
+  };
+  ($o:expr, Tuple) => {
+    $o.to_tuple()
   };
 }
 
@@ -400,6 +405,11 @@ impl GcObject {
   }
 
   #[inline]
+  pub fn to_tuple(self) -> Tuple {
+    unsafe { GcArray::from_alloc_ptr(self.ptr) }
+  }
+
+  #[inline]
   pub fn to_box(self) -> GcObj<LyBox> {
     GcObj {
       ptr: unsafe { self.data_ptr::<LyBox>() },
@@ -500,6 +510,7 @@ impl fmt::Display for GcObject {
       ObjectKind::Instance(instance) => write!(f, "{}", instance),
       ObjectKind::Enumerator(enumerator) => write!(f, "{}", enumerator),
       ObjectKind::Native(native) => write!(f, "{}", native),
+      ObjectKind::Tuple(tuple) => write!(f, "{}", tuple),
     })
   }
 }
@@ -520,6 +531,7 @@ impl fmt::Debug for GcObject {
       ObjectKind::Instance(instance) => write!(f, "{:?}", instance),
       ObjectKind::Enumerator(enumerator) => write!(f, "{:?}", enumerator.name()),
       ObjectKind::Native(native) => write!(f, "{:?}", native),
+      ObjectKind::Tuple(tuple) => write!(f, "{:?}", tuple),
     })
   }
 }
@@ -591,6 +603,9 @@ impl Trace for GcObject {
       ObjectKind::LyBox(ly_box) => {
         ly_box.trace();
       },
+      ObjectKind::Tuple(tuple) => {
+        tuple.trace();
+      },
     });
   }
 
@@ -653,6 +668,9 @@ impl Trace for GcObject {
       ObjectKind::LyBox(ly_box) => {
         trace_debug!(ly_box);
       },
+      ObjectKind::Tuple(tuple) => {
+        trace_debug!(tuple);
+      },
     });
   }
 }
@@ -703,6 +721,9 @@ impl DebugHeap for GcObject {
       ObjectKind::LyBox(ly_box) => {
         ly_box.fmt_heap(f, depth)
       },
+      ObjectKind::Tuple(tuple) => {
+        tuple.fmt_heap(f, depth)
+      },
     })
   }
 }
@@ -710,8 +731,18 @@ impl DebugHeap for GcObject {
 unsafe impl Send for GcObject {}
 unsafe impl Sync for GcObject {}
 
+fn array_len(this: &GcObjectHandle) -> usize {
+  unsafe {
+    ptr::read(this.ptr.as_ptr() as *const ObjHeader);
+  }
+
+  #[allow(clippy::cast_ptr_alignment)]
+  let count = get_array_len_offset::<ObjHeader>();
+  unsafe { *(this.ptr.as_ptr().add(count) as *mut usize) }
+}
+
 pub struct GcObjectHandle {
-  ptr: NonNull<u8>,
+  pub(super) ptr: NonNull<u8>,
 }
 
 impl GcObjectHandle {
@@ -756,7 +787,14 @@ impl GcObjectHandle {
         ObjectKind::Method => kind_size!(Method),
         ObjectKind::Native => kind_size!(Native),
         ObjectKind::LyBox => kind_size!(LyBox),
-        _ => panic!("Boolean, number, string or nil should be in a GcObjectHandle"),
+        ObjectKind::String => {
+          let len = array_len(self);
+          make_array_layout::<ObjHeader, u8>(len).size()
+        },
+        ObjectKind::Tuple => {
+          let len = array_len(self);
+          make_array_layout::<ObjHeader, Value>(len).size()
+        },
       }
   }
 }
@@ -791,7 +829,29 @@ impl Drop for GcObjectHandle {
         ObjectKind::Method => drop_kind!(Method),
         ObjectKind::Native => drop_kind!(Native),
         ObjectKind::LyBox => drop_kind!(LyBox),
-        _ => panic!("Boolean, number, string or nil should not be in a GcObjectHandle"),
+        ObjectKind::String => {
+          let len = array_len(self);
+
+          dealloc(
+            self.ptr.as_ptr(),
+            make_array_layout::<ObjHeader, Value>(len),
+          );
+        },
+        ObjectKind::Tuple => {
+          let len = array_len(self);
+
+          let count = get_array_offset::<ObjHeader, Value>();
+          let data_ptr = self.ptr.as_ptr().add(count) as *mut Value;
+
+          for i in 0..len {
+            ptr::read(data_ptr.add(i));
+          }
+
+          dealloc(
+            self.ptr.as_ptr(),
+            make_array_layout::<ObjHeader, Value>(len),
+          );
+        },
       }
     }
   }
@@ -852,7 +912,7 @@ impl<T> GcObjectHandleBuilder<T> {
 
   #[inline]
   pub fn size(&self) -> usize {
-    mem::size_of::<Self>() + make_layout::<ObjHeader, T>().size()
+    make_layout::<ObjHeader, T>().size()
   }
 }
 

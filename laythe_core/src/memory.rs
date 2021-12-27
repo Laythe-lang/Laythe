@@ -1,7 +1,8 @@
 use crate::managed::{
-  Allocation, Gc, GcObj, GcObjectHandle, GcObjectHandleBuilder, GcStr, GcStrHandle, Manage, Marked,
-  Object, Trace, TraceRoot, Unmark,
+  tuple_handle, Allocation, Gc, GcObj, GcObjectHandle, GcObjectHandleBuilder, GcStr, GcStrHandle,
+  Manage, Marked, Object, Trace, TraceRoot, Tuple, Unmark,
 };
+use crate::value::Value;
 use hashbrown::HashMap;
 use laythe_env::stdio::Stdio;
 use std::ptr::NonNull;
@@ -24,12 +25,11 @@ pub struct Allocator {
   /// The regular heap where objects that have survived a gc reside
   heap: Vec<Box<Allocation<dyn Manage>>>,
 
+  /// The nursery obj heap for objects
   nursery_obj_heap: Vec<GcObjectHandle>,
 
+  /// The regular object heap for objects
   obj_heap: Vec<GcObjectHandle>,
-
-  /// The heap specifically for strings
-  str_heap: Vec<GcStrHandle>,
 
   /// A collection of temporary roots in the gc
   temp_roots: Vec<Box<dyn Trace>>,
@@ -63,7 +63,6 @@ impl<'a> Allocator {
     Self {
       stdio: RefCell::new(stdio),
       heap: vec![],
-      str_heap: vec![],
       obj_heap: vec![],
       nursery_obj_heap: vec![],
       bytes_allocated: 0,
@@ -118,10 +117,9 @@ impl<'a> Allocator {
     self.allocate_obj(data, context)
   }
 
-  /// Create a `Managed<String>` from a str slice. This creates
+  /// Create a `GcStr` from a str slice. This creates
   /// or returns an interned string and allocates a pointer to the intern
-  /// cache. A Managed<String> can be created from `.manage` but will
-  /// not intern the string.
+  /// cache.
   ///
   /// # Examples
   /// ```
@@ -142,6 +140,28 @@ impl<'a> Allocator {
     let static_str: &'static str = unsafe { &*(&*managed as *const str) };
     self.intern_cache.insert(static_str, managed);
     managed
+  }
+
+  /// Create a `Tuple` from a slice. This creates
+  /// allocates a new tuple and copies the slice into it
+  ///
+  /// # Examples
+  /// ```
+  /// use laythe_core::{
+  ///   memory::{Allocator, NO_GC},
+  ///   val,
+  ///   value::Value,
+  /// };
+  ///
+  /// let mut gc = Allocator::default();
+  /// let tuple = gc.manage_tuple(&[val!(false), val!(1.0)], &NO_GC);
+  ///
+  /// assert_eq!(tuple.len(), 2);
+  /// assert_eq!(tuple[0], val!(false));
+  /// assert_eq!(tuple[1], val!(1.0));
+  /// ```
+  pub fn manage_tuple<C: TraceRoot + ?Sized>(&mut self, slice: &[Value], context: &C) -> Tuple {
+    self.allocate_tuple(slice, context)
   }
 
   /// Checks if a string is in the gc's intern cache.
@@ -295,7 +315,7 @@ impl<'a> Allocator {
     obj
   }
 
-  /// Allocate a strong on the gc's heap. If conditions are met a garbage
+  /// Allocate a string on the gc's heap. If conditions are met a garbage
   /// collection can be trigger. When trigger the context is used to determine
   /// the current live roots.
   fn allocate_str<C: TraceRoot + ?Sized>(&mut self, string: &str, context: &C) -> GcStr {
@@ -307,7 +327,7 @@ impl<'a> Allocator {
 
     // push onto heap
     self.bytes_allocated += size;
-    self.str_heap.push(gc_string_handle);
+    self.nursery_obj_heap.push(gc_string_handle.degrade());
 
     #[cfg(feature = "gc_log_alloc")]
     self.debug_allocate_str(gc_string, size);
@@ -326,6 +346,38 @@ impl<'a> Allocator {
     }
 
     gc_string
+  }
+
+  /// Allocate a strong on the gc's heap. If conditions are met a garbage
+  /// collection can be trigger. When trigger the context is used to determine
+  /// the current live roots.
+  fn allocate_tuple<C: TraceRoot + ?Sized>(&mut self, slice: &[Value], context: &C) -> Tuple {
+    // create own store of allocation
+    let gc_tuple_handle = tuple_handle(slice);
+    let size = gc_tuple_handle.size();
+
+    let tuple = gc_tuple_handle.value();
+
+    // push onto heap
+    self.bytes_allocated += size;
+    self.obj_heap.push(gc_tuple_handle.degrade());
+
+    // TODO: Add debug tuple allocate
+
+    #[cfg(feature = "gc_stress")]
+    {
+      self.push_root(gc_string);
+      self.collect_garbage(context);
+      self.pop_roots(1)
+    }
+
+    if self.bytes_allocated > self.next_gc {
+      self.push_root(tuple);
+      self.collect_garbage(context);
+      self.pop_roots(1)
+    }
+
+    tuple
   }
 
   /// Collect garbage present in the heap for unreachable objects. Use the provided context
@@ -356,11 +408,11 @@ impl<'a> Allocator {
         self.trace(&**root);
       });
 
-      let string_heap_size = self.sweep_string_heap();
+      self.sweep_intern_cache();
       let obj_heap_size = self.sweep_obj_heap();
       let heap_size = self.sweep_heap();
 
-      self.bytes_allocated = string_heap_size + heap_size + obj_heap_size;
+      self.bytes_allocated = heap_size + obj_heap_size;
       self.next_gc = self.bytes_allocated * GC_HEAP_GROW_FACTOR
     }
 
@@ -525,26 +577,8 @@ impl<'a> Allocator {
 
   /// Remove strings from the cache that no longer have any references
   /// in the heap
-  fn sweep_string_heap(&mut self) -> usize {
+  fn sweep_intern_cache(&mut self) {
     self.intern_cache.retain(|_, &mut string| string.marked());
-
-    let mut remaining: usize = 0;
-
-    self.str_heap.retain(|string| {
-      #[allow(clippy::let_and_return)]
-      let retain = string.unmark();
-
-      #[cfg(feature = "gc_log_free")]
-      debug_string_remove(string, !retain);
-
-      if retain {
-        remaining += string.size();
-      }
-
-      retain
-    });
-
-    remaining
   }
 
   /// Debug logging for allocating an object.

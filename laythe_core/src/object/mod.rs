@@ -43,4 +43,5 @@ pub enum ObjectKind {
   String,
   LyBox,
   Fiber,
+  Tuple,
 }

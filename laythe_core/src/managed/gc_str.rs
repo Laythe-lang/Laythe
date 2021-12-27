@@ -13,13 +13,13 @@ use std::{
   mem,
   ops::Deref,
   ptr::{self, NonNull},
-  slice, str,
+  str,
 };
 
 use super::{
   gc_obj::{GcObject, ObjHeader},
   utils::make_array_layout,
-  Marked, Unmark,
+  GcObjectHandle, Marked, Unmark,
 };
 
 /// A non owning reference to a Garbage collector
@@ -54,11 +54,25 @@ impl GcStr {
   /// assert!(value.to_usize() > 0);
   /// ```
   pub fn to_usize(self) -> usize {
-    self.0.as_alloc_ptr() as *const () as usize
+    self.0.to_usize()
   }
 
+  /// Degrade this GcStr into the more generic GcObject.
+  /// This allows the string to meet the same interface
+  /// as the other managed objects
+  ///
+  /// ## Example
+  /// ```
+  /// use laythe_core::managed::{GcStr, GcStrHandle};
+  /// use laythe_core::object::ObjectKind;
+  ///
+  /// let handle = GcStrHandle::from("some string");
+  /// let degraded_string = handle.value().degrade();
+  ///
+  /// assert_eq!(degraded_string.kind(), ObjectKind::String);
+  /// ```
   pub fn degrade(self) -> GcObject {
-    GcObject::new(self.0.ptr)
+    self.0.degrade()
   }
 
   /// Get a static reference to the underlying data str slice.
@@ -79,7 +93,7 @@ impl GcStr {
   /// let split = unsafe { value.deref_static() }.split(" ");
   /// ```
   pub unsafe fn deref_static(&self) -> &'static str {
-    str::from_utf8_unchecked(slice::from_raw_parts(self.as_ptr(), self.len()))
+    str::from_utf8_unchecked(self.0.deref_static())
   }
 
   /// Create a GcStr from a `NonNull<u8>`.
@@ -262,6 +276,24 @@ impl GcStrHandle {
   #[inline]
   pub fn value(&self) -> GcStr {
     GcStr(self.0.value())
+  }
+
+  /// Degrade this GcStrHandle into the more generic GcObjectHandle.
+  /// This allows the string to meet the same interface
+  /// as the other managed objects
+  ///
+  /// ## Example
+  /// ```
+  /// use laythe_core::managed::{GcStr, GcStrHandle};
+  /// use laythe_core::object::ObjectKind;
+  ///
+  /// let handle = GcStrHandle::from("some string");
+  /// let degraded_handle = handle.degrade();
+  ///
+  /// assert_eq!(degraded_handle.kind(), ObjectKind::String);
+  /// ```
+  pub fn degrade(self) -> GcObjectHandle {
+    self.0.degrade()
   }
 
   /// Determine the size of the handle and the pointed to
