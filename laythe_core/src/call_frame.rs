@@ -39,3 +39,6 @@ impl DebugHeap for CallFrame {
       .finish()
   }
 }
+
+unsafe impl Send for CallFrame {}
+unsafe impl Sync for CallFrame {}

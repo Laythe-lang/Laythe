@@ -205,7 +205,8 @@ impl Vm {
     loop {
       let mut buffer = String::new();
 
-      if write!(stdio.stdout(), "laythe:> ").is_err() {
+      let failure = write!(stdio.stdout(), "laythe:> ").is_err();
+      if failure {
         return ExecuteResult::InternalError;
       }
       stdio.stdout().flush().expect("Could not write to stdout");
