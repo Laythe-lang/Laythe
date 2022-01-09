@@ -484,10 +484,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       return self.error_current("Can only import from the module scope.");
     }
 
-    self.consume(
-      TokenKind::Identifier,
-      "Expected package name following import.",
-    )?;
+    match self.current.kind() {
+      TokenKind::Identifier | TokenKind::Self_ => self.advance(),
+      _ => self.error_current("Expected package name following import."),
+    }?;
+
     let mut path = self.vec();
     path.push(self.previous.clone());
 
@@ -2344,6 +2345,15 @@ mod test {
   fn import() {
     let example = r#"
       import std.time;
+    "#;
+
+    test(example);
+  }
+
+  #[test]
+  fn import_self() {
+    let example = r#"
+      import self.stuff;
     "#;
 
     test(example);

@@ -198,9 +198,8 @@ impl Vm {
     let mut stdio = self.io.stdio();
 
     let repl_path = self.root_dir.join(PathBuf::from(REPL_MODULE));
-    let main_id = self.emitter.emit();
 
-    let main_module = self.main_module(repl_path.clone(), main_id);
+    let main_module = self.module(repl_path.clone(), SELF);
 
     loop {
       let mut buffer = String::new();
@@ -224,7 +223,7 @@ impl Vm {
           self.pop_roots(2);
 
           self.interpret(true, main_module, &source, file_id);
-        },
+        }
         Err(error) => panic!("{}", error),
       }
     }
@@ -248,21 +247,20 @@ impl Vm {
         let file_id = self.files.upsert(managed_path, source_content);
         self.pop_roots(2);
 
-        let main_id = self.emitter.emit();
-        let main_module = self.main_module(module_path, main_id);
+        let main_module = self.module(module_path, SELF);
 
         self.interpret(false, main_module, &source, file_id)
-      },
+      }
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
           .expect("Unable to write to stderr");
         ExecuteResult::RuntimeError
-      },
+      }
     }
   }
 
   /// Add a package to the vm
-  pub fn add_package(&mut self, package: Gc<Package>) {
+  fn add_package(&mut self, package: Gc<Package>) {
     self.packages.insert(package.name(), package);
   }
 
@@ -278,7 +276,7 @@ impl Vm {
       Ok(fun) => {
         self.prepare(fun);
         self.execute(ExecuteMode::Normal)
-      },
+      }
       Err(errors) => {
         let mut stdio = self.io.stdio();
         let stderr_color = stdio.stderr_color();
@@ -287,7 +285,7 @@ impl Vm {
             .expect("Unable to write to stderr");
         }
         ExecuteResult::CompileError
-      },
+      }
     }
   }
 
@@ -355,10 +353,11 @@ impl Vm {
   }
 
   /// Prepare the main module for use
-  fn main_module(&mut self, module_path: PathBuf, main_id: usize) -> Gc<Module> {
+  fn module(&mut self, module_path: PathBuf, name: &str) -> Gc<Module> {
+    let main_id = self.emitter.emit();
     let hooks = GcHooks::new(self);
 
-    let name = hooks.manage_str(SELF);
+    let name = hooks.manage_str(name);
     let module_class = Class::with_inheritance(&hooks, name, self.builtin.dependencies.module);
 
     let mut module = hooks.manage(Module::new(module_class, module_path, main_id));
@@ -446,7 +445,7 @@ impl Vm {
         let result = self.run_fun(val!(self.builtin.errors.import), &[error_message]);
 
         self.to_call_result(result)
-      },
+      }
     }
   }
 
@@ -542,7 +541,7 @@ impl Vm {
                 return ExecuteResult::FunResult(self.fiber.pop());
               }
             }
-          },
+          }
           Signal::ContextSwitch => match self.fiber_queue.pop_front() {
             Some(fiber) => self.context_switch(fiber),
             None => {
@@ -550,19 +549,19 @@ impl Vm {
               let stderr = stdio.stderr();
               writeln!(stderr, "Fatal error deadlock.").expect("Unable to write to stderr");
               return ExecuteResult::RuntimeError;
-            },
+            }
           },
           Signal::RuntimeError => match self.fiber.error() {
             Some(error) => {
               if let Some(execute_result) = self.stack_unwind(error) {
                 return execute_result;
               }
-            },
+            }
             None => self.internal_error("Runtime error was not set."),
           },
           Signal::Exit => {
             return ExecuteResult::Ok(self.exit_code);
-          },
+          }
         }
       }
     }
@@ -627,7 +626,6 @@ impl Vm {
   }
 
   /// read a u8 out of the bytecode
-  #[no_mangle]
   unsafe fn read_byte(&mut self) -> u8 {
     let byte = ptr::read(self.ip);
     self.update_ip(1);
@@ -735,7 +733,7 @@ impl Vm {
     Signal::Ok
   }
 
-  /// create a map from a map literal
+  /// launch a function on a separate fiber
   unsafe fn op_launch(&mut self) -> Signal {
     let arg_count = self.read_byte();
     let callee = self.fiber.peek(arg_count as usize);
@@ -998,7 +996,7 @@ impl Vm {
               .inline_cache_mut()
               .set_invoke_cache(inline_slot, class, method);
             self.resolve_call(method, arg_count)
-          },
+          }
           None => self.runtime_error(
             self.builtin.errors.property,
             &format!(
@@ -1008,7 +1006,7 @@ impl Vm {
             ),
           ),
         }
-      },
+      }
     }
   }
 
@@ -1045,7 +1043,7 @@ impl Vm {
             .inline_cache_mut()
             .set_invoke_cache(inline_slot, super_class, method);
           self.resolve_call(method, arg_count)
-        },
+        }
         None => self.runtime_error(
           self.builtin.errors.property,
           &format!(
@@ -1270,7 +1268,7 @@ impl Vm {
       Some(gbl) => {
         self.fiber.push(gbl);
         Signal::Ok
-      },
+      }
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined variable {}", string),
@@ -1338,21 +1336,11 @@ impl Vm {
     let index_path = self.read_short();
     let path = self.read_constant(index_path).to_obj().to_list();
 
-    let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
+    let path_segments = self.extract_import_path(path);
     self.push_root(path_segments);
 
-    path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
-
-    let mut buffer = String::new();
-    for segment in &path_segments[..path_segments.len() - 1] {
-      buffer.push_str(segment);
-      buffer.push('/')
-    }
-
-    buffer.push_str(&path_segments[path_segments.len() - 1]);
-
     // check if fully resolved module has already been loaded
-    let resolved = self.manage_str(buffer);
+    let resolved = self.full_import_path(path_segments);
     self.push_root(resolved);
 
     if let Some(module) = self.module_cache.get(&resolved) {
@@ -1362,19 +1350,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    let import = match path_segments.split_first() {
-      Some((package, path)) => {
-        // generate a new import object
-        let path = self.manage(List::from(path));
-        self.manage(Import::new(*package, path))
-      },
-      None => {
-        // generate a new import object
-        let path = self.manage(List::new());
-        self.manage(Import::new(path_segments[0], path))
-      },
-    };
-
+    let import = self.build_import(path_segments);
     self.push_root(import);
 
     let result = match self.packages.get(&import.package()) {
@@ -1382,7 +1358,7 @@ impl Vm {
         Ok(module) => {
           self.fiber.push(val!(module));
           Signal::Ok
-        },
+        }
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1401,21 +1377,11 @@ impl Vm {
     let path = self.read_constant(index_path).to_obj().to_list();
     let name = self.read_string(index_name);
 
-    let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
+    let path_segments = self.extract_import_path(path);
     self.push_root(path_segments);
 
-    path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
-
-    let mut buffer = String::new();
-    for segment in &path_segments[..path_segments.len() - 1] {
-      buffer.push_str(segment);
-      buffer.push('/')
-    }
-
-    buffer.push_str(&path_segments[path_segments.len() - 1]);
-
     // check if fully resolved module has already been loaded
-    let resolved = self.manage_str(buffer);
+    let resolved = self.full_import_path(path_segments);
     self.push_root(resolved);
 
     if let Some(module) = self.module_cache.get(&resolved) {
@@ -1425,19 +1391,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    let import = match path_segments.split_first() {
-      Some((package, path)) => {
-        // generate a new import object
-        let path = self.manage(List::from(path));
-        self.manage(Import::new(*package, path))
-      },
-      None => {
-        // generate a new import object
-        let path = self.manage(List::new());
-        self.manage(Import::new(path_segments[0], path))
-      },
-    };
-
+    let import = self.build_import(path_segments);
     self.push_root(import);
 
     let result = match self.packages.get(&import.package()) {
@@ -1445,7 +1399,7 @@ impl Vm {
         Ok(module) => {
           self.fiber.push(val!(module));
           Signal::Ok
-        },
+        }
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1456,6 +1410,41 @@ impl Vm {
 
     self.pop_roots(3);
     result
+  }
+
+  fn extract_import_path(&mut self, path: GcObj<List<Value>>) -> Gc<List<GcStr>> {
+    let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
+    self.push_root(path_segments);
+
+    path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
+    path_segments
+  }
+
+  fn full_import_path(&mut self, path_segments: Gc<List<GcStr>>) -> GcStr {
+    let mut buffer = String::new();
+    for segment in &path_segments[..path_segments.len() - 1] {
+      buffer.push_str(segment);
+      buffer.push('/');
+    }
+
+    buffer.push_str(&path_segments[path_segments.len() - 1]);
+
+    self.manage_str(buffer)
+  }
+
+  fn build_import(&mut self, path_segments: Gc<List<GcStr>>) -> Gc<Import> {
+    match path_segments.split_first() {
+      Some((package, path)) => {
+        // generate a new import object
+        let path = self.manage(List::from(path));
+        self.manage(Import::new(*package, path))
+      }
+      None => {
+        // generate a new import object
+        let path = self.manage(List::new());
+        self.manage(Import::new(path_segments[0], path))
+      }
+    }
   }
 
   unsafe fn op_export(&mut self) -> Signal {
@@ -1740,7 +1729,7 @@ impl Vm {
       match class.meta_class() {
         Some(mut meta) => {
           meta.add_method(&GcHooks::new(self), name, method);
-        },
+        }
         None => self.internal_error(&format!("{} meta class not set.", class.name())),
       }
     } else {
@@ -1845,7 +1834,7 @@ impl Vm {
         } else {
           Signal::Ok
         }
-      },
+      }
     }
   }
 
@@ -1881,7 +1870,7 @@ impl Vm {
             assert_roots(native, roots_before, roots_current);
           }
           Signal::OkReturn
-        },
+        }
         Call::Err(LyError::Err(error)) => self.set_error(error),
         Call::Err(LyError::Exit(code)) => self.set_exit(code),
       },
@@ -1909,11 +1898,11 @@ impl Vm {
               assert_roots(native, roots_before, roots_current);
             }
             Signal::OkReturn
-          },
+          }
           Call::Err(LyError::Err(error)) => self.set_error(error),
           Call::Err(LyError::Exit(code)) => self.set_exit(code),
         }
-      },
+      }
     }
   }
 
@@ -1966,7 +1955,7 @@ impl Vm {
           self.current_fun = current_fun;
           self.load_ip();
           None
-        },
+        }
         None => {
           if self.fiber == self.main_fiber {
             Some(Signal::Exit)
@@ -1977,7 +1966,7 @@ impl Vm {
             }
             Some(Signal::ContextSwitch)
           }
-        },
+        }
       },
       None => self.internal_error("Compilation failure attempted to pop last frame"),
     }
@@ -2096,7 +2085,7 @@ impl Vm {
             ),
           )),
         }
-      },
+      }
     }
   }
 
@@ -2113,7 +2102,7 @@ impl Vm {
         let bound = self.manage_obj(Method::new(self.fiber.peek(0), method));
         self.fiber.peek_set(0, val!(bound));
         Signal::Ok
-      },
+      }
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined property {} on class {}.", name, class.name()),
@@ -2198,7 +2187,7 @@ impl Vm {
       ExecuteResult::Ok(_) => self.internal_error("Accidental early exit in hook call"),
       ExecuteResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
-      },
+      }
       ExecuteResult::RuntimeError => match self.fiber.error() {
         Some(error) => Call::Err(LyError::Err(error)),
         None => self.internal_error("Error not set on vm executor."),
@@ -2232,7 +2221,7 @@ impl Vm {
         } else {
           self.internal_error("Failed to construct error")
         })
-      },
+      }
       _ => self.internal_error("Failed to construct error"),
     }
   }
@@ -2258,11 +2247,11 @@ impl Vm {
         self.current_fun = frame.closure.fun();
         self.ip = frame.ip;
         None
-      },
+      }
       None => {
         self.print_error(error);
         Some(ExecuteResult::RuntimeError)
-      },
+      }
     }
   }
 
