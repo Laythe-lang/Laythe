@@ -1,9 +1,9 @@
 use laythe_env::{
-  fs::{Fs, FsImpl, SlDirEntry},
+  fs::{Fs, FsImpl, LyDirEntry},
   io::IoImpl,
 };
 use std::{
-  fs::{canonicalize, read_to_string},
+  fs::{canonicalize, read_dir, read_to_string, DirEntry},
   io,
   path::{Path, PathBuf},
 };
@@ -29,8 +29,13 @@ impl FsImpl for FsNative {
     canonicalize(path)
   }
 
-  fn read_directory(&self, _path: &Path) -> io::Result<SlDirEntry> {
-    todo!()
+  fn read_directory(&self, path: &Path) -> io::Result<Vec<Box<dyn LyDirEntry>>> {
+    Ok(
+      read_dir(path)?
+        .filter(|entry| entry.is_ok())
+        .map(|entry| Box::new(NativeDirEntry(entry.unwrap())) as Box<dyn LyDirEntry>)
+        .collect(),
+    )
   }
 
   fn relative_path(&self, base: &Path, import: &Path) -> io::Result<PathBuf> {
@@ -38,5 +43,13 @@ impl FsImpl for FsNative {
       .strip_prefix(base)
       .map(|prefix| prefix.to_path_buf())
       .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err.to_string()))
+  }
+}
+
+struct NativeDirEntry(DirEntry);
+
+impl LyDirEntry for NativeDirEntry {
+  fn path(&self) -> PathBuf {
+    self.0.path()
   }
 }

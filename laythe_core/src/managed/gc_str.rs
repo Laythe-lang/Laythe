@@ -7,6 +7,7 @@ use crate::{
 };
 use std::{
   cmp::Ordering,
+  ffi::OsStr,
   fmt,
   hash::{Hash, Hasher},
   io::Write,
@@ -237,6 +238,12 @@ impl Clone for GcStr {
 impl AsRef<str> for GcStr {
   fn as_ref(&self) -> &str {
     self
+  }
+}
+
+impl AsRef<OsStr> for GcStr {
+  fn as_ref(&self) -> &OsStr {
+    OsStr::new(self)
   }
 }
 

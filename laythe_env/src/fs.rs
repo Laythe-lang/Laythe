@@ -29,7 +29,7 @@ impl Fs {
   }
 
   /// Read a directory for files and sub directories
-  pub fn read_directory(&self, path: &Path) -> io::Result<SlDirEntry> {
+  pub fn read_directory(&self, path: &Path) -> io::Result<Vec<Box<dyn LyDirEntry>>> {
     self.fs.read_directory(path)
   }
 
@@ -44,11 +44,13 @@ impl Fs {
   }
 }
 
-pub struct SlDirEntry();
+pub trait LyDirEntry {
+  fn path(&self) -> PathBuf;
+}
 
 pub trait FsImpl: Send + Sync {
   fn read_to_string(&self, path: &Path) -> io::Result<String>;
-  fn read_directory(&self, path: &Path) -> io::Result<SlDirEntry>;
+  fn read_directory(&self, path: &Path) -> io::Result<Vec<Box<dyn LyDirEntry>>>;
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
   fn relative_path(&self, base: &Path, import: &Path) -> io::Result<PathBuf>;
 }
@@ -68,8 +70,8 @@ impl FsImpl for FsMock {
   fn read_to_string(&self, _path: &Path) -> io::Result<String> {
     Ok("let x = 10;".to_string())
   }
-  fn read_directory(&self, _path: &Path) -> io::Result<SlDirEntry> {
-    Ok(SlDirEntry())
+  fn read_directory(&self, _path: &Path) -> io::Result<Vec<Box<dyn LyDirEntry>>> {
+    Ok(vec![])
   }
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf> {
     Ok(path.to_path_buf())
