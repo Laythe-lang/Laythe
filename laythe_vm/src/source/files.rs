@@ -333,5 +333,58 @@ mod test {
     }
   }
 
-  mod vm_files {}
+  mod vm_files {
+    use super::*;
+    use laythe_core::memory::{Allocator, NO_GC};
+
+    #[test]
+    fn get() {
+      let mut alloc = Allocator::default();
+
+      let name1 = alloc.manage_str("first.lay", &NO_GC);
+      let name2 = alloc.manage_str("second.lay", &NO_GC);
+
+      let source1 = alloc.manage_str("let x = 10;", &NO_GC);
+      let source2 = alloc.manage_str("print(\"hi\")", &NO_GC);
+
+      let mut files = VmFiles::default();
+
+      let id1 = files.upsert(name1, source1);
+      let id2 = files.upsert(name2, source2);
+
+      let vm_file1 = files.get(id1).unwrap();
+      let vm_file2 = files.get(id2).unwrap();
+
+      assert_eq!(vm_file1.name, name1);
+      assert_eq!(vm_file2.name, name2);
+
+      assert_eq!(vm_file1.source, source1);
+      assert_eq!(vm_file2.source, source2);
+    }
+
+    #[test]
+    fn get_mut() {
+      let mut alloc = Allocator::default();
+
+      let name1 = alloc.manage_str("first.lay", &NO_GC);
+      let name2 = alloc.manage_str("second.lay", &NO_GC);
+
+      let source1 = alloc.manage_str("let x = 10;", &NO_GC);
+      let source2 = alloc.manage_str("print(\"hi\")", &NO_GC);
+
+      let mut files = VmFiles::default();
+
+      let id1 = files.upsert(name1, source1);
+      let id2 = files.upsert(name2, source2);
+
+      let vm_file1 = files.get_mut(id1).unwrap();
+
+      assert_eq!(vm_file1.name, name1);
+      assert_eq!(vm_file1.source, source1);
+
+      let vm_file2 = files.get_mut(id2).unwrap();
+      assert_eq!(vm_file2.name, name2);
+      assert_eq!(vm_file2.source, source2);
+    }
+  }
 }
