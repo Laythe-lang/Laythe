@@ -616,13 +616,17 @@ impl Vm {
   }
 
   /// Get the current closure
-  fn inline_cache(&mut self) -> &InlineCache {
-    &self.inline_cache[self.current_fun.module_id()]
+  unsafe fn inline_cache(&mut self) -> &InlineCache {
+    self
+      .inline_cache
+      .get_unchecked(self.current_fun.module_id())
   }
 
   /// Get the current closure
-  fn inline_cache_mut(&mut self) -> &mut InlineCache {
-    &mut self.inline_cache[self.current_fun.module_id()]
+  unsafe fn inline_cache_mut(&mut self) -> &mut InlineCache {
+    self
+      .inline_cache
+      .get_unchecked_mut(self.current_fun.module_id())
   }
 
   /// read a u8 out of the bytecode
