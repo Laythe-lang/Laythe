@@ -1,6 +1,6 @@
 use std::{fmt, io::Write, mem, ptr, usize};
 
-use super::{Channel, Closure, Fun, Instance, ObjectKind};
+use super::{Channel, Fun, Instance, ObjectKind};
 use crate::{
   call_frame::CallFrame,
   captures::Captures,
@@ -55,9 +55,8 @@ impl Fiber {
   /// Create a new fiber from the provided closure. The fiber uses
   /// this initial closure to determine how much stack space to initially
   /// reserve
-  pub fn new(closure: GcObj<Closure>) -> FiberResult<Self> {
-    let fun = closure.fun();
-    Fiber::new_inner(fun, closure.captures(), fun.max_slots() + 1)
+  pub fn new(fun: GcObj<Fun>, captures: Captures) -> FiberResult<Self> {
+    Fiber::new_inner(fun, captures, fun.max_slots() + 1)
   }
 
   /// Create a new from the provided closure, used by split_fiber to use
@@ -388,8 +387,9 @@ impl Fiber {
 
     let frame = self.frames.pop().expect("Expected call frame");
     hooks.push_root(frame.fun());
-    let mut fiber =
-      hooks.manage_obj(Fiber::split(frame.fun(), frame.captures(), arg_count).expect("Assumed valid closure"));
+    let mut fiber = hooks.manage_obj(
+      Fiber::split(frame.fun(), frame.captures(), arg_count).expect("Assumed valid closure"),
+    );
     hooks.pop_roots(1);
 
     let slots = self.frame_stack().len();
@@ -635,10 +635,7 @@ impl Trace for Fiber {
       channel.trace();
     });
 
-    self.frames.iter().for_each(|frame| {
-      frame.fun().trace();
-      frame.captures().trace();
-    });
+    self.frames.iter().for_each(|call_frame| call_frame.trace());
 
     if let Some(error) = self.error {
       error.trace();
@@ -660,10 +657,10 @@ impl Trace for Fiber {
       channel.trace_debug(log);
     });
 
-    self.frames.iter().for_each(|frame| {
-      frame.fun().trace_debug(log);
-      frame.captures().trace_debug(log);
-    });
+    self
+      .frames
+      .iter()
+      .for_each(|call_frame| call_frame.trace_debug(log));
 
     if let Some(error) = self.error {
       error.trace_debug(log);
@@ -978,13 +975,11 @@ mod test {
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
 
-    let closure = hooks.manage_obj(Closure::new(fun, captures));
-
     unsafe {
       fiber.push(val!(10.5));
       fiber.push(val!(false));
       fiber.push(VALUE_NIL);
-      fiber.push(val!(closure));
+      fiber.push(val!(fun));
 
       let frame_stack = fiber.frame_stack();
 
@@ -993,14 +988,14 @@ mod test {
       assert_eq!(frame_stack[1], val!(10.5));
       assert_eq!(frame_stack[2], val!(false));
       assert_eq!(frame_stack[3], VALUE_NIL);
-      assert_eq!(frame_stack[4], val!(closure));
+      assert_eq!(frame_stack[4], val!(fun));
 
       fiber.push_frame(fun, captures, 0);
 
       let frame_stack = fiber.frame_stack();
 
       assert_eq!(frame_stack.len(), 1);
-      assert_eq!(frame_stack[0], val!(closure));
+      assert_eq!(frame_stack[0], val!(fun));
     }
   }
 
@@ -1017,13 +1012,12 @@ mod test {
 
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
-    let closure = hooks.manage_obj(Closure::new(fun, captures));
 
     unsafe {
       fiber.push(val!(10.5));
       fiber.push(val!(false));
       fiber.push(VALUE_NIL);
-      fiber.push(val!(closure));
+      fiber.push(val!(fun));
 
       let frame_stack = fiber.frame_stack();
 
@@ -1032,7 +1026,7 @@ mod test {
       assert_eq!(frame_stack[1], val!(10.5));
       assert_eq!(frame_stack[2], val!(false));
       assert_eq!(frame_stack[3], VALUE_NIL);
-      assert_eq!(frame_stack[4], val!(closure));
+      assert_eq!(frame_stack[4], val!(fun));
 
       fiber.push_frame(fun, captures, 8);
       fiber.frame_stack();
@@ -1087,7 +1081,6 @@ mod test {
 
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
-    let closure = hooks.manage_obj(Closure::new(fun, captures));
 
     let mut fiber = FiberBuilder::<u8>::default()
       .max_slots(3)
@@ -1095,7 +1088,7 @@ mod test {
       .expect("Expected to build");
 
     unsafe {
-      fiber.push(val!(closure));
+      fiber.push(val!(fun));
       fiber.push(val!(10.0));
       fiber.push(val!(true));
     }
@@ -1104,7 +1097,7 @@ mod test {
 
     let slice = fiber.frame_stack();
 
-    assert_eq!(slice[0], val!(closure));
+    assert_eq!(slice[0], val!(fun));
     assert_eq!(slice[1], val!(10.0));
     assert_eq!(slice[2], val!(true));
 
@@ -1119,7 +1112,6 @@ mod test {
 
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
-    let closure = hooks.manage_obj(Closure::new(fun, captures));
 
     let mut fiber = FiberBuilder::<u8>::default()
       .max_slots(4)
@@ -1128,7 +1120,7 @@ mod test {
 
     unsafe {
       fiber.push(VALUE_NIL);
-      fiber.push(val!(closure));
+      fiber.push(val!(fun));
       fiber.push(val!(10.0));
       fiber.push(val!(true));
     }
@@ -1136,7 +1128,7 @@ mod test {
     fiber.push_frame(fun, captures, 2);
     let popped_frame = fiber.pop_frame().unwrap().unwrap();
 
-    assert_ne!(popped_frame, closure.fun());
+    assert_ne!(popped_frame, fun);
 
     let slice = fiber.frame_stack();
 

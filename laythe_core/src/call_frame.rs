@@ -1,6 +1,6 @@
 use crate::{
   captures::Captures,
-  managed::{DebugHeap, DebugWrap, GcObj},
+  managed::{DebugHeap, DebugWrap, GcObj, Trace},
   object::Fun,
   value::Value,
 };
@@ -66,6 +66,18 @@ impl DebugHeap for CallFrame {
       .field("ip", &format_args!("{:p}", self.ip))
       .field("stack_start", &format_args!("{:p}", self.stack_start))
       .finish()
+  }
+}
+
+impl Trace for CallFrame {
+  fn trace(&self) {
+    self.fun.trace();
+    self.captures.trace();
+  }
+
+  fn trace_debug(&self, log: &mut dyn std::io::Write) {
+    self.fun.trace_debug(log);
+    self.captures.trace_debug(log);
   }
 }
 

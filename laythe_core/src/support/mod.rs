@@ -9,7 +9,7 @@ use crate::{
   hooks::GcHooks,
   managed::{GcObj, GcStr},
   module::Module,
-  object::{Class, Closure, Fiber, FiberResult, Fun, FunBuilder},
+  object::{Class, Fiber, FiberResult, Fun, FunBuilder},
   signature::Arity,
   value::Value,
 };
@@ -71,10 +71,12 @@ where
     fun.update_max_slots(self.max_slots);
 
     let fun = hooks.manage_obj(fun.build());
-    let captures = Captures::new(&hooks, &[]);
-    let closure = hooks.manage_obj(Closure::new(fun, captures));
+    hooks.push_root(fun);
 
-    Fiber::new(closure).map(|fiber| hooks.manage_obj(fiber))
+    let captures = Captures::new(&hooks, &[]);
+    hooks.pop_roots(1);
+
+    Fiber::new(fun, captures).map(|fiber| hooks.manage_obj(fiber))
   }
 }
 

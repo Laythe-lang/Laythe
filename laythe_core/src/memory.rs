@@ -366,7 +366,7 @@ impl<'a> Allocator {
 
     #[cfg(feature = "gc_stress")]
     {
-      self.push_root(gc_string);
+      self.push_root(tuple);
       self.collect_garbage(context);
       self.pop_roots(1)
     }
