@@ -1,11 +1,8 @@
-let y;
 fn inner(value) {
-  y;
   return value * 2;
 }
 
 fn outer(name) {
-  y;
   print(name);
   return inner;
 }

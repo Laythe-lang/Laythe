@@ -1,5 +1,7 @@
+let y;
 fn f(x) {
+  y;
   print(x);
 }
 
-f.size(10);
+f.len(10);

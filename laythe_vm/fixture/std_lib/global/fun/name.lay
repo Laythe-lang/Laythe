@@ -1,6 +1,5 @@
-let y;
-fn first() { y; }
-fn second() { y; }
+fn first() {}
+fn second() {}
 
 let assigned = first;
 
