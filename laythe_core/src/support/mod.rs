@@ -4,6 +4,7 @@ use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
 
 use crate::{
+  captures::Captures,
   chunk::Encode,
   hooks::GcHooks,
   managed::{GcObj, GcStr},
@@ -70,7 +71,8 @@ where
     fun.update_max_slots(self.max_slots);
 
     let fun = hooks.manage_obj(fun.build());
-    let closure = hooks.manage_obj(Closure::without_captures(fun));
+    let captures = Captures::new(&hooks, &[]);
+    let closure = hooks.manage_obj(Closure::new(fun, captures));
 
     Fiber::new(closure).map(|fiber| hooks.manage_obj(fiber))
   }

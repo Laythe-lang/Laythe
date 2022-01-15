@@ -93,6 +93,8 @@ mod test {
   use laythe_core::object::Closure;
 
   mod name {
+    use laythe_core::captures::Captures;
+
     use super::*;
 
     #[test]
@@ -113,7 +115,8 @@ mod test {
       let closure_name = ClosureName::native(&hooks.as_gc());
 
       let fun = test_fun(&hooks.as_gc(), "example", "module");
-      let closure = hooks.manage_obj(Closure::without_captures(fun));
+      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let closure = hooks.manage_obj(Closure::new(fun, captures));
 
       let result1 = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
 
@@ -127,7 +130,7 @@ mod test {
   mod size {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::object::Closure;
+    use laythe_core::{captures::Captures, object::Closure};
 
     #[test]
     fn new() {
@@ -146,20 +149,22 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_name = ClosureLen::native(&hooks.as_gc());
 
+      let captures = Captures::new(&hooks.as_gc(), &[]);
+
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(4));
-      let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
+      let closure = hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 4.0);
 
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
-      let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
+      let closure = hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 2.0);
 
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Variadic(5));
-      let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
+      let closure = hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 5.0);
@@ -169,7 +174,7 @@ mod test {
   mod call {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::object::Closure;
+    use laythe_core::{captures::Captures, object::Closure};
 
     #[test]
     fn new() {
@@ -193,8 +198,9 @@ mod test {
       let closure_call = ClosureCall::native(&hooks.as_gc());
 
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
+      let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let closure = hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build())));
+      let closure = hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures));
 
       let args = &[val!(hooks.manage_str("input".to_string()))];
       let result1 = closure_call.call(&mut hooks, Some(val!(closure)), args);

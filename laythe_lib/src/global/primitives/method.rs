@@ -105,7 +105,7 @@ mod test {
     use crate::support::{test_fun, MockedContext};
     use laythe_core::{
       memory::NO_GC,
-      object::{Class, Closure, Instance, Method},
+      object::{Class, Closure, Instance, Method}, captures::Captures,
     };
 
     #[test]
@@ -130,7 +130,8 @@ mod test {
 
       let fun = test_fun(&hooks.as_gc(), "example", "module");
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
-      let closure = hooks.manage_obj(Closure::without_captures(fun));
+      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let closure = hooks.manage_obj(Closure::new(fun, captures));
       let instance = hooks.manage_obj(Instance::new(class));
       let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 
@@ -146,7 +147,7 @@ mod test {
   mod call {
     use super::*;
     use crate::support::{test_fun, MockedContext};
-    use laythe_core::object::{Class, Closure, Instance, Method};
+    use laythe_core::{object::{Class, Closure, Instance, Method}, captures::Captures};
 
     #[test]
     fn new() {
@@ -171,7 +172,8 @@ mod test {
 
       let fun = test_fun(&hooks.as_gc(), "example", "module");
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
-      let closure = hooks.manage_obj(Closure::without_captures(fun));
+      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let closure = hooks.manage_obj(Closure::new(fun, captures));
       let instance = hooks.manage_obj(Instance::new(class));
       let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 

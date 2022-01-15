@@ -400,16 +400,16 @@ mod unboxed {
         Self::Number(num) => {
           ValueKind::Number.hash(state);
           (*num as u64).hash(state);
-        },
+        }
         Self::Bool(b) => {
           ValueKind::Bool.hash(state);
           b.hash(state);
-        },
+        }
         Self::Nil => ValueKind::Nil.hash(state),
         Self::Obj(obj) => {
           ValueKind::Obj.hash(state);
           obj.hash(state);
-        },
+        }
       };
     }
   }
@@ -787,7 +787,7 @@ mod boxed {
     fn size() {
       assert_eq!(mem::size_of::<List<Value>>(), 24);
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
-      assert_eq!(mem::size_of::<Closure>(), 24);
+      assert_eq!(mem::size_of::<Closure>(), 16);
       assert_eq!(mem::size_of::<Fun>(), 96);
       assert_eq!(mem::size_of::<Fiber>(), 104);
       assert_eq!(mem::size_of::<Class>(), 104);
@@ -820,6 +820,8 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
+    captures::Captures,
+    hooks::{GcHooks, NoContext},
     managed::{Gc, GcObj, GcStr},
     memory::{Allocator, NO_GC},
     module::Module,
@@ -902,38 +904,38 @@ mod test {
     });
   }
 
-  fn test_string(gc: &mut Allocator) -> GcStr {
-    gc.manage_str("sup", &NO_GC)
+  fn test_string(hooks: &GcHooks) -> GcStr {
+    hooks.manage_str("sup")
   }
 
   fn test_path() -> PathBuf {
     PathBuf::from("test/sup.ly")
   }
 
-  fn test_module(gc: &mut Allocator) -> Gc<Module> {
-    let class = test_class(gc);
+  fn test_module(hooks: &GcHooks) -> Gc<Module> {
+    let class = test_class(hooks);
     let path = test_path();
 
-    gc.manage(Module::new(class, path, 0), &NO_GC)
+    hooks.manage(Module::new(class, path, 0))
   }
 
-  fn test_fun(gc: &mut Allocator) -> GcObj<Fun> {
-    let name = test_string(gc);
-    let module = test_module(gc);
+  fn test_fun(hooks: &GcHooks) -> GcObj<Fun> {
+    let name = test_string(hooks);
+    let module = test_module(hooks);
 
-    gc.manage_obj(Fun::stub(name, module, 0), &NO_GC)
+    hooks.manage_obj(Fun::stub(name, module, 0))
   }
 
-  fn test_closure(gc: &mut Allocator) -> GcObj<Closure> {
-    let fun = test_fun(gc);
+  fn test_closure(hooks: &GcHooks) -> GcObj<Closure> {
+    let fun = test_fun(hooks);
 
-    gc.manage_obj(Closure::without_captures(fun), &NO_GC)
+    hooks.manage_obj(Closure::new(fun, Captures::new(hooks, &[])))
   }
 
-  fn test_class(gc: &mut Allocator) -> GcObj<Class> {
-    let name = test_string(gc);
+  fn test_class(hooks: &GcHooks) -> GcObj<Class> {
+    let name = test_string(hooks);
 
-    gc.manage_obj(Class::bare(name), &NO_GC)
+    hooks.manage_obj(Class::bare(name))
   }
 
   #[test]
@@ -1020,8 +1022,9 @@ mod test {
 
   #[test]
   fn fun() {
-    let mut gc = Allocator::default();
-    let fun = test_fun(&mut gc);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+    let fun = test_fun(&hooks);
     let value = val!(fun);
 
     assert_value_type(value, ValueKind::Obj);
@@ -1034,8 +1037,9 @@ mod test {
 
   #[test]
   fn closure() {
-    let mut gc = Allocator::default();
-    let closure = test_closure(&mut gc);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+    let closure = test_closure(&hooks);
 
     let value = val!(closure);
 
@@ -1049,8 +1053,9 @@ mod test {
 
   #[test]
   fn class() {
-    let mut gc = Allocator::default();
-    let class = test_class(&mut gc);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+    let class = test_class(&hooks);
 
     let value = val!(class);
     assert_value_type(value, ValueKind::Obj);

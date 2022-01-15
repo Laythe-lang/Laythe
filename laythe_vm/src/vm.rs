@@ -8,6 +8,7 @@ use crate::{
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
+  captures::Captures,
   constants::{PLACEHOLDER_NAME, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   if_let_obj,
@@ -152,7 +153,8 @@ impl Vm {
     );
 
     let current_fun = hooks.manage_obj(current_fun);
-    let closure = hooks.manage_obj(Closure::without_captures(current_fun));
+    let captures = Captures::new(&hooks, &[]);
+    let closure = hooks.manage_obj(Closure::new(current_fun, captures));
     let fiber =
       hooks.manage_obj(Fiber::new(closure).expect("Unable to generate placeholder fiber"));
 
@@ -333,7 +335,8 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: GcObj<Fun>) {
-    let script = self.manage_obj(Closure::without_captures(script));
+    let captures = Captures::new(&GcHooks::new(self), &[]);
+    let script = self.manage_obj(Closure::new(script, captures));
     let fiber = match Fiber::new(script) {
       Ok(fiber) => fiber,
       Err(_) => self.internal_error("Unable to generate initial fiber"),
@@ -1211,7 +1214,10 @@ impl Vm {
   unsafe fn op_set_capture(&mut self) -> Signal {
     let slot = self.read_byte();
     let value = self.fiber.peek(0);
-    self.fiber.closure().set_capture_value(slot as usize, value);
+    self
+      .fiber
+      .captures()
+      .set_capture_value(slot as usize, value);
 
     Signal::Ok
   }
@@ -1298,7 +1304,7 @@ impl Vm {
   unsafe fn op_get_capture(&mut self) -> Signal {
     let slot = self.read_byte();
 
-    let upvalue = self.fiber.closure().get_capture_value(slot as usize);
+    let upvalue = self.fiber.captures().get_capture_value(slot as usize);
     self.fiber.push(upvalue);
 
     Signal::Ok
@@ -1755,12 +1761,13 @@ impl Vm {
           CaptureIndex::Local(index) => (*self.fiber.stack_start().offset(index as isize))
             .to_obj()
             .to_box(),
-          CaptureIndex::Enclosing(index) => self.fiber.closure().get_capture(index as usize),
+          CaptureIndex::Enclosing(index) => self.fiber.captures().get_capture(index as usize),
         }
       })
       .collect::<Vec<GcObj<LyBox>>>()
       .into_boxed_slice();
 
+    let captures = Captures::new(&GcHooks::new(self), &captures);
     let closure = self.manage_obj(Closure::new(fun, captures));
     self.fiber.push(val!(closure));
 
@@ -1885,7 +1892,8 @@ impl Vm {
 
         stub.set_name(meta.name);
 
-        let native_closure = self.manage_obj(Closure::without_captures(stub));
+        let captures = Captures::new(&GcHooks::new(self), &[]);
+        let native_closure = self.manage_obj(Closure::new(stub, captures));
         self.push_frame(native_closure, arg_count);
 
         let result = native.call(&mut Hooks::new(self), this, args);
@@ -1936,14 +1944,16 @@ impl Vm {
     self.fiber.activate();
 
     self.load_ip();
-    self.current_fun = fiber.closure().fun();
+    self.current_fun = fiber.fun();
   }
 
   /// Push a call frame onto the the call frame stack
   unsafe fn push_frame(&mut self, closure: GcObj<Closure>, arg_count: u8) {
     self.store_ip();
 
-    self.fiber.push_frame(closure, arg_count as usize);
+    self
+      .fiber
+      .push_frame(closure.fun(), closure.captures(), arg_count as usize);
     self.load_ip();
 
     self.current_fun = closure.fun();
@@ -2248,8 +2258,8 @@ impl Vm {
 
     match self.fiber.stack_unwind() {
       Some(frame) => {
-        self.current_fun = frame.closure.fun();
-        self.ip = frame.ip;
+        self.current_fun = frame.fun();
+        self.ip = frame.ip();
         None
       }
       None => {

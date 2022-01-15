@@ -1332,7 +1332,7 @@ mod test {
   mod map {
     use super::*;
     use crate::support::test_fun_builder;
-    use laythe_core::object::Closure;
+    use laythe_core::{object::Closure, captures::Captures};
 
     #[test]
     fn new() {
@@ -1359,9 +1359,10 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
+      let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun =
-        val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
+        val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
 
       let result = iter_map.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1378,7 +1379,7 @@ mod test {
   mod filter {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::object::{Closure, Enumerator};
+    use laythe_core::{object::{Closure, Enumerator}, captures::Captures};
 
     #[test]
     fn new() {
@@ -1405,9 +1406,10 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
+      let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun =
-        val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
+        val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
 
       let result = iter_filter.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1426,7 +1428,7 @@ mod test {
   mod reduce {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::object::{Closure, Enumerator};
+    use laythe_core::{object::{Closure, Enumerator}, captures::Captures};
 
     #[test]
     fn new() {
@@ -1458,9 +1460,10 @@ mod test {
       let this = val!(managed);
 
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(2));
+      let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun =
-        val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
+        val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
 
       let result = iter_reduce.call(&mut hooks, Some(this), &[val!(0.0), fun]);
       match result {
@@ -1510,7 +1513,7 @@ mod test {
   mod each {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::object::{Closure, Enumerator};
+    use laythe_core::{object::{Closure, Enumerator}, captures::Captures};
 
     #[test]
     fn new() {
@@ -1538,9 +1541,10 @@ mod test {
       let this = val!(managed);
 
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
+      let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun =
-        val!(hooks.manage_obj(Closure::without_captures(hooks.manage_obj(builder.build()))));
+        val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
 
       let result = iter_each.call(&mut hooks, Some(this), &[fun]);
       match result {
