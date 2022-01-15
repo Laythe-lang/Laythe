@@ -74,7 +74,28 @@ fn closure() -> Result<(), std::io::Error> {
     &vec![
       "std_lib/global/closure/name_wrong_args.lay",
       "std_lib/global/closure/call_wrong_args.lay",
-      "std_lib/global/closure/size_wrong_args.lay",
+      "std_lib/global/closure/len_wrong_args.lay",
+    ],
+    ExecuteResult::RuntimeError,
+  )
+}
+
+#[test]
+fn fun() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "std_lib/global/fun/name.lay",
+      "std_lib/global/fun/call.lay",
+      "std_lib/global/fun/len.lay",
+    ],
+    ExecuteResult::Ok(0),
+  )?;
+
+  test_files(
+    &vec![
+      "std_lib/global/fun/name_wrong_args.lay",
+      "std_lib/global/fun/call_wrong_args.lay",
+      "std_lib/global/fun/len_wrong_args.lay",
     ],
     ExecuteResult::RuntimeError,
   )

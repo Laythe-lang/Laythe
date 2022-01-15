@@ -4,11 +4,12 @@ use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
 
 use crate::{
+  captures::Captures,
   chunk::Encode,
   hooks::GcHooks,
   managed::{GcObj, GcStr},
   module::Module,
-  object::{Class, Closure, Fiber, FiberResult, Fun, FunBuilder},
+  object::{Class, Fiber, FiberResult, Fun, FunBuilder},
   signature::Arity,
   value::Value,
 };
@@ -70,9 +71,12 @@ where
     fun.update_max_slots(self.max_slots);
 
     let fun = hooks.manage_obj(fun.build());
-    let closure = hooks.manage_obj(Closure::without_captures(fun));
+    hooks.push_root(fun);
 
-    Fiber::new(closure).map(|fiber| hooks.manage_obj(fiber))
+    let captures = Captures::new(hooks, &[]);
+    hooks.pop_roots(1);
+
+    Fiber::new(fun, captures).map(|fiber| hooks.manage_obj(fiber))
   }
 }
 

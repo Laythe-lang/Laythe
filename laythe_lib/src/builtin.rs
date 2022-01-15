@@ -13,7 +13,7 @@ use crate::global::{
   EXPORT_ERROR_NAME, FIBER_CLASS_NAME, IMPORT_ERROR_NAME, ITER_CLASS_NAME, LIST_CLASS_NAME,
   MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME, MODULE_CLASS_NAME,
   NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME, PROPERTY_ERROR_NAME,
-  RUNTIME_ERROR_NAME, STRING_CLASS_NAME, TYPE_ERROR_NAME, VALUE_ERROR_NAME, TUPLE_CLASS_NAME,
+  RUNTIME_ERROR_NAME, STRING_CLASS_NAME, TUPLE_CLASS_NAME, TYPE_ERROR_NAME, VALUE_ERROR_NAME, FUN_CLASS_NAME,
 };
 
 pub struct BuiltIn {
@@ -75,6 +75,9 @@ pub struct BuiltInPrimitives {
   /// the Fiber class
   pub fiber: GcObj<Class>,
 
+  /// the Fun class
+  pub fun: GcObj<Class>,
+
   /// the Number class
   pub number: GcObj<Class>,
 
@@ -117,7 +120,7 @@ impl BuiltInPrimitives {
           ObjectKind::Class => obj.to_class().meta_class().expect("Meta class not set."),
           ObjectKind::Closure => self.closure,
           ObjectKind::Enumerator => self.iter,
-          ObjectKind::Fun => panic!("Function should not be directly accessible"),
+          ObjectKind::Fun => self.fun,
           ObjectKind::Fiber => self.fiber,
           ObjectKind::Instance => obj.to_instance().class(),
           ObjectKind::List => self.list,
@@ -218,6 +221,10 @@ pub fn builtin_from_module(hooks: &GcHooks, module: &Module) -> Option<BuiltIn> 
         .to_class(),
       fiber: module
         .get_symbol(hooks.manage_str(FIBER_CLASS_NAME))?
+        .to_obj()
+        .to_class(),
+      fun: module
+        .get_symbol(hooks.manage_str(FUN_CLASS_NAME))?
         .to_obj()
         .to_class(),
       number: module

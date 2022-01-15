@@ -8,6 +8,7 @@ use crate::{
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
+  captures::Captures,
   constants::{PLACEHOLDER_NAME, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   if_let_obj,
@@ -124,10 +125,11 @@ pub struct Vm {
   /// pointer to the current instruction
   ip: *const u8,
 
-  /// TODO: replace this. A fun to fill a call frame for higher order native functions
-  /// may want to eventually have a function rental so native functions can set name / module
-  /// for exception
+  /// A vec of stub functions so native functions can have a call frame
   native_fun_stubs: Vec<GcObj<Fun>>,
+
+  /// A placeholder capture for functions without any captures
+  capture_stub: Captures,
 }
 
 impl Vm {
@@ -152,9 +154,11 @@ impl Vm {
     );
 
     let current_fun = hooks.manage_obj(current_fun);
-    let closure = hooks.manage_obj(Closure::without_captures(current_fun));
-    let fiber =
-      hooks.manage_obj(Fiber::new(closure).expect("Unable to generate placeholder fiber"));
+    let captures = Captures::new(&hooks, &[]);
+    let fiber = hooks
+      .manage_obj(Fiber::new(current_fun, captures).expect("Unable to generate placeholder fiber"));
+
+    let capture_stub = Captures::new(&hooks, &[]);
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
@@ -182,6 +186,7 @@ impl Vm {
       exit_code: 0,
       ip: ptr::null(),
       native_fun_stubs: vec![],
+      capture_stub,
     };
     vm.add_package(std_lib);
 
@@ -333,8 +338,11 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: GcObj<Fun>) {
-    let script = self.manage_obj(Closure::without_captures(script));
-    let fiber = match Fiber::new(script) {
+    self.push_root(script);
+    let captures = Captures::new(&GcHooks::new(self), &[]);
+    self.pop_roots(1);
+
+    let fiber = match Fiber::new(script, captures) {
       Ok(fiber) => fiber,
       Err(_) => self.internal_error("Unable to generate initial fiber"),
     };
@@ -344,7 +352,7 @@ impl Vm {
     self.fiber.activate();
     self.load_ip();
 
-    self.current_fun = script.fun();
+    self.current_fun = script;
     let mut current_module = self.current_fun.module();
 
     self
@@ -1211,7 +1219,10 @@ impl Vm {
   unsafe fn op_set_capture(&mut self) -> Signal {
     let slot = self.read_byte();
     let value = self.fiber.peek(0);
-    self.fiber.closure().set_capture_value(slot as usize, value);
+    self
+      .fiber
+      .captures()
+      .set_capture_value(slot as usize, value);
 
     Signal::Ok
   }
@@ -1298,7 +1309,7 @@ impl Vm {
   unsafe fn op_get_capture(&mut self) -> Signal {
     let slot = self.read_byte();
 
-    let upvalue = self.fiber.closure().get_capture_value(slot as usize);
+    let upvalue = self.fiber.captures().get_capture_value(slot as usize);
     self.fiber.push(upvalue);
 
     Signal::Ok
@@ -1755,13 +1766,18 @@ impl Vm {
           CaptureIndex::Local(index) => (*self.fiber.stack_start().offset(index as isize))
             .to_obj()
             .to_box(),
-          CaptureIndex::Enclosing(index) => self.fiber.closure().get_capture(index as usize),
+          CaptureIndex::Enclosing(index) => self.fiber.captures().get_capture(index as usize),
         }
       })
       .collect::<Vec<GcObj<LyBox>>>()
       .into_boxed_slice();
 
+    let captures = Captures::new(&GcHooks::new(self), &captures);
+    self.push_root(captures);
+
     let closure = self.manage_obj(Closure::new(fun, captures));
+    self.pop_roots(1);
+
     self.fiber.push(val!(closure));
 
     Signal::Ok
@@ -1795,7 +1811,7 @@ impl Vm {
 
     match_obj!((&callee.to_obj()) {
       ObjectKind::Closure(closure) => {
-        self.call(closure, arg_count)
+        self.call_closure(closure, arg_count)
       },
       ObjectKind::Method(method) => {
         self.call_method(method, arg_count)
@@ -1807,10 +1823,7 @@ impl Vm {
         self.call_class(class, arg_count)
       },
       ObjectKind::Fun(fun) => {
-        self.internal_error(&format!(
-          "Function {} was not wrapped in a closure.",
-          fun.name()
-        ))
+        self.call(fun, arg_count)
       },
       _ => {
         let class_name = self.value_class(callee).name();
@@ -1882,11 +1895,13 @@ impl Vm {
         let mut stub = self.native_fun_stubs.pop().unwrap_or_else(|| {
           self.manage_obj(Fun::stub(meta.name, self.global, AlignedByteCode::Nil))
         });
-
         stub.set_name(meta.name);
+        self.push_root(stub);
 
-        let native_closure = self.manage_obj(Closure::without_captures(stub));
-        self.push_frame(native_closure, arg_count);
+        let captures = Captures::new(&GcHooks::new(self), &[]);
+        self.pop_roots(1);
+
+        self.push_frame(stub, captures, arg_count);
 
         let result = native.call(&mut Hooks::new(self), this, args);
         self.native_fun_stubs.push(stub);
@@ -1911,7 +1926,7 @@ impl Vm {
   }
 
   /// call a laythe function setting it as the new call frame
-  unsafe fn call(&mut self, closure: GcObj<Closure>, arg_count: u8) -> Signal {
+  unsafe fn call_closure(&mut self, closure: GcObj<Closure>, arg_count: u8) -> Signal {
     // check that the current function is called with the right number of args
     if let Some(error) = self.check_arity(closure.fun(), arg_count) {
       return error;
@@ -1922,7 +1937,23 @@ impl Vm {
       return self.runtime_error(self.builtin.errors.runtime, "Stack overflow.");
     }
 
-    self.push_frame(closure, arg_count);
+    self.push_frame(closure.fun(), closure.captures(), arg_count);
+    Signal::Ok
+  }
+
+  /// call a laythe function setting it as the new call frame
+  unsafe fn call(&mut self, fun: GcObj<Fun>, arg_count: u8) -> Signal {
+    // check that the current function is called with the right number of args
+    if let Some(error) = self.check_arity(fun, arg_count) {
+      return error;
+    }
+
+    // set the current current instruction pointer. check for overflow
+    if self.fiber.frames().len() == MAX_FRAME_SIZE {
+      return self.runtime_error(self.builtin.errors.runtime, "Stack overflow.");
+    }
+
+    self.push_frame(fun, self.capture_stub, arg_count);
     Signal::Ok
   }
 
@@ -1936,17 +1967,17 @@ impl Vm {
     self.fiber.activate();
 
     self.load_ip();
-    self.current_fun = fiber.closure().fun();
+    self.current_fun = fiber.fun();
   }
 
   /// Push a call frame onto the the call frame stack
-  unsafe fn push_frame(&mut self, closure: GcObj<Closure>, arg_count: u8) {
+  unsafe fn push_frame(&mut self, closure: GcObj<Fun>, captures: Captures, arg_count: u8) {
     self.store_ip();
 
-    self.fiber.push_frame(closure, arg_count as usize);
+    self.fiber.push_frame(closure, captures, arg_count as usize);
     self.load_ip();
 
-    self.current_fun = closure.fun();
+    self.current_fun = closure;
   }
 
   /// Pop a frame off the call stack. If no frame remain
@@ -2165,7 +2196,7 @@ impl Vm {
     if self.fiber.frames().len() > 1 {
       write!(stdout, "Frame Stack:  ")?;
       for frame in self.fiber.frames().iter() {
-        let fun = frame.closure.fun();
+        let fun = frame.fun();
         write!(stdout, "[ {:}:{:} ]", fun.module().name(), fun.name())?;
       }
       writeln!(stdout)?;
@@ -2248,8 +2279,8 @@ impl Vm {
 
     match self.fiber.stack_unwind() {
       Some(frame) => {
-        self.current_fun = frame.closure.fun();
-        self.ip = frame.ip;
+        self.current_fun = frame.fun();
+        self.ip = frame.ip();
         None
       }
       None => {

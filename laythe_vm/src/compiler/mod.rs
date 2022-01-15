@@ -382,7 +382,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     #[cfg(feature = "debug")]
     {
-      Compiler::<FileId>::print_chunk(&fun, &self.class_info, &self.io, self.fun_kind);
+      Compiler::<FileId>::print_chunk(&fun, &self.class_attributes, &self.io, self.fun_kind);
     }
 
     (fun, self.errors, self.captures, self.gc.into_inner())
@@ -1122,7 +1122,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .map(|name| self.identifier_constant(name.str()))
       .expect("Expect method name");
 
-    self.class_attributes.expect("Class compiler not set").fun_kind = Some(fun_kind);
+    self
+      .class_attributes
+      .expect("Class compiler not set")
+      .fun_kind = Some(fun_kind);
 
     self.function(method, fun_kind);
     self.emit_byte(AlignedByteCode::Method(constant), method.end());
@@ -1136,7 +1139,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .map(|name| self.identifier_constant(name.str()))
       .expect("Expected method name.");
 
-    self.class_attributes.expect("Class compiler not set").fun_kind = Some(FunKind::StaticMethod);
+    self
+      .class_attributes
+      .expect("Class compiler not set")
+      .fun_kind = Some(FunKind::StaticMethod);
 
     self.function(static_method, FunKind::StaticMethod);
     self.emit_byte(AlignedByteCode::StaticMethod(constant), static_method.end());
@@ -1218,17 +1224,21 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     let fun = self.gc.borrow_mut().manage_obj(fun, self);
 
-    let index = self.make_constant(val!(fun));
-    self.emit_byte(AlignedByteCode::Closure(index), end_line);
-
     if !errors.is_empty() {
       self.errors.extend_from_slice(&errors);
     }
 
-    // emit capture index instructions
-    captures
-      .iter()
-      .for_each(|capture| self.emit_byte(AlignedByteCode::CaptureIndex(*capture), end_line));
+    if fun.capture_count() == 0 && matches!(fun_kind, FunKind::Fun | FunKind::Script) {
+      self.emit_constant(val!(fun), end_line);
+    } else {
+      let index = self.make_constant(val!(fun));
+      self.emit_byte(AlignedByteCode::Closure(index), end_line);
+
+      // emit capture index instructions
+      captures
+        .iter()
+        .for_each(|capture| self.emit_byte(AlignedByteCode::CaptureIndex(*capture), end_line));
+    }
   }
 
   /// Compile an import statement
@@ -2114,7 +2124,7 @@ mod test {
     hooks::NoContext,
     managed::GcObj,
     memory::{NoGc, NO_GC},
-    object::Class,
+    object::{Class, ObjectKind},
   };
   use laythe_env::stdio::{support::StdioTestContainer, Stdio};
   use module::Module;
@@ -2317,6 +2327,49 @@ mod test {
               assert_fun_bytecode(&*fun, *max_slots, &inner);
             }
             _ => assert!(false),
+          }
+        }
+        AlignedByteCode::Constant(index) => {
+          let constant = fun.chunk().get_constant(index as usize);
+          if constant.is_obj_kind(ObjectKind::Fun) {
+            let fun = constant.to_obj().to_fun();
+
+            match &code[i] {
+              ByteCodeTest::Fun((expected, max_slots, inner)) => {
+                assert_eq!(*expected, index as u16);
+                assert_fun_bytecode(&*fun, *max_slots, &inner);
+              }
+              _ => assert!(false),
+            }
+          } else {
+            match &code[i] {
+              ByteCodeTest::Code(byte_code) => {
+                assert_eq!(&decoded_byte_code[i], byte_code);
+              }
+              _ => assert!(false),
+            }
+          }
+        }
+        AlignedByteCode::ConstantLong(index) => {
+          let constant = fun.chunk().get_constant(index as usize);
+
+          if constant.is_obj_kind(ObjectKind::Fun) {
+            let fun = constant.to_obj().to_fun();
+
+            match &code[i] {
+              ByteCodeTest::Fun((expected, max_slots, inner)) => {
+                assert_eq!(*expected, index);
+                assert_fun_bytecode(&*fun, *max_slots, &inner);
+              }
+              _ => assert!(false),
+            }
+          } else {
+            match &code[i] {
+              ByteCodeTest::Code(byte_code) => {
+                assert_eq!(&decoded_byte_code[i], byte_code);
+              }
+              _ => assert!(false),
+            }
           }
         }
         _ => match &code[i] {

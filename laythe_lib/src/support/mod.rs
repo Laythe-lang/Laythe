@@ -243,6 +243,9 @@ mod test {
       }
 
       let arity = match_obj!((&callable.to_obj()) {
+        ObjectKind::Fun(fun) => {
+          *fun.arity()
+        },
         ObjectKind::Closure(closure) => {
           *closure.fun().arity()
         },

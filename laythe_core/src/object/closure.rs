@@ -1,5 +1,6 @@
-use super::{Fun, LyBox, ObjectKind};
+use super::{Fun, ObjectKind};
 use crate::{
+  captures::Captures,
   managed::{DebugHeap, DebugWrap, GcObj, Manage, Object, Trace},
   value::Value,
 };
@@ -8,7 +9,7 @@ use std::{fmt, io::Write, mem};
 #[derive(PartialEq, Clone)]
 pub struct Closure {
   fun: GcObj<Fun>,
-  captures: Box<[GcObj<LyBox>]>,
+  captures: Captures,
 }
 
 impl Closure {
@@ -19,8 +20,8 @@ impl Closure {
   /// use laythe_core::object::{Closure, Class, FunBuilder};
   /// use laythe_core::signature::Arity;
   /// use laythe_core::module::Module;
-  /// use laythe_core::chunk::Chunk;
-  /// use laythe_core::hooks::{NoContext, Hooks, HookContext};
+  /// use laythe_core::captures::Captures;
+  /// use laythe_core::hooks::{NoContext, Hooks};
   /// use std::path::PathBuf;
   ///
   /// let mut context = NoContext::default();
@@ -34,18 +35,12 @@ impl Closure {
   /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module, Arity::default());
   /// let managed_fun = hooks.manage_obj(builder.build());
   ///
-  /// let closure = Closure::without_captures(managed_fun);
+  /// let captures = Captures::new(&hooks.as_gc(), &[]);
+  /// let closure = Closure::new(managed_fun, captures);
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```
-  pub fn new(fun: GcObj<Fun>, captures: Box<[GcObj<LyBox>]>) -> Self {
+  pub fn new(fun: GcObj<Fun>, captures: Captures) -> Self {
     Closure { fun, captures }
-  }
-
-  pub fn without_captures(fun: GcObj<Fun>) -> Self {
-    Closure {
-      captures: vec![].into_boxed_slice(),
-      fun,
-    }
   }
 
   #[inline]
@@ -54,23 +49,8 @@ impl Closure {
   }
 
   #[inline]
-  pub fn captures(&self) -> usize {
-    self.captures.len()
-  }
-
-  #[inline]
-  pub fn get_capture(&self, index: usize) -> GcObj<LyBox> {
-    self.captures[index]
-  }
-
-  #[inline]
-  pub fn get_capture_value(&self, index: usize) -> Value {
-    self.captures[index].value
-  }
-
-  #[inline]
-  pub fn set_capture_value(&mut self, index: usize, value: Value) {
-    self.captures[index].value = value;
+  pub fn captures(&self) -> Captures {
+    self.captures
   }
 }
 
@@ -88,19 +68,13 @@ impl fmt::Debug for Closure {
 
 impl Trace for Closure {
   fn trace(&self) {
-    self.captures.iter().for_each(|capture| {
-      capture.trace();
-    });
-
     self.fun.trace();
+    self.captures.trace();
   }
 
-  fn trace_debug(&self, stdio: &mut dyn Write) {
-    self.captures.iter().for_each(|capture| {
-      capture.trace_debug(stdio);
-    });
-
-    self.fun.trace_debug(stdio);
+  fn trace_debug(&self, log: &mut dyn Write) {
+    self.fun.trace_debug(log);
+    self.captures.trace_debug(log);
   }
 }
 
@@ -108,7 +82,7 @@ impl DebugHeap for Closure {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_struct("Closure")
       .field("fun", &DebugWrap(&self.fun, depth))
-      .field("captures", &DebugWrap(&&*self.captures, depth))
+      .field("captures", &DebugWrap(&self.captures, depth))
       .finish()
   }
 }

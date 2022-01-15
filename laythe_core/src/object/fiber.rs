@@ -1,8 +1,9 @@
 use std::{fmt, io::Write, mem, ptr, usize};
 
-use super::{Channel, Closure, Fun, Instance, ObjectKind};
+use super::{Channel, Fun, Instance, ObjectKind};
 use crate::{
   call_frame::CallFrame,
+  captures::Captures,
   constants::SCRIPT,
   hooks::GcHooks,
   managed::{DebugHeap, DebugWrap, GcObj, Manage, Object, Trace},
@@ -54,24 +55,21 @@ impl Fiber {
   /// Create a new fiber from the provided closure. The fiber uses
   /// this initial closure to determine how much stack space to initially
   /// reserve
-  pub fn new(closure: GcObj<Closure>) -> FiberResult<Self> {
-    let fun = closure.fun();
-    Fiber::new_inner(closure, fun.max_slots() + 1)
+  pub fn new(fun: GcObj<Fun>, captures: Captures) -> FiberResult<Self> {
+    Fiber::new_inner(fun, captures, fun.max_slots() + 1)
   }
 
   /// Create a new from the provided closure, used by split_fiber to use
   /// the top call frame to initialize a new fiber. This reserves stack space
   /// for the initial frame slots and arguments.
-  fn split(closure: GcObj<Closure>, arg_count: usize) -> FiberResult<Self> {
-    let fun = closure.fun();
-    Fiber::new_inner(closure, fun.max_slots() + arg_count + 1)
+  fn split(fun: GcObj<Fun>, captures: Captures, arg_count: usize) -> FiberResult<Self> {
+    Fiber::new_inner(fun, captures, fun.max_slots() + arg_count + 1)
   }
 
   /// Inner initialization function that actually reserver and create
   /// each structure
-  fn new_inner(closure: GcObj<Closure>, stack_count: usize) -> FiberResult<Self> {
+  fn new_inner(fun: GcObj<Fun>, captures: Captures, stack_count: usize) -> FiberResult<Self> {
     // reserve resources
-    let fun = closure.fun();
     let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
     let mut stack = vec![VALUE_NIL; stack_count];
 
@@ -81,12 +79,8 @@ impl Fiber {
     }
 
     // push closure and frame onto fiber
-    stack[0] = val!(closure);
-    frames.push(CallFrame {
-      closure,
-      ip: instructions.as_ptr(),
-      stack_start: stack.as_mut_ptr(),
-    });
+    stack[0] = val!(fun);
+    frames.push(CallFrame::new(fun, captures, stack.as_mut_ptr()));
 
     // get pointers to the call frame and stack top
     let current_frame = frames.as_mut_ptr();
@@ -112,13 +106,19 @@ impl Fiber {
   /// Get the current frame's stack start
   #[inline]
   pub fn stack_start(&self) -> *mut Value {
-    self.frame().stack_start
+    self.frame().stack_start()
   }
 
-  /// Get the current frame's closure
+  /// Get the current frame's current function
   #[inline]
-  pub fn closure(&self) -> GcObj<Closure> {
-    self.frame().closure
+  pub fn fun(&self) -> GcObj<Fun> {
+    self.frame().fun()
+  }
+
+  /// Get the current frame's current captures
+  #[inline]
+  pub fn captures(&self) -> Captures {
+    self.frame().captures()
   }
 
   #[inline]
@@ -272,20 +272,20 @@ impl Fiber {
   /// Load the instruction pointer from the current frame
   #[inline]
   pub fn load_ip(&mut self) -> *const u8 {
-    self.frame().ip
+    self.frame().ip()
   }
 
   /// Store an instruction pointer into the current frame
   #[inline]
   pub fn store_ip(&mut self, ip: *const u8) {
-    self.frame_mut().ip = ip
+    self.frame_mut().store_ip(ip);
   }
 
   /// Get a slice of the top count values on the stack
   #[inline]
   pub fn frame_stack(&self) -> &[Value] {
     unsafe {
-      let stack_start = (*self.frame).stack_start;
+      let stack_start = (*self.frame).stack_start();
       let len = self.stack_top.offset_from(stack_start);
 
       #[cfg(debug_assertions)]
@@ -331,19 +331,15 @@ impl Fiber {
   }
 
   /// Push a frame onto the call stack
-  pub fn push_frame(&mut self, closure: GcObj<Closure>, arg_count: usize) {
+  pub fn push_frame(&mut self, fun: GcObj<Fun>, captures: Captures, arg_count: usize) {
     unsafe {
-      self.ensure_stack(closure.fun().max_slots());
+      self.ensure_stack(fun.max_slots());
       let stack_start = self.stack_top.sub(arg_count + 1);
 
       #[cfg(debug_assertions)]
       assert_inbounds(&self.stack, stack_start);
 
-      self.frames.push(CallFrame {
-        closure,
-        ip: closure.fun().chunk().instructions().as_ptr(),
-        stack_start,
-      });
+      self.frames.push(CallFrame::new(fun, captures, stack_start));
       self.frame = self.frames.as_mut_ptr().add(self.frames.len() - 1);
 
       #[cfg(debug_assertions)]
@@ -357,7 +353,7 @@ impl Fiber {
       return None;
     }
 
-    self.stack_top = self.frame().stack_start;
+    self.stack_top = self.frame().stack_start();
 
     self.frames.pop();
     Some(match self.frames.last() {
@@ -369,7 +365,7 @@ impl Fiber {
         #[cfg(debug_assertions)]
         self.assert_frame_inbounds();
 
-        Some(frame.closure.fun())
+        Some(frame.fun())
       }
       None => {
         self.frame = ptr::null_mut();
@@ -390,9 +386,10 @@ impl Fiber {
     }
 
     let frame = self.frames.pop().expect("Expected call frame");
-    hooks.push_root(frame.closure);
-    let mut fiber =
-      hooks.manage_obj(Fiber::split(frame.closure, arg_count).expect("Assumed valid closure"));
+    hooks.push_root(frame.fun());
+    let mut fiber = hooks.manage_obj(
+      Fiber::split(frame.fun(), frame.captures(), arg_count).expect("Assumed valid closure"),
+    );
     hooks.pop_roots(1);
 
     let slots = self.frame_stack().len();
@@ -402,7 +399,7 @@ impl Fiber {
     if slots > 1 {
       unsafe {
         ptr::copy_nonoverlapping(
-          self.frame().stack_start.offset(1),
+          self.frame().stack_start().offset(1),
           fiber.stack_top,
           arg_count,
         );
@@ -413,7 +410,7 @@ impl Fiber {
     // Effectively pop the current fibers frame so they're 'moved'
     // to the new fiber
     unsafe {
-      self.stack_top = self.frame().stack_start;
+      self.stack_top = self.frame().stack_start();
       self.frame = self.frame.sub(1);
     }
 
@@ -424,7 +421,7 @@ impl Fiber {
   /// additional space is allocated. All pointers into the stack
   /// are then updated
   pub fn ensure_stack(&mut self, additional: usize) {
-    // check is we already have enought space
+    // check is we already have enough space
     let len = unsafe { self.stack_top.offset_from(self.stack.as_ptr()) };
     if self.stack.capacity() >= len as usize + additional {
       return;
@@ -440,7 +437,7 @@ impl Fiber {
         self.stack_top = stack_new.offset(self.stack_top.offset_from(stack_old));
 
         self.frames.iter_mut().for_each(|frame| {
-          frame.stack_start = stack_new.offset(frame.stack_start.offset_from(stack_old));
+          frame.store_stack_start(stack_new.offset(frame.stack_start().offset_from(stack_old)));
         });
       }
     }
@@ -456,24 +453,24 @@ impl Fiber {
   /// If a handler is found returns the call frame that handles the exception
   /// if not found returns none
   pub fn stack_unwind(&mut self) -> Option<&mut CallFrame> {
-    let mut stack_top = self.frame().stack_start;
+    let mut stack_top = self.frame().stack_start();
     let mut drop: usize = 0;
     let mut catch_offset: Option<u16> = None;
 
     for frame in self.frames.iter().rev() {
-      let fun = frame.closure.fun();
+      let fun = frame.fun();
       let instructions = fun.chunk().instructions();
 
       // see if the current functions has a catch block at
       // this offset
-      let offset = unsafe { frame.ip.offset_from(instructions.as_ptr()) } as usize;
+      let offset = unsafe { frame.ip().offset_from(instructions.as_ptr()) } as usize;
       if let Some(offset) = fun.has_catch_jump(offset as u16) {
         catch_offset = Some(offset);
         break;
       }
 
       drop += 1;
-      stack_top = frame.stack_start;
+      stack_top = frame.stack_start();
     }
 
     match catch_offset {
@@ -486,11 +483,11 @@ impl Fiber {
           .last_mut()
           .expect("expected at least 1 frame to remain");
 
-        let fun = frame.closure.fun();
+        let fun = frame.fun();
         let instructions = fun.chunk().instructions();
 
         // set the current ip frame and stack pointer
-        frame.ip = &instructions[catch_offset as usize] as *const u8;
+        frame.store_ip(&instructions[catch_offset as usize] as *const u8);
         self.frame = frame as *mut CallFrame;
         self.stack_top = stack_top;
 
@@ -506,13 +503,13 @@ impl Fiber {
     writeln!(log, "{}: {}", &*error.class().name(), &*message).expect("Unable to write to stderr");
 
     for frame in self.frames.iter().rev() {
-      let fun = frame.closure.fun();
+      let fun = frame.fun();
       let location: String = match &*fun.name() {
         SCRIPT => SCRIPT.to_owned(),
         _ => format!("{}()", &*fun.name()),
       };
 
-      let offset = unsafe { frame.ip.offset_from(fun.chunk().instructions().as_ptr()) } as usize;
+      let offset = unsafe { frame.ip().offset_from(fun.chunk().instructions().as_ptr()) } as usize;
       writeln!(
         log,
         "  [line {}] in {}",
@@ -638,9 +635,7 @@ impl Trace for Fiber {
       channel.trace();
     });
 
-    self.frames.iter().for_each(|frame| {
-      frame.closure.trace();
-    });
+    self.frames.iter().for_each(|call_frame| call_frame.trace());
 
     if let Some(error) = self.error {
       error.trace();
@@ -662,9 +657,10 @@ impl Trace for Fiber {
       channel.trace_debug(log);
     });
 
-    self.frames.iter().for_each(|frame| {
-      frame.closure.trace_debug(log);
-    });
+    self
+      .frames
+      .iter()
+      .for_each(|call_frame| call_frame.trace_debug(log));
 
     if let Some(error) = self.error {
       error.trace_debug(log);
@@ -947,7 +943,7 @@ mod test {
     let ip = &val as *const u8;
 
     fiber.store_ip(ip);
-    assert_eq!(fiber.frame().ip, ip)
+    assert_eq!(fiber.frame().ip(), ip)
   }
 
   #[test]
@@ -977,29 +973,29 @@ mod test {
       .expect("Expected to build");
 
     let fun = test_fun(&hooks, "next", "next module");
-    let closure = hooks.manage_obj(Closure::without_captures(fun));
+    let captures = Captures::new(&hooks, &[]);
 
     unsafe {
       fiber.push(val!(10.5));
       fiber.push(val!(false));
       fiber.push(VALUE_NIL);
-      fiber.push(val!(closure));
+      fiber.push(val!(fun));
 
       let frame_stack = fiber.frame_stack();
 
       assert_eq!(frame_stack.len(), 5);
-      assert_eq!(frame_stack[0], val!(fiber.frame().closure));
+      assert_eq!(frame_stack[0], val!(fiber.frame().fun()));
       assert_eq!(frame_stack[1], val!(10.5));
       assert_eq!(frame_stack[2], val!(false));
       assert_eq!(frame_stack[3], VALUE_NIL);
-      assert_eq!(frame_stack[4], val!(closure));
+      assert_eq!(frame_stack[4], val!(fun));
 
-      fiber.push_frame(closure, 0);
+      fiber.push_frame(fun, captures, 0);
 
       let frame_stack = fiber.frame_stack();
 
       assert_eq!(frame_stack.len(), 1);
-      assert_eq!(frame_stack[0], val!(closure));
+      assert_eq!(frame_stack[0], val!(fun));
     }
   }
 
@@ -1015,24 +1011,24 @@ mod test {
       .expect("Expected to build");
 
     let fun = test_fun(&hooks, "next", "next module");
-    let closure = hooks.manage_obj(Closure::without_captures(fun));
+    let captures = Captures::new(&hooks, &[]);
 
     unsafe {
       fiber.push(val!(10.5));
       fiber.push(val!(false));
       fiber.push(VALUE_NIL);
-      fiber.push(val!(closure));
+      fiber.push(val!(fun));
 
       let frame_stack = fiber.frame_stack();
 
       assert_eq!(frame_stack.len(), 5);
-      assert_eq!(frame_stack[0], val!(fiber.frame().closure));
+      assert_eq!(frame_stack[0], val!(fiber.frame().fun()));
       assert_eq!(frame_stack[1], val!(10.5));
       assert_eq!(frame_stack[2], val!(false));
       assert_eq!(frame_stack[3], VALUE_NIL);
-      assert_eq!(frame_stack[4], val!(closure));
+      assert_eq!(frame_stack[4], val!(fun));
 
-      fiber.push_frame(closure, 8);
+      fiber.push_frame(fun, captures, 8);
       fiber.frame_stack();
     }
   }
@@ -1084,7 +1080,7 @@ mod test {
     let hooks = GcHooks::new(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
-    let closure = hooks.manage_obj(Closure::without_captures(fun));
+    let captures = Captures::new(&hooks, &[]);
 
     let mut fiber = FiberBuilder::<u8>::default()
       .max_slots(3)
@@ -1092,20 +1088,21 @@ mod test {
       .expect("Expected to build");
 
     unsafe {
-      fiber.push(val!(closure));
+      fiber.push(val!(fun));
       fiber.push(val!(10.0));
       fiber.push(val!(true));
     }
 
-    fiber.push_frame(closure, 2);
+    fiber.push_frame(fun, captures, 2);
 
     let slice = fiber.frame_stack();
 
-    assert_eq!(slice[0], val!(closure));
+    assert_eq!(slice[0], val!(fun));
     assert_eq!(slice[1], val!(10.0));
     assert_eq!(slice[2], val!(true));
 
-    assert_eq!(fiber.frame().closure, closure);
+    assert_eq!(fiber.frame().fun(), fun);
+    assert_eq!(fiber.frame().captures(), captures);
   }
 
   #[test]
@@ -1114,7 +1111,7 @@ mod test {
     let hooks = GcHooks::new(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
-    let closure = hooks.manage_obj(Closure::without_captures(fun));
+    let captures = Captures::new(&hooks, &[]);
 
     let mut fiber = FiberBuilder::<u8>::default()
       .max_slots(4)
@@ -1123,20 +1120,20 @@ mod test {
 
     unsafe {
       fiber.push(VALUE_NIL);
-      fiber.push(val!(closure));
+      fiber.push(val!(fun));
       fiber.push(val!(10.0));
       fiber.push(val!(true));
     }
 
-    fiber.push_frame(closure, 2);
+    fiber.push_frame(fun, captures, 2);
     let popped_frame = fiber.pop_frame().unwrap().unwrap();
 
-    assert_ne!(popped_frame, closure.fun());
+    assert_ne!(popped_frame, fun);
 
     let slice = fiber.frame_stack();
 
     assert_eq!(slice.len(), 2);
-    assert_eq!(slice[0], val!(fiber.frame().closure));
+    assert_eq!(slice[0], val!(fiber.frame().fun()));
     assert_eq!(slice[1], VALUE_NIL);
   }
 

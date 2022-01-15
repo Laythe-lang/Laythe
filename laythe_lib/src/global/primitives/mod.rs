@@ -4,6 +4,7 @@ pub mod class;
 pub mod closure;
 pub mod error;
 pub mod fiber;
+pub mod fun;
 pub mod iter;
 pub mod list;
 pub mod map;
@@ -23,7 +24,8 @@ use self::{
   channel::{declare_channel_class, define_channel_class},
   error::{create_error_class, declare_global_errors, define_global_errors, ERROR_CLASS_NAME},
   fiber::{declare_fiber_class, define_fiber_class},
-  module::create_module_class, tuple::{declare_tuple_class, define_tuple_class},
+  module::create_module_class,
+  tuple::{declare_tuple_class, define_tuple_class}, fun::{declare_fun_class, define_fun_class},
 };
 use crate::{support::export_and_insert, StdError, StdResult, STD};
 use class::create_class_class;
@@ -94,10 +96,12 @@ fn class_inheritance(
 pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Module>> {
   let module = bootstrap_classes(hooks, emitter)?;
 
-  declare_global_errors(hooks, module)?;
   declare_bool_class(hooks, module)?;
   declare_channel_class(hooks, module)?;
   declare_closure_class(hooks, module)?;
+  declare_fiber_class(hooks, module)?;
+  declare_fun_class(hooks, module)?;
+  declare_global_errors(hooks, module)?;
   declare_iter_class(hooks, module)?;
   declare_list_class(hooks, module)?;
   declare_map_class(hooks, module)?;
@@ -106,13 +110,14 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
   declare_nil_class(hooks, module)?;
   declare_number_class(hooks, module)?;
   declare_string_class(hooks, module)?;
-  declare_fiber_class(hooks, module)?;
   declare_tuple_class(hooks, module)?;
 
-  define_global_errors(hooks, &module)?;
   define_bool_class(hooks, module)?;
   define_channel_class(hooks, module)?;
   define_closure_class(hooks, module)?;
+  define_fiber_class(hooks, module)?;
+  define_fun_class(hooks, module)?;
+  define_global_errors(hooks, &module)?;
   define_iter_class(hooks, module)?;
   define_list_class(hooks, module)?;
   define_map_class(hooks, module)?;
@@ -121,7 +126,6 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
   define_nil_class(hooks, module)?;
   define_number_class(hooks, module)?;
   define_string_class(hooks, module)?;
-  define_fiber_class(hooks, module)?;
   define_tuple_class(hooks, module)?;
 
   Ok(module)

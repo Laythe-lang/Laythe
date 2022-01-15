@@ -1,0 +1,5 @@
+fn f(x) {
+  print(x);
+}
+
+f.len(10);
