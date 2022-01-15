@@ -2,7 +2,7 @@ use std::{fmt, mem};
 
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, GcObj, Trace, Tuple, Manage},
+  managed::{DebugHeap, DebugWrap, GcObj, Manage, Trace, Tuple},
   object::LyBox,
   val,
   value::Value,
@@ -14,6 +14,11 @@ pub struct Captures(Tuple);
 impl Captures {
   pub fn new(hooks: &GcHooks, captures: &[GcObj<LyBox>]) -> Self {
     Self(hooks.manage_tuple(&captures.iter().map(|c| val!(*c)).collect::<Vec<Value>>()))
+  }
+
+  #[inline]
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
   }
 
   #[inline]
@@ -54,7 +59,6 @@ impl DebugHeap for Captures {
       .finish()
   }
 }
-
 
 impl Manage for Captures {
   fn size(&self) -> usize {

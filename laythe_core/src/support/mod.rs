@@ -73,7 +73,7 @@ where
     let fun = hooks.manage_obj(fun.build());
     hooks.push_root(fun);
 
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::new(hooks, &[]);
     hooks.pop_roots(1);
 
     Fiber::new(fun, captures).map(|fiber| hooks.manage_obj(fiber))
