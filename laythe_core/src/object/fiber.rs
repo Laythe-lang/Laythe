@@ -452,10 +452,10 @@ impl Fiber {
   /// Unwind the stack searching for catch blocks to handle the unwind.
   /// If a handler is found returns the call frame that handles the exception
   /// if not found returns none
-  pub fn stack_unwind(&mut self) -> Option<&mut CallFrame> {
+  pub unsafe fn stack_unwind(&mut self) -> Option<&mut CallFrame> {
     let mut stack_top = self.frame().stack_start();
     let mut drop: usize = 0;
-    let mut catch_offset: Option<u16> = None;
+    let mut catch_offset: Option<usize> = None;
 
     for frame in self.frames.iter().rev() {
       let fun = frame.fun();
@@ -463,9 +463,10 @@ impl Fiber {
 
       // see if the current functions has a catch block at
       // this offset
-      let offset = unsafe { frame.ip().offset_from(instructions.as_ptr()) } as usize;
-      if let Some(offset) = fun.has_catch_jump(offset as u16) {
+      let offset = frame.ip().offset_from(instructions.as_ptr()) as usize;
+      if let Some((offset, slots)) = fun.has_catch_jump(offset) {
         catch_offset = Some(offset);
+        stack_top = frame.stack_start().add(slots);
         break;
       }
 

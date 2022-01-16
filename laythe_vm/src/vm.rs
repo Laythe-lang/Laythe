@@ -2274,7 +2274,7 @@ impl Vm {
   }
 
   /// Search for a catch block up the stack, printing the error if no catch is found
-  fn stack_unwind(&mut self, error: GcObj<Instance>) -> Option<ExecuteResult> {
+  unsafe fn stack_unwind(&mut self, error: GcObj<Instance>) -> Option<ExecuteResult> {
     self.store_ip();
 
     match self.fiber.stack_unwind() {

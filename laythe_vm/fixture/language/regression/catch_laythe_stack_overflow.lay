@@ -1,0 +1,13 @@
+for i in 1000.times() {
+  try {
+    let x;
+    let y;
+    let z;
+
+    [][1];
+  } catch {
+
+  }
+}
+
+assert(true)
