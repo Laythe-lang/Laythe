@@ -1,0 +1,7 @@
+for i in 100000.times() {
+  try {
+    [1].iter().map(|x| [][x]).list();
+  } catch {
+
+  }
+}

@@ -28,6 +28,13 @@ pub enum FiberError {
 
 pub type FiberResult<T> = Result<T, FiberError>;
 
+#[derive(Debug, PartialEq)]
+pub enum UnwindResult<'a> {
+  Handled(&'a mut CallFrame),
+  Unhandled,
+  UnwindStopped,
+}
+
 pub struct Fiber {
   /// A stack holding all local variable currently in use
   stack: Vec<Value>,
@@ -452,12 +459,12 @@ impl Fiber {
   /// Unwind the stack searching for catch blocks to handle the unwind.
   /// If a handler is found returns the call frame that handles the exception
   /// if not found returns none
-  pub unsafe fn stack_unwind(&mut self) -> Option<&mut CallFrame> {
+  pub unsafe fn stack_unwind<'a>(&'a mut self, bottom_frame: usize) -> UnwindResult<'a> {
     let mut stack_top = self.frame().stack_start();
     let mut drop: usize = 0;
     let mut catch_offset: Option<usize> = None;
 
-    for frame in self.frames.iter().rev() {
+    for frame in self.frames[bottom_frame..].iter().rev() {
       let fun = frame.fun();
       let instructions = fun.chunk().instructions();
 
@@ -492,9 +499,15 @@ impl Fiber {
         self.frame = frame as *mut CallFrame;
         self.stack_top = stack_top;
 
-        Some(frame)
+        UnwindResult::Handled(frame)
       }
-      None => None,
+      None => {
+        if bottom_frame == 0 {
+          UnwindResult::Unhandled
+        } else {
+          UnwindResult::UnwindStopped
+        }
+      }
     }
   }
 
@@ -546,6 +559,7 @@ impl Fiber {
   /// An immutable reference to the current frame
   #[inline]
   fn frame(&self) -> &CallFrame {
+    debug_assert!(!self.frame.is_null());
     unsafe { &*self.frame }
   }
 
@@ -677,7 +691,7 @@ mod test {
   use super::*;
   use crate::{
     hooks::{GcHooks, NoContext},
-    support::{test_fun, FiberBuilder},
+    support::{test_fun, test_fun_builder, FiberBuilder},
   };
 
   #[test]
@@ -1136,6 +1150,88 @@ mod test {
     assert_eq!(slice.len(), 2);
     assert_eq!(slice[0], val!(fiber.frame().fun()));
     assert_eq!(slice[1], VALUE_NIL);
+  }
+
+  #[test]
+  fn stack_unwind() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let fun1 = test_fun(&hooks, "first", "first module");
+    let fun2 = test_fun(&hooks, "second", "second module");
+
+    let captures = Captures::new(&hooks, &[]);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .max_slots(6)
+      .build(&hooks)
+      .expect("Expected to build");
+
+    unsafe {
+      fiber.push(VALUE_NIL);
+      fiber.push(val!(fun1));
+      fiber.push(val!(10.0));
+      fiber.push(val!(true));
+      fiber.push(val!(fun2));
+      fiber.push(val!(5.0));
+    }
+
+    fiber.push_frame(fun1, captures, 2);
+    fiber.push_frame(fun2, captures, 1);
+
+    unsafe {
+      assert_eq!(fiber.stack_unwind(0), UnwindResult::Unhandled);
+    }
+
+    assert_eq!(fiber.frames().len(), 3);
+    assert_eq!(fiber.frame().fun(), fun2);
+    assert_eq!(fiber.frame().captures(), captures);
+  }
+
+  #[test]
+  fn stack_unwind_not_bottom_frame() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut fun1 = test_fun_builder(&hooks, "first", "first module");
+    fun1.update_max_slots(4);
+    let fun1 = hooks.manage_obj(fun1.build());
+
+    let mut fun2 = test_fun_builder(&hooks, "second", "second module");
+    fun2.update_max_slots(3);
+    let fun2 = hooks.manage_obj(fun2.build());
+
+    let captures = Captures::new(&hooks, &[]);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .max_slots(6)
+      .build(&hooks)
+      .expect("Expected to build");
+
+    unsafe {
+      fiber.push(VALUE_NIL);
+      fiber.push(val!(fun1));
+      fiber.push(val!(10.0));
+      fiber.push(val!(true));
+    }
+
+    fiber.push_frame(fun1, captures, 2);
+
+    unsafe {
+      fiber.push(val!(fun2));
+      fiber.push(val!(5.0));
+      fiber.push(val!(8.0));
+    }
+
+    fiber.push_frame(fun2, captures, 1);
+
+    unsafe {
+      assert_eq!(fiber.stack_unwind(2), UnwindResult::UnwindStopped);
+    }
+
+    assert_eq!(fiber.frames().len(), 3);
+    assert_eq!(fiber.frame().fun(), fun2);
+    assert_eq!(fiber.frame().captures(), captures);
   }
 
   #[test]

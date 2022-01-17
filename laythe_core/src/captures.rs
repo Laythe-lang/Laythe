@@ -8,7 +8,7 @@ use crate::{
   value::Value,
 };
 
-#[derive(PartialEq, Debug, Clone, Copy)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct Captures(Tuple);
 
 impl Captures {
@@ -67,5 +67,11 @@ impl Manage for Captures {
 
   fn as_debug(&self) -> &dyn DebugHeap {
     self
+  }
+}
+
+impl fmt::Debug for Captures {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    self.fmt_heap(f, 2)
   }
 }
