@@ -266,7 +266,7 @@ impl LyNative for MapIndexGet {
 native!(MapIndexSet, MAP_INDEX_SET);
 
 impl LyNative for MapIndexSet {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let index = args[1];
     let key = if index.is_num() {
       val!(use_sentinel_nan(index.to_num()))
@@ -274,9 +274,8 @@ impl LyNative for MapIndexSet {
       index
     };
 
-    hooks.grow(&mut *this.unwrap().to_obj().to_map(), |map| {
-      map.insert(key, args[0])
-    });
+    let mut map = this.unwrap().to_obj().to_map();
+    map.insert(key, args[0]);
     Call::Ok(args[0])
   }
 }
@@ -302,7 +301,7 @@ impl LyNative for MapGet {
 native!(MapSet, MAP_SET);
 
 impl LyNative for MapSet {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let index = args[0];
     let key = if index.is_num() {
       val!(use_sentinel_nan(index.to_num()))
@@ -310,9 +309,8 @@ impl LyNative for MapSet {
       index
     };
 
-    let result = hooks.grow(&mut *this.unwrap().to_obj().to_map(), |map| {
-      map.insert(key, args[1])
-    });
+    let mut map = this.unwrap().to_obj().to_map();
+    let result = map.insert(key, args[1]);
     Call::Ok(result.unwrap_or(VALUE_NIL))
   }
 }
@@ -320,10 +318,9 @@ impl LyNative for MapSet {
 native!(MapInsert, MAP_INSERT);
 
 impl LyNative for MapInsert {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    match hooks.grow(&mut this.unwrap().to_obj().to_map(), |map| {
-      map.insert(args[0], args[1])
-    }) {
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+    let mut map = this.unwrap().to_obj().to_map();
+    match map.insert(args[0], args[1]) {
       Some(value) => Call::Ok(value),
       None => Call::Ok(VALUE_NIL),
     }
@@ -334,9 +331,8 @@ native_with_error!(MapRemove, MAP_REMOVE);
 
 impl LyNative for MapRemove {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    match hooks.shrink(&mut this.unwrap().to_obj().to_map(), |map| {
-      map.remove(&args[0])
-    }) {
+    let mut map = this.unwrap().to_obj().to_map();
+    match map.remove(&args[0]) {
       Some(removed) => Call::Ok(removed),
       None => self.call_error(hooks, "Key not found in map."),
     }

@@ -1001,7 +1001,7 @@ impl LyNative for IterToList {
     hooks.push_root(list);
 
     while !is_falsey(iter.next(hooks)?) {
-      hooks.grow(&mut list, |list| list.push(iter.current()));
+      list.push(iter.current());
     }
 
     hooks.pop_roots(1);

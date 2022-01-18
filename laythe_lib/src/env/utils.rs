@@ -44,7 +44,7 @@ impl LyNative for Args {
 
     for arg in io.env().args() {
       let arg = val!(hooks.manage_str(arg));
-      hooks.grow(&mut list, |list| list.push(arg));
+      list.push(arg);
     }
 
     hooks.pop_roots(1);

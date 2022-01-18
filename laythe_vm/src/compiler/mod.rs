@@ -22,7 +22,7 @@ use laythe_core::{
   chunk::ChunkBuilder,
   constants::{INDEX_GET, INDEX_SET, OBJECT, SUPER, UNINITIALIZED_VAR},
   constants::{ITER, ITER_VAR, SCRIPT, SELF},
-  hooks::{GcContext, GcHooks},
+  hooks::GcContext,
   managed::{DebugHeap, Gc, GcObj, GcStr, Manage, Trace, TraceRoot},
   memory::Allocator,
   module, object,
@@ -77,8 +77,8 @@ impl ClassAttributes {
     }
   }
 
-  fn add_field(&mut self, hooks: &GcHooks, field: GcStr) {
-    hooks.grow(self, |self_| self_.fields.push(field));
+  fn add_field(&mut self, field: GcStr) {
+    self.fields.push(field);
   }
 }
 
@@ -1526,7 +1526,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
                   if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
-                    class_info.add_field(&GcHooks::new(self), field);
+                    class_info.add_field(field);
                   }
                 }
               }
@@ -1584,7 +1584,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
                   if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
-                    class_info.add_field(&GcHooks::new(self), field);
+                    class_info.add_field(field);
                   }
                 }
               }
@@ -1668,7 +1668,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
                   if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
                     let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
-                    class_info.add_field(&GcHooks::new(self), field);
+                    class_info.add_field(field);
                   }
                 }
               }
@@ -2123,7 +2123,7 @@ mod test {
     source::Source,
   };
   use laythe_core::{
-    hooks::NoContext,
+    hooks::{NoContext, GcHooks},
     managed::GcObj,
     memory::{NoGc, NO_GC},
     object::{Class, ObjectKind},
