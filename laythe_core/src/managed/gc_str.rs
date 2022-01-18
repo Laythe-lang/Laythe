@@ -1,7 +1,7 @@
 use crate::{
   managed::{
     gc_array::{GcArray, GcArrayHandle},
-    DebugHeap, Manage, Mark, Trace,
+    DebugHeap, Mark, Trace,
   },
   object::ObjectKind,
 };
@@ -145,16 +145,6 @@ impl DebugHeap for GcStr {
     } else {
       f.write_fmt(format_args!("{}", self))
     }
-  }
-}
-
-impl Manage for GcStr {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + make_array_layout::<ObjHeader, u8>(self.len()).size()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

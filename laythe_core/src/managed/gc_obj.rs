@@ -1,6 +1,6 @@
 use super::{
   gc_array::Tuple,
-  manage::{DebugHeap, DebugWrap, Manage, Trace},
+  manage::{DebugHeap, DebugWrap, Trace},
   utils::{get_array_len_offset, get_offset, make_array_layout, make_layout},
   GcArray, GcStr, Mark, Marked, Unmark,
 };
@@ -24,7 +24,7 @@ use std::{
   sync::atomic::{AtomicBool, Ordering},
 };
 
-pub trait Object: Manage {
+pub trait Object: Trace + DebugHeap {
   fn kind(&self) -> ObjectKind;
 }
 
@@ -252,18 +252,6 @@ impl<T: 'static + Object> DebugHeap for GcObj<T> {
         DebugWrap(self.data(), depth.saturating_sub(1))
       ))
     }
-  }
-}
-
-impl<T: 'static + Object> Manage for GcObj<T> {
-  #[inline]
-  fn size(&self) -> usize {
-    self.data().size()
-  }
-
-  #[inline]
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -790,11 +778,11 @@ impl GcObjectHandle {
         ObjectKind::String => {
           let len = array_len(self);
           make_array_layout::<ObjHeader, u8>(len).size()
-        },
+        }
         ObjectKind::Tuple => {
           let len = array_len(self);
           make_array_layout::<ObjHeader, Value>(len).size()
-        },
+        }
       }
   }
 }
@@ -836,7 +824,7 @@ impl Drop for GcObjectHandle {
             self.ptr.as_ptr(),
             make_array_layout::<ObjHeader, Value>(len),
           );
-        },
+        }
         ObjectKind::Tuple => {
           let len = array_len(self);
 
@@ -851,7 +839,7 @@ impl Drop for GcObjectHandle {
             self.ptr.as_ptr(),
             make_array_layout::<ObjHeader, Value>(len),
           );
-        },
+        }
       }
     }
   }

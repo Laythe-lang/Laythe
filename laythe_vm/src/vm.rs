@@ -1353,10 +1353,9 @@ impl Vm {
     let path = self.read_constant(index_path).to_obj().to_list();
 
     let path_segments = self.extract_import_path(path);
-    self.push_root(path_segments);
 
     // check if fully resolved module has already been loaded
-    let resolved = self.full_import_path(path_segments);
+    let resolved = self.full_import_path(&path_segments);
     self.push_root(resolved);
 
     if let Some(module) = self.module_cache.get(&resolved) {
@@ -1366,7 +1365,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    let import = self.build_import(path_segments);
+    let import = self.build_import(&path_segments);
     self.push_root(import);
 
     let result = match self.packages.get(&import.package()) {
@@ -1383,7 +1382,7 @@ impl Vm {
       ),
     };
 
-    self.pop_roots(3);
+    self.pop_roots(2);
     result
   }
 
@@ -1394,10 +1393,9 @@ impl Vm {
     let name = self.read_string(index_name);
 
     let path_segments = self.extract_import_path(path);
-    self.push_root(path_segments);
 
     // check if fully resolved module has already been loaded
-    let resolved = self.full_import_path(path_segments);
+    let resolved = self.full_import_path(&path_segments);
     self.push_root(resolved);
 
     if let Some(module) = self.module_cache.get(&resolved) {
@@ -1407,7 +1405,7 @@ impl Vm {
       return Signal::Ok;
     }
 
-    let import = self.build_import(path_segments);
+    let import = self.build_import(&path_segments);
     self.push_root(import);
 
     let result = match self.packages.get(&import.package()) {
@@ -1424,19 +1422,17 @@ impl Vm {
       ),
     };
 
-    self.pop_roots(3);
+    self.pop_roots(2);
     result
   }
 
-  fn extract_import_path(&mut self, path: GcObj<List<Value>>) -> Gc<List<GcStr>> {
-    let mut path_segments: Gc<List<GcStr>> = self.manage(List::with_capacity(path.len()));
-    self.push_root(path_segments);
-
+  fn extract_import_path(&mut self, path: GcObj<List<Value>>) -> List<GcStr> {
+    let mut path_segments: List<GcStr> = List::with_capacity(path.len());
     path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
     path_segments
   }
 
-  fn full_import_path(&mut self, path_segments: Gc<List<GcStr>>) -> GcStr {
+  fn full_import_path(&mut self, path_segments: &[GcStr]) -> GcStr {
     let mut buffer = String::new();
     for segment in &path_segments[..path_segments.len() - 1] {
       buffer.push_str(segment);
@@ -1448,16 +1444,16 @@ impl Vm {
     self.manage_str(buffer)
   }
 
-  fn build_import(&mut self, path_segments: Gc<List<GcStr>>) -> Gc<Import> {
+  fn build_import(&mut self, path_segments: &[GcStr]) -> Gc<Import> {
     match path_segments.split_first() {
       Some((package, path)) => {
         // generate a new import object
-        let path = self.manage(List::from(path));
+        let path = List::from(path);
         self.manage(Import::new(*package, path))
       }
       None => {
         // generate a new import object
-        let path = self.manage(List::new());
+        let path = List::new();
         self.manage(Import::new(path_segments[0], path))
       }
     }

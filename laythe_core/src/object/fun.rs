@@ -1,8 +1,8 @@
-use std::{fmt, io::Write, mem};
+use std::{fmt, io::Write};
 
 use crate::{
   chunk::{Chunk, ChunkBuilder, Encode},
-  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcStr, Object, Trace},
   module::Module,
   signature::Arity,
   value::Value,
@@ -310,16 +310,6 @@ impl DebugHeap for Fun {
       .field("Module", &DebugWrap(&self.module, depth))
       .field("chunk", &self.chunk)
       .finish()
-  }
-}
-
-impl Manage for Fun {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + self.chunk.size() + mem::size_of::<TryBlock>() * self.try_blocks.len()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

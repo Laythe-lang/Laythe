@@ -10,12 +10,12 @@ use crate::{
 /// An object representing an import request from a file
 pub struct Import {
   package: GcStr,
-  path: Gc<List<GcStr>>,
+  path: List<GcStr>,
 }
 
 impl Import {
   /// Create a new import
-  pub fn new(package: GcStr, path: Gc<List<GcStr>>) -> Self {
+  pub fn new(package: GcStr, path: List<GcStr>) -> Self {
     Self { package, path }
   }
 
@@ -36,8 +36,7 @@ impl Import {
       let package = hooks.manage_str(package);
       hooks.push_root(package);
 
-      let path: Gc<List<GcStr>> = hooks.manage(List::with_capacity(path.len()));
-      hooks.push_root(path);
+      let path: List<GcStr> = List::with_capacity(path.len());
 
       let mut import = hooks.manage(Self::new(package, path));
       hooks.push_root(import);
@@ -46,7 +45,7 @@ impl Import {
         .path
         .extend(path_slice.iter().map(|segment| hooks.manage_str(segment)));
 
-      hooks.pop_roots(3);
+      hooks.pop_roots(2);
       Ok(import)
     } else {
       Err(ModuleError::InvalidImport)

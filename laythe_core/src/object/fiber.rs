@@ -6,7 +6,7 @@ use crate::{
   captures::Captures,
   constants::SCRIPT,
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, GcObj, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, GcObj, Object, Trace},
   val,
   value::{Value, VALUE_NIL},
 };
@@ -612,18 +612,6 @@ impl fmt::Debug for Fiber {
 impl Object for Fiber {
   fn kind(&self) -> ObjectKind {
     ObjectKind::Fiber
-  }
-}
-
-impl Manage for Fiber {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-      + mem::size_of::<CallFrame>() * self.frames.capacity()
-      + mem::size_of::<Value>() * self.stack.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn crate::managed::DebugHeap {
-    todo!()
   }
 }
 

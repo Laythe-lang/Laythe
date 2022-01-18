@@ -5,6 +5,7 @@ use crate::managed::{
 use crate::value::Value;
 use hashbrown::HashMap;
 use laythe_env::stdio::Stdio;
+use std::mem;
 use std::ptr::NonNull;
 use std::{cell::RefCell, io::Write};
 
@@ -208,7 +209,7 @@ impl<'a> Allocator {
     let mut alloc = Box::new(Allocation::new(data));
     let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
 
-    let size = alloc.size();
+    let size = mem::size_of::<Allocation<T>>();
 
     // push onto heap
     self.bytes_allocated += size;
@@ -579,18 +580,6 @@ impl<'a> Allocator {
       string, size, string,
     )
     .expect("unable to write to stdout");
-  }
-}
-
-/// Debug logging for removing a string from the cache.
-#[cfg(feature = "gc_log_free")]
-fn debug_string_remove(string: &GcStrHandle, free: bool) {
-  if free {
-    println!(
-      "{:p} remove string from cache {:?}",
-      string,
-      DebugWrap(string, 1)
-    )
   }
 }
 

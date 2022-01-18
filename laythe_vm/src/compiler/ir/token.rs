@@ -1,5 +1,4 @@
-use laythe_core::managed::{DebugHeap, Manage, Trace};
-use std::{fmt, mem};
+use std::fmt;
 
 use super::ast::Spanned;
 
@@ -56,38 +55,6 @@ impl<'a> Spanned for Token<'a> {
 
   fn end(&self) -> u32 {
     self.end
-  }
-}
-
-impl Trace for Token<'static> {
-  fn trace(&self) {}
-
-  fn trace_debug(&self, _log: &mut dyn std::io::Write) {}
-}
-
-impl Manage for Token<'static> {
-  fn size(&self) -> usize {
-    let string = match &self.lexeme {
-      Lexeme::Slice(_) => 0,
-      Lexeme::Owned(str) => str.capacity(),
-    };
-
-    mem::size_of::<Self>() + string
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
-  }
-}
-
-impl DebugHeap for Token<'static> {
-  fn fmt_heap(&self, f: &mut fmt::Formatter, _depth: usize) -> fmt::Result {
-    f.debug_struct("Token")
-      .field("start", &self.start)
-      .field("end", &self.end)
-      .field("lexeme", &self.str())
-      .field("kind", &self.kind)
-      .finish()
   }
 }
 

@@ -5,8 +5,8 @@ use crate::{
   value::Value,
   LyHashSet,
 };
-use std::{collections::VecDeque, usize};
-use std::{fmt, io::Write, mem};
+use std::{collections::VecDeque, usize, mem};
+use std::{fmt, io::Write};
 
 #[derive(PartialEq, Clone, Debug)]
 enum ChannelKind {
@@ -156,7 +156,7 @@ impl ChannelQueue {
           self.send_waiters.insert(fiber);
           SendResult::Full(get_runnable_from_set(&mut self.receive_waiters))
         }
-      },
+      }
       ChannelQueueState::Closed | ChannelQueueState::ClosedEmpty => SendResult::Closed,
     }
   }
@@ -176,14 +176,14 @@ impl ChannelQueue {
           } else {
             ReceiveResult::Empty(get_runnable_from_set(&mut self.send_waiters))
           }
-        },
+        }
       },
       ChannelQueueState::Closed => match self.queue.pop_front() {
         Some(value) => ReceiveResult::Ok(value),
         None => {
           self.state = ChannelQueueState::ClosedEmpty;
           ReceiveResult::Closed
-        },
+        }
       },
       ChannelQueueState::ClosedEmpty => ReceiveResult::Closed,
     }
@@ -199,7 +199,7 @@ impl ChannelQueue {
         } else {
           get_runnable_from_set(&mut self.receive_waiters)
         }
-      },
+      }
       ChannelQueueKind::Buffered => {
         if self.is_empty() && !self.is_closed() {
           get_runnable_from_set(&mut self.send_waiters)
@@ -209,7 +209,7 @@ impl ChannelQueue {
           get_runnable_from_set(&mut self.receive_waiters)
             .or_else(|| get_runnable_from_set(&mut self.send_waiters))
         }
-      },
+      }
     }
   }
 
@@ -404,16 +404,6 @@ impl DebugHeap for Channel {
   }
 }
 
-impl Manage for Channel {
-  fn size(&self) -> usize {
-    mem::size_of::<Channel>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
-  }
-}
-
 impl Object for Channel {
   fn kind(&self) -> ObjectKind {
     ObjectKind::Channel
@@ -587,7 +577,7 @@ mod test {
             } else {
               assert!(false)
             }
-          },
+          }
           _ => assert!(false),
         }
 

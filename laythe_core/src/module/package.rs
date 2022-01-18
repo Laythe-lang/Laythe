@@ -5,8 +5,7 @@ use crate::{
   object::Instance,
   value::Value,
 };
-use std::mem;
-use std::{fmt, io::Write};
+use std::{fmt, io::Write, mem};
 
 #[derive(Clone)]
 pub struct Package {

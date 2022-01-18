@@ -1,6 +1,6 @@
 use std::{
-  fmt, mem,
-  sync::atomic::{AtomicBool, Ordering},
+  fmt,
+  sync::atomic::{AtomicBool, Ordering}, mem,
 };
 
 use super::{

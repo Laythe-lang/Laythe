@@ -1,11 +1,11 @@
 use crate::{
-  managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, Object, Trace},
   value::Value,
 };
 use fmt::Display;
 use fnv::FnvBuildHasher;
 use hashbrown::{hash_map, HashMap};
-use std::{fmt, hash::Hash, io::Write, mem};
+use std::{fmt, hash::Hash, io::Write};
 
 use super::ObjectKind;
 
@@ -131,20 +131,6 @@ impl<K: 'static + DebugHeap, V: 'static + DebugHeap> DebugHeap for Map<K, V> {
           .map(|(k, v)| (DebugWrap(k, depth), DebugWrap(v, depth))),
       )
       .finish()
-  }
-}
-
-impl<K, V> Manage for Map<K, V>
-where
-  K: 'static + DebugHeap + Trace,
-  V: 'static + DebugHeap + Trace,
-{
-  fn size(&self) -> usize {
-    mem::size_of::<Map<Value, Value>>() + self.capacity() * mem::size_of::<Value>() * 2
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

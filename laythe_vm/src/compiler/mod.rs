@@ -2123,7 +2123,7 @@ mod test {
     source::Source,
   };
   use laythe_core::{
-    hooks::{NoContext, GcHooks},
+    hooks::{GcHooks, NoContext},
     managed::GcObj,
     memory::{NoGc, NO_GC},
     object::{Class, ObjectKind},

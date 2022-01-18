@@ -4,8 +4,8 @@ use crate::{
   value::{Value, VALUE_NIL},
   Call,
 };
+use std::fmt::Debug;
 use std::{fmt, io::Write};
-use std::{fmt::Debug, mem};
 
 use super::ObjectKind;
 
@@ -79,16 +79,6 @@ impl DebugHeap for Enumerator {
       .field("current", &DebugWrap(&self.current, depth))
       .field("iterator", &DebugWrapDyn(self.iterator.as_debug(), depth))
       .finish()
-  }
-}
-
-impl Manage for Enumerator {
-  fn size(&self) -> usize {
-    mem::size_of::<Enumerator>() + self.iterator.size()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

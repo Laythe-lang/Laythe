@@ -14,8 +14,8 @@ use crate::{
   LyHashSet,
 };
 use hashbrown::hash_map;
+use std::{path::PathBuf, mem};
 use std::{fmt, io::Write};
-use std::{mem, path::PathBuf};
 
 /// A struct representing a collection of class functions and variable of shared functionality
 #[derive(Clone)]

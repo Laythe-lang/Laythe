@@ -1,10 +1,9 @@
 use super::{Fun, ObjectKind};
 use crate::{
   captures::Captures,
-  managed::{DebugHeap, DebugWrap, GcObj, Manage, Object, Trace},
-  value::Value,
+  managed::{DebugHeap, DebugWrap, GcObj, Object, Trace},
 };
-use std::{fmt, io::Write, mem};
+use std::{fmt, io::Write};
 
 #[derive(PartialEq, Clone)]
 pub struct Closure {
@@ -84,16 +83,6 @@ impl DebugHeap for Closure {
       .field("fun", &DebugWrap(&self.fun, depth))
       .field("captures", &DebugWrap(&self.captures, depth))
       .finish()
-  }
-}
-
-impl Manage for Closure {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.captures.len()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

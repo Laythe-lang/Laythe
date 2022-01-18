@@ -1,11 +1,10 @@
 use crate::{
   hooks::{GcHooks, Hooks},
-  managed::{DebugHeap, DebugWrap, GcStr, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, GcStr, Object, Trace},
   signature::{Arity, Environment, ParameterBuilder, Signature, SignatureBuilder},
   value::Value,
   Call,
 };
-use std::mem;
 use std::{fmt, io::Write};
 
 use super::ObjectKind;
@@ -151,16 +150,6 @@ impl Trace for Native {
   fn trace_debug(&self, log: &mut dyn Write) {
     self.meta.trace_debug(log);
     self.native.trace_debug(log);
-  }
-}
-
-impl Manage for Native {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
