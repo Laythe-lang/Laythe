@@ -792,6 +792,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .expect("Line offset out of bounds");
 
     self.slots += op_code.stack_effect();
+    debug_assert!(self.slots >= 0);
     self.fun.update_max_slots(self.slots);
 
     self.write_instruction(op_code, line as u32 + 1);
@@ -1467,6 +1468,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Compile a try catch block
   fn try_(&mut self, try_: &'a ast::Try<'src>) {
     let start = self.current_chunk().instructions().len();
+    let slots = self.slots as usize;
 
     self.scope(try_.block.end(), &try_.block.symbols, |self_| {
       self_.block(&try_.block);
@@ -1480,7 +1482,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     });
 
     self.patch_jump(catch_jump);
-    self.fun.add_try(TryBlock::new(start as u16, end as u16));
+    self.fun.add_try(TryBlock::new(start, end, slots));
   }
 
   /// Compile a block
@@ -2517,7 +2519,7 @@ mod test {
       ],
     );
 
-    assert_eq!(fun.has_catch_jump(0), Some(3));
+    assert_eq!(fun.has_catch_jump(0), Some((3, 1)));
   }
 
   #[test]
@@ -2555,7 +2557,7 @@ mod test {
       ],
     );
 
-    assert_eq!(fun.has_catch_jump(0), Some(20));
+    assert_eq!(fun.has_catch_jump(0), Some((20, 1)));
   }
 
   #[test]
@@ -2605,9 +2607,9 @@ mod test {
       ],
     );
 
-    assert_eq!(fun.has_catch_jump(5), Some(42));
-    assert_eq!(fun.has_catch_jump(31), Some(42));
-    assert_eq!(fun.has_catch_jump(19), Some(31));
+    assert_eq!(fun.has_catch_jump(5), Some((42, 1)));
+    assert_eq!(fun.has_catch_jump(31), Some((42, 1)));
+    assert_eq!(fun.has_catch_jump(19), Some((31, 1)));
   }
 
   #[test]

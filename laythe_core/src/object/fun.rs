@@ -36,15 +36,19 @@ impl fmt::Display for FunKind {
 #[derive(Clone)]
 pub struct TryBlock {
   /// Start of the try block
-  start: u16,
+  start: usize,
 
   /// End of the try block
-  end: u16,
+  end: usize,
+
+  /// How many slots were used at the beginning of this
+  /// try catch
+  slots: usize
 }
 
 impl TryBlock {
-  pub fn new(start: u16, end: u16) -> Self {
-    TryBlock { start, end }
+  pub fn new(start: usize, end: usize, slots: usize) -> Self {
+    TryBlock { start, end, slots }
   }
 }
 
@@ -252,9 +256,9 @@ impl Fun {
     self.max_slot as usize
   }
 
-  pub fn has_catch_jump(&self, ip: u16) -> Option<u16> {
-    let mut min_range = std::u16::MAX;
-    let mut jump = None;
+  pub fn has_catch_jump(&self, ip: usize) -> Option<(usize, usize)> {
+    let mut min_range = std::usize::MAX;
+    let mut catch = None;
 
     for try_block in self.try_blocks.iter() {
       if ip >= try_block.start && ip < try_block.end {
@@ -262,12 +266,12 @@ impl Fun {
 
         if len < min_range {
           min_range = len;
-          jump = Some(try_block.end);
+          catch = Some((try_block.end, try_block.slots));
         }
       }
     }
 
-    jump
+    catch
   }
 }
 

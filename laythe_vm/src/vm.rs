@@ -18,7 +18,7 @@ use laythe_core::{
   module::{Import, Module, Package},
   object::{
     Channel, Class, Closure, Fiber, Fun, Instance, List, LyBox, Map, Method, Native, NativeMeta,
-    ObjectKind, ReceiveResult, SendResult,
+    ObjectKind, ReceiveResult, SendResult, UnwindResult,
   },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   to_obj_kind,
@@ -66,6 +66,7 @@ pub enum ExecuteResult {
   CompileError,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ExecuteMode {
   Normal,
   CallFunction(usize),
@@ -561,7 +562,7 @@ impl Vm {
           },
           Signal::RuntimeError => match self.fiber.error() {
             Some(error) => {
-              if let Some(execute_result) = self.stack_unwind(error) {
+              if let Some(execute_result) = self.stack_unwind(error, mode) {
                 return execute_result;
               }
             }
@@ -2274,19 +2275,29 @@ impl Vm {
   }
 
   /// Search for a catch block up the stack, printing the error if no catch is found
-  fn stack_unwind(&mut self, error: GcObj<Instance>) -> Option<ExecuteResult> {
+  unsafe fn stack_unwind(
+    &mut self,
+    error: GcObj<Instance>,
+    mode: ExecuteMode,
+  ) -> Option<ExecuteResult> {
     self.store_ip();
 
-    match self.fiber.stack_unwind() {
-      Some(frame) => {
+    let bottom_frame = match mode {
+      ExecuteMode::Normal => 0,
+      ExecuteMode::CallFunction(depth) => depth,
+    };
+
+    match self.fiber.stack_unwind(bottom_frame) {
+      UnwindResult::Handled(frame) => {
         self.current_fun = frame.fun();
         self.ip = frame.ip();
         None
       }
-      None => {
+      UnwindResult::Unhandled => {
         self.print_error(error);
         Some(ExecuteResult::RuntimeError)
       }
+      UnwindResult::UnwindStopped => Some(ExecuteResult::RuntimeError),
     }
   }
 
