@@ -180,52 +180,6 @@ impl<'a> Allocator {
     self.intern_cache.get(string).copied()
   }
 
-  /// track events that may grow the size of the heap. If
-  /// a heap grows beyond the current threshold will trigger a gc
-  pub fn grow<T: 'static + Manage, R, F: FnOnce(&mut T) -> R, C: TraceRoot + ?Sized>(
-    &mut self,
-    managed: &mut T,
-    context: &C,
-    action: F,
-  ) -> R {
-    let before = managed.size();
-    let result = action(managed);
-    let after = managed.size();
-
-    // get the size delta before and after the action
-    // this would occur because of some resize
-    self.bytes_allocated += after - before;
-
-    // collect if need be
-    #[cfg(feature = "debug_stress_gc")]
-    {
-      self.collect_garbage(context);
-    }
-
-    if self.bytes_allocated > self.next_gc {
-      self.collect_garbage(context);
-    }
-
-    result
-  }
-
-  /// track events that may shrink the size of the heap.
-  pub fn shrink<T: 'static + Manage, R, F: FnOnce(&mut T) -> R>(
-    &mut self,
-    managed: &mut T,
-    action: F,
-  ) -> R {
-    let before = managed.size();
-    let result = action(managed);
-    let after = managed.size();
-
-    // get the size delta before and after the action
-    // this would occur because of some resize
-    self.bytes_allocated += before - after;
-
-    result
-  }
-
   /// Push a new temporary root onto the gc to avoid collection
   pub fn push_root<T: 'static + Trace>(&mut self, managed: T) {
     self.temp_roots.push(Box::new(managed));

@@ -143,12 +143,10 @@ impl Module {
     let root = relative.to_str().ok_or(ModuleError::ModuleNotDecedent)?;
     let name = hooks.manage_str(root);
 
-    hooks.grow(self, |module| {
-      match module.modules.insert(name, sub_module) {
-        Some(_) => Err(ModuleError::SymbolAlreadyExists),
-        None => Ok(()),
-      }
-    })
+    match self.modules.insert(name, sub_module) {
+      Some(_) => Err(ModuleError::SymbolAlreadyExists),
+      None => Ok(()),
+    }
   }
 
   /// Get a reference to all exported symbols in this module
@@ -206,17 +204,17 @@ impl Module {
 
   /// Insert a symbol into this module's symbol table
   #[inline]
-  pub fn insert_symbol(&mut self, hooks: &GcHooks, name: GcStr, symbol: Value) -> ModuleResult<()> {
-    hooks.grow(self, |module| match module.symbols.insert(name, symbol) {
+  pub fn insert_symbol(&mut self, _hooks: &GcHooks, name: GcStr, symbol: Value) -> ModuleResult<()> {
+    match self.symbols.insert(name, symbol) {
       Some(_) => Err(ModuleError::SymbolAlreadyExists),
       None => Ok(()),
-    })
+    }
   }
 
   /// Insert a symbol into this module's symbol table. Overrides existing symbols
   #[inline]
-  fn insert_symbol_unchecked(&mut self, hooks: &GcHooks, name: GcStr, symbol: Value) {
-    hooks.grow(self, |module| module.symbols.insert(name, symbol));
+  fn insert_symbol_unchecked(&mut self, _hooks: &GcHooks, name: GcStr, symbol: Value) {
+    self.symbols.insert(name, symbol);
   }
 
   /// Get a symbol from this module's symbol table

@@ -92,18 +92,18 @@ impl Class {
     self
   }
 
-  pub fn add_field(&mut self, hooks: &GcHooks, name: GcStr) -> Option<u16> {
+  pub fn add_field(&mut self, _hooks: &GcHooks, name: GcStr) -> Option<u16> {
     let len = self.fields.len();
 
-    hooks.grow(self, |class| class.fields.insert(name, len as u16))
+    self.fields.insert(name, len as u16)
   }
 
-  pub fn add_method(&mut self, hooks: &GcHooks, name: GcStr, method: Value) -> Option<Value> {
+  pub fn add_method(&mut self, _hooks: &GcHooks, name: GcStr, method: Value) -> Option<Value> {
     if &*name == INIT {
       self.init = Some(method)
     }
 
-    hooks.grow(self, |class| class.methods.insert(name, method))
+    self.methods.insert(name, method)
   }
 
   pub fn get_method(&self, name: &GcStr) -> Option<Value> {
@@ -115,25 +115,23 @@ impl Class {
     self.fields.get(name).copied()
   }
 
-  pub fn inherit(&mut self, hooks: &GcHooks, super_class: GcObj<Class>) {
+  pub fn inherit(&mut self, _hooks: &GcHooks, super_class: GcObj<Class>) {
     debug_assert!(self.methods.is_empty());
     debug_assert!(self.fields.is_empty());
 
-    hooks.grow(self, |class| {
-      class.methods.reserve(super_class.methods.len());
-      super_class.methods.iter().for_each(|(key, value)| {
-        if class.methods.get(&*key).is_none() {
-          class.methods.insert(*key, *value);
-        }
-      });
+    self.methods.reserve(super_class.methods.len());
+    super_class.methods.iter().for_each(|(key, value)| {
+      if self.methods.get(&*key).is_none() {
+        self.methods.insert(*key, *value);
+      }
+    });
 
-      class.fields.reserve(super_class.fields.len());
-      super_class.fields.iter().for_each(|(field, _index)| {
-        if class.fields.get(field).is_none() {
-          let len = class.fields.len();
-          class.fields.insert(*field, len as u16);
-        }
-      })
+    self.fields.reserve(super_class.fields.len());
+    super_class.fields.iter().for_each(|(field, _index)| {
+      if self.fields.get(field).is_none() {
+        let len = self.fields.len();
+        self.fields.insert(*field, len as u16);
+      }
     });
 
     debug_assert!(self

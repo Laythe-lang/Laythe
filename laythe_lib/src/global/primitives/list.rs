@@ -417,10 +417,9 @@ impl LyNative for ListLen {
 native!(ListPush, LIST_PUSH);
 
 impl LyNative for ListPush {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    hooks.grow(&mut this.unwrap().to_obj().to_list(), |list| {
-      list.extend_from_slice(args)
-    });
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+    let mut list = this.unwrap().to_obj().to_list();
+    list.extend_from_slice(args);
     Call::Ok(VALUE_NIL)
   }
 }
@@ -504,7 +503,7 @@ impl LyNative for ListInsert {
       );
     }
 
-    hooks.grow(&mut list, |list| list.insert(index as usize, args[1]));
+    list.insert(index as usize, args[1]);
     Call::Ok(VALUE_NIL)
   }
 }
@@ -512,8 +511,9 @@ impl LyNative for ListInsert {
 native!(ListClear, LIST_CLEAR);
 
 impl LyNative for ListClear {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    hooks.shrink(&mut this.unwrap().to_obj().to_list(), |list| list.clear());
+  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let mut list = this.unwrap().to_obj().to_list();
+    list.clear();
     Call::Ok(VALUE_NIL)
   }
 }
@@ -607,7 +607,7 @@ impl LyNative for ListCollect {
 
     while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      hooks.grow(&mut *list, |list| list.push(current));
+      list.push(current);
     }
 
     hooks.pop_roots(1);

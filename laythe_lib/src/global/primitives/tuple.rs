@@ -370,7 +370,7 @@ impl LyNative for TupleCollect {
 
     while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      hooks.grow(&mut *list, |list| list.push(current));
+      list.push(current);
     }
 
     hooks.pop_roots(1);
@@ -411,11 +411,11 @@ impl Enumerate for TupleIterator {
       Some(value) => {
         self.current = *value;
         Call::Ok(val!(true))
-      },
+      }
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      },
+      }
     }
   }
 
@@ -659,7 +659,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 1.0);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -698,7 +698,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert!(r.to_bool());
-        },
+        }
         _ => assert!(false),
       }
 
@@ -706,7 +706,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert!(!r.to_bool());
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -743,7 +743,7 @@ mod test {
           assert_eq!(iter.current(), VALUE_NIL);
           assert_eq!(iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(iter.current(), VALUE_NIL);
-        },
+        }
         _ => assert!(false),
       }
     }
@@ -782,7 +782,7 @@ mod test {
         Call::Ok(r) => {
           let list = r.to_obj().to_tuple();
           assert_eq!(list.len(), 4);
-        },
+        }
         _ => assert!(false),
       }
     }

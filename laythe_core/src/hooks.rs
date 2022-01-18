@@ -94,20 +94,6 @@ impl<'a> Hooks<'a> {
     self.as_gc().manage_str(string)
   }
 
-  /// Tell the context's gc that the provided managed object may grow during this operation
-  pub fn grow<T: 'static + Manage, R, F: Fn(&mut T) -> R>(&self, managed: &mut T, action: F) -> R {
-    self.as_gc().grow(managed, action)
-  }
-
-  /// Tell the context's gc that the provided managed object may shrink during this operation
-  pub fn shrink<T: 'static + Manage, R, F: Fn(&mut T) -> R>(
-    &self,
-    managed: &mut T,
-    action: F,
-  ) -> R {
-    self.as_gc().shrink(managed, action)
-  }
-
   /// Push a new root onto the gc
   pub fn push_root<T: 'static + Trace>(&self, managed: T) {
     self.as_gc().push_root(managed)
@@ -172,26 +158,6 @@ impl<'a> GcHooks<'a> {
   #[inline]
   pub fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
     self.context.gc().manage_str(string, self.context)
-  }
-
-  /// Tell the context's gc that the provided managed object may grow during this operation
-  #[inline]
-  pub fn grow<T: 'static + Manage, R, F: FnOnce(&mut T) -> R>(
-    &self,
-    managed: &mut T,
-    action: F,
-  ) -> R {
-    self.context.gc().grow(managed, self.context, action)
-  }
-
-  /// Tell the context's gc that the provided managed object may shrink during this operation
-  #[inline]
-  pub fn shrink<T: 'static + Manage, R, F: FnOnce(&mut T) -> R>(
-    &self,
-    managed: &mut T,
-    action: F,
-  ) -> R {
-    self.context.gc().shrink(managed, action)
   }
 
   /// Push a new root onto the gc
