@@ -48,7 +48,7 @@ pub trait Unmark: Marked {
 }
 
 /// An entity that is traceable by the garbage collector
-pub trait Trace: Send {
+pub trait Trace {
   /// Mark all objects that are reachable from this object
   fn trace(&self) {}
 
@@ -72,10 +72,30 @@ pub trait TraceRoot {
 
 /// An entity that can be managed and collected by the garbage collector.
 /// This trait provided debugging capabilities and statistics for the gc.
-pub trait Manage: Trace + DebugHeap {
+pub trait Manage: DebugHeap + Mark + Unmark + Marked {
   /// What is the size of this allocation
   fn size(&self) -> usize;
 
   /// Helper function to get a trait object for Debug Heap
   fn as_debug(&self) -> &dyn DebugHeap;
+}
+
+/// Define how a struct should be allocated by the garbage collector
+pub trait Allocate<R: Trace> {
+  // The handle to manage this allocated object
+  fn alloc(self) -> AllocResult<R>;
+}
+
+pub struct AllocResult<R> {
+  pub handle: Box<dyn Manage>,
+  pub reference: R
+}
+
+impl<R> AllocResult<R> {
+  pub fn new(handle: Box<dyn Manage>, reference: R) -> Self {
+    Self {
+      handle,
+      reference
+    }
+  }
 }

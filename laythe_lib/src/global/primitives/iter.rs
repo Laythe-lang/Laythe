@@ -6,7 +6,7 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -16,7 +16,6 @@ use laythe_core::{
   Call, LyError,
 };
 use std::io::Write;
-use std::mem;
 
 use super::class_inheritance;
 
@@ -336,6 +335,10 @@ impl Enumerate for TakeIterator {
   fn size_hint(&self) -> Option<usize> {
     self.iter.size_hint().map(|hint| hint.min(self.take_count))
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for TakeIterator {
@@ -355,16 +358,6 @@ impl DebugHeap for TakeIterator {
       .field("iter", &DebugWrap(&self.iter, depth))
       .field("take_count", &self.take_count)
       .finish()
-  }
-}
-
-impl Manage for TakeIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -441,6 +434,10 @@ impl Enumerate for SkipIterator {
       .size_hint()
       .map(|hint| hint.saturating_sub(self.skip_count))
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for SkipIterator {
@@ -459,16 +456,6 @@ impl DebugHeap for SkipIterator {
       .field("skip_count", &self.skip_count)
       .field("iter", &DebugWrap(&self.iter, depth))
       .finish()
-  }
-}
-
-impl Manage for SkipIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -526,6 +513,10 @@ impl Enumerate for MapIterator {
   fn size_hint(&self) -> Option<usize> {
     self.iter.size_hint()
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for MapIterator {
@@ -549,16 +540,6 @@ impl DebugHeap for MapIterator {
       .field("iter", &DebugWrap(&self.iter, depth))
       .field("callable", &DebugWrap(&self.callable, depth))
       .finish()
-  }
-}
-
-impl Manage for MapIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -619,6 +600,10 @@ impl Enumerate for FilterIterator {
   fn size_hint(&self) -> Option<usize> {
     None
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for FilterIterator {
@@ -642,16 +627,6 @@ impl DebugHeap for FilterIterator {
       .field("iter", &DebugWrap(&self.iter, depth))
       .field("callable", &DebugWrap(&self.callable, depth))
       .finish()
-  }
-}
-
-impl Manage for FilterIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -787,6 +762,10 @@ impl Enumerate for ZipIterator {
       acc.and_then(|acc| curr.size_hint().map(|curr| cmp::min(acc, curr)))
     })
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for ZipIterator {
@@ -816,16 +795,6 @@ impl DebugHeap for ZipIterator {
       .field("current", &DebugWrap(&self.current, depth))
       .field("iter", iter)
       .finish()
-  }
-}
-
-impl Manage for ZipIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.iters.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -901,6 +870,10 @@ impl Enumerate for ChainIterator {
         _ => None,
       })
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for ChainIterator {
@@ -931,16 +904,6 @@ impl DebugHeap for ChainIterator {
       .field("iter_index", &self.iter_index)
       .field("iter", iter)
       .finish()
-  }
-}
-
-impl Manage for ChainIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.iters.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -1332,7 +1295,7 @@ mod test {
   mod map {
     use super::*;
     use crate::support::test_fun_builder;
-    use laythe_core::{object::Closure, captures::Captures};
+    use laythe_core::{captures::Captures, object::Closure};
 
     #[test]
     fn new() {
@@ -1361,8 +1324,7 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun =
-        val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
 
       let result = iter_map.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1379,7 +1341,10 @@ mod test {
   mod filter {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{object::{Closure, Enumerator}, captures::Captures};
+    use laythe_core::{
+      captures::Captures,
+      object::{Closure, Enumerator},
+    };
 
     #[test]
     fn new() {
@@ -1408,8 +1373,7 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun =
-        val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
 
       let result = iter_filter.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1428,7 +1392,10 @@ mod test {
   mod reduce {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{object::{Closure, Enumerator}, captures::Captures};
+    use laythe_core::{
+      captures::Captures,
+      object::{Closure, Enumerator},
+    };
 
     #[test]
     fn new() {
@@ -1462,8 +1429,7 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(2));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun =
-        val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
 
       let result = iter_reduce.call(&mut hooks, Some(this), &[val!(0.0), fun]);
       match result {
@@ -1513,7 +1479,10 @@ mod test {
   mod each {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{object::{Closure, Enumerator}, captures::Captures};
+    use laythe_core::{
+      captures::Captures,
+      object::{Closure, Enumerator},
+    };
 
     #[test]
     fn new() {
@@ -1543,8 +1512,7 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun =
-        val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
 
       let result = iter_each.call(&mut hooks, Some(this), &[fun]);
       match result {

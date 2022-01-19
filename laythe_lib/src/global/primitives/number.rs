@@ -5,8 +5,8 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
+  managed::Trace,
   managed::{DebugHeap, Gc, GcObj},
-  managed::{Manage, Trace},
   module::Module,
   object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -15,7 +15,6 @@ use laythe_core::{
   Call, LyError,
 };
 use std::io::Write;
-use std::mem;
 
 use super::{
   class_inheritance,
@@ -213,6 +212,10 @@ impl Enumerate for TimesIterator {
   fn size_hint(&self) -> Option<usize> {
     Some((self.max + 1.0) as usize)
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for TimesIterator {}
@@ -220,16 +223,6 @@ impl Trace for TimesIterator {}
 impl DebugHeap for TimesIterator {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
     f.write_fmt(format_args!("{:?}", self))
-  }
-}
-
-impl Manage for TimesIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -295,6 +288,10 @@ impl Enumerate for UntilIterator {
   fn size_hint(&self) -> Option<usize> {
     None
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for UntilIterator {}
@@ -302,16 +299,6 @@ impl Trace for UntilIterator {}
 impl DebugHeap for UntilIterator {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
     f.write_fmt(format_args!("{:?}", self))
-  }
-}
-
-impl Manage for UntilIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

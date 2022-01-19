@@ -1,9 +1,7 @@
-use std::mem;
-
 use super::{ModuleError, ModuleResult};
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcStr, Trace},
   object::List,
 };
 
@@ -65,13 +63,9 @@ impl Trace for Import {
   }
 }
 
-impl Manage for Import {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
+impl Allocate<Gc<Self>> for Import {
+  fn alloc(self) -> AllocResult<Gc<Self>> {
+    Gc::alloc_result(self)
   }
 }
 

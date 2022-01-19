@@ -1,12 +1,10 @@
 use crate::managed::{
-  tuple_handle, Allocation, Gc, GcObj, GcObjectHandle, GcObjectHandleBuilder, GcStr, GcStrHandle,
-  Manage, Marked, Object, Trace, TraceRoot, Tuple, Unmark,
+  tuple_handle, Allocate, GcObj, GcObjectHandle, GcObjectHandleBuilder, GcStr, GcStrHandle, Manage,
+  Marked, Object, Trace, TraceRoot, Tuple, Unmark,
 };
 use crate::value::Value;
 use hashbrown::HashMap;
 use laythe_env::stdio::Stdio;
-use std::mem;
-use std::ptr::NonNull;
 use std::{cell::RefCell, io::Write};
 
 #[cfg(any(feature = "gc_log_free", feature = "gc_log_alloc"))]
@@ -24,7 +22,7 @@ pub struct Allocator {
   stdio: RefCell<Stdio>,
 
   /// The regular heap where objects that have survived a gc reside
-  heap: Vec<Box<Allocation<dyn Manage>>>,
+  heap: Vec<Box<dyn Manage>>,
 
   /// The nursery obj heap for objects
   nursery_obj_heap: Vec<GcObjectHandle>,
@@ -87,11 +85,11 @@ impl<'a> Allocator {
   /// Create a `Managed<T>` from the provided `data`. This method will allocate space
   /// for `data` and return a pointer to it. In case of a gc the provided `context` is
   /// used to annotate active roots
-  pub fn manage<T: 'static + Manage, C: TraceRoot + ?Sized>(
+  pub fn manage<R: 'static + Trace + Copy, T: 'static + Allocate<R>, C: TraceRoot + ?Sized>(
     &mut self,
     data: T,
     context: &C,
-  ) -> Gc<T> {
+  ) -> R {
     self.allocate(data, context)
   }
 
@@ -200,22 +198,21 @@ impl<'a> Allocator {
   /// Allocate `data` on the gc's heap. If conditions are met
   /// a garbage collection can be triggered. When triggered will use the
   /// context to determine the active roots.
-  fn allocate<T: 'static + Manage, C: TraceRoot + ?Sized>(
+  fn allocate<R: 'static + Trace + Copy, T: 'static + Allocate<R>, C: TraceRoot + ?Sized>(
     &mut self,
     data: T,
     context: &C,
-  ) -> Gc<T> {
+  ) -> R {
     // create own store of allocation
-    let mut alloc = Box::new(Allocation::new(data));
-    let ptr = unsafe { NonNull::new_unchecked(&mut *alloc) };
+    let result = data.alloc();
+    let handle = result.handle;
+    let reference = result.reference;
 
-    let size = mem::size_of::<Allocation<T>>();
+    let size = handle.size();
 
     // push onto heap
     self.bytes_allocated += size;
-    self.heap.push(alloc);
-
-    let managed = Gc::from(ptr);
+    self.heap.push(handle);
 
     #[cfg(feature = "gc_log_alloc")]
     self.debug_allocate(ptr, size);
@@ -228,12 +225,12 @@ impl<'a> Allocator {
     }
 
     if self.bytes_allocated > self.next_gc {
-      self.push_root(managed);
+      self.push_root(reference);
       self.collect_garbage(context);
       self.pop_roots(1)
     }
 
-    managed
+    reference
   }
 
   fn allocate_obj<T: 'static + Object, C: TraceRoot + ?Sized>(

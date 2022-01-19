@@ -15,9 +15,8 @@ use std::{
 };
 
 use super::{
-  gc_obj::ObjHeader,
   utils::{get_array_len_offset, get_array_offset, make_array_layout},
-  DebugHeap, DebugWrap, GcObject, GcObjectHandle,
+  DebugHeap, DebugWrap, GcObject, GcObjectHandle, header::ObjHeader,
 };
 
 pub type Tuple = GcArray<Value, ObjHeader>;

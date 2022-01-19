@@ -1,6 +1,6 @@
 use crate::{
   hooks::Hooks,
-  managed::{DebugHeap, DebugWrap, DebugWrapDyn, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, DebugWrapDyn, Object, Trace},
   value::{Value, VALUE_NIL},
   Call,
 };
@@ -88,7 +88,9 @@ impl Object for Enumerator {
   }
 }
 
-pub trait Enumerate: Manage + fmt::Debug {
+unsafe impl Send for Enumerator {}
+
+pub trait Enumerate: Trace + fmt::Debug {
   /// The name of the iterator mostly for debugging purposes
   fn name(&self) -> &str;
 
@@ -101,6 +103,6 @@ pub trait Enumerate: Manage + fmt::Debug {
   /// If known how many elements will this iterator produce
   fn size_hint(&self) -> Option<usize>;
 
-  // /// What is the size of this iterator
-  // fn size(&self) -> usize;
+  // Get this enumerator as a DebugHeap
+  fn as_debug(&self) -> &dyn DebugHeap;
 }

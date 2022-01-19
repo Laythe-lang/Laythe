@@ -18,9 +18,9 @@ use std::{
 };
 
 use super::{
-  gc_obj::{GcObject, ObjHeader},
+  gc_obj::{GcObject},
   utils::make_array_layout,
-  GcObjectHandle, Marked, Unmark,
+  GcObjectHandle, Marked, Unmark, header::ObjHeader,
 };
 
 /// A non owning reference to a Garbage collector

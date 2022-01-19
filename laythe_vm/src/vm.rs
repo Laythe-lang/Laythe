@@ -12,7 +12,7 @@ use laythe_core::{
   constants::{PLACEHOLDER_NAME, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   if_let_obj,
-  managed::{Gc, GcObj, GcObject, GcStr, Manage, Object, Trace, TraceRoot, Tuple},
+  managed::{Allocate, Gc, GcObj, GcObject, GcStr, Object, Trace, TraceRoot, Tuple},
   match_obj,
   memory::Allocator,
   module::{Import, Module, Package},
@@ -580,7 +580,7 @@ impl Vm {
     self.builtin.primitives.for_value(value)
   }
 
-  fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
+  fn manage<R: 'static + Trace + Copy, T: 'static + Allocate<R>>(&self, data: T) -> R {
     self.gc.borrow_mut().manage(data, self)
   }
 

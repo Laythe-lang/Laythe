@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-  managed::{Gc, GcObj, GcStr, Manage, Object, Trace, TraceRoot, Tuple},
+  managed::{Allocate, GcObj, GcStr, Object, Trace, TraceRoot, Tuple},
   memory::Allocator,
   value::{Value, VALUE_NIL},
   Call,
@@ -75,7 +75,7 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request an object be managed by this allocator
-  pub fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
+  pub fn manage<R: 'static + Trace + Copy, T: 'static + Allocate<R>>(&self, data: T) -> R {
     self.as_gc().manage(data)
   }
 
@@ -138,7 +138,7 @@ impl<'a> GcHooks<'a> {
 
   /// Request an object be managed by this allocator
   #[inline]
-  pub fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
+  pub fn manage<R: 'static + Trace + Copy, T: 'static + Allocate<R>>(&self, data: T) -> R {
     self.context.gc().manage(data, self.context)
   }
 

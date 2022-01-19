@@ -8,13 +8,13 @@ pub use package::Package;
 
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace},
   object::{Class, Instance, Map, MapEntry},
   value::Value,
   LyHashSet,
 };
 use hashbrown::hash_map;
-use std::{path::PathBuf, mem};
+use std::path::PathBuf;
 use std::{fmt, io::Write};
 
 /// A struct representing a collection of class functions and variable of shared functionality
@@ -204,7 +204,12 @@ impl Module {
 
   /// Insert a symbol into this module's symbol table
   #[inline]
-  pub fn insert_symbol(&mut self, _hooks: &GcHooks, name: GcStr, symbol: Value) -> ModuleResult<()> {
+  pub fn insert_symbol(
+    &mut self,
+    _hooks: &GcHooks,
+    name: GcStr,
+    symbol: Value,
+  ) -> ModuleResult<()> {
     match self.symbols.insert(name, symbol) {
       Some(_) => Err(ModuleError::SymbolAlreadyExists),
       None => Ok(()),
@@ -301,15 +306,9 @@ impl DebugHeap for Module {
   }
 }
 
-impl Manage for Module {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-      + (mem::size_of::<GcStr>() + mem::size_of::<Value>()) * self.symbols.capacity()
-      + mem::size_of::<GcStr>() * self.exports.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
+impl Allocate<Gc<Self>> for Module {
+  fn alloc(self) -> AllocResult<Gc<Self>> {
+    Gc::alloc_result(self)
   }
 }
 

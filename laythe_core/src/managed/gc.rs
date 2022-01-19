@@ -10,14 +10,28 @@ use std::{
 use super::{
   allocation::Allocation,
   manage::{DebugHeap, DebugWrap, Manage, Trace},
-  Mark,
+  Mark, AllocResult,
 };
 
-pub struct Gc<T: 'static + Manage + ?Sized> {
+pub struct Gc<T: 'static> {
   ptr: NonNull<Allocation<T>>,
 }
 
-impl<T: 'static + Manage + ?Sized> Gc<T> {
+impl<T: 'static + Trace + DebugHeap> Gc<T> {
+  pub fn alloc_result(data: T) -> AllocResult<Gc<T>> {
+    let mut handle = Box::new(Allocation::new(data));
+    let ptr = unsafe { NonNull::new_unchecked(&mut *handle) };
+    let reference = Gc::from(ptr);
+
+    let handle = handle as Box<dyn Manage>;
+    AllocResult {
+      handle,
+      reference
+    }
+  }
+}
+
+impl<T: 'static> Gc<T> {
   /// Get a static reference to the underlying data
   ///
   /// # Safety
@@ -47,7 +61,7 @@ impl<T: 'static + Manage + ?Sized> Gc<T> {
   }
 }
 
-impl<T: 'static + Manage> Trace for Gc<T> {
+impl<T: 'static + Trace + DebugHeap> Trace for Gc<T> {
   #[inline]
   fn trace(&self) {
     if self.obj().mark() {
@@ -75,7 +89,7 @@ impl<T: 'static + Manage> Trace for Gc<T> {
   }
 }
 
-impl<T: 'static + Manage> DebugHeap for Gc<T> {
+impl<T: 'static + DebugHeap> DebugHeap for Gc<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
       f.write_str("*")
@@ -85,33 +99,24 @@ impl<T: 'static + Manage> DebugHeap for Gc<T> {
   }
 }
 
-impl<T: 'static + Manage> Manage for Gc<T> {
-  fn size(&self) -> usize {
-    self.obj().size()
-  }
 
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
-  }
-}
+unsafe impl<T: 'static + Trace> Send for Gc<T> {}
+unsafe impl<T: 'static + Trace> Sync for Gc<T> {}
 
-unsafe impl<T: 'static + Manage> Send for Gc<T> {}
-unsafe impl<T: 'static + Manage> Sync for Gc<T> {}
-
-impl<T: 'static + Manage + ?Sized> From<NonNull<Allocation<T>>> for Gc<T> {
+impl<T: 'static + Trace> From<NonNull<Allocation<T>>> for Gc<T> {
   fn from(ptr: NonNull<Allocation<T>>) -> Self {
     Self { ptr }
   }
 }
 
-impl<T: 'static + Manage + ?Sized> Copy for Gc<T> {}
-impl<T: 'static + Manage + ?Sized> Clone for Gc<T> {
+impl<T: 'static> Copy for Gc<T> {}
+impl<T: 'static> Clone for Gc<T> {
   fn clone(&self) -> Gc<T> {
     *self
   }
 }
 
-impl<T: 'static + Manage> Deref for Gc<T> {
+impl<T: 'static> Deref for Gc<T> {
   type Target = T;
 
   #[inline]
@@ -120,14 +125,14 @@ impl<T: 'static + Manage> Deref for Gc<T> {
   }
 }
 
-impl<T: 'static + Manage> DerefMut for Gc<T> {
+impl<T: 'static> DerefMut for Gc<T> {
   #[inline]
   fn deref_mut(&mut self) -> &mut T {
     &mut self.obj_mut().data
   }
 }
 
-impl<T: 'static + Manage> PartialEq for Gc<T> {
+impl<T> PartialEq for Gc<T> {
   #[inline]
   fn eq(&self, other: &Gc<T>) -> bool {
     let left_inner: &T = &*self;
@@ -137,37 +142,37 @@ impl<T: 'static + Manage> PartialEq for Gc<T> {
   }
 }
 
-impl<T: 'static + Manage> Eq for Gc<T> {}
+impl<T> Eq for Gc<T> {}
 
-impl<T: 'static + Manage> Hash for Gc<T> {
+impl<T> Hash for Gc<T> {
   #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
     ptr::hash(self.ptr.as_ptr(), state)
   }
 }
 
-impl<T: 'static + Manage> PartialOrd for Gc<T> {
+impl<T> PartialOrd for Gc<T> {
   #[inline]
   fn partial_cmp(&self, other: &Gc<T>) -> Option<Ordering> {
     Some(self.cmp(other))
   }
 }
 
-impl<T: 'static + Manage> Ord for Gc<T> {
+impl<T> Ord for Gc<T> {
   #[inline]
   fn cmp(&self, other: &Gc<T>) -> Ordering {
     self.ptr.cmp(&other.ptr)
   }
 }
 
-impl<T: 'static + Manage + fmt::Display> fmt::Display for Gc<T> {
+impl<T: fmt::Display> fmt::Display for Gc<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = &*self;
     write!(f, "{}", inner)
   }
 }
 
-impl<T: 'static + Manage + fmt::Debug> fmt::Debug for Gc<T> {
+impl<T: fmt::Debug> fmt::Debug for Gc<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = &*self;
 

@@ -1,25 +1,16 @@
-use std::{
-  fmt,
-  sync::atomic::{AtomicBool, Ordering}, mem,
-};
+use std::{fmt, mem};
 
 use super::{
-  manage::{DebugHeap, Manage, Trace},
+  header::Header,
+  manage::{DebugHeap, Manage},
   Mark, Marked, Unmark,
 };
-
-/// The header of an allocation indicate meta data about the object
-#[derive(Debug, Default)]
-pub struct Header {
-  // has this allocation been marked by the garbage collector
-  marked: AtomicBool,
-}
 
 #[derive(Debug)]
 /// An allocation onto the Laythe Heap. This struct
 /// attaches a header to all objects the GC uses to
 /// manage the object
-pub struct Allocation<T: 'static + Trace + ?Sized> {
+pub struct Allocation<T: 'static> {
   // The object header
   header: Header,
 
@@ -27,73 +18,63 @@ pub struct Allocation<T: 'static + Trace + ?Sized> {
   pub(crate) data: T,
 }
 
-impl<T: 'static + Manage> Allocation<T> {
+impl<T: 'static> Allocation<T> {
   /// Create a new allocation from a struct that is Manage
   pub fn new(data: T) -> Self {
     Self {
       data,
-      header: Header {
-        marked: AtomicBool::new(false),
-      },
+      header: Header::new(false),
     }
   }
+}
 
+impl<T: 'static + DebugHeap> Allocation<T> {
   /// What is the size of this allocation in bytes
   #[inline]
   pub fn size(&self) -> usize {
-    self.data.size() + mem::size_of::<Header>()
+    mem::size_of::<Self>()
   }
 
   /// Get a trait object is can be logged for the heap
   pub fn as_debug(&self) -> &dyn DebugHeap {
-    self.data.as_debug()
+    &self.data
   }
 }
 
-impl Allocation<dyn Manage> {
-  /// What is the size of this allocation in bytes
-  #[inline]
-  pub fn size(&self) -> usize {
-    self.data.size() + mem::size_of::<Header>()
-  }
-
-  /// Get a trait object is can be logged for the heap
-  pub fn as_debug(&self) -> &dyn DebugHeap {
-    self.data.as_debug()
-  }
-}
-
-impl<T: Trace> Mark for Allocation<T> {
+impl<T> Mark for Allocation<T> {
   /// Mark this allocation as visited, returning
   /// the existing marked status
   #[inline]
   fn mark(&self) -> bool {
-    self.header.marked.swap(true, Ordering::Release)
+    self.header.marked()
   }
 }
 
-impl<T: Trace> Marked for Allocation<T> {
+impl<T> Marked for Allocation<T> {
   #[inline]
   fn marked(&self) -> bool {
-    self.header.marked.load(Ordering::Acquire)
+    self.header.marked()
   }
 }
 
-impl Unmark for Allocation<dyn Manage + 'static> {
+impl<T> Unmark for Allocation<T> {
   #[inline]
   fn unmark(&self) -> bool {
-    self.header.marked.swap(false, Ordering::Release)
+    self.header.unmark()
   }
 }
 
-impl Marked for Allocation<dyn Manage + 'static> {
-  #[inline]
-  fn marked(&self) -> bool {
-    self.header.marked.load(Ordering::Acquire)
+impl<T: 'static + DebugHeap> Manage for Allocation<T> {
+  fn size(&self) -> usize {
+    mem::size_of::<T>()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    &self.data
   }
 }
 
-impl<T: 'static + Manage + ?Sized> DebugHeap for Allocation<T> {
+impl<T: 'static + DebugHeap> DebugHeap for Allocation<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     self.data.fmt_heap(f, depth)
   }

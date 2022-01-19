@@ -2,7 +2,7 @@ use super::{
   gc_array::Tuple,
   manage::{DebugHeap, DebugWrap, Trace},
   utils::{get_array_len_offset, get_offset, make_array_layout, make_layout},
-  GcArray, GcStr, Mark, Marked, Unmark,
+  GcArray, GcStr, Mark, Marked, Unmark, header::ObjHeader,
 };
 use crate::{
   managed::utils::get_array_offset,
@@ -21,7 +21,6 @@ use std::{
   mem,
   ops::{Deref, DerefMut},
   ptr::{self, NonNull},
-  sync::atomic::{AtomicBool, Ordering},
 };
 
 pub trait Object: Trace + DebugHeap {
@@ -91,58 +90,6 @@ macro_rules! match_obj {
       }
     }
   };
-}
-
-/// The `Header` meta data for `GcObj<T>` and `GcObject`. This struct
-/// is positioned at the front of the array such that the layout looks like
-/// this
-/// ```markdown
-/// [Header (potential padding)| T ]
-/// ```
-pub struct ObjHeader {
-  /// Has this allocation been marked by the garbage collector
-  marked: AtomicBool,
-
-  /// The underlying value kind of this object
-  kind: ObjectKind,
-}
-
-impl ObjHeader {
-  /// Create a new object header
-  #[inline]
-  pub fn new(kind: ObjectKind) -> Self {
-    Self {
-      marked: AtomicBool::new(false),
-      kind,
-    }
-  }
-
-  /// What is the value kind of this object
-  #[inline]
-  pub fn kind(&self) -> ObjectKind {
-    self.kind
-  }
-}
-
-impl Mark for ObjHeader {
-  #[inline]
-  fn mark(&self) -> bool {
-    self.marked.swap(true, Ordering::Release)
-  }
-}
-
-impl Unmark for ObjHeader {
-  #[inline]
-  fn unmark(&self) -> bool {
-    self.marked.swap(false, Ordering::Release)
-  }
-}
-
-impl Marked for ObjHeader {
-  #[inline]
-  fn marked(&self) -> bool {
-    self.marked.load(Ordering::Acquire)
-  }
 }
 
 pub struct GcObj<T: 'static + Object> {

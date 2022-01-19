@@ -23,7 +23,7 @@ use laythe_core::{
   constants::{INDEX_GET, INDEX_SET, OBJECT, SUPER, UNINITIALIZED_VAR},
   constants::{ITER, ITER_VAR, SCRIPT, SELF},
   hooks::GcContext,
-  managed::{DebugHeap, Gc, GcObj, GcStr, Manage, Trace, TraceRoot},
+  managed::{AllocResult, Allocate, DebugHeap, Gc, GcObj, GcStr, Trace, TraceRoot},
   memory::Allocator,
   module, object,
   object::{FunBuilder, FunKind, List, Map},
@@ -92,13 +92,9 @@ impl DebugHeap for ClassAttributes {
   }
 }
 
-impl Manage for ClassAttributes {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<GcStr>() * self.fields.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
+impl Allocate<Gc<Self>> for ClassAttributes {
+  fn alloc(self) -> AllocResult<Gc<Self>> {
+    Gc::alloc_result(self)
   }
 }
 
@@ -131,13 +127,9 @@ impl DebugHeap for LoopAttributes {
   }
 }
 
-impl Manage for LoopAttributes {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
+impl Allocate<Gc<Self>> for LoopAttributes {
+  fn alloc(self) -> AllocResult<Gc<Self>> {
+    Gc::alloc_result(self)
   }
 }
 

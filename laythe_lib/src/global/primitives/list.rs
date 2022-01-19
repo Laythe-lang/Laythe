@@ -7,7 +7,7 @@ use laythe_core::{
   constants::{INDEX_GET, INDEX_SET},
   hooks::{GcHooks, Hooks},
   if_let_obj,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -17,8 +17,8 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyError, LyResult,
 };
+use std::slice::Iter;
 use std::{cmp::Ordering, io::Write};
-use std::{mem, slice::Iter};
 
 use super::{
   class_inheritance,
@@ -659,6 +659,10 @@ impl Enumerate for ListIterator {
   fn size_hint(&self) -> Option<usize> {
     Some(self.list.len())
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for ListIterator {
@@ -678,16 +682,6 @@ impl DebugHeap for ListIterator {
       .field("current", &DebugWrap(&self.current, depth))
       .field("iter", &"*")
       .finish()
-  }
-}
-
-impl Manage for ListIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

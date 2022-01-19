@@ -1,11 +1,11 @@
 use super::{Fiber, ObjectKind};
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, Manage, Object, Trace},
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, Object, Trace},
   value::Value,
   LyHashSet,
 };
-use std::{collections::VecDeque, usize, mem};
+use std::{collections::VecDeque, usize};
 use std::{fmt, io::Write};
 
 #[derive(PartialEq, Clone, Debug)]
@@ -255,13 +255,9 @@ impl DebugHeap for ChannelQueue {
   }
 }
 
-impl Manage for ChannelQueue {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.queue.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
+impl Allocate<Gc<Self>> for ChannelQueue {
+  fn alloc(self) -> AllocResult<Gc<Self>> {
+    Gc::alloc_result(self)
   }
 }
 

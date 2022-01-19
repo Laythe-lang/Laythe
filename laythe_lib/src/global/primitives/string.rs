@@ -7,7 +7,7 @@ use laythe_core::{
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
   managed::GcObj,
-  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcStr, Trace},
   module::Module,
   object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -15,8 +15,8 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyError, LyResult,
 };
+use std::str::Chars;
 use std::{io::Write, str::Split};
-use std::{mem, str::Chars};
 
 use super::{class_inheritance, error::INDEX_ERROR_NAME};
 
@@ -253,6 +253,10 @@ impl Enumerate for SplitIterator {
   fn size_hint(&self) -> Option<usize> {
     None
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for SplitIterator {
@@ -277,16 +281,6 @@ impl DebugHeap for SplitIterator {
       .field("iter", &"*")
       .field("current", &DebugWrap(&self.current, depth))
       .finish()
-  }
-}
-
-impl Manage for SplitIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -406,6 +400,10 @@ impl Enumerate for StringIterator {
   fn size_hint(&self) -> Option<usize> {
     None
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for StringIterator {
@@ -427,16 +425,6 @@ impl DebugHeap for StringIterator {
       .field("iter", &"*")
       .field("current", &DebugWrap(&self.current, depth))
       .finish()
-  }
-}
-
-impl Manage for StringIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
