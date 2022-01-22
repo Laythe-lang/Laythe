@@ -70,7 +70,7 @@ where
     }
     fun.update_max_slots(self.max_slots);
 
-    let fun = hooks.manage_obj(fun.build());
+    let fun = hooks.manage_obj(fun.build(hooks));
     hooks.push_root(fun);
 
     let captures = Captures::new(hooks, &[]);
@@ -151,7 +151,7 @@ pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
   let module = hooks.manage(module);
   let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
 
-  hooks.manage_obj(builder.build())
+  hooks.manage_obj(builder.build(hooks))
 }
 
 pub fn test_fun_builder(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {

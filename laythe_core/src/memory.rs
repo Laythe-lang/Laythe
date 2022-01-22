@@ -1,6 +1,6 @@
 use crate::managed::{
-  tuple_handle, Allocate, GcObj, GcObjectHandle, GcObjectHandleBuilder, GcStr, GcStrHandle, Manage,
-  Marked, Object, Trace, TraceRoot, Tuple, Unmark,
+  tuple_handle, Allocate, DebugHeapRef, GcObj, GcObjectHandle, GcObjectHandleBuilder, GcStr,
+  GcStrHandle, Manage, Marked, Object, Trace, TraceRoot, Tuple, Unmark,
 };
 use crate::value::Value;
 use hashbrown::HashMap;
@@ -85,11 +85,12 @@ impl<'a> Allocator {
   /// Create a `Managed<T>` from the provided `data`. This method will allocate space
   /// for `data` and return a pointer to it. In case of a gc the provided `context` is
   /// used to annotate active roots
-  pub fn manage<R: 'static + Trace + Copy, T: 'static + Allocate<R>, C: TraceRoot + ?Sized>(
-    &mut self,
-    data: T,
-    context: &C,
-  ) -> R {
+  pub fn manage<R, T, C>(&mut self, data: T, context: &C) -> R
+  where
+    R: 'static + Trace + Copy + DebugHeapRef,
+    T: Allocate<R>,
+    C: TraceRoot + ?Sized,
+  {
     self.allocate(data, context)
   }
 
@@ -108,11 +109,7 @@ impl<'a> Allocator {
   ///
   /// assert_eq!(ly_box.value, Value::from(10.0));
   /// ```
-  pub fn manage_obj<T: 'static + Object, C: TraceRoot + ?Sized>(
-    &mut self,
-    data: T,
-    context: &C,
-  ) -> GcObj<T> {
+  pub fn manage_obj<T: Object, C: TraceRoot + ?Sized>(&mut self, data: T, context: &C) -> GcObj<T> {
     self.allocate_obj(data, context)
   }
 
@@ -198,11 +195,12 @@ impl<'a> Allocator {
   /// Allocate `data` on the gc's heap. If conditions are met
   /// a garbage collection can be triggered. When triggered will use the
   /// context to determine the active roots.
-  fn allocate<R: 'static + Trace + Copy, T: 'static + Allocate<R>, C: TraceRoot + ?Sized>(
-    &mut self,
-    data: T,
-    context: &C,
-  ) -> R {
+  fn allocate<R, T, C>(&mut self, data: T, context: &C) -> R
+  where
+    R: 'static + Trace + Copy + DebugHeapRef,
+    T: Allocate<R>,
+    C: TraceRoot + ?Sized,
+  {
     // create own store of allocation
     let result = data.alloc();
     let handle = result.handle;
@@ -215,11 +213,11 @@ impl<'a> Allocator {
     self.heap.push(handle);
 
     #[cfg(feature = "gc_log_alloc")]
-    self.debug_allocate(ptr, size);
+    self.debug_allocate(reference, size);
 
     #[cfg(feature = "gc_stress")]
     {
-      self.push_root(managed);
+      self.push_root(reference);
       self.collect_garbage(context);
       self.pop_roots(1)
     }
@@ -233,11 +231,7 @@ impl<'a> Allocator {
     reference
   }
 
-  fn allocate_obj<T: 'static + Object, C: TraceRoot + ?Sized>(
-    &mut self,
-    data: T,
-    context: &C,
-  ) -> GcObj<T> {
+  fn allocate_obj<T: Object, C: TraceRoot + ?Sized>(&mut self, data: T, context: &C) -> GcObj<T> {
     // create own store of allocation
     let object_handle = GcObjectHandleBuilder::from(data);
     let size = object_handle.size();
@@ -315,6 +309,8 @@ impl<'a> Allocator {
     self.obj_heap.push(gc_tuple_handle.degrade());
 
     // TODO: Add debug tuple allocate
+    #[cfg(feature = "gc_log_alloc")]
+    self.debug_allocate_tuple(tuple, size);
 
     #[cfg(feature = "gc_stress")]
     {
@@ -379,12 +375,12 @@ impl<'a> Allocator {
       let now = self.bytes_allocated;
 
       writeln!(stdout, "-- gc end --").expect("unable to write to stdout");
-      debug_assert!(
-        before >= now,
-        "Heap was incorrectly calculated before: {} now {}",
-        before,
-        now
-      );
+      // debug_assert!(
+      //   before >= now,
+      //   "Heap was incorrectly calculated before: {} now {}",
+      //   before,
+      //   now
+      // );
 
       writeln!(
         stdout,
@@ -535,23 +531,23 @@ impl<'a> Allocator {
 
   /// Debug logging for allocating an object.
   #[cfg(feature = "gc_log_alloc")]
-  fn debug_allocate<T: 'static + Manage>(&self, ptr: NonNull<Allocation<T>>, size: usize) {
+  fn debug_allocate<R: DebugHeapRef>(&self, reference: R, size: usize) {
     let mut stdio = self.stdio.borrow_mut();
     let stdout = stdio.stdout();
 
     writeln!(
       stdout,
       "{:p} allocated {} bytes for {:?}",
-      ptr.as_ptr(),
+      reference,
       size,
-      DebugWrap(unsafe { ptr.as_ref() }, 1)
+      DebugWrap(&reference, 1)
     )
     .expect("unable to write to stdout");
   }
 
   /// Debug logging for allocating an object.
   #[cfg(feature = "gc_log_alloc")]
-  fn debug_allocate_obj<T: 'static + Object>(&self, obj: GcObj<T>, size: usize) {
+  fn debug_allocate_obj<T: Object>(&self, obj: GcObj<T>, size: usize) {
     let mut stdio = self.stdio.borrow_mut();
     let stdout = stdio.stdout();
 
@@ -578,17 +574,33 @@ impl<'a> Allocator {
     )
     .expect("unable to write to stdout");
   }
+
+  /// Debug logging for allocating an object.
+  #[cfg(feature = "gc_log_alloc")]
+  fn debug_allocate_tuple(&self, tuple: Tuple, size: usize) {
+    let mut stdio = self.stdio.borrow_mut();
+    let stdout = stdio.stdout();
+
+    writeln!(
+      stdout,
+      "{:p} allocated {} bytes for {:?}",
+      tuple,
+      size,
+      DebugWrap(&tuple, 1),
+    )
+    .expect("unable to write to stdout");
+  }
 }
 
 /// Debug logging for free an object.
 #[cfg(feature = "gc_log_free")]
-fn debug_free(obj: &Box<Allocation<dyn Manage>>, free: bool) {
+fn debug_free(obj: &Box<dyn Manage>, free: bool) {
   if free {
     println!(
       "{:p} free {} bytes from {:?}",
-      &**obj,
+      obj.loc(),
       obj.size(),
-      DebugWrapDyn((*obj).as_debug(), 0)
+      DebugWrapDyn((*obj).as_debug(), 1)
     )
   }
 }

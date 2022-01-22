@@ -29,3 +29,24 @@ use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
 use managed::GcObj;
 use object::Instance;
+
+#[macro_export]
+macro_rules! impl_trace {
+  ( $x:ty ) => {
+    impl Trace for $x {
+      fn trace(&self) {}
+      fn trace_debug(&self, _log: &mut dyn std::io::Write) {}
+    }
+  };
+}
+
+#[macro_export]
+macro_rules! impl_debug_heap {
+  ( $x:ty ) => {
+    impl DebugHeap for $x {
+      fn fmt_heap(&self, f: &mut std::fmt::Formatter, _depth: usize) -> std::fmt::Result {
+        f.write_fmt(format_args!("{:?}", self))
+      }
+    }
+  };
+}

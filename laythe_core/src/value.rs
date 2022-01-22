@@ -788,7 +788,7 @@ mod boxed {
       assert_eq!(mem::size_of::<List<Value>>(), 24);
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 16);
-      assert_eq!(mem::size_of::<Fun>(), 96);
+      assert_eq!(mem::size_of::<Fun>(), 64);
       assert_eq!(mem::size_of::<Fiber>(), 104);
       assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Instance>(), 24);
@@ -923,7 +923,7 @@ mod test {
     let name = test_string(hooks);
     let module = test_module(hooks);
 
-    hooks.manage_obj(Fun::stub(name, module, 0))
+    hooks.manage_obj(Fun::stub(hooks, name, module, 0))
   }
 
   fn test_closure(hooks: &GcHooks) -> GcObj<Closure> {

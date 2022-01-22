@@ -1,3 +1,8 @@
+use super::{
+  header::{Header, ObjHeader},
+  utils::{get_array_len_offset, get_array_offset, make_array_layout},
+  AllocResult, Allocate, DebugHeap, DebugHeapRef, DebugWrap, GcObject, GcObjectHandle, Manage,
+};
 use crate::{
   managed::{Mark, Marked, Trace, Unmark},
   object::ObjectKind,
@@ -14,12 +19,11 @@ use std::{
   slice::{self},
 };
 
-use super::{
-  utils::{get_array_len_offset, get_array_offset, make_array_layout},
-  DebugHeap, DebugWrap, GcObject, GcObjectHandle, header::ObjHeader,
-};
-
-pub type Tuple = GcArray<Value, ObjHeader>;
+pub type ObjArray<T> = GcArray<T, ObjHeader>;
+pub type Array<T> = GcArray<T, Header>;
+pub type ObjArrayHandle<T> = GcArrayHandle<T, ObjHeader>;
+pub type Tuple = ObjArray<Value>;
+pub type TupleHandle = ObjArrayHandle<Value>;
 
 pub fn tuple_handle(slice: &[Value]) -> GcArrayHandle<Value, ObjHeader> {
   GcArrayHandle::from_slice(slice, ObjHeader::new(ObjectKind::Tuple))
@@ -168,7 +172,7 @@ impl<T, H: Marked> Marked for GcArray<T, H> {
   }
 }
 
-impl<T: Trace, H: Send + Mark> Trace for GcArray<T, H> {
+impl<T: Trace + DebugHeap, H: Send + Mark> Trace for GcArray<T, H> {
   fn trace(&self) {
     if self.mark() {
       return;
@@ -182,15 +186,36 @@ impl<T: Trace, H: Send + Mark> Trace for GcArray<T, H> {
       return;
     }
 
+    log
+      .write_fmt(format_args!(
+        "{:p} mark {:?}\n",
+        self.ptr,
+        DebugWrap(self, 1)
+      ))
+      .expect("unable to write to stdout");
+    log.flush().expect("unable to flush stdout");
+
     self.iter().for_each(|i| i.trace_debug(log));
   }
 }
 
-impl<T: 'static + Trace + DebugHeap, H> DebugHeap for GcArray<T, H> {
+impl<T: DebugHeap, H> DebugHeap for GcArray<T, H> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    f.debug_list()
-      .entries(self.iter().map(|x| DebugWrap(x, depth)))
-      .finish()
+    if depth == 0 {
+      f.write_fmt(format_args!("{:p}", &self.ptr))
+    } else {
+      f.debug_list()
+        .entries(self.iter().map(|x| DebugWrap(x, depth.saturating_sub(1))))
+        .finish()
+    }
+  }
+}
+
+impl<T: DebugHeap, H> DebugHeapRef for GcArray<T, H> {}
+
+impl<T, H> fmt::Pointer for GcArray<T, H> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fmt::Pointer::fmt(&self.ptr, f)
   }
 }
 
@@ -244,7 +269,7 @@ impl<T: Display, H> Display for GcArray<T, H> {
 
 impl<T: Debug, H> Debug for GcArray<T, H> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    f.debug_list().entry(self).finish()
+    f.debug_list().entries(self.iter()).finish()
   }
 }
 
@@ -377,9 +402,35 @@ impl<T, H> DerefMut for GcArrayHandle<T, H> {
   }
 }
 
+impl<T: DebugHeap, H> DebugHeap for GcArrayHandle<T, H> {
+  fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
+    self.0.fmt_heap(f, depth)
+  }
+}
+
+impl<T, H> fmt::Pointer for GcArrayHandle<T, H> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    self.0.fmt(f)
+  }
+}
+
 impl<T: Copy, H: Default> From<&[T]> for GcArrayHandle<T, H> {
   fn from(slice: &[T]) -> Self {
     GcArrayHandle::from_slice(slice, H::default())
+  }
+}
+
+impl<T: DebugHeap, H: Unmark + Marked> Manage for GcArrayHandle<T, H> {
+  fn size(&self) -> usize {
+    self.size()
+  }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
+
+  fn loc(&self) -> *const u8 {
+    self.0.as_alloc_ptr()
   }
 }
 
@@ -396,6 +447,18 @@ impl<T, H> Drop for GcArrayHandle<T, H> {
 
       dealloc(self.0.ptr.as_ptr(), make_array_layout::<H, T>(len));
     }
+  }
+}
+
+impl<T: 'static + Trace + Copy + DebugHeap> Allocate<GcArray<T, Header>> for &[T] {
+  fn alloc(self) -> AllocResult<GcArray<T, Header>> {
+    let handle = GcArrayHandle::from_slice(self, Header::new(false));
+    let reference = handle.value();
+
+    let handle = Box::new(handle);
+    let handle = handle as Box<dyn Manage>;
+
+    AllocResult { handle, reference }
   }
 }
 

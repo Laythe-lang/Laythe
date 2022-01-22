@@ -12,7 +12,9 @@ use laythe_core::{
   constants::{PLACEHOLDER_NAME, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   if_let_obj,
-  managed::{Allocate, Gc, GcObj, GcObject, GcStr, Object, Trace, TraceRoot, Tuple},
+  managed::{
+    Allocate, Array, DebugHeapRef, Gc, GcObj, GcObject, GcStr, Object, Trace, TraceRoot, Tuple,
+  },
   match_obj,
   memory::Allocator,
   module::{Import, Module, Package},
@@ -136,8 +138,8 @@ pub struct Vm {
 impl Vm {
   pub fn new(io: Io) -> Vm {
     let gc = Allocator::new(io.stdio());
-    let no_gc_context = NoContext::new(gc);
-    let hooks = GcHooks::new(&no_gc_context);
+    let context = NoContext::new(gc);
+    let hooks = GcHooks::new(&context);
 
     let root_dir = io
       .env()
@@ -149,22 +151,21 @@ impl Vm {
     let global = std_lib.root_module();
 
     let current_fun = Fun::stub(
+      &hooks,
       hooks.manage_str(PLACEHOLDER_NAME),
       global,
       AlignedByteCode::Nil,
     );
 
     let current_fun = hooks.manage_obj(current_fun);
-    let captures = Captures::new(&hooks, &[]);
-    let fiber = hooks
-      .manage_obj(Fiber::new(current_fun, captures).expect("Unable to generate placeholder fiber"));
-
     let capture_stub = Captures::new(&hooks, &[]);
+    let fiber = hooks
+      .manage_obj(Fiber::new(current_fun, capture_stub).expect("Unable to generate placeholder fiber"));
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
-    let gc = RefCell::new(no_gc_context.done());
+    let gc = RefCell::new(context.done());
     let inline_cache: Vec<InlineCache> = (0..emitter.id_count())
       .map(|_| InlineCache::new(0, 0))
       .collect();
@@ -339,11 +340,7 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: GcObj<Fun>) {
-    self.push_root(script);
-    let captures = Captures::new(&GcHooks::new(self), &[]);
-    self.pop_roots(1);
-
-    let fiber = match Fiber::new(script, captures) {
+    let fiber = match Fiber::new(script, self.capture_stub) {
       Ok(fiber) => fiber,
       Err(_) => self.internal_error("Unable to generate initial fiber"),
     };
@@ -580,7 +577,7 @@ impl Vm {
     self.builtin.primitives.for_value(value)
   }
 
-  fn manage<R: 'static + Trace + Copy, T: 'static + Allocate<R>>(&self, data: T) -> R {
+  fn manage<R: 'static + Trace + Copy + DebugHeapRef, T: Allocate<R>>(&self, data: T) -> R {
     self.gc.borrow_mut().manage(data, self)
   }
 
@@ -1448,12 +1445,12 @@ impl Vm {
     match path_segments.split_first() {
       Some((package, path)) => {
         // generate a new import object
-        let path = List::from(path);
+        let path = self.manage(path);
         self.manage(Import::new(*package, path))
       }
       None => {
         // generate a new import object
-        let path = List::new();
+        let path: Array<GcStr> = self.manage(&[] as &[GcStr]);
         self.manage(Import::new(path_segments[0], path))
       }
     }
@@ -1890,15 +1887,19 @@ impl Vm {
       },
       Environment::Normal => {
         let mut stub = self.native_fun_stubs.pop().unwrap_or_else(|| {
-          self.manage_obj(Fun::stub(meta.name, self.global, AlignedByteCode::Nil))
+          self.manage_obj(Fun::stub(
+            &GcHooks::new(self),
+            meta.name,
+            self.global,
+            AlignedByteCode::Nil,
+          ))
         });
         stub.set_name(meta.name);
         self.push_root(stub);
 
-        let captures = Captures::new(&GcHooks::new(self), &[]);
         self.pop_roots(1);
 
-        self.push_frame(stub, captures, arg_count);
+        self.push_frame(stub, self.capture_stub, arg_count);
 
         let result = native.call(&mut Hooks::new(self), this, args);
         self.native_fun_stubs.push(stub);

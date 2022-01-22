@@ -1324,7 +1324,7 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build(&hooks.as_gc())), captures)));
 
       let result = iter_map.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1373,7 +1373,7 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build(&hooks.as_gc())), captures)));
 
       let result = iter_filter.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1429,7 +1429,7 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(2));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build(&hooks.as_gc())), captures)));
 
       let result = iter_reduce.call(&mut hooks, Some(this), &[val!(0.0), fun]);
       match result {
@@ -1512,7 +1512,7 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build()), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build(&hooks.as_gc())), captures)));
 
       let result = iter_each.call(&mut hooks, Some(this), &[fun]);
       match result {

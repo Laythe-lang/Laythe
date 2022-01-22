@@ -1,19 +1,18 @@
 use super::{ModuleError, ModuleResult};
 use crate::{
   hooks::GcHooks,
-  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcStr, Trace},
-  object::List,
+  managed::{AllocResult, Allocate, Array, DebugHeap, DebugWrap, Gc, GcStr, Trace},
 };
 
 /// An object representing an import request from a file
 pub struct Import {
   package: GcStr,
-  path: List<GcStr>,
+  path: Array<GcStr>,
 }
 
 impl Import {
   /// Create a new import
-  pub fn new(package: GcStr, path: List<GcStr>) -> Self {
+  pub fn new(package: GcStr, path: Array<GcStr>) -> Self {
     Self { package, path }
   }
 
@@ -34,16 +33,16 @@ impl Import {
       let package = hooks.manage_str(package);
       hooks.push_root(package);
 
-      let path: List<GcStr> = List::with_capacity(path.len());
+      let mut path: Vec<GcStr> = Vec::with_capacity(path.len());
+      for segment in path_slice {
+        let segment = hooks.manage_str(segment);
+        path.push(segment);
+        hooks.push_root(segment);
+      }
 
-      let mut import = hooks.manage(Self::new(package, path));
-      hooks.push_root(import);
+      let import = hooks.manage(Self::new(package, hooks.manage(&*path)));
+      hooks.pop_roots(path.len());
 
-      import
-        .path
-        .extend(path_slice.iter().map(|segment| hooks.manage_str(segment)));
-
-      hooks.pop_roots(2);
       Ok(import)
     } else {
       Err(ModuleError::InvalidImport)

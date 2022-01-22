@@ -54,8 +54,8 @@ impl Trace for Captures {
 
 impl DebugHeap for Captures {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    f.debug_struct("Captures")
-      .field("0", &DebugWrap(&&*self.0, depth))
+    f.debug_tuple("Captures")
+      .field(&DebugWrap(&&*self.0, depth))
       .finish()
   }
 }

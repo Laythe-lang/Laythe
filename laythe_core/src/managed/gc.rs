@@ -10,7 +10,7 @@ use std::{
 use super::{
   allocation::Allocation,
   manage::{DebugHeap, DebugWrap, Manage, Trace},
-  Mark, AllocResult,
+  AllocResult, DebugHeapRef, Mark,
 };
 
 pub struct Gc<T: 'static> {
@@ -24,10 +24,7 @@ impl<T: 'static + Trace + DebugHeap> Gc<T> {
     let reference = Gc::from(ptr);
 
     let handle = handle as Box<dyn Manage>;
-    AllocResult {
-      handle,
-      reference
-    }
+    AllocResult { handle, reference }
   }
 }
 
@@ -80,7 +77,7 @@ impl<T: 'static + Trace + DebugHeap> Trace for Gc<T> {
       .write_fmt(format_args!(
         "{:p} mark {:?}\n",
         &*self.obj(),
-        DebugWrap(self, 2)
+        DebugWrap(self, 1)
       ))
       .expect("unable to write to stdout");
     log.flush().expect("unable to flush stdout");
@@ -92,13 +89,23 @@ impl<T: 'static + Trace + DebugHeap> Trace for Gc<T> {
 impl<T: 'static + DebugHeap> DebugHeap for Gc<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
-      f.write_str("*")
+      f.write_fmt(format_args!("{:p}", &self.ptr))
     } else {
-      f.write_fmt(format_args!("{:?}", DebugWrap(self.obj(), depth)))
+      f.write_fmt(format_args!(
+        "{:?}",
+        DebugWrap(self.obj(), depth.saturating_sub(1))
+      ))
     }
   }
 }
 
+impl<T> fmt::Pointer for Gc<T> {
+  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    self.ptr.fmt(f)
+  }
+}
+
+impl<T: 'static + DebugHeap> DebugHeapRef for Gc<T> {}
 
 unsafe impl<T: 'static + Trace> Send for Gc<T> {}
 unsafe impl<T: 'static + Trace> Sync for Gc<T> {}

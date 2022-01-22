@@ -11,16 +11,13 @@ use std::{
   fmt,
   hash::{Hash, Hasher},
   io::Write,
-  mem,
   ops::Deref,
   ptr::{self, NonNull},
   str,
 };
 
 use super::{
-  gc_obj::{GcObject},
-  utils::make_array_layout,
-  GcObjectHandle, Marked, Unmark, header::ObjHeader,
+  gc_obj::GcObject, header::ObjHeader, utils::make_array_layout, GcObjectHandle, Marked, Unmark,
 };
 
 /// A non owning reference to a Garbage collector
@@ -141,7 +138,7 @@ impl Trace for GcStr {
 impl DebugHeap for GcStr {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> std::fmt::Result {
     if depth == 0 {
-      f.write_str("*")
+      f.write_fmt(format_args!("{:p}", &self.0.ptr))
     } else {
       f.write_fmt(format_args!("{}", self))
     }
@@ -304,11 +301,11 @@ impl GcStrHandle {
   /// let data = &"example";
   /// let handle = GcStrHandle::from(data);
   ///
-  /// assert_eq!(handle.size(), 31);
+  /// assert_eq!(handle.size(), 23);
   /// ```
   #[inline]
   pub fn size(&self) -> usize {
-    mem::size_of::<Self>() + make_array_layout::<ObjHeader, u8>(self.0.len()).size()
+    make_array_layout::<ObjHeader, u8>(self.0.len()).size()
   }
 }
 

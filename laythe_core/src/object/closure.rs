@@ -20,11 +20,11 @@ impl Closure {
   /// use laythe_core::signature::Arity;
   /// use laythe_core::module::Module;
   /// use laythe_core::captures::Captures;
-  /// use laythe_core::hooks::{NoContext, Hooks};
+  /// use laythe_core::hooks::{NoContext, GcHooks};
   /// use std::path::PathBuf;
   ///
   /// let mut context = NoContext::default();
-  /// let hooks = Hooks::new(&mut context);
+  /// let hooks = GcHooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
   ///   hooks.manage_obj(Class::bare(hooks.manage_str("module"))),
@@ -32,9 +32,9 @@ impl Closure {
   ///   0,
   /// ));
   /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module, Arity::default());
-  /// let managed_fun = hooks.manage_obj(builder.build());
+  /// let managed_fun = hooks.manage_obj(builder.build(&hooks));
   ///
-  /// let captures = Captures::new(&hooks.as_gc(), &[]);
+  /// let captures = Captures::new(&hooks, &[]);
   /// let closure = Closure::new(managed_fun, captures);
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```

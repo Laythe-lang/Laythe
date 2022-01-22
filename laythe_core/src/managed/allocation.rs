@@ -28,25 +28,12 @@ impl<T: 'static> Allocation<T> {
   }
 }
 
-impl<T: 'static + DebugHeap> Allocation<T> {
-  /// What is the size of this allocation in bytes
-  #[inline]
-  pub fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  /// Get a trait object is can be logged for the heap
-  pub fn as_debug(&self) -> &dyn DebugHeap {
-    &self.data
-  }
-}
-
 impl<T> Mark for Allocation<T> {
   /// Mark this allocation as visited, returning
   /// the existing marked status
   #[inline]
   fn mark(&self) -> bool {
-    self.header.marked()
+    self.header.mark()
   }
 }
 
@@ -66,16 +53,20 @@ impl<T> Unmark for Allocation<T> {
 
 impl<T: 'static + DebugHeap> Manage for Allocation<T> {
   fn size(&self) -> usize {
-    mem::size_of::<T>()
+    mem::size_of::<Self>()
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
-    &self.data
+    self
+  }
+
+  fn loc(&self) -> *const u8 {
+    (self as *const Allocation<T>) as *const u8
   }
 }
 
 impl<T: 'static + DebugHeap> DebugHeap for Allocation<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    self.data.fmt_heap(f, depth)
+    self.data.fmt_heap(f, depth.saturating_sub(1))
   }
 }

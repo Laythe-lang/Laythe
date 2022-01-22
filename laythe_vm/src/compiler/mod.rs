@@ -22,7 +22,7 @@ use laythe_core::{
   chunk::ChunkBuilder,
   constants::{INDEX_GET, INDEX_SET, OBJECT, SUPER, UNINITIALIZED_VAR},
   constants::{ITER, ITER_VAR, SCRIPT, SELF},
-  hooks::GcContext,
+  hooks::{GcContext, GcHooks, NoContext},
   managed::{AllocResult, Allocate, DebugHeap, Gc, GcObj, GcStr, Trace, TraceRoot},
   memory::Allocator,
   module, object,
@@ -370,14 +370,16 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       ScopeExit::Early => (),
     }
 
-    let fun = self.fun.build();
+    let context = NoContext::new(self.gc.into_inner());
+    let hooks = GcHooks::new(&context);
+    let fun = self.fun.build(&hooks);
 
     #[cfg(feature = "debug")]
     {
       Compiler::<FileId>::print_chunk(&fun, &self.class_attributes, &self.io, self.fun_kind);
     }
 
-    (fun, self.errors, self.captures, self.gc.into_inner())
+    (fun, self.errors, self.captures, context.done())
   }
 
   /// Print the chunk if debug and an error occurred
@@ -2154,7 +2156,12 @@ mod test {
   }
 
   pub fn test_fun(hooks: &GcHooks, module: Gc<Module>) -> GcObj<Fun> {
-    let fun = Fun::stub(hooks.manage_str("print"), module, AlignedByteCode::Return);
+    let fun = Fun::stub(
+      hooks,
+      hooks.manage_str("print"),
+      module,
+      AlignedByteCode::Return,
+    );
     hooks.manage_obj(fun)
   }
 
@@ -2196,7 +2203,7 @@ mod test {
 
     let module = dummy_module(hooks);
 
-    let gc = context.gc.replace(Allocator::default());
+    let gc = context.replace_gc(Allocator::default());
 
     assert!(Resolver::new(module, &gc, &source, 0, repl)
       .resolve(&mut ast)
@@ -2208,7 +2215,7 @@ mod test {
     let compiler = compiler.with_io(io_native());
 
     let (result, gc, _) = compiler.compile(&ast);
-    context.gc.replace(gc);
+    context.replace_gc(gc);
 
     assert!(result.is_ok());
     result.unwrap()
