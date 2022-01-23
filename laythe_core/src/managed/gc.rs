@@ -89,7 +89,7 @@ impl<T: 'static + Trace + DebugHeap> Trace for Gc<T> {
 impl<T: 'static + DebugHeap> DebugHeap for Gc<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
-      f.write_fmt(format_args!("{:p}", &self.ptr))
+      f.write_fmt(format_args!("{:p}", self.ptr))
     } else {
       f.write_fmt(format_args!(
         "{:?}",

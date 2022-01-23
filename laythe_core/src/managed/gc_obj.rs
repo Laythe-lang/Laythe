@@ -193,7 +193,7 @@ impl<T: 'static + Object> Trace for GcObj<T> {
 impl<T: 'static + Object> DebugHeap for GcObj<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
-      f.write_fmt(format_args!("{:p}", &self.ptr))
+      f.write_fmt(format_args!("{:p}", self.ptr))
     } else {
       f.write_fmt(format_args!(
         "{:?}",
@@ -614,7 +614,7 @@ impl Trace for GcObject {
 impl DebugHeap for GcObject {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
-      return f.write_fmt(format_args!("{:p}", &self.ptr));
+      return f.write_fmt(format_args!("{:p}", self.ptr));
     }
 
     match_obj!((self) {

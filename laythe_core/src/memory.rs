@@ -611,7 +611,7 @@ fn debug_free_obj(obj: &GcObjectHandle, free: bool) {
   if free {
     println!(
       "{:p} free {} bytes from {:?}",
-      obj,
+      *obj,
       obj.size(),
       DebugWrapDyn(obj, 1)
     )

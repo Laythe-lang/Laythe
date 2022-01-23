@@ -173,6 +173,7 @@ impl<T, H: Marked> Marked for GcArray<T, H> {
 }
 
 impl<T: Trace + DebugHeap, H: Send + Mark> Trace for GcArray<T, H> {
+  #[inline]
   fn trace(&self) {
     if self.mark() {
       return;
@@ -181,6 +182,7 @@ impl<T: Trace + DebugHeap, H: Send + Mark> Trace for GcArray<T, H> {
     self.iter().for_each(|i| i.trace());
   }
 
+  #[inline]
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
     if self.mark() {
       return;
@@ -202,7 +204,7 @@ impl<T: Trace + DebugHeap, H: Send + Mark> Trace for GcArray<T, H> {
 impl<T: DebugHeap, H> DebugHeap for GcArray<T, H> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
-      f.write_fmt(format_args!("{:p}", &self.ptr))
+      f.write_fmt(format_args!("{:p}", self.ptr))
     } else {
       f.debug_list()
         .entries(self.iter().map(|x| DebugWrap(x, depth.saturating_sub(1))))
@@ -229,6 +231,7 @@ impl<T, H> Clone for GcArray<T, H> {
 impl<T, H> Deref for GcArray<T, H> {
   type Target = [T];
 
+  #[inline]
   fn deref(&self) -> &Self::Target {
     let data = self.data();
     let len = self.len();
@@ -237,6 +240,7 @@ impl<T, H> Deref for GcArray<T, H> {
 }
 
 impl<T, H> DerefMut for GcArray<T, H> {
+  #[inline]
   fn deref_mut(&mut self) -> &mut Self::Target {
     let data = self.data();
     let len = self.len();

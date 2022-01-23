@@ -138,7 +138,7 @@ impl Trace for GcStr {
 impl DebugHeap for GcStr {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> std::fmt::Result {
     if depth == 0 {
-      f.write_fmt(format_args!("{:p}", &self.0.ptr))
+      f.write_fmt(format_args!("{:p}", self.0.ptr))
     } else {
       f.write_fmt(format_args!("{}", self))
     }
@@ -210,6 +210,7 @@ impl Hash for GcStr {
 impl Deref for GcStr {
   type Target = str;
 
+  #[inline]
   fn deref(&self) -> &Self::Target {
     unsafe { str::from_utf8_unchecked(&self.0) }
   }
