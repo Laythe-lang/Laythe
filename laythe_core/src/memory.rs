@@ -109,7 +109,11 @@ impl<'a> Allocator {
   ///
   /// assert_eq!(ly_box.value, Value::from(10.0));
   /// ```
-  pub fn manage_obj<T: Object, C: TraceRoot + ?Sized>(&mut self, data: T, context: &C) -> GcObj<T> {
+  pub fn manage_obj<T, C>(&mut self, data: T, context: &C) -> GcObj<T>
+  where
+    T: Object,
+    C: TraceRoot + ?Sized,
+  {
     self.allocate_obj(data, context)
   }
 
@@ -126,7 +130,11 @@ impl<'a> Allocator {
   ///
   /// assert_eq!(&*str, "hi!");
   /// ```
-  pub fn manage_str<S: AsRef<str>, C: TraceRoot + ?Sized>(&mut self, src: S, context: &C) -> GcStr {
+  pub fn manage_str<S, C>(&mut self, src: S, context: &C) -> GcStr
+  where
+    S: AsRef<str>,
+    C: TraceRoot + ?Sized,
+  {
     let string = src.as_ref();
     if let Some(cached) = self.intern_cache.get(string) {
       return *cached;
@@ -231,7 +239,11 @@ impl<'a> Allocator {
     reference
   }
 
-  fn allocate_obj<T: Object, C: TraceRoot + ?Sized>(&mut self, data: T, context: &C) -> GcObj<T> {
+  fn allocate_obj<T, C>(&mut self, data: T, context: &C) -> GcObj<T>
+  where
+    T: Object,
+    C: TraceRoot + ?Sized,
+  {
     // create own store of allocation
     let object_handle = GcObjectHandleBuilder::from(data);
     let size = object_handle.size();

@@ -90,7 +90,7 @@ impl Object for Enumerator {
 
 unsafe impl Send for Enumerator {}
 
-pub trait Enumerate: Trace + fmt::Debug {
+pub trait Enumerate: Trace + fmt::Debug + Send {
   /// The name of the iterator mostly for debugging purposes
   fn name(&self) -> &str;
 
