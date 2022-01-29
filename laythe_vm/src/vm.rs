@@ -159,8 +159,9 @@ impl Vm {
 
     let current_fun = hooks.manage_obj(current_fun);
     let capture_stub = Captures::new(&hooks, &[]);
-    let fiber = hooks
-      .manage_obj(Fiber::new(current_fun, capture_stub).expect("Unable to generate placeholder fiber"));
+    let fiber = hooks.manage_obj(
+      Fiber::new(current_fun, capture_stub).expect("Unable to generate placeholder fiber"),
+    );
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
@@ -230,7 +231,7 @@ impl Vm {
           self.pop_roots(2);
 
           self.interpret(true, main_module, &source, file_id);
-        }
+        },
         Err(error) => panic!("{}", error),
       }
     }
@@ -257,12 +258,12 @@ impl Vm {
         let main_module = self.module(module_path, SELF);
 
         self.interpret(false, main_module, &source, file_id)
-      }
+      },
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
           .expect("Unable to write to stderr");
         ExecuteResult::RuntimeError
-      }
+      },
     }
   }
 
@@ -283,7 +284,7 @@ impl Vm {
       Ok(fun) => {
         self.prepare(fun);
         self.execute(ExecuteMode::Normal)
-      }
+      },
       Err(errors) => {
         let mut stdio = self.io.stdio();
         let stderr_color = stdio.stderr_color();
@@ -292,7 +293,7 @@ impl Vm {
             .expect("Unable to write to stderr");
         }
         ExecuteResult::CompileError
-      }
+      },
     }
   }
 
@@ -451,7 +452,7 @@ impl Vm {
         let result = self.run_fun(val!(self.builtin.errors.import), &[error_message]);
 
         self.to_call_result(result)
-      }
+      },
     }
   }
 
@@ -547,7 +548,7 @@ impl Vm {
                 return ExecuteResult::FunResult(self.fiber.pop());
               }
             }
-          }
+          },
           Signal::ContextSwitch => match self.fiber_queue.pop_front() {
             Some(fiber) => self.context_switch(fiber),
             None => {
@@ -555,19 +556,19 @@ impl Vm {
               let stderr = stdio.stderr();
               writeln!(stderr, "Fatal error deadlock.").expect("Unable to write to stderr");
               return ExecuteResult::RuntimeError;
-            }
+            },
           },
           Signal::RuntimeError => match self.fiber.error() {
             Some(error) => {
               if let Some(execute_result) = self.stack_unwind(error, mode) {
                 return execute_result;
               }
-            }
+            },
             None => self.internal_error("Runtime error was not set."),
           },
           Signal::Exit => {
             return ExecuteResult::Ok(self.exit_code);
-          }
+          },
         }
       }
     }
@@ -1006,7 +1007,7 @@ impl Vm {
               .inline_cache_mut()
               .set_invoke_cache(inline_slot, class, method);
             self.resolve_call(method, arg_count)
-          }
+          },
           None => self.runtime_error(
             self.builtin.errors.property,
             &format!(
@@ -1016,7 +1017,7 @@ impl Vm {
             ),
           ),
         }
-      }
+      },
     }
   }
 
@@ -1053,7 +1054,7 @@ impl Vm {
             .inline_cache_mut()
             .set_invoke_cache(inline_slot, super_class, method);
           self.resolve_call(method, arg_count)
-        }
+        },
         None => self.runtime_error(
           self.builtin.errors.property,
           &format!(
@@ -1281,7 +1282,7 @@ impl Vm {
       Some(gbl) => {
         self.fiber.push(gbl);
         Signal::Ok
-      }
+      },
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined variable {}", string),
@@ -1370,7 +1371,7 @@ impl Vm {
         Ok(module) => {
           self.fiber.push(val!(module));
           Signal::Ok
-        }
+        },
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1410,7 +1411,7 @@ impl Vm {
         Ok(module) => {
           self.fiber.push(val!(module));
           Signal::Ok
-        }
+        },
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
       },
       None => self.runtime_error(
@@ -1447,12 +1448,12 @@ impl Vm {
         // generate a new import object
         let path = self.manage(path);
         self.manage(Import::new(*package, path))
-      }
+      },
       None => {
         // generate a new import object
         let path: Array<GcStr> = self.manage(&[] as &[GcStr]);
         self.manage(Import::new(path_segments[0], path))
-      }
+      },
     }
   }
 
@@ -1738,7 +1739,7 @@ impl Vm {
       match class.meta_class() {
         Some(mut meta) => {
           meta.add_method(&GcHooks::new(self), name, method);
-        }
+        },
         None => self.internal_error(&format!("{} meta class not set.", class.name())),
       }
     } else {
@@ -1763,14 +1764,10 @@ impl Vm {
           CaptureIndex::Enclosing(index) => self.fiber.captures().get_capture(index as usize),
         }
       })
-      .collect::<Vec<GcObj<LyBox>>>()
-      .into_boxed_slice();
+      .collect::<Vec<GcObj<LyBox>>>();
 
     let captures = Captures::new(&GcHooks::new(self), &captures);
-    self.push_root(captures);
-
     let closure = self.manage_obj(Closure::new(fun, captures));
-    self.pop_roots(1);
 
     self.fiber.push(val!(closure));
 
@@ -1845,7 +1842,7 @@ impl Vm {
         } else {
           Signal::Ok
         }
-      }
+      },
     }
   }
 
@@ -1881,7 +1878,7 @@ impl Vm {
             assert_roots(native, roots_before, roots_current);
           }
           Signal::OkReturn
-        }
+        },
         Call::Err(LyError::Err(error)) => self.set_error(error),
         Call::Err(LyError::Exit(code)) => self.set_exit(code),
       },
@@ -1915,11 +1912,11 @@ impl Vm {
               assert_roots(native, roots_before, roots_current);
             }
             Signal::OkReturn
-          }
+          },
           Call::Err(LyError::Err(error)) => self.set_error(error),
           Call::Err(LyError::Exit(code)) => self.set_exit(code),
         }
-      }
+      },
     }
   }
 
@@ -1988,7 +1985,7 @@ impl Vm {
           self.current_fun = current_fun;
           self.load_ip();
           None
-        }
+        },
         None => {
           if self.fiber == self.main_fiber {
             Some(Signal::Exit)
@@ -1999,7 +1996,7 @@ impl Vm {
             }
             Some(Signal::ContextSwitch)
           }
-        }
+        },
       },
       None => self.internal_error("Compilation failure attempted to pop last frame"),
     }
@@ -2118,7 +2115,7 @@ impl Vm {
             ),
           )),
         }
-      }
+      },
     }
   }
 
@@ -2135,7 +2132,7 @@ impl Vm {
         let bound = self.manage_obj(Method::new(self.fiber.peek(0), method));
         self.fiber.peek_set(0, val!(bound));
         Signal::Ok
-      }
+      },
       None => self.runtime_error(
         self.builtin.errors.runtime,
         &format!("Undefined property {} on class {}.", name, class.name()),
@@ -2220,7 +2217,7 @@ impl Vm {
       ExecuteResult::Ok(_) => self.internal_error("Accidental early exit in hook call"),
       ExecuteResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
-      }
+      },
       ExecuteResult::RuntimeError => match self.fiber.error() {
         Some(error) => Call::Err(LyError::Err(error)),
         None => self.internal_error("Error not set on vm executor."),
@@ -2254,7 +2251,7 @@ impl Vm {
         } else {
           self.internal_error("Failed to construct error")
         })
-      }
+      },
       _ => self.internal_error("Failed to construct error"),
     }
   }
@@ -2289,11 +2286,11 @@ impl Vm {
         self.current_fun = frame.fun();
         self.ip = frame.ip();
         None
-      }
+      },
       UnwindResult::Unhandled => {
         self.print_error(error);
         Some(ExecuteResult::RuntimeError)
-      }
+      },
       UnwindResult::UnwindStopped => Some(ExecuteResult::RuntimeError),
     }
   }
