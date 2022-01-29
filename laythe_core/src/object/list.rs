@@ -3,13 +3,12 @@ use std::{
   fmt::{self, Display},
   io::Write,
   iter::FromIterator,
-  mem,
   ops::{Deref, Index, IndexMut},
   slice::{self, SliceIndex},
 };
 
 use crate::{
-  managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, Object, Trace},
   value::Value,
 };
 
@@ -179,16 +178,6 @@ impl<T: 'static + Trace + DebugHeap> DebugHeap for List<T> {
     f.debug_list()
       .entries(self.0.iter().map(|x| DebugWrap(x, depth)))
       .finish()
-  }
-}
-
-impl<T: 'static + Trace + DebugHeap> Manage for List<T> {
-  fn size(&self) -> usize {
-    mem::size_of::<Vec<T>>() + mem::size_of::<T>() * self.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

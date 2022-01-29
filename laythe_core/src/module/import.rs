@@ -1,21 +1,18 @@
-use std::mem;
-
 use super::{ModuleError, ModuleResult};
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Trace},
-  object::List,
+  managed::{AllocResult, Allocate, Array, DebugHeap, DebugWrap, Gc, GcStr, Trace},
 };
 
 /// An object representing an import request from a file
 pub struct Import {
   package: GcStr,
-  path: Gc<List<GcStr>>,
+  path: Array<GcStr>,
 }
 
 impl Import {
   /// Create a new import
-  pub fn new(package: GcStr, path: Gc<List<GcStr>>) -> Self {
+  pub fn new(package: GcStr, path: Array<GcStr>) -> Self {
     Self { package, path }
   }
 
@@ -36,17 +33,16 @@ impl Import {
       let package = hooks.manage_str(package);
       hooks.push_root(package);
 
-      let path: Gc<List<GcStr>> = hooks.manage(List::with_capacity(path.len()));
-      hooks.push_root(path);
+      let mut path: Vec<GcStr> = Vec::with_capacity(path.len());
+      for segment in path_slice {
+        let segment = hooks.manage_str(segment);
+        path.push(segment);
+        hooks.push_root(segment);
+      }
 
-      let mut import = hooks.manage(Self::new(package, path));
-      hooks.push_root(import);
+      let import = hooks.manage(Self::new(package, hooks.manage(&*path)));
+      hooks.pop_roots(path.len());
 
-      import
-        .path
-        .extend(path_slice.iter().map(|segment| hooks.manage_str(segment)));
-
-      hooks.pop_roots(3);
       Ok(import)
     } else {
       Err(ModuleError::InvalidImport)
@@ -66,13 +62,9 @@ impl Trace for Import {
   }
 }
 
-impl Manage for Import {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
+impl Allocate<Gc<Self>> for Import {
+  fn alloc(self) -> AllocResult<Gc<Self>> {
+    Gc::alloc_result(self)
   }
 }
 

@@ -976,7 +976,7 @@ mod test {
       dummy_module(hooks)
     };
 
-    let gc = context.gc.replace(Allocator::default());
+    let gc = context.done();
     let resolver = Resolver::new(module, &gc, &source, &line_offsets, repl);
 
     let result = resolver.resolve(&mut ast);

@@ -1,11 +1,11 @@
 use crate::{
   hooks::Hooks,
-  managed::{DebugHeap, DebugWrap, DebugWrapDyn, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, DebugWrapDyn, Object, Trace},
   value::{Value, VALUE_NIL},
   Call,
 };
+use std::fmt::Debug;
 use std::{fmt, io::Write};
-use std::{fmt::Debug, mem};
 
 use super::ObjectKind;
 
@@ -82,23 +82,15 @@ impl DebugHeap for Enumerator {
   }
 }
 
-impl Manage for Enumerator {
-  fn size(&self) -> usize {
-    mem::size_of::<Enumerator>() + self.iterator.size()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
-  }
-}
-
 impl Object for Enumerator {
   fn kind(&self) -> ObjectKind {
     ObjectKind::Enumerator
   }
 }
 
-pub trait Enumerate: Manage + fmt::Debug {
+unsafe impl Send for Enumerator {}
+
+pub trait Enumerate: Trace + fmt::Debug + Send {
   /// The name of the iterator mostly for debugging purposes
   fn name(&self) -> &str;
 
@@ -111,6 +103,6 @@ pub trait Enumerate: Manage + fmt::Debug {
   /// If known how many elements will this iterator produce
   fn size_hint(&self) -> Option<usize>;
 
-  // /// What is the size of this iterator
-  // fn size(&self) -> usize;
+  // Get this enumerator as a DebugHeap
+  fn as_debug(&self) -> &dyn DebugHeap;
 }

@@ -1,11 +1,10 @@
 use super::{error::ModuleResult, import::Import, Module, ModuleError};
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace, Allocate, AllocResult},
   object::Instance,
   value::Value,
 };
-use std::mem;
 use std::{fmt, io::Write};
 
 #[derive(Clone)]
@@ -87,13 +86,9 @@ impl DebugHeap for Package {
   }
 }
 
-impl Manage for Package {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
+impl Allocate<Gc<Self>> for Package {
+  fn alloc(self) -> AllocResult<Gc<Self>> {
+    Gc::alloc_result(self)
   }
 }
 

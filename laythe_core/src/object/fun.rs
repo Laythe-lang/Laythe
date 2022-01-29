@@ -1,8 +1,10 @@
-use std::{fmt, io::Write, mem};
+use std::{fmt, io::Write};
 
 use crate::{
   chunk::{Chunk, ChunkBuilder, Encode},
-  managed::{DebugHeap, DebugWrap, Gc, GcStr, Manage, Object, Trace},
+  hooks::GcHooks,
+  impl_debug_heap, impl_trace,
+  managed::{Array, DebugHeap, DebugWrap, Gc, GcStr, Object, Trace},
   module::Module,
   signature::Arity,
   value::Value,
@@ -33,7 +35,7 @@ impl fmt::Display for FunKind {
   }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, Debug)]
 pub struct TryBlock {
   /// Start of the try block
   start: usize,
@@ -43,7 +45,7 @@ pub struct TryBlock {
 
   /// How many slots were used at the beginning of this
   /// try catch
-  slots: usize
+  slots: usize,
 }
 
 impl TryBlock {
@@ -51,6 +53,9 @@ impl TryBlock {
     TryBlock { start, end, slots }
   }
 }
+
+impl_trace!(TryBlock);
+impl_debug_heap!(TryBlock);
 
 /// A mutable builder for an immutable function
 pub struct FunBuilder {
@@ -146,7 +151,12 @@ impl FunBuilder {
   }
 
   /// Build a final immutable Fun from this builder
-  pub fn build(self) -> Fun {
+  pub fn build(self, hooks: &GcHooks) -> Fun {
+    let try_blocks = hooks.manage(&*self.try_blocks);
+    hooks.push_root(try_blocks);
+    let chunk = self.chunk.build(hooks);
+    hooks.pop_roots(1);
+
     Fun {
       name: self.name,
       arity: self.arity,
@@ -154,8 +164,8 @@ impl FunBuilder {
       max_slot: self.max_slots as u32,
       module_id: self.module.id(),
       module: self.module,
-      try_blocks: self.try_blocks.into_boxed_slice(),
-      chunk: self.chunk.build(),
+      try_blocks,
+      chunk,
     }
   }
 }
@@ -188,25 +198,25 @@ pub struct Fun {
   /// The max number of slots for this function
   max_slot: u32,
 
-  /// What is the idea of the associated module
+  /// What is the id of the associated module
   module_id: usize,
 
   /// The module this function belongs to
   module: Gc<Module>,
 
   /// Catch block present in this function
-  try_blocks: Box<[TryBlock]>,
+  try_blocks: Array<TryBlock>,
 
   /// Code for the function body
   chunk: Chunk,
 }
 
 impl Fun {
-  pub fn stub<T: Encode>(name: GcStr, module: Gc<Module>, instruction: T) -> Fun {
+  pub fn stub<T: Encode>(hooks: &GcHooks, name: GcStr, module: Gc<Module>, instruction: T) -> Fun {
     let mut builder = FunBuilder::new(name, module, Arity::Variadic(0));
     builder.write_instruction(instruction, 0);
 
-    builder.build()
+    builder.build(hooks)
   }
 
   /// Name of this function
@@ -290,14 +300,16 @@ impl fmt::Debug for Fun {
 impl Trace for Fun {
   fn trace(&self) {
     self.name.trace();
-    self.chunk.trace();
     self.module.trace();
+    self.try_blocks.trace();
+    self.chunk.trace();
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
     self.name.trace_debug(log);
-    self.chunk.trace_debug(log);
     self.module.trace_debug(log);
+    self.try_blocks.trace_debug(log);
+    self.chunk.trace_debug(log);
   }
 }
 
@@ -307,19 +319,12 @@ impl DebugHeap for Fun {
       .field("name", &DebugWrap(&self.name, depth))
       .field("arity", &self.arity)
       .field("capture_count", &self.capture_count)
-      .field("Module", &DebugWrap(&self.module, depth))
-      .field("chunk", &self.chunk)
+      .field("max_slots", &self.max_slot)
+      .field("module_id", &self.module_id)
+      .field("module", &DebugWrap(&self.module, depth))
+      .field("try_blocks", &DebugWrap(&self.try_blocks, depth))
+      .field("chunk", &DebugWrap(&self.chunk, depth))
       .finish()
-  }
-}
-
-impl Manage for Fun {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + self.chunk.size() + mem::size_of::<TryBlock>() * self.try_blocks.len()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

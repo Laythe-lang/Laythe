@@ -1,10 +1,9 @@
 use super::{Fun, ObjectKind};
 use crate::{
   captures::Captures,
-  managed::{DebugHeap, DebugWrap, GcObj, Manage, Object, Trace},
-  value::Value,
+  managed::{DebugHeap, DebugWrap, GcObj, Object, Trace},
 };
-use std::{fmt, io::Write, mem};
+use std::{fmt, io::Write};
 
 #[derive(PartialEq, Clone)]
 pub struct Closure {
@@ -21,11 +20,11 @@ impl Closure {
   /// use laythe_core::signature::Arity;
   /// use laythe_core::module::Module;
   /// use laythe_core::captures::Captures;
-  /// use laythe_core::hooks::{NoContext, Hooks};
+  /// use laythe_core::hooks::{NoContext, GcHooks};
   /// use std::path::PathBuf;
   ///
   /// let mut context = NoContext::default();
-  /// let hooks = Hooks::new(&mut context);
+  /// let hooks = GcHooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
   ///   hooks.manage_obj(Class::bare(hooks.manage_str("module"))),
@@ -33,9 +32,9 @@ impl Closure {
   ///   0,
   /// ));
   /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module, Arity::default());
-  /// let managed_fun = hooks.manage_obj(builder.build());
+  /// let managed_fun = hooks.manage_obj(builder.build(&hooks));
   ///
-  /// let captures = Captures::new(&hooks.as_gc(), &[]);
+  /// let captures = Captures::new(&hooks, &[]);
   /// let closure = Closure::new(managed_fun, captures);
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```
@@ -84,16 +83,6 @@ impl DebugHeap for Closure {
       .field("fun", &DebugWrap(&self.fun, depth))
       .field("captures", &DebugWrap(&self.captures, depth))
       .finish()
-  }
-}
-
-impl Manage for Closure {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.captures.len()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

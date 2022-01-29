@@ -1,12 +1,11 @@
 use super::{Class, ObjectKind};
 use crate::{
-  managed::{DebugHeap, DebugWrap, GcObj, GcStr, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, GcObj, GcStr, Object, Trace},
   value::{Value, VALUE_NIL},
 };
 use std::{
   fmt,
   io::Write,
-  mem,
   ops::{Index, IndexMut},
 };
 
@@ -107,17 +106,6 @@ impl DebugHeap for Instance {
       .field("class", &DebugWrap(&self.class, depth))
       .field("fields", &DebugWrap(&&*self.fields, depth))
       .finish()
-  }
-}
-
-impl Manage for Instance {
-  fn size(&self) -> usize {
-    mem::size_of::<Instance>()
-      + (mem::size_of::<GcStr>() + mem::size_of::<Value>()) * self.fields.len()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

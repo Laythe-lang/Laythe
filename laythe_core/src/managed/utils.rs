@@ -64,7 +64,7 @@ pub fn make_array_layout<H, T>(len: usize) -> Layout {
 }
 
 /// Create a rust `Layout` for a `GcArray` of `len` length.
-pub fn make_layout<H, T>() -> Layout {
+pub fn make_obj_layout<H, T>() -> Layout {
   let alignment = max_align::<H, T>();
 
   let header_size = mem::size_of::<H>();
@@ -188,20 +188,20 @@ mod tests {
   fn make_layout_test() {
     // non-empty, less than
     //
-    let layout = make_layout::<u64, i32>();
+    let layout = make_obj_layout::<u64, i32>();
     assert!(mem::align_of::<i32>() < mem::align_of::<u64>());
     assert_eq!(layout.align(), mem::align_of::<u64>());
     assert_eq!(layout.size(), mem::size_of::<u64>() + mem::size_of::<i32>());
 
     // non-empty, equal
     //
-    let layout = make_layout::<u64, i64>();
+    let layout = make_obj_layout::<u64, i64>();
     assert_eq!(mem::align_of::<i64>(), mem::align_of::<u64>());
     assert_eq!(layout.align(), mem::align_of::<u64>());
     assert_eq!(layout.size(), mem::size_of::<u64>() + mem::size_of::<i64>());
 
     // non-empty, greater
-    let layout = make_layout::<u64, OverAligned>();
+    let layout = make_obj_layout::<u64, OverAligned>();
     assert!(mem::align_of::<OverAligned>() > mem::align_of::<u64>());
     assert_eq!(layout.align(), mem::align_of::<OverAligned>());
     assert_eq!(

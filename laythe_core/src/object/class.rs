@@ -1,11 +1,11 @@
 use crate::{
   constants::INIT,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, GcObj, GcStr, Object, Trace},
 };
 use crate::{hooks::GcHooks, value::Value};
 use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
-use std::{fmt, io::Write, mem};
+use std::{fmt, io::Write};
 
 use super::ObjectKind;
 
@@ -72,7 +72,7 @@ impl Class {
     &self.super_class
   }
 
-  pub fn is_subclass(&self, class: Gc<Class>) -> bool {
+  pub fn is_subclass(&self, class: GcObj<Class>) -> bool {
     if self == &*class {
       return true;
     }
@@ -237,17 +237,6 @@ impl DebugHeap for Class {
       .field("methods", &DebugWrap(&self.methods, depth))
       .field("init", &DebugWrap(&self.init, depth))
       .finish()
-  }
-}
-
-impl Manage for Class {
-  fn size(&self) -> usize {
-    mem::size_of::<Class>()
-      + (mem::size_of::<GcStr>() + mem::size_of::<Value>()) * self.methods.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

@@ -7,7 +7,7 @@ use laythe_core::{
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
   if_let_obj,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace, Tuple},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace, Tuple},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -18,7 +18,7 @@ use laythe_core::{
   Call, LyError, LyResult,
 };
 use std::io::Write;
-use std::{mem, slice::Iter};
+use std::slice::Iter;
 
 use super::{
   class_inheritance,
@@ -422,6 +422,10 @@ impl Enumerate for TupleIterator {
   fn size_hint(&self) -> Option<usize> {
     Some(self.tuple.len())
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for TupleIterator {
@@ -441,16 +445,6 @@ impl DebugHeap for TupleIterator {
       .field("current", &DebugWrap(&self.current, depth))
       .field("iter", &"*")
       .finish()
-  }
-}
-
-impl Manage for TupleIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

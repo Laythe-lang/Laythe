@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-  managed::{Gc, GcObj, GcStr, Manage, Object, Trace, TraceRoot, Tuple},
+  managed::{Allocate, DebugHeapRef, GcObj, GcStr, Object, Trace, TraceRoot, Tuple},
   memory::Allocator,
   value::{Value, VALUE_NIL},
   Call,
@@ -75,12 +75,16 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request an object be managed by this allocator
-  pub fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
+  pub fn manage<R, T>(&self, data: T) -> R
+  where
+    R: 'static + Trace + Copy + DebugHeapRef,
+    T: Allocate<R>,
+  {
     self.as_gc().manage(data)
   }
 
   /// Request a string be managed by this allocator
-  pub fn manage_obj<T: 'static + Object>(&self, obj: T) -> GcObj<T> {
+  pub fn manage_obj<T: Object>(&self, obj: T) -> GcObj<T> {
     self.as_gc().manage_obj(obj)
   }
 
@@ -138,13 +142,17 @@ impl<'a> GcHooks<'a> {
 
   /// Request an object be managed by this allocator
   #[inline]
-  pub fn manage<T: 'static + Manage>(&self, data: T) -> Gc<T> {
+  pub fn manage<R, T>(&self, data: T) -> R
+  where
+    R: 'static + Trace + Copy + DebugHeapRef,
+    T: Allocate<R>,
+  {
     self.context.gc().manage(data, self.context)
   }
 
   /// Request a string be managed by this allocator
   #[inline]
-  pub fn manage_obj<T: 'static + Object>(&self, obj: T) -> GcObj<T> {
+  pub fn manage_obj<T: Object>(&self, obj: T) -> GcObj<T> {
     self.context.gc().manage_obj(obj, self.context)
   }
 
@@ -232,7 +240,10 @@ pub trait GcContext: TraceRoot {
 #[derive(Default)]
 pub struct NoContext {
   /// A reference to a gc just to allocate
-  pub gc: RefCell<Allocator>,
+  gc: RefCell<Allocator>,
+
+  // can we collect from this context
+  can_collect: bool,
 }
 
 impl NoContext {
@@ -240,7 +251,19 @@ impl NoContext {
   pub fn new(gc: Allocator) -> Self {
     Self {
       gc: RefCell::new(gc),
+      can_collect: false,
     }
+  }
+
+  pub fn with_collection(gc: Allocator) -> Self {
+    Self {
+      gc: RefCell::new(gc),
+      can_collect: true,
+    }
+  }
+
+  pub fn replace_gc(&self, gc: Allocator) -> Allocator {
+    self.gc.replace(gc)
   }
 
   pub fn done(self) -> Allocator {
@@ -254,7 +277,7 @@ impl TraceRoot for NoContext {
   fn trace_debug(&self, _stdout: &mut dyn Write) {}
 
   fn can_collect(&self) -> bool {
-    false
+    self.can_collect
   }
 }
 

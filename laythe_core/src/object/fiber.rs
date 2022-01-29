@@ -6,7 +6,7 @@ use crate::{
   captures::Captures,
   constants::SCRIPT,
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, GcObj, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, GcObj, Object, Trace},
   val,
   value::{Value, VALUE_NIL},
 };
@@ -615,18 +615,6 @@ impl Object for Fiber {
   }
 }
 
-impl Manage for Fiber {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-      + mem::size_of::<CallFrame>() * self.frames.capacity()
-      + mem::size_of::<Value>() * self.stack.capacity()
-  }
-
-  fn as_debug(&self) -> &dyn crate::managed::DebugHeap {
-    todo!()
-  }
-}
-
 impl DebugHeap for Fiber {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
     f.debug_struct("Fiber")
@@ -1201,11 +1189,11 @@ mod test {
 
     let mut fun1 = test_fun_builder(&hooks, "first", "first module");
     fun1.update_max_slots(4);
-    let fun1 = hooks.manage_obj(fun1.build());
+    let fun1 = hooks.manage_obj(fun1.build(&hooks));
 
     let mut fun2 = test_fun_builder(&hooks, "second", "second module");
     fun2.update_max_slots(3);
-    let fun2 = hooks.manage_obj(fun2.build());
+    let fun2 = hooks.manage_obj(fun2.build(&hooks));
 
     let captures = Captures::new(&hooks, &[]);
 

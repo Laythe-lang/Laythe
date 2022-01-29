@@ -1,11 +1,10 @@
 use crate::{
-  managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, Object, Trace},
   value::Value,
 };
 use std::{
   fmt::{self, Display},
   io::Write,
-  mem,
 };
 
 use super::ObjectKind;
@@ -63,16 +62,6 @@ impl DebugHeap for Method {
       .field("receiver", &DebugWrap(&self.receiver, depth))
       .field("method", &DebugWrap(&self.method, depth))
       .finish()
-  }
-}
-
-impl Manage for Method {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

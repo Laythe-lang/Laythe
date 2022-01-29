@@ -10,7 +10,7 @@ use laythe_core::{
   constants::INDEX_SET,
   hooks::{GcHooks, Hooks},
   if_let_obj,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Manage, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, Map, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -21,7 +21,6 @@ use laythe_core::{
   Call, LyError,
 };
 use std::io::Write;
-use std::mem;
 
 pub const MAP_CLASS_NAME: &str = "Map";
 pub const KEY_ERROR_NAME: &str = "KeyError";
@@ -396,6 +395,10 @@ impl Enumerate for MapIterator {
   fn size_hint(&self) -> Option<usize> {
     Some(self.map.len())
   }
+
+  fn as_debug(&self) -> &dyn DebugHeap {
+    self
+  }
 }
 
 impl Trace for MapIterator {
@@ -415,16 +418,6 @@ impl DebugHeap for MapIterator {
       .field("iter", &"*")
       .field("current", &DebugWrap(&self.current, depth))
       .finish()
-  }
-}
-
-impl Manage for MapIterator {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 #[cfg(test)]

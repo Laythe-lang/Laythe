@@ -1,7 +1,7 @@
 use crate::{
   managed::{
     gc_array::{GcArray, GcArrayHandle},
-    DebugHeap, Manage, Mark, Trace,
+    DebugHeap, Mark, Trace,
   },
   object::ObjectKind,
 };
@@ -11,16 +11,13 @@ use std::{
   fmt,
   hash::{Hash, Hasher},
   io::Write,
-  mem,
   ops::Deref,
   ptr::{self, NonNull},
   str,
 };
 
 use super::{
-  gc_obj::{GcObject, ObjHeader},
-  utils::make_array_layout,
-  GcObjectHandle, Marked, Unmark,
+  gc_obj::GcObject, header::ObjHeader, utils::make_array_layout, GcObjectHandle, Marked, Unmark,
 };
 
 /// A non owning reference to a Garbage collector
@@ -141,20 +138,10 @@ impl Trace for GcStr {
 impl DebugHeap for GcStr {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> std::fmt::Result {
     if depth == 0 {
-      f.write_str("*")
+      f.write_fmt(format_args!("{:p}", self.0.ptr))
     } else {
       f.write_fmt(format_args!("{}", self))
     }
-  }
-}
-
-impl Manage for GcStr {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + make_array_layout::<ObjHeader, u8>(self.len()).size()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -223,6 +210,7 @@ impl Hash for GcStr {
 impl Deref for GcStr {
   type Target = str;
 
+  #[inline]
   fn deref(&self) -> &Self::Target {
     unsafe { str::from_utf8_unchecked(&self.0) }
   }
@@ -314,11 +302,11 @@ impl GcStrHandle {
   /// let data = &"example";
   /// let handle = GcStrHandle::from(data);
   ///
-  /// assert_eq!(handle.size(), 31);
+  /// assert_eq!(handle.size(), 23);
   /// ```
   #[inline]
   pub fn size(&self) -> usize {
-    mem::size_of::<Self>() + make_array_layout::<ObjHeader, u8>(self.0.len()).size()
+    make_array_layout::<ObjHeader, u8>(self.0.len()).size()
   }
 }
 

@@ -1,8 +1,8 @@
-use std::{fmt, mem};
+use std::fmt;
 
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, GcObj, Manage, Trace, Tuple},
+  managed::{DebugHeap, DebugWrap, GcObj, Trace, Tuple},
   object::LyBox,
   val,
   value::Value,
@@ -54,19 +54,9 @@ impl Trace for Captures {
 
 impl DebugHeap for Captures {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    f.debug_struct("Captures")
-      .field("0", &DebugWrap(&&*self.0, depth))
+    f.debug_tuple("Captures")
+      .field(&DebugWrap(&&*self.0, depth))
       .finish()
-  }
-}
-
-impl Manage for Captures {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>() + mem::size_of::<Value>() * self.len()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

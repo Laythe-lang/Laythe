@@ -194,7 +194,14 @@ mod test {
 
   mod inline_cache {
     use crate::{byte_code::AlignedByteCode, cache::InlineCache};
-    use laythe_core::{memory::{Allocator, NO_GC}, module::Module, object::{Class, Fun}, val, value::Value};
+    use laythe_core::{
+      hooks::{GcHooks, NoContext},
+      memory::{Allocator, NO_GC},
+      module::Module,
+      object::{Class, Fun},
+      val,
+      value::Value,
+    };
     use std::path::PathBuf;
 
     #[test]
@@ -226,16 +233,17 @@ mod test {
     #[test]
     pub fn invoke() {
       let mut inline_cache = InlineCache::new(0, 3);
-      let mut alloc = Allocator::default();
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-      let class_name = alloc.manage_str("class_example", &NO_GC);
-      let fun_name = alloc.manage_str("fn_example", &NO_GC);
+      let class_name = hooks.manage_str("class_example");
+      let fun_name = hooks.manage_str("fn_example");
 
-      let class = alloc.manage_obj(Class::bare(class_name), &NO_GC);
-      let module = alloc.manage(Module::new(class, PathBuf::new(), 0), &NO_GC);
+      let class = hooks.manage_obj(Class::bare(class_name));
+      let module = hooks.manage(Module::new(class, PathBuf::new(), 0));
 
-      let fun = Fun::stub(fun_name, module, AlignedByteCode::Nil);
-      let fun = val!(alloc.manage_obj(fun, &NO_GC));
+      let fun = Fun::stub(&hooks, fun_name, module, AlignedByteCode::Nil);
+      let fun = val!(hooks.manage_obj(fun));
 
       assert_eq!(inline_cache.get_invoke_cache(0, class), None);
       assert_eq!(inline_cache.get_invoke_cache(1, class), None);

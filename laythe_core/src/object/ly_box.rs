@@ -1,10 +1,10 @@
 use fmt::Display;
 
 use crate::{
-  managed::{DebugHeap, DebugWrap, Manage, Object, Trace},
+  managed::{DebugHeap, DebugWrap, Object, Trace},
   value::{Value, VALUE_NIL},
 };
-use std::{fmt, io::Write, mem};
+use std::{fmt, io::Write};
 
 use super::ObjectKind;
 
@@ -46,16 +46,6 @@ impl DebugHeap for LyBox {
     f.debug_struct("Capture")
       .field("value", &DebugWrap(&self.value, depth))
       .finish()
-  }
-}
-
-impl Manage for LyBox {
-  fn size(&self) -> usize {
-    mem::size_of::<Self>()
-  }
-
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 

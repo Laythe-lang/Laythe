@@ -127,7 +127,7 @@ mod test {
   };
   use laythe_core::{
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
-    managed::{DebugHeap, GcObj, GcObject, GcStr, Manage, Trace, TraceRoot},
+    managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, TraceRoot},
     match_obj,
     memory::{Allocator, NoGc},
     module::{Module, ModuleResult},
@@ -144,7 +144,7 @@ mod test {
     io::Io,
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
-  use std::{cell::RefCell, io::Write, mem, path::PathBuf, sync::Arc};
+  use std::{cell::RefCell, io::Write, path::PathBuf, sync::Arc};
 
   pub struct MockedContext {
     pub gc: RefCell<Allocator>,
@@ -381,6 +381,10 @@ mod test {
     fn size_hint(&self) -> Option<usize> {
       Some(4)
     }
+
+    fn as_debug(&self) -> &dyn DebugHeap {
+      self
+    }
   }
 
   impl Trace for TestIterator {}
@@ -388,16 +392,6 @@ mod test {
   impl DebugHeap for TestIterator {
     fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
       f.write_fmt(format_args!("{:?}", self))
-    }
-  }
-
-  impl Manage for TestIterator {
-    fn size(&self) -> usize {
-      mem::size_of::<Self>()
-    }
-
-    fn as_debug(&self) -> &dyn DebugHeap {
-      self
     }
   }
 
@@ -439,7 +433,7 @@ mod test {
     let module = hooks.manage(module);
     let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
 
-    hooks.manage_obj(builder.build())
+    hooks.manage_obj(builder.build(&hooks))
   }
 
   pub fn test_fun_builder(

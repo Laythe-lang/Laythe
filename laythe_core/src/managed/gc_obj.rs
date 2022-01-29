@@ -1,7 +1,8 @@
 use super::{
   gc_array::Tuple,
-  manage::{DebugHeap, DebugWrap, Manage, Trace},
-  utils::{get_array_len_offset, get_offset, make_array_layout, make_layout},
+  header::ObjHeader,
+  manage::{DebugHeap, DebugWrap, Trace},
+  utils::{get_array_len_offset, get_offset, make_array_layout, make_obj_layout},
   GcArray, GcStr, Mark, Marked, Unmark,
 };
 use crate::{
@@ -21,10 +22,9 @@ use std::{
   mem,
   ops::{Deref, DerefMut},
   ptr::{self, NonNull},
-  sync::atomic::{AtomicBool, Ordering},
 };
 
-pub trait Object: Manage {
+pub trait Object: Trace + DebugHeap {
   fn kind(&self) -> ObjectKind;
 }
 
@@ -91,58 +91,6 @@ macro_rules! match_obj {
       }
     }
   };
-}
-
-/// The `Header` meta data for `GcObj<T>` and `GcObject`. This struct
-/// is positioned at the front of the array such that the layout looks like
-/// this
-/// ```markdown
-/// [Header (potential padding)| T ]
-/// ```
-pub struct ObjHeader {
-  /// Has this allocation been marked by the garbage collector
-  marked: AtomicBool,
-
-  /// The underlying value kind of this object
-  kind: ObjectKind,
-}
-
-impl ObjHeader {
-  /// Create a new object header
-  #[inline]
-  pub fn new(kind: ObjectKind) -> Self {
-    Self {
-      marked: AtomicBool::new(false),
-      kind,
-    }
-  }
-
-  /// What is the value kind of this object
-  #[inline]
-  pub fn kind(&self) -> ObjectKind {
-    self.kind
-  }
-}
-
-impl Mark for ObjHeader {
-  #[inline]
-  fn mark(&self) -> bool {
-    self.marked.swap(true, Ordering::Release)
-  }
-}
-
-impl Unmark for ObjHeader {
-  #[inline]
-  fn unmark(&self) -> bool {
-    self.marked.swap(false, Ordering::Release)
-  }
-}
-
-impl Marked for ObjHeader {
-  #[inline]
-  fn marked(&self) -> bool {
-    self.marked.load(Ordering::Acquire)
-  }
 }
 
 pub struct GcObj<T: 'static + Object> {
@@ -233,7 +181,7 @@ impl<T: 'static + Object> Trace for GcObj<T> {
       .write_fmt(format_args!(
         "{:p} mark {:?}\n",
         &*self.header(),
-        DebugWrap(self, 2)
+        DebugWrap(self, 1)
       ))
       .expect("unable to write to stdout");
     log.flush().expect("unable to flush stdout");
@@ -245,25 +193,13 @@ impl<T: 'static + Object> Trace for GcObj<T> {
 impl<T: 'static + Object> DebugHeap for GcObj<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
-      f.write_str("*")
+      f.write_fmt(format_args!("{:p}", self.ptr))
     } else {
       f.write_fmt(format_args!(
         "{:?}",
         DebugWrap(self.data(), depth.saturating_sub(1))
       ))
     }
-  }
-}
-
-impl<T: 'static + Object> Manage for GcObj<T> {
-  #[inline]
-  fn size(&self) -> usize {
-    self.data().size()
-  }
-
-  #[inline]
-  fn as_debug(&self) -> &dyn DebugHeap {
-    self
   }
 }
 
@@ -678,7 +614,7 @@ impl Trace for GcObject {
 impl DebugHeap for GcObject {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
-      return f.write_str("*");
+      return f.write_fmt(format_args!("{:p}", self.ptr));
     }
 
     match_obj!((self) {
@@ -769,7 +705,7 @@ impl GcObjectHandle {
   pub fn size(&self) -> usize {
     macro_rules! kind_size {
       ($o:ty) => {{
-        make_layout::<ObjHeader, $o>().size()
+        make_obj_layout::<ObjHeader, $o>().size()
       }};
     }
 
@@ -790,11 +726,11 @@ impl GcObjectHandle {
         ObjectKind::String => {
           let len = array_len(self);
           make_array_layout::<ObjHeader, u8>(len).size()
-        },
+        }
         ObjectKind::Tuple => {
           let len = array_len(self);
           make_array_layout::<ObjHeader, Value>(len).size()
-        },
+        }
       }
   }
 }
@@ -812,7 +748,7 @@ impl Drop for GcObjectHandle {
         ($o:ty) => {{
           let offset = get_offset::<ObjHeader, $o>();
           ptr::read(self.ptr.as_ptr().add(offset) as *const $o);
-          dealloc(self.ptr.as_ptr(), make_layout::<ObjHeader, $o>());
+          dealloc(self.ptr.as_ptr(), make_obj_layout::<ObjHeader, $o>());
         }};
       }
 
@@ -836,7 +772,7 @@ impl Drop for GcObjectHandle {
             self.ptr.as_ptr(),
             make_array_layout::<ObjHeader, Value>(len),
           );
-        },
+        }
         ObjectKind::Tuple => {
           let len = array_len(self);
 
@@ -851,7 +787,7 @@ impl Drop for GcObjectHandle {
             self.ptr.as_ptr(),
             make_array_layout::<ObjHeader, Value>(len),
           );
-        },
+        }
       }
     }
   }
@@ -912,14 +848,14 @@ impl<T> GcObjectHandleBuilder<T> {
 
   #[inline]
   pub fn size(&self) -> usize {
-    make_layout::<ObjHeader, T>().size()
+    make_obj_layout::<ObjHeader, T>().size()
   }
 }
 
-impl<T: 'static + Object> From<T> for GcObjectHandleBuilder<T> {
+impl<T: Object> From<T> for GcObjectHandleBuilder<T> {
   #[inline]
   fn from(item: T) -> Self {
-    let new_layout = make_layout::<ObjHeader, T>();
+    let new_layout = make_obj_layout::<ObjHeader, T>();
     let buf = unsafe { alloc(new_layout) };
 
     if buf.is_null() {
