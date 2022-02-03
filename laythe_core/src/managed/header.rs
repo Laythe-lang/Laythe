@@ -6,6 +6,7 @@ use super::{Mark, Marked, Unmark};
 
 /// The header of an allocation indicate meta data about the object
 #[derive(Debug, Default)]
+#[repr(C)]
 pub struct Header {
   // has this allocation been marked by the garbage collector
   marked: AtomicBool,
@@ -48,6 +49,7 @@ impl Unmark for Header {
 /// ```markdown
 /// [Header (potential padding)| T ]
 /// ```
+#[repr(C)]
 pub struct ObjHeader {
   /// Has this allocation been marked by the garbage collector
   marked: AtomicBool,
@@ -91,5 +93,38 @@ impl Marked for ObjHeader {
   #[inline]
   fn marked(&self) -> bool {
     self.marked.load(Ordering::Acquire)
+  }
+}
+
+#[cfg(test)]
+mod test {
+  mod header {
+    use crate::managed::header::Header;
+    use std::mem;
+
+    #[test]
+    fn size() {
+      assert_eq!(mem::size_of::<Header>(), 1);
+    }
+
+    #[test]
+    fn alignment() {
+      assert_eq!(mem::align_of::<Header>(), 1);
+    }
+  }
+
+  mod obj_header {
+    use crate::managed::header::ObjHeader;
+    use std::mem;
+
+    #[test]
+    fn size() {
+      assert_eq!(mem::size_of::<ObjHeader>(), 2);
+    }
+
+    #[test]
+    fn alignment() {
+      assert_eq!(mem::align_of::<ObjHeader>(), 1);
+    }
   }
 }
