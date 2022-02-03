@@ -61,9 +61,15 @@ enum Signal {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ExecuteResult {
-  Ok(u16),
-  FunResult(Value),
-  InternalError,
+  Ok(Value),
+  Exit(u16),
+  RuntimeError,
+  CompileError,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum VmExit {
+  Ok,
   RuntimeError,
   CompileError,
 }
@@ -202,7 +208,7 @@ impl Vm {
   }
 
   /// Start the interactive repl
-  pub fn repl(&mut self) -> ExecuteResult {
+  pub fn repl(&mut self) -> (i32, VmExit) {
     let mut stdio = self.io.stdio();
 
     let repl_path = self.root_dir.join(PathBuf::from(REPL_MODULE));
@@ -212,10 +218,7 @@ impl Vm {
     loop {
       let mut buffer = String::new();
 
-      let failure = write!(stdio.stdout(), "laythe:> ").is_err();
-      if failure {
-        return ExecuteResult::InternalError;
-      }
+      write!(stdio.stdout(), "laythe:> ").expect("Could not write to stdout");
       stdio.stdout().flush().expect("Could not write to stdout");
 
       match stdio.read_line(&mut buffer) {
@@ -238,7 +241,7 @@ impl Vm {
   }
 
   /// Run the provided source file
-  pub fn run(&mut self, module_path: PathBuf, source_content: &str) -> ExecuteResult {
+  pub fn run(&mut self, module_path: PathBuf, source_content: &str) -> (i32, VmExit) {
     match self.io.fs().canonicalize(&module_path) {
       Ok(module_path) => {
         let mut directory = module_path.clone();
@@ -257,12 +260,20 @@ impl Vm {
 
         let main_module = self.module(module_path, SELF);
 
-        self.interpret(false, main_module, &source, file_id)
+        match self.interpret(false, main_module, &source, file_id) {
+          ExecuteResult::Ok(_) => self.internal_error("Shouldn't exit vm with ok result"),
+          ExecuteResult::Exit(code) => match code {
+            0 => (0, VmExit::Ok),
+            _ => (code as i32, VmExit::RuntimeError),
+          },
+          ExecuteResult::RuntimeError => (1, VmExit::RuntimeError),
+          ExecuteResult::CompileError => (1, VmExit::CompileError),
+        }
       },
       Err(err) => {
         writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
           .expect("Unable to write to stderr");
-        ExecuteResult::RuntimeError
+        (1, VmExit::RuntimeError)
       },
     }
   }
@@ -391,18 +402,15 @@ impl Vm {
 
     #[cfg(feature = "debug")]
     {
-      if self
+      self
         .print_hook_state("run_fun", &format!("{}", callable))
-        .is_err()
-      {
-        return ExecuteResult::InternalError;
-      }
+        .expect("Unable to print hook state");
     }
 
     let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
     match self.resolve_call(callable, args.len() as u8) {
       Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::FunResult(self.fiber.pop()),
+      Signal::OkReturn => ExecuteResult::Ok(self.fiber.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_fun."),
     }
@@ -419,18 +427,15 @@ impl Vm {
 
     #[cfg(feature = "debug")]
     {
-      if self
+      self
         .print_hook_state("fun_method", &format!("{}:{}", this, method))
-        .is_err()
-      {
-        return ExecuteResult::InternalError;
-      }
+        .expect("Unable to print hook state");
     }
 
     let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
     match self.resolve_call(method, args.len() as u8) {
       Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::FunResult(self.fiber.pop()),
+      Signal::OkReturn => ExecuteResult::Ok(self.fiber.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_method."),
     }
@@ -467,9 +472,7 @@ impl Vm {
         #[cfg(feature = "debug")]
         {
           let ip = self.ip.sub(1);
-          if self.print_state(ip).is_err() {
-            return ExecuteResult::InternalError;
-          }
+          self.print_state(ip).expect("Unable to print state");
         }
 
         // execute the decoded instruction
@@ -545,7 +548,7 @@ impl Vm {
           Signal::OkReturn => {
             if let ExecuteMode::CallFunction(depth) = mode {
               if depth == self.fiber.frames().len() {
-                return ExecuteResult::FunResult(self.fiber.pop());
+                return ExecuteResult::Ok(self.fiber.pop());
               }
             }
           },
@@ -567,7 +570,7 @@ impl Vm {
             None => self.internal_error("Runtime error was not set."),
           },
           Signal::Exit => {
-            return ExecuteResult::Ok(self.exit_code);
+            return ExecuteResult::Exit(self.exit_code);
           },
         }
       }
@@ -2213,8 +2216,8 @@ impl Vm {
   /// Convert an execute result to a call result
   fn to_call_result(&self, execute_result: ExecuteResult) -> Call {
     match execute_result {
-      ExecuteResult::FunResult(value) => Call::Ok(value),
-      ExecuteResult::Ok(_) => self.internal_error("Accidental early exit in hook call"),
+      ExecuteResult::Ok(value) => Call::Ok(value),
+      ExecuteResult::Exit(_) => self.internal_error("Accidental early exit in hook call"),
       ExecuteResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
       },
@@ -2222,7 +2225,6 @@ impl Vm {
         Some(error) => Call::Err(LyError::Err(error)),
         None => self.internal_error("Error not set on vm executor."),
       },
-      ExecuteResult::InternalError => self.internal_error("Internal error encountered"),
     }
   }
 
@@ -2239,13 +2241,13 @@ impl Vm {
     let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
     let result = match self.resolve_call(val!(error), 1) {
       Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::FunResult(self.fiber.pop()),
+      Signal::OkReturn => ExecuteResult::Ok(self.fiber.pop()),
       Signal::RuntimeError => ExecuteResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_fun."),
     };
 
     match result {
-      ExecuteResult::FunResult(error) => {
+      ExecuteResult::Ok(error) => {
         if_let_obj!(ObjectKind::Instance(instance) = (error) {
           self.set_error(instance)
         } else {

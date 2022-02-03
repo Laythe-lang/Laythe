@@ -1,9 +1,9 @@
-use laythe_vm::vm::ExecuteResult;
+use laythe_vm::vm::VmExit;
 use support::assert_files_exit;
 
 mod support;
 
-fn test_files(paths: &[&str], result: ExecuteResult) -> Result<(), std::io::Error> {
+fn test_files(paths: &[&str], result: VmExit) -> Result<(), std::io::Error> {
   assert_files_exit(paths, FILE_PATH, result)
 }
 
@@ -22,10 +22,10 @@ fn utils() -> Result<(), std::io::Error> {
       "std_lib/math/utils/rem.lay",
       "std_lib/math/utils/sin.lay",
     ],
-    ExecuteResult::Ok(0),
+    VmExit::Ok,
   )?;
 
-  test_files(&vec![], ExecuteResult::CompileError)?;
+  test_files(&vec![], VmExit::CompileError)?;
 
-  test_files(&vec![], ExecuteResult::RuntimeError)
+  test_files(&vec![], VmExit::RuntimeError)
 }
