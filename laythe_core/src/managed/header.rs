@@ -1,8 +1,8 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use crate::object::ObjectKind;
+use crate::object::{Class, ObjectKind};
 
-use super::{Mark, Marked, Unmark};
+use super::{GcObj, Mark, Marked, Unmark};
 
 /// The header of an allocation indicate meta data about the object
 #[derive(Debug, Default)]
@@ -96,6 +96,63 @@ impl Marked for ObjHeader {
   }
 }
 
+/// The `Header` meta data for `GcObj<T>` and `GcObject`. This struct
+/// is positioned at the front of the array such that the layout looks like
+/// this
+/// ```markdown
+/// [Header (potential padding)| T ]
+/// ```
+#[repr(C)]
+pub struct InstanceHeader {
+  /// Has this allocation been marked by the garbage collector
+  marked: AtomicBool,
+
+  /// The underlying value kind of this object
+  kind: ObjectKind,
+
+  /// The instance class
+  class: GcObj<Class>,
+}
+
+impl InstanceHeader {
+  /// Create a new object header
+  #[inline]
+  pub fn new(class: GcObj<Class>) -> Self {
+    Self {
+      marked: AtomicBool::new(false),
+      kind: ObjectKind::Instance,
+      class,
+    }
+  }
+
+  /// What is the value kind of this object
+  #[inline]
+  pub fn kind(&self) -> ObjectKind {
+    self.kind
+  }
+}
+
+impl Mark for InstanceHeader {
+  #[inline]
+  fn mark(&self) -> bool {
+    self.marked.swap(true, Ordering::Release)
+  }
+}
+
+impl Unmark for InstanceHeader {
+  #[inline]
+  fn unmark(&self) -> bool {
+    self.marked.swap(false, Ordering::Release)
+  }
+}
+
+impl Marked for InstanceHeader {
+  #[inline]
+  fn marked(&self) -> bool {
+    self.marked.load(Ordering::Acquire)
+  }
+}
+
 #[cfg(test)]
 mod test {
   mod header {
@@ -125,6 +182,46 @@ mod test {
     #[test]
     fn alignment() {
       assert_eq!(mem::align_of::<ObjHeader>(), 1);
+    }
+  }
+
+  mod instance_header {
+    use crate::{
+      hooks::{GcHooks, NoContext},
+      managed::{
+        header::{InstanceHeader, ObjHeader},
+        Marked,
+      },
+      object::ObjectKind,
+      support::test_class,
+    };
+    use std::mem;
+
+    #[test]
+    fn size() {
+      assert_eq!(mem::size_of::<InstanceHeader>(), 16);
+    }
+
+    #[test]
+    fn alignment() {
+      assert_eq!(mem::align_of::<InstanceHeader>(), 8);
+    }
+
+    #[test]
+    fn interpret_as_obj_header() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let class = test_class(&hooks, "example");
+      let header = Box::new(InstanceHeader::new(class));
+
+      unsafe {
+        let ptr = ((&*header) as *const InstanceHeader) as *const ObjHeader;
+        let obj_header = &*ptr;
+
+        assert_eq!(obj_header.marked(), false);
+        assert_eq!(obj_header.kind, ObjectKind::Instance);
+      };
     }
   }
 }
