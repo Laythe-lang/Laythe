@@ -3,7 +3,7 @@ use laythe_env::{
   stdio::support::{IoStdioTest, StdioTestContainer, TestWriter},
 };
 use laythe_native::{env::IoEnvNative, fs::IoFsNative, time::IoTimeNative};
-use laythe_vm::vm::{ExecuteResult, Vm};
+use laythe_vm::vm::{Vm, VmExit};
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{self, Cursor};
@@ -25,7 +25,7 @@ pub fn fixture_path_inner(fixture_path: &str, test_file_path: &str) -> Option<Pa
 pub fn assert_files_exit(
   paths: &[&str],
   test_file_path: &str,
-  result: ExecuteResult,
+  result: VmExit,
 ) -> io::Result<()> {
   for path in paths {
     let mut stdio_container = Arc::new(StdioTestContainer::default());
@@ -67,7 +67,7 @@ pub fn assert_file_exit_and_stdio(
   lines: Option<Vec<String>>,
   stdout: Option<Vec<&str>>,
   stderr: Option<Vec<&str>>,
-  result: ExecuteResult,
+  result: VmExit,
 ) -> io::Result<()> {
   let stdio_container = Arc::new(StdioTestContainer {
     stdout: TestWriter::default(),
@@ -142,7 +142,7 @@ fn assert_files_exit_inner(
   path: &str,
   test_file_path: &str,
   io: Io,
-  result: ExecuteResult,
+  result: VmExit,
 ) -> io::Result<()> {
   let mut vm = Vm::new(io.clone());
 
@@ -160,7 +160,7 @@ fn assert_files_exit_inner(
   file.read_to_string(&mut source)?;
 
   ly_assert_eq(
-    &vm.run(test_path, &source),
+    &vm.run(test_path, &source).1,
     &result,
     Some(format!("Failing file {:?}", debug_path)),
   )?;

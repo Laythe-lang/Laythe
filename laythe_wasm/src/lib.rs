@@ -5,7 +5,7 @@ mod time_wasm;
 
 use js_sys::Function;
 use laythe_env::io::Io;
-use laythe_vm::vm::{ExecuteResult, Vm};
+use laythe_vm::vm::Vm;
 use std::{path::PathBuf, sync::Arc};
 use stdio_wasm::{IoStdioWasmConsole, IoStdioWasmJsFunction};
 use time_wasm::IoTimeWasm;
@@ -47,14 +47,6 @@ impl VmWasm {
   }
 
   pub fn run(&mut self, source: &str) -> f64 {
-    let result = self.0.run(PathBuf::from("script.ly"), source);
-
-    match result {
-      ExecuteResult::Ok(code) => code.into(),
-      ExecuteResult::FunResult(_) => 1.0,
-      ExecuteResult::InternalError => 2.0,
-      ExecuteResult::RuntimeError => 3.0,
-      ExecuteResult::CompileError => 4.0,
-    }
+    self.0.run(PathBuf::from("script.ly"), source).0.into()
   }
 }
