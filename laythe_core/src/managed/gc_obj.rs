@@ -6,7 +6,7 @@ use super::{
   GcArray, GcStr, Mark, Marked, Unmark, Instance,
 };
 use crate::{
-  managed::utils::get_array_offset,
+  managed::{utils::get_array_offset, header::InstanceHeader},
   object::{
     Channel, Class, Closure, Enumerator, Fiber, Fun, List, LyBox, Map, Method, Native, ObjectKind,
   },
@@ -715,7 +715,10 @@ impl GcObjectHandle {
         ObjectKind::Fun => kind_size!(Fun),
         ObjectKind::Closure => kind_size!(Closure),
         ObjectKind::Class => kind_size!(Class),
-        ObjectKind::Instance => kind_size!(Instance),
+        ObjectKind::Instance => {
+          let len = array_len(self);
+          make_array_layout::<InstanceHeader, u8>(len).size()
+        },
         ObjectKind::Enumerator => kind_size!(Enumerator),
         ObjectKind::Method => kind_size!(Method),
         ObjectKind::Native => kind_size!(Native),
@@ -757,7 +760,21 @@ impl Drop for GcObjectHandle {
         ObjectKind::Fun => drop_kind!(Fun),
         ObjectKind::Closure => drop_kind!(Closure),
         ObjectKind::Class => drop_kind!(Class),
-        ObjectKind::Instance => drop_kind!(Instance),
+        ObjectKind::Instance => {
+          let len = array_len(self);
+
+          let count = get_array_offset::<InstanceHeader, Value>();
+          let data_ptr = self.ptr.as_ptr().add(count) as *mut Value;
+
+          for i in 0..len {
+            ptr::read(data_ptr.add(i));
+          }
+
+          dealloc(
+            self.ptr.as_ptr(),
+            make_array_layout::<InstanceHeader, Value>(len),
+          );
+        },
         ObjectKind::Enumerator => drop_kind!(Enumerator),
         ObjectKind::Method => drop_kind!(Method),
         ObjectKind::Native => drop_kind!(Native),
