@@ -169,7 +169,7 @@ pub fn test_fun_builder(hooks: &GcHooks, name: &str, module_name: &str) -> FunBu
   FunBuilder::new(hooks.manage_str(name), module, Arity::default())
 }
 
-fn test_object_class(hooks: &GcHooks) -> GcObj<Class> {
+pub fn test_object_class(hooks: &GcHooks) -> GcObj<Class> {
   let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
   let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Class")));
   class_class.inherit(hooks, object_class);

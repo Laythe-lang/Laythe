@@ -1,7 +1,7 @@
 use super::{error::ModuleResult, import::Import, Module, ModuleError};
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace, Allocate, AllocResult},
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace},
   object::Instance,
   value::Value,
 };
@@ -101,8 +101,8 @@ mod test {
     managed::Gc,
     memory::{Allocator, NO_GC},
     module::{Import, Module, ModuleError},
-    object::{test_class, Class},
-    val,
+    object::Class,
+    val, support::test_class,
   };
 
   fn test_module(alloc: &mut Allocator, name: &str) -> Gc<Module> {

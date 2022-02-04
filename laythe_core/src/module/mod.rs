@@ -318,8 +318,8 @@ mod test {
   use crate::{
     hooks::{GcHooks, NoContext},
     module::{ModuleError, ModuleResult},
-    object::{test_class, Class},
-    val,
+    object::{Class},
+    val, support::test_class,
   };
   use std::path::PathBuf;
 

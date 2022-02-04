@@ -24,9 +24,6 @@ pub use map::{Map, MapEntry};
 pub use method::Method;
 pub use native::{LyNative, Native, NativeMeta, NativeMetaBuilder};
 
-#[cfg(test)]
-pub use class::test_class;
-
 /// Enum of value types in laythe
 #[derive(Clone, Copy, Hash, PartialEq, Eq, Debug)]
 pub enum ObjectKind {
