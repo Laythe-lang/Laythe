@@ -3,10 +3,10 @@ use super::{
   header::ObjHeader,
   manage::{DebugHeap, DebugWrap, Trace},
   utils::{get_array_len_offset, get_offset, make_array_layout, make_obj_layout},
-  GcArray, GcStr, Mark, Marked, Unmark, Instance,
+  GcArray, GcStr, Instance, Mark, Marked, Unmark,
 };
 use crate::{
-  managed::{utils::get_array_offset, header::InstanceHeader},
+  managed::{header::InstanceHeader, utils::get_array_offset},
   object::{
     Channel, Class, Closure, Enumerator, Fiber, Fun, List, LyBox, Map, Method, Native, ObjectKind,
   },
@@ -664,13 +664,13 @@ impl DebugHeap for GcObject {
 unsafe impl Send for GcObject {}
 unsafe impl Sync for GcObject {}
 
-fn array_len(this: &GcObjectHandle) -> usize {
+fn array_len<H>(this: &GcObjectHandle) -> usize {
   unsafe {
-    ptr::read(this.ptr.as_ptr() as *const ObjHeader);
+    ptr::read(this.ptr.as_ptr() as *const H);
   }
 
   #[allow(clippy::cast_ptr_alignment)]
-  let count = get_array_len_offset::<ObjHeader>();
+  let count = get_array_len_offset::<H>();
   unsafe { *(this.ptr.as_ptr().add(count) as *mut usize) }
 }
 
@@ -716,7 +716,7 @@ impl GcObjectHandle {
         ObjectKind::Closure => kind_size!(Closure),
         ObjectKind::Class => kind_size!(Class),
         ObjectKind::Instance => {
-          let len = array_len(self);
+          let len = array_len::<InstanceHeader>(self);
           make_array_layout::<InstanceHeader, u8>(len).size()
         },
         ObjectKind::Enumerator => kind_size!(Enumerator),
@@ -724,11 +724,11 @@ impl GcObjectHandle {
         ObjectKind::Native => kind_size!(Native),
         ObjectKind::LyBox => kind_size!(LyBox),
         ObjectKind::String => {
-          let len = array_len(self);
+          let len = array_len::<ObjHeader>(self);
           make_array_layout::<ObjHeader, u8>(len).size()
         },
         ObjectKind::Tuple => {
-          let len = array_len(self);
+          let len = array_len::<ObjHeader>(self);
           make_array_layout::<ObjHeader, Value>(len).size()
         },
       }
@@ -761,7 +761,7 @@ impl Drop for GcObjectHandle {
         ObjectKind::Closure => drop_kind!(Closure),
         ObjectKind::Class => drop_kind!(Class),
         ObjectKind::Instance => {
-          let len = array_len(self);
+          let len = array_len::<InstanceHeader>(self);
 
           let count = get_array_offset::<InstanceHeader, Value>();
           let data_ptr = self.ptr.as_ptr().add(count) as *mut Value;
@@ -780,7 +780,7 @@ impl Drop for GcObjectHandle {
         ObjectKind::Native => drop_kind!(Native),
         ObjectKind::LyBox => drop_kind!(LyBox),
         ObjectKind::String => {
-          let len = array_len(self);
+          let len = array_len::<ObjHeader>(self);
 
           dealloc(
             self.ptr.as_ptr(),
@@ -788,7 +788,7 @@ impl Drop for GcObjectHandle {
           );
         },
         ObjectKind::Tuple => {
-          let len = array_len(self);
+          let len = array_len::<ObjHeader>(self);
 
           let count = get_array_offset::<ObjHeader, Value>();
           let data_ptr = self.ptr.as_ptr().add(count) as *mut Value;
