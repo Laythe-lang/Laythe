@@ -36,19 +36,16 @@ pub fn define_closure_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()
   let mut class = load_class_from_module(hooks, module, CLOSURE_CLASS_NAME)?;
 
   class.add_method(
-    hooks,
     hooks.manage_str(CLOSURE_NAME.name),
     val!(ClosureName::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(CLOSURE_LEN.name),
     val!(ClosureLen::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(CLOSURE_CALL.name),
     val!(ClosureCall::native(hooks)),
   );

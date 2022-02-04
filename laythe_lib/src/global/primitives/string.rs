@@ -59,55 +59,46 @@ pub fn define_string_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
   let index_error = val!(load_class_from_module(hooks, module, INDEX_ERROR_NAME)?);
 
   class.add_method(
-    hooks,
     hooks.manage_str(STRING_INDEX_GET.name),
     val!(StringIndexGet::native(hooks, index_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STRING_STR.name),
     val!(StringStr::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STRING_LEN.name),
     val!(StringLen::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STRING_HAS.name),
     val!(StringHas::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STRING_UP_CASE.name),
     val!(StringUpCase::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STRING_DOWN_CASE.name),
     val!(StringDownCase::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STRING_SLICE.name),
     val!(StringSlice::native(hooks, index_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STRING_SPLIT.name),
     val!(StringSplit::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STRING_ITER.name),
     val!(StringIter::native(hooks)),
   );

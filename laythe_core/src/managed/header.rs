@@ -1,8 +1,9 @@
+use super::{GcObj, Mark, Marked, Trace, Unmark};
+use crate::{
+  impl_trace,
+  object::{Class, ObjectKind},
+};
 use std::sync::atomic::{AtomicBool, Ordering};
-
-use crate::object::{Class, ObjectKind};
-
-use super::{GcObj, Mark, Marked, Unmark};
 
 /// The header of an allocation indicate meta data about the object
 #[derive(Debug, Default)]
@@ -42,6 +43,8 @@ impl Unmark for Header {
     self.marked.swap(false, Ordering::Release)
   }
 }
+
+impl_trace!(Header);
 
 /// The `Header` meta data for `GcObj<T>` and `GcObject`. This struct
 /// is positioned at the front of the array such that the layout looks like
@@ -95,6 +98,8 @@ impl Marked for ObjHeader {
     self.marked.load(Ordering::Acquire)
   }
 }
+
+impl_trace!(ObjHeader);
 
 /// The `Header` meta data for `GcObj<T>` and `GcObject`. This struct
 /// is positioned at the front of the array such that the layout looks like
@@ -155,6 +160,16 @@ impl Marked for InstanceHeader {
   #[inline]
   fn marked(&self) -> bool {
     self.marked.load(Ordering::Acquire)
+  }
+}
+
+impl Trace for InstanceHeader {
+  fn trace(&self) {
+    self.class.trace();
+  }
+
+  fn trace_debug(&self, log: &mut dyn std::io::Write) {
+    self.class.trace_debug(log);
   }
 }
 

@@ -10,7 +10,7 @@ use laythe_core::{
   managed::Trace,
   managed::{Gc, GcObj},
   module::{Module, Package},
-  object::{Instance, LyNative, Native, NativeMetaBuilder, ObjectKind},
+  object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
@@ -34,7 +34,7 @@ const STDERR_FLUSH: NativeMetaBuilder =
 
 pub fn declare_stderr(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDERR_CLASS_NAME)?;
-  let instance = hooks.manage_obj(Instance::new(class));
+  let instance = hooks.manage_instance(class);
 
   export_and_insert(
     hooks,
@@ -55,19 +55,16 @@ pub fn define_stderr(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) 
   )?);
 
   class.add_method(
-    hooks,
     hooks.manage_str(STDERR_WRITE.name),
     val!(StderrWrite::native(hooks, io_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STDERR_WRITELN.name),
     val!(StderrWriteln::native(hooks, io_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STDERR_FLUSH.name),
     val!(StderrFlush::native(hooks, io_error)),
   );

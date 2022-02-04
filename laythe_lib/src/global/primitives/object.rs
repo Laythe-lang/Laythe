@@ -26,19 +26,16 @@ pub fn create_object_class(hooks: &GcHooks) -> GcObj<Class> {
   let mut object = hooks.manage_obj(Class::bare(name));
 
   object.add_method(
-    hooks,
     hooks.manage_str(OBJECT_EQUALS.name),
     val!(ObjectEquals::native(hooks)),
   );
 
   object.add_method(
-    hooks,
     hooks.manage_str(OBJECT_CLASS.name),
     val!(ObjectCls::native(hooks)),
   );
 
   object.add_method(
-    hooks,
     hooks.manage_str(OBJECT_STR.name),
     val!(ObjectStr::native(hooks)),
   );

@@ -94,55 +94,46 @@ pub fn define_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_INDEX_GET.name),
     val!(ListIndexGet::native(hooks, index_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_INDEX_SET.name),
     val!(ListIndexSet::native(hooks, index_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_LEN.name),
     val!(ListLen::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_PUSH.name),
     val!(ListPush::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_POP.name),
     val!(ListPop::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_REMOVE.name),
     val!(ListRemove::native(hooks, index_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_INDEX.name),
     val!(ListIndex::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_INSERT.name),
     val!(ListInsert::native(hooks, index_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_STR.name),
     val!(ListStr::native(
       hooks,
@@ -152,43 +143,36 @@ pub fn define_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_SLICE.name),
     val!(ListSlice::native(hooks, index_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_CLEAR.name),
     val!(ListClear::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_HAS.name),
     val!(ListHas::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_ITER.name),
     val!(ListIter::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_REV.name),
     val!(ListRev::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(LIST_SORT.name),
     val!(ListSort::native(hooks, type_error)),
   );
 
   class.meta_class().expect("Meta class not set.").add_method(
-    hooks,
     hooks.manage_str(LIST_COLLECT.name),
     val!(ListCollect::native(hooks)),
   );
@@ -400,7 +384,7 @@ impl LyNative for ListIndexSet {
       Ok(index) => {
         list[index] = args[0];
         Call::Ok(args[0])
-      }
+      },
       Err(message) => self.call_error(hooks, message),
     }
   }
@@ -573,18 +557,18 @@ impl LyNative for ListSort {
                   self.call_error(hooks, "comparator must return a valid number.")
                 });
                 Ordering::Equal
-              }
+              },
             }
           } else {
             failure
               .get_or_insert_with(|| self.call_error(hooks, "comparator must return a number."));
             Ordering::Equal
           }
-        }
+        },
         Call::Err(err) => {
           failure.get_or_insert(Err(err));
           Ordering::Equal
-        }
+        },
       }
     });
 
@@ -648,11 +632,11 @@ impl Enumerate for ListIterator {
       Some(value) => {
         self.current = *value;
         Call::Ok(val!(true))
-      }
+      },
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      }
+      },
     }
   }
 
@@ -941,7 +925,7 @@ mod test {
           assert_eq!(r, VALUE_NIL);
           assert_eq!(list_value.unwrap().to_obj().to_list().len(), 3);
           assert_eq!(list_value.unwrap().to_obj().to_list()[2], val!(false));
-        }
+        },
         _ => assert!(false),
       }
 
@@ -952,7 +936,7 @@ mod test {
           assert_eq!(list_value.unwrap().to_obj().to_list().len(), 5);
           assert_eq!(list_value.unwrap().to_obj().to_list()[3], val!(10.3));
           assert_eq!(list_value.unwrap().to_obj().to_list()[4], VALUE_NIL);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -989,7 +973,7 @@ mod test {
         Call::Ok(r) => {
           assert_eq!(r.to_bool(), true);
           assert_eq!(this.len(), 0);
-        }
+        },
         _ => assert!(false),
       }
 
@@ -998,7 +982,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_nil());
           assert_eq!(this.len(), 0);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1041,7 +1025,7 @@ mod test {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 10.0);
           assert_eq!(this.len(), 2);
-        }
+        },
         _ => assert!(false),
       }
 
@@ -1093,7 +1077,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 1.0);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1141,7 +1125,7 @@ mod test {
           assert!(r.is_nil());
           assert_eq!(this[1], val!(false));
           assert_eq!(this.len(), 4);
-        }
+        },
         _ => assert!(false),
       }
 
@@ -1190,7 +1174,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_nil());
           assert_eq!(this.len(), 0);
-        }
+        },
         _ => assert!(false),
       }
 
@@ -1199,7 +1183,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_nil());
           assert_eq!(this.len(), 0);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1239,7 +1223,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert!(r.to_bool());
-        }
+        },
         _ => assert!(false),
       }
 
@@ -1247,7 +1231,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert!(!r.to_bool());
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1285,7 +1269,7 @@ mod test {
           assert_eq!(iter.current(), VALUE_NIL);
           assert_eq!(iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(iter.current(), VALUE_NIL);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1411,7 +1395,7 @@ mod test {
         Call::Ok(r) => {
           let list = r.to_obj().to_list();
           assert_eq!(list.len(), 4);
-        }
+        },
         _ => assert!(false),
       }
     }

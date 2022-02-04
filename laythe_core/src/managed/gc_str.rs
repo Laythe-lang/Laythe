@@ -138,7 +138,7 @@ impl Trace for GcStr {
 impl DebugHeap for GcStr {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> std::fmt::Result {
     if depth == 0 {
-      f.write_fmt(format_args!("{:p}", self.0.ptr))
+      f.write_fmt(format_args!("{:p}", self.0.ptr()))
     } else {
       f.write_fmt(format_args!("{}", self))
     }
@@ -341,7 +341,7 @@ impl DebugHeap for GcStrHandle {
 
 impl fmt::Pointer for GcStrHandle {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    self.value().0.ptr.fmt(f)
+    self.value().0.ptr().fmt(f)
   }
 }
 

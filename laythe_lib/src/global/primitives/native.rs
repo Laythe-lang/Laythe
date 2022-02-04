@@ -35,13 +35,11 @@ pub fn define_native_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
   let mut class = load_class_from_module(hooks, module, NATIVE_CLASS_NAME)?;
 
   class.add_method(
-    hooks,
     hooks.manage_str(NATIVE_NAME.name),
     val!(NativeName::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(NATIVE_CALL.name),
     val!(NativeCall::native(hooks)),
   );

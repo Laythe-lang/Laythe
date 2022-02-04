@@ -23,6 +23,10 @@ use std::{
 pub type ObjArray<T> = GcArray<T, ObjHeader>;
 pub type Array<T> = GcArray<T, Header>;
 pub type ObjArrayHandle<T> = GcArrayHandle<T, ObjHeader>;
+
+pub type Instance = GcArray<Value, InstanceHeader>;
+pub type InstanceHandle = GcArrayHandle<Value, InstanceHeader>;
+
 pub type Tuple = ObjArray<Value>;
 pub type TupleHandle = ObjArrayHandle<Value>;
 
@@ -33,7 +37,7 @@ pub fn tuple_handle(slice: &[Value]) -> GcArrayHandle<Value, ObjHeader> {
   GcArrayHandle::from_slice(slice, ObjHeader::new(ObjectKind::Tuple))
 }
 
-pub fn instance_handle(class: GcObj<Class>) -> GcArrayHandle<Value, InstanceHeader> {
+pub fn instance_handle(class: GcObj<Class>) -> InstanceHandle {
   if class.fields() > 256 {
     todo!()
   }
@@ -61,7 +65,7 @@ pub fn instance_handle(class: GcObj<Class>) -> GcArrayHandle<Value, InstanceHead
 /// ```
 pub struct GcArray<T, H> {
   /// Pointer to the header of the array
-  pub(super) ptr: NonNull<u8>,
+  ptr: NonNull<u8>,
 
   /// Phantom data to hold the array data type
   data: PhantomData<T>,
@@ -71,6 +75,10 @@ pub struct GcArray<T, H> {
 }
 
 impl<T, H> GcArray<T, H> {
+  pub fn ptr(&self) -> NonNull<u8> {
+    self.ptr
+  }
+
   /// Retrieve the header from this array
   #[inline]
   pub fn header(&self) -> &H {
@@ -185,13 +193,14 @@ impl<T, H: Marked> Marked for GcArray<T, H> {
   }
 }
 
-impl<T: Trace + DebugHeap, H: Send + Mark> Trace for GcArray<T, H> {
+impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for GcArray<T, H> {
   #[inline]
   fn trace(&self) {
     if self.mark() {
       return;
     }
 
+    self.header().trace();
     self.iter().for_each(|i| i.trace());
   }
 
@@ -210,6 +219,7 @@ impl<T: Trace + DebugHeap, H: Send + Mark> Trace for GcArray<T, H> {
       .expect("unable to write to stdout");
     log.flush().expect("unable to flush stdout");
 
+    self.header().trace_debug(log);
     self.iter().for_each(|i| i.trace_debug(log));
   }
 }
@@ -268,7 +278,7 @@ impl<T, H> PartialEq<GcArray<T, H>> for GcArray<T, H> {
   }
 }
 
-impl<T: Display, H> Display for GcArray<T, H> {
+impl Display for GcArray<Value, ObjHeader> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "(")?;
 
@@ -349,6 +359,15 @@ impl<T, H> GcArrayHandle<T, H> {
 }
 
 impl<T> GcArrayHandle<T, ObjHeader> {
+  /// Degrade this handle into
+  pub fn degrade(self) -> GcObjectHandle {
+    let handle = GcObjectHandle { ptr: self.0.ptr };
+    mem::forget(self);
+    handle
+  }
+}
+
+impl<Value> GcArrayHandle<Value, InstanceHeader> {
   /// Degrade this handle into
   pub fn degrade(self) -> GcObjectHandle {
     let handle = GcObjectHandle { ptr: self.0.ptr };

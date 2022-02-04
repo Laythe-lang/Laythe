@@ -36,25 +36,21 @@ pub fn define_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()
   let channel_error = val!(load_class_from_module(hooks, module, CHANNEL_ERROR_NAME)?);
 
   channel_class.add_method(
-    hooks,
     hooks.manage_str(String::from(CHANNEL_STR.name)),
     val!(ChannelStr::native(hooks)),
   );
 
   channel_class.add_method(
-    hooks,
     hooks.manage_str(String::from(CHANNEL_LEN.name)),
     val!(ChannelLen::native(hooks)),
   );
 
   channel_class.add_method(
-    hooks,
     hooks.manage_str(String::from(CHANNEL_CAPACITY.name)),
     val!(ChannelCapacity::native(hooks)),
   );
 
   channel_class.add_method(
-    hooks,
     hooks.manage_str(String::from(CHANNEL_CLOSE.name)),
     val!(ChannelClose::native(hooks, channel_error)),
   );

@@ -10,7 +10,7 @@ use laythe_core::{
   managed::Trace,
   managed::{Gc, GcObj},
   module::{Module, Package},
-  object::{Instance, LyNative, Native, NativeMetaBuilder, ObjectKind},
+  object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::Arity,
   val,
   value::Value,
@@ -28,7 +28,7 @@ const STDIN_READ_LINE: NativeMetaBuilder =
 
 pub fn declare_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDIN_CLASS_NAME)?;
-  let instance = hooks.manage_obj(Instance::new(class));
+  let instance = hooks.manage_instance(class);
 
   export_and_insert(
     hooks,
@@ -49,13 +49,11 @@ pub fn define_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -
   )?);
 
   class.add_method(
-    hooks,
     hooks.manage_str(STDIN_READ.name),
     val!(StdinRead::native(hooks, io_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STDIN_READ_LINE.name),
     val!(StdinReadLine::native(hooks, io_error)),
   );

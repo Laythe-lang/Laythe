@@ -34,7 +34,6 @@ pub fn define_method_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
   let mut class = load_class_from_module(hooks, module, METHOD_CLASS_NAME)?;
 
   class.add_method(
-    hooks,
     hooks.manage_str(METHOD_NAME.name),
     val!(MethodName::native(
       hooks,
@@ -43,7 +42,6 @@ pub fn define_method_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(METHOD_CALL.name),
     val!(MethodCall::native(hooks)),
   );
@@ -104,8 +102,9 @@ mod test {
     use super::*;
     use crate::support::{test_fun, MockedContext};
     use laythe_core::{
+      captures::Captures,
       memory::NO_GC,
-      object::{Class, Closure, Instance, Method}, captures::Captures,
+      object::{Class, Closure, Method},
     };
 
     #[test]
@@ -132,7 +131,7 @@ mod test {
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let captures = Captures::new(&hooks.as_gc(), &[]);
       let closure = hooks.manage_obj(Closure::new(fun, captures));
-      let instance = hooks.manage_obj(Instance::new(class));
+      let instance = hooks.manage_instance(class);
       let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 
       let result1 = method_name.call(&mut hooks, Some(val!(method)), &[]);
@@ -147,7 +146,10 @@ mod test {
   mod call {
     use super::*;
     use crate::support::{test_fun, MockedContext};
-    use laythe_core::{object::{Class, Closure, Instance, Method}, captures::Captures};
+    use laythe_core::{
+      captures::Captures,
+      object::{Class, Closure, Method},
+    };
 
     #[test]
     fn new() {
@@ -174,7 +176,7 @@ mod test {
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let captures = Captures::new(&hooks.as_gc(), &[]);
       let closure = hooks.manage_obj(Closure::new(fun, captures));
-      let instance = hooks.manage_obj(Instance::new(class));
+      let instance = hooks.manage_instance(class);
       let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 
       let result1 = method_call.call(&mut hooks, Some(val!(method)), &[]);

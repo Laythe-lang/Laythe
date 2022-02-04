@@ -73,10 +73,9 @@ pub use self::boxed::*;
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
   use crate::{
-    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Trace, Tuple},
+    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Instance, Trace, Tuple},
     object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
-      ObjectKind,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, List, LyBox, Map, Method, Native, ObjectKind,
     },
   };
 
@@ -330,8 +329,8 @@ mod unboxed {
     }
   }
 
-  impl From<GcObj<Instance>> for Value {
-    fn from(managed: GcObj<Instance>) -> Value {
+  impl From<Instance> for Value {
+    fn from(managed: Instance) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -400,16 +399,16 @@ mod unboxed {
         Self::Number(num) => {
           ValueKind::Number.hash(state);
           (*num as u64).hash(state);
-        }
+        },
         Self::Bool(b) => {
           ValueKind::Bool.hash(state);
           b.hash(state);
-        }
+        },
         Self::Nil => ValueKind::Nil.hash(state),
         Self::Obj(obj) => {
           ValueKind::Obj.hash(state);
           obj.hash(state);
-        }
+        },
       };
     }
   }
@@ -451,7 +450,6 @@ mod unboxed {
       assert_eq!(mem::size_of::<Closure>(), 24);
       assert_eq!(mem::size_of::<Fun>(), 96);
       assert_eq!(mem::size_of::<Class>(), 104);
-      assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 32);
       assert_eq!(mem::size_of::<Enumerator>(), 32);
       assert_eq!(mem::size_of::<Native>(), 56);
@@ -467,7 +465,6 @@ mod unboxed {
       assert_eq!(mem::align_of::<Closure>(), target);
       assert_eq!(mem::align_of::<Fun>(), target);
       assert_eq!(mem::align_of::<Class>(), target);
-      assert_eq!(mem::align_of::<Instance>(), target);
       assert_eq!(mem::align_of::<Method>(), target);
       assert_eq!(mem::align_of::<Enumerator>(), target);
       assert_eq!(mem::align_of::<Native>(), target);
@@ -480,10 +477,9 @@ mod unboxed {
 mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
-    managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, Tuple},
+    managed::{DebugHeap, GcObj, GcObject, GcStr, Instance, Trace, Tuple},
     object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
-      ObjectKind,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, List, LyBox, Map, Method, Native, ObjectKind,
     },
   };
 
@@ -742,8 +738,8 @@ mod boxed {
     }
   }
 
-  impl From<GcObj<Instance>> for Value {
-    fn from(managed: GcObj<Instance>) -> Value {
+  impl From<Instance> for Value {
+    fn from(managed: Instance) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
@@ -791,7 +787,6 @@ mod boxed {
       assert_eq!(mem::size_of::<Fun>(), 64);
       assert_eq!(mem::size_of::<Fiber>(), 104);
       assert_eq!(mem::size_of::<Class>(), 104);
-      assert_eq!(mem::size_of::<Instance>(), 24);
       assert_eq!(mem::size_of::<Method>(), 16);
       assert_eq!(mem::size_of::<Enumerator>(), 24);
       assert_eq!(mem::size_of::<Native>(), 56);
@@ -807,7 +802,6 @@ mod boxed {
       assert_eq!(mem::align_of::<Closure>(), target);
       assert_eq!(mem::align_of::<Fun>(), target);
       assert_eq!(mem::align_of::<Class>(), target);
-      assert_eq!(mem::align_of::<Instance>(), target);
       assert_eq!(mem::align_of::<Method>(), target);
       assert_eq!(mem::align_of::<Enumerator>(), target);
       assert_eq!(mem::align_of::<Native>(), target);

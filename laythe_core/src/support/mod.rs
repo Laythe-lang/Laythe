@@ -121,11 +121,11 @@ impl ClassBuilder {
     let mut class = Class::with_inheritance(hooks, hooks.manage_str(self.name), super_cls);
 
     for (name, method) in self.methods {
-      class.add_method(hooks, name, method);
+      class.add_method(name, method);
     }
 
     for field in self.fields {
-      class.add_field(hooks, field);
+      class.add_field(field);
     }
 
     class

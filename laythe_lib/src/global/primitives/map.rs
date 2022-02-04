@@ -75,25 +75,21 @@ pub fn define_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_LEN.name),
     val!(MapLen::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_INDEX_GET.name),
     val!(MapIndexGet::native(hooks, key_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_INDEX_SET.name),
     val!(MapIndexSet::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_STR.name),
     val!(MapStr::native(
       hooks,
@@ -103,37 +99,31 @@ pub fn define_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_HAS.name),
     val!(MapHas::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_GET.name),
     val!(MapGet::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_SET.name),
     val!(MapSet::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_REMOVE.name),
     val!(MapRemove::native(hooks, key_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_INSERT.name),
     val!(MapInsert::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(MAP_ITER.name),
     val!(MapIter::native(hooks)),
   );

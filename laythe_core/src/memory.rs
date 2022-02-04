@@ -1,7 +1,9 @@
 use crate::managed::{
-  tuple_handle, Allocate, DebugHeapRef, GcObj, GcObjectHandle, GcObjectHandleBuilder, GcStr,
-  GcStrHandle, Manage, Marked, Object, Trace, TraceRoot, Tuple, Unmark,
+  instance_handle, tuple_handle, Allocate, DebugHeapRef, GcObj, GcObjectHandle,
+  GcObjectHandleBuilder, GcStr, GcStrHandle, Instance, Manage, Marked, Object, Trace, TraceRoot,
+  Tuple, Unmark,
 };
+use crate::object::Class;
 use crate::value::Value;
 use hashbrown::HashMap;
 use laythe_env::stdio::Stdio;
@@ -146,7 +148,7 @@ impl<'a> Allocator {
     managed
   }
 
-  /// Create a `Tuple` from a slice. This creates
+  /// Create a `Tuple` from a slice. This
   /// allocates a new tuple and copies the slice into it
   ///
   /// # Examples
@@ -166,6 +168,38 @@ impl<'a> Allocator {
   /// ```
   pub fn manage_tuple<C: TraceRoot + ?Sized>(&mut self, slice: &[Value], context: &C) -> Tuple {
     self.allocate_tuple(slice, context)
+  }
+
+  /// Create a `Instance` from a class. This
+  /// allocates a new instance with all nil fields
+  ///
+  /// # Examples
+  /// ```
+  /// use laythe_core::{
+  ///   memory::{Allocator, NO_GC},
+  ///   val,
+  ///   object::Class,
+  ///   value::{Value, VALUE_NIL},
+  /// };
+  ///
+  /// let mut gc = Allocator::default();
+  /// let name = gc.manage_str("someClass", &NO_GC);
+  /// let field = gc.manage_str("someField", &NO_GC);
+  ///
+  /// let mut class = gc.manage_obj(Class::bare(name), &NO_GC);
+  /// class.add_field(field);
+  ///
+  /// let instance = gc.manage_instance(class, &NO_GC);
+  ///
+  /// assert_eq!(instance.len(), 1);
+  /// assert_eq!(instance[0], VALUE_NIL);
+  /// ```
+  pub fn manage_instance<C: TraceRoot + ?Sized>(
+    &mut self,
+    class: GcObj<Class>,
+    context: &C,
+  ) -> Instance {
+    self.allocate_instance(class, context)
   }
 
   /// Checks if a string is in the gc's intern cache.
@@ -224,16 +258,10 @@ impl<'a> Allocator {
     self.debug_allocate(reference, size);
 
     #[cfg(feature = "gc_stress")]
-    {
-      self.push_root(reference);
-      self.collect_garbage(context);
-      self.pop_roots(1)
-    }
+    self.collect_garbage_with_value(context, reference);
 
     if self.bytes_allocated > self.next_gc {
-      self.push_root(reference);
-      self.collect_garbage(context);
-      self.pop_roots(1)
+      self.collect_garbage_with_value(context, reference);
     }
 
     reference
@@ -258,16 +286,10 @@ impl<'a> Allocator {
     self.debug_allocate_obj(obj, size);
 
     #[cfg(feature = "gc_stress")]
-    {
-      self.push_root(obj);
-      self.collect_garbage(context);
-      self.pop_roots(1)
-    }
+    self.collect_garbage_with_value(context, obj);
 
     if self.bytes_allocated > self.next_gc {
-      self.push_root(obj);
-      self.collect_garbage(context);
-      self.pop_roots(1)
+      self.collect_garbage_with_value(context, obj);
     }
 
     obj
@@ -291,22 +313,16 @@ impl<'a> Allocator {
     self.debug_allocate_str(gc_string, size);
 
     #[cfg(feature = "gc_stress")]
-    {
-      self.push_root(gc_string);
-      self.collect_garbage(context);
-      self.pop_roots(1)
-    }
+    self.collect_garbage_with_value(context, gc_string);
 
     if self.bytes_allocated > self.next_gc {
-      self.push_root(gc_string);
-      self.collect_garbage(context);
-      self.pop_roots(1)
+      self.collect_garbage_with_value(context, gc_string);
     }
 
     gc_string
   }
 
-  /// Allocate a strong on the gc's heap. If conditions are met a garbage
+  /// Allocate a tuple on the gc's heap. If conditions are met a garbage
   /// collection can be trigger. When trigger the context is used to determine
   /// the current live roots.
   fn allocate_tuple<C: TraceRoot + ?Sized>(&mut self, slice: &[Value], context: &C) -> Tuple {
@@ -320,24 +336,60 @@ impl<'a> Allocator {
     self.bytes_allocated += size;
     self.obj_heap.push(gc_tuple_handle.degrade());
 
-    // TODO: Add debug tuple allocate
     #[cfg(feature = "gc_log_alloc")]
     self.debug_allocate_tuple(tuple, size);
 
     #[cfg(feature = "gc_stress")]
-    {
-      self.push_root(tuple);
-      self.collect_garbage(context);
-      self.pop_roots(1)
-    }
+    self.collect_garbage_with_value(context, tuple);
 
     if self.bytes_allocated > self.next_gc {
-      self.push_root(tuple);
-      self.collect_garbage(context);
-      self.pop_roots(1)
+      self.collect_garbage_with_value(context, tuple);
     }
 
     tuple
+  }
+
+  /// Allocate a instance on the gc's heap. If conditions are met a garbage
+  /// collection can be trigger. When trigger the context is used to determine
+  /// the current live roots.
+  fn allocate_instance<C: TraceRoot + ?Sized>(
+    &mut self,
+    class: GcObj<Class>,
+    context: &C,
+  ) -> Instance {
+    // create own store of allocation
+    let gc_instance_handle = instance_handle(class);
+    let size = gc_instance_handle.size();
+
+    let tuple = gc_instance_handle.value();
+
+    // push onto heap
+    self.bytes_allocated += size;
+    self.obj_heap.push(gc_instance_handle.degrade());
+
+    #[cfg(feature = "gc_log_alloc")]
+    self.debug_allocate_tuple(tuple, size);
+
+    #[cfg(feature = "gc_stress")]
+    self.collect_garbage_with_value(context, tuple);
+
+    if self.bytes_allocated > self.next_gc {
+      self.collect_garbage_with_value(context, tuple);
+    }
+
+    tuple
+  }
+
+  /// Collect garbage present in the heap for unreach objects. Use the provided context
+  /// to mark a set of initial roots into the heap. Also temporarily root a value provided
+  fn collect_garbage_with_value<C: TraceRoot + ?Sized, T: 'static + Trace>(
+    &mut self,
+    context: &C,
+    item: T,
+  ) {
+    self.push_root(item);
+    self.collect_garbage(context);
+    self.pop_roots(1)
   }
 
   /// Collect garbage present in the heap for unreachable objects. Use the provided context
@@ -387,12 +439,12 @@ impl<'a> Allocator {
       let now = self.bytes_allocated;
 
       writeln!(stdout, "-- gc end --").expect("unable to write to stdout");
-      // debug_assert!(
-      //   before >= now,
-      //   "Heap was incorrectly calculated before: {} now {}",
-      //   before,
-      //   now
-      // );
+      debug_assert!(
+        before >= now,
+        "Heap was incorrectly calculated before: {} now {}",
+        before,
+        now
+      );
 
       writeln!(
         stdout,

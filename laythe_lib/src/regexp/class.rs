@@ -63,29 +63,25 @@ pub fn define_regexp_class(
     SYNTAX_ERROR_NAME
   )?);
 
-  class.add_field(hooks, hooks.manage_str(REGEXP_FIELD_PATTERN));
-  class.add_field(hooks, hooks.manage_str(REGEXP_FIELD_FLAGS));
+  class.add_field(hooks.manage_str(REGEXP_FIELD_PATTERN));
+  class.add_field(hooks.manage_str(REGEXP_FIELD_FLAGS));
 
   class.add_method(
-    hooks,
     hooks.manage_str(REGEXP_INIT.name),
     val!(RegExpInit::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(REGEXP_TEST.name),
     val!(RegExpTest::native(hooks, syntax_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(REGEXP_MATCH.name),
     val!(RegExpMatch::native(hooks, syntax_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(REGEXP_CAPTURES.name),
     val!(RegExpCaptures::native(hooks, syntax_error)),
   );
@@ -161,7 +157,7 @@ impl LyNative for RegExpCaptures {
 
         hooks.pop_roots(1);
         Call::Ok(val!(results))
-      }
+      },
       None => Call::Ok(VALUE_NIL),
     }
   }
@@ -170,14 +166,14 @@ impl LyNative for RegExpCaptures {
 #[cfg(test)]
 mod test {
   use super::*;
-  use laythe_core::object::{Class, Instance};
+  use laythe_core::object::Class;
 
   fn regexp_instance(hooks: &mut Hooks, pattern: &str) -> Value {
     let mut regexp_class = Class::bare(hooks.manage_str(REGEXP_CLASS_NAME));
-    regexp_class.add_field(&hooks.as_gc(), hooks.manage_str(REGEXP_FIELD_PATTERN));
-    regexp_class.add_field(&hooks.as_gc(), hooks.manage_str(REGEXP_FIELD_FLAGS));
+    regexp_class.add_field(hooks.manage_str(REGEXP_FIELD_PATTERN));
+    regexp_class.add_field(hooks.manage_str(REGEXP_FIELD_FLAGS));
 
-    let regexp = hooks.manage_obj(Instance::new(hooks.manage_obj(regexp_class)));
+    let regexp = hooks.manage_instance(hooks.manage_obj(regexp_class));
     let init = RegExpInit::native(&hooks.as_gc());
     init
       .call(

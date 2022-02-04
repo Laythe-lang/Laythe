@@ -95,115 +95,96 @@ pub fn define_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_STR.name),
     val!(IterStr::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_NEXT.name),
     val!(IterNext::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_CURRENT.name),
     val!(IterCurrent::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_ITER.name),
     val!(IterIter::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_FIRST.name),
     val!(IterFirst::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_LAST.name),
     val!(IterLast::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_TAKE.name),
     val!(IterTake::native(hooks, value_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_SKIP.name),
     val!(IterSkip::native(hooks, value_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_MAP.name),
     val!(IterMap::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_FILTER.name),
     val!(IterFilter::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_REDUCE.name),
     val!(IterReduce::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_LEN.name),
     val!(IterLen::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_EACH.name),
     val!(IterEach::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_ZIP.name),
     val!(IterZip::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_CHAIN.name),
     val!(IterChain::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_ALL.name),
     val!(IterAll::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_ANY.name),
     val!(IterAny::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_LIST.name),
     val!(IterToList::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(ITER_INTO.name),
     val!(IterInto::native(hooks)),
   );
@@ -668,7 +649,7 @@ impl LyNative for IterLen {
         }
 
         Call::Ok(val!(size as f64))
-      }
+      },
     }
   }
 }
@@ -1324,7 +1305,10 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build(&hooks.as_gc())), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(
+        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        captures
+      )));
 
       let result = iter_map.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1332,7 +1316,7 @@ mod test {
           let mut map_iter = r.to_obj().to_enumerator();
           assert_eq!(map_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(map_iter.current(), val!(5.0));
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1373,7 +1357,10 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build(&hooks.as_gc())), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(
+        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        captures
+      )));
 
       let result = iter_filter.call(&mut hooks, Some(this), &[fun]);
       match result {
@@ -1383,7 +1370,7 @@ mod test {
           assert_eq!(filter_iter.current(), val!(2.0));
           assert_eq!(filter_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(filter_iter.current(), val!(3.0));
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1429,14 +1416,17 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(2));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build(&hooks.as_gc())), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(
+        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        captures
+      )));
 
       let result = iter_reduce.call(&mut hooks, Some(this), &[val!(0.0), fun]);
       match result {
         Call::Ok(r) => {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 10.1);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1470,7 +1460,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 4.0);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -1512,7 +1502,10 @@ mod test {
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
-      let fun = val!(hooks.manage_obj(Closure::new(hooks.manage_obj(builder.build(&hooks.as_gc())), captures)));
+      let fun = val!(hooks.manage_obj(Closure::new(
+        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        captures
+      )));
 
       let result = iter_each.call(&mut hooks, Some(this), &[fun]);
       match result {

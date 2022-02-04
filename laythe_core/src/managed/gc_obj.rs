@@ -3,13 +3,12 @@ use super::{
   header::ObjHeader,
   manage::{DebugHeap, DebugWrap, Trace},
   utils::{get_array_len_offset, get_offset, make_array_layout, make_obj_layout},
-  GcArray, GcStr, Mark, Marked, Unmark,
+  GcArray, GcStr, Mark, Marked, Unmark, Instance,
 };
 use crate::{
   managed::utils::get_array_offset,
   object::{
-    Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
-    ObjectKind,
+    Channel, Class, Closure, Enumerator, Fiber, Fun, List, LyBox, Map, Method, Native, ObjectKind,
   },
   value::Value,
 };
@@ -388,10 +387,8 @@ impl GcObject {
   }
 
   #[inline]
-  pub fn to_instance(self) -> GcObj<Instance> {
-    GcObj {
-      ptr: unsafe { self.data_ptr::<Instance>() },
-    }
+  pub fn to_instance(self) -> Instance {
+    unsafe { GcArray::from_alloc_ptr(self.ptr) }
   }
 
   #[inline]
@@ -726,11 +723,11 @@ impl GcObjectHandle {
         ObjectKind::String => {
           let len = array_len(self);
           make_array_layout::<ObjHeader, u8>(len).size()
-        }
+        },
         ObjectKind::Tuple => {
           let len = array_len(self);
           make_array_layout::<ObjHeader, Value>(len).size()
-        }
+        },
       }
   }
 }
@@ -772,7 +769,7 @@ impl Drop for GcObjectHandle {
             self.ptr.as_ptr(),
             make_array_layout::<ObjHeader, Value>(len),
           );
-        }
+        },
         ObjectKind::Tuple => {
           let len = array_len(self);
 
@@ -787,7 +784,7 @@ impl Drop for GcObjectHandle {
             self.ptr.as_ptr(),
             make_array_layout::<ObjHeader, Value>(len),
           );
-        }
+        },
       }
     }
   }

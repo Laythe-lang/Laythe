@@ -92,13 +92,13 @@ impl Class {
     self
   }
 
-  pub fn add_field(&mut self, _hooks: &GcHooks, name: GcStr) -> Option<u16> {
+  pub fn add_field(&mut self, name: GcStr) -> Option<u16> {
     let len = self.fields.len();
 
     self.fields.insert(name, len as u16)
   }
 
-  pub fn add_method(&mut self, _hooks: &GcHooks, name: GcStr, method: Value) -> Option<Value> {
+  pub fn add_method(&mut self, name: GcStr, method: Value) -> Option<Value> {
     if &*name == INIT {
       self.init = Some(method)
     }
