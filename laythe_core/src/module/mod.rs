@@ -8,8 +8,8 @@ pub use package::Package;
 
 use crate::{
   hooks::GcHooks,
-  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace},
-  object::{Class, Instance, Map, MapEntry},
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace, Instance},
+  object::{Class, Map, MapEntry},
   value::Value,
   LyHashSet,
 };
@@ -103,10 +103,10 @@ impl Module {
   }
 
   /// Get the instance that represents
-  pub fn module_instance(&self, hooks: &GcHooks) -> GcObj<Instance> {
+  pub fn module_instance(&self, hooks: &GcHooks) -> Instance {
     let class = self.module_class;
 
-    let mut import = hooks.manage_obj(Instance::new(class));
+    let mut import = hooks.manage_instance(class);
     hooks.push_root(import);
 
     self.exports.iter().for_each(|export| {
@@ -136,7 +136,7 @@ impl Module {
         if parent.to_str() != Some("") {
           return Err(ModuleError::ModuleNotDirectDecedent);
         }
-      }
+      },
       None => return Err(ModuleError::ModuleNotDecedent),
     }
 
@@ -150,7 +150,7 @@ impl Module {
   }
 
   /// Get a reference to all exported symbols in this module
-  pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ModuleResult<GcObj<Instance>> {
+  pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ModuleResult<Instance> {
     if path.is_empty() {
       Ok(self.module_instance(hooks))
     } else {
@@ -176,7 +176,7 @@ impl Module {
   }
 
   /// Add export a new symbol from this module. Exported names must be unique
-  pub fn export_symbol(&mut self, hooks: &GcHooks, name: GcStr) -> ModuleResult<()> {
+  pub fn export_symbol(&mut self, name: GcStr) -> ModuleResult<()> {
     if !self.symbols.contains_key(&name) {
       return Err(ModuleError::SymbolDoesNotExist);
     }
@@ -184,7 +184,7 @@ impl Module {
     if self.exports.contains(&name) {
       Err(ModuleError::SymbolAlreadyExported)
     } else {
-      self.module_class.add_field(hooks, name);
+      self.module_class.add_field(name);
       self.exports.insert(name);
       Ok(())
     }
@@ -197,7 +197,7 @@ impl Module {
       Some(value) => {
         *value = symbol;
         Ok(())
-      }
+      },
       None => Err(ModuleError::SymbolDoesNotExist),
     }
   }
@@ -318,7 +318,8 @@ mod test {
   use crate::{
     hooks::{GcHooks, NoContext},
     module::{ModuleError, ModuleResult},
-    object::{test_class, Class},
+    object::Class,
+    support::test_class,
     val,
   };
   use std::path::PathBuf;
@@ -380,7 +381,7 @@ mod test {
     assert!(module
       .insert_symbol(&hooks, export_name, val!(true))
       .is_ok());
-    assert!(module.export_symbol(&hooks, export_name).is_ok());
+    assert!(module.export_symbol(export_name).is_ok());
 
     let symbols = module.module_instance(&hooks);
 
@@ -465,7 +466,7 @@ mod test {
     let symbol_name2 = hooks.manage_str("test2");
     let not_symbol_name = hooks.manage_str("not_test");
     inner_module.insert_symbol(&hooks, symbol_name1, val!(false))?;
-    inner_module.export_symbol(&hooks, symbol_name1)?;
+    inner_module.export_symbol(symbol_name1)?;
     inner_module.insert_symbol(&hooks, symbol_name2, val!(true))?;
 
     assert!(module.insert_module(&hooks, inner_module).is_ok());
@@ -513,8 +514,8 @@ mod test {
     assert!(module
       .insert_symbol(&hooks, export_name, val!(true))
       .is_ok());
-    let result1 = module.export_symbol(&hooks, export_name);
-    let result2 = module.export_symbol(&hooks, export_name);
+    let result1 = module.export_symbol(export_name);
+    let result2 = module.export_symbol(export_name);
 
     assert!(result1.is_ok());
     assert_eq!(result2, Err(ModuleError::SymbolAlreadyExported));
@@ -620,7 +621,7 @@ mod test {
       Err(ModuleError::SymbolNotExported)
     );
 
-    module.export_symbol(&hooks, name)?;
+    module.export_symbol(name)?;
     assert_eq!(module.get_exported_symbol(name), Ok(val!(10.0)));
 
     Ok(())

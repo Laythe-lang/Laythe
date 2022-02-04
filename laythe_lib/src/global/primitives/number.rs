@@ -57,49 +57,41 @@ pub fn define_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);
 
   class.add_method(
-    hooks,
     hooks.manage_str(NUMBER_STR.name),
     val!(NumberStr::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(NUMBER_FLOOR.name),
     val!(NumberFloor::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(NUMBER_CEIL.name),
     val!(NumberCeil::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(NUMBER_ROUND.name),
     val!(NumberRound::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(NUMBER_TIMES.name),
     val!(NumberTimes::native(hooks, value_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(NUMBER_UNTIL.name),
     val!(NumberUntil::native(hooks, value_error)),
   );
 
   class.meta_class().expect("Meta class not set.").add_method(
-    hooks,
     hooks.manage_str(NUMBER_PARSE.name),
     val!(NumberParse::native(hooks, format_error)),
   );
 
   class.meta_class().expect("Meta class not set.").add_method(
-    hooks,
     hooks.manage_str(NUMBER_CMP.name),
     val!(NumberCmp::native(hooks)),
   );

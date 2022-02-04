@@ -13,14 +13,15 @@ use laythe_core::{
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext, ValueContext},
   if_let_obj,
   managed::{
-    Allocate, Array, DebugHeapRef, Gc, GcObj, GcObject, GcStr, Object, Trace, TraceRoot, Tuple,
+    Allocate, Array, DebugHeapRef, Gc, GcObj, GcObject, GcStr, Instance, Object, Trace, TraceRoot,
+    Tuple,
   },
   match_obj,
   memory::Allocator,
   module::{Import, Module, Package},
   object::{
-    Channel, Class, Closure, Fiber, Fun, Instance, List, LyBox, Map, Method, Native, NativeMeta,
-    ObjectKind, ReceiveResult, SendResult, UnwindResult,
+    Channel, Class, Closure, Fiber, Fun, List, LyBox, Map, Method, Native, NativeMeta, ObjectKind,
+    ReceiveResult, SendResult, UnwindResult,
   },
   signature::{ArityError, Environment, ParameterKind, SignatureError},
   to_obj_kind,
@@ -591,6 +592,10 @@ impl Vm {
 
   fn manage_tuple(&self, slice: &[Value]) -> Tuple {
     self.gc.borrow_mut().manage_tuple(slice, self)
+  }
+
+  fn manage_instance(&self, class: GcObj<Class>) -> Instance {
+    self.gc.borrow_mut().manage_instance(class, self)
   }
 
   fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
@@ -1465,7 +1470,7 @@ impl Vm {
     let name = self.read_string(index);
     let mut current_module = self.current_fun.module();
 
-    match current_module.export_symbol(&GcHooks::new(self), name) {
+    match current_module.export_symbol(name) {
       Ok(_) => Signal::Ok,
       Err(error) => self.runtime_error(self.builtin.errors.export, &error.to_string()),
     }
@@ -1702,10 +1707,7 @@ impl Vm {
     let method = self.fiber.peek(0);
 
     if class.is_obj_kind(ObjectKind::Class) && method.is_obj_kind(ObjectKind::Closure) {
-      class
-        .to_obj()
-        .to_class()
-        .add_method(&GcHooks::new(self), name, method);
+      class.to_obj().to_class().add_method(name, method);
     } else {
       self.internal_error("Invalid Stack for op_method.");
     }
@@ -1721,7 +1723,7 @@ impl Vm {
     let class = self.fiber.peek(0);
 
     if_let_obj!(ObjectKind::Class(mut class) = (class) {
-      class.add_field(&GcHooks::new(self), name);
+      class.add_field(name);
     } else {
       self.internal_error("Invalid Stack for op_method.");
     });
@@ -1741,7 +1743,7 @@ impl Vm {
 
       match class.meta_class() {
         Some(mut meta) => {
-          meta.add_method(&GcHooks::new(self), name, method);
+          meta.add_method(name, method);
         },
         None => self.internal_error(&format!("{} meta class not set.", class.name())),
       }
@@ -1831,7 +1833,7 @@ impl Vm {
 
   /// call a class creating a new instance of that class
   unsafe fn call_class(&mut self, class: GcObj<Class>, arg_count: u8) -> Signal {
-    let instance = val!(self.manage_obj(Instance::new(class)));
+    let instance = val!(self.manage_instance(class));
     self.fiber.peek_set(arg_count as usize, instance);
 
     match class.init() {
@@ -2259,7 +2261,7 @@ impl Vm {
   }
 
   /// Set the current error place the vm signal a runtime error
-  fn set_error(&mut self, error: GcObj<Instance>) -> Signal {
+  fn set_error(&mut self, error: Instance) -> Signal {
     self.fiber.set_error(error);
     Signal::RuntimeError
   }
@@ -2271,11 +2273,7 @@ impl Vm {
   }
 
   /// Search for a catch block up the stack, printing the error if no catch is found
-  unsafe fn stack_unwind(
-    &mut self,
-    error: GcObj<Instance>,
-    mode: ExecuteMode,
-  ) -> Option<ExecuteResult> {
+  unsafe fn stack_unwind(&mut self, error: Instance, mode: ExecuteMode) -> Option<ExecuteResult> {
     self.store_ip();
 
     let bottom_frame = match mode {
@@ -2298,7 +2296,7 @@ impl Vm {
   }
 
   /// Print an error message and the current call stack to the user
-  fn print_error(&mut self, error: GcObj<Instance>) {
+  fn print_error(&mut self, error: Instance) {
     let mut stdio = self.io.stdio();
     let stderr = stdio.stderr();
 

@@ -40,12 +40,11 @@ const ERROR_INIT: NativeMetaBuilder = NativeMetaBuilder::method("init", Arity::D
 pub fn create_error_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class> {
   let mut class = Class::with_inheritance(hooks, hooks.manage_str(ERROR_CLASS_NAME), object);
 
-  class.add_field(hooks, hooks.manage_str(ERROR_FIELD_MESSAGE));
-  class.add_field(hooks, hooks.manage_str(ERROR_FIELD_STACK));
-  class.add_field(hooks, hooks.manage_str(ERROR_FIELD_INNER));
+  class.add_field(hooks.manage_str(ERROR_FIELD_MESSAGE));
+  class.add_field(hooks.manage_str(ERROR_FIELD_STACK));
+  class.add_field(hooks.manage_str(ERROR_FIELD_INNER));
 
   class.add_method(
-    hooks,
     hooks.manage_str(ERROR_INIT.name),
     val!(ErrorInit::native(hooks)),
   );
@@ -112,7 +111,7 @@ mod test {
   use super::*;
 
   mod init {
-    use laythe_core::object::{Class, Instance, ObjectKind};
+    use laythe_core::object::{Class, ObjectKind};
 
     use super::*;
     use crate::support::MockedContext;
@@ -143,11 +142,11 @@ mod test {
 
       let error_init = ErrorInit::native(&hooks.as_gc());
       let mut test_class = hooks.manage_obj(Class::bare(hooks.manage_str("test")));
-      test_class.add_field(&hooks.as_gc(), hooks.manage_str(ERROR_FIELD_MESSAGE));
-      test_class.add_field(&hooks.as_gc(), hooks.manage_str(ERROR_FIELD_STACK));
-      test_class.add_field(&hooks.as_gc(), hooks.manage_str(ERROR_FIELD_INNER));
+      test_class.add_field(hooks.manage_str(ERROR_FIELD_MESSAGE));
+      test_class.add_field(hooks.manage_str(ERROR_FIELD_STACK));
+      test_class.add_field(hooks.manage_str(ERROR_FIELD_INNER));
 
-      let instance = hooks.manage_obj(Instance::new(test_class));
+      let instance = hooks.manage_instance(test_class);
 
       let name = val!(hooks.manage_str("test"));
       let args = [name];

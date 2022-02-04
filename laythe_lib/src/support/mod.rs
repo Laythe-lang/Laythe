@@ -5,9 +5,9 @@ use crate::{
 use laythe_core::{
   hooks::GcHooks,
   if_let_obj,
-  managed::{Gc, GcObj, GcStr},
+  managed::{Gc, GcObj, GcStr, Instance},
   module::{Import, Module, Package},
-  object::{Class, Instance, ObjectKind},
+  object::{Class, ObjectKind},
   to_obj_kind,
   value::Value,
 };
@@ -91,7 +91,7 @@ pub fn load_instance_from_module(
   hooks: &GcHooks,
   module: Gc<Module>,
   name: &str,
-) -> StdResult<GcObj<Instance>> {
+) -> StdResult<Instance> {
   let name = hooks.manage_str(name);
   match module.get_exported_symbol(name) {
     Ok(symbol) => {
@@ -112,7 +112,7 @@ pub fn export_and_insert(
   symbol: Value,
 ) -> StdResult<()> {
   module.insert_symbol(hooks, name, symbol)?;
-  module.export_symbol(hooks, name).map_err(StdError::from)
+  module.export_symbol(name).map_err(StdError::from)
 }
 
 #[cfg(test)]
@@ -460,7 +460,6 @@ mod test {
     let mut error_class = Class::bare(hooks.manage_str("Error"));
 
     error_class.add_method(
-      hooks,
       hooks.manage_str("init"),
       val!(TestInit::native(hooks)),
     );

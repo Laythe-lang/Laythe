@@ -2182,8 +2182,8 @@ mod test {
     assert!(module
       .insert_symbol(hooks, object_class.name(), val!(object_class))
       .is_ok());
-    assert!(module.export_symbol(hooks, print.name()).is_ok());
-    assert!(module.export_symbol(hooks, object_class.name()).is_ok());
+    assert!(module.export_symbol(print.name()).is_ok());
+    assert!(module.export_symbol(object_class.name()).is_ok());
 
     hooks.pop_roots(1);
 

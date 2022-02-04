@@ -4,8 +4,9 @@ use std::{
 };
 
 use crate::{
-  managed::{Allocate, DebugHeapRef, GcObj, GcStr, Object, Trace, TraceRoot, Tuple},
+  managed::{Allocate, DebugHeapRef, GcObj, GcStr, Instance, Object, Trace, TraceRoot, Tuple},
   memory::Allocator,
+  object::Class,
   value::{Value, VALUE_NIL},
   Call,
 };
@@ -93,6 +94,11 @@ impl<'a> Hooks<'a> {
     self.as_gc().manage_tuple(slice)
   }
 
+  /// Request a instance be managed by this allocator
+  pub fn manage_instance(&self, class: GcObj<Class>) -> Instance {
+    self.as_gc().manage_instance(class)
+  }
+
   /// Request a string be managed by this allocator
   pub fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
     self.as_gc().manage_str(string)
@@ -156,10 +162,15 @@ impl<'a> GcHooks<'a> {
     self.context.gc().manage_obj(obj, self.context)
   }
 
-  /// Request a string be managed by this allocator
+  /// Request a tuple be managed by this allocator
   #[inline]
   pub fn manage_tuple(&self, slice: &[Value]) -> Tuple {
     self.context.gc().manage_tuple(slice, self.context)
+  }
+
+  /// Request a instance be managed by this allocator
+  pub fn manage_instance(&self, class: GcObj<Class>) -> Instance {
+    self.context.gc().manage_instance(class, self.context)
   }
 
   /// Request a string be managed by this allocator

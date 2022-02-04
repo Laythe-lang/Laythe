@@ -64,25 +64,21 @@ pub fn define_tuple_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> 
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);
 
   class.add_method(
-    hooks,
     hooks.manage_str(TUPLE_INDEX_GET.name),
     val!(TupleIndexGet::native(hooks, index_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(TUPLE_LEN.name),
     val!(TupleLen::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(TUPLE_INDEX.name),
     val!(TupleIndex::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(TUPLE_STR.name),
     val!(TupleStr::native(
       hooks,
@@ -92,25 +88,21 @@ pub fn define_tuple_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> 
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(TUPLE_SLICE.name),
     val!(TupleSlice::native(hooks, index_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(TUPLE_HAS.name),
     val!(TupleHas::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(TUPLE_ITER.name),
     val!(TupleIter::native(hooks)),
   );
 
   class.meta_class().expect("Meta class not set.").add_method(
-    hooks,
     hooks.manage_str(TUPLE_COLLECT.name),
     val!(TupleCollect::native(hooks)),
   );

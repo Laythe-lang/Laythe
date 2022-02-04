@@ -92,13 +92,13 @@ impl Class {
     self
   }
 
-  pub fn add_field(&mut self, _hooks: &GcHooks, name: GcStr) -> Option<u16> {
+  pub fn add_field(&mut self, name: GcStr) -> Option<u16> {
     let len = self.fields.len();
 
     self.fields.insert(name, len as u16)
   }
 
-  pub fn add_method(&mut self, _hooks: &GcHooks, name: GcStr, method: Value) -> Option<Value> {
+  pub fn add_method(&mut self, name: GcStr, method: Value) -> Option<Value> {
     if &*name == INIT {
       self.init = Some(method)
     }
@@ -244,25 +244,4 @@ impl Object for Class {
   fn kind(&self) -> ObjectKind {
     ObjectKind::Class
   }
-}
-
-#[cfg(test)]
-pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
-  let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
-  let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Class")));
-  class_class.inherit(hooks, object_class);
-
-  let class_copy = class_class;
-  class_class.set_meta(class_copy);
-
-  // create object's meta class
-  let mut object_meta_class = hooks.manage_obj(Class::bare(
-    hooks.manage_str(format!("{} metaClass", &*object_class.name())),
-  ));
-
-  object_meta_class.inherit(hooks, class_class);
-  object_meta_class.set_meta(class_class);
-
-  object_class.set_meta(object_meta_class);
-  Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
 }

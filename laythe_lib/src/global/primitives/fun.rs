@@ -36,19 +36,16 @@ pub fn define_fun_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, FUN_CLASS_NAME)?;
 
   class.add_method(
-    hooks,
     hooks.manage_str(FUN_NAME.name),
     val!(FunName::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(FUN_LEN.name),
     val!(FunLen::native(hooks)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(FUN_CALL.name),
     val!(FunCall::native(hooks)),
   );

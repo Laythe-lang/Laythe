@@ -10,7 +10,7 @@ use laythe_core::{
   managed::Trace,
   managed::{Gc, GcObj},
   module::{Module, Package},
-  object::{Instance, LyNative, Native, NativeMetaBuilder, ObjectKind},
+  object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
@@ -34,7 +34,7 @@ const STDOUT_FLUSH: NativeMetaBuilder =
 
 pub fn declare_stdout(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDOUT_CLASS_NAME)?;
-  let instance = hooks.manage_obj(Instance::new(class));
+  let instance = hooks.manage_instance(class);
 
   export_and_insert(
     hooks,
@@ -55,19 +55,16 @@ pub fn define_stdout(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) 
   )?);
 
   class.add_method(
-    hooks,
     hooks.manage_str(STDOUT_WRITE.name),
     val!(StdoutWrite::native(hooks, io_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STDOUT_WRITELN.name),
     val!(StdoutWriteln::native(hooks, io_error)),
   );
 
   class.add_method(
-    hooks,
     hooks.manage_str(STDOUT_FLUSH.name),
     val!(StdoutFlush::native(hooks, io_error)),
   );

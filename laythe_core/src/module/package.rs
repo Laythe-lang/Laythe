@@ -1,8 +1,7 @@
 use super::{error::ModuleResult, import::Import, Module, ModuleError};
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace, Allocate, AllocResult},
-  object::Instance,
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcStr, Trace, Instance},
   value::Value,
 };
 use std::{fmt, io::Write};
@@ -35,7 +34,7 @@ impl Package {
 
   /// Get a set of symbols from this package using a requested import. This
   /// operation can fail if some or all of the symbols are not found.
-  pub fn import(&self, hooks: &GcHooks, import: Gc<Import>) -> ModuleResult<GcObj<Instance>> {
+  pub fn import(&self, hooks: &GcHooks, import: Gc<Import>) -> ModuleResult<Instance> {
     if import.package() == self.name {
       self.root_module.import(hooks, import.path())
     } else {
@@ -101,7 +100,8 @@ mod test {
     managed::Gc,
     memory::{Allocator, NO_GC},
     module::{Import, Module, ModuleError},
-    object::{test_class, Class},
+    object::Class,
+    support::test_class,
     val,
   };
 
@@ -158,7 +158,7 @@ mod test {
     assert!(inner_module
       .insert_symbol(&hooks, export_name, val!(true))
       .is_ok());
-    assert!(inner_module.export_symbol(&hooks, export_name).is_ok());
+    assert!(inner_module.export_symbol(export_name).is_ok());
     assert!(module.insert_module(&hooks, inner_module).is_ok());
 
     let package = Package::new(hooks.manage_str("my_package".to_string()), module);
@@ -204,7 +204,7 @@ mod test {
     assert!(inner_module
       .insert_symbol(&hooks, export_name, val!(true))
       .is_ok());
-    assert!(inner_module.export_symbol(&hooks, export_name).is_ok());
+    assert!(inner_module.export_symbol(export_name).is_ok());
     assert!(module.insert_module(&hooks, inner_module).is_ok());
 
     let package = Package::new(hooks.manage_str("my_package".to_string()), module);

@@ -30,7 +30,6 @@ pub fn define_nil_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NIL_CLASS_NAME)?;
 
   class.add_method(
-    hooks,
     hooks.manage_str(NIL_STR.name),
     val!(NilStr::native(hooks)),
   );

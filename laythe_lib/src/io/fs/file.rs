@@ -41,7 +41,6 @@ pub fn define_file(hooks: &GcHooks, module: Gc<Module>, std: Gc<Package>) -> Std
   )?);
 
   class.meta_class().expect("Meta class not set.").add_method(
-    hooks,
     hooks.manage_str(FILE_READ_ALL_TEXT.name),
     val!(FileReadAllText::native(hooks, io_error)),
   );

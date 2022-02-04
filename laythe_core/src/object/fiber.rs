@@ -1,12 +1,12 @@
 use std::{fmt, io::Write, mem, ptr, usize};
 
-use super::{Channel, Fun, Instance, ObjectKind};
+use super::{Channel, Fun, ObjectKind};
 use crate::{
   call_frame::CallFrame,
   captures::Captures,
   constants::SCRIPT,
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, GcObj, Object, Trace},
+  managed::{DebugHeap, DebugWrap, GcObj, Object, Trace, Instance},
   val,
   value::{Value, VALUE_NIL},
 };
@@ -55,7 +55,7 @@ pub struct Fiber {
   state: FiberState,
 
   /// The current error if one is active
-  error: Option<GcObj<Instance>>,
+  error: Option<Instance>,
 }
 
 impl Fiber {
@@ -328,12 +328,12 @@ impl Fiber {
 
   /// Retrieve the current error on this fiber
   #[inline]
-  pub fn error(&self) -> Option<GcObj<Instance>> {
+  pub fn error(&self) -> Option<Instance> {
     self.error
   }
 
   /// Set the current error on this fiber
-  pub fn set_error(&mut self, error: GcObj<Instance>) {
+  pub fn set_error(&mut self, error: Instance) {
     self.error = Some(error);
   }
 
@@ -373,11 +373,11 @@ impl Fiber {
         self.assert_frame_inbounds();
 
         Some(frame.fun())
-      }
+      },
       None => {
         self.frame = ptr::null_mut();
         None
-      }
+      },
     })
   }
 
@@ -506,19 +506,19 @@ impl Fiber {
         self.stack_top = stack_top;
 
         UnwindResult::Handled(frame)
-      }
+      },
       None => {
         if bottom_frame == 0 {
           UnwindResult::Unhandled
         } else {
           UnwindResult::UnwindStopped
         }
-      }
+      },
     }
   }
 
   /// Print a error message with the associated stack track if found
-  pub fn print_error(&self, log: &mut dyn Write, error: GcObj<Instance>) {
+  pub fn print_error(&self, log: &mut dyn Write, error: Instance) {
     let message = error[0].to_obj().to_str();
     writeln!(log, "{}: {}", &*error.class().name(), &*message).expect("Unable to write to stderr");
 

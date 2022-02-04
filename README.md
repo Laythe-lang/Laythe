@@ -265,15 +265,15 @@ Running the original benchmark suite on a 2015 dell xps we have.
 
 |benchmark|clox|Laythe|relative speed|notes|
 |--|--|--|--|--|
-|binary_tress.lox|total: 2.58032|total: 2.35423|1.1|This likely due to the small number of properties and the init optimization. We essentially avoid hashing altogether in this bench|
-|equality.lox|loop: 2.54958 elapsed: 2.08519|loop: 2.647906 elapsed: 3.131277|0.80|Similar to above we have essentially zero hashing and again perform pretty equal to clox|
-|fib.lox|total: 1.33588|total: 2.08769|0.63|Here we have some hashing from the `fib` lookup but even making this local shows a difference. It appears there is still some performance difference in function calling here|
-|instantiation.lox|total: 0.794824|total: 1.50812|0.53|Again localizing this gives a decent speedup but hashing and function calls still seem to slow Laythe down|
-|invocation.lox|total: 0.419431|total: 0.814637|0.52|Now the hashing speed difference is quite apparent|
-|method_call.lox|total: 0.26644|total: 0.341227|0.65|Same as above|
-|properties.lox|total: 0.645307|total: 0.937192|0.69|Same as above|
+|binary_tress.lox|total: 2.58032|total: 2.07827|1.1|We've optimized instance to allocate properties inline and have an init optimization that benefits speed|
+|equality.lox|loop: 2.54958 elapsed: 2.08519|loop: 2.53177 elapsed: 2.52173|0.80|Similar to above we have essentially zero hashing and again perform pretty equal to clox|
+|fib.lox|total: 1.33588|total: 2.09226|0.63|Here we have some hashing from the `fib` lookup but even making this local shows a difference. It appears there is still some performance difference in function calling here|
+|instantiation.lox|total: 0.794824|total: 1.58841|0.53|Again localizing this gives a decent speedup but hashing and function calls still seem to slow Laythe down|
+|invocation.lox|total: 0.419431|total: 0.782444|0.52|Now the hashing speed difference is quite apparent|
+|method_call.lox|total: 0.26644|total: 0.326959|0.65|Same as above|
+|properties.lox|total: 0.645307|total: 0.889522|0.69|Same as above|
 |trees.lox|total: 3.09063|total: 3.387378|0.91|Same as above|
-|zoo.lox|total: 0.495144|total: 0.709942|0.70|Same as above|
+|zoo.lox|total: 0.495144|total: 0.680576|0.70|Same as above|
 
 ## Future Ideas
 

@@ -29,7 +29,6 @@ pub fn define_fiber_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> 
   let mut bool_class = load_class_from_module(hooks, module, FIBER_CLASS_NAME)?;
 
   bool_class.add_method(
-    hooks,
     hooks.manage_str(String::from(FIBER_STR.name)),
     val!(FiberStr::native(hooks)),
   );

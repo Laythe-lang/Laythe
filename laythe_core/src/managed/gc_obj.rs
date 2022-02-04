@@ -3,13 +3,12 @@ use super::{
   header::ObjHeader,
   manage::{DebugHeap, DebugWrap, Trace},
   utils::{get_array_len_offset, get_offset, make_array_layout, make_obj_layout},
-  GcArray, GcStr, Mark, Marked, Unmark,
+  GcArray, GcStr, Instance, Mark, Marked, Unmark,
 };
 use crate::{
-  managed::utils::get_array_offset,
+  managed::{header::InstanceHeader, utils::get_array_offset},
   object::{
-    Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, Map, Method, Native,
-    ObjectKind,
+    Channel, Class, Closure, Enumerator, Fiber, Fun, List, LyBox, Map, Method, Native, ObjectKind,
   },
   value::Value,
 };
@@ -388,10 +387,8 @@ impl GcObject {
   }
 
   #[inline]
-  pub fn to_instance(self) -> GcObj<Instance> {
-    GcObj {
-      ptr: unsafe { self.data_ptr::<Instance>() },
-    }
+  pub fn to_instance(self) -> Instance {
+    unsafe { GcArray::from_alloc_ptr(self.ptr) }
   }
 
   #[inline]
@@ -667,13 +664,13 @@ impl DebugHeap for GcObject {
 unsafe impl Send for GcObject {}
 unsafe impl Sync for GcObject {}
 
-fn array_len(this: &GcObjectHandle) -> usize {
+fn array_len<H>(this: &GcObjectHandle) -> usize {
   unsafe {
-    ptr::read(this.ptr.as_ptr() as *const ObjHeader);
+    ptr::read(this.ptr.as_ptr() as *const H);
   }
 
   #[allow(clippy::cast_ptr_alignment)]
-  let count = get_array_len_offset::<ObjHeader>();
+  let count = get_array_len_offset::<H>();
   unsafe { *(this.ptr.as_ptr().add(count) as *mut usize) }
 }
 
@@ -718,19 +715,22 @@ impl GcObjectHandle {
         ObjectKind::Fun => kind_size!(Fun),
         ObjectKind::Closure => kind_size!(Closure),
         ObjectKind::Class => kind_size!(Class),
-        ObjectKind::Instance => kind_size!(Instance),
+        ObjectKind::Instance => {
+          let len = array_len::<InstanceHeader>(self);
+          make_array_layout::<InstanceHeader, u8>(len).size()
+        },
         ObjectKind::Enumerator => kind_size!(Enumerator),
         ObjectKind::Method => kind_size!(Method),
         ObjectKind::Native => kind_size!(Native),
         ObjectKind::LyBox => kind_size!(LyBox),
         ObjectKind::String => {
-          let len = array_len(self);
+          let len = array_len::<ObjHeader>(self);
           make_array_layout::<ObjHeader, u8>(len).size()
-        }
+        },
         ObjectKind::Tuple => {
-          let len = array_len(self);
+          let len = array_len::<ObjHeader>(self);
           make_array_layout::<ObjHeader, Value>(len).size()
-        }
+        },
       }
   }
 }
@@ -760,21 +760,35 @@ impl Drop for GcObjectHandle {
         ObjectKind::Fun => drop_kind!(Fun),
         ObjectKind::Closure => drop_kind!(Closure),
         ObjectKind::Class => drop_kind!(Class),
-        ObjectKind::Instance => drop_kind!(Instance),
+        ObjectKind::Instance => {
+          let len = array_len::<InstanceHeader>(self);
+
+          let count = get_array_offset::<InstanceHeader, Value>();
+          let data_ptr = self.ptr.as_ptr().add(count) as *mut Value;
+
+          for i in 0..len {
+            ptr::read(data_ptr.add(i));
+          }
+
+          dealloc(
+            self.ptr.as_ptr(),
+            make_array_layout::<InstanceHeader, Value>(len),
+          );
+        },
         ObjectKind::Enumerator => drop_kind!(Enumerator),
         ObjectKind::Method => drop_kind!(Method),
         ObjectKind::Native => drop_kind!(Native),
         ObjectKind::LyBox => drop_kind!(LyBox),
         ObjectKind::String => {
-          let len = array_len(self);
+          let len = array_len::<ObjHeader>(self);
 
           dealloc(
             self.ptr.as_ptr(),
             make_array_layout::<ObjHeader, Value>(len),
           );
-        }
+        },
         ObjectKind::Tuple => {
-          let len = array_len(self);
+          let len = array_len::<ObjHeader>(self);
 
           let count = get_array_offset::<ObjHeader, Value>();
           let data_ptr = self.ptr.as_ptr().add(count) as *mut Value;
@@ -787,7 +801,7 @@ impl Drop for GcObjectHandle {
             self.ptr.as_ptr(),
             make_array_layout::<ObjHeader, Value>(len),
           );
-        }
+        },
       }
     }
   }

@@ -9,7 +9,9 @@ mod utils;
 
 pub use allocation::Allocation;
 pub use gc::Gc;
-pub use gc_array::{tuple_handle, Array, GcArray, GcArrayHandle, Tuple, TupleHandle};
+pub use gc_array::{
+  instance_handle, tuple_handle, Array, GcArray, GcArrayHandle, Instance, Tuple, TupleHandle,
+};
 pub use gc_obj::{GcObj, GcObject, GcObjectHandle, GcObjectHandleBuilder, Object};
 pub use gc_str::{GcStr, GcStrHandle};
 pub use manage::{

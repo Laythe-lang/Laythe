@@ -1,12 +1,13 @@
 use super::{
-  header::{Header, ObjHeader},
+  header::{Header, InstanceHeader, ObjHeader},
   utils::{get_array_len_offset, get_array_offset, make_array_layout},
-  AllocResult, Allocate, DebugHeap, DebugHeapRef, DebugWrap, GcObject, GcObjectHandle, Manage,
+  AllocResult, Allocate, DebugHeap, DebugHeapRef, DebugWrap, GcObj, GcObject, GcObjectHandle,
+  Manage,
 };
 use crate::{
   managed::{Mark, Marked, Trace, Unmark},
-  object::ObjectKind,
-  value::Value,
+  object::{Class, ObjectKind},
+  value::{Value, VALUE_NIL},
 };
 use ptr::NonNull;
 use std::{
@@ -22,11 +23,27 @@ use std::{
 pub type ObjArray<T> = GcArray<T, ObjHeader>;
 pub type Array<T> = GcArray<T, Header>;
 pub type ObjArrayHandle<T> = GcArrayHandle<T, ObjHeader>;
+
+pub type Instance = GcArray<Value, InstanceHeader>;
+pub type InstanceHandle = GcArrayHandle<Value, InstanceHeader>;
+
 pub type Tuple = ObjArray<Value>;
 pub type TupleHandle = ObjArrayHandle<Value>;
 
+const MAX_FIELD_COUNT: usize = u16::MAX as usize;
+const NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
+
 pub fn tuple_handle(slice: &[Value]) -> GcArrayHandle<Value, ObjHeader> {
   GcArrayHandle::from_slice(slice, ObjHeader::new(ObjectKind::Tuple))
+}
+
+pub fn instance_handle(class: GcObj<Class>) -> InstanceHandle {
+  if class.fields() > 256 {
+    todo!()
+  }
+
+  let slice = &NIL_ARRAY[..class.fields()];
+  GcArrayHandle::from_slice(slice, InstanceHeader::new(class))
 }
 
 /// A non owning reference to a Garbage collector
@@ -48,7 +65,7 @@ pub fn tuple_handle(slice: &[Value]) -> GcArrayHandle<Value, ObjHeader> {
 /// ```
 pub struct GcArray<T, H> {
   /// Pointer to the header of the array
-  pub(super) ptr: NonNull<u8>,
+  ptr: NonNull<u8>,
 
   /// Phantom data to hold the array data type
   data: PhantomData<T>,
@@ -58,6 +75,10 @@ pub struct GcArray<T, H> {
 }
 
 impl<T, H> GcArray<T, H> {
+  pub fn ptr(&self) -> NonNull<u8> {
+    self.ptr
+  }
+
   /// Retrieve the header from this array
   #[inline]
   pub fn header(&self) -> &H {
@@ -172,13 +193,14 @@ impl<T, H: Marked> Marked for GcArray<T, H> {
   }
 }
 
-impl<T: Trace + DebugHeap, H: Send + Mark> Trace for GcArray<T, H> {
+impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for GcArray<T, H> {
   #[inline]
   fn trace(&self) {
     if self.mark() {
       return;
     }
 
+    self.header().trace();
     self.iter().for_each(|i| i.trace());
   }
 
@@ -197,6 +219,7 @@ impl<T: Trace + DebugHeap, H: Send + Mark> Trace for GcArray<T, H> {
       .expect("unable to write to stdout");
     log.flush().expect("unable to flush stdout");
 
+    self.header().trace_debug(log);
     self.iter().for_each(|i| i.trace_debug(log));
   }
 }
@@ -255,7 +278,7 @@ impl<T, H> PartialEq<GcArray<T, H>> for GcArray<T, H> {
   }
 }
 
-impl<T: Display, H> Display for GcArray<T, H> {
+impl Display for GcArray<Value, ObjHeader> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "(")?;
 
@@ -336,6 +359,15 @@ impl<T, H> GcArrayHandle<T, H> {
 }
 
 impl<T> GcArrayHandle<T, ObjHeader> {
+  /// Degrade this handle into
+  pub fn degrade(self) -> GcObjectHandle {
+    let handle = GcObjectHandle { ptr: self.0.ptr };
+    mem::forget(self);
+    handle
+  }
+}
+
+impl<Value> GcArrayHandle<Value, InstanceHeader> {
   /// Degrade this handle into
   pub fn degrade(self) -> GcObjectHandle {
     let handle = GcObjectHandle { ptr: self.0.ptr };
@@ -520,6 +552,39 @@ mod test {
       drop(array);
 
       assert_eq!(handle.len(), 5);
+    }
+  }
+
+  mod instance_handle {
+    use crate::{
+      hooks::{GcHooks, NoContext},
+      managed::gc_array::instance_handle,
+      support::{test_object_class, ClassBuilder},
+    };
+
+    #[test]
+    fn dude() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let obj_class = test_object_class(&hooks);
+
+      let class = ClassBuilder::default()
+        .name("example")
+        .super_cls(obj_class)
+        .fields(
+          ["foo", "bar"]
+            .iter()
+            .map(|field| hooks.manage_str(field))
+            .collect(),
+        )
+        .build(&hooks);
+
+      let instance_handle = instance_handle(class);
+      let instance_value = instance_handle.value();
+
+      assert_eq!(instance_value.len(), 2);
+      assert_eq!(instance_value.header().class(), class);
     }
   }
 }
