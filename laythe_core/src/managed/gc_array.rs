@@ -1,12 +1,13 @@
 use super::{
-  header::{Header, ObjHeader},
+  header::{Header, InstanceHeader, ObjHeader},
   utils::{get_array_len_offset, get_array_offset, make_array_layout},
-  AllocResult, Allocate, DebugHeap, DebugHeapRef, DebugWrap, GcObject, GcObjectHandle, Manage,
+  AllocResult, Allocate, DebugHeap, DebugHeapRef, DebugWrap, GcObj, GcObject, GcObjectHandle,
+  Manage,
 };
 use crate::{
   managed::{Mark, Marked, Trace, Unmark},
-  object::ObjectKind,
-  value::Value,
+  object::{Class, ObjectKind},
+  value::{Value, VALUE_NIL},
 };
 use ptr::NonNull;
 use std::{
@@ -25,8 +26,20 @@ pub type ObjArrayHandle<T> = GcArrayHandle<T, ObjHeader>;
 pub type Tuple = ObjArray<Value>;
 pub type TupleHandle = ObjArrayHandle<Value>;
 
+const MAX_FIELD_COUNT: usize = u16::MAX as usize;
+const NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
+
 pub fn tuple_handle(slice: &[Value]) -> GcArrayHandle<Value, ObjHeader> {
   GcArrayHandle::from_slice(slice, ObjHeader::new(ObjectKind::Tuple))
+}
+
+pub fn instance_handle(class: GcObj<Class>) -> GcArrayHandle<Value, InstanceHeader> {
+  if class.fields() > 256 {
+    todo!()
+  }
+
+  let slice = &NIL_ARRAY[..class.fields()];
+  GcArrayHandle::from_slice(slice, InstanceHeader::new(class))
 }
 
 /// A non owning reference to a Garbage collector
@@ -520,6 +533,39 @@ mod test {
       drop(array);
 
       assert_eq!(handle.len(), 5);
+    }
+  }
+
+  mod instance_handle {
+    use crate::{
+      hooks::{GcHooks, NoContext},
+      managed::gc_array::instance_handle,
+      support::{test_object_class, ClassBuilder},
+    };
+
+    #[test]
+    fn dude() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let obj_class = test_object_class(&hooks);
+
+      let class = ClassBuilder::default()
+        .name("example")
+        .super_cls(obj_class)
+        .fields(
+          ["foo", "bar"]
+            .iter()
+            .map(|field| hooks.manage_str(field))
+            .collect(),
+        )
+        .build(&hooks);
+
+      let instance_handle = instance_handle(class);
+      let instance_value = instance_handle.value();
+
+      assert_eq!(instance_value.len(), 2);
+      assert_eq!(instance_value.header().class(), class);
     }
   }
 }
