@@ -1125,7 +1125,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       TokenKind::True => self.atom(Primary::True(previous)),
       TokenKind::False => self.atom(Primary::False(previous)),
       TokenKind::Nil => self.atom(Primary::Nil(previous)),
-      _ => unreachable!(format!("Unexpected token kind {:?}", previous.kind())),
+      _ => unreachable!("Unexpected token kind {:?}", previous.kind()),
     }
   }
 

@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
 
@@ -7,8 +5,8 @@ use crate::{
   captures::Captures,
   chunk::Encode,
   hooks::GcHooks,
-  managed::{GcObj, GcStr},
-  module::Module,
+  managed::{GcObj, GcStr, Gc},
+  module::{Module, module_class},
   object::{Class, Fiber, FiberResult, Fun, FunBuilder},
   signature::Arity,
   value::Value,
@@ -132,40 +130,26 @@ impl ClassBuilder {
   }
 }
 
+pub fn test_module(hooks: &GcHooks, name: &str) -> Gc<Module> {
+  let base_class = test_class(hooks, "Module");
+  hooks.manage(Module::new(module_class(hooks, name, base_class), 0))
+}
+
 pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
   let object_class = test_object_class(hooks);
   Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
 }
 
 pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
-  let module_class = test_class(hooks, name);
+  let module = test_module(hooks, module_name);
 
-  let module = Module::from_path(
-    hooks,
-    PathBuf::from(format!("path/{}", module_name)),
-    module_class,
-    0,
-  )
-  .expect("TODO");
-
-  let module = hooks.manage(module);
   let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
 
   hooks.manage_obj(builder.build(hooks))
 }
 
 pub fn test_fun_builder(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
-  let module_class = test_class(hooks, name);
-
-  let module = Module::from_path(
-    hooks,
-    PathBuf::from(format!("path/{}.ly", module_name)),
-    module_class,
-    0,
-  )
-  .expect("TODO");
-
-  let module = hooks.manage(module);
+  let module = test_module(hooks, module_name);
   FunBuilder::new(hooks.manage_str(name), module, Arity::default())
 }
 

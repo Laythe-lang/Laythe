@@ -1,10 +1,10 @@
 use laythe_core::{
   hooks::GcHooks,
   module::{Module, Package},
+  object::Class,
   val,
 };
 use laythe_core::{managed::Gc, utils::IdEmitter, value::Value};
-use std::path::PathBuf;
 
 use crate::{
   global::MODULE_CLASS_NAME,
@@ -12,9 +12,8 @@ use crate::{
   StdResult, STD,
 };
 
-use super::IO_MODULE_PATH;
-
 pub const IO_ERROR: &str = "IoError";
+const IO_MODULE_NAME: &str = "io";
 
 pub fn io_module(
   hooks: &GcHooks,
@@ -22,13 +21,10 @@ pub fn io_module(
   emitter: &mut IdEmitter,
 ) -> StdResult<Gc<Module>> {
   let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
+  let io_module_class =
+    Class::with_inheritance(hooks, hooks.manage_str(IO_MODULE_NAME), module_class);
 
-  let module = hooks.manage(Module::from_path(
-    hooks,
-    PathBuf::from(IO_MODULE_PATH),
-    module_class,
-    emitter.emit(),
-  )?);
+  let module = hooks.manage(Module::new(io_module_class, emitter.emit()));
 
   declare_io_errors(hooks, module, std)?;
   define_io_errors(hooks, module, std)?;
@@ -43,9 +39,13 @@ pub fn declare_io_errors(
 ) -> StdResult<()> {
   let io_error = default_error_inheritance(hooks, package, IO_ERROR)?;
 
-  export_and_insert(hooks, module, io_error.name(), val!(io_error))
+  export_and_insert(module, io_error.name(), val!(io_error))
 }
 
-pub fn define_io_errors(_hooks: &GcHooks, _module: Gc<Module>, _package: Gc<Package>) -> StdResult<()> {
+pub fn define_io_errors(
+  _hooks: &GcHooks,
+  _module: Gc<Module>,
+  _package: Gc<Package>,
+) -> StdResult<()> {
   Ok(())
 }

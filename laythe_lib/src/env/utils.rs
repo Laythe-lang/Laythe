@@ -16,14 +16,12 @@ const CWD_META: NativeMetaBuilder = NativeMetaBuilder::fun("cwd", Arity::Fixed(0
 
 pub fn declare_env_module(hooks: &GcHooks, self_module: Gc<Module>) -> StdResult<()> {
   export_and_insert(
-    hooks,
     self_module,
     hooks.manage_str(ARGS_META.name),
     val!(Args::native(hooks)),
   )?;
 
   export_and_insert(
-    hooks,
     self_module,
     hooks.manage_str(CWD_META.name),
     val!(Cwd::native(hooks)),

@@ -202,7 +202,6 @@ mod test {
       val,
       value::Value,
     };
-    use std::path::PathBuf;
 
     #[test]
     pub fn property() {
@@ -240,7 +239,7 @@ mod test {
       let fun_name = hooks.manage_str("fn_example");
 
       let class = hooks.manage_obj(Class::bare(class_name));
-      let module = hooks.manage(Module::new(class, PathBuf::new(), 0));
+      let module = hooks.manage(Module::new(class, 0));
 
       let fun = Fun::stub(&hooks, fun_name, module, AlignedByteCode::Nil);
       let fun = val!(hooks.manage_obj(fun));

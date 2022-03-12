@@ -22,7 +22,7 @@ const BOOL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixe
 
 pub fn declare_bool_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let bool_class = class_inheritance(hooks, module, BOOL_CLASS_NAME)?;
-  export_and_insert(hooks, module, bool_class.name(), val!(bool_class)).map_err(StdError::from)
+  export_and_insert(module, bool_class.name(), val!(bool_class)).map_err(StdError::from)
 }
 
 pub fn define_bool_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

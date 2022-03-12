@@ -28,7 +28,7 @@ const FILE_READ_ALL_TEXT: NativeMetaBuilder =
 
 pub fn declare_file(hooks: &GcHooks, module: Gc<Module>, std: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, std, FILE_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name(), val!(class))
+  export_and_insert(module, class.name(), val!(class))
 }
 
 pub fn define_file(hooks: &GcHooks, module: Gc<Module>, std: Gc<Package>) -> StdResult<()> {

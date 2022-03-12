@@ -214,7 +214,7 @@ impl Vm {
 
     let repl_path = self.root_dir.join(PathBuf::from(REPL_MODULE));
 
-    let main_module = self.module(repl_path.clone(), SELF);
+    let main_module = self.module(SELF);
 
     loop {
       let mut buffer = String::new();
@@ -259,7 +259,7 @@ impl Vm {
         let file_id = self.files.upsert(managed_path, source_content);
         self.pop_roots(2);
 
-        let main_module = self.module(module_path, SELF);
+        let main_module = self.module(SELF);
 
         match self.interpret(false, main_module, &source, file_id) {
           ExecuteResult::Ok(_) => self.internal_error("Shouldn't exit vm with ok result"),
@@ -372,14 +372,14 @@ impl Vm {
   }
 
   /// Prepare the main module for use
-  fn module(&mut self, module_path: PathBuf, name: &str) -> Gc<Module> {
+  fn module(&mut self, name: &str) -> Gc<Module> {
     let main_id = self.emitter.emit();
     let hooks = GcHooks::new(self);
 
     let name = hooks.manage_str(name);
     let module_class = Class::with_inheritance(&hooks, name, self.builtin.dependencies.module);
 
-    let mut module = hooks.manage(Module::new(module_class, module_path, main_id));
+    let mut module = hooks.manage(Module::new(module_class, main_id));
     hooks.push_root(module);
 
     // transfer the symbols from the global module into the main module
@@ -1158,7 +1158,7 @@ impl Vm {
     let name = self.read_string(slot);
     let global = self.fiber.pop();
     let mut current_module = self.current_fun.module();
-    match current_module.insert_symbol(&GcHooks::new(self), name, global) {
+    match current_module.insert_symbol(name, global) {
       Ok(_) => Signal::Ok,
       Err(_) => Signal::Ok,
     }
@@ -1377,7 +1377,8 @@ impl Vm {
     let result = match self.packages.get(&import.package()) {
       Some(package) => match package.import(&GcHooks::new(self), import) {
         Ok(module) => {
-          self.fiber.push(val!(module));
+          let module = val!(module.module_instance(&GcHooks::new(self)));
+          self.fiber.push(module);
           Signal::Ok
         },
         Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
@@ -1415,12 +1416,17 @@ impl Vm {
     self.push_root(import);
 
     let result = match self.packages.get(&import.package()) {
-      Some(package) => match package.import_symbol(&GcHooks::new(self), import, name) {
-        Ok(module) => {
-          self.fiber.push(val!(module));
-          Signal::Ok
-        },
-        Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
+      Some(package) => {
+        match package
+          .import(&GcHooks::new(self), import)
+          .and_then(|module| module.get_exported_symbol(name))
+        {
+          Ok(symbol) => {
+            self.fiber.push(val!(symbol));
+            Signal::Ok
+          },
+          Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
+        }
       },
       None => self.runtime_error(
         self.builtin.errors.import,

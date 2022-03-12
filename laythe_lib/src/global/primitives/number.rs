@@ -48,7 +48,7 @@ const NUMBER_PARSE: NativeMetaBuilder = NativeMetaBuilder::fun("parse", Arity::F
 
 pub fn declare_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, NUMBER_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name(), val!(class))
+  export_and_insert(module, class.name(), val!(class))
 }
 
 pub fn define_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

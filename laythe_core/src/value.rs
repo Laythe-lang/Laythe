@@ -821,7 +821,6 @@ mod test {
     module::Module,
     object::{Class, Closure, Fun, List, Map, ObjectKind},
   };
-  use std::path::PathBuf;
 
   const VALUE_VARIANTS: [ValueKind; 4] = [
     ValueKind::Bool,
@@ -902,15 +901,10 @@ mod test {
     hooks.manage_str("sup")
   }
 
-  fn test_path() -> PathBuf {
-    PathBuf::from("test/sup.ly")
-  }
-
   fn test_module(hooks: &GcHooks) -> Gc<Module> {
     let class = test_class(hooks);
-    let path = test_path();
 
-    hooks.manage(Module::new(class, path, 0))
+    hooks.manage(Module::new(class, 0))
   }
 
   fn test_fun(hooks: &GcHooks) -> GcObj<Fun> {
