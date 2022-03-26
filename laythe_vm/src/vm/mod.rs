@@ -1,4 +1,5 @@
 mod basic;
+mod hooks;
 mod impls;
 mod ops;
 
@@ -24,16 +25,15 @@ use laythe_core::{
   utils::IdEmitter,
   val,
   value::{Value, VALUE_NIL},
-  Call, LyError,
 };
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
 use laythe_native::io::io_native;
+use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::ptr;
 use std::usize;
-use std::{cell::RefCell};
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
@@ -387,76 +387,6 @@ impl Vm {
     module
   }
 
-  /// Run a laythe function on top of the current stack.
-  /// This acts as a hook for native functions to execute laythe function
-  unsafe fn run_fun(&mut self, callable: Value, args: &[Value]) -> ExecuteResult {
-    self.fiber.ensure_stack(args.len() + 1);
-    self.fiber.push(callable);
-    for arg in args {
-      self.fiber.push(*arg);
-    }
-
-    #[cfg(feature = "debug")]
-    {
-      self
-        .print_hook_state("run_fun", &format!("{}", callable))
-        .expect("Unable to print hook state");
-    }
-
-    let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
-    match self.resolve_call(callable, args.len() as u8) {
-      Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::Ok(self.fiber.pop()),
-      Signal::RuntimeError => ExecuteResult::RuntimeError,
-      _ => self.internal_error("Unexpected signal in run_fun."),
-    }
-  }
-
-  /// Run a laythe method on top of the current stack.
-  /// This acts as a hook for native functions to execute laythe function
-  unsafe fn run_method(&mut self, this: Value, method: Value, args: &[Value]) -> ExecuteResult {
-    self.fiber.ensure_stack(args.len() + 1);
-    self.fiber.push(this);
-    for arg in args {
-      self.fiber.push(*arg);
-    }
-
-    #[cfg(feature = "debug")]
-    {
-      self
-        .print_hook_state("fun_method", &format!("{}:{}", this, method))
-        .expect("Unable to print hook state");
-    }
-
-    let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
-    match self.resolve_call(method, args.len() as u8) {
-      Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::Ok(self.fiber.pop()),
-      Signal::RuntimeError => ExecuteResult::RuntimeError,
-      _ => self.internal_error("Unexpected signal in run_method."),
-    }
-  }
-
-  /// Get a method for this this value with a given method name
-  unsafe fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
-    let class = self.value_class(this);
-
-    match class.get_method(&method_name) {
-      Some(method) => Call::Ok(method),
-      None => {
-        let error_message = val!(self.manage_str(format!(
-          "Class {} does not have method {}",
-          class.name(),
-          method_name
-        )));
-
-        let result = self.run_fun(val!(self.builtin.errors.import), &[error_message]);
-
-        self.to_call_result(result)
-      },
-    }
-  }
-
   /// Main virtual machine execution loop. This will run the until the program interrupts
   /// from a normal exit or from a runtime error.
   fn execute(&mut self, mode: ExecuteMode) -> ExecuteResult {
@@ -621,21 +551,6 @@ impl Vm {
     }
 
     writeln!(stdout)
-  }
-
-  /// Convert an execute result to a call result
-  fn to_call_result(&self, execute_result: ExecuteResult) -> Call {
-    match execute_result {
-      ExecuteResult::Ok(value) => Call::Ok(value),
-      ExecuteResult::Exit(_) => self.internal_error("Accidental early exit in hook call"),
-      ExecuteResult::CompileError => {
-        self.internal_error("Compiler error should occur before code is executed.")
-      },
-      ExecuteResult::RuntimeError => match self.fiber.error() {
-        Some(error) => Call::Err(LyError::Err(error)),
-        None => self.internal_error("Error not set on vm executor."),
-      },
-    }
   }
 
   /// Report an internal issue to the user

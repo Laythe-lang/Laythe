@@ -72,13 +72,11 @@ impl GcContext for Vm {
 
 impl ValueContext for Vm {
   fn call(&mut self, callable: Value, args: &[Value]) -> Call {
-    let result = unsafe { self.run_fun(callable, args) };
-    self.to_call_result(result)
+    unsafe { self.run_fun(callable, args) }
   }
 
   fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> Call {
-    let result = unsafe { self.run_method(this, method, args) };
-    self.to_call_result(result)
+    unsafe { self.run_method(this, method, args) }
   }
 
   fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
