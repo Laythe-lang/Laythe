@@ -1,4 +1,4 @@
-use super::{assert_roots, Signal, Vm};
+use super::{Signal, Vm};
 use crate::{
   byte_code::{AlignedByteCode, CaptureIndex},
   constants::MAX_FRAME_SIZE,
@@ -1462,4 +1462,14 @@ impl Vm {
       ),
     }
   }
+}
+
+#[cfg(debug_assertions)]
+fn assert_roots(native: GcObj<Native>, roots_before: usize, roots_now: usize) {
+  assert!(
+    roots_before == roots_now,
+    "Native function {} increased roots by {}.",
+    native.meta().name,
+    roots_now - roots_before,
+  );
 }

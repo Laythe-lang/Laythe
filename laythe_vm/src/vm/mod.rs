@@ -23,7 +23,7 @@ use laythe_core::{
   managed::{Gc, GcObj, GcStr},
   memory::Allocator,
   module::{Module, Package},
-  object::{Class, Fiber, Fun, Map, Native},
+  object::{Class, Fiber, Fun, Map},
   utils::IdEmitter,
   val,
   value::{Value, VALUE_NIL},
@@ -495,14 +495,4 @@ impl Vm {
       }
     }
   }
-}
-
-#[cfg(debug_assertions)]
-fn assert_roots(native: GcObj<Native>, roots_before: usize, roots_now: usize) {
-  assert!(
-    roots_before == roots_now,
-    "Native function {} increased roots by {}.",
-    native.meta().name,
-    roots_now - roots_before,
-  );
 }
