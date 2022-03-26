@@ -1,3 +1,4 @@
+mod basic;
 mod impls;
 
 use crate::{
@@ -14,10 +15,7 @@ use laythe_core::{
   constants::{PLACEHOLDER_NAME, SELF},
   hooks::{GcContext, GcHooks, HookContext, Hooks, NoContext},
   if_let_obj,
-  managed::{
-    Allocate, Array, DebugHeapRef, Gc, GcObj, GcObject, GcStr, Instance, Object, Trace,
-    Tuple,
-  },
+  managed::{Array, Gc, GcObj, GcObject, GcStr, Instance},
   match_obj,
   memory::Allocator,
   module::{Import, ImportError, Module, Package},
@@ -35,12 +33,12 @@ use laythe_core::{
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
 use laythe_native::io::io_native;
+use std::collections::VecDeque;
 use std::mem;
 use std::path::PathBuf;
 use std::ptr;
+use std::usize;
 use std::{cell::RefCell, cmp::Ordering};
-use std::{collections::VecDeque};
-use std::{convert::TryInto, usize};
 
 #[cfg(feature = "debug")]
 use crate::debug::disassemble_instruction;
@@ -578,112 +576,6 @@ impl Vm {
         }
       }
     }
-  }
-
-  fn value_class(&self, value: Value) -> GcObj<Class> {
-    self.builtin.primitives.for_value(value)
-  }
-
-  fn manage<R: 'static + Trace + Copy + DebugHeapRef, T: Allocate<R>>(&self, data: T) -> R {
-    self.gc.borrow_mut().manage(data, self)
-  }
-
-  fn manage_obj<T: 'static + Object>(&self, data: T) -> GcObj<T> {
-    self.gc.borrow_mut().manage_obj(data, self)
-  }
-
-  fn manage_tuple(&self, slice: &[Value]) -> Tuple {
-    self.gc.borrow_mut().manage_tuple(slice, self)
-  }
-
-  fn manage_instance(&self, class: GcObj<Class>) -> Instance {
-    self.gc.borrow_mut().manage_instance(class, self)
-  }
-
-  fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
-    self.gc.borrow_mut().manage_str(string, self)
-  }
-
-  fn push_root<T: 'static + Trace>(&self, data: T) {
-    self.gc.borrow_mut().push_root(data)
-  }
-
-  fn pop_roots(&self, count: usize) {
-    self.gc.borrow_mut().pop_roots(count)
-  }
-
-  /// Update the current instruction pointer
-  unsafe fn update_ip(&mut self, offset: isize) {
-    self.ip = self.ip.offset(offset)
-  }
-
-  /// Store the ip in the current frame
-  fn load_ip(&mut self) {
-    self.ip = self.fiber.load_ip()
-  }
-
-  /// Store the ip in the current frame
-  fn store_ip(&mut self) {
-    self.fiber.store_ip(self.ip)
-  }
-
-  /// Get the current frame slots
-  fn stack_start(&self) -> *mut Value {
-    self.fiber.stack_start()
-  }
-
-  /// Get the current closure
-  unsafe fn inline_cache(&mut self) -> &InlineCache {
-    self
-      .inline_cache
-      .get_unchecked(self.current_fun.module_id())
-  }
-
-  /// Get the current closure
-  unsafe fn inline_cache_mut(&mut self) -> &mut InlineCache {
-    self
-      .inline_cache
-      .get_unchecked_mut(self.current_fun.module_id())
-  }
-
-  /// read a u8 out of the bytecode
-  unsafe fn read_byte(&mut self) -> u8 {
-    let byte = ptr::read(self.ip);
-    self.update_ip(1);
-    byte
-  }
-
-  /// read a u16 out of the bytecode
-  unsafe fn read_short(&mut self) -> u16 {
-    let slice = std::slice::from_raw_parts(self.ip, 2);
-    let buffer = slice.try_into().expect("slice of incorrect length.");
-    let short = u16::from_ne_bytes(buffer);
-    self.update_ip(2);
-
-    short
-  }
-
-  /// read a u32 out of the bytecode
-  unsafe fn read_slot(&mut self) -> u32 {
-    let slice = std::slice::from_raw_parts(self.ip, 4);
-    let buffer = slice.try_into().expect("slice of incorrect length.");
-    let short = u32::from_ne_bytes(buffer);
-    self.update_ip(4);
-
-    short
-  }
-
-  /// read a constant from the current chunk
-  unsafe fn read_constant(&self, index: u16) -> Value {
-    self
-      .current_fun
-      .chunk()
-      .get_constant_unchecked(index as usize)
-  }
-
-  /// read a constant as a string from the current chunk
-  unsafe fn read_string(&self, index: u16) -> GcStr {
-    self.read_constant(index).to_obj().to_str()
   }
 
   /// push a literal value onto the stack
