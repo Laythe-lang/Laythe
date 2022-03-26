@@ -17,15 +17,14 @@ pub mod object;
 pub mod string;
 pub mod tuple;
 
-use std::path::PathBuf;
-
 use self::{
   bool::{declare_bool_class, define_bool_class},
   channel::{declare_channel_class, define_channel_class},
   error::{create_error_class, declare_global_errors, define_global_errors, ERROR_CLASS_NAME},
   fiber::{declare_fiber_class, define_fiber_class},
+  fun::{declare_fun_class, define_fun_class},
   module::create_module_class,
-  tuple::{declare_tuple_class, define_tuple_class}, fun::{declare_fun_class, define_fun_class},
+  tuple::{declare_tuple_class, define_tuple_class},
 };
 use crate::{support::export_and_insert, StdError, StdResult, STD};
 use class::create_class_class;
@@ -60,7 +59,7 @@ fn error_inheritance(
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
   let error_name = hooks.manage_str(ERROR_CLASS_NAME);
-  let error_class = module.import_symbol(hooks, &[], error_name)?;
+  let error_class = module.get_exported_symbol(error_name)?;
 
   if_let_obj!(ObjectKind::Class(class) = (error_class) {
     Ok(Class::with_inheritance(
@@ -80,7 +79,7 @@ fn class_inheritance(
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
   let object_name = hooks.manage_str(OBJECT_CLASS_NAME);
-  let object_class = module.import_symbol(hooks, &[], object_name)?;
+  let object_class = module.get_exported_symbol(object_name)?;
 
   if_let_obj!(ObjectKind::Class(class) = (object_class) {
     Ok(Class::with_inheritance(
@@ -160,16 +159,12 @@ fn bootstrap_classes(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<M
   let module_class = create_module_class(hooks, object_class);
   let std_module_class = Class::with_inheritance(hooks, hooks.manage_str(STD), module_class);
 
-  let module = hooks.manage(Module::new(
-    std_module_class,
-    PathBuf::from(STD),
-    emitter.emit(),
-  ));
+  let module = hooks.manage(Module::new(std_module_class, emitter.emit()));
 
-  export_and_insert(hooks, module, object_class.name(), val!(object_class))?;
-  export_and_insert(hooks, module, class_class.name(), val!(class_class))?;
-  export_and_insert(hooks, module, error_class.name(), val!(error_class))?;
-  export_and_insert(hooks, module, module_class.name(), val!(module_class))?;
+  export_and_insert(module, object_class.name(), val!(object_class))?;
+  export_and_insert(module, class_class.name(), val!(class_class))?;
+  export_and_insert(module, error_class.name(), val!(error_class))?;
+  export_and_insert(module, module_class.name(), val!(module_class))?;
 
   Ok(module)
 }

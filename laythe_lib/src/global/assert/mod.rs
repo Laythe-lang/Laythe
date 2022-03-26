@@ -27,24 +27,21 @@ pub(crate) fn add_assert_funs(
 
   let error_val = val!(error);
   let str_name = hooks.manage_str("str");
-  export_and_insert(hooks, module, error.name(), error_val)?;
+  export_and_insert(module, error.name(), error_val)?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(ASSERT_META.name),
     val!(Assert::native(hooks, str_name, error_val)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(ASSERTEQ_META.name),
     val!(AssertEq::native(hooks, str_name, error_val)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(ASSERTNE_META.name),
     val!(AssertNe::native(hooks, str_name, error_val)),

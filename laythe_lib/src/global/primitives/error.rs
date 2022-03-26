@@ -66,19 +66,18 @@ pub fn declare_global_errors(hooks: &GcHooks, module: Gc<Module>) -> StdResult<(
   let property_error = error_inheritance(hooks, module, PROPERTY_ERROR_NAME)?;
   let method_not_found_error = error_inheritance(hooks, module, METHOD_NOT_FOUND_ERROR_NAME)?;
 
-  export_and_insert(hooks, module, type_error.name(), val!(type_error))?;
-  export_and_insert(hooks, module, format_error.name(), val!(format_error))?;
-  export_and_insert(hooks, module, value_error.name(), val!(value_error))?;
-  export_and_insert(hooks, module, index_error.name(), val!(index_error))?;
-  export_and_insert(hooks, module, deadlock_error.name(), val!(deadlock_error))?;
-  export_and_insert(hooks, module, channel_error.name(), val!(channel_error))?;
-  export_and_insert(hooks, module, syntax_error.name(), val!(syntax_error))?;
-  export_and_insert(hooks, module, import_error.name(), val!(import_error))?;
-  export_and_insert(hooks, module, export_error.name(), val!(export_error))?;
-  export_and_insert(hooks, module, runtime_error.name(), val!(runtime_error))?;
-  export_and_insert(hooks, module, property_error.name(), val!(property_error))?;
+  export_and_insert(module, type_error.name(), val!(type_error))?;
+  export_and_insert(module, format_error.name(), val!(format_error))?;
+  export_and_insert(module, value_error.name(), val!(value_error))?;
+  export_and_insert(module, index_error.name(), val!(index_error))?;
+  export_and_insert(module, deadlock_error.name(), val!(deadlock_error))?;
+  export_and_insert(module, channel_error.name(), val!(channel_error))?;
+  export_and_insert(module, syntax_error.name(), val!(syntax_error))?;
+  export_and_insert(module, import_error.name(), val!(import_error))?;
+  export_and_insert(module, export_error.name(), val!(export_error))?;
+  export_and_insert(module, runtime_error.name(), val!(runtime_error))?;
+  export_and_insert(module, property_error.name(), val!(property_error))?;
   export_and_insert(
-    hooks,
     module,
     method_not_found_error.name(),
     val!(method_not_found_error),

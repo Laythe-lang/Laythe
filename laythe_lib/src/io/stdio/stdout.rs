@@ -37,7 +37,6 @@ pub fn declare_stdout(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>)
   let instance = hooks.manage_instance(class);
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(STDOUT_INSTANCE_NAME),
     val!(instance),
