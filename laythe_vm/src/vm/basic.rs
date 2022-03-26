@@ -1,9 +1,9 @@
-use super::Vm;
+use super::{Vm, Signal};
 use crate::cache::InlineCache;
 use laythe_core::{
   managed::{Allocate, DebugHeapRef, GcObj, GcStr, Instance, Object, Trace, Tuple},
-  object::Class,
-  value::Value,
+  object::{Class, Fiber, Fun},
+  value::Value, captures::Captures,
 };
 use std::{convert::TryInto, ptr};
 
@@ -116,4 +116,55 @@ impl Vm {
   pub(super) unsafe fn read_string(&self, index: u16) -> GcStr {
     self.read_constant(index).to_obj().to_str()
   }
+
+  /// Swap between the current fiber and the provided fiber
+  pub(super) unsafe fn context_switch(&mut self, fiber: GcObj<Fiber>) {
+    if !self.fiber.is_complete() {
+      self.store_ip();
+    }
+
+    self.fiber = fiber;
+    self.fiber.activate();
+
+    self.load_ip();
+    self.current_fun = fiber.fun();
+  }
+
+  /// Push a call frame onto the the call frame stack
+  pub(super) unsafe fn push_frame(&mut self, closure: GcObj<Fun>, captures: Captures, arg_count: u8) {
+    self.store_ip();
+
+    self.fiber.push_frame(closure, captures, arg_count as usize);
+    self.load_ip();
+
+    self.current_fun = closure;
+  }
+
+  /// Pop a frame off the call stack. If no frame remain
+  /// return the exit signal otherwise set the instruction
+  /// pointer and current function
+  pub(super) unsafe fn pop_frame(&mut self) -> Option<Signal> {
+    match self.fiber.pop_frame() {
+      Some(current_fun) => match current_fun {
+        Some(current_fun) => {
+          self.current_fun = current_fun;
+          self.load_ip();
+          None
+        },
+        None => {
+          if self.fiber == self.main_fiber {
+            Some(Signal::Exit)
+          } else {
+            if let Some(mut fiber) = Fiber::complete(self.fiber) {
+              fiber.unblock();
+              self.fiber_queue.push_back(fiber);
+            }
+            Some(Signal::ContextSwitch)
+          }
+        },
+      },
+      None => self.internal_error("Compilation failure attempted to pop last frame"),
+    }
+  }
+
 }
