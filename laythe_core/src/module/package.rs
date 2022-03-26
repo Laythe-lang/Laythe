@@ -78,10 +78,7 @@ mod test {
   use super::Package;
   use crate::{
     hooks::{GcHooks, NoContext},
-    module::{Import, ImportError},
     support::test_module,
-    val,
-    value::Value,
   };
 
   #[test]
