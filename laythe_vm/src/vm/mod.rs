@@ -18,7 +18,7 @@ use laythe_core::{
   },
   match_obj,
   memory::Allocator,
-  module::{Import, Module, Package},
+  module::{Import, Module, Package, ImportError},
   object::{
     Channel, Class, Closure, Fiber, Fun, List, LyBox, Map, Method, Native, NativeMeta, ObjectKind,
     ReceiveResult, SendResult, UnwindResult,
@@ -1419,7 +1419,7 @@ impl Vm {
       Some(package) => {
         match package
           .import(&GcHooks::new(self), import)
-          .and_then(|module| module.get_exported_symbol(name))
+          .and_then(|module| module.get_exported_symbol(name).ok_or(ImportError::SymbolDoesNotExist))
         {
           Ok(symbol) => {
             self.fiber.push(val!(symbol));
