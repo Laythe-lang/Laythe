@@ -3,7 +3,7 @@ use crate::{
   byte_code::{AlignedByteCode, CaptureIndex},
   constants::MAX_FRAME_SIZE,
 };
-use laythe_core::hooks::GcContext;
+use laythe_core::{hooks::GcContext, module::ImportError};
 use laythe_core::managed::GcObject;
 use laythe_core::{
   captures::Captures,
@@ -761,8 +761,11 @@ impl Vm {
       Some(package) => {
         match package
           .import(&GcHooks::new(self), import)
-          .and_then(|module| module.get_exported_symbol(name))
-        {
+          .and_then(|module| {
+            module
+              .get_exported_symbol(name)
+              .ok_or(ImportError::SymbolNotExported)
+          }) {
           Ok(symbol) => {
             self.fiber.push(val!(symbol));
             Signal::Ok
