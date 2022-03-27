@@ -12,7 +12,7 @@ pub use package::Package;
 use crate::{
   hooks::GcHooks,
   managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Instance, Trace},
-  object::{Class, Map, MapEntry},
+  object::{Class, Map},
   value::Value,
   LyHashSet,
 };
@@ -29,7 +29,7 @@ pub fn module_class<S: AsRef<str>>(
 }
 
 /// A struct representing a collection of class functions and variable of shared functionality
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Module {
   // What is the id of this module for this execution
   id: usize,
@@ -111,15 +111,27 @@ impl Module {
     }
   }
 
-  pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ImportResult<&Module> {
+  pub fn get_module(&self, name: GcStr) -> Option<Gc<Module>> {
+    match self.modules.get(&name) {
+      Some(module) => Some(*module),
+      None => None,
+    }
+  }
+
+  pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ImportResult<Gc<Module>> {
     if path.is_empty() {
-      Ok(self)
+      Err(ImportError::MalformedPath)
     } else {
-      self
-        .modules
-        .get(&path[0])
-        .ok_or(ImportError::ModuleDoesNotExist)
-        .and_then(|module| module.import(hooks, &path[1..]))
+      match self.modules.get(&path[0]) {
+        Some(module) => {
+          if path.len() == 1 {
+            Ok(*module)
+          } else {
+            module.import(hooks, &path[1..])
+          }
+        },
+        None => Err(ImportError::ModuleDoesNotExist),
+      }
     }
   }
 
@@ -171,24 +183,15 @@ impl Module {
     self.symbols.get(&name).copied()
   }
 
-  /// Get this symbol entry if it exists
-  #[inline]
-  pub fn symbol_entry(&mut self, name: GcStr) -> MapEntry<'_, GcStr, Value> {
-    self.symbols.entry(name)
-  }
-
-  /// Import a single symbol from this module
-  pub fn get_exported_symbol(&self, name: GcStr) -> ImportResult<Value> {
-    self
-      .get_symbol(name)
-      .ok_or(ImportError::SymbolDoesNotExist)
-      .and_then(|symbol| {
-        if self.exports.contains(&name) {
-          Ok(symbol)
-        } else {
-          Err(ImportError::SymbolNotExported)
-        }
-      })
+  /// Get an exported symbom from this module's symbol table
+  pub fn get_exported_symbol(&self, name: GcStr) -> Option<Value> {
+    self.get_symbol(name).and_then(|symbol| {
+      if self.exports.contains(&name) {
+        Some(symbol)
+      } else {
+        None
+      }
+    })
   }
 
   /// how many symbols are in this module
@@ -409,19 +412,13 @@ mod test {
 
     let name = hooks.manage_str("exported".to_string());
 
-    assert_eq!(
-      module.get_exported_symbol(name),
-      Err(ImportError::SymbolDoesNotExist)
-    );
+    assert_eq!(module.get_exported_symbol(name), None);
 
     module.insert_symbol(name, val!(10.0))?;
-    assert_eq!(
-      module.get_exported_symbol(name),
-      Err(ImportError::SymbolNotExported)
-    );
+    assert_eq!(module.get_exported_symbol(name), None);
 
     module.export_symbol(name)?;
-    assert_eq!(module.get_exported_symbol(name), Ok(val!(10.0)));
+    assert_eq!(module.get_exported_symbol(name), Some(val!(10.0)));
 
     Ok(())
   }

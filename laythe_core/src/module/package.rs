@@ -31,9 +31,14 @@ impl Package {
     self.root_module
   }
 
-  pub fn import(&self, hooks: &GcHooks, import: Gc<Import>) -> ImportResult<&Module> {
+  pub fn import(&self, hooks: &GcHooks, import: Gc<Import>) -> ImportResult<Gc<Module>> {
     if import.package() == self.name {
-      self.root_module.import(hooks, import.path())
+      let path = import.path();
+      if path.is_empty() {
+        Ok(self.root_module)
+      } else {
+        self.root_module.import(hooks, import.path())
+      }
     } else {
       Err(ImportError::PackageDoesNotMatch)
     }

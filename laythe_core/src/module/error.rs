@@ -6,6 +6,7 @@ pub enum ImportError {
   ModuleDoesNotExist,
   SymbolDoesNotExist,
   SymbolNotExported,
+  MalformedPath,
   InvalidImport,
 }
 
@@ -16,6 +17,7 @@ impl Display for ImportError {
       Self::ModuleDoesNotExist => write!(f, "Module does not exist."),
       Self::SymbolDoesNotExist => write!(f, "Symbol does not exist."),
       Self::SymbolNotExported => write!(f, "Symbol not exported."),
+      Self::MalformedPath => write!(f, "Malformed path."),
       Self::InvalidImport => write!(f, "Invalid import."),
     }
   }
