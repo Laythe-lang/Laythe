@@ -278,7 +278,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
         .gc
         .has_str(name.str())
         .ok_or(ImportError::SymbolDoesNotExist)
-        .and_then(|interned_name| self.global_module.get_exported_symbol(interned_name))
+        .and_then(|interned_name| self.global_module.get_exported_symbol(interned_name).ok_or(ImportError::SymbolDoesNotExist))
         .is_ok()
       {
         let table = &mut self.tables.first_mut().unwrap();

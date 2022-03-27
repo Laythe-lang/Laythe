@@ -3,6 +3,7 @@ use laythe_env::{
   io::IoImpl,
 };
 use std::{
+  ffi::OsString,
   fs::{canonicalize, read_dir, read_to_string, DirEntry},
   io,
   path::{Path, PathBuf},
@@ -21,7 +22,7 @@ impl IoImpl<Fs> for IoFsNative {
 pub struct FsNative();
 
 impl FsImpl for FsNative {
-  fn read_to_string(&self, path: &Path) -> io::Result<String> {
+  fn read_file(&self, path: &Path) -> io::Result<String> {
     read_to_string(path)
   }
 
@@ -51,5 +52,13 @@ struct NativeDirEntry(DirEntry);
 impl LyDirEntry for NativeDirEntry {
   fn path(&self) -> PathBuf {
     self.0.path()
+  }
+
+  fn file_name(&self) -> OsString {
+    self.0.file_name()
+  }
+
+  fn file_type(&self) -> io::Result<std::fs::FileType> {
+    self.0.file_type()
   }
 }

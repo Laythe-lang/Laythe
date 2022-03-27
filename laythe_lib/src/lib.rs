@@ -13,7 +13,7 @@ use io::add_io_package;
 use laythe_core::{
   hooks::GcHooks,
   managed::Gc,
-  module::{ImportError, ModuleInsertError, Package, SymbolInsertError, SymbolExportError},
+  module::{ImportError, ModuleInsertError, Package, SymbolExportError, SymbolInsertError},
   utils::IdEmitter,
 };
 use math::add_math_module;
@@ -116,6 +116,7 @@ pub enum StdError {
   ModuleInsertError(ModuleInsertError),
   SymbolInsertError(SymbolInsertError),
   SymbolExportError(SymbolExportError),
+  SymbolNotFound,
   SymbolNotClass,
   SymbolNotInstance,
 }
