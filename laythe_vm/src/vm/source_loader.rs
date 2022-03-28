@@ -5,12 +5,12 @@ use crate::{
   source::Source,
   FeResult,
 };
-use codespan_reporting::term::{Config, self};
+use codespan_reporting::term::{self, Config};
 use laythe_core::{
   hooks::GcHooks,
   managed::{Gc, GcObj, GcStr},
   memory::Allocator,
-  module::{Import, ImportError, Module, Package},
+  module::{Import, ImportError, Module, ModuleInsertError, Package},
   object::{Class, Fun},
 };
 use std::path::PathBuf;
@@ -18,7 +18,6 @@ use std::path::PathBuf;
 pub enum ImportResult {
   Loaded(Gc<Module>),
   Compiled(GcObj<Fun>),
-  LoadError,
   NotFound,
   CompileError,
 }
@@ -92,20 +91,13 @@ impl Vm {
     let package = self.packages.get(&import.package()).cloned();
 
     match package {
-      Some(existing_package) => {
-        self.push_root(import);
-
-        let result = match existing_package.import(&GcHooks::new(self), import) {
-          Ok(module) => ImportResult::Loaded(module),
-          Err(err) => match err {
-            ImportError::PackageDoesNotMatch => panic!("Unexpected package mismatch"),
-            ImportError::ModuleDoesNotExist => self.load_missing_module(existing_package, import),
-            _ => unreachable!(),
-          },
-        };
-
-        self.pop_roots(1);
-        todo!()
+      Some(existing_package) => match existing_package.import(&GcHooks::new(self), import) {
+        Ok(module) => ImportResult::Loaded(module),
+        Err(err) => match err {
+          ImportError::ModuleDoesNotExist => self.load_missing_module(existing_package, import),
+          ImportError::PackageDoesNotMatch => panic!("Unexpected package mismatch"),
+          _ => unreachable!(),
+        },
       },
       None => ImportResult::NotFound,
     }
@@ -116,7 +108,7 @@ impl Vm {
     existing_package: Gc<Package>,
     import: Gc<Import>,
   ) -> ImportResult {
-    let (module, found_path, remaining_path) =
+    let (mut parent_module, (found_path, remaining_path)) =
       find_missing_module(existing_package.root_module(), import.path(), 0);
 
     let fs = self.io.fs();
@@ -128,7 +120,7 @@ impl Vm {
     }
 
     let module_name = *remaining_path.first().unwrap();
-    resolved_path.push(PathBuf::from(&module_name));
+    resolved_path.push(PathBuf::from(&format!("{module_name}.lay")));
 
     match fs.read_file(&resolved_path) {
       Ok(file_contents) => {
@@ -141,6 +133,11 @@ impl Vm {
             let file_id = self.files.upsert(name, source_content);
 
             let module = self.module(&module_name);
+            if let Err(err) = parent_module.insert_module(module) {
+              match err {
+                ModuleInsertError::ModuleAlreadyExists => todo!(),
+              }
+            }
 
             match self.compile(false, module, &source, file_id) {
               Ok(fun) => ImportResult::Compiled(fun),
@@ -167,14 +164,14 @@ fn find_missing_module<'a>(
   module: Gc<Module>,
   path: &'a [GcStr],
   index: usize,
-) -> (Gc<Module>, &'a [GcStr], &'a [GcStr]) {
+) -> (Gc<Module>, (&'a [GcStr], &'a [GcStr])) {
   if path.is_empty() {
-    return (module, &[], &[]);
+    return (module, (&[], &[]));
   }
 
   match module.get_module(path[0]) {
     Some(module) => find_missing_module(module, path, index + 1),
-    None => (module, &path[0..index], &path[index..]),
+    None => (module, path.split_at(index)),
   }
 }
 

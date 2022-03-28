@@ -374,7 +374,7 @@ impl AlignedByteCode {
   }
 
   /// What effect will this instruction have on the stack
-  pub fn stack_effect(&self) -> i32 {
+  pub const fn stack_effect(&self) -> i32 {
     match self {
       AlignedByteCode::Return => 0,
       AlignedByteCode::Negate => 0,
