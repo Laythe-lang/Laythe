@@ -27,14 +27,12 @@ pub fn declare_misc_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let str_name = hooks.manage_str("str");
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(PRINT.name),
     val!(Print::native(hooks, str_name)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(EXIT_META.name),
     val!(Exit::native(hooks)),

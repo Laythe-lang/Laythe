@@ -13,7 +13,7 @@ use io::add_io_package;
 use laythe_core::{
   hooks::GcHooks,
   managed::Gc,
-  module::{ModuleError, Package},
+  module::{ImportError, ModuleInsertError, Package, SymbolInsertError, SymbolExportError},
   utils::IdEmitter,
 };
 use math::add_math_module;
@@ -59,7 +59,7 @@ macro_rules! create_error {
             err.kind()
           )
         }
-      }
+      },
       Call::Err(err) => Call::Err(err),
     }
   };
@@ -92,7 +92,7 @@ macro_rules! native_with_error {
                 err.kind()
               )
             }
-          }
+          },
           Call::Err(err) => Call::Err(err),
         }
       }
@@ -112,14 +112,35 @@ macro_rules! native_with_error {
 
 #[derive(Debug)]
 pub enum StdError {
-  ModuleError(ModuleError),
+  ImportError(ImportError),
+  ModuleInsertError(ModuleInsertError),
+  SymbolInsertError(SymbolInsertError),
+  SymbolExportError(SymbolExportError),
   SymbolNotClass,
   SymbolNotInstance,
 }
 
-impl From<ModuleError> for StdError {
-  fn from(err: ModuleError) -> Self {
-    StdError::ModuleError(err)
+impl From<ImportError> for StdError {
+  fn from(err: ImportError) -> Self {
+    StdError::ImportError(err)
+  }
+}
+
+impl From<SymbolInsertError> for StdError {
+  fn from(err: SymbolInsertError) -> Self {
+    StdError::SymbolInsertError(err)
+  }
+}
+
+impl From<SymbolExportError> for StdError {
+  fn from(err: SymbolExportError) -> Self {
+    StdError::SymbolExportError(err)
+  }
+}
+
+impl From<ModuleInsertError> for StdError {
+  fn from(err: ModuleInsertError) -> Self {
+    StdError::ModuleInsertError(err)
   }
 }
 
@@ -136,8 +157,8 @@ pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<
 
   let mut root_module = std.root_module();
 
-  root_module.insert_module(hooks, env)?;
-  root_module.insert_module(hooks, regexp)?;
+  root_module.insert_module(env)?;
+  root_module.insert_module(regexp)?;
 
   Ok(std)
 }
@@ -171,13 +192,13 @@ mod test {
         match fun_meta.signature.arity {
           Arity::Default(_, total_count) => {
             assert_eq!(fun_meta.signature.parameters.len(), total_count as usize);
-          }
+          },
           Arity::Fixed(count) => {
             assert_eq!(fun_meta.signature.parameters.len(), count as usize);
-          }
+          },
           Arity::Variadic(min_count) => {
             assert_eq!(fun_meta.signature.parameters.len(), min_count as usize + 1);
-          }
+          },
         }
       }
     });

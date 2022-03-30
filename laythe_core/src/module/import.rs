@@ -1,4 +1,4 @@
-use super::{ModuleError, ModuleResult};
+use super::{ImportError, ImportResult};
 use crate::{
   hooks::GcHooks,
   managed::{AllocResult, Allocate, Array, DebugHeap, DebugWrap, Gc, GcStr, Trace},
@@ -26,7 +26,7 @@ impl Import {
   }
 
   /// Generate an import from a path
-  pub fn from_str(hooks: &GcHooks, path: &str) -> ModuleResult<Gc<Self>> {
+  pub fn from_str(hooks: &GcHooks, path: &str) -> ImportResult<Gc<Self>> {
     let segments: Vec<&str> = path.trim_end_matches(".ly").split('/').collect();
 
     if let Some((package, path_slice)) = segments.split_first() {
@@ -45,7 +45,7 @@ impl Import {
 
       Ok(import)
     } else {
-      Err(ModuleError::InvalidImport)
+      Err(ImportError::InvalidImport)
     }
   }
 }

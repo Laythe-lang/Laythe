@@ -37,8 +37,6 @@ fn compile_source(source: GcStr) {
   let mut context = NoContext::default();
   let hooks = GcHooks::new(&mut context);
 
-  let path = PathBuf::from("./Benchmark.lay");
-
   let mut emitter = IdEmitter::default();
   let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
   let global_module = std_lib.root_module();
@@ -49,7 +47,7 @@ fn compile_source(source: GcStr) {
     .unwrap()
     .to_obj()
     .to_class();
-  let module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
+  let module = hooks.manage(Module::new(module_class, 0));
   let source = Source::new(source);
   let (ast, line_offsets) = Parser::new(&source, 0).parse();
   let mut ast = ast.unwrap();

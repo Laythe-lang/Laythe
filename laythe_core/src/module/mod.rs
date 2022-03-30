@@ -2,27 +2,35 @@ mod error;
 mod import;
 mod package;
 
-pub use error::{ModuleError, ModuleResult};
+pub use error::{
+  ImportError, ImportResult, ModuleInsertError, ModuleInsertResult, SymbolExportError,
+  SymbolExportResult, SymbolInsertError, SymbolInsertResult,
+};
 pub use import::Import;
 pub use package::Package;
 
 use crate::{
   hooks::GcHooks,
-  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace, Instance},
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Instance, Trace},
   object::{Class, Map, MapEntry},
   value::Value,
   LyHashSet,
 };
 use hashbrown::hash_map;
-use std::path::PathBuf;
 use std::{fmt, io::Write};
+
+pub fn module_class<S: AsRef<str>>(
+  hooks: &GcHooks,
+  name: S,
+  base_class: GcObj<Class>,
+) -> GcObj<Class> {
+  let name = hooks.manage_str(name);
+  Class::with_inheritance(hooks, name, base_class)
+}
 
 /// A struct representing a collection of class functions and variable of shared functionality
 #[derive(Clone)]
 pub struct Module {
-  /// The full filepath to this module
-  path: PathBuf,
-
   // What is the id of this module for this execution
   id: usize,
 
@@ -41,9 +49,8 @@ pub struct Module {
 
 impl Module {
   /// Create a new laythe module
-  pub fn new(module_class: GcObj<Class>, path: PathBuf, id: usize) -> Self {
+  pub fn new(module_class: GcObj<Class>, id: usize) -> Self {
     Module {
-      path,
       id,
       module_class,
       exports: LyHashSet::default(),
@@ -57,39 +64,9 @@ impl Module {
     self.module_class.name()
   }
 
-  /// Retrieve the path for this module
-  pub fn path(&self) -> &PathBuf {
-    &self.path
-  }
-
   /// The id of this module
   pub fn id(&self) -> usize {
     self.id
-  }
-
-  /// Create a module from a filepath
-  pub fn from_path(
-    hooks: &GcHooks,
-    path: PathBuf,
-    base_class: GcObj<Class>,
-    id: usize,
-  ) -> ModuleResult<Self> {
-    let module_name = path
-      .file_stem()
-      .and_then(|m| m.to_str())
-      .ok_or(ModuleError::ModulePathMalformed)?;
-
-    let name = hooks.manage_str(module_name);
-    let module_class = Class::with_inheritance(hooks, name, base_class);
-
-    Ok(Self {
-      path,
-      id,
-      module_class,
-      exports: LyHashSet::default(),
-      symbols: Map::default(),
-      modules: Map::default(),
-    })
   }
 
   /// A symbols iterator
@@ -125,64 +102,35 @@ impl Module {
   }
 
   /// Insert a module into this module
-  pub fn insert_module(&mut self, hooks: &GcHooks, sub_module: Gc<Module>) -> ModuleResult<()> {
-    let relative = sub_module
-      .path()
-      .strip_prefix(self.path())
-      .or(Err(ModuleError::ModuleNotDecedent))?;
-
-    match relative.parent() {
-      Some(parent) => {
-        if parent.to_str() != Some("") {
-          return Err(ModuleError::ModuleNotDirectDecedent);
-        }
-      },
-      None => return Err(ModuleError::ModuleNotDecedent),
-    }
-
-    let root = relative.to_str().ok_or(ModuleError::ModuleNotDecedent)?;
-    let name = hooks.manage_str(root);
+  pub fn insert_module(&mut self, sub_module: Gc<Module>) -> ModuleInsertResult {
+    let name = sub_module.name();
 
     match self.modules.insert(name, sub_module) {
-      Some(_) => Err(ModuleError::SymbolAlreadyExists),
+      Some(_) => Err(ModuleInsertError::ModuleAlreadyExists),
       None => Ok(()),
     }
   }
 
-  /// Get a reference to all exported symbols in this module
-  pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ModuleResult<Instance> {
+  pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ImportResult<&Module> {
     if path.is_empty() {
-      Ok(self.module_instance(hooks))
+      Ok(self)
     } else {
       self
         .modules
         .get(&path[0])
-        .ok_or(ModuleError::ModuleDoesNotExist)
+        .ok_or(ImportError::ModuleDoesNotExist)
         .and_then(|module| module.import(hooks, &path[1..]))
     }
   }
 
-  /// Get a reference to all exported symbols in this module
-  pub fn import_symbol(&self, hooks: &GcHooks, path: &[GcStr], name: GcStr) -> ModuleResult<Value> {
-    if path.is_empty() {
-      self.get_exported_symbol(name)
-    } else {
-      self
-        .modules
-        .get(&path[0])
-        .ok_or(ModuleError::ModuleDoesNotExist)
-        .and_then(|module| module.import_symbol(hooks, &path[1..], name))
-    }
-  }
-
   /// Add export a new symbol from this module. Exported names must be unique
-  pub fn export_symbol(&mut self, name: GcStr) -> ModuleResult<()> {
+  pub fn export_symbol(&mut self, name: GcStr) -> SymbolExportResult {
     if !self.symbols.contains_key(&name) {
-      return Err(ModuleError::SymbolDoesNotExist);
+      return Err(SymbolExportError::SymbolDoesNotExist);
     }
 
     if self.exports.contains(&name) {
-      Err(ModuleError::SymbolAlreadyExported)
+      Err(SymbolExportError::SymbolAlreadyExported)
     } else {
       self.module_class.add_field(name);
       self.exports.insert(name);
@@ -192,26 +140,21 @@ impl Module {
 
   /// Set the value of a symbol in this module symbol table
   #[inline]
-  pub fn set_symbol(&mut self, name: GcStr, symbol: Value) -> ModuleResult<()> {
+  pub fn set_symbol(&mut self, name: GcStr, symbol: Value) -> ImportResult<()> {
     match self.symbols.get_mut(&name) {
       Some(value) => {
         *value = symbol;
         Ok(())
       },
-      None => Err(ModuleError::SymbolDoesNotExist),
+      None => Err(ImportError::SymbolDoesNotExist),
     }
   }
 
   /// Insert a symbol into this module's symbol table
   #[inline]
-  pub fn insert_symbol(
-    &mut self,
-    _hooks: &GcHooks,
-    name: GcStr,
-    symbol: Value,
-  ) -> ModuleResult<()> {
+  pub fn insert_symbol(&mut self, name: GcStr, symbol: Value) -> SymbolInsertResult {
     match self.symbols.insert(name, symbol) {
-      Some(_) => Err(ModuleError::SymbolAlreadyExists),
+      Some(_) => Err(SymbolInsertError::SymbolAlreadyExists),
       None => Ok(()),
     }
   }
@@ -235,15 +178,15 @@ impl Module {
   }
 
   /// Import a single symbol from this module
-  pub fn get_exported_symbol(&self, name: GcStr) -> ModuleResult<Value> {
+  pub fn get_exported_symbol(&self, name: GcStr) -> ImportResult<Value> {
     self
       .get_symbol(name)
-      .ok_or(ModuleError::SymbolDoesNotExist)
+      .ok_or(ImportError::SymbolDoesNotExist)
       .and_then(|symbol| {
         if self.exports.contains(&name) {
           Ok(symbol)
         } else {
-          Err(ModuleError::SymbolNotExported)
+          Err(ImportError::SymbolNotExported)
         }
       })
   }
@@ -298,7 +241,6 @@ impl Trace for Module {
 impl DebugHeap for Module {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_struct("Module")
-      .field("path", &self.path)
       .field("module_class", &DebugWrap(&self.module_class, depth))
       .field("exports", &DebugWrap(&self.exports, depth))
       .field("symbols", &DebugWrap(&self.symbols, depth))
@@ -314,33 +256,26 @@ impl Allocate<Gc<Self>> for Module {
 
 #[cfg(test)]
 mod test {
+  use super::error::SymbolInsertError;
   use super::Module;
+  use crate::hooks::{GcHooks, NoContext};
+  use crate::module::SymbolExportError;
   use crate::{
-    hooks::{GcHooks, NoContext},
-    module::{ModuleError, ModuleResult},
+    module::{error::ModuleInsertError, ImportError},
     object::Class,
-    support::test_class,
+    support::test_module,
     val,
+    value::Value,
   };
-  use std::path::PathBuf;
-
-  fn test_module(hooks: &GcHooks, path: PathBuf) -> ModuleResult<Module> {
-    let module_class = test_class(hooks, "Module");
-    Module::from_path(&hooks, path, module_class, 0)
-  }
+  use std::error;
 
   #[test]
   fn new() {
-    use std::path::PathBuf;
-
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let path = PathBuf::from("self/path.ly");
-
     Module::new(
       hooks.manage_obj(Class::bare(hooks.manage_str("example".to_string()))),
-      path,
       0,
     );
 
@@ -348,39 +283,17 @@ mod test {
   }
 
   #[test]
-  fn from_path() {
-    use crate::hooks::{GcHooks, NoContext};
-
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
-
-    let path = PathBuf::from("self/path.ly");
-    let module_class = test_class(&hooks, "Module");
-    let module = Module::from_path(&hooks, path, module_class, 0);
-
-    assert!(module.is_ok());
-    assert_eq!(&*module.unwrap().name(), "path");
-  }
-
-  #[test]
   fn module_instance() {
-    use crate::hooks::{GcHooks, NoContext};
-    use crate::value::Value;
-    use std::path::PathBuf;
-
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
       hooks.manage_obj(Class::bare(hooks.manage_str("module".to_string()))),
-      PathBuf::from("self/module.ly"),
       0,
     );
 
     let export_name = hooks.manage_str("exported".to_string());
-    assert!(module
-      .insert_symbol(&hooks, export_name, val!(true))
-      .is_ok());
+    assert!(module.insert_symbol(export_name, val!(true)).is_ok());
     assert!(module.export_symbol(export_name).is_ok());
 
     let symbols = module.module_instance(&hooks);
@@ -393,152 +306,54 @@ mod test {
   }
 
   #[test]
-  fn insert_module() -> ModuleResult<()> {
-    use crate::hooks::{GcHooks, NoContext};
-
+  fn insert_module() {
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let path = PathBuf::from("self");
-    let mut module = hooks.manage(test_module(&hooks, path)?);
+    let name_root = "self";
+    let mut module_root = test_module(&hooks, name_root);
 
-    let path = PathBuf::from("self/inner");
-    let inner_module = hooks.manage(test_module(&hooks, path)?);
+    let name_child = "child";
+    let module_child = test_module(&hooks, name_child);
 
-    let path = PathBuf::from("other/inner");
-    let invalid_parent_module = hooks.manage(test_module(&hooks, path)?);
-
-    let path = PathBuf::from("self/inner/innerer");
-    let invalid_depth_module = hooks.manage(test_module(&hooks, path)?);
-
-    assert!(module.insert_module(&hooks, inner_module).is_ok());
+    assert!(module_root.insert_module(module_child).is_ok());
     assert_eq!(
-      module.insert_module(&hooks, invalid_parent_module),
-      Err(ModuleError::ModuleNotDecedent)
+      module_root.insert_module(module_child),
+      Err(ModuleInsertError::ModuleAlreadyExists)
     );
-    assert_eq!(
-      module.insert_module(&hooks, invalid_depth_module),
-      Err(ModuleError::ModuleNotDirectDecedent)
-    );
-
-    Ok(())
-  }
-
-  #[test]
-  fn import() -> ModuleResult<()> {
-    use crate::hooks::{GcHooks, NoContext};
-
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
-
-    let path = PathBuf::from("self");
-    let mut module = hooks.manage(test_module(&hooks, path)?);
-
-    let path = PathBuf::from("self/inner");
-    let inner_module = hooks.manage(test_module(&hooks, path)?);
-    assert!(module.insert_module(&hooks, inner_module).is_ok());
-
-    assert!(module.import(&hooks, &[hooks.manage_str("inner"),]).is_ok());
-
-    assert_eq!(
-      module.import(&hooks, &[hooks.manage_str("other"),]),
-      Err(ModuleError::ModuleDoesNotExist)
-    );
-
-    Ok(())
-  }
-
-  #[test]
-  fn import_symbol() -> ModuleResult<()> {
-    use crate::hooks::{GcHooks, NoContext};
-    use crate::value::Value;
-
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
-
-    let path = PathBuf::from("self");
-    let mut module = hooks.manage(test_module(&hooks, path)?);
-
-    let path = PathBuf::from("self/inner");
-    let mut inner_module = hooks.manage(test_module(&hooks, path)?);
-
-    let symbol_name1 = hooks.manage_str("test1");
-    let symbol_name2 = hooks.manage_str("test2");
-    let not_symbol_name = hooks.manage_str("not_test");
-    inner_module.insert_symbol(&hooks, symbol_name1, val!(false))?;
-    inner_module.export_symbol(symbol_name1)?;
-    inner_module.insert_symbol(&hooks, symbol_name2, val!(true))?;
-
-    assert!(module.insert_module(&hooks, inner_module).is_ok());
-
-    assert_eq!(
-      module.import_symbol(&hooks, &[hooks.manage_str("inner")], symbol_name1),
-      Ok(val!(false))
-    );
-
-    assert_eq!(
-      module.import_symbol(&hooks, &[hooks.manage_str("inner")], symbol_name2),
-      Err(ModuleError::SymbolNotExported)
-    );
-
-    assert_eq!(
-      module.import_symbol(&hooks, &[hooks.manage_str("other")], symbol_name1),
-      Err(ModuleError::ModuleDoesNotExist)
-    );
-
-    assert_eq!(
-      module.import_symbol(&hooks, &[hooks.manage_str("inner")], not_symbol_name),
-      Err(ModuleError::SymbolDoesNotExist)
-    );
-
-    Ok(())
   }
 
   #[test]
   fn export_symbol() {
-    use crate::hooks::{GcHooks, NoContext};
-    use crate::value::Value;
-    use std::path::PathBuf;
-
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let mut module = Module::new(
-      hooks.manage_obj(Class::bare(hooks.manage_str("module".to_string()))),
-      PathBuf::from("self/module.ly"),
-      0,
-    );
+    let mut module = test_module(&hooks, "example");
+    let export_name = hooks.manage_str("exported");
 
-    let export_name = hooks.manage_str("exported".to_string());
-
-    assert!(module
-      .insert_symbol(&hooks, export_name, val!(true))
-      .is_ok());
+    assert!(module.insert_symbol(export_name, val!(true)).is_ok());
     let result1 = module.export_symbol(export_name);
     let result2 = module.export_symbol(export_name);
 
     assert!(result1.is_ok());
-    assert_eq!(result2, Err(ModuleError::SymbolAlreadyExported));
+    assert_eq!(result2, Err(SymbolExportError::SymbolAlreadyExported));
   }
 
   #[test]
-  fn set_symbol() -> ModuleResult<()> {
-    use crate::hooks::{GcHooks, NoContext};
-    use crate::value::Value;
-
+  fn set_symbol() -> Result<(), Box<dyn error::Error>> {
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let path = PathBuf::from("self");
-    let mut module = hooks.manage(test_module(&hooks, path)?);
+    let name = "self";
+    let mut module = test_module(&hooks, name);
 
     assert_eq!(
       module.set_symbol(hooks.manage_str("does not exist"), val!(false)),
-      Err(ModuleError::SymbolDoesNotExist)
+      Err(ImportError::SymbolDoesNotExist)
     );
 
     let symbol_name = hooks.manage_str("test");
-    module.insert_symbol(&hooks, symbol_name, val!(true))?;
+    module.insert_symbol(symbol_name, val!(true))?;
 
     assert!(module.set_symbol(symbol_name, val!(false)).is_ok());
 
@@ -549,21 +364,13 @@ mod test {
 
   #[test]
   fn insert_symbol() {
-    use crate::hooks::{GcHooks, NoContext};
-    use crate::value::Value;
-    use std::path::PathBuf;
-
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let mut module = Module::new(
-      hooks.manage_obj(Class::bare(hooks.manage_str("module".to_string()))),
-      PathBuf::from("self/module.ly"),
-      0,
-    );
+    let mut module = test_module(&hooks, "test");
 
     let name = hooks.manage_str("exported".to_string());
-    assert!(module.insert_symbol(&hooks, name, val!(true)).is_ok());
+    assert!(module.insert_symbol(name, val!(true)).is_ok());
 
     let symbol = module.get_symbol(name);
 
@@ -575,50 +382,42 @@ mod test {
   }
 
   #[test]
-  fn get_symbol() -> ModuleResult<()> {
-    use crate::hooks::{GcHooks, NoContext};
-    use crate::{val, value::Value};
-    use std::path::PathBuf;
-
+  fn get_symbol() -> Result<(), SymbolInsertError> {
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let path = PathBuf::from("self");
-    let mut module = test_module(&hooks, path)?;
+    let name = "self";
+    let mut module = test_module(&hooks, name);
 
     let name = hooks.manage_str("exported".to_string());
 
     assert!(module.get_symbol(name).is_none());
 
-    module.insert_symbol(&hooks, name, val!(10.0))?;
+    module.insert_symbol(name, val!(10.0))?;
     assert_eq!(module.get_symbol(name), Some(val!(10.0)));
 
     Ok(())
   }
 
   #[test]
-  fn get_exported_symbol() -> ModuleResult<()> {
-    use crate::hooks::{GcHooks, NoContext};
-    use crate::{val, value::Value};
-    use std::path::PathBuf;
-
+  fn get_exported_symbol() -> Result<(), Box<dyn error::Error>> {
     let mut context = NoContext::default();
     let hooks = GcHooks::new(&mut context);
 
-    let path = PathBuf::from("self");
-    let mut module = test_module(&hooks, path)?;
+    let name = "self";
+    let mut module = test_module(&hooks, name);
 
     let name = hooks.manage_str("exported".to_string());
 
     assert_eq!(
       module.get_exported_symbol(name),
-      Err(ModuleError::SymbolDoesNotExist)
+      Err(ImportError::SymbolDoesNotExist)
     );
 
-    module.insert_symbol(&hooks, name, val!(10.0))?;
+    module.insert_symbol(name, val!(10.0))?;
     assert_eq!(
       module.get_exported_symbol(name),
-      Err(ModuleError::SymbolNotExported)
+      Err(ImportError::SymbolNotExported)
     );
 
     module.export_symbol(name)?;

@@ -51,7 +51,7 @@ const STRING_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::
 
 pub fn declare_string_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, STRING_CLASS_NAME)?;
-  export_and_insert(hooks, module, class.name(), val!(class))
+  export_and_insert(module, class.name(), val!(class))
 }
 
 pub fn define_string_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

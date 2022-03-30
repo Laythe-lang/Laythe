@@ -1,39 +1,27 @@
 use std::{error::Error, fmt::Display};
 
 #[derive(Debug, PartialEq)]
-pub enum ModuleError {
+pub enum ImportError {
   PackageDoesNotMatch,
   ModuleDoesNotExist,
-  ModulePathMalformed,
-  ModuleNotDecedent,
-  ModuleNotDirectDecedent,
   SymbolDoesNotExist,
-  SymbolAlreadyExported,
-  SymbolAlreadyExists,
   SymbolNotExported,
   InvalidImport,
 }
 
-impl Display for ModuleError {
+impl Display for ImportError {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match *self {
-      ModuleError::PackageDoesNotMatch => write!(f, "Package does not exist."),
-      ModuleError::ModuleDoesNotExist => write!(f, "Module does not exist."),
-      ModuleError::ModulePathMalformed => write!(f, "Module path is malformed."),
-      ModuleError::ModuleNotDecedent => write!(f, "Module is not a decedent of it's parent module"),
-      ModuleError::ModuleNotDirectDecedent => {
-        write!(f, "Module is not a direct decedent of it's parent module")
-      }
-      ModuleError::SymbolDoesNotExist => write!(f, "Symbol does not exist."),
-      ModuleError::SymbolAlreadyExported => write!(f, "Symbol already exported."),
-      ModuleError::SymbolAlreadyExists => write!(f, "Symbol already exists."),
-      ModuleError::SymbolNotExported => write!(f, "Symbol not exported."),
-      ModuleError::InvalidImport => write!(f, "Invalid import."),
+      Self::PackageDoesNotMatch => write!(f, "Package does not exist."),
+      Self::ModuleDoesNotExist => write!(f, "Module does not exist."),
+      Self::SymbolDoesNotExist => write!(f, "Symbol does not exist."),
+      Self::SymbolNotExported => write!(f, "Symbol not exported."),
+      Self::InvalidImport => write!(f, "Invalid import."),
     }
   }
 }
 
-impl Error for ModuleError {
+impl Error for ImportError {
   fn source(&self) -> Option<&(dyn Error + 'static)> {
     None
   }
@@ -47,4 +35,90 @@ impl Error for ModuleError {
   }
 }
 
-pub type ModuleResult<T> = Result<T, ModuleError>;
+#[derive(Debug, PartialEq)]
+pub enum ModuleInsertError {
+  ModuleAlreadyExists,
+}
+
+impl Display for ModuleInsertError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match *self {
+      Self::ModuleAlreadyExists => write!(f, "Symbol already exists."),
+    }
+  }
+}
+
+impl Error for ModuleInsertError {
+  fn source(&self) -> Option<&(dyn Error + 'static)> {
+    None
+  }
+
+  fn description(&self) -> &str {
+    "description() is deprecated; use Display"
+  }
+
+  fn cause(&self) -> Option<&dyn Error> {
+    None
+  }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum SymbolInsertError {
+  SymbolAlreadyExists,
+}
+
+impl Display for SymbolInsertError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match *self {
+      Self::SymbolAlreadyExists => write!(f, "Symbol already exists."),
+    }
+  }
+}
+
+impl Error for SymbolInsertError {
+  fn source(&self) -> Option<&(dyn Error + 'static)> {
+    None
+  }
+
+  fn description(&self) -> &str {
+    "description() is deprecated; use Display"
+  }
+
+  fn cause(&self) -> Option<&dyn Error> {
+    None
+  }
+}
+
+#[derive(Debug, PartialEq)]
+pub enum SymbolExportError {
+  SymbolDoesNotExist,
+  SymbolAlreadyExported,
+}
+
+impl Display for SymbolExportError {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    match *self {
+      Self::SymbolDoesNotExist => write!(f, "Symbol does not exist."),
+      Self::SymbolAlreadyExported => write!(f, "Symbol already exported."),
+    }
+  }
+}
+
+impl Error for SymbolExportError {
+  fn source(&self) -> Option<&(dyn Error + 'static)> {
+    None
+  }
+
+  fn description(&self) -> &str {
+    "description() is deprecated; use Display"
+  }
+
+  fn cause(&self) -> Option<&dyn Error> {
+    None
+  }
+}
+
+pub type ImportResult<T> = Result<T, ImportError>;
+pub type ModuleInsertResult = Result<(), ModuleInsertError>;
+pub type SymbolInsertResult = Result<(), SymbolInsertError>;
+pub type SymbolExportResult = Result<(), SymbolExportError>;

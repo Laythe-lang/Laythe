@@ -27,7 +27,7 @@ const CHANNEL_CAPACITY: NativeMetaBuilder = NativeMetaBuilder::method("capacity"
 
 pub fn declare_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let channel_class = class_inheritance(hooks, module, CHANNEL_CLASS_NAME)?;
-  export_and_insert(hooks, module, channel_class.name(), val!(channel_class))
+  export_and_insert(module, channel_class.name(), val!(channel_class))
     .map_err(StdError::from)
 }
 

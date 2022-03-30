@@ -30,10 +30,7 @@ use self::primitives::create_primitives;
 
 pub fn create_std_core(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Package>> {
   let global_module = create_primitives(hooks, emitter)?;
-  let std = hooks.manage(Package::new(
-    hooks.manage_str(STD.to_string()),
-    global_module,
-  ));
+  let std = hooks.manage(Package::new(hooks.manage_str(STD), global_module));
 
   add_assert_funs(hooks, global_module, std)?;
   add_clock_funs(hooks, global_module)?;

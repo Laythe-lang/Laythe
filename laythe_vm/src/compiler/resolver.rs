@@ -10,7 +10,7 @@ use laythe_core::{
   constants::{ITER_VAR, SELF, SUPER, UNINITIALIZED_VAR},
   managed::Gc,
   memory::Allocator,
-  module::{self, ModuleError},
+  module::{self, ImportError},
   object::FunKind,
 };
 use std::vec;
@@ -105,8 +105,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   ///
   /// let name = gc.manage_str("module", &NO_GC);
   /// let class = gc.manage_obj(Class::bare(name), &NO_GC);
-  /// let path = PathBuf::from("./module.ly");
-  /// let module = gc.manage(Module::new(class, path, 0), &NO_GC);
+  /// let module = gc.manage(Module::new(class, 0), &NO_GC);
   ///
   /// let file_id = 0;
   /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
@@ -278,7 +277,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       if self
         .gc
         .has_str(name.str())
-        .ok_or(ModuleError::SymbolDoesNotExist)
+        .ok_or(ImportError::SymbolDoesNotExist)
         .and_then(|interned_name| self.global_module.get_exported_symbol(interned_name))
         .is_ok()
       {
@@ -877,8 +876,6 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
 
 #[cfg(test)]
 mod test {
-  use std::path::PathBuf;
-
   use laythe_core::{
     hooks::{GcHooks, NoContext},
     managed::GcObj,
@@ -917,11 +914,9 @@ mod test {
   }
 
   fn dummy_module(hooks: &GcHooks) -> Gc<Module> {
-    let path = PathBuf::from("path/module.ly");
-
     let module_class = test_class(&hooks, "Module");
     hooks.push_root(module_class);
-    let module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
+    let module = hooks.manage(Module::new(module_class, 0));
     hooks.push_root(module);
 
     module
