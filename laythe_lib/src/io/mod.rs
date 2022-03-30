@@ -17,11 +17,11 @@ pub fn add_io_package(
   let mut root = std.root_module();
 
   let mut io_module = io_module(hooks, std, emitter)?;
-  root.insert_module(hooks, io_module)?;
+  root.insert_module(io_module)?;
 
   let stdio = stdio_module(hooks, std, emitter)?;
   let fs = fs_module(hooks, std, emitter)?;
 
-  io_module.insert_module(hooks, stdio)?;
-  io_module.insert_module(hooks, fs).map_err(StdError::from)
+  io_module.insert_module(stdio)?;
+  io_module.insert_module(fs).map_err(StdError::from)
 }

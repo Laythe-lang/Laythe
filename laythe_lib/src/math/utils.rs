@@ -53,77 +53,66 @@ const RAND_META: NativeMetaBuilder = NativeMetaBuilder::fun("rand", Arity::Fixed
 
 pub fn declare_math_module(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(PI),
     val!(std::f64::consts::PI),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(E),
     val!(std::f64::consts::E),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(SIN_META.name),
     val!(Sin::native(hooks)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(COS_META.name),
     val!(Cos::native(hooks)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(LN_META.name),
     val!(Ln::native(hooks)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(ABS_META.name),
     val!(Abs::native(hooks)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(MAX_META.name),
     val!(Max::native(hooks)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(MIN_META.name),
     val!(Min::native(hooks)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(REM_META.name),
     val!(Rem::native(hooks)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(POW_META.name),
     val!(Pow::native(hooks)),
   )?;
 
   export_and_insert(
-    hooks,
     module,
     hooks.manage_str(RAND_META.name),
     val!(Rand::native(hooks)),

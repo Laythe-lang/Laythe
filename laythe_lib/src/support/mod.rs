@@ -20,7 +20,8 @@ pub fn default_class_inheritance(
   let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, STD)?;
-  let object_class = package.import_symbol(hooks, import, hooks.manage_str(OBJECT_CLASS_NAME))?;
+  let module = package.import(hooks, import)?;
+  let object_class = module.get_exported_symbol(hooks.manage_str(OBJECT_CLASS_NAME))?;
 
   if_let_obj!(ObjectKind::Class(class) = (object_class) {
     Ok(Class::with_inheritance(
@@ -39,10 +40,11 @@ pub fn default_error_inheritance(
   class_name: &str,
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
-  let object_name = hooks.manage_str(ERROR_CLASS_NAME);
+  let error_name = hooks.manage_str(ERROR_CLASS_NAME);
 
   let import = Import::from_str(hooks, STD)?;
-  let object_class = package.import_symbol(hooks, import, object_name)?;
+  let module = package.import(hooks, import)?;
+  let object_class = module.get_exported_symbol(error_name)?;
 
   if_let_obj!(ObjectKind::Class(class) = (object_class) {
     Ok(Class::with_inheritance(
@@ -63,8 +65,9 @@ pub fn load_class_from_package(
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(name);
   let import = Import::from_str(hooks, path)?;
+  let module = package.import(hooks, import)?;
+  let symbol = module.get_exported_symbol(name)?;
 
-  let symbol = package.import_symbol(hooks, import, name)?;
   if_let_obj!(ObjectKind::Class(class) = (symbol) {
     Ok(class)
   } else {
@@ -100,18 +103,13 @@ pub fn load_instance_from_module(
       } else {
         Err(StdError::SymbolNotInstance)
       })
-    }
+    },
     Err(err) => Err(StdError::from(err)),
   }
 }
 
-pub fn export_and_insert(
-  hooks: &GcHooks,
-  mut module: Gc<Module>,
-  name: GcStr,
-  symbol: Value,
-) -> StdResult<()> {
-  module.insert_symbol(hooks, name, symbol)?;
+pub fn export_and_insert(mut module: Gc<Module>, name: GcStr, symbol: Value) -> StdResult<()> {
+  module.insert_symbol(name, symbol)?;
   module.export_symbol(name).map_err(StdError::from)
 }
 
@@ -130,7 +128,7 @@ mod test {
     managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, TraceRoot},
     match_obj,
     memory::{Allocator, NoGc},
-    module::{Module, ModuleResult},
+    module::{module_class, ImportResult, Module},
     object::{Class, Enumerate, Fun, FunBuilder, List, LyNative, Native, NativeMetaBuilder},
     signature::Arity,
     signature::{ParameterBuilder, ParameterKind},
@@ -144,7 +142,7 @@ mod test {
     io::Io,
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
-  use std::{cell::RefCell, io::Write, path::PathBuf, sync::Arc};
+  use std::{cell::RefCell, io::Write, sync::Arc};
 
   pub struct MockedContext {
     pub gc: RefCell<Allocator>,
@@ -180,7 +178,7 @@ mod test {
       }
     }
 
-    pub fn with_std(responses: &[Value]) -> ModuleResult<Self> {
+    pub fn with_std(responses: &[Value]) -> ImportResult<Self> {
       let mut context = Self {
         gc: RefCell::default(),
         no_gc: NoGc(),
@@ -262,7 +260,7 @@ mod test {
         Ok(_) => (),
         Err(_) => {
           return Err(LyError::Exit(1));
-        }
+        },
       }
 
       if self.response_count < self.responses.len() {
@@ -296,7 +294,7 @@ mod test {
         Ok(_) => (),
         Err(_) => {
           return Err(LyError::Exit(1));
-        }
+        },
       }
 
       if self.response_count < self.responses.len() {
@@ -419,18 +417,14 @@ mod test {
     Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
   }
 
+  pub fn test_module(hooks: &GcHooks, name: &str) -> Gc<Module> {
+    let base_class = test_class(hooks, "Module");
+    hooks.manage(Module::new(module_class(hooks, name, base_class), 0))
+  }
+
   pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
-    let module_class = test_class(hooks, name);
+    let module = test_module(hooks, module_name);
 
-    let module = Module::from_path(
-      &hooks,
-      PathBuf::from(format!("path/{}", module_name)),
-      module_class,
-      0,
-    )
-    .expect("TODO");
-
-    let module = hooks.manage(module);
     let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
 
     hooks.manage_obj(builder.build(&hooks))
@@ -442,27 +436,14 @@ mod test {
     module_name: &str,
     arity: Arity,
   ) -> FunBuilder {
-    let module_class = test_class(hooks, name);
-
-    let module = Module::from_path(
-      &hooks,
-      PathBuf::from(format!("path/{}.ly", module_name)),
-      module_class,
-      0,
-    )
-    .expect("TODO");
-
-    let module = hooks.manage(module);
+    let module = test_module(&hooks, module_name);
     FunBuilder::new(hooks.manage_str(name), module, arity)
   }
 
   pub fn test_error_class(hooks: &GcHooks) -> GcObj<Class> {
     let mut error_class = Class::bare(hooks.manage_str("Error"));
 
-    error_class.add_method(
-      hooks.manage_str("init"),
-      val!(TestInit::native(hooks)),
-    );
+    error_class.add_method(hooks.manage_str("init"), val!(TestInit::native(hooks)));
 
     hooks.manage_obj(error_class)
   }

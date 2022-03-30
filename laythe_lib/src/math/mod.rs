@@ -1,17 +1,15 @@
 mod utils;
 
+use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
 use laythe_core::{
   hooks::GcHooks,
   managed::Gc,
   module::{Module, Package},
-  utils::IdEmitter,
+  utils::IdEmitter, object::Class,
 };
-use std::path::PathBuf;
 use utils::{declare_math_module, define_math_module};
 
-use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
-
-const MATH_PATH: &str = "std/math";
+const MATH_MODULE_NAME: &str = "math";
 
 pub fn add_math_module(
   hooks: &GcHooks,
@@ -19,16 +17,13 @@ pub fn add_math_module(
   emitter: &mut IdEmitter,
 ) -> StdResult<()> {
   let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
+  let math_module_class =
+    Class::with_inheritance(hooks, hooks.manage_str(MATH_MODULE_NAME), module_class);
 
-  let module = hooks.manage(Module::from_path(
-    hooks,
-    PathBuf::from(MATH_PATH),
-    module_class,
-    emitter.emit(),
-  )?);
+  let module = hooks.manage(Module::new(math_module_class, emitter.emit()));
 
   let mut root = std.root_module();
-  root.insert_module(hooks, module)?;
+  root.insert_module(module)?;
 
   declare_math_module(hooks, module)?;
   define_math_module(hooks, module)

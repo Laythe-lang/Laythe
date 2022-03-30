@@ -13,7 +13,7 @@ use std::env;
 use std::fs::File;
 use std::io::prelude::*;
 use std::process;
-use std::{path::PathBuf, time::Instant};
+use std::time::Instant;
 
 fn load_source(path: &str) -> String {
   let mut file = File::open(path).unwrap();
@@ -41,9 +41,7 @@ fn compiler_bench(src: &str) {
 
     let (ast, line_offsets) = Parser::new(&source, 0).parse();
     let mut ast = ast.unwrap();
-    let module =
-      Module::from_path(&hooks, PathBuf::from("/Benchmark.ly"), module_class, 0).unwrap();
-    let module = hooks.manage(module);
+    let module = hooks.manage(Module::new(module_class, 0));
 
     let gc = context.done();
     assert!(Resolver::new(global_module, &gc, &source, 0, false)

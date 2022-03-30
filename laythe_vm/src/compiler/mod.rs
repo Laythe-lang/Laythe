@@ -236,8 +236,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   ///
   /// let name = gc.manage_str("module", &NO_GC);
   /// let class = gc.manage_obj(Class::bare(name), &NO_GC);
-  /// let path = PathBuf::from("./module.ly");
-  /// let module = gc.manage(Module::new(class, path, 0), &NO_GC);
+  /// let module = gc.manage(Module::new(class, 0), &NO_GC);
   ///
   /// let file_id = 0;
   /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
@@ -396,7 +395,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       FunKind::Method | FunKind::StaticMethod | FunKind::Initializer => {
         let name = class_info.expect("Class info not set").name;
         format!("{}:{}", name, fun.name())
-      }
+      },
     };
 
     let mut stdio = io.as_ref().unwrap().stdio();
@@ -502,7 +501,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         SymbolState::GlobalInitialized => {
           let global_index = self.identifier_constant(name.str());
           self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
-        }
+        },
         SymbolState::Uninitialized => panic!(
           "Unexpected uninitialized symbol {} in {}.",
           name.str(),
@@ -515,7 +514,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           SymbolState::GlobalInitialized => {
             let global_index = self.identifier_constant(name.str());
             self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
-          }
+          },
           SymbolState::Initialized => panic!(
             "Unexpected local symbol {} in {}.",
             name.str(),
@@ -534,7 +533,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           } else {
             panic!("Symbol {} not found in {}.", name.str(), self.fun.name());
           }
-        }
+        },
       },
     }
   }
@@ -547,7 +546,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         SymbolState::GlobalInitialized => {
           let global_index = self.identifier_constant(name.str());
           self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
-        }
+        },
         SymbolState::Uninitialized => panic!(
           "Unexpected uninitialized symbol {} in {}.",
           name.str(),
@@ -560,7 +559,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           SymbolState::GlobalInitialized => {
             let global_index = self.identifier_constant(name.str());
             self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
-          }
+          },
           SymbolState::Initialized => panic!(
             "Unexpected local symbol {} in {}.",
             name.str(),
@@ -579,7 +578,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           } else {
             panic!("Symbol {} not found in {}.", name.str(), self.fun.name())
           }
-        }
+        },
       },
     }
   }
@@ -639,7 +638,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               _ => (self.add_capture(CaptureIndex::Enclosing(capture)), state),
             }),
         }
-      }
+      },
       None => None,
     }
   }
@@ -879,7 +878,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
         self.constants.insert(value, index);
         index as u16
-      }
+      },
     }
   }
 
@@ -932,11 +931,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Stmt::Expr(expr) => {
         self.expr(expr);
         self.emit_byte(AlignedByteCode::Drop, expr.end());
-      }
+      },
       Stmt::ImplicitReturn(expr) => {
         self.expr(expr);
         self.exit_scope = ScopeExit::Implicit
-      }
+      },
       Stmt::Import(import) => self.import(import),
       Stmt::For(for_) => self.for_(for_),
       Stmt::If(if_) => self.if_(if_),
@@ -973,7 +972,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Primary::Grouping(expr) => {
         self.expr(expr);
         false
-      }
+      },
       Primary::String(token) => self.string(token),
       Primary::Interpolation(interpolation) => self.interpolation(interpolation),
       Primary::Ident(token) => self.identifier(token),
@@ -1192,10 +1191,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       FunKind::Method | FunKind::Initializer => {
         let self_state = compiler.declare_local_variable(SELF);
         compiler.define_local_variable(SELF, self_state, fun.start());
-      }
+      },
       FunKind::Fun | FunKind::StaticMethod => {
         compiler.declare_local_variable(UNINITIALIZED_VAR);
-      }
+      },
       _ => panic!("Did not expect script."),
     };
 
@@ -1207,7 +1206,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         compiler.expr(expr);
         compiler.emit_byte(AlignedByteCode::Return, expr.end());
         ScopeExit::Early
-      }
+      },
     };
 
     let end_line = fun.end();
@@ -1261,12 +1260,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         let (name, _) =
           self.make_identifier(&import.path()[import.path().len() - 1], import.start());
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
-      }
+      },
       ast::ImportStem::Rename(rename) => {
         self.emit_byte(AlignedByteCode::Import(path), import.start());
         let (name, _) = self.make_identifier(rename, import.start());
         self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
-      }
+      },
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
           let (symbol_slot, _) = self.make_identifier(&symbol.symbol, import.start());
@@ -1282,7 +1281,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
           self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
         }
-      }
+      },
     }
   }
 
@@ -1395,7 +1394,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         }
 
         self.patch_jump(else_jump);
-      }
+      },
       None => self.patch_jump(then_jump),
     }
   }
@@ -1417,7 +1416,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
           // emit for the actual launch
           self.emit_byte(AlignedByteCode::Launch(call.args.len() as u8), call.end());
-        }
+        },
         _ => unreachable!("Unexpected expression after launch."),
       },
       _ => unreachable!("Unexpected expression after launch."),
@@ -1430,7 +1429,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Some(v) => {
         self.expr(v);
         self.emit_byte(AlignedByteCode::Return, v.end());
-      }
+      },
       None => self.emit_return(return_.start()),
     }
     self.exit_scope = ScopeExit::Early;
@@ -1512,7 +1511,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
                 AlignedByteCode::Slot(self.emit_invoke_id()),
                 assign.rhs.end(),
               )
-            }
+            },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
@@ -1530,12 +1529,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               self.expr(&assign.rhs);
               self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
               self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
-            }
+            },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
-            }
+            },
           }
-        }
+        },
         None => {
           if let Primary::Ident(name) = &atom.primary {
             self.expr(&assign.rhs);
@@ -1543,7 +1542,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
-        }
+        },
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
     }
@@ -1570,7 +1569,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), index.end());
 
               self.emit_byte(AlignedByteCode::Send, send.lhs.end())
-            }
+            },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
@@ -1589,12 +1588,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
 
               self.emit_byte(AlignedByteCode::Send, send.lhs.end())
-            }
+            },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of send.")
-            }
+            },
           }
-        }
+        },
         None => {
           if let Primary::Ident(name) = &atom.primary {
             self.variable_get(name);
@@ -1603,7 +1602,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
-        }
+        },
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
     }
@@ -1615,10 +1614,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       ast::AssignBinaryOp::Add => comp.emit_byte(AlignedByteCode::Add, assign_binary.rhs.end()),
       ast::AssignBinaryOp::Sub => {
         comp.emit_byte(AlignedByteCode::Subtract, assign_binary.rhs.end())
-      }
+      },
       ast::AssignBinaryOp::Mul => {
         comp.emit_byte(AlignedByteCode::Multiply, assign_binary.rhs.end())
-      }
+      },
       ast::AssignBinaryOp::Div => comp.emit_byte(AlignedByteCode::Divide, assign_binary.rhs.end()),
     };
 
@@ -1654,7 +1653,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
                 AlignedByteCode::Slot(self.emit_invoke_id()),
                 assign_binary.rhs.end(),
               );
-            }
+            },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
                 if let Primary::Self_(_) = atom.primary {
@@ -1678,12 +1677,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
               self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
               self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
-            }
+            },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
-            }
+            },
           }
-        }
+        },
         None => {
           if let Primary::Ident(name) = &atom.primary {
             self.variable_get(name);
@@ -1693,7 +1692,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           } else {
             unreachable!("Unexpected expression on left hand side of assignment.");
           }
-        }
+        },
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
     }
@@ -1741,12 +1740,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         let and_jump = self.emit_jump(AlignedByteCode::And(0), binary.lhs.end());
         self.expr(&binary.rhs);
         self.patch_jump(and_jump);
-      }
+      },
       ast::BinaryOp::Or => {
         let or_jump = self.emit_jump(AlignedByteCode::Or(0), binary.lhs.end());
         self.expr(&binary.rhs);
         self.patch_jump(or_jump);
-      }
+      },
     }
   }
 
@@ -1803,12 +1802,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
           false
         }
-      }
+      },
       None => {
         self.emit_byte(AlignedByteCode::GetProperty(name), access.prop.end());
         self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
         false
-      }
+      },
     }
   }
 
@@ -1841,7 +1840,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Some(expr) => {
         self.expr(expr);
         self.emit_byte(AlignedByteCode::BufferedChannel, channel.end());
-      }
+      },
       None => self.emit_byte(AlignedByteCode::Channel, channel.end()),
     }
 
@@ -1896,12 +1895,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         ast::StringSegments::Token(token) => {
           let value = val!(self.gc.borrow_mut().manage_str(token.str(), self));
           self.emit_constant(value, token.end());
-        }
+        },
         ast::StringSegments::Expr(expr) => {
           self.expr(expr);
           self.emit_byte(AlignedByteCode::Invoke((str_constant, 0)), expr.end());
           self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), expr.end());
-        }
+        },
       }
     }
 
@@ -1934,7 +1933,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           FunKind::Method | FunKind::Initializer => {
             self.variable_get(self_);
             Some(())
-          }
+          },
           _ => None,
         })
       })
@@ -1985,19 +1984,19 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             super_.access.end(),
           );
           true
-        }
+        },
         _ => {
           self.variable_get(&super_.super_);
           self.emit_byte(AlignedByteCode::GetSuper(name), super_.end());
           false
-        }
+        },
       },
       None => {
         self.variable_get(&super_.super_);
 
         self.emit_byte(AlignedByteCode::GetSuper(name), super_.access.end());
         false
-      }
+      },
     }
   }
 
@@ -2124,7 +2123,6 @@ mod test {
   };
   use laythe_env::stdio::{support::StdioTestContainer, Stdio};
   use module::Module;
-  use std::path::PathBuf;
 
   #[cfg(feature = "debug")]
   use laythe_native::io::io_native;
@@ -2166,21 +2164,17 @@ mod test {
   }
 
   fn dummy_module(hooks: &GcHooks) -> Gc<Module> {
-    let path = PathBuf::from("path/module.ly");
-
     let module_class = test_class(&hooks, "Module");
     let object_class = module_class.super_class().expect("Expected Object");
     hooks.push_root(module_class);
-    let mut module = hooks.manage(Module::from_path(&hooks, path, module_class, 0).unwrap());
+    let mut module = hooks.manage(Module::new(module_class, 0));
     hooks.pop_roots(1);
     hooks.push_root(module);
 
     let print = test_fun(hooks, module);
+    assert!(module.insert_symbol(print.name(), val!(print)).is_ok());
     assert!(module
-      .insert_symbol(hooks, print.name(), val!(print))
-      .is_ok());
-    assert!(module
-      .insert_symbol(hooks, object_class.name(), val!(object_class))
+      .insert_symbol(object_class.name(), val!(object_class))
       .is_ok());
     assert!(module.export_symbol(print.name()).is_ok());
     assert!(module.export_symbol(object_class.name()).is_ok());
@@ -2233,18 +2227,18 @@ mod test {
         AlignedByteCode::Closure(closure) => {
           decoded.push(byte_code);
           offset = decode_byte_code_closure(fun, &mut decoded, new_offset, closure)
-        }
+        },
         AlignedByteCode::GetProperty(_)
         | AlignedByteCode::SetProperty(_)
         | AlignedByteCode::Invoke(_)
         | AlignedByteCode::SuperInvoke(_) => {
           decoded.push(byte_code);
           offset = decode_byte_code_slot(fun, &mut decoded, new_offset)
-        }
+        },
         _ => {
           decoded.push(byte_code);
           offset = new_offset;
-        }
+        },
       }
     }
 
@@ -2326,10 +2320,10 @@ mod test {
             ByteCodeTest::Fun((expected, max_slots, inner)) => {
               assert_eq!(*expected, index);
               assert_fun_bytecode(&*fun, *max_slots, &inner);
-            }
+            },
             _ => assert!(false),
           }
-        }
+        },
         AlignedByteCode::Constant(index) => {
           let constant = fun.chunk().get_constant(index as usize);
           if constant.is_obj_kind(ObjectKind::Fun) {
@@ -2339,18 +2333,18 @@ mod test {
               ByteCodeTest::Fun((expected, max_slots, inner)) => {
                 assert_eq!(*expected, index as u16);
                 assert_fun_bytecode(&*fun, *max_slots, &inner);
-              }
+              },
               _ => assert!(false),
             }
           } else {
             match &code[i] {
               ByteCodeTest::Code(byte_code) => {
                 assert_eq!(&decoded_byte_code[i], byte_code);
-              }
+              },
               _ => assert!(false),
             }
           }
-        }
+        },
         AlignedByteCode::ConstantLong(index) => {
           let constant = fun.chunk().get_constant(index as usize);
 
@@ -2361,22 +2355,22 @@ mod test {
               ByteCodeTest::Fun((expected, max_slots, inner)) => {
                 assert_eq!(*expected, index);
                 assert_fun_bytecode(&*fun, *max_slots, &inner);
-              }
+              },
               _ => assert!(false),
             }
           } else {
             match &code[i] {
               ByteCodeTest::Code(byte_code) => {
                 assert_eq!(&decoded_byte_code[i], byte_code);
-              }
+              },
               _ => assert!(false),
             }
           }
-        }
+        },
         _ => match &code[i] {
           ByteCodeTest::Code(byte_code) => {
             assert_eq!(&decoded_byte_code[i], byte_code);
-          }
+          },
           _ => assert!(false),
         },
       }
