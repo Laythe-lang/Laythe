@@ -5,8 +5,8 @@ use crate::{
   captures::Captures,
   chunk::Encode,
   hooks::GcHooks,
-  managed::{GcObj, GcStr, Gc},
-  module::{Module, module_class},
+  managed::{Gc, GcObj, GcStr},
+  module::{module_class, Module},
   object::{Class, Fiber, FiberResult, Fun, FunBuilder},
   signature::Arity,
   value::Value,
@@ -17,6 +17,7 @@ where
   T: Default + Encode,
 {
   name: String,
+  parent: Option<GcObj<Fiber>>,
   module_name: String,
   instructions: Vec<T>,
   max_slots: i32,
@@ -29,6 +30,7 @@ where
   fn default() -> Self {
     Self {
       name: "Fiber".to_string(),
+      parent: None,
       module_name: "Fiber Module".to_string(),
       instructions: vec![T::default()],
       max_slots: 0,
@@ -55,6 +57,11 @@ where
     self
   }
 
+  pub fn parent(mut self, parent: GcObj<Fiber>) -> Self {
+    self.parent = Some(parent);
+    self
+  }
+
   pub fn max_slots(mut self, max_slots: i32) -> Self {
     self.max_slots = max_slots;
     self
@@ -74,7 +81,7 @@ where
     let captures = Captures::new(hooks, &[]);
     hooks.pop_roots(1);
 
-    Fiber::new(fun, captures).map(|fiber| hooks.manage_obj(fiber))
+    Fiber::new(self.parent, fun, captures).map(|fiber| hooks.manage_obj(fiber))
   }
 }
 

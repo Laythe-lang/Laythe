@@ -6,7 +6,7 @@ use crate::{
   captures::Captures,
   constants::SCRIPT,
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, GcObj, Object, Trace, Instance},
+  managed::{DebugHeap, DebugWrap, GcObj, Instance, Object, Trace},
   val,
   value::{Value, VALUE_NIL},
 };
@@ -45,6 +45,9 @@ pub struct Fiber {
   /// A list of channels executed on this fiber
   channels: Vec<GcObj<Channel>>,
 
+  /// The parent fiber to this fiber
+  parent: Option<GcObj<Fiber>>,
+
   /// pointer to the top of the value stack
   stack_top: *mut Value,
 
@@ -62,20 +65,22 @@ impl Fiber {
   /// Create a new fiber from the provided closure. The fiber uses
   /// this initial closure to determine how much stack space to initially
   /// reserve
-  pub fn new(fun: GcObj<Fun>, captures: Captures) -> FiberResult<Self> {
-    Fiber::new_inner(fun, captures, fun.max_slots() + 1)
-  }
-
-  /// Create a new from the provided closure, used by split_fiber to use
-  /// the top call frame to initialize a new fiber. This reserves stack space
-  /// for the initial frame slots and arguments.
-  fn split(fun: GcObj<Fun>, captures: Captures, arg_count: usize) -> FiberResult<Self> {
-    Fiber::new_inner(fun, captures, fun.max_slots() + arg_count + 1)
+  pub fn new(
+    parent: Option<GcObj<Fiber>>,
+    fun: GcObj<Fun>,
+    captures: Captures,
+  ) -> FiberResult<Self> {
+    Fiber::new_inner(parent, fun, captures, fun.max_slots() + 1)
   }
 
   /// Inner initialization function that actually reserver and create
   /// each structure
-  fn new_inner(fun: GcObj<Fun>, captures: Captures, stack_count: usize) -> FiberResult<Self> {
+  fn new_inner(
+    parent: Option<GcObj<Fiber>>,
+    fun: GcObj<Fun>,
+    captures: Captures,
+    stack_count: usize,
+  ) -> FiberResult<Self> {
     // reserve resources
     let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
     let mut stack = vec![VALUE_NIL; stack_count];
@@ -96,6 +101,7 @@ impl Fiber {
     Ok(Self {
       stack,
       frames,
+      parent,
       channels: vec![],
       state: FiberState::Pending,
       error: None,
@@ -128,9 +134,16 @@ impl Fiber {
     self.frame().captures()
   }
 
+  /// Is this fiber complete
   #[inline]
   pub fn is_complete(&self) -> bool {
     self.state == FiberState::Complete
+  }
+
+  /// Is this fiber pending
+  #[inline]
+  pub fn is_pending(&self) -> bool {
+    self.state == FiberState::Pending
   }
 
   /// Activate the current fiber
@@ -172,7 +185,10 @@ impl Fiber {
     assert_eq!(fiber.state, FiberState::Running);
     fiber.state = FiberState::Complete;
 
-    let waiter = fiber.get_runnable();
+    let waiter = fiber
+      .parent
+      .filter(|parent| parent.is_pending())
+      .or_else(|| fiber.get_runnable());
 
     let channels = mem::take(&mut fiber.channels);
     for mut channel in channels {
@@ -382,31 +398,32 @@ impl Fiber {
   }
 
   /// Attempt to create a new fiber using the most recent call frame
-  pub fn split_fiber(
-    &mut self,
+  pub fn split(
+    mut fiber: GcObj<Fiber>,
     hooks: &GcHooks,
     frame_count: usize,
     arg_count: usize,
   ) -> Option<GcObj<Fiber>> {
-    if self.frames().len() != frame_count + 1 {
+    if fiber.frames().len() != frame_count + 1 {
       return None;
     }
 
-    let frame = self.frames.pop().expect("Expected call frame");
+    let frame = fiber.frames.pop().expect("Expected call frame");
     hooks.push_root(frame.fun());
     let mut fiber = hooks.manage_obj(
-      Fiber::split(frame.fun(), frame.captures(), arg_count).expect("Assumed valid closure"),
+      Fiber::new_inner(Some(fiber), frame.fun(), frame.captures(), arg_count + 1)
+        .expect("Assumed valid closure"),
     );
     hooks.pop_roots(1);
 
-    let slots = self.frame_stack().len();
+    let slots = fiber.frame_stack().len();
     assert_eq!(slots, arg_count + 1);
 
     // if we have any argument bulk copy them to the fiber
     if slots > 1 {
       unsafe {
         ptr::copy_nonoverlapping(
-          self.frame().stack_start().offset(1),
+          fiber.frame().stack_start().offset(1),
           fiber.stack_top,
           arg_count,
         );
@@ -417,8 +434,8 @@ impl Fiber {
     // Effectively pop the current fibers frame so they're 'moved'
     // to the new fiber
     unsafe {
-      self.stack_top = self.frame().stack_start();
-      self.frame = self.frame.sub(1);
+      fiber.stack_top = fiber.frame().stack_start();
+      fiber.frame = fiber.frame.sub(1);
     }
 
     Some(fiber)
@@ -685,7 +702,9 @@ mod test {
   use super::*;
   use crate::{
     hooks::{GcHooks, NoContext},
-    support::{test_fun, test_fun_builder, FiberBuilder},
+    object::FunBuilder,
+    signature::Arity,
+    support::{test_fun, test_fun_builder, test_module, FiberBuilder},
   };
 
   #[test]
@@ -936,6 +955,114 @@ mod test {
     unsafe {
       fiber.peek_set(1, val!(true));
     }
+  }
+
+  #[test]
+  fn is_complete() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .build(&hooks)
+      .expect("Expected to build");
+
+    assert_eq!(fiber.is_complete(), false);
+
+    fiber.activate();
+    Fiber::complete(fiber);
+
+    assert_eq!(fiber.is_complete(), true);
+  }
+
+  #[test]
+  fn is_pending() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .build(&hooks)
+      .expect("Expected to build");
+
+    assert_eq!(fiber.is_pending(), true);
+
+    fiber.activate();
+
+    assert_eq!(fiber.is_pending(), false);
+
+    fiber.sleep();
+
+    assert_eq!(fiber.is_pending(), true);
+  }
+
+  #[test]
+  fn complete_without_parent_or_channels() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .build(&hooks)
+      .expect("Expected to build");
+
+    fiber.activate();
+
+    assert_eq!(Fiber::complete(fiber), None)
+  }
+
+  #[test]
+  fn split() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let module = test_module(&hooks, "test module");
+
+    let mut builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
+    builder.write_instruction(0, 0);
+    builder.write_instruction(0, 0);
+    builder.write_instruction(0, 0);
+
+    let fun = hooks.manage_obj(builder.build(&hooks));
+    let captures = Captures::new(&hooks, &[]);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .max_slots(3)
+      .build(&hooks)
+      .expect("Expected to build");
+
+    fiber.activate();
+
+    unsafe {
+      fiber.push(val!(fun));
+      fiber.push(val!(10.0));
+      fiber.push(val!(true));
+    }
+
+    fiber.push_frame(fun, captures, 2);
+
+    let mut child = Fiber::split(fiber, &hooks, 1, 0).expect("Expected split");
+
+    fiber.sleep();
+    child.activate();
+
+    assert_eq!(Fiber::complete(child), Some(fiber))
+  }
+
+  #[test]
+  fn complete_with_parent_but_no_channels() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let parent = FiberBuilder::<u8>::default()
+      .build(&hooks)
+      .expect("Expected to build");
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .parent(parent)
+      .build(&hooks)
+      .expect("Expected to build");
+
+    fiber.activate();
+
+    assert_eq!(Fiber::complete(fiber), Some(parent))
   }
 
   #[test]
