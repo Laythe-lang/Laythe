@@ -110,11 +110,11 @@ impl Vm {
     };
 
     let hooks = GcHooks::new(self);
-    let mut fiber = self.fiber;
+    let fiber = self.fiber;
 
     // call init fiber which will peel off the last frame if it's above the previous
     // water mark
-    if let Some(new_fiber) = fiber.split_fiber(&hooks, frame_count, arg_count as usize) {
+    if let Some(new_fiber) = Fiber::split(fiber, &hooks, frame_count, arg_count as usize) {
       // put the fiber in the queue
       self.fiber_queue.push_back(new_fiber);
       self.current_fun = current_fun;
@@ -728,14 +728,13 @@ impl Vm {
         self.update_ip(-3);
         self.fiber.sleep();
 
-        let import_fiber = match Fiber::new(fun, self.capture_stub) {
+        let import_fiber = match Fiber::new(Some(self.fiber), fun, self.capture_stub) {
           Ok(fiber) => fiber,
           Err(_) => self.internal_error("Importing fiber"),
         };
         let import_fiber = self.manage_obj(import_fiber);
 
         self.fiber_queue.push_back(import_fiber);
-        self.fiber_queue.push_back(self.fiber);
         Signal::ContextSwitch
       },
       ImportResult::NotFound => self.runtime_error(
@@ -793,14 +792,13 @@ impl Vm {
         self.update_ip(-5);
         self.fiber.sleep();
 
-        let import_fiber = match Fiber::new(fun, self.capture_stub) {
+        let import_fiber = match Fiber::new(Some(self.fiber), fun, self.capture_stub) {
           Ok(fiber) => fiber,
           Err(_) => self.internal_error("Importing fiber"),
         };
         let import_fiber = self.manage_obj(import_fiber);
 
         self.fiber_queue.push_back(import_fiber);
-        self.fiber_queue.push_back(self.fiber);
         Signal::ContextSwitch
       },
       ImportResult::NotFound => self.runtime_error(

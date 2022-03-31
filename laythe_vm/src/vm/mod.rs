@@ -154,7 +154,7 @@ impl Vm {
     let current_fun = hooks.manage_obj(current_fun);
     let capture_stub = Captures::new(&hooks, &[]);
     let fiber = hooks.manage_obj(
-      Fiber::new(current_fun, capture_stub).expect("Unable to generate placeholder fiber"),
+      Fiber::new(None, current_fun, capture_stub).expect("Unable to generate placeholder fiber"),
     );
 
     let builtin = builtin_from_module(&hooks, &global)
@@ -298,7 +298,7 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: GcObj<Fun>) {
-    let fiber = match Fiber::new(script, self.capture_stub) {
+    let fiber = match Fiber::new(None, script, self.capture_stub) {
       Ok(fiber) => fiber,
       Err(_) => self.internal_error("Unable to generate initial fiber"),
     };
