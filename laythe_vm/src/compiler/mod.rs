@@ -1268,7 +1268,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       },
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
-          let (symbol_slot, _) = self.make_identifier(&symbol.symbol, import.start());
+          let symbol_slot = self.identifier_constant(symbol.symbol.str());
           self.emit_byte(
             AlignedByteCode::ImportSymbol((path, symbol_slot)),
             symbol.start(),
@@ -1276,7 +1276,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
           let name = match &symbol.rename {
             Some(rename) => self.make_identifier(rename, import.start()).0,
-            None => symbol_slot,
+            None => self.make_identifier(&symbol.symbol, import.start()).0,
           };
 
           self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
