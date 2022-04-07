@@ -15,10 +15,18 @@ use laythe_core::{
 };
 use std::path::PathBuf;
 
+/// What was the outcome of the attempted import
 pub enum ImportResult {
+  /// The file was already loaded and the module is available
   Loaded(Gc<Module>),
+
+  /// The file was found be not yet executed
   Compiled(GcObj<Fun>),
+
+  /// The file was not present
   NotFound,
+
+  /// The file was present but contained compiler errors
   CompileError,
 }
 
@@ -87,6 +95,9 @@ impl Vm {
     module
   }
 
+  /// Import a module into the current fiber. If the
+  /// module already exists return that module otherwise attempt
+  /// to load the missing module from the file system.
   pub(super) fn import_module(&mut self, import: Gc<Import>) -> ImportResult {
     let package = self.packages.get(&import.package()).cloned();
 
@@ -103,6 +114,10 @@ impl Vm {
     }
   }
 
+  /// Attempt to load a missing module from the filesystem into Laythe.
+  /// This can error from a missing file or from the file
+  /// failing to compile. If successful attach the new module
+  /// onto it's parent
   fn load_missing_module(
     &mut self,
     existing_package: Gc<Package>,

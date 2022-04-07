@@ -31,6 +31,7 @@ impl Package {
     self.root_module
   }
 
+  /// Attempt to import a module from the provided import object
   pub fn import(&self, hooks: &GcHooks, import: Gc<Import>) -> ImportResult<Gc<Module>> {
     if import.package() == self.name {
       let path = import.path();

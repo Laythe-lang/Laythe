@@ -111,10 +111,12 @@ impl Module {
     }
   }
 
+  /// Retrieve a module for the given that if it exists
   pub fn get_module(&self, name: GcStr) -> Option<Gc<Module>> {
     self.modules.get(&name).copied()
   }
 
+  /// Attempt to import a module from the provided path
   pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ImportResult<Gc<Module>> {
     if path.is_empty() {
       Err(ImportError::MalformedPath)

@@ -185,6 +185,7 @@ impl Fiber {
     assert_eq!(fiber.state, FiberState::Running);
     fiber.state = FiberState::Complete;
 
+    // load from waiting fiber biases toward the parent fiber
     let waiter = fiber
       .parent
       .filter(|parent| parent.is_pending())
@@ -611,6 +612,7 @@ impl Fiber {
   }
 }
 
+/// Assert the provided pointer is inbounds this slice
 #[cfg(debug_assertions)]
 fn assert_inbounds<T>(slice: &[T], ptr: *mut T) {
   unsafe {
