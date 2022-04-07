@@ -1,10 +1,18 @@
 use laythe_vm::vm::{default_native_vm, VmExit};
-use support::{assert_file_exit_and_stdio, assert_files_exit};
+use support::{assert_file_exit_and_stdio, assert_files_exit, assert_files_exit_with_cwd};
 
 mod support;
 
 fn test_file_exits(paths: &[&str], result: VmExit) -> Result<(), std::io::Error> {
   assert_files_exit(paths, FILE_PATH, result)
+}
+
+fn test_file_exits_with_cwd(
+  paths: &[&str],
+  cwd: &str,
+  result: VmExit,
+) -> Result<(), std::io::Error> {
+  assert_files_exit_with_cwd(paths, FILE_PATH, cwd, result)
 }
 
 fn test_file_with_stdio(
