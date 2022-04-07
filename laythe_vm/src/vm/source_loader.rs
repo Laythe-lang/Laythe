@@ -194,7 +194,7 @@ mod test {
 
       let root_module = test_module(&hooks, "root");
 
-      let (found_module, beginning, end) = find_missing_module(root_module, &[], 0);
+      let (found_module, (beginning, end)) = find_missing_module(root_module, &[], 0);
 
       assert_eq!(found_module, root_module);
 
@@ -210,7 +210,7 @@ mod test {
       let root_module = test_module(&hooks, "root");
       let path = &[hooks.manage_str("first"), hooks.manage_str("second")];
 
-      let (found_module, beginning, end) = find_missing_module(root_module, path, 0);
+      let (found_module, (beginning, end)) = find_missing_module(root_module, path, 0);
 
       assert_eq!(found_module, root_module);
 
@@ -234,7 +234,7 @@ mod test {
 
       let path = &[hooks.manage_str("first"), hooks.manage_str("second")];
 
-      let (found_module, beginning, end) = find_missing_module(root_module, path, 0);
+      let (found_module, (beginning, end)) = find_missing_module(root_module, path, 0);
 
       assert_eq!(found_module, nested_module);
 
