@@ -1,0 +1,10 @@
+import std.io.stdio:{stderr};
+
+export fn runtimeError(message) {
+  stderr.writeln(message);
+  exit(1);
+}
+
+export fn print_error(message) {
+  stderr.writeln(message);
+}

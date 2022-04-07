@@ -1,0 +1,75 @@
+import std.io.stdio:{stderr};
+
+// The variable resolver
+
+let resolver = nil;
+
+export fn setResolver(newResolver) { resolver }
+
+export class Resolver {
+  init(program, interpreter) {
+    self.program = program;
+    self.interpreter = interpreter;
+    self.scopes = []; // List can be used as a stack too
+  }
+
+  error(message) {
+    stderr.writeln("[line 1] ${message}"); // This is hack for tests (it's not always line 1)
+    exit(65);
+  }
+
+  resolve() {
+    self.program.resolve(self);
+  }
+
+  resolveFunction(function) {
+    self.beginScope();
+    for param in function.params {
+      self.declare(param);
+      self.define(param);
+    }
+
+    for statement in function.body {
+      statement.resolve(resolver);
+    }
+    self.endScope();
+  }
+
+  beginScope() {
+    self.scopes.push({});
+  }
+
+  endScope() {
+    self.scopes.pop();
+  }
+
+  declare(name) {
+    if self.scopes.len() == 0 {
+      return;
+    }
+    let scope = self.scopes[self.scopes.len() - 1];
+    if scope.has(name) {
+      self.error("Error at '${name}': Variable with this name already declared in this scope.");
+    }
+    scope.set(name, false);
+  }
+
+  define(name) {
+    if self.scopes.len() == 0 {
+      return;
+    }
+    self.scopes[self.scopes.len() - 1].set(name, true);
+  }
+
+  resolveVar(expr, name) {
+
+    for i in self.scopes.len().times() {
+      if self.scopes[i].has(name) {
+        self.interpreter.resolve(expr, self.scopes.len() - 1 - i);
+        return;
+      }
+    }
+    // Not found, assume it's a global
+
+  }
+}

@@ -1,0 +1,215 @@
+import self.constant as c;
+import self.node:{tokenTypeStr};
+
+class Token {
+  init(kind, value, line) {
+    self.kind = kind;
+    self.value = value;
+    self.line = line;
+  }
+}
+
+// Convert a keyword string to its token kind constant, or return nil
+// if it's not a keyword.
+fn keywordType(name) {
+  if name == "and" { return c.AND; }
+  if name == "class" { return c.CLASS; }
+  if name == "else" { return c.ELSE; }
+  if name == "false" { return c.FALSE; }
+  if name == "fun" { return c.FUN; }
+  if name == "for" { return c.FOR; }
+  if name == "if" { return c.IF; }
+  if name == "nil" { return c.NIL; }
+  if name == "or" { return c.OR; }
+  if name == "print" { return c.PRINT; }
+  if name == "return" { return c.RETURN; }
+  if name == "super" { return c.SUPER; }
+  if name == "self" { return c.THIS; }
+  if name == "true" { return c.TRUE; }
+  if name == "var" { return c.VAR; }
+  if name == "while" { return c.WHILE; }
+  return nil;
+}
+
+fn isNameStart(ch) {
+  return ch == '_' or (ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z');
+}
+
+fn isDigit(ch) {
+  return ch >= '0' and ch <= '9';
+}
+
+export class Scanner {
+  init(source) {
+    self.line = 1;
+    self.buffered = nil;
+    self.ch = -1;
+    self.source = source.iter();
+    self.advance();
+  }
+
+  advance() {
+    let ch = self.ch;
+    self.source.next();
+    self.ch = self.source.current();
+    return ch;
+  }
+
+  next() {
+    // Support a one-character buffer for "123." use case to mimic Lox
+    if self.buffered {
+      let buffered = self.buffered;
+      self.buffered = nil;
+      return buffered;
+    }
+
+
+    while self.ch {
+      let ch = self.advance();
+
+      if ch == '(' { return Token(c.LEFT_PAREN, nil, self.line); }
+      else if ch == ')' { return Token(c.RIGHT_PAREN, nil, self.line); }
+      else if ch == '{' { return Token(c.LEFT_BRACE, nil, self.line); }
+      else if ch == '}' { return Token(c.RIGHT_BRACE, nil, self.line); }
+      else if ch == ',' { return Token(c.COMMA, nil, self.line); }
+      else if ch == '.' { return Token(c.DOT, nil, self.line); }
+      else if ch == '-' { return Token(c.MINUS, nil, self.line); }
+      else if ch == '+' { return Token(c.PLUS, nil, self.line); }
+      else if ch == ';' { return Token(c.SEMICOLON, nil, self.line); }
+      else if ch == '*' { return Token(c.STAR, nil, self.line); }
+      else if ch == '!' {
+        if self.ch == '=' {
+          self.advance();
+          return Token(c.BANG_EQUAL, nil, self.line);
+        }
+        return Token(c.BANG, nil, self.line);
+      }
+      else if ch == '=' {
+        if self.ch == '=' {
+          self.advance();
+          return Token(c.EQUAL_EQUAL, nil, self.line);
+        }
+        return Token(c.EQUAL, nil, self.line);
+      }
+      else if ch == '<' {
+        if self.ch == '=' {
+          self.advance();
+          return Token(c.LESS_EQUAL, nil, self.line);
+        }
+        return Token(c.LESS, nil, self.line);
+      }
+      else if ch == '>' {
+        if self.ch == '=' {
+          self.advance();
+          return Token(c.GREATER_EQUAL, nil, self.line);
+        }
+        return Token(c.GREATER, nil, self.line);
+      }
+      else if ch == '/' {
+        if self.ch != '/' { return Token(c.SLASH, nil, self.line); }
+        // Comment till end of line
+        self.advance();
+
+        // TODO escape sequence
+        while self.ch and self.ch != '\n' {
+          self.advance();
+        }
+        if self.ch == '\n' {
+          self.line = self.line + 1;
+        }
+        self.advance();
+      }
+      // TODO escape sequence
+      else if ch == ' ' or ch == '\t' or ch == '\r' {
+        // Ignore whitespace: space, tab, and carriage return
+      }
+      else if ch == '\n' {
+        // Newline
+        self.line = self.line + 1;
+      }
+      else if ch == '"' {
+        // Strings (start and end with double quote)
+        let line = self.line;
+        let value = "";
+        while self.ch and self.ch != '"' {
+          if self.ch == '\n' {
+            self.line = self.line + 1;
+          }
+          value = value + self.ch;
+          self.advance();
+        }
+        if !self.ch {
+          return Token(c.INVALID, "Unterminated string.", self.line);
+        }
+        self.advance();
+        return Token(c.STRING, value, line);
+      }
+      else if isDigit(ch) {
+        // Numbers ('0' == 48)
+
+        let num = ch;
+        while isDigit(self.ch) {
+          num = num + self.ch;
+          self.advance();
+        }
+
+        // Fractional part
+        if self.ch == c.DOT {
+          num = num + self.ch;
+
+          self.advance();
+          if !isDigit(self.ch) {
+            self.buffered = Token(c.DOT, nil, self.line);
+            return Token(c.NUMBER, Number.parse(num), self.line);
+          }
+
+          while isDigit(self.ch) {
+            num = num + self.ch;
+            self.advance();
+          }
+        }
+        return Token(c.NUMBER, Number.parse(num), self.line);
+      }
+      else if isNameStart(ch) {
+        // Identifiers and keywords
+        let name = ch;
+        while isNameStart(self.ch) or isDigit(self.ch) {
+          name = name + self.ch;
+          self.advance();
+        }
+        let keyword = keywordType(name);
+        if keyword {
+          return Token(keyword, nil, self.line);
+        }
+        return Token(c.IDENTIFIER, name, self.line);
+      }
+      else {
+        return Token(c.INVALID, 'Unexpected character "' + ch + '".' , self.line);
+      }
+    }
+    return Token(c.EOF, nil, self.line);
+  }
+}
+
+// Test scanner by reading input and displaying tokens
+fn testScanner() {
+  let scanner = Scanner();
+  let done = false;
+  while true {
+    let token = scanner.next();
+    if token.kind == c.EOF {
+      break;
+    } else if token.kind == c.INVALID {
+      print(token.value + " on line:");
+      print(token.line);
+      break;
+    } else {
+      if token.value != nil {
+        print(tokenTypeStr(token.kind));
+        print(token.value);
+      } else {
+        print(tokenTypeStr(token.kind));
+      }
+    }
+  }
+}

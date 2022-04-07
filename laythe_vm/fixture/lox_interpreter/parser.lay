@@ -1,0 +1,423 @@
+import std.io.stdio:{stderr};
+
+import self.scanner:{Scanner};
+import self.node:{
+  Program, Variable, Class,
+  Expression, Block, While,
+  If, Print, Var, Return,
+  Function, Assign, Set,
+  Logical, Binary, Unary, Call,
+  Get, Super, This, Grouping, Literal,
+  tokenTypeStr
+};
+import self.constant as c;
+
+export class Parser {
+  init(source) {
+    self.functionDepth = 0;
+    self.classDepth = 0;
+    self.token = nil;
+    self.scanner = Scanner(source);
+    self.previous = nil;
+    self.inInitializer = nil;
+    self.hasSuperClass = false;
+    self.next();
+  }
+
+  next() {
+    self.previous = self.token;
+    self.token = self.scanner.next();
+    if self.token.kind == c.INVALID {
+      self.error(self.token, self.token.value);
+    }
+  }
+
+  error(token, message) {
+    let at;
+    if token.kind == c.INVALID {
+      at = "Error: ";
+    } else if token.kind == c.EOF {
+      at = "Error at end: ";
+    } else if token.kind == c.IDENTIFIER {
+      at = "Error at '${token.value}': ";
+    } else if token.kind == c.NUMBER {
+      at = "Error at '${token.value}': ";
+    } else {
+      at = "Error at '${tokenTypeStr(token.kind)}': ";
+    }
+    stderr.writeln("[line ${self.token.line}] ${at}${message}");
+    exit(65);
+  }
+
+  match(kind) {
+    if self.token.kind == kind {
+      let previous = self.token;
+      self.next();
+      return previous;
+    }
+    return nil;
+  }
+
+  consume(kind, message) {
+    let token = self.token;
+    if self.match(kind) {
+      return token;
+    }
+    self.error(self.token, message);
+  }
+
+  parse() {
+    let statements = [];
+    while self.token.kind != c.EOF {
+      statements.push(self.declaration());
+    }
+    return Program(statements);
+  }
+
+  expression() {
+    return self.assignment();
+  }
+
+  declaration() {
+    if self.match(c.CLASS) { return self.classDeclaration(); }
+    if self.match(c.FUN) { return self.function("function"); }
+    if self.match(c.VAR) { return self.varDeclaration(); }
+    return self.statement();
+  }
+
+  classDeclaration() {
+    let name = self.consume(c.IDENTIFIER, "Expect class name.");
+    let superclass;
+    if self.match(c.LESS) {
+      let superName = self.consume(c.IDENTIFIER, "Expect superclass name.");
+      superclass = Variable(superName.value);
+    }
+
+    self.classDepth = self.classDepth + 1;
+    self.hasSuperClass = superclass != nil;
+    self.consume(c.LEFT_BRACE, "Expect '{' before class body.");
+    let methods = [];
+    while self.token.kind != c.EOF and self.token.kind != c.RIGHT_BRACE {
+      methods.push(self.function("method"));
+    }
+    self.consume(c.RIGHT_BRACE, "Expect '}' after class body.");
+    self.classDepth = self.classDepth - 1;
+    self.hasSuperClass = false;
+
+    return Class(name.value, superclass, methods);
+  }
+
+  statement() {
+    if self.match(c.FOR) { return self.forStatement(); }
+    if self.match(c.IF) { return self.ifStatement(); }
+    if self.match(c.PRINT) { return self.printStatement(); }
+    if self.match(c.RETURN) { return self.returnStatement(); }
+    if self.match(c.WHILE) { return self.whileStatement(); }
+    if self.match(c.LEFT_BRACE) { return Block(self.block()); }
+    return self.expressionStatement();
+  }
+
+  forStatement() {
+    self.consume(c.LEFT_PAREN, "Expect '(' after 'for'.");
+
+    let initializer;
+    if self.match(c.SEMICOLON) {
+      // No initializer
+    } else if self.match(c.VAR) {
+      initializer = self.varDeclaration();
+    } else {
+      initializer = self.expressionStatement();
+    }
+
+    let condition;
+    if self.token.kind != c.SEMICOLON {
+      condition = self.expression();
+    }
+    self.consume(c.SEMICOLON, "Expect ';' after loop condition.");
+
+    let increment;
+    if self.token.kind != c.RIGHT_PAREN {
+      increment = Expression(self.expression());
+    }
+    self.consume(c.RIGHT_PAREN, "Expect ')' after for clauses.");
+
+    let body = self.statement();
+
+    // Desugar increment
+    if increment {
+      let statements = [];
+      statements.push(body);
+      statements.push(increment);
+      body = Block(statements);
+    }
+
+    // Desugar condition
+    if condition == nil {
+      condition = Literal("boolean", true);
+    }
+    body = While(condition, body);
+
+    // Desugar initializer
+    if initializer {
+      let statements = [];
+      statements.push(initializer);
+      statements.push(body);
+      body = Block(statements);
+    }
+
+    return body;
+  }
+
+  ifStatement() {
+    self.consume(c.LEFT_PAREN, "Expect '(' after 'if'.");
+    let condition = self.expression();
+    self.consume(c.RIGHT_PAREN, "Expect ')' after if condition.");
+    let thenBranch = self.statement();
+    let elseBranch;
+    if self.match(c.ELSE) {
+      elseBranch = self.statement();
+    }
+    return If(condition, thenBranch, elseBranch);
+  }
+
+  printStatement() {
+    let value = self.expression();
+    self.consume(c.SEMICOLON, "Expect ';' after value.");
+    return Print(value);
+  }
+
+  returnStatement() {
+    if self.functionDepth <= 0 {
+      self.error(self.previous, "Cannot return from top-level code.");
+    }
+    let value;
+    if self.token.kind != c.SEMICOLON {
+      if self.inInitializer {
+        self.error(self.previous, "Cannot return a value from an initializer.");
+      }
+      value = self.expression();
+    }
+    self.consume(c.SEMICOLON, "Expect ';' after return value.");
+    return Return(value);
+  }
+
+  varDeclaration() {
+    let name = self.consume(c.IDENTIFIER, "Expect letiable name.");
+    let initializer;
+    if self.match(c.EQUAL) {
+      initializer = self.expression();
+    }
+    self.consume(c.SEMICOLON, "Expect ';' after variable declaration.");
+    return Var(name.value, initializer);
+  }
+
+  whileStatement() {
+    self.consume(c.LEFT_PAREN, "Expect '(' after 'while'.");
+    let condition = self.expression();
+    self.consume(c.RIGHT_PAREN, "Expect ')' after condition.");
+    let body = self.statement();
+    return While(condition, body);
+  }
+
+  expressionStatement() {
+    let expr = self.expression();
+    self.consume(c.SEMICOLON, "Expect ';' after expression.");
+    return Expression(expr);
+  }
+
+  function(kind) {
+    let name = self.consume(c.IDENTIFIER, "Expect ${kind} name.");
+    self.consume(c.LEFT_PAREN, "Expect '(' after ${kind} name.");
+    let parameters = [];
+    let n = 0;
+    while self.token.kind != c.RIGHT_PAREN {
+      if n > 0 {
+        self.consume(c.COMMA, "Expect ')' after parameters.");
+      }
+      if n >= 8 {
+        self.error(self.token, "Cannot have more than 8 parameters.");
+      }
+      let paramName = self.consume(c.IDENTIFIER, "Expect parameter name.");
+      parameters.push(paramName.value);
+      n = n + 1;
+    }
+    self.consume(c.RIGHT_PAREN, "Expect ')' after parameters.");
+    self.consume(c.LEFT_BRACE, "Expect '{' before " + kind + " body.");
+
+    self.functionDepth = self.functionDepth + 1;
+    self.inInitializer = kind == "method" and name.value == "init";
+    let body = self.block();
+    self.functionDepth = self.functionDepth - 1;
+    self.inInitializer = false;
+
+    return Function(name.value, parameters, body);
+  }
+
+  block() {
+    let statements = [];
+    while self.token.kind != c.EOF and self.token.kind != c.RIGHT_BRACE {
+      statements.push(self.declaration());
+    }
+    self.consume(c.RIGHT_BRACE, "Expect '}' after block.");
+    return statements;
+  }
+
+  assignment() {
+    let expr = self.or_();
+    if self.match(c.EQUAL) {
+      let equals = self.previous;
+      let value = self.assignment();
+      if expr.kind == "Variable" {
+        return Assign(expr.name, value);
+      }
+      if expr.kind == "Get" {
+        return Set(expr.object, expr.name, value);
+      }
+      self.error(equals, "Invalid assignment target.");
+    }
+    return expr;
+  }
+
+  or_() {
+    let expr = self.and_();
+    while self.match(c.OR) {
+      let right = self.and_();
+      expr = Logical(expr, c.OR, right);
+    }
+    return expr;
+  }
+
+  and_() {
+    let expr = self.equality();
+    while self.match(c.AND) {
+      let right = self.equality();
+      expr = Logical(expr, c.AND, right);
+    }
+    return expr;
+  }
+
+  equality() {
+    let expr = self.comparison();
+    while self.token.kind == c.BANG_EQUAL or self.token.kind == c.EQUAL_EQUAL {
+      let operator = self.token.kind;
+      self.next();
+      let right = self.comparison();
+      expr = Binary(expr, operator, right);
+    }
+    return expr;
+  }
+
+  comparison() {
+    let expr = self.addition();
+    while (self.token.kind == c.GREATER or self.token.kind == c.GREATER_EQUAL or
+           self.token.kind == c.LESS or self.token.kind == c.LESS_EQUAL) {
+      let operator = self.token.kind;
+      self.next();
+      let right = self.addition();
+      expr = Binary(expr, operator, right);
+    }
+    return expr;
+  }
+
+  addition() {
+    let expr = self.multiplication();
+    while self.token.kind == c.MINUS or self.token.kind == c.PLUS {
+      let operator = self.token.kind;
+      self.next();
+      let right = self.multiplication();
+      expr = Binary(expr, operator, right);
+    }
+    return expr;
+  }
+
+  multiplication() {
+    let expr = self.unary();
+    while self.token.kind == c.SLASH or self.token.kind == c.STAR {
+      let operator = self.token.kind;
+      self.next();
+      let right = self.unary();
+      expr = Binary(expr, operator, right);
+    }
+    return expr;
+  }
+
+  unary() {
+    if self.token.kind == c.BANG or self.token.kind == c.MINUS {
+      let operator = self.token.kind;
+      self.next();
+      let right = self.unary();
+      return Unary(operator, right);
+    }
+    return self.call();
+  }
+
+  call() {
+    let expr = self.primary();
+    let loop = true;
+    while loop {
+      if self.match(c.LEFT_PAREN) {
+        let arguments = [];
+        let n = 0;
+        while self.token.kind != c.RIGHT_PAREN {
+          if n > 0 {
+            self.consume(c.COMMA, "Expect ')' after arguments.");
+          }
+          if n >= 8 {
+            self.error(self.token, "Cannot have more than 8 arguments.");
+          }
+          arguments.push(self.expression());
+          n = n + 1;
+        }
+        self.consume(c.RIGHT_PAREN, "Expect ')' after arguments.");
+        expr = Call(expr, arguments);
+      } else if self.match(c.DOT) {
+        let name = self.consume(c.IDENTIFIER, "Expect property name after '.'.");
+        expr = Get(expr, name.value);
+      } else {
+        loop = false;
+      }
+    }
+    return expr;
+  }
+
+  primary() {
+    if self.match(c.FALSE) { return Literal("boolean", false); }
+    if self.match(c.TRUE) { return Literal("boolean", true); }
+    if self.match(c.NIL) { return Literal("nil", nil); }
+    let number = self.match(c.NUMBER);
+    if number {
+      return Literal("number", number.value);
+    }
+    let string = self.match(c.STRING);
+    if string {
+      return Literal("string", string.value);
+    }
+    if self.match(c.SUPER) {
+      if self.classDepth <= 0 {
+        self.error(self.previous, "Cannot use 'super' outside of a class.");
+      }
+      if !self.hasSuperClass {
+        self.error(self.previous, "Cannot use 'super' in a class with no superclass.");
+      }
+      self.consume(c.DOT, "Expect '.' after 'super'.");
+      let method = self.consume(c.IDENTIFIER, "Expect superclass method name.");
+      return Super(method.value);
+    }
+    if self.match(c.THIS) {
+      if self.classDepth <= 0 {
+        self.error(self.previous, "Cannot use 'this' outside of a class.");
+      }
+      return This();
+    }
+    let identifier = self.match(c.IDENTIFIER);
+    if identifier {
+      return Variable(identifier.value);
+    }
+    if self.match(c.LEFT_PAREN) {
+      let expr = self.expression();
+      self.consume(c.RIGHT_PAREN, "Expect ')' after expression.");
+      return Grouping(expr);
+    }
+    self.error(self.token, "Expect expression.");
+  }
+}

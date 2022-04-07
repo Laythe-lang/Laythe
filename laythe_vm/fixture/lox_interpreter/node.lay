@@ -1,0 +1,712 @@
+import self.constant as c;
+import self.object:{Environment, LoxFunction, LoxClass};
+import self.error:{runtimeError};
+
+// Convert a token kind constant back to the source string that the
+// token represents.
+export fn tokenTypeStr(kind) {
+  if kind == c.LEFT_PAREN { return "("; }
+  if kind == c.RIGHT_PAREN { return ")"; }
+  if kind == c.LEFT_BRACE { return "{"; }
+  if kind == c.RIGHT_BRACE { return "}"; }
+  if kind == c.COMMA { return ","; }
+  if kind == c.DOT { return "."; }
+  if kind == c.MINUS { return "-"; }
+  if kind == c.PLUS { return "+"; }
+  if kind == c.SEMICOLON { return ";"; }
+  if kind == c.SLASH { return "/"; }
+  if kind == c.STAR { return "*"; }
+  if kind == c.BANG { return "!"; }
+  if kind == c.EQUAL { return "="; }
+  if kind == c.GREATER { return ">"; }
+  if kind == c.LESS { return "<"; }
+
+  if kind == c.BANG_EQUAL { return "!="; }
+  if kind == c.EQUAL_EQUAL { return "=="; }
+  if kind == c.GREATER_EQUAL { return ">="; }
+  if kind == c.LESS_EQUAL { return "<="; }
+
+  if kind == c.IDENTIFIER { return "<identifier>"; }
+  if kind == c.STRING { return "<string>"; }
+  if kind == c.NUMBER { return "<number>"; }
+
+  if kind == c.AND { return "and"; }
+  if kind == c.CLASS { return "class"; }
+  if kind == c.ELSE { return "else"; }
+  if kind == c.FALSE { return "false"; }
+  if kind == c.FUN { return "fun"; }
+  if kind == c.FOR { return "for"; }
+  if kind == c.IF { return "if"; }
+  if kind == c.NIL { return "nil"; }
+  if kind == c.OR { return "or"; }
+  if kind == c.PRINT { return "print"; }
+  if kind == c.RETURN { return "return"; }
+  if kind == c.SUPER { return "super"; }
+  if kind == c.THIS { return "self"; }
+  if kind == c.TRUE { return "true"; }
+  if kind == c.VAR { return "var"; }
+  if kind == c.WHILE { return "while"; }
+
+  if kind == c.EOF { return "<eof>"; }
+  if kind == c.INVALID { return "<invalid>"; }
+
+  return nil;
+}
+
+// Expressions
+
+export class Assign {
+  init(name, value) {
+    self.kind = "Assign";
+    self.name = name;
+    self.value = value;
+  }
+
+  str() {
+    return self.name + " = " + self.value.str();
+  }
+
+  resolve(resolver) {
+    self.value.resolve(resolver);
+    resolver.resolveVar(self, self.name);
+  }
+
+  evaluate(interpreter) {
+    let value = self.value.evaluate(interpreter);
+    let distance = interpreter.locals.get(self);
+    if distance {
+      interpreter.environment.assignAt(distance, self.name, value);
+    } else {
+      interpreter.globals.assign(self.name, value);
+    }
+    return value;
+  }
+}
+
+export class Binary {
+  init(left, operator, right) {
+    self.kind = "Binary";
+    self.left = left;
+    self.operator = operator;
+    self.right = right;
+  }
+
+  resolve(resolver) {
+    self.left.resolve(resolver);
+    self.right.resolve(resolver);
+  }
+
+  str() {
+    return "${self.left} ${tokenTypeStr(self.operator)} ${self.right}";
+  }
+
+  evaluate(interpreter) {
+    let left = self.left.evaluate(interpreter);
+    let right = self.right.evaluate(interpreter);
+    if self.operator == c.PLUS { return left + right; }
+    if self.operator == c.MINUS { return left - right; }
+    if self.operator == c.STAR { return left * right; }
+    if self.operator == c.SLASH { return left / right; }
+    if self.operator == c.BANG_EQUAL { return left != right; }
+    if self.operator == c.EQUAL_EQUAL { return left == right; }
+    if self.operator == c.GREATER { return left > right; }
+    if self.operator == c.GREATER_EQUAL { return left >= right; }
+    if self.operator == c.LESS { return left < right; }
+    if self.operator == c.LESS_EQUAL { return left <= right; }
+    return nil; // Unreachable
+  }
+}
+
+export class Call {
+  init(callee, arguments) {
+    self.kind = "Call";
+    self.callee = callee;
+    self.arguments = arguments;
+  }
+
+  str() {
+    let addComma = false;
+    return self.arguments
+      .iter()
+      .reduce(self.callee.str() + "(", |s, argument| {
+        if addComma {
+          return s + ", ";
+        }
+        addComma = true;
+        return s + argument.str();
+      }) + ")";
+  }
+
+  resolve(resolver) {
+    self.callee.resolve(resolver);
+    self.arguments.iter().each(|argument| {
+      argument.resolve(resolver);
+    });
+  }
+
+  evaluate(interpreter) {
+    let callee = self.callee.evaluate(interpreter);
+
+    let arguments = self.arguments
+      .iter()
+      .map(|argument| argument.evaluate(interpreter))
+      .into(List.collect);
+
+    if arguments.len() != callee.arity() {
+      runtimeError("Expected ${callee.arity()} arguments but got ${arguments.len()}.");
+    }
+    return callee.call(interpreter, arguments);
+  }
+}
+
+export class Get {
+  init(object, name) {
+    self.kind = "Get";
+    self.object = object;
+    self.name = name;
+  }
+
+  str() {
+    return "${self.object}.${self.name}";
+  }
+
+  resolve(resolver) {
+    self.object.resolve(resolver);
+  }
+
+  evaluate(interpreter) {
+    let object = self.object.evaluate(interpreter);
+    return object.get(self.name);
+  }
+}
+
+export class Grouping {
+  init(expr) {
+    self.kind = "Grouping";
+    self.expr = expr;
+  }
+
+  str() {
+    return "(${self.expr})";
+  }
+
+  resolve(resolver) {
+    self.expr.resolve(resolver);
+  }
+
+  evaluate(interpreter) {
+    return self.expr.evaluate(interpreter);
+  }
+}
+
+export class Literal {
+  init(kind, value) {
+    self.kind = "Literal";
+    self.kind = kind;
+    self.value = value;
+  }
+
+  str() {
+    if self.kind == "boolean" {
+      if self.value {
+        return "true";
+      } else {
+        return "false";
+      }
+    }
+    if self.kind == "nil" {
+      return "nil";
+    }
+    if self.kind == "number" {
+      return self.value.str();
+    }
+    if self.kind == "string" {
+      return '"${self.value}"';
+    }
+    return "<unexpected kind>";
+  }
+
+  resolve(resolver) {
+  }
+
+  evaluate(interpreter) {
+    return self.value;
+  }
+}
+
+export class Logical {
+  init(left, operator, right) {
+    self.kind = "Logical";
+    self.left = left;
+    self.operator = operator;
+    self.right = right;
+  }
+
+  str() {
+    return "${self.left} ${tokenTypeStr(self.operator)} ${self.right.str()}";
+  }
+
+  resolve(resolver) {
+    self.left.resolve(resolver);
+    self.right.resolve(resolver);
+  }
+
+  evaluate(interpreter) {
+    let left = self.left.evaluate(interpreter);
+    if self.operator == c.AND {
+      return left and self.right.evaluate(interpreter);
+    } else {
+      return left or self.right.evaluate(interpreter);
+    }
+  }
+}
+
+export class Set {
+  init(object, name, value) {
+    self.kind = "Set";
+    self.object = object;
+    self.name = name;
+    self.value = value;
+  }
+
+  str() {
+    return "${self.object}.${self.name} = ${self.value}";
+  }
+
+  resolve(resolver) {
+    self.value.resolve(resolver);
+    self.object.resolve(resolver);
+  }
+
+  evaluate(interpreter) {
+    let object = self.object.evaluate(interpreter);
+    let value = self.value.evaluate(interpreter);
+    object.set(self.name, value);
+    return value;
+  }
+}
+
+export class Super {
+  init(method) {
+    self.kind = "Super";
+    self.method = method;
+  }
+
+  str() {
+    return "super.${self.method}";
+  }
+
+  resolve(resolver) {
+    resolver.resolveVar(self, "super");
+  }
+
+  evaluate(interpreter) {
+    let distance = interpreter.locals.get(self);
+    let superclass = interpreter.environment.getAt(distance, "super");
+    let object = interpreter.environment.getAt(distance - 1, "this");
+    let method = superclass.findMethod(object, self.method);
+    if method == nil {
+      runtimeError("Undefined property '${self.method}'.");
+    }
+    return method;
+  }
+}
+
+export class This {
+  init() {
+    self.kind = "This";
+  }
+
+  str() {
+    return "this";
+  }
+
+  resolve(resolver) {
+    resolver.resolveVar(self, "this");
+  }
+
+  evaluate(interpreter) {
+    return interpreter.lookupVariable("this", self);
+  }
+}
+
+export class Unary {
+  init(operator, right) {
+    self.kind = "Unary";
+    self.operator = operator;
+    self.right = right;
+  }
+
+  str() {
+    return "${tokenTypeStr(self.operator)}${self.right}";
+  }
+
+  resolve(resolver) {
+    self.right.resolve(resolver);
+  }
+
+  evaluate(interpreter) {
+    let right = self.right.evaluate(interpreter);
+    if self.operator == c.BANG { return !right; }
+    return -right;
+  }
+}
+
+export class Variable {
+  init(name) {
+    self.kind = "Variable";
+    self.name = name;
+  }
+
+  str() {
+    return self.name;
+  }
+
+  resolve(resolver) {
+    if resolver.scopes.len() != 0 and resolver.scopes[resolver.scopes.len() - 1].get(self.name) == false {
+      resolver.error("Error at '${self.name}': Cannot read local variable in its own initializer.");
+    }
+
+    resolver.resolveVar(self, self.name);
+  }
+
+  evaluate(interpreter) {
+    let found = interpreter.lookupVariable(self.name, self);
+    return found;
+  }
+}
+
+// Statements
+
+export class Program {
+  init(statements) {
+    self.kind = "Program";
+    self.statements = statements;
+  }
+
+  str() {
+    return self.statements.iter().reduce("", |s, statement| {
+      return s + statement.str();
+    });
+  }
+
+  resolve(resolver) {
+    for statement in self.statements {
+      statement.resolve(resolver);
+    }
+  }
+
+  execute(interpreter) {
+    for statement in self.statements {
+      statement.execute(interpreter);
+    }
+  }
+}
+
+let indent = 0;
+
+export class Block {
+  init(statements) {
+    self.kind = "Block";
+    self.statements = statements;
+  }
+
+  str() {
+    indent = indent + 1;
+    let s = "{\n";
+
+    let indentStr = indent.times()
+      .reduce("", |indentStr, _| indentStr + "  ");
+
+    s = self.statements
+      .iter()
+      .reduce(s, |s, statement| s + indentStr + statement.str());
+
+    indent = indent - 1;
+
+    indentStr = indent.times()
+      .reduce("", |indentStr, _| indentStr + "  ");
+
+    return s + indentStr + "}\n";
+  }
+
+  resolve(resolver) {
+    resolver.beginScope();
+    for statement in self.statements {
+      statement.resolve(resolver);
+    }
+    resolver.endScope();
+  }
+
+  execute(interpreter) {
+    return interpreter.executeBlock(self.statements, Environment(interpreter.environment));
+  }
+}
+
+export class Class {
+  init(name, superclass, methods) {
+    self.kind = "Class";
+    self.name = name;
+    self.superclass = superclass;
+    self.methods = methods;
+  }
+
+  str() {
+    let s = "class ${self.name} ";
+    if self.superclass {
+      s += "< ${self.superclass.name} ";
+    }
+    s += Block(self.methods).str(); // Reuse Block.str()
+    return s;
+  }
+
+  resolve(resolver) {
+    resolver.declare(self.name);
+    if self.superclass {
+      self.superclass.resolve(resolver);
+    }
+    resolver.define(self.name);
+    if self.superclass {
+      resolver.beginScope();
+      resolver.scopes[resolver.scopes.len() - 1].set("super", true);
+    }
+    resolver.beginScope();
+    resolver.scopes[resolver.scopes.len() - 1].set("this", true);
+
+    self.methods.iter().each(|method| {
+      resolver.resolveFunction(method);
+    });
+
+    resolver.endScope();
+    if self.superclass != nil {
+      resolver.endScope();
+    }
+  }
+
+  execute(interpreter) {
+    let superclass;
+    if self.superclass {
+      superclass = self.superclass.evaluate(interpreter);
+      // The following will cause a runtime error if the superclass
+      // is not a class
+      superclass.findMethod;
+    }
+    interpreter.environment.define(self.name, nil);
+    if self.superclass {
+      interpreter.environment = Environment(interpreter.environment);
+      interpreter.environment.define("super", superclass);
+    }
+
+    let methods = self.methods.iter().reduce({}, |methods, method| {
+      let function = LoxFunction(method, interpreter.environment,
+                                 method.name == "init");
+      methods.set(method.name, function);
+      return methods;
+    });
+
+    let klass = LoxClass(self.name, superclass, methods);
+    if self.superclass != nil {
+      interpreter.environment = interpreter.environment.enclosing;
+    }
+    interpreter.environment.assign(self.name, klass);
+  }
+}
+
+export class Expression {
+  init(expression) {
+    self.kind = "Expression";
+    self.expression = expression;
+  }
+
+  str() {
+    return "${self.expression};\n";
+  }
+
+  resolve(resolver) {
+    self.expression.resolve(resolver);
+  }
+
+  execute(interpreter) {
+    self.expression.evaluate(interpreter);
+  }
+}
+
+export class Function {
+  init(name, params, body) {
+    self.kind = "Function";
+    self.name = name;
+    self.params = params;
+    self.body = body;
+  }
+
+  str() {
+    let s = "fun ${self.name}(";
+    let addComma = false;
+    self.params.iter().reduce(s, |s, param| {
+      if addComma {
+        return s + ", ${param}";
+      }
+      addComma = true;
+      return s + param;
+    });
+
+    return s + ") ${Block(self.body)}";
+  }
+
+  resolve(resolver) {
+    resolver.declare(self.name);
+    resolver.define(self.name);
+    resolver.resolveFunction(self);
+  }
+
+  execute(interpreter) {
+    let function = LoxFunction(self, interpreter.environment, false);
+    interpreter.environment.define(self.name, function);
+  }
+}
+
+export class If {
+  init(condition, thenBranch, elseBranch) {
+    self.kind = "If";
+    self.condition = condition;
+    self.thenBranch = thenBranch;
+    self.elseBranch = elseBranch;
+  }
+
+  str() {
+    let s = "if (${self.condition}) ${self.thenBranch}";
+    if self.elseBranch {
+      for i in indent.times() {
+        s += "  ";
+      }
+      s += "else ${self.elseBranch}";
+    }
+    return s;
+  }
+
+  resolve(resolver) {
+    self.condition.resolve(resolver);
+    self.thenBranch.resolve(resolver);
+    if self.elseBranch {
+      self.elseBranch.resolve(resolver);
+    }
+  }
+
+  execute(interpreter) {
+    if self.condition.evaluate(interpreter) {
+      return self.thenBranch.execute(interpreter);
+    }
+    if self.elseBranch {
+      return self.elseBranch.execute(interpreter);
+    }
+  }
+}
+
+export class Print {
+  init(expression) {
+    self.kind = "Print";
+    self.expression = expression;
+  }
+
+  str() {
+    return "print ${self.expression};\n";
+  }
+
+  resolve(resolver) {
+    self.expression.resolve(resolver);
+  }
+
+  execute(interpreter) {
+    print(self.expression.evaluate(interpreter));
+  }
+}
+
+export class ReturnValue {
+  init(value) {
+    self.value = value;
+  }
+}
+
+export class Return {
+  init(value) {
+    self.kind = "Return";
+    self.value = value;
+  }
+
+  str() {
+    return "return ${self.value};\n";
+  }
+
+  resolve(resolver) {
+    if self.value != nil {
+      self.value.resolve(resolver);
+    }
+  }
+
+  execute(interpreter) {
+    let value;
+    if self.value != nil {
+      value = self.value.evaluate(interpreter);
+    }
+    return ReturnValue(value);
+  }
+}
+
+export class Var {
+  init(name, initializer) {
+    self.kind = "Var";
+    self.name = name;
+    self.initializer = initializer;
+  }
+
+  str() {
+    let s = "var ${self.name}";
+    if self.initializer {
+      s += " = ${self.initializer}";
+    }
+    s += ";\n";
+    return s;
+  }
+
+  resolve(resolver) {
+    resolver.declare(self.name);
+    if self.initializer {
+      self.initializer.resolve(resolver);
+    }
+    resolver.define(self.name);
+  }
+
+  execute(interpreter) {
+    let value;
+    if self.initializer {
+      value = self.initializer.evaluate(interpreter);
+    }
+    interpreter.environment.define(self.name, value);
+  }
+}
+
+export class While {
+  init(condition, body) {
+    self.kind = "While";
+    self.condition = condition;
+    self.body = body;
+  }
+
+  str() {
+    return "while (${self.condition}) ${self.body}";
+  }
+
+  resolve(resolver) {
+    self.condition.resolve(resolver);
+    self.body.resolve(resolver);
+  }
+
+  execute(interpreter) {
+    while self.condition.evaluate(interpreter) {
+      let ret = self.body.execute(interpreter);
+      if ret {
+        return ret;
+      }
+    }
+  }
+}

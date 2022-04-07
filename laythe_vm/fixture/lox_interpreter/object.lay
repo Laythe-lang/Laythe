@@ -1,0 +1,201 @@
+import self.error:{runtimeError, print_error};
+
+// Environment: used in interpreter to store and resolve variables.
+export class Environment {
+  init(enclosing) {
+    self.enclosing = enclosing;
+    self.values = {};
+  }
+
+  // Find named value in environment, also looking in enclosing
+  // environments. Exit with runtime error if name not found.
+  get(name) {
+    if self.values.has(name) {
+      return self.values.get(name);
+    }
+
+    if self.enclosing {
+      return self.enclosing.get(name);
+    }
+
+    runtimeError("Undefined variable '${name}'.");
+  }
+
+  // Assign an already-defined name in environment to value, also
+  // looking in enclosing environments. Exit with runtime error if
+  // name not found.
+  assign(name, value) {
+    if self.values.has(name) {
+      self.values.set(name, value);
+      return;
+    }
+
+    if self.enclosing != nil {
+      self.enclosing.assign(name, value);
+      return;
+    }
+    runtimeError("Undefined variable '${name}'.");
+  }
+
+  // Define a name in this environment and set to value.
+  define(name, value) {
+    self.values.set(name, value);
+  }
+
+  ancestor(distance) {
+    let environment = self;
+    for i in distance.times() {
+      environment = environment.enclosing;
+    }
+    return environment;
+  }
+
+  getAt(distance, name) {
+    return self.ancestor(distance).values.get(name);
+  }
+
+  assignAt(distance, name, value) {
+    self.ancestor(distance).values.set(name, value);
+  }
+}
+
+export class LoxFunction {
+  init(declaration, closure, isInitializer) {
+    self.declaration = declaration;
+    self.closure = closure;
+    self.isInitializer = isInitializer;
+  }
+
+  bind(instance) {
+    let environment = Environment(self.closure);
+    environment.define("this", instance);
+    return LoxFunction(self.declaration, environment, self.isInitializer);
+  }
+
+  arity() {
+    return self.declaration.params.len();
+  }
+
+  call(interpreter, arguments) {
+    let environment = Environment(self.closure);
+
+    self.declaration.params
+      .iter()
+      .zip(arguments.iter())
+      .each(|items| {
+        environment.define(items[0], items[1]);
+      });
+
+    let ret = interpreter.executeBlock(self.declaration.body, environment);
+    if self.isInitializer {
+      return self.closure.get("this");
+    }
+    if ret {
+      return ret.value;
+    }
+    return nil;
+  }
+}
+
+export class LoxInstance {
+  init(klass) {
+    self.klass = klass;
+    self.fields = {};
+  }
+
+  get(name) {
+    if self.fields.has(name) {
+      return self.fields.get(name);
+    }
+    let method = self.klass.findMethod(self, name);
+    if method {
+      return method;
+    }
+
+    print('sup');
+    print(self.fields);
+    runtimeError("Undefined property '${name}'.");
+  }
+
+  set(name, value) {
+    self.fields.set(name, value);
+  }
+}
+
+export class LoxClass {
+  init(name, superclass, methods) {
+    self.name = name;
+    self.superclass = superclass;
+    self.methods = methods;
+  }
+
+  findMethod(instance, name) {
+    let method = self.methods.get(name);
+    if method {
+      return method.bind(instance);
+    }
+
+    if self.superclass {
+      return self.superclass.findMethod(instance, name);
+    }
+    return nil;
+  }
+
+  call(interpreter, arguments) {
+    let instance = LoxInstance(self);
+    let initializer = self.methods.get("init");
+    if initializer {
+      initializer.bind(instance).call(interpreter, arguments);
+    }
+    return instance;
+  }
+
+  arity() {
+    let initializer = self.methods.get("init");
+    if initializer {
+      return initializer.arity();
+    }
+    return 0;
+  }
+}
+
+class Builtin0 {
+  init(f) {
+    self.f = f;
+  }
+
+  arity() {
+    return 0;
+  }
+
+  call(interpreter, arguments) {
+    return self.f();
+  }
+}
+
+class Builtin1 {
+  init(f) {
+    self.f = f;
+  }
+
+  arity() {
+    return 1;
+  }
+
+  call(interpreter, arguments) {
+    return self.f(arguments.get(0));
+  }
+}
+
+// The tree-walking interpreter
+
+export fn defaultGlobals() {
+  let globals = Environment(nil);
+
+  // Define built-in functions
+  globals.define("clock", Builtin0(clock));
+  globals.define("exit", Builtin1(exit));
+  globals.define("print_error", Builtin1(print_error));
+
+  return globals;
+}
