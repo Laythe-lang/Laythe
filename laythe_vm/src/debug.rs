@@ -27,19 +27,19 @@ pub fn disassemble_chunk(stdio: &mut Stdio, chunk: &Chunk, name: &str) -> io::Re
 pub fn disassemble_instruction(
   stdio: &mut Stdio,
   chunk: &Chunk,
-  ip: usize,
+  offset: usize,
   show_line: bool,
 ) -> io::Result<usize> {
   let stdout = stdio.stdout();
-  write!(stdout, "  {:0>4} ", ip)?;
+  write!(stdout, "  {:0>4} ", offset)?;
 
-  if ip != 0 && show_line {
+  if offset != 0 && show_line {
     write!(stdout, "   | ")?;
   } else {
-    write!(stdout, "{:>4} ", chunk.get_line(ip))?;
+    write!(stdout, "{:>4} ", chunk.get_line(offset))?;
   }
 
-  let (instruction, offset) = AlignedByteCode::decode(chunk.instructions(), ip as usize);
+  let (instruction, offset) = AlignedByteCode::decode(chunk.instructions(), offset as usize);
   match instruction {
     AlignedByteCode::Return => simple_instruction(stdio.stdout(), "Return", offset),
     AlignedByteCode::Negate => simple_instruction(stdio.stdout(), "Negate", offset),

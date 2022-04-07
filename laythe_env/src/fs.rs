@@ -1,7 +1,7 @@
 use crate::io::IoImpl;
 use std::{
   io,
-  path::{Path, PathBuf},
+  path::{Path, PathBuf}, ffi::OsString, fs::FileType,
 };
 
 /// A wrapper around file system facilities provided to Laythe
@@ -24,8 +24,8 @@ impl Fs {
   }
 
   /// Read a file into String
-  pub fn read_to_string(&self, path: &Path) -> io::Result<String> {
-    self.fs.read_to_string(path)
+  pub fn read_file(&self, path: &Path) -> io::Result<String> {
+    self.fs.read_file(path)
   }
 
   /// Read a directory for files and sub directories
@@ -46,10 +46,12 @@ impl Fs {
 
 pub trait LyDirEntry {
   fn path(&self) -> PathBuf;
+  fn file_name(&self) -> OsString;
+  fn file_type(&self) -> io::Result<FileType>;
 }
 
 pub trait FsImpl: Send + Sync {
-  fn read_to_string(&self, path: &Path) -> io::Result<String>;
+  fn read_file(&self, path: &Path) -> io::Result<String>;
   fn read_directory(&self, path: &Path) -> io::Result<Vec<Box<dyn LyDirEntry>>>;
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
   fn relative_path(&self, base: &Path, import: &Path) -> io::Result<PathBuf>;
@@ -67,7 +69,7 @@ impl IoImpl<Fs> for IoFsMock {
 pub struct FsMock();
 
 impl FsImpl for FsMock {
-  fn read_to_string(&self, _path: &Path) -> io::Result<String> {
+  fn read_file(&self, _path: &Path) -> io::Result<String> {
     Ok("let x = 10;".to_string())
   }
   fn read_directory(&self, _path: &Path) -> io::Result<Vec<Box<dyn LyDirEntry>>> {

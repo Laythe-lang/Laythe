@@ -6,14 +6,13 @@ mod error;
 mod hooks;
 mod impls;
 mod ops;
+mod source_loader;
 
 use crate::{
   byte_code::{AlignedByteCode, ByteCode},
   cache::InlineCache,
-  compiler::{Compiler, Parser, Resolver},
   constants::REPL_MODULE,
   source::{Source, VmFileId, VmFiles},
-  FeResult,
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
@@ -23,7 +22,7 @@ use laythe_core::{
   managed::{Gc, GcObj, GcStr},
   memory::Allocator,
   module::{Module, Package},
-  object::{Class, Fiber, Fun, Map},
+  object::{Fiber, Fun, Map},
   utils::IdEmitter,
   val,
   value::{Value, VALUE_NIL},
@@ -155,7 +154,7 @@ impl Vm {
     let current_fun = hooks.manage_obj(current_fun);
     let capture_stub = Captures::new(&hooks, &[]);
     let fiber = hooks.manage_obj(
-      Fiber::new(current_fun, capture_stub).expect("Unable to generate placeholder fiber"),
+      Fiber::new(None, current_fun, capture_stub).expect("Unable to generate placeholder fiber"),
     );
 
     let builtin = builtin_from_module(&hooks, &global)
@@ -297,51 +296,9 @@ impl Vm {
     }
   }
 
-  /// Compile the provided laythe source into the virtual machine's bytecode
-  fn compile(
-    &mut self,
-    repl: bool,
-    module: Gc<Module>,
-    source: &Source,
-    file_id: VmFileId,
-  ) -> FeResult<GcObj<Fun>, VmFileId> {
-    let (ast, line_offsets) = Parser::new(source, file_id).parse();
-    self
-      .files
-      .update_line_offsets(file_id, line_offsets.clone())
-      .expect("File id not set for line offsets");
-
-    let mut ast = ast?;
-
-    Resolver::new(self.global, &self.gc.borrow(), source, file_id, repl).resolve(&mut ast)?;
-
-    let gc = self.gc.replace(Allocator::default());
-    let compiler = Compiler::new(module, &line_offsets, file_id, repl, self, gc);
-
-    #[cfg(feature = "debug")]
-    let compiler = compiler.with_io(self.io.clone());
-
-    let (result, gc, cache_id_emitter) = compiler.compile(&ast);
-    self.gc.replace(gc);
-
-    result.map(|fun| {
-      let cache = InlineCache::new(
-        cache_id_emitter.property_count(),
-        cache_id_emitter.invoke_count(),
-      );
-
-      if module.id() < self.inline_cache.len() {
-        self.inline_cache[module.id()] = cache;
-      } else {
-        self.inline_cache.push(cache);
-      }
-      self.manage_obj(fun)
-    })
-  }
-
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: GcObj<Fun>) {
-    let fiber = match Fiber::new(script, self.capture_stub) {
+    let fiber = match Fiber::new(None, script, self.capture_stub) {
       Ok(fiber) => fiber,
       Err(_) => self.internal_error("Unable to generate initial fiber"),
     };
@@ -352,32 +309,6 @@ impl Vm {
     self.load_ip();
 
     self.current_fun = script;
-    let mut current_module = self.current_fun.module();
-
-    self
-      .global
-      .transfer_exported(&GcHooks::new(self), &mut current_module);
-  }
-
-  /// Prepare the main module for use
-  fn module(&mut self, name: &str) -> Gc<Module> {
-    let main_id = self.emitter.emit();
-    let hooks = GcHooks::new(self);
-
-    let name = hooks.manage_str(name);
-    let module_class = Class::with_inheritance(&hooks, name, self.builtin.dependencies.module);
-
-    let mut module = hooks.manage(Module::new(module_class, main_id));
-    hooks.push_root(module);
-
-    // transfer the symbols from the global module into the main module
-    self.global.transfer_exported(&hooks, &mut module);
-
-    hooks.pop_roots(1);
-    let package = hooks.manage(Package::new(name, module));
-
-    self.packages.insert(name, package);
-    module
   }
 
   /// Main virtual machine execution loop. This will run the until the program interrupts

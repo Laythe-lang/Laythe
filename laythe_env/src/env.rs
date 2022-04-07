@@ -56,3 +56,45 @@ impl EnvImpl for EnvMock {
     vec![]
   }
 }
+
+#[derive(Debug)]
+pub struct IoEnvTest {
+  current_dir: PathBuf,
+  args: Vec<String>,
+}
+
+impl IoEnvTest {
+  pub fn new(current_dir: PathBuf, args: Vec<String>) -> Self {
+    Self { current_dir, args }
+  }
+}
+
+impl IoImpl<Env> for IoEnvTest {
+  fn make(&self) -> Env {
+    Env::new(Box::new(EnvTest::new(
+      self.current_dir.clone(),
+      self.args.clone(),
+    )))
+  }
+}
+
+pub struct EnvTest {
+  current_dir: PathBuf,
+  args: Vec<String>,
+}
+
+impl EnvTest {
+  fn new(current_dir: PathBuf, args: Vec<String>) -> Self {
+    Self { current_dir, args }
+  }
+}
+
+impl EnvImpl for EnvTest {
+  fn current_dir(&self) -> io::Result<PathBuf> {
+    Ok(self.current_dir.clone())
+  }
+
+  fn args(&self) -> Vec<String> {
+    self.args.clone()
+  }
+}

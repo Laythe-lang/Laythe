@@ -1,10 +1,18 @@
 use laythe_vm::vm::{default_native_vm, VmExit};
-use support::{assert_file_exit_and_stdio, assert_files_exit};
+use support::{assert_file_exit_and_stdio, assert_files_exit, assert_files_exit_with_cwd};
 
 mod support;
 
 fn test_file_exits(paths: &[&str], result: VmExit) -> Result<(), std::io::Error> {
   assert_files_exit(paths, FILE_PATH, result)
+}
+
+fn test_file_exits_with_cwd(
+  paths: &[&str],
+  cwd: &str,
+  result: VmExit,
+) -> Result<(), std::io::Error> {
+  assert_files_exit_with_cwd(paths, FILE_PATH, cwd, result)
 }
 
 fn test_file_with_stdio(
@@ -556,15 +564,37 @@ fn implicit_return() -> Result<(), std::io::Error> {
 
 #[test]
 fn import() -> Result<(), std::io::Error> {
-  test_file_exits(&vec![], VmExit::Ok)?;
+  test_file_exits(
+    &vec![
+      "language/import/module.lay",
+      "language/import/module_rename.lay",
+      "language/import/symbol.lay",
+      "language/import/symbol_rename.lay",
+    ],
+    VmExit::Ok,
+  )?;
+
+  test_file_exits_with_cwd(
+    &vec![
+      "language/import/user_import/symbol.lay",
+      "language/import/user_import/module.lay",
+    ],
+    "language/import/user_import",
+    VmExit::Ok,
+  )?;
 
   test_file_exits(
     &vec![
+      "language/import/import_in_fun.lay",
+      "language/import/import_in_class.lay",
+      "language/import/import_in_scope.lay",
       "language/import/missing_path.lay",
       "language/import/missing_semicolon.lay",
       "language/import/non_identifier_path.lay",
       "language/import/rename_missing.lay",
       "language/import/rename_not_identifer.lay",
+      "language/import/rename_redefine.lay",
+      "language/import/symbols_redefine.lay",
       "language/import/symbols_rename_missing.lay",
       "language/import/symbols_rename_not_identifer.lay",
     ],
@@ -574,10 +604,14 @@ fn import() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/import/module_not_real.lay",
-      // "language/import/rename_redefine.lay",
       "language/import/symbols_not_real.lay",
-      // "language/import/symbols_redefine.lay",
     ],
+    VmExit::RuntimeError,
+  )?;
+
+  test_file_exits_with_cwd(
+    &vec!["language/import/user_import/cycle_1.lay"],
+    "language/import/user_import",
     VmExit::RuntimeError,
   )
 }

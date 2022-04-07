@@ -1,10 +1,9 @@
-use super::{Signal, Vm};
+use super::{source_loader::ImportResult, Signal, Vm};
 use crate::{
   byte_code::{AlignedByteCode, CaptureIndex},
   constants::MAX_FRAME_SIZE,
 };
 use laythe_core::hooks::GcContext;
-use laythe_core::managed::GcObject;
 use laythe_core::{
   captures::Captures,
   hooks::{GcHooks, Hooks},
@@ -23,6 +22,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL, VALUE_TRUE},
   Call, LyError,
 };
+use laythe_core::{managed::GcObject, object::Fiber};
 use std::{cmp::Ordering, mem};
 
 impl Vm {
@@ -110,11 +110,11 @@ impl Vm {
     };
 
     let hooks = GcHooks::new(self);
-    let mut fiber = self.fiber;
+    let fiber = self.fiber;
 
-    // call init fiber which will peel off the last frame if it's above the previous
+    // call fiber split which will peel off the last frame if it's above the previous
     // water mark
-    if let Some(new_fiber) = fiber.split_fiber(&hooks, frame_count, arg_count as usize) {
+    if let Some(new_fiber) = Fiber::split(fiber, &hooks, frame_count, arg_count as usize) {
       // put the fiber in the queue
       self.fiber_queue.push_back(new_fiber);
       self.current_fun = current_fun;
@@ -709,26 +709,47 @@ impl Vm {
     if let Some(module) = self.module_cache.get(&resolved) {
       let imported = module.module_instance(&GcHooks::new(self));
       self.fiber.push(val!(imported));
-      self.pop_roots(2);
+      self.pop_roots(1);
       return Signal::Ok;
     }
 
     let import = self.build_import(&path_segments);
     self.push_root(import);
 
-    let result = match self.packages.get(&import.package()) {
-      Some(package) => match package.import(&GcHooks::new(self), import) {
-        Ok(module) => {
-          let module = val!(module.module_instance(&GcHooks::new(self)));
-          self.fiber.push(module);
-          Signal::Ok
-        },
-        Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
+    let result = match self.import_module(import) {
+      ImportResult::Loaded(module) => {
+        self.module_cache.insert(resolved, module);
+        let module_instance = val!(module.module_instance(&GcHooks::new(self)));
+
+        self.fiber.push(module_instance);
+        Signal::Ok
       },
-      None => self.runtime_error(
-        self.builtin.errors.import,
-        &format!("Package {} does not exist", &import.package()),
-      ),
+      ImportResult::Compiled(fun) => {
+        self.update_ip(-3);
+        self.fiber.sleep();
+
+        let import_fiber = match Fiber::new(Some(self.fiber), fun, self.capture_stub) {
+          Ok(fiber) => fiber,
+          Err(_) => self.internal_error("Importing fiber"),
+        };
+        let import_fiber = self.manage_obj(import_fiber);
+
+        self.fiber_queue.push_back(import_fiber);
+        Signal::ContextSwitch
+      },
+      ImportResult::NotFound => {
+        let env = self.io.env();
+        let resolved_path = env.current_dir().unwrap();
+
+        self.runtime_error(
+          self.builtin.errors.import,
+          &format!(
+            "Module {} not found in directory {:?}",
+            &import, &resolved_path
+          ),
+        )
+      }
+      ImportResult::CompileError => Signal::Exit,
     };
 
     self.pop_roots(2);
@@ -739,7 +760,7 @@ impl Vm {
     let index_path = self.read_short();
     let index_name = self.read_short();
     let path = self.read_constant(index_path).to_obj().to_list();
-    let name = self.read_string(index_name);
+    let symbol_name = self.read_string(index_name);
 
     let path_segments = self.extract_import_path(path);
 
@@ -747,33 +768,74 @@ impl Vm {
     let resolved = self.full_import_path(&path_segments);
     self.push_root(resolved);
 
-    if let Some(module) = self.module_cache.get(&resolved) {
-      let imported = module.module_instance(&GcHooks::new(self));
-      self.fiber.push(val!(imported));
-      self.pop_roots(2);
-      return Signal::Ok;
+    if let Some(module) = self.module_cache.get(&resolved).cloned() {
+      let signal = match module.get_exported_symbol(symbol_name) {
+        Some(symbol) => {
+          self.fiber.push(symbol);
+          Signal::Ok
+        },
+        None => self.runtime_error(
+          self.builtin.errors.import,
+          &format!(
+            "Symbol {} not exported from module {}",
+            symbol_name,
+            &module.name()
+          ),
+        ),
+      };
+
+      self.pop_roots(1);
+      return signal;
     }
 
     let import = self.build_import(&path_segments);
     self.push_root(import);
 
-    let result = match self.packages.get(&import.package()) {
-      Some(package) => {
-        match package
-          .import(&GcHooks::new(self), import)
-          .and_then(|module| module.get_exported_symbol(name))
-        {
-          Ok(symbol) => {
-            self.fiber.push(val!(symbol));
+    let result = match self.import_module(import) {
+      ImportResult::Loaded(module) => {
+        self.module_cache.insert(resolved, module);
+
+        match module.get_exported_symbol(symbol_name) {
+          Some(symbol) => {
+            self.fiber.push(symbol);
             Signal::Ok
           },
-          Err(err) => self.runtime_error(self.builtin.errors.runtime, &err.to_string()),
+          None => self.runtime_error(
+            self.builtin.errors.import,
+            &format!(
+              "Symbol {} not exported from module {}",
+              symbol_name,
+              &module.name()
+            ),
+          ),
         }
       },
-      None => self.runtime_error(
-        self.builtin.errors.import,
-        &format!("Package {} does not exist", &import.package()),
-      ),
+      ImportResult::Compiled(fun) => {
+        self.update_ip(-5);
+        self.fiber.sleep();
+
+        let import_fiber = match Fiber::new(Some(self.fiber), fun, self.capture_stub) {
+          Ok(fiber) => fiber,
+          Err(_) => self.internal_error("Importing fiber"),
+        };
+        let import_fiber = self.manage_obj(import_fiber);
+
+        self.fiber_queue.push_back(import_fiber);
+        Signal::ContextSwitch
+      },
+      ImportResult::NotFound => {
+        let env = self.io.env();
+        let resolved_path = env.current_dir().unwrap();
+
+        self.runtime_error(
+          self.builtin.errors.import,
+          &format!(
+            "Module {} not found in directory {:?}",
+            &import, &resolved_path
+          ),
+        )
+      },
+      ImportResult::CompileError => Signal::Exit,
     };
 
     self.pop_roots(2);
