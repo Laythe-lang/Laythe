@@ -112,10 +112,7 @@ impl Module {
   }
 
   pub fn get_module(&self, name: GcStr) -> Option<Gc<Module>> {
-    match self.modules.get(&name) {
-      Some(module) => Some(*module),
-      None => None,
-    }
+    self.modules.get(&name).copied()
   }
 
   pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ImportResult<Gc<Module>> {

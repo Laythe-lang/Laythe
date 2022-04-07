@@ -160,11 +160,11 @@ impl Vm {
   }
 }
 
-fn find_missing_module<'a>(
+fn find_missing_module(
   module: Gc<Module>,
-  path: &'a [GcStr],
+  path: &[GcStr],
   index: usize,
-) -> (Gc<Module>, (&'a [GcStr], &'a [GcStr])) {
+) -> (Gc<Module>, (&[GcStr], &[GcStr])) {
   if path.is_empty() {
     return (module, (&[], &[]));
   }
