@@ -112,7 +112,7 @@ impl Vm {
     let hooks = GcHooks::new(self);
     let fiber = self.fiber;
 
-    // call init fiber which will peel off the last frame if it's above the previous
+    // call fiber split which will peel off the last frame if it's above the previous
     // water mark
     if let Some(new_fiber) = Fiber::split(fiber, &hooks, frame_count, arg_count as usize) {
       // put the fiber in the queue
@@ -737,10 +737,18 @@ impl Vm {
         self.fiber_queue.push_back(import_fiber);
         Signal::ContextSwitch
       },
-      ImportResult::NotFound => self.runtime_error(
-        self.builtin.errors.import,
-        &format!("Module {} not found", &import),
-      ),
+      ImportResult::NotFound => {
+        let env = self.io.env();
+        let resolved_path = env.current_dir().unwrap();
+
+        self.runtime_error(
+          self.builtin.errors.import,
+          &format!(
+            "Module {} not found in directory {:?}",
+            &import, &resolved_path
+          ),
+        )
+      }
       ImportResult::CompileError => Signal::Exit,
     };
 
@@ -760,11 +768,24 @@ impl Vm {
     let resolved = self.full_import_path(&path_segments);
     self.push_root(resolved);
 
-    if let Some(module) = self.module_cache.get(&resolved) {
-      let imported = module.module_instance(&GcHooks::new(self));
-      self.fiber.push(val!(imported));
+    if let Some(module) = self.module_cache.get(&resolved).cloned() {
+      let signal = match module.get_exported_symbol(symbol_name) {
+        Some(symbol) => {
+          self.fiber.push(symbol);
+          Signal::Ok
+        },
+        None => self.runtime_error(
+          self.builtin.errors.import,
+          &format!(
+            "Symbol {} not exported from module {}",
+            symbol_name,
+            &module.name()
+          ),
+        ),
+      };
+
       self.pop_roots(1);
-      return Signal::Ok;
+      return signal;
     }
 
     let import = self.build_import(&path_segments);
@@ -783,7 +804,8 @@ impl Vm {
             self.builtin.errors.import,
             &format!(
               "Symbol {} not exported from module {}",
-              symbol_name, &import
+              symbol_name,
+              &module.name()
             ),
           ),
         }
@@ -801,10 +823,18 @@ impl Vm {
         self.fiber_queue.push_back(import_fiber);
         Signal::ContextSwitch
       },
-      ImportResult::NotFound => self.runtime_error(
-        self.builtin.errors.import,
-        &format!("Module {} not found", &import),
-      ),
+      ImportResult::NotFound => {
+        let env = self.io.env();
+        let resolved_path = env.current_dir().unwrap();
+
+        self.runtime_error(
+          self.builtin.errors.import,
+          &format!(
+            "Module {} not found in directory {:?}",
+            &import, &resolved_path
+          ),
+        )
+      },
       ImportResult::CompileError => Signal::Exit,
     };
 
