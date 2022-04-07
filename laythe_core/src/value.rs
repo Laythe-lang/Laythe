@@ -785,7 +785,7 @@ mod boxed {
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 16);
       assert_eq!(mem::size_of::<Fun>(), 64);
-      assert_eq!(mem::size_of::<Fiber>(), 104);
+      assert_eq!(mem::size_of::<Fiber>(), 112);
       assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Method>(), 16);
       assert_eq!(mem::size_of::<Enumerator>(), 24);

@@ -399,31 +399,36 @@ impl Fiber {
 
   /// Attempt to create a new fiber using the most recent call frame
   pub fn split(
-    mut fiber: GcObj<Fiber>,
+    mut _self: GcObj<Fiber>,
     hooks: &GcHooks,
     frame_count: usize,
     arg_count: usize,
   ) -> Option<GcObj<Fiber>> {
-    if fiber.frames().len() != frame_count + 1 {
+    if _self.frames().len() != frame_count + 1 {
       return None;
     }
 
-    let frame = fiber.frames.pop().expect("Expected call frame");
-    hooks.push_root(frame.fun());
+    let frame = _self.frames.pop().expect("Expected call frame");
+    hooks.push_root(frame);
     let mut fiber = hooks.manage_obj(
-      Fiber::new_inner(Some(fiber), frame.fun(), frame.captures(), arg_count + 1)
-        .expect("Assumed valid closure"),
+      Fiber::new_inner(
+        Some(_self),
+        frame.fun(),
+        frame.captures(),
+        frame.fun().max_slots() + arg_count + 1,
+      )
+      .expect("Assumed valid closure"),
     );
     hooks.pop_roots(1);
 
-    let slots = fiber.frame_stack().len();
+    let slots = _self.frame_stack().len();
     assert_eq!(slots, arg_count + 1);
 
     // if we have any argument bulk copy them to the fiber
     if slots > 1 {
       unsafe {
         ptr::copy_nonoverlapping(
-          fiber.frame().stack_start().offset(1),
+          _self.frame().stack_start().offset(1),
           fiber.stack_top,
           arg_count,
         );
@@ -434,8 +439,8 @@ impl Fiber {
     // Effectively pop the current fibers frame so they're 'moved'
     // to the new fiber
     unsafe {
-      fiber.stack_top = fiber.frame().stack_start();
-      fiber.frame = fiber.frame.sub(1);
+      _self.stack_top = _self.frame().stack_start();
+      _self.frame = _self.frame.sub(1);
     }
 
     Some(fiber)
@@ -493,7 +498,7 @@ impl Fiber {
       // this offset
       let offset = frame.ip().offset_from(instructions.as_ptr()) as usize;
       if let Some((offset, slots)) = fun.has_catch_jump(offset) {
-        debug_assert!(slots <= fun.max_slots());
+        debug_assert!(slots <= fun.max_slots(), "Fun has at most {} slots but attempted to offset at {}", fun.max_slots(), slots);
 
         catch_offset = Some(offset);
         stack_top = frame.stack_start().add(slots);
@@ -589,6 +594,7 @@ impl Fiber {
   /// A mutable reference to the current frame
   #[inline]
   fn frame_mut(&mut self) -> &mut CallFrame {
+    debug_assert!(!self.frame.is_null());
     unsafe { &mut *self.frame }
   }
 
@@ -609,8 +615,11 @@ impl Fiber {
 fn assert_inbounds<T>(slice: &[T], ptr: *mut T) {
   unsafe {
     let offset = ptr.offset_from(slice.as_ptr());
-    assert!(offset >= 0);
-    assert!((offset as usize) < slice.len())
+    assert!(offset >= 0, "Attempted to index prior to the slice. Pointer offset was {} with slice start {:p}, ptr {:p}", offset, slice, ptr);
+    assert!(
+      (offset as usize) < slice.len(),
+      "Attempted to index past the end of the slice, Pointer offset was {} with slice start {:p} and ptr {:p}", offset, slice, ptr
+    )
   }
 }
 
@@ -1036,9 +1045,10 @@ mod test {
       fiber.push(val!(true));
     }
 
-    fiber.push_frame(fun, captures, 2);
+    let arg_count = 2;
+    fiber.push_frame(fun, captures, arg_count);
 
-    let mut child = Fiber::split(fiber, &hooks, 1, 0).expect("Expected split");
+    let mut child = Fiber::split(fiber, &hooks, 1, arg_count).expect("Expected split");
 
     fiber.sleep();
     child.activate();
