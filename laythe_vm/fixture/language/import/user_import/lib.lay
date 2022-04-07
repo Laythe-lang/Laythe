@@ -1,0 +1,5 @@
+export let x = 10;
+export fn y() { 10 }
+export class Z {
+  ans() { 10 }
+}

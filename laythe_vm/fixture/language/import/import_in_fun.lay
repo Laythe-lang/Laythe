@@ -1,0 +1,5 @@
+fn importer() {
+  import std.math:{abs};
+}
+
+importer()
