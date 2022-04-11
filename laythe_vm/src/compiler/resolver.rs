@@ -1135,6 +1135,103 @@ mod test {
   }
 
   #[test]
+  fn capture() {
+    let example = "
+      let x = 10;
+
+      fn capture() { x }
+
+      if true {
+        let x = 10;
+
+        fn capture() { x }
+      }
+    ";
+
+    test_repl_resolve(example, |ast, result| {
+      assert!(result.is_ok());
+
+      let x = ast.symbols.get("x").unwrap();
+      let capture = ast.symbols.get("capture").unwrap();
+
+      assert_eq!(x.state(), SymbolState::GlobalInitialized);
+      assert_eq!(capture.state(), SymbolState::GlobalInitialized);
+
+      match &ast.decls[2] {
+        Decl::Stmt(stmt) => match &**stmt {
+          Stmt::If(if_) => {
+            let x = if_.body.symbols.get("x").unwrap();
+            let capture = if_.body.symbols.get("capture").unwrap();
+
+            assert_eq!(x.state(), SymbolState::Captured);
+            assert_eq!(capture.state(), SymbolState::Initialized);
+          },
+          _ => panic!(),
+        },
+        _ => panic!(),
+      }
+    });
+  }
+
+  #[test]
+  fn self_capture_explicit() {
+    let example = "
+      class A {
+        foo() {
+          || self.a
+        }
+      }
+    ";
+
+    test_repl_resolve(example, |ast, result| {
+      assert!(result.is_ok());
+
+      match &ast.decls[0] {
+        Decl::Symbol(stmt) => match &**stmt {
+          Symbol::Class(class) => {
+            let foo = &class.methods[0];
+
+            let self_ = foo.symbols.get(SELF).unwrap();
+
+            assert_eq!(self_.state(), SymbolState::Captured);
+          },
+          _ => panic!(),
+        },
+        _ => panic!(),
+      }
+    });
+  }
+
+  #[test]
+  fn self_capture_implicit() {
+    let example = "
+      class A {
+        foo() {
+          || @a
+        }
+      }
+    ";
+
+    test_repl_resolve(example, |ast, result| {
+      assert!(result.is_ok());
+
+      match &ast.decls[0] {
+        Decl::Symbol(stmt) => match &**stmt {
+          Symbol::Class(class) => {
+            let foo = &class.methods[0];
+
+            let self_ = foo.symbols.get(SELF).unwrap();
+
+            assert_eq!(self_.state(), SymbolState::Captured);
+          },
+          _ => panic!(),
+        },
+        _ => panic!(),
+      }
+    });
+  }
+
+  #[test]
   fn global_decl_symbols() {
     let example = "
       class example1 {}
@@ -1144,9 +1241,14 @@ mod test {
 
     test_file_std_resolve(example, |ast, result| {
       assert!(result.is_ok());
-      assert!(ast.symbols.get("example1").is_some());
-      assert!(ast.symbols.get("example2").is_some());
-      assert!(ast.symbols.get("example3").is_some());
+
+      let example1 = ast.symbols.get("example1").unwrap();
+      let example2 = ast.symbols.get("example2").unwrap();
+      let example3 = ast.symbols.get("example3").unwrap();
+
+      assert_eq!(example1.state(), SymbolState::GlobalInitialized);
+      assert_eq!(example2.state(), SymbolState::GlobalInitialized);
+      assert_eq!(example3.state(), SymbolState::GlobalInitialized);
     });
   }
 
@@ -1166,9 +1268,13 @@ mod test {
       match &ast.decls[0] {
         Decl::Stmt(stmt) => match &**stmt {
           Stmt::If(if_) => {
-            assert!(if_.body.symbols.get("example1").is_some());
-            assert!(if_.body.symbols.get("example2").is_some());
-            assert!(if_.body.symbols.get("example3").is_some());
+            let example1 = if_.body.symbols.get("example1").unwrap();
+            let example2 = if_.body.symbols.get("example2").unwrap();
+            let example3 = if_.body.symbols.get("example3").unwrap();
+
+            assert_eq!(example1.state(), SymbolState::Initialized);
+            assert_eq!(example2.state(), SymbolState::Initialized);
+            assert_eq!(example3.state(), SymbolState::Initialized);
           },
           _ => panic!(),
         },
