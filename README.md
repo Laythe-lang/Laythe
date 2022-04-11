@@ -343,21 +343,46 @@ writer(ch);
 
 ## Performance
 
-Run the lox benchmark suite for laythe and clox laythe averages 73% of the speed of clox. In general this seems to be focused around hashing speed and the overhead of the main interpreter loop. This is probably best seen in `equality.lox` and `fib.lox` where equality is likely the simplest in terms of execution is only 80% as clox while fib which exercises both global lookups for fib and function calls only achieves 63% of clox. The benchmark Laythe edges out clox is in binary trees. This is likely do to the class caching the init function and inline caching property and method calls.
+Here I ran the essentially the simple benchmark suite from crafting interpretors on Laythe,
+Ruby and Python. Later I may implement some more standard benchmarks to get a more
+holistic view.
 
-Running the original benchmark suite on a 2015 dell xps we have.
+These benchmarks where run on a 2019 MBP
 
-|benchmark|clox|Laythe|relative speed|notes|
-|--|--|--|--|--|
-|binary_tress.lox|total: 2.58032|total: 2.07827|1.1|We've optimized instance to allocate properties inline and have an init optimization that benefits speed|
-|equality.lox|loop: 2.54958 elapsed: 2.08519|loop: 2.53177 elapsed: 2.52173|0.80|Similar to above we have essentially zero hashing and again perform pretty equal to clox|
-|fib.lox|total: 1.33588|total: 2.09226|0.63|Here we have some hashing from the `fib` lookup but even making this local shows a difference. It appears there is still some performance difference in function calling here|
-|instantiation.lox|total: 0.794824|total: 1.58841|0.53|Again localizing this gives a decent speedup but hashing and function calls still seem to slow Laythe down|
-|invocation.lox|total: 0.419431|total: 0.782444|0.52|Now the hashing speed difference is quite apparent|
-|method_call.lox|total: 0.26644|total: 0.326959|0.65|Same as above|
-|properties.lox|total: 0.645307|total: 0.889522|0.69|Same as above|
-|trees.lox|total: 3.09063|total: 3.387378|0.91|Same as above|
-|zoo.lox|total: 0.495144|total: 0.680576|0.70|Same as above|
+### Timings
+
+|benchmark|ruby 3.0.2|python 3.9.12|laythe|
+|--|--|--|--|
+|binary_trees|1.50|44.07|1.87|
+|equality|8.12|3.84|1.54|
+|fib|0.78|2.73|1.31|
+|instantiation|1.52|1.565628052|1.65|
+|invocation|0.25|0.98|0.52|
+|list|1.47|3.30|2.87|
+|method_call|0.12|0.66|0.22|
+|properties|0.28|1.52|0.62|
+|trees|1.41|7.45|2.21|
+|zoo|0.23|1.18|0.50|
+
+### Percent Speed
+
+Here I show how fast or slow laythe is relative to python and ruby. Here I simply
+take the ratio of `other_lang/laythe * 100`. laythe pretty much sits right between
+ruby and python in these benchmarks, easily beating python and being easily beaten
+by ruby.
+
+|benchmark|ruby 3.0.2|python 3.9.12|laythe|
+|--|--|--|--|
+|binary_trees|80.2%|2355.1%|100%|
+|equality|524.3%|248%|100%|
+|fib|59.9%|207.8%|100%|
+|instantiation|92.2%|94.5%|100%|
+|invocation|48.5%|186.5%|100%|
+|list|51.4%|115.2%|100%|
+|method_call|57.8%|297.9%|100%|
+|properties|44.9%|244.1%|100%|
+|trees|63.9%|336.1%|100%|
+|zoo|46.1%|235.6%|100%|
 
 ## Future Ideas
 
