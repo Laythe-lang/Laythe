@@ -1,25 +1,25 @@
 class Tree {
   init(item, depth) {
-    self.item = item;
-    self.depth = depth;
+    @item = item;
+    @depth = depth;
 
     if depth > 0 {
       let item2 = item + item;
       depth -= 1;
-      self.left = Tree(item2 - 1, depth);
-      self.right = Tree(item2, depth);
+      @left = Tree(item2 - 1, depth);
+      @right = Tree(item2, depth);
     } else {
-      self.left = nil;
-      self.right = nil;
+      @left = nil;
+      @right = nil;
     }
   }
 
   check() {
-    if !self.left {
-      return self.item;
+    if !@left {
+      return @item;
     }
 
-    self.item + self.left.check() - self.right.check()
+    @item + @left.check() - @right.check()
   }
 }
 

@@ -1,12 +1,12 @@
 class Toggle {
   init(startState) {
-    self.state = startState;
+    @state = startState;
   }
 
-  value() { self.state }
+  value() { @state }
 
   activate() {
-    self.state = !self.state;
+    @state = !@state;
     self
   }
 }
@@ -14,15 +14,15 @@ class Toggle {
 class NthToggle : Toggle {
   init(startState, maxCounter) {
     super.init(startState);
-    self.countMax = maxCounter;
-    self.count = 0;
+    @countMax = maxCounter;
+    @count = 0;
   }
 
   activate() {
-    self.count += 1;
-    if self.count >= self.countMax {
+    @count += 1;
+    if @count >= @countMax {
       super.activate();
-      self.count = 0;
+      @count = 0;
     }
 
     return self;
