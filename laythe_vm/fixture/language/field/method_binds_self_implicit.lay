@@ -1,0 +1,24 @@
+class Foo {
+  init() {
+    @name = nil;
+    @slot = nil;
+  }
+
+  nameAndSelf(a) {
+    return [@name, a];
+  }
+}
+
+let foo1 = Foo();
+foo1.name = "foo1";
+
+let foo2 = Foo();
+foo2.name = "foo2";
+
+// Store the method reference on another object.
+foo2.slot = foo1.nameAndSelf;
+
+// Still retains original receiver.
+let result = foo2.slot(1);
+assertEq(result[0], "foo1");
+assertEq(result[1], 1);

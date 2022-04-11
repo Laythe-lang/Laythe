@@ -390,10 +390,14 @@ fn field() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/field/call_function_field.lay",
+      "language/field/call_function_field_implicit.lay",
       "language/field/many.lay",
+      "language/field/many_implicit.lay",
       "language/field/method_binds_self.lay",
+      "language/field/method_binds_self_implicit.lay",
       "language/field/method.lay",
       "language/field/on_instance.lay",
+      "language/field/on_instance_implicit.lay",
     ],
     VmExit::Ok,
   )?;

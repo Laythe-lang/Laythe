@@ -1,0 +1,16 @@
+class Foo {
+  init(bar) {
+    @bar = bar;
+  }
+}
+
+fn bar(a, b) {
+  return ["bar", a, b];
+}
+
+let foo = Foo(bar);
+
+let result = foo.bar(1, 2);
+assertEq(result[0], "bar");
+assertEq(result[1], 1);
+assertEq(result[2], 2);
