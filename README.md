@@ -1,97 +1,279 @@
 # Laythe
 
-A gradual typed scripting language aimed at making concurrent programming through channels and fibers. The language was originally based on the 2nd book of [Crafting Interpreters](https://craftinginterpreters.com/). See git tag [v0.1.0](https://github.com/Laythe-lang/Laythe/releases/tag/v0.1.0) for a fully compliant lox implementations. 
+A gradual typed, object oriented, fiber based concurrent scripting language. Laythe's goal is to
+seemlessly transistion from a single file untyped script to fully typed and fast production project.
+This is planned to be achieved by including a Typescript like gradual compiler that can eventually
+be used to JIT faster code.
+
+The language was originally based on the 2nd book of [Crafting Interpreters](https://craftinginterpreters.com/). See git tag [v0.1.0](https://github.com/Laythe-lang/Laythe/releases/tag/v0.1.0) for a fully compliant lox implementations.
 
 ## Getting Started
 
 Laythe is built in rust and as such uses the typical set of cargo commands for building, testing, running and benchmarks. If you don't have cargo on your system it us recommended you us [rustup](https://rustup.rs/) to get setup.
 
 ### Build debug
-```
+
+```bash
 cargo build
 ```
 
 ### Build Release
-```
+
+```bash
 cargo build --release
 ```
 
 ### Run Test Suite
-```
+
+```bash
 cargo test
 ```
 
 ### Run Benchmark Suite
-```
+
+```basy
 cargo bench
 ```
 
 ### Run Repl
-```
-cargo run [--release] 
+
+```bash
+cargo run [--release]
 ```
 
 ### Run a File
-```
+
+```bash
 cargo run [--release] [filepath]
 ```
 
-## Notable differences from Lox
+## Language Overview
 
-Laythe should probably be considered a cousin to Lox. There have been primarily additions but a few features of Lox have also been removed
+As stated at the top Laythe adjectives are
 
-### Additions
+* Gradually Typed
+* Object Oriented
+* Fiber (Coroutine) based concurrency
 
-#### Built in Classes
-Laythe now has machinery to give all types methods. Some simple examples include `.str()` methods to get a string representation of each type.
+### Basic Types
+
+Today laythe supports a small number of basic types.
 
 ```laythe
-laythe:> let x = true;
-laythe:> x.str()
-'true'
+// ---- boolean ----
+true;
+false;
+
+// ---- nil ----
+nil;
+
+// ---- numbers ----
+// single number type IEEE 64 bit float point
+// this may change in the future but for now al
+10.5;
+3;
+
+// ---- strings ----
+"this is a string";
+
+// with interpolation
+"this is a string with interpolation ${10}";
 ```
 
-#### Lambdas
-There are now function expressions. These are primarily useful for higher order functions like `.map` and `.filter`
+### Collection
+
+Laythe support two collection types lists and maps
 
 ```laythe
-laythe:> let func = |x| x * 2;
-laythe:> let withBody |name| { print("hi! " + name); };
-laythe:> func(5)
-10
-laythe:> withBody("John")
-hi! john
+// ---- lists ----
+
+// list can be homogeneous
+let l1 = [1, 2, 3];
+print(l1[2]);
+laythe:> 3
+
+print(l1[-1]);
+laythe:> 3
+
+// or heterogeous
+let l2 = ['foo', nil, []];
+print(l2[0]);
+laythe:> 'foo'
+
+// ---- maps ----
+// maps which can use any value as key and value
+let list = [];
+let m = {
+  1: 2,
+  nil: 'some string',
+  'some string': false,
+  list: nil,
+};
+
+print(m[list]);
+laythe:> nil
 ```
 
-### Static Methods
-Classes now support static methods using the `static` keyword.
+### Function
+
+Functions in Laythe are first class values and support closure capture.
 
 ```laythe
-class WithStatic {
-  static example() { 
-    'example'
+// ---- function statement ----
+fn doubler(x) {
+  x * 2
+}
+
+// ---- function expressions / lambdas ----
+
+// with expression body
+|x| x * 2;
+
+// with block body
+|x| { x * 2 };
+
+// ---- recursion ----
+fn fib(n) {
+  if n < 2 { return n; }
+  fib(n - 2) + fib(n - 1)
+}
+
+// ---- closure capture ----
+
+let name = "John";
+fn greeter() {
+  print("Hello ${name}");
+}
+
+// ---- first class values ----
+
+fn halver(x) { x / 2 }
+
+fn invoker(fn, val) { fn(val) }
+
+print(invoker(halfer, 10));
+laythe:> 5
+```
+
+### Classes
+
+```laythe
+// ---- classes ----
+
+// class with no explicit super class no initializer
+class A {}
+
+// create an instance by call the class
+let a = A();
+
+class B {
+  // constructor
+  init(x) {
+    self.x = x
+    self.z = 'some string';
+  }
+
+  // instance method
+  bar() {
+    self.x
+  }
+
+  // static method
+  static baz() {
+    print("hello from B")
   }
 }
 
-laythe:> WithStatic.example()
-'example'
+// calling the class class init if present
+let b = B('cat');
+
+// call an instance method
+print(b.bar());
+laythe:> 'cat'
+
+// call a class method
+B.baz();
+laythe:> "hello from B"
+
+// access a property
+print(b.x);
+laythe:> "cat"
+
+// subclass B as C
+class C : B {
+  init(x, y) {
+    super.init(x)
+    self.y = y;
+  }
+
+  bar() {
+    // call super method bar
+    super.bar() + 3
+  }
+
+  foo() {
+    'y is ${self.y}'
+  }
+}
+
+let c = C(10, nil);
+
+print(c.bar());
+laythe:> 13
+
+print(c.foo());
+laythe:> 'y is nil';
 ```
 
-### New Collection Types
-Laythe now has lists and maps as part of the language both supporting literals.
+### Control Flow
+
+Laythe has the faily standard set of control flow you'd find in an scripting language
 
 ```laythe
-laythe:> let list = [1, false, nil, 3, clock];
-laythe:> let map = { 'key1', 10, 'key2': false, 15: nil };
-laythe:> list[2];
-nil
-laythe:> map[false];
-15
+
+// ---- conditional flow ----
+
+if 10 > 3 {
+  // predicate met branch
+}
+
+if 10 == nil {
+  // predicate met branch
+} else {
+  // alternative branch optional
+}
+
+// condtional expressions (ternary)
+let y = 10 > 3
+  ? 'cat'
+  : 'dog';
+
+
+// ---- while loop ----
+let x = 0;
+while x < 10 {
+  x += 1;
+}
+
+print(x)
+laythe:> 10
+
+// ---- for loop ----
+let sum = 0;
+
+// anything the implmenents the iterator interface
+for y in [1, 2, 3] {
+  sum += y;
+}
+
+print(sum);
+laythe:> 6
 ```
-Lists can be heterogenous, and internally are resizable arrays. Map support all types with objects supported by reference equality.
 
 ### Type Annotations
-Laythe now supports a basic set of type annotations. Long term this will eventually turn into gradual typing, but the parser will now ingest some Typescript like annotations.
+
+Laythe now supports a basic set of type annotations. Long term this will eventually turn into gradual typing,
+but the parser will now ingest some Typescript like annotations.
 
 ```laythe
 // let type def
@@ -102,7 +284,7 @@ let f: (a: string) -> number = |a| Number.parse(a);
 let f = |a: string| -> number Number.parse(a);
 
 // function signature
-fn adder(x: number, y: number) -> number { 
+fn adder(x: number, y: number) -> number {
   return x + y
 }
 
@@ -111,7 +293,7 @@ class Foo<T> {
   // field declaration
   bar: T;
 
-  init(bar: T) { 
+  init(bar: T) {
     self.bar = bar;
   }
 }
@@ -125,44 +307,11 @@ trait NumHolder {
 }
 ```
 
-### Implicit Return
-Like many other languages Laythe now supports implicit returns in a few cases. These included lambda, functions, methods and static methods
-
-```laythe
-laythe:> let f1 = || { 10 };
-laythe:> fn f2() { 20 }
-laythe:> print(f1());
-// 10
-laythe:> print(f2());
-// 10
-```
-
-### String Interpolation
-Laythe include string interpolation with `${expr}` to interpolate in a value
-
-```laythe
-class Person {
-  init(first, last, age) {
-    self.first = first;
-    self.last = last;
-  }
-
-  str() {
-    "${self.first} ${self.last} is ${} years old"
-    // this is largely equivalent to
-    // self.first.str() + " " + self.last.str() + " is " + self.age.str() + " years old"
-  }
-}
-
-print(Person("Jim", "Smith", 29).str())
-// "Jim Smith is 29 years old"
-```
-
 ### Fibers and Channels
 
-Laythe concurrent model builds around fibers and channels. Fibers as known by a number of terms such as green threads, and stackfull coroutines. These are separate and lightweight units of execution that in many ways act like an os thread. Laythe currently only runs a single fiber at a time switch between fibers on channel send's and receives.
+Laythe concurrent model builds around fibers and channels. Fibers are known by a number of terms such as green threads, and stackfull coroutines. These are separate and lightweight units of execution that in many ways act like an os thread. Laythe currently only runs a single fiber at a time switch between fibers on channel send's and receives.
 
-```
+```laythe
 fn printer(ch) {
   print(<- ch)
 }
@@ -192,94 +341,55 @@ ch <- "baz";
 writer(ch);
 ```
 
-## Modified
+## Performance
 
-### Gc
-The gc is setup quite differently from clox mostly because dealing with lifetimes in the base implementation was nearly impossible. Instead objects as of 5/8/2020 Act as a sort of smart pointer into a `Vec<Box<Value>>`. The gc takes a context to specify the active object roots to sweep. Gc is also explicitly turned off during compilation as values are only freed during the main loop.
+Here I ran the essentially the simple benchmark suite from crafting interpretors on Laythe,
+Ruby and Python. Later I may implement some more standard benchmarks to get a more
+holistic view.
 
-### Grammar
-The grammar is now different in a few ways from lox. These are changes in additions to type annotations.
+These benchmarks where run on a 2019 MBP
 
-```
-// variable declaration
-var lox = 10;
-let laythe = 10;
+### Timings
 
-// function declaration
-fun loxFun (a, b, c) { // lox
-  return a + b + c
-}
+|benchmark|ruby 3.0.2|python 3.9.12|laythe|
+|--|--|--|--|
+|binary_trees|1.50|44.07|1.87|
+|equality|8.12|3.84|1.54|
+|fib|0.78|2.73|1.31|
+|instantiation|1.52|1.565628052|1.65|
+|invocation|0.25|0.98|0.52|
+|list|1.47|3.30|2.87|
+|method_call|0.12|0.66|0.22|
+|properties|0.28|1.52|0.62|
+|trees|1.41|7.45|2.21|
+|zoo|0.23|1.18|0.50|
 
-fn laytheFnExpressionBody (a, b, c) { a + b + c }
-fn laytheFnBlockBody (a, b, c) {
-  return a + b + c
-}
+### Percent Speed
 
-// classes
-class LoxClass {
-  init(field1) { 
-    this.field1 = field1
-  }
-}
+Here I show how fast or slow laythe is relative to python and ruby. Here I simply
+take the ratio of `other_lang/laythe * 100`. laythe pretty much sits right between
+ruby and python in these benchmarks, easily beating python and being easily beaten
+by ruby.
 
-class LaytheClass {
-  init(field1) { 
-    self.field1 = field1
-  }
-}
-
-// lox control flow
-
-// has parens around condition, any statement for body
-if (10 < 3) {
-  var y = 10;
-} else print(x);
-
-// c style look
-for (var x = 0; x < 5; x = x + 1) { }
-
-while (true) print("hi")
-
-// laythe control flow
-
-// no parens, body must be block
-if 10 < 3 {
-  let y = 10;
-} else { 
-  print(x)
-}
-
-// range style look
-for i in 100.times() {
-
-}
-
-while true { }
-```
-
-### Performance
-
-Run the lox benchmark suite for laythe and clox laythe averages 73% of the speed of clox. In general this seems to be focused around hashing speed and the overhead of the main interpreter loop. This is probably best seen in `equality.lox` and `fib.lox` where equality is likely the simplest in terms of execution is only 80% as clox while fib which exercises both global lookups for fib and function calls only achieves 63% of clox. The benchmark Laythe edges out clox is in binary trees. This is likely do to the class caching the init function and inline caching property and method calls. 
-
-Running the original benchmark suite on a 2015 dell xps we have.
-
-|benchmark|clox|Laythe|relative speed|notes|
-|--|--|--|--|--|
-|binary_tress.lox|total: 2.58032|total: 2.07827|1.1|We've optimized instance to allocate properties inline and have an init optimization that benefits speed|
-|equality.lox|loop: 2.54958 elapsed: 2.08519|loop: 2.53177 elapsed: 2.52173|0.80|Similar to above we have essentially zero hashing and again perform pretty equal to clox|
-|fib.lox|total: 1.33588|total: 2.09226|0.63|Here we have some hashing from the `fib` lookup but even making this local shows a difference. It appears there is still some performance difference in function calling here|
-|instantiation.lox|total: 0.794824|total: 1.58841|0.53|Again localizing this gives a decent speedup but hashing and function calls still seem to slow Laythe down|
-|invocation.lox|total: 0.419431|total: 0.782444|0.52|Now the hashing speed difference is quite apparent|
-|method_call.lox|total: 0.26644|total: 0.326959|0.65|Same as above|
-|properties.lox|total: 0.645307|total: 0.889522|0.69|Same as above|
-|trees.lox|total: 3.09063|total: 3.387378|0.91|Same as above|
-|zoo.lox|total: 0.495144|total: 0.680576|0.70|Same as above|
+|benchmark|ruby 3.0.2|python 3.9.12|laythe|
+|--|--|--|--|
+|binary_trees|80.2%|2355.1%|100%|
+|equality|524.3%|248%|100%|
+|fib|59.9%|207.8%|100%|
+|instantiation|92.2%|94.5%|100%|
+|invocation|48.5%|186.5%|100%|
+|list|51.4%|115.2%|100%|
+|method_call|57.8%|297.9%|100%|
+|properties|44.9%|244.1%|100%|
+|trees|63.9%|336.1%|100%|
+|zoo|46.1%|235.6%|100%|
 
 ## Future Ideas
 
 These are some features / changes I'm considering adding to the language.
 
 ### Gradual typing
+
 I'm a huge fan of Typescript and believe it's gradual typing approach is quite fantastic. I'd like to incorporate a similar system here. Beyond just the normal type errors I'd like to have more of a runtype check at typed and untyped boundaries, at least enable that with a flag.
 
 ```laythe
@@ -307,9 +417,10 @@ typeError 'typed' expected number received string'
 Here I would think it could be useful if laythe automatically injected some runtime type checking before it's called in `unTyped`. The runtime check could then be emitted inside of `typed` as we know the value comes from a trust checked `typedInner`. I think this approach would really help extend the usefulness of the typescript model. I know outside of the strict flags in ts that you know the wrong type might still slip through. Here I think we can inject runtime checks to assert call boundaries are truly what the claim to be.
 
 ## Placeholder partial application
+
 I think placeholder partial application could really help prompt more first class function patterns. I think this is a small piece of syntactic sugar that could really cut down on a lot of boiler plate
 
-```
+```laythe
 fn sum(a, b) { a + b }
 fn eq(a, b) { a == b }
 
@@ -330,3 +441,8 @@ print(increment2(10));
 // a new list
 [1, 2, 3].iter().map(sum(_, 2)).into(List.collect);
 ```
+
+## JIT
+
+Eventually I'd like to use the available type information to eventually allow the runtime
+to be JIT'd. This is a very far off goal but that would be the ideal endstate.
