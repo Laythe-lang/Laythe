@@ -278,7 +278,12 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
         .gc
         .has_str(name.str())
         .ok_or(ImportError::SymbolDoesNotExist)
-        .and_then(|interned_name| self.global_module.get_exported_symbol(interned_name).ok_or(ImportError::SymbolDoesNotExist))
+        .and_then(|interned_name| {
+          self
+            .global_module
+            .get_exported_symbol(interned_name)
+            .ok_or(ImportError::SymbolDoesNotExist)
+        })
         .is_ok()
       {
         let table = &mut self.tables.first_mut().unwrap();
@@ -749,6 +754,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       Primary::Grouping(expr) => self.expr(expr),
       Primary::Interpolation(interpolation) => self.interpolation(interpolation),
       Primary::Ident(token) => self.identifier(token),
+      Primary::InstanceAccess(instance_access) => self.instance_access(instance_access),
       Primary::Self_(token) => self.self_(token),
       Primary::Super(token) => self.super_(token),
       Primary::Lambda(fun) => self.lambda(fun),
@@ -801,6 +807,38 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   /// Resolve a identifer token
   fn identifier(&mut self, token: &Token<'src>) {
     self.resolve_variable(token);
+  }
+
+  /// Compile instance access self load
+  fn instance_access(&mut self, instance_access: &ast::InstanceAccess<'src>) {
+    self
+      .class_info()
+      .map(|class_compiler| class_compiler.fun_kind)
+      .and_then(|fun_kind| {
+        fun_kind.and_then(|fun_kind| match fun_kind {
+          FunKind::Method | FunKind::Initializer => {
+            self.resolve_variable(&Token::new(
+              TokenKind::Self_,
+              Lexeme::Slice(SELF),
+              instance_access.start(),
+              instance_access.start() + 1,
+            ));
+            self
+              .class_info_mut()
+              .expect("Expected class info")
+              .add_field(instance_access.property());
+            Some(())
+          },
+          _ => None,
+        })
+      })
+      .or_else(|| {
+        self.error(
+          "Cannot access property off 'self' with '@' outside of class instance methods.",
+          Some(instance_access.span()),
+        );
+        None
+      });
   }
 
   /// Compile the self token
