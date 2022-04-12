@@ -2000,7 +2000,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Compile instance access
   fn instance_access(&mut self, instance_access: &ast::InstanceAccess<'src>) -> bool {
     if self.instance_access_self(instance_access) {
-      let name = self.identifier_constant(&instance_access.property());
+      let name = self.identifier_constant(instance_access.property());
 
       self.emit_byte(AlignedByteCode::GetProperty(name), instance_access.end());
       self.emit_byte(
