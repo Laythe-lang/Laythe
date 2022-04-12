@@ -1616,14 +1616,36 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             },
           }
         },
-        None => {
-          if let Primary::Ident(name) = &atom.primary {
+        None => match &atom.primary {
+          Primary::Ident(name) => {
             self.variable_get(name);
 
             self.emit_byte(AlignedByteCode::Send, send.lhs.end())
-          } else {
-            unreachable!("Unexpected expression on left hand side of assignment.");
-          }
+          },
+          Primary::InstanceAccess(instance_access) => {
+            self.instance_access_self(instance_access);
+            let property = instance_access.property();
+
+            if self.fun_kind == FunKind::Initializer {
+              let mut class_info = self.class_attributes.unwrap();
+
+              if !class_info.fields.iter().any(|f| *f == property) {
+                let field = self.gc.borrow_mut().manage_str(property, self);
+                class_info.add_field(field);
+              }
+            }
+
+            let name = self.identifier_constant(instance_access.property());
+
+            self.emit_byte(AlignedByteCode::GetProperty(name), instance_access.end());
+            self.emit_byte(
+              AlignedByteCode::Slot(self.emit_property_id()),
+              instance_access.end(),
+            );
+
+            self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+          },
+          _ => unreachable!("Unexpected expression on left hand side of assignment."),
         },
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
