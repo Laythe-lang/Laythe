@@ -1,0 +1,9 @@
+class A {
+  init() {
+    @a = @b = 10;
+  }
+}
+
+let a = A();
+assertEq(a.a, 10);
+assertEq(a.b, 10);

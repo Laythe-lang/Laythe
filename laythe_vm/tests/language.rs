@@ -145,6 +145,7 @@ fn channel() -> Result<(), std::io::Error> {
       "language/channel/in_collection.lay",
       "language/channel/in_function.lay",
       "language/channel/in_instance.lay",
+      "language/channel/in_instance_implicit.lay",
       "language/channel/multi_capture_increment.lay",
       "language/channel/receive_buffered.lay",
       "language/channel/receive_buffered_closed.lay",
@@ -1009,6 +1010,7 @@ fn static_method() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/static_method/no_self.lay",
+      "language/static_method/no_self_implicit.lay",
       "language/static_method/not_inherited.lay",
       "language/static_method/too_many_arguments.lay",
       "language/static_method/too_many_parameters.lay",
@@ -1129,6 +1131,31 @@ fn variable() -> Result<(), std::io::Error> {
       "language/variable/use_local_in_initializer.lay",
       "language/variable/use_nil_as_var.lay",
       "language/variable/use_this_as_var.lay",
+    ],
+    VmExit::CompileError,
+  )?;
+
+  test_file_exits(&vec![], VmExit::RuntimeError)
+}
+
+#[test]
+fn self_() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/self/closure.lay",
+      "language/self/nested_class.lay",
+      "language/self/nested_closure.lay",
+      "language/self/pass_through_assign_implicit.lay",
+      "language/self/pass_through_assign.lay",
+      "language/self/self_in_method.lay",
+    ],
+    VmExit::Ok,
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/self/self_at_top_level.lay",
+      "language/self/self_in_top_level_function.lay",
     ],
     VmExit::CompileError,
   )?;
