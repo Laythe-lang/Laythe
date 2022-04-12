@@ -1,7 +1,7 @@
 class Foo {
   getClosure() {
     fn closure() {
-      return self.toString();
+      return @toString();
     }
     return closure;
   }

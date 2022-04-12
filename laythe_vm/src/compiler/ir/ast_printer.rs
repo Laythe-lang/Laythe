@@ -94,6 +94,7 @@ impl<'a> Visitor<'a> for AstPrint {
       Primary::String(token) => self.visit_string(token),
       Primary::Interpolation(string_interp) => self.visit_interpolation(string_interp),
       Primary::Ident(token) => self.visit_ident(token),
+      Primary::InstanceAccess(instance_access) => self.visit_instance_access(instance_access),
       Primary::Self_(token) => self.visit_self(token),
       Primary::Super(token) => self.visit_super(token),
       Primary::Lambda(fun) => self.visit_lambda(fun),
@@ -563,6 +564,9 @@ impl<'a> Visitor<'a> for AstPrint {
 
   fn visit_ident(&mut self, token: &Token) -> Self::Result {
     self.buffer.push_str(&token.str());
+  }
+  fn visit_instance_access(&mut self, instance_access: &InstanceAccess) -> Self::Result {
+    self.buffer.push_str(&instance_access.access.str());
   }
   fn visit_self(&mut self, _: &Token) -> Self::Result {
     self.buffer.push_str("self");

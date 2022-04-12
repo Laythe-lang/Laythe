@@ -976,6 +976,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       Primary::String(token) => self.string(token),
       Primary::Interpolation(interpolation) => self.interpolation(interpolation),
       Primary::Ident(token) => self.identifier(token),
+      Primary::InstanceAccess(instance_access) => self.instance_access(instance_access),
       Primary::Self_(token) => self.self_(token),
       Primary::Super(token) => self.super_(token, trailers),
       Primary::Lambda(fun) => self.lambda(fun),
@@ -1535,13 +1536,34 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             },
           }
         },
-        None => {
-          if let Primary::Ident(name) = &atom.primary {
+        None => match &atom.primary {
+          Primary::Ident(name) => {
             self.expr(&assign.rhs);
             self.variable_set(name);
-          } else {
-            unreachable!("Unexpected expression on left hand side of assignment.");
-          }
+          },
+          Primary::InstanceAccess(instance_access) => {
+            self.instance_access_self(instance_access);
+            let property = instance_access.property();
+
+            if self.fun_kind == FunKind::Initializer {
+              let mut class_info = self.class_attributes.unwrap();
+
+              if !class_info.fields.iter().any(|f| *f == property) {
+                let field = self.gc.borrow_mut().manage_str(property, self);
+                class_info.add_field(field);
+              }
+            }
+
+            let name = self.identifier_constant(property);
+
+            self.expr(&assign.rhs);
+            self.emit_byte(AlignedByteCode::SetProperty(name), instance_access.end());
+            self.emit_byte(
+              AlignedByteCode::Slot(self.emit_property_id()),
+              instance_access.end(),
+            );
+          },
+          _ => unreachable!("Unexpected expression on left hand side of assignment."),
         },
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
@@ -1594,14 +1616,36 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             },
           }
         },
-        None => {
-          if let Primary::Ident(name) = &atom.primary {
+        None => match &atom.primary {
+          Primary::Ident(name) => {
             self.variable_get(name);
 
             self.emit_byte(AlignedByteCode::Send, send.lhs.end())
-          } else {
-            unreachable!("Unexpected expression on left hand side of assignment.");
-          }
+          },
+          Primary::InstanceAccess(instance_access) => {
+            self.instance_access_self(instance_access);
+            let property = instance_access.property();
+
+            if self.fun_kind == FunKind::Initializer {
+              let mut class_info = self.class_attributes.unwrap();
+
+              if !class_info.fields.iter().any(|f| *f == property) {
+                let field = self.gc.borrow_mut().manage_str(property, self);
+                class_info.add_field(field);
+              }
+            }
+
+            let name = self.identifier_constant(instance_access.property());
+
+            self.emit_byte(AlignedByteCode::GetProperty(name), instance_access.end());
+            self.emit_byte(
+              AlignedByteCode::Slot(self.emit_property_id()),
+              instance_access.end(),
+            );
+
+            self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+          },
+          _ => unreachable!("Unexpected expression on left hand side of assignment."),
         },
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
@@ -1683,15 +1727,45 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             },
           }
         },
-        None => {
-          if let Primary::Ident(name) = &atom.primary {
+        None => match &atom.primary {
+          Primary::Ident(name) => {
             self.variable_get(name);
             self.expr(&assign_binary.rhs);
             binary_op(self);
             self.variable_set(name);
-          } else {
-            unreachable!("Unexpected expression on left hand side of assignment.");
-          }
+          },
+          Primary::InstanceAccess(instance_access) => {
+            self.instance_access_self(instance_access);
+            let property = instance_access.property();
+
+            if self.fun_kind == FunKind::Initializer {
+              let mut class_info = self.class_attributes.unwrap();
+
+              if !class_info.fields.iter().any(|f| *f == property) {
+                let field = self.gc.borrow_mut().manage_str(property, self);
+                class_info.add_field(field);
+              }
+            }
+
+            let name = self.identifier_constant(property);
+
+            self.emit_byte(AlignedByteCode::Dup, instance_access.end());
+            self.emit_byte(AlignedByteCode::GetProperty(name), instance_access.end());
+            self.emit_byte(
+              AlignedByteCode::Slot(self.emit_property_id()),
+              instance_access.end(),
+            );
+
+            self.expr(&assign_binary.rhs);
+            binary_op(self);
+
+            self.emit_byte(AlignedByteCode::SetProperty(name), instance_access.end());
+            self.emit_byte(
+              AlignedByteCode::Slot(self.emit_property_id()),
+              instance_access.end(),
+            );
+          },
+          _ => unreachable!("Unexpected expression on left hand side of assignment."),
         },
       },
       _ => unreachable!("Unexpected expression on left hand side of assignment."),
@@ -1921,6 +1995,50 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn identifier(&mut self, token: &Token<'src>) -> bool {
     self.variable_get(token);
     false
+  }
+
+  /// Compile instance access
+  fn instance_access(&mut self, instance_access: &ast::InstanceAccess<'src>) -> bool {
+    if self.instance_access_self(instance_access) {
+      let name = self.identifier_constant(instance_access.property());
+
+      self.emit_byte(AlignedByteCode::GetProperty(name), instance_access.end());
+      self.emit_byte(
+        AlignedByteCode::Slot(self.emit_property_id()),
+        instance_access.end(),
+      );
+    }
+
+    false
+  }
+
+  /// Compile instance access self load
+  fn instance_access_self(&mut self, instance_access: &ast::InstanceAccess<'src>) -> bool {
+    self
+      .class_attributes
+      .map(|class_compiler| class_compiler.fun_kind)
+      .and_then(|fun_kind| {
+        fun_kind.and_then(|fun_kind| match fun_kind {
+          FunKind::Method | FunKind::Initializer => {
+            self.variable_get(&Token::new(
+              TokenKind::Self_,
+              Lexeme::Slice(SELF),
+              instance_access.start(),
+              instance_access.start() + 1,
+            ));
+            Some(())
+          },
+          _ => None,
+        })
+      })
+      .or_else(|| {
+        self.error(
+          "Cannot access property off 'self' with '@' outside of class instance methods.",
+          Some(&instance_access.access),
+        );
+        None
+      })
+      .is_some()
   }
 
   /// Compile the self token
@@ -2317,8 +2435,8 @@ mod test {
           let fun = fun.chunk().get_constant(index as usize).to_obj().to_fun();
 
           match &code[i] {
-            ByteCodeTest::Fun((expected, max_slots, inner)) => {
-              assert_eq!(*expected, index);
+            ByteCodeTest::Fun((expected_index, max_slots, inner)) => {
+              assert_eq!(*expected_index, index, "Function constant index not in expected spot. Found at index {} expected at index {}", expected_index, index);
               assert_fun_bytecode(&*fun, *max_slots, &inner);
             },
             _ => assert!(false),
@@ -2379,14 +2497,18 @@ mod test {
     assert_eq!(
       decoded_byte_code.len(),
       code.len(),
-      "for fn {} instruction len",
-      fun.name()
+      "for fn {} expected instruction length to be {} but recieved {}",
+      fun.name(),
+      code.len(),
+      decoded_byte_code.len()
     );
     assert_eq!(
       fun.max_slots(),
       max_slots,
-      "for fn {} max slots",
-      fun.name()
+      "for fn {} expected max slots to be {} but recieved {}.",
+      fun.name(),
+      max_slots,
+      fun.max_slots()
     );
   }
 
@@ -2817,12 +2939,142 @@ mod test {
   }
 
   #[test]
+  fn class_with_instance_access() {
+    let example = "
+      class A {
+        init() {
+          @field = true;
+        }
+
+        getField() {
+          @field
+        }
+
+        getGetField() {
+          self.getField()
+        }
+      }
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      &fun,
+      4,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
+        ByteCodeTest::Fun((
+          3,
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::True),
+            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Field(4)),
+        ByteCodeTest::Fun((
+          6,
+          2,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(5)),
+        ByteCodeTest::Fun((
+          8,
+          2,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Invoke((0, 0))),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(7)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
   fn class_property_assign_set() {
     let example = "
     class A {
       init() {
         self.a = 10;
         self.a /= 5;
+      }
+    }
+  ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      &fun,
+      4,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
+        ByteCodeTest::Fun((
+          3,
+          4,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Dup),
+            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(2)),
+            ByteCodeTest::Code(AlignedByteCode::Divide),
+            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(2)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Field(4)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn class_instance_access_assign_set() {
+    let example = "
+    class A {
+      init() {
+        @a = 10;
+        @a /= 5;
       }
     }
   ";
@@ -2970,6 +3222,78 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn class_instance_access_with_captures() {
+    let example = "
+      class A {
+        init() {
+          @a = true;
+        }
+
+        foo() {
+          fn bar() { @a }
+
+          return bar;
+        }
+      }
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      &fun,
+      4,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
+        ByteCodeTest::Fun((
+          3,
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::True),
+            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Field(4)),
+        ByteCodeTest::Fun((
+          6,
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Box(0)),
+            ByteCodeTest::Fun((
+              0,
+              2,
+              vec![
+                ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
+                ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
+                ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+                ByteCodeTest::Code(AlignedByteCode::Return),
+              ],
+            )),
+            ByteCodeTest::Code(AlignedByteCode::CaptureIndex(CaptureIndex::Local(0))),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(5)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),

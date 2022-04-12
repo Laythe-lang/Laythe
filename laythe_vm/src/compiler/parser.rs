@@ -740,6 +740,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       Prefix::Super => self.super_(),
       Prefix::Unary => self.unary(),
       Prefix::Variable => self.variable(can_assign),
+      Prefix::InstanceAccess => self.instance_access(can_assign),
     }
   }
 
@@ -1000,6 +1001,17 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// Compile a variable statement
   fn variable(&mut self, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
     let mut expr = self.atom(Primary::Ident(self.previous.clone()));
+
+    if can_assign {
+      expr = self.assign(expr)?;
+    }
+
+    Ok(expr)
+  }
+
+  /// Compile a variable statement
+  fn instance_access(&mut self, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
+    let mut expr = self.atom(Primary::InstanceAccess(InstanceAccess::new(self.previous.clone())));
 
     if can_assign {
       expr = self.assign(expr)?;
@@ -1632,6 +1644,7 @@ enum Prefix {
   String,
   Super,
   Unary,
+  InstanceAccess,
   Variable,
 }
 
@@ -1660,7 +1673,7 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 67;
+const TOKEN_VARIANTS: usize = 68;
 
 /// The rules for infix and prefix operators
 const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
@@ -1734,6 +1747,8 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
   // LESS_EQUAL
   Rule::new(Some(Prefix::Variable), Precedence::None),
   // IDENTIFIER
+  Rule::new(Some(Prefix::InstanceAccess), Precedence::None),
+  // INSTANCE_ACCESS
   Rule::new(Some(Prefix::String), Precedence::None),
   // STRING
   Rule::new(Some(Prefix::Interpolation), Precedence::None),
@@ -1873,6 +1888,8 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
   Rule::new(None, Precedence::None),
   // IDENTIFIER
   Rule::new(None, Precedence::None),
+  // INSTANCE_ACCESS
+  Rule::new(None, Precedence::None),
   // STRING
   Rule::new(None, Precedence::None),
   // STRING_BEGIN
@@ -2011,6 +2028,8 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
   Rule::new(Some(TypePrefix::Literal), TypePrecedence::None),
   // IDENTIFIER
   Rule::new(None, TypePrecedence::None),
+  // INSTANCE_ACCESS
+  Rule::new(None, TypePrecedence::None),
   // STRING
   Rule::new(None, TypePrecedence::None),
   // STRING_BEGIN
@@ -2148,6 +2167,8 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
   // LESS_EQUAL
   Rule::new(None, TypePrecedence::None),
   // IDENTIFIER
+  Rule::new(None, TypePrecedence::None),
+  // INSTANCE_ACCESS
   Rule::new(None, TypePrecedence::None),
   // STRING
   Rule::new(None, TypePrecedence::None),
@@ -2482,6 +2503,32 @@ mod test {
       class A {
         init() { self.field = true; }
         getField() { self.field }
+        getGetField() { self.getField() }
+      }
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn class_with_instance_access() {
+    let example = "
+      class A {
+        init() { @field = true; }
+        getField() { @field }
+        getGetField() { self.getField() }
+      }
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn class_with_instance_access_fun_prop() {
+    let example = "
+      class A {
+        init() { @field = |x| x; }
+        getField() { @field(10) }
         getGetField() { self.getField() }
       }
     ";
