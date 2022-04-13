@@ -28,8 +28,8 @@ class Environment {
     locals: Map<string, number>,
     nextLocalOffset: number
   ) {
-    self.locals = locals;
-    self.nextLocalOffset = nextLocalOffset;
+    @locals = locals;
+    @nextLocalOffset = nextLocalOffset;
   }
 
   static default() {
@@ -39,46 +39,46 @@ class Environment {
 
 class Num {
   init(value: number) {
-    self.value = value;
+    @value = value;
   }
 
   emit(env: Environment) {
-    emit('  ldr r0, =${self.value}');
+    emit('  ldr r0, =${@value}');
   }
 
   equals(other: Ast) -> bool {
     other.cls() == Num
-      and self.value == other.value
+      and @value == other.value
   }
 }
 
 class Id {
   init(value: string) {
-    self.value = value;
+    @value = value;
   }
 
   emit(env: Environment) {
-    let offset = env.locals.get(self.value);
+    let offset = env.locals.get(@value);
     if offset {
       emit('  ldr r0, [fp, #${offset}]');
     } else {
-      throwError('Undefined variable: {self.value}');
+      throwError('Undefined variable: {@value}');
     }
   }
 
   equals(other: Ast) -> bool {
     other.cls() == Id
-      and self.value.equals(other.value)
+      and @value.equals(other.value)
   }
 }
 
 class Not {
   init(term: Ast) {
-    self.term = term;
+    @term = term;
   }
 
   emit(env: Environment) {
-    self.term.emit(env);
+    @term.emit(env);
     emit('  cmp r0, #0');
     emit('  moveq r0, #1');
     emit('  movne r0, #0');
@@ -86,27 +86,27 @@ class Not {
 
   equals(other: Ast) -> bool {
     other.cls() == Not
-      and self.term == other.term
+      and @term == other.term
   }
 }
 
 class Infix {
   init(left: Ast, right: Ast) {
-    self.left = left;
-    self.right = right;
+    @left = left;
+    @right = right;
   }
 
   emit(env: Environment) {
-    self.left.emit(env);
+    @left.emit(env);
     emit('  push {r0, ip}');
-    self.right.emit(env);
+    @right.emit(env);
     emit('  pop {r1, ip}');
   }
 
   equals(other: Ast) -> bool {
-    other.cls() == self.cls() 
-      and self.left.equals(other.left)
-      and self.right.equals(other.right)
+    other.cls() == @cls()
+      and @left.equals(other.left)
+      and @right.equals(other.right)
   }
 }
 
@@ -158,28 +158,28 @@ class Divide : Infix {
 
 class Call {
   init(callee: string, args: Ast[]) {
-    self.callee = callee;
-    self.args = args;
+    @callee = callee;
+    @args = args;
   }
 
   emit(env: Environment) {
-    let count = self.args.len();
+    let count = @args.len();
     if count == 0 {
-      emit('  bl ${self.callee}');
+      emit('  bl ${@callee}');
     } else if count == 1 {
-      self.args[0].emit(env);
-      emit('  bl ${self.callee}');
+      @args[0].emit(env);
+      emit('  bl ${@callee}');
     } else if count >= 2 and count <= 4 {
       emit('  sub sp, sp, #16');
       let i = 0;
-      for arg in self.args {
+      for arg in @args {
         arg.emit(env);
         emit('  str r0, [sp, #${4 * i}]');
         i = i + 1;
       }
 
       emit('  pop {r0, r1, r2, r3}');
-      emit('  bl ${self.callee}');
+      emit('  bl ${@callee}');
     } else {
       throwError('More than 4 arguments are not supported.');
     }
@@ -188,9 +188,9 @@ class Call {
 
   equals(other: Ast) -> bool {
     other.cls() == Call
-      and self.callee == other.callee
-      and self.args.len() == other.len()
-      and self.args.iter()
+      and @callee == other.callee
+      and @args.len() == other.len()
+      and @args.iter()
         .zip(other.args.iter())
         .all(|both| both[0].equals(both[1]))
   }
@@ -198,36 +198,36 @@ class Call {
 
 class Return {
   init(term: Ast) {
-    self.term = term;
+    @term = term;
   }
 
   emit(env: Environment) {
-    self.term.emit(env);
+    @term.emit(env);
     emit('  mov sp, fp');
     emit('  pop {fp, pc}');
   }
 
   equals(other: Ast) -> bool {
     other.cls() == Return
-      and self.term.equals(other.term)
+      and @term.equals(other.term)
   }
 }
 
 class Block {
   init(stmts: Ast[]) {
-    self.stmts = stmts;
+    @stmts = stmts;
   }
 
   emit(env: Environment) {
-    for stmt in self.stmts {
+    for stmt in @stmts {
       stmt.emit(env);
     }
   }
 
   equals(other: Ast) -> bool {
     other.cls() == Block
-      and self.stmts.len() == other.stmts.len()
-      and self.stmts.iter()
+      and @stmts.len() == other.stmts.len()
+      and @stmts.iter()
         .zip(other.stmts.iter())
         .all(|both| both[0].equals(both[1]))
   }
@@ -238,12 +238,12 @@ class Label {
   value: number;
 
   init() {
-    self.value = counter + 1;
+    @value = counter + 1;
     counter = counter + 1;
   }
 
   str() {
-    '.L${self.value}';
+    '.L${@value}';
   }
 }
 
@@ -253,62 +253,62 @@ class If {
     then: Ast,
     else_: Ast
   ) {
-    self.cond = cond;
-    self.then = then;
-    self.else_ = else_;
+    @cond = cond;
+    @then = then;
+    @else_ = else_;
   }
 
   emit(env: Environment) {
     let ifFalseLabel = Label();
     let endIfLabel = Label();
-    self.cond.emit(env);
+    @cond.emit(env);
     emit('  cmp r0, #0');
     emit('  beq ${ifFalseLabel}');
-    self.then.emit(env);
+    @then.emit(env);
     emit('  b ${endIfLabel}');
     emit('${ifFalseLabel}:');
-    self.else_.emit(env);
+    @else_.emit(env);
     emit('${endIfLabel}:');
   }
 
   equals(other: Ast) -> bool {
     other.cls() == If
-      and self.cond.equals(other.cond)
-      and self.then.equals(other.then)
-      and self.else_.equals(other.else_)
+      and @cond.equals(other.cond)
+      and @then.equals(other.then)
+      and @else_.equals(other.else_)
   }
 }
 
 class Function {
   init(
-    name: string, 
-    parameters: string[], 
+    name: string,
+    parameters: string[],
     body: Ast
   ) {
-    self.name = name;
-    self.parameters = parameters;
-    self.body = body;
+    @name = name;
+    @parameters = parameters;
+    @body = body;
   }
 
   emit(_: Environment) {
-    if (self.parameters.len() > 4) {
+    if (@parameters.len() > 4) {
       throwError("More than 4 params is not supported");
     }
 
     emit('');
-    emit('.global ${self.name}');
-    emit('${self.name}:');
-    self.emitPrologue();
-    let env = self.setUpEnvironment();
+    emit('.global ${@name}');
+    emit('${@name}:');
+    @emitPrologue();
+    let env = @setUpEnvironment();
 
-    self.body.emit(env);
-    self.emitEpilogue();
+    @body.emit(env);
+    @emitEpilogue();
   }
 
   setUpEnvironment() {
     let locals = {};
     let i = 0;
-    for param in self.parameters {
+    for param in @parameters {
       locals.set(param, 4 * i);
       i = i + 1;
     }
@@ -330,61 +330,61 @@ class Function {
 
   equals(other: Ast) -> bool {
     other.cls() == Function
-      and self.name == other.name
-      and self.parameters.iter()
+      and @name == other.name
+      and @parameters.iter()
         .zip(other.parameters.iter())
         .all(|both| both[0] == both[1])
-      and self.body.equals(other.body)
+      and @body.equals(other.body)
   }
 }
 
 class Var {
   init(name: string, value: Ast) {
-    self.name = name;
-    self.value = value;
+    @name = name;
+    @value = value;
   }
 
   emit(env: Environment) {
-    self.value.emit(env);
+    @value.emit(env);
     emit('  push {r0, ip}');
-    env.locals.set(self.name, env.nextLocalOffset - 4);
+    env.locals.set(@name, env.nextLocalOffset - 4);
     env.nextLocalOffset = env.nextLocalOffset - 8;
   }
 
   equals(other: Ast) -> bool {
     other.cls() == Var
-      and self.name == other.name
-      and self.value.equals(other.value)
+      and @name == other.name
+      and @value.equals(other.value)
   }
 }
 
 class Assign {
   init(name: string, value: Ast) {
-    self.name = name;
-    self.value = value;
+    @name = name;
+    @value = value;
   }
 
   emit(env: Environment) {
-    self.value.emit(env);
-    let offset = env.locals.get(self.name);
+    @value.emit(env);
+    let offset = env.locals.get(@name);
     if offset {
       emit('  str r0, [fp, #${offset}]');
     } else {
-      throwError('Undefined variable: ${self.name}');
+      throwError('Undefined variable: ${@name}');
     }
   }
 
   equals(other: Ast) -> bool {
     other.cls() == Assign
-      and self.name == other.name
-      and self.value.equals(other.value)
+      and @name == other.name
+      and @value.equals(other.value)
   }
 }
 
 class While {
   init(cond: Ast, body: Ast) {
-    self.cond = cond;
-    self.body = body;
+    @cond = cond;
+    @body = body;
   }
 
   emit(env: Environment) {
@@ -392,35 +392,35 @@ class While {
     let loopEnd = Label();
 
     emit('${loopStart}:');
-    self.cond.emit(env);
+    @cond.emit(env);
     emit('  cmp r0, #0');
     emit('  beq ${loopEnd}');
-    self.body.emit(env);
+    @body.emit(env);
     emit('  b ${loopStart}');
     emit('${loopEnd}:');
   }
 
   equals(other: Ast) -> bool {
     other.cls() == While
-      and self.cond.equals(other.cond)
-      and self.body.equals(other.body)
+      and @cond.equals(other.cond)
+      and @body.equals(other.body)
   }
 }
 
 class Source {
   init(string: string, index: number) {
-    self.string = string;
-    self.index = index;
+    @string = string;
+    @index = index;
   }
 
   match(matcher: RegExp) -> ParseResult<string> | nil {
-    let slice = self.string.slice(self.index);
+    let slice = @string.slice(@index);
     let match = matcher.match(slice);
     let test = matcher.test(slice);
 
     if match {
-      let newIndex = self.index + match.len();
-      let source = Source(self.string, newIndex);
+      let newIndex = @index + match.len();
+      let source = Source(@string, newIndex);
       return ParseResult(match, source);
     }
 
@@ -429,20 +429,20 @@ class Source {
 
   str() {
     "string: '${elf.string}'"
-      + "\nindex: ${self.index}"
-      + "\nremaining: '${self.string.slice(self.index)}'";
+      + "\nindex: ${@index}"
+      + "\nremaining: '${@string.slice(@index)}'";
   }
 }
 
 class ParseResult<T> {
   init(value: T, source: Source) {
-    self.value = value;
-    self.source = source;
+    @value = value;
+    @source = source;
   }
 
   str() {
-    "value: ${self.value}"
-      + "\nsource: '${self.source}'";
+    "value: ${@value}"
+      + "\nsource: '${@source}'";
   }
 }
 
@@ -490,12 +490,12 @@ fn debugResult<T>(
 
 class Parser<T> {
   init(parse: ParseCombinator) {
-    self.parse = parse;
+    @parse = parse;
   }
 
   or_(parser: Parser<T>) -> Parser<T> {
     Parser(|source| {
-      let result = self.parse(source);
+      let result = @parse(source);
       if result {
         return result;
       } else {
@@ -507,7 +507,7 @@ class Parser<T> {
 
   bind<U>(callback: (value: T) -> Parser<U>) -> Parser<U> {
     Parser(|source| {
-      let result = self.parse(source);
+      let result = @parse(source);
       if result {
         let value = result.value;
         let source = result.source;
@@ -519,17 +519,17 @@ class Parser<T> {
   }
 
   and_<U>(parser: Parser<U>) -> Parser<U> {
-    self.bind(|_| parser)
+    @bind(|_| parser)
   }
 
   map<U>(callback: (t: T) -> U) -> Parser<U> {
-    self.bind(|value| constant(callback(value)))
+    @bind(|value| constant(callback(value)))
   }
 
   parseStringToCompletion(string: string) -> T {
     let source = Source(string, 0);
 
-    let result = self.parse(source);
+    let result = @parse(source);
     if !result {
       debugResult(self, source, result);
       throwError("failure");
@@ -550,7 +550,7 @@ let whitespace = regexp(r('^[ \\n\\r\\t]+'));
 let comments = regexp(r('^//.*')).or_(regexp(r('^/\\*.*\\*/')));
 let ignored = zeroOrMore(whitespace.or_(comments));
 
-let token = |pattern| 
+let token = |pattern|
   regexp(pattern).bind(|value|
     ignored.and_(constant(value)));
 
@@ -588,19 +588,19 @@ fn mergeLists(list1, list2) {
   list1.iter().chain(list2.iter()).into(List.collect)
 }
 
-let args: Parser<Ast[]> = 
-  expr.bind(|arg| 
+let args: Parser<Ast[]> =
+  expr.bind(|arg|
     zeroOrMore(COMMA.and_(expr)).bind(|args|
       constant(mergeLists([arg], args)))).or_(constant([]));
 
-let call: Parser<Ast> = 
-  ID.bind(|callee| 
+let call: Parser<Ast> =
+  ID.bind(|callee|
     LEFT_PAREN.and_(args.bind(|args|
       RIGHT_PAREN.and_(constant(Call(callee, args))))));
 
-let atom: Parser<Ast> = 
+let atom: Parser<Ast> =
   call.or_(id).or_(NUMBER).or_(
-    LEFT_PAREN.and_(expr).bind(|e| 
+    LEFT_PAREN.and_(expr).bind(|e|
       RIGHT_PAREN.and_(constant(e))));
 
 let unary: Parser<Ast> =
@@ -627,14 +627,14 @@ let comparison = infix(EQUAL.or_(NOT_EQUAL), sum);
 
 expr.parse = comparison.parse;
 
-let stmt: Parser<Ast> = 
+let stmt: Parser<Ast> =
   error("statement parser used before definition");
 
-let returnStmt: Parser<Ast> = 
+let returnStmt: Parser<Ast> =
   RETURN.and_(expr).bind(|term|
     SEMICOLON.and_(constant(Return(term))));
 
-let exprStmt: Parser<Ast> = 
+let exprStmt: Parser<Ast> =
   expr.bind(|term|
     SEMICOLON.and_(constant(term)));
 
@@ -644,7 +644,7 @@ let ifStmt: Parser<Ast> =
       ELSE.and_(stmt).bind(|else_|
         constant(If(cond, then, else_)))));
 
-let whileStmt: Parser<Ast> = 
+let whileStmt: Parser<Ast> =
   WHILE.and_(LEFT_PAREN).and_(expr).bind(|cond|
     RIGHT_PAREN.and_(stmt).bind(|body|
       constant(While(cond, body))));
@@ -659,16 +659,16 @@ let assignmentStmt: Parser<Ast> =
     ASSIGN.and_(expr).bind(|value|
       SEMICOLON.and_(constant(Assign(name, value)))));
 
-let blockStmt: Parser<Ast> = 
-  LEFT_BRACE.and_(zeroOrMore(stmt)).bind(|stmts| 
+let blockStmt: Parser<Ast> =
+  LEFT_BRACE.and_(zeroOrMore(stmt)).bind(|stmts|
     RIGHT_BRACE.and_(constant(Block(stmts))));
 
-let parameters: Parser<string[]> = 
+let parameters: Parser<string[]> =
   ID.bind(|param|
     zeroOrMore(COMMA.and_(ID)).bind(|params|
       constant(mergeLists([param], params)))).or_(constant([]));
 
-let functionStmt: Parser<Ast> = 
+let functionStmt: Parser<Ast> =
   FUNCTION.and_(ID).bind(|name|
     LEFT_PAREN.and_(parameters).bind(|parameters|
       RIGHT_PAREN.and_(blockStmt).bind(|block|
@@ -687,7 +687,7 @@ let stmtParser: Parser<Ast> =
 stmt.parse = stmtParser.parse;
 
 let parser: Parser<Ast> =
-  ignored.and_(zeroOrMore(stmt)).map(|stmts| 
+  ignored.and_(zeroOrMore(stmt)).map(|stmts|
     Block(stmts));
 
 parser.parseStringToCompletion('
@@ -728,7 +728,7 @@ function main() {
   assert(1);
   assert(!0);
   assert(42 == 4 + 2 * (12 - 2) + 3 * (5 + 1));
-  
+
   {
     assert(1);
     assert(1);

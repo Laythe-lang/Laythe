@@ -1,0 +1,252 @@
+class Foo {
+  init() {
+    @bilberry = nil;
+    @lime = nil;
+    @elderberry = nil;
+    @raspberry = nil;
+    @gooseberry = nil;
+    @longan = nil;
+    @mandarine = nil;
+    @kiwifruit = nil;
+    @orange = nil;
+    @pomegranate = nil;
+    @tomato = nil;
+    @banana = nil;
+    @juniper = nil;
+    @damson = nil;
+    @blackcurrant = nil;
+    @peach = nil;
+    @grape = nil;
+    @mango = nil;
+    @redcurrant = nil;
+    @watermelon = nil;
+    @plumcot = nil;
+    @papaya = nil;
+    @cloudberry = nil;
+    @rambutan = nil;
+    @salak = nil;
+    @physalis = nil;
+    @huckleberry = nil;
+    @coconut = nil;
+    @date = nil;
+    @tamarind = nil;
+    @lychee = nil;
+    @raisin = nil;
+    @apple = nil;
+    @avocado = nil;
+    @nectarine = nil;
+    @pomelo = nil;
+    @melon = nil;
+    @currant = nil;
+    @plum = nil;
+    @persimmon = nil;
+    @olive = nil;
+    @cranberry = nil;
+    @boysenberry = nil;
+    @blackberry = nil;
+    @passionfruit = nil;
+    @mulberry = nil;
+    @marionberry = nil;
+    @plantain = nil;
+    @lemon = nil;
+    @yuzu = nil;
+    @loquat = nil;
+    @kumquat = nil;
+    @salmonberry = nil;
+    @tangerine = nil;
+    @durian = nil;
+    @pear = nil;
+    @cantaloupe = nil;
+    @quince = nil;
+    @guava = nil;
+    @strawberry = nil;
+    @nance = nil;
+    @apricot = nil;
+    @jambul = nil;
+    @grapefruit = nil;
+    @clementine = nil;
+    @jujube = nil;
+    @cherry = nil;
+    @feijoa = nil;
+    @jackfruit = nil;
+    @fig = nil;
+    @cherimoya = nil;
+    @pineapple = nil;
+    @blueberry = nil;
+    @jabuticaba = nil;
+    @miracle = nil;
+    @dragonfruit = nil;
+    @satsuma = nil;
+    @tamarillo = nil;
+    @honeydew = nil;
+  }
+}
+
+let foo = Foo();
+fn setFields() {
+  foo.bilberry = "bilberry";
+  foo.lime = "lime";
+  foo.elderberry = "elderberry";
+  foo.raspberry = "raspberry";
+  foo.gooseberry = "gooseberry";
+  foo.longan = "longan";
+  foo.mandarine = "mandarine";
+  foo.kiwifruit = "kiwifruit";
+  foo.orange = "orange";
+  foo.pomegranate = "pomegranate";
+  foo.tomato = "tomato";
+  foo.banana = "banana";
+  foo.juniper = "juniper";
+  foo.damson = "damson";
+  foo.blackcurrant = "blackcurrant";
+  foo.peach = "peach";
+  foo.grape = "grape";
+  foo.mango = "mango";
+  foo.redcurrant = "redcurrant";
+  foo.watermelon = "watermelon";
+  foo.plumcot = "plumcot";
+  foo.papaya = "papaya";
+  foo.cloudberry = "cloudberry";
+  foo.rambutan = "rambutan";
+  foo.salak = "salak";
+  foo.physalis = "physalis";
+  foo.huckleberry = "huckleberry";
+  foo.coconut = "coconut";
+  foo.date = "date";
+  foo.tamarind = "tamarind";
+  foo.lychee = "lychee";
+  foo.raisin = "raisin";
+  foo.apple = "apple";
+  foo.avocado = "avocado";
+  foo.nectarine = "nectarine";
+  foo.pomelo = "pomelo";
+  foo.melon = "melon";
+  foo.currant = "currant";
+  foo.plum = "plum";
+  foo.persimmon = "persimmon";
+  foo.olive = "olive";
+  foo.cranberry = "cranberry";
+  foo.boysenberry = "boysenberry";
+  foo.blackberry = "blackberry";
+  foo.passionfruit = "passionfruit";
+  foo.mulberry = "mulberry";
+  foo.marionberry = "marionberry";
+  foo.plantain = "plantain";
+  foo.lemon = "lemon";
+  foo.yuzu = "yuzu";
+  foo.loquat = "loquat";
+  foo.kumquat = "kumquat";
+  foo.salmonberry = "salmonberry";
+  foo.tangerine = "tangerine";
+  foo.durian = "durian";
+  foo.pear = "pear";
+  foo.cantaloupe = "cantaloupe";
+  foo.quince = "quince";
+  foo.guava = "guava";
+  foo.strawberry = "strawberry";
+  foo.nance = "nance";
+  foo.apricot = "apricot";
+  foo.jambul = "jambul";
+  foo.grapefruit = "grapefruit";
+  foo.clementine = "clementine";
+  foo.jujube = "jujube";
+  foo.cherry = "cherry";
+  foo.feijoa = "feijoa";
+  foo.jackfruit = "jackfruit";
+  foo.fig = "fig";
+  foo.cherimoya = "cherimoya";
+  foo.pineapple = "pineapple";
+  foo.blueberry = "blueberry";
+  foo.jabuticaba = "jabuticaba";
+  foo.miracle = "miracle";
+  foo.dragonfruit = "dragonfruit";
+  foo.satsuma = "satsuma";
+  foo.tamarillo = "tamarillo";
+  foo.honeydew = "honeydew";
+}
+
+setFields();
+
+fn assertFields() {
+  assertEq(foo.apple, "apple"); // expect: apple
+  assertEq(foo.apricot, "apricot"); // expect: apricot
+  assertEq(foo.avocado, "avocado"); // expect: avocado
+  assertEq(foo.banana, "banana"); // expect: banana
+  assertEq(foo.bilberry, "bilberry"); // expect: bilberry
+  assertEq(foo.blackberry, "blackberry"); // expect: blackberry
+  assertEq(foo.blackcurrant, "blackcurrant"); // expect: blackcurrant
+  assertEq(foo.blueberry, "blueberry"); // expect: blueberry
+  assertEq(foo.boysenberry, "boysenberry"); // expect: boysenberry
+  assertEq(foo.cantaloupe, "cantaloupe"); // expect: cantaloupe
+  assertEq(foo.cherimoya, "cherimoya"); // expect: cherimoya
+  assertEq(foo.cherry, "cherry"); // expect: cherry
+  assertEq(foo.clementine, "clementine"); // expect: clementine
+  assertEq(foo.cloudberry, "cloudberry"); // expect: cloudberry
+  assertEq(foo.coconut, "coconut"); // expect: coconut
+  assertEq(foo.cranberry, "cranberry"); // expect: cranberry
+  assertEq(foo.currant, "currant"); // expect: currant
+  assertEq(foo.damson, "damson"); // expect: damson
+  assertEq(foo.date, "date"); // expect: date
+  assertEq(foo.dragonfruit, "dragonfruit"); // expect: dragonfruit
+  assertEq(foo.durian, "durian"); // expect: durian
+  assertEq(foo.elderberry, "elderberry"); // expect: elderberry
+  assertEq(foo.feijoa, "feijoa"); // expect: feijoa
+  assertEq(foo.fig, "fig"); // expect: fig
+  assertEq(foo.gooseberry, "gooseberry"); // expect: gooseberry
+  assertEq(foo.grape, "grape"); // expect: grape
+  assertEq(foo.grapefruit, "grapefruit"); // expect: grapefruit
+  assertEq(foo.guava, "guava"); // expect: guava
+  assertEq(foo.honeydew, "honeydew"); // expect: honeydew
+  assertEq(foo.huckleberry, "huckleberry"); // expect: huckleberry
+  assertEq(foo.jabuticaba, "jabuticaba"); // expect: jabuticaba
+  assertEq(foo.jackfruit, "jackfruit"); // expect: jackfruit
+  assertEq(foo.jambul, "jambul"); // expect: jambul
+  assertEq(foo.jujube, "jujube"); // expect: jujube
+  assertEq(foo.juniper, "juniper"); // expect: juniper
+  assertEq(foo.kiwifruit, "kiwifruit"); // expect: kiwifruit
+  assertEq(foo.kumquat, "kumquat"); // expect: kumquat
+  assertEq(foo.lemon, "lemon"); // expect: lemon
+  assertEq(foo.lime, "lime"); // expect: lime
+  assertEq(foo.longan, "longan"); // expect: longan
+  assertEq(foo.loquat, "loquat"); // expect: loquat
+  assertEq(foo.lychee, "lychee"); // expect: lychee
+  assertEq(foo.mandarine, "mandarine"); // expect: mandarine
+  assertEq(foo.mango, "mango"); // expect: mango
+  assertEq(foo.marionberry, "marionberry"); // expect: marionberry
+  assertEq(foo.melon, "melon"); // expect: melon
+  assertEq(foo.miracle, "miracle"); // expect: miracle
+  assertEq(foo.mulberry, "mulberry"); // expect: mulberry
+  assertEq(foo.nance, "nance"); // expect: nance
+  assertEq(foo.nectarine, "nectarine"); // expect: nectarine
+  assertEq(foo.olive, "olive"); // expect: olive
+  assertEq(foo.orange, "orange"); // expect: orange
+  assertEq(foo.papaya, "papaya"); // expect: papaya
+  assertEq(foo.passionfruit, "passionfruit"); // expect: passionfruit
+  assertEq(foo.peach, "peach"); // expect: peach
+  assertEq(foo.pear, "pear"); // expect: pear
+  assertEq(foo.persimmon, "persimmon"); // expect: persimmon
+  assertEq(foo.physalis, "physalis"); // expect: physalis
+  assertEq(foo.pineapple, "pineapple"); // expect: pineapple
+  assertEq(foo.plantain, "plantain"); // expect: plantain
+  assertEq(foo.plum, "plum"); // expect: plum
+  assertEq(foo.plumcot, "plumcot"); // expect: plumcot
+  assertEq(foo.pomegranate, "pomegranate"); // expect: pomegranate
+  assertEq(foo.pomelo, "pomelo"); // expect: pomelo
+  assertEq(foo.quince, "quince"); // expect: quince
+  assertEq(foo.raisin, "raisin"); // expect: raisin
+  assertEq(foo.rambutan, "rambutan"); // expect: rambutan
+  assertEq(foo.raspberry, "raspberry"); // expect: raspberry
+  assertEq(foo.redcurrant, "redcurrant"); // expect: redcurrant
+  assertEq(foo.salak, "salak"); // expect: salak
+  assertEq(foo.salmonberry, "salmonberry"); // expect: salmonberry
+  assertEq(foo.satsuma, "satsuma"); // expect: satsuma
+  assertEq(foo.strawberry, "strawberry"); // expect: strawberry
+  assertEq(foo.tamarillo, "tamarillo"); // expect: tamarillo
+  assertEq(foo.tamarind, "tamarind"); // expect: tamarind
+  assertEq(foo.tangerine, "tangerine"); // expect: tangerine
+  assertEq(foo.tomato, "tomato"); // expect: tomato
+  assertEq(foo.watermelon, "watermelon"); // expect: watermelon
+  assertEq(foo.yuzu, "yuzu"); // expect: yuzu
+}
+
+assertFields();

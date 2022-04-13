@@ -59,7 +59,10 @@ fn error_inheritance(
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
   let error_name = hooks.manage_str(ERROR_CLASS_NAME);
-  let error_class = module.get_exported_symbol(error_name)?;
+  let error_class = match module.get_exported_symbol(error_name) {
+    Some(class) => class,
+    None => return Err(StdError::SymbolNotFound),
+  };
 
   if_let_obj!(ObjectKind::Class(class) = (error_class) {
     Ok(Class::with_inheritance(
@@ -79,7 +82,10 @@ fn class_inheritance(
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
   let object_name = hooks.manage_str(OBJECT_CLASS_NAME);
-  let object_class = module.get_exported_symbol(object_name)?;
+  let object_class = match module.get_exported_symbol(object_name) {
+    Some(class) => class,
+    None => return Err(StdError::SymbolNotFound),
+  };
 
   if_let_obj!(ObjectKind::Class(class) = (object_class) {
     Ok(Class::with_inheritance(

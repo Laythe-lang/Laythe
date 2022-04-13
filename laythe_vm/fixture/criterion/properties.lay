@@ -2,68 +2,68 @@
 
 class Foo {
   init() {
-    self.field0 = 1;
-    self.field1 = 1;
-    self.field2 = 1;
-    self.field3 = 1;
-    self.field4 = 1;
-    self.field5 = 1;
-    self.field6 = 1;
-    self.field7 = 1;
-    self.field8 = 1;
-    self.field9 = 1;
-    self.field10 = 1;
-    self.field11 = 1;
-    self.field12 = 1;
-    self.field13 = 1;
-    self.field14 = 1;
-    self.field15 = 1;
-    self.field16 = 1;
-    self.field17 = 1;
-    self.field18 = 1;
-    self.field19 = 1;
-    self.field20 = 1;
-    self.field21 = 1;
-    self.field22 = 1;
-    self.field23 = 1;
-    self.field24 = 1;
-    self.field25 = 1;
-    self.field26 = 1;
-    self.field27 = 1;
-    self.field28 = 1;
-    self.field29 = 1;
+    @field0 = 1;
+    @field1 = 1;
+    @field2 = 1;
+    @field3 = 1;
+    @field4 = 1;
+    @field5 = 1;
+    @field6 = 1;
+    @field7 = 1;
+    @field8 = 1;
+    @field9 = 1;
+    @field10 = 1;
+    @field11 = 1;
+    @field12 = 1;
+    @field13 = 1;
+    @field14 = 1;
+    @field15 = 1;
+    @field16 = 1;
+    @field17 = 1;
+    @field18 = 1;
+    @field19 = 1;
+    @field20 = 1;
+    @field21 = 1;
+    @field22 = 1;
+    @field23 = 1;
+    @field24 = 1;
+    @field25 = 1;
+    @field26 = 1;
+    @field27 = 1;
+    @field28 = 1;
+    @field29 = 1;
   }
 
-  method0() { self.field0 }
-  method1() { self.field1 }
-  method2() { self.field2 }
-  method3() { self.field3 }
-  method4() { self.field4 }
-  method5() { self.field5 }
-  method6() { self.field6 }
-  method7() { self.field7 }
-  method8() { self.field8 }
-  method9() { self.field9 }
-  method10() { self.field10 }
-  method11() { self.field11 }
-  method12() { self.field12 }
-  method13() { self.field13 }
-  method14() { self.field14 }
-  method15() { self.field15 }
-  method16() { self.field16 }
-  method17() { self.field17 }
-  method18() { self.field18 }
-  method19() { self.field19 }
-  method20() { self.field20 }
-  method21() { self.field21 }
-  method22() { self.field22 }
-  method23() { self.field23 }
-  method24() { self.field24 }
-  method25() { self.field25 }
-  method26() { self.field26 }
-  method27() { self.field27 }
-  method28() { self.field28 }
-  method29() { self.field29 }
+  method0() { @field0 }
+  method1() { @field1 }
+  method2() { @field2 }
+  method3() { @field3 }
+  method4() { @field4 }
+  method5() { @field5 }
+  method6() { @field6 }
+  method7() { @field7 }
+  method8() { @field8 }
+  method9() { @field9 }
+  method10() { @field10 }
+  method11() { @field11 }
+  method12() { @field12 }
+  method13() { @field13 }
+  method14() { @field14 }
+  method15() { @field15 }
+  method16() { @field16 }
+  method17() { @field17 }
+  method18() { @field18 }
+  method19() { @field19 }
+  method20() { @field20 }
+  method21() { @field21 }
+  method22() { @field22 }
+  method23() { @field23 }
+  method24() { @field24 }
+  method25() { @field25 }
+  method26() { @field26 }
+  method27() { @field27 }
+  method28() { @field28 }
+  method29() { @field29 }
 }
 
 let foo = Foo();

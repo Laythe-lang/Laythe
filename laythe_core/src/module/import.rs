@@ -3,6 +3,7 @@ use crate::{
   hooks::GcHooks,
   managed::{AllocResult, Allocate, Array, DebugHeap, DebugWrap, Gc, GcStr, Trace},
 };
+use std::fmt;
 
 /// An object representing an import request from a file
 pub struct Import {
@@ -65,6 +66,22 @@ impl Trace for Import {
 impl Allocate<Gc<Self>> for Import {
   fn alloc(self) -> AllocResult<Gc<Self>> {
     Gc::alloc_result(self)
+  }
+}
+
+impl fmt::Display for Import {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+    if self.path.is_empty() {
+      write!(f, "{}", self.package)
+    } else {
+      write!(f, "{}", self.package)?;
+
+      for segement in &*self.path {
+        write!(f, ".{}", segement)?;
+      }
+
+      Ok(())
+    }
   }
 }
 

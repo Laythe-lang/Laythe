@@ -103,6 +103,7 @@ pub enum TokenKind {
 
   // sequences
   Identifier,
+  InstanceAccess,
   String,
   StringStart,
   StringSegment,
@@ -179,6 +180,7 @@ impl fmt::Display for TokenKind {
       TokenKind::Less => "<",
       TokenKind::LessEqual => "<=",
       TokenKind::Identifier => "identifier",
+      TokenKind::InstanceAccess => "instance access",
       TokenKind::String => "string",
       TokenKind::StringStart => "string start",
       TokenKind::StringSegment => "string segment",

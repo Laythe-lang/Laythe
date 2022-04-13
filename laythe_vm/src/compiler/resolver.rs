@@ -278,7 +278,12 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
         .gc
         .has_str(name.str())
         .ok_or(ImportError::SymbolDoesNotExist)
-        .and_then(|interned_name| self.global_module.get_exported_symbol(interned_name))
+        .and_then(|interned_name| {
+          self
+            .global_module
+            .get_exported_symbol(interned_name)
+            .ok_or(ImportError::SymbolDoesNotExist)
+        })
         .is_ok()
       {
         let table = &mut self.tables.first_mut().unwrap();
@@ -749,6 +754,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
       Primary::Grouping(expr) => self.expr(expr),
       Primary::Interpolation(interpolation) => self.interpolation(interpolation),
       Primary::Ident(token) => self.identifier(token),
+      Primary::InstanceAccess(instance_access) => self.instance_access(instance_access),
       Primary::Self_(token) => self.self_(token),
       Primary::Super(token) => self.super_(token),
       Primary::Lambda(fun) => self.lambda(fun),
@@ -801,6 +807,38 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   /// Resolve a identifer token
   fn identifier(&mut self, token: &Token<'src>) {
     self.resolve_variable(token);
+  }
+
+  /// Compile instance access self load
+  fn instance_access(&mut self, instance_access: &ast::InstanceAccess<'src>) {
+    self
+      .class_info()
+      .map(|class_compiler| class_compiler.fun_kind)
+      .and_then(|fun_kind| {
+        fun_kind.and_then(|fun_kind| match fun_kind {
+          FunKind::Method | FunKind::Initializer => {
+            self.resolve_variable(&Token::new(
+              TokenKind::Self_,
+              Lexeme::Slice(SELF),
+              instance_access.start(),
+              instance_access.start() + 1,
+            ));
+            self
+              .class_info_mut()
+              .expect("Expected class info")
+              .add_field(instance_access.property());
+            Some(())
+          },
+          _ => None,
+        })
+      })
+      .or_else(|| {
+        self.error(
+          "Cannot access property off 'self' with '@' outside of class instance methods.",
+          Some(instance_access.span()),
+        );
+        None
+      });
   }
 
   /// Compile the self token
@@ -1097,6 +1135,103 @@ mod test {
   }
 
   #[test]
+  fn capture() {
+    let example = "
+      let x = 10;
+
+      fn capture() { x }
+
+      if true {
+        let x = 10;
+
+        fn capture() { x }
+      }
+    ";
+
+    test_repl_resolve(example, |ast, result| {
+      assert!(result.is_ok());
+
+      let x = ast.symbols.get("x").unwrap();
+      let capture = ast.symbols.get("capture").unwrap();
+
+      assert_eq!(x.state(), SymbolState::GlobalInitialized);
+      assert_eq!(capture.state(), SymbolState::GlobalInitialized);
+
+      match &ast.decls[2] {
+        Decl::Stmt(stmt) => match &**stmt {
+          Stmt::If(if_) => {
+            let x = if_.body.symbols.get("x").unwrap();
+            let capture = if_.body.symbols.get("capture").unwrap();
+
+            assert_eq!(x.state(), SymbolState::Captured);
+            assert_eq!(capture.state(), SymbolState::Initialized);
+          },
+          _ => panic!(),
+        },
+        _ => panic!(),
+      }
+    });
+  }
+
+  #[test]
+  fn self_capture_explicit() {
+    let example = "
+      class A {
+        foo() {
+          || self.a
+        }
+      }
+    ";
+
+    test_repl_resolve(example, |ast, result| {
+      assert!(result.is_ok());
+
+      match &ast.decls[0] {
+        Decl::Symbol(stmt) => match &**stmt {
+          Symbol::Class(class) => {
+            let foo = &class.methods[0];
+
+            let self_ = foo.symbols.get(SELF).unwrap();
+
+            assert_eq!(self_.state(), SymbolState::Captured);
+          },
+          _ => panic!(),
+        },
+        _ => panic!(),
+      }
+    });
+  }
+
+  #[test]
+  fn self_capture_implicit() {
+    let example = "
+      class A {
+        foo() {
+          || @a
+        }
+      }
+    ";
+
+    test_repl_resolve(example, |ast, result| {
+      assert!(result.is_ok());
+
+      match &ast.decls[0] {
+        Decl::Symbol(stmt) => match &**stmt {
+          Symbol::Class(class) => {
+            let foo = &class.methods[0];
+
+            let self_ = foo.symbols.get(SELF).unwrap();
+
+            assert_eq!(self_.state(), SymbolState::Captured);
+          },
+          _ => panic!(),
+        },
+        _ => panic!(),
+      }
+    });
+  }
+
+  #[test]
   fn global_decl_symbols() {
     let example = "
       class example1 {}
@@ -1106,9 +1241,14 @@ mod test {
 
     test_file_std_resolve(example, |ast, result| {
       assert!(result.is_ok());
-      assert!(ast.symbols.get("example1").is_some());
-      assert!(ast.symbols.get("example2").is_some());
-      assert!(ast.symbols.get("example3").is_some());
+
+      let example1 = ast.symbols.get("example1").unwrap();
+      let example2 = ast.symbols.get("example2").unwrap();
+      let example3 = ast.symbols.get("example3").unwrap();
+
+      assert_eq!(example1.state(), SymbolState::GlobalInitialized);
+      assert_eq!(example2.state(), SymbolState::GlobalInitialized);
+      assert_eq!(example3.state(), SymbolState::GlobalInitialized);
     });
   }
 
@@ -1128,9 +1268,13 @@ mod test {
       match &ast.decls[0] {
         Decl::Stmt(stmt) => match &**stmt {
           Stmt::If(if_) => {
-            assert!(if_.body.symbols.get("example1").is_some());
-            assert!(if_.body.symbols.get("example2").is_some());
-            assert!(if_.body.symbols.get("example3").is_some());
+            let example1 = if_.body.symbols.get("example1").unwrap();
+            let example2 = if_.body.symbols.get("example2").unwrap();
+            let example3 = if_.body.symbols.get("example3").unwrap();
+
+            assert_eq!(example1.state(), SymbolState::Initialized);
+            assert_eq!(example2.state(), SymbolState::Initialized);
+            assert_eq!(example3.state(), SymbolState::Initialized);
           },
           _ => panic!(),
         },

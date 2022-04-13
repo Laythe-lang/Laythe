@@ -1,5 +1,5 @@
 class A {
-  static method() { 
+  static method() {
     self.dude = 10;
   }
 }

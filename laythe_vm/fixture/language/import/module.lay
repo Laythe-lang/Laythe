@@ -1,0 +1,5 @@
+import std.math;
+
+assertEq(math.abs(-5), 5);
+assertEq(math.max(1, 3, 2), 3);
+assertEq(math.min(3, 1, 2), 1);

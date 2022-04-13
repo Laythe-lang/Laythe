@@ -7,7 +7,7 @@ let DEFAULT = 20;
 
 class Cell {
   init(status) {
-    self.status = status;
+    @status = status;
   }
 
   static alive() {
@@ -19,15 +19,15 @@ class Cell {
   }
 
   toggle() {
-    self.status = 1 - self.status;
+    @status = 1 - @status;
   }
 
   isAlive() {
-    return self.status == ALIVE;
+    return @status == ALIVE;
   }
 
   render() {
-    if self.isAlive() {
+    if @isAlive() {
       return '□';
     }
 
@@ -53,25 +53,25 @@ class Universe {
   }
 
   init(width, height, cells) {
-    self.width = width;
-    self.height = height;
-    self.cells = cells;
+    @width = width;
+    @height = height;
+    @cells = cells;
   }
 
   getIndex(row, col) {
-    return (row * self.width + col);
+    return (row * @width + col);
   }
 
   liveNeighbors(row, col) {
     let count = 0;
-    for deltaRow in [self.height - 1, 0, 1] {
-      for deltaCol in [self.width - 1, 0, 1] {
+    for deltaRow in [@height - 1, 0, 1] {
+      for deltaCol in [@width - 1, 0, 1] {
         if deltaRow != 0 or deltaCol != 0 {
-          let neighborRow = rem(row + deltaRow, self.height);
-          let neighborCol = rem(col + deltaCol, self.width);
+          let neighborRow = rem(row + deltaRow, @height);
+          let neighborCol = rem(col + deltaCol, @width);
 
-          let idx = self.getIndex(neighborRow, neighborCol);
-          count = count + self.cells[idx].status;
+          let idx = @getIndex(neighborRow, neighborCol);
+          count = count + @cells[idx].status;
         }
       }
     }
@@ -80,8 +80,8 @@ class Universe {
 
   runSteps(n) {
     n.times().each(|i| {
-      self.tick();
-      self.render();
+      @tick();
+      @render();
 
       stdout.writeln('');
       stdout.writeln('');
@@ -90,15 +90,15 @@ class Universe {
 
   tick() {
     let next = [];
-    for cell in self.cells {
+    for cell in @cells {
       next.push(cell);
     }
 
-    for row in self.height.times() {
-      for col in self.width.times() {
-        let idx = self.getIndex(row, col);
-        let cell = self.cells[idx];
-        let liveNeighbors = self.liveNeighbors(row, col);
+    for row in @height.times() {
+      for col in @width.times() {
+        let idx = @getIndex(row, col);
+        let cell = @cells[idx];
+        let liveNeighbors = @liveNeighbors(row, col);
 
         let nextCell = cell;
         if cell.isAlive() {
@@ -119,14 +119,14 @@ class Universe {
       }
     }
 
-    self.cells = next;
+    @cells = next;
   }
 
   render() {
-    for row in self.height.times() {
-      for col in self.width.times() {
-        let idx = self.getIndex(row, col);
-        let cell = self.cells[idx];
+    for row in @height.times() {
+      for col in @width.times() {
+        let idx = @getIndex(row, col);
+        let cell = @cells[idx];
 
         stdout.write(cell.render());
       }

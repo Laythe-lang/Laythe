@@ -60,6 +60,7 @@ pub trait Visitor<'a> {
   fn visit_channel(&mut self, token: &Channel<'a>) -> Self::Result;
   fn visit_interpolation(&mut self, string_interp: &Interpolation) -> Self::Result;
   fn visit_ident(&mut self, token: &Token<'a>) -> Self::Result;
+  fn visit_instance_access(&mut self, token: &InstanceAccess<'a>) -> Self::Result;
   fn visit_self(&mut self, token: &Token<'a>) -> Self::Result;
   fn visit_super(&mut self, token: &Super) -> Self::Result;
   fn visit_lambda(&mut self, fun: &Fun) -> Self::Result;
@@ -1069,6 +1070,7 @@ pub enum Primary<'a> {
   Grouping(Box<'a, Expr<'a>>),
   Tuple(Collection<'a>),
   Ident(Token<'a>),
+  InstanceAccess(InstanceAccess<'a>),
   Interpolation(Box<'a, Interpolation<'a>>),
   Lambda(Box<'a, Fun<'a>>),
   List(Collection<'a>),
@@ -1088,6 +1090,7 @@ impl<'a> Spanned for Primary<'a> {
       Primary::False(false_) => false_.start(),
       Primary::Grouping(grouping) => grouping.start(),
       Primary::Ident(ident) => ident.start(),
+      Primary::InstanceAccess(instance_access) => instance_access.start(),
       Primary::Interpolation(string) => string.start(),
       Primary::Lambda(lambda) => lambda.start(),
       Primary::List(list) => list.start(),
@@ -1108,6 +1111,7 @@ impl<'a> Spanned for Primary<'a> {
       Primary::False(false_) => false_.end(),
       Primary::Grouping(grouping) => grouping.end(),
       Primary::Ident(ident) => ident.end(),
+      Primary::InstanceAccess(instance_access) => instance_access.end(),
       Primary::Interpolation(string) => string.end(),
       Primary::Lambda(lambda) => lambda.end(),
       Primary::List(list) => list.end(),
@@ -1248,6 +1252,32 @@ impl<'a> Spanned for Channel<'a> {
     self.span.end
   }
 }
+
+pub struct InstanceAccess<'a> {
+  pub access: Token<'a>,
+}
+
+impl<'a> InstanceAccess<'a> {
+  pub fn new(access: Token<'a>) -> Self {
+    Self { access }
+  }
+
+  pub fn property(&self) -> &str {
+    &self.access.str()[1..]
+  }
+}
+
+impl<'a> Spanned for InstanceAccess<'a> {
+  fn start(&self) -> u32 {
+    self.access.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.access.end()
+  }
+}
+
+
 
 pub struct TypeParam<'a> {
   pub name: Token<'a>,

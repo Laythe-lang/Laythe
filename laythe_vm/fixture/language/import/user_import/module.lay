@@ -1,0 +1,5 @@
+import self.lib;
+
+assertEq(lib.x, 10);
+assertEq(lib.y(), 10);
+assertEq(lib.Z().ans(), 10);

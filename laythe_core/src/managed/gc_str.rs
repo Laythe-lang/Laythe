@@ -231,7 +231,8 @@ impl AsRef<str> for GcStr {
 
 impl AsRef<OsStr> for GcStr {
   fn as_ref(&self) -> &OsStr {
-    OsStr::new(self)
+    let str: &str = self;
+    OsStr::new(str)
   }
 }
 

@@ -21,7 +21,10 @@ pub fn default_class_inheritance(
 
   let import = Import::from_str(hooks, STD)?;
   let module = package.import(hooks, import)?;
-  let object_class = module.get_exported_symbol(hooks.manage_str(OBJECT_CLASS_NAME))?;
+  let object_class = match module.get_exported_symbol(hooks.manage_str(OBJECT_CLASS_NAME)) {
+    Some(class) => class,
+    None => return Err(StdError::SymbolNotFound),
+  };
 
   if_let_obj!(ObjectKind::Class(class) = (object_class) {
     Ok(Class::with_inheritance(
@@ -44,7 +47,10 @@ pub fn default_error_inheritance(
 
   let import = Import::from_str(hooks, STD)?;
   let module = package.import(hooks, import)?;
-  let object_class = module.get_exported_symbol(error_name)?;
+  let object_class = match module.get_exported_symbol(hooks.manage_str(error_name)) {
+    Some(class) => class,
+    None => return Err(StdError::SymbolNotFound),
+  };
 
   if_let_obj!(ObjectKind::Class(class) = (object_class) {
     Ok(Class::with_inheritance(
@@ -66,7 +72,10 @@ pub fn load_class_from_package(
   let name = hooks.manage_str(name);
   let import = Import::from_str(hooks, path)?;
   let module = package.import(hooks, import)?;
-  let symbol = module.get_exported_symbol(name)?;
+  let symbol = match module.get_exported_symbol(hooks.manage_str(name)) {
+    Some(class) => class,
+    None => return Err(StdError::SymbolNotFound),
+  };
 
   if_let_obj!(ObjectKind::Class(class) = (symbol) {
     Ok(class)
@@ -81,7 +90,10 @@ pub fn load_class_from_module(
   name: &str,
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(name);
-  let symbol = module.get_exported_symbol(name)?;
+  let symbol = match module.get_exported_symbol(name) {
+    Some(symbol) => symbol,
+    None => return Err(StdError::SymbolNotFound),
+  };
 
   if_let_obj!(ObjectKind::Class(class) = (symbol) {
     Ok(class)
@@ -97,14 +109,14 @@ pub fn load_instance_from_module(
 ) -> StdResult<Instance> {
   let name = hooks.manage_str(name);
   match module.get_exported_symbol(name) {
-    Ok(symbol) => {
+    Some(symbol) => {
       if_let_obj!(ObjectKind::Instance(instance) = (symbol) {
         Ok(instance)
       } else {
         Err(StdError::SymbolNotInstance)
       })
     },
-    Err(err) => Err(StdError::from(err)),
+    None => Err(StdError::SymbolNotFound),
   }
 }
 

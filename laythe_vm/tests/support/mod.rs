@@ -1,4 +1,5 @@
 use laythe_env::{
+  env::IoEnvTest,
   io::Io,
   stdio::support::{IoStdioTest, StdioTestContainer, TestWriter},
 };
@@ -22,14 +23,16 @@ pub fn fixture_path_inner(fixture_path: &str, test_file_path: &str) -> Option<Pa
 }
 
 #[allow(dead_code)]
-pub fn assert_files_exit(
-  paths: &[&str],
-  test_file_path: &str,
-  result: VmExit,
-) -> io::Result<()> {
+pub fn assert_files_exit(paths: &[&str], test_file_path: &str, result: VmExit) -> io::Result<()> {
   for path in paths {
-    let mut stdio_container = Arc::new(StdioTestContainer::default());
-    let stdio = Arc::new(IoStdioTest::new(&mut stdio_container));
+    let stdio_container = Arc::new(StdioTestContainer {
+      stdout: TestWriter::default(),
+      stderr: TestWriter::default(),
+      stdin: Box::new(Cursor::new(Vec::from("".to_string().as_bytes()))),
+      lines: vec![],
+      line_index: Box::new(0),
+    });
+    let stdio = Arc::new(IoStdioTest::new(&stdio_container));
     let time = Arc::new(IoTimeNative::default());
     let fs = Arc::new(IoFsNative());
     let env = Arc::new(IoEnvNative());
@@ -42,6 +45,54 @@ pub fn assert_files_exit(
         .with_env(env);
 
       if let Err(err) = assert_files_exit_inner(path, test_file_path, io, result.clone()) {
+        stdio_container.log_stdio();
+        eprintln!(
+          "{}",
+          str::from_utf8(&*stdio_container.stdout).expect("Could not unwrap stdout")
+        );
+        eprintln!(
+          "{}",
+          str::from_utf8(&*stdio_container.stderr).expect("Could not unwrap stderr")
+        );
+        return Err(err);
+      }
+    }
+  }
+
+  Ok(())
+}
+
+#[allow(dead_code)]
+pub fn assert_files_exit_with_cwd(
+  paths: &[&str],
+  test_file_path: &str,
+  cwd: &str,
+  result: VmExit,
+) -> io::Result<()> {
+  let cwd = fixture_path_inner(cwd, test_file_path).unwrap();
+
+  for path in paths {
+    let stdio_container = Arc::new(StdioTestContainer {
+      stdout: TestWriter::default(),
+      stderr: TestWriter::default(),
+      stdin: Box::new(Cursor::new(Vec::from("".to_string().as_bytes()))),
+      lines: vec![],
+      line_index: Box::new(0),
+    });
+    let stdio = Arc::new(IoStdioTest::new(&stdio_container));
+    let time = Arc::new(IoTimeNative::default());
+    let fs = Arc::new(IoFsNative());
+    let env = Arc::new(IoEnvTest::new(cwd.clone(), vec![]));
+
+    {
+      let io = Io::default()
+        .with_stdio(stdio)
+        .with_time(time)
+        .with_fs(fs)
+        .with_env(env);
+
+      if let Err(err) = assert_files_exit_inner(path, test_file_path, io, result.clone()) {
+        stdio_container.log_stdio();
         eprintln!(
           "{}",
           str::from_utf8(&*stdio_container.stdout).expect("Could not unwrap stdout")
