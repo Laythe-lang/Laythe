@@ -58,7 +58,7 @@ impl_trace!(TryBlock);
 impl_debug_heap!(TryBlock);
 
 /// A mutable builder for an immutable function
-pub struct FunBuilder {
+pub struct FunBuilder<T> {
   /// Name if not top-level script
   name: GcStr,
 
@@ -78,22 +78,24 @@ pub struct FunBuilder {
   try_blocks: Vec<TryBlock>,
 
   /// Code for the function body
-  chunk: ChunkBuilder,
+  chunk: ChunkBuilder<T>,
 }
 
-impl FunBuilder {
+impl<T: Default> FunBuilder<T> {
   pub fn new(name: GcStr, module: Gc<Module>, arity: Arity) -> Self {
     Self {
       arity,
       capture_count: 0,
       max_slots: 0,
-      chunk: ChunkBuilder::default(),
+      chunk: ChunkBuilder::<T>::default(),
       module,
       name,
       try_blocks: Vec::new(),
     }
   }
+}
 
+impl<T> FunBuilder<T> {
   pub fn name(&self) -> &str {
     &self.name
   }
@@ -123,19 +125,19 @@ impl FunBuilder {
 
   /// Retrieve a reference to the underlying chunk builder
   #[inline]
-  pub fn chunk(&self) -> &ChunkBuilder {
+  pub fn chunk(&self) -> &ChunkBuilder<T> {
     &self.chunk
   }
 
   /// Write an aligned byte code to this function
   #[inline]
-  pub fn write_instruction<T: Encode>(&mut self, item: T, line: u32) {
+  pub fn write_instruction(&mut self, item: T, line: u32) {
     self.chunk.write_instruction(item, line)
   }
 
   /// Patch an instruction on this function
   #[inline]
-  pub fn patch_instruction(&mut self, index: usize, byte: u8) {
+  pub fn patch_instruction(&mut self, index: usize, byte: T) {
     self.chunk.patch_instruction(index, byte);
   }
 
@@ -149,7 +151,9 @@ impl FunBuilder {
   pub fn add_try(&mut self, try_block: TryBlock) {
     self.try_blocks.push(try_block)
   }
+}
 
+impl<T: Encode> FunBuilder<T> {
   /// Build a final immutable Fun from this builder
   pub fn build(self, hooks: &GcHooks) -> Fun {
     let try_blocks = hooks.manage(&*self.try_blocks);
@@ -170,7 +174,7 @@ impl FunBuilder {
   }
 }
 
-impl Trace for FunBuilder {
+impl<T> Trace for FunBuilder<T> {
   fn trace(&self) {
     self.name.trace();
     self.chunk.trace();
@@ -212,7 +216,7 @@ pub struct Fun {
 }
 
 impl Fun {
-  pub fn stub<T: Encode>(hooks: &GcHooks, name: GcStr, module: Gc<Module>, instruction: T) -> Fun {
+  pub fn stub<T: Encode + Default>(hooks: &GcHooks, name: GcStr, module: Gc<Module>, instruction: T) -> Fun {
     let mut builder = FunBuilder::new(name, module, Arity::Variadic(0));
     builder.write_instruction(instruction, 0);
 

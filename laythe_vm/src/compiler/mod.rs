@@ -114,7 +114,7 @@ impl Trace for ClassAttributes {
 pub struct LoopAttributes {
   scope_depth: usize,
   start: usize,
-  breaks: Vec<usize>,
+  breaks: Vec<JumpKind>,
 }
 
 impl DebugHeap for LoopAttributes {
@@ -146,6 +146,12 @@ enum ScopeExit {
   Implicit,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum JumpKind {
+  JumpIfFalse(usize),
+  Jump(usize),
+}
+
 pub struct Compiler<'a, 'src, FileId> {
   #[allow(dead_code)]
   io: Option<Io>,
@@ -154,7 +160,7 @@ pub struct Compiler<'a, 'src, FileId> {
   root_trace: &'a dyn TraceRoot,
 
   /// The current function
-  fun: FunBuilder,
+  fun: FunBuilder<AlignedByteCode>,
 
   /// The type the current function scope
   fun_kind: FunKind,
@@ -792,10 +798,15 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// Emit a jump instruction
-  fn emit_jump(&mut self, jump: AlignedByteCode, offset: u32) -> usize {
+  fn emit_jump(&mut self, jump: AlignedByteCode, offset: u32) -> JumpKind {
     self.emit_byte(jump, offset);
 
-    self.current_chunk().instructions().len() - 2
+    let exit = self.current_chunk().instructions().len() - 1;
+    match jump {
+      AlignedByteCode::JumpIfFalse(_) => JumpKind::JumpIfFalse(exit),
+      AlignedByteCode::Jump(_) => JumpKind::Jump(exit),
+      _ => panic!("Unexpected byte code"),
+    }
   }
 
   /// Patch any break statements at the end of a loop
@@ -806,11 +817,23 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// Patch a jump instruction
-  fn patch_jump(&mut self, offset: usize) {
-    let jump_landing = self.calc_jump(offset);
-    let buffer = jump_landing.to_ne_bytes();
-    self.fun.patch_instruction(offset, buffer[0]);
-    self.fun.patch_instruction(offset + 1, buffer[1]);
+  fn patch_jump(&mut self, jump: JumpKind) {
+    match jump {
+      JumpKind::JumpIfFalse(offset) => {
+        let jump_landing = self.calc_jump(offset);
+
+        self
+          .fun
+          .patch_instruction(offset, AlignedByteCode::JumpIfFalse(jump_landing));
+      },
+      JumpKind::Jump(offset) => {
+        let jump_landing = self.calc_jump(offset);
+
+        self
+          .fun
+          .patch_instruction(offset, AlignedByteCode::Jump(jump_landing));
+      },
+    };
   }
 
   /// Calculate the jump once it's landing has been found
@@ -835,7 +858,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// The current chunk
-  fn current_chunk(&self) -> &ChunkBuilder {
+  fn current_chunk(&self) -> &ChunkBuilder<AlignedByteCode> {
     self.fun.chunk()
   }
 

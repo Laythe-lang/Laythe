@@ -3,6 +3,7 @@ use crate::managed::{Array, DebugWrap};
 use crate::{impl_debug_heap, impl_trace};
 use crate::{managed::DebugHeap, managed::Trace, value::Value};
 use std::cmp;
+use std::fmt::Debug;
 
 /// An object that can be encoded into a byte buffer
 pub trait Encode {
@@ -36,9 +37,9 @@ impl_debug_heap!(Line);
 /// Represents a chunk of code
 /// A mutable builder for a final immutable chunk
 #[derive(Default)]
-pub struct ChunkBuilder {
+pub struct ChunkBuilder<T> {
   /// instruction in this code chunk
-  instructions: Vec<u8>,
+  instructions: Vec<T>,
 
   /// constants in this code chunk
   constants: Vec<Value>,
@@ -47,27 +48,28 @@ pub struct ChunkBuilder {
   lines: Vec<Line>,
 }
 
-impl ChunkBuilder {
+impl<T> ChunkBuilder<T> {
   /// instruction in this code chunk
   #[inline]
-  pub fn instructions(&self) -> &[u8] {
+  pub fn instructions(&self) -> &[T] {
     &self.instructions
   }
 
   /// Write an instruction to this chunk
   #[inline]
-  pub fn write_instruction<T: Encode>(&mut self, item: T, line: u32) {
-    let delta = item.encode(&mut self.instructions);
+  pub fn write_instruction(&mut self, instruction: T, line: u32) {
+    self.instructions.push(instruction);
+    // let delta = item.encode(&mut self.instructions);
     let len = self.instructions.len() as u32;
 
     match self.lines.last_mut() {
       Some(last_line) => {
         if last_line.line == line {
-          last_line.offset += delta;
+          last_line.offset += 1;
         } else {
           self.lines.push(Line::new(line, len));
         }
-      }
+      },
       None => self.lines.push(Line::new(line, len)),
     }
   }
@@ -75,8 +77,8 @@ impl ChunkBuilder {
   /// Patch an existing instruction in this check with
   /// a new value
   #[inline]
-  pub fn patch_instruction(&mut self, index: usize, byte: u8) {
-    self.instructions[index] = byte
+  pub fn patch_instruction(&mut self, index: usize, instruction: T) {
+    self.instructions[index] = instruction
   }
 
   /// Add a constant to this chunk
@@ -108,11 +110,18 @@ impl ChunkBuilder {
     self.constants.push(value);
     self.constants.len() - 1
   }
+}
 
+impl<T: Encode> ChunkBuilder<T> {
   /// Build the final chunk from this builder. Consumes this
   /// chunk builder in the process
   pub fn build(self, hooks: &GcHooks) -> Chunk {
-    let instructions = hooks.manage(&*self.instructions);
+    let mut buffer = vec![];
+    for instruction in self.instructions {
+      instruction.encode(&mut buffer);
+    }
+
+    let instructions = hooks.manage(&*buffer);
     hooks.push_root(instructions);
     let constants = hooks.manage(&*self.constants);
     hooks.push_root(constants);
@@ -128,7 +137,7 @@ impl ChunkBuilder {
   }
 }
 
-impl Trace for ChunkBuilder {
+impl<T> Trace for ChunkBuilder<T> {
   fn trace(&self) {
     self.constants.iter().for_each(|constant| constant.trace());
   }
@@ -141,7 +150,7 @@ impl Trace for ChunkBuilder {
   }
 }
 
-impl DebugHeap for ChunkBuilder {
+impl<T: Debug> DebugHeap for ChunkBuilder<T> {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
     f.debug_struct("ChunkBuilder")
       .field("instructions", &self.instructions)
@@ -245,6 +254,8 @@ impl DebugHeap for Chunk {
 #[cfg(test)]
 mod test {
   use super::*;
+
+  #[derive(Default)]
   struct Encodable();
 
   impl Encode for Encodable {
@@ -272,25 +283,24 @@ mod test {
 
     #[test]
     fn default() {
-      let chunk = ChunkBuilder::default();
+      let chunk = ChunkBuilder::<u8>::default();
       assert_eq!(chunk.instructions.len(), 00);
       assert_eq!(chunk.constants.len(), 0);
     }
 
     #[test]
     fn write_instruction() {
-      let mut chunk = ChunkBuilder::default();
+      let mut chunk = ChunkBuilder::<Encodable>::default();
       chunk.write_instruction(Encodable(), 0);
 
       assert_eq!(chunk.instructions.len(), 1);
-      assert_eq!(chunk.instructions[0], 7)
     }
 
     #[test]
     fn add_constant() {
       use crate::value::VALUE_NIL;
 
-      let mut chunk = ChunkBuilder::default();
+      let mut chunk = ChunkBuilder::<u8>::default();
       let index = chunk.add_constant(VALUE_NIL);
 
       assert_eq!(index, 0);
