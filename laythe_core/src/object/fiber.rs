@@ -499,7 +499,12 @@ impl Fiber {
       // this offset
       let offset = frame.ip().offset_from(instructions.as_ptr()) as usize;
       if let Some((offset, slots)) = fun.has_catch_jump(offset) {
-        debug_assert!(slots <= fun.max_slots(), "Fun has at most {} slots but attempted to offset at {}", fun.max_slots(), slots);
+        debug_assert!(
+          slots <= fun.max_slots(),
+          "Fun has at most {} slots but attempted to offset at {}",
+          fun.max_slots(),
+          slots
+        );
 
         catch_offset = Some(offset);
         stack_top = frame.stack_start().add(slots);

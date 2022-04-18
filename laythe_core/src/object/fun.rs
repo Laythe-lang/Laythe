@@ -216,7 +216,12 @@ pub struct Fun {
 }
 
 impl Fun {
-  pub fn stub<T: Encode + Default>(hooks: &GcHooks, name: GcStr, module: Gc<Module>, instruction: T) -> Fun {
+  pub fn stub<T: Encode + Default>(
+    hooks: &GcHooks,
+    name: GcStr,
+    module: Gc<Module>,
+    instruction: T,
+  ) -> Fun {
     let mut builder = FunBuilder::new(name, module, Arity::Variadic(0));
     builder.write_instruction(instruction, 0);
 

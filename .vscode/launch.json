@@ -100,7 +100,7 @@
         }
       },
       "args": [
-        "test.lay"
+        "laythe_vm/fixture/benchmark/binary_trees.lay"
       ],
       "sourceLanguages": ["rust"],
       "cwd": "${workspaceFolder}"

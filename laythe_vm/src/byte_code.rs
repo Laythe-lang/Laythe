@@ -1,12 +1,27 @@
 use laythe_core::chunk::Encode;
-use std::mem;
+use std::{fmt::Display, mem};
 
 #[cfg(any(test, feature = "debug"))]
 use std::convert::TryInto;
 
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct Label(u32);
+
+impl Label {
+  pub fn new(id: u32) -> Self {
+    Self(id)
+  }
+}
+
+impl Display for Label {
+  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    write!(f, "{}", self.0)
+  }
+}
+
 /// Space Lox virtual machine byte codes
 #[derive(Debug, PartialEq, Clone, Copy)]
-pub enum AlignedByteCode {
+pub enum SymbolicByteCode {
   /// Return from script or function
   Return,
 
@@ -29,10 +44,10 @@ pub enum AlignedByteCode {
   Not,
 
   /// Perform a logical and operator
-  And(u16),
+  And(Label),
 
   /// Perform a logical or operator
-  Or(u16),
+  Or(Label),
 
   /// Retrieve a constant from the constants table
   Constant(u8),
@@ -143,13 +158,16 @@ pub enum AlignedByteCode {
   SetProperty(u16),
 
   /// Jump to end of if block if false
-  JumpIfFalse(u16),
+  JumpIfFalse(Label),
 
   /// Jump conditionally to the ip
-  Jump(u16),
+  Jump(Label),
 
   /// Jump to loop beginning
-  Loop(u16),
+  Loop(Label),
+
+  ///
+  Label(Label),
 
   /// Call a function
   Call(u8),
@@ -206,249 +224,178 @@ pub enum AlignedByteCode {
   LessEqual,
 }
 
-impl AlignedByteCode {
-  /// Decode unaligned bytecode to aligned bytecode. Primarily for testing purposes
-  #[cfg(any(test, feature = "debug"))]
-  pub fn decode(store: &[u8], offset: usize) -> (AlignedByteCode, usize) {
-    let byte_code = ByteCode::from(store[offset]);
+impl SymbolicByteCode {
+  // /// Decode unaligned bytecode to aligned bytecode. Primarily for testing purposes
+  // #[cfg(any(test, feature = "debug"))]
+  // pub fn decode(store: &[u8], offset: usize) -> (SymbolicByteCode, usize) {
+  //   let byte_code = ByteCode::from(store[offset]);
 
-    match byte_code {
-      ByteCode::Return => (AlignedByteCode::Return, offset + 1),
-      ByteCode::Negate => (AlignedByteCode::Negate, offset + 1),
-      ByteCode::Add => (AlignedByteCode::Add, offset + 1),
-      ByteCode::Subtract => (AlignedByteCode::Subtract, offset + 1),
-      ByteCode::Multiply => (AlignedByteCode::Multiply, offset + 1),
-      ByteCode::Divide => (AlignedByteCode::Divide, offset + 1),
-      ByteCode::And => (
-        AlignedByteCode::And(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Or => (
-        AlignedByteCode::Or(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Not => (AlignedByteCode::Not, offset + 1),
-      ByteCode::Constant => (AlignedByteCode::Constant(store[offset + 1]), offset + 2),
-      ByteCode::ConstantLong => (
-        AlignedByteCode::ConstantLong(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Nil => (AlignedByteCode::Nil, offset + 1),
-      ByteCode::True => (AlignedByteCode::True, offset + 1),
-      ByteCode::False => (AlignedByteCode::False, offset + 1),
-      ByteCode::List => (
-        AlignedByteCode::List(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Tuple => (
-        AlignedByteCode::Tuple(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Map => (
-        AlignedByteCode::Map(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Launch => (AlignedByteCode::Launch(store[offset + 1]), offset + 2),
-      ByteCode::Channel => (AlignedByteCode::Channel, offset + 1),
-      ByteCode::BufferedChannel => (AlignedByteCode::BufferedChannel, offset + 1),
-      ByteCode::Receive => (AlignedByteCode::Receive, offset + 1),
-      ByteCode::Send => (AlignedByteCode::Send, offset + 1),
-      ByteCode::Interpolate => (
-        AlignedByteCode::Interpolate(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::IterNext => (
-        AlignedByteCode::IterNext(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::IterCurrent => (
-        AlignedByteCode::IterCurrent(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Drop => (AlignedByteCode::Drop, offset + 1),
-      ByteCode::DropN => (AlignedByteCode::DropN(store[offset + 1]), offset + 2),
-      ByteCode::Dup => (AlignedByteCode::Dup, offset + 1),
-      ByteCode::Import => (
-        AlignedByteCode::Import(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::ImportSymbol => (
-        AlignedByteCode::ImportSymbol((
-          decode_u16(&store[offset + 1..offset + 3]),
-          decode_u16(&store[offset + 3..offset + 5]),
-        )),
-        offset + 5,
-      ),
-      ByteCode::Export => (
-        AlignedByteCode::Export(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::DefineGlobal => (
-        AlignedByteCode::DefineGlobal(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::GetGlobal => (
-        AlignedByteCode::GetGlobal(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::SetGlobal => (
-        AlignedByteCode::SetGlobal(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Box => (AlignedByteCode::Box(store[offset + 1]), offset + 2),
-      ByteCode::EmptyBox => (AlignedByteCode::EmptyBox, offset + 1),
-      ByteCode::FillBox => (AlignedByteCode::FillBox, offset + 1),
-      ByteCode::GetBox => (AlignedByteCode::GetBox(store[offset + 1]), offset + 2),
-      ByteCode::SetBox => (AlignedByteCode::SetBox(store[offset + 1]), offset + 2),
-      ByteCode::GetLocal => (AlignedByteCode::GetLocal(store[offset + 1]), offset + 2),
-      ByteCode::SetLocal => (AlignedByteCode::SetLocal(store[offset + 1]), offset + 2),
-      ByteCode::GetCapture => (AlignedByteCode::GetCapture(store[offset + 1]), offset + 2),
-      ByteCode::SetCapture => (AlignedByteCode::SetCapture(store[offset + 1]), offset + 2),
-      ByteCode::GetProperty => (
-        AlignedByteCode::GetProperty(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::SetProperty => (
-        AlignedByteCode::SetProperty(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::JumpIfFalse => (
-        AlignedByteCode::JumpIfFalse(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Jump => (
-        AlignedByteCode::Jump(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Loop => (
-        AlignedByteCode::Loop(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Call => (AlignedByteCode::Call(store[offset + 1]), offset + 2),
-      ByteCode::Invoke => (
-        AlignedByteCode::Invoke((
-          decode_u16(&store[offset + 1..offset + 3]),
-          store[offset + 3],
-        )),
-        offset + 4,
-      ),
-      ByteCode::SuperInvoke => (
-        AlignedByteCode::SuperInvoke((
-          decode_u16(&store[offset + 1..offset + 3]),
-          store[offset + 3],
-        )),
-        offset + 4,
-      ),
-      ByteCode::Closure => (
-        AlignedByteCode::Closure(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Method => (
-        AlignedByteCode::Method(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Field => (
-        AlignedByteCode::Field(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::StaticMethod => (
-        AlignedByteCode::StaticMethod(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Class => (
-        AlignedByteCode::Class(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Inherit => (AlignedByteCode::Inherit, offset + 1),
-      ByteCode::GetSuper => (
-        AlignedByteCode::GetSuper(decode_u16(&store[offset + 1..offset + 3])),
-        offset + 3,
-      ),
-      ByteCode::Equal => (AlignedByteCode::Equal, offset + 1),
-      ByteCode::NotEqual => (AlignedByteCode::NotEqual, offset + 1),
-      ByteCode::Greater => (AlignedByteCode::Greater, offset + 1),
-      ByteCode::GreaterEqual => (AlignedByteCode::GreaterEqual, offset + 1),
-      ByteCode::Less => (AlignedByteCode::Less, offset + 1),
-      ByteCode::LessEqual => (AlignedByteCode::LessEqual, offset + 1),
-    }
-  }
+  //   match byte_code {
+  //     ByteCode::Return => (SymbolicByteCode::Return, offset + 1),
+  //     ByteCode::Negate => (SymbolicByteCode::Negate, offset + 1),
+  //     ByteCode::Add => (SymbolicByteCode::Add, offset + 1),
+  //     ByteCode::Subtract => (SymbolicByteCode::Subtract, offset + 1),
+  //     ByteCode::Multiply => (SymbolicByteCode::Multiply, offset + 1),
+  //     ByteCode::Divide => (SymbolicByteCode::Divide, offset + 1),
+  //     ByteCode::And => (
+  //       SymbolicByteCode::And(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Or => (
+  //       SymbolicByteCode::Or(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Not => (SymbolicByteCode::Not, offset + 1),
+  //     ByteCode::Constant => (SymbolicByteCode::Constant(store[offset + 1]), offset + 2),
+  //     ByteCode::ConstantLong => (
+  //       SymbolicByteCode::ConstantLong(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Nil => (SymbolicByteCode::Nil, offset + 1),
+  //     ByteCode::True => (SymbolicByteCode::True, offset + 1),
+  //     ByteCode::False => (SymbolicByteCode::False, offset + 1),
+  //     ByteCode::List => (
+  //       SymbolicByteCode::List(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Tuple => (
+  //       SymbolicByteCode::Tuple(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Map => (
+  //       SymbolicByteCode::Map(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Launch => (SymbolicByteCode::Launch(store[offset + 1]), offset + 2),
+  //     ByteCode::Channel => (SymbolicByteCode::Channel, offset + 1),
+  //     ByteCode::BufferedChannel => (SymbolicByteCode::BufferedChannel, offset + 1),
+  //     ByteCode::Receive => (SymbolicByteCode::Receive, offset + 1),
+  //     ByteCode::Send => (SymbolicByteCode::Send, offset + 1),
+  //     ByteCode::Interpolate => (
+  //       SymbolicByteCode::Interpolate(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::IterNext => (
+  //       SymbolicByteCode::IterNext(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::IterCurrent => (
+  //       SymbolicByteCode::IterCurrent(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Drop => (SymbolicByteCode::Drop, offset + 1),
+  //     ByteCode::DropN => (SymbolicByteCode::DropN(store[offset + 1]), offset + 2),
+  //     ByteCode::Dup => (SymbolicByteCode::Dup, offset + 1),
+  //     ByteCode::Import => (
+  //       SymbolicByteCode::Import(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::ImportSymbol => (
+  //       SymbolicByteCode::ImportSymbol((
+  //         decode_u16(&store[offset + 1..offset + 3]),
+  //         decode_u16(&store[offset + 3..offset + 5]),
+  //       )),
+  //       offset + 5,
+  //     ),
+  //     ByteCode::Export => (
+  //       SymbolicByteCode::Export(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::DefineGlobal => (
+  //       SymbolicByteCode::DefineGlobal(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::GetGlobal => (
+  //       SymbolicByteCode::GetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::SetGlobal => (
+  //       SymbolicByteCode::SetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Box => (SymbolicByteCode::Box(store[offset + 1]), offset + 2),
+  //     ByteCode::EmptyBox => (SymbolicByteCode::EmptyBox, offset + 1),
+  //     ByteCode::FillBox => (SymbolicByteCode::FillBox, offset + 1),
+  //     ByteCode::GetBox => (SymbolicByteCode::GetBox(store[offset + 1]), offset + 2),
+  //     ByteCode::SetBox => (SymbolicByteCode::SetBox(store[offset + 1]), offset + 2),
+  //     ByteCode::GetLocal => (SymbolicByteCode::GetLocal(store[offset + 1]), offset + 2),
+  //     ByteCode::SetLocal => (SymbolicByteCode::SetLocal(store[offset + 1]), offset + 2),
+  //     ByteCode::GetCapture => (SymbolicByteCode::GetCapture(store[offset + 1]), offset + 2),
+  //     ByteCode::SetCapture => (SymbolicByteCode::SetCapture(store[offset + 1]), offset + 2),
+  //     ByteCode::GetProperty => (
+  //       SymbolicByteCode::GetProperty(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::SetProperty => (
+  //       SymbolicByteCode::SetProperty(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::JumpIfFalse => (
+  //       SymbolicByteCode::JumpIfFalse(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Jump => (
+  //       SymbolicByteCode::Jump(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Loop => (
+  //       SymbolicByteCode::Loop(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Call => (SymbolicByteCode::Call(store[offset + 1]), offset + 2),
+  //     ByteCode::Invoke => (
+  //       SymbolicByteCode::Invoke((
+  //         decode_u16(&store[offset + 1..offset + 3]),
+  //         store[offset + 3],
+  //       )),
+  //       offset + 4,
+  //     ),
+  //     ByteCode::SuperInvoke => (
+  //       SymbolicByteCode::SuperInvoke((
+  //         decode_u16(&store[offset + 1..offset + 3]),
+  //         store[offset + 3],
+  //       )),
+  //       offset + 4,
+  //     ),
+  //     ByteCode::Closure => (
+  //       SymbolicByteCode::Closure(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Method => (
+  //       SymbolicByteCode::Method(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Field => (
+  //       SymbolicByteCode::Field(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::StaticMethod => (
+  //       SymbolicByteCode::StaticMethod(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Class => (
+  //       SymbolicByteCode::Class(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Inherit => (SymbolicByteCode::Inherit, offset + 1),
+  //     ByteCode::GetSuper => (
+  //       SymbolicByteCode::GetSuper(decode_u16(&store[offset + 1..offset + 3])),
+  //       offset + 3,
+  //     ),
+  //     ByteCode::Equal => (SymbolicByteCode::Equal, offset + 1),
+  //     ByteCode::NotEqual => (SymbolicByteCode::NotEqual, offset + 1),
+  //     ByteCode::Greater => (SymbolicByteCode::Greater, offset + 1),
+  //     ByteCode::GreaterEqual => (SymbolicByteCode::GreaterEqual, offset + 1),
+  //     ByteCode::Less => (SymbolicByteCode::Less, offset + 1),
+  //     ByteCode::LessEqual => (SymbolicByteCode::LessEqual, offset + 1),
+  //   }
+  // }
 
-  /// What effect will this instruction have on the stack
-  pub const fn stack_effect(&self) -> i32 {
-    match self {
-      AlignedByteCode::Return => 0,
-      AlignedByteCode::Negate => 0,
-      AlignedByteCode::Add => -1,
-      AlignedByteCode::Subtract => -1,
-      AlignedByteCode::Multiply => -1,
-      AlignedByteCode::Divide => -1,
-      AlignedByteCode::Not => 0,
-      AlignedByteCode::And(_) => -1,
-      AlignedByteCode::Or(_) => -1,
-      AlignedByteCode::Constant(_) => 1,
-      AlignedByteCode::ConstantLong(_) => 1,
-      AlignedByteCode::Nil => 1,
-      AlignedByteCode::True => 1,
-      AlignedByteCode::False => 1,
-      AlignedByteCode::List(cnt) => -(*cnt as i32) + 1,
-      AlignedByteCode::Tuple(cnt) => -(*cnt as i32) + 1,
-      AlignedByteCode::Map(cnt) => -(*cnt as i32 * 2) + 1,
-      AlignedByteCode::Launch(args) => -(*args as i32 + 1),
-      AlignedByteCode::Channel => 1,
-      AlignedByteCode::BufferedChannel => 0,
-      AlignedByteCode::Receive => 0,
-      AlignedByteCode::Send => 0,
-      AlignedByteCode::Interpolate(cnt) => -(*cnt as i32) + 1,
-      AlignedByteCode::IterNext(_) => 0,
-      AlignedByteCode::IterCurrent(_) => 0,
-      AlignedByteCode::Drop => -1,
-      AlignedByteCode::DropN(cnt) => -(*cnt as i32),
-      AlignedByteCode::Dup => 1,
-      AlignedByteCode::Import(_) => 1,
-      AlignedByteCode::ImportSymbol(_) => 1,
-      AlignedByteCode::Export(_) => 0,
-      AlignedByteCode::DefineGlobal(_) => -1,
-      AlignedByteCode::GetGlobal(_) => 1,
-      AlignedByteCode::SetGlobal(_) => 0,
-      AlignedByteCode::Box(_) => 0,
-      AlignedByteCode::EmptyBox => 1,
-      AlignedByteCode::FillBox => -1,
-      AlignedByteCode::GetBox(_) => 1,
-      AlignedByteCode::SetBox(_) => 0,
-      AlignedByteCode::GetLocal(_) => 1,
-      AlignedByteCode::SetLocal(_) => 0,
-      AlignedByteCode::GetCapture(_) => 1,
-      AlignedByteCode::SetCapture(_) => 0,
-      AlignedByteCode::GetProperty(_) => 0,
-      AlignedByteCode::SetProperty(_) => -1,
-      AlignedByteCode::JumpIfFalse(_) => -1,
-      AlignedByteCode::Jump(_) => 0,
-      AlignedByteCode::Loop(_) => 0,
-      AlignedByteCode::Call(args) => -(*args as i32),
-      AlignedByteCode::Invoke((_, args)) => -(*args as i32),
-      AlignedByteCode::SuperInvoke((_, args)) => -(*args as i32 + 1),
-      AlignedByteCode::Closure(_) => 1,
-      AlignedByteCode::Method(_) => -1,
-      AlignedByteCode::Field(_) => 0,
-      AlignedByteCode::StaticMethod(_) => -1,
-      AlignedByteCode::Class(_) => 1,
-      AlignedByteCode::Inherit => 0,
-      AlignedByteCode::GetSuper(_) => -1,
-      AlignedByteCode::CaptureIndex(_) => 0,
-      AlignedByteCode::Slot(_) => 0,
-      AlignedByteCode::Equal => -1,
-      AlignedByteCode::NotEqual => -1,
-      AlignedByteCode::Greater => -1,
-      AlignedByteCode::GreaterEqual => -1,
-      AlignedByteCode::Less => -1,
-      AlignedByteCode::LessEqual => -1,
-    }
-  }
-}
-
-impl Encode for AlignedByteCode {
   /// Encode aligned bytecode as unaligned bytecode for better storage / compactness
-  fn encode(self, code: &mut Vec<u8>) -> u32 {
+  fn encode(self, code: &mut Vec<u8>, label_offsets: &[usize], offset: usize) {
+    dbg!(label_offsets);
+    dbg!(offset);
+
     match self {
       Self::Return => op(code, ByteCode::Return),
       Self::Negate => op(code, ByteCode::Negate),
@@ -456,8 +403,16 @@ impl Encode for AlignedByteCode {
       Self::Subtract => op(code, ByteCode::Subtract),
       Self::Multiply => op(code, ByteCode::Multiply),
       Self::Divide => op(code, ByteCode::Divide),
-      Self::And(slot) => op_short(code, ByteCode::And, slot),
-      Self::Or(slot) => op_short(code, ByteCode::Or, slot),
+      Self::And(slot) => op_short(
+        code,
+        ByteCode::And,
+        (offset - label_offsets[slot.0 as usize]) as u16,
+      ),
+      Self::Or(slot) => op_short(
+        code,
+        ByteCode::Or,
+        (offset - label_offsets[slot.0 as usize]) as u16,
+      ),
       Self::Not => op(code, ByteCode::Not),
       Self::Nil => op(code, ByteCode::Nil),
       Self::True => op(code, ByteCode::True),
@@ -487,7 +442,6 @@ impl Encode for AlignedByteCode {
       Self::Import(path) => op_short(code, ByteCode::Import, path),
       Self::ImportSymbol((path, slot)) => {
         push_op_u16_tuple(code, ByteCode::ImportSymbol, path, slot);
-        4
       },
       Self::Export(slot) => op_short(code, ByteCode::Export, slot),
       Self::DefineGlobal(slot) => op_short(code, ByteCode::DefineGlobal, slot),
@@ -504,17 +458,27 @@ impl Encode for AlignedByteCode {
       Self::SetCapture(slot) => op_byte(code, ByteCode::SetCapture, slot),
       Self::GetProperty(slot) => op_short(code, ByteCode::GetProperty, slot),
       Self::SetProperty(slot) => op_short(code, ByteCode::SetProperty, slot),
-      Self::JumpIfFalse(slot) => op_short(code, ByteCode::JumpIfFalse, slot),
-      Self::Jump(slot) => op_short(code, ByteCode::Jump, slot),
-      Self::Loop(slot) => op_short(code, ByteCode::Loop, slot),
+      Self::JumpIfFalse(slot) => op_short(
+        code,
+        ByteCode::JumpIfFalse,
+        (label_offsets[slot.0 as usize] - offset) as u16,
+      ),
+      Self::Jump(slot) => op_short(
+        code,
+        ByteCode::Jump,
+        (label_offsets[slot.0 as usize] - offset) as u16,
+      ),
+      Self::Loop(slot) => op_short(
+        code,
+        ByteCode::Loop,
+        (offset - label_offsets[slot.0 as usize]) as u16,
+      ),
       Self::Call(slot) => op_byte(code, ByteCode::Call, slot),
       Self::Invoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::Invoke, slot1, slot2);
-        4
       },
       Self::SuperInvoke((slot1, slot2)) => {
         push_op_u16_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2);
-        4
       },
       Self::Closure(slot) => op_short(code, ByteCode::Closure, slot),
       Self::Method(slot) => op_short(code, ByteCode::Method, slot),
@@ -527,36 +491,255 @@ impl Encode for AlignedByteCode {
         let encoded: u16 = unsafe { mem::transmute(index) };
         let bytes = encoded.to_ne_bytes();
         code.extend_from_slice(&bytes);
-        3
       },
       Self::Slot(slot) => {
         let bytes = slot.to_ne_bytes();
         code.extend_from_slice(&bytes);
-        5
       },
+      Self::Label(_) => (),
+    }
+  }
+
+  /// What effect will this instruction have on the stack
+  pub const fn len(&self) -> usize {
+    match self {
+      SymbolicByteCode::Return => 1,
+      SymbolicByteCode::Negate => 1,
+      SymbolicByteCode::Add => 1,
+      SymbolicByteCode::Subtract => 1,
+      SymbolicByteCode::Multiply => 1,
+      SymbolicByteCode::Divide => 1,
+      SymbolicByteCode::Not => 1,
+      SymbolicByteCode::And(_) => 3,
+      SymbolicByteCode::Or(_) => 3,
+      SymbolicByteCode::Constant(_) => 2,
+      SymbolicByteCode::ConstantLong(_) => 3,
+      SymbolicByteCode::Nil => 1,
+      SymbolicByteCode::True => 1,
+      SymbolicByteCode::False => 1,
+      SymbolicByteCode::List(_) => 3,
+      SymbolicByteCode::Tuple(_) => 3,
+      SymbolicByteCode::Map(_) => 3,
+      SymbolicByteCode::Launch(_) => 2,
+      SymbolicByteCode::Channel => 1,
+      SymbolicByteCode::BufferedChannel => 0,
+      SymbolicByteCode::Receive => 1,
+      SymbolicByteCode::Send => 1,
+      SymbolicByteCode::Interpolate(_) => 2,
+      SymbolicByteCode::IterNext(_) => 3,
+      SymbolicByteCode::IterCurrent(_) => 3,
+      SymbolicByteCode::Drop => 1,
+      SymbolicByteCode::DropN(_) => 2,
+      SymbolicByteCode::Dup => 1,
+      SymbolicByteCode::Import(_) => 3,
+      SymbolicByteCode::ImportSymbol(_) => 5,
+      SymbolicByteCode::Export(_) => 3,
+      SymbolicByteCode::DefineGlobal(_) => 3,
+      SymbolicByteCode::GetGlobal(_) => 1,
+      SymbolicByteCode::SetGlobal(_) => 3,
+      SymbolicByteCode::Box(_) => 2,
+      SymbolicByteCode::EmptyBox => 1,
+      SymbolicByteCode::FillBox => 1,
+      SymbolicByteCode::GetBox(_) => 2,
+      SymbolicByteCode::SetBox(_) => 2,
+      SymbolicByteCode::GetLocal(_) => 2,
+      SymbolicByteCode::SetLocal(_) => 2,
+      SymbolicByteCode::GetCapture(_) => 2,
+      SymbolicByteCode::SetCapture(_) => 2,
+      SymbolicByteCode::GetProperty(_) => 3,
+      SymbolicByteCode::SetProperty(_) => 3,
+      SymbolicByteCode::JumpIfFalse(_) => 3,
+      SymbolicByteCode::Jump(_) => 3,
+      SymbolicByteCode::Loop(_) => 3,
+      SymbolicByteCode::Call(_) => 2,
+      SymbolicByteCode::Invoke((_, _)) => 4,
+      SymbolicByteCode::SuperInvoke((_, _)) => 4,
+      SymbolicByteCode::Closure(_) => 3,
+      SymbolicByteCode::Method(_) => 3,
+      SymbolicByteCode::Field(_) => 3,
+      SymbolicByteCode::StaticMethod(_) => 3,
+      SymbolicByteCode::Class(_) => 3,
+      SymbolicByteCode::Inherit => 1,
+      SymbolicByteCode::GetSuper(_) => 3,
+      SymbolicByteCode::CaptureIndex(_) => 3,
+      SymbolicByteCode::Slot(_) => 4,
+      SymbolicByteCode::Equal => 1,
+      SymbolicByteCode::NotEqual => 1,
+      SymbolicByteCode::Greater => 1,
+      SymbolicByteCode::GreaterEqual => 1,
+      SymbolicByteCode::Less => 1,
+      SymbolicByteCode::LessEqual => 1,
+      SymbolicByteCode::Label(_) => 0,
+    }
+  }
+
+  /// What effect will this instruction have on the stack
+  pub const fn stack_effect(&self) -> i32 {
+    match self {
+      SymbolicByteCode::Return => 0,
+      SymbolicByteCode::Negate => 0,
+      SymbolicByteCode::Add => -1,
+      SymbolicByteCode::Subtract => -1,
+      SymbolicByteCode::Multiply => -1,
+      SymbolicByteCode::Divide => -1,
+      SymbolicByteCode::Not => 0,
+      SymbolicByteCode::And(_) => -1,
+      SymbolicByteCode::Or(_) => -1,
+      SymbolicByteCode::Constant(_) => 1,
+      SymbolicByteCode::ConstantLong(_) => 1,
+      SymbolicByteCode::Nil => 1,
+      SymbolicByteCode::True => 1,
+      SymbolicByteCode::False => 1,
+      SymbolicByteCode::List(cnt) => -(*cnt as i32) + 1,
+      SymbolicByteCode::Tuple(cnt) => -(*cnt as i32) + 1,
+      SymbolicByteCode::Map(cnt) => -(*cnt as i32 * 2) + 1,
+      SymbolicByteCode::Launch(args) => -(*args as i32 + 1),
+      SymbolicByteCode::Channel => 1,
+      SymbolicByteCode::BufferedChannel => 0,
+      SymbolicByteCode::Receive => 0,
+      SymbolicByteCode::Send => 0,
+      SymbolicByteCode::Interpolate(cnt) => -(*cnt as i32) + 1,
+      SymbolicByteCode::IterNext(_) => 0,
+      SymbolicByteCode::IterCurrent(_) => 0,
+      SymbolicByteCode::Drop => -1,
+      SymbolicByteCode::DropN(cnt) => -(*cnt as i32),
+      SymbolicByteCode::Dup => 1,
+      SymbolicByteCode::Import(_) => 1,
+      SymbolicByteCode::ImportSymbol(_) => 1,
+      SymbolicByteCode::Export(_) => 0,
+      SymbolicByteCode::DefineGlobal(_) => -1,
+      SymbolicByteCode::GetGlobal(_) => 1,
+      SymbolicByteCode::SetGlobal(_) => 0,
+      SymbolicByteCode::Box(_) => 0,
+      SymbolicByteCode::EmptyBox => 1,
+      SymbolicByteCode::FillBox => -1,
+      SymbolicByteCode::GetBox(_) => 1,
+      SymbolicByteCode::SetBox(_) => 0,
+      SymbolicByteCode::GetLocal(_) => 1,
+      SymbolicByteCode::SetLocal(_) => 0,
+      SymbolicByteCode::GetCapture(_) => 1,
+      SymbolicByteCode::SetCapture(_) => 0,
+      SymbolicByteCode::GetProperty(_) => 0,
+      SymbolicByteCode::SetProperty(_) => -1,
+      SymbolicByteCode::JumpIfFalse(_) => -1,
+      SymbolicByteCode::Jump(_) => 0,
+      SymbolicByteCode::Loop(_) => 0,
+      SymbolicByteCode::Call(args) => -(*args as i32),
+      SymbolicByteCode::Invoke((_, args)) => -(*args as i32),
+      SymbolicByteCode::SuperInvoke((_, args)) => -(*args as i32 + 1),
+      SymbolicByteCode::Closure(_) => 1,
+      SymbolicByteCode::Method(_) => -1,
+      SymbolicByteCode::Field(_) => 0,
+      SymbolicByteCode::StaticMethod(_) => -1,
+      SymbolicByteCode::Class(_) => 1,
+      SymbolicByteCode::Inherit => 0,
+      SymbolicByteCode::GetSuper(_) => -1,
+      SymbolicByteCode::CaptureIndex(_) => 0,
+      SymbolicByteCode::Slot(_) => 0,
+      SymbolicByteCode::Equal => -1,
+      SymbolicByteCode::NotEqual => -1,
+      SymbolicByteCode::Greater => -1,
+      SymbolicByteCode::GreaterEqual => -1,
+      SymbolicByteCode::Less => -1,
+      SymbolicByteCode::LessEqual => -1,
+      SymbolicByteCode::Label(_) => 0,
     }
   }
 }
 
-impl Default for AlignedByteCode {
-  fn default() -> Self {
-    AlignedByteCode::Nil
+impl Encode for SymbolicByteCode {
+  fn encode(instructions: Vec<Self>) -> Vec<u8> {
+    let mut label_offsets: [usize; u16::MAX as usize] = [0; u16::MAX as usize];
+    let label_count = label_count(&instructions);
+
+    if label_count > u16::MAX as usize {
+      todo!("Really handle this");
+    }
+
+    compute_label_offsets(&instructions, &mut label_offsets[..label_count]);
+
+    let mut buffer = Vec::with_capacity(instructions.len());
+    let mut offset: usize = 0;
+
+    for instruction in instructions {
+      instruction.encode(&mut buffer, &label_offsets[..label_count], offset);
+      offset += instruction.len()
+    }
+
+    buffer
   }
 }
 
-fn op(code: &mut Vec<u8>, byte_code: ByteCode) -> u32 {
+fn label_count(instructions: &[SymbolicByteCode]) -> usize {
+  let mut count = 0;
+
+  for instruction in instructions {
+    if let SymbolicByteCode::Label(_) = instruction {
+      count += 1;
+    }
+  }
+
+  count
+}
+
+fn compute_label_offsets(instructions: &[SymbolicByteCode], label_offsets: &mut [usize]) {
+  let mut offset: usize = 0;
+
+  for instruction in instructions {
+    if let SymbolicByteCode::Label(label) = instruction {
+      label_offsets[label.0 as usize] = offset;
+    }
+
+    offset += instruction.len()
+  }
+}
+
+impl Default for SymbolicByteCode {
+  fn default() -> Self {
+    SymbolicByteCode::Nil
+  }
+}
+
+fn op(code: &mut Vec<u8>, byte_code: ByteCode) {
   push_op(code, byte_code);
-  1
 }
 
-fn op_byte(code: &mut Vec<u8>, byte_code: ByteCode, byte: u8) -> u32 {
+fn op_byte(code: &mut Vec<u8>, byte_code: ByteCode, byte: u8) {
   push_op_u8(code, byte_code, byte);
-  2
 }
 
-fn op_short(code: &mut Vec<u8>, byte_code: ByteCode, short: u16) -> u32 {
+fn op_short(code: &mut Vec<u8>, byte_code: ByteCode, short: u16) {
   push_op_u16(code, byte_code, short);
-  3
+}
+
+fn push_op(code: &mut Vec<u8>, byte: ByteCode) {
+  code.push(byte.to_byte());
+}
+
+fn push_op_u8(code: &mut Vec<u8>, byte: ByteCode, param: u8) {
+  code.push(byte.to_byte());
+  code.push(param);
+}
+
+fn push_op_u16_u8_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2: u8) {
+  code.push(byte.to_byte());
+  let param_bytes = param1.to_ne_bytes();
+  code.extend_from_slice(&param_bytes);
+  code.push(param2);
+}
+
+fn push_op_u16(code: &mut Vec<u8>, byte: ByteCode, param: u16) {
+  let param_bytes = param.to_ne_bytes();
+  code.push(byte.to_byte());
+  code.extend_from_slice(&param_bytes);
+}
+
+fn push_op_u16_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2: u16) {
+  code.push(byte.to_byte());
+  let param_bytes = param1.to_ne_bytes();
+  code.extend_from_slice(&param_bytes);
+  let param_bytes = param2.to_ne_bytes();
+  code.extend_from_slice(&param_bytes);
 }
 
 /// Space Lox virtual machine byte codes
@@ -791,119 +974,88 @@ pub fn decode_u16(buffer: &[u8]) -> u16 {
   u16::from_ne_bytes(arr)
 }
 
-fn push_op(code: &mut Vec<u8>, byte: ByteCode) {
-  code.push(byte.to_byte());
-}
-
-fn push_op_u8(code: &mut Vec<u8>, byte: ByteCode, param: u8) {
-  code.push(byte.to_byte());
-  code.push(param);
-}
-
-fn push_op_u16_u8_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2: u8) {
-  code.push(byte.to_byte());
-  let param_bytes = param1.to_ne_bytes();
-  code.extend_from_slice(&param_bytes);
-  code.push(param2);
-}
-
-fn push_op_u16(code: &mut Vec<u8>, byte: ByteCode, param: u16) {
-  let param_bytes = param.to_ne_bytes();
-  code.push(byte.to_byte());
-  code.extend_from_slice(&param_bytes);
-}
-
-fn push_op_u16_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2: u16) {
-  code.push(byte.to_byte());
-  let param_bytes = param1.to_ne_bytes();
-  code.extend_from_slice(&param_bytes);
-  let param_bytes = param2.to_ne_bytes();
-  code.extend_from_slice(&param_bytes);
-}
-
 #[cfg(test)]
 mod test {
   use super::*;
 
   #[test]
-  fn encode_decode() {
-    let code: Vec<(usize, AlignedByteCode)> = vec![
-      (1, AlignedByteCode::Return),
-      (1, AlignedByteCode::Negate),
-      (1, AlignedByteCode::Add),
-      (1, AlignedByteCode::Subtract),
-      (1, AlignedByteCode::Multiply),
-      (1, AlignedByteCode::Divide),
-      (1, AlignedByteCode::Not),
-      (2, AlignedByteCode::Constant(113)),
-      (3, AlignedByteCode::ConstantLong(45863)),
-      (3, AlignedByteCode::Import(2235)),
-      (5, AlignedByteCode::ImportSymbol((2235, 113))),
-      (3, AlignedByteCode::Export(7811)),
-      (1, AlignedByteCode::Nil),
-      (1, AlignedByteCode::True),
-      (1, AlignedByteCode::False),
-      (3, AlignedByteCode::List(54782)),
-      (3, AlignedByteCode::Tuple(52782)),
-      (3, AlignedByteCode::Map(1923)),
-      (2, AlignedByteCode::Launch(197)),
-      (1, AlignedByteCode::Channel),
-      (1, AlignedByteCode::BufferedChannel),
-      (1, AlignedByteCode::Receive),
-      (1, AlignedByteCode::Send),
-      (2, AlignedByteCode::Box(66)),
-      (1, AlignedByteCode::EmptyBox),
-      (1, AlignedByteCode::FillBox),
-      (3, AlignedByteCode::Interpolate(3389)),
-      (3, AlignedByteCode::IterNext(81)),
-      (3, AlignedByteCode::IterCurrent(49882)),
-      (1, AlignedByteCode::Drop),
-      (3, AlignedByteCode::DefineGlobal(42)),
-      (3, AlignedByteCode::GetGlobal(14119)),
-      (3, AlignedByteCode::SetGlobal(2043)),
-      (3, AlignedByteCode::SetGlobal(38231)),
-      (2, AlignedByteCode::GetBox(183)),
-      (2, AlignedByteCode::SetBox(56)),
-      (2, AlignedByteCode::GetLocal(96)),
-      (2, AlignedByteCode::SetLocal(149)),
-      (2, AlignedByteCode::GetBox(11)),
-      (2, AlignedByteCode::SetBox(197)),
-      (3, AlignedByteCode::GetProperty(18273)),
-      (3, AlignedByteCode::SetProperty(253)),
-      (3, AlignedByteCode::JumpIfFalse(8941)),
-      (3, AlignedByteCode::Jump(95)),
-      (3, AlignedByteCode::Loop(34590)),
-      (2, AlignedByteCode::Call(77)),
-      (4, AlignedByteCode::Invoke((5591, 19))),
-      (4, AlignedByteCode::SuperInvoke((2105, 15))),
-      (3, AlignedByteCode::Closure(3638)),
-      (3, AlignedByteCode::Method(188)),
-      (3, AlignedByteCode::Field(6634)),
-      (3, AlignedByteCode::StaticMethod(4912)),
-      (3, AlignedByteCode::Class(64136)),
-      (1, AlignedByteCode::Inherit),
-      (3, AlignedByteCode::GetSuper(24)),
-      (1, AlignedByteCode::Equal),
-      (1, AlignedByteCode::NotEqual),
-      (1, AlignedByteCode::Greater),
-      (1, AlignedByteCode::GreaterEqual),
-      (1, AlignedByteCode::LessEqual),
+  fn encode_len() {
+    let code: Vec<(usize, SymbolicByteCode)> = vec![
+      (1, SymbolicByteCode::Return),
+      (1, SymbolicByteCode::Negate),
+      (1, SymbolicByteCode::Add),
+      (1, SymbolicByteCode::Subtract),
+      (1, SymbolicByteCode::Multiply),
+      (1, SymbolicByteCode::Divide),
+      (1, SymbolicByteCode::Not),
+      (2, SymbolicByteCode::Constant(113)),
+      (3, SymbolicByteCode::ConstantLong(45863)),
+      (3, SymbolicByteCode::Import(2235)),
+      (5, SymbolicByteCode::ImportSymbol((2235, 113))),
+      (3, SymbolicByteCode::Export(7811)),
+      (1, SymbolicByteCode::Nil),
+      (1, SymbolicByteCode::True),
+      (1, SymbolicByteCode::False),
+      (3, SymbolicByteCode::List(54782)),
+      (3, SymbolicByteCode::Tuple(52782)),
+      (3, SymbolicByteCode::Map(1923)),
+      (2, SymbolicByteCode::Launch(197)),
+      (1, SymbolicByteCode::Channel),
+      (1, SymbolicByteCode::BufferedChannel),
+      (1, SymbolicByteCode::Receive),
+      (1, SymbolicByteCode::Send),
+      (2, SymbolicByteCode::Box(66)),
+      (1, SymbolicByteCode::EmptyBox),
+      (1, SymbolicByteCode::FillBox),
+      (3, SymbolicByteCode::Interpolate(3389)),
+      (3, SymbolicByteCode::IterNext(81)),
+      (3, SymbolicByteCode::IterCurrent(49882)),
+      (1, SymbolicByteCode::Drop),
+      (3, SymbolicByteCode::DefineGlobal(42)),
+      (3, SymbolicByteCode::GetGlobal(14119)),
+      (3, SymbolicByteCode::SetGlobal(2043)),
+      (3, SymbolicByteCode::SetGlobal(38231)),
+      (2, SymbolicByteCode::GetBox(183)),
+      (2, SymbolicByteCode::SetBox(56)),
+      (2, SymbolicByteCode::GetLocal(96)),
+      (2, SymbolicByteCode::SetLocal(149)),
+      (2, SymbolicByteCode::GetBox(11)),
+      (2, SymbolicByteCode::SetBox(197)),
+      (3, SymbolicByteCode::GetProperty(18273)),
+      (3, SymbolicByteCode::SetProperty(253)),
+      (3, SymbolicByteCode::JumpIfFalse(Label::new(0))),
+      (3, SymbolicByteCode::Jump(Label::new(0))),
+      (3, SymbolicByteCode::Loop(Label::new(0))),
+      (2, SymbolicByteCode::Call(77)),
+      (4, SymbolicByteCode::Invoke((5591, 19))),
+      (4, SymbolicByteCode::SuperInvoke((2105, 15))),
+      (3, SymbolicByteCode::Closure(3638)),
+      (3, SymbolicByteCode::Method(188)),
+      (3, SymbolicByteCode::Field(6634)),
+      (3, SymbolicByteCode::StaticMethod(4912)),
+      (3, SymbolicByteCode::Class(64136)),
+      (1, SymbolicByteCode::Inherit),
+      (3, SymbolicByteCode::GetSuper(24)),
+      (1, SymbolicByteCode::Equal),
+      (1, SymbolicByteCode::NotEqual),
+      (1, SymbolicByteCode::Greater),
+      (1, SymbolicByteCode::GreaterEqual),
+      (1, SymbolicByteCode::LessEqual),
+      (0, SymbolicByteCode::Label(Label::new(0))),
     ];
 
     let mut buffer: Vec<u8> = Vec::new();
+    let mut label_offsets: Vec<usize> = vec![0];
+
     for (size1, byte_code1) in &code {
       for (size2, byte_code2) in &code {
-        byte_code1.encode(&mut buffer);
-        byte_code2.encode(&mut buffer);
+        let mut offset = 0;
+        byte_code1.encode(&mut buffer, &label_offsets, offset);
+        offset += byte_code1.len();
 
-        let (decoded1, offset1) = AlignedByteCode::decode(&buffer, 0);
-        let (decoded2, offset2) = AlignedByteCode::decode(&buffer, offset1);
+        byte_code2.encode(&mut buffer, &label_offsets, offset);
 
-        assert_eq!(offset1, *size1);
-        assert_eq!(offset2, *size2 + offset1);
-
-        assert_eq!(*byte_code1, decoded1);
-        assert_eq!(*byte_code2, decoded2);
+        assert_eq!(buffer.len(), byte_code1.len() + byte_code2.len());
         buffer.clear();
       }
     }

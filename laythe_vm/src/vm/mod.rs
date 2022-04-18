@@ -9,7 +9,7 @@ mod ops;
 mod source_loader;
 
 use crate::{
-  byte_code::{AlignedByteCode, ByteCode},
+  byte_code::{SymbolicByteCode, ByteCode},
   cache::InlineCache,
   constants::REPL_MODULE,
   source::{Source, VmFileId, VmFiles},
@@ -148,7 +148,7 @@ impl Vm {
       &hooks,
       hooks.manage_str(PLACEHOLDER_NAME),
       global,
-      AlignedByteCode::Nil,
+      SymbolicByteCode::Nil,
     );
 
     let current_fun = hooks.manage_obj(current_fun);

@@ -6,9 +6,11 @@ use std::cmp;
 use std::fmt::Debug;
 
 /// An object that can be encoded into a byte buffer
-pub trait Encode {
+pub trait Encode: Sized {
   /// consume the object and return the number of bytes written to the buffer
-  fn encode(self, buf: &mut Vec<u8>) -> u32;
+  // fn encode(self, buf: &mut Vec<u8>) -> u32;
+
+  fn encode(data: Vec<Self>) -> Vec<u8>;
 }
 
 /// Represent tokens on a line
@@ -81,6 +83,13 @@ impl<T> ChunkBuilder<T> {
     self.instructions[index] = instruction
   }
 
+  /// Retrieve a constant in the constants table at
+  /// the provided offset
+  #[inline]
+  pub fn get_constant(&self, slot: usize) -> Value {
+    self.constants[slot]
+  }
+
   /// Add a constant to this chunk
   ///
   /// # Examples
@@ -110,16 +119,41 @@ impl<T> ChunkBuilder<T> {
     self.constants.push(value);
     self.constants.len() - 1
   }
+
+  /// Get the line number at a token offset
+  ///
+  /// # Panics
+  ///
+  /// This method panics if an offset is past the last instruction
+  ///
+  /// ```rust,should_panic
+  /// use laythe_core::chunk::ChunkBuilder;
+  /// use laythe_core::hooks::{NoContext, GcHooks};
+  ///
+  /// let mut context = NoContext::default();
+  /// let hooks = GcHooks::new(&mut context);
+  ///
+  /// let builder = ChunkBuilder::default();
+  /// let chunk = builder.build(&hooks);
+  /// chunk.get_line(3);
+  /// ```
+  pub fn get_line(&self, offset: usize) -> u32 {
+    let result = self
+      .lines
+      .binary_search_by_key(&(offset), |line| line.offset as usize);
+
+    match result {
+      Ok(index) => self.lines[index].line,
+      Err(index) => self.lines[cmp::min(index, self.lines.len() - 1)].line,
+    }
+  }
 }
 
 impl<T: Encode> ChunkBuilder<T> {
   /// Build the final chunk from this builder. Consumes this
   /// chunk builder in the process
   pub fn build(self, hooks: &GcHooks) -> Chunk {
-    let mut buffer = vec![];
-    for instruction in self.instructions {
-      instruction.encode(&mut buffer);
-    }
+    let buffer = T::encode(self.instructions);
 
     let instructions = hooks.manage(&*buffer);
     hooks.push_root(instructions);
@@ -259,9 +293,13 @@ mod test {
   struct Encodable();
 
   impl Encode for Encodable {
-    fn encode(self, buf: &mut Vec<u8>) -> u32 {
-      buf.push(7);
-      1
+    fn encode(data: Vec<Self>) -> Vec<u8> {
+      let mut encoded = Vec::with_capacity(data.len());
+      for _ in data {
+        encoded.push(7)
+      }
+
+      encoded
     }
   }
 
@@ -324,6 +362,7 @@ mod test {
 
       let mut builder = ChunkBuilder::default();
       builder.write_instruction(Encodable(), 0);
+
       assert_eq!(builder.build(&hooks).get_line(0), 0);
     }
   }

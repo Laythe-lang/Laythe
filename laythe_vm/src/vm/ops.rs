@@ -1,6 +1,6 @@
 use super::{source_loader::ImportResult, Signal, Vm};
 use crate::{
-  byte_code::{AlignedByteCode, CaptureIndex},
+  byte_code::{SymbolicByteCode, CaptureIndex},
   constants::MAX_FRAME_SIZE,
 };
 use laythe_core::hooks::GcContext;
@@ -1303,7 +1303,7 @@ impl Vm {
             &GcHooks::new(self),
             meta.name,
             self.global,
-            AlignedByteCode::Nil,
+            SymbolicByteCode::Nil,
           ))
         });
         stub.set_name(meta.name);

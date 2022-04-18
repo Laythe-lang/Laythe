@@ -86,9 +86,8 @@ where
 }
 
 impl Encode for u8 {
-  fn encode(self, buf: &mut Vec<u8>) -> u32 {
-    buf.push(self);
-    1
+  fn encode(data: Vec<Self>) -> Vec<u8> {
+    data
   }
 }
 
