@@ -1011,7 +1011,9 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Compile a variable statement
   fn instance_access(&mut self, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
-    let mut expr = self.atom(Primary::InstanceAccess(InstanceAccess::new(self.previous.clone())));
+    let mut expr = self.atom(Primary::InstanceAccess(InstanceAccess::new(
+      self.previous.clone(),
+    )));
 
     if can_assign {
       expr = self.assign(expr)?;
@@ -1673,10 +1675,8 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 68;
-
 /// The rules for infix and prefix operators
-const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
+const PREFIX_TABLE: [Rule<Prefix, Precedence>; TokenKind::VARIANT_COUNT] = [
   Rule::new(Some(Prefix::Grouping), Precedence::Call),
   // LEFT_PAREN
   Rule::new(None, Precedence::None),
@@ -1816,7 +1816,7 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
 ];
 
 /// The rules for infix and prefix operators
-const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
+const INFIX_TABLE: [Rule<Infix, Precedence>; TokenKind::VARIANT_COUNT] = [
   Rule::new(Some(Infix::Call), Precedence::Call),
   // LEFT_PAREN
   Rule::new(None, Precedence::None),
@@ -1956,7 +1956,7 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
 ];
 
 /// The rules for infix and prefix operators
-const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
+const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TokenKind::VARIANT_COUNT] = [
   Rule::new(Some(TypePrefix::Fun), TypePrecedence::Primary),
   // LEFT_PAREN
   Rule::new(None, TypePrecedence::None),
@@ -2096,7 +2096,7 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
 ];
 
 /// The rules for infix and prefix operators
-const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
+const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TokenKind::VARIANT_COUNT] = [
   Rule::new(None, TypePrecedence::None),
   // LEFT_PAREN
   Rule::new(None, TypePrecedence::None),

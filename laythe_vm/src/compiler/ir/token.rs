@@ -1,5 +1,5 @@
 use std::fmt;
-
+use variant_count::VariantCount;
 use super::ast::Spanned;
 
 #[derive(Debug, Clone)]
@@ -59,7 +59,7 @@ impl<'a> Spanned for Token<'a> {
 }
 
 /// Token kinds in the space lox language
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, VariantCount)]
 #[repr(u8)]
 pub enum TokenKind {
   LeftParen,

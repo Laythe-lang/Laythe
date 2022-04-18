@@ -317,7 +317,7 @@ impl Vm {
     unsafe {
       loop {
         // get the current instruction
-        let op_code: ByteCode = ByteCode::from(self.read_byte());
+        let op_code: ByteCode = ByteCode::from_byte_unchecked(self.read_byte());
 
         #[cfg(feature = "debug")]
         {

@@ -35,7 +35,6 @@ use laythe_env::io::Io;
 use object::{Fun, TryBlock};
 use std::{
   cell::{RefCell, RefMut},
-  convert::TryInto,
   io::Write,
   mem,
   ptr::NonNull,

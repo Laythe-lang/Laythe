@@ -1,5 +1,6 @@
 use laythe_core::chunk::Encode;
 use std::{fmt::Display, mem};
+use variant_count::VariantCount;
 
 #[cfg(any(test, feature = "debug"))]
 use std::convert::TryInto;
@@ -17,6 +18,15 @@ impl Display for Label {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     write!(f, "{}", self.0)
   }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CaptureIndex {
+  /// The capture is in the local function
+  Local(u8),
+
+  /// The capture points to the enclosing function
+  Enclosing(u8),
 }
 
 /// Space Lox virtual machine byte codes
@@ -225,177 +235,8 @@ pub enum SymbolicByteCode {
 }
 
 impl SymbolicByteCode {
-  // /// Decode unaligned bytecode to aligned bytecode. Primarily for testing purposes
-  // #[cfg(any(test, feature = "debug"))]
-  // pub fn decode(store: &[u8], offset: usize) -> (SymbolicByteCode, usize) {
-  //   let byte_code = ByteCode::from(store[offset]);
-
-  //   match byte_code {
-  //     ByteCode::Return => (SymbolicByteCode::Return, offset + 1),
-  //     ByteCode::Negate => (SymbolicByteCode::Negate, offset + 1),
-  //     ByteCode::Add => (SymbolicByteCode::Add, offset + 1),
-  //     ByteCode::Subtract => (SymbolicByteCode::Subtract, offset + 1),
-  //     ByteCode::Multiply => (SymbolicByteCode::Multiply, offset + 1),
-  //     ByteCode::Divide => (SymbolicByteCode::Divide, offset + 1),
-  //     ByteCode::And => (
-  //       SymbolicByteCode::And(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Or => (
-  //       SymbolicByteCode::Or(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Not => (SymbolicByteCode::Not, offset + 1),
-  //     ByteCode::Constant => (SymbolicByteCode::Constant(store[offset + 1]), offset + 2),
-  //     ByteCode::ConstantLong => (
-  //       SymbolicByteCode::ConstantLong(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Nil => (SymbolicByteCode::Nil, offset + 1),
-  //     ByteCode::True => (SymbolicByteCode::True, offset + 1),
-  //     ByteCode::False => (SymbolicByteCode::False, offset + 1),
-  //     ByteCode::List => (
-  //       SymbolicByteCode::List(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Tuple => (
-  //       SymbolicByteCode::Tuple(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Map => (
-  //       SymbolicByteCode::Map(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Launch => (SymbolicByteCode::Launch(store[offset + 1]), offset + 2),
-  //     ByteCode::Channel => (SymbolicByteCode::Channel, offset + 1),
-  //     ByteCode::BufferedChannel => (SymbolicByteCode::BufferedChannel, offset + 1),
-  //     ByteCode::Receive => (SymbolicByteCode::Receive, offset + 1),
-  //     ByteCode::Send => (SymbolicByteCode::Send, offset + 1),
-  //     ByteCode::Interpolate => (
-  //       SymbolicByteCode::Interpolate(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::IterNext => (
-  //       SymbolicByteCode::IterNext(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::IterCurrent => (
-  //       SymbolicByteCode::IterCurrent(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Drop => (SymbolicByteCode::Drop, offset + 1),
-  //     ByteCode::DropN => (SymbolicByteCode::DropN(store[offset + 1]), offset + 2),
-  //     ByteCode::Dup => (SymbolicByteCode::Dup, offset + 1),
-  //     ByteCode::Import => (
-  //       SymbolicByteCode::Import(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::ImportSymbol => (
-  //       SymbolicByteCode::ImportSymbol((
-  //         decode_u16(&store[offset + 1..offset + 3]),
-  //         decode_u16(&store[offset + 3..offset + 5]),
-  //       )),
-  //       offset + 5,
-  //     ),
-  //     ByteCode::Export => (
-  //       SymbolicByteCode::Export(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::DefineGlobal => (
-  //       SymbolicByteCode::DefineGlobal(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::GetGlobal => (
-  //       SymbolicByteCode::GetGlobal(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::SetGlobal => (
-  //       SymbolicByteCode::SetGlobal(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Box => (SymbolicByteCode::Box(store[offset + 1]), offset + 2),
-  //     ByteCode::EmptyBox => (SymbolicByteCode::EmptyBox, offset + 1),
-  //     ByteCode::FillBox => (SymbolicByteCode::FillBox, offset + 1),
-  //     ByteCode::GetBox => (SymbolicByteCode::GetBox(store[offset + 1]), offset + 2),
-  //     ByteCode::SetBox => (SymbolicByteCode::SetBox(store[offset + 1]), offset + 2),
-  //     ByteCode::GetLocal => (SymbolicByteCode::GetLocal(store[offset + 1]), offset + 2),
-  //     ByteCode::SetLocal => (SymbolicByteCode::SetLocal(store[offset + 1]), offset + 2),
-  //     ByteCode::GetCapture => (SymbolicByteCode::GetCapture(store[offset + 1]), offset + 2),
-  //     ByteCode::SetCapture => (SymbolicByteCode::SetCapture(store[offset + 1]), offset + 2),
-  //     ByteCode::GetProperty => (
-  //       SymbolicByteCode::GetProperty(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::SetProperty => (
-  //       SymbolicByteCode::SetProperty(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::JumpIfFalse => (
-  //       SymbolicByteCode::JumpIfFalse(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Jump => (
-  //       SymbolicByteCode::Jump(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Loop => (
-  //       SymbolicByteCode::Loop(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Call => (SymbolicByteCode::Call(store[offset + 1]), offset + 2),
-  //     ByteCode::Invoke => (
-  //       SymbolicByteCode::Invoke((
-  //         decode_u16(&store[offset + 1..offset + 3]),
-  //         store[offset + 3],
-  //       )),
-  //       offset + 4,
-  //     ),
-  //     ByteCode::SuperInvoke => (
-  //       SymbolicByteCode::SuperInvoke((
-  //         decode_u16(&store[offset + 1..offset + 3]),
-  //         store[offset + 3],
-  //       )),
-  //       offset + 4,
-  //     ),
-  //     ByteCode::Closure => (
-  //       SymbolicByteCode::Closure(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Method => (
-  //       SymbolicByteCode::Method(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Field => (
-  //       SymbolicByteCode::Field(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::StaticMethod => (
-  //       SymbolicByteCode::StaticMethod(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Class => (
-  //       SymbolicByteCode::Class(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Inherit => (SymbolicByteCode::Inherit, offset + 1),
-  //     ByteCode::GetSuper => (
-  //       SymbolicByteCode::GetSuper(decode_u16(&store[offset + 1..offset + 3])),
-  //       offset + 3,
-  //     ),
-  //     ByteCode::Equal => (SymbolicByteCode::Equal, offset + 1),
-  //     ByteCode::NotEqual => (SymbolicByteCode::NotEqual, offset + 1),
-  //     ByteCode::Greater => (SymbolicByteCode::Greater, offset + 1),
-  //     ByteCode::GreaterEqual => (SymbolicByteCode::GreaterEqual, offset + 1),
-  //     ByteCode::Less => (SymbolicByteCode::Less, offset + 1),
-  //     ByteCode::LessEqual => (SymbolicByteCode::LessEqual, offset + 1),
-  //   }
-  // }
-
   /// Encode aligned bytecode as unaligned bytecode for better storage / compactness
   fn encode(self, code: &mut Vec<u8>, label_offsets: &[usize], offset: usize) {
-    dbg!(label_offsets);
-    dbg!(offset);
-
     match self {
       Self::Return => op(code, ByteCode::Return),
       Self::Negate => op(code, ByteCode::Negate),
@@ -503,146 +344,146 @@ impl SymbolicByteCode {
   /// What effect will this instruction have on the stack
   pub const fn len(&self) -> usize {
     match self {
-      SymbolicByteCode::Return => 1,
-      SymbolicByteCode::Negate => 1,
-      SymbolicByteCode::Add => 1,
-      SymbolicByteCode::Subtract => 1,
-      SymbolicByteCode::Multiply => 1,
-      SymbolicByteCode::Divide => 1,
-      SymbolicByteCode::Not => 1,
-      SymbolicByteCode::And(_) => 3,
-      SymbolicByteCode::Or(_) => 3,
-      SymbolicByteCode::Constant(_) => 2,
-      SymbolicByteCode::ConstantLong(_) => 3,
-      SymbolicByteCode::Nil => 1,
-      SymbolicByteCode::True => 1,
-      SymbolicByteCode::False => 1,
-      SymbolicByteCode::List(_) => 3,
-      SymbolicByteCode::Tuple(_) => 3,
-      SymbolicByteCode::Map(_) => 3,
-      SymbolicByteCode::Launch(_) => 2,
-      SymbolicByteCode::Channel => 1,
-      SymbolicByteCode::BufferedChannel => 0,
-      SymbolicByteCode::Receive => 1,
-      SymbolicByteCode::Send => 1,
-      SymbolicByteCode::Interpolate(_) => 2,
-      SymbolicByteCode::IterNext(_) => 3,
-      SymbolicByteCode::IterCurrent(_) => 3,
-      SymbolicByteCode::Drop => 1,
-      SymbolicByteCode::DropN(_) => 2,
-      SymbolicByteCode::Dup => 1,
-      SymbolicByteCode::Import(_) => 3,
-      SymbolicByteCode::ImportSymbol(_) => 5,
-      SymbolicByteCode::Export(_) => 3,
-      SymbolicByteCode::DefineGlobal(_) => 3,
-      SymbolicByteCode::GetGlobal(_) => 1,
-      SymbolicByteCode::SetGlobal(_) => 3,
-      SymbolicByteCode::Box(_) => 2,
-      SymbolicByteCode::EmptyBox => 1,
-      SymbolicByteCode::FillBox => 1,
-      SymbolicByteCode::GetBox(_) => 2,
-      SymbolicByteCode::SetBox(_) => 2,
-      SymbolicByteCode::GetLocal(_) => 2,
-      SymbolicByteCode::SetLocal(_) => 2,
-      SymbolicByteCode::GetCapture(_) => 2,
-      SymbolicByteCode::SetCapture(_) => 2,
-      SymbolicByteCode::GetProperty(_) => 3,
-      SymbolicByteCode::SetProperty(_) => 3,
-      SymbolicByteCode::JumpIfFalse(_) => 3,
-      SymbolicByteCode::Jump(_) => 3,
-      SymbolicByteCode::Loop(_) => 3,
-      SymbolicByteCode::Call(_) => 2,
-      SymbolicByteCode::Invoke((_, _)) => 4,
-      SymbolicByteCode::SuperInvoke((_, _)) => 4,
-      SymbolicByteCode::Closure(_) => 3,
-      SymbolicByteCode::Method(_) => 3,
-      SymbolicByteCode::Field(_) => 3,
-      SymbolicByteCode::StaticMethod(_) => 3,
-      SymbolicByteCode::Class(_) => 3,
-      SymbolicByteCode::Inherit => 1,
-      SymbolicByteCode::GetSuper(_) => 3,
-      SymbolicByteCode::CaptureIndex(_) => 3,
-      SymbolicByteCode::Slot(_) => 4,
-      SymbolicByteCode::Equal => 1,
-      SymbolicByteCode::NotEqual => 1,
-      SymbolicByteCode::Greater => 1,
-      SymbolicByteCode::GreaterEqual => 1,
-      SymbolicByteCode::Less => 1,
-      SymbolicByteCode::LessEqual => 1,
-      SymbolicByteCode::Label(_) => 0,
+      Self::Return => 1,
+      Self::Negate => 1,
+      Self::Add => 1,
+      Self::Subtract => 1,
+      Self::Multiply => 1,
+      Self::Divide => 1,
+      Self::Not => 1,
+      Self::And(_) => 3,
+      Self::Or(_) => 3,
+      Self::Constant(_) => 2,
+      Self::ConstantLong(_) => 3,
+      Self::Nil => 1,
+      Self::True => 1,
+      Self::False => 1,
+      Self::List(_) => 3,
+      Self::Tuple(_) => 3,
+      Self::Map(_) => 3,
+      Self::Launch(_) => 2,
+      Self::Channel => 1,
+      Self::BufferedChannel => 0,
+      Self::Receive => 1,
+      Self::Send => 1,
+      Self::Interpolate(_) => 2,
+      Self::IterNext(_) => 3,
+      Self::IterCurrent(_) => 3,
+      Self::Drop => 1,
+      Self::DropN(_) => 2,
+      Self::Dup => 1,
+      Self::Import(_) => 3,
+      Self::ImportSymbol(_) => 5,
+      Self::Export(_) => 3,
+      Self::DefineGlobal(_) => 3,
+      Self::GetGlobal(_) => 1,
+      Self::SetGlobal(_) => 3,
+      Self::Box(_) => 2,
+      Self::EmptyBox => 1,
+      Self::FillBox => 1,
+      Self::GetBox(_) => 2,
+      Self::SetBox(_) => 2,
+      Self::GetLocal(_) => 2,
+      Self::SetLocal(_) => 2,
+      Self::GetCapture(_) => 2,
+      Self::SetCapture(_) => 2,
+      Self::GetProperty(_) => 3,
+      Self::SetProperty(_) => 3,
+      Self::JumpIfFalse(_) => 3,
+      Self::Jump(_) => 3,
+      Self::Loop(_) => 3,
+      Self::Call(_) => 2,
+      Self::Invoke((_, _)) => 4,
+      Self::SuperInvoke((_, _)) => 4,
+      Self::Closure(_) => 3,
+      Self::Method(_) => 3,
+      Self::Field(_) => 3,
+      Self::StaticMethod(_) => 3,
+      Self::Class(_) => 3,
+      Self::Inherit => 1,
+      Self::GetSuper(_) => 3,
+      Self::CaptureIndex(_) => 3,
+      Self::Slot(_) => 4,
+      Self::Equal => 1,
+      Self::NotEqual => 1,
+      Self::Greater => 1,
+      Self::GreaterEqual => 1,
+      Self::Less => 1,
+      Self::LessEqual => 1,
+      Self::Label(_) => 0,
     }
   }
 
   /// What effect will this instruction have on the stack
   pub const fn stack_effect(&self) -> i32 {
     match self {
-      SymbolicByteCode::Return => 0,
-      SymbolicByteCode::Negate => 0,
-      SymbolicByteCode::Add => -1,
-      SymbolicByteCode::Subtract => -1,
-      SymbolicByteCode::Multiply => -1,
-      SymbolicByteCode::Divide => -1,
-      SymbolicByteCode::Not => 0,
-      SymbolicByteCode::And(_) => -1,
-      SymbolicByteCode::Or(_) => -1,
-      SymbolicByteCode::Constant(_) => 1,
-      SymbolicByteCode::ConstantLong(_) => 1,
-      SymbolicByteCode::Nil => 1,
-      SymbolicByteCode::True => 1,
-      SymbolicByteCode::False => 1,
-      SymbolicByteCode::List(cnt) => -(*cnt as i32) + 1,
-      SymbolicByteCode::Tuple(cnt) => -(*cnt as i32) + 1,
-      SymbolicByteCode::Map(cnt) => -(*cnt as i32 * 2) + 1,
-      SymbolicByteCode::Launch(args) => -(*args as i32 + 1),
-      SymbolicByteCode::Channel => 1,
-      SymbolicByteCode::BufferedChannel => 0,
-      SymbolicByteCode::Receive => 0,
-      SymbolicByteCode::Send => 0,
-      SymbolicByteCode::Interpolate(cnt) => -(*cnt as i32) + 1,
-      SymbolicByteCode::IterNext(_) => 0,
-      SymbolicByteCode::IterCurrent(_) => 0,
-      SymbolicByteCode::Drop => -1,
-      SymbolicByteCode::DropN(cnt) => -(*cnt as i32),
-      SymbolicByteCode::Dup => 1,
-      SymbolicByteCode::Import(_) => 1,
-      SymbolicByteCode::ImportSymbol(_) => 1,
-      SymbolicByteCode::Export(_) => 0,
-      SymbolicByteCode::DefineGlobal(_) => -1,
-      SymbolicByteCode::GetGlobal(_) => 1,
-      SymbolicByteCode::SetGlobal(_) => 0,
-      SymbolicByteCode::Box(_) => 0,
-      SymbolicByteCode::EmptyBox => 1,
-      SymbolicByteCode::FillBox => -1,
-      SymbolicByteCode::GetBox(_) => 1,
-      SymbolicByteCode::SetBox(_) => 0,
-      SymbolicByteCode::GetLocal(_) => 1,
-      SymbolicByteCode::SetLocal(_) => 0,
-      SymbolicByteCode::GetCapture(_) => 1,
-      SymbolicByteCode::SetCapture(_) => 0,
-      SymbolicByteCode::GetProperty(_) => 0,
-      SymbolicByteCode::SetProperty(_) => -1,
-      SymbolicByteCode::JumpIfFalse(_) => -1,
-      SymbolicByteCode::Jump(_) => 0,
-      SymbolicByteCode::Loop(_) => 0,
-      SymbolicByteCode::Call(args) => -(*args as i32),
-      SymbolicByteCode::Invoke((_, args)) => -(*args as i32),
-      SymbolicByteCode::SuperInvoke((_, args)) => -(*args as i32 + 1),
-      SymbolicByteCode::Closure(_) => 1,
-      SymbolicByteCode::Method(_) => -1,
-      SymbolicByteCode::Field(_) => 0,
-      SymbolicByteCode::StaticMethod(_) => -1,
-      SymbolicByteCode::Class(_) => 1,
-      SymbolicByteCode::Inherit => 0,
-      SymbolicByteCode::GetSuper(_) => -1,
-      SymbolicByteCode::CaptureIndex(_) => 0,
-      SymbolicByteCode::Slot(_) => 0,
-      SymbolicByteCode::Equal => -1,
-      SymbolicByteCode::NotEqual => -1,
-      SymbolicByteCode::Greater => -1,
-      SymbolicByteCode::GreaterEqual => -1,
-      SymbolicByteCode::Less => -1,
-      SymbolicByteCode::LessEqual => -1,
-      SymbolicByteCode::Label(_) => 0,
+      Self::Return => 0,
+      Self::Negate => 0,
+      Self::Add => -1,
+      Self::Subtract => -1,
+      Self::Multiply => -1,
+      Self::Divide => -1,
+      Self::Not => 0,
+      Self::And(_) => -1,
+      Self::Or(_) => -1,
+      Self::Constant(_) => 1,
+      Self::ConstantLong(_) => 1,
+      Self::Nil => 1,
+      Self::True => 1,
+      Self::False => 1,
+      Self::List(cnt) => -(*cnt as i32) + 1,
+      Self::Tuple(cnt) => -(*cnt as i32) + 1,
+      Self::Map(cnt) => -(*cnt as i32 * 2) + 1,
+      Self::Launch(args) => -(*args as i32 + 1),
+      Self::Channel => 1,
+      Self::BufferedChannel => 0,
+      Self::Receive => 0,
+      Self::Send => 0,
+      Self::Interpolate(cnt) => -(*cnt as i32) + 1,
+      Self::IterNext(_) => 0,
+      Self::IterCurrent(_) => 0,
+      Self::Drop => -1,
+      Self::DropN(cnt) => -(*cnt as i32),
+      Self::Dup => 1,
+      Self::Import(_) => 1,
+      Self::ImportSymbol(_) => 1,
+      Self::Export(_) => 0,
+      Self::DefineGlobal(_) => -1,
+      Self::GetGlobal(_) => 1,
+      Self::SetGlobal(_) => 0,
+      Self::Box(_) => 0,
+      Self::EmptyBox => 1,
+      Self::FillBox => -1,
+      Self::GetBox(_) => 1,
+      Self::SetBox(_) => 0,
+      Self::GetLocal(_) => 1,
+      Self::SetLocal(_) => 0,
+      Self::GetCapture(_) => 1,
+      Self::SetCapture(_) => 0,
+      Self::GetProperty(_) => 0,
+      Self::SetProperty(_) => -1,
+      Self::JumpIfFalse(_) => -1,
+      Self::Jump(_) => 0,
+      Self::Loop(_) => 0,
+      Self::Call(args) => -(*args as i32),
+      Self::Invoke((_, args)) => -(*args as i32),
+      Self::SuperInvoke((_, args)) => -(*args as i32 + 1),
+      Self::Closure(_) => 1,
+      Self::Method(_) => -1,
+      Self::Field(_) => 0,
+      Self::StaticMethod(_) => -1,
+      Self::Class(_) => 1,
+      Self::Inherit => 0,
+      Self::GetSuper(_) => -1,
+      Self::CaptureIndex(_) => 0,
+      Self::Slot(_) => 0,
+      Self::Equal => -1,
+      Self::NotEqual => -1,
+      Self::Greater => -1,
+      Self::GreaterEqual => -1,
+      Self::Less => -1,
+      Self::LessEqual => -1,
+      Self::Label(_) => 0,
     }
   }
 }
@@ -742,8 +583,8 @@ fn push_op_u16_tuple(code: &mut Vec<u8>, byte: ByteCode, param1: u16, param2: u1
   code.extend_from_slice(&param_bytes);
 }
 
-/// Space Lox virtual machine byte codes
-#[derive(Debug, PartialEq, Clone, Copy)]
+/// Laythe virtual machine byte codes
+#[derive(Debug, PartialEq, Clone, Copy, VariantCount)]
 pub enum ByteCode {
   /// Return from script or function
   Return,
@@ -943,23 +784,386 @@ impl ByteCode {
   fn to_byte(self) -> u8 {
     unsafe { mem::transmute(self) }
   }
-}
 
-impl From<u8> for ByteCode {
-  /// Get the enum bytecode for a raw byte
-  #[inline]
-  fn from(byte: u8) -> Self {
+  pub fn from_byte(byte: u8) -> Self {
+    if byte as usize >= ByteCode::VARIANT_COUNT {
+      panic!(
+        "Value {} is out of range {} byte code variants",
+        byte,
+        ByteCode::VARIANT_COUNT
+      );
+    }
+
     unsafe { mem::transmute(byte) }
+  }
+
+  pub unsafe fn from_byte_unchecked(byte: u8) -> Self {
+    mem::transmute(byte)
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum CaptureIndex {
-  /// The capture is in the local function
-  Local(u8),
+/// Space Lox virtual machine byte codes
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum AlignedByteCode {
+  /// Return from script or function
+  Return,
 
-  /// The capture points to the enclosing function
-  Enclosing(u8),
+  /// Negate a value
+  Negate,
+
+  /// Add the top two operands on the stack
+  Add,
+
+  /// Subtract the top two operands on the stack
+  Subtract,
+
+  /// Multiply the top two operands on the stack
+  Multiply,
+
+  /// Divide the top two operands on the stack
+  Divide,
+
+  /// Apply Not operator to top stack element
+  Not,
+
+  /// Perform a logical and operator
+  And(u16),
+
+  /// Perform a logical or operator
+  Or(u16),
+
+  /// Retrieve a constant from the constants table
+  Constant(u8),
+
+  /// Retrieve a constant of higher number from the constants table
+  ConstantLong(u16),
+
+  /// Nil literal
+  Nil,
+
+  /// True Literal
+  True,
+
+  /// False ByteCode
+  False,
+
+  /// Initialize list from literal
+  List(u16),
+
+  /// Initialize list from literal
+  Tuple(u16),
+
+  /// Initialize map from literal
+  Map(u16),
+
+  /// Launch a fiber
+  Launch(u8),
+
+  /// Initialize a channel
+  Channel,
+
+  /// Initialize a channel
+  BufferedChannel,
+
+  /// Receive from a channel
+  Receive,
+
+  /// Send to a channel
+  Send,
+
+  /// Combine string interpolation
+  Interpolate(u16),
+
+  /// Get the next element from an iterator
+  IterNext(u16),
+
+  /// Get the current value from an iterator
+  IterCurrent(u16),
+
+  /// Drop a value
+  Drop,
+
+  /// Drop n values
+  DropN(u8),
+
+  /// Duplicate top of the stack
+  Dup,
+
+  /// Import all symbols
+  Import(u16),
+
+  /// Import a single symbol
+  ImportSymbol((u16, u16)),
+
+  /// Export a symbol from the current module
+  Export(u16),
+
+  /// Define a global in the globals table at a index
+  DefineGlobal(u16),
+
+  /// Retrieve a global at the given index
+  GetGlobal(u16),
+
+  /// Set a global at the given index
+  SetGlobal(u16),
+
+  /// Box a local at a given index,
+  Box(u8),
+
+  /// Create a new empty box
+  EmptyBox,
+
+  /// Move top of stack into box
+  FillBox,
+
+  /// Get a box local at the given index
+  GetBox(u8),
+
+  /// Set a box local at the given index
+  SetBox(u8),
+
+  /// Get a local at the given index
+  GetLocal(u8),
+
+  /// Set a local at the given index
+  SetLocal(u8),
+
+  /// Get a box local at the given index
+  GetCapture(u8),
+
+  /// Set a box local at the given index
+  SetCapture(u8),
+
+  /// Get a property off a class instance
+  GetProperty(u16),
+
+  /// Set a property on a class instance
+  SetProperty(u16),
+
+  /// Jump to end of if block if false
+  JumpIfFalse(u16),
+
+  /// Jump conditionally to the ip
+  Jump(u16),
+
+  /// Jump to loop beginning
+  Loop(u16),
+
+  /// Call a function
+  Call(u8),
+
+  /// Invoke a method
+  Invoke((u16, u8)),
+
+  /// Invoke a method on a super class
+  SuperInvoke((u16, u8)),
+
+  /// Create a closure
+  Closure(u16),
+
+  /// Create a method
+  Method(u16),
+
+  /// Create a field
+  Field(u16),
+
+  /// Create a static method
+  StaticMethod(u16),
+
+  /// Create a class
+  Class(u16),
+
+  /// Inherit from another class
+  Inherit,
+
+  /// Access this classes super
+  GetSuper(u16),
+
+  /// Apply equality between the top two operands on the stack
+  Equal,
+
+  /// Check if the top two operands on the stack are not equal
+  NotEqual,
+
+  /// Apply greater between the top two operands on the stack
+  Greater,
+
+  /// Check if the 2nd from the top operand is >= the top
+  GreaterEqual,
+
+  /// Less greater between the top two operands on the stack
+  Less,
+
+  /// Check if the 2nd from the top operand is <= the top
+  LessEqual,
+}
+
+impl AlignedByteCode {
+  /// Decode unaligned bytecode to aligned bytecode. Primarily for testing purposes
+  #[cfg(any(test, feature = "debug"))]
+  pub fn decode(store: &[u8], offset: usize) -> (AlignedByteCode, usize) {
+    let byte_code = ByteCode::from_byte(store[offset]);
+
+    match byte_code {
+      ByteCode::Return => (Self::Return, offset + 1),
+      ByteCode::Negate => (Self::Negate, offset + 1),
+      ByteCode::Add => (Self::Add, offset + 1),
+      ByteCode::Subtract => (Self::Subtract, offset + 1),
+      ByteCode::Multiply => (Self::Multiply, offset + 1),
+      ByteCode::Divide => (Self::Divide, offset + 1),
+      ByteCode::And => (
+        Self::And(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Or => (
+        Self::Or(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Not => (Self::Not, offset + 1),
+      ByteCode::Constant => (Self::Constant(store[offset + 1]), offset + 2),
+      ByteCode::ConstantLong => (
+        Self::ConstantLong(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Nil => (Self::Nil, offset + 1),
+      ByteCode::True => (Self::True, offset + 1),
+      ByteCode::False => (Self::False, offset + 1),
+      ByteCode::List => (
+        Self::List(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Tuple => (
+        Self::Tuple(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Map => (
+        Self::Map(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Launch => (Self::Launch(store[offset + 1]), offset + 2),
+      ByteCode::Channel => (Self::Channel, offset + 1),
+      ByteCode::BufferedChannel => (Self::BufferedChannel, offset + 1),
+      ByteCode::Receive => (Self::Receive, offset + 1),
+      ByteCode::Send => (Self::Send, offset + 1),
+      ByteCode::Interpolate => (
+        Self::Interpolate(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::IterNext => (
+        Self::IterNext(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::IterCurrent => (
+        Self::IterCurrent(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Drop => (Self::Drop, offset + 1),
+      ByteCode::DropN => (Self::DropN(store[offset + 1]), offset + 2),
+      ByteCode::Dup => (Self::Dup, offset + 1),
+      ByteCode::Import => (
+        Self::Import(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::ImportSymbol => (
+        Self::ImportSymbol((
+          decode_u16(&store[offset + 1..offset + 3]),
+          decode_u16(&store[offset + 3..offset + 5]),
+        )),
+        offset + 5,
+      ),
+      ByteCode::Export => (
+        Self::Export(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::DefineGlobal => (
+        Self::DefineGlobal(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::GetGlobal => (
+        Self::GetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::SetGlobal => (
+        Self::SetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Box => (Self::Box(store[offset + 1]), offset + 2),
+      ByteCode::EmptyBox => (Self::EmptyBox, offset + 1),
+      ByteCode::FillBox => (Self::FillBox, offset + 1),
+      ByteCode::GetBox => (Self::GetBox(store[offset + 1]), offset + 2),
+      ByteCode::SetBox => (Self::SetBox(store[offset + 1]), offset + 2),
+      ByteCode::GetLocal => (Self::GetLocal(store[offset + 1]), offset + 2),
+      ByteCode::SetLocal => (Self::SetLocal(store[offset + 1]), offset + 2),
+      ByteCode::GetCapture => (Self::GetCapture(store[offset + 1]), offset + 2),
+      ByteCode::SetCapture => (Self::SetCapture(store[offset + 1]), offset + 2),
+      ByteCode::GetProperty => (
+        Self::GetProperty(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::SetProperty => (
+        Self::SetProperty(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::JumpIfFalse => (
+        Self::JumpIfFalse(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Jump => (
+        Self::Jump(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Loop => (
+        Self::Loop(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Call => (Self::Call(store[offset + 1]), offset + 2),
+      ByteCode::Invoke => (
+        Self::Invoke((
+          decode_u16(&store[offset + 1..offset + 3]),
+          store[offset + 3],
+        )),
+        offset + 4,
+      ),
+      ByteCode::SuperInvoke => (
+        Self::SuperInvoke((
+          decode_u16(&store[offset + 1..offset + 3]),
+          store[offset + 3],
+        )),
+        offset + 4,
+      ),
+      ByteCode::Closure => (
+        Self::Closure(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Method => (
+        Self::Method(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Field => (
+        Self::Field(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::StaticMethod => (
+        Self::StaticMethod(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Class => (
+        Self::Class(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Inherit => (Self::Inherit, offset + 1),
+      ByteCode::GetSuper => (
+        Self::GetSuper(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::Equal => (Self::Equal, offset + 1),
+      ByteCode::NotEqual => (Self::NotEqual, offset + 1),
+      ByteCode::Greater => (Self::Greater, offset + 1),
+      ByteCode::GreaterEqual => (Self::GreaterEqual, offset + 1),
+      ByteCode::Less => (Self::Less, offset + 1),
+      ByteCode::LessEqual => (Self::LessEqual, offset + 1),
+    }
+  }
 }
 
 #[cfg(any(test, feature = "debug"))]
