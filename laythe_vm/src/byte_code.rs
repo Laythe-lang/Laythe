@@ -363,10 +363,10 @@ impl SymbolicByteCode {
       Self::Map(_) => 3,
       Self::Launch(_) => 2,
       Self::Channel => 1,
-      Self::BufferedChannel => 0,
+      Self::BufferedChannel => 1,
       Self::Receive => 1,
       Self::Send => 1,
-      Self::Interpolate(_) => 2,
+      Self::Interpolate(_) => 3,
       Self::IterNext(_) => 3,
       Self::IterCurrent(_) => 3,
       Self::Drop => 1,
@@ -376,7 +376,7 @@ impl SymbolicByteCode {
       Self::ImportSymbol(_) => 5,
       Self::Export(_) => 3,
       Self::DefineGlobal(_) => 3,
-      Self::GetGlobal(_) => 1,
+      Self::GetGlobal(_) => 3,
       Self::SetGlobal(_) => 3,
       Self::Box(_) => 2,
       Self::EmptyBox => 1,
@@ -498,6 +498,8 @@ impl Encode for SymbolicByteCode {
     }
 
     compute_label_offsets(&instructions, &mut label_offsets[..label_count]);
+
+    dbg!(label_offsets);
 
     let mut buffer = Vec::with_capacity(instructions.len());
     let mut offset: usize = 0;
@@ -1197,6 +1199,11 @@ mod test {
       (3, SymbolicByteCode::Import(2235)),
       (5, SymbolicByteCode::ImportSymbol((2235, 113))),
       (3, SymbolicByteCode::Export(7811)),
+      (3, SymbolicByteCode::JumpIfFalse(Label::new(1))),
+      (3, SymbolicByteCode::Jump(Label::new(1))),
+      (3, SymbolicByteCode::Loop(Label::new(0))),
+      (3, SymbolicByteCode::And(Label::new(1))),
+      (3, SymbolicByteCode::Or(Label::new(1))),
       (1, SymbolicByteCode::Nil),
       (1, SymbolicByteCode::True),
       (1, SymbolicByteCode::False),
@@ -1227,9 +1234,6 @@ mod test {
       (2, SymbolicByteCode::SetBox(197)),
       (3, SymbolicByteCode::GetProperty(18273)),
       (3, SymbolicByteCode::SetProperty(253)),
-      (3, SymbolicByteCode::JumpIfFalse(Label::new(0))),
-      (3, SymbolicByteCode::Jump(Label::new(0))),
-      (3, SymbolicByteCode::Loop(Label::new(0))),
       (2, SymbolicByteCode::Call(77)),
       (4, SymbolicByteCode::Invoke((5591, 19))),
       (4, SymbolicByteCode::SuperInvoke((2105, 15))),
@@ -1245,22 +1249,30 @@ mod test {
       (1, SymbolicByteCode::Greater),
       (1, SymbolicByteCode::GreaterEqual),
       (1, SymbolicByteCode::LessEqual),
-      (0, SymbolicByteCode::Label(Label::new(0))),
     ];
-
-    let mut buffer: Vec<u8> = Vec::new();
-    let mut label_offsets: Vec<usize> = vec![0];
 
     for (size1, byte_code1) in &code {
       for (size2, byte_code2) in &code {
-        let mut offset = 0;
-        byte_code1.encode(&mut buffer, &label_offsets, offset);
-        offset += byte_code1.len();
+        let label_0 = SymbolicByteCode::Label(Label::new(0));
+        let label_1 = SymbolicByteCode::Label(Label::new(1));
+        let mut label_offsets: [usize; 2] = [0; 2];
 
-        byte_code2.encode(&mut buffer, &label_offsets, offset);
-
-        assert_eq!(buffer.len(), byte_code1.len() + byte_code2.len());
-        buffer.clear();
+        let encoded = Encode::encode(vec![label_0, *byte_code1, *byte_code2, label_1]);
+        assert_eq!(
+          byte_code1.len(),
+          *size1,
+          "byte {:?} expected to be {} size",
+          *byte_code1,
+          *size1
+        );
+        assert_eq!(
+          byte_code2.len(),
+          *size2,
+          "byte {:?} expected to be {} size",
+          *byte_code2,
+          *size2
+        );
+        assert_eq!(encoded.len(), byte_code1.len() + byte_code2.len());
       }
     }
   }
