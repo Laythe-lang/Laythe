@@ -199,8 +199,16 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::Fun
         | TokenKind::Let
         | TokenKind::For
-        | TokenKind::If
         | TokenKind::While
+        | TokenKind::If
+        | TokenKind::Import
+        | TokenKind::Export
+        | TokenKind::Launch
+        | TokenKind::Try
+        | TokenKind::Trait
+        | TokenKind::Type
+        | TokenKind::Continue
+        | TokenKind::Break
         | TokenKind::Return => {
           break;
         },
