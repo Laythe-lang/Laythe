@@ -3,7 +3,7 @@ use hashbrown::HashMap;
 
 use crate::{
   captures::Captures,
-  chunk::Encode,
+  chunk::{Encode, Line},
   hooks::GcHooks,
   managed::{Gc, GcObj, GcStr},
   module::{module_class, Module},
@@ -75,7 +75,7 @@ where
     }
     fun.update_max_slots(self.max_slots);
 
-    let fun = hooks.manage_obj(fun.build(hooks));
+    let fun = hooks.manage_obj(fun.build(hooks).unwrap());
     hooks.push_root(fun);
 
     let captures = Captures::new(hooks, &[]);
@@ -86,9 +86,10 @@ where
 }
 
 impl Encode for u8 {
-  fn encode(self, buf: &mut Vec<u8>) -> u32 {
-    buf.push(self);
-    1
+  type Error = ();
+
+  fn encode(data: Vec<Self>, lines: Vec<Line>) -> Result<(Vec<u8>, Vec<Line>), Self::Error> {
+    Ok((data, lines))
   }
 }
 
@@ -152,7 +153,7 @@ pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
 
   let builder = FunBuilder::<u8>::new(hooks.manage_str(name), module, Arity::default());
 
-  hooks.manage_obj(builder.build(hooks))
+  hooks.manage_obj(builder.build(hooks).expect("Unable to build test function."))
 }
 
 pub fn test_fun_builder<T: Default>(

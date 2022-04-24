@@ -1,5 +1,4 @@
 #![deny(clippy::all)]
-pub mod call_frame;
 pub mod captures;
 pub mod chunk;
 pub mod constants;

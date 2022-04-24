@@ -150,7 +150,7 @@ mod test {
 
       let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(4));
       let closure = hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
         captures,
       ));
 
@@ -159,7 +159,7 @@ mod test {
 
       let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
       let closure = hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
         captures,
       ));
 
@@ -168,7 +168,7 @@ mod test {
 
       let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Variadic(5));
       let closure = hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
         captures,
       ));
 
@@ -207,7 +207,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let closure = hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
         captures,
       ));
 

@@ -6,14 +6,16 @@ use std::cmp;
 use std::fmt::Debug;
 
 /// An object that can be encoded into a byte buffer
-pub trait Encode {
+pub trait Encode: Sized {
+  type Error: Debug;
+
   /// consume the object and return the number of bytes written to the buffer
-  fn encode(self, buf: &mut Vec<u8>) -> u32;
+  fn encode(data: Vec<Self>, lines: Vec<Line>) -> Result<(Vec<u8>, Vec<Line>), Self::Error>;
 }
 
 /// Represent tokens on a line
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Line {
+pub struct Line {
   /// Line number
   pub line: u32,
 
@@ -23,7 +25,7 @@ struct Line {
 
 impl Line {
   /// Create a new line
-  fn new(line: u32, offset: u32) -> Line {
+  pub fn new(line: u32, offset: u32) -> Line {
     Line { line, offset }
   }
 }
@@ -59,13 +61,12 @@ impl<T> ChunkBuilder<T> {
   #[inline]
   pub fn write_instruction(&mut self, instruction: T, line: u32) {
     self.instructions.push(instruction);
-    // let delta = item.encode(&mut self.instructions);
     let len = self.instructions.len() as u32;
 
     match self.lines.last_mut() {
       Some(last_line) => {
         if last_line.line == line {
-          last_line.offset += 1;
+          last_line.offset = len;
         } else {
           self.lines.push(Line::new(line, len));
         }
@@ -81,6 +82,13 @@ impl<T> ChunkBuilder<T> {
     self.instructions[index] = instruction
   }
 
+  /// Retrieve a constant in the constants table at
+  /// the provided offset
+  #[inline]
+  pub fn get_constant(&self, slot: usize) -> Value {
+    self.constants[slot]
+  }
+
   /// Add a constant to this chunk
   ///
   /// # Examples
@@ -93,14 +101,14 @@ impl<T> ChunkBuilder<T> {
   /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);
   ///
-  /// let mut builder = ChunkBuilder::default();
+  /// let mut builder = ChunkBuilder::<u8>::default();
   /// let index_1 = builder.add_constant(val!(10.4));
   /// let index_2 = builder.add_constant(val!(5.2));
   ///
   /// assert_eq!(index_1, 0);
   /// assert_eq!(index_2, 1);
   ///
-  /// let chunk = builder.build(&hooks);
+  /// let chunk = builder.build(&hooks).unwrap();
   ///
   /// assert_eq!(chunk.get_constant(index_1), val!(10.4));
   /// assert_eq!(chunk.get_constant(index_2), val!(5.2));
@@ -110,30 +118,54 @@ impl<T> ChunkBuilder<T> {
     self.constants.push(value);
     self.constants.len() - 1
   }
+
+  /// Get the line number at a token offset
+  ///
+  /// # Panics
+  ///
+  /// This method panics if an offset is past the last instruction
+  ///
+  /// ```rust,should_panic
+  /// use laythe_core::chunk::ChunkBuilder;
+  /// use laythe_core::hooks::{NoContext, GcHooks};
+  ///
+  /// let mut context = NoContext::default();
+  /// let hooks = GcHooks::new(&mut context);
+  ///
+  /// let builder = ChunkBuilder::<u8>::default();
+  /// let chunk = builder.build(&hooks).unwrap();
+  /// chunk.get_line(3);
+  /// ```
+  pub fn get_line(&self, offset: usize) -> u32 {
+    let result = self
+      .lines
+      .binary_search_by_key(&(offset), |line| line.offset as usize);
+
+    match result {
+      Ok(index) => self.lines[index].line,
+      Err(index) => self.lines[cmp::min(index, self.lines.len() - 1)].line,
+    }
+  }
 }
 
 impl<T: Encode> ChunkBuilder<T> {
   /// Build the final chunk from this builder. Consumes this
   /// chunk builder in the process
-  pub fn build(self, hooks: &GcHooks) -> Chunk {
-    let mut buffer = vec![];
-    for instruction in self.instructions {
-      instruction.encode(&mut buffer);
-    }
+  pub fn build(self, hooks: &GcHooks) -> Result<Chunk, T::Error> {
+    let (buffer, lines) = T::encode(self.instructions, self.lines)?;
 
     let instructions = hooks.manage(&*buffer);
     hooks.push_root(instructions);
     let constants = hooks.manage(&*self.constants);
     hooks.push_root(constants);
-    let lines = hooks.manage(&*self.lines);
-
+    let lines = hooks.manage(&*lines);
     hooks.pop_roots(2);
 
-    Chunk {
+    Ok(Chunk {
       instructions,
       constants,
       lines,
-    }
+    })
   }
 }
 
@@ -211,8 +243,8 @@ impl Chunk {
   /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);
   ///
-  /// let builder = ChunkBuilder::default();
-  /// let chunk = builder.build(&hooks);
+  /// let builder = ChunkBuilder::<u8>::default();
+  /// let chunk = builder.build(&hooks).unwrap();
   /// chunk.get_line(3);
   /// ```
   pub fn get_line(&self, offset: usize) -> u32 {
@@ -259,9 +291,15 @@ mod test {
   struct Encodable();
 
   impl Encode for Encodable {
-    fn encode(self, buf: &mut Vec<u8>) -> u32 {
-      buf.push(7);
-      1
+    type Error = ();
+
+    fn encode(data: Vec<Self>, lines: Vec<Line>) -> Result<(Vec<u8>, Vec<Line>), Self::Error> {
+      let mut encoded = Vec::with_capacity(data.len());
+      for _ in data {
+        encoded.push(7)
+      }
+
+      Ok((encoded, lines))
     }
   }
 
@@ -324,7 +362,8 @@ mod test {
 
       let mut builder = ChunkBuilder::default();
       builder.write_instruction(Encodable(), 0);
-      assert_eq!(builder.build(&hooks).get_line(0), 0);
+
+      assert_eq!(builder.build(&hooks).unwrap().get_line(0), 0);
     }
   }
 }

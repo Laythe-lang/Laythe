@@ -5,7 +5,7 @@ use crate::{
   value::Value,
 };
 
-/// A call frame in the space lox interpreter
+/// A call frame in the Laythe interpreter
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CallFrame {
   /// The function defining this call frame

@@ -1,6 +1,6 @@
 use super::{source_loader::ImportResult, Signal, Vm};
 use crate::{
-  byte_code::{AlignedByteCode, CaptureIndex},
+  byte_code::{CaptureIndex, SymbolicByteCode},
   constants::MAX_FRAME_SIZE,
 };
 use laythe_core::hooks::GcContext;
@@ -494,6 +494,20 @@ impl Vm {
     Signal::Ok
   }
 
+  pub(super) unsafe fn op_push_handler(&mut self) -> Signal {
+    let slot_depth = self.read_short() as usize;
+    let jump = self.read_short() as usize;
+    let start = &self.fiber.fun().chunk().instructions()[0] as *const u8;
+    let offset = self.ip.offset_from(start) as usize + jump;
+    self.fiber.push_exception_handler(offset, slot_depth);
+    Signal::Ok
+  }
+
+  pub(super) unsafe fn op_pop_handler(&mut self) -> Signal {
+    self.fiber.pop_exception_handler();
+    Signal::Ok
+  }
+
   /// Define a global variable
   pub(super) unsafe fn op_define_global(&mut self) -> Signal {
     let slot = self.read_short();
@@ -748,7 +762,7 @@ impl Vm {
             &import, &resolved_path
           ),
         )
-      }
+      },
       ImportResult::CompileError => Signal::Exit,
     };
 
@@ -1303,7 +1317,7 @@ impl Vm {
             &GcHooks::new(self),
             meta.name,
             self.global,
-            AlignedByteCode::Nil,
+            SymbolicByteCode::Nil,
           ))
         });
         stub.set_name(meta.name);

@@ -439,7 +439,7 @@ mod test {
 
     let builder = FunBuilder::<u8>::new(hooks.manage_str(name), module, Arity::default());
 
-    hooks.manage_obj(builder.build(&hooks))
+    hooks.manage_obj(builder.build(&hooks).unwrap())
   }
 
   pub fn test_fun_builder<T: Default>(

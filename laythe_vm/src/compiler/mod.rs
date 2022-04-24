@@ -8,18 +8,17 @@ pub use parser::Parser;
 pub use resolver::Resolver;
 
 use crate::{
-  byte_code::{AlignedByteCode, CaptureIndex},
+  byte_code::{CaptureIndex, Label, SymbolicByteCode},
   cache::CacheIdEmitter,
-  source::LineOffsets,
+  source::{LineOffsets, VmFileId},
   FeResult,
 };
-use codespan_reporting::diagnostic::{Diagnostic, Label};
+use codespan_reporting::diagnostic::{self, Diagnostic};
 use ir::{
   ast::{self, Decl, Expr, Primary, Spanned, Stmt, Trailer},
   token::{Lexeme, Token, TokenKind},
 };
 use laythe_core::{
-  chunk::ChunkBuilder,
   constants::{INDEX_GET, INDEX_SET, OBJECT, SUPER, UNINITIALIZED_VAR},
   constants::{ITER, ITER_VAR, SCRIPT, SELF},
   hooks::{GcContext, GcHooks, NoContext},
@@ -32,10 +31,9 @@ use laythe_core::{
   value::Value,
 };
 use laythe_env::io::Io;
-use object::{Fun, TryBlock};
+use object::Fun;
 use std::{
   cell::{RefCell, RefMut},
-  convert::TryInto,
   io::Write,
   mem,
   ptr::NonNull,
@@ -45,7 +43,7 @@ use std::{
 use self::ir::symbol_table::{Symbol, SymbolState, SymbolTable};
 
 #[cfg(feature = "debug")]
-use crate::debug::disassemble_chunk;
+use crate::debug::print_symbolic_code;
 
 #[derive(Debug)]
 pub struct Local<'a> {
@@ -113,8 +111,8 @@ impl Trace for ClassAttributes {
 #[derive(Debug, Clone)]
 pub struct LoopAttributes {
   scope_depth: usize,
-  start: usize,
-  breaks: Vec<JumpKind>,
+  start: Label,
+  end: Label,
 }
 
 impl DebugHeap for LoopAttributes {
@@ -122,7 +120,7 @@ impl DebugHeap for LoopAttributes {
     f.debug_struct("LoopInfo")
       .field("scope_depth", &self.scope_depth)
       .field("start", &self.start)
-      .field("breaks", &self.breaks)
+      .field("end", &self.start)
       .finish()
   }
 }
@@ -146,13 +144,18 @@ enum ScopeExit {
   Implicit,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum JumpKind {
-  JumpIfFalse(usize),
-  Jump(usize),
+#[derive(Default)]
+pub struct LabelEmitter(u32);
+
+impl LabelEmitter {
+  pub fn emit(&mut self) -> Label {
+    let result = self.0;
+    self.0 += 1;
+    Label::new(result)
+  }
 }
 
-pub struct Compiler<'a, 'src, FileId> {
+pub struct Compiler<'a, 'src> {
   #[allow(dead_code)]
   io: Option<Io>,
 
@@ -160,7 +163,7 @@ pub struct Compiler<'a, 'src, FileId> {
   root_trace: &'a dyn TraceRoot,
 
   /// The current function
-  fun: FunBuilder<AlignedByteCode>,
+  fun: FunBuilder<SymbolicByteCode>,
 
   /// The type the current function scope
   fun_kind: FunKind,
@@ -172,11 +175,11 @@ pub struct Compiler<'a, 'src, FileId> {
   line_offsets: &'a LineOffsets,
 
   /// All the errors found during compilation
-  errors: Vec<Diagnostic<FileId>>,
+  errors: Vec<Diagnostic<VmFileId>>,
 
   /// The parent compiler if it exists note uses
   /// unsafe pointer
-  enclosing: Option<NonNull<Compiler<'a, 'src, FileId>>>,
+  enclosing: Option<NonNull<Compiler<'a, 'src>>>,
 
   /// The info on the current class
   class_attributes: Option<Gc<ClassAttributes>>,
@@ -187,14 +190,17 @@ pub struct Compiler<'a, 'src, FileId> {
   /// Should we early exit scope (break / continue)
   exit_scope: ScopeExit,
 
-  /// The idea emmiter for
+  /// The id emmiter for inline cache
   cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
+
+  /// a label emitter
+  label_emitter: LabelEmitter,
 
   /// hooks into the surround context. Used to allocate laythe objects
   gc: RefCell<Allocator>,
 
   /// The file id for the current file
-  file_id: FileId,
+  file_id: VmFileId,
 
   /// Current scope depth
   scope_depth: usize,
@@ -221,7 +227,7 @@ pub struct Compiler<'a, 'src, FileId> {
   constants: Map<Value, usize>,
 }
 
-impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
+impl<'a, 'src: 'a> Compiler<'a, 'src> {
   /// Create a new compiler at the module scope level. This struct will take a an ast
   /// produced by the parser and emit Laythe bytecode.
   ///
@@ -229,7 +235,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// ```
   /// use laythe_vm::{
   ///   compiler::{Compiler, Parser},
-  ///   source::Source,
+  ///   source::{Source, VM_FILE_TEST_ID},
   /// };
   /// use laythe_core::{
   ///   module::Module,
@@ -244,7 +250,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// let class = gc.manage_obj(Class::bare(name), &NO_GC);
   /// let module = gc.manage(Module::new(class, 0), &NO_GC);
   ///
-  /// let file_id = 0;
+  /// let file_id = VM_FILE_TEST_ID;
   /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
   /// let (_, line_offsets) = Parser::new(&source, file_id).parse();
   ///
@@ -253,7 +259,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   pub fn new(
     module: Gc<module::Module>,
     line_offsets: &'a LineOffsets,
-    file_id: FileId,
+    file_id: VmFileId,
     repl: bool,
     root_trace: &'a dyn TraceRoot,
     mut gc: Allocator,
@@ -271,6 +277,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       module,
       line_offsets,
       cache_id_emitter: Rc::new(RefCell::new(CacheIdEmitter::default())),
+      label_emitter: LabelEmitter::default(),
       errors: vec![],
       fun_kind: FunKind::Script,
       scope_depth: 0,
@@ -294,7 +301,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   pub fn compile(
     mut self,
     ast: &'a ast::Module<'src>,
-  ) -> (FeResult<Fun, FileId>, Allocator, CacheIdEmitter) {
+  ) -> (FeResult<Fun>, Allocator, CacheIdEmitter) {
     self.begin_global_scope(&ast.symbols);
     self.declare_script();
 
@@ -317,8 +324,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     name: GcStr,
     arity: Arity,
     fun_kind: FunKind,
-    enclosing: &mut Compiler<'b, 'src, FileId>,
-  ) -> Compiler<'b, 'src, FileId> {
+    enclosing: &mut Compiler<'b, 'src>,
+  ) -> Compiler<'b, 'src> {
     let fun = FunBuilder::new(name, enclosing.module, arity);
 
     let gc = RefCell::new(Allocator::default());
@@ -337,6 +344,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       module: enclosing.module,
       line_offsets: enclosing.line_offsets,
       cache_id_emitter: Rc::clone(&enclosing.cache_id_emitter),
+      label_emitter: LabelEmitter::default(),
       errors: vec![],
       root_trace: enclosing.root_trace,
       fun_kind,
@@ -368,29 +376,35 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     mut self,
     line: u32,
     exit: ScopeExit,
-  ) -> (Fun, Vec<Diagnostic<FileId>>, Vec<CaptureIndex>, Allocator) {
+  ) -> (Fun, Vec<Diagnostic<VmFileId>>, Vec<CaptureIndex>, Allocator) {
     match exit {
       ScopeExit::Normal => self.emit_return(line),
-      ScopeExit::Implicit => self.emit_byte(AlignedByteCode::Return, line),
+      ScopeExit::Implicit => self.emit_byte(SymbolicByteCode::Return, line),
       ScopeExit::Early => (),
     }
 
     let context = NoContext::new(self.gc.into_inner());
     let hooks = GcHooks::new(&context);
-    let fun = self.fun.build(&hooks);
 
     #[cfg(feature = "debug")]
     {
-      Compiler::<FileId>::print_chunk(&fun, &self.class_attributes, &self.io, self.fun_kind);
+      Compiler::print_chunk(&self.fun, &self.class_attributes, &self.io, self.fun_kind);
     }
 
-    (fun, self.errors, self.captures, context.done())
+    match self.fun.build(&hooks) {
+      Ok(fun) => (fun, self.errors, self.captures, context.done()),
+      Err(errors) => {
+        let fun = Fun::stub(&hooks, hooks.manage_str("error"), self.module, SymbolicByteCode::Nil);
+        self.errors.extend_from_slice(&errors);
+        (fun, self.errors, self.captures, context.done())
+      },
+    }
   }
 
   /// Print the chunk if debug and an error occurred
   #[cfg(feature = "debug")]
   fn print_chunk(
-    fun: &Fun,
+    fun: &FunBuilder<SymbolicByteCode>,
     class_info: &Option<Gc<ClassAttributes>>,
     io: &Option<Io>,
     fun_kind: FunKind,
@@ -405,32 +419,33 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     };
 
     let mut stdio = io.as_ref().unwrap().stdio();
-    disassemble_chunk(&mut stdio, fun.chunk(), &name).expect("could not write to stdio");
+    print_symbolic_code(&mut stdio, fun.chunk(), &name).expect("could not write to stdio");
   }
 
   /// Emit byte code for a return
   fn emit_return(&mut self, line: u32) {
     match self.fun_kind {
-      FunKind::Initializer => self.emit_byte(AlignedByteCode::GetLocal(0), line),
-      _ => self.emit_byte(AlignedByteCode::Nil, line),
+      FunKind::Initializer => self.emit_byte(SymbolicByteCode::GetLocal(0), line),
+      _ => self.emit_byte(SymbolicByteCode::Nil, line),
     }
 
-    self.emit_byte(AlignedByteCode::Return, line);
+    self.emit_byte(SymbolicByteCode::Return, line);
   }
 
   fn loop_scope(
     &mut self,
     end_line: u32,
-    loop_start: usize,
+    start: Label,
+    end: Label,
     table: &'a SymbolTable<'src>,
     cb: impl FnOnce(&mut Self),
-  ) -> Gc<LoopAttributes> {
+  ) {
     // set this class as the current class compiler
     let loop_attributes = self.gc.borrow_mut().manage(
       LoopAttributes {
         scope_depth: self.scope_depth,
-        start: loop_start,
-        breaks: vec![],
+        start,
+        end,
       },
       self,
     );
@@ -440,12 +455,13 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     }
 
     self.scope(end_line, table, cb);
+    self.emit_byte(SymbolicByteCode::Loop(start), end_line);
+    self.emit_byte(SymbolicByteCode::Label(end), end_line);
 
     if enclosing_loop.is_some() {
       self.gc.borrow_mut().pop_roots(1);
     }
     self.loop_attributes = enclosing_loop;
-    loop_attributes
   }
 
   /// scope the provided closure
@@ -491,8 +507,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     match dropped {
       0 => (),
-      1 => self.emit_byte(AlignedByteCode::Drop, line),
-      _ => self.emit_byte(AlignedByteCode::DropN(dropped as u8), line),
+      1 => self.emit_byte(SymbolicByteCode::Drop, line),
+      _ => self.emit_byte(SymbolicByteCode::DropN(dropped as u8), line),
     }
 
     drop_idx
@@ -502,11 +518,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn variable_get(&mut self, name: &Token<'src>) {
     match self.resolve_local(name.str()) {
       Some((local, state)) => match state {
-        SymbolState::Initialized => self.emit_byte(AlignedByteCode::GetLocal(local), name.end()),
-        SymbolState::Captured => self.emit_byte(AlignedByteCode::GetBox(local), name.end()),
+        SymbolState::Initialized => self.emit_byte(SymbolicByteCode::GetLocal(local), name.end()),
+        SymbolState::Captured => self.emit_byte(SymbolicByteCode::GetBox(local), name.end()),
         SymbolState::GlobalInitialized => {
           let global_index = self.identifier_constant(name.str());
-          self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
+          self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
         },
         SymbolState::Uninitialized => panic!(
           "Unexpected uninitialized symbol {} in {}.",
@@ -516,10 +532,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       },
       None => match self.resolve_capture(name.str()) {
         Some((local, state)) => match state {
-          SymbolState::Captured => self.emit_byte(AlignedByteCode::GetCapture(local), name.end()),
+          SymbolState::Captured => self.emit_byte(SymbolicByteCode::GetCapture(local), name.end()),
           SymbolState::GlobalInitialized => {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
           },
           SymbolState::Initialized => panic!(
             "Unexpected local symbol {} in {}.",
@@ -535,7 +551,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         None => {
           if self.repl {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(AlignedByteCode::GetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
           } else {
             panic!("Symbol {} not found in {}.", name.str(), self.fun.name());
           }
@@ -547,11 +563,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn variable_set(&mut self, name: &Token<'src>) {
     match self.resolve_local(name.str()) {
       Some((local, state)) => match state {
-        SymbolState::Initialized => self.emit_byte(AlignedByteCode::SetLocal(local), name.end()),
-        SymbolState::Captured => self.emit_byte(AlignedByteCode::SetBox(local), name.end()),
+        SymbolState::Initialized => self.emit_byte(SymbolicByteCode::SetLocal(local), name.end()),
+        SymbolState::Captured => self.emit_byte(SymbolicByteCode::SetBox(local), name.end()),
         SymbolState::GlobalInitialized => {
           let global_index = self.identifier_constant(name.str());
-          self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
+          self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
         },
         SymbolState::Uninitialized => panic!(
           "Unexpected uninitialized symbol {} in {}.",
@@ -561,10 +577,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       },
       None => match self.resolve_capture(name.str()) {
         Some((local, state)) => match state {
-          SymbolState::Captured => self.emit_byte(AlignedByteCode::SetCapture(local), name.end()),
+          SymbolState::Captured => self.emit_byte(SymbolicByteCode::SetCapture(local), name.end()),
           SymbolState::GlobalInitialized => {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
           },
           SymbolState::Initialized => panic!(
             "Unexpected local symbol {} in {}.",
@@ -580,7 +596,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         None => {
           if self.repl {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(AlignedByteCode::SetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
           } else {
             panic!("Symbol {} not found in {}.", name.str(), self.fun.name())
           }
@@ -591,8 +607,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   fn emit_local_get(&mut self, state: SymbolState, index: u8, end: u32) {
     let byte = match state {
-      SymbolState::Initialized => AlignedByteCode::GetLocal(index),
-      SymbolState::Captured => AlignedByteCode::GetBox(index),
+      SymbolState::Initialized => SymbolicByteCode::GetLocal(index),
+      SymbolState::Captured => SymbolicByteCode::GetBox(index),
       _ => panic!("Expected local symbol"),
     };
     self.emit_byte(byte, end);
@@ -600,8 +616,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   fn emit_local_set(&mut self, state: SymbolState, index: u8, end: u32) {
     let byte = match state {
-      SymbolState::Initialized => AlignedByteCode::SetLocal(index),
-      SymbolState::Captured => AlignedByteCode::SetBox(index),
+      SymbolState::Initialized => SymbolicByteCode::SetLocal(index),
+      SymbolState::Captured => SymbolicByteCode::SetBox(index),
       _ => panic!("Expected local symbol"),
     };
     self.emit_byte(byte, end);
@@ -708,7 +724,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     });
 
     if let SymbolState::Captured = symbol.state() {
-      self.emit_byte(AlignedByteCode::EmptyBox, offset);
+      self.emit_byte(SymbolicByteCode::EmptyBox, offset);
     }
 
     symbol.state()
@@ -753,14 +769,14 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   /// Define a variable
   fn define_variable(&mut self, variable: u16, state: SymbolState, offset: u32) {
     if let SymbolState::Captured = state {
-      self.emit_byte(AlignedByteCode::FillBox, offset);
+      self.emit_byte(SymbolicByteCode::FillBox, offset);
     }
 
     if self.scope_depth > 1 {
       return;
     }
 
-    self.emit_byte(AlignedByteCode::DefineGlobal(variable), offset);
+    self.emit_byte(SymbolicByteCode::DefineGlobal(variable), offset);
   }
 
   /// Define a local only variable
@@ -769,7 +785,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     if let SymbolState::Captured = state {
       let (slot, _) = self.resolve_local(name).expect("Expected local symbol.");
-      self.emit_byte(AlignedByteCode::Box(slot), offset);
+      self.emit_byte(SymbolicByteCode::Box(slot), offset);
     }
   }
 
@@ -784,7 +800,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   }
 
   /// Emit a provided instruction
-  fn emit_byte(&mut self, op_code: AlignedByteCode, offset: u32) {
+  fn emit_byte(&mut self, op_code: SymbolicByteCode, offset: u32) {
     let line = self
       .line_offsets
       .offset_line(offset as usize)
@@ -797,73 +813,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.write_instruction(op_code, line as u32 + 1);
   }
 
-  /// Emit a jump instruction
-  fn emit_jump(&mut self, jump: AlignedByteCode, offset: u32) -> JumpKind {
-    self.emit_byte(jump, offset);
-
-    let exit = self.current_chunk().instructions().len() - 1;
-    match jump {
-      AlignedByteCode::JumpIfFalse(_) => JumpKind::JumpIfFalse(exit),
-      AlignedByteCode::Jump(_) => JumpKind::Jump(exit),
-      _ => panic!("Unexpected byte code"),
-    }
-  }
-
-  /// Patch any break statements at the end of a loop
-  fn patch_breaks(&mut self, loop_info: &LoopAttributes) {
-    for break_ in loop_info.breaks.iter() {
-      self.patch_jump(*break_);
-    }
-  }
-
-  /// Patch a jump instruction
-  fn patch_jump(&mut self, jump: JumpKind) {
-    match jump {
-      JumpKind::JumpIfFalse(offset) => {
-        let jump_landing = self.calc_jump(offset);
-
-        self
-          .fun
-          .patch_instruction(offset, AlignedByteCode::JumpIfFalse(jump_landing));
-      },
-      JumpKind::Jump(offset) => {
-        let jump_landing = self.calc_jump(offset);
-
-        self
-          .fun
-          .patch_instruction(offset, AlignedByteCode::Jump(jump_landing));
-      },
-    };
-  }
-
-  /// Calculate the jump once it's landing has been found
-  fn calc_jump(&mut self, offset: usize) -> u16 {
-    let jump = self.current_chunk().instructions().len() - offset - 2;
-
-    if jump > std::u16::MAX.try_into().unwrap() {
-      self.error("Too much code to jump over.", None);
-    }
-
-    jump as u16
-  }
-
-  /// Emit a loop instruction
-  fn emit_loop(&mut self, loop_start: usize, line: u32) {
-    let offset = self.current_chunk().instructions().len() - loop_start + 3;
-    if offset > std::u16::MAX.try_into().unwrap() {
-      self.error("Loop body too large.", None);
-    }
-
-    self.emit_byte(AlignedByteCode::Loop(offset as u16), line);
-  }
-
-  /// The current chunk
-  fn current_chunk(&self) -> &ChunkBuilder<AlignedByteCode> {
-    self.fun.chunk()
-  }
-
   /// write instruction to the current function
-  fn write_instruction(&mut self, op_code: AlignedByteCode, line: u32) {
+  fn write_instruction(&mut self, op_code: SymbolicByteCode, line: u32) {
     self.fun.write_instruction(op_code, line)
   }
 
@@ -910,9 +861,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let index = self.make_constant(value);
 
     if index <= std::u8::MAX as u16 {
-      self.emit_byte(AlignedByteCode::Constant(index as u8), line);
+      self.emit_byte(SymbolicByteCode::Constant(index as u8), line);
     } else {
-      self.emit_byte(AlignedByteCode::ConstantLong(index), line);
+      self.emit_byte(SymbolicByteCode::ConstantLong(index), line);
     }
   }
 
@@ -931,7 +882,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     let error = Diagnostic::error().with_message(message);
 
     let error = match token {
-      Some(token) => error.with_labels(vec![Label::primary(self.file_id, token.span())]),
+      Some(token) => {
+        error.with_labels(vec![diagnostic::Label::primary(self.file_id, token.span())])
+      },
       None => error,
     };
 
@@ -953,7 +906,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     match stmt {
       Stmt::Expr(expr) => {
         self.expr(expr);
-        self.emit_byte(AlignedByteCode::Drop, expr.end());
+        self.emit_byte(SymbolicByteCode::Drop, expr.end());
       },
       Stmt::ImplicitReturn(expr) => {
         self.expr(expr);
@@ -1031,7 +984,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     // emit error if not at module level
     if self.scope_depth == 1 {
       if let Some(symbol) = symbol {
-        self.emit_byte(AlignedByteCode::Export(symbol), export.end());
+        self.emit_byte(SymbolicByteCode::Export(symbol), export.end());
       }
     } else {
       self.error_at_current("Can only export from the module scope.", None)
@@ -1046,7 +999,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     let class_constant = self.identifier_constant(class_name.str());
 
-    self.emit_byte(AlignedByteCode::Class(class_constant), class_name.end());
+    self.emit_byte(SymbolicByteCode::Class(class_constant), class_name.end());
     self.define_variable(class_constant, class_state, class_name.end());
 
     // set this class as the current class compiler
@@ -1087,7 +1040,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.define_local_variable(SUPER, super_state, span.end);
 
     self.variable_get(class_name);
-    self.emit_byte(AlignedByteCode::Inherit, span.end);
+    self.emit_byte(SymbolicByteCode::Inherit, span.end);
 
     // process the initializer
     let field_line = if let Some(init) = &class.init {
@@ -1109,7 +1062,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self.static_method(static_method);
     }
 
-    self.emit_byte(AlignedByteCode::Drop, class.end());
+    self.emit_byte(SymbolicByteCode::Drop, class.end());
 
     // if we have a super drop the extra scope with super
     self.end_scope(class.end());
@@ -1128,7 +1081,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     class_info.fields.iter().for_each(|f| {
       let constant = self.make_constant(val!(*f));
-      self.emit_byte(AlignedByteCode::Field(constant), line)
+      self.emit_byte(SymbolicByteCode::Field(constant), line)
     })
   }
 
@@ -1146,7 +1099,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .fun_kind = Some(fun_kind);
 
     self.function(method, fun_kind);
-    self.emit_byte(AlignedByteCode::Method(constant), method.end());
+    self.emit_byte(SymbolicByteCode::Method(constant), method.end());
   }
 
   /// Compile a static method
@@ -1163,7 +1116,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .fun_kind = Some(FunKind::StaticMethod);
 
     self.function(static_method, FunKind::StaticMethod);
-    self.emit_byte(AlignedByteCode::StaticMethod(constant), static_method.end());
+    self.emit_byte(
+      SymbolicByteCode::StaticMethod(constant),
+      static_method.end(),
+    );
   }
 
   /// Compile a plain function
@@ -1187,7 +1143,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     match &let_.value {
       Some(v) => self.expr(v),
-      None => self.emit_byte(AlignedByteCode::Nil, let_.name.end()),
+      None => self.emit_byte(SymbolicByteCode::Nil, let_.name.end()),
     }
 
     self.define_variable(variable, var_state, let_.end());
@@ -1228,7 +1184,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       ast::FunBody::Block(block) => compiler.block(block),
       ast::FunBody::Expr(expr) => {
         compiler.expr(expr);
-        compiler.emit_byte(AlignedByteCode::Return, expr.end());
+        compiler.emit_byte(SymbolicByteCode::Return, expr.end());
         ScopeExit::Early
       },
     };
@@ -1250,12 +1206,12 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self.emit_constant(val!(fun), end_line);
     } else {
       let index = self.make_constant(val!(fun));
-      self.emit_byte(AlignedByteCode::Closure(index), end_line);
+      self.emit_byte(SymbolicByteCode::Closure(index), end_line);
 
       // emit capture index instructions
       captures
         .iter()
-        .for_each(|capture| self.emit_byte(AlignedByteCode::CaptureIndex(*capture), end_line));
+        .for_each(|capture| self.emit_byte(SymbolicByteCode::CaptureIndex(*capture), end_line));
     }
   }
 
@@ -1280,21 +1236,21 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     match &import.stem {
       ast::ImportStem::None => {
-        self.emit_byte(AlignedByteCode::Import(path), import.start());
+        self.emit_byte(SymbolicByteCode::Import(path), import.start());
         let (name, _) =
           self.make_identifier(&import.path()[import.path().len() - 1], import.start());
-        self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
+        self.emit_byte(SymbolicByteCode::DefineGlobal(name), import.end());
       },
       ast::ImportStem::Rename(rename) => {
-        self.emit_byte(AlignedByteCode::Import(path), import.start());
+        self.emit_byte(SymbolicByteCode::Import(path), import.start());
         let (name, _) = self.make_identifier(rename, import.start());
-        self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
+        self.emit_byte(SymbolicByteCode::DefineGlobal(name), import.end());
       },
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
           let symbol_slot = self.identifier_constant(symbol.symbol.str());
           self.emit_byte(
-            AlignedByteCode::ImportSymbol((path, symbol_slot)),
+            SymbolicByteCode::ImportSymbol((path, symbol_slot)),
             symbol.start(),
           );
 
@@ -1303,7 +1259,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             None => self.make_identifier(&symbol.symbol, import.start()).0,
           };
 
-          self.emit_byte(AlignedByteCode::DefineGlobal(name), import.end());
+          self.emit_byte(SymbolicByteCode::DefineGlobal(name), import.end());
         }
       },
     }
@@ -1325,19 +1281,20 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
       // declare the hidden local $iter variable
       self_.declare_local_variable(ITER_VAR);
-      self_.emit_byte(AlignedByteCode::Invoke((iter_method_const, 0)), expr_line);
-      self_.emit_byte(AlignedByteCode::Slot(self_.emit_invoke_id()), expr_line);
+      self_.emit_byte(SymbolicByteCode::Invoke((iter_method_const, 0)), expr_line);
+      self_.emit_byte(SymbolicByteCode::Slot(self_.emit_invoke_id()), expr_line);
       self_.define_local_variable(ITER_VAR, SymbolState::Initialized, expr_line);
 
       let item_line = for_.item.end();
       let item_state = self_.declare_local_variable(for_.item.str());
 
       // initial fill iteration item with nil and define
-      self_.emit_byte(AlignedByteCode::Nil, item_line);
+      self_.emit_byte(SymbolicByteCode::Nil, item_line);
       self_.define_local_variable(for_.item.str(), item_state, item_line);
 
       // mark start of loop
-      let loop_start = self_.current_chunk().instructions().len();
+      let start_label = self_.label_emitter.emit();
+      self_.emit_byte(SymbolicByteCode::Label(start_label), item_line);
 
       // define iterator method constants
       let next_const = self_.string_constant(NEXT);
@@ -1349,10 +1306,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         .expect("Iterator variable was not defined.");
 
       self_.emit_local_get(iterator_state, iterator_variable, expr_line);
-      self_.emit_byte(AlignedByteCode::IterNext(next_const), expr_line);
+      self_.emit_byte(SymbolicByteCode::IterNext(next_const), expr_line);
 
       // check at end of iterator
-      let exit_jump = self_.emit_jump(AlignedByteCode::JumpIfFalse(0), expr_line);
+      let end_label = self_.label_emitter.emit();
+      self_.emit_byte(SymbolicByteCode::JumpIfFalse(end_label), expr_line);
 
       // assign $iter.current to loop variable
       let (loop_variable, loop_state) = self_
@@ -1360,37 +1318,41 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         .expect("Loop variable was not defined.");
 
       self_.emit_local_get(iterator_state, iterator_variable, expr_line);
-      self_.emit_byte(AlignedByteCode::IterCurrent(current_const), expr_line);
+      self_.emit_byte(SymbolicByteCode::IterCurrent(current_const), expr_line);
       self_.emit_local_set(loop_state, loop_variable, expr_line);
-      self_.emit_byte(AlignedByteCode::Drop, expr_line);
+      self_.emit_byte(SymbolicByteCode::Drop, expr_line);
 
       // loop body
-      let loop_info = self_.loop_scope(for_.body.end(), loop_start, &for_.body.symbols, |self_| {
-        self_.block(&for_.body);
-      });
-      self_.emit_loop(loop_start, for_.end());
-
-      // loop back to top
-      self_.patch_jump(exit_jump);
-      self_.patch_breaks(&loop_info);
+      self_.loop_scope(
+        for_.body.end(),
+        start_label,
+        end_label,
+        &for_.body.symbols,
+        |self_| {
+          self_.block(&for_.body);
+        },
+      );
     });
   }
 
   /// Compile a while loop
   fn while_(&mut self, while_: &'a ast::While<'src>) {
-    let loop_start = self.current_chunk().instructions().len();
+    let start_label = self.label_emitter.emit();
+    self.emit_byte(SymbolicByteCode::Label(start_label), while_.cond.start());
 
     self.expr(&while_.cond);
-    let exit_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), while_.cond.end());
+    let end_label = self.label_emitter.emit();
+    self.emit_byte(SymbolicByteCode::JumpIfFalse(end_label), while_.cond.end());
 
-    let loop_info = self.loop_scope(while_.end(), loop_start, &while_.body.symbols, |self_| {
-      self_.block(&while_.body);
-    });
-
-    self.emit_loop(loop_start, while_.end());
-
-    self.patch_jump(exit_jump);
-    self.patch_breaks(&loop_info);
+    self.loop_scope(
+      while_.end(),
+      start_label,
+      end_label,
+      &while_.body.symbols,
+      |self_| {
+        self_.block(&while_.body);
+      },
+    );
   }
 
   /// Compile a if statement
@@ -1398,7 +1360,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.expr(&if_.cond);
 
     // parse then branch
-    let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), if_.cond.end());
+    let then_label = self.label_emitter.emit();
+    self.emit_byte(SymbolicByteCode::JumpIfFalse(then_label), if_.cond.end());
 
     self.scope(if_.body.end(), &if_.body.symbols, |self_| {
       self_.block(&if_.body);
@@ -1407,8 +1370,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     match &if_.else_ {
       Some(else_) => {
         // emit else jump
-        let else_jump = self.emit_jump(AlignedByteCode::Jump(0), if_.body.end());
-        self.patch_jump(then_jump);
+        let else_label = self.label_emitter.emit();
+        self.emit_byte(SymbolicByteCode::Jump(else_label), if_.body.end());
+        self.emit_byte(SymbolicByteCode::Label(then_label), if_.body.end());
 
         match else_ {
           ast::Else::If(if_) => self.if_(if_),
@@ -1417,9 +1381,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           }),
         }
 
-        self.patch_jump(else_jump);
+        self.emit_byte(SymbolicByteCode::Label(else_label), if_.body.end());
       },
-      None => self.patch_jump(then_jump),
+      None => self.emit_byte(SymbolicByteCode::Label(then_label), if_.body.end()),
     }
   }
 
@@ -1439,7 +1403,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           }
 
           // emit for the actual launch
-          self.emit_byte(AlignedByteCode::Launch(call.args.len() as u8), call.end());
+          self.emit_byte(SymbolicByteCode::Launch(call.args.len() as u8), call.end());
         },
         _ => unreachable!("Unexpected expression after launch."),
       },
@@ -1452,7 +1416,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     match &return_.value {
       Some(v) => {
         self.expr(v);
-        self.emit_byte(AlignedByteCode::Return, v.end());
+        self.emit_byte(SymbolicByteCode::Return, v.end());
       },
       None => self.emit_return(return_.start()),
     }
@@ -1466,40 +1430,51 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .expect("Parser should have caught the loop constraint");
 
     self.drop_locals(continue_.end(), loop_info.scope_depth);
-    self.emit_loop(loop_info.start, continue_.start());
+    self.emit_byte(SymbolicByteCode::Loop(loop_info.start), continue_.start());
     self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a return statement
   fn break_(&mut self, break_: &Token) {
-    let mut loop_info = self
+    let loop_info = self
       .loop_attributes
       .expect("Parser should have caught the loop constraint");
 
     self.drop_locals(break_.end(), loop_info.scope_depth);
-    let offset = self.emit_jump(AlignedByteCode::Jump(0), break_.start());
-    loop_info.breaks.push(offset);
+    self.emit_byte(SymbolicByteCode::Jump(loop_info.end), break_.start());
     self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a try catch block
   fn try_(&mut self, try_: &'a ast::Try<'src>) {
-    let start = self.current_chunk().instructions().len();
-    let slots = self.slots as usize;
+    if self.slots as usize > std::u16::MAX as usize {
+      self.error("Stack too deep for exception catch.", None);
+    }
+    let slots = self.slots as u16;
+    let catch_label = self.label_emitter.emit();
+
+    self.emit_byte(
+      SymbolicByteCode::PushHandler((slots, catch_label)),
+      try_.block.end(),
+    );
 
     self.scope(try_.block.end(), &try_.block.symbols, |self_| {
       self_.block(&try_.block);
     });
 
-    let catch_jump = self.emit_jump(AlignedByteCode::Jump(0), try_.block.end());
-    let end = self.current_chunk().instructions().len();
+    self.emit_byte(SymbolicByteCode::PopHandler, try_.block.end());
+
+    let end_label = self.label_emitter.emit();
+    self.emit_byte(SymbolicByteCode::Jump(end_label), try_.block.end());
+    self.emit_byte(SymbolicByteCode::Label(catch_label), try_.catch.start());
 
     self.scope(try_.catch.end(), &try_.catch.symbols, |self_| {
       self_.block(&try_.catch);
     });
 
-    self.patch_jump(catch_jump);
-    self.fun.add_try(TryBlock::new(start, end, slots));
+    self.emit_byte(SymbolicByteCode::PopHandler, try_.catch.end());
+
+    self.emit_byte(SymbolicByteCode::Label(end_label), try_.catch.end());
   }
 
   /// Compile a block
@@ -1530,9 +1505,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               self.expr(&index.index);
 
               let name = self.identifier_constant(INDEX_SET);
-              self.emit_byte(AlignedByteCode::Invoke((name, 2)), assign.rhs.end());
+              self.emit_byte(SymbolicByteCode::Invoke((name, 2)), assign.rhs.end());
               self.emit_byte(
-                AlignedByteCode::Slot(self.emit_invoke_id()),
+                SymbolicByteCode::Slot(self.emit_invoke_id()),
                 assign.rhs.end(),
               )
             },
@@ -1551,8 +1526,11 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               let name = self.identifier_constant(access.prop.str());
 
               self.expr(&assign.rhs);
-              self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
-              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
+              self.emit_byte(SymbolicByteCode::SetProperty(name), access.end());
+              self.emit_byte(
+                SymbolicByteCode::Slot(self.emit_property_id()),
+                access.end(),
+              );
             },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
@@ -1580,9 +1558,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             let name = self.identifier_constant(property);
 
             self.expr(&assign.rhs);
-            self.emit_byte(AlignedByteCode::SetProperty(name), instance_access.end());
+            self.emit_byte(SymbolicByteCode::SetProperty(name), instance_access.end());
             self.emit_byte(
-              AlignedByteCode::Slot(self.emit_property_id()),
+              SymbolicByteCode::Slot(self.emit_property_id()),
               instance_access.end(),
             );
           },
@@ -1610,10 +1588,10 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               self.expr(&index.index);
 
               let name = self.identifier_constant(INDEX_GET);
-              self.emit_byte(AlignedByteCode::Invoke((name, 1)), index.end());
-              self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), index.end());
+              self.emit_byte(SymbolicByteCode::Invoke((name, 1)), index.end());
+              self.emit_byte(SymbolicByteCode::Slot(self.emit_invoke_id()), index.end());
 
-              self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+              self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
             },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
@@ -1629,10 +1607,13 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
               let name = self.identifier_constant(access.prop.str());
 
-              self.emit_byte(AlignedByteCode::GetProperty(name), access.end());
-              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
+              self.emit_byte(SymbolicByteCode::GetProperty(name), access.end());
+              self.emit_byte(
+                SymbolicByteCode::Slot(self.emit_property_id()),
+                access.end(),
+              );
 
-              self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+              self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
             },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of send.")
@@ -1643,7 +1624,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
           Primary::Ident(name) => {
             self.variable_get(name);
 
-            self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+            self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
           },
           Primary::InstanceAccess(instance_access) => {
             self.instance_access_self(instance_access);
@@ -1660,13 +1641,13 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
             let name = self.identifier_constant(instance_access.property());
 
-            self.emit_byte(AlignedByteCode::GetProperty(name), instance_access.end());
+            self.emit_byte(SymbolicByteCode::GetProperty(name), instance_access.end());
             self.emit_byte(
-              AlignedByteCode::Slot(self.emit_property_id()),
+              SymbolicByteCode::Slot(self.emit_property_id()),
               instance_access.end(),
             );
 
-            self.emit_byte(AlignedByteCode::Send, send.lhs.end())
+            self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
           },
           _ => unreachable!("Unexpected expression on left hand side of assignment."),
         },
@@ -1677,15 +1658,15 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile a binary assignment expression
   fn assign_binary(&mut self, assign_binary: &'a ast::AssignBinary<'src>) {
-    let binary_op = |comp: &mut Compiler<'a, 'src, FileId>| match &assign_binary.op {
-      ast::AssignBinaryOp::Add => comp.emit_byte(AlignedByteCode::Add, assign_binary.rhs.end()),
+    let binary_op = |comp: &mut Compiler<'a, 'src>| match &assign_binary.op {
+      ast::AssignBinaryOp::Add => comp.emit_byte(SymbolicByteCode::Add, assign_binary.rhs.end()),
       ast::AssignBinaryOp::Sub => {
-        comp.emit_byte(AlignedByteCode::Subtract, assign_binary.rhs.end())
+        comp.emit_byte(SymbolicByteCode::Subtract, assign_binary.rhs.end())
       },
       ast::AssignBinaryOp::Mul => {
-        comp.emit_byte(AlignedByteCode::Multiply, assign_binary.rhs.end())
+        comp.emit_byte(SymbolicByteCode::Multiply, assign_binary.rhs.end())
       },
-      ast::AssignBinaryOp::Div => comp.emit_byte(AlignedByteCode::Divide, assign_binary.rhs.end()),
+      ast::AssignBinaryOp::Div => comp.emit_byte(SymbolicByteCode::Divide, assign_binary.rhs.end()),
     };
 
     match &assign_binary.lhs {
@@ -1698,14 +1679,14 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
           match last {
             Trailer::Index(index) => {
-              self.emit_byte(AlignedByteCode::Dup, assign_binary.lhs.end());
+              self.emit_byte(SymbolicByteCode::Dup, assign_binary.lhs.end());
 
               self.expr(&index.index);
 
               let name = self.identifier_constant(INDEX_GET);
-              self.emit_byte(AlignedByteCode::Invoke((name, 1)), assign_binary.rhs.end());
+              self.emit_byte(SymbolicByteCode::Invoke((name, 1)), assign_binary.rhs.end());
               self.emit_byte(
-                AlignedByteCode::Slot(self.emit_invoke_id()),
+                SymbolicByteCode::Slot(self.emit_invoke_id()),
                 assign_binary.rhs.end(),
               );
 
@@ -1715,9 +1696,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
               self.expr(&index.index);
 
               let name = self.identifier_constant(INDEX_SET);
-              self.emit_byte(AlignedByteCode::Invoke((name, 2)), assign_binary.rhs.end());
+              self.emit_byte(SymbolicByteCode::Invoke((name, 2)), assign_binary.rhs.end());
               self.emit_byte(
-                AlignedByteCode::Slot(self.emit_invoke_id()),
+                SymbolicByteCode::Slot(self.emit_invoke_id()),
                 assign_binary.rhs.end(),
               );
             },
@@ -1735,15 +1716,21 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
               let name = self.identifier_constant(access.prop.str());
 
-              self.emit_byte(AlignedByteCode::Dup, access.end());
-              self.emit_byte(AlignedByteCode::GetProperty(name), access.end());
-              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
+              self.emit_byte(SymbolicByteCode::Dup, access.end());
+              self.emit_byte(SymbolicByteCode::GetProperty(name), access.end());
+              self.emit_byte(
+                SymbolicByteCode::Slot(self.emit_property_id()),
+                access.end(),
+              );
 
               self.expr(&assign_binary.rhs);
               binary_op(self);
 
-              self.emit_byte(AlignedByteCode::SetProperty(name), access.end());
-              self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
+              self.emit_byte(SymbolicByteCode::SetProperty(name), access.end());
+              self.emit_byte(
+                SymbolicByteCode::Slot(self.emit_property_id()),
+                access.end(),
+              );
             },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
@@ -1772,19 +1759,19 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
             let name = self.identifier_constant(property);
 
-            self.emit_byte(AlignedByteCode::Dup, instance_access.end());
-            self.emit_byte(AlignedByteCode::GetProperty(name), instance_access.end());
+            self.emit_byte(SymbolicByteCode::Dup, instance_access.end());
+            self.emit_byte(SymbolicByteCode::GetProperty(name), instance_access.end());
             self.emit_byte(
-              AlignedByteCode::Slot(self.emit_property_id()),
+              SymbolicByteCode::Slot(self.emit_property_id()),
               instance_access.end(),
             );
 
             self.expr(&assign_binary.rhs);
             binary_op(self);
 
-            self.emit_byte(AlignedByteCode::SetProperty(name), instance_access.end());
+            self.emit_byte(SymbolicByteCode::SetProperty(name), instance_access.end());
             self.emit_byte(
-              AlignedByteCode::Slot(self.emit_property_id()),
+              SymbolicByteCode::Slot(self.emit_property_id()),
               instance_access.end(),
             );
           },
@@ -1800,15 +1787,20 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.expr(&ternary.cond);
 
     // parse then branch
-    let then_jump = self.emit_jump(AlignedByteCode::JumpIfFalse(0), ternary.cond.end());
+    let then_label = self.label_emitter.emit();
+    self.emit_byte(
+      SymbolicByteCode::JumpIfFalse(then_label),
+      ternary.cond.end(),
+    );
     self.expr(&ternary.then);
 
     // emit else jump
-    let else_jump = self.emit_jump(AlignedByteCode::Jump(0), ternary.then.end());
-    self.patch_jump(then_jump);
+    let else_label = self.label_emitter.emit();
+    self.emit_byte(SymbolicByteCode::Jump(else_label), ternary.then.end());
+    self.emit_byte(SymbolicByteCode::Label(then_label), ternary.then.end());
 
     self.expr(&ternary.else_);
-    self.patch_jump(else_jump);
+    self.emit_byte(SymbolicByteCode::Label(else_label), ternary.then.end());
   }
 
   /// Compile a binary expression
@@ -1823,25 +1815,27 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
     // emit for binary operation
     match &binary.op {
-      ast::BinaryOp::Add => self.emit_byte(AlignedByteCode::Add, binary.rhs.end()),
-      ast::BinaryOp::Sub => self.emit_byte(AlignedByteCode::Subtract, binary.rhs.end()),
-      ast::BinaryOp::Mul => self.emit_byte(AlignedByteCode::Multiply, binary.rhs.end()),
-      ast::BinaryOp::Div => self.emit_byte(AlignedByteCode::Divide, binary.rhs.end()),
-      ast::BinaryOp::Lt => self.emit_byte(AlignedByteCode::Less, binary.rhs.end()),
-      ast::BinaryOp::LtEq => self.emit_byte(AlignedByteCode::LessEqual, binary.rhs.end()),
-      ast::BinaryOp::Gt => self.emit_byte(AlignedByteCode::Greater, binary.rhs.end()),
-      ast::BinaryOp::GtEq => self.emit_byte(AlignedByteCode::GreaterEqual, binary.rhs.end()),
-      ast::BinaryOp::Eq => self.emit_byte(AlignedByteCode::Equal, binary.rhs.end()),
-      ast::BinaryOp::Ne => self.emit_byte(AlignedByteCode::NotEqual, binary.rhs.end()),
+      ast::BinaryOp::Add => self.emit_byte(SymbolicByteCode::Add, binary.rhs.end()),
+      ast::BinaryOp::Sub => self.emit_byte(SymbolicByteCode::Subtract, binary.rhs.end()),
+      ast::BinaryOp::Mul => self.emit_byte(SymbolicByteCode::Multiply, binary.rhs.end()),
+      ast::BinaryOp::Div => self.emit_byte(SymbolicByteCode::Divide, binary.rhs.end()),
+      ast::BinaryOp::Lt => self.emit_byte(SymbolicByteCode::Less, binary.rhs.end()),
+      ast::BinaryOp::LtEq => self.emit_byte(SymbolicByteCode::LessEqual, binary.rhs.end()),
+      ast::BinaryOp::Gt => self.emit_byte(SymbolicByteCode::Greater, binary.rhs.end()),
+      ast::BinaryOp::GtEq => self.emit_byte(SymbolicByteCode::GreaterEqual, binary.rhs.end()),
+      ast::BinaryOp::Eq => self.emit_byte(SymbolicByteCode::Equal, binary.rhs.end()),
+      ast::BinaryOp::Ne => self.emit_byte(SymbolicByteCode::NotEqual, binary.rhs.end()),
       ast::BinaryOp::And => {
-        let and_jump = self.emit_jump(AlignedByteCode::And(0), binary.lhs.end());
+        let and_label = self.label_emitter.emit();
+        self.emit_byte(SymbolicByteCode::And(and_label), binary.lhs.end());
         self.expr(&binary.rhs);
-        self.patch_jump(and_jump);
+        self.emit_byte(SymbolicByteCode::Label(and_label), binary.rhs.end());
       },
       ast::BinaryOp::Or => {
-        let or_jump = self.emit_jump(AlignedByteCode::Or(0), binary.lhs.end());
+        let or_label = self.label_emitter.emit();
+        self.emit_byte(SymbolicByteCode::Or(or_label), binary.lhs.end());
         self.expr(&binary.rhs);
-        self.patch_jump(or_jump);
+        self.emit_byte(SymbolicByteCode::Label(or_label), binary.rhs.end());
       },
     }
   }
@@ -1851,9 +1845,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.expr(&unary.expr);
 
     match &unary.op {
-      ast::UnaryOp::Not => self.emit_byte(AlignedByteCode::Not, unary.expr.end()),
-      ast::UnaryOp::Negate => self.emit_byte(AlignedByteCode::Negate, unary.expr.end()),
-      ast::UnaryOp::Receive => self.emit_byte(AlignedByteCode::Receive, unary.expr.end()),
+      ast::UnaryOp::Not => self.emit_byte(SymbolicByteCode::Not, unary.expr.end()),
+      ast::UnaryOp::Negate => self.emit_byte(SymbolicByteCode::Negate, unary.expr.end()),
+      ast::UnaryOp::Receive => self.emit_byte(SymbolicByteCode::Receive, unary.expr.end()),
     }
   }
 
@@ -1863,7 +1857,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self.expr(expr);
     }
 
-    self.emit_byte(AlignedByteCode::Call(call.args.len() as u8), call.end());
+    self.emit_byte(SymbolicByteCode::Call(call.args.len() as u8), call.end());
     false
   }
 
@@ -1872,8 +1866,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     self.expr(&index.index);
 
     let name = self.identifier_constant(INDEX_GET);
-    self.emit_byte(AlignedByteCode::Invoke((name, 1)), index.end());
-    self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), index.end());
+    self.emit_byte(SymbolicByteCode::Invoke((name, 1)), index.end());
+    self.emit_byte(SymbolicByteCode::Slot(self.emit_invoke_id()), index.end());
 
     false
   }
@@ -1889,20 +1883,26 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
             self.expr(expr);
           }
           self.emit_byte(
-            AlignedByteCode::Invoke((name, call.args.len() as u8)),
+            SymbolicByteCode::Invoke((name, call.args.len() as u8)),
             trailer.end(),
           );
-          self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), trailer.end());
+          self.emit_byte(SymbolicByteCode::Slot(self.emit_invoke_id()), trailer.end());
           true
         } else {
-          self.emit_byte(AlignedByteCode::GetProperty(name), access.prop.end());
-          self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
+          self.emit_byte(SymbolicByteCode::GetProperty(name), access.prop.end());
+          self.emit_byte(
+            SymbolicByteCode::Slot(self.emit_property_id()),
+            access.end(),
+          );
           false
         }
       },
       None => {
-        self.emit_byte(AlignedByteCode::GetProperty(name), access.prop.end());
-        self.emit_byte(AlignedByteCode::Slot(self.emit_property_id()), access.end());
+        self.emit_byte(SymbolicByteCode::GetProperty(name), access.prop.end());
+        self.emit_byte(
+          SymbolicByteCode::Slot(self.emit_property_id()),
+          access.end(),
+        );
         false
       },
     }
@@ -1936,9 +1936,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     match &channel.expr {
       Some(expr) => {
         self.expr(expr);
-        self.emit_byte(AlignedByteCode::BufferedChannel, channel.end());
+        self.emit_byte(SymbolicByteCode::BufferedChannel, channel.end());
       },
-      None => self.emit_byte(AlignedByteCode::Channel, channel.end()),
+      None => self.emit_byte(SymbolicByteCode::Channel, channel.end()),
     }
 
     false
@@ -1946,19 +1946,19 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
   /// Compile a true token
   fn true_(&mut self, true_: &Token) -> bool {
-    self.emit_byte(AlignedByteCode::True, true_.end());
+    self.emit_byte(SymbolicByteCode::True, true_.end());
     false
   }
 
   /// Compile a false token
   fn false_(&mut self, false_: &Token) -> bool {
-    self.emit_byte(AlignedByteCode::False, false_.end());
+    self.emit_byte(SymbolicByteCode::False, false_.end());
     false
   }
 
   /// Compile a nil token
   fn nil(&mut self, nil: &Token) -> bool {
-    self.emit_byte(AlignedByteCode::Nil, nil.end());
+    self.emit_byte(SymbolicByteCode::Nil, nil.end());
     false
   }
 
@@ -1995,8 +1995,8 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
         },
         ast::StringSegments::Expr(expr) => {
           self.expr(expr);
-          self.emit_byte(AlignedByteCode::Invoke((str_constant, 0)), expr.end());
-          self.emit_byte(AlignedByteCode::Slot(self.emit_invoke_id()), expr.end());
+          self.emit_byte(SymbolicByteCode::Invoke((str_constant, 0)), expr.end());
+          self.emit_byte(SymbolicByteCode::Slot(self.emit_invoke_id()), expr.end());
         },
       }
     }
@@ -2007,7 +2007,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       .manage_str(interpolation.end.str(), self));
     self.emit_constant(value, interpolation.end.end());
     self.emit_byte(
-      AlignedByteCode::Interpolate((interpolation.segments.len() + 2) as u16),
+      SymbolicByteCode::Interpolate((interpolation.segments.len() + 2) as u16),
       interpolation.end(),
     );
 
@@ -2025,9 +2025,9 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
     if self.instance_access_self(instance_access) {
       let name = self.identifier_constant(instance_access.property());
 
-      self.emit_byte(AlignedByteCode::GetProperty(name), instance_access.end());
+      self.emit_byte(SymbolicByteCode::GetProperty(name), instance_access.end());
       self.emit_byte(
-        AlignedByteCode::Slot(self.emit_property_id()),
+        SymbolicByteCode::Slot(self.emit_property_id()),
         instance_access.end(),
       );
     }
@@ -2117,25 +2117,25 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
 
           self.variable_get(&super_.super_);
           self.emit_byte(
-            AlignedByteCode::SuperInvoke((name, call.args.len() as u8)),
+            SymbolicByteCode::SuperInvoke((name, call.args.len() as u8)),
             super_.access.end(),
           );
           self.emit_byte(
-            AlignedByteCode::Slot(self.emit_invoke_id()),
+            SymbolicByteCode::Slot(self.emit_invoke_id()),
             super_.access.end(),
           );
           true
         },
         _ => {
           self.variable_get(&super_.super_);
-          self.emit_byte(AlignedByteCode::GetSuper(name), super_.end());
+          self.emit_byte(SymbolicByteCode::GetSuper(name), super_.end());
           false
         },
       },
       None => {
         self.variable_get(&super_.super_);
 
-        self.emit_byte(AlignedByteCode::GetSuper(name), super_.access.end());
+        self.emit_byte(SymbolicByteCode::GetSuper(name), super_.access.end());
         false
       },
     }
@@ -2153,7 +2153,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self.expr(item);
     }
 
-    self.emit_byte(AlignedByteCode::List(list.items.len() as u16), list.end());
+    self.emit_byte(SymbolicByteCode::List(list.items.len() as u16), list.end());
 
     false
   }
@@ -2164,7 +2164,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self.expr(item);
     }
 
-    self.emit_byte(AlignedByteCode::Tuple(list.items.len() as u16), list.end());
+    self.emit_byte(SymbolicByteCode::Tuple(list.items.len() as u16), list.end());
 
     false
   }
@@ -2176,7 +2176,7 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
       self.expr(value);
     }
 
-    self.emit_byte(AlignedByteCode::Map(map.entries.len() as u16), map.end());
+    self.emit_byte(SymbolicByteCode::Map(map.entries.len() as u16), map.end());
 
     false
   }
@@ -2193,13 +2193,13 @@ impl<'a, 'src: 'a, FileId: Copy> Compiler<'a, 'src, FileId> {
   fn visit_error(&mut self, _: &[Token]) {}
 }
 
-impl<'a, 'src: 'a, FileId> GcContext for Compiler<'a, 'src, FileId> {
+impl<'a, 'src: 'a> GcContext for Compiler<'a, 'src> {
   fn gc(&self) -> RefMut<'_, Allocator> {
     self.gc.borrow_mut()
   }
 }
 
-impl<'a, 'src: 'a, FileId> TraceRoot for Compiler<'a, 'src, FileId> {
+impl<'a, 'src: 'a> TraceRoot for Compiler<'a, 'src> {
   fn trace(&self) {
     match self.enclosing {
       Some(enclosing) => unsafe { enclosing.as_ref().trace() },
@@ -2251,10 +2251,10 @@ impl<'a, 'src: 'a, FileId> TraceRoot for Compiler<'a, 'src, FileId> {
 mod test {
   use super::*;
   use crate::{
-    byte_code::{decode_u16, decode_u32},
+    byte_code::{decode_u16, decode_u32, AlignedByteCode},
     compiler::Parser,
     debug::disassemble_chunk,
-    source::Source,
+    source::{Source, VM_FILE_TEST_ID},
   };
   use laythe_core::{
     hooks::{GcHooks, NoContext},
@@ -2299,7 +2299,7 @@ mod test {
       hooks,
       hooks.manage_str("print"),
       module,
-      AlignedByteCode::Return,
+      SymbolicByteCode::Return,
     );
     hooks.manage_obj(fun)
   }
@@ -2332,7 +2332,7 @@ mod test {
     let src = hooks.manage_str(src);
     hooks.push_root(src);
     let source = Source::new(hooks.manage_str(src));
-    let (ast, line_offsets) = Parser::new(&source, 0).parse();
+    let (ast, line_offsets) = Parser::new(&source, VM_FILE_TEST_ID).parse();
     assert!(ast.is_ok(), "{}", src);
     let mut ast = ast.unwrap();
 
@@ -2340,12 +2340,12 @@ mod test {
 
     let gc = context.replace_gc(Allocator::default());
 
-    assert!(Resolver::new(module, &gc, &source, 0, repl)
+    assert!(Resolver::new(module, &gc, &source, VM_FILE_TEST_ID, repl)
       .resolve(&mut ast)
       .is_ok());
 
     let fake_vm_root: &NoGc = &NO_GC;
-    let compiler = Compiler::new(module, &line_offsets, 0, repl, fake_vm_root, gc);
+    let compiler = Compiler::new(module, &line_offsets, VM_FILE_TEST_ID, repl, fake_vm_root, gc);
     #[cfg(feature = "debug")]
     let compiler = compiler.with_io(io_native());
 
@@ -2651,13 +2651,14 @@ mod test {
       &fun,
       2,
       &vec![
-        AlignedByteCode::Jump(0),
+        AlignedByteCode::PushHandler((1, 4)),
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Jump(1),
+        AlignedByteCode::PopHandler,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
     );
-
-    assert_eq!(fun.has_catch_jump(0), Some((3, 1)));
   }
 
   #[test]
@@ -2678,24 +2679,25 @@ mod test {
       &fun,
       4,
       &vec![
-        AlignedByteCode::Map(0),         // 0
-        AlignedByteCode::GetLocal(1),    // 3
-        AlignedByteCode::Constant(1),    // 5
-        AlignedByteCode::Invoke((2, 1)), // 7
-        AlignedByteCode::Slot(0),        // 7
-        AlignedByteCode::Drop,           // 8
-        AlignedByteCode::Drop,           // 9
-        AlignedByteCode::Jump(8),        // 10
-        AlignedByteCode::GetGlobal(3),   // 13
-        AlignedByteCode::Constant(4),    // 16
-        AlignedByteCode::Call(1),        // 18
-        AlignedByteCode::Drop,           // 20
-        AlignedByteCode::Nil,            // 21
-        AlignedByteCode::Return,         // 22
+        AlignedByteCode::PushHandler((1, 21)),
+        AlignedByteCode::Map(0),
+        AlignedByteCode::GetLocal(1),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Invoke((2, 1)),
+        AlignedByteCode::Slot(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Drop,
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Jump(9),
+        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::Constant(4),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
       ],
     );
-
-    assert_eq!(fun.has_catch_jump(0), Some((20, 1)));
   }
 
   #[test]
@@ -2720,34 +2722,36 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::List(0),        // 0
-        AlignedByteCode::Constant(0),    // 3
-        AlignedByteCode::Invoke((1, 1)), // 5
-        AlignedByteCode::Slot(0),        // 9
-        AlignedByteCode::Drop,           // 13
-        AlignedByteCode::List(0),        // 16
-        AlignedByteCode::Constant(2),    // 19
-        AlignedByteCode::Invoke((1, 1)), // 22
-        AlignedByteCode::Slot(1),        // 26
-        AlignedByteCode::Drop,           // 31
-        AlignedByteCode::Jump(8),        // 32
-        AlignedByteCode::GetGlobal(3),   // 35
-        AlignedByteCode::Constant(4),    // 38
-        AlignedByteCode::Call(1),        // 40
-        AlignedByteCode::Drop,           // 42
-        AlignedByteCode::Jump(8),        // 43
-        AlignedByteCode::GetGlobal(3),   // 46
-        AlignedByteCode::Constant(5),    // 49
-        AlignedByteCode::Call(1),        // 52
-        AlignedByteCode::Drop,           // 54
-        AlignedByteCode::Nil,            // 55
-        AlignedByteCode::Return,         // 56
+        AlignedByteCode::PushHandler((1, 50)),
+        AlignedByteCode::List(0),
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::Invoke((1, 1)),
+        AlignedByteCode::Slot(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::PushHandler((1, 18)),
+        AlignedByteCode::List(0),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Invoke((1, 1)),
+        AlignedByteCode::Slot(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Jump(9),
+        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::Constant(4),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Jump(9),
+        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::Constant(5),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
       ],
     );
-
-    assert_eq!(fun.has_catch_jump(5), Some((42, 1)));
-    assert_eq!(fun.has_catch_jump(31), Some((42, 1)));
-    assert_eq!(fun.has_catch_jump(19), Some((31, 1)));
   }
 
   #[test]
@@ -4032,14 +4036,14 @@ mod test {
       &fun,
       5,
       &vec![
-        AlignedByteCode::Constant(1),     // 1
-        AlignedByteCode::Constant(2),     // 3
-        AlignedByteCode::Constant(3),     // 5
-        AlignedByteCode::Nil,             // 7
-        AlignedByteCode::Map(2),          // 8
-        AlignedByteCode::DefineGlobal(0), // 11
-        AlignedByteCode::Nil,             // 13
-        AlignedByteCode::Return,          // 14
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Constant(3),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Map(2),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
       ],
     );
   }
@@ -4055,14 +4059,14 @@ mod test {
       &fun,
       5,
       &vec![
-        AlignedByteCode::Constant(1),     // 1
-        AlignedByteCode::Constant(2),     // 3
-        AlignedByteCode::Constant(3),     // 5
-        AlignedByteCode::Constant(4),     // 7
-        AlignedByteCode::List(4),         // 9
-        AlignedByteCode::DefineGlobal(0), // 12
-        AlignedByteCode::Nil,             // 14
-        AlignedByteCode::Return,          // 15
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Constant(3),
+        AlignedByteCode::Constant(4),
+        AlignedByteCode::List(4),
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
       ],
     );
   }
@@ -4081,13 +4085,13 @@ mod test {
       &fun,
       2,
       &vec![
-        AlignedByteCode::Constant(1),     // 1
-        AlignedByteCode::BufferedChannel, // 3
-        AlignedByteCode::DefineGlobal(0), // 4
-        AlignedByteCode::Channel,         // 6
-        AlignedByteCode::DefineGlobal(2), // 7
-        AlignedByteCode::Nil,             // 9
-        AlignedByteCode::Return,          // 10
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::BufferedChannel,
+        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::Channel,
+        AlignedByteCode::DefineGlobal(2),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
       ],
     );
   }
@@ -4103,28 +4107,28 @@ mod test {
       &fun,
       5,
       &vec![
-        AlignedByteCode::Constant(0),     // 1   local 1 = [1, 2, 3].iter()
-        AlignedByteCode::Constant(1),     // 3   local 2 =
-        AlignedByteCode::Constant(2),     // 5
-        AlignedByteCode::List(3),         // 7
-        AlignedByteCode::Invoke((3, 0)),  // 10  const 1 = 1
-        AlignedByteCode::Slot(0),         // 10  const 1 = 1
-        AlignedByteCode::Nil,             // 0
-        AlignedByteCode::GetLocal(1),     // 13  const 2 = 2
-        AlignedByteCode::IterNext(4),     // 15  const 3 = 3
-        AlignedByteCode::JumpIfFalse(19), // 17  const 4 = "iter"
-        AlignedByteCode::GetLocal(1),     // 21
-        AlignedByteCode::IterCurrent(5),  // 23  const 6 = "current"
-        AlignedByteCode::SetLocal(2),     // 25
-        AlignedByteCode::Drop,            // 27
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::List(3),
+        AlignedByteCode::Invoke((3, 0)),
+        AlignedByteCode::Slot(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::GetLocal(1),
+        AlignedByteCode::IterNext(4),
+        AlignedByteCode::JumpIfFalse(19),
+        AlignedByteCode::GetLocal(1),
+        AlignedByteCode::IterCurrent(5),
+        AlignedByteCode::SetLocal(2),
+        AlignedByteCode::Drop,
         AlignedByteCode::GetGlobal(6),
-        AlignedByteCode::GetLocal(2), // 29
+        AlignedByteCode::GetLocal(2),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::Loop(27), // 32
-        AlignedByteCode::DropN(2), // 36
-        AlignedByteCode::Nil,      // 38
-        AlignedByteCode::Return,   // 39
+        AlignedByteCode::Loop(27),
+        AlignedByteCode::DropN(2),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
       ],
     );
   }
@@ -4139,27 +4143,27 @@ mod test {
       &fun,
       5,
       &vec![
-        AlignedByteCode::Constant(0),     // 1   local 1 = [1, 2, 3].iter()
-        AlignedByteCode::Constant(1),     // 3   local 2 =
-        AlignedByteCode::Constant(2),     // 5
-        AlignedByteCode::List(3),         // 7
-        AlignedByteCode::Invoke((3, 0)),  // 10  const 1 = 1
-        AlignedByteCode::Slot(0),         // 10  const 1 = 1
-        AlignedByteCode::Nil,             // 0
-        AlignedByteCode::GetLocal(1),     // 13  const 2 = 2
-        AlignedByteCode::IterNext(4),     // 15  const 3 = 3
-        AlignedByteCode::JumpIfFalse(17), // 17  const 4 = "iter"
-        AlignedByteCode::GetLocal(1),     // 21
-        AlignedByteCode::IterCurrent(5),  // 23  const 6 = "current"
-        AlignedByteCode::SetLocal(2),     // 25
-        AlignedByteCode::Drop,            // 27
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::List(3),
+        AlignedByteCode::Invoke((3, 0)),
+        AlignedByteCode::Slot(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::GetLocal(1),
+        AlignedByteCode::IterNext(4),
+        AlignedByteCode::JumpIfFalse(17),
+        AlignedByteCode::GetLocal(1),
+        AlignedByteCode::IterCurrent(5),
+        AlignedByteCode::SetLocal(2),
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(7),
-        AlignedByteCode::Constant(7), // 29
+        AlignedByteCode::Constant(7),
         AlignedByteCode::DropN(2),
-        AlignedByteCode::Loop(25), // 32
-        AlignedByteCode::DropN(2), // 36
-        AlignedByteCode::Nil,      // 38
-        AlignedByteCode::Return,   // 39
+        AlignedByteCode::Loop(25),
+        AlignedByteCode::DropN(2),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
       ],
     );
   }
@@ -4391,21 +4395,21 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::Constant(0),     // 0
-        AlignedByteCode::Constant(1),     // 2
-        AlignedByteCode::Less,            // 4
-        AlignedByteCode::JumpIfFalse(11), // 5
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Less,
+        AlignedByteCode::JumpIfFalse(11),
         AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::Constant(3), // 9
-        AlignedByteCode::Call(1),     // 11
-        AlignedByteCode::Drop,
-        AlignedByteCode::Jump(8), // 12
-        AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::Constant(4), // 17
+        AlignedByteCode::Constant(3),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::Nil,    // 19
-        AlignedByteCode::Return, // 20
+        AlignedByteCode::Jump(8),
+        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::Constant(4),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
       ],
     );
   }

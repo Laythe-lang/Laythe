@@ -3,7 +3,7 @@ use laythe_core::{
   managed::GcStr,
   memory::{Allocator, NO_GC},
 };
-use laythe_vm::{compiler::Parser, source::Source};
+use laythe_vm::{compiler::Parser, source::{Source, VM_FILE_TEST_ID}};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
@@ -30,7 +30,7 @@ fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> GcStr {
 
 fn parse_source(source: GcStr) {
   let source = Source::new(source);
-  let parser = Parser::new(&source, 0);
+  let parser = Parser::new(&source, VM_FILE_TEST_ID);
   parser.parse().0.unwrap();
 }
 

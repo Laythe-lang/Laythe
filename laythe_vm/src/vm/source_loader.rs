@@ -38,7 +38,7 @@ impl Vm {
     module: Gc<Module>,
     source: &Source,
     file_id: VmFileId,
-  ) -> FeResult<GcObj<Fun>, VmFileId> {
+  ) -> FeResult<GcObj<Fun>> {
     let (ast, line_offsets) = Parser::new(source, file_id).parse();
     self
       .files

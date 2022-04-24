@@ -416,6 +416,7 @@ dependencies = [
  "laythe_env",
  "laythe_lib",
  "laythe_native",
+ "variant_count",
 ]
 
 [[package]]
@@ -775,6 +776,16 @@ name = "unicode-xid"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "826e7639553986605ec5979c7dd957c7895e93eabed50ab2ffa7f6128a75097c"
+
+[[package]]
+name = "variant_count"
+version = "1.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aae2faf80ac463422992abf4de234731279c058aaf33171ca70277c98406b124"
+dependencies = [
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "version_check"

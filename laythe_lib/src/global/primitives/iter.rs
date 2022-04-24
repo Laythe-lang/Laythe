@@ -1306,7 +1306,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
         captures
       )));
 
@@ -1358,7 +1358,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
         captures
       )));
 
@@ -1417,7 +1417,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
         captures
       )));
 
@@ -1503,7 +1503,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc())),
+        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
         captures
       )));
 
