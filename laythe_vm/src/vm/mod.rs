@@ -9,7 +9,7 @@ mod ops;
 mod source_loader;
 
 use crate::{
-  byte_code::{AlignedByteCode, ByteCode},
+  byte_code::{SymbolicByteCode, ByteCode},
   cache::InlineCache,
   constants::REPL_MODULE,
   source::{Source, VmFileId, VmFiles},
@@ -148,7 +148,7 @@ impl Vm {
       &hooks,
       hooks.manage_str(PLACEHOLDER_NAME),
       global,
-      AlignedByteCode::Nil,
+      SymbolicByteCode::Nil,
     );
 
     let current_fun = hooks.manage_obj(current_fun);
@@ -317,7 +317,7 @@ impl Vm {
     unsafe {
       loop {
         // get the current instruction
-        let op_code: ByteCode = ByteCode::from(self.read_byte());
+        let op_code: ByteCode = ByteCode::from_byte_unchecked(self.read_byte());
 
         #[cfg(feature = "debug")]
         {
@@ -344,6 +344,8 @@ impl Vm {
           ByteCode::JumpIfFalse => self.op_jump_if_false(),
           ByteCode::Jump => self.op_jump(),
           ByteCode::Loop => self.op_loop(),
+          ByteCode::PushHandler => self.op_push_handler(),
+          ByteCode::PopHandler => self.op_pop_handler(),
           ByteCode::DefineGlobal => self.op_define_global(),
           ByteCode::Box => self.op_box(),
           ByteCode::EmptyBox => self.op_empty_box(),

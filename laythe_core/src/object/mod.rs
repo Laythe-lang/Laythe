@@ -16,7 +16,7 @@ pub use class::Class;
 pub use closure::Closure;
 pub use enumerator::{Enumerate, Enumerator};
 pub use fiber::{Fiber, FiberResult, FiberState, UnwindResult};
-pub use fun::{Fun, FunBuilder, FunKind, TryBlock};
+pub use fun::{Fun, FunBuilder, FunKind};
 // pub use instance::Instance;
 pub use list::List;
 pub use ly_box::LyBox;

@@ -193,7 +193,7 @@ mod test {
   }
 
   mod inline_cache {
-    use crate::{byte_code::AlignedByteCode, cache::InlineCache};
+    use crate::{byte_code::SymbolicByteCode, cache::InlineCache};
     use laythe_core::{
       hooks::{GcHooks, NoContext},
       memory::{Allocator, NO_GC},
@@ -241,7 +241,7 @@ mod test {
       let class = hooks.manage_obj(Class::bare(class_name));
       let module = hooks.manage(Module::new(class, 0));
 
-      let fun = Fun::stub(&hooks, fun_name, module, AlignedByteCode::Nil);
+      let fun = Fun::stub(&hooks, fun_name, module, SymbolicByteCode::Nil);
       let fun = val!(hooks.manage_obj(fun));
 
       assert_eq!(inline_cache.get_invoke_cache(0, class), None);

@@ -1,8 +1,9 @@
-use std::{fmt, io::Write, mem, ptr, usize};
+mod call_frame;
+mod exception_handler;
 
+use self::{call_frame::CallFrame, exception_handler::ExceptionHandler};
 use super::{Channel, Fun, ObjectKind};
 use crate::{
-  call_frame::CallFrame,
   captures::Captures,
   constants::SCRIPT,
   hooks::GcHooks,
@@ -10,6 +11,7 @@ use crate::{
   val,
   value::{Value, VALUE_NIL},
 };
+use std::{fmt, io::Write, mem, ptr, usize};
 
 const INITIAL_FRAME_SIZE: usize = 4;
 
@@ -41,6 +43,9 @@ pub struct Fiber {
 
   /// A stack holding call frames currently in use
   frames: Vec<CallFrame>,
+
+  /// A stack of exception handlers active on this fiber
+  exception_handlers: Vec<ExceptionHandler>,
 
   /// A list of channels executed on this fiber
   channels: Vec<GcObj<Channel>>,
@@ -103,6 +108,7 @@ impl Fiber {
       frames,
       parent,
       channels: vec![],
+      exception_handlers: vec![],
       state: FiberState::Pending,
       error: None,
       frame: current_frame,
@@ -114,6 +120,11 @@ impl Fiber {
   #[inline]
   pub fn frames(&self) -> &[CallFrame] {
     &self.frames
+  }
+
+  /// Get the current number of call frames on this fiber
+  fn frame_count(&self) -> usize {
+    self.frames.len()
   }
 
   /// Get the current frame's stack start
@@ -291,6 +302,37 @@ impl Fiber {
   #[inline]
   pub unsafe fn peek_set(&mut self, distance: usize, val: Value) {
     self.set_val(distance + 1, val)
+  }
+
+  /// Push a new exception handler onto this fiber
+  pub fn push_exception_handler(&mut self, offset: usize, slot_depth: usize) {
+    debug_assert!(
+      offset < self.fun().chunk().instructions().len(),
+      "Offset past end of functions"
+    );
+    debug_assert!(
+      slot_depth < self.fun().max_slots(),
+      "Slot offset more than function maximum"
+    );
+
+    let call_frame_depth = self.frame_count();
+
+    self
+      .exception_handlers
+      .push(ExceptionHandler::new(offset, call_frame_depth, slot_depth));
+  }
+
+  /// Push a new exception handler onto this fiber
+  pub fn pop_exception_handler(&mut self) {
+    assert!(
+      self.exception_handlers.pop().is_some(),
+      "Attempted to pop an empty vec of exception handlers"
+    );
+  }
+
+  /// Do we currently have an active exception handler
+  pub fn exception_handler(&self) -> Option<ExceptionHandler> {
+    self.exception_handlers.last().copied()
   }
 
   /// Load the instruction pointer from the current frame
@@ -486,56 +528,36 @@ impl Fiber {
   /// # Safety
   /// Assumes the function try block slot offset points to a valid offset into the
   /// associated call frames slots
-  pub unsafe fn stack_unwind(&mut self, bottom_frame: usize) -> UnwindResult {
-    let mut stack_top = self.frame().stack_start();
-    let mut drop: usize = 0;
-    let mut catch_offset: Option<usize> = None;
+  pub unsafe fn stack_unwind(&mut self, bottom_frame: Option<usize>) -> UnwindResult {
+    match self.exception_handler() {
+      Some(exception_handler) => {
+        let bottom_frame = bottom_frame.unwrap_or(0);
+        if exception_handler.call_frame_depth() >= bottom_frame {
+          self.frames.truncate(exception_handler.call_frame_depth());
 
-    for frame in self.frames[bottom_frame..].iter().rev() {
-      let fun = frame.fun();
-      let instructions = fun.chunk().instructions();
+          let frame = self
+            .frames
+            .last_mut()
+            .expect("expected at least 1 frame to remain");
 
-      // see if the current functions has a catch block at
-      // this offset
-      let offset = frame.ip().offset_from(instructions.as_ptr()) as usize;
-      if let Some((offset, slots)) = fun.has_catch_jump(offset) {
-        debug_assert!(slots <= fun.max_slots(), "Fun has at most {} slots but attempted to offset at {}", fun.max_slots(), slots);
+          let fun = frame.fun();
+          let instructions = fun.chunk().instructions();
 
-        catch_offset = Some(offset);
-        stack_top = frame.stack_start().add(slots);
-        break;
-      }
+          let stack_top = frame.stack_start().add(exception_handler.slot_depth());
 
-      drop += 1;
-      stack_top = frame.stack_start();
-    }
+          // set the current ip frame and stack pointer
+          frame.store_ip(&instructions[exception_handler.offset()] as *const u8);
+          self.frame = frame as *mut CallFrame;
+          self.stack_top = stack_top;
 
-    match catch_offset {
-      Some(catch_offset) => {
-        // truncate the unwound frames
-        self.frames.truncate(self.frames.len() - drop);
-
-        let frame = self
-          .frames
-          .last_mut()
-          .expect("expected at least 1 frame to remain");
-
-        let fun = frame.fun();
-        let instructions = fun.chunk().instructions();
-
-        // set the current ip frame and stack pointer
-        frame.store_ip(&instructions[catch_offset as usize] as *const u8);
-        self.frame = frame as *mut CallFrame;
-        self.stack_top = stack_top;
-
-        UnwindResult::Handled(frame)
-      },
-      None => {
-        if bottom_frame == 0 {
-          UnwindResult::Unhandled
+          UnwindResult::Handled(frame)
         } else {
           UnwindResult::UnwindStopped
         }
+      },
+      None => match bottom_frame {
+        Some(_) => UnwindResult::UnwindStopped,
+        None => UnwindResult::Unhandled,
       },
     }
   }
@@ -969,6 +991,111 @@ mod test {
   }
 
   #[test]
+  fn push_exception_handler() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let module = test_module(&hooks, "test module");
+
+    let mut builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
+    builder.write_instruction(0, 0);
+    builder.write_instruction(0, 0);
+    builder.write_instruction(0, 0);
+    builder.update_max_slots(3);
+
+    let captures = Captures::new(&hooks, &[]);
+    let fun = hooks.manage_obj(builder.build(&hooks).unwrap());
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .max_slots(4)
+      .instructions(vec![1, 2, 3])
+      .build(&hooks)
+      .expect("Expected to build");
+
+    fiber.push_exception_handler(0, 1);
+
+    unsafe {
+      fiber.push(val!(fun));
+      fiber.push(val!(10.0));
+      fiber.push(val!(true));
+    }
+
+    fiber.push_frame(fun, captures, 2);
+    fiber.push_exception_handler(2, 2);
+
+    assert_eq!(fiber.exception_handlers[0].offset(), 0);
+    assert_eq!(fiber.exception_handlers[0].slot_depth(), 1);
+    assert_eq!(fiber.exception_handlers[0].call_frame_depth(), 1);
+
+    assert_eq!(fiber.exception_handlers[1].offset(), 2);
+    assert_eq!(fiber.exception_handlers[1].slot_depth(), 2);
+    assert_eq!(fiber.exception_handlers[1].call_frame_depth(), 2);
+  }
+
+  #[test]
+  #[should_panic]
+  fn push_exception_handler_offset_out_of_bounds() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .max_slots(3)
+      .instructions(vec![1])
+      .build(&hooks)
+      .expect("Expected to build");
+
+    fiber.push_exception_handler(2, 1);
+  }
+
+  #[test]
+  #[should_panic]
+  fn push_exception_handler_slot_depth_out_of_bounds() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .max_slots(1)
+      .instructions(vec![1, 2, 3])
+      .build(&hooks)
+      .expect("Expected to build");
+
+    fiber.push_exception_handler(2, 3);
+  }
+
+  #[test]
+  fn pop_exception_handler() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .max_slots(4)
+      .instructions(vec![1, 2, 3])
+      .build(&hooks)
+      .expect("Expected to build");
+
+    fiber.push_exception_handler(2, 3);
+
+    assert_eq!(fiber.exception_handlers.len(), 1);
+    fiber.pop_exception_handler();
+    assert_eq!(fiber.exception_handlers.len(), 0);
+  }
+
+  #[test]
+  #[should_panic]
+  fn pop_exception_handler_no_handler_to_pop() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut fiber = FiberBuilder::<u8>::default()
+      .max_slots(4)
+      .instructions(vec![1, 2, 3])
+      .build(&hooks)
+      .expect("Expected to build");
+
+    fiber.pop_exception_handler();
+  }
+
+  #[test]
   fn is_complete() {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
@@ -1031,7 +1158,7 @@ mod test {
     builder.write_instruction(0, 0);
     builder.write_instruction(0, 0);
 
-    let fun = hooks.manage_obj(builder.build(&hooks));
+    let fun = hooks.manage_obj(builder.build(&hooks).unwrap());
     let captures = Captures::new(&hooks, &[]);
 
     let mut fiber = FiberBuilder::<u8>::default()
@@ -1313,7 +1440,7 @@ mod test {
     fiber.push_frame(fun2, captures, 1);
 
     unsafe {
-      assert_eq!(fiber.stack_unwind(0), UnwindResult::Unhandled);
+      assert_eq!(fiber.stack_unwind(None), UnwindResult::Unhandled);
     }
 
     assert_eq!(fiber.frames().len(), 3);
@@ -1326,13 +1453,13 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fun1 = test_fun_builder(&hooks, "first", "first module");
+    let mut fun1 = test_fun_builder::<u8>(&hooks, "first", "first module");
     fun1.update_max_slots(4);
-    let fun1 = hooks.manage_obj(fun1.build(&hooks));
+    let fun1 = hooks.manage_obj(fun1.build(&hooks).unwrap());
 
-    let mut fun2 = test_fun_builder(&hooks, "second", "second module");
+    let mut fun2 = test_fun_builder::<u8>(&hooks, "second", "second module");
     fun2.update_max_slots(3);
-    let fun2 = hooks.manage_obj(fun2.build(&hooks));
+    let fun2 = hooks.manage_obj(fun2.build(&hooks).unwrap());
 
     let captures = Captures::new(&hooks, &[]);
 
@@ -1359,7 +1486,7 @@ mod test {
     fiber.push_frame(fun2, captures, 1);
 
     unsafe {
-      assert_eq!(fiber.stack_unwind(2), UnwindResult::UnwindStopped);
+      assert_eq!(fiber.stack_unwind(Some(2)), UnwindResult::UnwindStopped);
     }
 
     assert_eq!(fiber.frames().len(), 3);

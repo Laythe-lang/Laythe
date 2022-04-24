@@ -138,6 +138,8 @@ impl Trace for VmFile {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct VmFileId(usize);
 
+pub const VM_FILE_TEST_ID: VmFileId = VmFileId(usize::MAX);
+
 /// A file database managed by the virtual machine
 #[derive(Default)]
 pub struct VmFiles {

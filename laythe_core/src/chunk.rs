@@ -3,16 +3,19 @@ use crate::managed::{Array, DebugWrap};
 use crate::{impl_debug_heap, impl_trace};
 use crate::{managed::DebugHeap, managed::Trace, value::Value};
 use std::cmp;
+use std::fmt::Debug;
 
 /// An object that can be encoded into a byte buffer
-pub trait Encode {
+pub trait Encode: Sized {
+  type Error: Debug;
+
   /// consume the object and return the number of bytes written to the buffer
-  fn encode(self, buf: &mut Vec<u8>) -> u32;
+  fn encode(data: Vec<Self>, lines: Vec<Line>) -> Result<(Vec<u8>, Vec<Line>), Self::Error>;
 }
 
 /// Represent tokens on a line
 #[derive(Debug, Clone, Copy, PartialEq)]
-struct Line {
+pub struct Line {
   /// Line number
   pub line: u32,
 
@@ -22,7 +25,7 @@ struct Line {
 
 impl Line {
   /// Create a new line
-  fn new(line: u32, offset: u32) -> Line {
+  pub fn new(line: u32, offset: u32) -> Line {
     Line { line, offset }
   }
 }
@@ -36,9 +39,9 @@ impl_debug_heap!(Line);
 /// Represents a chunk of code
 /// A mutable builder for a final immutable chunk
 #[derive(Default)]
-pub struct ChunkBuilder {
+pub struct ChunkBuilder<T> {
   /// instruction in this code chunk
-  instructions: Vec<u8>,
+  instructions: Vec<T>,
 
   /// constants in this code chunk
   constants: Vec<Value>,
@@ -47,27 +50,27 @@ pub struct ChunkBuilder {
   lines: Vec<Line>,
 }
 
-impl ChunkBuilder {
+impl<T> ChunkBuilder<T> {
   /// instruction in this code chunk
   #[inline]
-  pub fn instructions(&self) -> &[u8] {
+  pub fn instructions(&self) -> &[T] {
     &self.instructions
   }
 
   /// Write an instruction to this chunk
   #[inline]
-  pub fn write_instruction<T: Encode>(&mut self, item: T, line: u32) {
-    let delta = item.encode(&mut self.instructions);
+  pub fn write_instruction(&mut self, instruction: T, line: u32) {
+    self.instructions.push(instruction);
     let len = self.instructions.len() as u32;
 
     match self.lines.last_mut() {
       Some(last_line) => {
         if last_line.line == line {
-          last_line.offset += delta;
+          last_line.offset = len;
         } else {
           self.lines.push(Line::new(line, len));
         }
-      }
+      },
       None => self.lines.push(Line::new(line, len)),
     }
   }
@@ -75,8 +78,15 @@ impl ChunkBuilder {
   /// Patch an existing instruction in this check with
   /// a new value
   #[inline]
-  pub fn patch_instruction(&mut self, index: usize, byte: u8) {
-    self.instructions[index] = byte
+  pub fn patch_instruction(&mut self, index: usize, instruction: T) {
+    self.instructions[index] = instruction
+  }
+
+  /// Retrieve a constant in the constants table at
+  /// the provided offset
+  #[inline]
+  pub fn get_constant(&self, slot: usize) -> Value {
+    self.constants[slot]
   }
 
   /// Add a constant to this chunk
@@ -91,14 +101,14 @@ impl ChunkBuilder {
   /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);
   ///
-  /// let mut builder = ChunkBuilder::default();
+  /// let mut builder = ChunkBuilder::<u8>::default();
   /// let index_1 = builder.add_constant(val!(10.4));
   /// let index_2 = builder.add_constant(val!(5.2));
   ///
   /// assert_eq!(index_1, 0);
   /// assert_eq!(index_2, 1);
   ///
-  /// let chunk = builder.build(&hooks);
+  /// let chunk = builder.build(&hooks).unwrap();
   ///
   /// assert_eq!(chunk.get_constant(index_1), val!(10.4));
   /// assert_eq!(chunk.get_constant(index_2), val!(5.2));
@@ -109,26 +119,57 @@ impl ChunkBuilder {
     self.constants.len() - 1
   }
 
-  /// Build the final chunk from this builder. Consumes this
-  /// chunk builder in the process
-  pub fn build(self, hooks: &GcHooks) -> Chunk {
-    let instructions = hooks.manage(&*self.instructions);
-    hooks.push_root(instructions);
-    let constants = hooks.manage(&*self.constants);
-    hooks.push_root(constants);
-    let lines = hooks.manage(&*self.lines);
+  /// Get the line number at a token offset
+  ///
+  /// # Panics
+  ///
+  /// This method panics if an offset is past the last instruction
+  ///
+  /// ```rust,should_panic
+  /// use laythe_core::chunk::ChunkBuilder;
+  /// use laythe_core::hooks::{NoContext, GcHooks};
+  ///
+  /// let mut context = NoContext::default();
+  /// let hooks = GcHooks::new(&mut context);
+  ///
+  /// let builder = ChunkBuilder::<u8>::default();
+  /// let chunk = builder.build(&hooks).unwrap();
+  /// chunk.get_line(3);
+  /// ```
+  pub fn get_line(&self, offset: usize) -> u32 {
+    let result = self
+      .lines
+      .binary_search_by_key(&(offset), |line| line.offset as usize);
 
-    hooks.pop_roots(2);
-
-    Chunk {
-      instructions,
-      constants,
-      lines,
+    match result {
+      Ok(index) => self.lines[index].line,
+      Err(index) => self.lines[cmp::min(index, self.lines.len() - 1)].line,
     }
   }
 }
 
-impl Trace for ChunkBuilder {
+impl<T: Encode> ChunkBuilder<T> {
+  /// Build the final chunk from this builder. Consumes this
+  /// chunk builder in the process
+  pub fn build(self, hooks: &GcHooks) -> Result<Chunk, T::Error> {
+    let (buffer, lines) = T::encode(self.instructions, self.lines)?;
+
+    let instructions = hooks.manage(&*buffer);
+    hooks.push_root(instructions);
+    let constants = hooks.manage(&*self.constants);
+    hooks.push_root(constants);
+    let lines = hooks.manage(&*lines);
+    hooks.pop_roots(2);
+
+    Ok(Chunk {
+      instructions,
+      constants,
+      lines,
+    })
+  }
+}
+
+impl<T> Trace for ChunkBuilder<T> {
   fn trace(&self) {
     self.constants.iter().for_each(|constant| constant.trace());
   }
@@ -141,7 +182,7 @@ impl Trace for ChunkBuilder {
   }
 }
 
-impl DebugHeap for ChunkBuilder {
+impl<T: Debug> DebugHeap for ChunkBuilder<T> {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
     f.debug_struct("ChunkBuilder")
       .field("instructions", &self.instructions)
@@ -202,8 +243,8 @@ impl Chunk {
   /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);
   ///
-  /// let builder = ChunkBuilder::default();
-  /// let chunk = builder.build(&hooks);
+  /// let builder = ChunkBuilder::<u8>::default();
+  /// let chunk = builder.build(&hooks).unwrap();
   /// chunk.get_line(3);
   /// ```
   pub fn get_line(&self, offset: usize) -> u32 {
@@ -245,12 +286,20 @@ impl DebugHeap for Chunk {
 #[cfg(test)]
 mod test {
   use super::*;
+
+  #[derive(Default)]
   struct Encodable();
 
   impl Encode for Encodable {
-    fn encode(self, buf: &mut Vec<u8>) -> u32 {
-      buf.push(7);
-      1
+    type Error = ();
+
+    fn encode(data: Vec<Self>, lines: Vec<Line>) -> Result<(Vec<u8>, Vec<Line>), Self::Error> {
+      let mut encoded = Vec::with_capacity(data.len());
+      for _ in data {
+        encoded.push(7)
+      }
+
+      Ok((encoded, lines))
     }
   }
 
@@ -272,25 +321,24 @@ mod test {
 
     #[test]
     fn default() {
-      let chunk = ChunkBuilder::default();
+      let chunk = ChunkBuilder::<u8>::default();
       assert_eq!(chunk.instructions.len(), 00);
       assert_eq!(chunk.constants.len(), 0);
     }
 
     #[test]
     fn write_instruction() {
-      let mut chunk = ChunkBuilder::default();
+      let mut chunk = ChunkBuilder::<Encodable>::default();
       chunk.write_instruction(Encodable(), 0);
 
       assert_eq!(chunk.instructions.len(), 1);
-      assert_eq!(chunk.instructions[0], 7)
     }
 
     #[test]
     fn add_constant() {
       use crate::value::VALUE_NIL;
 
-      let mut chunk = ChunkBuilder::default();
+      let mut chunk = ChunkBuilder::<u8>::default();
       let index = chunk.add_constant(VALUE_NIL);
 
       assert_eq!(index, 0);
@@ -314,7 +362,8 @@ mod test {
 
       let mut builder = ChunkBuilder::default();
       builder.write_instruction(Encodable(), 0);
-      assert_eq!(builder.build(&hooks).get_line(0), 0);
+
+      assert_eq!(builder.build(&hooks).unwrap().get_line(0), 0);
     }
   }
 }

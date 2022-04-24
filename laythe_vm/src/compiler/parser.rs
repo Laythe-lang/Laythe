@@ -7,7 +7,7 @@ use super::{
   scanner::Scanner,
 };
 use crate::{
-  source::{LineOffsets, Source},
+  source::{LineOffsets, Source, VmFileId},
   FeResult,
 };
 use bumpalo::boxed::Box;
@@ -16,9 +16,9 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{constants::INIT, object::FunKind};
 use std::mem;
 
-type ParseResult<T, F> = Result<T, Diagnostic<F>>;
+type ParseResult<T> = Result<T, Diagnostic<VmFileId>>;
 
-fn to_fe_result<T, F>(result: ParseResult<T, F>) -> FeResult<T, F> {
+fn to_fe_result<T>(result: ParseResult<T>) -> FeResult<T> {
   match result {
     Ok(res) => Ok(res),
     Err(err) => Err(vec![err]),
@@ -38,7 +38,7 @@ const ANY_TYPE: &str = "any";
 
 /// The Laythe parser. This structure produces the Laythe
 /// AST
-pub struct Parser<'a, FileId> {
+pub struct Parser<'a> {
   /// The current token
   current: Token<'a>,
 
@@ -52,7 +52,7 @@ pub struct Parser<'a, FileId> {
   source: &'a Source,
 
   /// All errors that have been during parsing
-  errors: std::vec::Vec<Diagnostic<FileId>>,
+  errors: std::vec::Vec<Diagnostic<VmFileId>>,
 
   /// Can we currently implicitly return
   block_return: BlockReturn,
@@ -70,12 +70,12 @@ pub struct Parser<'a, FileId> {
   scanner: Scanner<'a>,
 
   /// file id
-  file_id: FileId,
+  file_id: VmFileId,
 }
 
-impl<'a, FileId: Copy> Parser<'a, FileId> {
+impl<'a> Parser<'a> {
   /// Create a new instance of the parser from a source str
-  pub fn new(source: &'a Source, file_id: FileId) -> Self {
+  pub fn new(source: &'a Source, file_id: VmFileId) -> Self {
     Self {
       scanner: Scanner::new(source),
       file_id,
@@ -98,7 +98,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// ```
   /// use laythe_vm::{
   ///   compiler::Parser,
-  ///   source::Source,
+  ///   source::{Source, VM_FILE_TEST_ID},
   /// };
   /// use laythe_native::stdio::StdioNative;
   /// use laythe_core::memory::{Allocator, NO_GC};
@@ -107,11 +107,11 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// let mut gc = Allocator::default();
   /// let source = Source::new(gc.manage_str("3 / 2 + 10;", &NO_GC));
   ///
-  /// let parser = Parser::new(&source, 0);
+  /// let parser = Parser::new(&source, VM_FILE_TEST_ID);
   /// let (ast, _) = parser.parse();
   /// assert_eq!(ast.is_ok(), true);
   /// ```
-  pub fn parse(mut self) -> (FeResult<Module<'a>, FileId>, LineOffsets) {
+  pub fn parse(mut self) -> (FeResult<Module<'a>>, LineOffsets) {
     (self.parse_inner(), self.scanner.line_offsets())
   }
 
@@ -130,7 +130,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     SymbolTable::new(self.vec())
   }
 
-  fn parse_inner(&mut self) -> FeResult<Module<'a>, FileId> {
+  fn parse_inner(&mut self) -> FeResult<Module<'a>> {
     to_fe_result(self.advance())?;
 
     // early exit if ""
@@ -156,7 +156,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Parse a Laythe declaration, if an error occurred at a lower level attempt
   /// synchronize to provide more error messages
-  fn decl(&mut self) -> ParseResult<Decl<'a>, FileId> {
+  fn decl(&mut self) -> ParseResult<Decl<'a>> {
     let decl = match self.current.kind() {
       TokenKind::Class => self
         .advance()
@@ -186,7 +186,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Synchronize the parser to a sentinel token
-  fn synchronize(&mut self, error: Diagnostic<FileId>) -> ParseResult<Decl<'a>, FileId> {
+  fn synchronize(&mut self, error: Diagnostic<VmFileId>) -> ParseResult<Decl<'a>> {
     self.errors.push(error);
 
     let mut tokens: Vec<Token> = self.vec();
@@ -199,8 +199,16 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
         | TokenKind::Fun
         | TokenKind::Let
         | TokenKind::For
-        | TokenKind::If
         | TokenKind::While
+        | TokenKind::If
+        | TokenKind::Import
+        | TokenKind::Export
+        | TokenKind::Launch
+        | TokenKind::Try
+        | TokenKind::Trait
+        | TokenKind::Type
+        | TokenKind::Continue
+        | TokenKind::Break
         | TokenKind::Return => {
           break;
         },
@@ -214,7 +222,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a statement
-  fn stmt(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn stmt(&mut self) -> ParseResult<Stmt<'a>> {
     match self.current.kind() {
       TokenKind::Import => self.advance().and_then(|()| self.import()),
       TokenKind::Try => self.advance().and_then(|()| self.try_block()),
@@ -230,12 +238,12 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse an expression
-  fn expr(&mut self) -> ParseResult<Expr<'a>, FileId> {
+  fn expr(&mut self) -> ParseResult<Expr<'a>> {
     self.parse_precedence(Precedence::Assignment)
   }
 
   /// Parse a class declaration
-  fn class(&mut self) -> ParseResult<Symbol<'a>, FileId> {
+  fn class(&mut self) -> ParseResult<Symbol<'a>> {
     let start = self.previous.start();
 
     self.consume(TokenKind::Identifier, "Expected class name.")?;
@@ -330,7 +338,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a function declaration
-  fn fun(&mut self) -> ParseResult<Symbol<'a>, FileId> {
+  fn fun(&mut self) -> ParseResult<Symbol<'a>> {
     let previous = mem::replace(&mut self.fun_kind, FunKind::Fun);
 
     self.consume(TokenKind::Identifier, "Expected function name.")?;
@@ -351,7 +359,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a variable declaration
-  fn let_(&mut self) -> ParseResult<Symbol<'a>, FileId> {
+  fn let_(&mut self) -> ParseResult<Symbol<'a>> {
     self.consume(TokenKind::Identifier, "Expected variable name.")?;
     let name = self.previous.clone();
     let previous_let_name = self.let_name.replace(name.clone());
@@ -379,7 +387,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a trait declaration
-  fn trait_(&mut self) -> ParseResult<Symbol<'a>, FileId> {
+  fn trait_(&mut self) -> ParseResult<Symbol<'a>> {
     self.consume(TokenKind::Identifier, "Expected trait name after 'trait'.")?;
     let name = self.previous.clone();
 
@@ -446,7 +454,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a trait declaration
-  fn type_decl(&mut self) -> ParseResult<Symbol<'a>, FileId> {
+  fn type_decl(&mut self) -> ParseResult<Symbol<'a>> {
     self.consume(TokenKind::Identifier, "Expected type name after 'type'.")?;
     let name = self.previous.clone();
 
@@ -465,7 +473,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a symbol export declaration
-  fn export_declaration(&mut self) -> ParseResult<Decl<'a>, FileId> {
+  fn export_declaration(&mut self) -> ParseResult<Decl<'a>> {
     let symbol = match self.current.kind() {
       TokenKind::Class => self.advance().and_then(|()| self.class()),
       TokenKind::Fun => self.advance().and_then(|()| self.fun()),
@@ -479,7 +487,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse an import statement
-  fn import(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn import(&mut self) -> ParseResult<Stmt<'a>> {
     if self.scope_depth > 0 {
       return self.error_current("Can only import from the module scope.");
     }
@@ -540,7 +548,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a try catch block
-  fn try_block(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn try_block(&mut self) -> ParseResult<Stmt<'a>> {
     let block = self
       .consume(TokenKind::LeftBrace, "Expected '{' after try.")
       .and_then(|()| self.block(BlockReturn::Cannot))?;
@@ -553,7 +561,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a launch statement
-  fn launch(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn launch(&mut self) -> ParseResult<Stmt<'a>> {
     let closure = self.expr()?;
 
     if let Expr::Atom(atom) = &closure {
@@ -570,7 +578,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a if statement
-  fn if_(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn if_(&mut self) -> ParseResult<Stmt<'a>> {
     // parse the condition
     let cond = self.expr()?;
     self.consume_basic(TokenKind::LeftBrace, "Expected '{' after condition.")?;
@@ -607,7 +615,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a for loop
-  fn for_(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn for_(&mut self) -> ParseResult<Stmt<'a>> {
     let table = self.table();
 
     self.loop_(|self_| {
@@ -625,7 +633,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse while statement
-  fn while_(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn while_(&mut self) -> ParseResult<Stmt<'a>> {
     self.loop_(|self_| {
       let cond = self_.expr()?;
       self_.consume(TokenKind::LeftBrace, "Expected '{' after while condition.")?;
@@ -636,7 +644,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a return statement
-  fn return_(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn return_(&mut self) -> ParseResult<Stmt<'a>> {
     if let FunKind::Script = self.fun_kind {
       return self.error("Cannot return from outside of a function or method.");
     }
@@ -658,7 +666,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     }
   }
 
-  fn continue_(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn continue_(&mut self) -> ParseResult<Stmt<'a>> {
     if self.loop_depth == 0 {
       return self.error("Cannot continue from outside of a loop.");
     }
@@ -668,7 +676,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     Ok(Stmt::Continue(self.node(continue_)))
   }
 
-  fn break_(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn break_(&mut self) -> ParseResult<Stmt<'a>> {
     if self.loop_depth == 0 {
       return self.error("Cannot break from outside of a loop.");
     }
@@ -679,7 +687,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse an expression statement
-  fn expr_stmt(&mut self) -> ParseResult<Stmt<'a>, FileId> {
+  fn expr_stmt(&mut self) -> ParseResult<Stmt<'a>> {
     let expr = self.expr()?;
     if self.match_kind(TokenKind::Semicolon)? {
       Ok(Stmt::Expr(self.node(expr)))
@@ -693,7 +701,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse an expression using a Pratt parser
-  fn parse_precedence(&mut self, precedence: Precedence) -> ParseResult<Expr<'a>, FileId> {
+  fn parse_precedence(&mut self, precedence: Precedence) -> ParseResult<Expr<'a>> {
     self.advance()?;
 
     let can_assign = precedence <= Precedence::Assignment;
@@ -725,7 +733,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Execute an prefix action
-  fn prefix(&mut self, action: Prefix, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
+  fn prefix(&mut self, action: Prefix, can_assign: bool) -> ParseResult<Expr<'a>> {
     match action {
       Prefix::Channel => self.channel(),
       Prefix::Grouping => self.grouping(),
@@ -750,7 +758,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     action: Infix,
     lhs: Expr<'a>,
     can_assign: bool,
-  ) -> ParseResult<Expr<'a>, FileId> {
+  ) -> ParseResult<Expr<'a>> {
     match action {
       Infix::And => self.and(lhs),
       Infix::Binary => self.binary(lhs),
@@ -763,7 +771,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a block statement
-  fn block(&mut self, block_return: BlockReturn) -> ParseResult<Block<'a>, FileId> {
+  fn block(&mut self, block_return: BlockReturn) -> ParseResult<Block<'a>> {
     let start = self.previous.start();
 
     self.scope_depth += 1;
@@ -807,7 +815,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
       .map(|()| Block::new(Span { start, end }, self.table(), decls))
   }
 
-  fn ternary(&mut self, cond: Expr<'a>) -> ParseResult<Expr<'a>, FileId> {
+  fn ternary(&mut self, cond: Expr<'a>) -> ParseResult<Expr<'a>> {
     let then = self.expr()?;
     self.consume_basic(TokenKind::Colon, "Expected ':' after return value.")?;
     let else_ = self.expr()?;
@@ -816,7 +824,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a binary expression
-  fn binary(&mut self, lhs: Expr<'a>) -> ParseResult<Expr<'a>, FileId> {
+  fn binary(&mut self, lhs: Expr<'a>) -> ParseResult<Expr<'a>> {
     let operator_kind = self.previous.kind();
     let precedence = get_infix(operator_kind).precedence.higher();
     let rhs = self.parse_precedence(precedence)?;
@@ -839,7 +847,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse an and expression
-  fn and(&mut self, lhs: Expr<'a>) -> ParseResult<Expr<'a>, FileId> {
+  fn and(&mut self, lhs: Expr<'a>) -> ParseResult<Expr<'a>> {
     let rhs = self.parse_precedence(Precedence::And)?;
     Ok(Expr::Binary(self.node(Binary::new(
       BinaryOp::And,
@@ -849,13 +857,13 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse an or expression
-  fn or(&mut self, lhs: Expr<'a>) -> ParseResult<Expr<'a>, FileId> {
+  fn or(&mut self, lhs: Expr<'a>) -> ParseResult<Expr<'a>> {
     let rhs = self.parse_precedence(Precedence::Or)?;
     Ok(Expr::Binary(self.node(Binary::new(BinaryOp::Or, lhs, rhs))))
   }
 
   /// Parse a unary expression
-  fn unary(&mut self) -> ParseResult<Expr<'a>, FileId> {
+  fn unary(&mut self) -> ParseResult<Expr<'a>> {
     let operator_kind = self.previous.kind();
     let expr = self.parse_precedence(Precedence::Unary)?;
 
@@ -870,7 +878,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a call invocation
-  fn call(&mut self, mut lhs: Expr<'a>) -> ParseResult<Expr<'a>, FileId> {
+  fn call(&mut self, mut lhs: Expr<'a>) -> ParseResult<Expr<'a>> {
     let start = self.previous.start();
     let args = self.consume_arguments(None, TokenKind::RightParen, std::u8::MAX as usize)?;
     self.consume_basic(TokenKind::RightParen, "Expected ')' after arguments")?;
@@ -892,7 +900,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse an index on an atom
-  fn index(&mut self, mut expr: Expr<'a>, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
+  fn index(&mut self, mut expr: Expr<'a>, can_assign: bool) -> ParseResult<Expr<'a>> {
     let indexer = self.expr()?;
     self.consume_basic(TokenKind::RightBracket, "Expected ']' after index")?;
 
@@ -912,7 +920,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a property access
-  fn dot(&mut self, mut expr: Expr<'a>, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
+  fn dot(&mut self, mut expr: Expr<'a>, can_assign: bool) -> ParseResult<Expr<'a>> {
     self.consume(TokenKind::Identifier, "Expected property name after '.'.")?;
 
     if let Expr::Atom(atom) = &mut expr {
@@ -931,7 +939,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a lambda expression
-  fn lambda(&mut self) -> ParseResult<Expr<'a>, FileId> {
+  fn lambda(&mut self) -> ParseResult<Expr<'a>> {
     // parse function parameters
     let call_sig = self.call_signature(TokenKind::Pipe, self.vec())?;
 
@@ -949,7 +957,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     lambda
   }
 
-  fn channel(&mut self) -> ParseResult<Expr<'a>, FileId> {
+  fn channel(&mut self) -> ParseResult<Expr<'a>> {
     let start = self.previous.start();
     self.consume_basic(TokenKind::LeftParen, "Expected '(' after 'chan'")?;
 
@@ -968,7 +976,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a grouping expression
-  fn grouping(&mut self) -> ParseResult<Expr<'a>, FileId> {
+  fn grouping(&mut self) -> ParseResult<Expr<'a>> {
     let start = self.previous.start();
     if self.match_kind(TokenKind::RightParen)? {
       let range = Span {
@@ -999,7 +1007,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Compile a variable statement
-  fn variable(&mut self, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
+  fn variable(&mut self, can_assign: bool) -> ParseResult<Expr<'a>> {
     let mut expr = self.atom(Primary::Ident(self.previous.clone()));
 
     if can_assign {
@@ -1010,8 +1018,10 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Compile a variable statement
-  fn instance_access(&mut self, can_assign: bool) -> ParseResult<Expr<'a>, FileId> {
-    let mut expr = self.atom(Primary::InstanceAccess(InstanceAccess::new(self.previous.clone())));
+  fn instance_access(&mut self, can_assign: bool) -> ParseResult<Expr<'a>> {
+    let mut expr = self.atom(Primary::InstanceAccess(InstanceAccess::new(
+      self.previous.clone(),
+    )));
 
     if can_assign {
       expr = self.assign(expr)?;
@@ -1026,7 +1036,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a class' super identifer
-  fn super_(&mut self) -> ParseResult<Expr<'a>, FileId> {
+  fn super_(&mut self) -> ParseResult<Expr<'a>> {
     let super_ = self.previous.clone();
     self.consume_basic(TokenKind::Dot, "Expected '.' after super.")?;
     self.consume(TokenKind::Identifier, "Expected identifier after '.'.")?;
@@ -1036,7 +1046,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a list literal
-  fn list(&mut self) -> ParseResult<Expr<'a>, FileId> {
+  fn list(&mut self) -> ParseResult<Expr<'a>> {
     let start = self.previous.start();
     let items = self.consume_arguments(None, TokenKind::RightBracket, std::u16::MAX as usize)?;
     self.consume_basic(TokenKind::RightBracket, "Expected ']' after arguments")?;
@@ -1049,7 +1059,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a map literal
-  fn map(&mut self) -> ParseResult<Expr<'a>, FileId> {
+  fn map(&mut self) -> ParseResult<Expr<'a>> {
     let start = self.previous.start();
     let mut entries: Vec<(Expr, Expr)> = self.vec();
 
@@ -1096,7 +1106,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a string literal
-  fn interpolation(&mut self) -> ParseResult<Expr<'a>, FileId> {
+  fn interpolation(&mut self) -> ParseResult<Expr<'a>> {
     let start = self.previous.clone();
 
     let mut segments: Vec<StringSegments> = self.vec();
@@ -1151,7 +1161,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     &mut self,
     stop_kind: TokenKind,
     type_params: Vec<'a, TypeParam<'a>>,
-  ) -> ParseResult<CallSignature<'a>, FileId> {
+  ) -> ParseResult<CallSignature<'a>> {
     let start = type_params
       .first()
       .map_or_else(|| self.previous.start(), |first| first.start());
@@ -1205,7 +1215,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     Ok(CallSignature::new(range, type_params, params, return_type))
   }
 
-  fn assign(&mut self, expr: Expr<'a>) -> ParseResult<Expr<'a>, FileId> {
+  fn assign(&mut self, expr: Expr<'a>) -> ParseResult<Expr<'a>> {
     match self.current.kind() {
       TokenKind::Equal => self
         .advance()
@@ -1237,7 +1247,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     first_value: Option<Expr<'a>>,
     stop_token: TokenKind,
     max: usize,
-  ) -> ParseResult<Vec<'a, Expr<'a>>, FileId> {
+  ) -> ParseResult<Vec<'a, Expr<'a>>> {
     let mut args = self.vec();
 
     if let Some(value) = first_value {
@@ -1260,7 +1270,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   // Parse a function body
-  fn fun_body(&mut self, block_return: BlockReturn) -> ParseResult<FunBody<'a>, FileId> {
+  fn fun_body(&mut self, block_return: BlockReturn) -> ParseResult<FunBody<'a>> {
     if self.match_kind(TokenKind::LeftBrace)? {
       let block = self.block(block_return)?;
       Ok(FunBody::Block(self.node(block)))
@@ -1277,7 +1287,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     name: Token<'a>,
     type_params: Vec<'a, TypeParam<'a>>,
     block_return: BlockReturn,
-  ) -> ParseResult<Fun<'a>, FileId> {
+  ) -> ParseResult<Fun<'a>> {
     if !self.match_kind(TokenKind::LeftParen)? {
       return self.error_current(&format!("Expected '(' after {} name.", self.fun_kind));
     }
@@ -1303,7 +1313,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
     &mut self,
     name: Token<'a>,
     is_static: bool,
-  ) -> ParseResult<(FunKind, Fun<'a>), FileId> {
+  ) -> ParseResult<(FunKind, Fun<'a>)> {
     let (fun_kind, block_return) = if is_static {
       (FunKind::StaticMethod, BlockReturn::Can)
     } else if INIT == name.str() {
@@ -1327,7 +1337,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse type parameters
-  fn type_params(&mut self) -> ParseResult<Vec<'a, TypeParam<'a>>, FileId> {
+  fn type_params(&mut self) -> ParseResult<Vec<'a, TypeParam<'a>>> {
     let mut type_params: Vec<TypeParam> = self.vec();
 
     while !self.check(TokenKind::Greater) {
@@ -1355,12 +1365,12 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a type
-  fn type_(&mut self) -> ParseResult<Type<'a>, FileId> {
+  fn type_(&mut self) -> ParseResult<Type<'a>> {
     self.parse_type_precedence(TypePrecedence::Union)
   }
 
   /// Use a pratt parser to generate a type
-  fn parse_type_precedence(&mut self, precedence: TypePrecedence) -> ParseResult<Type<'a>, FileId> {
+  fn parse_type_precedence(&mut self, precedence: TypePrecedence) -> ParseResult<Type<'a>> {
     self.advance()?;
 
     let prefix_fn = get_type_prefix(self.previous.kind()).op;
@@ -1386,7 +1396,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Execute an prefix action
-  fn type_prefix(&mut self, action: TypePrefix) -> ParseResult<Type<'a>, FileId> {
+  fn type_prefix(&mut self, action: TypePrefix) -> ParseResult<Type<'a>> {
     match action {
       TypePrefix::Fun => {
         let call_sig = self.call_signature(TokenKind::RightParen, self.vec())?;
@@ -1397,7 +1407,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Execute an infix action
-  fn type_infix(&mut self, action: TypeInfix, lhs: Type<'a>) -> ParseResult<Type<'a>, FileId> {
+  fn type_infix(&mut self, action: TypeInfix, lhs: Type<'a>) -> ParseResult<Type<'a>> {
     match action {
       TypeInfix::TypeArgs => self.type_ref(lhs),
       TypeInfix::List => self.list_type(lhs),
@@ -1407,25 +1417,25 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Create a intersection type
-  fn intersection(&mut self, lhs: Type<'a>) -> ParseResult<Type<'a>, FileId> {
+  fn intersection(&mut self, lhs: Type<'a>) -> ParseResult<Type<'a>> {
     let rhs = self.parse_type_precedence(TypePrecedence::List)?;
     Ok(Type::Intersection(self.node(Intersection::new(lhs, rhs))))
   }
 
   /// Create a union type
-  fn union(&mut self, lhs: Type<'a>) -> ParseResult<Type<'a>, FileId> {
+  fn union(&mut self, lhs: Type<'a>) -> ParseResult<Type<'a>> {
     let rhs = self.parse_type_precedence(TypePrecedence::Intersection)?;
     Ok(Type::Union(self.node(Union::new(lhs, rhs))))
   }
 
   /// Create a list type
-  fn list_type(&mut self, lhs: Type<'a>) -> ParseResult<Type<'a>, FileId> {
+  fn list_type(&mut self, lhs: Type<'a>) -> ParseResult<Type<'a>> {
     self.consume_basic(TokenKind::RightBracket, "Expected ']' after list type.")?;
     Ok(Type::List(self.node(ListType::new(lhs))))
   }
 
   /// Create a type literal
-  fn type_literal(&mut self) -> ParseResult<Type<'a>, FileId> {
+  fn type_literal(&mut self) -> ParseResult<Type<'a>> {
     let token = self.previous.clone();
     match token.kind() {
       TokenKind::Nil => Ok(Type::Primitive(Primitive::Nil(token))),
@@ -1448,7 +1458,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a class type
-  fn class_type(&mut self) -> ParseResult<ClassType<'a>, FileId> {
+  fn class_type(&mut self) -> ParseResult<ClassType<'a>> {
     let name = self.previous.clone();
 
     let type_args = if self.match_kind(TokenKind::Less)? {
@@ -1461,7 +1471,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse type ref
-  fn type_ref(&mut self, lhs: Type<'a>) -> ParseResult<Type<'a>, FileId> {
+  fn type_ref(&mut self, lhs: Type<'a>) -> ParseResult<Type<'a>> {
     match lhs {
       Type::Ref(mut type_ref) => {
         type_ref.type_args = self.type_args()?;
@@ -1475,7 +1485,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Parse a set of type args
-  fn type_args(&mut self) -> ParseResult<Vec<'a, Type<'a>>, FileId> {
+  fn type_args(&mut self) -> ParseResult<Vec<'a, Type<'a>>> {
     let args = self.consume_type_args(std::u8::MAX as usize)?;
     self.consume_basic(TokenKind::Greater, "Expected '>' after arguments")?;
 
@@ -1483,7 +1493,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   #[inline]
-  fn consume_basic(&mut self, kind: TokenKind, message: &str) -> ParseResult<(), FileId> {
+  fn consume_basic(&mut self, kind: TokenKind, message: &str) -> ParseResult<()> {
     self.consume(kind, message).map_err(|err| {
       let mut labels = err.labels.clone();
       labels.push(
@@ -1496,7 +1506,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Consume a comma separated set of arguments for calls and lists
-  fn consume_type_args(&mut self, max: usize) -> ParseResult<Vec<'a, Type<'a>>, FileId> {
+  fn consume_type_args(&mut self, max: usize) -> ParseResult<Vec<'a, Type<'a>>> {
     let mut args = self.vec();
 
     while !self.check(TokenKind::Greater) {
@@ -1517,7 +1527,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   /// Does the provided token kind match if so advance the
   /// token index
   #[inline]
-  fn match_kind(&mut self, kind: TokenKind) -> ParseResult<bool, FileId> {
+  fn match_kind(&mut self, kind: TokenKind) -> ParseResult<bool> {
     if !self.check(kind) {
       return Ok(false);
     }
@@ -1533,7 +1543,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Advance the parser a token forward
   #[inline]
-  fn advance(&mut self) -> ParseResult<(), FileId> {
+  fn advance(&mut self) -> ParseResult<()> {
     self.previous = mem::replace(&mut self.current, self.scanner.scan_token());
 
     if self.current.kind() != TokenKind::Error {
@@ -1546,7 +1556,7 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
 
   /// Consume a token and advance the current token index
   #[inline]
-  fn consume(&mut self, kind: TokenKind, message: &str) -> ParseResult<(), FileId> {
+  fn consume(&mut self, kind: TokenKind, message: &str) -> ParseResult<()> {
     if self.current.kind() == kind {
       return self.advance();
     }
@@ -1555,17 +1565,17 @@ impl<'a, FileId: Copy> Parser<'a, FileId> {
   }
 
   /// Indicate an error occurred at he current index
-  fn error_current<T>(&mut self, message: &str) -> ParseResult<T, FileId> {
+  fn error_current<T>(&mut self, message: &str) -> ParseResult<T> {
     self.error_at(self.current.clone(), message)
   }
 
   /// Indicate an error occurred at the previous index
-  fn error<T>(&mut self, message: &str) -> ParseResult<T, FileId> {
+  fn error<T>(&mut self, message: &str) -> ParseResult<T> {
     self.error_at(self.previous.clone(), message)
   }
 
   /// Print an error to the console for a user to address
-  fn error_at<T>(&mut self, token: Token<'a>, message: &str) -> ParseResult<T, FileId> {
+  fn error_at<T>(&mut self, token: Token<'a>, message: &str) -> ParseResult<T> {
     let error = Diagnostic::error()
       .with_message(message)
       .with_labels(vec![Label::primary(self.file_id, token.span())]);
@@ -1673,10 +1683,8 @@ enum TypeInfix {
   Union,
 }
 
-const TOKEN_VARIANTS: usize = 68;
-
 /// The rules for infix and prefix operators
-const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
+const PREFIX_TABLE: [Rule<Prefix, Precedence>; TokenKind::VARIANT_COUNT] = [
   Rule::new(Some(Prefix::Grouping), Precedence::Call),
   // LEFT_PAREN
   Rule::new(None, Precedence::None),
@@ -1816,7 +1824,7 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TOKEN_VARIANTS] = [
 ];
 
 /// The rules for infix and prefix operators
-const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
+const INFIX_TABLE: [Rule<Infix, Precedence>; TokenKind::VARIANT_COUNT] = [
   Rule::new(Some(Infix::Call), Precedence::Call),
   // LEFT_PAREN
   Rule::new(None, Precedence::None),
@@ -1956,7 +1964,7 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TOKEN_VARIANTS] = [
 ];
 
 /// The rules for infix and prefix operators
-const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
+const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TokenKind::VARIANT_COUNT] = [
   Rule::new(Some(TypePrefix::Fun), TypePrecedence::Primary),
   // LEFT_PAREN
   Rule::new(None, TypePrecedence::None),
@@ -2096,7 +2104,7 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TOKEN_VARIANTS] = [
 ];
 
 /// The rules for infix and prefix operators
-const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TOKEN_VARIANTS] = [
+const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TokenKind::VARIANT_COUNT] = [
   Rule::new(None, TypePrecedence::None),
   // LEFT_PAREN
   Rule::new(None, TypePrecedence::None),
@@ -2257,7 +2265,9 @@ const fn get_type_infix(kind: TokenKind) -> &'static Rule<TypeInfix, TypePrecede
 
 #[cfg(test)]
 mod test {
-  use super::super::ir::AstPrint;
+  use crate::source::VM_FILE_TEST_ID;
+
+use super::super::ir::AstPrint;
   use super::*;
   use laythe_core::memory::{Allocator, NO_GC};
 
@@ -2266,7 +2276,7 @@ mod test {
     let source = gc.manage_str(src, &NO_GC);
     let source = Source::new(source);
 
-    let (ast, _) = Parser::new(&source, 0).parse();
+    let (ast, _) = Parser::new(&source, VM_FILE_TEST_ID).parse();
     assert!(ast.is_ok(), "{}", src);
     let ast = ast.unwrap();
 
@@ -2276,7 +2286,7 @@ mod test {
     let reproduced = gc.manage_str(printer.str(), &NO_GC);
     let reproduced = Source::new(reproduced);
 
-    let (ast2, _) = Parser::new(&reproduced, 0).parse();
+    let (ast2, _) = Parser::new(&reproduced, VM_FILE_TEST_ID).parse();
     assert!(
       ast2.is_ok(),
       "expected:\n{}, \ngenerated: \n{}",

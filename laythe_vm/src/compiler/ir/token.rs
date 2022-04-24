@@ -1,5 +1,5 @@
 use std::fmt;
-
+use variant_count::VariantCount;
 use super::ast::Spanned;
 
 #[derive(Debug, Clone)]
@@ -8,7 +8,7 @@ pub enum Lexeme<'a> {
   Owned(String),
 }
 
-/// A token in the space lox language
+/// A token in the Laythe language
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
   /// The token kind
@@ -58,8 +58,8 @@ impl<'a> Spanned for Token<'a> {
   }
 }
 
-/// Token kinds in the space lox language
-#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy)]
+/// Token kinds in the Laythe language
+#[derive(Debug, PartialEq, Eq, Hash, Clone, Copy, VariantCount)]
 #[repr(u8)]
 pub enum TokenKind {
   LeftParen,
