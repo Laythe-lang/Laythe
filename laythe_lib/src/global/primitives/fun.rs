@@ -139,20 +139,20 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let fun_name = FunLen::native(&hooks.as_gc());
 
-      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(4));
-      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()));
+      let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(4));
+      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap());
 
       let result = fun_name.call(&mut hooks, Some(val!(fun)), &[]);
       assert_eq!(result.unwrap().to_num(), 4.0);
 
-      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
-      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()));
+      let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
+      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap());
 
       let result = fun_name.call(&mut hooks, Some(val!(fun)), &[]);
       assert_eq!(result.unwrap().to_num(), 2.0);
 
-      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Variadic(5));
-      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()));
+      let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Variadic(5));
+      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap());
 
       let result = fun_name.call(&mut hooks, Some(val!(fun)), &[]);
       assert_eq!(result.unwrap().to_num(), 5.0);
@@ -184,9 +184,9 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let fun_call = FunCall::native(&hooks.as_gc());
 
-      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
+      let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
 
-      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()));
+      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap());
 
       let args = &[val!(hooks.manage_str("input".to_string()))];
       let result1 = fun_call.call(&mut hooks, Some(val!(fun)), args);

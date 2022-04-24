@@ -8,6 +8,7 @@ use laythe_core::{
 };
 use laythe_lib::create_std_lib;
 use laythe_vm::compiler::{Parser, Resolver};
+use laythe_vm::source::VM_FILE_TEST_ID;
 use laythe_vm::{compiler::Compiler, source::Source};
 use std::fs::File;
 use std::io::prelude::*;
@@ -49,15 +50,15 @@ fn compile_source(source: GcStr) {
     .to_class();
   let module = hooks.manage(Module::new(module_class, 0));
   let source = Source::new(source);
-  let (ast, line_offsets) = Parser::new(&source, 0).parse();
+  let (ast, line_offsets) = Parser::new(&source, VM_FILE_TEST_ID).parse();
   let mut ast = ast.unwrap();
 
   let gc = context.done();
-  assert!(Resolver::new(global_module, &gc, &source, 0, false)
+  assert!(Resolver::new(global_module, &gc, &source, VM_FILE_TEST_ID, false)
     .resolve(&mut ast)
     .is_ok());
 
-  let compiler = Compiler::new(module, &line_offsets, 0, false, &NO_GC, gc);
+  let compiler = Compiler::new(module, &line_offsets, VM_FILE_TEST_ID, false, &NO_GC, gc);
   compiler.compile(&ast).0.unwrap();
 }
 

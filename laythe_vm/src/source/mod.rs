@@ -1,5 +1,5 @@
 mod files;
-pub use files::{LineError, LineOffsets, VmFileId, VmFiles};
+pub use files::{LineError, LineOffsets, VmFileId, VmFiles, VM_FILE_TEST_ID};
 
 use bumpalo::{boxed::Box, collections::Vec, Bump};
 use laythe_core::managed::{GcStr, Trace};

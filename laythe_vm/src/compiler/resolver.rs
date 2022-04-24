@@ -3,7 +3,7 @@ use super::ir::{
   symbol_table::{self, AddSymbolResult, SymbolState, SymbolTable},
   token::{Lexeme, Token, TokenKind},
 };
-use crate::{source::Source, FeResult};
+use crate::{source::{Source, VmFileId}, FeResult};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
   constants::OBJECT,
@@ -52,7 +52,7 @@ struct TrackedSymbolTable<'a> {
   table: SymbolTable<'a>,
 }
 
-pub struct Resolver<'a, 'src, FileId> {
+pub struct Resolver<'a, 'src> {
   /// The global module
   global_module: Gc<module::Module>,
 
@@ -69,10 +69,10 @@ pub struct Resolver<'a, 'src, FileId> {
   repl: bool,
 
   /// All the errors found during resolution
-  errors: Vec<Diagnostic<FileId>>,
+  errors: Vec<Diagnostic<VmFileId>>,
 
   /// The file id for the current file
-  file_id: FileId,
+  file_id: VmFileId,
 
   /// The current function depth
   fun_depth: i32,
@@ -84,7 +84,7 @@ pub struct Resolver<'a, 'src, FileId> {
   tables: Vec<TrackedSymbolTable<'src>>,
 }
 
-impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
+impl<'a, 'src> Resolver<'a, 'src> {
   /// Create a new resolver at the module scope level. This struct will
   /// modify the parsers ast to provide information on symbols in each scope
   ///
@@ -92,7 +92,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   /// ```
   /// use laythe_vm::{
   ///   compiler::Resolver,
-  ///   source::Source,
+  ///   source::{Source, VM_FILE_TEST_ID},
   /// };
   /// use laythe_core::{
   ///   module::Module,
@@ -107,7 +107,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   /// let class = gc.manage_obj(Class::bare(name), &NO_GC);
   /// let module = gc.manage(Module::new(class, 0), &NO_GC);
   ///
-  /// let file_id = 0;
+  /// let file_id = VM_FILE_TEST_ID;
   /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
   ///
   /// let compiler = Resolver::new(module, &gc, &source, file_id, false);
@@ -116,7 +116,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
     global_module: Gc<module::Module>,
     gc: &'a Allocator,
     source: &'src Source,
-    file_id: FileId,
+    file_id: VmFileId,
     repl: bool,
   ) -> Self {
     let table = SymbolTable::new(source.vec());
@@ -140,7 +140,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   }
 
   /// Modify the provided ast with information about resolved variables
-  pub fn resolve(mut self, ast: &mut ast::Module<'src>) -> FeResult<(), FileId> {
+  pub fn resolve(mut self, ast: &mut ast::Module<'src>) -> FeResult<()> {
     // preemptively declare all module scoped variables
     self.declare_module_scoped(ast);
 
@@ -312,7 +312,7 @@ impl<'a, 'src, FileId: Copy> Resolver<'a, 'src, FileId> {
   }
 
   /// Indicate an error with additional context
-  fn error_with_context(&mut self, message_primary: &str, labels: Vec<Label<FileId>>) {
+  fn error_with_context(&mut self, message_primary: &str, labels: Vec<Label<VmFileId>>) {
     let error = Diagnostic::error()
       .with_message(message_primary)
       .with_labels(labels);
@@ -925,7 +925,7 @@ mod test {
 
   use crate::{
     compiler::Parser,
-    source::{LineOffsets, Source},
+    source::{Source, VM_FILE_TEST_ID},
   };
 
   use super::*;
@@ -968,21 +968,21 @@ mod test {
 
   fn test_repl_resolve(
     src: &str,
-    test_assert: impl FnOnce(&ast::Module, FeResult<(), &LineOffsets>),
+    test_assert: impl FnOnce(&ast::Module, FeResult<()>),
   ) {
     test_resolve(src, true, false, test_assert)
   }
 
   fn test_file_std_resolve(
     src: &str,
-    test_assert: impl FnOnce(&ast::Module, FeResult<(), &LineOffsets>),
+    test_assert: impl FnOnce(&ast::Module, FeResult<()>),
   ) {
     test_resolve(src, false, true, test_assert)
   }
 
   fn test_file_resolve(
     src: &str,
-    test_assert: impl FnOnce(&ast::Module, FeResult<(), &LineOffsets>),
+    test_assert: impl FnOnce(&ast::Module, FeResult<()>),
   ) {
     test_resolve(src, false, false, test_assert)
   }
@@ -991,7 +991,7 @@ mod test {
     src: &str,
     repl: bool,
     with_std: bool,
-    test_assert: impl FnOnce(&ast::Module, FeResult<(), &LineOffsets>),
+    test_assert: impl FnOnce(&ast::Module, FeResult<()>),
   ) {
     let context = NoContext::default();
     let hooks = &GcHooks::new(&context);
@@ -999,7 +999,7 @@ mod test {
     let src = hooks.manage_str(src);
     hooks.push_root(src);
     let source = Source::new(hooks.manage_str(src));
-    let (ast, line_offsets) = Parser::new(&source, 0).parse();
+    let (ast, _) = Parser::new(&source, VM_FILE_TEST_ID).parse();
     assert!(ast.is_ok(), "{}", src);
     let mut ast = ast.unwrap();
 
@@ -1010,7 +1010,7 @@ mod test {
     };
 
     let gc = context.done();
-    let resolver = Resolver::new(module, &gc, &source, &line_offsets, repl);
+    let resolver = Resolver::new(module, &gc, &source, VM_FILE_TEST_ID, repl);
 
     let result = resolver.resolve(&mut ast);
     test_assert(&ast, result);

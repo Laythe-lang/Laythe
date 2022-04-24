@@ -13,7 +13,7 @@ impl Vm {
 
     let start = self.current_fun.chunk().instructions().as_ptr();
     let offset = ip.offset_from(start) as usize;
-    disassemble_instruction(&mut stdio, &self.current_fun.chunk(), offset, false)
+    disassemble_instruction(&mut stdio, self.current_fun.chunk(), offset, false)
   }
 
   /// Print debugging information for the current hook

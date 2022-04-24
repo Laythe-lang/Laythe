@@ -23,6 +23,7 @@ laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }
 fnv = "1.0.7"
 codespan = "0.11.1"
+variant_count = "1.1.0"
 codespan-reporting = "0.11.1"
 bumpalo = { version = "3.7.0", features=["boxed", "collections"] }
 

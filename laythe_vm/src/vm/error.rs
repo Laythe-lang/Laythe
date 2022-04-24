@@ -47,8 +47,8 @@ impl Vm {
     self.store_ip();
 
     let bottom_frame = match mode {
-      ExecuteMode::Normal => 0,
-      ExecuteMode::CallFunction(depth) => depth,
+      ExecuteMode::Normal => None,
+      ExecuteMode::CallFunction(depth) => Some(depth),
     };
 
     match self.fiber.stack_unwind(bottom_frame) {

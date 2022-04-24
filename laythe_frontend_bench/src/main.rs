@@ -7,7 +7,7 @@ use laythe_core::{
 use laythe_lib::create_std_lib;
 use laythe_vm::{
   compiler::{Compiler, Parser, Resolver},
-  source::Source,
+  source::{Source, VM_FILE_TEST_ID},
 };
 use std::env;
 use std::fs::File;
@@ -39,16 +39,16 @@ fn compiler_bench(src: &str) {
       .to_obj()
       .to_class();
 
-    let (ast, line_offsets) = Parser::new(&source, 0).parse();
+    let (ast, line_offsets) = Parser::new(&source, VM_FILE_TEST_ID).parse();
     let mut ast = ast.unwrap();
     let module = hooks.manage(Module::new(module_class, 0));
 
     let gc = context.done();
-    assert!(Resolver::new(global_module, &gc, &source, 0, false)
+    assert!(Resolver::new(global_module, &gc, &source, VM_FILE_TEST_ID, false)
       .resolve(&mut ast)
       .is_ok());
 
-    let compiler = Compiler::new(module, &line_offsets, 0, false, &NO_GC, gc);
+    let compiler = Compiler::new(module, &line_offsets, VM_FILE_TEST_ID, false, &NO_GC, gc);
     compiler.compile(&ast).0.unwrap();
   }
 }
@@ -59,7 +59,7 @@ fn parser_bench(src: &str) {
 
   for _ in 0..1000000 {
     let source = Source::new(src);
-    let parser = Parser::new(&source, 0);
+    let parser = Parser::new(&source, VM_FILE_TEST_ID);
     parser.parse().0.unwrap();
   }
 }
