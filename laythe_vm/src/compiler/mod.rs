@@ -1,10 +1,12 @@
 // mod compiler;
 mod ir;
 mod parser;
+mod peephole;
 mod resolver;
 mod scanner;
 
 pub use parser::Parser;
+pub use peephole::peephole;
 pub use resolver::Resolver;
 
 use crate::{
@@ -394,7 +396,12 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     match self.fun.build(&hooks) {
       Ok(fun) => (fun, self.errors, self.captures, context.done()),
       Err(errors) => {
-        let fun = Fun::stub(&hooks, hooks.manage_str("error"), self.module, SymbolicByteCode::Nil);
+        let fun = Fun::stub(
+          &hooks,
+          hooks.manage_str("error"),
+          self.module,
+          SymbolicByteCode::Nil,
+        );
         self.errors.extend_from_slice(&errors);
         (fun, self.errors, self.captures, context.done())
       },
@@ -500,15 +507,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     let mut drop_idx = self.locals.len();
 
     while drop_idx > 0 && self.locals[drop_idx - 1].depth > scope_depth {
+      self.emit_byte(SymbolicByteCode::Drop, line);
       drop_idx -= 1;
-    }
-
-    let dropped = self.locals.len() - drop_idx;
-
-    match dropped {
-      0 => (),
-      1 => self.emit_byte(SymbolicByteCode::Drop, line),
-      _ => self.emit_byte(SymbolicByteCode::DropN(dropped as u8), line),
     }
 
     drop_idx
@@ -2345,7 +2345,14 @@ mod test {
       .is_ok());
 
     let fake_vm_root: &NoGc = &NO_GC;
-    let compiler = Compiler::new(module, &line_offsets, VM_FILE_TEST_ID, repl, fake_vm_root, gc);
+    let compiler = Compiler::new(
+      module,
+      &line_offsets,
+      VM_FILE_TEST_ID,
+      repl,
+      fake_vm_root,
+      gc,
+    );
     #[cfg(feature = "debug")]
     let compiler = compiler.with_io(io_native());
 
@@ -2625,8 +2632,7 @@ mod test {
         AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Inherit,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
         AlignedByteCode::Export(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -2685,8 +2691,7 @@ mod test {
         AlignedByteCode::Constant(1),
         AlignedByteCode::Invoke((2, 1)),
         AlignedByteCode::Slot(0),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(9),
         AlignedByteCode::GetGlobal(3),
@@ -2774,15 +2779,13 @@ mod test {
         AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Inherit,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
         AlignedByteCode::Class(2),
         AlignedByteCode::DefineGlobal(2),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::GetGlobal(2),
         AlignedByteCode::Inherit,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2807,8 +2810,7 @@ mod test {
         AlignedByteCode::GetGlobal(1),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Inherit,
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2882,8 +2884,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(7)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2957,8 +2958,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(7)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -3032,8 +3032,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(7)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -3087,8 +3086,7 @@ mod test {
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(2)),
         ByteCodeTest::Code(AlignedByteCode::Field(4)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -3142,8 +3140,7 @@ mod test {
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(2)),
         ByteCodeTest::Code(AlignedByteCode::Field(4)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -3194,8 +3191,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::StaticMethod(4)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -3249,8 +3245,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(2)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -3321,8 +3316,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::Method(5)),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
-        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -4450,8 +4444,7 @@ mod test {
         AlignedByteCode::GetGlobal(2),
         AlignedByteCode::GetLocal(1),
         AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4474,8 +4467,7 @@ mod test {
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::SetLocal(1),
-        AlignedByteCode::Drop,
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
