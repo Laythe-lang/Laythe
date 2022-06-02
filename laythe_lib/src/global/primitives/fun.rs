@@ -119,6 +119,8 @@ mod test {
   }
 
   mod size {
+    use laythe_core::chunk::Chunk;
+
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
 
@@ -140,19 +142,19 @@ mod test {
       let fun_name = FunLen::native(&hooks.as_gc());
 
       let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(4));
-      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap());
+      let fun = hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc())));
 
       let result = fun_name.call(&mut hooks, Some(val!(fun)), &[]);
       assert_eq!(result.unwrap().to_num(), 4.0);
 
       let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
-      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap());
+      let fun = hooks.manage_obj(builder.build( Chunk::stub(&hooks.as_gc())));
 
       let result = fun_name.call(&mut hooks, Some(val!(fun)), &[]);
       assert_eq!(result.unwrap().to_num(), 2.0);
 
       let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Variadic(5));
-      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap());
+      let fun = hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc())));
 
       let result = fun_name.call(&mut hooks, Some(val!(fun)), &[]);
       assert_eq!(result.unwrap().to_num(), 5.0);
@@ -160,6 +162,8 @@ mod test {
   }
 
   mod call {
+    use laythe_core::chunk::Chunk;
+
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
 
@@ -186,7 +190,7 @@ mod test {
 
       let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
 
-      let fun = hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap());
+      let fun = hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc())));
 
       let args = &[val!(hooks.manage_str("input".to_string()))];
       let result1 = fun_call.call(&mut hooks, Some(val!(fun)), args);

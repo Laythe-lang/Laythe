@@ -462,7 +462,7 @@ mod test {
       let context = NoContext::default();
       let hooks = GcHooks::new(&context);
 
-      let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+      let fiber = FiberBuilder::default().build(&hooks).unwrap();
       let mut queue = ChannelQueue::with_capacity(5);
 
       assert_eq!(queue.len(), 0);
@@ -480,7 +480,7 @@ mod test {
       let context = NoContext::default();
       let hooks = GcHooks::new(&context);
 
-      let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+      let fiber = FiberBuilder::default().build(&hooks).unwrap();
       let mut queue = ChannelQueue::with_capacity(5);
 
       assert_eq!(queue.capacity(), 5);
@@ -505,7 +505,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::sync();
 
         let r = queue.send(fiber, val!(1.0));
@@ -518,8 +518,8 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
-        let fiber_waiter = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
+        let fiber_waiter = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::sync();
 
         queue.receive(fiber_waiter);
@@ -534,7 +534,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::sync();
 
         queue.send(fiber, val!(1.0));
@@ -548,9 +548,9 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
-        let fiber_waiter1 = FiberBuilder::<u8>::default().build(&hooks).unwrap();
-        let fiber_waiter2 = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
+        let fiber_waiter1 = FiberBuilder::default().build(&hooks).unwrap();
+        let fiber_waiter2 = FiberBuilder::default().build(&hooks).unwrap();
 
         let mut queue = ChannelQueue::sync();
         queue.receive(fiber_waiter1);
@@ -585,7 +585,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::sync();
 
         assert_eq!(queue.close(), CloseResult::Ok);
@@ -600,7 +600,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::sync();
 
         let r = queue.receive(fiber);
@@ -613,7 +613,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::sync();
 
         let r = queue.receive(fiber);
@@ -626,8 +626,8 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber1 = FiberBuilder::<u8>::default().build(&hooks).unwrap();
-        let fiber2 = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber1 = FiberBuilder::default().build(&hooks).unwrap();
+        let fiber2 = FiberBuilder::default().build(&hooks).unwrap();
 
         let mut queue = ChannelQueue::with_capacity(1);
         queue.send(fiber2, val!(1.0));
@@ -642,7 +642,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::sync();
 
         queue.send(fiber, val!(10.0));
@@ -658,7 +658,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::sync();
 
         assert_eq!(queue.close(), CloseResult::Ok);
@@ -677,7 +677,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::with_capacity(3);
 
         let r = queue.send(fiber, val!(1.0));
@@ -690,7 +690,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::with_capacity(1);
 
         queue.send(fiber, val!(1.0));
@@ -704,8 +704,8 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
-        let fiber_waiter1 = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
+        let fiber_waiter1 = FiberBuilder::default().build(&hooks).unwrap();
 
         let mut queue = ChannelQueue::with_capacity(1);
         queue.receive(fiber_waiter1);
@@ -721,7 +721,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::with_capacity(1);
 
         assert_eq!(queue.close(), CloseResult::Ok);
@@ -736,7 +736,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::with_capacity(3);
 
         let r = queue.receive(fiber);
@@ -749,8 +749,8 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
-        let fiber_waiter = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
+        let fiber_waiter = FiberBuilder::default().build(&hooks).unwrap();
 
         let mut queue = ChannelQueue::with_capacity(1);
         queue.send(fiber_waiter, val!(1.0));
@@ -767,7 +767,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::with_capacity(3);
 
         queue.send(fiber, val!(1.0));
@@ -782,7 +782,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::with_capacity(3);
 
         queue.send(fiber, val!(10.0));
@@ -798,7 +798,7 @@ mod test {
         let context = NoContext::default();
         let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+        let fiber = FiberBuilder::default().build(&hooks).unwrap();
         let mut queue = ChannelQueue::with_capacity(1);
 
         assert_eq!(queue.close(), CloseResult::Ok);
@@ -853,7 +853,7 @@ mod test {
       let context = NoContext::default();
       let hooks = GcHooks::new(&context);
 
-      let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+      let fiber = FiberBuilder::default().build(&hooks).unwrap();
       let mut channel = Channel::with_capacity(&hooks, 5);
 
       assert_eq!(channel.len(), 0);
@@ -896,7 +896,7 @@ mod test {
       let context = NoContext::default();
       let hooks = GcHooks::new(&context);
 
-      let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+      let fiber = FiberBuilder::default().build(&hooks).unwrap();
       let mut channel = Channel::sync(&hooks).read_only().unwrap();
 
       let r = channel.send(fiber, val!(10.0));
@@ -910,7 +910,7 @@ mod test {
       let context = NoContext::default();
       let hooks = GcHooks::new(&context);
 
-      let fiber = FiberBuilder::<u8>::default().build(&hooks).unwrap();
+      let fiber = FiberBuilder::default().build(&hooks).unwrap();
       let mut channel = Channel::sync(&hooks).write_only().unwrap();
 
       let r = channel.receive(fiber);

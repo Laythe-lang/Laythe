@@ -21,6 +21,7 @@ impl Closure {
   /// use laythe_core::module::Module;
   /// use laythe_core::captures::Captures;
   /// use laythe_core::hooks::{NoContext, GcHooks};
+  /// use laythe_core::chunk::Chunk;
   /// use std::path::PathBuf;
   ///
   /// let mut context = NoContext::default();
@@ -30,8 +31,9 @@ impl Closure {
   ///   hooks.manage_obj(Class::bare(hooks.manage_str("module"))),
   ///   0,
   /// ));
-  /// let mut builder = FunBuilder::<u8>::new(hooks.manage_str("example"), module, Arity::default());
-  /// let managed_fun = hooks.manage_obj(builder.build(&hooks).unwrap());
+  /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module, Arity::default());
+  /// let chunk = Chunk::stub(&hooks);
+  /// let managed_fun = hooks.manage_obj(builder.build(chunk));
   ///
   /// let captures = Captures::new(&hooks, &[]);
   /// let closure = Closure::new(managed_fun, captures);

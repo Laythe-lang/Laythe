@@ -127,7 +127,7 @@ mod test {
   mod size {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{captures::Captures, object::Closure};
+    use laythe_core::{captures::Captures, chunk::Chunk, object::Closure};
 
     #[test]
     fn new() {
@@ -150,16 +150,17 @@ mod test {
 
       let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(4));
       let closure = hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
+        hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
         captures,
       ));
 
       let result = closure_name.call(&mut hooks, Some(val!(closure)), &[]);
       assert_eq!(result.unwrap().to_num(), 4.0);
 
-      let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
+      let builder =
+        test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
       let closure = hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
+        hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
         captures,
       ));
 
@@ -168,7 +169,7 @@ mod test {
 
       let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Variadic(5));
       let closure = hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
+        hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
         captures,
       ));
 
@@ -180,7 +181,7 @@ mod test {
   mod call {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{captures::Captures, object::Closure};
+    use laythe_core::{captures::Captures, chunk::Chunk, object::Closure};
 
     #[test]
     fn new() {
@@ -207,7 +208,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let closure = hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
+        hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
         captures,
       ));
 

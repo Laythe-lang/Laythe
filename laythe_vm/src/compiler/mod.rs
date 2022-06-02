@@ -6,12 +6,12 @@ mod resolver;
 mod scanner;
 
 pub use parser::Parser;
-pub use peephole::peephole;
 pub use resolver::Resolver;
 
 use crate::{
   byte_code::{CaptureIndex, Label, SymbolicByteCode},
   cache::CacheIdEmitter,
+  chunk_builder::ChunkBuilder,
   source::{LineOffsets, VmFileId},
   FeResult,
 };
@@ -42,7 +42,10 @@ use std::{
   rc::Rc,
 };
 
-use self::ir::symbol_table::{Symbol, SymbolState, SymbolTable};
+use self::{
+  ir::symbol_table::{Symbol, SymbolState, SymbolTable},
+  peephole::peephole_compile,
+};
 
 #[cfg(feature = "debug")]
 use crate::debug::print_symbolic_code;
@@ -165,7 +168,10 @@ pub struct Compiler<'a, 'src> {
   root_trace: &'a dyn TraceRoot,
 
   /// The current function
-  fun: FunBuilder<SymbolicByteCode>,
+  fun: FunBuilder,
+
+  /// The current chunk
+  chunk: ChunkBuilder,
 
   /// The type the current function scope
   fun_kind: FunKind,
@@ -269,11 +275,13 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     gc.push_root(module);
     let fun_name = gc.manage_str(SCRIPT, root_trace);
     let fun = FunBuilder::new(fun_name, module, Arity::default());
+    let chunk = ChunkBuilder::default();
     gc.pop_roots(1);
 
     Self {
       io: None,
       fun,
+      chunk,
       file_id,
       root_trace,
       module,
@@ -312,12 +320,12 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     }
 
     let end = ast.end();
-    let cache_id_emitter = self.cache_id_emitter.replace(CacheIdEmitter::default());
+    let cache_id_emitter = Rc::clone(&self.cache_id_emitter);
     let (fun, errors, _, gc) = self.end_compiler(end, ScopeExit::Normal);
     if errors.is_empty() {
-      (Ok(fun), gc, cache_id_emitter)
+      (Ok(fun), gc, cache_id_emitter.take())
     } else {
-      (Err(errors), gc, cache_id_emitter)
+      (Err(errors), gc, cache_id_emitter.take())
     }
   }
 
@@ -329,6 +337,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     enclosing: &mut Compiler<'b, 'src>,
   ) -> Compiler<'b, 'src> {
     let fun = FunBuilder::new(name, enclosing.module, arity);
+    let chunk = ChunkBuilder::default();
 
     let gc = RefCell::new(Allocator::default());
     gc.swap(&enclosing.gc);
@@ -342,6 +351,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     Compiler {
       io,
       fun,
+      chunk,
       file_id: enclosing.file_id,
       module: enclosing.module,
       line_offsets: enclosing.line_offsets,
@@ -390,18 +400,26 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     #[cfg(feature = "debug")]
     {
-      Compiler::print_chunk(&self.fun, &self.class_attributes, &self.io, self.fun_kind);
+      Compiler::print_chunk(
+        &self.fun,
+        &self.chunk,
+        &self.class_attributes,
+        &self.io,
+        self.fun_kind,
+      );
     }
 
-    match self.fun.build(&hooks) {
+    let result = peephole_compile(
+      &hooks,
+      self.fun,
+      self.chunk,
+      Rc::clone(&self.cache_id_emitter),
+    );
+
+    match result {
       Ok(fun) => (fun, self.errors, self.captures, context.done()),
       Err(errors) => {
-        let fun = Fun::stub(
-          &hooks,
-          hooks.manage_str("error"),
-          self.module,
-          SymbolicByteCode::Nil,
-        );
+        let fun = Fun::stub(&hooks, hooks.manage_str("error"), self.module);
         self.errors.extend_from_slice(&errors);
         (fun, self.errors, self.captures, context.done())
       },
@@ -411,7 +429,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   /// Print the chunk if debug and an error occurred
   #[cfg(feature = "debug")]
   fn print_chunk(
-    fun: &FunBuilder<SymbolicByteCode>,
+    fun: &FunBuilder,
+    chunk: &ChunkBuilder,
     class_info: &Option<Gc<ClassAttributes>>,
     io: &Option<Io>,
     fun_kind: FunKind,
@@ -426,7 +445,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     };
 
     let mut stdio = io.as_ref().unwrap().stdio();
-    print_symbolic_code(&mut stdio, fun.chunk(), &name).expect("could not write to stdio");
+    print_symbolic_code(&mut stdio, chunk, &name).expect("could not write to stdio");
   }
 
   /// Emit byte code for a return
@@ -789,16 +808,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     }
   }
 
-  /// Get inline cache property id
-  fn emit_property_id(&self) -> u32 {
-    self.cache_id_emitter.borrow_mut().emit_property()
-  }
-
-  /// Get inline cache property id
-  fn emit_invoke_id(&self) -> u32 {
-    self.cache_id_emitter.borrow_mut().emit_invoke()
-  }
-
   /// Emit a provided instruction
   fn emit_byte(&mut self, op_code: SymbolicByteCode, offset: u32) {
     let line = self
@@ -815,7 +824,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// write instruction to the current function
   fn write_instruction(&mut self, op_code: SymbolicByteCode, line: u32) {
-    self.fun.write_instruction(op_code, line)
+    self.chunk.write_instruction(op_code, line)
   }
 
   /// Parse a variable from the provided token return it's new constant
@@ -844,7 +853,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     match self.constants.get(&value) {
       Some(index) => *index as u16,
       None => {
-        let index = self.fun.add_constant(value);
+        let index = self.chunk.add_constant(value);
         if index > std::u16::MAX as usize {
           self.error("Too many constants in one chunk.", None);
           return 0;
@@ -938,23 +947,20 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   }
 
   /// Compile a the base of an expression
-  fn primary(&mut self, primary: &'a Primary<'src>, trailers: &'a [Trailer<'src>]) -> bool {
+  fn primary(&mut self, primary: &'a Primary<'src>) {
     match primary {
       Primary::Channel(token) => self.channel(token),
       Primary::True(token) => self.true_(token),
       Primary::False(token) => self.false_(token),
       Primary::Nil(token) => self.nil(token),
       Primary::Number(token) => self.number(token),
-      Primary::Grouping(expr) => {
-        self.expr(expr);
-        false
-      },
+      Primary::Grouping(expr) => self.expr(expr),
       Primary::String(token) => self.string(token),
       Primary::Interpolation(interpolation) => self.interpolation(interpolation),
       Primary::Ident(token) => self.identifier(token),
       Primary::InstanceAccess(instance_access) => self.instance_access(instance_access),
       Primary::Self_(token) => self.self_(token),
-      Primary::Super(token) => self.super_(token, trailers),
+      Primary::Super(token) => self.super_(token),
       Primary::Lambda(fun) => self.lambda(fun),
       Primary::List(list) => self.list(list),
       Primary::Tuple(tuple) => self.tuple(tuple),
@@ -1282,7 +1288,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       // declare the hidden local $iter variable
       self_.declare_local_variable(ITER_VAR);
       self_.emit_byte(SymbolicByteCode::Invoke((iter_method_const, 0)), expr_line);
-      self_.emit_byte(SymbolicByteCode::Slot(self_.emit_invoke_id()), expr_line);
+      self_.emit_byte(SymbolicByteCode::InvokeSlot, expr_line);
       self_.define_local_variable(ITER_VAR, SymbolState::Initialized, expr_line);
 
       let item_line = for_.item.end();
@@ -1394,8 +1400,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       Expr::Atom(atom) => match atom.trailers.last() {
         Some(Trailer::Call(call)) => {
           // emit instruction for everything but the actual call
-          let skip_first = self.primary(&atom.primary, &atom.trailers);
-          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+          self.primary(&atom.primary);
+          self.apply_trailers(&atom.trailers[..atom.trailers.len() - 1]);
 
           // emit for each argument for the launch call
           for expr in &call.args {
@@ -1496,8 +1502,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         // if we have trailers compile to last trailer and emit specialized
         // set instruction
         Some(last) => {
-          let skip_first = self.primary(&atom.primary, &atom.trailers);
-          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+          self.primary(&atom.primary);
+          self.apply_trailers(&atom.trailers[..atom.trailers.len() - 1]);
 
           match last {
             Trailer::Index(index) => {
@@ -1506,10 +1512,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
               let name = self.identifier_constant(INDEX_SET);
               self.emit_byte(SymbolicByteCode::Invoke((name, 2)), assign.rhs.end());
-              self.emit_byte(
-                SymbolicByteCode::Slot(self.emit_invoke_id()),
-                assign.rhs.end(),
-              )
+              self.emit_byte(SymbolicByteCode::InvokeSlot, assign.rhs.end())
             },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
@@ -1527,10 +1530,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
               self.expr(&assign.rhs);
               self.emit_byte(SymbolicByteCode::SetProperty(name), access.end());
-              self.emit_byte(
-                SymbolicByteCode::Slot(self.emit_property_id()),
-                access.end(),
-              );
+              self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
             },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
@@ -1559,10 +1559,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
             self.expr(&assign.rhs);
             self.emit_byte(SymbolicByteCode::SetProperty(name), instance_access.end());
-            self.emit_byte(
-              SymbolicByteCode::Slot(self.emit_property_id()),
-              instance_access.end(),
-            );
+            self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
           },
           _ => unreachable!("Unexpected expression on left hand side of assignment."),
         },
@@ -1579,8 +1576,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         // if we have trailers compile to last trailer and emit specialized
         // set instruction
         Some(last) => {
-          let skip_first = self.primary(&atom.primary, &atom.trailers);
-          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+          self.primary(&atom.primary);
+          self.apply_trailers(&atom.trailers[..atom.trailers.len() - 1]);
 
           match last {
             Trailer::Index(index) => {
@@ -1589,7 +1586,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
               let name = self.identifier_constant(INDEX_GET);
               self.emit_byte(SymbolicByteCode::Invoke((name, 1)), index.end());
-              self.emit_byte(SymbolicByteCode::Slot(self.emit_invoke_id()), index.end());
+              self.emit_byte(SymbolicByteCode::InvokeSlot, index.end());
 
               self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
             },
@@ -1608,10 +1605,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
               let name = self.identifier_constant(access.prop.str());
 
               self.emit_byte(SymbolicByteCode::GetProperty(name), access.end());
-              self.emit_byte(
-                SymbolicByteCode::Slot(self.emit_property_id()),
-                access.end(),
-              );
+              self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
 
               self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
             },
@@ -1642,10 +1636,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
             let name = self.identifier_constant(instance_access.property());
 
             self.emit_byte(SymbolicByteCode::GetProperty(name), instance_access.end());
-            self.emit_byte(
-              SymbolicByteCode::Slot(self.emit_property_id()),
-              instance_access.end(),
-            );
+            self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
 
             self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
           },
@@ -1674,8 +1665,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         // if we have trailers compile to last trailer and emit specialized
         // set instruction
         Some(last) => {
-          let skip_first = self.primary(&atom.primary, &atom.trailers);
-          self.apply_trailers(skip_first, &atom.trailers[..atom.trailers.len() - 1]);
+          self.primary(&atom.primary);
+          self.apply_trailers(&atom.trailers[..atom.trailers.len() - 1]);
 
           match last {
             Trailer::Index(index) => {
@@ -1685,10 +1676,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
               let name = self.identifier_constant(INDEX_GET);
               self.emit_byte(SymbolicByteCode::Invoke((name, 1)), assign_binary.rhs.end());
-              self.emit_byte(
-                SymbolicByteCode::Slot(self.emit_invoke_id()),
-                assign_binary.rhs.end(),
-              );
+              self.emit_byte(SymbolicByteCode::InvokeSlot, assign_binary.rhs.end());
 
               self.expr(&assign_binary.rhs);
               binary_op(self);
@@ -1697,10 +1685,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
               let name = self.identifier_constant(INDEX_SET);
               self.emit_byte(SymbolicByteCode::Invoke((name, 2)), assign_binary.rhs.end());
-              self.emit_byte(
-                SymbolicByteCode::Slot(self.emit_invoke_id()),
-                assign_binary.rhs.end(),
-              );
+              self.emit_byte(SymbolicByteCode::InvokeSlot, assign_binary.rhs.end());
             },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
@@ -1718,19 +1703,13 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
               self.emit_byte(SymbolicByteCode::Dup, access.end());
               self.emit_byte(SymbolicByteCode::GetProperty(name), access.end());
-              self.emit_byte(
-                SymbolicByteCode::Slot(self.emit_property_id()),
-                access.end(),
-              );
+              self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
 
               self.expr(&assign_binary.rhs);
               binary_op(self);
 
               self.emit_byte(SymbolicByteCode::SetProperty(name), access.end());
-              self.emit_byte(
-                SymbolicByteCode::Slot(self.emit_property_id()),
-                access.end(),
-              );
+              self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
             },
             Trailer::Call(_) => {
               unreachable!("Unexpected expression on left hand side of assignment.")
@@ -1761,19 +1740,13 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
             self.emit_byte(SymbolicByteCode::Dup, instance_access.end());
             self.emit_byte(SymbolicByteCode::GetProperty(name), instance_access.end());
-            self.emit_byte(
-              SymbolicByteCode::Slot(self.emit_property_id()),
-              instance_access.end(),
-            );
+            self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
 
             self.expr(&assign_binary.rhs);
             binary_op(self);
 
             self.emit_byte(SymbolicByteCode::SetProperty(name), instance_access.end());
-            self.emit_byte(
-              SymbolicByteCode::Slot(self.emit_property_id()),
-              instance_access.end(),
-            );
+            self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
           },
           _ => unreachable!("Unexpected expression on left hand side of assignment."),
         },
@@ -1852,87 +1825,50 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   }
 
   /// Compile a call expression
-  fn call(&mut self, call: &'a ast::Call<'src>) -> bool {
+  fn call(&mut self, call: &'a ast::Call<'src>) {
     for expr in &call.args {
       self.expr(expr);
+      self.emit_byte(SymbolicByteCode::ArgumentDelimiter, expr.end());
     }
 
     self.emit_byte(SymbolicByteCode::Call(call.args.len() as u8), call.end());
-    false
   }
 
   /// Compile an indexing expression
-  fn index(&mut self, index: &'a ast::Index<'src>) -> bool {
+  fn index(&mut self, index: &'a ast::Index<'src>) {
     self.expr(&index.index);
 
     let name = self.identifier_constant(INDEX_GET);
     self.emit_byte(SymbolicByteCode::Invoke((name, 1)), index.end());
-    self.emit_byte(SymbolicByteCode::Slot(self.emit_invoke_id()), index.end());
-
-    false
+    self.emit_byte(SymbolicByteCode::InvokeSlot, index.end());
   }
 
   /// Compile an access expression
-  fn access(&mut self, access: &ast::Access, trailers: &'a [Trailer<'src>]) -> bool {
+  fn access(&mut self, access: &ast::Access) {
     let name = self.identifier_constant(access.prop.str());
-
-    match trailers.first() {
-      Some(trailer) => {
-        if let Trailer::Call(call) = trailer {
-          for expr in &call.args {
-            self.expr(expr);
-          }
-          self.emit_byte(
-            SymbolicByteCode::Invoke((name, call.args.len() as u8)),
-            trailer.end(),
-          );
-          self.emit_byte(SymbolicByteCode::Slot(self.emit_invoke_id()), trailer.end());
-          true
-        } else {
-          self.emit_byte(SymbolicByteCode::GetProperty(name), access.prop.end());
-          self.emit_byte(
-            SymbolicByteCode::Slot(self.emit_property_id()),
-            access.end(),
-          );
-          false
-        }
-      },
-      None => {
-        self.emit_byte(SymbolicByteCode::GetProperty(name), access.prop.end());
-        self.emit_byte(
-          SymbolicByteCode::Slot(self.emit_property_id()),
-          access.end(),
-        );
-        false
-      },
-    }
+    self.emit_byte(SymbolicByteCode::GetProperty(name), access.prop.end());
+    self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
   }
 
   /// Compile an atom expression
   fn atom(&mut self, atom: &'a ast::Atom<'src>) {
-    let skip_first = self.primary(&atom.primary, &atom.trailers);
-    self.apply_trailers(skip_first, &atom.trailers);
+    self.primary(&atom.primary);
+    self.apply_trailers(&atom.trailers);
   }
 
   /// Compile trailers onto a base primary
-  fn apply_trailers(&mut self, skip_first: bool, trailers: &'a [Trailer<'src>]) {
-    let mut skip = skip_first;
-    for (idx, trailer) in trailers.iter().enumerate() {
-      if skip {
-        skip = false;
-        continue;
-      }
-
-      skip = match trailer {
+  fn apply_trailers(&mut self, trailers: &'a [Trailer<'src>]) {
+    for trailer in trailers.iter() {
+      match trailer {
         Trailer::Call(call) => self.call(call),
         Trailer::Index(index) => self.index(index),
-        Trailer::Access(access) => self.access(access, &trailers[(idx + 1)..]),
+        Trailer::Access(access) => self.access(access),
       }
     }
   }
 
   /// Compile a channel declaration
-  fn channel(&mut self, channel: &'a ast::Channel<'src>) -> bool {
+  fn channel(&mut self, channel: &'a ast::Channel<'src>) {
     match &channel.expr {
       Some(expr) => {
         self.expr(expr);
@@ -1940,44 +1876,37 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       },
       None => self.emit_byte(SymbolicByteCode::Channel, channel.end()),
     }
-
-    false
   }
 
   /// Compile a true token
-  fn true_(&mut self, true_: &Token) -> bool {
+  fn true_(&mut self, true_: &Token) {
     self.emit_byte(SymbolicByteCode::True, true_.end());
-    false
   }
 
   /// Compile a false token
-  fn false_(&mut self, false_: &Token) -> bool {
+  fn false_(&mut self, false_: &Token) {
     self.emit_byte(SymbolicByteCode::False, false_.end());
-    false
   }
 
   /// Compile a nil token
-  fn nil(&mut self, nil: &Token) -> bool {
+  fn nil(&mut self, nil: &Token) {
     self.emit_byte(SymbolicByteCode::Nil, nil.end());
-    false
   }
 
   /// Compile a number token
-  fn number(&mut self, token: &Token) -> bool {
+  fn number(&mut self, token: &Token) {
     let value = val!(token.str().parse::<f64>().expect("Unable to parse float"));
     self.emit_constant(value, token.end());
-    false
   }
 
   /// Compile a string token
-  fn string(&mut self, token: &Token) -> bool {
+  fn string(&mut self, token: &Token) {
     let value = val!(self.gc.borrow_mut().manage_str(token.str(), self));
     self.emit_constant(value, token.end());
-    false
   }
 
   /// Compile a string token
-  fn interpolation(&mut self, interpolation: &'a ast::Interpolation<'src>) -> bool {
+  fn interpolation(&mut self, interpolation: &'a ast::Interpolation<'src>) {
     const STR: &str = "str";
     let str_constant = self.string_constant(STR);
 
@@ -1996,7 +1925,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         ast::StringSegments::Expr(expr) => {
           self.expr(expr);
           self.emit_byte(SymbolicByteCode::Invoke((str_constant, 0)), expr.end());
-          self.emit_byte(SymbolicByteCode::Slot(self.emit_invoke_id()), expr.end());
+          self.emit_byte(SymbolicByteCode::InvokeSlot, expr.end());
         },
       }
     }
@@ -2010,29 +1939,21 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       SymbolicByteCode::Interpolate((interpolation.segments.len() + 2) as u16),
       interpolation.end(),
     );
-
-    false
   }
 
   /// Compile a identifer token
-  fn identifier(&mut self, token: &Token<'src>) -> bool {
+  fn identifier(&mut self, token: &Token<'src>) {
     self.variable_get(token);
-    false
   }
 
   /// Compile instance access
-  fn instance_access(&mut self, instance_access: &ast::InstanceAccess<'src>) -> bool {
+  fn instance_access(&mut self, instance_access: &ast::InstanceAccess<'src>) {
     if self.instance_access_self(instance_access) {
       let name = self.identifier_constant(instance_access.property());
 
       self.emit_byte(SymbolicByteCode::GetProperty(name), instance_access.end());
-      self.emit_byte(
-        SymbolicByteCode::Slot(self.emit_property_id()),
-        instance_access.end(),
-      );
+      self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
     }
-
-    false
   }
 
   /// Compile instance access self load
@@ -2065,7 +1986,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   }
 
   /// Compile the self token
-  fn self_(&mut self, self_: &Token<'src>) -> bool {
+  fn self_(&mut self, self_: &Token<'src>) {
     self
       .class_attributes
       .map(|class_compiler| class_compiler.fun_kind)
@@ -2085,12 +2006,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         );
         None
       });
-
-    false
   }
 
   /// Compile the super token
-  fn super_(&mut self, super_: &ast::Super<'src>, trailers: &'a [Trailer<'src>]) -> bool {
+  fn super_(&mut self, super_: &ast::Super<'src>) {
     if self.class_attributes.is_none() {
       self.error(
         "Cannot use 'super' outside of a class.",
@@ -2108,77 +2027,41 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       super_.end(),
     ));
 
-    match trailers.first() {
-      Some(trailer) => match trailer {
-        Trailer::Call(call) => {
-          for arg in &call.args {
-            self.expr(arg);
-          }
-
-          self.variable_get(&super_.super_);
-          self.emit_byte(
-            SymbolicByteCode::SuperInvoke((name, call.args.len() as u8)),
-            super_.access.end(),
-          );
-          self.emit_byte(
-            SymbolicByteCode::Slot(self.emit_invoke_id()),
-            super_.access.end(),
-          );
-          true
-        },
-        _ => {
-          self.variable_get(&super_.super_);
-          self.emit_byte(SymbolicByteCode::GetSuper(name), super_.end());
-          false
-        },
-      },
-      None => {
-        self.variable_get(&super_.super_);
-
-        self.emit_byte(SymbolicByteCode::GetSuper(name), super_.access.end());
-        false
-      },
-    }
+    self.variable_get(&super_.super_);
+    self.emit_byte(SymbolicByteCode::GetSuper(name), super_.end());
   }
 
   /// Compile a lambda expression
-  fn lambda(&mut self, fun: &'a ast::Fun<'src>) -> bool {
+  fn lambda(&mut self, fun: &'a ast::Fun<'src>) {
     self.function(fun, FunKind::Fun);
-    false
   }
 
   /// Compile a list literal
-  fn list(&mut self, list: &'a ast::Collection<'src>) -> bool {
+  fn list(&mut self, list: &'a ast::Collection<'src>) {
     for item in list.items.iter() {
       self.expr(item);
     }
 
     self.emit_byte(SymbolicByteCode::List(list.items.len() as u16), list.end());
-
-    false
   }
 
   /// Compile a list literal
-  fn tuple(&mut self, list: &'a ast::Collection<'src>) -> bool {
+  fn tuple(&mut self, list: &'a ast::Collection<'src>) {
     for item in list.items.iter() {
       self.expr(item);
     }
 
     self.emit_byte(SymbolicByteCode::Tuple(list.items.len() as u16), list.end());
-
-    false
   }
 
   /// Compile a map literal
-  fn map(&mut self, map: &'a ast::Map<'src>) -> bool {
+  fn map(&mut self, map: &'a ast::Map<'src>) {
     for (key, value) in map.entries.iter() {
       self.expr(key);
       self.expr(value);
     }
 
     self.emit_byte(SymbolicByteCode::Map(map.entries.len() as u16), map.end());
-
-    false
   }
 
   /// Set the functions arity from the call signature
@@ -2295,12 +2178,7 @@ mod test {
   }
 
   pub fn test_fun(hooks: &GcHooks, module: Gc<Module>) -> GcObj<Fun> {
-    let fun = Fun::stub(
-      hooks,
-      hooks.manage_str("print"),
-      module,
-      SymbolicByteCode::Return,
-    );
+    let fun = Fun::stub(hooks, hooks.manage_str("print"), module);
     hooks.manage_obj(fun)
   }
 

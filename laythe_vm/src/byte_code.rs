@@ -1,12 +1,11 @@
 use codespan_reporting::diagnostic::Diagnostic;
-use laythe_core::chunk::{Encode, Line};
-use std::{fmt::Display, mem};
+use std::{cell::RefCell, fmt::Display, mem, rc::Rc};
 use variant_count::VariantCount;
 
 #[cfg(any(test, feature = "debug"))]
 use std::convert::TryInto;
 
-use crate::{compiler::peephole, source::VmFileId};
+use crate::{cache::CacheIdEmitter, source::VmFileId};
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct Label(u32);
@@ -185,8 +184,11 @@ pub enum SymbolicByteCode {
   /// Pop an exception handler off the fiber
   PopHandler,
 
-  /// Are marked location
+  /// A marked location
   Label(Label),
+
+  /// Indicates the end of an expression
+  ArgumentDelimiter,
 
   /// Call a function
   Call(u8),
@@ -221,8 +223,11 @@ pub enum SymbolicByteCode {
   // An capture index for a closure
   CaptureIndex(CaptureIndex),
 
-  /// A inline cache slot
-  Slot(u32),
+  /// An invoke cache slot
+  InvokeSlot,
+
+  /// A property slot
+  PropertySlot,
 
   /// Apply equality between the top two operands on the stack
   Equal,
@@ -245,10 +250,11 @@ pub enum SymbolicByteCode {
 
 impl SymbolicByteCode {
   /// Encode aligned bytecode as unaligned bytecode for better storage / compactness
-  fn encode(
+  pub fn encode(
     self,
     code: &mut Vec<u8>,
     label_offsets: &[usize],
+    cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
     offset: usize,
   ) -> Option<Diagnostic<VmFileId>> {
     match self {
@@ -347,12 +353,18 @@ impl SymbolicByteCode {
         code.extend_from_slice(&bytes);
         None
       },
-      Self::Slot(slot) => {
-        let bytes = slot.to_ne_bytes();
+      Self::PropertySlot => {
+        let bytes = cache_id_emitter.borrow_mut().emit_property().to_ne_bytes();
+        code.extend_from_slice(&bytes);
+        None
+      },
+      Self::InvokeSlot => {
+        let bytes = cache_id_emitter.borrow_mut().emit_invoke().to_ne_bytes();
         code.extend_from_slice(&bytes);
         None
       },
       Self::Label(_) => None,
+      Self::ArgumentDelimiter => None,
     }
   }
 
@@ -420,7 +432,8 @@ impl SymbolicByteCode {
       Self::Inherit => 1,
       Self::GetSuper(_) => 3,
       Self::CaptureIndex(_) => 2,
-      Self::Slot(_) => 4,
+      Self::PropertySlot => 4,
+      Self::InvokeSlot => 4,
       Self::Equal => 1,
       Self::NotEqual => 1,
       Self::Greater => 1,
@@ -428,6 +441,7 @@ impl SymbolicByteCode {
       Self::Less => 1,
       Self::LessEqual => 1,
       Self::Label(_) => 0,
+      Self::ArgumentDelimiter => 0,
     }
   }
 
@@ -495,7 +509,8 @@ impl SymbolicByteCode {
       Self::Inherit => 0,
       Self::GetSuper(_) => -1,
       Self::CaptureIndex(_) => 0,
-      Self::Slot(_) => 0,
+      Self::PropertySlot => 0,
+      Self::InvokeSlot => 0,
       Self::Equal => -1,
       Self::NotEqual => -1,
       Self::Greater => -1,
@@ -503,56 +518,61 @@ impl SymbolicByteCode {
       Self::Less => -1,
       Self::LessEqual => -1,
       Self::Label(_) => 0,
+      Self::ArgumentDelimiter => 0,
     }
   }
 }
 
-impl Encode for SymbolicByteCode {
-  type Error = Vec<Diagnostic<VmFileId>>;
+// impl Encode for SymbolicByteCode {
+//   type Error = Vec<Diagnostic<VmFileId>>;
 
-  fn encode(
-    instructions: Vec<Self>,
-    mut lines: Vec<Line>,
-  ) -> Result<(Vec<u8>, Vec<Line>), Self::Error> {
-    let instructions = peephole(instructions);
+//   fn encode(
+//     instructions: Vec<Self>,
+//     mut lines: Vec<Line>,
+//   ) -> Result<(Vec<u8>, Vec<Line>), Self::Error> {
+//     let instructions = peephole_optimize(instructions);
 
-    let mut label_offsets: [usize; u16::MAX as usize] = [0; u16::MAX as usize];
-    let label_count = label_count(&instructions);
+//     let mut label_offsets: [usize; u16::MAX as usize] = [0; u16::MAX as usize];
+//     let label_count = label_count(&instructions);
 
-    if label_count > u16::MAX as usize {
-      todo!("Really handle this");
-    }
+//     if label_count > u16::MAX as usize {
+//       todo!("Really handle this");
+//     }
 
-    compute_label_offsets(&instructions, &mut label_offsets[..label_count]);
+//     compute_label_offsets(&instructions, &mut label_offsets[..label_count]);
 
-    let mut buffer = Vec::with_capacity(instructions.len());
-    let mut offset: usize = 0;
+//     let mut buffer = Vec::with_capacity(instructions.len());
+//     let mut offset: usize = 0;
 
-    let mut lines_iter = lines.iter_mut();
-    let mut line_option = lines_iter.next();
-    let mut errors = vec![];
+//     let mut lines_iter = lines.iter_mut();
+//     let mut line_option = lines_iter.next();
+//     let mut errors = vec![];
 
-    for (index, instruction) in instructions.iter().enumerate() {
-      if let Some(error) = instruction.encode(&mut buffer, &label_offsets[..label_count], offset) {
-        errors.push(error);
-      }
-      offset += instruction.len();
+//     for (index, instruction) in instructions.iter().enumerate() {
+//       if let Some(error) = instruction.encode(
+//         &mut buffer,
+//         &label_offsets[..label_count],
+//         offset,
+//       ) {
+//         errors.push(error);
+//       }
+//       offset += instruction.len();
 
-      if let Some(line) = &mut line_option {
-        if index + 1 == line.offset as usize {
-          line.offset = offset as u32;
-          line_option = lines_iter.next();
-        }
-      }
-    }
+//       if let Some(line) = &mut line_option {
+//         if index + 1 == line.offset as usize {
+//           line.offset = offset as u32;
+//           line_option = lines_iter.next();
+//         }
+//       }
+//     }
 
-    if errors.is_empty() {
-      Ok((buffer, lines))
-    } else {
-      Err(errors)
-    }
-  }
-}
+//     if errors.is_empty() {
+//       Ok((buffer, lines))
+//     } else {
+//       Err(errors)
+//     }
+//   }
+// }
 
 fn jump_error(jump: usize) -> Option<Diagnostic<VmFileId>> {
   if jump > u16::MAX as usize {
@@ -562,7 +582,7 @@ fn jump_error(jump: usize) -> Option<Diagnostic<VmFileId>> {
   }
 }
 
-fn label_count(instructions: &[SymbolicByteCode]) -> usize {
+pub fn label_count(instructions: &[SymbolicByteCode]) -> usize {
   let mut count = 0;
 
   for instruction in instructions {
@@ -574,7 +594,7 @@ fn label_count(instructions: &[SymbolicByteCode]) -> usize {
   count
 }
 
-fn compute_label_offsets(instructions: &[SymbolicByteCode], label_offsets: &mut [usize]) {
+pub fn compute_label_offsets(instructions: &[SymbolicByteCode], label_offsets: &mut [usize]) {
   let mut offset: usize = 0;
 
   for instruction in instructions {
@@ -1281,8 +1301,10 @@ pub fn decode_u16(buffer: &[u8]) -> u16 {
 
 #[cfg(test)]
 mod test {
-  use super::*;
-
+  // use laythe_core::chunk::Line;
+  // 
+  // use super::*;
+  //
   // #[test]
   // fn encode_len() {
   //   let code: Vec<(usize, SymbolicByteCode)> = vec![
@@ -1350,35 +1372,40 @@ mod test {
   //     (1, SymbolicByteCode::LessEqual),
   //   ];
 
+  //   let mut buffer = Vec::<u8>::with_capacity(20);
+  //   let cache_id_emitter = Rc::new(RefCell::new(CacheIdEmitter::default()));
+
   //   for (size1, byte_code1) in &code {
   //     for (size2, byte_code2) in &code {
-  //       let label_0 = SymbolicByteCode::Label(Label::new(0));
-  //       let label_1 = SymbolicByteCode::Label(Label::new(1));
+  //       buffer.clear();
+  //       let label_offsets = [10, 20];
+  //       // TODO we probably need to dynamically calculate these labels so for the various jump instructions
 
-  //       let lines = vec![Line::new(0, 2), Line::new(1, 3)];
-
-  //       let (encoded, lines) =
-  //         Encode::encode(vec![label_0, *byte_code1, *byte_code2, label_1], lines).unwrap();
+  //       let err1 = byte_code1.encode(&mut buffer, &label_offsets, Rc::clone(&cache_id_emitter), 0);
   //       assert_eq!(
-  //         byte_code1.len(),
+  //         buffer.len(),
   //         *size1,
   //         "byte {:?} expected to be {} size",
   //         *byte_code1,
   //         *size1
   //       );
+  //       assert!(err1.is_none());
+
+  //       let len = buffer.len();
+  //       let err2 = byte_code2.encode(
+  //         &mut buffer,
+  //         &label_offsets,
+  //         Rc::clone(&cache_id_emitter),
+  //         len,
+  //       );
   //       assert_eq!(
-  //         byte_code2.len(),
+  //         buffer.len() - size1,
   //         *size2,
   //         "byte {:?} expected to be {} size",
   //         *byte_code2,
   //         *size2
   //       );
-  //       assert_eq!(lines[0].offset as usize, byte_code1.len());
-  //       assert_eq!(
-  //         lines[1].offset as usize,
-  //         byte_code1.len() + byte_code2.len()
-  //       );
-  //       assert_eq!(encoded.len(), byte_code1.len() + byte_code2.len());
+  //       assert!(err2.is_none());
   //     }
   //   }
   // }
