@@ -1276,7 +1276,7 @@ mod test {
   mod map {
     use super::*;
     use crate::support::test_fun_builder;
-    use laythe_core::{captures::Captures, object::Closure};
+    use laythe_core::{captures::Captures, object::Closure, chunk::Chunk};
 
     #[test]
     fn new() {
@@ -1306,7 +1306,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
+        hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
         captures
       )));
 
@@ -1327,7 +1327,7 @@ mod test {
     use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::{
       captures::Captures,
-      object::{Closure, Enumerator},
+      object::{Closure, Enumerator}, chunk::Chunk,
     };
 
     #[test]
@@ -1358,7 +1358,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
+        hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
         captures
       )));
 
@@ -1381,7 +1381,7 @@ mod test {
     use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::{
       captures::Captures,
-      object::{Closure, Enumerator},
+      object::{Closure, Enumerator}, chunk::Chunk,
     };
 
     #[test]
@@ -1417,7 +1417,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
+        hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
         captures
       )));
 
@@ -1471,7 +1471,7 @@ mod test {
     use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::{
       captures::Captures,
-      object::{Closure, Enumerator},
+      object::{Closure, Enumerator}, chunk::Chunk,
     };
 
     #[test]
@@ -1503,7 +1503,7 @@ mod test {
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
-        hooks.manage_obj(builder.build(&hooks.as_gc()).unwrap()),
+        hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
         captures
       )));
 

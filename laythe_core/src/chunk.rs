@@ -35,163 +35,6 @@ impl_debug_heap!(u8);
 
 impl_trace!(Line);
 impl_debug_heap!(Line);
-
-/// Represents a chunk of code
-/// A mutable builder for a final immutable chunk
-#[derive(Default)]
-pub struct ChunkBuilder<T> {
-  /// instruction in this code chunk
-  instructions: Vec<T>,
-
-  /// constants in this code chunk
-  constants: Vec<Value>,
-
-  /// debug line information
-  lines: Vec<Line>,
-}
-
-impl<T> ChunkBuilder<T> {
-  /// instruction in this code chunk
-  #[inline]
-  pub fn instructions(&self) -> &[T] {
-    &self.instructions
-  }
-
-  /// Write an instruction to this chunk
-  #[inline]
-  pub fn write_instruction(&mut self, instruction: T, line: u32) {
-    self.instructions.push(instruction);
-    let len = self.instructions.len() as u32;
-
-    match self.lines.last_mut() {
-      Some(last_line) => {
-        if last_line.line == line {
-          last_line.offset = len;
-        } else {
-          self.lines.push(Line::new(line, len));
-        }
-      },
-      None => self.lines.push(Line::new(line, len)),
-    }
-  }
-
-  /// Patch an existing instruction in this check with
-  /// a new value
-  #[inline]
-  pub fn patch_instruction(&mut self, index: usize, instruction: T) {
-    self.instructions[index] = instruction
-  }
-
-  /// Retrieve a constant in the constants table at
-  /// the provided offset
-  #[inline]
-  pub fn get_constant(&self, slot: usize) -> Value {
-    self.constants[slot]
-  }
-
-  /// Add a constant to this chunk
-  ///
-  /// # Examples
-  /// ```
-  /// use laythe_core::val;
-  /// use laythe_core::chunk::ChunkBuilder;
-  /// use laythe_core::value::Value;
-  /// use laythe_core::hooks::{NoContext, GcHooks};
-  ///
-  /// let mut context = NoContext::default();
-  /// let hooks = GcHooks::new(&mut context);
-  ///
-  /// let mut builder = ChunkBuilder::<u8>::default();
-  /// let index_1 = builder.add_constant(val!(10.4));
-  /// let index_2 = builder.add_constant(val!(5.2));
-  ///
-  /// assert_eq!(index_1, 0);
-  /// assert_eq!(index_2, 1);
-  ///
-  /// let chunk = builder.build(&hooks).unwrap();
-  ///
-  /// assert_eq!(chunk.get_constant(index_1), val!(10.4));
-  /// assert_eq!(chunk.get_constant(index_2), val!(5.2));
-  /// ```
-  #[inline]
-  pub fn add_constant(&mut self, value: Value) -> usize {
-    self.constants.push(value);
-    self.constants.len() - 1
-  }
-
-  /// Get the line number at a token offset
-  ///
-  /// # Panics
-  ///
-  /// This method panics if an offset is past the last instruction
-  ///
-  /// ```rust,should_panic
-  /// use laythe_core::chunk::ChunkBuilder;
-  /// use laythe_core::hooks::{NoContext, GcHooks};
-  ///
-  /// let mut context = NoContext::default();
-  /// let hooks = GcHooks::new(&mut context);
-  ///
-  /// let builder = ChunkBuilder::<u8>::default();
-  /// let chunk = builder.build(&hooks).unwrap();
-  /// chunk.get_line(3);
-  /// ```
-  pub fn get_line(&self, offset: usize) -> u32 {
-    let result = self
-      .lines
-      .binary_search_by_key(&(offset), |line| line.offset as usize);
-
-    match result {
-      Ok(index) => self.lines[index].line,
-      Err(index) => self.lines[cmp::min(index, self.lines.len() - 1)].line,
-    }
-  }
-}
-
-impl<T: Encode> ChunkBuilder<T> {
-  /// Build the final chunk from this builder. Consumes this
-  /// chunk builder in the process
-  pub fn build(self, hooks: &GcHooks) -> Result<Chunk, T::Error> {
-    let (buffer, lines) = T::encode(self.instructions, self.lines)?;
-
-    let instructions = hooks.manage(&*buffer);
-    hooks.push_root(instructions);
-    let constants = hooks.manage(&*self.constants);
-    hooks.push_root(constants);
-    let lines = hooks.manage(&*lines);
-    hooks.pop_roots(2);
-
-    Ok(Chunk {
-      instructions,
-      constants,
-      lines,
-    })
-  }
-}
-
-impl<T> Trace for ChunkBuilder<T> {
-  fn trace(&self) {
-    self.constants.iter().for_each(|constant| constant.trace());
-  }
-
-  fn trace_debug(&self, log: &mut dyn std::io::Write) {
-    self
-      .constants
-      .iter()
-      .for_each(|constant| constant.trace_debug(log));
-  }
-}
-
-impl<T: Debug> DebugHeap for ChunkBuilder<T> {
-  fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
-    f.debug_struct("ChunkBuilder")
-      .field("instructions", &self.instructions)
-      .field("constants", &DebugWrap(&&*self.constants, depth))
-      .field("lines", &self.lines)
-      .finish()
-  }
-}
-
 /// An immutable chunk of code
 #[derive(Clone, PartialEq)]
 pub struct Chunk {
@@ -206,6 +49,29 @@ pub struct Chunk {
 }
 
 impl Chunk {
+  /// Create a new chunk
+  pub fn new(instructions: Array<u8>, constants: Array<Value>, lines: Array<Line>) -> Self {
+    Self {
+      instructions,
+      constants,
+      lines,
+    }
+  }
+
+  /// Create a stubbed chunk
+  pub fn stub(hooks: &GcHooks) -> Self {
+    Self::stub_with_instructions(hooks, &[0])
+  }
+
+  /// Create a stubbed chunk
+  pub fn stub_with_instructions(hooks: &GcHooks, instructions: &[u8]) -> Self {
+    Self {
+      instructions: hooks.manage::<_, &[u8]>(instructions),
+      constants: hooks.manage::<_, &[Value]>(&[]),
+      lines: hooks.manage::<_, &[Line]>(&[Line::new(0, instructions.len() as u32)]),
+    }
+  }
+
   /// instruction in this code chunk
   #[inline]
   pub fn instructions(&self) -> &[u8] {
@@ -236,15 +102,14 @@ impl Chunk {
   ///
   /// This method panics if an offset is past the last instruction
   ///
-  /// ```rust,should_panic
-  /// use laythe_core::chunk::ChunkBuilder;
+  /// ```rust
+  /// use laythe_core::chunk::Chunk;
   /// use laythe_core::hooks::{NoContext, GcHooks};
   ///
   /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);
   ///
-  /// let builder = ChunkBuilder::<u8>::default();
-  /// let chunk = builder.build(&hooks).unwrap();
+  /// let chunk = Chunk::stub(&hooks);
   /// chunk.get_line(3);
   /// ```
   pub fn get_line(&self, offset: usize) -> u32 {
@@ -316,54 +181,24 @@ mod test {
   }
 
   #[cfg(test)]
-  mod chunk_builder {
-    use super::*;
-
-    #[test]
-    fn default() {
-      let chunk = ChunkBuilder::<u8>::default();
-      assert_eq!(chunk.instructions.len(), 00);
-      assert_eq!(chunk.constants.len(), 0);
-    }
-
-    #[test]
-    fn write_instruction() {
-      let mut chunk = ChunkBuilder::<Encodable>::default();
-      chunk.write_instruction(Encodable(), 0);
-
-      assert_eq!(chunk.instructions.len(), 1);
-    }
-
-    #[test]
-    fn add_constant() {
-      use crate::value::VALUE_NIL;
-
-      let mut chunk = ChunkBuilder::<u8>::default();
-      let index = chunk.add_constant(VALUE_NIL);
-
-      assert_eq!(index, 0);
-      assert!(chunk.constants[0].is_nil());
-    }
-  }
-
-  #[cfg(test)]
   mod chunk {
     use crate::{
-      chunk::ChunkBuilder,
-      hooks::{GcHooks, NoContext},
+      chunk::{Chunk, Line},
+      hooks::{GcHooks, NoContext}, value::Value,
     };
-
-    use super::Encodable;
 
     #[test]
     fn get_line() {
       let mut context = NoContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let mut builder = ChunkBuilder::default();
-      builder.write_instruction(Encodable(), 0);
+      let chunk = Chunk::new(
+        hooks.manage::<_, &[u8]>(&[0]),
+        hooks.manage::<_, &[Value]>(&[]),
+        hooks.manage::<_, &[Line]>(&[Line::new(0, 0)])
+      );
 
-      assert_eq!(builder.build(&hooks).unwrap().get_line(0), 0);
+      assert_eq!(chunk.get_line(0), 0);
     }
   }
 }

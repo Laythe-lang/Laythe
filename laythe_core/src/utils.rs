@@ -39,7 +39,7 @@ pub fn ptr_len<T>(start: *const T, end: *const T) -> usize {
   byte_len / mem::size_of::<T>()
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct IdEmitter(usize);
 
 impl IdEmitter {

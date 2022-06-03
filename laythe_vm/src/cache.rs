@@ -4,7 +4,7 @@ use std::vec;
 use laythe_core::{managed::GcObj, object::Class, utils::IdEmitter, value::Value};
 
 /// The cache for property access and setting
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct PropertyCache {
   /// The cached class
   class: GcObj<Class>,
@@ -14,7 +14,7 @@ struct PropertyCache {
 }
 
 /// The cache for invoking a method
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 struct InvokeCache {
   /// The cached class
   class: GcObj<Class>,
@@ -26,6 +26,7 @@ struct InvokeCache {
 /// The inline cache for a module in Laythe
 /// This cache is meant to reduce the total
 /// number of hash lookups need in the vm
+#[derive(Debug)]
 pub struct InlineCache {
   /// A set of property access caches. There
   /// is one for each location a property is
@@ -59,7 +60,7 @@ impl InlineCache {
         } else {
           None
         }
-      }
+      },
       None => None,
     }
   }
@@ -97,7 +98,7 @@ impl InlineCache {
         } else {
           None
         }
-      }
+      },
       None => None,
     }
   }
@@ -124,7 +125,7 @@ impl InlineCache {
   }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 /// An id emitter used for inline caching. This struct
 /// simply emits new ideas to use in AlignedByteCode::Slot
 /// to give each cachable instruction an id
@@ -193,7 +194,7 @@ mod test {
   }
 
   mod inline_cache {
-    use crate::{byte_code::SymbolicByteCode, cache::InlineCache};
+    use crate::cache::InlineCache;
     use laythe_core::{
       hooks::{GcHooks, NoContext},
       memory::{Allocator, NO_GC},
@@ -241,7 +242,7 @@ mod test {
       let class = hooks.manage_obj(Class::bare(class_name));
       let module = hooks.manage(Module::new(class, 0));
 
-      let fun = Fun::stub(&hooks, fun_name, module, SymbolicByteCode::Nil);
+      let fun = Fun::stub(&hooks, fun_name, module);
       let fun = val!(hooks.manage_obj(fun));
 
       assert_eq!(inline_cache.get_invoke_cache(0, class), None);

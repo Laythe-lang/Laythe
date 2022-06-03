@@ -9,7 +9,7 @@ mod ops;
 mod source_loader;
 
 use crate::{
-  byte_code::{SymbolicByteCode, ByteCode},
+  byte_code::{ByteCode},
   cache::InlineCache,
   constants::REPL_MODULE,
   source::{Source, VmFileId, VmFiles},
@@ -144,12 +144,7 @@ impl Vm {
     let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
     let global = std_lib.root_module();
 
-    let current_fun = Fun::stub(
-      &hooks,
-      hooks.manage_str(PLACEHOLDER_NAME),
-      global,
-      SymbolicByteCode::Nil,
-    );
+    let current_fun = Fun::stub(&hooks, hooks.manage_str(PLACEHOLDER_NAME), global);
 
     let current_fun = hooks.manage_obj(current_fun);
     let capture_stub = Captures::new(&hooks, &[]);

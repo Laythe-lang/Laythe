@@ -734,6 +734,7 @@ unsafe impl Sync for Fiber {}
 mod test {
   use super::*;
   use crate::{
+    chunk::Chunk,
     hooks::{GcHooks, NoContext},
     object::FunBuilder,
     signature::Arity,
@@ -745,7 +746,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let fiber = FiberBuilder::<u8>::default().build(&hooks);
+    let fiber = FiberBuilder::default().build(&hooks);
     assert!(fiber.is_ok())
   }
 
@@ -754,7 +755,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -778,7 +779,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(1)
       .build(&hooks)
       .expect("Expected to build");
@@ -794,7 +795,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -818,7 +819,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -834,7 +835,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -858,7 +859,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -874,7 +875,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -897,7 +898,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -912,7 +913,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -938,7 +939,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let fiber = FiberBuilder::<u8>::default()
+    let fiber = FiberBuilder::default()
       .max_slots(1)
       .build(&hooks)
       .expect("Expected to build");
@@ -953,7 +954,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -980,7 +981,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(0)
       .build(&hooks)
       .expect("Expected to build");
@@ -998,15 +999,13 @@ mod test {
     let module = test_module(&hooks, "test module");
 
     let mut builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
-    builder.write_instruction(0, 0);
-    builder.write_instruction(0, 0);
-    builder.write_instruction(0, 0);
     builder.update_max_slots(3);
 
     let captures = Captures::new(&hooks, &[]);
-    let fun = hooks.manage_obj(builder.build(&hooks).unwrap());
+    let fun =
+      hooks.manage_obj(builder.build(Chunk::stub_with_instructions(&hooks, &[0, 0, 0])));
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .instructions(vec![1, 2, 3])
       .build(&hooks)
@@ -1038,7 +1037,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(3)
       .instructions(vec![1])
       .build(&hooks)
@@ -1053,7 +1052,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(1)
       .instructions(vec![1, 2, 3])
       .build(&hooks)
@@ -1067,7 +1066,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .instructions(vec![1, 2, 3])
       .build(&hooks)
@@ -1086,7 +1085,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .instructions(vec![1, 2, 3])
       .build(&hooks)
@@ -1100,7 +1099,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .build(&hooks)
       .expect("Expected to build");
 
@@ -1117,7 +1116,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .build(&hooks)
       .expect("Expected to build");
 
@@ -1137,7 +1136,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .build(&hooks)
       .expect("Expected to build");
 
@@ -1153,15 +1152,13 @@ mod test {
 
     let module = test_module(&hooks, "test module");
 
-    let mut builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
-    builder.write_instruction(0, 0);
-    builder.write_instruction(0, 0);
-    builder.write_instruction(0, 0);
+    let builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
 
-    let fun = hooks.manage_obj(builder.build(&hooks).unwrap());
+    let fun =
+      hooks.manage_obj(builder.build(Chunk::stub_with_instructions(&hooks, &[0, 0, 0])));
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(3)
       .build(&hooks)
       .expect("Expected to build");
@@ -1190,11 +1187,11 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let parent = FiberBuilder::<u8>::default()
+    let parent = FiberBuilder::default()
       .build(&hooks)
       .expect("Expected to build");
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .parent(parent)
       .build(&hooks)
       .expect("Expected to build");
@@ -1209,7 +1206,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(0)
       .build(&hooks)
       .expect("Expected to build");
@@ -1226,7 +1223,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(0)
       .instructions(vec![1, 2, 3])
       .build(&hooks)
@@ -1242,7 +1239,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -1280,7 +1277,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -1313,7 +1310,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -1339,7 +1336,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let fiber = FiberBuilder::<u8>::default()
+    let fiber = FiberBuilder::default()
       .max_slots(0)
       .build(&hooks)
       .expect("Expected to build");
@@ -1357,7 +1354,7 @@ mod test {
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(3)
       .build(&hooks)
       .expect("Expected to build");
@@ -1388,7 +1385,7 @@ mod test {
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(4)
       .build(&hooks)
       .expect("Expected to build");
@@ -1422,7 +1419,7 @@ mod test {
 
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(6)
       .build(&hooks)
       .expect("Expected to build");
@@ -1453,17 +1450,17 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fun1 = test_fun_builder::<u8>(&hooks, "first", "first module");
+    let mut fun1 = test_fun_builder(&hooks, "first", "first module");
     fun1.update_max_slots(4);
-    let fun1 = hooks.manage_obj(fun1.build(&hooks).unwrap());
+    let fun1 = hooks.manage_obj(fun1.build(Chunk::stub(&hooks)));
 
-    let mut fun2 = test_fun_builder::<u8>(&hooks, "second", "second module");
+    let mut fun2 = test_fun_builder(&hooks, "second", "second module");
     fun2.update_max_slots(3);
-    let fun2 = hooks.manage_obj(fun2.build(&hooks).unwrap());
+    let fun2 = hooks.manage_obj(fun2.build(Chunk::stub(&hooks)));
 
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(6)
       .build(&hooks)
       .expect("Expected to build");
@@ -1499,7 +1496,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = FiberBuilder::<u8>::default()
+    let mut fiber = FiberBuilder::default()
       .max_slots(2)
       .build(&hooks)
       .expect("Expected to build");
