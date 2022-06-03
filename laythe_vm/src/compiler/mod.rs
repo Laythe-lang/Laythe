@@ -808,6 +808,13 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     }
   }
 
+  /// Emit an invoke for a known method call
+  fn emit_known_invoke(&mut self, name: &str, args: u8, offset: u32) {
+    let name = self.identifier_constant(name);
+    self.emit_byte(SymbolicByteCode::Invoke((name, args)), offset);
+    self.emit_byte(SymbolicByteCode::InvokeSlot, offset)
+  }
+
   /// Emit a provided instruction
   fn emit_byte(&mut self, op_code: SymbolicByteCode, offset: u32) {
     let line = self
@@ -1510,9 +1517,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
               self.expr(&assign.rhs);
               self.expr(&index.index);
 
-              let name = self.identifier_constant(INDEX_SET);
-              self.emit_byte(SymbolicByteCode::Invoke((name, 2)), assign.rhs.end());
-              self.emit_byte(SymbolicByteCode::InvokeSlot, assign.rhs.end())
+              self.emit_known_invoke(INDEX_SET, 2, assign.rhs.end());
             },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
@@ -1584,10 +1589,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
               // self.expr(&send.rhs);
               self.expr(&index.index);
 
-              let name = self.identifier_constant(INDEX_GET);
-              self.emit_byte(SymbolicByteCode::Invoke((name, 1)), index.end());
-              self.emit_byte(SymbolicByteCode::InvokeSlot, index.end());
-
+              self.emit_known_invoke(INDEX_GET, 1, index.end());
               self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
             },
             Trailer::Access(access) => {
@@ -1674,18 +1676,14 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
               self.expr(&index.index);
 
-              let name = self.identifier_constant(INDEX_GET);
-              self.emit_byte(SymbolicByteCode::Invoke((name, 1)), assign_binary.rhs.end());
-              self.emit_byte(SymbolicByteCode::InvokeSlot, assign_binary.rhs.end());
+              self.emit_known_invoke(INDEX_GET, 1, assign_binary.rhs.end());
 
               self.expr(&assign_binary.rhs);
               binary_op(self);
 
               self.expr(&index.index);
 
-              let name = self.identifier_constant(INDEX_SET);
-              self.emit_byte(SymbolicByteCode::Invoke((name, 2)), assign_binary.rhs.end());
-              self.emit_byte(SymbolicByteCode::InvokeSlot, assign_binary.rhs.end());
+              self.emit_known_invoke(INDEX_SET, 2, assign_binary.rhs.end());
             },
             Trailer::Access(access) => {
               if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
@@ -1838,9 +1836,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn index(&mut self, index: &'a ast::Index<'src>) {
     self.expr(&index.index);
 
-    let name = self.identifier_constant(INDEX_GET);
-    self.emit_byte(SymbolicByteCode::Invoke((name, 1)), index.end());
-    self.emit_byte(SymbolicByteCode::InvokeSlot, index.end());
+    self.emit_known_invoke(INDEX_GET, 1, index.end());
   }
 
   /// Compile an access expression
