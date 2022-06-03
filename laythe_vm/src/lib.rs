@@ -2,6 +2,7 @@
 
 mod byte_code;
 mod cache;
+mod chunk_builder;
 pub mod compiler;
 mod constants;
 pub mod source;

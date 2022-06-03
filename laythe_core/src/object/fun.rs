@@ -1,12 +1,14 @@
-use std::{fmt::{self, Debug}, io::Write};
+use std::{
+  fmt::{self, Debug},
+  io::Write,
+};
 
 use crate::{
-  chunk::{Chunk, ChunkBuilder, Encode},
+  chunk::Chunk,
   hooks::GcHooks,
   managed::{DebugHeap, DebugWrap, Gc, GcStr, Object, Trace},
   module::Module,
   signature::Arity,
-  value::Value,
 };
 
 use super::ObjectKind;
@@ -35,7 +37,7 @@ impl fmt::Display for FunKind {
 }
 
 /// A mutable builder for an immutable function
-pub struct FunBuilder<T> {
+pub struct FunBuilder {
   /// Name if not top-level script
   name: GcStr,
 
@@ -50,25 +52,21 @@ pub struct FunBuilder<T> {
 
   /// The module this function belongs to
   module: Gc<Module>,
-
-  /// Code for the function body
-  chunk: ChunkBuilder<T>,
 }
 
-impl<T: Default> FunBuilder<T> {
+impl FunBuilder {
   pub fn new(name: GcStr, module: Gc<Module>, arity: Arity) -> Self {
     Self {
       arity,
       capture_count: 0,
       max_slots: 0,
-      chunk: ChunkBuilder::<T>::default(),
       module,
       name,
     }
   }
 }
 
-impl<T> FunBuilder<T> {
+impl FunBuilder {
   pub fn name(&self) -> &str {
     &self.name
   }
@@ -95,38 +93,12 @@ impl<T> FunBuilder<T> {
   pub fn capture_count(&self) -> u8 {
     self.capture_count
   }
-
-  /// Retrieve a reference to the underlying chunk builder
-  #[inline]
-  pub fn chunk(&self) -> &ChunkBuilder<T> {
-    &self.chunk
-  }
-
-  /// Write an aligned byte code to this function
-  #[inline]
-  pub fn write_instruction(&mut self, item: T, line: u32) {
-    self.chunk.write_instruction(item, line)
-  }
-
-  /// Patch an instruction on this function
-  #[inline]
-  pub fn patch_instruction(&mut self, index: usize, byte: T) {
-    self.chunk.patch_instruction(index, byte);
-  }
-
-  /// Add a constant to this function
-  #[inline]
-  pub fn add_constant(&mut self, constant: Value) -> usize {
-    self.chunk.add_constant(constant)
-  }
 }
 
-impl<T: Encode> FunBuilder<T> {
+impl FunBuilder {
   /// Build a final immutable Fun from this builder
-  pub fn build(self, hooks: &GcHooks) -> Result<Fun, T::Error> {
-    let chunk = self.chunk.build(hooks)?;
-
-    Ok(Fun {
+  pub fn build(self, chunk: Chunk) -> Fun {
+    Fun {
       name: self.name,
       arity: self.arity,
       capture_count: self.capture_count,
@@ -134,20 +106,18 @@ impl<T: Encode> FunBuilder<T> {
       module_id: self.module.id(),
       module: self.module,
       chunk,
-    })
+    }
   }
 }
 
-impl<T> Trace for FunBuilder<T> {
+impl Trace for FunBuilder {
   fn trace(&self) {
     self.name.trace();
-    self.chunk.trace();
     self.module.trace();
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
     self.name.trace_debug(log);
-    self.chunk.trace_debug(log);
     self.module.trace_debug(log);
   }
 }
@@ -177,16 +147,10 @@ pub struct Fun {
 }
 
 impl Fun {
-  pub fn stub<T: Encode + Default + Debug>(
-    hooks: &GcHooks,
-    name: GcStr,
-    module: Gc<Module>,
-    instruction: T,
-  ) -> Fun {
-    let mut builder = FunBuilder::new(name, module, Arity::Variadic(0));
-    builder.write_instruction(instruction, 0);
+  pub fn stub(hooks: &GcHooks, name: GcStr, module: Gc<Module>) -> Fun {
+    let builder = FunBuilder::new(name, module, Arity::Variadic(0));
 
-    builder.build(hooks).expect("Was unable to build stub function.")
+    builder.build(Chunk::stub(hooks))
   }
 
   /// Name of this function

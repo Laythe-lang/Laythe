@@ -911,7 +911,7 @@ mod test {
     let name = test_string(hooks);
     let module = test_module(hooks);
 
-    hooks.manage_obj(Fun::stub(hooks, name, module, 0))
+    hooks.manage_obj(Fun::stub(hooks, name, module))
   }
 
   fn test_closure(hooks: &GcHooks) -> GcObj<Closure> {

@@ -80,7 +80,7 @@ mod test {
 
       let fiber_str = FiberStr::native(&hooks.as_gc());
 
-      let fiber = FiberBuilder::<u8>::default()
+      let fiber = FiberBuilder::default()
         .instructions(vec![0])
         .build(&hooks.as_gc())
         .unwrap();

@@ -163,7 +163,7 @@ mod test {
       let channel_len = ChannelLen::native(&hooks.as_gc());
       let mut channel = hooks.manage_obj(Channel::with_capacity(&hooks.as_gc(), 1));
 
-      let fiber = FiberBuilder::<u8>::default()
+      let fiber = FiberBuilder::default()
         .instructions(vec![0])
         .build(&hooks.as_gc())
         .unwrap();

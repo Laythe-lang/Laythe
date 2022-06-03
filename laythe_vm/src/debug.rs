@@ -4,7 +4,7 @@ use laythe_env::stdio::Stdio;
 use std::{io, io::Write, mem};
 
 #[cfg(feature = "debug")]
-use laythe_core::chunk::ChunkBuilder;
+use crate::chunk_builder::ChunkBuilder;
 
 #[cfg(feature = "debug")]
 use crate::byte_code::{Label, SymbolicByteCode};
@@ -12,7 +12,7 @@ use crate::byte_code::{Label, SymbolicByteCode};
 #[cfg(feature = "debug")]
 pub fn print_symbolic_code(
   stdio: &mut Stdio,
-  chunk_builder: &ChunkBuilder<SymbolicByteCode>,
+  chunk_builder: &ChunkBuilder,
   name: &str,
 ) -> io::Result<()> {
   let stdout = stdio.stdout();
@@ -36,7 +36,7 @@ pub fn print_symbolic_code(
 #[cfg(feature = "debug")]
 pub fn print_byte_code(
   stdio: &mut Stdio,
-  chunk: &ChunkBuilder<SymbolicByteCode>,
+  chunk: &ChunkBuilder,
   offset: usize,
   show_line: bool,
 ) -> io::Result<usize> {
@@ -152,8 +152,11 @@ pub fn print_byte_code(
     SymbolicByteCode::CaptureIndex(_) => {
       simple_instruction(stdio.stdout(), "!=== CaptureIndex - Invalid ===!", offset)
     },
-    SymbolicByteCode::Slot(_) => {
-      simple_instruction(stdio.stdout(), "!=== Slot - Invalid ===!", offset)
+    SymbolicByteCode::PropertySlot => {
+      simple_instruction(stdio.stdout(), "!=== PropertySlot - Invalid ===!", offset)
+    },
+    SymbolicByteCode::InvokeSlot => {
+      simple_instruction(stdio.stdout(), "!=== InvokeSlot - Invalid ===!", offset)
     },
     SymbolicByteCode::DefineGlobal(slot) => {
       symbolic_constant_instruction(stdio.stdout(), "DefineGlobal", slot, chunk, offset)
@@ -175,10 +178,10 @@ pub fn print_byte_code(
       byte_instruction(stdio.stdout(), "SetCapture", slot, offset)
     },
     SymbolicByteCode::SetProperty(slot) => {
-      symbolic_constant_instruction_with_slot(stdio.stdout(), "SetProperty", chunk, slot, offset)
+      symbolic_property_instruction(stdio.stdout(), "SetProperty", chunk, slot, offset)
     },
     SymbolicByteCode::GetProperty(slot) => {
-      symbolic_constant_instruction_with_slot(stdio.stdout(), "GetProperty", chunk, slot, offset)
+      symbolic_property_instruction(stdio.stdout(), "GetProperty", chunk, slot, offset)
     },
     SymbolicByteCode::Jump(jump) => symbolic_jump_instruction(stdio.stdout(), "Jump", jump, offset),
     SymbolicByteCode::JumpIfFalse(jump) => {
@@ -201,7 +204,12 @@ pub fn print_byte_code(
     SymbolicByteCode::ConstantLong(slot) => {
       symbolic_constant_instruction(stdio.stdout(), "ConstantLong", slot, chunk, offset)
     },
-    SymbolicByteCode::Label(_) => unreachable!(),
+    SymbolicByteCode::Label(_) => {
+      simple_instruction(stdio.stdout(), "!=== Label - Invalid ===!", offset)
+    },
+    SymbolicByteCode::ArgumentDelimiter => {
+      simple_instruction(stdio.stdout(), "!=== ArgumentDelimiter - Invalid ===!", offset)
+    },
   }
 }
 
@@ -228,7 +236,7 @@ fn symbolic_constant_instruction(
   stdout: &mut dyn Write,
   name: &str,
   slot: u16,
-  chunk: &ChunkBuilder<SymbolicByteCode>,
+  chunk: &ChunkBuilder,
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ", name, slot)?;
@@ -252,18 +260,18 @@ fn symbolic_constant_pair_instruction(
 
 /// print a constant with a slot
 #[cfg(feature = "debug")]
-fn symbolic_constant_instruction_with_slot(
+fn symbolic_property_instruction(
   stdout: &mut dyn Write,
   name: &str,
-  chunk: &ChunkBuilder<SymbolicByteCode>,
+  chunk: &ChunkBuilder,
   constant: u16,
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ", name, constant)?;
   write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
 
-  if let SymbolicByteCode::Slot(cache_slot) = chunk.instructions()[offset] {
-    writeln!(stdout, " cache slot {}", &cache_slot)?;
+  if let SymbolicByteCode::PropertySlot = chunk.instructions()[offset] {
+    writeln!(stdout, " cache slot")?;
   } else {
     panic!("Unexpected SymbolicByteCode following invoke")
   }
@@ -276,7 +284,7 @@ fn symbolic_constant_instruction_with_slot(
 fn symbolic_closure_instruction(
   stdio: &mut Stdio,
   name: &str,
-  chunk: &ChunkBuilder<SymbolicByteCode>,
+  chunk: &ChunkBuilder,
   constant: u16,
   offset: usize,
 ) -> io::Result<usize> {
@@ -329,14 +337,14 @@ fn symbolic_invoke_instruction(
   name: &str,
   slot: u16,
   arg_count: u8,
-  chunk: &ChunkBuilder<SymbolicByteCode>,
+  chunk: &ChunkBuilder,
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} ({} args) ", name, slot, arg_count)?;
   write!(stdout, "{}", &chunk.get_constant(slot as usize))?;
 
-  if let SymbolicByteCode::Slot(cache_slot) = chunk.instructions()[offset] {
-    writeln!(stdout, " cache slot {}", &cache_slot)?;
+  if let SymbolicByteCode::InvokeSlot = chunk.instructions()[offset] {
+    writeln!(stdout, " cache slot")?;
   } else {
     panic!("Unexpected SymbolicByteCode following invoke")
   }

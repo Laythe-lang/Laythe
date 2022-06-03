@@ -148,7 +148,7 @@ mod test {
     utils::IdEmitter,
     val,
     value::{Value, VALUE_NIL},
-    Call, LyError,
+    Call, LyError, chunk::Chunk,
   };
   use laythe_env::{
     io::Io,
@@ -437,9 +437,9 @@ mod test {
   pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
     let module = test_module(hooks, module_name);
 
-    let builder = FunBuilder::<u8>::new(hooks.manage_str(name), module, Arity::default());
+    let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
 
-    hooks.manage_obj(builder.build(&hooks).unwrap())
+    hooks.manage_obj(builder.build(Chunk::stub(&hooks)))
   }
 
   pub fn test_fun_builder<T: Default>(
@@ -447,7 +447,7 @@ mod test {
     name: &str,
     module_name: &str,
     arity: Arity,
-  ) -> FunBuilder<T> {
+  ) -> FunBuilder {
     let module = test_module(&hooks, module_name);
     FunBuilder::new(hooks.manage_str(name), module, arity)
   }

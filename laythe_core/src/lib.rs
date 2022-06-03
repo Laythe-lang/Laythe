@@ -26,7 +26,7 @@ pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;
 
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
-use managed::Instance;
+use managed::{Instance};
 
 #[macro_export]
 macro_rules! impl_trace {

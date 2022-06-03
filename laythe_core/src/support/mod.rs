@@ -3,7 +3,7 @@ use hashbrown::HashMap;
 
 use crate::{
   captures::Captures,
-  chunk::{Encode, Line},
+  chunk::{Chunk, Line},
   hooks::GcHooks,
   managed::{Gc, GcObj, GcStr},
   module::{module_class, Module},
@@ -12,36 +12,27 @@ use crate::{
   value::Value,
 };
 
-pub struct FiberBuilder<T = u8>
-where
-  T: Default + Encode,
-{
+pub struct FiberBuilder {
   name: String,
   parent: Option<GcObj<Fiber>>,
   module_name: String,
-  instructions: Vec<T>,
+  instructions: Vec<u8>,
   max_slots: i32,
 }
 
-impl<T> Default for FiberBuilder<T>
-where
-  T: Default + Encode,
-{
+impl Default for FiberBuilder {
   fn default() -> Self {
     Self {
       name: "Fiber".to_string(),
       parent: None,
       module_name: "Fiber Module".to_string(),
-      instructions: vec![T::default()],
+      instructions: vec![0],
       max_slots: 0,
     }
   }
 }
 
-impl<T> FiberBuilder<T>
-where
-  T: Default + Encode,
-{
+impl FiberBuilder {
   pub fn name(mut self, name: &str) -> Self {
     self.name = name.to_string();
     self
@@ -52,7 +43,7 @@ where
     self
   }
 
-  pub fn instructions(mut self, instructions: Vec<T>) -> Self {
+  pub fn instructions(mut self, instructions: Vec<u8>) -> Self {
     self.instructions = instructions;
     self
   }
@@ -69,27 +60,20 @@ where
 
   pub fn build(self, hooks: &GcHooks) -> FiberResult<GcObj<Fiber>> {
     let mut fun = test_fun_builder(hooks, &self.name, &self.module_name);
-
-    for instruction in self.instructions {
-      fun.write_instruction(instruction, 0);
-    }
     fun.update_max_slots(self.max_slots);
 
-    let fun = hooks.manage_obj(fun.build(hooks).unwrap());
+    let instructions = hooks.manage(&*self.instructions);
+    let constants = hooks.manage::<_, &[Value]>(&[]);
+    let lines = hooks.manage::<_, &[Line]>(&[Line::new(0, instructions.len() as u32)]);
+    let chunk = Chunk::new(instructions, constants, lines);
+
+    let fun = hooks.manage_obj(fun.build(chunk));
     hooks.push_root(fun);
 
     let captures = Captures::new(hooks, &[]);
     hooks.pop_roots(1);
 
     Fiber::new(self.parent, fun, captures).map(|fiber| hooks.manage_obj(fiber))
-  }
-}
-
-impl Encode for u8 {
-  type Error = ();
-
-  fn encode(data: Vec<Self>, lines: Vec<Line>) -> Result<(Vec<u8>, Vec<Line>), Self::Error> {
-    Ok((data, lines))
   }
 }
 
@@ -151,16 +135,12 @@ pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
 pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
   let module = test_module(hooks, module_name);
 
-  let builder = FunBuilder::<u8>::new(hooks.manage_str(name), module, Arity::default());
+  let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
 
-  hooks.manage_obj(builder.build(hooks).expect("Unable to build test function."))
+  hooks.manage_obj(builder.build(Chunk::stub(hooks)))
 }
 
-pub fn test_fun_builder<T: Default>(
-  hooks: &GcHooks,
-  name: &str,
-  module_name: &str,
-) -> FunBuilder<T> {
+pub fn test_fun_builder(hooks: &GcHooks, name: &str, module_name: &str) -> FunBuilder {
   let module = test_module(hooks, module_name);
   FunBuilder::new(hooks.manage_str(name), module, Arity::default())
 }
