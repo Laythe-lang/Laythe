@@ -180,3 +180,150 @@ fn compute_label_offsets(instructions: &[SymbolicByteCode], label_offsets: &mut 
   }
 }
 
+#[cfg(test)]
+mod test {
+  use super::*;
+
+  mod labels {
+    use super::*;
+    use crate::byte_code::Label;
+
+    #[test]
+    fn count() {
+      let instructions = [
+        SymbolicByteCode::Label(Label::new(0)),
+        SymbolicByteCode::Nil,
+        SymbolicByteCode::GetCapture(2),
+        SymbolicByteCode::Label(Label::new(1)),
+      ];
+
+      assert_eq!(label_count(&instructions), 2);
+    }
+
+    #[test]
+    fn compute_offsets() {
+      let instructions = [
+        SymbolicByteCode::Label(Label::new(0)),
+        SymbolicByteCode::Nil,
+        SymbolicByteCode::GetCapture(2),
+        SymbolicByteCode::Label(Label::new(1)),
+      ];
+
+      let mut label_offsets = [0, 0];
+
+      compute_label_offsets(&instructions, &mut label_offsets);
+
+      assert_eq!(label_offsets[0], 0);
+      assert_eq!(label_offsets[1], 3);
+    }
+
+    #[test]
+    #[should_panic]
+    fn compute_offsets_missing_slots() {
+      compute_label_offsets(&[SymbolicByteCode::Label(Label::new(0))], &mut []);
+    }
+  }
+
+  mod replacements {
+    use super::*;
+
+    #[test]
+    fn drop_replacement() {
+      let mut instructions = [
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::Nil,
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::Drop,
+      ];
+      let mut reader = 0;
+      let mut writer = 0;
+
+      drop(&mut instructions, &mut reader, &mut writer);
+      assert_eq!(instructions[0], SymbolicByteCode::DropN(2));
+      assert_eq!(reader, 2);
+      assert_eq!(writer, 1);
+
+      reader = 3;
+      writer = 1;
+
+      drop(&mut instructions, &mut reader, &mut writer);
+      assert_eq!(instructions[1], SymbolicByteCode::DropN(3));
+      assert_eq!(reader, 6);
+      assert_eq!(writer, 2);
+    }
+
+    #[test]
+    fn invoke_replacement() {
+      let slot = 3;
+      let args = 2;
+
+      let mut instructions = [
+        SymbolicByteCode::GetProperty(slot),
+        SymbolicByteCode::PropertySlot,
+        SymbolicByteCode::Call(args),
+      ];
+      let mut reader = 0;
+      let mut writer = 0;
+
+      invoke(&mut instructions, &mut reader, &mut writer, slot, args);
+      assert_eq!(instructions[0], SymbolicByteCode::Invoke((slot, args)));
+      assert_eq!(instructions[1], SymbolicByteCode::InvokeSlot);
+      assert_eq!(reader, 3);
+      assert_eq!(writer, 2);
+    }
+
+    #[test]
+    fn super_invoke_replacement() {
+      let slot = 3;
+      let args = 2;
+
+      let mut instructions = [
+        SymbolicByteCode::GetSuper(slot),
+        SymbolicByteCode::PropertySlot,
+        SymbolicByteCode::Call(args),
+      ];
+      let mut reader = 0;
+      let mut writer = 0;
+
+      invoke_super(&mut instructions, &mut reader, &mut writer, slot, args);
+      assert_eq!(instructions[0], SymbolicByteCode::SuperInvoke((slot, args)));
+      assert_eq!(instructions[1], SymbolicByteCode::InvokeSlot);
+      assert_eq!(reader, 3);
+      assert_eq!(writer, 2);
+    }
+  }
+
+  mod optimize {
+    use super::*;
+
+    #[test]
+    fn optimize_code() {
+      let mut instructions = vec![
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::GetProperty(3),
+        SymbolicByteCode::PropertySlot,
+        SymbolicByteCode::Call(1),
+        SymbolicByteCode::Nil,
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::GetSuper(1),
+        SymbolicByteCode::PropertySlot,
+        SymbolicByteCode::Call(2),
+      ];
+
+      instructions = peephole_optimize(instructions);
+
+      assert_eq!(instructions[0], SymbolicByteCode::DropN(2));
+      assert_eq!(instructions[1], SymbolicByteCode::Invoke((3, 1)));
+      assert_eq!(instructions[2], SymbolicByteCode::InvokeSlot);
+      assert_eq!(instructions[3], SymbolicByteCode::Nil);
+      assert_eq!(instructions[4], SymbolicByteCode::DropN(3));
+      assert_eq!(instructions[5], SymbolicByteCode::SuperInvoke((1, 2)));
+      assert_eq!(instructions[6], SymbolicByteCode::InvokeSlot);
+    }
+  }
+}
