@@ -1231,112 +1231,113 @@ pub fn decode_u16(buffer: &[u8]) -> u16 {
 
 #[cfg(test)]
 mod test {
-  // use laythe_core::chunk::Line;
-  //
-  // use super::*;
-  //
-  // #[test]
-  // fn encode_len() {
-  //   let code: Vec<(usize, SymbolicByteCode)> = vec![
-  //     (1, SymbolicByteCode::Return),
-  //     (1, SymbolicByteCode::Negate),
-  //     (1, SymbolicByteCode::Add),
-  //     (1, SymbolicByteCode::Subtract),
-  //     (1, SymbolicByteCode::Multiply),
-  //     (1, SymbolicByteCode::Divide),
-  //     (1, SymbolicByteCode::Not),
-  //     (2, SymbolicByteCode::Constant(113)),
-  //     (3, SymbolicByteCode::ConstantLong(45863)),
-  //     (3, SymbolicByteCode::Import(2235)),
-  //     (5, SymbolicByteCode::ImportSymbol((2235, 113))),
-  //     (3, SymbolicByteCode::Export(7811)),
-  //     (3, SymbolicByteCode::JumpIfFalse(Label::new(1))),
-  //     (3, SymbolicByteCode::Jump(Label::new(1))),
-  //     (3, SymbolicByteCode::Loop(Label::new(0))),
-  //     (3, SymbolicByteCode::And(Label::new(1))),
-  //     (3, SymbolicByteCode::Or(Label::new(1))),
-  //     (1, SymbolicByteCode::Nil),
-  //     (1, SymbolicByteCode::True),
-  //     (1, SymbolicByteCode::False),
-  //     (3, SymbolicByteCode::List(54782)),
-  //     (3, SymbolicByteCode::Tuple(52782)),
-  //     (3, SymbolicByteCode::Map(1923)),
-  //     (2, SymbolicByteCode::Launch(197)),
-  //     (1, SymbolicByteCode::Channel),
-  //     (1, SymbolicByteCode::BufferedChannel),
-  //     (1, SymbolicByteCode::Receive),
-  //     (1, SymbolicByteCode::Send),
-  //     (2, SymbolicByteCode::Box(66)),
-  //     (1, SymbolicByteCode::EmptyBox),
-  //     (1, SymbolicByteCode::FillBox),
-  //     (3, SymbolicByteCode::Interpolate(3389)),
-  //     (3, SymbolicByteCode::IterNext(81)),
-  //     (3, SymbolicByteCode::IterCurrent(49882)),
-  //     (1, SymbolicByteCode::Drop),
-  //     (3, SymbolicByteCode::DefineGlobal(42)),
-  //     (3, SymbolicByteCode::GetGlobal(14119)),
-  //     (3, SymbolicByteCode::SetGlobal(2043)),
-  //     (3, SymbolicByteCode::SetGlobal(38231)),
-  //     (2, SymbolicByteCode::GetBox(183)),
-  //     (2, SymbolicByteCode::SetBox(56)),
-  //     (2, SymbolicByteCode::GetLocal(96)),
-  //     (2, SymbolicByteCode::SetLocal(149)),
-  //     (2, SymbolicByteCode::GetBox(11)),
-  //     (2, SymbolicByteCode::SetBox(197)),
-  //     (3, SymbolicByteCode::GetProperty(18273)),
-  //     (3, SymbolicByteCode::SetProperty(253)),
-  //     (2, SymbolicByteCode::Call(77)),
-  //     (4, SymbolicByteCode::Invoke((5591, 19))),
-  //     (4, SymbolicByteCode::SuperInvoke((2105, 15))),
-  //     (3, SymbolicByteCode::Closure(3638)),
-  //     (3, SymbolicByteCode::Method(188)),
-  //     (3, SymbolicByteCode::Field(6634)),
-  //     (3, SymbolicByteCode::StaticMethod(4912)),
-  //     (3, SymbolicByteCode::Class(64136)),
-  //     (1, SymbolicByteCode::Inherit),
-  //     (3, SymbolicByteCode::GetSuper(24)),
-  //     (1, SymbolicByteCode::Equal),
-  //     (1, SymbolicByteCode::NotEqual),
-  //     (1, SymbolicByteCode::Greater),
-  //     (1, SymbolicByteCode::GreaterEqual),
-  //     (1, SymbolicByteCode::LessEqual),
-  //   ];
+  use super::*;
+  use bumpalo::Bump;
 
-  //   let mut buffer = Vec::<u8>::with_capacity(20);
-  //   let cache_id_emitter = Rc::new(RefCell::new(CacheIdEmitter::default()));
+  #[test]
+  fn encode_len() {
+    let bump = Bump::new();
+    let code: Vec<(usize, SymbolicByteCode)> = bumpalo::vec![
+      in &bump;
+      (1, SymbolicByteCode::Return),
+      (1, SymbolicByteCode::Negate),
+      (1, SymbolicByteCode::Add),
+      (1, SymbolicByteCode::Subtract),
+      (1, SymbolicByteCode::Multiply),
+      (1, SymbolicByteCode::Divide),
+      (1, SymbolicByteCode::Not),
+      (2, SymbolicByteCode::Constant(113)),
+      (3, SymbolicByteCode::ConstantLong(45863)),
+      (3, SymbolicByteCode::Import(2235)),
+      (5, SymbolicByteCode::ImportSymbol((2235, 113))),
+      (3, SymbolicByteCode::Export(7811)),
+      (3, SymbolicByteCode::JumpIfFalse(Label::new(1))),
+      (3, SymbolicByteCode::Jump(Label::new(1))),
+      (3, SymbolicByteCode::Loop(Label::new(0))),
+      (3, SymbolicByteCode::And(Label::new(1))),
+      (3, SymbolicByteCode::Or(Label::new(1))),
+      (1, SymbolicByteCode::Nil),
+      (1, SymbolicByteCode::True),
+      (1, SymbolicByteCode::False),
+      (3, SymbolicByteCode::List(54782)),
+      (3, SymbolicByteCode::Tuple(52782)),
+      (3, SymbolicByteCode::Map(1923)),
+      (2, SymbolicByteCode::Launch(197)),
+      (1, SymbolicByteCode::Channel),
+      (1, SymbolicByteCode::BufferedChannel),
+      (1, SymbolicByteCode::Receive),
+      (1, SymbolicByteCode::Send),
+      (2, SymbolicByteCode::Box(66)),
+      (1, SymbolicByteCode::EmptyBox),
+      (1, SymbolicByteCode::FillBox),
+      (3, SymbolicByteCode::Interpolate(3389)),
+      (3, SymbolicByteCode::IterNext(81)),
+      (3, SymbolicByteCode::IterCurrent(49882)),
+      (1, SymbolicByteCode::Drop),
+      (3, SymbolicByteCode::DefineGlobal(42)),
+      (3, SymbolicByteCode::GetGlobal(14119)),
+      (3, SymbolicByteCode::SetGlobal(2043)),
+      (3, SymbolicByteCode::SetGlobal(38231)),
+      (2, SymbolicByteCode::GetBox(183)),
+      (2, SymbolicByteCode::SetBox(56)),
+      (2, SymbolicByteCode::GetLocal(96)),
+      (2, SymbolicByteCode::SetLocal(149)),
+      (2, SymbolicByteCode::GetBox(11)),
+      (2, SymbolicByteCode::SetBox(197)),
+      (3, SymbolicByteCode::GetProperty(18273)),
+      (3, SymbolicByteCode::SetProperty(253)),
+      (2, SymbolicByteCode::Call(77)),
+      (4, SymbolicByteCode::Invoke((5591, 19))),
+      (4, SymbolicByteCode::SuperInvoke((2105, 15))),
+      (3, SymbolicByteCode::Closure(3638)),
+      (3, SymbolicByteCode::Method(188)),
+      (3, SymbolicByteCode::Field(6634)),
+      (3, SymbolicByteCode::StaticMethod(4912)),
+      (3, SymbolicByteCode::Class(64136)),
+      (1, SymbolicByteCode::Inherit),
+      (3, SymbolicByteCode::GetSuper(24)),
+      (1, SymbolicByteCode::Equal),
+      (1, SymbolicByteCode::NotEqual),
+      (1, SymbolicByteCode::Greater),
+      (1, SymbolicByteCode::GreaterEqual),
+      (1, SymbolicByteCode::LessEqual),
+    ];
 
-  //   for (size1, byte_code1) in &code {
-  //     for (size2, byte_code2) in &code {
-  //       buffer.clear();
-  //       let label_offsets = [10, 20];
-  //       // TODO we probably need to dynamically calculate these labels so for the various jump instructions
+    let mut buffer = Vec::<u8>::with_capacity_in(20, &bump);
+    let cache_id_emitter = Rc::new(RefCell::new(CacheIdEmitter::default()));
 
-  //       let err1 = byte_code1.encode(&mut buffer, &label_offsets, Rc::clone(&cache_id_emitter), 0);
-  //       assert_eq!(
-  //         buffer.len(),
-  //         *size1,
-  //         "byte {:?} expected to be {} size",
-  //         *byte_code1,
-  //         *size1
-  //       );
-  //       assert!(err1.is_none());
+    for (size1, byte_code1) in &code {
+      for (size2, byte_code2) in &code {
+        buffer.clear();
+        let label_offsets = [0, 10];
+        // TODO we probably need to dynamically calculate these labels so for the various jump instructions
 
-  //       let len = buffer.len();
-  //       let err2 = byte_code2.encode(
-  //         &mut buffer,
-  //         &label_offsets,
-  //         Rc::clone(&cache_id_emitter),
-  //         len,
-  //       );
-  //       assert_eq!(
-  //         buffer.len() - size1,
-  //         *size2,
-  //         "byte {:?} expected to be {} size",
-  //         *byte_code2,
-  //         *size2
-  //       );
-  //       assert!(err2.is_none());
-  //     }
-  //   }
-  // }
+        let err1 = byte_code1.encode(&mut buffer, &label_offsets, Rc::clone(&cache_id_emitter), 0);
+        assert_eq!(
+          buffer.len(),
+          *size1,
+          "byte {:?} expected to be {} size",
+          *byte_code1,
+          *size1
+        );
+        assert!(err1.is_none());
+
+        let len = buffer.len();
+        let err2 = byte_code2.encode(
+          &mut buffer,
+          &label_offsets,
+          Rc::clone(&cache_id_emitter),
+          len,
+        );
+        assert_eq!(
+          buffer.len() - size1,
+          *size2,
+          "byte {:?} expected to be {} size",
+          *byte_code2,
+          *size2
+        );
+        assert!(err2.is_none());
+      }
+    }
+  }
 }
