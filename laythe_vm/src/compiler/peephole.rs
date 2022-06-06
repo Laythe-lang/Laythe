@@ -23,7 +23,7 @@ pub fn peephole_compile(
 
   let label_count = label_count(&instructions);
 
-  let mut label_offsets: collections::Vec<usize> = bumpalo::vec![in &alloc; 0; label_count];
+  let mut label_offsets: collections::Vec<usize> = bumpalo::vec![in alloc; 0; label_count];
 
   if label_count > u16::MAX as usize {
     todo!("Really handle this");
