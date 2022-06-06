@@ -1,12 +1,8 @@
 use super::{source_loader::ImportResult, Signal, Vm};
-use crate::{
-  byte_code::{CaptureIndex},
-  constants::MAX_FRAME_SIZE,
-};
-use laythe_core::hooks::GcContext;
+use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
 use laythe_core::{
   captures::Captures,
-  hooks::{GcHooks, Hooks},
+  hooks::{GcHooks, Hooks, GcContext},
   if_let_obj,
   managed::{Array, Gc, GcObj, GcStr},
   match_obj,
@@ -1313,11 +1309,7 @@ impl Vm {
       },
       Environment::Normal => {
         let mut stub = self.native_fun_stubs.pop().unwrap_or_else(|| {
-          self.manage_obj(Fun::stub(
-            &GcHooks::new(self),
-            meta.name,
-            self.global,
-          ))
+          self.manage_obj(Fun::stub(&GcHooks::new(self), meta.name, self.global))
         });
         stub.set_name(meta.name);
         self.push_root(stub);

@@ -374,6 +374,7 @@ dependencies = [
 name = "laythe_frontend_bench"
 version = "0.1.0"
 dependencies = [
+ "bumpalo",
  "laythe_core",
  "laythe_lib",
  "laythe_native",
