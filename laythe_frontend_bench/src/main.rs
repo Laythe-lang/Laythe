@@ -1,3 +1,4 @@
+use bumpalo::Bump;
 use laythe_core::{
   hooks::{GcHooks, NoContext},
   memory::{Allocator, NO_GC},
@@ -44,11 +45,22 @@ fn compiler_bench(src: &str) {
     let module = hooks.manage(Module::new(module_class, 0));
 
     let gc = context.done();
-    assert!(Resolver::new(global_module, &gc, &source, VM_FILE_TEST_ID, false)
-      .resolve(&mut ast)
-      .is_ok());
+    assert!(
+      Resolver::new(global_module, &gc, &source, VM_FILE_TEST_ID, false)
+        .resolve(&mut ast)
+        .is_ok()
+    );
 
-    let compiler = Compiler::new(module, &line_offsets, VM_FILE_TEST_ID, false, &NO_GC, gc);
+    let alloc = Bump::new();
+    let compiler = Compiler::new(
+      module,
+      &alloc,
+      &line_offsets,
+      VM_FILE_TEST_ID,
+      false,
+      &NO_GC,
+      gc,
+    );
     compiler.compile(&ast).0.unwrap();
   }
 }

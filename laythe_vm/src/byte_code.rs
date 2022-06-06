@@ -1,3 +1,4 @@
+use bumpalo::collections::Vec;
 use codespan_reporting::diagnostic::Diagnostic;
 use std::{cell::RefCell, fmt::Display, mem, rc::Rc};
 use variant_count::VariantCount;
@@ -13,6 +14,10 @@ pub struct Label(u32);
 impl Label {
   pub fn new(id: u32) -> Self {
     Self(id)
+  }
+
+  pub fn val(&self) -> u32 {
+    self.0
   }
 }
 
@@ -523,86 +528,11 @@ impl SymbolicByteCode {
   }
 }
 
-// impl Encode for SymbolicByteCode {
-//   type Error = Vec<Diagnostic<VmFileId>>;
-
-//   fn encode(
-//     instructions: Vec<Self>,
-//     mut lines: Vec<Line>,
-//   ) -> Result<(Vec<u8>, Vec<Line>), Self::Error> {
-//     let instructions = peephole_optimize(instructions);
-
-//     let mut label_offsets: [usize; u16::MAX as usize] = [0; u16::MAX as usize];
-//     let label_count = label_count(&instructions);
-
-//     if label_count > u16::MAX as usize {
-//       todo!("Really handle this");
-//     }
-
-//     compute_label_offsets(&instructions, &mut label_offsets[..label_count]);
-
-//     let mut buffer = Vec::with_capacity(instructions.len());
-//     let mut offset: usize = 0;
-
-//     let mut lines_iter = lines.iter_mut();
-//     let mut line_option = lines_iter.next();
-//     let mut errors = vec![];
-
-//     for (index, instruction) in instructions.iter().enumerate() {
-//       if let Some(error) = instruction.encode(
-//         &mut buffer,
-//         &label_offsets[..label_count],
-//         offset,
-//       ) {
-//         errors.push(error);
-//       }
-//       offset += instruction.len();
-
-//       if let Some(line) = &mut line_option {
-//         if index + 1 == line.offset as usize {
-//           line.offset = offset as u32;
-//           line_option = lines_iter.next();
-//         }
-//       }
-//     }
-
-//     if errors.is_empty() {
-//       Ok((buffer, lines))
-//     } else {
-//       Err(errors)
-//     }
-//   }
-// }
-
 fn jump_error(jump: usize) -> Option<Diagnostic<VmFileId>> {
   if jump > u16::MAX as usize {
     Some(Diagnostic::error().with_message("Unable to jump so far."))
   } else {
     None
-  }
-}
-
-pub fn label_count(instructions: &[SymbolicByteCode]) -> usize {
-  let mut count = 0;
-
-  for instruction in instructions {
-    if let SymbolicByteCode::Label(_) = instruction {
-      count += 1;
-    }
-  }
-
-  count
-}
-
-pub fn compute_label_offsets(instructions: &[SymbolicByteCode], label_offsets: &mut [usize]) {
-  let mut offset: usize = 0;
-
-  for instruction in instructions {
-    if let SymbolicByteCode::Label(label) = instruction {
-      label_offsets[label.0 as usize] = offset;
-    }
-
-    offset += instruction.len()
   }
 }
 
@@ -1302,7 +1232,7 @@ pub fn decode_u16(buffer: &[u8]) -> u16 {
 #[cfg(test)]
 mod test {
   // use laythe_core::chunk::Line;
-  // 
+  //
   // use super::*;
   //
   // #[test]

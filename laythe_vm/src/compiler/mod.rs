@@ -5,6 +5,7 @@ mod peephole;
 mod resolver;
 mod scanner;
 
+use bumpalo::{Bump, collections};
 pub use parser::Parser;
 pub use resolver::Resolver;
 
@@ -182,6 +183,9 @@ pub struct Compiler<'a, 'src> {
   /// line offsets for the current file
   line_offsets: &'a LineOffsets,
 
+  /// line offsets for the current file
+  alloc: &'a Bump,
+
   /// All the errors found during compilation
   errors: Vec<Diagnostic<VmFileId>>,
 
@@ -220,10 +224,10 @@ pub struct Compiler<'a, 'src> {
   slots: i32,
 
   /// The local variables currently in scope
-  locals: Vec<Local<'a>>,
+  locals: collections::Vec<'a, Local<'a>>,
 
   /// local tables to this function
-  local_tables: Vec<&'a SymbolTable<'src>>,
+  local_tables: collections::Vec<'a, &'a SymbolTable<'src>>,
 
   /// is this function the script with the global table
   global_table: Option<&'a SymbolTable<'src>>,
@@ -251,6 +255,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   ///   memory::{NO_GC, Allocator},
   /// };
   /// use std::path::PathBuf;
+  /// use bumpalo::Bump;
   ///
   /// let mut gc = Allocator::default();
   ///
@@ -262,10 +267,12 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
   /// let (_, line_offsets) = Parser::new(&source, file_id).parse();
   ///
-  /// let compiler = Compiler::new(module, &line_offsets, file_id, false, &NO_GC, gc);
+  /// let alloc = Bump::new();
+  /// let compiler = Compiler::new(module, &alloc, &line_offsets, file_id, false, &NO_GC, gc);
   /// ```
   pub fn new(
     module: Gc<module::Module>,
+    alloc: &'a Bump,
     line_offsets: &'a LineOffsets,
     file_id: VmFileId,
     repl: bool,
@@ -286,6 +293,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       root_trace,
       module,
       line_offsets,
+      alloc,
       cache_id_emitter: Rc::new(RefCell::new(CacheIdEmitter::default())),
       label_emitter: LabelEmitter::default(),
       errors: vec![],
@@ -298,9 +306,9 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       exit_scope: ScopeExit::Normal,
       gc: RefCell::new(gc),
       enclosing: None,
-      local_tables: vec![],
+      local_tables: collections::Vec::new_in(alloc),
       global_table: None,
-      locals: vec![],
+      locals: collections::Vec::new_in(alloc),
       captures: vec![],
       constants: object::Map::default(),
     }
@@ -357,6 +365,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       line_offsets: enclosing.line_offsets,
       cache_id_emitter: Rc::clone(&enclosing.cache_id_emitter),
       label_emitter: LabelEmitter::default(),
+      alloc: enclosing.alloc,
       errors: vec![],
       root_trace: enclosing.root_trace,
       fun_kind,
@@ -367,10 +376,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       loop_attributes: enclosing.loop_attributes,
       exit_scope: ScopeExit::Normal,
       gc,
-      locals: vec![],
+      locals: collections::Vec::new_in(enclosing.alloc),
       global_table: None,
+      local_tables: collections::Vec::new_in(enclosing.alloc),
       enclosing: Some(NonNull::from(enclosing)),
-      local_tables: vec![],
       captures: vec![],
       constants: object::Map::default(),
     }
@@ -413,6 +422,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       &hooks,
       self.fun,
       self.chunk,
+      self.alloc,
       Rc::clone(&self.cache_id_emitter),
     );
 
@@ -2219,8 +2229,10 @@ mod test {
       .is_ok());
 
     let fake_vm_root: &NoGc = &NO_GC;
+    let alloc = Bump::new();
     let compiler = Compiler::new(
       module,
+      &alloc,
       &line_offsets,
       VM_FILE_TEST_ID,
       repl,
