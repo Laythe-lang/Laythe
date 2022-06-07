@@ -1,3 +1,4 @@
+use bumpalo::Bump;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use laythe_core::module::Module;
 use laythe_core::{
@@ -58,7 +59,8 @@ fn compile_source(source: GcStr) {
     .resolve(&mut ast)
     .is_ok());
 
-  let compiler = Compiler::new(module, &line_offsets, VM_FILE_TEST_ID, false, &NO_GC, gc);
+  let alloc = Bump::new();
+  let compiler = Compiler::new(module, &alloc, &line_offsets, VM_FILE_TEST_ID, false, &NO_GC, gc);
   compiler.compile(&ast).0.unwrap();
 }
 

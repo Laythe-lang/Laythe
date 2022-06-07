@@ -5,6 +5,7 @@ use crate::{
   source::Source,
   FeResult,
 };
+use bumpalo::Bump;
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
   hooks::GcHooks,
@@ -49,7 +50,8 @@ impl Vm {
     Resolver::new(self.global, &self.gc.borrow(), source, file_id, repl).resolve(&mut ast)?;
 
     let gc = self.gc.replace(Allocator::default());
-    let compiler = Compiler::new(module, &line_offsets, file_id, repl, self, gc);
+    let alloc = Bump::new();
+    let compiler = Compiler::new(module, &alloc, &line_offsets, file_id, repl, self, gc);
 
     #[cfg(feature = "debug")]
     let compiler = compiler.with_io(self.io.clone());

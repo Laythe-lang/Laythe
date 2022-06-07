@@ -21,7 +21,7 @@ hashbrown = "0.11.2"
 js-sys = { version = "0.3.52", optional = true }
 fnv = "1.0.7"
 rand = { version = "0.8.4", optional = true }
-regex = "1.5.4"
+regex = "1.5.5"
 
 [dev-dependencies]
 criterion = "0.3.5"
