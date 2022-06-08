@@ -19,4 +19,4 @@ laythe_vm = { path = "../laythe_vm", features=[] }
 # laythe_vm features
 # debug
 
-jemallocator = { version = "0.3.2", optional = true }
+jemallocator = { version = "0.5.0", optional = true }

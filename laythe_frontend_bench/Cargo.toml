@@ -13,4 +13,4 @@ laythe_core = { path = "../laythe_core" }
 laythe_vm = { path = "../laythe_vm" }
 laythe_native = { path = "../laythe_native" }
 laythe_lib = { path = "../laythe_lib" }
-bumpalo = { version = "3.7.0", features=["boxed", "collections"] }
+bumpalo = { version = "3.10.0", features=["boxed", "collections"] }
