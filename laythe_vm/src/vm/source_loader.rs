@@ -1,7 +1,7 @@
 use super::{Vm, VmFileId};
 use crate::{
   cache::InlineCache,
-  compiler::{Compiler, Parser, Resolver},
+  compiler::{Compiler, Parser, Resolver, TypeChecker},
   source::Source,
   FeResult,
 };
@@ -48,6 +48,7 @@ impl Vm {
 
     let mut ast = ast?;
     Resolver::new(self.global, &self.gc.borrow(), source, file_id, repl).resolve(&mut ast)?;
+    TypeChecker::new(source, file_id).check(&mut ast)?;
 
     let gc = self.gc.replace(Allocator::default());
     let alloc = Bump::new();

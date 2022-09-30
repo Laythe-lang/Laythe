@@ -320,18 +320,8 @@ impl<'a, 'src> Resolver<'a, 'src> {
     self.errors.push(error);
   }
 
-  /// Indicate an error occurred at he current index
-  fn error_at_current(&mut self, message: &str, span: Option<Span>) {
-    self.error_at(message, span);
-  }
-
   /// Indicate an error occurred at the previous index
   fn error(&mut self, message: &str, span: Option<Span>) {
-    self.error_at(message, span);
-  }
-
-  /// Print an error to the console for a user to address
-  fn error_at(&mut self, message: &str, span: Option<Span>) {
     let error = Diagnostic::error().with_message(message);
 
     let error = match span {
@@ -426,14 +416,14 @@ impl<'a, 'src> Resolver<'a, 'src> {
   /// Resolve an export declaration
   fn export(&mut self, export: &mut Symbol<'src>) {
     if self.tables.len() > 1 {
-      self.error_at_current(
+      self.error(
         "Can only export from the module scope.",
         Some(export.span()),
       )
     }
 
     if self.repl {
-      self.error_at_current("Can't export from the repl.", Some(export.span()))
+      self.error("Can't export from the repl.", Some(export.span()))
     }
 
     self.symbol(export);

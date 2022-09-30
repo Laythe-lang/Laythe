@@ -107,6 +107,19 @@ pub trait Spanned {
   }
 }
 
+/// An object which owns a symbol table and conversely a scope.
+/// Scoped objects can borrow or set the scope
+pub trait Scoped<'a> {
+  /// Immutable borrow of symbol table
+  fn symbols(&self) -> &SymbolTable<'a>;
+
+  /// Mutable borrow of symbol table
+  fn symbols_mut(&mut self) -> &mut SymbolTable<'a>;
+
+  /// Set the symbol table for this object
+  fn set_symbols(&mut self, symbols: SymbolTable<'a>);
+}
+
 /// Representing the start and end of a node. Typically this would
 /// be a multi line control flow or a function declaration
 #[derive(Default, PartialEq, Debug, Copy, Clone)]
@@ -145,6 +158,20 @@ impl<'a> Spanned for Module<'a> {
 
   fn end(&self) -> u32 {
     self.decls.last().map_or(0, |last| last.end())
+  }
+}
+
+impl<'a> Scoped<'a> for Module<'a> {
+  fn symbols(&self) -> &SymbolTable<'a> {
+    &self.symbols
+  }
+
+  fn symbols_mut(&mut self) -> &mut SymbolTable<'a> {
+    &mut self.symbols
+  }
+
+  fn set_symbols(&mut self, symbols: SymbolTable<'a>) {
+    self.symbols = symbols;
   }
 }
 
@@ -212,7 +239,6 @@ pub struct Class<'a> {
   pub super_class: Option<ClassType<'a>>,
   pub type_members: Vec<'a, TypeMember<'a>>,
   pub symbols: SymbolTable<'a>,
-  // pub fields:
   pub init: Option<Fun<'a>>,
   pub methods: Vec<'a, Fun<'a>>,
   pub static_methods: Vec<'a, Fun<'a>>,
@@ -259,6 +285,20 @@ impl<'a> Spanned for Class<'a> {
   }
 }
 
+impl<'a> Scoped<'a> for Class<'a> {
+  fn symbols(&self) -> &SymbolTable<'a> {
+    &self.symbols
+  }
+
+  fn symbols_mut(&mut self) -> &mut SymbolTable<'a> {
+    &mut self.symbols
+  }
+
+  fn set_symbols(&mut self, symbols: SymbolTable<'a>) {
+    self.symbols = symbols;
+  }
+}
+
 pub struct Fun<'a> {
   pub name: Option<Token<'a>>,
   pub call_sig: CallSignature<'a>,
@@ -295,6 +335,20 @@ impl<'a> Spanned for Fun<'a> {
       FunBody::Block(block) => block.end(),
       FunBody::Expr(expr) => expr.end(),
     }
+  }
+}
+
+impl<'a> Scoped<'a> for Fun<'a> {
+  fn symbols(&self) -> &SymbolTable<'a> {
+    &self.symbols
+  }
+
+  fn symbols_mut(&mut self) -> &mut SymbolTable<'a> {
+    &mut self.symbols
+  }
+
+  fn set_symbols(&mut self, symbols: SymbolTable<'a>) {
+    self.symbols = symbols;
   }
 }
 
@@ -507,7 +561,7 @@ impl<'a> Spanned for Import<'a> {
         } else {
           symbols.last().unwrap().end()
         }
-      }
+      },
     }
   }
 }
@@ -537,6 +591,20 @@ impl<'a> Spanned for For<'a> {
 
   fn end(&self) -> u32 {
     self.body.end()
+  }
+}
+
+impl<'a> Scoped<'a> for For<'a> {
+  fn symbols(&self) -> &SymbolTable<'a> {
+    &self.symbols
+  }
+
+  fn symbols_mut(&mut self) -> &mut SymbolTable<'a> {
+    &mut self.symbols
+  }
+
+  fn set_symbols(&mut self, symbols: SymbolTable<'a>) {
+    self.symbols = symbols;
   }
 }
 
@@ -689,11 +757,25 @@ impl<'a> Spanned for Block<'a> {
   }
 }
 
+impl<'a> Scoped<'a> for Block<'a> {
+  fn symbols(&self) -> &SymbolTable<'a> {
+    &self.symbols
+  }
+
+  fn symbols_mut(&mut self) -> &mut SymbolTable<'a> {
+    &mut self.symbols
+  }
+
+  fn set_symbols(&mut self, symbols: SymbolTable<'a>) {
+    self.symbols = symbols;
+  }
+}
+
 pub struct CallSignature<'a> {
   pub range: Span,
   pub type_params: Vec<'a, TypeParam<'a>>,
   pub params: Vec<'a, Param<'a>>,
-  pub return_type: Option<Type<'a>>,
+  pub ret_type: Option<Type<'a>>,
 }
 
 impl<'a> CallSignature<'a> {
@@ -707,7 +789,7 @@ impl<'a> CallSignature<'a> {
       range,
       type_params,
       params,
-      return_type,
+      ret_type: return_type,
     }
   }
 }
@@ -1276,8 +1358,6 @@ impl<'a> Spanned for InstanceAccess<'a> {
     self.access.end()
   }
 }
-
-
 
 pub struct TypeParam<'a> {
   pub name: Token<'a>,

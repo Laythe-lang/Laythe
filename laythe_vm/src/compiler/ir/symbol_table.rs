@@ -1,4 +1,4 @@
-use super::ast::Span;
+use super::{ast::Span, type_::Type};
 use bumpalo::collections::vec::Vec;
 
 /// Provides the state of a given
@@ -32,6 +32,9 @@ pub struct Symbol {
   /// name of the local
   name: String,
 
+  /// The type of this symbol
+  symbol_type: Type,
+
   /// the local where this symbol was declared
   span: Span,
 
@@ -42,12 +45,27 @@ pub struct Symbol {
 impl Symbol {
   /// Create a new symbol
   pub fn new(name: String, span: Span, state: SymbolState) -> Self {
-    Self { name, span, state }
+    Self {
+      name,
+      span,
+      state,
+      symbol_type: Type::Any,
+    }
   }
 
   /// Retrieve this symbol's name
   pub fn name(&self) -> &str {
     &self.name
+  }
+
+  /// Retrieve this symbol's type
+  pub fn type_(&self) -> &Type {
+    &self.symbol_type
+  }
+
+  /// Set this symbol's type
+  pub fn set_type(&mut self, symbol_type: Type) {
+    self.symbol_type = symbol_type;
   }
 
   /// Retrieve this symbol's current state
@@ -58,6 +76,16 @@ impl Symbol {
   /// Retrieve the source span of this symbol
   pub fn span(&self) -> Span {
     self.span
+  }
+
+  /// Retrieve the type of this symbol
+  pub fn symbol_type(&self) -> &Type {
+    &self.symbol_type
+  }
+
+  /// Set the type of this symbol
+  pub fn set_symbol_type(&mut self, symbol_type: Type) {
+    self.symbol_type = symbol_type;
   }
 
   /// Mark this symbol as initialized
@@ -102,6 +130,7 @@ impl<'a> SymbolTable<'a> {
           name: name.to_string(),
           span,
           state: SymbolState::Uninitialized,
+          symbol_type: Type::Any,
         });
         AddSymbolResult::Ok
       },
@@ -117,6 +146,7 @@ impl<'a> SymbolTable<'a> {
           name: name.to_string(),
           span,
           state: SymbolState::GlobalInitialized,
+          symbol_type: Type::Any,
         });
         AddSymbolResult::Ok
       },
@@ -168,6 +198,7 @@ mod test {
       name: name.to_string(),
       span: test_span(),
       state,
+      symbol_type: Type::Any,
     }
   }
 
@@ -235,6 +266,7 @@ mod test {
           name: "example".to_string(),
           state: SymbolState::Uninitialized,
           span: test_span(),
+          symbol_type: Type::Any,
         })
       );
     }

@@ -4,10 +4,12 @@ mod parser;
 mod peephole;
 mod resolver;
 mod scanner;
+mod type_checker;
 
 use bumpalo::{Bump, collections};
 pub use parser::Parser;
 pub use resolver::Resolver;
+pub use type_checker::TypeChecker;
 
 use crate::{
   byte_code::{CaptureIndex, Label, SymbolicByteCode},
