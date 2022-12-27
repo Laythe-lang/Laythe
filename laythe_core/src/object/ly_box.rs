@@ -8,7 +8,7 @@ use std::{fmt, io::Write};
 
 use super::ObjectKind;
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct LyBox {
   pub value: Value,
 }

@@ -3,7 +3,7 @@ use bumpalo::collections::vec::Vec;
 
 /// Provides the state of a given
 /// symbol
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SymbolState {
   Uninitialized,
   Initialized,
@@ -19,7 +19,7 @@ impl Default for SymbolState {
 
 /// Was the local successfully added
 /// to this table
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub enum AddSymbolResult {
   Ok,
   DuplicateSymbol(Symbol),
@@ -27,7 +27,7 @@ pub enum AddSymbolResult {
 
 /// A symbol representing a named
 /// entity inside a Laythe program
-#[derive(Debug, PartialEq, Clone, Default)]
+#[derive(Debug, PartialEq, Eq, Clone, Default)]
 pub struct Symbol {
   /// name of the local
   name: String,

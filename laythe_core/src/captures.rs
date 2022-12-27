@@ -8,7 +8,7 @@ use crate::{
   value::Value,
 };
 
-#[derive(PartialEq, Clone, Copy)]
+#[derive(PartialEq, Eq, Clone, Copy)]
 pub struct Captures(Tuple);
 
 impl Captures {

@@ -13,7 +13,7 @@ use crate::{
 
 use super::ObjectKind;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum FunKind {
   Fun,
   Method,

@@ -47,7 +47,7 @@ enum Signal {
   RuntimeError,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecuteResult {
   Ok(Value),
   Exit(u16),
@@ -55,14 +55,14 @@ pub enum ExecuteResult {
   CompileError,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmExit {
   Ok,
   RuntimeError,
   CompileError,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecuteMode {
   Normal,
   CallFunction(usize),

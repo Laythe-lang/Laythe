@@ -6,7 +6,7 @@ use crate::{
 };
 
 /// A call frame in the Laythe interpreter
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CallFrame {
   /// The function defining this call frame
   fun: GcObj<Fun>,

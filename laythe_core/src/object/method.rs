@@ -9,7 +9,7 @@ use std::{
 
 use super::ObjectKind;
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Method {
   receiver: Value,
   method: Value,

@@ -17,7 +17,7 @@ pub struct LineOffsets {
   len: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum LineError {
   OffsetOutOfBounds,
   LineOutOfBounds,
@@ -135,7 +135,7 @@ impl Trace for VmFile {
 }
 
 /// A unique id to a `VmFile`
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VmFileId(usize);
 
 pub const VM_FILE_TEST_ID: VmFileId = VmFileId(usize::MAX);

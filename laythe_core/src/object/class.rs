@@ -9,7 +9,7 @@ use std::{fmt, io::Write};
 
 use super::ObjectKind;
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Class {
   name: GcStr,
   init: Option<Value>,

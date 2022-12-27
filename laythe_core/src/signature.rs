@@ -6,14 +6,14 @@ use crate::{
 };
 use std::{fmt::Display, io::Write};
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum Arity {
   Fixed(u8),
   Variadic(u8),
   Default(u8, u8),
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum ArityError {
   Fixed(u8),
   Variadic(u8),
@@ -117,7 +117,7 @@ impl Trace for Parameter {
 }
 
 /// Indicating the type of the parameter passed in
-#[derive(Copy, Clone, Debug, PartialEq)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ParameterKind {
   Any,
   Bool,
@@ -214,7 +214,7 @@ pub enum Environment {
   Normal,
 }
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SignatureError {
   LengthFixed(u8),
   LengthVariadic(u8),
