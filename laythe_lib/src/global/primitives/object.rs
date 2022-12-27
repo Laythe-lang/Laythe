@@ -116,7 +116,7 @@ impl LyNative for ObjectStr {
       }),
     };
 
-    Call::Ok(val!(hooks.manage_str(&string)))
+    Call::Ok(val!(hooks.manage_str(string)))
   }
 }
 

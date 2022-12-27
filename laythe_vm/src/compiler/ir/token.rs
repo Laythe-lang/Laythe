@@ -1,6 +1,6 @@
+use super::ast::Spanned;
 use std::fmt;
 use variant_count::VariantCount;
-use super::ast::Spanned;
 
 #[derive(Debug, Clone)]
 pub enum Lexeme<'a> {
@@ -38,7 +38,7 @@ impl<'a> Token<'a> {
   pub fn str(&'a self) -> &'a str {
     match &self.lexeme {
       Lexeme::Slice(slice) => slice,
-      Lexeme::Owned(string) => &*string,
+      Lexeme::Owned(string) => string,
     }
   }
 

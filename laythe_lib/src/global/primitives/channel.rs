@@ -27,8 +27,7 @@ const CHANNEL_CAPACITY: NativeMetaBuilder = NativeMetaBuilder::method("capacity"
 
 pub fn declare_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let channel_class = class_inheritance(hooks, module, CHANNEL_CLASS_NAME)?;
-  export_and_insert(module, channel_class.name(), val!(channel_class))
-    .map_err(StdError::from)
+  export_and_insert(module, channel_class.name(), val!(channel_class)).map_err(StdError::from)
 }
 
 pub fn define_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
@@ -66,7 +65,7 @@ impl LyNative for ChannelStr {
     let class = hooks.get_class(this).to_obj().to_class();
     let channel = this.to_obj().to_channel();
 
-    Call::Ok(val!(hooks.manage_str(&format!(
+    Call::Ok(val!(hooks.manage_str(format!(
       "<{} {:p}>",
       &*class.name(),
       &*channel

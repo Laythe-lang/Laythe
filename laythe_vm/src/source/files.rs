@@ -282,7 +282,7 @@ impl<'a> files::Files<'a> for VmFiles {
     let line_offset = vm_file.line_offsets();
 
     match line_offset.line_range(line_index) {
-      Ok(range) => Ok((range.start as usize)..(range.end as usize)),
+      Ok(range) => Ok((range.start)..(range.end)),
       Err(_) => Err(files::Error::LineTooLarge {
         given: line_index,
         max: vm_file.source.len(),

@@ -20,7 +20,7 @@ pub fn default_class_inheritance(
   let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, STD)?;
-  let module = package.import(hooks, import)?;
+  let module = package.import(import)?;
   let object_class = match module.get_exported_symbol(hooks.manage_str(OBJECT_CLASS_NAME)) {
     Some(class) => class,
     None => return Err(StdError::SymbolNotFound),
@@ -46,7 +46,7 @@ pub fn default_error_inheritance(
   let error_name = hooks.manage_str(ERROR_CLASS_NAME);
 
   let import = Import::from_str(hooks, STD)?;
-  let module = package.import(hooks, import)?;
+  let module = package.import(import)?;
   let object_class = match module.get_exported_symbol(hooks.manage_str(error_name)) {
     Some(class) => class,
     None => return Err(StdError::SymbolNotFound),
@@ -71,7 +71,7 @@ pub fn load_class_from_package(
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(name);
   let import = Import::from_str(hooks, path)?;
-  let module = package.import(hooks, import)?;
+  let module = package.import(import)?;
   let symbol = match module.get_exported_symbol(hooks.manage_str(name)) {
     Some(class) => class,
     None => return Err(StdError::SymbolNotFound),
@@ -136,6 +136,7 @@ mod test {
     create_std_lib, native,
   };
   use laythe_core::{
+    chunk::Chunk,
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
     managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, TraceRoot},
     match_obj,
@@ -148,7 +149,7 @@ mod test {
     utils::IdEmitter,
     val,
     value::{Value, VALUE_NIL},
-    Call, LyError, chunk::Chunk,
+    Call, LyError,
   };
   use laythe_env::{
     io::Io,

@@ -11,7 +11,7 @@ pub struct IoStdioNative();
 
 impl IoImpl<Stdio> for IoStdioNative {
   fn make(&self) -> Stdio {
-    Stdio::new(Box::new(StdioNative::default()))
+    Stdio::new(Box::<StdioNative>::default())
   }
 }
 

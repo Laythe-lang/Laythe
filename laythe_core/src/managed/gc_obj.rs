@@ -179,7 +179,7 @@ impl<T: 'static + Object> Trace for GcObj<T> {
     log
       .write_fmt(format_args!(
         "{:p} mark {:?}\n",
-        &*self.header(),
+        self.header(),
         DebugWrap(self, 1)
       ))
       .expect("unable to write to stdout");
@@ -246,8 +246,8 @@ impl<T: 'static + Object> DerefMut for GcObj<T> {
 impl<T: 'static + Object> PartialEq for GcObj<T> {
   #[inline]
   fn eq(&self, other: &GcObj<T>) -> bool {
-    let left_inner: &T = &*self;
-    let right_inner: &T = &*other;
+    let left_inner: &T = self;
+    let right_inner: &T = other;
 
     ptr::eq(left_inner, right_inner)
   }
@@ -278,14 +278,14 @@ impl<T: 'static + Object> Ord for GcObj<T> {
 
 impl<T: 'static + Object + fmt::Display> fmt::Display for GcObj<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let inner: &T = &*self;
+    let inner: &T = self;
     write!(f, "{}", inner)
   }
 }
 
 impl<T: 'static + Object + fmt::Debug> fmt::Debug for GcObj<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let inner: &T = &*self;
+    let inner: &T = self;
 
     f.debug_struct("GcObj").field("ptr", inner).finish()
   }

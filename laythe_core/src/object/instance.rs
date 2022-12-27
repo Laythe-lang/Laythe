@@ -20,7 +20,7 @@ impl Instance {
 
   #[inline]
   pub fn fields(&self) -> &[Value] {
-    &*self
+    self
   }
 
   #[inline]
@@ -45,6 +45,6 @@ impl Instance {
 
 impl fmt::Display for Instance {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<{} {:p}>", &*self.class().name(), &*self)
+    write!(f, "<{} {:p}>", &*self.class().name(), self)
   }
 }

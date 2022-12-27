@@ -117,7 +117,7 @@ impl Module {
   }
 
   /// Attempt to import a module from the provided path
-  pub fn import(&self, hooks: &GcHooks, path: &[GcStr]) -> ImportResult<Gc<Module>> {
+  pub fn import(&self, path: &[GcStr]) -> ImportResult<Gc<Module>> {
     if path.is_empty() {
       Err(ImportError::MalformedPath)
     } else {
@@ -126,7 +126,7 @@ impl Module {
           if path.len() == 1 {
             Ok(*module)
           } else {
-            module.import(hooks, &path[1..])
+            module.import(&path[1..])
           }
         },
         None => Err(ImportError::ModuleDoesNotExist),

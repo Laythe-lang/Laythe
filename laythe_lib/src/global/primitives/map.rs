@@ -194,7 +194,7 @@ fn format_map_entry(
     .and_then(|method| hooks.call_method(item, method, &[]))?;
 
   if_let_obj!(ObjectKind::String(string) = (result) {
-    buffer.push_str(&*string);
+    buffer.push_str(&string);
     Call::Ok(VALUE_NIL)
   } else {
     // if error throw away temporary strings

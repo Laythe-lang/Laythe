@@ -50,7 +50,7 @@ pub struct Allocator {
 
 const GC_HEAP_GROW_FACTOR: usize = 2;
 
-impl<'a> Allocator {
+impl Allocator {
   /// Create a new manged heap for laythe for objects.
   ///
   /// # Examples
@@ -682,7 +682,7 @@ fn debug_free_obj(obj: &GcObjectHandle, free: bool) {
   }
 }
 
-impl<'a> Default for Allocator {
+impl Default for Allocator {
   fn default() -> Self {
     Allocator::new(Stdio::default())
   }

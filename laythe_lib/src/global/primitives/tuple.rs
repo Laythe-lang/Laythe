@@ -165,7 +165,7 @@ impl LyNative for TupleStr {
           .and_then(|method| hooks.call_method(item, method, &[]))?;
 
         if_let_obj!(ObjectKind::String(string) = (result) {
-          buf.push_str(&*string);
+          buf.push_str(&string);
           buf.push_str(", ");
         } else {
           // if error throw away temporary strings
@@ -188,7 +188,7 @@ impl LyNative for TupleStr {
           .and_then(|method| hooks.call_method(*last, method, &[]))?;
 
         if_let_obj!(ObjectKind::String(string) = (result) {
-          buf.push_str(&*string);
+          buf.push_str(&string);
         } else {
           // if error throw away temporary strings
           return hooks.call(

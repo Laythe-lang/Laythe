@@ -382,7 +382,7 @@ impl Fiber {
       }
     }
 
-    std::slice::from_raw_parts(start, len as usize)
+    std::slice::from_raw_parts(start, len)
   }
 
   /// Retrieve the current error on this fiber

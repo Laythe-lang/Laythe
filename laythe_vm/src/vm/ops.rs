@@ -2,7 +2,7 @@ use super::{source_loader::ImportResult, Signal, Vm};
 use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
 use laythe_core::{
   captures::Captures,
-  hooks::{GcHooks, Hooks, GcContext},
+  hooks::{GcContext, GcHooks, Hooks},
   if_let_obj,
   managed::{Array, Gc, GcObj, GcStr},
   match_obj,
@@ -75,7 +75,7 @@ impl Vm {
   /// create a map from a map literal
   pub(super) unsafe fn op_map(&mut self) -> Signal {
     let arg_count = self.read_short() as usize;
-    let mut map = self.manage_obj(Map::with_capacity(arg_count as usize));
+    let mut map = self.manage_obj(Map::with_capacity(arg_count));
 
     for i in 0..arg_count {
       let key = self.fiber.peek(i * 2 + 1);
@@ -262,7 +262,7 @@ impl Vm {
   /// create a map from a map literal
   pub(super) unsafe fn op_interpolate(&mut self) -> Signal {
     let arg_count = self.read_short() as usize;
-    let args = self.fiber.stack_slice(arg_count as usize);
+    let args = self.fiber.stack_slice(arg_count);
 
     let mut length: usize = 0;
     for arg in args {
@@ -939,8 +939,8 @@ impl Vm {
       let right = right.to_obj().to_str();
 
       let mut buffer = String::with_capacity(left.len() + right.len());
-      buffer.push_str(&*left);
-      buffer.push_str(&*right);
+      buffer.push_str(&left);
+      buffer.push_str(&right);
 
       let string = self.manage_str(buffer);
       self.fiber.push(val!(string));

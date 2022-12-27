@@ -76,7 +76,7 @@ impl<T: 'static + Trace + DebugHeap> Trace for Gc<T> {
     log
       .write_fmt(format_args!(
         "{:p} mark {:?}\n",
-        &*self.obj(),
+        self.obj(),
         DebugWrap(self, 1)
       ))
       .expect("unable to write to stdout");
@@ -142,8 +142,8 @@ impl<T: 'static> DerefMut for Gc<T> {
 impl<T> PartialEq for Gc<T> {
   #[inline]
   fn eq(&self, other: &Gc<T>) -> bool {
-    let left_inner: &T = &*self;
-    let right_inner: &T = &*other;
+    let left_inner: &T = self;
+    let right_inner: &T = other;
 
     ptr::eq(left_inner, right_inner)
   }
@@ -174,14 +174,14 @@ impl<T> Ord for Gc<T> {
 
 impl<T: fmt::Display> fmt::Display for Gc<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let inner: &T = &*self;
+    let inner: &T = self;
     write!(f, "{}", inner)
   }
 }
 
 impl<T: fmt::Debug> fmt::Debug for Gc<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    let inner: &T = &*self;
+    let inner: &T = self;
 
     f.debug_struct("Gc").field("ptr", inner).finish()
   }

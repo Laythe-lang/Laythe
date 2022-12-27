@@ -7,6 +7,7 @@ pub struct Stdio {
   stdio: Box<dyn StdioImpl>,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for Stdio {
   fn default() -> Self {
     Self {

@@ -57,7 +57,7 @@ impl Enumerator {
 
 impl fmt::Display for Enumerator {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<iter {} {:p}>", self.name(), &*self)
+    write!(f, "<iter {} {:p}>", self.name(), self)
   }
 }
 
