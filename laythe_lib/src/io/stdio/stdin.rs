@@ -13,7 +13,7 @@ use laythe_core::{
   object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::Arity,
   val,
-  value::Value,
+  value::{Value, VALUE_NIL},
   Call, LyError,
 };
 use std::io::Write;
@@ -86,12 +86,13 @@ impl LyNative for StdinReadLine {
     let mut buf = String::new();
 
     match stdio.read_line(&mut buf) {
+      Ok(0) => Call::Ok(VALUE_NIL),
       Ok(_) => {
         if buf.ends_with('\n') {
           buf.pop();
         }
         Call::Ok(val!(hooks.manage_str(buf)))
-      }
+      },
       Err(err) => self.call_error(hooks, err.to_string()),
     }
   }

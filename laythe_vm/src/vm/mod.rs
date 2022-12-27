@@ -9,7 +9,7 @@ mod ops;
 mod source_loader;
 
 use crate::{
-  byte_code::{ByteCode},
+  byte_code::ByteCode,
   cache::InlineCache,
   constants::REPL_MODULE,
   source::{Source, VmFileId, VmFiles},
@@ -205,6 +205,9 @@ impl Vm {
       stdio.stdout().flush().expect("Could not write to stdout");
 
       match stdio.read_line(&mut buffer) {
+        Ok(0) => {
+          return (0, VmExit::Ok);
+        },
         Ok(_) => {
           let source_content = self.manage_str(buffer);
           self.push_root(source_content);
