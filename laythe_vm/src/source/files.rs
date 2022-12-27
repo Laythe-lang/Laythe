@@ -17,7 +17,7 @@ pub struct LineOffsets {
   len: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum LineError {
   OffsetOutOfBounds,
   LineOutOfBounds,
@@ -135,7 +135,7 @@ impl Trace for VmFile {
 }
 
 /// A unique id to a `VmFile`
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct VmFileId(usize);
 
 pub const VM_FILE_TEST_ID: VmFileId = VmFileId(usize::MAX);
@@ -282,7 +282,7 @@ impl<'a> files::Files<'a> for VmFiles {
     let line_offset = vm_file.line_offsets();
 
     match line_offset.line_range(line_index) {
-      Ok(range) => Ok((range.start as usize)..(range.end as usize)),
+      Ok(range) => Ok((range.start)..(range.end)),
       Err(_) => Err(files::Error::LineTooLarge {
         given: line_index,
         max: vm_file.source.len(),

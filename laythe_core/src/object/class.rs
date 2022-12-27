@@ -9,7 +9,7 @@ use std::{fmt, io::Write};
 
 use super::ObjectKind;
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Class {
   name: GcStr,
   init: Option<Value>,
@@ -121,7 +121,7 @@ impl Class {
 
     self.methods.reserve(super_class.methods.len());
     super_class.methods.iter().for_each(|(key, value)| {
-      if self.methods.get(&*key).is_none() {
+      if self.methods.get(key).is_none() {
         self.methods.insert(*key, *value);
       }
     });
@@ -180,7 +180,7 @@ impl Class {
 
 impl fmt::Display for Class {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<class {} {:p}>", self.name(), &*self)
+    write!(f, "<class {} {:p}>", self.name(), self)
   }
 }
 

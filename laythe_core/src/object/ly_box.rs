@@ -8,7 +8,7 @@ use std::{fmt, io::Write};
 
 use super::ObjectKind;
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub struct LyBox {
   pub value: Value,
 }
@@ -27,7 +27,7 @@ impl Default for LyBox {
 
 impl Display for LyBox {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<*{} {:p}>", self.value, &*self)
+    write!(f, "<*{} {:p}>", self.value, self)
   }
 }
 

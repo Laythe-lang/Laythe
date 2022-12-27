@@ -15,7 +15,7 @@ use std::{fmt, io::Write, mem, ptr, usize};
 
 const INITIAL_FRAME_SIZE: usize = 4;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum FiberState {
   Running,
   Pending,
@@ -30,7 +30,7 @@ pub enum FiberError {
 
 pub type FiberResult<T> = Result<T, FiberError>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum UnwindResult<'a> {
   Handled(&'a mut CallFrame),
   Unhandled,
@@ -382,7 +382,7 @@ impl Fiber {
       }
     }
 
-    std::slice::from_raw_parts(start, len as usize)
+    std::slice::from_raw_parts(start, len)
   }
 
   /// Retrieve the current error on this fiber
@@ -1002,8 +1002,7 @@ mod test {
     builder.update_max_slots(3);
 
     let captures = Captures::new(&hooks, &[]);
-    let fun =
-      hooks.manage_obj(builder.build(Chunk::stub_with_instructions(&hooks, &[0, 0, 0])));
+    let fun = hooks.manage_obj(builder.build(Chunk::stub_with_instructions(&hooks, &[0, 0, 0])));
 
     let mut fiber = FiberBuilder::default()
       .max_slots(4)
@@ -1154,8 +1153,7 @@ mod test {
 
     let builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
 
-    let fun =
-      hooks.manage_obj(builder.build(Chunk::stub_with_instructions(&hooks, &[0, 0, 0])));
+    let fun = hooks.manage_obj(builder.build(Chunk::stub_with_instructions(&hooks, &[0, 0, 0])));
     let captures = Captures::new(&hooks, &[]);
 
     let mut fiber = FiberBuilder::default()

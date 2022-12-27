@@ -1,8 +1,5 @@
 use super::{error::ImportResult, import::Import, ImportError, Module};
-use crate::{
-  hooks::GcHooks,
-  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcStr, Trace},
-};
+use crate::managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcStr, Trace};
 use std::{fmt, io::Write};
 
 #[derive(Clone)]
@@ -32,13 +29,13 @@ impl Package {
   }
 
   /// Attempt to import a module from the provided import object
-  pub fn import(&self, hooks: &GcHooks, import: Gc<Import>) -> ImportResult<Gc<Module>> {
+  pub fn import(&self, import: Gc<Import>) -> ImportResult<Gc<Module>> {
     if import.package() == self.name {
       let path = import.path();
       if path.is_empty() {
         Ok(self.root_module)
       } else {
-        self.root_module.import(hooks, import.path())
+        self.root_module.import(import.path())
       }
     } else {
       Err(ImportError::PackageDoesNotMatch)

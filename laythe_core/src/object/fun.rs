@@ -13,7 +13,7 @@ use crate::{
 
 use super::ObjectKind;
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum FunKind {
   Fun,
   Method,
@@ -203,7 +203,7 @@ impl Fun {
 
 impl fmt::Display for Fun {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<fn {} {:p}>", self.name, &*self)
+    write!(f, "<fn {} {:p}>", self.name, self)
   }
 }
 

@@ -1,5 +1,5 @@
 /// An exception handler in Laythe
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ExceptionHandler {
   /// The ip offset from the start call frame
   offset: usize,

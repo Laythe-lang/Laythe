@@ -5,7 +5,7 @@ use crate::{
 };
 use std::{fmt, io::Write};
 
-#[derive(PartialEq, Clone)]
+#[derive(PartialEq, Eq, Clone)]
 pub struct Closure {
   fun: GcObj<Fun>,
   captures: Captures,

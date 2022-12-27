@@ -7,10 +7,11 @@ pub struct Stdio {
   stdio: Box<dyn StdioImpl>,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for Stdio {
   fn default() -> Self {
     Self {
-      stdio: Box::new(StdioMock::default()),
+      stdio: Box::<StdioMock>::default(),
     }
   }
 }
@@ -61,7 +62,7 @@ pub struct IoStdioMock();
 
 impl IoImpl<Stdio> for IoStdioMock {
   fn make(&self) -> Stdio {
-    Stdio::new(Box::new(StdioMock::default()))
+    Stdio::new(Box::<StdioMock>::default())
   }
 }
 
@@ -262,11 +263,11 @@ pub mod support {
     pub fn log_stdio(&self) {
       eprintln!(
         "{}",
-        str::from_utf8(&*self.stdout.0).expect("Could not unwrap stdout")
+        str::from_utf8(&self.stdout.0).expect("Could not unwrap stdout")
       );
       eprintln!(
         "{}",
-        str::from_utf8(&*self.stderr.0).expect("Could not unwrap stderr")
+        str::from_utf8(&self.stderr.0).expect("Could not unwrap stderr")
       );
     }
   }
@@ -297,7 +298,7 @@ pub mod support {
     }
     fn read_line(&self, buffer: &mut String) -> std::io::Result<usize> {
       unsafe {
-        let line = match (&*self.lines).get(*self.line_index) {
+        let line = match (*self.lines).get(*self.line_index) {
           Some(line) => line.clone(),
           None => panic!("Not enough test lines"),
         };

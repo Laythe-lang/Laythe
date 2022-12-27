@@ -28,7 +28,7 @@ enum ChannelQueueKind {
   Buffered,
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum SendResult {
   Ok,
   NoSendAccess,
@@ -37,7 +37,7 @@ pub enum SendResult {
   Closed,
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum ReceiveResult {
   Ok(Value),
   NoReceiveAccess,
@@ -46,7 +46,7 @@ pub enum ReceiveResult {
   Closed,
 }
 
-#[derive(PartialEq, Clone, Debug)]
+#[derive(PartialEq, Eq, Clone, Debug)]
 pub enum CloseResult {
   Ok,
   AlreadyClosed,
@@ -371,7 +371,7 @@ impl Channel {
 
 impl fmt::Display for Channel {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<Channel {:p}>", &*self)
+    write!(f, "<Channel {:p}>", self)
   }
 }
 

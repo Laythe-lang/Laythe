@@ -61,7 +61,7 @@ impl LyNative for ClassStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let class = this.unwrap().to_obj().to_class();
 
-    Call::Ok(val!(hooks.manage_str(&format!(
+    Call::Ok(val!(hooks.manage_str(format!(
       "<class {} {:p}>",
       &*class.name(),
       &*class

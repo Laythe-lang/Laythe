@@ -109,7 +109,7 @@ pub trait Spanned {
 
 /// Representing the start and end of a node. Typically this would
 /// be a multi line control flow or a function declaration
-#[derive(Default, PartialEq, Debug, Copy, Clone)]
+#[derive(Default, PartialEq, Eq, Debug, Copy, Clone)]
 pub struct Span {
   pub start: u32,
   pub end: u32,

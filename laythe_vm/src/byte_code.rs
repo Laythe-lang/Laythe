@@ -8,7 +8,7 @@ use std::convert::TryInto;
 
 use crate::{cache::CacheIdEmitter, source::VmFileId};
 
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub struct Label(u32);
 
 impl Label {
@@ -27,7 +27,7 @@ impl Display for Label {
   }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CaptureIndex {
   /// The capture is in the local function
   Local(u8),
@@ -37,7 +37,7 @@ pub enum CaptureIndex {
 }
 
 /// Space Lox virtual machine byte codes
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum SymbolicByteCode {
   /// Return from script or function
   Return,
@@ -605,7 +605,7 @@ fn push_op_u16_tuple(
 }
 
 /// Laythe virtual machine byte codes
-#[derive(Debug, PartialEq, Clone, Copy, VariantCount)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, VariantCount)]
 pub enum ByteCode {
   /// Return from script or function
   Return,

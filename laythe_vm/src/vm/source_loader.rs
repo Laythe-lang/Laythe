@@ -104,7 +104,7 @@ impl Vm {
     let package = self.packages.get(&import.package()).cloned();
 
     match package {
-      Some(existing_package) => match existing_package.import(&GcHooks::new(self), import) {
+      Some(existing_package) => match existing_package.import(import) {
         Ok(module) => ImportResult::Loaded(module),
         Err(err) => match err {
           ImportError::ModuleDoesNotExist => self.load_missing_module(existing_package, import),

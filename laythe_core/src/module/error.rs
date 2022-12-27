@@ -1,6 +1,6 @@
 use std::{error::Error, fmt::Display};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ImportError {
   PackageDoesNotMatch,
   ModuleDoesNotExist,
@@ -37,7 +37,7 @@ impl Error for ImportError {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum ModuleInsertError {
   ModuleAlreadyExists,
 }
@@ -64,7 +64,7 @@ impl Error for ModuleInsertError {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SymbolInsertError {
   SymbolAlreadyExists,
 }
@@ -91,7 +91,7 @@ impl Error for SymbolInsertError {
   }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum SymbolExportError {
   SymbolDoesNotExist,
   SymbolAlreadyExported,

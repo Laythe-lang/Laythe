@@ -3,7 +3,10 @@ use super::ir::{
   symbol_table::{self, AddSymbolResult, SymbolState, SymbolTable},
   token::{Lexeme, Token, TokenKind},
 };
-use crate::{source::{Source, VmFileId}, FeResult};
+use crate::{
+  source::{Source, VmFileId},
+  FeResult,
+};
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
   constants::OBJECT,
@@ -237,10 +240,8 @@ impl<'a, 'src> Resolver<'a, 'src> {
       "Variable with this name already declared in this scope.",
       vec![
         Label::primary(self.file_id, duplicate.span()).with_message("Declared a second time here"),
-        Label::secondary(self.file_id, existing.span()).with_message(&format!(
-          "{} was originally declared here",
-          &duplicate.str()
-        )),
+        Label::secondary(self.file_id, existing.span())
+          .with_message(format!("{} was originally declared here", &duplicate.str())),
       ],
     )
   }
@@ -966,24 +967,15 @@ mod test {
     std_lib.root_module()
   }
 
-  fn test_repl_resolve(
-    src: &str,
-    test_assert: impl FnOnce(&ast::Module, FeResult<()>),
-  ) {
+  fn test_repl_resolve(src: &str, test_assert: impl FnOnce(&ast::Module, FeResult<()>)) {
     test_resolve(src, true, false, test_assert)
   }
 
-  fn test_file_std_resolve(
-    src: &str,
-    test_assert: impl FnOnce(&ast::Module, FeResult<()>),
-  ) {
+  fn test_file_std_resolve(src: &str, test_assert: impl FnOnce(&ast::Module, FeResult<()>)) {
     test_resolve(src, false, true, test_assert)
   }
 
-  fn test_file_resolve(
-    src: &str,
-    test_assert: impl FnOnce(&ast::Module, FeResult<()>),
-  ) {
+  fn test_file_resolve(src: &str, test_assert: impl FnOnce(&ast::Module, FeResult<()>)) {
     test_resolve(src, false, false, test_assert)
   }
 

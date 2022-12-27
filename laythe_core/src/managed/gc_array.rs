@@ -277,6 +277,7 @@ impl<T, H> PartialEq<GcArray<T, H>> for GcArray<T, H> {
     ptr::eq(self.as_alloc_ptr(), other.as_alloc_ptr())
   }
 }
+impl<T, H> Eq for GcArray<T, H> {}
 
 impl Display for GcArray<Value, ObjHeader> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

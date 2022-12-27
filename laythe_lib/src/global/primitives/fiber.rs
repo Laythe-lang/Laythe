@@ -44,7 +44,7 @@ impl LyNative for FiberStr {
     let class = hooks.get_class(this).to_obj().to_class();
     let fiber = this.to_obj().to_fiber();
 
-    Call::Ok(val!(hooks.manage_str(&format!(
+    Call::Ok(val!(hooks.manage_str(format!(
       "<{} {:p}>",
       &*class.name(),
       &*fiber

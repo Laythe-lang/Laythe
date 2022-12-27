@@ -14,7 +14,7 @@ pub trait Encode: Sized {
 }
 
 /// Represent tokens on a line
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Line {
   /// Line number
   pub line: u32,
@@ -36,7 +36,7 @@ impl_debug_heap!(u8);
 impl_trace!(Line);
 impl_debug_heap!(Line);
 /// An immutable chunk of code
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Chunk {
   /// instruction in this code chunk
   instructions: Array<u8>,

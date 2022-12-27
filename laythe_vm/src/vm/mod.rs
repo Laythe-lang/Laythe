@@ -9,7 +9,7 @@ mod ops;
 mod source_loader;
 
 use crate::{
-  byte_code::{ByteCode},
+  byte_code::ByteCode,
   cache::InlineCache,
   constants::REPL_MODULE,
   source::{Source, VmFileId, VmFiles},
@@ -47,7 +47,7 @@ enum Signal {
   RuntimeError,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ExecuteResult {
   Ok(Value),
   Exit(u16),
@@ -55,14 +55,14 @@ pub enum ExecuteResult {
   CompileError,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VmExit {
   Ok,
   RuntimeError,
   CompileError,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecuteMode {
   Normal,
   CallFunction(usize),
@@ -205,6 +205,9 @@ impl Vm {
       stdio.stdout().flush().expect("Could not write to stdout");
 
       match stdio.read_line(&mut buffer) {
+        Ok(0) => {
+          return (0, VmExit::Ok);
+        },
         Ok(_) => {
           let source_content = self.manage_str(buffer);
           self.push_root(source_content);
