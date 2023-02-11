@@ -1,7 +1,6 @@
-mod file;
+mod utils;
 
 use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
-use file::{declare_file, define_file};
 use laythe_core::{
   hooks::GcHooks,
   managed::Gc,
@@ -9,6 +8,7 @@ use laythe_core::{
   object::Class,
   utils::IdEmitter,
 };
+use utils::{declare_fs_module, define_fs_module};
 
 const FS_MODULE_NAME: &str = "fs";
 
@@ -23,8 +23,8 @@ pub fn fs_module(
 
   let module = hooks.manage(Module::new(fs_module_class, emitter.emit()));
 
-  declare_file(hooks, module, std)?;
-  define_file(hooks, module, std)?;
+  declare_fs_module(hooks, module, std)?;
+  define_fs_module(hooks, module, std)?;
 
   Ok(module)
 }
