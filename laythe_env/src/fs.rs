@@ -1,7 +1,9 @@
 use crate::io::IoImpl;
 use std::{
+  ffi::OsString,
+  fs::FileType,
   io,
-  path::{Path, PathBuf}, ffi::OsString, fs::FileType,
+  path::{Path, PathBuf},
 };
 
 /// A wrapper around file system facilities provided to Laythe
@@ -28,6 +30,16 @@ impl Fs {
     self.fs.read_file(path)
   }
 
+  /// Write a strings contents to file
+  pub fn write_file(&self, path: &Path, contents: &str) -> io::Result<()> {
+    self.fs.write_file(path, contents)
+  }
+
+  /// Remove a file from the filesystem
+  pub fn remove_file(&self, path: &Path) -> io::Result<()> {
+    self.fs.remove_file(path)
+  }
+
   /// Read a directory for files and sub directories
   pub fn read_directory(&self, path: &Path) -> io::Result<Vec<Box<dyn LyDirEntry>>> {
     self.fs.read_directory(path)
@@ -51,7 +63,9 @@ pub trait LyDirEntry {
 }
 
 pub trait FsImpl: Send + Sync {
+  fn write_file(&self, path: &Path, contents: &str) -> io::Result<()>;
   fn read_file(&self, path: &Path) -> io::Result<String>;
+  fn remove_file(&self, path: &Path) -> io::Result<()>;
   fn read_directory(&self, path: &Path) -> io::Result<Vec<Box<dyn LyDirEntry>>>;
   fn canonicalize(&self, path: &Path) -> io::Result<PathBuf>;
   fn relative_path(&self, base: &Path, import: &Path) -> io::Result<PathBuf>;
@@ -69,6 +83,9 @@ impl IoImpl<Fs> for IoFsMock {
 pub struct FsMock();
 
 impl FsImpl for FsMock {
+  fn write_file(&self, _path: &Path, _contents: &str) -> io::Result<()> {
+    Ok(())
+  }
   fn read_file(&self, _path: &Path) -> io::Result<String> {
     Ok("let x = 10;".to_string())
   }
@@ -80,5 +97,9 @@ impl FsImpl for FsMock {
   }
   fn relative_path(&self, _base: &Path, import: &Path) -> io::Result<PathBuf> {
     Ok(import.to_path_buf())
+  }
+
+  fn remove_file(&self, _path: &Path) -> io::Result<()> {
+    Ok(())
   }
 }

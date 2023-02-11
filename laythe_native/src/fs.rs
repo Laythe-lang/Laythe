@@ -4,10 +4,11 @@ use laythe_env::{
 };
 use std::{
   ffi::OsString,
-  fs::{canonicalize, read_dir, read_to_string, DirEntry},
-  io,
+  fs::{canonicalize, read_dir, read_to_string, remove_file, DirEntry, File},
+  io::{self, Write},
   path::{Path, PathBuf},
 };
+
 
 #[derive(Debug)]
 pub struct IoFsNative();
@@ -22,6 +23,16 @@ impl IoImpl<Fs> for IoFsNative {
 pub struct FsNative();
 
 impl FsImpl for FsNative {
+  fn write_file(&self, path: &Path, contents: &str) -> io::Result<()> {
+    let mut file = File::create(path)?;
+    file.write_all(contents.as_bytes())?;
+    Ok(())
+  }
+
+  fn remove_file(&self, path: &Path) -> io::Result<()> {
+    remove_file(path)
+  }
+
   fn read_file(&self, path: &Path) -> io::Result<String> {
     read_to_string(path)
   }
