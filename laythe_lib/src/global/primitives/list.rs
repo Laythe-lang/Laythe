@@ -242,8 +242,7 @@ impl LyNative for ListStr {
           return hooks.call(
             self.error,
             &[val!(hooks.manage_str(format!(
-              "Expected type str from {}.str()",
-              item
+              "Expected type str from {item}.str()"
             )))],
           );
         });
@@ -429,7 +428,7 @@ impl LyNative for ListRemove {
     if index < 0.0 {
       return self.call_error(
         hooks,
-        &format!("Cannot remove at negative index {}.", index),
+        &format!("Cannot remove at negative index {index}."),
       );
     }
 
@@ -473,7 +472,7 @@ impl LyNative for ListInsert {
     let mut list = this.unwrap().to_obj().to_list();
 
     if index < 0.0 {
-      return self.call_error(hooks, format!("Cannot insert at index {}", index));
+      return self.call_error(hooks, format!("Cannot insert at index {index}"));
     }
 
     if index as usize > list.len() {

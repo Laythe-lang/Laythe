@@ -138,7 +138,7 @@ impl LyNative for NumberParse {
     let str = args[0].to_obj().to_str();
     match str.parse::<f64>() {
       Ok(num) => Call::Ok(val!(num)),
-      Err(_) => self.call_error(hooks, format!("Unable to parse number from {}", str)),
+      Err(_) => self.call_error(hooks, format!("Unable to parse number from {str}")),
     }
   }
 }
@@ -214,7 +214,7 @@ impl Trace for TimesIterator {}
 
 impl DebugHeap for TimesIterator {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
-    f.write_fmt(format_args!("{:?}", self))
+    f.write_fmt(format_args!("{self:?}"))
   }
 }
 
@@ -290,7 +290,7 @@ impl Trace for UntilIterator {}
 
 impl DebugHeap for UntilIterator {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
-    f.write_fmt(format_args!("{:?}", self))
+    f.write_fmt(format_args!("{self:?}"))
   }
 }
 

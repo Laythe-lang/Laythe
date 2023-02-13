@@ -77,7 +77,7 @@ fn to_str(hooks: &mut Hooks, value: Value) -> GcStr {
         });
       }
 
-      hooks.manage_str(format!("{:?}", string))
+      hooks.manage_str(format!("{string:?}"))
     })
     .expect("No str method")
 }
@@ -152,7 +152,7 @@ impl LyNative for AssertEq {
     create_error!(
       self.error,
       hooks,
-      format!("Assertion failed {} and {} are not equal.", arg0, arg1)
+      format!("Assertion failed {arg0} and {arg1} are not equal.")
     )
   }
 }
@@ -197,7 +197,7 @@ impl LyNative for AssertNe {
     create_error!(
       self.error,
       hooks,
-      format!("Assertion failed {} and {} are equal.", arg0, arg1)
+      format!("Assertion failed {arg0} and {arg1} are equal.")
     )
   }
 }

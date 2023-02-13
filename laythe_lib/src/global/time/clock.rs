@@ -31,7 +31,7 @@ impl LyNative for Clock {
 
     match time.elapsed() {
       Ok(elapsed) => Call::Ok(val!((elapsed.as_micros() as f64) / 1_000_000.0)),
-      Err(e) => panic!("clock failed {}", e),
+      Err(e) => panic!("clock failed {e}"),
     }
   }
 }
