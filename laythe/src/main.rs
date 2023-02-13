@@ -24,7 +24,7 @@ fn main() {
       match read_to_string(&path) {
         Ok(source) => process::exit(vm.run(path, &source).0),
         Err(e) => {
-          eprintln!("{}", e);
+          eprintln!("{e}");
           process::exit(4)
         },
       }
