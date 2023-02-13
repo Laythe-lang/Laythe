@@ -10,7 +10,7 @@ use laythe_core::{
 impl Vm {
   /// Report an internal issue to the user
   pub(super) fn internal_error(&self, message: &str) -> ! {
-    panic!("Internal Error: {}", message)
+    panic!("Internal Error: {message}")
   }
 
   /// Report a known laythe runtime error to the user

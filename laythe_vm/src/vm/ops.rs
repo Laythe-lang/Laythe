@@ -550,7 +550,7 @@ impl Vm {
     if current_module.set_symbol(name, value).is_err() {
       return self.runtime_error(
         self.builtin.errors.property,
-        &format!("Undefined variable {}", name),
+        &format!("Undefined variable {name}"),
       );
     }
 
@@ -645,7 +645,7 @@ impl Vm {
       },
       None => self.runtime_error(
         self.builtin.errors.runtime,
-        &format!("Undefined variable {}", string),
+        &format!("Undefined variable {string}"),
       ),
     }
   }
@@ -1221,7 +1221,7 @@ impl Vm {
       let class_name = self.value_class(callee).name();
       return self.runtime_error(
         self.builtin.errors.runtime,
-        &format!("{} is not callable.", class_name),
+        &format!("{class_name} is not callable."),
       );
     }
 
@@ -1245,7 +1245,7 @@ impl Vm {
         let class_name = self.value_class(callee).name();
         self.runtime_error(
           self.builtin.errors.runtime,
-          &format!("{} is not callable.", class_name),
+          &format!("{class_name} is not callable."),
         )
       },
     })
@@ -1262,7 +1262,7 @@ impl Vm {
         if arg_count != 0 {
           self.runtime_error(
             self.builtin.errors.runtime,
-            &format!("Expected 0 arguments but got {}", arg_count),
+            &format!("Expected 0 arguments but got {arg_count}"),
           )
         } else {
           Signal::Ok

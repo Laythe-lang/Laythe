@@ -639,17 +639,17 @@ impl Fiber {
 fn assert_inbounds<T>(slice: &[T], ptr: *mut T) {
   unsafe {
     let offset = ptr.offset_from(slice.as_ptr());
-    assert!(offset >= 0, "Attempted to index prior to the slice. Pointer offset was {} with slice start {:p}, ptr {:p}", offset, slice, ptr);
+    assert!(offset >= 0, "Attempted to index prior to the slice. Pointer offset was {offset} with slice start {slice:p}, ptr {ptr:p}");
     assert!(
       (offset as usize) < slice.len(),
-      "Attempted to index past the end of the slice, Pointer offset was {} with slice start {:p} and ptr {:p}", offset, slice, ptr
+      "Attempted to index past the end of the slice, Pointer offset was {offset} with slice start {slice:p} and ptr {ptr:p}"
     )
   }
 }
 
 impl fmt::Display for Fiber {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<fiber {:p}>", self)
+    write!(f, "<fiber {self:p}>")
   }
 }
 

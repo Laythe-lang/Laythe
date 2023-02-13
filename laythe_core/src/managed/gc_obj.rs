@@ -279,7 +279,7 @@ impl<T: 'static + Object> Ord for GcObj<T> {
 impl<T: 'static + Object + fmt::Display> fmt::Display for GcObj<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = self;
-    write!(f, "{}", inner)
+    write!(f, "{inner}")
   }
 }
 
@@ -430,20 +430,20 @@ impl GcObject {
 impl fmt::Display for GcObject {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match_obj!((self) {
-      ObjectKind::String(string) => write!(f, "{}", string),
-      ObjectKind::Channel(channel) => write!(f, "{}", channel),
-      ObjectKind::List(list) => write!(f, "{}", list),
-      ObjectKind::Map(map) => write!(f, "{}", map),
-      ObjectKind::Fun(fun) => write!(f, "{}", fun),
-      ObjectKind::Fiber(fiber) => write!(f, "{}", fiber),
-      ObjectKind::LyBox(ly_box) => write!(f, "{}", ly_box),
-      ObjectKind::Closure(closure) => write!(f, "{}", closure),
-      ObjectKind::Method(method) => write!(f, "{}", method),
-      ObjectKind::Class(class) => write!(f, "{}", class),
-      ObjectKind::Instance(instance) => write!(f, "{}", instance),
-      ObjectKind::Enumerator(enumerator) => write!(f, "{}", enumerator),
-      ObjectKind::Native(native) => write!(f, "{}", native),
-      ObjectKind::Tuple(tuple) => write!(f, "{}", tuple),
+      ObjectKind::String(string) => write!(f, "{string}"),
+      ObjectKind::Channel(channel) => write!(f, "{channel}"),
+      ObjectKind::List(list) => write!(f, "{list}"),
+      ObjectKind::Map(map) => write!(f, "{map}"),
+      ObjectKind::Fun(fun) => write!(f, "{fun}"),
+      ObjectKind::Fiber(fiber) => write!(f, "{fiber}"),
+      ObjectKind::LyBox(ly_box) => write!(f, "{ly_box}"),
+      ObjectKind::Closure(closure) => write!(f, "{closure}"),
+      ObjectKind::Method(method) => write!(f, "{method}"),
+      ObjectKind::Class(class) => write!(f, "{class}"),
+      ObjectKind::Instance(instance) => write!(f, "{instance}"),
+      ObjectKind::Enumerator(enumerator) => write!(f, "{enumerator}"),
+      ObjectKind::Native(native) => write!(f, "{native}"),
+      ObjectKind::Tuple(tuple) => write!(f, "{tuple}"),
     })
   }
 }
@@ -451,20 +451,20 @@ impl fmt::Display for GcObject {
 impl fmt::Debug for GcObject {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match_obj!((self) {
-      ObjectKind::String(string) => write!(f, "{:?}", string),
-      ObjectKind::Channel(channel) => write!(f, "{:?}", channel),
-      ObjectKind::List(list) => write!(f, "{:?}", list),
-      ObjectKind::Map(map) => write!(f, "{:?}", map),
-      ObjectKind::Fun(fun) => write!(f, "{:?}", fun),
-      ObjectKind::Fiber(fiber) => write!(f, "{:?}", fiber),
-      ObjectKind::LyBox(ly_box) => write!(f, "{:?}", ly_box),
-      ObjectKind::Closure(closure) => write!(f, "{:?}", closure),
-      ObjectKind::Method(method) => write!(f, "{:?}", method),
-      ObjectKind::Class(class) => write!(f, "{:?}", class),
-      ObjectKind::Instance(instance) => write!(f, "{:?}", instance),
+      ObjectKind::String(string) => write!(f, "{string:?}"),
+      ObjectKind::Channel(channel) => write!(f, "{channel:?}"),
+      ObjectKind::List(list) => write!(f, "{list:?}"),
+      ObjectKind::Map(map) => write!(f, "{map:?}"),
+      ObjectKind::Fun(fun) => write!(f, "{fun:?}"),
+      ObjectKind::Fiber(fiber) => write!(f, "{fiber:?}"),
+      ObjectKind::LyBox(ly_box) => write!(f, "{ly_box:?}"),
+      ObjectKind::Closure(closure) => write!(f, "{closure:?}"),
+      ObjectKind::Method(method) => write!(f, "{method:?}"),
+      ObjectKind::Class(class) => write!(f, "{class:?}"),
+      ObjectKind::Instance(instance) => write!(f, "{instance:?}"),
       ObjectKind::Enumerator(enumerator) => write!(f, "{:?}", enumerator.name()),
-      ObjectKind::Native(native) => write!(f, "{:?}", native),
-      ObjectKind::Tuple(tuple) => write!(f, "{:?}", tuple),
+      ObjectKind::Native(native) => write!(f, "{native:?}"),
+      ObjectKind::Tuple(tuple) => write!(f, "{tuple:?}"),
     })
   }
 }

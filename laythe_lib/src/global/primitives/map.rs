@@ -74,10 +74,7 @@ pub fn define_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let key_error = val!(load_class_from_module(hooks, module, KEY_ERROR_NAME)?);
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);
 
-  class.add_method(
-    hooks.manage_str(MAP_LEN.name),
-    val!(MapLen::native(hooks)),
-  );
+  class.add_method(hooks.manage_str(MAP_LEN.name), val!(MapLen::native(hooks)));
 
   class.add_method(
     hooks.manage_str(MAP_INDEX_GET.name),
@@ -98,20 +95,11 @@ pub fn define_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
     )),
   );
 
-  class.add_method(
-    hooks.manage_str(MAP_HAS.name),
-    val!(MapHas::native(hooks)),
-  );
+  class.add_method(hooks.manage_str(MAP_HAS.name), val!(MapHas::native(hooks)));
 
-  class.add_method(
-    hooks.manage_str(MAP_GET.name),
-    val!(MapGet::native(hooks)),
-  );
+  class.add_method(hooks.manage_str(MAP_GET.name), val!(MapGet::native(hooks)));
 
-  class.add_method(
-    hooks.manage_str(MAP_SET.name),
-    val!(MapSet::native(hooks)),
-  );
+  class.add_method(hooks.manage_str(MAP_SET.name), val!(MapSet::native(hooks)));
 
   class.add_method(
     hooks.manage_str(MAP_REMOVE.name),
@@ -201,8 +189,7 @@ fn format_map_entry(
     hooks.call(
       error,
       &[val!(hooks.manage_str(format!(
-        "Expected type str from {}.str()",
-        item
+        "Expected type str from {item}.str()"
       )))],
     )
   })
@@ -247,7 +234,7 @@ impl LyNative for MapIndexGet {
 
     match this.unwrap().to_obj().to_map().get(&key) {
       Some(value) => Call::Ok(*value),
-      None => self.call_error(hooks, format!("Key not found. {} is not present", key)),
+      None => self.call_error(hooks, format!("Key not found. {key} is not present")),
     }
   }
 }
@@ -374,11 +361,11 @@ impl Enumerate for MapIterator {
       Some(next) => {
         self.current = val!(hooks.manage_obj(List::from(&[*next.0, *next.1] as &[Value])));
         Call::Ok(val!(true))
-      }
+      },
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      }
+      },
     }
   }
 

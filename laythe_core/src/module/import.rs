@@ -77,7 +77,7 @@ impl fmt::Display for Import {
       write!(f, "{}", self.package)?;
 
       for segement in &*self.path {
-        write!(f, ".{}", segement)?;
+        write!(f, ".{segement}")?;
       }
 
       Ok(())

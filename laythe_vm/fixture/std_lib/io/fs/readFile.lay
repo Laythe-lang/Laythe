@@ -1,0 +1,4 @@
+import std.io.fs:{readFile};
+
+let contents = readFile('fixture/std_lib/io/fs/read_example.txt');
+assertEq(contents, 'example text\nwith a new line');
