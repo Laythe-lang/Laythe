@@ -1200,7 +1200,7 @@ impl<'a> Parser<'a> {
 
     self.consume_basic(
       stop_kind,
-      &format!("Expected {} after parameter list.", stop_char),
+      &format!("Expected {stop_char} after parameter list."),
     )?;
     let return_type = if self.match_kind(TokenKind::RightArrow)? {
       Some(self.type_()?)
@@ -1258,7 +1258,7 @@ impl<'a> Parser<'a> {
       args.push(self.expr()?);
 
       if args.len() == max {
-        return self.error(&format!("Cannot have more than {} arguments", max));
+        return self.error(&format!("Cannot have more than {max} arguments"));
       }
 
       if !self.match_kind(TokenKind::Comma)? {
@@ -1498,7 +1498,7 @@ impl<'a> Parser<'a> {
       let mut labels = err.labels.clone();
       labels.push(
         Label::secondary(self.file_id, self.previous.span())
-          .with_message(format!("Consider adding a '{}' after this.", kind)),
+          .with_message(format!("Consider adding a '{kind}' after this.")),
       );
 
       err.with_labels(labels)
@@ -1513,7 +1513,7 @@ impl<'a> Parser<'a> {
       args.push(self.type_()?);
 
       if args.len() == max {
-        return self.error(&format!("Cannot have more than {} type arguments.", max));
+        return self.error(&format!("Cannot have more than {max} type arguments."));
       }
 
       if !self.match_kind(TokenKind::Comma)? {

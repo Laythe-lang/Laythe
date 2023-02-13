@@ -322,13 +322,12 @@ impl<'a> Scanner<'a> {
                 Ok(code_point) => match std::char::from_u32(code_point) {
                   Some(c) => buffer.push(c),
                   None => {
-                    return self.error_token_owned(format!("Invalid unicode escape {}.", unicode));
+                    return self.error_token_owned(format!("Invalid unicode escape {unicode}."));
                   },
                 },
                 Err(_) => {
                   return self.error_token_owned(format!(
-                    "Invalid hexadecimal unicode escape sequence {}.",
-                    unicode
+                    "Invalid hexadecimal unicode escape sequence {unicode}."
                   ));
                 },
               }
