@@ -1,0 +1,13 @@
+import std.io.fs:{readFile, writeFile, removeFile};
+
+let path = 'fixture/std_lib/io/fs/remove_example.txt';
+
+writeFile(path, "remove me.");
+removeFile(path);
+
+try {
+  readFile(path);
+  assertEq(true, false);
+} catch {
+  assertEq(true, true);
+}

@@ -83,5 +83,12 @@ fn stdio() -> Result<(), std::io::Error> {
 
 #[test]
 fn fs() -> Result<(), std::io::Error> {
-  test_files(&["std_lib/io/fs/file/readAllText.lay"], VmExit::Ok)
+  test_files(
+    &[
+      "std_lib/io/fs/readFile.lay",
+      "std_lib/io/fs/removeFile.lay",
+      "std_lib/io/fs/writeFile.lay",
+    ],
+    VmExit::Ok,
+  )
 }
