@@ -92,7 +92,7 @@ impl<K: Display, V: Display> Display for Map<K, V> {
     write!(f, "{{")?;
 
     for (key, val) in self.iter() {
-      write!(f, "{}: {}", key, val)?;
+      write!(f, "{key}: {val}")?;
     }
 
     write!(f, "}}")

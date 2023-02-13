@@ -175,7 +175,7 @@ impl<T> Ord for Gc<T> {
 impl<T: fmt::Display> fmt::Display for Gc<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = self;
-    write!(f, "{}", inner)
+    write!(f, "{inner}")
   }
 }
 

@@ -285,10 +285,10 @@ impl Display for GcArray<Value, ObjHeader> {
 
     if let Some((last, rest)) = self.split_last() {
       for item in rest.iter() {
-        write!(f, "{}, ", item)?;
+        write!(f, "{item}, ")?;
       }
 
-      write!(f, "{}", last)?;
+      write!(f, "{last}")?;
     }
 
     write!(f, ")")
