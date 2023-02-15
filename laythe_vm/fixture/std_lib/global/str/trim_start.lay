@@ -1,0 +1,4 @@
+assertEq(" something".trimStart(), "something");
+assertEq("123  ".trimStart(), "123  ");
+assertEq("  απ  ".trimStart(), "απ  ");
+assertEq(" some word    ".trimStart(), "some word    ");
