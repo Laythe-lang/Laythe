@@ -40,6 +40,13 @@ const STRING_UP_CASE: NativeMetaBuilder = NativeMetaBuilder::method("upCase", Ar
 const STRING_SPLIT: NativeMetaBuilder = NativeMetaBuilder::method("split", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("separator", ParameterKind::String)]);
 
+const STRING_TRIM: NativeMetaBuilder = NativeMetaBuilder::method("trim", Arity::Fixed(0));
+
+const STRING_TRIM_START: NativeMetaBuilder =
+  NativeMetaBuilder::method("trimStart", Arity::Fixed(0));
+
+const STRING_TRIM_END: NativeMetaBuilder = NativeMetaBuilder::method("trimEnd", Arity::Fixed(0));
+
 const STRING_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity::Default(0, 2))
   .with_params(&[
     ParameterBuilder::new("start", ParameterKind::Number),
@@ -96,6 +103,21 @@ pub fn define_string_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
   class.add_method(
     hooks.manage_str(STRING_SPLIT.name),
     val!(StringSplit::native(hooks)),
+  );
+
+  class.add_method(
+    hooks.manage_str(STRING_TRIM.name),
+    val!(StringTrim::native(hooks)),
+  );
+
+  class.add_method(
+    hooks.manage_str(STRING_TRIM_START.name),
+    val!(StringTrimStart::native(hooks)),
+  );
+
+  class.add_method(
+    hooks.manage_str(STRING_TRIM_END.name),
+    val!(StringTrimEnd::native(hooks)),
   );
 
   class.add_method(
@@ -233,11 +255,11 @@ impl Enumerate for SplitIterator {
       Some(next) => {
         self.current = val!(hooks.manage_str(next));
         Call::Ok(val!(true))
-      }
+      },
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      }
+      },
     }
   }
 
@@ -332,6 +354,36 @@ impl StringSlice {
   }
 }
 
+native!(StringTrim, STRING_TRIM);
+
+impl LyNative for StringTrim {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let string = this.unwrap().to_obj().to_str();
+
+    Call::Ok(val!(hooks.manage_str(string.trim())))
+  }
+}
+
+native!(StringTrimStart, STRING_TRIM_START);
+
+impl LyNative for StringTrimStart {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let string = this.unwrap().to_obj().to_str();
+
+    Call::Ok(val!(hooks.manage_str(string.trim_start())))
+  }
+}
+
+native!(StringTrimEnd, STRING_TRIM_END);
+
+impl LyNative for StringTrimEnd {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
+    let string = this.unwrap().to_obj().to_str();
+
+    Call::Ok(val!(hooks.manage_str(string.trim_end())))
+  }
+}
+
 native!(StringIter, STRING_ITER);
 
 impl LyNative for StringIter {
@@ -380,11 +432,11 @@ impl Enumerate for StringIterator {
       Some(next) => {
         self.current = val!(hooks.manage_str(next.encode_utf8(s)));
         Call::Ok(val!(true))
-      }
+      },
       None => {
         self.current = VALUE_NIL;
         Call::Ok(val!(false))
-      }
+      },
     }
   }
 
@@ -518,7 +570,7 @@ mod test {
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 3.0);
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -655,6 +707,92 @@ mod test {
         .unwrap();
       assert!(r.is_obj_kind(ObjectKind::String));
       assert_eq!(r.to_obj().to_str(), "bc");
+    }
+  }
+
+  mod trim {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let string_slice = StringTrim::native(&hooks);
+
+      assert_eq!(string_slice.meta().name, "trim");
+      assert_eq!(string_slice.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let string_slice = StringTrim::native(&hooks.as_gc());
+      let this = val!(hooks.manage_str("  abc  "));
+
+      let r = string_slice.call(&mut hooks, Some(this), &[]).unwrap();
+      assert!(r.is_obj_kind(ObjectKind::String));
+      assert_eq!(r.to_obj().to_str(), "abc");
+    }
+  }
+
+  mod trim_start {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let string_slice = StringTrimStart::native(&hooks);
+
+      assert_eq!(string_slice.meta().name, "trimStart");
+      assert_eq!(string_slice.meta().signature.arity, Arity::Fixed(0));
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let string_slice = StringTrimStart::native(&hooks.as_gc());
+      let this = val!(hooks.manage_str("  abc  "));
+
+      let r = string_slice.call(&mut hooks, Some(this), &[]).unwrap();
+      assert!(r.is_obj_kind(ObjectKind::String));
+      assert_eq!(r.to_obj().to_str(), "abc  ");
+    }
+  }
+
+  mod trim_end {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let string_slice = StringTrimEnd::native(&hooks);
+
+      assert_eq!(string_slice.meta().name, "trimEnd");
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::default();
+      let mut hooks = Hooks::new(&mut context);
+
+      let string_slice = StringTrimEnd::native(&hooks.as_gc());
+      let this = val!(hooks.manage_str("  abc  "));
+
+      let r = string_slice.call(&mut hooks, Some(this), &[]).unwrap();
+      assert!(r.is_obj_kind(ObjectKind::String));
+      assert_eq!(r.to_obj().to_str(), "  abc");
     }
   }
 
