@@ -1491,11 +1491,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.emit_byte(SymbolicByteCode::Jump(end_label), try_.block.end());
     self.emit_byte(SymbolicByteCode::Label(catch_label), try_.catch.start());
 
+    self.emit_byte(SymbolicByteCode::PopHandler, try_.catch.end());
     self.scope(try_.catch.end(), &try_.catch.symbols, |self_| {
       self_.block(&try_.catch);
     });
-
-    self.emit_byte(SymbolicByteCode::PopHandler, try_.catch.end());
 
     self.emit_byte(SymbolicByteCode::Label(end_label), try_.catch.end());
   }
@@ -2580,11 +2579,11 @@ mod test {
         AlignedByteCode::DropN(2),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(9),
+        AlignedByteCode::PopHandler,
         AlignedByteCode::GetGlobal(3),
         AlignedByteCode::Constant(4),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::PopHandler,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2627,18 +2626,18 @@ mod test {
         AlignedByteCode::Drop,
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(9),
+        AlignedByteCode::PopHandler,
         AlignedByteCode::GetGlobal(3),
         AlignedByteCode::Constant(4),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(9),
+        AlignedByteCode::PopHandler,
         AlignedByteCode::GetGlobal(3),
         AlignedByteCode::Constant(5),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::PopHandler,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
