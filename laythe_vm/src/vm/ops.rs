@@ -1318,7 +1318,10 @@ impl Vm {
 
         self.push_frame(stub, self.capture_stub, arg_count);
 
-        let result = native.call(&mut Hooks::new(self), this, args);
+        // Because the stack can resize we need to store the values in a separate
+        // vec
+        let args = args.to_vec();
+        let result = native.call(&mut Hooks::new(self), this, &args);
         self.native_fun_stubs.push(stub);
 
         match result {
