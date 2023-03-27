@@ -41,7 +41,7 @@ impl Vm {
     #[cfg(feature = "debug")]
     {
       self
-        .print_hook_state("fun_method", &format!("{}:{}", this, method))
+        .print_hook_state("run_method", &format!("{}:{}", this, method))
         .expect("Unable to print hook state");
     }
 
