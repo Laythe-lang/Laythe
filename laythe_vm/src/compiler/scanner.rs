@@ -645,12 +645,12 @@ fn make_token_owned<'a>(kind: TokenKind, lexeme: String, start: usize, end: usiz
 
 /// Is the str slice a digit. Assumes single char
 fn is_digit(c: char) -> bool {
-  ('0'..='9').contains(&c)
+  c.is_ascii_digit()
 }
 
 /// Is the str slice a digit. Assumes single char
 fn is_alpha(c: char) -> bool {
-  ('A'..='Z').contains(&c) || ('a'..='z').contains(&c) || c == '_'
+  c.is_ascii_uppercase() || c.is_ascii_lowercase() || c == '_'
 }
 
 /// A loose estimate for how many characters are in a typical line
