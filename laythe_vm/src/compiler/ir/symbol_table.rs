@@ -3,18 +3,13 @@ use bumpalo::collections::vec::Vec;
 
 /// Provides the state of a given
 /// symbol
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum SymbolState {
+  #[default]
   Uninitialized,
   Initialized,
   GlobalInitialized,
   Captured,
-}
-
-impl Default for SymbolState {
-  fn default() -> Self {
-    SymbolState::Uninitialized
-  }
 }
 
 /// Was the local successfully added

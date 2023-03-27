@@ -37,7 +37,7 @@ pub enum CaptureIndex {
 }
 
 /// Space Lox virtual machine byte codes
-#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum SymbolicByteCode {
   /// Return from script or function
   Return,
@@ -73,6 +73,7 @@ pub enum SymbolicByteCode {
   ConstantLong(u16),
 
   /// Nil literal
+  #[default]
   Nil,
 
   /// True Literal
@@ -533,12 +534,6 @@ fn jump_error(jump: usize) -> Option<Diagnostic<VmFileId>> {
     Some(Diagnostic::error().with_message("Unable to jump so far."))
   } else {
     None
-  }
-}
-
-impl Default for SymbolicByteCode {
-  fn default() -> Self {
-    SymbolicByteCode::Nil
   }
 }
 
