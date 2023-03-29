@@ -564,8 +564,7 @@ impl Fiber {
 
   /// Print a error message with the associated stack track if found
   pub fn print_error(&self, log: &mut dyn Write, error: Instance) {
-    let message = error[0].to_obj().to_str();
-    writeln!(log, "{}: {}", &*error.class().name(), &*message).expect("Unable to write to stderr");
+    writeln!(log, "Traceback (most recent call last):").expect("Unable to write to stderr");
 
     for frame in self.frames.iter().rev() {
       let fun = frame.fun();
@@ -577,12 +576,16 @@ impl Fiber {
       let offset = unsafe { frame.ip().offset_from(fun.chunk().instructions().as_ptr()) } as usize;
       writeln!(
         log,
-        "  [line {}] in {}",
+        "  {}:{} in {}",
+        fun.module().path(),
         fun.chunk().get_line(offset),
         location
       )
       .expect("Unable to write to stderr");
     }
+
+    let message = error[0].to_obj().to_str();
+    writeln!(log, "{}: {}", &*error.class().name(), &*message).expect("Unable to write to stderr");
   }
 
   /// Get a value on the stack

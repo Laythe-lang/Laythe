@@ -29,6 +29,7 @@ impl Closure {
   ///
   /// let module = hooks.manage(Module::new(
   ///   hooks.manage_obj(Class::bare(hooks.manage_str("module"))),
+  ///   hooks.manage_str("module/path"),
   ///   0,
   /// ));
   /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module, Arity::default());

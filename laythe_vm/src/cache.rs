@@ -240,7 +240,8 @@ mod test {
       let fun_name = hooks.manage_str("fn_example");
 
       let class = hooks.manage_obj(Class::bare(class_name));
-      let module = hooks.manage(Module::new(class, 0));
+      let module_path = hooks.manage_str("example");
+      let module = hooks.manage(Module::new(class, module_path, 0));
 
       let fun = Fun::stub(&hooks, fun_name, module);
       let fun = val!(hooks.manage_obj(fun));

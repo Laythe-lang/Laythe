@@ -10,6 +10,8 @@ use laythe_core::{
 };
 use utils::{declare_fs_module, define_fs_module};
 
+use super::IO_MODULE_NAME;
+
 const FS_MODULE_NAME: &str = "fs";
 
 pub fn fs_module(
@@ -21,7 +23,8 @@ pub fn fs_module(
   let fs_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(FS_MODULE_NAME), module_class);
 
-  let module = hooks.manage(Module::new(fs_module_class, emitter.emit()));
+  let module_path = hooks.manage_str(format!("native/{}/{}", IO_MODULE_NAME, FS_MODULE_NAME));
+  let module = hooks.manage(Module::new(fs_module_class, module_path, emitter.emit()));
 
   declare_fs_module(hooks, module, std)?;
   define_fs_module(hooks, module, std)?;

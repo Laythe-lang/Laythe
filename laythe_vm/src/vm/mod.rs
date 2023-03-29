@@ -196,7 +196,7 @@ impl Vm {
 
     let repl_path = self.root_dir.join(PathBuf::from(REPL_MODULE));
 
-    let main_module = self.module(SELF);
+    let main_module = self.module(SELF, "repl");
 
     loop {
       let mut buffer = String::new();
@@ -244,7 +244,7 @@ impl Vm {
         let file_id = self.files.upsert(managed_path, source_content);
         self.pop_roots(2);
 
-        let main_module = self.module(SELF);
+        let main_module = self.module(SELF, &managed_path);
 
         match self.interpret(false, main_module, &source, file_id) {
           ExecuteResult::Ok(_) => self.internal_error("Shouldn't exit vm with ok result"),

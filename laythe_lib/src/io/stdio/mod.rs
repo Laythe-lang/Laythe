@@ -14,6 +14,8 @@ use stderr::{declare_stderr, define_stderr};
 use stdin::{declare_stdin, define_stdin};
 use stdout::{declare_stdout, define_stdout};
 
+use super::IO_MODULE_NAME;
+
 const STDIO_MODULE_NAME: &str = "stdio";
 
 pub fn stdio_module(
@@ -25,7 +27,8 @@ pub fn stdio_module(
   let stdio_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(STDIO_MODULE_NAME), module_class);
 
-  let module = hooks.manage(Module::new(stdio_module_class, emitter.emit()));
+  let module_path = hooks.manage_str(format!("native/{}/{}", IO_MODULE_NAME, STDIO_MODULE_NAME));
+  let module = hooks.manage(Module::new(stdio_module_class, module_path, emitter.emit()));
 
   declare_stderr(hooks, module, std)?;
   declare_stdin(hooks, module, std)?;

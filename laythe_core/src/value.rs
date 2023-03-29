@@ -904,7 +904,7 @@ mod test {
   fn test_module(hooks: &GcHooks) -> Gc<Module> {
     let class = test_class(hooks);
 
-    hooks.manage(Module::new(class, 0))
+    hooks.manage(Module::new(class, test_string(hooks), 0))
   }
 
   fn test_fun(hooks: &GcHooks) -> GcObj<Fun> {

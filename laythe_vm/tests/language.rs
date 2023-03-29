@@ -319,9 +319,10 @@ fn exception() -> Result<(), std::io::Error> {
     "language/exception/top_level_thrown.lay",
     None,
     Some(vec![
+      "Traceback (most recent call last):",
+      "  native:0 in []()",
+      "  fixture/language/exception/top_level_thrown.lay:1 in script",
       "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
-      "  [line 0] in []()",
-      "  [line 1] in script",
     ]),
     VmExit::RuntimeError,
   )?;
@@ -330,10 +331,11 @@ fn exception() -> Result<(), std::io::Error> {
     "language/exception/one_deep_thrown.lay",
     None,
     Some(vec![
+      "Traceback (most recent call last):",
+      "  native:0 in []()",
+      "  fixture/language/exception/one_deep_thrown.lay:2 in thrower()",
+      "  fixture/language/exception/one_deep_thrown.lay:5 in script",
       "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
-      "  [line 0] in []()",
-      "  [line 2] in thrower()",
-      "  [line 5] in script",
     ]),
     VmExit::RuntimeError,
   )?;
@@ -342,11 +344,12 @@ fn exception() -> Result<(), std::io::Error> {
     "language/exception/two_deep_thrown.lay",
     None,
     Some(vec![
+      "Traceback (most recent call last):",
+      "  native:0 in []()",
+      "  fixture/language/exception/two_deep_thrown.lay:6 in thrower()",
+      "  fixture/language/exception/two_deep_thrown.lay:2 in outer()",
+      "  fixture/language/exception/two_deep_thrown.lay:9 in script",
       "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
-      "  [line 0] in []()",
-      "  [line 6] in thrower()",
-      "  [line 2] in outer()",
-      "  [line 9] in script",
     ]),
     VmExit::RuntimeError,
   )

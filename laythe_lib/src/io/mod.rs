@@ -9,6 +9,8 @@ use laythe_core::{hooks::GcHooks, managed::Gc, module::Package, utils::IdEmitter
 use stdio::stdio_module;
 pub const IO_MODULE_PATH: &str = "std/io";
 
+const IO_MODULE_NAME: &str = "io";
+
 pub fn add_io_package(
   hooks: &GcHooks,
   std: Gc<Package>,

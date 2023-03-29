@@ -165,7 +165,8 @@ fn bootstrap_classes(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<M
   let module_class = create_module_class(hooks, object_class);
   let std_module_class = Class::with_inheritance(hooks, hooks.manage_str(STD), module_class);
 
-  let module = hooks.manage(Module::new(std_module_class, emitter.emit()));
+  let module_path = hooks.manage_str("native");
+  let module = hooks.manage(Module::new(std_module_class, module_path, emitter.emit()));
 
   export_and_insert(module, object_class.name(), val!(object_class))?;
   export_and_insert(module, class_class.name(), val!(class_class))?;

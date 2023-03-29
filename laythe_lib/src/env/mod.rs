@@ -20,7 +20,8 @@ pub fn env_module(
   let env_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(ENV_MODULE_NAME), module_class);
 
-  let mut module = hooks.manage(Module::new(env_module_class, emitter.emit()));
+  let module_path = hooks.manage_str(format!("native/{}", ENV_MODULE_NAME));
+  let mut module = hooks.manage(Module::new(env_module_class, module_path, emitter.emit()));
 
   declare_env_module(hooks, module)?;
   define_env_module(hooks, &mut module)?;
