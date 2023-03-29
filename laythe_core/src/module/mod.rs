@@ -17,7 +17,10 @@ use crate::{
   LyHashSet,
 };
 use hashbrown::hash_map;
-use std::{fmt, io::Write};
+use std::{
+  fmt,
+  io::Write,
+};
 
 pub fn module_class<S: AsRef<str>>(
   hooks: &GcHooks,
@@ -43,25 +46,34 @@ pub struct Module {
   /// All of the top level symbols in this module
   symbols: Map<GcStr, Value>,
 
+  /// The path this module is located at
+  path: GcStr,
+
   /// All the child modules to this module
   modules: Map<GcStr, Gc<Module>>,
 }
 
 impl Module {
   /// Create a new laythe module
-  pub fn new(module_class: GcObj<Class>, id: usize) -> Self {
+  pub fn new(module_class: GcObj<Class>, path: GcStr, id: usize) -> Self {
     Module {
       id,
       module_class,
       exports: LyHashSet::default(),
       symbols: Map::default(),
       modules: Map::default(),
+      path,
     }
   }
 
   /// Get the name of this module
   pub fn name(&self) -> GcStr {
     self.module_class.name()
+  }
+
+  /// The path of this module
+  pub fn path(&self) -> &str {
+    &self.path
   }
 
   /// The id of this module
@@ -278,10 +290,25 @@ mod test {
 
     Module::new(
       hooks.manage_obj(Class::bare(hooks.manage_str("example".to_string()))),
+      hooks.manage_str("example"),
       0,
     );
 
     assert!(true);
+  }
+
+  #[test]
+  fn path() {
+    let mut context = NoContext::default();
+    let hooks = GcHooks::new(&mut context);
+
+    let module = Module::new(
+      hooks.manage_obj(Class::bare(hooks.manage_str("example".to_string()))),
+      hooks.manage_str("example"),
+      0,
+    );
+
+    assert_eq!(module.path(), "example");
   }
 
   #[test]
@@ -291,6 +318,7 @@ mod test {
 
     let mut module = Module::new(
       hooks.manage_obj(Class::bare(hooks.manage_str("module".to_string()))),
+      hooks.manage_str("example"),
       0,
     );
 
