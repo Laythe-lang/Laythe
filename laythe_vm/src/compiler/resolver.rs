@@ -108,7 +108,8 @@ impl<'a, 'src> Resolver<'a, 'src> {
   ///
   /// let name = gc.manage_str("module", &NO_GC);
   /// let class = gc.manage_obj(Class::bare(name), &NO_GC);
-  /// let module = gc.manage(Module::new(class, 0), &NO_GC);
+  /// let module_path = gc.manage_str("module/path", &NO_GC);
+  /// let module = gc.manage(Module::new(class, module_path, 0), &NO_GC);
   ///
   /// let file_id = VM_FILE_TEST_ID;
   /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
@@ -955,7 +956,10 @@ mod test {
   fn dummy_module(hooks: &GcHooks) -> Gc<Module> {
     let module_class = test_class(&hooks, "Module");
     hooks.push_root(module_class);
-    let module = hooks.manage(Module::new(module_class, 0));
+    let module_path = hooks.manage_str("example");
+    hooks.push_root(module_path);
+
+    let module = hooks.manage(Module::new(module_class, module_path, 0));
     hooks.push_root(module);
 
     module

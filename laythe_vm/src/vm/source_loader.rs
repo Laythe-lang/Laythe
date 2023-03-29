@@ -75,7 +75,7 @@ impl Vm {
   }
 
   /// Create a new module
-  pub(super) fn module(&mut self, name: &str) -> Gc<Module> {
+  pub(super) fn module(&mut self, name: &str, path: &str) -> Gc<Module> {
     let id = self.emitter.emit();
     let hooks = GcHooks::new(self);
 
@@ -83,8 +83,13 @@ impl Vm {
     // the base module class
     let name = hooks.manage_str(name);
     let module_class = Class::with_inheritance(&hooks, name, self.builtin.dependencies.module);
+    hooks.push_root(module_class);
 
-    let mut module = hooks.manage(Module::new(module_class, id));
+    let path = hooks.manage_str(path);
+    hooks.push_root(path);
+
+    let mut module = hooks.manage(Module::new(module_class, path, id));
+    hooks.pop_roots(2);
     hooks.push_root(module);
 
     // transfer the symbols from the global module into the main module
@@ -145,11 +150,11 @@ impl Vm {
 
         match resolved_path.into_os_string().into_string() {
           Ok(name) => {
-            let name = self.manage_str(name);
+            let path = self.manage_str(name);
             let source = Source::new(source_content);
-            let file_id = self.files.upsert(name, source_content);
+            let file_id = self.files.upsert(path, source_content);
 
-            let module = self.module(&module_name);
+            let module = self.module(&module_name, &path);
             if let Err(err) = parent_module.insert_module(module) {
               match err {
                 ModuleInsertError::ModuleAlreadyExists => todo!(),
@@ -243,9 +248,10 @@ mod test {
       let hooks = GcHooks::new(&context);
 
       let class = test_class(&hooks, "Module");
+      let module_path = hooks.manage_str("example");
 
-      let mut root_module = hooks.manage(Module::new(module_class(&hooks, "root", class), 0));
-      let nested_module = hooks.manage(Module::new(module_class(&hooks, "first", class), 1));
+      let mut root_module = hooks.manage(Module::new(module_class(&hooks, "root", class), module_path, 0));
+      let nested_module = hooks.manage(Module::new(module_class(&hooks, "first", class), module_path, 1));
 
       assert!(root_module.insert_module(nested_module).is_ok());
 

@@ -432,7 +432,8 @@ mod test {
 
   pub fn test_module(hooks: &GcHooks, name: &str) -> Gc<Module> {
     let base_class = test_class(hooks, "Module");
-    hooks.manage(Module::new(module_class(hooks, name, base_class), 0))
+    let string = hooks.manage_str("example");
+    hooks.manage(Module::new(module_class(hooks, name, base_class), string, 0))
   }
 
   pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {

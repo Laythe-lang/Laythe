@@ -261,7 +261,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   ///
   /// let name = gc.manage_str("module", &NO_GC);
   /// let class = gc.manage_obj(Class::bare(name), &NO_GC);
-  /// let module = gc.manage(Module::new(class, 0), &NO_GC);
+  /// let module_path = gc.manage_str("module/path", &NO_GC);
+  /// let module = gc.manage(Module::new(class, module_path, 0), &NO_GC);
   ///
   /// let file_id = VM_FILE_TEST_ID;
   /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
@@ -2191,8 +2192,10 @@ mod test {
     let module_class = test_class(&hooks, "Module");
     let object_class = module_class.super_class().expect("Expected Object");
     hooks.push_root(module_class);
-    let mut module = hooks.manage(Module::new(module_class, 0));
-    hooks.pop_roots(1);
+    let module_path = hooks.manage_str("module/path");
+    hooks.push_root(module_path);
+    let mut module = hooks.manage(Module::new(module_class, module_path, 0));
+    hooks.pop_roots(2);
     hooks.push_root(module);
 
     let print = test_fun(hooks, module);

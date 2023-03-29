@@ -12,8 +12,9 @@ use crate::{
   StdResult, STD,
 };
 
+use super::IO_MODULE_NAME;
+
 pub const IO_ERROR: &str = "IoError";
-const IO_MODULE_NAME: &str = "io";
 
 pub fn io_module(
   hooks: &GcHooks,
@@ -24,7 +25,8 @@ pub fn io_module(
   let io_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(IO_MODULE_NAME), module_class);
 
-  let module = hooks.manage(Module::new(io_module_class, emitter.emit()));
+  let module_path = hooks.manage_str(format!("native/{}", IO_MODULE_NAME));
+  let module = hooks.manage(Module::new(io_module_class, module_path, emitter.emit()));
 
   declare_io_errors(hooks, module, std)?;
   define_io_errors(hooks, module, std)?;
