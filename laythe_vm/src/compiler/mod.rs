@@ -948,6 +948,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       Stmt::Continue(continue_) => self.continue_(continue_),
       Stmt::While(while_) => self.while_(while_),
       Stmt::Try(try_) => self.try_(try_),
+      Stmt::Raise(raise) => self.raise(raise),
     }
   }
 
@@ -1498,6 +1499,14 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     });
 
     self.emit_byte(SymbolicByteCode::Label(end_label), try_.catch.end());
+  }
+
+  /// Compile a raise statement
+  fn raise(&mut self, raise: &'a ast::Raise<'src>) {
+    self.expr(&raise.error);
+
+    self.emit_byte(SymbolicByteCode::Raise, raise.end());
+    self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a block
@@ -2200,10 +2209,15 @@ mod test {
 
     let print = test_fun(hooks, module);
     assert!(module.insert_symbol(print.name(), val!(print)).is_ok());
+
+    let error_class = test_class(&hooks, "Error");
+    assert!(module.insert_symbol(error_class.name(), val!(error_class)).is_ok());
+
     assert!(module
       .insert_symbol(object_class.name(), val!(object_class))
       .is_ok());
     assert!(module.export_symbol(print.name()).is_ok());
+    assert!(module.export_symbol(error_class.name()).is_ok());
     assert!(module.export_symbol(object_class.name()).is_ok());
 
     hooks.pop_roots(1);
@@ -3226,6 +3240,32 @@ mod test {
       &vec![
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Launch(0),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn raise() {
+    let example = "
+      while true { raise Error('bummer'); print(10); }
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      3,
+      &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(11),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Call(1),
+        AlignedByteCode::Raise,
+        AlignedByteCode::Loop(15),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
