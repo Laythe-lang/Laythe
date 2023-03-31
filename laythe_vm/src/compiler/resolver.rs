@@ -350,7 +350,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
       Decl::Symbol(symbol) => self.symbol(symbol),
       Decl::Export(export) => self.export(export),
       Decl::Stmt(stmt) => self.stmt(stmt),
-      _ => (),
+      Decl::Error(_) => (),
     }
   }
 
@@ -366,7 +366,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
           self.import_module(import);
         }
       },
-      _ => (),
+      Decl::Error(_) => (),
     }
   }
 
@@ -384,9 +384,11 @@ impl<'a, 'src> Resolver<'a, 'src> {
       Stmt::If(if_) => self.if_(if_),
       Stmt::Return(return_) => self.return_(return_),
       Stmt::Launch(launch) => self.launch(launch),
+      Stmt::Raise(raise) => self.raise(raise),
       Stmt::While(while_) => self.while_(while_),
       Stmt::Try(try_) => self.try_(try_),
-      _ => (),
+      Stmt::Continue(_) => (),
+      Stmt::Break(_) => (),
     }
   }
 
@@ -409,7 +411,8 @@ impl<'a, 'src> Resolver<'a, 'src> {
       Symbol::Class(class) => self.class(class),
       Symbol::Fun(fun) => self.fun(fun),
       Symbol::Let(let_) => self.let_(let_),
-      _ => (),
+      Symbol::Trait(_) => (),
+      Symbol::TypeDecl(_) => (),
     };
   }
 
@@ -421,7 +424,8 @@ impl<'a, 'src> Resolver<'a, 'src> {
       Symbol::Class(class) => self.class_module(class),
       Symbol::Fun(fun) => self.fun_module(fun),
       Symbol::Let(let_) => self.let_module(let_),
-      _ => (),
+      Symbol::Trait(_) => (),
+      Symbol::TypeDecl(_) => (),
     };
   }
 
@@ -571,7 +575,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
         self.declare_variable(UNINITIALIZED_TOKEN);
         self.define_variable(UNINITIALIZED_TOKEN)
       },
-      _ => (),
+      FunKind::Script => (),
     }
     self.call_sig(&fun.call_sig);
 
@@ -695,6 +699,11 @@ impl<'a, 'src> Resolver<'a, 'src> {
     try_.catch.symbols = self.scope(|self_| self_.block(&mut try_.catch));
   }
 
+  /// Resolve a raise statement
+  fn raise(&mut self, raise: &mut ast::Raise<'src>) {
+    self.expr(&mut raise.error);
+  }
+
   /// Resolve a block
   fn block(&mut self, block: &mut ast::Block<'src>) {
     for decl in &mut block.decls {
@@ -763,7 +772,11 @@ impl<'a, 'src> Resolver<'a, 'src> {
       Primary::List(list) => self.collection(list),
       Primary::Tuple(tuple) => self.collection(tuple),
       Primary::Map(map) => self.map(map),
-      _ => (),
+      Primary::False(_) => (),
+      Primary::Nil(_) => (),
+      Primary::Number(_) => (),
+      Primary::String(_) => (),
+      Primary::True(_) => (),
     }
 
     if let Some((first, rest)) = atom.trailers.split_first_mut() {
