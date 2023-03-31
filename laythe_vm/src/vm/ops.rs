@@ -504,6 +504,28 @@ impl Vm {
     Signal::Ok
   }
 
+  pub(super) unsafe fn op_raise(&mut self) -> Signal {
+    let exception = self.fiber.pop();
+
+    if_let_obj!(ObjectKind::Instance(exception) = (exception) {
+      let class = exception.class();
+
+      if class == self.builtin.errors.error {
+        self.set_error(exception)
+      } else {
+        self.runtime_error(
+          self.builtin.errors.runtime,
+          "Can only raise an instance of Error",
+        )
+      }
+    } else {
+      self.runtime_error(
+        self.builtin.errors.runtime,
+        "Can only raise an instance of Error",
+      )
+    })
+  }
+
   /// Define a global variable
   pub(super) unsafe fn op_define_global(&mut self) -> Signal {
     let slot = self.read_short();
