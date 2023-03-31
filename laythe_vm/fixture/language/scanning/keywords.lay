@@ -1,6 +1,5 @@
-and class else false for fn if nil or return super self true let while
+class else false for fn if nil  return super self true let while
 
-// expect: AND and null
 // expect: CLASS class null
 // expect: ELSE else null
 // expect: FALSE false null
@@ -8,7 +7,6 @@ and class else false for fn if nil or return super self true let while
 // expect: fn fn null
 // expect: IF if null
 // expect: NIL nil null
-// expect: OR or null
 // expect: RETURN return null
 // expect: SUPER super null
 // expect: self self null

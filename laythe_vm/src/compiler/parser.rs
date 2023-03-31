@@ -430,7 +430,8 @@ impl<'a> Parser<'a> {
           } else {
             self.vec()
           };
-          let call_sig = self.call_signature(TokenKind::RightParen, type_params)?;
+          let params = self.call_params(TokenKind::RightParen)?;
+          let call_sig = self.call_signature(params, type_params)?;
           self.consume_basic(
             TokenKind::Semicolon,
             "Expected ';' after class member declaration.",
@@ -763,12 +764,7 @@ impl<'a> Parser<'a> {
   }
 
   /// Execute an infix action
-  fn infix(
-    &mut self,
-    action: Infix,
-    lhs: Expr<'a>,
-    can_assign: bool,
-  ) -> ParseResult<Expr<'a>> {
+  fn infix(&mut self, action: Infix, lhs: Expr<'a>, can_assign: bool) -> ParseResult<Expr<'a>> {
     match action {
       Infix::And => self.and(lhs),
       Infix::Binary => self.binary(lhs),
@@ -951,7 +947,12 @@ impl<'a> Parser<'a> {
   /// Parse a lambda expression
   fn lambda(&mut self) -> ParseResult<Expr<'a>> {
     // parse function parameters
-    let call_sig = self.call_signature(TokenKind::Pipe, self.vec())?;
+    let call_sig = if self.previous.kind() == TokenKind::Or {
+      self.call_signature(self.vec(), self.vec())?
+    } else {
+      let params = self.call_params(TokenKind::Pipe)?;
+      self.call_signature(params, self.vec())?
+    };
 
     let previous = mem::replace(&mut self.fun_kind, FunKind::Fun);
     let lambda = self.fun_body(BlockReturn::Can).map(|body| {
@@ -1166,15 +1167,8 @@ impl<'a> Parser<'a> {
     Expr::Atom(self.node(Atom::new(primary, self.vec())))
   }
 
-  /// Parse the current functions call signature
-  fn call_signature(
-    &mut self,
-    stop_kind: TokenKind,
-    type_params: Vec<'a, TypeParam<'a>>,
-  ) -> ParseResult<CallSignature<'a>> {
-    let start = type_params
-      .first()
-      .map_or_else(|| self.previous.start(), |first| first.start());
+  /// Parse a calls parameters
+  fn call_params(&mut self, stop_kind: TokenKind) -> ParseResult<Vec<'a, Param<'a>>> {
     let mut params = self.vec();
     let mut arity: u16 = 0;
 
@@ -1212,6 +1206,20 @@ impl<'a> Parser<'a> {
       stop_kind,
       &format!("Expected {stop_char} after parameter list."),
     )?;
+
+    Ok(params)
+  }
+
+  /// Parse the current functions call signature
+  fn call_signature(
+    &mut self,
+    params: Vec<'a, Param<'a>>,
+    type_params: Vec<'a, TypeParam<'a>>,
+  ) -> ParseResult<CallSignature<'a>> {
+    let start = type_params
+      .first()
+      .map_or_else(|| self.previous.start(), |first| first.start());
+
     let return_type = if self.match_kind(TokenKind::RightArrow)? {
       Some(self.type_()?)
     } else {
@@ -1303,7 +1311,8 @@ impl<'a> Parser<'a> {
     }
 
     // parse function parameters
-    let call_sig = self.call_signature(TokenKind::RightParen, type_params)?;
+    let call_params = self.call_params(TokenKind::RightParen)?;
+    let call_sig = self.call_signature(call_params, type_params)?;
 
     if !self.match_kind(TokenKind::LeftBrace)? {
       return self.error_current(&format!("Expected '{{' after {} signature.", self.fun_kind));
@@ -1319,11 +1328,7 @@ impl<'a> Parser<'a> {
   }
 
   /// Parse a method declaration and body
-  fn method(
-    &mut self,
-    name: Token<'a>,
-    is_static: bool,
-  ) -> ParseResult<(FunKind, Fun<'a>)> {
+  fn method(&mut self, name: Token<'a>, is_static: bool) -> ParseResult<(FunKind, Fun<'a>)> {
     let (fun_kind, block_return) = if is_static {
       (FunKind::StaticMethod, BlockReturn::Can)
     } else if INIT == name.str() {
@@ -1409,7 +1414,8 @@ impl<'a> Parser<'a> {
   fn type_prefix(&mut self, action: TypePrefix) -> ParseResult<Type<'a>> {
     match action {
       TypePrefix::Fun => {
-        let call_sig = self.call_signature(TokenKind::RightParen, self.vec())?;
+        let params = self.call_params(TokenKind::RightParen)?;
+        let call_sig = self.call_signature(params, self.vec())?;
         Ok(Type::Fun(self.node(call_sig)))
       },
       TypePrefix::Literal => self.type_literal(),
@@ -1795,7 +1801,7 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TokenKind::VARIANT_COUNT] = [
   // IN
   Rule::new(Some(Prefix::Literal), Precedence::None),
   // NIL
-  Rule::new(None, Precedence::None),
+  Rule::new(Some(Prefix::Lambda), Precedence::None),
   // OR
   Rule::new(None, Precedence::None),
   // RETURN
@@ -2285,7 +2291,7 @@ const fn get_type_infix(kind: TokenKind) -> &'static Rule<TypeInfix, TypePrecede
 mod test {
   use crate::source::VM_FILE_TEST_ID;
 
-use super::super::ir::AstPrint;
+  use super::super::ir::AstPrint;
   use super::*;
   use laythe_core::memory::{Allocator, NO_GC};
 
@@ -2920,7 +2926,7 @@ use super::super::ir::AstPrint;
   ];
 
   const EXAMPLE_EXPR: [&str; 5] = [
-    "10 < 3 and false",
+    "10 < 3 && false",
     "'hellow world'.size()",
     "bill.was.here",
     "(|a| print(a))(10)",

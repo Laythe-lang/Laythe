@@ -1797,7 +1797,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn binary(&mut self, binary: &'a ast::Binary<'src>) {
     self.expr(&binary.lhs);
 
-    // emit for rhs if we're not an "and" or "or"
+    // emit for rhs if we're not an "&&" or "||"
     match &binary.op {
       ast::BinaryOp::And | ast::BinaryOp::Or => (),
       _ => self.expr(&binary.rhs),
@@ -4243,7 +4243,7 @@ mod test {
 
   #[test]
   fn and_operator() {
-    let example = "true and false;";
+    let example = "true && false;";
     let context = NoContext::default();
     let fun = test_compile(example, &context);
 
@@ -4263,7 +4263,7 @@ mod test {
 
   #[test]
   fn or_operator() {
-    let example = "false or true;";
+    let example = "false || true;";
     let context = NoContext::default();
     let fun = test_compile(example, &context);
 

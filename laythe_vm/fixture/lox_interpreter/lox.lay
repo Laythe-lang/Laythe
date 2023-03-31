@@ -116,7 +116,7 @@ fn tokenTypeStr(kind) {
   return nil;
 }
 
-// Convert a keyword string to its token kind constant, or return nil
+// Convert a keyword string to its token kind constant, || return nil
 // if it's not a keyword.
 fn keywordType(name) {
   if name == "and" { return AND; }
@@ -139,11 +139,11 @@ fn keywordType(name) {
 }
 
 fn isNameStart(ch) {
-  return ch == '_' or (ch >= 'a' and ch <= 'z') or (ch >= 'A' and ch <= 'Z');
+  return ch == '_' || (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
 }
 
 fn isDigit(ch) {
-  return ch >= '0' and ch <= '9';
+  return ch >= '0' && ch <= '9';
 }
 
 class Scanner {
@@ -218,7 +218,7 @@ class Scanner {
         self.advance();
 
         // TODO escape sequence
-        while self.ch and self.ch != '\n' {
+        while self.ch && self.ch != '\n' {
           self.advance();
         }
         if self.ch == '\n' {
@@ -227,18 +227,18 @@ class Scanner {
         self.advance();
       }
       // TODO escape sequence
-      else if ch == ' ' or ch == '\t' or ch == '\r' {
+      else if ch == ' ' || ch == '\t' || ch == '\r' {
         // Ignore whitespace: space, tab, and carriage return
       }
       else if ch == '\n' {
         // Newline
-        self.line = self.line + 1;  
+        self.line = self.line + 1;
       }
       else if ch == '"' {
         // Strings (start and end with double quote)
         let line = self.line;
         let value = "";
-        while self.ch and self.ch != '"' {
+        while self.ch && self.ch != '"' {
           if self.ch == '\n' {
             self.line = self.line + 1;
           }
@@ -280,7 +280,7 @@ class Scanner {
       else if isNameStart(ch) {
         // Identifiers and keywords
         let name = ch;
-        while isNameStart(self.ch) or isDigit(self.ch) {
+        while isNameStart(self.ch) || isDigit(self.ch) {
           name = name + self.ch;
           self.advance();
         }
@@ -500,7 +500,7 @@ class Get {
     self.object = object;
     self.name = name;
   }
-  
+
   str() {
     return "${self.object}.${self.name}";
   }
@@ -591,7 +591,7 @@ class Logical {
     if self.operator == AND {
       return left and self.right.evaluate(interpreter);
     } else {
-      return left or self.right.evaluate(interpreter);
+      return left || self.right.evaluate(interpreter);
     }
   }
 }
@@ -698,7 +698,7 @@ class Variable {
   }
 
   resolve(resolver) {
-    if resolver.scopes.len() != 0 and resolver.scopes[resolver.scopes.len() - 1].get(self.name) == false {
+    if resolver.scopes.len() != 0 && resolver.scopes[resolver.scopes.len() - 1].get(self.name) == false {
       resolver.error("Error at '${self.name}': Cannot read local variable in its own initializer.");
     }
 
@@ -1124,7 +1124,7 @@ class LoxClass {
     if method {
       return method.bind(instance);
     }
-    
+
     if self.superclass {
       return self.superclass.findMethod(instance, name);
     }
@@ -1265,7 +1265,7 @@ class Parser {
     self.hasSuperClass = superclass != nil;
     self.consume(LEFT_BRACE, "Expect '{' before class body.");
     let methods = [];
-    while self.token.kind != EOF and self.token.kind != RIGHT_BRACE {
+    while self.token.kind != EOF && self.token.kind != RIGHT_BRACE {
       methods.push(self.function("method"));
     }
     self.consume(RIGHT_BRACE, "Expect '}' after class body.");
@@ -1413,7 +1413,7 @@ class Parser {
     self.consume(LEFT_BRACE, "Expect '{' before " + kind + " body.");
 
     self.functionDepth = self.functionDepth + 1;
-    self.inInitializer = kind == "method" and name.value == "init";
+    self.inInitializer = kind == "method" && name.value == "init";
     let body = self.block();
     self.functionDepth = self.functionDepth - 1;
     self.inInitializer = false;
@@ -1423,7 +1423,7 @@ class Parser {
 
   block() {
     let statements = [];
-    while self.token.kind != EOF and self.token.kind != RIGHT_BRACE {
+    while self.token.kind != EOF && self.token.kind != RIGHT_BRACE {
       statements.push(self.declaration());
     }
     self.consume(RIGHT_BRACE, "Expect '}' after block.");
@@ -1466,7 +1466,7 @@ class Parser {
 
   equality() {
     let expr = self.comparison();
-    while self.token.kind == BANG_EQUAL or self.token.kind == EQUAL_EQUAL {
+    while self.token.kind == BANG_EQUAL || self.token.kind == EQUAL_EQUAL {
       let operator = self.token.kind;
       self.next();
       let right = self.comparison();
@@ -1477,8 +1477,8 @@ class Parser {
 
   comparison() {
     let expr = self.addition();
-    while (self.token.kind == GREATER or self.token.kind == GREATER_EQUAL or
-           self.token.kind == LESS or self.token.kind == LESS_EQUAL) {
+    while (self.token.kind == GREATER || self.token.kind == GREATER_EQUAL or
+           self.token.kind == LESS || self.token.kind == LESS_EQUAL) {
       let operator = self.token.kind;
       self.next();
       let right = self.addition();
@@ -1489,7 +1489,7 @@ class Parser {
 
   addition() {
     let expr = self.multiplication();
-    while self.token.kind == MINUS or self.token.kind == PLUS {
+    while self.token.kind == MINUS || self.token.kind == PLUS {
       let operator = self.token.kind;
       self.next();
       let right = self.multiplication();
@@ -1500,7 +1500,7 @@ class Parser {
 
   multiplication() {
     let expr = self.unary();
-    while self.token.kind == SLASH or self.token.kind == STAR {
+    while self.token.kind == SLASH || self.token.kind == STAR {
       let operator = self.token.kind;
       self.next();
       let right = self.unary();
@@ -1510,7 +1510,7 @@ class Parser {
   }
 
   unary() {
-    if self.token.kind == BANG or self.token.kind == MINUS {
+    if self.token.kind == BANG || self.token.kind == MINUS {
       let operator = self.token.kind;
       self.next();
       let right = self.unary();

@@ -1,19 +1,19 @@
 // Note: These tests implicitly depend on ints being truthy.
 
 // Return the first true argument.
-assertEq(1 or true, 1); // expect: 1
-assertEq(false or 1, 1); // expect: 1
-assertEq(false or false or true, true); // expect: true
+assertEq(1 || true, 1); // expect: 1
+assertEq(false || 1, 1); // expect: 1
+assertEq(false || false || true, true); // expect: true
 
 // Return the last argument if all are false.
-assertEq(false or false, false); // expect: false
-assertEq(false or false or false, false); // expect: false
+assertEq(false || false, false); // expect: false
+assertEq(false || false || false, false); // expect: false
 
 // Short-circuit at the first true argument.
 let a = "before";
 let b = "before";
-(a = false) or
-    (b = true) or
+(a = false) ||
+    (b = true) ||
     (a = "bad");
 assertEq(a, false); // expect: false
 assertEq(b, true); // expect: true
