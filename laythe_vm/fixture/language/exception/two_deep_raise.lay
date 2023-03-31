@@ -6,9 +6,4 @@ fn raiser() {
   raise Error("raise");
 }
 
-try {
-  outer();
-  assert(false);
-} catch {
-  assert(true);
-}
+outer();

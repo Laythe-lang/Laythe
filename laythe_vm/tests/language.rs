@@ -301,7 +301,7 @@ fn exception() -> Result<(), std::io::Error> {
       "language/exception/top_level_catch.lay",
       "language/exception/one_deep_catch.lay",
       "language/exception/two_deep_catch.lay",
-      "language/exception/top_level_catch_thrown.lay",
+      "language/exception/top_level_catch_raise.lay",
     ],
     VmExit::Ok,
   )?;
@@ -316,40 +316,37 @@ fn exception() -> Result<(), std::io::Error> {
   )?;
 
   test_file_with_stdio(
-    "language/exception/top_level_thrown.lay",
+    "language/exception/top_level_raise.lay",
     None,
     Some(vec![
       "Traceback (most recent call last):",
-      "  native:0 in []()",
-      "  fixture/language/exception/top_level_thrown.lay:1 in script",
-      "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
+      "  fixture/language/exception/top_level_raise.lay:1 in script",
+      "Error: raise",
     ]),
     VmExit::RuntimeError,
   )?;
 
   test_file_with_stdio(
-    "language/exception/one_deep_thrown.lay",
+    "language/exception/one_deep_raise.lay",
     None,
     Some(vec![
       "Traceback (most recent call last):",
-      "  native:0 in []()",
-      "  fixture/language/exception/one_deep_thrown.lay:2 in thrower()",
-      "  fixture/language/exception/one_deep_thrown.lay:5 in script",
-      "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
+      "  fixture/language/exception/one_deep_raise.lay:2 in raiser()",
+      "  fixture/language/exception/one_deep_raise.lay:5 in script",
+      "Error: raise",
     ]),
     VmExit::RuntimeError,
   )?;
 
   test_file_with_stdio(
-    "language/exception/two_deep_thrown.lay",
+    "language/exception/two_deep_raise.lay",
     None,
     Some(vec![
       "Traceback (most recent call last):",
-      "  native:0 in []()",
-      "  fixture/language/exception/two_deep_thrown.lay:6 in thrower()",
-      "  fixture/language/exception/two_deep_thrown.lay:2 in outer()",
-      "  fixture/language/exception/two_deep_thrown.lay:9 in script",
-      "IndexError: Index out of bounds. list was length 0 but attempted to index with 1.",
+      "  fixture/language/exception/two_deep_raise.lay:6 in raiser()",
+      "  fixture/language/exception/two_deep_raise.lay:2 in outer()",
+      "  fixture/language/exception/two_deep_raise.lay:9 in script",
+      "Error: raise",
     ]),
     VmExit::RuntimeError,
   )
@@ -996,6 +993,33 @@ fn return_test() -> Result<(), std::io::Error> {
   )?;
 
   test_file_exits(&vec![], VmExit::RuntimeError)
+}
+
+
+#[test]
+fn raise() -> Result<(), std::io::Error> {
+  test_file_exits(
+    &vec![
+      "language/raise/raise_error.lay",
+    ],
+    VmExit::Ok,
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/raise/no_expr.lay",
+      "language/raise/no_semi.lay",
+    ],
+    VmExit::CompileError,
+  )?;
+
+  test_file_exits(
+    &vec![
+      "language/raise/not_instance.lay",
+      "language/raise/not_error_subclass.lay",
+    ],
+    VmExit::RuntimeError,
+  )
 }
 
 #[test]

@@ -1,9 +1,9 @@
-fn thrower() {
-  [][1];
+fn raiser() {
+  raise Error("raise");
 }
 
 try {
-  thrower();
+  raiser();
   assert(false);
 } catch {
   assert(true);

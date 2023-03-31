@@ -1,0 +1,5 @@
+fn raiser() {
+  raise Error("raise");
+}
+
+raiser();
