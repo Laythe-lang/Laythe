@@ -66,7 +66,7 @@ class Universe {
     let count = 0;
     for deltaRow in [@height - 1, 0, 1] {
       for deltaCol in [@width - 1, 0, 1] {
-        if deltaRow != 0 or deltaCol != 0 {
+        if deltaRow != 0 || deltaCol != 0 {
           let neighborRow = rem(row + deltaRow, @height);
           let neighborCol = rem(col + deltaCol, @width);
 
@@ -102,7 +102,7 @@ class Universe {
 
         let nextCell = cell;
         if cell.isAlive() {
-          if liveNeighbors < 2 or liveNeighbors > 3 {
+          if liveNeighbors < 2 || liveNeighbors > 3 {
             nextCell = Cell.dead();
           } else {
             nextCell = Cell.alive();

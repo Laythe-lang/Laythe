@@ -2,5 +2,5 @@ import std.math;
 
 for _ in 10.times() {
   let rand = math.rand();
-  assert(rand >= 0 and rand < 1);
+  assert(rand >= 0 && rand < 1);
 }

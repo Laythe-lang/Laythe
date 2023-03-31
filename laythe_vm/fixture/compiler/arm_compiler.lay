@@ -48,7 +48,7 @@ class Num {
 
   equals(other: Ast) -> bool {
     other.cls() == Num
-      and @value == other.value
+      && @value == other.value
   }
 }
 
@@ -68,7 +68,7 @@ class Id {
 
   equals(other: Ast) -> bool {
     other.cls() == Id
-      and @value.equals(other.value)
+      && @value.equals(other.value)
   }
 }
 
@@ -86,7 +86,7 @@ class Not {
 
   equals(other: Ast) -> bool {
     other.cls() == Not
-      and @term == other.term
+      && @term == other.term
   }
 }
 
@@ -105,8 +105,8 @@ class Infix {
 
   equals(other: Ast) -> bool {
     other.cls() == @cls()
-      and @left.equals(other.left)
-      and @right.equals(other.right)
+      && @left.equals(other.left)
+      && @right.equals(other.right)
   }
 }
 
@@ -169,7 +169,7 @@ class Call {
     } else if count == 1 {
       @args[0].emit(env);
       emit('  bl ${@callee}');
-    } else if count >= 2 and count <= 4 {
+    } else if count >= 2 && count <= 4 {
       emit('  sub sp, sp, #16');
       let i = 0;
       for arg in @args {
@@ -188,9 +188,9 @@ class Call {
 
   equals(other: Ast) -> bool {
     other.cls() == Call
-      and @callee == other.callee
-      and @args.len() == other.len()
-      and @args.iter()
+      && @callee == other.callee
+      && @args.len() == other.len()
+      && @args.iter()
         .zip(other.args.iter())
         .all(|both| both[0].equals(both[1]))
   }
@@ -209,7 +209,7 @@ class Return {
 
   equals(other: Ast) -> bool {
     other.cls() == Return
-      and @term.equals(other.term)
+      && @term.equals(other.term)
   }
 }
 
@@ -226,8 +226,8 @@ class Block {
 
   equals(other: Ast) -> bool {
     other.cls() == Block
-      and @stmts.len() == other.stmts.len()
-      and @stmts.iter()
+      && @stmts.len() == other.stmts.len()
+      && @stmts.iter()
         .zip(other.stmts.iter())
         .all(|both| both[0].equals(both[1]))
   }
@@ -273,9 +273,9 @@ class If {
 
   equals(other: Ast) -> bool {
     other.cls() == If
-      and @cond.equals(other.cond)
-      and @then.equals(other.then)
-      and @else_.equals(other.else_)
+      && @cond.equals(other.cond)
+      && @then.equals(other.then)
+      && @else_.equals(other.else_)
   }
 }
 
@@ -330,11 +330,11 @@ class Function {
 
   equals(other: Ast) -> bool {
     other.cls() == Function
-      and @name == other.name
-      and @parameters.iter()
+      && @name == other.name
+      && @parameters.iter()
         .zip(other.parameters.iter())
         .all(|both| both[0] == both[1])
-      and @body.equals(other.body)
+      && @body.equals(other.body)
   }
 }
 
@@ -353,8 +353,8 @@ class Var {
 
   equals(other: Ast) -> bool {
     other.cls() == Var
-      and @name == other.name
-      and @value.equals(other.value)
+      && @name == other.name
+      && @value.equals(other.value)
   }
 }
 
@@ -376,8 +376,8 @@ class Assign {
 
   equals(other: Ast) -> bool {
     other.cls() == Assign
-      and @name == other.name
-      and @value.equals(other.value)
+      && @name == other.name
+      && @value.equals(other.value)
   }
 }
 
@@ -402,8 +402,8 @@ class While {
 
   equals(other: Ast) -> bool {
     other.cls() == While
-      and @cond.equals(other.cond)
-      and @body.equals(other.body)
+      && @cond.equals(other.cond)
+      && @body.equals(other.body)
   }
 }
 

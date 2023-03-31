@@ -125,7 +125,13 @@ impl<'a> Scanner<'a> {
           self.make_token_source(TokenKind::Minus)
         }
       },
-      '&' => self.make_token_source(TokenKind::Amp),
+      '&' => {
+        if self.match_char('&') {
+          self.make_token_source(TokenKind::And)
+        } else {
+          self.make_token_source(TokenKind::Amp)
+        }
+      }
       '+' => {
         if self.match_char('=') {
           self.make_token_source(TokenKind::PlusEqual)
@@ -133,7 +139,13 @@ impl<'a> Scanner<'a> {
           self.make_token_source(TokenKind::Plus)
         }
       },
-      '|' => self.make_token_source(TokenKind::Pipe),
+      '|' => {
+        if self.match_char('|') {
+          self.make_token_source(TokenKind::Or)
+        } else {
+          self.make_token_source(TokenKind::Pipe)
+        }
+      }
       '/' => {
         if self.match_char('=') {
           self.make_token_source(TokenKind::SlashEqual)
@@ -439,14 +451,7 @@ impl<'a> Scanner<'a> {
 
     match chars.next() {
       Some(c1) => match c1 {
-        'a' => match chars.next() {
-          Some(c2) => match c2 {
-            'n' => self.check_keyword(2, "d", TokenKind::And),
-            's' => self.check_keyword_len(2, TokenKind::As),
-            _ => TokenKind::Identifier,
-          },
-          None => TokenKind::Identifier,
-        },
+        'a' => self.check_keyword(1, "s", TokenKind::As),
         'b' => self.check_keyword(1, "reak", TokenKind::Break),
         'c' => match chars.next() {
           Some(c2) => match c2 {
@@ -493,7 +498,6 @@ impl<'a> Scanner<'a> {
           None => TokenKind::Identifier,
         },
         'n' => self.check_keyword(1, "il", TokenKind::Nil),
-        'o' => self.check_keyword(1, "r", TokenKind::Or),
         'r' => match chars.next() {
           Some(c2) => match c2 {
             'e' => self.check_keyword(2, "turn", TokenKind::Return),
@@ -803,7 +807,7 @@ mod test {
     );
     map.insert(
       TokenKind::And,
-      TokenGen::ALpha(Box::new(|| "and".to_string())),
+      TokenGen::ALpha(Box::new(|| "&&".to_string())),
     );
     map.insert(
       TokenKind::Break,
@@ -871,7 +875,7 @@ mod test {
     );
     map.insert(
       TokenKind::Or,
-      TokenGen::ALpha(Box::new(|| "or".to_string())),
+      TokenGen::ALpha(Box::new(|| "||".to_string())),
     );
     map.insert(
       TokenKind::Launch,

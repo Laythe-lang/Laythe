@@ -454,8 +454,8 @@ impl<'a> Visitor<'a> for AstPrint {
       BinaryOp::GtEq => self.buffer.push_str(">="),
       BinaryOp::Eq => self.buffer.push_str("=="),
       BinaryOp::Ne => self.buffer.push_str("!="),
-      BinaryOp::And => self.buffer.push_str("and"),
-      BinaryOp::Or => self.buffer.push_str("or"),
+      BinaryOp::And => self.buffer.push_str("&&"),
+      BinaryOp::Or => self.buffer.push_str("||"),
     }
     self.buffer.push(' ');
     self.visit_expr(&binary.rhs);
