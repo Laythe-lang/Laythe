@@ -494,7 +494,14 @@ impl<'a> Scanner<'a> {
         },
         'n' => self.check_keyword(1, "il", TokenKind::Nil),
         'o' => self.check_keyword(1, "r", TokenKind::Or),
-        'r' => self.check_keyword(1, "eturn", TokenKind::Return),
+        'r' => match chars.next() {
+          Some(c2) => match c2 {
+            'e' => self.check_keyword(2, "turn", TokenKind::Return),
+            'a' => self.check_keyword(2, "ise", TokenKind::Raise),
+            _ => TokenKind::Identifier,
+          },
+          None => TokenKind::Identifier,
+        },
         's' => match chars.next() {
           Some(c2) => match c2 {
             'e' => self.check_keyword(2, "lf", TokenKind::Self_),
@@ -805,6 +812,10 @@ mod test {
     map.insert(
       TokenKind::Catch,
       TokenGen::ALpha(Box::new(|| "catch".to_string())),
+    );
+    map.insert(
+      TokenKind::Raise,
+      TokenGen::ALpha(Box::new(|| "raise".to_string())),
     );
     map.insert(
       TokenKind::Channel,

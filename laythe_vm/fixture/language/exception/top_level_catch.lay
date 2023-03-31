@@ -1,6 +1,6 @@
 try {
-  [][1];
+  raise Error("raise");
   assert(false);
-} catch { 
-  
+} catch {
+
 }

@@ -20,7 +20,9 @@ Stmt ::= ExprStmt
   | If
   | Return
   | While
+  | Launch
   | Try
+  | Raise
   | AssignBlock ;
 
 Function ::= IDENTIFIER CallSignature Block ;
@@ -35,7 +37,9 @@ For ::= "for" IDENTIFIER "in" expr Block ;
 If ::= "if" Expr Block ( "else" Block | If )? ;
 Return ::= "return" Expr? ";" ;
 While ::= "while" Expr Block ;
+Launch ::= "launch" Expr ";"
 Try ::= "try" Block "catch" Block ;
+Raise ::= "raise" Expr ";" ;
 AssignBlock ::= ":" Block ;
 Block ::= "{" Decl* "}" ;
 Expr ::= Assign ;

@@ -1,17 +1,11 @@
 try {
-  [][1];
+  raise Error("raise");
   assert(false);
 } catch {
   try {
-    [][1];
+    raise Error("raise");
     assert(false);
   } catch {
     assert(true);
   }
-}
-
-if true {
-
-} else {
-
 }

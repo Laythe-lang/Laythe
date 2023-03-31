@@ -1,0 +1,6 @@
+try {
+  raise Error("example");
+  assert(false);
+} catch {
+  assert(true);
+}

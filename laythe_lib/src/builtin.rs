@@ -13,7 +13,7 @@ use crate::global::{
   EXPORT_ERROR_NAME, FIBER_CLASS_NAME, IMPORT_ERROR_NAME, ITER_CLASS_NAME, LIST_CLASS_NAME,
   MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME, MODULE_CLASS_NAME,
   NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME, PROPERTY_ERROR_NAME,
-  RUNTIME_ERROR_NAME, STRING_CLASS_NAME, TUPLE_CLASS_NAME, TYPE_ERROR_NAME, VALUE_ERROR_NAME, FUN_CLASS_NAME,
+  RUNTIME_ERROR_NAME, STRING_CLASS_NAME, TUPLE_CLASS_NAME, TYPE_ERROR_NAME, VALUE_ERROR_NAME, FUN_CLASS_NAME, ERROR_CLASS_NAME,
 };
 
 pub struct BuiltIn {
@@ -169,6 +169,8 @@ impl Trace for BuiltInPrimitives {
 }
 
 pub struct BuiltInErrors {
+  pub error: GcObj<Class>,
+
   pub runtime: GcObj<Class>,
 
   pub method_not_found: GcObj<Class>,
@@ -271,6 +273,10 @@ pub fn builtin_from_module(hooks: &GcHooks, module: &Module) -> Option<BuiltIn> 
         .to_class(),
     },
     errors: BuiltInErrors {
+      error: module
+        .get_symbol(hooks.manage_str(ERROR_CLASS_NAME))?
+        .to_obj()
+        .to_class(),
       runtime: module
         .get_symbol(hooks.manage_str(RUNTIME_ERROR_NAME))?
         .to_obj()
