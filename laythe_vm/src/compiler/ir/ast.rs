@@ -37,6 +37,7 @@ pub trait Visitor<'a> {
   fn visit_continue(&mut self, continue_: &Token<'a>) -> Self::Result;
   fn visit_break(&mut self, break_: &Token<'a>) -> Self::Result;
   fn visit_try(&mut self, try_: &Try) -> Self::Result;
+  fn visit_raise(&mut self, raise: &Raise) -> Self::Result;
   fn visit_block(&mut self, block: &Block) -> Self::Result;
 
   fn visit_assign(&mut self, assign: &Assign) -> Self::Result;
@@ -404,6 +405,7 @@ pub enum Stmt<'a> {
   For(Box<'a, For<'a>>),
   If(Box<'a, If<'a>>),
   Launch(Box<'a, Launch<'a>>),
+  Raise(Box<'a, Raise<'a>>),
   Return(Box<'a, Return<'a>>),
   Continue(Box<'a, Token<'a>>),
   Break(Box<'a, Token<'a>>),
@@ -425,6 +427,7 @@ impl<'a> Spanned for Stmt<'a> {
       Stmt::Break(break_) => break_.start(),
       Stmt::While(while_) => while_.start(),
       Stmt::Try(try_) => try_.start(),
+      Stmt::Raise(raise) => raise.start(),
     }
   }
 
@@ -441,6 +444,7 @@ impl<'a> Spanned for Stmt<'a> {
       Stmt::Break(break_) => break_.end(),
       Stmt::While(while_) => while_.end(),
       Stmt::Try(try_) => try_.end(),
+      Stmt::Raise(raise) => raise.end(),
     }
   }
 }
@@ -590,6 +594,27 @@ impl<'a> Spanned for Launch<'a> {
 
   fn end(&self) -> u32 {
     self.closure.end()
+  }
+}
+
+
+pub struct Raise<'a> {
+  pub error: Expr<'a>,
+}
+
+impl<'a> Raise<'a> {
+  pub fn new(error: Expr<'a>) -> Self {
+    Self { error }
+  }
+}
+
+impl<'a> Spanned for Raise<'a> {
+  fn start(&self) -> u32 {
+    self.error.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.error.end()
   }
 }
 

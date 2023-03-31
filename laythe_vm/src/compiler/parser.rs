@@ -204,6 +204,7 @@ impl<'a> Parser<'a> {
         | TokenKind::Import
         | TokenKind::Export
         | TokenKind::Launch
+        | TokenKind::Raise
         | TokenKind::Try
         | TokenKind::Trait
         | TokenKind::Type
@@ -226,6 +227,7 @@ impl<'a> Parser<'a> {
     match self.current.kind() {
       TokenKind::Import => self.advance().and_then(|()| self.import()),
       TokenKind::Try => self.advance().and_then(|()| self.try_block()),
+      TokenKind::Raise => self.advance().and_then(|()| self.raise()),
       TokenKind::If => self.advance().and_then(|()| self.if_()),
       TokenKind::Launch => self.advance().and_then(|()| self.launch()),
       TokenKind::For => self.advance().and_then(|()| self.for_()),
@@ -558,6 +560,14 @@ impl<'a> Parser<'a> {
       .and_then(|()| self.consume_basic(TokenKind::LeftBrace, "Expected '{' after catch."))
       .and_then(|()| self.block(BlockReturn::Cannot))
       .map(|catch| Stmt::Try(self.node(Try::new(block, catch))))
+  }
+
+  /// Parse a raise statement
+  fn raise(&mut self) -> ParseResult<Stmt<'a>> {
+    let error = self.expr()?;
+
+    self.consume_basic(TokenKind::Semicolon, "Expected ';' launch call.")?;
+    Ok(Stmt::Raise(self.node(Raise::new(error))))
   }
 
   /// Parse a launch statement
@@ -1810,6 +1820,8 @@ const PREFIX_TABLE: [Rule<Prefix, Precedence>; TokenKind::VARIANT_COUNT] = [
   Rule::new(None, Precedence::None),
   // CATCH
   Rule::new(None, Precedence::None),
+  // RAISE
+  Rule::new(None, Precedence::None),
   // TRAIT
   Rule::new(None, Precedence::None),
   // TYPE
@@ -1949,6 +1961,8 @@ const INFIX_TABLE: [Rule<Infix, Precedence>; TokenKind::VARIANT_COUNT] = [
   // TRY
   Rule::new(None, Precedence::None),
   // CATCH
+  Rule::new(None, Precedence::None),
+  // RAISE
   Rule::new(None, Precedence::None),
   // TRAIT
   Rule::new(None, Precedence::None),
@@ -2090,6 +2104,8 @@ const TYPE_PREFIX_TABLE: [Rule<TypePrefix, TypePrecedence>; TokenKind::VARIANT_C
   Rule::new(None, TypePrecedence::None),
   // CATCH
   Rule::new(None, TypePrecedence::None),
+  // RAISE
+  Rule::new(None, TypePrecedence::None),
   // TRAIT
   Rule::new(None, TypePrecedence::None),
   // TYPE
@@ -2229,6 +2245,8 @@ const TYPE_INFIX_TABLE: [Rule<TypeInfix, TypePrecedence>; TokenKind::VARIANT_COU
   // TRY
   Rule::new(None, TypePrecedence::None),
   // CATCH
+  Rule::new(None, TypePrecedence::None),
+  // RAISE
   Rule::new(None, TypePrecedence::None),
   // TRAIT
   Rule::new(None, TypePrecedence::None),
@@ -2584,6 +2602,15 @@ use super::super::ir::AstPrint;
   fn launch() {
     let example = "
       launch something(1, 2, 'cat');
+    ";
+
+    test(example);
+  }
+
+  #[test]
+  fn raise() {
+    let example = "
+      raise Error('error');
     ";
 
     test(example);
