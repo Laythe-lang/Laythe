@@ -2,7 +2,7 @@ use super::{source_loader::ImportResult, Signal, Vm};
 use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
 use laythe_core::{
   captures::Captures,
-  hooks::{GcContext, GcHooks, Hooks},
+  hooks::{GcHooks, Hooks},
   if_let_obj,
   managed::{Array, Gc, GcObj, GcStr},
   match_obj,
@@ -20,6 +20,9 @@ use laythe_core::{
 };
 use laythe_core::{managed::GcObject, object::Fiber};
 use std::{cmp::Ordering, mem};
+
+#[cfg(debug_assertions)]
+use laythe_core::hooks::GcContext;
 
 impl Vm {
   /// push a literal value onto the stack
