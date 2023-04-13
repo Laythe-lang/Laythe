@@ -134,8 +134,7 @@ impl Vm {
       find_missing_module(existing_package.root_module(), import.path(), 0);
 
     let fs = self.io.fs();
-    let env = self.io.env();
-    let mut resolved_path = env.current_dir().unwrap();
+    let mut resolved_path = self.root_dir.clone();
 
     for path_segment in found_path {
       resolved_path.push(PathBuf::from(path_segment));
