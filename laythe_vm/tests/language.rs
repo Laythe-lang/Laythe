@@ -299,6 +299,9 @@ fn exception() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/exception/top_level_catch.lay",
+      "language/exception/nested_break.lay",
+      "language/exception/nested_continue.lay",
+      "language/exception/nested_return.lay",
       "language/exception/one_deep_catch.lay",
       "language/exception/two_deep_catch.lay",
       "language/exception/top_level_catch_raise.lay",

@@ -1,0 +1,26 @@
+fn notThrower() {
+  for i in 1.times() {
+    try {
+      // random instructions to just make the fun bigger
+      // to excerise the error
+      let a = 10 + 10;
+      let b = 5 + 5;
+      let c = a / b * a * a;
+      c / a * b;
+      continue;
+    } catch {
+      assert(false);
+    }
+  }
+}
+
+let caught = false;
+
+try {
+  notThrower();
+  raise Error("boom");
+} catch {
+  caught = true;
+}
+
+assert(caught);
