@@ -114,6 +114,12 @@ impl Trace for ClassAttributes {
   }
 }
 
+
+#[derive(Debug, Clone, Copy)]
+pub struct TryAttributes {
+  scope_depth: usize,
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct LoopAttributes {
   scope_depth: usize,
@@ -173,6 +179,9 @@ pub struct Compiler<'a, 'src> {
 
   /// The info on the current class
   class_attributes: Option<Gc<ClassAttributes>>,
+
+  /// The info on the current loop
+  try_attributes: Option<TryAttributes>,
 
   /// The info on the current loop
   loop_attributes: Option<LoopAttributes>,
@@ -282,6 +291,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       repl,
       class_attributes: None,
       loop_attributes: None,
+      try_attributes: None,
       exit_scope: ScopeExit::Normal,
       gc: RefCell::new(gc),
       enclosing: None,
@@ -353,6 +363,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       repl: enclosing.repl,
       class_attributes: enclosing.class_attributes,
       loop_attributes: None,
+      try_attributes: None,
       exit_scope: ScopeExit::Normal,
       gc,
       locals: collections::Vec::new_in(enclosing.alloc),
@@ -1444,6 +1455,13 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     if self.slots as usize > std::u16::MAX as usize {
       self.error("Stack too deep for exception catch.", None);
     }
+
+    // set this try block as the current
+    let try_attributes = TryAttributes {
+      scope_depth: self.scope_depth,
+    };
+    let enclosing_try = mem::replace(&mut self.try_attributes, Some(try_attributes));
+
     let slots = self.slots as u16;
     let catch_label = self.label_emitter.emit();
 
@@ -1468,6 +1486,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     });
 
     self.emit_byte(SymbolicByteCode::Label(end_label), try_.catch.end());
+    self.try_attributes = enclosing_try;
   }
 
   /// Compile a raise statement
