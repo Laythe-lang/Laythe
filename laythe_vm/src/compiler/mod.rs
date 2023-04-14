@@ -454,7 +454,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       _ => self.emit_byte(SymbolicByteCode::Nil, line),
     }
 
-    if let Some(_) = self.try_attributes {
+    if self.try_attributes.is_some() {
       self.emit_byte(SymbolicByteCode::PopHandler, line);
     }
 
@@ -1442,7 +1442,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       Some(v) => {
         self.expr(v);
 
-        if let Some(_) = self.try_attributes {
+        if self.try_attributes.is_some() {
           self.emit_byte(SymbolicByteCode::PopHandler, v.end());
         }
 
