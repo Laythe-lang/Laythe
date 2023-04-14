@@ -5,7 +5,7 @@ mod peephole;
 mod resolver;
 mod scanner;
 
-use bumpalo::{Bump, collections};
+use bumpalo::{collections, Bump};
 pub use parser::Parser;
 pub use resolver::Resolver;
 
@@ -114,7 +114,6 @@ impl Trace for ClassAttributes {
   }
 }
 
-
 #[derive(Debug, Clone, Copy)]
 pub struct TryAttributes {
   scope_depth: usize,
@@ -127,7 +126,7 @@ pub struct LoopAttributes {
   end: Label,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum ScopeExit {
   Normal,
   Early,
@@ -453,6 +452,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     match self.fun_kind {
       FunKind::Initializer => self.emit_byte(SymbolicByteCode::GetLocal(0), line),
       _ => self.emit_byte(SymbolicByteCode::Nil, line),
+    }
+
+    if let Some(_) = self.try_attributes {
+      self.emit_byte(SymbolicByteCode::PopHandler, line);
     }
 
     self.emit_byte(SymbolicByteCode::Return, line);
@@ -1438,6 +1441,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     match &return_.value {
       Some(v) => {
         self.expr(v);
+
+        if let Some(_) = self.try_attributes {
+          self.emit_byte(SymbolicByteCode::PopHandler, v.end());
+        }
+
         self.emit_byte(SymbolicByteCode::Return, v.end());
       },
       None => self.emit_return(return_.start()),
@@ -1454,6 +1462,14 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     let new_local_count = self.drop_local_count(loop_attributes.scope_depth);
     self.drop_locals(continue_.end(), new_local_count);
 
+    // if our try catch is inside this loop
+    // a break will jump outside of it so we need to pop the handler
+    if let Some(try_attributes) = self.try_attributes {
+      if try_attributes.scope_depth > loop_attributes.scope_depth {
+        self.emit_byte(SymbolicByteCode::PopHandler, continue_.start());
+      }
+    }
+
     self.emit_byte(
       SymbolicByteCode::Loop(loop_attributes.start),
       continue_.start(),
@@ -1469,6 +1485,14 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     let new_local_count = self.drop_local_count(loop_attributes.scope_depth);
     self.drop_locals(break_.end(), new_local_count);
+
+    // if our try catch is inside this loop
+    // a break will jump outside of it so we need to pop the handler
+    if let Some(try_attributes) = self.try_attributes {
+      if try_attributes.scope_depth > loop_attributes.scope_depth {
+        self.emit_byte(SymbolicByteCode::PopHandler, break_.start());
+      }
+    }
 
     self.emit_byte(SymbolicByteCode::Jump(loop_attributes.end), break_.start());
     self.exit_scope = ScopeExit::Early;
@@ -2215,7 +2239,9 @@ mod test {
     assert!(module.insert_symbol(print.name(), val!(print)).is_ok());
 
     let error_class = test_class(&hooks, "Error");
-    assert!(module.insert_symbol(error_class.name(), val!(error_class)).is_ok());
+    assert!(module
+      .insert_symbol(error_class.name(), val!(error_class))
+      .is_ok());
 
     assert!(module
       .insert_symbol(object_class.name(), val!(object_class))
@@ -2661,6 +2687,112 @@ mod test {
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn try_with_break() {
+    let example = r#"
+      while true {
+        try {
+          break;
+        } catch {
+        }
+      }
+    "#;
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(17),
+        AlignedByteCode::PushHandler((1, 8)),
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Jump(8),
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Jump(1),
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Loop(21),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn try_with_continue() {
+    let example = r#"
+      while true {
+        try {
+          continue;
+        } catch {
+        }
+      }
+    "#;
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(17),
+        AlignedByteCode::PushHandler((1, 8)),
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Loop(13),
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Jump(1),
+        AlignedByteCode::PopHandler,
+        AlignedByteCode::Loop(21),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn try_with_return() {
+    let example = r#"
+      fn example() {
+        try {
+          return;
+        } catch {
+        }
+      }
+    "#;
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+    assert_fun_bytecode(
+      &fun,
+      2,
+      &vec![
+        ByteCodeTest::Fun((
+          // example
+          1,
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::PushHandler((1, 7))),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::PopHandler),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::PopHandler),
+            ByteCodeTest::Code(AlignedByteCode::Jump(1)),
+            ByteCodeTest::Code(AlignedByteCode::PopHandler),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
       ],
     );
   }
