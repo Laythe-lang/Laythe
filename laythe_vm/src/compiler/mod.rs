@@ -114,33 +114,11 @@ impl Trace for ClassAttributes {
   }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct LoopAttributes {
   scope_depth: usize,
   start: Label,
   end: Label,
-}
-
-impl DebugHeap for LoopAttributes {
-  fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
-    f.debug_struct("LoopInfo")
-      .field("scope_depth", &self.scope_depth)
-      .field("start", &self.start)
-      .field("end", &self.start)
-      .finish()
-  }
-}
-
-impl Allocate<Gc<Self>> for LoopAttributes {
-  fn alloc(self) -> AllocResult<Gc<Self>> {
-    Gc::alloc_result(self)
-  }
-}
-
-impl Trace for LoopAttributes {
-  fn trace(&self) {}
-
-  fn trace_debug(&self, _log: &mut dyn Write) {}
 }
 
 #[derive(Debug)]
@@ -197,12 +175,12 @@ pub struct Compiler<'a, 'src> {
   class_attributes: Option<Gc<ClassAttributes>>,
 
   /// The info on the current loop
-  loop_attributes: Option<Gc<LoopAttributes>>,
+  loop_attributes: Option<LoopAttributes>,
 
   /// Should we early exit scope (break / continue)
   exit_scope: ScopeExit,
 
-  /// The id emmiter for inline cache
+  /// The id emitter for inline cache
   cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
 
   /// a label emitter
@@ -374,7 +352,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       slots: 1,
       repl: enclosing.repl,
       class_attributes: enclosing.class_attributes,
-      loop_attributes: enclosing.loop_attributes,
+      loop_attributes: None,
       exit_scope: ScopeExit::Normal,
       gc,
       locals: collections::Vec::new_in(enclosing.alloc),
@@ -477,27 +455,18 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     table: &'a SymbolTable<'src>,
     cb: impl FnOnce(&mut Self),
   ) {
-    // set this class as the current class compiler
-    let loop_attributes = self.gc.borrow_mut().manage(
-      LoopAttributes {
-        scope_depth: self.scope_depth,
-        start,
-        end,
-      },
-      self,
-    );
+    // set this loop as current
+    let loop_attributes = LoopAttributes {
+      scope_depth: self.scope_depth,
+      start,
+      end,
+    };
     let enclosing_loop = mem::replace(&mut self.loop_attributes, Some(loop_attributes));
-    if let Some(enclosing_loop) = enclosing_loop {
-      self.gc.borrow_mut().push_root(enclosing_loop);
-    }
 
     self.scope(end_line, table, cb);
     self.emit_byte(SymbolicByteCode::Loop(start), end_line);
     self.emit_byte(SymbolicByteCode::Label(end), end_line);
 
-    if enclosing_loop.is_some() {
-      self.gc.borrow_mut().pop_roots(1);
-    }
     self.loop_attributes = enclosing_loop;
   }
 
@@ -2110,9 +2079,6 @@ impl<'a, 'src: 'a> TraceRoot for Compiler<'a, 'src> {
     if let Some(class_info) = self.class_attributes {
       class_info.trace();
     }
-    if let Some(loop_info) = self.loop_attributes {
-      loop_info.trace();
-    }
 
     self.constants.keys().for_each(|key| {
       key.trace();
@@ -2130,9 +2096,6 @@ impl<'a, 'src: 'a> TraceRoot for Compiler<'a, 'src> {
 
     if let Some(class_info) = self.class_attributes {
       class_info.trace_debug(log)
-    }
-    if let Some(loop_info) = self.loop_attributes {
-      loop_info.trace_debug(log)
     }
 
     self.constants.keys().for_each(|key| {
