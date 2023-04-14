@@ -115,7 +115,10 @@ fn break_() -> Result<(), std::io::Error> {
   )?;
 
   test_file_exits(
-    &vec!["language/break/outside_loop.lay"],
+    &vec![
+      "language/break/outside_loop.lay",
+      "language/break/in_function_in_loop.lay"
+    ],
     VmExit::CompileError,
   )
 }
@@ -247,7 +250,10 @@ fn continue_() -> Result<(), std::io::Error> {
   )?;
 
   test_file_exits(
-    &vec!["language/continue/outside_loop.lay"],
+    &vec![
+      "language/continue/outside_loop.lay",
+      "language/continue/in_function_in_loop.lay"
+    ],
     VmExit::CompileError,
   )
 }
