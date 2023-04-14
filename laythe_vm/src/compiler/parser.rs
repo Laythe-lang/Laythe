@@ -1310,6 +1310,9 @@ impl<'a> Parser<'a> {
       return self.error_current(&format!("Expected '(' after {} name.", self.fun_kind));
     }
 
+    let loop_depth = self.loop_depth;
+    self.loop_depth = 0;
+
     // parse function parameters
     let call_params = self.call_params(TokenKind::RightParen)?;
     let call_sig = self.call_signature(call_params, type_params)?;
@@ -1317,14 +1320,18 @@ impl<'a> Parser<'a> {
     if !self.match_kind(TokenKind::LeftBrace)? {
       return self.error_current(&format!("Expected '{{' after {} signature.", self.fun_kind));
     }
-    self.block(block_return).map(|body| {
+
+    let fun = self.block(block_return).map(|body| {
       Fun::new(
         Some(name),
         call_sig,
         self.table(),
         FunBody::Block(self.node(body)),
       )
-    })
+    });
+
+    self.loop_depth = loop_depth;
+    fun
   }
 
   /// Parse a method declaration and body

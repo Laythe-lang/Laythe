@@ -107,15 +107,19 @@ fn break_() -> Result<(), std::io::Error> {
     &vec![
       "language/break/additional_scopes.lay",
       "language/break/for_break.lay",
-      "language/break/while_break.lay",
-      "language/break/nested_while_loops.lay",
       "language/break/nested_for_loops.lay",
+      "language/break/nested_while_loops.lay",
+      "language/break/while_break.lay",
+      "language/break/with_drops.lay",
     ],
     VmExit::Ok,
   )?;
 
   test_file_exits(
-    &vec!["language/break/outside_loop.lay"],
+    &vec![
+      "language/break/outside_loop.lay",
+      "language/break/in_function_in_loop.lay"
+    ],
     VmExit::CompileError,
   )
 }
@@ -239,15 +243,19 @@ fn continue_() -> Result<(), std::io::Error> {
     &vec![
       "language/continue/additional_scopes.lay",
       "language/continue/for_continue.lay",
-      "language/continue/while_continue.lay",
-      "language/continue/nested_while_loops.lay",
       "language/continue/nested_for_loops.lay",
+      "language/continue/nested_while_loops.lay",
+      "language/continue/while_continue.lay",
+      "language/continue/with_drops.lay",
     ],
     VmExit::Ok,
   )?;
 
   test_file_exits(
-    &vec!["language/continue/outside_loop.lay"],
+    &vec![
+      "language/continue/outside_loop.lay",
+      "language/continue/in_function_in_loop.lay"
+    ],
     VmExit::CompileError,
   )
 }
@@ -299,6 +307,9 @@ fn exception() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/exception/top_level_catch.lay",
+      "language/exception/nested_break.lay",
+      "language/exception/nested_continue.lay",
+      "language/exception/nested_return.lay",
       "language/exception/one_deep_catch.lay",
       "language/exception/two_deep_catch.lay",
       "language/exception/top_level_catch_raise.lay",

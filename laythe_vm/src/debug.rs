@@ -48,6 +48,10 @@ pub fn print_byte_code(
     return label_instruction(stdio.stdout(), label, offset);
   }
 
+  if let SymbolicByteCode::ArgumentDelimiter = instruction {
+    return Ok(offset);
+  }
+
   write!(stdout, "  {:0>4} ", offset)?;
 
   if offset != 0 && show_line {
@@ -208,9 +212,11 @@ pub fn print_byte_code(
     SymbolicByteCode::Label(_) => {
       simple_instruction(stdio.stdout(), "!=== Label - Invalid ===!", offset)
     },
-    SymbolicByteCode::ArgumentDelimiter => {
-      simple_instruction(stdio.stdout(), "!=== ArgumentDelimiter - Invalid ===!", offset)
-    },
+    SymbolicByteCode::ArgumentDelimiter => simple_instruction(
+      stdio.stdout(),
+      "!=== ArgumentDelimiter - Invalid ===!",
+      offset,
+    ),
   }
 }
 
@@ -362,7 +368,7 @@ fn symbolic_push_handler_instruction(
   label: Label,
   offset: usize,
 ) -> io::Result<usize> {
-  writeln!(stdout, "{:13} L{}: {:5}", name, slots, label)?;
+  writeln!(stdout, "{:13} L{}: {:5}", name, label, slots)?;
   Ok(offset)
 }
 
