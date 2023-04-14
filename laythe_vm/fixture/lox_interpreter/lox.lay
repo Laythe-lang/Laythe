@@ -589,7 +589,7 @@ class Logical {
   evaluate(interpreter) {
     let left = self.left.evaluate(interpreter);
     if self.operator == AND {
-      return left and self.right.evaluate(interpreter);
+      return left && self.right.evaluate(interpreter);
     } else {
       return left || self.right.evaluate(interpreter);
     }
@@ -1477,7 +1477,7 @@ class Parser {
 
   comparison() {
     let expr = self.addition();
-    while (self.token.kind == GREATER || self.token.kind == GREATER_EQUAL or
+    while (self.token.kind == GREATER || self.token.kind == GREATER_EQUAL ||
            self.token.kind == LESS || self.token.kind == LESS_EQUAL) {
       let operator = self.token.kind;
       self.next();
