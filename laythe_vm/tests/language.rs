@@ -107,9 +107,10 @@ fn break_() -> Result<(), std::io::Error> {
     &vec![
       "language/break/additional_scopes.lay",
       "language/break/for_break.lay",
-      "language/break/while_break.lay",
-      "language/break/nested_while_loops.lay",
       "language/break/nested_for_loops.lay",
+      "language/break/nested_while_loops.lay",
+      "language/break/while_break.lay",
+      "language/break/with_drops.lay",
     ],
     VmExit::Ok,
   )?;
@@ -242,9 +243,10 @@ fn continue_() -> Result<(), std::io::Error> {
     &vec![
       "language/continue/additional_scopes.lay",
       "language/continue/for_continue.lay",
-      "language/continue/while_continue.lay",
-      "language/continue/nested_while_loops.lay",
       "language/continue/nested_for_loops.lay",
+      "language/continue/nested_while_loops.lay",
+      "language/continue/while_continue.lay",
+      "language/continue/with_drops.lay",
     ],
     VmExit::Ok,
   )?;

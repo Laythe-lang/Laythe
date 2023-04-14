@@ -507,17 +507,33 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   /// Decrease the scope depth by 1
   fn end_scope(&mut self, end_line: u32) {
     self.scope_depth -= 1;
-    let local_count = self.drop_locals(end_line, self.scope_depth);
-    self.locals.truncate(local_count);
+    let new_local_count = self.drop_local_count(self.scope_depth);
+    let exit_scope = mem::replace(&mut self.exit_scope, ScopeExit::Normal);
+
+    // only emit drop instructions if we haven't already exited this scope
+    match exit_scope {
+      ScopeExit::Normal | ScopeExit::Implicit => self.drop_locals(end_line, new_local_count),
+      ScopeExit::Early => (),
+    }
+
+    self.locals.truncate(new_local_count);
     self.local_tables.pop();
   }
 
   /// Drop all locals to a specified scope depth
-  fn drop_locals(&mut self, line: u32, scope_depth: usize) -> usize {
+  fn drop_locals(&mut self, line: u32, new_local_count: usize) {
+    let local_count = self.locals.len();
+
+    for _ in 0..(local_count - new_local_count) {
+      self.emit_byte(SymbolicByteCode::Drop, line);
+    }
+  }
+
+  /// Determine what the local count would be if dropped
+  fn drop_local_count(&mut self, scope_depth: usize) -> usize {
     let mut drop_idx = self.locals.len();
 
     while drop_idx > 0 && self.locals[drop_idx - 1].depth > scope_depth {
-      self.emit_byte(SymbolicByteCode::Drop, line);
       drop_idx -= 1;
     }
 
@@ -1185,19 +1201,20 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     compiler.call_sig(&fun.call_sig);
 
-    let exit = match &fun.body {
+    match &fun.body {
       ast::FunBody::Block(block) => compiler.block(block),
       ast::FunBody::Expr(expr) => {
         compiler.expr(expr);
         compiler.emit_byte(SymbolicByteCode::Return, expr.end());
-        ScopeExit::Early
+        compiler.exit_scope = ScopeExit::Early;
       },
     };
 
+    let exit_scope = compiler.exit_scope;
     let end_line = fun.end();
 
     // end compilation of function chunk
-    let (fun, errors, captures, gc) = compiler.end_compiler(end_line, exit);
+    let (fun, errors, captures, gc) = compiler.end_compiler(end_line, exit_scope);
 
     self.gc.replace(gc);
 
@@ -1430,23 +1447,30 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// Compile a return statement
   fn continue_(&mut self, continue_: &Token) {
-    let loop_info = self
+    let loop_attributes = self
       .loop_attributes
       .expect("Parser should have caught the loop constraint");
 
-    self.drop_locals(continue_.end(), loop_info.scope_depth);
-    self.emit_byte(SymbolicByteCode::Loop(loop_info.start), continue_.start());
+    let new_local_count = self.drop_local_count(loop_attributes.scope_depth);
+    self.drop_locals(continue_.end(), new_local_count);
+
+    self.emit_byte(
+      SymbolicByteCode::Loop(loop_attributes.start),
+      continue_.start(),
+    );
     self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a return statement
   fn break_(&mut self, break_: &Token) {
-    let loop_info = self
+    let loop_attributes = self
       .loop_attributes
       .expect("Parser should have caught the loop constraint");
 
-    self.drop_locals(break_.end(), loop_info.scope_depth);
-    self.emit_byte(SymbolicByteCode::Jump(loop_info.end), break_.start());
+    let new_local_count = self.drop_local_count(loop_attributes.scope_depth);
+    self.drop_locals(break_.end(), new_local_count);
+
+    self.emit_byte(SymbolicByteCode::Jump(loop_attributes.end), break_.start());
     self.exit_scope = ScopeExit::Early;
   }
 
@@ -1498,15 +1522,13 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   }
 
   /// Compile a block
-  fn block(&mut self, block: &'a ast::Block<'src>) -> ScopeExit {
+  fn block(&mut self, block: &'a ast::Block<'src>) {
     for decl in &block.decls {
       if let ScopeExit::Early = self.exit_scope {
         break;
       }
       self.decl(decl);
     }
-
-    mem::replace(&mut self.exit_scope, ScopeExit::Normal)
   }
 
   /// Compile an assignment expression
@@ -4138,6 +4160,28 @@ mod test {
   }
 
   #[test]
+  fn break_drop_locals() {
+    let example = "while true { let x = 10; break; }";
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(9),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Jump(3),
+        AlignedByteCode::Loop(13),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
   fn break_fun_nested() {
     let example = "
       fn f() {
@@ -4184,6 +4228,28 @@ mod test {
         AlignedByteCode::JumpIfFalse(6),
         AlignedByteCode::Loop(7),
         AlignedByteCode::Loop(10),
+        AlignedByteCode::Nil,
+        AlignedByteCode::Return,
+      ],
+    );
+  }
+
+  #[test]
+  fn continue_drop_locals() {
+    let example = "while true { let x = 10; continue; }";
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_simple_bytecode(
+      &fun,
+      2,
+      &vec![
+        AlignedByteCode::True,
+        AlignedByteCode::JumpIfFalse(9),
+        AlignedByteCode::Constant(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::Loop(10),
+        AlignedByteCode::Loop(13),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
