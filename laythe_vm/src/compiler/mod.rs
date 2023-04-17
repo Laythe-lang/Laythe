@@ -1529,12 +1529,13 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.emit_byte(SymbolicByteCode::Label(catch_label), try_.catch.start());
 
     self.emit_byte(SymbolicByteCode::PopHandler, try_.catch.end());
+    self.try_attributes = enclosing_try;
+
     self.scope(try_.catch.end(), &try_.catch.symbols, |self_| {
       self_.block(&try_.catch);
     });
 
     self.emit_byte(SymbolicByteCode::Label(end_label), try_.catch.end());
-    self.try_attributes = enclosing_try;
   }
 
   /// Compile a raise statement
@@ -2698,6 +2699,7 @@ mod test {
         try {
           break;
         } catch {
+          break;
         }
       }
     "#;
@@ -2710,14 +2712,15 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(17),
+        AlignedByteCode::JumpIfFalse(20),
         AlignedByteCode::PushHandler((1, 8)),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(8),
+        AlignedByteCode::Jump(11),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(1),
+        AlignedByteCode::Jump(4),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Loop(21),
+        AlignedByteCode::Jump(3),
+        AlignedByteCode::Loop(24),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2731,6 +2734,7 @@ mod test {
         try {
           continue;
         } catch {
+          continue;
         }
       }
     "#;
@@ -2743,14 +2747,15 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(17),
+        AlignedByteCode::JumpIfFalse(20),
         AlignedByteCode::PushHandler((1, 8)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Loop(13),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(1),
+        AlignedByteCode::Jump(4),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Loop(21),
+        AlignedByteCode::Loop(24),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2764,6 +2769,7 @@ mod test {
         try {
           return;
         } catch {
+          return;
         }
       }
     "#;
@@ -2777,15 +2783,17 @@ mod test {
         ByteCodeTest::Fun((
           // example
           1,
-          3,
+          2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::PushHandler((1, 7))),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
             ByteCodeTest::Code(AlignedByteCode::Return),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
-            ByteCodeTest::Code(AlignedByteCode::Jump(1)),
+            ByteCodeTest::Code(AlignedByteCode::Jump(3)),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
+            ByteCodeTest::Code(AlignedByteCode::Nil),
+            ByteCodeTest::Code(AlignedByteCode::Return),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
