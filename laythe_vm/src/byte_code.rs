@@ -459,7 +459,7 @@ impl SymbolicByteCode {
   /// What effect will this instruction have on the stack
   pub const fn stack_effect(&self) -> i32 {
     match self {
-      Self::Return => 0,
+      Self::Return => -1,
       Self::Negate => 0,
       Self::Add => -1,
       Self::Subtract => -1,
