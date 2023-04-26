@@ -442,7 +442,7 @@ impl<'a> ByteCodeEncoder<'a> {
     symbolic_code: &[SymbolicByteCode],
     symbolic_lines: &[u16],
     label_offsets: &[usize],
-  ) -> Result<(Vec<'a, u8>, Vec<'a, u16>), Vec<'a, Diagnostic<VmFileId>>> {
+  ) -> EncodeResult<'a> {
     let mut offset: usize = 0;
 
     for (instruction, line) in symbolic_code.iter().zip(symbolic_lines) {
@@ -557,7 +557,10 @@ impl<'a> ByteCodeEncoder<'a> {
     }
 
     if self.errors.is_empty() {
-      Ok((self.encoded_code, self.encoded_lines))
+      Ok(EncodedChunk {
+        code: self.encoded_code,
+        lines: self.encoded_lines,
+      })
     } else {
       Err(self.errors)
     }
@@ -663,6 +666,13 @@ impl<'a> ByteCodeEncoder<'a> {
     self.encoded_lines.push(line);
   }
 }
+
+pub struct EncodedChunk<'a> {
+  pub code: Vec<'a, u8>,
+  pub lines: Vec<'a, u16>,
+}
+
+type EncodeResult<'a> = Result<EncodedChunk<'a>, Vec<'a, Diagnostic<VmFileId>>>;
 
 /// Laythe virtual machine byte codes
 #[derive(Debug, PartialEq, Eq, Clone, Copy, VariantCount)]
@@ -1388,7 +1398,7 @@ mod test {
         let result = encoder.encode(&[*byte_code1, *byte_code2], &[0, 0], &label_offsets);
         assert!(result.is_ok());
 
-        let (code, lines) = result.unwrap();
+        let EncodedChunk { code, lines } = result.unwrap();
         assert_eq!(code.len(), *size1 + size2);
         assert_eq!(lines.len(), *size1 + size2);
       }

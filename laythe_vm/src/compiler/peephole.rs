@@ -1,5 +1,5 @@
 use crate::{
-  byte_code::{SymbolicByteCode, ByteCodeEncoder}, cache::CacheIdEmitter, chunk_builder::ChunkBuilder, source::VmFileId,
+  byte_code::{SymbolicByteCode, ByteCodeEncoder, EncodedChunk}, cache::CacheIdEmitter, chunk_builder::ChunkBuilder, source::VmFileId,
 };
 use bumpalo::{collections, Bump};
 use codespan_reporting::diagnostic::Diagnostic;
@@ -79,7 +79,7 @@ impl<T: Copy> VecCursor<T> {
   }
 
   pub fn copy_cursors(&mut self) {
-    let value = self.read().clone();
+    let value = self.read();
     self.write(value);
   }
 }
@@ -111,9 +111,9 @@ pub fn peephole_compile<'a>(
   let errors = collections::Vec::new_in(alloc);
 
   let encoder = ByteCodeEncoder::new(line_buffer, code_buffer, errors, cache_id_emitter);
-  let (code_buffer, lines) = encoder.encode(&*instructions, &*lines, &label_offsets[..label_count])?;
+  let EncodedChunk { code, lines } = encoder.encode(&instructions, &lines, &label_offsets[..label_count])?;
 
-  let instructions = hooks.manage(&*code_buffer);
+  let instructions = hooks.manage(&*code);
   hooks.push_root(instructions);
   let constants = hooks.manage(&*constants);
   hooks.push_root(constants);
