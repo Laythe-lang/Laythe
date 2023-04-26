@@ -1,4 +1,3 @@
-use laythe_core::chunk::Line;
 use laythe_core::managed::DebugWrap;
 use laythe_core::{managed::DebugHeap, managed::Trace, value::Value};
 
@@ -15,7 +14,7 @@ pub struct ChunkBuilder {
   constants: Vec<Value>,
 
   /// debug line information
-  lines: Vec<Line>,
+  lines: Vec<u16>,
 }
 
 impl ChunkBuilder {
@@ -26,20 +25,9 @@ impl ChunkBuilder {
   }
 
   /// Write an instruction to this chunk
-  pub fn write_instruction(&mut self, instruction: SymbolicByteCode, line: u32) {
+  pub fn write_instruction(&mut self, instruction: SymbolicByteCode, line: u16) {
     self.instructions.push(instruction);
-    let len = self.instructions.len() as u32;
-
-    match self.lines.last_mut() {
-      Some(last_line) => {
-        if last_line.line == line {
-          last_line.offset = len;
-        } else {
-          self.lines.push(Line::new(line, len));
-        }
-      },
-      None => self.lines.push(Line::new(line, len)),
-    }
+    self.lines.push(line);
   }
 
   /// Retrieve a constant in the constants table at
@@ -57,22 +45,17 @@ impl ChunkBuilder {
 
   /// Takes the ownership of the internal pieces of this
   /// chunk builder
-  pub fn take(self) -> (Vec<SymbolicByteCode>, Vec<Value>, Vec<Line>) {
+  pub fn take(self) -> (Vec<SymbolicByteCode>, Vec<Value>, Vec<u16>) {
     (self.instructions, self.constants, self.lines)
   }
 
   /// Get the line number at a token offset
   #[cfg(feature = "debug")]
-  pub fn get_line(&self, offset: usize) -> u32 {
-    use std::cmp;
-
-    let result = self
-      .lines
-      .binary_search_by_key(&(offset), |line| line.offset as usize);
-
-    match result {
-      Ok(index) => self.lines[index].line,
-      Err(index) => self.lines[cmp::min(index, self.lines.len() - 1)].line,
+  pub fn get_line(&self, offset: usize) -> u16 {
+    if offset == self.lines.len() {
+      self.lines[offset - 1]
+    } else {
+      self.lines[offset]
     }
   }
 }
@@ -103,18 +86,6 @@ impl DebugHeap for ChunkBuilder {
 #[cfg(test)]
 mod test {
   use super::*;
-
-  #[cfg(test)]
-  mod line {
-    use super::*;
-
-    #[test]
-    fn line_new() {
-      let line = Line::new(10, 5);
-      assert_eq!(line.line, 10);
-      assert_eq!(line.offset, 5);
-    }
-  }
 
   #[cfg(test)]
   mod chunk_builder {
@@ -160,8 +131,7 @@ mod test {
 
       assert_eq!(instructions[0], SymbolicByteCode::Nil);
       assert_eq!(constants[0], VALUE_NIL);
-      assert_eq!(lines[0].line, 0);
-      assert_eq!(lines[0].offset, 1);
+      assert_eq!(lines[0], 0);
     }
   }
 }
