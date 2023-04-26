@@ -4,7 +4,7 @@ use crate::{
 use bumpalo::{collections, Bump};
 use codespan_reporting::diagnostic::Diagnostic;
 use laythe_core::{
-  chunk::Chunk,
+  chunk::{Chunk, Line},
   hooks::GcHooks,
   object::{Fun, FunBuilder},
 };
@@ -12,16 +12,17 @@ use std::{cell::RefCell, rc::Rc};
 
 pub fn peephole_compile(
   hooks: &GcHooks,
-  fun_builder: FunBuilder,
+  mut fun_builder: FunBuilder,
   chunk_builder: ChunkBuilder,
   alloc: &Bump,
   cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
 ) -> Result<Fun, Vec<Diagnostic<VmFileId>>> {
-  let (instructions, constants, mut lines) = chunk_builder.take();
+  let (mut instructions, constants, mut lines) = chunk_builder.take();
 
-  let instructions = peephole_optimize(instructions);
+  peephole_optimize(&mut instructions, &mut lines);
 
   let label_count = label_count(&instructions);
+  apply_stack_effects(&mut fun_builder, &instructions);
 
   let mut label_offsets: collections::Vec<usize> = bumpalo::vec![in alloc; 0; label_count];
 
@@ -70,28 +71,34 @@ pub fn peephole_compile(
   }
 }
 
-fn peephole_optimize(mut instructions: Vec<SymbolicByteCode>) -> Vec<SymbolicByteCode> {
+fn peephole_optimize(instructions: &mut Vec<SymbolicByteCode>, lines: &mut [Line]) {
   let mut reader: usize = 0;
   let mut writer: usize = 0;
 
   while reader < instructions.len() {
     match &instructions[reader..] {
       [SymbolicByteCode::Drop, SymbolicByteCode::Drop, ..] => {
-        drop(&mut instructions, &mut reader, &mut writer)
+        drop(instructions, lines, &mut reader, &mut writer)
       },
       [SymbolicByteCode::GetProperty(slot), SymbolicByteCode::PropertySlot, SymbolicByteCode::Call(args), ..] =>
       {
         let slot = *slot;
         let args = *args;
 
-        invoke(&mut instructions, &mut reader, &mut writer, slot, args)
+        invoke(instructions, lines, &mut reader, &mut writer, slot, args)
       },
       [SymbolicByteCode::GetSuper(slot), SymbolicByteCode::PropertySlot, SymbolicByteCode::Call(args), ..] =>
       {
         let slot = *slot;
         let args = *args;
 
-        invoke_super(&mut instructions, &mut reader, &mut writer, slot, args)
+        invoke_super(instructions, lines, &mut reader, &mut writer, slot, args)
+      },
+      [SymbolicByteCode::Jump(_)
+      | SymbolicByteCode::Loop(_)
+      | SymbolicByteCode::Return
+      | SymbolicByteCode::Raise, ..] => {
+        remove_dead_code(instructions, lines, &mut reader, &mut writer)
       },
       [SymbolicByteCode::ArgumentDelimiter, ..] => {
         reader += 1;
@@ -105,10 +112,14 @@ fn peephole_optimize(mut instructions: Vec<SymbolicByteCode>) -> Vec<SymbolicByt
   }
 
   instructions.truncate(writer);
-  instructions
 }
 
-pub fn drop(instructions: &mut [SymbolicByteCode], reader: &mut usize, writer: &mut usize) {
+pub fn drop(
+  instructions: &mut [SymbolicByteCode],
+  lines: &mut [Line],
+  reader: &mut usize,
+  writer: &mut usize,
+) {
   let mut drop_count: u8 = 1;
   let mut local_reader = *reader;
 
@@ -124,12 +135,14 @@ pub fn drop(instructions: &mut [SymbolicByteCode], reader: &mut usize, writer: &
   } else {
     SymbolicByteCode::DropN(drop_count)
   };
+
   *writer += 1;
   *reader = local_reader + 1;
 }
 
 pub fn invoke(
   instructions: &mut [SymbolicByteCode],
+  lines: &mut [Line],
   reader: &mut usize,
   writer: &mut usize,
   slot: u16,
@@ -144,6 +157,7 @@ pub fn invoke(
 
 pub fn invoke_super(
   instructions: &mut [SymbolicByteCode],
+  lines: &mut [Line],
   reader: &mut usize,
   writer: &mut usize,
   slot: u16,
@@ -156,6 +170,27 @@ pub fn invoke_super(
   *reader += 3;
 }
 
+pub fn remove_dead_code(
+  instructions: &mut [SymbolicByteCode],
+  lines: &mut [Line],
+  reader: &mut usize,
+  writer: &mut usize,
+) {
+  instructions[*writer] = instructions[*reader];
+  let mut local_reader = *reader;
+
+  while local_reader + 1 < instructions.len() {
+    if let SymbolicByteCode::Label(_) = instructions[local_reader + 1] {
+      break;
+    }
+
+    local_reader += 1;
+  }
+
+  *reader = local_reader + 1;
+  *writer += 1;
+}
+
 fn label_count(instructions: &[SymbolicByteCode]) -> usize {
   let mut count = 0;
 
@@ -166,6 +201,16 @@ fn label_count(instructions: &[SymbolicByteCode]) -> usize {
   }
 
   count
+}
+
+fn apply_stack_effects(fun_builder: &mut FunBuilder, instructions: &[SymbolicByteCode]) {
+  let mut slots = 1;
+
+  for instruction in instructions {
+    slots += instruction.stack_effect();
+    debug_assert!(slots >= 0);
+    fun_builder.update_max_slots(slots);
+  }
 }
 
 fn compute_label_offsets(instructions: &[SymbolicByteCode], label_offsets: &mut [usize]) {
@@ -239,8 +284,9 @@ mod test {
       ];
       let mut reader = 0;
       let mut writer = 0;
+      let mut lines = vec![];
 
-      drop(&mut instructions, &mut reader, &mut writer);
+      drop(&mut instructions, &mut lines, &mut reader, &mut writer);
       assert_eq!(instructions[0], SymbolicByteCode::DropN(2));
       assert_eq!(reader, 2);
       assert_eq!(writer, 1);
@@ -248,7 +294,7 @@ mod test {
       reader = 3;
       writer = 1;
 
-      drop(&mut instructions, &mut reader, &mut writer);
+      drop(&mut instructions, &mut lines, &mut reader, &mut writer);
       assert_eq!(instructions[1], SymbolicByteCode::DropN(3));
       assert_eq!(reader, 6);
       assert_eq!(writer, 2);
@@ -266,8 +312,16 @@ mod test {
       ];
       let mut reader = 0;
       let mut writer = 0;
+      let mut lines = vec![];
 
-      invoke(&mut instructions, &mut reader, &mut writer, slot, args);
+      invoke(
+        &mut instructions,
+        &mut lines,
+        &mut reader,
+        &mut writer,
+        slot,
+        args,
+      );
       assert_eq!(instructions[0], SymbolicByteCode::Invoke((slot, args)));
       assert_eq!(instructions[1], SymbolicByteCode::InvokeSlot);
       assert_eq!(reader, 3);
@@ -286,12 +340,31 @@ mod test {
       ];
       let mut reader = 0;
       let mut writer = 0;
+      let mut lines = vec![];
 
-      invoke_super(&mut instructions, &mut reader, &mut writer, slot, args);
+      invoke_super(&mut instructions, &mut lines, &mut reader, &mut writer, slot, args);
       assert_eq!(instructions[0], SymbolicByteCode::SuperInvoke((slot, args)));
       assert_eq!(instructions[1], SymbolicByteCode::InvokeSlot);
       assert_eq!(reader, 3);
       assert_eq!(writer, 2);
+    }
+
+    #[test]
+    fn remove_dead_code_replacement() {
+      let mut instructions = [
+        SymbolicByteCode::Raise,
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::Nil,
+        SymbolicByteCode::Constant(0),
+      ];
+      let mut reader = 0;
+      let mut writer = 0;
+      let mut lines = vec![];
+
+      remove_dead_code(&mut instructions, &mut lines, &mut reader, &mut writer);
+      assert_eq!(instructions[0], SymbolicByteCode::Raise);
+      assert_eq!(reader, 4);
+      assert_eq!(writer, 1);
     }
   }
 
@@ -313,10 +386,14 @@ mod test {
         SymbolicByteCode::GetSuper(1),
         SymbolicByteCode::PropertySlot,
         SymbolicByteCode::Call(2),
+        SymbolicByteCode::Raise,
+        SymbolicByteCode::False,
       ];
+      let mut lines = vec![];
 
-      instructions = peephole_optimize(instructions);
+      peephole_optimize(&mut instructions, &mut lines);
 
+      assert_eq!(instructions.len(), 8);
       assert_eq!(instructions[0], SymbolicByteCode::DropN(2));
       assert_eq!(instructions[1], SymbolicByteCode::Invoke((3, 1)));
       assert_eq!(instructions[2], SymbolicByteCode::InvokeSlot);
@@ -324,6 +401,7 @@ mod test {
       assert_eq!(instructions[4], SymbolicByteCode::DropN(3));
       assert_eq!(instructions[5], SymbolicByteCode::SuperInvoke((1, 2)));
       assert_eq!(instructions[6], SymbolicByteCode::InvokeSlot);
+      assert_eq!(instructions[7], SymbolicByteCode::Raise);
     }
   }
 }

@@ -126,13 +126,6 @@ pub struct LoopAttributes {
   end: Label,
 }
 
-#[derive(Debug, Clone, Copy)]
-enum ScopeExit {
-  Normal,
-  Early,
-  Implicit,
-}
-
 #[derive(Default)]
 pub struct LabelEmitter(u32);
 
@@ -184,9 +177,6 @@ pub struct Compiler<'a, 'src> {
 
   /// The info on the current loop
   loop_attributes: Option<LoopAttributes>,
-
-  /// Should we early exit scope (break / continue)
-  exit_scope: ScopeExit,
 
   /// The id emitter for inline cache
   cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
@@ -291,7 +281,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       class_attributes: None,
       loop_attributes: None,
       try_attributes: None,
-      exit_scope: ScopeExit::Normal,
       gc: RefCell::new(gc),
       enclosing: None,
       local_tables: collections::Vec::new_in(alloc),
@@ -317,7 +306,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     let end = ast.end();
     let cache_id_emitter = Rc::clone(&self.cache_id_emitter);
-    let (fun, errors, _, gc) = self.end_compiler(end, ScopeExit::Normal);
+    let (fun, errors, _, gc) = self.end_compiler(end);
     if errors.is_empty() {
       (Ok(fun), gc, cache_id_emitter.take())
     } else {
@@ -363,7 +352,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       class_attributes: enclosing.class_attributes,
       loop_attributes: None,
       try_attributes: None,
-      exit_scope: ScopeExit::Normal,
       gc,
       locals: collections::Vec::new_in(enclosing.alloc),
       global_table: None,
@@ -385,13 +373,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn end_compiler(
     mut self,
     line: u32,
-    exit: ScopeExit,
   ) -> (Fun, Vec<Diagnostic<VmFileId>>, Vec<CaptureIndex>, Allocator) {
-    match exit {
-      ScopeExit::Normal => self.emit_return(line),
-      ScopeExit::Implicit => self.emit_byte(SymbolicByteCode::Return, line),
-      ScopeExit::Early => (),
-    }
+    self.emit_return(line);
 
     let context = NoContext::new(self.gc.into_inner());
     let hooks = GcHooks::new(&context);
@@ -511,13 +494,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn end_scope(&mut self, end_line: u32) {
     self.scope_depth -= 1;
     let new_local_count = self.drop_local_count(self.scope_depth);
-    let exit_scope = mem::replace(&mut self.exit_scope, ScopeExit::Normal);
 
-    // only emit drop instructions if we haven't already exited this scope
-    match exit_scope {
-      ScopeExit::Normal | ScopeExit::Implicit => self.drop_locals(end_line, new_local_count),
-      ScopeExit::Early => (),
-    }
+    self.drop_locals(end_line, new_local_count);
 
     self.locals.truncate(new_local_count);
     self.local_tables.pop();
@@ -832,10 +810,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       .offset_line(offset as usize)
       .expect("Line offset out of bounds");
 
-    self.slots += op_code.stack_effect();
-    debug_assert!(self.slots >= 0);
-    self.fun.update_max_slots(self.slots);
-
     self.write_instruction(op_code, line as u32 + 1);
   }
 
@@ -936,7 +910,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       },
       Stmt::ImplicitReturn(expr) => {
         self.expr(expr);
-        self.exit_scope = ScopeExit::Implicit
+        self.emit_byte(SymbolicByteCode::Return, expr.end());
       },
       Stmt::Import(import) => self.import(import),
       Stmt::For(for_) => self.for_(for_),
@@ -1209,15 +1183,13 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       ast::FunBody::Expr(expr) => {
         compiler.expr(expr);
         compiler.emit_byte(SymbolicByteCode::Return, expr.end());
-        compiler.exit_scope = ScopeExit::Early;
       },
     };
 
-    let exit_scope = compiler.exit_scope;
     let end_line = fun.end();
 
     // end compilation of function chunk
-    let (fun, errors, captures, gc) = compiler.end_compiler(end_line, exit_scope);
+    let (fun, errors, captures, gc) = compiler.end_compiler(end_line);
 
     self.gc.replace(gc);
 
@@ -1450,7 +1422,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       },
       None => self.emit_return(return_.start()),
     }
-    self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a return statement
@@ -1474,7 +1445,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       SymbolicByteCode::Loop(loop_attributes.start),
       continue_.start(),
     );
-    self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a return statement
@@ -1495,7 +1465,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     }
 
     self.emit_byte(SymbolicByteCode::Jump(loop_attributes.end), break_.start());
-    self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a try catch block
@@ -1543,15 +1512,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.expr(&raise.error);
 
     self.emit_byte(SymbolicByteCode::Raise, raise.end());
-    self.exit_scope = ScopeExit::Early;
   }
 
   /// Compile a block
   fn block(&mut self, block: &'a ast::Block<'src>) {
     for decl in &block.decls {
-      if let ScopeExit::Early = self.exit_scope {
-        break;
-      }
       self.decl(decl);
     }
   }
@@ -2712,15 +2677,13 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(20),
-        AlignedByteCode::PushHandler((1, 8)),
+        AlignedByteCode::JumpIfFalse(16),
+        AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(11),
-        AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(4),
+        AlignedByteCode::Jump(7),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(3),
-        AlignedByteCode::Loop(24),
+        AlignedByteCode::Loop(20),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2747,15 +2710,13 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(20),
-        AlignedByteCode::PushHandler((1, 8)),
+        AlignedByteCode::JumpIfFalse(16),
+        AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Loop(13),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(4),
-        AlignedByteCode::PopHandler,
-        AlignedByteCode::Loop(21),
-        AlignedByteCode::Loop(24),
+        AlignedByteCode::Loop(17),
+        AlignedByteCode::Loop(20),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2785,12 +2746,10 @@ mod test {
           1,
           2,
           vec![
-            ByteCodeTest::Code(AlignedByteCode::PushHandler((1, 7))),
+            ByteCodeTest::Code(AlignedByteCode::PushHandler((1, 3))),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
             ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::PopHandler),
-            ByteCodeTest::Code(AlignedByteCode::Jump(3)),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3404,12 +3363,11 @@ mod test {
       3,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(11),
+        AlignedByteCode::JumpIfFalse(8),
         AlignedByteCode::GetGlobal(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Raise,
-        AlignedByteCode::Loop(15),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4290,9 +4248,8 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(6),
-        AlignedByteCode::Jump(3),
-        AlignedByteCode::Loop(10),
+        AlignedByteCode::JumpIfFalse(3),
+        AlignedByteCode::Jump(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4310,11 +4267,10 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(9),
+        AlignedByteCode::JumpIfFalse(6),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Drop,
-        AlignedByteCode::Jump(3),
-        AlignedByteCode::Loop(13),
+        AlignedByteCode::Jump(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4340,9 +4296,8 @@ mod test {
           2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::JumpIfFalse(6)),
-            ByteCodeTest::Code(AlignedByteCode::Jump(3)),
-            ByteCodeTest::Code(AlignedByteCode::Loop(10)),
+            ByteCodeTest::Code(AlignedByteCode::JumpIfFalse(3)),
+            ByteCodeTest::Code(AlignedByteCode::Jump(0)),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
@@ -4365,9 +4320,8 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(6),
+        AlignedByteCode::JumpIfFalse(3),
         AlignedByteCode::Loop(7),
-        AlignedByteCode::Loop(10),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4385,11 +4339,10 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(9),
+        AlignedByteCode::JumpIfFalse(6),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Loop(10),
-        AlignedByteCode::Loop(13),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4415,9 +4368,8 @@ mod test {
           2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::JumpIfFalse(6)),
+            ByteCodeTest::Code(AlignedByteCode::JumpIfFalse(3)),
             ByteCodeTest::Code(AlignedByteCode::Loop(7)),
-            ByteCodeTest::Code(AlignedByteCode::Loop(10)),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
