@@ -810,11 +810,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       .offset_line(offset as usize)
       .expect("Line offset out of bounds");
 
-    self.write_instruction(op_code, line as u32 + 1);
+    self.write_instruction(op_code, line as u16 + 1);
   }
 
   /// write instruction to the current function
-  fn write_instruction(&mut self, op_code: SymbolicByteCode, line: u32) {
+  fn write_instruction(&mut self, op_code: SymbolicByteCode, line: u16) {
     self.chunk.write_instruction(op_code, line)
   }
 

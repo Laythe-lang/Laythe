@@ -258,126 +258,6 @@ pub enum SymbolicByteCode {
 }
 
 impl SymbolicByteCode {
-  /// Encode aligned bytecode as unaligned bytecode for better storage / compactness
-  pub fn encode(
-    self,
-    code: &mut Vec<u8>,
-    label_offsets: &[usize],
-    cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
-    offset: usize,
-  ) -> Option<Diagnostic<VmFileId>> {
-    match self {
-      Self::Return => op(code, ByteCode::Return),
-      Self::Negate => op(code, ByteCode::Negate),
-      Self::Add => op(code, ByteCode::Add),
-      Self::Subtract => op(code, ByteCode::Subtract),
-      Self::Multiply => op(code, ByteCode::Multiply),
-      Self::Divide => op(code, ByteCode::Divide),
-      Self::And(target) => {
-        let jump = label_offsets[target.0 as usize] - offset - 3;
-        op_jump(code, ByteCode::And, jump)
-      },
-      Self::Or(target) => {
-        let jump = label_offsets[target.0 as usize] - offset - 3;
-        op_jump(code, ByteCode::Or, jump)
-      },
-      Self::Not => op(code, ByteCode::Not),
-      Self::Nil => op(code, ByteCode::Nil),
-      Self::True => op(code, ByteCode::True),
-      Self::False => op(code, ByteCode::False),
-      Self::List(slot) => op_short(code, ByteCode::List, slot),
-      Self::Tuple(slot) => op_short(code, ByteCode::Tuple, slot),
-      Self::Map(slot) => op_short(code, ByteCode::Map, slot),
-      Self::Launch(slot) => op_byte(code, ByteCode::Launch, slot),
-      Self::Channel => op(code, ByteCode::Channel),
-      Self::BufferedChannel => op(code, ByteCode::BufferedChannel),
-      Self::Receive => op(code, ByteCode::Receive),
-      Self::Send => op(code, ByteCode::Send),
-      Self::Interpolate(slot) => op_short(code, ByteCode::Interpolate, slot),
-      Self::IterNext(slot) => op_short(code, ByteCode::IterNext, slot),
-      Self::IterCurrent(slot) => op_short(code, ByteCode::IterCurrent, slot),
-      Self::Equal => op(code, ByteCode::Equal),
-      Self::NotEqual => op(code, ByteCode::NotEqual),
-      Self::Greater => op(code, ByteCode::Greater),
-      Self::GreaterEqual => op(code, ByteCode::GreaterEqual),
-      Self::Less => op(code, ByteCode::Less),
-      Self::LessEqual => op(code, ByteCode::LessEqual),
-      Self::Drop => op(code, ByteCode::Drop),
-      Self::DropN(slot) => op_byte(code, ByteCode::DropN, slot),
-      Self::Dup => op(code, ByteCode::Dup),
-      Self::Constant(slot) => op_byte(code, ByteCode::Constant, slot),
-      Self::ConstantLong(slot) => op_short(code, ByteCode::ConstantLong, slot),
-      Self::Import(path) => op_short(code, ByteCode::Import, path),
-      Self::ImportSymbol((path, slot)) => {
-        push_op_u16_tuple(code, ByteCode::ImportSymbol, path, slot)
-      },
-      Self::Export(slot) => op_short(code, ByteCode::Export, slot),
-      Self::DefineGlobal(slot) => op_short(code, ByteCode::DefineGlobal, slot),
-      Self::GetGlobal(slot) => op_short(code, ByteCode::GetGlobal, slot),
-      Self::SetGlobal(slot) => op_short(code, ByteCode::SetGlobal, slot),
-      Self::Box(slot) => op_byte(code, ByteCode::Box, slot),
-      Self::EmptyBox => op(code, ByteCode::EmptyBox),
-      Self::FillBox => op(code, ByteCode::FillBox),
-      Self::GetBox(slot) => op_byte(code, ByteCode::GetBox, slot),
-      Self::SetBox(slot) => op_byte(code, ByteCode::SetBox, slot),
-      Self::GetLocal(slot) => op_byte(code, ByteCode::GetLocal, slot),
-      Self::SetLocal(slot) => op_byte(code, ByteCode::SetLocal, slot),
-      Self::GetCapture(slot) => op_byte(code, ByteCode::GetCapture, slot),
-      Self::SetCapture(slot) => op_byte(code, ByteCode::SetCapture, slot),
-      Self::GetProperty(slot) => op_short(code, ByteCode::GetProperty, slot),
-      Self::SetProperty(slot) => op_short(code, ByteCode::SetProperty, slot),
-      Self::JumpIfFalse(target) => {
-        let jump = label_offsets[target.0 as usize] - offset - 3;
-        op_jump(code, ByteCode::JumpIfFalse, jump)
-      },
-      Self::Jump(target) => {
-        let jump = label_offsets[target.0 as usize] - offset - 3;
-        op_jump(code, ByteCode::Jump, jump)
-      },
-      Self::Loop(target) => {
-        let jump = offset - label_offsets[target.0 as usize] + 3;
-        op_jump(code, ByteCode::Loop, jump)
-      },
-      Self::PushHandler((slots, target)) => {
-        let jump = label_offsets[target.0 as usize] - offset - 5;
-        push_op_u16_tuple(code, ByteCode::PushHandler, slots, (jump) as u16);
-        jump_error(jump)
-      },
-      Self::PopHandler => op(code, ByteCode::PopHandler),
-      Self::Raise => op(code, ByteCode::Raise),
-      Self::Call(slot) => op_byte(code, ByteCode::Call, slot),
-      Self::Invoke((slot1, slot2)) => push_op_u16_u8_tuple(code, ByteCode::Invoke, slot1, slot2),
-      Self::SuperInvoke((slot1, slot2)) => {
-        push_op_u16_u8_tuple(code, ByteCode::SuperInvoke, slot1, slot2)
-      },
-      Self::Closure(slot) => op_short(code, ByteCode::Closure, slot),
-      Self::Method(slot) => op_short(code, ByteCode::Method, slot),
-      Self::Field(slot) => op_short(code, ByteCode::Field, slot),
-      Self::StaticMethod(slot) => op_short(code, ByteCode::StaticMethod, slot),
-      Self::Class(slot) => op_short(code, ByteCode::Class, slot),
-      Self::Inherit => op(code, ByteCode::Inherit),
-      Self::GetSuper(slot) => op_short(code, ByteCode::GetSuper, slot),
-      Self::CaptureIndex(index) => {
-        let encoded: u16 = unsafe { mem::transmute(index) };
-        let bytes = encoded.to_ne_bytes();
-        code.extend_from_slice(&bytes);
-        None
-      },
-      Self::PropertySlot => {
-        let bytes = cache_id_emitter.borrow_mut().emit_property().to_ne_bytes();
-        code.extend_from_slice(&bytes);
-        None
-      },
-      Self::InvokeSlot => {
-        let bytes = cache_id_emitter.borrow_mut().emit_invoke().to_ne_bytes();
-        code.extend_from_slice(&bytes);
-        None
-      },
-      Self::Label(_) => None,
-      Self::ArgumentDelimiter => None,
-    }
-  }
-
   /// What is the len of this instruction once encoded
   pub const fn len(&self) -> usize {
     match self {
@@ -535,74 +415,253 @@ impl SymbolicByteCode {
   }
 }
 
-fn jump_error(jump: usize) -> Option<Diagnostic<VmFileId>> {
-  if jump > u16::MAX as usize {
-    Some(Diagnostic::error().with_message("Unable to jump so far."))
-  } else {
-    None
+pub struct ByteCodeEncoder<'a> {
+  encoded_lines: Vec<'a, u16>,
+  encoded_code: Vec<'a, u8>,
+  errors: Vec<'a, Diagnostic<VmFileId>>,
+  cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
+}
+
+impl<'a> ByteCodeEncoder<'a> {
+  pub fn new(
+    encoded_lines: Vec<'a, u16>,
+    encoded_code: Vec<'a, u8>,
+    errors: Vec<'a, Diagnostic<VmFileId>>,
+    cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
+  ) -> Self {
+    Self {
+      encoded_lines,
+      encoded_code,
+      errors,
+      cache_id_emitter,
+    }
   }
-}
 
-fn op(code: &mut Vec<u8>, byte_code: ByteCode) -> Option<Diagnostic<VmFileId>> {
-  push_op(code, byte_code);
-  None
-}
+  pub fn encode(
+    mut self,
+    symbolic_code: &[SymbolicByteCode],
+    symbolic_lines: &[u16],
+    label_offsets: &[usize],
+  ) -> Result<(Vec<'a, u8>, Vec<'a, u16>), Vec<'a, Diagnostic<VmFileId>>> {
+    let mut offset: usize = 0;
 
-fn op_byte(code: &mut Vec<u8>, byte_code: ByteCode, byte: u8) -> Option<Diagnostic<VmFileId>> {
-  push_op_u8(code, byte_code, byte);
-  None
-}
+    for (instruction, line) in symbolic_code.iter().zip(symbolic_lines) {
+      match instruction {
+        SymbolicByteCode::Return => self.op(ByteCode::Return, *line),
+        SymbolicByteCode::Negate => self.op(ByteCode::Negate, *line),
+        SymbolicByteCode::Add => self.op(ByteCode::Add, *line),
+        SymbolicByteCode::Subtract => self.op(ByteCode::Subtract, *line),
+        SymbolicByteCode::Multiply => self.op(ByteCode::Multiply, *line),
+        SymbolicByteCode::Divide => self.op(ByteCode::Divide, *line),
+        SymbolicByteCode::And(target) => {
+          let jump = label_offsets[target.0 as usize] - offset - 3;
+          self.op_jump(ByteCode::And, *line, jump)
+        },
+        SymbolicByteCode::Or(target) => {
+          let jump = label_offsets[target.0 as usize] - offset - 3;
+          self.op_jump(ByteCode::Or, *line, jump)
+        },
+        SymbolicByteCode::Not => self.op(ByteCode::Not, *line),
+        SymbolicByteCode::Nil => self.op(ByteCode::Nil, *line),
+        SymbolicByteCode::True => self.op(ByteCode::True, *line),
+        SymbolicByteCode::False => self.op(ByteCode::False, *line),
+        SymbolicByteCode::List(slot) => self.op_short(ByteCode::List, *line, *slot),
+        SymbolicByteCode::Tuple(slot) => self.op_short(ByteCode::Tuple, *line, *slot),
+        SymbolicByteCode::Map(slot) => self.op_short(ByteCode::Map, *line, *slot),
+        SymbolicByteCode::Launch(slot) => self.op_byte(ByteCode::Launch, *line, *slot),
+        SymbolicByteCode::Channel => self.op(ByteCode::Channel, *line),
+        SymbolicByteCode::BufferedChannel => self.op(ByteCode::BufferedChannel, *line),
+        SymbolicByteCode::Receive => self.op(ByteCode::Receive, *line),
+        SymbolicByteCode::Send => self.op(ByteCode::Send, *line),
+        SymbolicByteCode::Interpolate(slot) => self.op_short(ByteCode::Interpolate, *line, *slot),
+        SymbolicByteCode::IterNext(slot) => self.op_short(ByteCode::IterNext, *line, *slot),
+        SymbolicByteCode::IterCurrent(slot) => self.op_short(ByteCode::IterCurrent, *line, *slot),
+        SymbolicByteCode::Equal => self.op(ByteCode::Equal, *line),
+        SymbolicByteCode::NotEqual => self.op(ByteCode::NotEqual, *line),
+        SymbolicByteCode::Greater => self.op(ByteCode::Greater, *line),
+        SymbolicByteCode::GreaterEqual => self.op(ByteCode::GreaterEqual, *line),
+        SymbolicByteCode::Less => self.op(ByteCode::Less, *line),
+        SymbolicByteCode::LessEqual => self.op(ByteCode::LessEqual, *line),
+        SymbolicByteCode::Drop => self.op(ByteCode::Drop, *line),
+        SymbolicByteCode::DropN(slot) => self.op_byte(ByteCode::DropN, *line, *slot),
+        SymbolicByteCode::Dup => self.op(ByteCode::Dup, *line),
+        SymbolicByteCode::Constant(slot) => self.op_byte(ByteCode::Constant, *line, *slot),
+        SymbolicByteCode::ConstantLong(slot) => self.op_short(ByteCode::ConstantLong, *line, *slot),
+        SymbolicByteCode::Import(path) => self.op_short(ByteCode::Import, *line, *path),
+        SymbolicByteCode::ImportSymbol((path, slot)) => {
+          self.push_op_u16_tuple(ByteCode::ImportSymbol, *line, *path, *slot)
+        },
+        SymbolicByteCode::Export(slot) => self.op_short(ByteCode::Export, *line, *slot),
+        SymbolicByteCode::DefineGlobal(slot) => self.op_short(ByteCode::DefineGlobal, *line, *slot),
+        SymbolicByteCode::GetGlobal(slot) => self.op_short(ByteCode::GetGlobal, *line, *slot),
+        SymbolicByteCode::SetGlobal(slot) => self.op_short(ByteCode::SetGlobal, *line, *slot),
+        SymbolicByteCode::Box(slot) => self.op_byte(ByteCode::Box, *line, *slot),
+        SymbolicByteCode::EmptyBox => self.op(ByteCode::EmptyBox, *line),
+        SymbolicByteCode::FillBox => self.op(ByteCode::FillBox, *line),
+        SymbolicByteCode::GetBox(slot) => self.op_byte(ByteCode::GetBox, *line, *slot),
+        SymbolicByteCode::SetBox(slot) => self.op_byte(ByteCode::SetBox, *line, *slot),
+        SymbolicByteCode::GetLocal(slot) => self.op_byte(ByteCode::GetLocal, *line, *slot),
+        SymbolicByteCode::SetLocal(slot) => self.op_byte(ByteCode::SetLocal, *line, *slot),
+        SymbolicByteCode::GetCapture(slot) => self.op_byte(ByteCode::GetCapture, *line, *slot),
+        SymbolicByteCode::SetCapture(slot) => self.op_byte(ByteCode::SetCapture, *line, *slot),
+        SymbolicByteCode::GetProperty(slot) => self.op_short(ByteCode::GetProperty, *line, *slot),
+        SymbolicByteCode::SetProperty(slot) => self.op_short(ByteCode::SetProperty, *line, *slot),
+        SymbolicByteCode::JumpIfFalse(target) => {
+          let jump = label_offsets[target.0 as usize] - offset - 3;
+          self.op_jump(ByteCode::JumpIfFalse, *line, jump)
+        },
+        SymbolicByteCode::Jump(target) => {
+          let jump = label_offsets[target.0 as usize] - offset - 3;
+          self.op_jump(ByteCode::Jump, *line, jump)
+        },
+        SymbolicByteCode::Loop(target) => {
+          let jump = offset - label_offsets[target.0 as usize] + 3;
+          self.op_jump(ByteCode::Loop, *line, jump)
+        },
+        SymbolicByteCode::PushHandler((slots, target)) => {
+          let jump = label_offsets[target.0 as usize] - offset - 5;
+          self.push_op_u16_tuple(ByteCode::PushHandler, *line, *slots, (jump) as u16);
+          self.jump_error(jump)
+        },
+        SymbolicByteCode::PopHandler => self.op(ByteCode::PopHandler, *line),
+        SymbolicByteCode::Raise => self.op(ByteCode::Raise, *line),
+        SymbolicByteCode::Call(slot) => self.op_byte(ByteCode::Call, *line, *slot),
+        SymbolicByteCode::Invoke((slot1, slot2)) => {
+          self.op_invoke(ByteCode::Invoke, *line, *slot1, *slot2)
+        },
+        SymbolicByteCode::SuperInvoke((slot1, slot2)) => {
+          self.op_invoke(ByteCode::SuperInvoke, *line, *slot1, *slot2)
+        },
+        SymbolicByteCode::Closure(slot) => self.op_short(ByteCode::Closure, *line, *slot),
+        SymbolicByteCode::Method(slot) => self.op_short(ByteCode::Method, *line, *slot),
+        SymbolicByteCode::Field(slot) => self.op_short(ByteCode::Field, *line, *slot),
+        SymbolicByteCode::StaticMethod(slot) => self.op_short(ByteCode::StaticMethod, *line, *slot),
+        SymbolicByteCode::Class(slot) => self.op_short(ByteCode::Class, *line, *slot),
+        SymbolicByteCode::Inherit => self.op(ByteCode::Inherit, *line),
+        SymbolicByteCode::GetSuper(slot) => self.op_short(ByteCode::GetSuper, *line, *slot),
+        SymbolicByteCode::CaptureIndex(index) => self.op_capture(*index, *line),
 
-fn op_jump(code: &mut Vec<u8>, byte_code: ByteCode, jump: usize) -> Option<Diagnostic<VmFileId>> {
-  op_short(code, byte_code, jump as u16);
-  jump_error(jump)
-}
+        // {
+        //   let encoded: u16 = unsafe { mem::transmute(*index) };
+        //   let bytes = encoded.to_ne_bytes();
+        //   self.encoded_code.extend_from_slice(&bytes);
+        // },
+        SymbolicByteCode::PropertySlot => self.op_property_slot(*line),
+        SymbolicByteCode::InvokeSlot => self.op_invoke_slot(*line),
+        SymbolicByteCode::Label(_) => (),
+        SymbolicByteCode::ArgumentDelimiter => (),
+      }
 
-fn op_short(code: &mut Vec<u8>, byte_code: ByteCode, short: u16) -> Option<Diagnostic<VmFileId>> {
-  push_op_u16(code, byte_code, short);
-  None
-}
+      debug_assert_eq!(self.encoded_lines.len(), self.encoded_code.len());
+      offset += instruction.len();
+    }
 
-fn push_op(code: &mut Vec<u8>, byte: ByteCode) {
-  code.push(byte.to_byte());
-}
+    if self.errors.is_empty() {
+      Ok((self.encoded_code, self.encoded_lines))
+    } else {
+      Err(self.errors)
+    }
+  }
 
-fn push_op_u8(code: &mut Vec<u8>, byte: ByteCode, param: u8) {
-  code.push(byte.to_byte());
-  code.push(param);
-}
+  fn jump_error(&mut self, jump: usize) {
+    if jump > u16::MAX as usize {
+      self
+        .errors
+        .push(Diagnostic::error().with_message("Unable to jump so far."));
+    }
+  }
 
-fn push_op_u16_u8_tuple(
-  code: &mut Vec<u8>,
-  byte: ByteCode,
-  param1: u16,
-  param2: u8,
-) -> Option<Diagnostic<VmFileId>> {
-  code.push(byte.to_byte());
-  let param_bytes = param1.to_ne_bytes();
-  code.extend_from_slice(&param_bytes);
-  code.push(param2);
-  None
-}
+  fn op(&mut self, byte_code: ByteCode, line: u16) {
+    self.encoded_code.push(byte_code.to_byte());
 
-fn push_op_u16(code: &mut Vec<u8>, byte: ByteCode, param: u16) {
-  let param_bytes = param.to_ne_bytes();
-  code.push(byte.to_byte());
-  code.extend_from_slice(&param_bytes);
-}
+    self.encoded_lines.push(line);
+  }
 
-fn push_op_u16_tuple(
-  code: &mut Vec<u8>,
-  byte: ByteCode,
-  param1: u16,
-  param2: u16,
-) -> Option<Diagnostic<VmFileId>> {
-  code.push(byte.to_byte());
-  let param_bytes = param1.to_ne_bytes();
-  code.extend_from_slice(&param_bytes);
-  let param_bytes = param2.to_ne_bytes();
-  code.extend_from_slice(&param_bytes);
-  None
+  fn op_byte(&mut self, byte_code: ByteCode, line: u16, byte: u8) {
+    self.encoded_code.push(byte_code.to_byte());
+    self.encoded_code.push(byte);
+
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+  }
+
+  fn op_jump(&mut self, byte_code: ByteCode, line: u16, jump: usize) {
+    self.op_short(byte_code, line, jump as u16);
+    self.jump_error(jump)
+  }
+
+  fn op_short(&mut self, byte_code: ByteCode, line: u16, short: u16) {
+    self.encoded_code.push(byte_code.to_byte());
+    let param_bytes = short.to_ne_bytes();
+    self.encoded_code.extend_from_slice(&param_bytes);
+
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+  }
+
+  fn op_capture(&mut self, index: CaptureIndex, line: u16) {
+    let encoded: u16 = unsafe { mem::transmute(index) };
+    let bytes = encoded.to_ne_bytes();
+    self.encoded_code.extend_from_slice(&bytes);
+
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+  }
+
+  fn op_invoke(&mut self, byte: ByteCode, line: u16, param1: u16, param2: u8) {
+    self.encoded_code.push(byte.to_byte());
+    let param_bytes = param1.to_ne_bytes();
+    self.encoded_code.extend_from_slice(&param_bytes);
+    self.encoded_code.push(param2);
+
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+  }
+
+  fn op_invoke_slot(&mut self, line: u16) {
+    let bytes = self
+      .cache_id_emitter
+      .borrow_mut()
+      .emit_invoke()
+      .to_ne_bytes();
+
+    self.encoded_code.extend_from_slice(&bytes);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+  }
+
+  fn op_property_slot(&mut self, line: u16) {
+    let bytes = self
+      .cache_id_emitter
+      .borrow_mut()
+      .emit_property()
+      .to_ne_bytes();
+
+    self.encoded_code.extend_from_slice(&bytes);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+  }
+
+  fn push_op_u16_tuple(&mut self, byte: ByteCode, line: u16, param1: u16, param2: u16) {
+    self.encoded_code.push(byte.to_byte());
+    let param_bytes = param1.to_ne_bytes();
+    self.encoded_code.extend_from_slice(&param_bytes);
+    let param_bytes = param2.to_ne_bytes();
+    self.encoded_code.extend_from_slice(&param_bytes);
+
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+    self.encoded_lines.push(line);
+  }
 }
 
 /// Laythe virtual machine byte codes
@@ -1242,6 +1301,14 @@ mod test {
   use super::*;
   use bumpalo::Bump;
 
+  fn test_encoder(bump: &Bump, cache_id_emitter: Rc<RefCell<CacheIdEmitter>>) -> ByteCodeEncoder {
+    let code_buffer = Vec::new_in(bump);
+    let line_buffer = Vec::new_in(bump);
+    let errors = Vec::new_in(bump);
+
+    ByteCodeEncoder::new(line_buffer, code_buffer, errors, cache_id_emitter)
+  }
+
   #[test]
   fn encode_len() {
     let bump = Bump::new();
@@ -1311,40 +1378,19 @@ mod test {
       (1, SymbolicByteCode::LessEqual),
     ];
 
-    let mut buffer = Vec::<u8>::with_capacity_in(20, &bump);
     let cache_id_emitter = Rc::new(RefCell::new(CacheIdEmitter::default()));
 
     for (size1, byte_code1) in &code {
       for (size2, byte_code2) in &code {
-        buffer.clear();
+        let encoder = test_encoder(&bump, Rc::clone(&cache_id_emitter));
         let label_offsets = [0, 10];
-        // TODO we probably need to dynamically calculate these labels so for the various jump instructions
 
-        let err1 = byte_code1.encode(&mut buffer, &label_offsets, Rc::clone(&cache_id_emitter), 0);
-        assert_eq!(
-          buffer.len(),
-          *size1,
-          "byte {:?} expected to be {} size",
-          *byte_code1,
-          *size1
-        );
-        assert!(err1.is_none());
+        let result = encoder.encode(&[*byte_code1, *byte_code2], &[0, 0], &label_offsets);
+        assert!(result.is_ok());
 
-        let len = buffer.len();
-        let err2 = byte_code2.encode(
-          &mut buffer,
-          &label_offsets,
-          Rc::clone(&cache_id_emitter),
-          len,
-        );
-        assert_eq!(
-          buffer.len() - size1,
-          *size2,
-          "byte {:?} expected to be {} size",
-          *byte_code2,
-          *size2
-        );
-        assert!(err2.is_none());
+        let (code, lines) = result.unwrap();
+        assert_eq!(code.len(), *size1 + size2);
+        assert_eq!(lines.len(), *size1 + size2);
       }
     }
   }
