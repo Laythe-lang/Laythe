@@ -3,7 +3,7 @@ use hashbrown::HashMap;
 
 use crate::{
   captures::Captures,
-  chunk::{Chunk, Line},
+  chunk::{Chunk},
   hooks::GcHooks,
   managed::{Gc, GcObj, GcStr},
   module::{module_class, Module},
@@ -64,7 +64,7 @@ impl FiberBuilder {
 
     let instructions = hooks.manage(&*self.instructions);
     let constants = hooks.manage::<_, &[Value]>(&[]);
-    let lines = hooks.manage::<_, &[Line]>(&[Line::new(0, instructions.len() as u32)]);
+    let lines = hooks.manage::<_, &[u16]>(&vec![0; instructions.len()]);
     let chunk = Chunk::new(instructions, constants, lines);
 
     let fun = hooks.manage_obj(fun.build(chunk));

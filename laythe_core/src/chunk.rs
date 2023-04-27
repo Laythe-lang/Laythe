@@ -2,7 +2,6 @@ use crate::hooks::GcHooks;
 use crate::managed::{Array, DebugWrap};
 use crate::{impl_debug_heap, impl_trace};
 use crate::{managed::DebugHeap, managed::Trace, value::Value};
-use std::cmp;
 use std::fmt::Debug;
 
 /// An object that can be encoded into a byte buffer
@@ -10,31 +9,14 @@ pub trait Encode: Sized {
   type Error: Debug;
 
   /// consume the object and return the number of bytes written to the buffer
-  fn encode(data: Vec<Self>, lines: Vec<Line>) -> Result<(Vec<u8>, Vec<Line>), Self::Error>;
-}
-
-/// Represent tokens on a line
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Line {
-  /// Line number
-  pub line: u32,
-
-  /// Count of tokens on the line
-  pub offset: u32,
-}
-
-impl Line {
-  /// Create a new line
-  pub fn new(line: u32, offset: u32) -> Line {
-    Line { line, offset }
-  }
+  fn encode(data: Vec<Self>, lines: Vec<u16>) -> Result<(Vec<u8>, Vec<u16>), Self::Error>;
 }
 
 impl_trace!(u8);
 impl_debug_heap!(u8);
 
-impl_trace!(Line);
-impl_debug_heap!(Line);
+impl_trace!(u16);
+impl_debug_heap!(u16);
 /// An immutable chunk of code
 #[derive(Clone, PartialEq, Eq)]
 pub struct Chunk {
@@ -45,12 +27,12 @@ pub struct Chunk {
   constants: Array<Value>,
 
   /// debug line information
-  lines: Array<Line>,
+  lines: Array<u16>,
 }
 
 impl Chunk {
   /// Create a new chunk
-  pub fn new(instructions: Array<u8>, constants: Array<Value>, lines: Array<Line>) -> Self {
+  pub fn new(instructions: Array<u8>, constants: Array<Value>, lines: Array<u16>) -> Self {
     Self {
       instructions,
       constants,
@@ -68,7 +50,7 @@ impl Chunk {
     Self {
       instructions: hooks.manage::<_, &[u8]>(instructions),
       constants: hooks.manage::<_, &[Value]>(&[]),
-      lines: hooks.manage::<_, &[Line]>(&[Line::new(0, instructions.len() as u32)]),
+      lines: hooks.manage::<_, &[u16]>(&[0]),
     }
   }
 
@@ -110,16 +92,13 @@ impl Chunk {
   /// let hooks = GcHooks::new(&mut context);
   ///
   /// let chunk = Chunk::stub(&hooks);
-  /// chunk.get_line(3);
+  /// chunk.get_line(0);
   /// ```
-  pub fn get_line(&self, offset: usize) -> u32 {
-    let result = self
-      .lines
-      .binary_search_by_key(&(offset), |line| line.offset as usize);
-
-    match result {
-      Ok(index) => self.lines[index].line,
-      Err(index) => self.lines[cmp::min(index, self.lines.len() - 1)].line,
+  pub fn get_line(&self, offset: usize) -> u16 {
+    if offset == self.lines.len() {
+      self.lines[offset - 1]
+    } else {
+      self.lines[offset]
     }
   }
 }
@@ -158,7 +137,7 @@ mod test {
   impl Encode for Encodable {
     type Error = ();
 
-    fn encode(data: Vec<Self>, lines: Vec<Line>) -> Result<(Vec<u8>, Vec<Line>), Self::Error> {
+    fn encode(data: Vec<Self>, lines: Vec<u16>) -> Result<(Vec<u8>, Vec<u16>), Self::Error> {
       let mut encoded = Vec::with_capacity(data.len());
       for _ in data {
         encoded.push(7)
@@ -169,22 +148,11 @@ mod test {
   }
 
   #[cfg(test)]
-  mod line {
-    use super::*;
-
-    #[test]
-    fn line_new() {
-      let line = Line::new(10, 5);
-      assert_eq!(line.line, 10);
-      assert_eq!(line.offset, 5);
-    }
-  }
-
-  #[cfg(test)]
   mod chunk {
     use crate::{
-      chunk::{Chunk, Line},
-      hooks::{GcHooks, NoContext}, value::Value,
+      chunk::Chunk,
+      hooks::{GcHooks, NoContext},
+      value::Value,
     };
 
     #[test]
@@ -195,10 +163,10 @@ mod test {
       let chunk = Chunk::new(
         hooks.manage::<_, &[u8]>(&[0]),
         hooks.manage::<_, &[Value]>(&[]),
-        hooks.manage::<_, &[Line]>(&[Line::new(0, 0)])
+        hooks.manage::<_, &[u16]>(&[5]),
       );
 
-      assert_eq!(chunk.get_line(0), 0);
+      assert_eq!(chunk.get_line(0), 5);
     }
   }
 }
