@@ -62,7 +62,7 @@ native!(ChannelStr, CHANNEL_STR);
 impl LyNative for ChannelStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let this = this.unwrap();
-    let class = hooks.get_class(this).to_obj().to_class();
+    let class = hooks.get_class(this);
     let channel = this.to_obj().to_channel();
 
     Call::Ok(val!(hooks.manage_str(format!(
