@@ -130,7 +130,7 @@ impl Class {
 
     self.fields.reserve(super_class.fields.len());
     super_class.fields.iter().for_each(|(field, index)| {
-      self.fields.insert(*field, *index as u16);
+      self.fields.insert(*field, *index);
     });
 
     debug_assert!(self
