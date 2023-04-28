@@ -162,7 +162,7 @@ mod test {
     pub responses: Vec<Value>,
     io: Io,
     no_gc: NoGc,
-    builtin: Option<BuiltIn>,
+    pub builtin: Option<BuiltIn>,
     response_count: usize,
   }
 
