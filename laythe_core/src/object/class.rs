@@ -92,18 +92,20 @@ impl Class {
     self
   }
 
-  pub fn add_field(&mut self, name: GcStr) -> Option<u16> {
-    let len = self.fields.len();
+  pub fn add_field(&mut self, name: GcStr) {
+    if !self.fields.contains_key(&name) {
+      let len = self.fields.len();
 
-    self.fields.insert(name, len as u16)
+      self.fields.insert(name, len as u16);
+    }
   }
 
-  pub fn add_method(&mut self, name: GcStr, method: Value) -> Option<Value> {
+  pub fn add_method(&mut self, name: GcStr, method: Value) {
     if &*name == INIT {
       self.init = Some(method)
     }
 
-    self.methods.insert(name, method)
+    self.methods.insert(name, method);
   }
 
   pub fn get_method(&self, name: &GcStr) -> Option<Value> {
@@ -127,11 +129,8 @@ impl Class {
     });
 
     self.fields.reserve(super_class.fields.len());
-    super_class.fields.iter().for_each(|(field, _index)| {
-      if self.fields.get(field).is_none() {
-        let len = self.fields.len();
-        self.fields.insert(*field, len as u16);
-      }
+    super_class.fields.iter().for_each(|(field, index)| {
+      self.fields.insert(*field, *index);
     });
 
     debug_assert!(self

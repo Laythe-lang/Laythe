@@ -15,7 +15,7 @@ use super::error_inheritance;
 
 pub const ERROR_CLASS_NAME: &str = "Error";
 const ERROR_FIELD_MESSAGE: &str = "message";
-const ERROR_FIELD_STACK: &str = "stack";
+const ERROR_FIELD_BACK_TRACE: &str = "backTrace";
 const ERROR_FIELD_INNER: &str = "inner";
 
 pub const TYPE_ERROR_NAME: &str = "TypeError";
@@ -41,7 +41,7 @@ pub fn create_error_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class>
   let mut class = Class::with_inheritance(hooks, hooks.manage_str(ERROR_CLASS_NAME), object);
 
   class.add_field(hooks.manage_str(ERROR_FIELD_MESSAGE));
-  class.add_field(hooks.manage_str(ERROR_FIELD_STACK));
+  class.add_field(hooks.manage_str(ERROR_FIELD_BACK_TRACE));
   class.add_field(hooks.manage_str(ERROR_FIELD_INNER));
 
   class.add_method(
@@ -142,7 +142,7 @@ mod test {
       let error_init = ErrorInit::native(&hooks.as_gc());
       let mut test_class = hooks.manage_obj(Class::bare(hooks.manage_str("test")));
       test_class.add_field(hooks.manage_str(ERROR_FIELD_MESSAGE));
-      test_class.add_field(hooks.manage_str(ERROR_FIELD_STACK));
+      test_class.add_field(hooks.manage_str(ERROR_FIELD_BACK_TRACE));
       test_class.add_field(hooks.manage_str(ERROR_FIELD_INNER));
 
       let instance = hooks.manage_instance(test_class);

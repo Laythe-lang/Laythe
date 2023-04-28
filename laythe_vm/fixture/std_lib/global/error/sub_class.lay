@@ -1,0 +1,18 @@
+class CustomError : Error {}
+class CustomWithInitError : Error {
+  init(message, inner) {
+    super.init(message, inner);
+  }
+}
+
+let error1 = CustomError("broken");
+assertEq(error1.message, "broken");
+assertEq(error1.inner, nil);
+assertEq(error1.backTrace.cls(), List);
+assertEq(error1.backTrace.len(), 0);
+
+let error2 = CustomWithInitError("broken again", error1);
+assertEq(error2.message, "broken again");
+assertEq(error2.inner, error1);
+assertEq(error2.backTrace.cls(), List);
+assertEq(error2.backTrace.len(), 0);
