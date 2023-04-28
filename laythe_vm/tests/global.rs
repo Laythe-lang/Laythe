@@ -81,6 +81,23 @@ fn closure() -> Result<(), std::io::Error> {
 }
 
 #[test]
+fn error() -> Result<(), std::io::Error> {
+  test_files(
+    &vec![
+      "std_lib/global/error/construct.lay",
+      "std_lib/global/error/sub_class.lay",
+    ],
+    VmExit::Ok,
+  )?;
+
+  test_files(
+    &vec![
+    ],
+    VmExit::RuntimeError,
+  )
+}
+
+#[test]
 fn fun() -> Result<(), std::io::Error> {
   test_files(
     &vec![
