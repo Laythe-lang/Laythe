@@ -1,0 +1,4 @@
+class Sup? {
+  foo!() { }
+  bar?() { }
+}

@@ -1,0 +1,7 @@
+let a! = 1;
+let b? = 2;
+let abc_? = 3;
+
+assertEq(a!, 1);
+assertEq(b?, 2);
+assertEq(abc_?, 3);
