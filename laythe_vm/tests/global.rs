@@ -280,6 +280,7 @@ fn object() -> Result<(), std::io::Error> {
     &vec![
       "std_lib/global/object/cls.lay",
       "std_lib/global/object/equals.lay",
+      "std_lib/global/object/is_a.lay",
       "std_lib/global/object/str.lay",
     ],
     VmExit::Ok,
