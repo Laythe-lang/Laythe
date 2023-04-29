@@ -2939,7 +2939,9 @@ mod test {
     "(|a| print(a))(10)",
     "b = nil",
   ];
-  const EXAMPLE_ATOMS: [&str; 4] = [
+  const EXAMPLE_ATOMS: [&str; 6] = [
+    "cool!",
+    "is_lame?",
     "item(true).stuff[3]",
     "settable",
     "man.dude.bro",
@@ -2961,7 +2963,7 @@ mod test {
     "{nil: 10, 4.3: false, \"cat\": 'hat'}",
   ];
   const EXAMPLE_TRAILERS: [&str; 3] = ["[2]", "(true, 10)", ".someProp"];
-  const BINARY_OPS: [&str; 10] = ["!=", "==", ">", ">=", "<", "<=", "+", "-", "*", "/"];
+  const BINARY_OPS: [&str; 10] = [" !=", "==", ">", ">=", "<", "<=", "+", "-", "*", "/"];
   const ASSIGNMENTS: [&str; 6] = ["=", "<-", "+=", "-=", "/=", "*="];
   const UNARY_OPS: [&str; 3] = ["<-", "!", "-"];
 
@@ -3006,7 +3008,7 @@ mod test {
           .chain(EXAMPLE_ATOMS.iter())
           .chain(EXAMPLE_PRIMARIES.iter())
         {
-          let example = format!("{}?{}:{};", cond, then, else_);
+          let example = format!("{} ?{}:{};", cond, then, else_);
           test(&example);
         }
       }

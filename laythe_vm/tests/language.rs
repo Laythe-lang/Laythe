@@ -36,6 +36,7 @@ fn build() {
 fn assignment() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
+      "language/assignment/allowed_postfix.lay",
       "language/assignment/associativity.lay",
       "language/assignment/global.lay",
       "language/assignment/local.lay",
@@ -191,6 +192,7 @@ fn channel() -> Result<(), std::io::Error> {
 fn class() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
+      "language/class/allowed_postfix.lay",
       "language/class/empty.lay",
       "language/class/inherited_method.lay",
       "language/class/local_inherit_other.lay",
@@ -470,6 +472,7 @@ fn for_loop() -> Result<(), std::io::Error> {
 fn function() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
+      "language/function/allowed_postfix.lay",
       "language/function/empty_body.lay",
       "language/function/local_recursion.lay",
       "language/function/mutual_recursion.lay",

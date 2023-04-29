@@ -227,7 +227,9 @@ impl<'a> Scanner<'a> {
     // advance until we hit whitespace or a special char
     while self.next_if(|c| is_alpha(*c) || is_digit(*c)).is_some() {}
 
-    // identifier if we are actually a keyword
+    // add an allowed ! or ? at the end
+    self.next_if(|c| is_identifier_postfix(*c));
+
     self.make_token_source(TokenKind::InstanceAccess)
   }
 
@@ -235,6 +237,9 @@ impl<'a> Scanner<'a> {
   fn identifier(&mut self) -> Token<'a> {
     // advance until we hit whitespace or a special char
     while self.next_if(|c| is_alpha(*c) || is_digit(*c)).is_some() {}
+
+    // add an allowed ! or ? at the end
+    self.next_if(|c| is_identifier_postfix(*c));
 
     // identifier if we are actually a keyword
     self.make_token_source(self.identifier_type())
@@ -654,14 +659,19 @@ fn make_token_owned<'a>(kind: TokenKind, lexeme: String, start: usize, end: usiz
   Token::new(kind, Lexeme::Owned(lexeme), start as u32, end as u32)
 }
 
-/// Is the str slice a digit. Assumes single char
+/// Is char a digit
 fn is_digit(c: char) -> bool {
   c.is_ascii_digit()
 }
 
-/// Is the str slice a digit. Assumes single char
+/// Is char a digit
 fn is_alpha(c: char) -> bool {
   c.is_ascii_uppercase() || c.is_ascii_lowercase() || c == '_'
+}
+
+/// Is char an allowed identifier postfix
+fn is_identifier_postfix(c: char) -> bool {
+  c == '?' || c == '!'
 }
 
 /// A loose estimate for how many characters are in a typical line
