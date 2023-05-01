@@ -1,0 +1,25 @@
+// everything is an object
+class A : Error {
+  stuff() {}
+}
+
+assert(10.isA?(Object));
+assert(false.isA?(Object));
+assert(nil.isA?(Object));
+assert("cat".isA?(Object));
+assert([].isA?(Object));
+assert(().isA?(Object));
+assert({}.isA?(Object));
+assert(Error.isA?(Object));
+assert(Error("coo").isA?(Object));
+assert((||{}).isA?(Object));
+assert(chan().isA?(Object));
+assert([].iter().isA?(Object));
+assert(A("error!").stuff.isA?(Object));
+assert(print.isA?(Object));
+
+
+
+
+
+

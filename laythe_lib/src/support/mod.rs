@@ -148,7 +148,7 @@ mod test {
     to_obj_kind,
     utils::IdEmitter,
     val,
-    value::{Value, VALUE_NIL},
+    value::{Value},
     Call, LyError,
   };
   use laythe_env::{
@@ -162,7 +162,7 @@ mod test {
     pub responses: Vec<Value>,
     io: Io,
     no_gc: NoGc,
-    builtin: Option<BuiltIn>,
+    pub builtin: Option<BuiltIn>,
     response_count: usize,
   }
 
@@ -332,13 +332,10 @@ mod test {
       }
     }
 
-    fn get_class(&mut self, this: Value) -> Value {
-      let b = match &self.builtin {
-        Some(b) => b,
-        None => return VALUE_NIL,
-      };
+    fn get_class(&mut self, this: Value) -> GcObj<Class> {
+      let b = self.builtin.as_ref().expect("Expected built in class to be defined");
 
-      val!(b.primitives.for_value(this))
+      b.primitives.for_value(this)
     }
   }
 

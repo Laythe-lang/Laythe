@@ -71,7 +71,7 @@ impl<'a> Hooks<'a> {
   }
 
   /// Provide a value and a method name for the surrounding context to execute
-  pub fn get_class(&mut self, this: Value) -> Value {
+  pub fn get_class(&mut self, this: Value) -> GcObj<Class> {
     self.context.value_context().get_class(this)
   }
 
@@ -239,7 +239,7 @@ pub trait ValueContext {
   fn get_method(&mut self, this: Value, method_name: GcStr) -> Call;
 
   /// Retrieve the class for this value
-  fn get_class(&mut self, this: Value) -> Value;
+  fn get_class(&mut self, this: Value) -> GcObj<Class>;
 }
 
 /// A set of functionality required by the hooks objects in order to operate
@@ -325,7 +325,7 @@ impl ValueContext for NoContext {
     Call::Ok(VALUE_NIL)
   }
 
-  fn get_class(&mut self, _this: Value) -> Value {
-    VALUE_NIL
+  fn get_class(&mut self, _this: Value) -> GcObj<Class> {
+    panic!("Cannot retrieve class")
   }
 }

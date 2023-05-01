@@ -21,6 +21,9 @@ const OBJECT_CLASS: NativeMetaBuilder = NativeMetaBuilder::method("cls", Arity::
 
 const OBJECT_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
+const OBJECT_IS_A: NativeMetaBuilder = NativeMetaBuilder::method("isA?", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("class", ParameterKind::Class)]);
+
 pub fn create_object_class(hooks: &GcHooks) -> GcObj<Class> {
   let name = hooks.manage_str(OBJECT_CLASS_NAME);
   let mut object = hooks.manage_obj(Class::bare(name));
@@ -40,6 +43,11 @@ pub fn create_object_class(hooks: &GcHooks) -> GcObj<Class> {
     val!(ObjectStr::native(hooks)),
   );
 
+  object.add_method(
+    hooks.manage_str(OBJECT_IS_A.name),
+    val!(ObjectIsA::native(hooks)),
+  );
+
   object
 }
 
@@ -55,7 +63,7 @@ native!(ObjectCls, OBJECT_CLASS);
 
 impl LyNative for ObjectCls {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(hooks.get_class(this.unwrap()))
+    Call::Ok(val!(hooks.get_class(this.unwrap())))
   }
 }
 
@@ -64,7 +72,7 @@ native!(ObjectStr, OBJECT_STR);
 impl LyNative for ObjectStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let this = this.unwrap();
-    let class = hooks.get_class(this).to_obj().to_class();
+    let class = hooks.get_class(this);
 
     let string = match this.kind() {
       ValueKind::Bool => format!("<{} {}>", &*class.name(), this.to_bool()),
@@ -120,6 +128,17 @@ impl LyNative for ObjectStr {
   }
 }
 
+native!(ObjectIsA, OBJECT_IS_A);
+
+impl LyNative for ObjectIsA {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+    let self_class = hooks.get_class(this.unwrap());
+    let class = args[0].to_obj().to_class();
+
+    Call::Ok(val!(self_class.is_subclass(class)))
+  }
+}
+
 #[cfg(test)]
 mod test {
   use super::*;
@@ -147,14 +166,14 @@ mod test {
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
-      let bool_str = ObjectEquals::native(&hooks.as_gc());
+      let object_equals = ObjectEquals::native(&hooks.as_gc());
 
       let ten_1 = val!(10.0);
       let b_false = val!(false);
       let ten_2 = val!(10.0);
 
-      let result1 = bool_str.call(&mut hooks, Some(ten_1), &[ten_2]);
-      let result2 = bool_str.call(&mut hooks, Some(ten_2), &[b_false]);
+      let result1 = object_equals.call(&mut hooks, Some(ten_1), &[ten_2]);
+      let result2 = object_equals.call(&mut hooks, Some(ten_2), &[b_false]);
 
       match result1 {
         Call::Ok(r) => assert_eq!(r.to_bool(), true),
@@ -207,10 +226,10 @@ mod test {
       let mut context = MockedContext::default();
       let hooks = GcHooks::new(&mut context);
 
-      let object_equals = ObjectStr::native(&hooks);
+      let object_str = ObjectStr::native(&hooks);
 
-      assert_eq!(object_equals.meta().name, "str");
-      assert_eq!(object_equals.meta().signature.arity, Arity::Fixed(0));
+      assert_eq!(object_str.meta().name, "str");
+      assert_eq!(object_str.meta().signature.arity, Arity::Fixed(0));
     }
 
     #[test]
@@ -225,6 +244,73 @@ mod test {
 
       match result {
         Call::Ok(r) => assert_eq!(r.to_obj().to_str(), "<Number 10>"),
+        _ => assert!(false),
+      }
+    }
+  }
+
+  mod is_a {
+    use super::*;
+    use crate::support::MockedContext;
+
+    #[test]
+    fn new() {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let object_is_a = ObjectIsA::native(&hooks);
+
+      assert_eq!(object_is_a.meta().name, "isA?");
+      assert_eq!(object_is_a.meta().signature.arity, Arity::Fixed(1));
+      assert_eq!(
+        object_is_a.meta().signature.parameters[0].kind,
+        ParameterKind::Class
+      )
+    }
+
+    #[test]
+    fn call() {
+      let mut context = MockedContext::with_std(&[]).unwrap();
+      let builtin = context.builtin.as_ref().unwrap();
+
+      let ten = val!(10.0);
+      let error = val!(builtin.errors.error);
+      let object = val!(builtin.primitives.object);
+
+      let mut hooks = Hooks::new(&mut context);
+      let object_is_a = ObjectIsA::native(&hooks.as_gc());
+
+      let result1 = object_is_a.call(&mut hooks, Some(ten), &[error]);
+      let result2 = object_is_a.call(&mut hooks, Some(ten), &[object]);
+      let result3 = object_is_a.call(&mut hooks, Some(error), &[object]);
+      let result4 = object_is_a.call(&mut hooks, Some(error), &[error]);
+      let result5 = object_is_a.call(&mut hooks, Some(object), &[object]);
+      let result6 = object_is_a.call(&mut hooks, Some(object), &[error]);
+
+      match result1 {
+        Call::Ok(r) => assert_eq!(r.to_bool(), false),
+        _ => assert!(false),
+      }
+      match result2 {
+        Call::Ok(r) => assert_eq!(r.to_bool(), true),
+        _ => assert!(false),
+      }
+
+      match result3 {
+        Call::Ok(r) => assert_eq!(r.to_bool(), true),
+        _ => assert!(false),
+      }
+      match result4 {
+        Call::Ok(r) => assert_eq!(r.to_bool(), false),
+        _ => assert!(false),
+      }
+
+      match result5 {
+        Call::Ok(r) => assert_eq!(r.to_bool(), true),
+        _ => assert!(false),
+      }
+      match result6 {
+        Call::Ok(r) => assert_eq!(r.to_bool(), false),
         _ => assert!(false),
       }
     }

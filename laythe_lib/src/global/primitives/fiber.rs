@@ -41,7 +41,7 @@ native!(FiberStr, FIBER_STR);
 impl LyNative for FiberStr {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let this = this.unwrap();
-    let class = hooks.get_class(this).to_obj().to_class();
+    let class = hooks.get_class(this);
     let fiber = this.to_obj().to_fiber();
 
     Call::Ok(val!(hooks.manage_str(format!(
