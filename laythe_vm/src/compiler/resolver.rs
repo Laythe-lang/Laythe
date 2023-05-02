@@ -28,18 +28,6 @@ const UNINITIALIZED_TOKEN: &Token<'static> =
 struct ClassInfo {
   /// The current function kind for this class
   fun_kind: Option<FunKind>,
-
-  /// The current fields known on this class
-  fields: Vec<String>,
-}
-
-impl ClassInfo {
-  /// Add a new field to this class
-  fn add_field(&mut self, field: &str) {
-    if !self.fields.iter().any(|f| *f == field) {
-      self.fields.push(field.to_string())
-    }
-  }
 }
 
 /// A wrapper struct providing depth along with the
@@ -783,14 +771,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
       match first {
         Trailer::Call(call) => self.call(call),
         Trailer::Index(index) => self.index(index),
-        Trailer::Access(access) => {
-          if let Primary::Self_(_) = atom.primary {
-            self
-              .class_info_mut()
-              .expect("Expected class info")
-              .add_field(access.prop.str());
-          }
-        },
+        Trailer::Access(_) => {},
       }
 
       for trailer in rest.iter_mut() {
@@ -838,10 +819,6 @@ impl<'a, 'src> Resolver<'a, 'src> {
               instance_access.start(),
               instance_access.start() + 1,
             ));
-            self
-              .class_info_mut()
-              .expect("Expected class info")
-              .add_field(instance_access.property());
             Some(())
           },
           _ => None,
