@@ -11,7 +11,7 @@ use crate::{
   val,
   value::{Value, VALUE_NIL},
 };
-use std::{fmt, io::Write, mem, ptr, usize};
+use std::{fmt, io::Write, mem, ptr};
 
 const INITIAL_FRAME_SIZE: usize = 4;
 

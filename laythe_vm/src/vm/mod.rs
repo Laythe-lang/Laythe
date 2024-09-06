@@ -34,7 +34,6 @@ use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::path::PathBuf;
 use std::ptr;
-use std::usize;
 
 const VERSION: &str = "0.1.0";
 

@@ -785,9 +785,8 @@ impl<'a> Parser<'a> {
 
     let mut decls: Vec<Decl> = self.vec();
     while !self.check(TokenKind::RightBrace) && !self.check(TokenKind::Eof) {
-      decls.push(self.decl().map_err(|err| {
+      decls.push(self.decl().inspect_err(|_| {
         self.scope_depth -= 1;
-        err
       })?);
     }
 
@@ -886,7 +885,7 @@ impl<'a> Parser<'a> {
   /// Parse a call invocation
   fn call(&mut self, mut lhs: Expr<'a>) -> ParseResult<Expr<'a>> {
     let start = self.previous.start();
-    let args = self.consume_arguments(None, TokenKind::RightParen, std::u8::MAX as usize)?;
+    let args = self.consume_arguments(None, TokenKind::RightParen, u8::MAX as usize)?;
     self.consume_basic(TokenKind::RightParen, "Expected ')' after arguments")?;
 
     let range = Span {
@@ -1000,8 +999,7 @@ impl<'a> Parser<'a> {
 
     let expr = self.expr()?;
     if self.match_kind(TokenKind::Comma)? {
-      let items =
-        self.consume_arguments(Some(expr), TokenKind::RightParen, std::u16::MAX as usize)?;
+      let items = self.consume_arguments(Some(expr), TokenKind::RightParen, u16::MAX as usize)?;
       self.consume_basic(TokenKind::RightParen, "Expected ')' after expression")?;
 
       let range = Span {
@@ -1059,7 +1057,7 @@ impl<'a> Parser<'a> {
   /// Parse a list literal
   fn list(&mut self) -> ParseResult<Expr<'a>> {
     let start = self.previous.start();
-    let items = self.consume_arguments(None, TokenKind::RightBracket, std::u16::MAX as usize)?;
+    let items = self.consume_arguments(None, TokenKind::RightBracket, u16::MAX as usize)?;
     self.consume_basic(TokenKind::RightBracket, "Expected ']' after arguments")?;
 
     let range = Span {
@@ -1079,7 +1077,7 @@ impl<'a> Parser<'a> {
       self.consume_basic(TokenKind::Colon, "Expected ':' after map key")?;
       let value = self.expr()?;
 
-      if entries.len() == std::u16::MAX as usize {
+      if entries.len() == u16::MAX as usize {
         return self.error(&format!(
           "Cannot have more than {} key value pairs in map literal",
           entries.len()
@@ -1122,7 +1120,7 @@ impl<'a> Parser<'a> {
 
     let mut segments: Vec<StringSegments> = self.vec();
     loop {
-      if segments.len() == std::u16::MAX as usize {
+      if segments.len() == u16::MAX as usize {
         return self.error(&format!(
           "Cannot have more than {} segments in a string interpolation",
           segments.len()
@@ -1175,7 +1173,7 @@ impl<'a> Parser<'a> {
     if !self.check(stop_kind) {
       loop {
         arity += 1;
-        if arity == std::u8::MAX as u16 {
+        if arity == u8::MAX as u16 {
           return self.error_current("Cannot have more than 255 parameters.");
         }
 
@@ -1509,7 +1507,7 @@ impl<'a> Parser<'a> {
 
   /// Parse a set of type args
   fn type_args(&mut self) -> ParseResult<Vec<'a, Type<'a>>> {
-    let args = self.consume_type_args(std::u8::MAX as usize)?;
+    let args = self.consume_type_args(u8::MAX as usize)?;
     self.consume_basic(TokenKind::Greater, "Expected '>' after arguments")?;
 
     Ok(args)
@@ -2298,7 +2296,7 @@ const fn get_type_infix(kind: TokenKind) -> &'static Rule<TypeInfix, TypePrecede
 mod test {
   use crate::source::VM_FILE_TEST_ID;
 
-  use super::super::ir::AstPrint;
+  use super::super::ir::{AstPrint, Visitor};
   use super::*;
   use laythe_core::memory::{Allocator, NO_GC};
 

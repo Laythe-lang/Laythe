@@ -550,8 +550,6 @@ mod test {
       assert_eq!(array[3], 4);
       assert_eq!(array[4], 5);
 
-      drop(array);
-
       assert_eq!(handle.len(), 5);
     }
   }

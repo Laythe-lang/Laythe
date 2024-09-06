@@ -7,3 +7,6 @@ mod ast_printer;
 
 #[cfg(test)]
 pub use ast_printer::AstPrint;
+
+#[cfg(test)]
+pub use ast_printer::Visitor;

@@ -1,94 +1,9 @@
 use bumpalo::boxed::Box;
 use bumpalo::collections::vec::Vec;
-use std::{ops::Range, usize};
+use std::ops::Range;
 
 use super::{symbol_table::SymbolTable, token::Token};
 
-/// A visitor pattern for the Laythe ast.
-/// Not sure if this currently provides any value as enum
-/// already know there variants. May still be useful
-/// to ensure each node has cold associated with it
-pub trait Visitor<'a> {
-  type Result;
-
-  fn visit(&mut self, module: &Module) -> Self::Result;
-
-  fn visit_decl(&mut self, decl: &Decl) -> Self::Result;
-  fn visit_stmt(&mut self, stmt: &Stmt) -> Self::Result;
-  fn visit_expr(&mut self, expr: &Expr) -> Self::Result;
-  fn visit_primary(&mut self, primary: &Primary) -> Self::Result;
-
-  fn visit_symbol(&mut self, symbol: &Symbol) -> Self::Result;
-  fn visit_export(&mut self, export: &Symbol) -> Self::Result;
-  fn visit_error(&mut self, error: &[Token<'a>]) -> Self::Result;
-
-  fn visit_class(&mut self, class: &Class) -> Self::Result;
-  fn visit_fun(&mut self, fun: &Fun) -> Self::Result;
-  fn visit_let(&mut self, let_: &Let) -> Self::Result;
-  fn visit_method(&mut self, method: &Fun) -> Self::Result;
-  fn visit_static_method(&mut self, static_method: &Fun) -> Self::Result;
-
-  fn visit_import(&mut self, import: &Import) -> Self::Result;
-  fn visit_for(&mut self, for_: &For) -> Self::Result;
-  fn visit_while(&mut self, while_: &While) -> Self::Result;
-  fn visit_if(&mut self, if_: &If) -> Self::Result;
-  fn visit_launch(&mut self, launch: &Launch) -> Self::Result;
-  fn visit_return(&mut self, return_: &Return) -> Self::Result;
-  fn visit_continue(&mut self, continue_: &Token<'a>) -> Self::Result;
-  fn visit_break(&mut self, break_: &Token<'a>) -> Self::Result;
-  fn visit_try(&mut self, try_: &Try) -> Self::Result;
-  fn visit_raise(&mut self, raise: &Raise) -> Self::Result;
-  fn visit_block(&mut self, block: &Block) -> Self::Result;
-
-  fn visit_assign(&mut self, assign: &Assign) -> Self::Result;
-  fn visit_drain(&mut self, drain: &Send) -> Self::Result;
-  fn visit_assign_binary(&mut self, assign: &AssignBinary) -> Self::Result;
-  fn visit_ternary(&mut self, ternary: &Ternary) -> Self::Result;
-  fn visit_binary(&mut self, binary: &Binary) -> Self::Result;
-  fn visit_unary(&mut self, unary: &Unary) -> Self::Result;
-  fn visit_atom(&mut self, atom: &Atom) -> Self::Result;
-
-  fn visit_index(&mut self, index: &Index) -> Self::Result;
-  fn visit_call(&mut self, call: &Call) -> Self::Result;
-  fn visit_access(&mut self, access: &Access) -> Self::Result;
-  fn visit_call_sig(&mut self, call_sig: &CallSignature) -> Self::Result;
-
-  fn visit_true(&mut self, token: &Token<'a>) -> Self::Result;
-  fn visit_false(&mut self, token: &Token<'a>) -> Self::Result;
-  fn visit_nil(&mut self, token: &Token<'a>) -> Self::Result;
-  fn visit_number(&mut self, token: &Token<'a>) -> Self::Result;
-  fn visit_string(&mut self, token: &Token<'a>) -> Self::Result;
-  fn visit_channel(&mut self, token: &Channel<'a>) -> Self::Result;
-  fn visit_interpolation(&mut self, string_interp: &Interpolation) -> Self::Result;
-  fn visit_ident(&mut self, token: &Token<'a>) -> Self::Result;
-  fn visit_instance_access(&mut self, token: &InstanceAccess<'a>) -> Self::Result;
-  fn visit_self(&mut self, token: &Token<'a>) -> Self::Result;
-  fn visit_super(&mut self, token: &Super) -> Self::Result;
-  fn visit_lambda(&mut self, fun: &Fun) -> Self::Result;
-  fn visit_list(&mut self, items: &Collection) -> Self::Result;
-  fn visit_tuple(&mut self, items: &Collection) -> Self::Result;
-  fn visit_map(&mut self, kvps: &Map) -> Self::Result;
-}
-
-/// A visitor for each type should typically be used together
-/// with the `Visitor` trait above when this pass needs type information
-pub trait TypeVisitor {
-  type Result;
-
-  fn visit_trait(&mut self, trait_: &Trait) -> Self::Result;
-  fn visit_type_decl(&mut self, type_decl: &TypeDecl) -> Self::Result;
-
-  fn visit_type(&mut self, type_: &Type) -> Self::Result;
-  fn visit_type_params(&mut self, type_params: &[TypeParam]) -> Self::Result;
-  fn visit_type_member(&mut self, type_member: &TypeMember) -> Self::Result;
-  fn visit_type_method(&mut self, type_method: &TypeMethod) -> Self::Result;
-  fn visit_union(&mut self, union: &Union) -> Self::Result;
-  fn visit_intersection(&mut self, intersection: &Intersection) -> Self::Result;
-  fn visit_list_type(&mut self, list_type: &ListType) -> Self::Result;
-  fn visit_type_ref(&mut self, type_ref: &TypeRef) -> Self::Result;
-
-  fn visit_primitive(&mut self, primitive: &Primitive) -> Self::Result;
-}
 
 /// An object that can specify it's start and end position and optionally the full range
 /// Implementors of ranges only need to implement `start` ad `end`
@@ -511,7 +426,7 @@ impl<'a> Spanned for Import<'a> {
         } else {
           symbols.last().unwrap().end()
         }
-      }
+      },
     }
   }
 }
@@ -596,7 +511,6 @@ impl<'a> Spanned for Launch<'a> {
     self.closure.end()
   }
 }
-
 
 pub struct Raise<'a> {
   pub error: Expr<'a>,
@@ -1301,8 +1215,6 @@ impl<'a> Spanned for InstanceAccess<'a> {
     self.access.end()
   }
 }
-
-
 
 pub struct TypeParam<'a> {
   pub name: Token<'a>,

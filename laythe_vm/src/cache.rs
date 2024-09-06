@@ -140,7 +140,7 @@ pub struct CacheIdEmitter {
 impl CacheIdEmitter {
   /// Emit a new property id
   pub fn emit_property(&mut self) -> u32 {
-    if self.property_count() > std::u32::MAX as usize {
+    if self.property_count() > u32::MAX as usize {
       panic!("Laythe cannot handle more than u32 property access");
     }
 
@@ -154,7 +154,7 @@ impl CacheIdEmitter {
 
   /// Emit a new invoke id
   pub fn emit_invoke(&mut self) -> u32 {
-    if self.invoke_count() > std::u32::MAX as usize {
+    if self.invoke_count() > u32::MAX as usize {
       panic!("Laythe cannot handle more than u32 property access");
     }
 

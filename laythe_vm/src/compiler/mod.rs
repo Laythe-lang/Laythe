@@ -690,7 +690,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     let capture_count = self.fun.capture_count();
 
     // prevent overflow
-    if capture_count == std::u8::MAX {
+    if capture_count == u8::MAX {
       self.error("Too many closure variables in function.", None);
       return 0;
     }
@@ -711,7 +711,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         .expect("Expected global symbol");
     }
 
-    if self.locals.len() == std::u8::MAX as usize {
+    if self.locals.len() == u8::MAX as usize {
       self.error(
         &format!("Too many local variables in function {}.", self.fun.name()),
         Some(name),
@@ -741,7 +741,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn declare_local_variable(&mut self, name: &str) -> SymbolState {
     assert!(self.scope_depth > 1);
 
-    if self.locals.len() == std::u8::MAX as usize {
+    if self.locals.len() == u8::MAX as usize {
       self.error(
         &format!("Too many local variables in function {}.", self.fun.name()),
         None,
@@ -845,7 +845,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       Some(index) => *index as u16,
       None => {
         let index = self.chunk.add_constant(value);
-        if index > std::u16::MAX as usize {
+        if index > u16::MAX as usize {
           self.error("Too many constants in one chunk.", None);
           return 0;
         }
@@ -860,7 +860,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn emit_constant(&mut self, value: Value, line: u32) {
     let index = self.make_constant(value);
 
-    if index <= std::u8::MAX as u16 {
+    if index <= u8::MAX as u16 {
       self.emit_byte(SymbolicByteCode::Constant(index as u8), line);
     } else {
       self.emit_byte(SymbolicByteCode::ConstantLong(index), line);
@@ -1469,7 +1469,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// Compile a try catch block
   fn try_(&mut self, try_: &'a ast::Try<'src>) {
-    if self.slots as usize > std::u16::MAX as usize {
+    if self.slots as usize > u16::MAX as usize {
       self.error("Stack too deep for exception catch.", None);
     }
 
