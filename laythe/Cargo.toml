@@ -7,9 +7,6 @@ edition = "2021"
 [features]
 jemalloc = ["jemallocator"]
 
-[profile.release]
-debug = true
-
 [[bin]]
 name = "laythe"
 path = "src/main.rs"
