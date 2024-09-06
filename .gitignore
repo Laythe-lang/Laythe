@@ -4,3 +4,4 @@ node_modules
 dist
 perf.data
 flamegraph.svg
+.DS_Store
