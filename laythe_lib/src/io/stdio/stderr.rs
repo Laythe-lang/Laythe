@@ -79,7 +79,7 @@ impl LyNative for StderrWrite {
     let mut stdio = io.stdio();
     let stderr = stdio.stderr();
 
-    match stderr.write(args[0].to_obj().to_str().as_bytes()) {
+    match stderr.write_all(args[0].to_obj().to_str().as_bytes()) {
       Ok(_) => Call::Ok(VALUE_NIL),
       Err(err) => self.call_error(hooks, err.to_string()),
     }

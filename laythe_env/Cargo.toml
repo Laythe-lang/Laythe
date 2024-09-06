@@ -9,6 +9,6 @@ name = "laythe_env"
 path = "src/lib.rs"
 
 [dependencies]
-hashbrown = "0.13.2"
+hashbrown = "0.14.5"
 fnv = "1.0.7"
-termcolor = "1.2.0"
+termcolor = "1.4.1"

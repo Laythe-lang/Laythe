@@ -739,8 +739,8 @@ impl Enumerate for ZipIterator {
   fn size_hint(&self) -> Option<usize> {
     use std::cmp;
 
-    self.iters.iter().fold(Some(std::usize::MAX), |acc, curr| {
-      acc.and_then(|acc| curr.size_hint().map(|curr| cmp::min(acc, curr)))
+    self.iters.iter().try_fold(usize::MAX, |acc, current| {
+      current.size_hint().map(|current| cmp::min(acc, current))
     })
   }
 
@@ -846,10 +846,7 @@ impl Enumerate for ChainIterator {
     self
       .iters
       .iter()
-      .fold(Some(0), |acc, curr| match (acc, curr.size_hint()) {
-        (Some(acc), Some(curr)) => Some(acc + curr),
-        _ => None,
-      })
+      .try_fold(0, |acc, current| current.size_hint().map(|current| acc + current))
   }
 
   fn as_debug(&self) -> &dyn DebugHeap {
@@ -1276,7 +1273,7 @@ mod test {
   mod map {
     use super::*;
     use crate::support::test_fun_builder;
-    use laythe_core::{captures::Captures, object::Closure, chunk::Chunk};
+    use laythe_core::{captures::Captures, chunk::Chunk, object::Closure};
 
     #[test]
     fn new() {
@@ -1327,7 +1324,8 @@ mod test {
     use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::{
       captures::Captures,
-      object::{Closure, Enumerator}, chunk::Chunk,
+      chunk::Chunk,
+      object::{Closure, Enumerator},
     };
 
     #[test]
@@ -1381,7 +1379,8 @@ mod test {
     use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::{
       captures::Captures,
-      object::{Closure, Enumerator}, chunk::Chunk,
+      chunk::Chunk,
+      object::{Closure, Enumerator},
     };
 
     #[test]
@@ -1471,7 +1470,8 @@ mod test {
     use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::{
       captures::Captures,
-      object::{Closure, Enumerator}, chunk::Chunk,
+      chunk::Chunk,
+      object::{Closure, Enumerator},
     };
 
     #[test]

@@ -1,4 +1,4 @@
-use std::{iter::Peekable, str::CharIndices, usize};
+use std::{iter::Peekable, str::CharIndices};
 
 use super::ir::token::{Lexeme, Token, TokenKind};
 use crate::source::LineOffsets;
@@ -44,9 +44,9 @@ impl<'a> Scanner<'a> {
   /// by calling the `scan_token` method
   pub fn new(source: &'a str) -> Scanner<'a> {
     assert!(
-      source.len() < std::u32::MAX as usize,
+      source.len() < u32::MAX as usize,
       "Can only read files less than {} bytes",
-      std::u32::MAX
+      u32::MAX
     );
 
     let char_indices = source.char_indices().peekable();
@@ -131,7 +131,7 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Amp)
         }
-      }
+      },
       '+' => {
         if self.match_char('=') {
           self.make_token_source(TokenKind::PlusEqual)
@@ -145,7 +145,7 @@ impl<'a> Scanner<'a> {
         } else {
           self.make_token_source(TokenKind::Pipe)
         }
-      }
+      },
       '/' => {
         if self.match_char('=') {
           self.make_token_source(TokenKind::SlashEqual)
@@ -265,7 +265,8 @@ impl<'a> Scanner<'a> {
     }
 
     if self.match_char('e') || self.match_char('E') {
-      if self.match_char('+') || self.match_char('-') {}
+      // Consume a trailing +/- after the e if present
+      let _ = self.match_char('+') || self.match_char('-');
 
       if self.next_if(|c| is_digit(*c)).is_none() {
         return self.error_token("Unterminated scientific notation.");

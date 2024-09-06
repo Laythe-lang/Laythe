@@ -428,14 +428,14 @@ impl LyNative for ListRemove {
     if index < 0.0 {
       return self.call_error(
         hooks,
-        &format!("Cannot remove at negative index {index}."),
+        format!("Cannot remove at negative index {index}."),
       );
     }
 
     if index as usize >= list.len() {
       return self.call_error(
         hooks,
-        &format!(
+        format!(
           "Cannot remove at index {}, list has size {}",
           index,
           list.len()

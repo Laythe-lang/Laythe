@@ -5,7 +5,7 @@ use crate::{
   value::Value,
   LyHashSet,
 };
-use std::{collections::VecDeque, usize};
+use std::{collections::VecDeque};
 use std::{fmt, io::Write};
 
 #[derive(PartialEq, Clone, Debug)]

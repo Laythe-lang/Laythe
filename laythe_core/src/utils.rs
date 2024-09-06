@@ -58,7 +58,7 @@ impl IdEmitter {
 /// of any nan
 pub fn use_sentinel_nan(val: f64) -> f64 {
   if val.is_nan() {
-    std::f64::NAN
+    f64::NAN
   } else {
     val
   }
