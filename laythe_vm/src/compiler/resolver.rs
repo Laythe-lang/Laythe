@@ -684,7 +684,20 @@ impl<'a, 'src> Resolver<'a, 'src> {
   /// Resolve a try catch block
   fn try_(&mut self, try_: &mut ast::Try<'src>) {
     try_.block.symbols = self.scope(|self_| self_.block(&mut try_.block));
-    try_.catch.symbols = self.scope(|self_| self_.block(&mut try_.catch));
+    for catch in &mut try_.catches {
+      catch.symbols = self.scope(|self_| self_.catch(catch))
+    }
+  }
+
+  fn catch(&mut self, catch : &mut ast::Catch<'src>) {
+    self.declare_variable(&catch.name);
+    self.define_variable(&catch.name);
+
+    if let Some(class) = &catch.class {
+      self.resolve_variable(class)
+    }
+
+    catch.block.symbols = self.scope(|self_| self_.block(&mut catch.block));
   }
 
   /// Resolve a raise statement
@@ -1235,6 +1248,34 @@ mod test {
       assert_eq!(example1.state(), SymbolState::GlobalInitialized);
       assert_eq!(example2.state(), SymbolState::GlobalInitialized);
       assert_eq!(example3.state(), SymbolState::GlobalInitialized);
+    });
+  }
+
+  #[test]
+  fn try_catch_single() {
+    let example = "
+      try {
+      } catch e: Error {
+
+      }
+    ";
+
+    test_file_std_resolve(example, |ast, result| {
+      assert!(result.is_ok());
+      assert_eq!(ast.decls.len(), 1);
+
+      match &ast.decls[0] {
+        Decl::Stmt(stmt) => match &**stmt {
+          Stmt::Try(try_) => {
+
+            let captured = try_.catches.first().unwrap().symbols.get("e").unwrap();
+
+            assert_eq!(captured.state(), SymbolState::Initialized);
+          },
+          _ => panic!(),
+        },
+        _ => panic!(),
+      }
     });
   }
 
