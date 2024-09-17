@@ -1495,16 +1495,22 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     let end_label = self.label_emitter.emit();
     self.emit_byte(SymbolicByteCode::Jump(end_label), try_.block.end());
-    self.emit_byte(SymbolicByteCode::Label(catch_label), try_.catch.start());
 
-    self.emit_byte(SymbolicByteCode::PopHandler, try_.catch.end());
+    // Temp shim in first catch block only
+    // For now we basically ignore the reset of the catch blocks and don't bind anything to the
+    // provided variable. This was be implemented later
+    let catch = try_.catches.first().expect("Expected catch block");
+
+    self.emit_byte(SymbolicByteCode::Label(catch_label), catch.start());
+
+    self.emit_byte(SymbolicByteCode::PopHandler, catch.end());
     self.try_attributes = enclosing_try;
 
-    self.scope(try_.catch.end(), &try_.catch.symbols, |self_| {
-      self_.block(&try_.catch);
+    self.scope(catch.end(), &catch.symbols, |self_| {
+      self_.block(&catch.block);
     });
 
-    self.emit_byte(SymbolicByteCode::Label(end_label), try_.catch.end());
+    self.emit_byte(SymbolicByteCode::Label(end_label), catch.end());
   }
 
   /// Compile a raise statement
@@ -2543,7 +2549,7 @@ mod test {
     let example = "
       try {
 
-      } catch {
+      } catch e {
 
       }
     ";
@@ -2571,7 +2577,7 @@ mod test {
       try {
         let empty = {};
         empty["missing"];
-      } catch {
+      } catch e: Error {
         print("no!");
       }
     "#;
@@ -2610,10 +2616,10 @@ mod test {
         [][3];
         try {
           [][1];
-        } catch {
+        } catch e: Error {
           print("woops!");
         }
-      } catch {
+      } catch e {
         print("no!");
       }
     "#;
@@ -2663,7 +2669,7 @@ mod test {
       while true {
         try {
           break;
-        } catch {
+        } catch e {
           break;
         }
       }
@@ -2696,7 +2702,7 @@ mod test {
       while true {
         try {
           continue;
-        } catch {
+        } catch e: Error {
           continue;
         }
       }
@@ -2729,7 +2735,7 @@ mod test {
       fn example() {
         try {
           return;
-        } catch {
+        } catch _ {
           return;
         }
       }
