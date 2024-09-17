@@ -57,6 +57,7 @@ pub trait Visitor<'a> {
   fn visit_continue(&mut self, continue_: &Token<'a>) -> Self::Result;
   fn visit_break(&mut self, break_: &Token<'a>) -> Self::Result;
   fn visit_try(&mut self, try_: &Try) -> Self::Result;
+  fn visit_catch(&mut self, try_: &Catch) -> Self::Result;
   fn visit_raise(&mut self, raise: &Raise) -> Self::Result;
   fn visit_block(&mut self, block: &Block) -> Self::Result;
 
@@ -469,8 +470,22 @@ impl<'a> Visitor<'a> for AstPrint {
 
     self.visit_block(&try_.block);
 
+    for catch in &try_.catches {
+      self.visit_catch(catch)
+    }
+  }
+
+  fn visit_catch(&mut self, catch: &Catch) -> Self::Result {
     self.buffer.push_str(" catch ");
-    self.visit_block(&try_.catch);
+
+    self.buffer.push_str(&catch.name.str());
+
+    if let Some(class) = &catch.class {
+      self.buffer.push_str(": ");
+      self.buffer.push_str(&class.str());
+    }
+
+    self.visit_block(&catch.block);
   }
 
   fn visit_raise(&mut self, raise: &Raise) -> Self::Result {
@@ -752,6 +767,10 @@ impl TypeVisitor for AstPrint {
 
     for member in trait_.members.iter() {
       self.visit_type_member(member);
+    }
+
+    for method in trait_.methods.iter() {
+      self.visit_type_method(method);
     }
 
     self.depth -= 1;
