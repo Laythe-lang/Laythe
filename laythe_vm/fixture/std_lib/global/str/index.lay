@@ -9,14 +9,14 @@ assertEq(testString[-testString.len()], "s");
 try {
   testString[50];
   assert(false);
-} catch { }
+} catch e { }
 
 try {
   testString[-50];
   assert(false);
-} catch { }
+} catch _ { }
 
 try {
   testString[1.5];
   assert(false);
-} catch { }
+} catch _: Error{ }

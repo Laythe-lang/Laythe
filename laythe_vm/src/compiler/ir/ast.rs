@@ -579,18 +579,42 @@ impl<'a> Spanned for While<'a> {
 
 pub struct Try<'a> {
   pub block: Block<'a>,
-  pub catch: Block<'a>,
+  pub catches: Vec<'a, Catch<'a>>,
 }
 
 impl<'a> Try<'a> {
-  pub fn new(block: Block<'a>, catch: Block<'a>) -> Self {
-    Self { block, catch }
+  pub fn new(block: Block<'a>, catches: Vec<'a, Catch<'a>>) -> Self {
+    Self { block, catches }
   }
 }
 
 impl<'a> Spanned for Try<'a> {
   fn start(&self) -> u32 {
     self.block.start()
+  }
+
+  fn end(&self) -> u32 {
+    self.catches.last().unwrap().end()
+  }
+}
+
+
+pub struct Catch<'a> {
+  pub name: Token<'a>,
+  pub symbols: SymbolTable<'a>,
+  pub class: Option<Token<'a>>,
+  pub block: Block<'a>,
+}
+
+impl<'a> Catch<'a> {
+  pub fn new(name: Token<'a>, class: Option<Token<'a>>, symbols: SymbolTable<'a>, block: Block<'a>) -> Self {
+    Self { name, class, symbols, block }
+  }
+}
+
+impl<'a> Spanned for Catch<'a> {
+  fn start(&self) -> u32 {
+    self.name.start()
   }
 
   fn end(&self) -> u32 {

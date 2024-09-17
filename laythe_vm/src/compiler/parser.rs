@@ -556,11 +556,36 @@ impl<'a> Parser<'a> {
       .consume(TokenKind::LeftBrace, "Expected '{' after try.")
       .and_then(|()| self.block(BlockReturn::Cannot))?;
 
-    self
-      .consume(TokenKind::Catch, "Expected 'catch' after try block.")
-      .and_then(|()| self.consume_basic(TokenKind::LeftBrace, "Expected '{' after catch."))
-      .and_then(|()| self.block(BlockReturn::Cannot))
-      .map(|catch| Stmt::Try(self.node(Try::new(block, catch))))
+    let mut catches: Vec<Catch> = self.vec();
+
+    while self.match_kind(TokenKind::Catch)? {
+      self.consume(TokenKind::Identifier, "Expected variable name.")?;
+      let name = self.previous.clone();
+
+      let class = if self.match_kind(TokenKind::Colon)? {
+        self.consume(TokenKind::Identifier, "Expected class name.")?;
+        Some(self.previous.clone())
+      } else {
+        None
+      };
+
+      let block = self
+        .consume(
+          TokenKind::LeftBrace,
+          "Expected '{' after catch expression.",
+        )
+        .and_then(|()| self.block(BlockReturn::Cannot))?;
+
+      let table: SymbolTable<'_> = self.table();
+
+      catches.push(Catch::new(name, class, table, block));
+    }
+
+    if catches.is_empty() {
+      return self.error("Expect 'catch' after try block ");
+    }
+
+    Ok(Stmt::Try(self.node(Try::new(block, catches))))
   }
 
   /// Parse a raise statement
@@ -627,7 +652,7 @@ impl<'a> Parser<'a> {
 
   /// Parse a for loop
   fn for_(&mut self) -> ParseResult<Stmt<'a>> {
-    let table = self.table();
+    let table: SymbolTable<'_> = self.table();
 
     self.loop_(|self_| {
       self_.consume(TokenKind::Identifier, "Expected identifer after 'for'.")?;
@@ -2663,7 +2688,7 @@ mod test {
     let example = "
       try {
 
-      } catch {
+      } catch e {
 
       }
     ";
@@ -2677,7 +2702,7 @@ mod test {
       try {
         let empty = {};
         empty["missing"];
-      } catch {
+      } catch e: Error {
         print("no!");
       }
     "#;
@@ -2692,10 +2717,10 @@ mod test {
         [][3];
         try {
           [][1];
-        } catch {
+        } catch e: Error {
           print("woops!");
         }
-      } catch {
+      } catch e: Error {
         print("no!");
       }
     "#;

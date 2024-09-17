@@ -2,13 +2,13 @@ let list = [];
 try {
   list.insert();
   assert(false);
-} catch {
+} catch e: Error {
   assert(true);
 }
 
 try {
   list.pop(10);
   assert(false);
-} catch {
+} catch e: Error {
   assert(true);
 }

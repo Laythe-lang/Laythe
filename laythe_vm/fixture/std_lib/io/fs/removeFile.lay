@@ -8,6 +8,6 @@ removeFile(path);
 try {
   readFile(path);
   assertEq(true, false);
-} catch {
+} catch _: Error{
   assertEq(true, true);
 }

@@ -9,6 +9,6 @@ fn raiser() {
 try {
   outer();
   assert(false);
-} catch {
+} catch e: Error {
   assert(true);
 }
