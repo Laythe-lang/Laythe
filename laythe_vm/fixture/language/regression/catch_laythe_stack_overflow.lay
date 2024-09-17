@@ -5,7 +5,7 @@ for i in 1000.times() {
     let z;
 
     [][1];
-  } catch {
+  } catch _ {
 
   }
 }

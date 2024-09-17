@@ -1,6 +1,6 @@
 try {
   raise Error("raise");
   assert(false);
-} catch {
+} catch e {
 
 }

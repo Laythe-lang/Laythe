@@ -8,7 +8,7 @@ fn notThrower() {
       let c = a / b * a * a;
       c / a * b;
       continue;
-    } catch {
+    } catch e: Error {
       assert(false);
     }
   }
@@ -19,7 +19,7 @@ let caught = false;
 try {
   notThrower();
   raise Error("boom");
-} catch {
+} catch e {
   caught = true;
 }
 

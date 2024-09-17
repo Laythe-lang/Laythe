@@ -5,6 +5,6 @@ fn raiser() {
 try {
   raiser();
   assert(false);
-} catch {
+} catch e {
   assert(true);
 }

@@ -13,13 +13,13 @@ for i in [1, 2, 3].iter().take(1) {
 try {
   [].iter().take(1.5);
   assert(false);
-} catch {
+} catch _ {
   assert(true);
 }
 
 try {
   [].iter().take(-5);
   assert(false);
-} catch {
+} catch e: Error {
   assert(true);
 }

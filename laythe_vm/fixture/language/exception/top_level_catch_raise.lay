@@ -1,11 +1,11 @@
 try {
   raise Error("raise");
   assert(false);
-} catch {
+} catch e: Error {
   try {
     raise Error("raise");
     assert(false);
-  } catch {
+  } catch e: Error {
     assert(true);
   }
 }

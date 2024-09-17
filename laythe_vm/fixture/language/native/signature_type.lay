@@ -3,7 +3,7 @@ let list = [];
 try {
   list.insert(true, 10);
   assert(false);
-} catch {
+} catch e: Error {
   assert(true);
 }
 

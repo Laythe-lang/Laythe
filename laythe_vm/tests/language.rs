@@ -315,6 +315,7 @@ fn exception() -> Result<(), std::io::Error> {
       "language/exception/one_deep_catch.lay",
       "language/exception/two_deep_catch.lay",
       "language/exception/top_level_catch_raise.lay",
+      "language/exception/multiple_catches.lay",
     ],
     VmExit::Ok,
   )?;
