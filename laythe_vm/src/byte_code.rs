@@ -187,6 +187,9 @@ pub enum SymbolicByteCode {
   /// Push an exception handler onto the fiber
   PushHandler((u16, Label)),
 
+  /// Indicate we're done unwinding
+  FinishUnwind,
+
   /// Pop an exception handler off the fiber
   PopHandler,
 
@@ -311,6 +314,7 @@ impl SymbolicByteCode {
       Self::Loop(_) => 3,
       Self::PushHandler(_) => 5,
       Self::PopHandler => 1,
+      Self::FinishUnwind => 1,
       Self::Raise => 1,
       Self::Call(_) => 2,
       Self::Invoke((_, _)) => 4,
@@ -389,6 +393,7 @@ impl SymbolicByteCode {
       Self::Loop(_) => 0,
       Self::PushHandler(_) => 0,
       Self::PopHandler => 0,
+      Self::FinishUnwind => 0,
       Self::Raise => -1,
       Self::Call(args) => -(*args as i32),
       Self::Invoke((_, args)) => -(*args as i32),
@@ -524,6 +529,7 @@ impl<'a> ByteCodeEncoder<'a> {
           self.jump_error(jump)
         },
         SymbolicByteCode::PopHandler => self.op(ByteCode::PopHandler, *line),
+        SymbolicByteCode::FinishUnwind => self.op(ByteCode::FinishUnwind, *line),
         SymbolicByteCode::Raise => self.op(ByteCode::Raise, *line),
         SymbolicByteCode::Call(slot) => self.op_byte(ByteCode::Call, *line, *slot),
         SymbolicByteCode::Invoke((slot1, slot2)) => {
@@ -824,6 +830,9 @@ pub enum ByteCode {
   /// Push an exception handler onto the fiber
   PushHandler,
 
+  /// Indicate we're done unwinding
+  FinishUnwind,
+
   /// Raise an value
   Raise,
 
@@ -1060,6 +1069,9 @@ pub enum AlignedByteCode {
   /// Raise an value
   Raise,
 
+  /// Indicate we're done unwinding
+  FinishUnwind,
+
   /// Call a function
   Call(u8),
 
@@ -1243,6 +1255,7 @@ impl AlignedByteCode {
         offset + 5,
       ),
       ByteCode::PopHandler => (Self::PopHandler, offset + 1),
+      ByteCode::FinishUnwind => (Self::FinishUnwind, offset + 1),
       ByteCode::Raise => (Self::Raise, offset + 1),
       ByteCode::Call => (Self::Call(store[offset + 1]), offset + 2),
       ByteCode::Invoke => (
