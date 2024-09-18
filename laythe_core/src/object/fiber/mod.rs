@@ -157,28 +157,28 @@ impl Fiber {
     self.state == FiberState::Pending
   }
 
-  /// Activate the current fiber
+  /// Activate this fiber
   #[inline]
   pub fn activate(&mut self) {
     assert_eq!(self.state, FiberState::Pending);
     self.state = FiberState::Running;
   }
 
-  /// Put the current fiber to sleep
+  /// Put this fiber to sleep
   #[inline]
   pub fn sleep(&mut self) {
     assert_eq!(self.state, FiberState::Running);
     self.state = FiberState::Pending;
   }
 
-  /// Put the current fiber to sleep
+  /// Block this fiber
   #[inline]
   pub fn block(&mut self) {
     assert_eq!(self.state, FiberState::Running);
     self.state = FiberState::Blocked;
   }
 
-  /// Put the current fiber to sleep
+  /// Unblock this fiber
   #[inline]
   pub fn unblock(&mut self) {
     assert!(matches!(

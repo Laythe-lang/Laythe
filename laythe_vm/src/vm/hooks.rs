@@ -1,4 +1,4 @@
-use super::{ExecuteMode, ExecuteResult, Signal, Vm};
+use super::{ExecutionMode, ExecutionResult, ExecutionSignal, Vm};
 use laythe_core::{managed::GcStr, val, value::Value, Call, LyError};
 
 impl Vm {
@@ -18,11 +18,11 @@ impl Vm {
         .expect("Unable to print hook state");
     }
 
-    let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
+    let mode = ExecutionMode::CallingNativeCode(self.fiber.frames().len());
     let result = match self.resolve_call(callable, args.len() as u8) {
-      Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::Ok(self.fiber.pop()),
-      Signal::RuntimeError => ExecuteResult::RuntimeError,
+      ExecutionSignal::Ok => self.execute(mode),
+      ExecutionSignal::OkReturn => ExecutionResult::Ok(self.fiber.pop()),
+      ExecutionSignal::RuntimeError => ExecutionResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_fun."),
     };
 
@@ -45,12 +45,12 @@ impl Vm {
         .expect("Unable to print hook state");
     }
 
-    let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
+    let mode = ExecutionMode::CallingNativeCode(self.fiber.frames().len());
 
     let result = match self.resolve_call(method, args.len() as u8) {
-      Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::Ok(self.fiber.pop()),
-      Signal::RuntimeError => ExecuteResult::RuntimeError,
+      ExecutionSignal::Ok => self.execute(mode),
+      ExecutionSignal::OkReturn => ExecutionResult::Ok(self.fiber.pop()),
+      ExecutionSignal::RuntimeError => ExecutionResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_method."),
     };
 
@@ -76,14 +76,14 @@ impl Vm {
   }
 
   /// Convert an execute result to a call result
-  fn to_call_result(&self, execute_result: ExecuteResult) -> Call {
+  fn to_call_result(&self, execute_result: ExecutionResult) -> Call {
     match execute_result {
-      ExecuteResult::Ok(value) => Call::Ok(value),
-      ExecuteResult::Exit(_) => self.internal_error("Accidental early exit in hook call"),
-      ExecuteResult::CompileError => {
+      ExecutionResult::Ok(value) => Call::Ok(value),
+      ExecutionResult::Exit(_) => self.internal_error("Accidental early exit in hook call"),
+      ExecutionResult::CompileError => {
         self.internal_error("Compiler error should occur before code is executed.")
       },
-      ExecuteResult::RuntimeError => match self.fiber.error() {
+      ExecutionResult::RuntimeError => match self.fiber.error() {
         Some(error) => Call::Err(LyError::Err(error)),
         None => self.internal_error("Error not set on vm executor."),
       },

@@ -1,4 +1,4 @@
-use super::{ExecuteMode, ExecuteResult, Signal, Vm};
+use super::{ExecutionMode, ExecutionResult, ExecutionSignal, Vm};
 use laythe_core::{
   if_let_obj,
   managed::{GcObj, Instance},
@@ -14,20 +14,24 @@ impl Vm {
   }
 
   /// Report a known laythe runtime error to the user
-  pub(super) unsafe fn runtime_error(&mut self, error: GcObj<Class>, message: &str) -> Signal {
+  pub(super) unsafe fn runtime_error(
+    &mut self,
+    error: GcObj<Class>,
+    message: &str,
+  ) -> ExecutionSignal {
     let error_message = val!(self.manage_str(message));
     self.fiber.push(error_message);
 
-    let mode = ExecuteMode::CallFunction(self.fiber.frames().len());
+    let mode = ExecutionMode::CallingNativeCode(self.fiber.frames().len());
     let result = match self.resolve_call(val!(error), 1) {
-      Signal::Ok => self.execute(mode),
-      Signal::OkReturn => ExecuteResult::Ok(self.fiber.pop()),
-      Signal::RuntimeError => ExecuteResult::RuntimeError,
+      ExecutionSignal::Ok => self.execute(mode),
+      ExecutionSignal::OkReturn => ExecutionResult::Ok(self.fiber.pop()),
+      ExecutionSignal::RuntimeError => ExecutionResult::RuntimeError,
       _ => self.internal_error("Unexpected signal in run_fun."),
     };
 
     match result {
-      ExecuteResult::Ok(error) => {
+      ExecutionResult::Ok(error) => {
         if_let_obj!(ObjectKind::Instance(instance) = (error) {
           self.set_error(instance)
         } else {
@@ -42,13 +46,13 @@ impl Vm {
   pub(super) unsafe fn stack_unwind(
     &mut self,
     error: Instance,
-    mode: ExecuteMode,
-  ) -> Option<ExecuteResult> {
+    mode: ExecutionMode,
+  ) -> Option<ExecutionResult> {
     self.store_ip();
 
     let bottom_frame = match mode {
-      ExecuteMode::Normal => None,
-      ExecuteMode::CallFunction(depth) => Some(depth),
+      ExecutionMode::Normal => None,
+      ExecutionMode::CallingNativeCode(depth) => Some(depth),
     };
 
     match self.fiber.stack_unwind(bottom_frame) {
@@ -59,22 +63,22 @@ impl Vm {
       },
       UnwindResult::Unhandled => {
         self.print_error(error);
-        Some(ExecuteResult::RuntimeError)
+        Some(ExecutionResult::RuntimeError)
       },
-      UnwindResult::UnwindStopped => Some(ExecuteResult::RuntimeError),
+      UnwindResult::UnwindStopped => Some(ExecutionResult::RuntimeError),
     }
   }
 
   /// Set the current error place the vm signal a runtime error
-  pub(super) fn set_error(&mut self, error: Instance) -> Signal {
+  pub(super) fn set_error(&mut self, error: Instance) -> ExecutionSignal {
     self.fiber.set_error(error);
-    Signal::RuntimeError
+    ExecutionSignal::RuntimeError
   }
 
   /// Set the current error place the vm signal a runtime error
-  pub(super) fn set_exit(&mut self, code: u16) -> Signal {
+  pub(super) fn set_exit(&mut self, code: u16) -> ExecutionSignal {
     self.exit_code = code;
-    Signal::Exit
+    ExecutionSignal::Exit
   }
 
   /// Print an error message and the current call stack to the user

@@ -5,13 +5,19 @@ use crate::{
   value::Value,
   LyHashSet,
 };
-use std::{collections::VecDeque};
+use std::collections::VecDeque;
 use std::{fmt, io::Write};
 
+/// What type of channel is this
 #[derive(PartialEq, Clone, Debug)]
 enum ChannelKind {
+  /// This channel and both send and receive
   BiDirectional,
+
+  /// This channel can only receive
   ReceiveOnly,
+
+  /// This channel can only send
   SendOnly,
 }
 
@@ -22,9 +28,14 @@ enum ChannelQueueState {
   ClosedEmpty,
 }
 
+/// What type of queue does
+/// this channel possess
 #[derive(PartialEq, Clone, Debug)]
 enum ChannelQueueKind {
+  /// This channel is sync and will context switch on each value
   Sync,
+
+  /// This channel is buffered and may not context switch immediately
   Buffered,
 }
 
@@ -156,7 +167,7 @@ impl ChannelQueue {
           self.send_waiters.insert(fiber);
           SendResult::Full(get_runnable_from_set(&mut self.receive_waiters))
         }
-      }
+      },
       ChannelQueueState::Closed | ChannelQueueState::ClosedEmpty => SendResult::Closed,
     }
   }
@@ -176,14 +187,14 @@ impl ChannelQueue {
           } else {
             ReceiveResult::Empty(get_runnable_from_set(&mut self.send_waiters))
           }
-        }
+        },
       },
       ChannelQueueState::Closed => match self.queue.pop_front() {
         Some(value) => ReceiveResult::Ok(value),
         None => {
           self.state = ChannelQueueState::ClosedEmpty;
           ReceiveResult::Closed
-        }
+        },
       },
       ChannelQueueState::ClosedEmpty => ReceiveResult::Closed,
     }
@@ -199,7 +210,7 @@ impl ChannelQueue {
         } else {
           get_runnable_from_set(&mut self.receive_waiters)
         }
-      }
+      },
       ChannelQueueKind::Buffered => {
         if self.is_empty() && !self.is_closed() {
           get_runnable_from_set(&mut self.send_waiters)
@@ -209,7 +220,7 @@ impl ChannelQueue {
           get_runnable_from_set(&mut self.receive_waiters)
             .or_else(|| get_runnable_from_set(&mut self.send_waiters))
         }
-      }
+      },
     }
   }
 
@@ -573,7 +584,7 @@ mod test {
             } else {
               assert!(false)
             }
-          }
+          },
           _ => assert!(false),
         }
 

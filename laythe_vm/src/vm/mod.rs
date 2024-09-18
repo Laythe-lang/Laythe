@@ -37,17 +37,30 @@ use std::ptr;
 
 const VERSION: &str = "0.1.0";
 
+/// For the moment this just seems like a smaller
+/// execution result
 #[derive(Debug, Clone, PartialEq)]
-enum Signal {
+enum ExecutionSignal {
+  /// The code executed successfully
   Ok,
+
+  /// The code executed successfully and
+  /// we should pop the stack
   OkReturn,
+
+  /// We executed successfully and we need
+  /// to context switch
   ContextSwitch,
+
+  /// An error occurred and we need to exit the program
   Exit,
+
+  /// A runtime error occurred and we need to unwind the stack
   RuntimeError,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ExecuteResult {
+pub enum ExecutionResult {
   Ok(Value),
   Exit(u16),
   RuntimeError,
@@ -61,10 +74,15 @@ pub enum VmExit {
   CompileError,
 }
 
+/// How is the VM currently executing
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ExecuteMode {
+pub enum ExecutionMode {
+  /// We are executing solely on laythe code
   Normal,
-  CallFunction(usize),
+
+  /// We are executing native code somewhere in
+  /// the call stack
+  CallingNativeCode(usize),
 }
 
 pub fn default_native_vm() -> Vm {
@@ -94,7 +112,7 @@ pub struct Vm {
   /// The root directory
   root_dir: PathBuf,
 
-  /// The builtin class the vm need reference to
+  /// The builtin class the vm needs reference to
   builtin: BuiltIn,
 
   /// A collection of packages that have already been loaded
@@ -229,30 +247,35 @@ impl Vm {
   pub fn run(&mut self, module_path: PathBuf, source_content: &str) -> (i32, VmExit) {
     match self.io.fs().canonicalize(&module_path) {
       Ok(module_path) => {
+        // From the provided source file determine the root directory
         let mut directory = module_path.clone();
         directory.pop();
-
         self.root_dir = directory;
+
+        // Make the source file a manage string then convert it to a
+        // source struct temporarily put it as a root
         let source_content = self.manage_str(source_content);
         self.push_root(source_content);
         let source = Source::new(source_content);
 
+        // put the file source file into the files directory
         let managed_path = self.manage_str(module_path.to_string_lossy());
         self.push_root(managed_path);
-
         let file_id = self.files.upsert(managed_path, source_content);
+
+        // pop the temp roots
         self.pop_roots(2);
 
         let main_module = self.module(SELF, &managed_path);
 
         match self.interpret(false, main_module, &source, file_id) {
-          ExecuteResult::Ok(_) => self.internal_error("Shouldn't exit vm with ok result"),
-          ExecuteResult::Exit(code) => match code {
+          ExecutionResult::Ok(_) => self.internal_error("Shouldn't exit vm with ok result"),
+          ExecutionResult::Exit(code) => match code {
             0 => (0, VmExit::Ok),
             _ => (code as i32, VmExit::RuntimeError),
           },
-          ExecuteResult::RuntimeError => (1, VmExit::RuntimeError),
-          ExecuteResult::CompileError => (1, VmExit::CompileError),
+          ExecutionResult::RuntimeError => (1, VmExit::RuntimeError),
+          ExecutionResult::CompileError => (1, VmExit::CompileError),
         }
       },
       Err(err) => {
@@ -275,11 +298,11 @@ impl Vm {
     main_module: Gc<Module>,
     source: &Source,
     file_id: VmFileId,
-  ) -> ExecuteResult {
+  ) -> ExecutionResult {
     match self.compile(repl, main_module, source, file_id) {
       Ok(fun) => {
         self.prepare(fun);
-        self.execute(ExecuteMode::Normal)
+        self.execute(ExecutionMode::Normal)
       },
       Err(errors) => {
         let mut stdio = self.io.stdio();
@@ -288,7 +311,7 @@ impl Vm {
           term::emit(stderr_color, &Config::default(), &self.files, error)
             .expect("Unable to write to stderr");
         }
-        ExecuteResult::CompileError
+        ExecutionResult::CompileError
       },
     }
   }
@@ -310,7 +333,7 @@ impl Vm {
 
   /// Main virtual machine execution loop. This will run the until the program interrupts
   /// from a normal exit or from a runtime error.
-  fn execute(&mut self, mode: ExecuteMode) -> ExecuteResult {
+  fn execute(&mut self, mode: ExecutionMode) -> ExecutionResult {
     unsafe {
       loop {
         // get the current instruction
@@ -394,24 +417,25 @@ impl Vm {
         };
 
         match result {
-          Signal::Ok => (),
-          Signal::OkReturn => {
-            if let ExecuteMode::CallFunction(depth) = mode {
+          ExecutionSignal::Ok => (),
+          // somewhere we decided we need to return
+          ExecutionSignal::OkReturn => {
+            if let ExecutionMode::CallingNativeCode(depth) = mode {
               if depth == self.fiber.frames().len() {
-                return ExecuteResult::Ok(self.fiber.pop());
+                return ExecutionResult::Ok(self.fiber.pop());
               }
             }
           },
-          Signal::ContextSwitch => match self.fiber_queue.pop_front() {
+          ExecutionSignal::ContextSwitch => match self.fiber_queue.pop_front() {
             Some(fiber) => self.context_switch(fiber),
             None => {
               let mut stdio = self.io().stdio();
               let stderr = stdio.stderr();
               writeln!(stderr, "Fatal error deadlock.").expect("Unable to write to stderr");
-              return ExecuteResult::RuntimeError;
+              return ExecutionResult::RuntimeError;
             },
           },
-          Signal::RuntimeError => match self.fiber.error() {
+          ExecutionSignal::RuntimeError => match self.fiber.error() {
             Some(error) => {
               if let Some(execute_result) = self.stack_unwind(error, mode) {
                 return execute_result;
@@ -419,8 +443,8 @@ impl Vm {
             },
             None => self.internal_error("Runtime error was not set."),
           },
-          Signal::Exit => {
-            return ExecuteResult::Exit(self.exit_code);
+          ExecutionSignal::Exit => {
+            return ExecutionResult::Exit(self.exit_code);
           },
         }
       }

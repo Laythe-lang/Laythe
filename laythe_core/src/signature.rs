@@ -48,13 +48,13 @@ impl Arity {
         if arg_count != arity {
           return Err(ArityError::Fixed(arity));
         }
-      }
+      },
       // if variadic and ending with ... take arity +
       Self::Variadic(arity) => {
         if arg_count < arity {
           return Err(ArityError::Variadic(arity));
         }
-      }
+      },
       // if defaulted we need between the min and max
       Self::Default(min_arity, max_arity) => {
         if arg_count < min_arity {
@@ -63,7 +63,7 @@ impl Arity {
         if arg_count > max_arity {
           return Err(ArityError::DefaultHigh(max_arity));
         }
-      }
+      },
     }
 
     Ok(())
@@ -209,7 +209,7 @@ impl Display for ParameterKind {
 }
 
 #[derive(Clone, Debug, Copy)]
-pub enum Environment {
+pub enum NativeEnvironment {
   StackLess,
   Normal,
 }
@@ -291,7 +291,7 @@ impl Signature {
             return Err(SignatureError::TypeWrong(index as u8));
           }
         }
-      }
+      },
       // if variadic and ending with ... take arity +
       Arity::Variadic(arity) => {
         if count < arity as usize {
@@ -322,7 +322,7 @@ impl Signature {
             return Err(SignatureError::TypeWrong(arity + index as u8));
           }
         }
-      }
+      },
       // if defaulted we need between the min and max
       Arity::Default(min_arity, max_arity) => {
         if count < min_arity as usize {
@@ -337,7 +337,7 @@ impl Signature {
             return Err(SignatureError::TypeWrong(index as u8));
           }
         }
-      }
+      },
     }
 
     Ok(())
