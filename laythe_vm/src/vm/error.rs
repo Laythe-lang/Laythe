@@ -56,7 +56,7 @@ impl Vm {
     };
 
     match self.fiber.stack_unwind(bottom_frame) {
-      UnwindResult::Handled(frame) => {
+      UnwindResult::PotentiallyHandled(frame) => {
         self.current_fun = frame.fun();
         self.ip = frame.ip();
         None
