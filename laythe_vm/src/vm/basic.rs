@@ -1,4 +1,4 @@
-use super::{Vm, Signal};
+use super::{Vm, ExecutionSignal};
 use crate::cache::InlineCache;
 use laythe_core::{
   managed::{Allocate, DebugHeapRef, GcObj, GcStr, Instance, Object, Trace, Tuple},
@@ -143,7 +143,7 @@ impl Vm {
   /// Pop a frame off the call stack. If no frame remain
   /// return the exit signal otherwise set the instruction
   /// pointer and current function
-  pub(super) unsafe fn pop_frame(&mut self) -> Option<Signal> {
+  pub(super) unsafe fn pop_frame(&mut self) -> Option<ExecutionSignal> {
     match self.fiber.pop_frame() {
       Some(current_fun) => match current_fun {
         Some(current_fun) => {
@@ -153,13 +153,13 @@ impl Vm {
         },
         None => {
           if self.fiber == self.main_fiber {
-            Some(Signal::Exit)
+            Some(ExecutionSignal::Exit)
           } else {
             if let Some(mut fiber) = Fiber::complete(self.fiber) {
               fiber.unblock();
               self.fiber_queue.push_back(fiber);
             }
-            Some(Signal::ContextSwitch)
+            Some(ExecutionSignal::ContextSwitch)
           }
         },
       },

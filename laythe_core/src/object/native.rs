@@ -1,7 +1,7 @@
 use crate::{
   hooks::{GcHooks, Hooks},
   managed::{DebugHeap, DebugWrap, GcStr, Object, Trace},
-  signature::{Arity, Environment, ParameterBuilder, Signature, SignatureBuilder},
+  signature::{Arity, NativeEnvironment, ParameterBuilder, Signature, SignatureBuilder},
   value::Value,
   Call,
 };
@@ -18,7 +18,7 @@ pub struct NativeMetaBuilder {
   pub is_method: bool,
 
   /// Does this
-  pub environment: Environment,
+  pub environment: NativeEnvironment,
 
   /// The signature of this native function or method
   pub signature: SignatureBuilder,
@@ -30,7 +30,7 @@ impl NativeMetaBuilder {
     NativeMetaBuilder {
       name,
       is_method: false,
-      environment: Environment::StackLess,
+      environment: NativeEnvironment::StackLess,
       signature: SignatureBuilder::new(arity),
     }
   }
@@ -40,7 +40,7 @@ impl NativeMetaBuilder {
     NativeMetaBuilder {
       name,
       is_method: true,
-      environment: Environment::StackLess,
+      environment: NativeEnvironment::StackLess,
       signature: SignatureBuilder::new(arity),
     }
   }
@@ -60,7 +60,7 @@ impl NativeMetaBuilder {
     Self {
       name: self.name,
       is_method: self.is_method,
-      environment: Environment::Normal,
+      environment: NativeEnvironment::Normal,
       signature: self.signature,
     }
   }
@@ -85,7 +85,7 @@ pub struct NativeMeta {
   pub is_method: bool,
 
   /// Does this
-  pub environment: Environment,
+  pub environment: NativeEnvironment,
 
   /// The signature of this native function or method
   pub signature: Signature,
