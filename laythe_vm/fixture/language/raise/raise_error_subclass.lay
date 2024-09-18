@@ -1,0 +1,11 @@
+class MyError: Error {}
+
+try {
+  let error = MyError("example");
+  assertEq(error.message, "example");
+
+  raise error;
+  assert(false);
+} catch _ {
+  assert(true);
+}
