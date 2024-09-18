@@ -366,6 +366,7 @@ impl Vm {
           ByteCode::Loop => self.op_loop(),
           ByteCode::PushHandler => self.op_push_handler(),
           ByteCode::PopHandler => self.op_pop_handler(),
+          ByteCode::FinishUnwind => self.op_finish_unwind(),
           ByteCode::Raise => self.op_raise(),
           ByteCode::DefineGlobal => self.op_define_global(),
           ByteCode::Box => self.op_box(),

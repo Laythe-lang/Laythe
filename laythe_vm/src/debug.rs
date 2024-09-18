@@ -527,6 +527,7 @@ pub fn disassemble_instruction(
       push_handler_instruction(stdio.stdout(), "PushHandler", slots, jump, offset)
     },
     AlignedByteCode::PopHandler => simple_instruction(stdio.stdout(), "PopHandler", offset),
+    AlignedByteCode::FinishUnwind => simple_instruction(stdio.stdout(), "FinishUnwind", offset),
     AlignedByteCode::Raise => simple_instruction(stdio.stdout(), "Raise", offset),
     AlignedByteCode::Equal => simple_instruction(stdio.stdout(), "Equal", offset),
     AlignedByteCode::NotEqual => simple_instruction(stdio.stdout(), "NotEqual", offset),

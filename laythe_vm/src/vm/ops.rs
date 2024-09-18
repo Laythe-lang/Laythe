@@ -513,6 +513,11 @@ impl Vm {
     ExecutionSignal::Ok
   }
 
+  pub(super) unsafe fn op_finish_unwind(&mut self) -> ExecutionSignal {
+    self.fiber.finish_unwind();
+    ExecutionSignal::Ok
+  }
+
   pub(super) unsafe fn op_raise(&mut self) -> ExecutionSignal {
     let exception = self.fiber.pop();
 

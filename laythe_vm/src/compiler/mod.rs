@@ -1497,13 +1497,16 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.emit_byte(SymbolicByteCode::Jump(end_label), try_.block.end());
 
     // Temp shim in first catch block only
-    // For now we basically ignore the reset of the catch blocks and don't bind anything to the
+    // For now we basically ignore the rest of the catch blocks and don't bind anything to the
     // provided variable. This was be implemented later
     let catch = try_.catches.first().expect("Expected catch block");
 
     self.emit_byte(SymbolicByteCode::Label(catch_label), catch.start());
 
-    self.emit_byte(SymbolicByteCode::PopHandler, catch.end());
+    // When we pop a handler in a catch block we signal to the fiber
+    // we're done unwinding
+    self.emit_byte(SymbolicByteCode::FinishUnwind, catch.start());
+    self.emit_byte(SymbolicByteCode::PopHandler, catch.start());
     self.try_attributes = enclosing_try;
 
     self.scope(catch.end(), &catch.symbols, |self_| {
@@ -2563,7 +2566,8 @@ mod test {
       &vec![
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(1),
+        AlignedByteCode::Jump(2),
+        AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -2597,7 +2601,8 @@ mod test {
         AlignedByteCode::Slot(0),
         AlignedByteCode::DropN(2),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(9),
+        AlignedByteCode::Jump(10),
+        AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::GetGlobal(3),
         AlignedByteCode::Constant(4),
@@ -2631,7 +2636,7 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::PushHandler((1, 50)),
+        AlignedByteCode::PushHandler((1, 51)),
         AlignedByteCode::List(0),
         AlignedByteCode::Constant(0),
         AlignedByteCode::Invoke((1, 1)),
@@ -2644,14 +2649,16 @@ mod test {
         AlignedByteCode::Slot(1),
         AlignedByteCode::Drop,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(9),
+        AlignedByteCode::Jump(10),
+        AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::GetGlobal(3),
         AlignedByteCode::Constant(4),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(9),
+        AlignedByteCode::Jump(10),
+        AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::GetGlobal(3),
         AlignedByteCode::Constant(5),
@@ -2683,13 +2690,14 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(16),
+        AlignedByteCode::JumpIfFalse(17),
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(7),
+        AlignedByteCode::Jump(8),
+        AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(3),
-        AlignedByteCode::Loop(20),
+        AlignedByteCode::Loop(21),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2716,13 +2724,14 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(16),
+        AlignedByteCode::JumpIfFalse(17),
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Loop(13),
+        AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Loop(17),
-        AlignedByteCode::Loop(20),
+        AlignedByteCode::Loop(18),
+        AlignedByteCode::Loop(21),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2756,6 +2765,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
             ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::FinishUnwind),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
