@@ -1016,6 +1016,7 @@ fn raise() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/raise/raise_error.lay",
+      "language/raise/raise_error_subclass.lay",
     ],
     VmExit::Ok,
   )?;

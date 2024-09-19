@@ -524,7 +524,7 @@ impl Vm {
     if_let_obj!(ObjectKind::Instance(exception) = (exception) {
       let class = exception.class();
 
-      if class == self.builtin.errors.error {
+      if class.is_subclass(self.builtin.errors.error) {
         self.set_error(exception)
       } else {
         self.runtime_error(

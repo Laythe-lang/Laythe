@@ -1,5 +1,5 @@
 try {
-  raise Error("example");
+  raise RuntimeError("example");
   assert(false);
 } catch _ {
   assert(true);
