@@ -108,7 +108,7 @@ impl LyNative for Assert {
       create_error!(
         self.error,
         hooks,
-        "Assertion failed expected true received false"
+        "Expected assertion to return true."
       )
     }
   }
@@ -152,7 +152,7 @@ impl LyNative for AssertEq {
     create_error!(
       self.error,
       hooks,
-      format!("Assertion failed {arg0} and {arg1} are not equal.")
+      format!("Expected {arg0:?} to equal {arg1:?}.")
     )
   }
 }
@@ -197,7 +197,7 @@ impl LyNative for AssertNe {
     create_error!(
       self.error,
       hooks,
-      format!("Assertion failed {arg0} and {arg1} are equal.")
+      format!("Expected {arg0} not to equal {arg1}.")
     )
   }
 }
