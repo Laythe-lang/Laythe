@@ -6,5 +6,8 @@ try {
   raiser();
   assert(false);
 } catch e {
-  assert(true);
+  assertEq(e.message, "raise");
+  assertEq(e.backTrace.len(), 2);
+  assert(e.backTrace[0].has("one_deep_catch.lay:2 in raiser()"));
+  assert(e.backTrace[1].has("one_deep_catch.lay:6 in script"));
 }

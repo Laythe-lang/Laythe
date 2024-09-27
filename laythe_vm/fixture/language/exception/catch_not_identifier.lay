@@ -1,0 +1,4 @@
+  try {
+    raise Error("test");
+  } catch e: 10 {
+  }

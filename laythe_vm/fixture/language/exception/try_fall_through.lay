@@ -1,0 +1,14 @@
+try {
+  try {
+    raise Error("test");
+  } catch e: RuntimeError {
+    assert(false);
+  } catch e: SyntaxError {
+    assert(false);
+  }
+} catch e: Error {
+  print(e.backTrace);
+  assertEq(e.message, "test");
+  assertEq(e.backTrace.len(), 1);
+  assert(e.backTrace[0].has("try_fall_through.lay:3 in script"));
+}

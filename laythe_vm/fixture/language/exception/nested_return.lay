@@ -17,8 +17,12 @@ let caught = false;
 try {
   notThrower();
   raise Error("boom");
+  assert(false);
 } catch e: Error {
   caught = true;
+  assertEq(e.message, "boom");
+  assertEq(e.backTrace.len(), 1);
+  assert(e.backTrace[0].has("nested_return.lay:19 in script"));
 }
 
-assert(caught);
+assert(true);
