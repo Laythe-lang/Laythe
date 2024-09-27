@@ -93,10 +93,10 @@ pub fn peephole_compile<'a>(
 ) -> Result<Fun, collections::Vec<'a, Diagnostic<VmFileId>>> {
   let (instructions, constants, lines) = chunk_builder.take();
 
-  let (instructions, lines) = peephole_optimize(instructions, lines);
+  let (mut instructions, lines) = peephole_optimize(instructions, lines);
 
   let label_count = label_count(&instructions);
-  apply_stack_effects(&mut fun_builder, &instructions);
+  apply_stack_effects(&mut fun_builder, &mut instructions);
 
   let mut label_offsets: collections::Vec<usize> = bumpalo::vec![in alloc; 0; label_count];
 
@@ -106,7 +106,7 @@ pub fn peephole_compile<'a>(
 
   compute_label_offsets(&instructions, &mut label_offsets[..label_count]);
 
-  let code_buffer = collections::Vec::with_capacity_in(instructions.len(), alloc);
+  let code_buffer = collections::Vec::with_capacity_in(instructions.len() * 2, alloc);
   let line_buffer = collections::Vec::with_capacity_in(instructions.len() * 2, alloc);
   let errors = collections::Vec::new_in(alloc);
 
@@ -247,10 +247,16 @@ fn label_count(instructions: &[SymbolicByteCode]) -> usize {
   count
 }
 
-fn apply_stack_effects(fun_builder: &mut FunBuilder, instructions: &[SymbolicByteCode]) {
-  let mut slots = 1;
+fn apply_stack_effects(fun_builder: &mut FunBuilder, instructions: &mut Vec<SymbolicByteCode>) {
+  let mut slots: i32 = 1;
 
-  for instruction in instructions {
+  for index in 0..instructions.len() {
+    let instruction = instructions[index];
+    if let SymbolicByteCode::PushHandler((_, label)) = instruction {
+      // TODO handle to many slots
+      instructions[index] = SymbolicByteCode::PushHandler((slots as u16, label))
+    }
+
     slots += instruction.stack_effect();
     debug_assert!(slots >= 0);
     fun_builder.update_max_slots(slots);
@@ -543,6 +549,70 @@ mod test {
       assert_eq!(lines[0], 1);
       assert_eq!(lines[1], 4);
       assert_eq!(lines[2], 5);
+    }
+  }
+
+  mod stack_effects {
+    use laythe_core::{hooks::NoContext, signature::Arity, support::test_module};
+
+    use crate::byte_code::Label;
+
+    use super::*;
+
+    #[test]
+    fn calculate_func_max_stack() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let module = test_module(&hooks, "test module");
+      let mut builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
+
+      let mut instructions = vec![
+        SymbolicByteCode::Constant(1),
+        SymbolicByteCode::Constant(1),
+        SymbolicByteCode::Constant(1),
+        SymbolicByteCode::DropN(2),
+        SymbolicByteCode::Constant(1),
+        SymbolicByteCode::Constant(1),
+      ];
+
+      apply_stack_effects(&mut builder, &mut instructions);
+
+      assert_eq!(instructions.len(), 6);
+      assert_eq!(instructions[0], SymbolicByteCode::Constant(1));
+      assert_eq!(instructions[1], SymbolicByteCode::Constant(1));
+      assert_eq!(instructions[2], SymbolicByteCode::Constant(1));
+      assert_eq!(instructions[3], SymbolicByteCode::DropN(2));
+      assert_eq!(instructions[4], SymbolicByteCode::Constant(1));
+      assert_eq!(instructions[4], SymbolicByteCode::Constant(1));
+
+      let chunk = Chunk::stub(&hooks);
+      let fun = builder.build(chunk);
+      assert_eq!(fun.max_slots(), 4);
+    }
+
+    #[test]
+    fn calculate_push_handler() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let module = test_module(&hooks, "test module");
+      let mut builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
+
+      let mut instructions = vec![
+        SymbolicByteCode::Constant(1),
+        SymbolicByteCode::Constant(1),
+        SymbolicByteCode::Constant(1),
+        SymbolicByteCode::PushHandler((0, Label::new(0)))
+      ];
+
+      apply_stack_effects(&mut builder, &mut instructions);
+
+      assert_eq!(instructions.len(), 4);
+      assert_eq!(instructions[0], SymbolicByteCode::Constant(1));
+      assert_eq!(instructions[1], SymbolicByteCode::Constant(1));
+      assert_eq!(instructions[2], SymbolicByteCode::Constant(1));
+      assert_eq!(instructions[3], SymbolicByteCode::PushHandler((4, Label::new(0))));
     }
   }
 
