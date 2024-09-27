@@ -2,14 +2,7 @@ use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
 
 use crate::{
-  captures::Captures,
-  chunk::{Chunk},
-  hooks::GcHooks,
-  managed::{Gc, GcObj, GcStr},
-  module::{module_class, Module},
-  object::{Class, Fiber, FiberResult, Fun, FunBuilder},
-  signature::Arity,
-  value::Value,
+  captures::Captures, chunk::Chunk, constants::SCRIPT, hooks::GcHooks, managed::{Gc, GcObj, GcStr}, module::{module_class, Module}, object::{Class, Fiber, FiberResult, Fun, FunBuilder}, signature::Arity, value::Value
 };
 
 pub struct FiberBuilder {
@@ -23,7 +16,7 @@ pub struct FiberBuilder {
 impl Default for FiberBuilder {
   fn default() -> Self {
     Self {
-      name: "Fiber".to_string(),
+      name: SCRIPT.to_string(),
       parent: None,
       module_name: "Fiber Module".to_string(),
       instructions: vec![0],

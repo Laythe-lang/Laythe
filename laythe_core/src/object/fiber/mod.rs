@@ -2,7 +2,7 @@ mod call_frame;
 mod exception_handler;
 
 use self::{call_frame::CallFrame, exception_handler::ExceptionHandler};
-use super::{Channel, Fun, ObjectKind};
+use super::{Channel, Fun, List, ObjectKind};
 use crate::{
   captures::Captures,
   constants::SCRIPT,
@@ -16,7 +16,7 @@ use std::{fmt, io::Write, mem, ptr};
 const INITIAL_FRAME_SIZE: usize = 4;
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
-pub enum FiberState {
+enum FiberState {
   Running,
   Unwinding,
   Pending,
@@ -36,6 +36,24 @@ pub enum UnwindResult<'a> {
   PotentiallyHandled(&'a mut CallFrame),
   Unhandled,
   UnwindStopped,
+}
+
+fn frame_line(fun: GcObj<Fun>, offset: usize) -> String {
+  match &*fun.name() {
+    SCRIPT => format!(
+      "{}:{} in script",
+      fun.module().path(),
+      fun.chunk().get_line(offset)
+    )
+    .to_string(),
+    _ => format!(
+      "{}:{} in {}()",
+      fun.module().path(),
+      fun.chunk().get_line(offset),
+      fun.name()
+    )
+    .to_string(),
+  }
 }
 
 pub struct Fiber {
@@ -63,8 +81,11 @@ pub struct Fiber {
   /// The current state of this fiber
   state: FiberState,
 
-  /// The current error if one is active
+  /// The current error context if one is active
   error: Option<Instance>,
+
+  /// Backtrace's instruction pointers used during an unwind
+  backtrace_ips: Vec<*const u8>,
 }
 
 impl Fiber {
@@ -113,6 +134,7 @@ impl Fiber {
       state: FiberState::Pending,
       error: None,
       frame: current_frame,
+      backtrace_ips: vec![],
       stack_top,
     })
   }
@@ -168,11 +190,38 @@ impl Fiber {
     self.state = FiberState::Running;
   }
 
+  /// When an error occurs while handling an exception as in
+  /// there is an error with the handler itself we need to
+  /// readjust the backtrace to point back to the current
+  /// instruction pointers
+  pub fn error_while_handling(&mut self) {
+    self.pop_exception_handler();
+    self.backtrace_ips.clear();
+  }
+
   /// pause unwind to search for handler
-  #[inline]
-  pub fn pause_unwind(&mut self) {
-    assert_eq!(self.state, FiberState::Running);
+  fn pause_unwind(&mut self, new_frame_top: usize) {
+    assert!(matches!(
+      self.state,
+      FiberState::Running | FiberState::Unwinding
+    ));
+
     self.state = FiberState::Unwinding;
+
+    let current_len = self.backtrace_ips.len();
+    let additional_len = ((self.frames().len() - new_frame_top) + 1) - current_len;
+
+    // extend backtraces instruction pointers
+    self.backtrace_ips.extend(
+      self
+        .frames()
+        .iter()
+        .rev()
+        .skip(current_len)
+        .take(additional_len)
+        .map(|frame| frame.ip())
+        .collect::<Vec<*const u8>>(),
+    );
   }
 
   /// Put this fiber to sleep
@@ -236,7 +285,7 @@ impl Fiber {
       .unwrap_or(None)
   }
 
-  /// A a channel to the list of used channels by
+  /// Add a channel to the list of used channels by
   /// this fiber
   pub fn add_used_channel(&mut self, channel: GcObj<Channel>) {
     if !self.channels.iter().any(|c| *c == channel) {
@@ -315,19 +364,6 @@ impl Fiber {
     self.set_val(distance + 1, val)
   }
 
-  /// Put the fiber back into an activated state after an unwind begins
-  /// This truncates off the frames that may still be dangling
-  pub fn finish_unwind(&mut self) {
-    // Now that we've found a handler we truncate the frames
-    let handler = self
-      .exception_handler()
-      .expect("Expected handler to still exist");
-    self.frames.truncate(handler.call_frame_depth());
-
-    // Put the fiber back into an activated state
-    self.activate();
-  }
-
   /// Push a new exception handler onto this fiber
   pub fn push_exception_handler(&mut self, offset: usize, slot_depth: usize) {
     debug_assert!(
@@ -346,7 +382,7 @@ impl Fiber {
       .push(ExceptionHandler::new(offset, call_frame_depth, slot_depth));
   }
 
-  /// Push a new exception handler onto this fiber
+  /// Pop an exception handler off this fiber
   pub fn pop_exception_handler(&mut self) {
     assert!(
       self.exception_handlers.pop().is_some(),
@@ -355,7 +391,7 @@ impl Fiber {
   }
 
   /// Do we currently have an active exception handler
-  pub fn exception_handler(&self) -> Option<ExceptionHandler> {
+  fn exception_handler(&self) -> Option<ExceptionHandler> {
     self.exception_handlers.last().copied()
   }
 
@@ -415,7 +451,7 @@ impl Fiber {
     self.error
   }
 
-  /// Set the current error on this fiber
+  /// Set the current error on this fiber and ip it occurred at
   pub fn set_error(&mut self, error: Instance) {
     self.error = Some(error);
   }
@@ -553,40 +589,84 @@ impl Fiber {
   /// Assumes the function try block slot offset points to a valid offset into the
   /// associated call frames slots
   pub unsafe fn stack_unwind(&mut self, bottom_frame: Option<usize>) -> UnwindResult {
-    match self.exception_handler() {
+    // grab the appropriate exception handler
+    let exception_handler = match self.exception_handler() {
       Some(exception_handler) => {
         let bottom_frame = bottom_frame.unwrap_or(0);
         if exception_handler.call_frame_depth() >= bottom_frame {
-          // put the fiber in a state to search for handle
-          self.pause_unwind();
-
-          debug_assert!(
-            self.frames.len() >= exception_handler.call_frame_depth(),
-            "Exception handler points to non existing stack frame"
-          );
-
-          // set the current frame
-          let frame = &mut self.frames[exception_handler.call_frame_depth() - 1];
-          let fun = frame.fun();
-          let instructions = fun.chunk().instructions();
-
-          let stack_top = frame.stack_start().add(exception_handler.slot_depth());
-
-          // set the current ip frame and stack pointer
-          frame.store_ip(&instructions[exception_handler.offset()] as *const u8);
-          self.frame = frame as *mut CallFrame;
-          self.stack_top = stack_top;
-
-          UnwindResult::PotentiallyHandled(frame)
+          exception_handler
         } else {
-          UnwindResult::UnwindStopped
+          return UnwindResult::UnwindStopped;
         }
       },
-      None => match bottom_frame {
-        Some(_) => UnwindResult::UnwindStopped,
-        None => UnwindResult::Unhandled,
+      None => {
+        return match bottom_frame {
+          Some(_) => UnwindResult::UnwindStopped,
+          None => UnwindResult::Unhandled,
+        }
       },
-    }
+    };
+
+    debug_assert!(
+      self.frames.len() >= exception_handler.call_frame_depth(),
+      "Exception handler points to non existing stack frame"
+    );
+
+    // put the fiber in a state to search for handle
+    self.pause_unwind(exception_handler.call_frame_depth());
+
+    // set the current frame based on the exception handler offset
+    let frame = &mut self.frames[exception_handler.call_frame_depth() - 1];
+    let fun = frame.fun();
+    let instructions = fun.chunk().instructions();
+
+    let stack_top = frame.stack_start().add(exception_handler.slot_depth());
+
+    // set the current ip frame and stack pointer
+    frame.store_ip(&instructions[exception_handler.offset()] as *const u8);
+    self.frame = frame as *mut CallFrame;
+    self.stack_top = stack_top;
+
+    UnwindResult::PotentiallyHandled(frame)
+  }
+
+  /// Signals to the fiber to finish unwinding. The fiber is
+  /// moved back into the activated state. The unwound back trace
+  /// is returned and then truncated off the fiber
+  pub fn finish_unwind(&mut self) -> List<String> {
+    // Now that we've found a handler we truncate the frames
+    let handler = self
+      .exception_handler()
+      .expect("Expected handler to still exist");
+
+    // Gather backtrace and set it on the error
+    let backtrace = self.error_backtrace(&handler);
+    self.frames.truncate(handler.call_frame_depth());
+    self.backtrace_ips.clear();
+
+    // Put the fiber back into an activated state
+    self.activate();
+
+    backtrace
+  }
+
+  // Create the string representation of the backtrace
+  fn error_backtrace(&self, handler: &ExceptionHandler) -> List<String> {
+    let backtrace_len = (self.frames.len() - handler.call_frame_depth()) + 1;
+
+    self
+      .frames
+      .iter()
+      .rev()
+      .take(backtrace_len)
+      .zip(self.backtrace_ips.iter())
+      .map(|(frame, ip)| {
+        let fun = frame.fun();
+        let offset = unsafe { ip.offset_from(fun.chunk().instructions().as_ptr()) } as usize;
+
+        frame_line(fun, offset.saturating_sub(1))
+      })
+      .collect::<List<String>>()
   }
 
   /// Print a error message with the associated stack track if found
@@ -605,7 +685,7 @@ impl Fiber {
         log,
         "  {}:{} in {}",
         fun.module().path(),
-        fun.chunk().get_line(offset),
+        fun.chunk().get_line(offset.saturating_sub(1)),
         location
       )
       .expect("Unable to write to stderr");
@@ -726,7 +806,7 @@ impl Trace for Fiber {
 
     self.frames.iter().for_each(|call_frame| call_frame.trace());
 
-    if let Some(error) = self.error {
+    if let Some(error) = &self.error {
       error.trace();
     }
   }
@@ -751,7 +831,7 @@ impl Trace for Fiber {
       .iter()
       .for_each(|call_frame| call_frame.trace_debug(log));
 
-    if let Some(error) = self.error {
+    if let Some(error) = &self.error {
       error.trace_debug(log);
     }
   }
@@ -1124,6 +1204,93 @@ mod test {
   }
 
   #[test]
+  fn error_while_handling() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let module1 = test_module(&hooks, "first module");
+    let module2 = test_module(&hooks, "second module");
+
+    let mut builder1 = FunBuilder::new(hooks.manage_str("first"), module1, Arity::default());
+    let mut builder2 = FunBuilder::new(hooks.manage_str("second"), module2, Arity::default());
+    builder1.update_max_slots(4);
+    builder2.update_max_slots(3);
+
+    let chunk1 = Chunk::new(
+      hooks.manage::<_, &[u8]>(&[20, 21, 22]),
+      hooks.manage::<_, &[Value]>(&[]),
+      hooks.manage::<_, &[u16]>(&[5, 6, 7]),
+    );
+    let chunk2 = Chunk::new(
+      hooks.manage::<_, &[u8]>(&[40, 41, 42]),
+      hooks.manage::<_, &[Value]>(&[]),
+      hooks.manage::<_, &[u16]>(&[2, 3, 4]),
+    );
+
+    let fun1 = hooks.manage_obj(builder1.build(chunk1));
+    let fun2 = hooks.manage_obj(builder2.build(chunk2));
+
+    let captures = Captures::new(&hooks, &[]);
+
+    let mut fiber = FiberBuilder::default()
+      .max_slots(6)
+      .instructions(vec![0, 0, 0])
+      .build(&hooks)
+      .expect("Expected to build");
+
+    let base_fun = fiber.frames()[0].fun();
+
+    unsafe {
+      fiber.push(VALUE_NIL);
+      fiber.push(val!(fun1));
+      fiber.push(val!(10.0));
+      fiber.push(val!(true));
+      fiber.push(val!(fun2));
+      fiber.push(val!(5.0));
+    }
+
+    fiber.push_exception_handler(2, 2);
+    fiber.push_frame(fun1, captures, 2);
+    fiber.store_ip(&fun1.chunk().instructions()[0]);
+
+    fiber.push_exception_handler(1, 1);
+    fiber.push_frame(fun2, captures, 1);
+
+    fiber.activate();
+    fiber.store_ip(&fun2.chunk().instructions()[2]);
+
+    unsafe {
+      match fiber.stack_unwind(None) {
+        UnwindResult::PotentiallyHandled(frame) => {
+          assert_eq!(frame.fun(), fun1);
+          assert_eq!(frame.captures(), captures);
+        },
+        _ => assert!(false),
+      }
+    }
+
+    assert_eq!(fiber.frames().len(), 3);
+
+    // simulate an error handler instruction going bad
+    fiber.store_ip(&fun1.chunk().instructions()[2]);
+    fiber.error_while_handling();
+
+    unsafe {
+      match fiber.stack_unwind(None) {
+        UnwindResult::PotentiallyHandled(frame) => {
+          assert_eq!(frame.fun(), base_fun);
+        },
+        _ => assert!(false),
+      }
+    }
+    let backtrace = fiber.finish_unwind();
+    assert_eq!(backtrace.len(), 3);
+    assert_eq!(backtrace[0], "example:3 in second()");
+    assert_eq!(backtrace[1], "example:6 in first()");
+    assert_eq!(backtrace[2], "example:0 in script");
+  }
+
+  #[test]
   fn is_complete() {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
@@ -1478,14 +1645,26 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let module = test_module(&hooks, "first module");
-    let mut builder = FunBuilder::new(hooks.manage_str("first"), module, Arity::default());
-    builder.update_max_slots(4);
+    let module1 = test_module(&hooks, "first module");
+    let module2 = test_module(&hooks, "second module");
 
-    let chunk = Chunk::stub_with_instructions(&hooks, &[0, 0, 0]);
+    let mut builder1 = FunBuilder::new(hooks.manage_str("first"), module1, Arity::default());
+    let builder2 = FunBuilder::new(hooks.manage_str("second"), module2, Arity::default());
+    builder1.update_max_slots(4);
 
-    let fun1 = hooks.manage_obj(builder.build(chunk));
-    let fun2 = test_fun(&hooks, "second", "second module");
+    let chunk1 = Chunk::new(
+      hooks.manage::<_, &[u8]>(&[0, 0, 0]),
+      hooks.manage::<_, &[Value]>(&[]),
+      hooks.manage::<_, &[u16]>(&[0, 0, 1]),
+    );
+    let chunk2 = Chunk::new(
+      hooks.manage::<_, &[u8]>(&[0, 0, 0]),
+      hooks.manage::<_, &[Value]>(&[]),
+      hooks.manage::<_, &[u16]>(&[0, 1, 1]),
+    );
+
+    let fun1 = hooks.manage_obj(builder1.build(chunk1));
+    let fun2 = hooks.manage_obj(builder2.build(chunk2));
 
     let captures = Captures::new(&hooks, &[]);
 
@@ -1505,10 +1684,12 @@ mod test {
 
     fiber.push_frame(fun1, captures, 2);
     fiber.push_exception_handler(2, 2);
+    fiber.store_ip(&fun1.chunk().instructions()[1]);
 
     fiber.push_frame(fun2, captures, 1);
 
     fiber.activate();
+    fiber.store_ip(&fun2.chunk().instructions()[2]);
 
     unsafe {
       match fiber.stack_unwind(None) {
@@ -1524,7 +1705,11 @@ mod test {
     assert_eq!(fiber.frame().fun(), fun1);
     assert_eq!(fiber.frame().captures(), captures);
 
-    fiber.finish_unwind();
+    let backtrace = fiber.finish_unwind();
+    assert_eq!(backtrace.len(), 2);
+    assert_eq!(backtrace[0], "example:1 in second()");
+    assert_eq!(backtrace[1], "example:0 in first()");
+
     assert_eq!(fiber.frames().len(), 2);
     assert_eq!(fiber.frame().fun(), fun1);
     assert_eq!(fiber.frame().captures(), captures);

@@ -4,7 +4,7 @@ pub struct ExceptionHandler {
   /// The ip offset from the start call frame
   offset: usize,
 
-  /// The calldepth of this handler
+  /// The call depth of this handler
   call_frame_depth: usize,
 
   /// The slot depth at this handler
