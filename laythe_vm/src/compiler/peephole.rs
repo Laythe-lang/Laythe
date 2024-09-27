@@ -247,14 +247,13 @@ fn label_count(instructions: &[SymbolicByteCode]) -> usize {
   count
 }
 
-fn apply_stack_effects(fun_builder: &mut FunBuilder, instructions: &mut Vec<SymbolicByteCode>) {
+fn apply_stack_effects(fun_builder: &mut FunBuilder, instructions: &mut [SymbolicByteCode]) {
   let mut slots: i32 = 1;
 
-  for index in 0..instructions.len() {
-    let instruction = instructions[index];
+  for instruction in instructions {
     if let SymbolicByteCode::PushHandler((_, label)) = instruction {
       // TODO handle to many slots
-      instructions[index] = SymbolicByteCode::PushHandler((slots as u16, label))
+      *instruction = SymbolicByteCode::PushHandler((slots as u16, *label))
     }
 
     slots += instruction.stack_effect();
