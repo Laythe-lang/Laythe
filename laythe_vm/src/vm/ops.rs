@@ -499,6 +499,7 @@ impl Vm {
     ExecutionSignal::Ok
   }
 
+  /// Push an exception handler onto the handler stack
   pub(super) unsafe fn op_push_handler(&mut self) -> ExecutionSignal {
     let slot_depth = self.read_short() as usize;
     let jump = self.read_short() as usize;
@@ -508,14 +509,75 @@ impl Vm {
     ExecutionSignal::Ok
   }
 
+  /// Pop an exception handler off the handler stack
   pub(super) unsafe fn op_pop_handler(&mut self) -> ExecutionSignal {
     self.fiber.pop_exception_handler();
     ExecutionSignal::Ok
   }
 
+  /// Pop an exception handler off the handler stack
+  pub(super) unsafe fn op_check_handler(&mut self) -> ExecutionSignal {
+    let jump = self.read_short();
+    let error_class = self.fiber.peek(0);
+
+    let error = match self.fiber.error() {
+      Some(error) => error,
+      None => self.internal_error("Fiber error not present"),
+    };
+
+    if_let_obj!(ObjectKind::Class(error_class) = (error_class) {
+      if !error_class.is_subclass(self.builtin.errors.error) {
+        self.fiber.error_while_handling();
+        self.runtime_error(self.builtin.errors.type_, "Catch block must be blank or a subclass of Error.")
+      } else {
+
+        if !error.class().is_subclass(error_class) {
+          self.update_ip(jump as isize);
+        }
+        self.fiber.drop();
+
+        ExecutionSignal::Ok
+      }
+
+    } else {
+      self.fiber.error_while_handling();
+      self.runtime_error(self.builtin.errors.type_, "Catch block must be blank or a subclass of Error.")
+    })
+  }
+
+  /// Signal to the fiber we have finished unwinding
   pub(super) unsafe fn op_finish_unwind(&mut self) -> ExecutionSignal {
-    self.fiber.finish_unwind();
+    let backtrace = self.fiber.finish_unwind();
+
+    match self.fiber.error() {
+      Some(mut error) => {
+        error[1] = val!(self.manage_tuple(
+          &backtrace
+            .iter()
+            .map(|line| val!(self.manage_str(line)))
+            .collect::<List<Value>>()
+        ))
+      },
+      None => self.internal_error("Expected fiber error"),
+    }
     ExecutionSignal::Ok
+  }
+
+  /// Pop the current exception handler and continue the unwind
+  pub(super) unsafe fn op_continue_unwind(&mut self) -> ExecutionSignal {
+    self.fiber.pop_exception_handler();
+    ExecutionSignal::RuntimeError
+  }
+
+  /// Push the current error onto the stack
+  pub(super) unsafe fn op_get_error(&mut self) -> ExecutionSignal {
+    match self.fiber.error() {
+      Some(error) => {
+        self.fiber.push(val!(error));
+        ExecutionSignal::Ok
+      },
+      None => self.internal_error("Fiber error not present"),
+    }
   }
 
   pub(super) unsafe fn op_raise(&mut self) -> ExecutionSignal {
