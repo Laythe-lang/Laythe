@@ -478,7 +478,7 @@ impl<'a> Spanned for If<'a> {
 
   fn end(&self) -> u32 {
     self.else_.as_ref().map_or_else(
-      || self.cond.end(),
+      || self.body.end(),
       |else_| match else_ {
         Else::If(if_) => if_.end(),
         Else::Block(block) => block.end(),
