@@ -6,6 +6,7 @@ mod resolver;
 mod scanner;
 
 use bumpalo::{collections, Bump};
+use laythe_lib::global::ERROR_CLASS_NAME;
 pub use parser::Parser;
 pub use resolver::Resolver;
 
@@ -196,9 +197,6 @@ pub struct Compiler<'a, 'src> {
   /// Are we currently compile for a repl
   repl: bool,
 
-  /// The current number of slots in use,
-  slots: i32,
-
   /// The local variables currently in scope
   locals: collections::Vec<'a, Local<'a>>,
 
@@ -276,7 +274,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       errors: vec![],
       fun_kind: FunKind::Script,
       scope_depth: 0,
-      slots: 1,
       repl,
       class_attributes: None,
       loop_attributes: None,
@@ -347,7 +344,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       root_trace: enclosing.root_trace,
       fun_kind,
       scope_depth: enclosing.scope_depth,
-      slots: 1,
       repl: enclosing.repl,
       class_attributes: enclosing.class_attributes,
       loop_attributes: None,
@@ -481,6 +477,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.local_tables.push(table);
   }
 
+  /// Set the global scope
   fn begin_global_scope(&mut self, table: &'a SymbolTable<'src>) {
     assert!(self.global_table.is_none());
     assert!(self.local_tables.is_empty());
@@ -1469,22 +1466,19 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// Compile a try catch block
   fn try_(&mut self, try_: &'a ast::Try<'src>) {
-    if self.slots as usize > u16::MAX as usize {
-      self.error("Stack too deep for exception catch.", None);
-    }
-
     // set this try block as the current
     let try_attributes = TryAttributes {
       scope_depth: self.scope_depth,
     };
     let enclosing_try = mem::replace(&mut self.try_attributes, Some(try_attributes));
 
-    let slots = self.slots as u16;
     let catch_label = self.label_emitter.emit();
 
+    // We currently use zero as a placeholder as the peephole compiler
+    // determines the actual value
     self.emit_byte(
-      SymbolicByteCode::PushHandler((slots, catch_label)),
-      try_.block.end(),
+      SymbolicByteCode::PushHandler((0, catch_label)),
+      try_.block.start(),
     );
 
     self.scope(try_.block.end(), &try_.block.symbols, |self_| {
@@ -1493,27 +1487,60 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     self.emit_byte(SymbolicByteCode::PopHandler, try_.block.end());
 
-    let end_label = self.label_emitter.emit();
-    self.emit_byte(SymbolicByteCode::Jump(end_label), try_.block.end());
+    let try_end_label = self.label_emitter.emit();
+    self.emit_byte(SymbolicByteCode::Jump(try_end_label), try_.block.end());
 
     // Temp shim in first catch block only
     // For now we basically ignore the rest of the catch blocks and don't bind anything to the
     // provided variable. This was be implemented later
     let catch = try_.catches.first().expect("Expected catch block");
-
     self.emit_byte(SymbolicByteCode::Label(catch_label), catch.start());
-
-    // When we pop a handler in a catch block we signal to the fiber
-    // we're done unwinding
-    self.emit_byte(SymbolicByteCode::FinishUnwind, catch.start());
-    self.emit_byte(SymbolicByteCode::PopHandler, catch.start());
     self.try_attributes = enclosing_try;
 
+    for catch in &try_.catches {
+      self.catch(catch, try_end_label);
+    }
+
+    self.emit_byte(SymbolicByteCode::ContinueUnwind, catch.end());
+    self.emit_byte(SymbolicByteCode::Label(try_end_label), catch.end());
+  }
+
+  /// Compile a catch block
+  fn catch(&mut self, catch: &'a ast::Catch<'src>, try_end_label: Label) {
+    let default_error = &Token::new(
+      TokenKind::Identifier,
+      Lexeme::Slice(ERROR_CLASS_NAME),
+      catch.name.end(),
+      catch.name.end(),
+    );
+
+    let catch_end_label: Label = self.label_emitter.emit();
     self.scope(catch.end(), &catch.symbols, |self_| {
-      self_.block(&catch.block);
+      // Load error class onto stack
+      self_.variable_get(catch.class.as_ref().unwrap_or(default_error));
+      self_.emit_byte(
+        SymbolicByteCode::CheckHandler(catch_end_label),
+        catch.start(),
+      );
+
+      // If we end the catch signal that we are done unwinding
+      self_.emit_byte(SymbolicByteCode::FinishUnwind, catch.start());
+      self_.emit_byte(SymbolicByteCode::PopHandler, catch.start());
+
+      let var_state = self_.declare_variable(&catch.name, catch.name.end());
+      let variable: u16 = self_.identifier_constant(catch.name.str());
+
+      self_.emit_byte(SymbolicByteCode::GetError, catch.name.start());
+
+      self_.define_variable(variable, var_state, catch.end());
+
+      self_.scope(catch.end(), &catch.block.symbols, |self__| {
+        self__.block(&catch.block);
+      });
     });
 
-    self.emit_byte(SymbolicByteCode::Label(end_label), catch.end());
+    self.emit_byte(SymbolicByteCode::Jump(try_end_label), catch.end());
+    self.emit_byte(SymbolicByteCode::Label(catch_end_label), catch.end());
   }
 
   /// Compile a raise statement
@@ -2566,9 +2593,15 @@ mod test {
       &vec![
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(2),
+        AlignedByteCode::Jump(14),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::CheckHandler(7),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
+        AlignedByteCode::GetError,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Jump(1),
+        AlignedByteCode::ContinueUnwind,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2601,13 +2634,18 @@ mod test {
         AlignedByteCode::Slot(0),
         AlignedByteCode::DropN(2),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(10),
+        AlignedByteCode::Jump(22),
+        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::CheckHandler(15),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::GetGlobal(3),
-        AlignedByteCode::Constant(4),
+        AlignedByteCode::GetError,
+        AlignedByteCode::GetGlobal(5),
+        AlignedByteCode::Constant(6),
         AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
+        AlignedByteCode::Jump(1),
+        AlignedByteCode::ContinueUnwind,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2634,9 +2672,9 @@ mod test {
 
     assert_simple_bytecode(
       &fun,
-      3,
+      4,
       &vec![
-        AlignedByteCode::PushHandler((1, 51)),
+        AlignedByteCode::PushHandler((1, 63)),
         AlignedByteCode::List(0),
         AlignedByteCode::Constant(0),
         AlignedByteCode::Invoke((1, 1)),
@@ -2649,21 +2687,31 @@ mod test {
         AlignedByteCode::Slot(1),
         AlignedByteCode::Drop,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(10),
+        AlignedByteCode::Jump(22),
+        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::CheckHandler(15),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::GetGlobal(3),
-        AlignedByteCode::Constant(4),
+        AlignedByteCode::GetError,
+        AlignedByteCode::GetGlobal(5),
+        AlignedByteCode::Constant(6),
         AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
+        AlignedByteCode::Jump(1),
+        AlignedByteCode::ContinueUnwind,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(10),
+        AlignedByteCode::Jump(22),
+        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::CheckHandler(15),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::GetGlobal(3),
-        AlignedByteCode::Constant(5),
+        AlignedByteCode::GetError,
+        AlignedByteCode::GetGlobal(5),
+        AlignedByteCode::Constant(7),
         AlignedByteCode::Call(1),
-        AlignedByteCode::Drop,
+        AlignedByteCode::DropN(2),
+        AlignedByteCode::Jump(1),
+        AlignedByteCode::ContinueUnwind,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2690,14 +2738,19 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(17),
+        AlignedByteCode::JumpIfFalse(26),
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(8),
+        AlignedByteCode::Jump(17),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::CheckHandler(7),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Jump(3),
-        AlignedByteCode::Loop(21),
+        AlignedByteCode::GetError,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Jump(4),
+        AlignedByteCode::ContinueUnwind,
+        AlignedByteCode::Loop(30),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2724,14 +2777,19 @@ mod test {
       2,
       &vec![
         AlignedByteCode::True,
-        AlignedByteCode::JumpIfFalse(17),
+        AlignedByteCode::JumpIfFalse(26),
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Loop(13),
+        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::CheckHandler(7),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
-        AlignedByteCode::Loop(18),
-        AlignedByteCode::Loop(21),
+        AlignedByteCode::GetError,
+        AlignedByteCode::Drop,
+        AlignedByteCode::Loop(26),
+        AlignedByteCode::ContinueUnwind,
+        AlignedByteCode::Loop(30),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2759,16 +2817,20 @@ mod test {
         ByteCodeTest::Fun((
           // example
           1,
-          2,
+          3,
           vec![
             ByteCodeTest::Code(AlignedByteCode::PushHandler((1, 3))),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
             ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+            ByteCodeTest::Code(AlignedByteCode::CheckHandler(5)),
             ByteCodeTest::Code(AlignedByteCode::FinishUnwind),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
+            ByteCodeTest::Code(AlignedByteCode::GetError),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
+            ByteCodeTest::Code(AlignedByteCode::ContinueUnwind),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],

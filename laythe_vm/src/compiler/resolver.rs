@@ -16,6 +16,7 @@ use laythe_core::{
   module::{self, ImportError},
   object::FunKind,
 };
+use laythe_lib::global::ERROR_CLASS_NAME;
 use std::vec;
 
 /// A placeholder token to fill the first slot for non method functions
@@ -689,12 +690,19 @@ impl<'a, 'src> Resolver<'a, 'src> {
     }
   }
 
-  fn catch(&mut self, catch : &mut ast::Catch<'src>) {
+  fn catch(&mut self, catch: &mut ast::Catch<'src>) {
     self.declare_variable(&catch.name);
     self.define_variable(&catch.name);
 
     if let Some(class) = &catch.class {
       self.resolve_variable(class)
+    } else {
+      self.resolve_variable(&Token::new(
+        TokenKind::Identifier,
+        Lexeme::Slice(ERROR_CLASS_NAME),
+        catch.name.end(),
+        catch.name.end(),
+      ));
     }
 
     catch.block.symbols = self.scope(|self_| self_.block(&mut catch.block));
@@ -1267,7 +1275,6 @@ mod test {
       match &ast.decls[0] {
         Decl::Stmt(stmt) => match &**stmt {
           Stmt::Try(try_) => {
-
             let captured = try_.catches.first().unwrap().symbols.get("e").unwrap();
 
             assert_eq!(captured.state(), SymbolState::Initialized);

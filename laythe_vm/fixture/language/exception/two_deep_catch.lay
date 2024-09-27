@@ -10,5 +10,9 @@ try {
   outer();
   assert(false);
 } catch e: Error {
-  assert(true);
+  assertEq(e.message, "raise");
+  assertEq(e.backTrace.len(), 3);
+  assert(e.backTrace[0].has("two_deep_catch.lay:6 in raiser()"));
+  assert(e.backTrace[1].has("two_deep_catch.lay:2 in outer()"));
+  assert(e.backTrace[2].has("two_deep_catch.lay:10 in script"));
 }

@@ -187,8 +187,17 @@ pub enum SymbolicByteCode {
   /// Push an exception handler onto the fiber
   PushHandler((u16, Label)),
 
+  /// Check if this handler is appropriate
+  CheckHandler(Label),
+
+  /// Load the current error into the stack
+  GetError,
+
   /// Indicate we're done unwinding
   FinishUnwind,
+
+  /// We did not find an appropriate handler so continue unwinding
+  ContinueUnwind,
 
   /// Pop an exception handler off the fiber
   PopHandler,
@@ -313,8 +322,11 @@ impl SymbolicByteCode {
       Self::Jump(_) => 3,
       Self::Loop(_) => 3,
       Self::PushHandler(_) => 5,
+      Self::CheckHandler(_) => 3,
       Self::PopHandler => 1,
       Self::FinishUnwind => 1,
+      Self::ContinueUnwind => 1,
+      Self::GetError => 1,
       Self::Raise => 1,
       Self::Call(_) => 2,
       Self::Invoke((_, _)) => 4,
@@ -392,8 +404,11 @@ impl SymbolicByteCode {
       Self::Jump(_) => 0,
       Self::Loop(_) => 0,
       Self::PushHandler(_) => 0,
+      Self::CheckHandler(_) => -1,
       Self::PopHandler => 0,
       Self::FinishUnwind => 0,
+      Self::ContinueUnwind => 0,
+      Self::GetError => 1,
       Self::Raise => -1,
       Self::Call(args) => -(*args as i32),
       Self::Invoke((_, args)) => -(*args as i32),
@@ -528,8 +543,14 @@ impl<'a> ByteCodeEncoder<'a> {
           self.push_op_u16_tuple(ByteCode::PushHandler, *line, *slots, (jump) as u16);
           self.jump_error(jump)
         },
+        SymbolicByteCode::CheckHandler(target) => {
+          let jump = label_offsets[target.0 as usize] - offset - 3;
+          self.op_jump(ByteCode::CheckHandler, *line, jump)
+        },
         SymbolicByteCode::PopHandler => self.op(ByteCode::PopHandler, *line),
         SymbolicByteCode::FinishUnwind => self.op(ByteCode::FinishUnwind, *line),
+        SymbolicByteCode::ContinueUnwind => self.op(ByteCode::ContinueUnwind, *line),
+        SymbolicByteCode::GetError => self.op(ByteCode::GetError, *line),
         SymbolicByteCode::Raise => self.op(ByteCode::Raise, *line),
         SymbolicByteCode::Call(slot) => self.op_byte(ByteCode::Call, *line, *slot),
         SymbolicByteCode::Invoke((slot1, slot2)) => {
@@ -546,12 +567,6 @@ impl<'a> ByteCodeEncoder<'a> {
         SymbolicByteCode::Inherit => self.op(ByteCode::Inherit, *line),
         SymbolicByteCode::GetSuper(slot) => self.op_short(ByteCode::GetSuper, *line, *slot),
         SymbolicByteCode::CaptureIndex(index) => self.op_capture(*index, *line),
-
-        // {
-        //   let encoded: u16 = unsafe { mem::transmute(*index) };
-        //   let bytes = encoded.to_ne_bytes();
-        //   self.encoded_code.extend_from_slice(&bytes);
-        // },
         SymbolicByteCode::PropertySlot => self.op_property_slot(*line),
         SymbolicByteCode::InvokeSlot => self.op_invoke_slot(*line),
         SymbolicByteCode::Label(_) => (),
@@ -830,8 +845,17 @@ pub enum ByteCode {
   /// Push an exception handler onto the fiber
   PushHandler,
 
+  /// Check if this handler is appropriate
+  CheckHandler,
+
+  /// Load the current error into the stack
+  GetError,
+
   /// Indicate we're done unwinding
   FinishUnwind,
+
+  /// We did not find an appropriate handler so continue unwinding
+  ContinueUnwind,
 
   /// Raise an value
   Raise,
@@ -1063,14 +1087,23 @@ pub enum AlignedByteCode {
   /// Push an exception handler onto the fiber
   PushHandler((u16, u16)),
 
+  /// Check if this handler is appropriate
+  CheckHandler(u16),
+
   /// Pop an exception handler off the fiber
   PopHandler,
+
+  /// Load the current error into the stack
+  GetError,
 
   /// Raise an value
   Raise,
 
   /// Indicate we're done unwinding
   FinishUnwind,
+
+  /// We did not find an appropriate handler so continue unwinding
+  ContinueUnwind,
 
   /// Call a function
   Call(u8),
@@ -1255,7 +1288,13 @@ impl AlignedByteCode {
         offset + 5,
       ),
       ByteCode::PopHandler => (Self::PopHandler, offset + 1),
+      ByteCode::CheckHandler => (
+        Self::CheckHandler(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
       ByteCode::FinishUnwind => (Self::FinishUnwind, offset + 1),
+      ByteCode::ContinueUnwind => (Self::ContinueUnwind, offset + 1),
+      ByteCode::GetError => (Self::GetError, offset + 1),
       ByteCode::Raise => (Self::Raise, offset + 1),
       ByteCode::Call => (Self::Call(store[offset + 1]), offset + 2),
       ByteCode::Invoke => (
@@ -1368,6 +1407,12 @@ mod test {
       (2, SymbolicByteCode::Box(66)),
       (1, SymbolicByteCode::EmptyBox),
       (1, SymbolicByteCode::FillBox),
+      (5, SymbolicByteCode::PushHandler((8888, Label::new(1)))),
+      (1, SymbolicByteCode::PopHandler),
+      (1, SymbolicByteCode::ContinueUnwind),
+      (1, SymbolicByteCode::FinishUnwind),
+      (1, SymbolicByteCode::GetError),
+      (3, SymbolicByteCode::CheckHandler(Label::new(1))),
       (3, SymbolicByteCode::Interpolate(3389)),
       (3, SymbolicByteCode::IterNext(81)),
       (3, SymbolicByteCode::IterCurrent(49882)),

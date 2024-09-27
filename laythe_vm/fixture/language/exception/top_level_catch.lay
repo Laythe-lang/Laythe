@@ -2,5 +2,7 @@ try {
   raise Error("raise");
   assert(false);
 } catch e {
-
+  assertEq(e.message, "raise");
+  assertEq(e.backTrace.len(), 1);
+  assert(e.backTrace[0].has("top_level_catch.lay:2 in script"));
 }

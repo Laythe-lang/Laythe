@@ -1,0 +1,15 @@
+let FakeError = "Something Else";
+
+try {
+  try {
+    raise Error("test");
+  } catch e: FakeError {
+  }
+  assert(false);
+} catch e: TypeError {
+  assertEq(e.message, "Catch block must be blank or a subclass of Error.");
+  assertEq(e.backTrace.len(), 1);
+  assert(e.backTrace[0].has("catch_not_class.lay:6 in script"));
+} catch e {
+  assert(false);
+}

@@ -2,10 +2,16 @@ try {
   raise Error("raise");
   assert(false);
 } catch e: Error {
+  assertEq(e.message, "raise");
+  assertEq(e.backTrace.len(), 1);
+  assert(e.backTrace[0].has("top_level_catch_raise.lay:2 in script"));
+
   try {
     raise Error("raise");
     assert(false);
   } catch e: Error {
-    assert(true);
+    assertEq(e.message, "raise");
+    assertEq(e.backTrace.len(), 1);
+    assert(e.backTrace[0].has("top_level_catch_raise.lay:10 in script"));
   }
 }

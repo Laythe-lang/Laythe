@@ -1,0 +1,8 @@
+let FakeError = "Something Else";
+
+try {
+  // Highlights that this is currently a
+  // runtime check
+} catch e: FakeError {
+  assert(false);
+}

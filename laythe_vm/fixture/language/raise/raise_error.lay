@@ -1,6 +1,6 @@
 try {
   raise RuntimeError("example");
   assert(false);
-} catch _ {
-  assert(true);
+} catch e: RuntimeError {
+  assertEq(e.message, "example");
 }

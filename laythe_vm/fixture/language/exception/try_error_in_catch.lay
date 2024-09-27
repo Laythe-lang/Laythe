@@ -1,0 +1,18 @@
+try {
+  try {
+    raise Error("test");
+  } catch e: Error {
+    raise Error("inner test", e);
+  }
+
+  assert(false);
+} catch e: Error {
+  assertEq(e.message, "inner test");
+  assertEq(e.backTrace.len(), 1);
+  assert(e.backTrace[0].has("try_error_in_catch.lay:5 in script"));
+
+  let inner = e.inner;
+  assertEq(inner.message, "test");
+  assertEq(inner.backTrace.len(), 1);
+  assert(inner.backTrace[0].has("try_error_in_catch.lay:3 in script"));
+}

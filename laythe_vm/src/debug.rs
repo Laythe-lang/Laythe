@@ -15,18 +15,21 @@ pub fn print_symbolic_code(
   chunk_builder: &ChunkBuilder,
   name: &str,
 ) -> io::Result<()> {
+    use std::u16;
+
   let stdout = stdio.stdout();
   writeln!(stdout)?;
   writeln!(stdout, "{0}", name)?;
 
   let mut offset: usize = 0;
-  let mut last_index: usize = 0;
+  let mut last_line: u16 = u16::MAX;
 
   while offset < chunk_builder.instructions().len() {
-    let show_line = chunk_builder.get_line(offset) == chunk_builder.get_line(last_index);
-    let temp = print_byte_code(stdio, chunk_builder, offset, show_line);
-    last_index = offset;
-    offset = temp?;
+    let line = chunk_builder.get_line(offset);
+    let show_line = line == last_line;
+
+    offset = print_byte_code(stdio, chunk_builder, offset, line, show_line)?;
+    last_line = line;
   }
 
   Ok(())
@@ -38,6 +41,7 @@ pub fn print_byte_code(
   stdio: &mut Stdio,
   chunk: &ChunkBuilder,
   offset: usize,
+  line: u16,
   show_line: bool,
 ) -> io::Result<usize> {
   let stdout = stdio.stdout();
@@ -54,10 +58,10 @@ pub fn print_byte_code(
 
   write!(stdout, "  {:0>4} ", offset)?;
 
-  if offset != 0 && show_line {
+  if show_line {
     write!(stdout, "   | ")?;
   } else {
-    write!(stdout, "{:>4} ", chunk.get_line(offset))?;
+    write!(stdout, "{:>4} ", line)?;
   }
 
   match instruction {
@@ -196,7 +200,11 @@ pub fn print_byte_code(
       symbolic_push_handler_instruction(stdio.stdout(), "PushHandler", slots, jump, offset)
     },
     SymbolicByteCode::PopHandler => simple_instruction(stdio.stdout(), "PopHandler", offset),
+    SymbolicByteCode::CheckHandler(jump) => symbolic_jump_instruction(stdio.stdout(), "CheckHandler", jump, offset),
+    SymbolicByteCode::FinishUnwind => simple_instruction(stdio.stdout(), "FinishUnwind", offset),
+    SymbolicByteCode::ContinueUnwind => simple_instruction(stdio.stdout(), "ContinueUnwind", offset),
     SymbolicByteCode::Raise => simple_instruction(stdio.stdout(), "Raise", offset),
+    SymbolicByteCode::GetError => simple_instruction(stdio.stdout(), "GetError", offset),
     SymbolicByteCode::Equal => simple_instruction(stdio.stdout(), "Equal", offset),
     SymbolicByteCode::NotEqual => simple_instruction(stdio.stdout(), "NotEqual", offset),
     SymbolicByteCode::Greater => simple_instruction(stdio.stdout(), "Greater", offset),
@@ -526,9 +534,12 @@ pub fn disassemble_instruction(
     AlignedByteCode::PushHandler((slots, jump)) => {
       push_handler_instruction(stdio.stdout(), "PushHandler", slots, jump, offset)
     },
+    AlignedByteCode::CheckHandler(jump) => jump_instruction(stdio.stdout(), "CheckHandler", 1, jump, offset),
     AlignedByteCode::PopHandler => simple_instruction(stdio.stdout(), "PopHandler", offset),
     AlignedByteCode::FinishUnwind => simple_instruction(stdio.stdout(), "FinishUnwind", offset),
+    AlignedByteCode::ContinueUnwind => simple_instruction(stdio.stdout(), "ContinueUnwind", offset),
     AlignedByteCode::Raise => simple_instruction(stdio.stdout(), "Raise", offset),
+    AlignedByteCode::GetError => simple_instruction(stdio.stdout(), "GetError", offset),
     AlignedByteCode::Equal => simple_instruction(stdio.stdout(), "Equal", offset),
     AlignedByteCode::NotEqual => simple_instruction(stdio.stdout(), "NotEqual", offset),
     AlignedByteCode::Greater => simple_instruction(stdio.stdout(), "Greater", offset),
