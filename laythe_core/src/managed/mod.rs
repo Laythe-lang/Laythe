@@ -15,6 +15,6 @@ pub use gc_array::{
 pub use gc_obj::{GcObj, GcObject, GcObjectHandle, GcObjectHandleBuilder, Object};
 pub use gc_str::{GcStr, GcStrHandle};
 pub use manage::{
-  AllocResult, Allocate, DebugHeap, DebugHeapRef, DebugWrap, DebugWrapDyn, Manage, Mark, Marked,
+  AllocResult, Allocate, DebugHeap, DebugWrap, DebugWrapDyn, Manage, Mark, Marked,
   Trace, TraceRoot, Unmark,
 };

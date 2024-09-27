@@ -1,8 +1,7 @@
 use super::{
   header::{Header, InstanceHeader, ObjHeader},
   utils::{get_array_len_offset, get_array_offset, make_array_layout},
-  AllocResult, Allocate, DebugHeap, DebugHeapRef, DebugWrap, GcObj, GcObject, GcObjectHandle,
-  Manage,
+  AllocResult, Allocate, DebugHeap, DebugWrap, GcObj, GcObject, GcObjectHandle, Manage,
 };
 use crate::{
   managed::{Mark, Marked, Trace, Unmark},
@@ -235,8 +234,6 @@ impl<T: DebugHeap, H> DebugHeap for GcArray<T, H> {
     }
   }
 }
-
-impl<T: DebugHeap, H> DebugHeapRef for GcArray<T, H> {}
 
 impl<T, H> fmt::Pointer for GcArray<T, H> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

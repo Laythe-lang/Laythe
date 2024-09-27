@@ -1,12 +1,11 @@
 use crate::managed::{
-  instance_handle, tuple_handle, Allocate, DebugHeapRef, GcObj, GcObjectHandle,
-  GcObjectHandleBuilder, GcStr, GcStrHandle, Instance, Manage, Marked, Object, Trace, TraceRoot,
-  Tuple, Unmark,
+  instance_handle, tuple_handle, Allocate, DebugHeap, GcObj, GcObjectHandle, GcObjectHandleBuilder, GcStr, GcStrHandle, Instance, Manage, Marked, Object, Trace, TraceRoot, Tuple, Unmark
 };
 use crate::object::Class;
 use crate::value::Value;
 use hashbrown::HashMap;
 use laythe_env::stdio::Stdio;
+use core::fmt;
 use std::{cell::RefCell, io::Write};
 
 #[cfg(any(feature = "gc_log_free", feature = "gc_log_alloc"))]
@@ -89,7 +88,7 @@ impl Allocator {
   /// used to annotate active roots
   pub fn manage<R, T, C>(&mut self, data: T, context: &C) -> R
   where
-    R: 'static + Trace + Copy + DebugHeapRef,
+    R: 'static + Trace + Copy + fmt::Pointer + DebugHeap,
     T: Allocate<R>,
     C: TraceRoot + ?Sized,
   {
@@ -239,7 +238,7 @@ impl Allocator {
   /// context to determine the active roots.
   fn allocate<R, T, C>(&mut self, data: T, context: &C) -> R
   where
-    R: 'static + Trace + Copy + DebugHeapRef,
+    R: 'static + Trace + Copy + fmt::Pointer + DebugHeap,
     T: Allocate<R>,
     C: TraceRoot + ?Sized,
   {
@@ -283,7 +282,7 @@ impl Allocator {
     self.nursery_obj_heap.push(object_handle.degrade());
 
     #[cfg(feature = "gc_log_alloc")]
-    self.debug_allocate_obj(obj, size);
+    self.debug_allocate(obj, size);
 
     #[cfg(feature = "gc_stress")]
     self.collect_garbage_with_value(context, obj);
@@ -310,7 +309,7 @@ impl Allocator {
     self.nursery_obj_heap.push(gc_string_handle.degrade());
 
     #[cfg(feature = "gc_log_alloc")]
-    self.debug_allocate_str(gc_string, size);
+    self.debug_allocate(gc_string, size);
 
     #[cfg(feature = "gc_stress")]
     self.collect_garbage_with_value(context, gc_string);
@@ -337,7 +336,7 @@ impl Allocator {
     self.obj_heap.push(gc_tuple_handle.degrade());
 
     #[cfg(feature = "gc_log_alloc")]
-    self.debug_allocate_tuple(tuple, size);
+    self.debug_allocate(tuple, size);
 
     #[cfg(feature = "gc_stress")]
     self.collect_garbage_with_value(context, tuple);
@@ -368,7 +367,7 @@ impl Allocator {
     self.obj_heap.push(gc_instance_handle.degrade());
 
     #[cfg(feature = "gc_log_alloc")]
-    self.debug_allocate_tuple(tuple, size);
+    self.debug_allocate(tuple, size);
 
     #[cfg(feature = "gc_stress")]
     self.collect_garbage_with_value(context, tuple);
@@ -595,7 +594,7 @@ impl Allocator {
 
   /// Debug logging for allocating an object.
   #[cfg(feature = "gc_log_alloc")]
-  fn debug_allocate<R: DebugHeapRef>(&self, reference: R, size: usize) {
+  fn debug_allocate<R: fmt::Pointer + DebugHeap,>(&self, reference: R, size: usize) {
     let mut stdio = self.stdio.borrow_mut();
     let stdout = stdio.stdout();
 
@@ -605,52 +604,6 @@ impl Allocator {
       reference,
       size,
       DebugWrap(&reference, 1)
-    )
-    .expect("unable to write to stdout");
-  }
-
-  /// Debug logging for allocating an object.
-  #[cfg(feature = "gc_log_alloc")]
-  fn debug_allocate_obj<T: Object>(&self, obj: GcObj<T>, size: usize) {
-    let mut stdio = self.stdio.borrow_mut();
-    let stdout = stdio.stdout();
-
-    writeln!(
-      stdout,
-      "{:p} allocated {} bytes for {:?}",
-      obj,
-      size,
-      DebugWrap(&obj, 1)
-    )
-    .expect("unable to write to stdout");
-  }
-
-  /// Debug logging for allocating an object.
-  #[cfg(feature = "gc_log_alloc")]
-  fn debug_allocate_str(&self, string: GcStr, size: usize) {
-    let mut stdio = self.stdio.borrow_mut();
-    let stdout = stdio.stdout();
-
-    writeln!(
-      stdout,
-      "{:p} allocated {} bytes for {}",
-      string, size, string,
-    )
-    .expect("unable to write to stdout");
-  }
-
-  /// Debug logging for allocating an object.
-  #[cfg(feature = "gc_log_alloc")]
-  fn debug_allocate_tuple(&self, tuple: Tuple, size: usize) {
-    let mut stdio = self.stdio.borrow_mut();
-    let stdout = stdio.stdout();
-
-    writeln!(
-      stdout,
-      "{:p} allocated {} bytes for {:?}",
-      tuple,
-      size,
-      DebugWrap(&tuple, 1),
     )
     .expect("unable to write to stdout");
   }

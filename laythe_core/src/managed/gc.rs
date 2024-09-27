@@ -10,7 +10,7 @@ use std::{
 use super::{
   allocation::Allocation,
   manage::{DebugHeap, DebugWrap, Manage, Trace},
-  AllocResult, DebugHeapRef, Mark,
+  AllocResult, Mark,
 };
 
 pub struct Gc<T: 'static> {
@@ -104,8 +104,6 @@ impl<T> fmt::Pointer for Gc<T> {
     self.ptr.fmt(f)
   }
 }
-
-impl<T: 'static + DebugHeap> DebugHeapRef for Gc<T> {}
 
 unsafe impl<T: 'static + Trace> Send for Gc<T> {}
 unsafe impl<T: 'static + Trace> Sync for Gc<T> {}

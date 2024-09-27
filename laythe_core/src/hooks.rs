@@ -1,10 +1,11 @@
+use core::fmt;
 use std::{
   cell::{RefCell, RefMut},
   io::Write,
 };
 
 use crate::{
-  managed::{Allocate, DebugHeapRef, GcObj, GcStr, Instance, Object, Trace, TraceRoot, Tuple},
+  managed::{Allocate, DebugHeap, GcObj, GcStr, Instance, Object, Trace, TraceRoot, Tuple},
   memory::Allocator,
   object::Class,
   value::{Value, VALUE_NIL},
@@ -78,7 +79,7 @@ impl<'a> Hooks<'a> {
   /// Request an object be managed by this allocator
   pub fn manage<R, T>(&self, data: T) -> R
   where
-    R: 'static + Trace + Copy + DebugHeapRef,
+    R: 'static + Trace + Copy + fmt::Pointer + DebugHeap,
     T: Allocate<R>,
   {
     self.as_gc().manage(data)
@@ -150,7 +151,7 @@ impl<'a> GcHooks<'a> {
   #[inline]
   pub fn manage<R, T>(&self, data: T) -> R
   where
-    R: 'static + Trace + Copy + DebugHeapRef,
+    R: 'static + Trace + Copy + DebugHeap + fmt::Pointer,
     T: Allocate<R>,
   {
     self.context.gc().manage(data, self.context)

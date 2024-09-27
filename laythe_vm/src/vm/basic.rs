@@ -1,9 +1,11 @@
-use super::{Vm, ExecutionSignal};
+use super::{ExecutionSignal, Vm};
 use crate::cache::InlineCache;
+use core::fmt;
 use laythe_core::{
-  managed::{Allocate, DebugHeapRef, GcObj, GcStr, Instance, Object, Trace, Tuple},
+  captures::Captures,
+  managed::{Allocate, DebugHeap, GcObj, GcStr, Instance, Object, Trace, Tuple},
   object::{Class, Fiber, Fun},
-  value::Value, captures::Captures,
+  value::Value,
 };
 use std::{convert::TryInto, ptr};
 
@@ -12,7 +14,7 @@ impl Vm {
     self.builtin.primitives.for_value(value)
   }
 
-  pub(super) fn manage<R: 'static + Trace + Copy + DebugHeapRef, T: Allocate<R>>(
+  pub(super) fn manage<R: 'static + Trace + Copy + fmt::Pointer + DebugHeap, T: Allocate<R>>(
     &self,
     data: T,
   ) -> R {
@@ -131,7 +133,12 @@ impl Vm {
   }
 
   /// Push a call frame onto the the call frame stack
-  pub(super) unsafe fn push_frame(&mut self, closure: GcObj<Fun>, captures: Captures, arg_count: u8) {
+  pub(super) unsafe fn push_frame(
+    &mut self,
+    closure: GcObj<Fun>,
+    captures: Captures,
+    arg_count: u8,
+  ) {
     self.store_ip();
 
     self.fiber.push_frame(closure, captures, arg_count as usize);
@@ -166,5 +173,4 @@ impl Vm {
       None => self.internal_error("Compilation failure attempted to pop last frame"),
     }
   }
-
 }
