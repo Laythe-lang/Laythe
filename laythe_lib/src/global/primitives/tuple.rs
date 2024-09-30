@@ -365,7 +365,7 @@ impl LyNative for TupleCollect {
     }
 
     hooks.pop_roots(1);
-    Call::Ok(val!(hooks.manage_tuple(&list)))
+    Call::Ok(val!(hooks.manage_obj::<Tuple, &[Value]>(&list)))
   }
 }
 
@@ -472,7 +472,7 @@ mod test {
 
       let values = &[val!(0.0)];
 
-      let this = hooks.manage_tuple(&[VALUE_NIL, val!(10.0)]);
+      let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0)]);
 
       let result = tuple_index_get.call(&mut hooks, Some(val!(this)), values);
       match result {
@@ -517,7 +517,7 @@ mod test {
 
       let values = &[];
 
-      let this = hooks.manage_tuple(&[
+      let this = hooks.manage_obj::<Tuple, &[Value]>(&[
         VALUE_NIL,
         val!(10.0),
         val!(hooks.manage_obj(List::from(vec![val!(5.0)]))),
@@ -564,7 +564,7 @@ mod test {
 
       let tuple_slice = TupleSlice::native(&hooks.as_gc(), error);
 
-      let this = hooks.manage_tuple(&[val!(1.0), val!(2.0), val!(3.0)]);
+      let this = hooks.manage_obj::<Tuple, &[Value]>(&[val!(1.0), val!(2.0), val!(3.0)]);
 
       let result = tuple_slice
         .call(&mut hooks, Some(val!(this)), &[val!(0.0), val!(2.0)])
@@ -601,7 +601,7 @@ mod test {
 
       let values = &[];
 
-      let this = hooks.manage_tuple(&[VALUE_NIL, val!(10.0)]);
+      let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0)]);
 
       let result = list_size.call(&mut hooks, Some(val!(this)), values);
       match result {
@@ -637,7 +637,7 @@ mod test {
 
       let tuple_index = TupleIndex::native(&hooks.as_gc());
 
-      let this = hooks.manage_tuple(&[VALUE_NIL, val!(10.0), val!(true)]);
+      let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0), val!(true)]);
       let tuple_value = Some(val!(this));
 
       let result = tuple_index.call(&mut hooks, tuple_value, &[val!(10.0)]);
@@ -676,7 +676,7 @@ mod test {
 
       let tuple_hash = TupleHas::native(&hooks.as_gc());
 
-      let this = hooks.manage_tuple(&[VALUE_NIL, val!(10.0), val!(true)]);
+      let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0), val!(true)]);
       let tuple_value = Some(val!(this));
 
       let result = tuple_hash.call(&mut hooks, tuple_value, &[val!(10.0)]);
@@ -718,7 +718,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let tuple_iter = TupleIter::native(&hooks.as_gc());
 
-      let this = hooks.manage_tuple(&[VALUE_NIL, val!(10.0), val!(true)]);
+      let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0), val!(true)]);
       let tuple_value = Some(val!(this));
 
       let result = tuple_iter.call(&mut hooks, tuple_value, &[]);

@@ -131,7 +131,7 @@ mod test {
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let captures = Captures::new(&hooks.as_gc(), &[]);
       let closure = hooks.manage_obj(Closure::new(fun, captures));
-      let instance = hooks.manage_instance(class);
+      let instance = hooks.manage_obj(class);
       let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 
       let result1 = method_name.call(&mut hooks, Some(val!(method)), &[]);
@@ -176,7 +176,7 @@ mod test {
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
       let captures = Captures::new(&hooks.as_gc(), &[]);
       let closure = hooks.manage_obj(Closure::new(fun, captures));
-      let instance = hooks.manage_instance(class);
+      let instance = hooks.manage_obj(class);
       let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));
 
       let result1 = method_call.call(&mut hooks, Some(val!(method)), &[]);

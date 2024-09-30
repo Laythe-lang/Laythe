@@ -3,7 +3,7 @@ use crate::cache::InlineCache;
 use core::fmt;
 use laythe_core::{
   captures::Captures,
-  managed::{Allocate, DebugHeap, GcObj, GcStr, Instance, Object, Trace, Tuple},
+  managed::{Allocate, AllocateObj, DebugHeap, GcObj, GcStr, Trace},
   object::{Class, Fiber, Fun},
   value::Value,
 };
@@ -21,16 +21,12 @@ impl Vm {
     self.gc.borrow_mut().manage(data, self)
   }
 
-  pub(super) fn manage_obj<T: 'static + Object>(&self, data: T) -> GcObj<T> {
+  pub(super) fn manage_obj<T, R>(&self, data: T) -> R
+  where
+    R: 'static + Trace + Copy + fmt::Pointer + DebugHeap,
+    T: AllocateObj<R>,
+  {
     self.gc.borrow_mut().manage_obj(data, self)
-  }
-
-  pub(super) fn manage_tuple(&self, slice: &[Value]) -> Tuple {
-    self.gc.borrow_mut().manage_tuple(slice, self)
-  }
-
-  pub(super) fn manage_instance(&self, class: GcObj<Class>) -> Instance {
-    self.gc.borrow_mut().manage_instance(class, self)
   }
 
   pub(super) fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {

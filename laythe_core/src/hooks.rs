@@ -5,7 +5,7 @@ use std::{
 };
 
 use crate::{
-  managed::{Allocate, DebugHeap, GcObj, GcStr, Instance, Object, Trace, TraceRoot, Tuple},
+  managed::{Allocate, AllocateObj, DebugHeap, GcObj, GcStr, Trace, TraceRoot},
   memory::Allocator,
   object::Class,
   value::{Value, VALUE_NIL},
@@ -86,18 +86,12 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request a string be managed by this allocator
-  pub fn manage_obj<T: Object>(&self, obj: T) -> GcObj<T> {
+  pub fn manage_obj<R, T>(&self, obj: T) -> R
+  where
+    R: 'static + Trace + Copy + fmt::Pointer + DebugHeap,
+    T: AllocateObj<R>,
+  {
     self.as_gc().manage_obj(obj)
-  }
-
-  /// Request a tuple be managed by this allocator
-  pub fn manage_tuple(&self, slice: &[Value]) -> Tuple {
-    self.as_gc().manage_tuple(slice)
-  }
-
-  /// Request a instance be managed by this allocator
-  pub fn manage_instance(&self, class: GcObj<Class>) -> Instance {
-    self.as_gc().manage_instance(class)
   }
 
   /// Request a string be managed by this allocator
@@ -159,19 +153,12 @@ impl<'a> GcHooks<'a> {
 
   /// Request a string be managed by this allocator
   #[inline]
-  pub fn manage_obj<T: Object>(&self, obj: T) -> GcObj<T> {
+  pub fn manage_obj<R, T>(&self, obj: T) -> R
+  where
+    R: 'static + Trace + Copy + fmt::Pointer + DebugHeap,
+    T: AllocateObj<R>,
+  {
     self.context.gc().manage_obj(obj, self.context)
-  }
-
-  /// Request a tuple be managed by this allocator
-  #[inline]
-  pub fn manage_tuple(&self, slice: &[Value]) -> Tuple {
-    self.context.gc().manage_tuple(slice, self.context)
-  }
-
-  /// Request a instance be managed by this allocator
-  pub fn manage_instance(&self, class: GcObj<Class>) -> Instance {
-    self.context.gc().manage_instance(class, self.context)
   }
 
   /// Request a string be managed by this allocator

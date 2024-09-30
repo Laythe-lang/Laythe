@@ -173,7 +173,7 @@ mod test {
     regexp_class.add_field(hooks.manage_str(REGEXP_FIELD_PATTERN));
     regexp_class.add_field(hooks.manage_str(REGEXP_FIELD_FLAGS));
 
-    let regexp = hooks.manage_instance(hooks.manage_obj(regexp_class));
+    let regexp = hooks.manage_obj(hooks.manage_obj(regexp_class));
     let init = RegExpInit::native(&hooks.as_gc());
     init
       .call(

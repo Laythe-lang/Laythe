@@ -145,7 +145,7 @@ mod test {
       test_class.add_field(hooks.manage_str(ERROR_FIELD_BACK_TRACE));
       test_class.add_field(hooks.manage_str(ERROR_FIELD_INNER));
 
-      let instance = hooks.manage_instance(test_class);
+      let instance = hooks.manage_obj(test_class);
 
       let name = val!(hooks.manage_str("test"));
       let args = [name];

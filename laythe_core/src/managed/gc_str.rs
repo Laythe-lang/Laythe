@@ -17,7 +17,7 @@ use std::{
 };
 
 use super::{
-  gc_obj::GcObject, header::ObjHeader, utils::make_array_layout, GcObjectHandle, Marked, Unmark,
+  allocate::AllocObjResult, gc_obj::GcObject, header::ObjHeader, utils::make_array_layout, AllocateObj, GcObjectHandle, Marked, Unmark
 };
 
 /// A non owning reference to a Garbage collector
@@ -343,6 +343,22 @@ impl DebugHeap for GcStrHandle {
 impl fmt::Pointer for GcStrHandle {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     self.value().0.ptr().fmt(f)
+  }
+}
+
+
+impl<T: AsRef<str>> AllocateObj<GcStr> for T {
+  fn alloc(self) -> AllocObjResult<GcStr> {
+    let handle = GcStrHandle::from(self);
+    let size = handle.size();
+
+    let reference = handle.value();
+
+    AllocObjResult {
+      handle: handle.degrade(),
+      size,
+      reference,
+    }
   }
 }
 

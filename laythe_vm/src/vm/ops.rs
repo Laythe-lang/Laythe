@@ -4,7 +4,7 @@ use laythe_core::{
   captures::Captures,
   hooks::{GcHooks, Hooks},
   if_let_obj,
-  managed::{Array, Gc, GcObj, GcStr},
+  managed::{Array, Gc, GcObj, GcStr, Tuple},
   match_obj,
   module::Import,
   object::{
@@ -68,7 +68,7 @@ impl Vm {
     let arg_count = self.read_short() as usize;
 
     let args = self.fiber.stack_slice(arg_count);
-    let list = val!(self.manage_tuple(args));
+    let list = val!(self.manage_obj(args));
     self.fiber.drop_n(arg_count);
     self.fiber.push(list);
 
@@ -551,12 +551,14 @@ impl Vm {
 
     match self.fiber.error() {
       Some(mut error) => {
-        error[1] = val!(self.manage_tuple(
-          &backtrace
+        let backtrace: Tuple = self.manage_obj(
+          &*backtrace
             .iter()
             .map(|line| val!(self.manage_str(line)))
             .collect::<List<Value>>()
-        ))
+        );
+
+        error[1] = val!(backtrace)
       },
       None => self.internal_error("Expected fiber error"),
     }
@@ -1351,7 +1353,7 @@ impl Vm {
 
   /// call a class creating a new instance of that class
   unsafe fn call_class(&mut self, class: GcObj<Class>, arg_count: u8) -> ExecutionSignal {
-    let instance = val!(self.manage_instance(class));
+    let instance = val!(self.manage_obj(class));
     self.fiber.peek_set(arg_count as usize, instance);
 
     match class.init() {

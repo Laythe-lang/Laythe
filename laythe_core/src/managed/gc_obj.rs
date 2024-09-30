@@ -1,9 +1,5 @@
 use super::{
-  gc_array::Tuple,
-  header::ObjHeader,
-  manage::{DebugHeap, DebugWrap, Trace},
-  utils::{get_array_len_offset, get_offset, make_array_layout, make_obj_layout},
-  GcArray, GcStr, Instance, Mark, Marked, Unmark,
+  allocate::AllocObjResult, gc_array::{Instance, Tuple}, header::ObjHeader, manage::{DebugHeap, DebugWrap, Trace}, utils::{get_array_len_offset, get_offset, make_array_layout, make_obj_layout}, AllocateObj, GcArray, GcStr, Mark, Marked, Unmark
 };
 use crate::{
   managed::{header::InstanceHeader, utils::get_array_offset},
@@ -294,6 +290,23 @@ impl<T: 'static + Object + fmt::Debug> fmt::Debug for GcObj<T> {
 impl<T: 'static + Object> fmt::Pointer for GcObj<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.ptr.fmt(f)
+  }
+}
+
+impl<T> AllocateObj<GcObj<T>> for T
+where
+  T: Object,
+{
+  fn alloc(self) -> AllocObjResult<GcObj<T>> {
+    let handle = GcObjectHandleBuilder::from(self);
+    let size = handle.size();
+    let reference = handle.value();
+
+    AllocObjResult {
+      handle: handle.degrade(),
+      size,
+      reference,
+    }
   }
 }
 

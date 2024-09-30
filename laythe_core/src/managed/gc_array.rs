@@ -1,10 +1,11 @@
 use super::{
+  allocate::AllocObjResult,
   header::{Header, InstanceHeader, ObjHeader},
   utils::{get_array_len_offset, get_array_offset, make_array_layout},
-  AllocResult, Allocate, DebugHeap, DebugWrap, GcObj, GcObject, GcObjectHandle, Manage,
+  AllocResult, Allocate, AllocateObj, DebugHeap, DebugWrap, GcObj, GcObject, GcObjectHandle,
+  Manage, Mark, Marked, Trace, Unmark,
 };
 use crate::{
-  managed::{Mark, Marked, Trace, Unmark},
   object::{Class, ObjectKind},
   value::{Value, VALUE_NIL},
 };
@@ -19,31 +20,14 @@ use std::{
   slice::{self},
 };
 
-pub type ObjArray<T> = GcArray<T, ObjHeader>;
-pub type Array<T> = GcArray<T, Header>;
-pub type ObjArrayHandle<T> = GcArrayHandle<T, ObjHeader>;
-
-pub type Instance = GcArray<Value, InstanceHeader>;
-pub type InstanceHandle = GcArrayHandle<Value, InstanceHeader>;
-
-pub type Tuple = ObjArray<Value>;
-pub type TupleHandle = ObjArrayHandle<Value>;
-
 const MAX_FIELD_COUNT: usize = u16::MAX as usize;
 const NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
 
-pub fn tuple_handle(slice: &[Value]) -> GcArrayHandle<Value, ObjHeader> {
-  GcArrayHandle::from_slice(slice, ObjHeader::new(ObjectKind::Tuple))
-}
+pub type ObjArray<T> = GcArray<T, ObjHeader>;
+pub type Array<T> = GcArray<T, Header>;
 
-pub fn instance_handle(class: GcObj<Class>) -> InstanceHandle {
-  if class.fields() > 256 {
-    todo!()
-  }
-
-  let slice = &NIL_ARRAY[..class.fields()];
-  GcArrayHandle::from_slice(slice, InstanceHeader::new(class))
-}
+pub type Instance = GcArray<Value, InstanceHeader>;
+pub type Tuple = ObjArray<Value>;
 
 /// A non owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
@@ -301,6 +285,41 @@ impl<T: Debug, H> Debug for GcArray<T, H> {
 unsafe impl<T: Send, H: Send> Send for GcArray<T, H> {}
 unsafe impl<T: Sync, H: Sync> Sync for GcArray<T, H> {}
 
+impl AllocateObj<Instance> for GcObj<Class> {
+  fn alloc(self) -> AllocObjResult<Instance> {
+    if self.fields() > 256 {
+      panic!("Cannot allocate class with more than 256 fields")
+    }
+
+    let slice = &NIL_ARRAY[..self.fields()];
+    let handle = GcArrayHandle::from_slice(slice, InstanceHeader::new(self));
+
+    let size = handle.size();
+    let reference = handle.value();
+
+    AllocObjResult {
+      handle: handle.degrade(),
+      size,
+      reference,
+    }
+  }
+}
+
+impl AllocateObj<Tuple> for &[Value] {
+  fn alloc(self) -> AllocObjResult<Tuple> {
+    let handle = GcArrayHandle::from_slice(self, ObjHeader::new(ObjectKind::Tuple));
+
+    let size = handle.size();
+    let reference = handle.value();
+
+    AllocObjResult {
+      handle: handle.degrade(),
+      size,
+      reference,
+    }
+  }
+}
+
 /// A owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
 /// as a single pointer.
@@ -488,11 +507,16 @@ impl<T: 'static + Trace + Copy + DebugHeap> Allocate<GcArray<T, Header>> for &[T
   fn alloc(self) -> AllocResult<GcArray<T, Header>> {
     let handle = GcArrayHandle::from_slice(self, Header::new(false));
     let reference = handle.value();
+    let size = handle.size();
 
     let handle = Box::new(handle);
     let handle = handle as Box<dyn Manage>;
 
-    AllocResult { handle, reference }
+    AllocResult {
+      handle,
+      reference,
+      size,
+    }
   }
 }
 
@@ -554,7 +578,7 @@ mod test {
   mod instance_handle {
     use crate::{
       hooks::{GcHooks, NoContext},
-      managed::gc_array::instance_handle,
+      managed::AllocateObj,
       support::{test_object_class, ClassBuilder},
     };
 
@@ -576,8 +600,8 @@ mod test {
         )
         .build(&hooks);
 
-      let instance_handle = instance_handle(class);
-      let instance_value = instance_handle.value();
+      let result = class.alloc();
+      let instance_value = result.reference;
 
       assert_eq!(instance_value.len(), 2);
       assert_eq!(instance_value.header().class(), class);

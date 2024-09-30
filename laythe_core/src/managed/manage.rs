@@ -83,20 +83,3 @@ pub trait Manage: DebugHeap + Unmark {
   /// this resource is managed
   fn loc(&self) -> *const u8;
 }
-
-/// Define how a struct should be allocated by the garbage collector
-pub trait Allocate<R: Trace> {
-  // The handle to manage this allocated object
-  fn alloc(self) -> AllocResult<R>;
-}
-
-pub struct AllocResult<R> {
-  pub handle: Box<dyn Manage>,
-  pub reference: R,
-}
-
-impl<R> AllocResult<R> {
-  pub fn new(handle: Box<dyn Manage>, reference: R) -> Self {
-    Self { handle, reference }
-  }
-}

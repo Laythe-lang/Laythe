@@ -22,9 +22,10 @@ impl<T: 'static + Trace + DebugHeap> Gc<T> {
     let mut handle = Box::new(Allocation::new(data));
     let ptr = unsafe { NonNull::new_unchecked(&mut *handle) };
     let reference = Gc::from(ptr);
+    let size = handle.size();
 
     let handle = handle as Box<dyn Manage>;
-    AllocResult { handle, reference }
+    AllocResult { handle, size, reference }
   }
 }
 
