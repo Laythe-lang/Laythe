@@ -5,15 +5,7 @@ use crate::{
   StdResult,
 };
 use laythe_core::{
-  hooks::{GcHooks, Hooks},
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, Trace},
-  module::Module,
-  object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
-  signature::{Arity, ParameterBuilder, ParameterKind},
-  utils::is_falsey,
-  val,
-  value::{Value, VALUE_NIL},
-  Call, LyError,
+  hooks::{GcHooks, Hooks}, list, managed::{DebugHeap, DebugWrap, Gc, GcObj, ListBuilder, Trace}, module::Module, object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, utils::is_falsey, val, value::{Value, VALUE_NIL}, Call, LyError
 };
 use std::io::Write;
 
@@ -717,10 +709,10 @@ impl Enumerate for ZipIterator {
   }
 
   fn next(&mut self, hooks: &mut Hooks) -> Call {
-    let mut results = hooks.manage_obj(List::with_capacity(self.iters.len()));
+    let mut results = hooks.manage_obj(&*vec![VALUE_NIL; self.iters.len()]);
 
     hooks.push_root(results);
-    for iter in &mut self.iters {
+    for (iter, slot) in &mut self.iters.iter_mut().zip(results.iter_mut()) {
       let next = iter.next(hooks)?;
 
       if is_falsey(next) {
@@ -728,7 +720,7 @@ impl Enumerate for ZipIterator {
         return Call::Ok(val!(false));
       }
 
-      results.push(iter.current());
+      *slot = iter.current();
     }
     hooks.pop_roots(1);
 
@@ -935,14 +927,14 @@ impl LyNative for IterToList {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let mut iter = this.unwrap().to_obj().to_enumerator();
     let mut list = match iter.size_hint() {
-      Some(size) => hooks.manage_obj(List::with_capacity(size)),
-      None => hooks.manage_obj(List::new()),
+      Some(size) => hooks.manage_obj(ListBuilder::cap_only(size)),
+      None => hooks.manage_obj(list!()),
     };
 
     hooks.push_root(list);
 
     while !is_falsey(iter.next(hooks)?) {
-      list.push(iter.current());
+      list.push(iter.current(), &hooks.as_gc());
     }
 
     hooks.pop_roots(1);
@@ -1557,10 +1549,10 @@ mod test {
 
       let mut zip = result.unwrap().to_obj().to_enumerator();
       assert!(zip.next(&mut hooks).unwrap().to_bool());
-      assert!(zip.current().is_obj_kind(ObjectKind::List));
-      assert_eq!(zip.current().to_obj().to_list().len(), 2);
-      assert_eq!(zip.current().to_obj().to_list()[0].to_num(), 1.0);
-      assert_eq!(zip.current().to_obj().to_list()[1].to_num(), 1.0);
+      assert!(zip.current().is_obj_kind(ObjectKind::Tuple));
+      assert_eq!(zip.current().to_obj().to_tuple().len(), 2);
+      assert_eq!(zip.current().to_obj().to_tuple()[0].to_num(), 1.0);
+      assert_eq!(zip.current().to_obj().to_tuple()[1].to_num(), 1.0);
     }
   }
 

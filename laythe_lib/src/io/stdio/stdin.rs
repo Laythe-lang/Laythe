@@ -28,7 +28,7 @@ const STDIN_READ_LINE: NativeMetaBuilder =
 
 pub fn declare_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDIN_CLASS_NAME)?;
-  let instance = hooks.manage_instance(class);
+  let instance = hooks.manage_obj(class);
 
   export_and_insert(
     module,

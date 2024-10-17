@@ -10,18 +10,46 @@ pub const fn next_aligned(num_bytes: usize, alignment: usize) -> usize {
   }
 }
 
-/// Get the offset to the start of the `GcArray<T>` data
+/// Assuming a layout of [H | T] with the pointer pointer to H
+/// get the offset in bytes from the pointer to T
 pub const fn get_offset<H, T>() -> usize {
   next_aligned(mem::size_of::<H>(), mem::align_of::<T>())
 }
 
+/// Assuming a layout of [H | len | T+] get the offset in bytes
+/// to the array length
 pub const fn get_array_len_offset<H>() -> usize {
   next_aligned(mem::size_of::<H>(), mem::align_of::<usize>())
 }
 
+/// Assuming a layout of [H | len | T+] get the offset in bytes
+/// to the first element of the array T
 pub const fn get_array_offset<H, T>() -> usize {
   let len_offset = get_array_len_offset::<H>();
   next_aligned(len_offset + mem::size_of::<usize>(), mem::align_of::<T>())
+}
+
+/// Assuming a layout of [H | len | cap | T+] get the offset in bytes
+/// to the list length
+pub const fn get_list_len_offset<H>() -> usize {
+  next_aligned(mem::size_of::<H>(), mem::align_of::<usize>())
+}
+
+/// Assuming a layout of [H | len | cap | T+] get the offset in bytes
+/// to the list capacity
+pub const fn get_list_cap_offset<H>() -> usize {
+  let len_offset = get_list_len_offset::<H>();
+  next_aligned(
+    len_offset + mem::size_of::<usize>(),
+    mem::align_of::<usize>(),
+  )
+}
+
+/// Assuming a layout of [H | len | cap | T+] get the offset in bytes
+/// to the first element of the list T
+pub const fn get_list_offset<H, T>() -> usize {
+  let cap_offset = get_list_cap_offset::<H>();
+  next_aligned(cap_offset + mem::size_of::<usize>(), mem::align_of::<T>())
 }
 
 /// Determine the max alignment between the item `T`
@@ -35,6 +63,15 @@ pub const fn max_align<H, T>() -> usize {
   } else {
     header_align
   }
+}
+
+/// Create a rust `Layout` for a `GcObject`
+pub fn make_obj_layout<H, T>() -> Layout {
+  let alignment = max_align::<H, T>();
+
+  let header_size = mem::size_of::<H>();
+  let num_bytes = next_aligned(header_size, mem::align_of::<T>()) + mem::size_of::<T>();
+  Layout::from_size_align(num_bytes, alignment).unwrap()
 }
 
 /// Determine the max alignment between the item `T`
@@ -63,20 +100,34 @@ pub fn make_array_layout<H, T>(len: usize) -> Layout {
   Layout::from_size_align(num_bytes, alignment).unwrap()
 }
 
-/// Create a rust `Layout` for a `GcArray` of `len` length.
-pub fn make_obj_layout<H, T>() -> Layout {
-  let alignment = max_align::<H, T>();
+/// Determine the max alignment between the item `T`
+/// and the `GcList` header `Header`
+pub const fn max_list_align<H, T>() -> usize {
+  max_array_align::<H, T>()
+}
 
-  let header_size = mem::size_of::<H>();
-  let num_bytes = next_aligned(header_size, mem::align_of::<T>()) + mem::size_of::<T>();
+/// Create a rust `Layout` for a `GcArray` of `len` length.
+pub fn make_list_layout<H, T>(capacity: usize) -> Layout {
+  let alignment = max_list_align::<H, T>();
+
+  let num_bytes = if capacity == 0 {
+    get_list_offset::<H, T>()
+  } else {
+    get_list_offset::<H, T>() + capacity * mem::size_of::<T>()
+  };
+
   Layout::from_size_align(num_bytes, alignment).unwrap()
 }
 
 #[cfg(test)]
 mod tests {
-  use crate::managed::utils::next_aligned;
-
   use super::*;
+
+  #[repr(align(512))]
+  struct OverAligned {
+    _data: [u8; 512],
+  }
+
   #[test]
   fn next_aligned_test() {
     assert_eq!(next_aligned(9, 4), 12);
@@ -88,126 +139,164 @@ mod tests {
     assert_eq!(next_aligned(16, 512), 512);
   }
 
-  #[repr(align(512))]
-  struct OverAligned {
-    _data: [u8; 512],
+  mod base {
+    use super::*;
+
+    #[test]
+    fn max_align_test() {
+      let header_alignment = mem::align_of::<u64>();
+
+      assert!(mem::align_of::<i32>() <= mem::align_of::<u64>());
+      assert_eq!(max_align::<u64, i32>(), header_alignment);
+
+      assert!(mem::align_of::<u8>() <= mem::align_of::<u64>());
+      assert_eq!(max_align::<u64, u8>(), header_alignment);
+
+      assert!(mem::align_of::<OverAligned>() > mem::align_of::<u64>());
+      assert_eq!(
+        max_align::<u64, OverAligned>(),
+        mem::align_of::<OverAligned>()
+      );
+    }
+
+    #[test]
+    fn get_offset_test() {
+      assert_eq!(get_offset::<u32, u8>(), 4);
+      assert_eq!(get_offset::<u32, u32>(), 4);
+      assert_eq!(get_offset::<u32, u64>(), 8);
+    }
+
+    #[test]
+    fn make_layout_test() {
+      // non-empty, less than
+      //
+      let layout = make_obj_layout::<u64, i32>();
+      assert!(mem::align_of::<i32>() < mem::align_of::<u64>());
+      assert_eq!(layout.align(), mem::align_of::<u64>());
+      assert_eq!(layout.size(), mem::size_of::<u64>() + mem::size_of::<i32>());
+
+      // non-empty, equal
+      //
+      let layout = make_obj_layout::<u64, i64>();
+      assert_eq!(mem::align_of::<i64>(), mem::align_of::<u64>());
+      assert_eq!(layout.align(), mem::align_of::<u64>());
+      assert_eq!(layout.size(), mem::size_of::<u64>() + mem::size_of::<i64>());
+
+      // non-empty, greater
+      let layout = make_obj_layout::<u64, OverAligned>();
+      assert!(mem::align_of::<OverAligned>() > mem::align_of::<u64>());
+      assert_eq!(layout.align(), mem::align_of::<OverAligned>());
+      assert_eq!(
+        layout.size(),
+        next_aligned(mem::size_of::<u64>(), mem::align_of::<OverAligned>())
+          + mem::size_of::<OverAligned>()
+      );
+    }
   }
 
-  #[test]
-  fn max_align_test() {
-    let header_alignment = mem::align_of::<u64>();
+  mod array {
+    use super::*;
 
-    assert!(mem::align_of::<i32>() <= mem::align_of::<u64>());
-    assert_eq!(max_align::<u64, i32>(), header_alignment);
+    #[test]
+    fn max_array_align_test() {
+      assert_eq!(max_array_align::<u16, u8>(), mem::align_of::<usize>());
+      assert_eq!(max_align::<u128, u8>(), mem::align_of::<u128>());
+      assert_eq!(
+        max_align::<u128, OverAligned>(),
+        mem::align_of::<OverAligned>()
+      );
+    }
 
-    assert!(mem::align_of::<u8>() <= mem::align_of::<u64>());
-    assert_eq!(max_align::<u64, u8>(), header_alignment);
+    #[test]
+    fn get_array_offset_test() {
+      assert_eq!(get_array_offset::<u32, u8>(), mem::size_of::<usize>() * 2);
+      assert_eq!(get_array_offset::<u32, u32>(), mem::size_of::<usize>() * 2);
+      assert_eq!(get_array_offset::<u32, u128>(), mem::size_of::<usize>() * 2);
+    }
 
-    assert!(mem::align_of::<OverAligned>() > mem::align_of::<u64>());
-    assert_eq!(
-      max_align::<u64, OverAligned>(),
-      mem::align_of::<OverAligned>()
-    );
+    #[test]
+    fn get_array_len_offset_test() {
+      assert_eq!(get_array_len_offset::<u8>(), mem::size_of::<usize>());
+      assert_eq!(get_array_len_offset::<usize>(), mem::size_of::<usize>());
+      assert_eq!(get_array_len_offset::<u128>(), mem::size_of::<u128>());
+    }
+
+    #[test]
+    fn make_array_layout_test() {
+      // empty
+      //
+      let layout = make_array_layout::<u64, i32>(0);
+
+      assert_eq!(layout.align(), mem::align_of::<u64>());
+      assert_eq!(
+        layout.size(),
+        mem::size_of::<u64>() + mem::size_of::<usize>()
+      );
+
+      // non-empty, less than
+      //
+      let layout = make_array_layout::<u64, i32>(512);
+      assert!(mem::align_of::<i32>() < mem::align_of::<u64>());
+      assert_eq!(layout.align(), mem::align_of::<u64>());
+      assert_eq!(
+        layout.size(),
+        mem::size_of::<u64>() + mem::size_of::<usize>() + 512 * mem::size_of::<i32>()
+      );
+
+      // non-empty, equal
+      //
+      let layout = make_array_layout::<u64, i64>(512);
+      assert_eq!(mem::align_of::<i64>(), mem::align_of::<u64>());
+      assert_eq!(layout.align(), mem::align_of::<u64>());
+      assert_eq!(
+        layout.size(),
+        mem::size_of::<u64>() + mem::size_of::<usize>() + 512 * mem::size_of::<i64>()
+      );
+
+      // non-empty, greater
+      let layout = make_array_layout::<u64, OverAligned>(512);
+      assert!(mem::align_of::<OverAligned>() > mem::align_of::<u64>());
+      assert_eq!(layout.align(), mem::align_of::<OverAligned>());
+      assert_eq!(
+        layout.size(),
+        next_aligned(mem::size_of::<u64>(), mem::align_of::<OverAligned>())
+          + 512 * mem::size_of::<OverAligned>()
+      );
+    }
   }
 
-  #[test]
-  fn max_array_align_test() {
-    assert_eq!(max_array_align::<u16, u8>(), mem::align_of::<usize>());
-    assert_eq!(max_align::<u128, u8>(), mem::align_of::<u128>());
-    assert_eq!(
-      max_align::<u128, OverAligned>(),
-      mem::align_of::<OverAligned>()
-    );
-  }
+  mod list {
+    use super::*;
 
-  #[test]
-  fn get_offset_test() {
-    assert_eq!(get_offset::<u32, u8>(), 4);
-    assert_eq!(get_offset::<u32, u32>(), 4);
-    assert_eq!(get_offset::<u32, u64>(), 8);
-  }
+    #[test]
+    fn max_list_align_test() {
+      assert_eq!(max_list_align::<u16, u8>(), mem::align_of::<usize>());
+      assert_eq!(max_list_align::<u128, u8>(), mem::align_of::<u128>());
+      assert_eq!(
+        max_list_align::<u128, OverAligned>(),
+        mem::align_of::<OverAligned>()
+      );
+    }
 
-  #[test]
-  fn get_array_offset_test() {
-    assert_eq!(get_array_offset::<u32, u8>(), mem::size_of::<usize>() * 2);
-    assert_eq!(get_array_offset::<u32, u32>(), mem::size_of::<usize>() * 2);
-    assert_eq!(get_array_offset::<u32, u128>(), mem::size_of::<usize>() * 2);
-  }
+    #[test]
+    fn get_list_offset_test() {
+      assert_eq!(get_list_offset::<u32, u8>(), mem::size_of::<usize>() * 3);
+      assert_eq!(get_list_offset::<u32, u32>(), mem::size_of::<usize>() * 3);
+      assert_eq!(get_list_offset::<u32, u128>(), mem::size_of::<usize>() * 4);
+    }
 
-  #[test]
-  fn get_array_len_offset_test() {
-    assert_eq!(get_array_len_offset::<u8>(), mem::size_of::<usize>());
-    assert_eq!(get_array_len_offset::<usize>(), mem::size_of::<usize>());
-    assert_eq!(get_array_len_offset::<u128>(), mem::size_of::<u128>());
-  }
+    #[test]
+    fn get_list_len_offset_test() {
+      assert_eq!(get_list_len_offset::<u8>(), mem::size_of::<usize>());
+      assert_eq!(get_list_len_offset::<usize>(), mem::size_of::<usize>());
+      assert_eq!(get_list_len_offset::<u128>(), mem::size_of::<u128>());
+    }
 
-  #[test]
-  fn make_array_layout_test() {
-    // empty
-    //
-    let layout = make_array_layout::<u64, i32>(0);
-
-    assert_eq!(layout.align(), mem::align_of::<u64>());
-    assert_eq!(
-      layout.size(),
-      mem::size_of::<u64>() + mem::size_of::<usize>()
-    );
-
-    // non-empty, less than
-    //
-    let layout = make_array_layout::<u64, i32>(512);
-    assert!(mem::align_of::<i32>() < mem::align_of::<u64>());
-    assert_eq!(layout.align(), mem::align_of::<u64>());
-    assert_eq!(
-      layout.size(),
-      mem::size_of::<u64>() + mem::size_of::<usize>() + 512 * mem::size_of::<i32>()
-    );
-
-    // non-empty, equal
-    //
-    let layout = make_array_layout::<u64, i64>(512);
-    assert_eq!(mem::align_of::<i64>(), mem::align_of::<u64>());
-    assert_eq!(layout.align(), mem::align_of::<u64>());
-    assert_eq!(
-      layout.size(),
-      mem::size_of::<u64>() + mem::size_of::<usize>() + 512 * mem::size_of::<i64>()
-    );
-
-    // non-empty, greater
-    let layout = make_array_layout::<u64, OverAligned>(512);
-    assert!(mem::align_of::<OverAligned>() > mem::align_of::<u64>());
-    assert_eq!(layout.align(), mem::align_of::<OverAligned>());
-    assert_eq!(
-      layout.size(),
-      next_aligned(mem::size_of::<u64>(), mem::align_of::<OverAligned>())
-        + 512 * mem::size_of::<OverAligned>()
-    );
-  }
-
-  #[test]
-  fn make_layout_test() {
-    // non-empty, less than
-    //
-    let layout = make_obj_layout::<u64, i32>();
-    assert!(mem::align_of::<i32>() < mem::align_of::<u64>());
-    assert_eq!(layout.align(), mem::align_of::<u64>());
-    assert_eq!(layout.size(), mem::size_of::<u64>() + mem::size_of::<i32>());
-
-    // non-empty, equal
-    //
-    let layout = make_obj_layout::<u64, i64>();
-    assert_eq!(mem::align_of::<i64>(), mem::align_of::<u64>());
-    assert_eq!(layout.align(), mem::align_of::<u64>());
-    assert_eq!(layout.size(), mem::size_of::<u64>() + mem::size_of::<i64>());
-
-    // non-empty, greater
-    let layout = make_obj_layout::<u64, OverAligned>();
-    assert!(mem::align_of::<OverAligned>() > mem::align_of::<u64>());
-    assert_eq!(layout.align(), mem::align_of::<OverAligned>());
-    assert_eq!(
-      layout.size(),
-      next_aligned(mem::size_of::<u64>(), mem::align_of::<OverAligned>())
-        + mem::size_of::<OverAligned>()
-    );
+    #[test]
+    fn get_list_cap_offset_test() {
+      assert_eq!(get_list_cap_offset::<u8>(), mem::size_of::<usize>() * 2);
+      assert_eq!(get_list_cap_offset::<usize>(), mem::size_of::<usize>() * 2);
+      assert_eq!(get_list_cap_offset::<u128>(), mem::size_of::<u128>() + mem::size_of::<usize>());
+    }
   }
 }

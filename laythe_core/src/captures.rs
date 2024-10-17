@@ -13,7 +13,7 @@ pub struct Captures(Tuple);
 
 impl Captures {
   pub fn new(hooks: &GcHooks, captures: &[GcObj<LyBox>]) -> Self {
-    Self(hooks.manage_tuple(&captures.iter().map(|c| val!(*c)).collect::<Vec<Value>>()))
+    Self(hooks.manage_obj::<Tuple, &[Value]>(&captures.iter().map(|c| val!(*c)).collect::<Vec<Value>>()))
   }
 
   #[inline]

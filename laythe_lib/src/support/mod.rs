@@ -136,20 +136,7 @@ mod test {
     create_std_lib, native,
   };
   use laythe_core::{
-    chunk::Chunk,
-    hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
-    managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, TraceRoot},
-    match_obj,
-    memory::{Allocator, NoGc},
-    module::{module_class, ImportResult, Module},
-    object::{Class, Enumerate, Fun, FunBuilder, List, LyNative, Native, NativeMetaBuilder},
-    signature::Arity,
-    signature::{ParameterBuilder, ParameterKind},
-    to_obj_kind,
-    utils::IdEmitter,
-    val,
-    value::{Value},
-    Call, LyError,
+    chunk::Chunk, hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext}, list, managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, TraceRoot}, match_obj, memory::{Allocator, NoGc}, module::{module_class, ImportResult, Module}, object::{Class, Enumerate, Fun, FunBuilder, LyNative, Native, NativeMetaBuilder}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::IdEmitter, val, value::Value, Call, LyError
   };
   use laythe_env::{
     io::Io,
@@ -333,7 +320,10 @@ mod test {
     }
 
     fn get_class(&mut self, this: Value) -> GcObj<Class> {
-      let b = self.builtin.as_ref().expect("Expected built in class to be defined");
+      let b = self
+        .builtin
+        .as_ref()
+        .expect("Expected built in class to be defined");
 
       b.primitives.for_value(this)
     }
@@ -430,7 +420,11 @@ mod test {
   pub fn test_module(hooks: &GcHooks, name: &str) -> Gc<Module> {
     let base_class = test_class(hooks, "Module");
     let string = hooks.manage_str("example");
-    hooks.manage(Module::new(module_class(hooks, name, base_class), string, 0))
+    hooks.manage(Module::new(
+      module_class(hooks, name, base_class),
+      string,
+      0,
+    ))
   }
 
   pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
@@ -471,7 +465,7 @@ mod test {
     fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
       let mut this = this.unwrap().to_obj().to_instance();
       this[0] = args[0];
-      this[1] = val!(_hooks.manage_obj(List::new()));
+      this[1] = val!(_hooks.manage_obj(list!()));
 
       if args.len() > 1 {
         this[2] = args[1];

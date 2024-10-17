@@ -95,7 +95,7 @@ impl Module {
   pub fn module_instance(&self, hooks: &GcHooks) -> Instance {
     let class = self.module_class;
 
-    let mut import = hooks.manage_instance(class);
+    let mut import = hooks.manage_obj(class);
     hooks.push_root(import);
 
     self.exports.iter().for_each(|export| {

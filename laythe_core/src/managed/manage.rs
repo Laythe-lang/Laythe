@@ -29,9 +29,6 @@ pub trait DebugHeap {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result;
 }
 
-/// A utility to print debug information to a fixed depth in the Laythe heap
-pub trait DebugHeapRef: DebugHeap + fmt::Pointer {}
-
 /// A struct that can indicate it's status are marked or unmarked
 pub trait Marked {
   /// Is this structure marked
@@ -85,21 +82,4 @@ pub trait Manage: DebugHeap + Unmark {
   /// Get the actual allocation location where
   /// this resource is managed
   fn loc(&self) -> *const u8;
-}
-
-/// Define how a struct should be allocated by the garbage collector
-pub trait Allocate<R: Trace> {
-  // The handle to manage this allocated object
-  fn alloc(self) -> AllocResult<R>;
-}
-
-pub struct AllocResult<R> {
-  pub handle: Box<dyn Manage>,
-  pub reference: R,
-}
-
-impl<R> AllocResult<R> {
-  pub fn new(handle: Box<dyn Manage>, reference: R) -> Self {
-    Self { handle, reference }
-  }
 }

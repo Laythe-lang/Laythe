@@ -34,7 +34,7 @@ const STDOUT_FLUSH: NativeMetaBuilder =
 
 pub fn declare_stdout(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDOUT_CLASS_NAME)?;
-  let instance = hooks.manage_instance(class);
+  let instance = hooks.manage_obj(class);
 
   export_and_insert(
     module,

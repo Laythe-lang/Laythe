@@ -10,7 +10,7 @@ use std::{
 use super::{
   allocation::Allocation,
   manage::{DebugHeap, DebugWrap, Manage, Trace},
-  AllocResult, DebugHeapRef, Mark,
+  AllocResult, Mark,
 };
 
 pub struct Gc<T: 'static> {
@@ -22,9 +22,10 @@ impl<T: 'static + Trace + DebugHeap> Gc<T> {
     let mut handle = Box::new(Allocation::new(data));
     let ptr = unsafe { NonNull::new_unchecked(&mut *handle) };
     let reference = Gc::from(ptr);
+    let size = handle.size();
 
     let handle = handle as Box<dyn Manage>;
-    AllocResult { handle, reference }
+    AllocResult { handle, size, reference }
   }
 }
 
@@ -104,8 +105,6 @@ impl<T> fmt::Pointer for Gc<T> {
     self.ptr.fmt(f)
   }
 }
-
-impl<T: 'static + DebugHeap> DebugHeapRef for Gc<T> {}
 
 unsafe impl<T: 'static + Trace> Send for Gc<T> {}
 unsafe impl<T: 'static + Trace> Sync for Gc<T> {}
