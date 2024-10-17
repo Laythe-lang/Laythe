@@ -14,7 +14,6 @@ use std::{
   ops::{Deref, DerefMut},
   ptr,
   slice::{self},
-  usize,
 };
 
 pub type List = GcList<Value, ObjHeader>;
@@ -66,7 +65,7 @@ impl<'a> ListBuilder<'a> {
 
   /// The underlying slice for the builder
   pub fn slice(&self) -> &[Value] {
-    &self.slice
+    self.slice
   }
 
   /// The requested capacity
@@ -359,7 +358,6 @@ impl GcList<Value, ObjHeader> {
           self.write_len(len - 1);
           IndexedResult::Ok(value)
         }
-
       },
       ListState::Forwarded(mut gc_list) => gc_list.remove(index),
     }
@@ -393,7 +391,7 @@ impl GcList<Value, ObjHeader> {
   /// new list
   fn grow(&mut self, cap: usize, new_cap: usize, hooks: &GcHooks) -> GcList<Value, ObjHeader> {
     let new_list = hooks.manage_obj(ListBuilder {
-      slice: &self,
+      slice: self,
       cap: new_cap,
     });
 
@@ -687,7 +685,7 @@ impl<T, H> Drop for GcListHandle<T, H> {
 impl<'a> AllocateObj<List> for ListBuilder<'a> {
   fn alloc(self) -> AllocObjResult<List> {
     debug_assert!(self.slice.len() <= self.cap);
-    let handle = GcListHandle::from_slice(&self.slice, self.cap, ObjHeader::new(ObjectKind::List));
+    let handle = GcListHandle::from_slice(self.slice, self.cap, ObjHeader::new(ObjectKind::List));
 
     let size = handle.size();
     let reference = handle.value();
@@ -870,7 +868,11 @@ mod test {
 
     #[test]
     fn remove() {
-      let handle = GcListHandle::from_slice(&[val!(1.0), val!(3.0), val!(false)], 3, ObjHeader::new(ObjectKind::List));
+      let handle = GcListHandle::from_slice(
+        &[val!(1.0), val!(3.0), val!(false)],
+        3,
+        ObjHeader::new(ObjectKind::List),
+      );
       let mut list = handle.value();
 
       assert_eq!(list.remove(3), IndexedResult::OutOfBounds);
