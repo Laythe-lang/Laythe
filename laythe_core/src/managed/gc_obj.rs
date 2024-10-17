@@ -1,12 +1,10 @@
 use super::{
-  allocate::AllocObjResult, gc_array::{Instance, Tuple}, header::ObjHeader, manage::{DebugHeap, DebugWrap, Trace}, utils::{get_array_len_offset, get_offset, make_array_layout, make_obj_layout}, AllocateObj, GcArray, GcStr, Mark, Marked, Unmark
+  allocate::AllocObjResult, gc_array::{Instance, Tuple}, gc_list::{strip_msb, GcList}, header::ObjHeader, manage::{DebugHeap, DebugWrap, Trace}, utils::{get_array_len_offset, get_list_cap_offset, get_offset, make_array_layout, make_obj_layout}, AllocateObj, GcArray, GcStr, List, Mark, Marked, Unmark
 };
 use crate::{
-  managed::{header::InstanceHeader, utils::get_array_offset},
-  object::{
-    Channel, Class, Closure, Enumerator, Fiber, Fun, List, LyBox, Map, Method, Native, ObjectKind,
-  },
-  value::Value,
+  managed::{header::InstanceHeader, utils::{get_array_offset, get_list_offset, make_list_layout}}, match_obj, object::{
+    Channel, Class, Closure, Enumerator, Fiber, Fun, LyBox, Map, Method, Native, ObjectKind,
+  }, value::Value
 };
 use std::{
   alloc::{alloc, dealloc, handle_alloc_error},
@@ -21,71 +19,6 @@ use std::{
 
 pub trait Object: Trace + DebugHeap {
   fn kind(&self) -> ObjectKind;
-}
-
-#[macro_export]
-macro_rules! to_obj_kind {
-  ($o:expr, Channel) => {
-    $o.to_channel()
-  };
-  ($o:expr, Class) => {
-    $o.to_class()
-  };
-  ($o:expr, Closure) => {
-    $o.to_closure()
-  };
-  ($o:expr, Fun) => {
-    $o.to_fun()
-  };
-  ($o:expr, Fiber) => {
-    $o.to_fiber()
-  };
-  ($o:expr, Instance) => {
-    $o.to_instance()
-  };
-  ($o:expr, Enumerator) => {
-    $o.to_enumerator()
-  };
-  ($o:expr, List) => {
-    $o.to_list()
-  };
-  ($o:expr, Map) => {
-    $o.to_map()
-  };
-  ($o:expr, Method) => {
-    $o.to_method()
-  };
-  ($o:expr, Native) => {
-    $o.to_native()
-  };
-  ($o:expr, String) => {
-    $o.to_str()
-  };
-  ($o:expr, LyBox) => {
-    $o.to_box()
-  };
-  ($o:expr, Tuple) => {
-    $o.to_tuple()
-  };
-}
-
-#[macro_export]
-macro_rules! match_obj {
-  (($scrutinee:expr) {
-    $(ObjectKind::$obj_kind:ident($p:pat) => $e:expr,)*
-    $(_ => $d:expr,)?
-  }) => {
-    {
-      let object: &GcObject = $scrutinee;
-      match object.kind() {
-        $(ObjectKind::$obj_kind => {
-          let $p = to_obj_kind!(object, $obj_kind);
-          $e
-        })*
-        $(_ => $d)?
-      }
-    }
-  };
 }
 
 pub struct GcObj<T: 'static + Object> {
@@ -412,10 +345,8 @@ impl GcObject {
   }
 
   #[inline]
-  pub fn to_list(self) -> GcObj<List<Value>> {
-    GcObj {
-      ptr: unsafe { self.data_ptr::<List<Value>>() },
-    }
+  pub fn to_list(self) -> List {
+    unsafe { GcList::from_alloc_ptr(self.ptr) }
   }
 
   #[inline]
@@ -687,6 +618,16 @@ fn array_len<H>(this: &GcObjectHandle) -> usize {
   unsafe { *(this.ptr.as_ptr().add(count) as *mut usize) }
 }
 
+fn list_capacity<H>(this: &GcObjectHandle) -> usize {
+  unsafe {
+    ptr::read(this.ptr.as_ptr() as *const H);
+  }
+
+  #[allow(clippy::cast_ptr_alignment)]
+  let count = get_list_cap_offset::<H>();
+  unsafe { strip_msb(*(this.ptr.as_ptr().add(count) as *mut usize)) }
+}
+
 pub struct GcObjectHandle {
   pub(super) ptr: NonNull<u8>,
 }
@@ -723,14 +664,17 @@ impl GcObjectHandle {
       + match self.kind() {
         ObjectKind::Fiber => kind_size!(Fiber),
         ObjectKind::Channel => kind_size!(Channel),
-        ObjectKind::List => kind_size!(List<Value>),
+        ObjectKind::List => {
+          let cap: usize = list_capacity::<ObjHeader>(self);
+          make_list_layout::<ObjHeader, Value>(cap).size()
+        },
         ObjectKind::Map => kind_size!(Map<Value, Value>),
         ObjectKind::Fun => kind_size!(Fun),
         ObjectKind::Closure => kind_size!(Closure),
         ObjectKind::Class => kind_size!(Class),
         ObjectKind::Instance => {
           let len = array_len::<InstanceHeader>(self);
-          make_array_layout::<InstanceHeader, u8>(len).size()
+          make_array_layout::<InstanceHeader, Value>(len).size()
         },
         ObjectKind::Enumerator => kind_size!(Enumerator),
         ObjectKind::Method => kind_size!(Method),
@@ -738,7 +682,7 @@ impl GcObjectHandle {
         ObjectKind::LyBox => kind_size!(LyBox),
         ObjectKind::String => {
           let len = array_len::<ObjHeader>(self);
-          make_array_layout::<ObjHeader, u8>(len).size()
+          make_array_layout::<ObjHeader, Value>(len).size()
         },
         ObjectKind::Tuple => {
           let len = array_len::<ObjHeader>(self);
@@ -766,7 +710,20 @@ impl Drop for GcObjectHandle {
       }
 
       match kind {
-        ObjectKind::List => drop_kind!(List<Value>),
+        ObjectKind::List => {
+          let cap = list_capacity::<ObjHeader>(self);
+          let count = get_list_offset::<ObjHeader, Value>();
+          let data_ptr = self.ptr.as_ptr().add(count) as *mut Value;
+
+          for i in 0..cap {
+            ptr::read(data_ptr.add(i));
+          }
+
+          dealloc(
+            self.ptr.as_ptr(),
+            make_list_layout::<ObjHeader, Value>(cap),
+          );
+        },
         ObjectKind::Map => drop_kind!(Map<Value, Value>),
         ObjectKind::Fiber => drop_kind!(Fiber),
         ObjectKind::Channel => drop_kind!(Channel),
@@ -775,7 +732,6 @@ impl Drop for GcObjectHandle {
         ObjectKind::Class => drop_kind!(Class),
         ObjectKind::Instance => {
           let len = array_len::<InstanceHeader>(self);
-
           let count = get_array_offset::<InstanceHeader, Value>();
           let data_ptr = self.ptr.as_ptr().add(count) as *mut Value;
 
@@ -923,68 +879,68 @@ mod test {
 
     #[test]
     pub fn from() {
-      let handle_builder = GcObjectHandleBuilder::from(List::new());
+      let handle_builder = GcObjectHandleBuilder::from(Map::new());
       let gc_value = handle_builder.value();
 
-      assert_eq!(gc_value.kind(), ObjectKind::List);
+      assert_eq!(gc_value.kind(), ObjectKind::Map);
     }
 
     #[test]
     pub fn degrade() {
-      let handle_builder = GcObjectHandleBuilder::from(List::new());
+      let handle_builder = GcObjectHandleBuilder::from(Map::new());
       let handle = handle_builder.degrade();
 
-      assert_eq!(handle.kind(), ObjectKind::List);
+      assert_eq!(handle.kind(), ObjectKind::Map);
     }
   }
 
   mod gc_obj {
     use super::*;
-    use crate::value::{VALUE_FALSE, VALUE_TRUE};
+    use crate::{val, value::{VALUE_FALSE, VALUE_TRUE}};
 
     #[test]
     fn deref() {
-      let mut list = List::new();
-      list.push(VALUE_FALSE);
-      list.push(VALUE_TRUE);
+      let mut map = Map::new();
+      map.insert(VALUE_FALSE, VALUE_FALSE);
+      map.insert(VALUE_TRUE, VALUE_TRUE);
 
-      let handle_builder = GcObjectHandleBuilder::from(list);
+      let handle_builder = GcObjectHandleBuilder::from(map);
       let gc_obj = handle_builder.value();
 
-      assert_eq!(gc_obj[0], VALUE_FALSE);
-      assert_eq!(gc_obj[1], VALUE_TRUE);
+      assert_eq!(gc_obj.get(&VALUE_FALSE), Some(&VALUE_FALSE));
+      assert_eq!(gc_obj.get(&VALUE_TRUE), Some(&VALUE_TRUE));
     }
 
     #[test]
     fn deref_mut() {
-      let mut list = List::new();
-      list.push(VALUE_FALSE);
-      list.push(VALUE_TRUE);
+      let mut map = Map::new();
+      map.insert(VALUE_FALSE, VALUE_FALSE);
+      map.insert(VALUE_TRUE, VALUE_TRUE);
 
-      let handle_builder = GcObjectHandleBuilder::from(list);
+      let handle_builder = GcObjectHandleBuilder::from(map);
       let mut gc_obj = handle_builder.value();
 
-      gc_obj[1] = Value::from(1.0);
+      gc_obj.insert(VALUE_TRUE, val!(1.0));
 
-      assert_eq!(gc_obj[0], VALUE_FALSE);
-      assert_eq!(gc_obj[1], Value::from(1.0));
+      assert_eq!(gc_obj.get(&VALUE_FALSE), Some(&VALUE_FALSE));
+      assert_eq!(gc_obj.get(&VALUE_TRUE), Some(&val!(1.0)));
     }
 
     #[test]
     fn kind() {
-      let handle_builder = GcObjectHandleBuilder::from(List::new());
+      let handle_builder = GcObjectHandleBuilder::from(Map::new());
       let gc_obj = handle_builder.value();
 
-      assert_eq!(gc_obj.kind(), ObjectKind::List);
+      assert_eq!(gc_obj.kind(), ObjectKind::Map);
     }
 
     #[test]
     fn degrade() {
-      let handle_builder = GcObjectHandleBuilder::from(List::new());
+      let handle_builder = GcObjectHandleBuilder::from(Map::new());
       let gc_obj = handle_builder.value();
       let gc_object = gc_obj.degrade();
 
-      assert_eq!(gc_object.kind(), ObjectKind::List);
+      assert_eq!(gc_object.kind(), ObjectKind::Map);
     }
   }
 
@@ -1000,11 +956,9 @@ mod test {
 
     #[test]
     fn drop_obj() {
-      let handle_list = create_object(List::<Value>::new());
       let handle_map = create_object(Map::<Value, Value>::new());
       let handle_box = create_object(LyBox::new(VALUE_NIL));
 
-      drop(handle_list);
       drop(handle_map);
       drop(handle_box);
     }

@@ -118,7 +118,7 @@ impl<T, H> GcArray<T, H> {
 
   /// Get a raw pointer to allocation
   #[inline]
-  pub fn as_alloc_ptr(&self) -> *const u8 {
+  pub(super) fn as_alloc_ptr(&self) -> *const u8 {
     self.ptr.as_ptr()
   }
 
