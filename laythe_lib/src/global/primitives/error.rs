@@ -1,13 +1,6 @@
 use crate::{native, support::export_and_insert, StdError, StdResult};
 use laythe_core::{
-  hooks::{GcHooks, Hooks},
-  managed::{Gc, GcObj, Trace},
-  module::Module,
-  object::{Class, List, LyNative, Native, NativeMetaBuilder},
-  signature::{Arity, ParameterBuilder, ParameterKind},
-  val,
-  value::Value,
-  Call,
+  hooks::{GcHooks, Hooks}, list, managed::{Gc, GcObj, Trace}, module::Module, object::{Class, LyNative, Native, NativeMetaBuilder}, signature::{Arity, ParameterBuilder, ParameterKind}, val, value::Value, Call
 };
 use std::io::Write;
 
@@ -95,7 +88,7 @@ impl LyNative for ErrorInit {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let mut this = this.unwrap().to_obj().to_instance();
     this[0] = args[0];
-    this[1] = val!(_hooks.manage_obj(List::new()));
+    this[1] = val!(_hooks.manage_obj(list!()));
 
     if args.len() > 1 {
       this[2] = args[1];

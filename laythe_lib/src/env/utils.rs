@@ -1,13 +1,6 @@
 use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
-  hooks::{GcHooks, Hooks},
-  managed::{Gc, GcObj, Trace},
-  module::Module,
-  object::{List, LyNative, Native, NativeMetaBuilder},
-  signature::Arity,
-  val,
-  value::Value,
-  Call,
+  hooks::{GcHooks, Hooks}, list, managed::{Gc, GcObj, List, Trace}, module::Module, object::{LyNative, Native, NativeMetaBuilder}, signature::Arity, val, value::Value, Call
 };
 use std::io::Write;
 
@@ -37,12 +30,12 @@ native!(Args, ARGS_META);
 impl LyNative for Args {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
     let io = hooks.as_io();
-    let mut list: GcObj<List<Value>> = hooks.manage_obj(List::new());
+    let mut list: List = hooks.manage_obj(list!());
     hooks.push_root(list);
 
     for arg in io.env().args() {
       let arg = val!(hooks.manage_str(arg));
-      list.push(arg);
+      list.push(arg, &hooks.as_gc());
     }
 
     hooks.pop_roots(1);

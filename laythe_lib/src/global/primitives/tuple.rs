@@ -4,18 +4,7 @@ use crate::{
   StdResult,
 };
 use laythe_core::{
-  constants::INDEX_GET,
-  hooks::{GcHooks, Hooks},
-  if_let_obj,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace, Tuple},
-  module::Module,
-  object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
-  signature::{Arity, ParameterBuilder, ParameterKind},
-  to_obj_kind,
-  utils::is_falsey,
-  val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, LyResult,
+  constants::INDEX_GET, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, ListBuilder, Trace, Tuple}, module::Module, object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::is_falsey, val, value::{Value, VALUE_NIL}, Call, LyError, LyResult
 };
 use std::io::Write;
 use std::slice::Iter;
@@ -229,10 +218,10 @@ impl LyNative for TupleSlice {
 
     if start_index <= end_index {
       Call::Ok(val!(
-        hooks.manage_obj(List::from(&tuple[start_index..end_index]))
+        hooks.manage_obj(&tuple[start_index..end_index])
       ))
     } else {
-      Call::Ok(val!(hooks.manage_obj(List::new())))
+      Call::Ok(val!(hooks.manage_obj(&[] as &[Value])))
     }
   }
 }
@@ -352,16 +341,16 @@ native!(TupleCollect, TUPLE_COLLECT);
 impl LyNative for TupleCollect {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let mut iter = args[0].to_obj().to_enumerator();
-    let mut list = hooks.manage_obj(match iter.size_hint() {
-      Some(size) => List::with_capacity(size),
-      None => List::new(),
-    });
+    let mut list = match iter.size_hint() {
+      Some(size) => hooks.manage_obj(ListBuilder::cap_only(size)),
+      None => hooks.manage_obj(list!()),
+    };
 
     hooks.push_root(list);
 
     while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      list.push(current);
+      list.push(current, &hooks.as_gc());
     }
 
     hooks.pop_roots(1);
@@ -520,7 +509,7 @@ mod test {
       let this = hooks.manage_obj::<Tuple, &[Value]>(&[
         VALUE_NIL,
         val!(10.0),
-        val!(hooks.manage_obj(List::from(vec![val!(5.0)]))),
+        val!(hooks.manage_obj(list!(&[val!(5.0)]))),
       ]);
 
       let result = list_str.call(&mut hooks, Some(val!(this)), values);
@@ -569,11 +558,11 @@ mod test {
       let result = tuple_slice
         .call(&mut hooks, Some(val!(this)), &[val!(0.0), val!(2.0)])
         .unwrap();
-      assert!(result.is_obj_kind(ObjectKind::List));
+      assert!(result.is_obj_kind(ObjectKind::Tuple));
 
-      assert_eq!(result.to_obj().to_list().len(), 2);
-      assert_eq!(result.to_obj().to_list()[0], val!(1.0));
-      assert_eq!(result.to_obj().to_list()[1], val!(2.0));
+      assert_eq!(result.to_obj().to_tuple().len(), 2);
+      assert_eq!(result.to_obj().to_tuple()[0], val!(1.0));
+      assert_eq!(result.to_obj().to_tuple()[1], val!(2.0));
     }
   }
 

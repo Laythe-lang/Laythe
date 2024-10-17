@@ -6,15 +6,7 @@ use crate::{
   StdResult, STD,
 };
 use laythe_core::{
-  hooks::{GcHooks, Hooks},
-  managed::{Gc, GcObj, Trace},
-  module::{Module, Package},
-  object::{List, LyNative, Native, NativeMetaBuilder, ObjectKind},
-  signature::{Arity, ParameterBuilder, ParameterKind},
-  val,
-  value::Value,
-  value::VALUE_NIL,
-  Call, LyError,
+  hooks::{GcHooks, Hooks}, list, managed::{Gc, GcObj, Trace}, module::{Module, Package}, object::{LyNative, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, val, value::{Value, VALUE_NIL}, Call, LyError
 };
 use regex::Regex;
 use std::io::Write;
@@ -145,14 +137,14 @@ impl LyNative for RegExpCaptures {
 
     match regexp.captures(&args[0].to_obj().to_str()) {
       Some(captures) => {
-        let mut results: GcObj<List<Value>> = hooks.manage_obj(List::new());
+        let mut results = hooks.manage_obj(list!());
         hooks.push_root(results);
 
         for capture in captures.iter().map(|sub_capture| match sub_capture {
           Some(sub_capture) => val!(hooks.manage_str(sub_capture.as_str())),
           None => VALUE_NIL,
         }) {
-          results.push(capture);
+          results.push(capture, &hooks.as_gc());
         }
 
         hooks.pop_roots(1);

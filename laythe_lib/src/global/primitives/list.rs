@@ -6,10 +6,10 @@ use crate::{
 use laythe_core::{
   constants::{INDEX_GET, INDEX_SET},
   hooks::{GcHooks, Hooks},
-  if_let_obj,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace},
+  if_let_obj, list,
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, IndexedResult, List, ListBuilder, Trace},
   module::Module,
-  object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
+  object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   to_obj_kind,
   utils::is_falsey,
@@ -17,7 +17,6 @@ use laythe_core::{
   value::{Value, VALUE_NIL},
   Call, LyError, LyResult,
 };
-use std::slice::Iter;
 use std::{cmp::Ordering, io::Write};
 
 use super::{
@@ -298,11 +297,9 @@ impl LyNative for ListSlice {
     let end_index = end_index.min(list.len());
 
     if start_index <= end_index {
-      Call::Ok(val!(
-        hooks.manage_obj(List::from(&list[start_index..end_index]))
-      ))
+      Call::Ok(val!(hooks.manage_obj(list!(&list[start_index..end_index]))))
     } else {
-      Call::Ok(val!(hooks.manage_obj(List::new())))
+      Call::Ok(val!(hooks.manage_obj(list!())))
     }
   }
 }
@@ -326,7 +323,7 @@ impl ListSlice {
   }
 }
 
-fn determine_index(list: &List<Value>, index: f64) -> Result<usize, String> {
+fn determine_index(list: &List, index: f64) -> Result<usize, String> {
   if index.fract() != 0.0 {
     return Err("Index must be an integer.".to_string());
   }
@@ -400,9 +397,11 @@ impl LyNative for ListLen {
 native!(ListPush, LIST_PUSH);
 
 impl LyNative for ListPush {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let mut list = this.unwrap().to_obj().to_list();
-    list.extend_from_slice(args);
+    for arg in args {
+      list.push(*arg, &hooks.as_gc());
+    }
     Call::Ok(VALUE_NIL)
   }
 }
@@ -426,25 +425,20 @@ impl LyNative for ListRemove {
     let mut list = this.unwrap().to_obj().to_list();
 
     if index < 0.0 {
-      return self.call_error(
-        hooks,
-        format!("Cannot remove at negative index {index}."),
-      );
+      return self.call_error(hooks, format!("Cannot remove at negative index {index}."));
     }
 
-    if index as usize >= list.len() {
-      return self.call_error(
+    match list.remove(index as usize) {
+      IndexedResult::Ok(result) => Call::Ok(result),
+      IndexedResult::OutOfBounds => self.call_error(
         hooks,
         format!(
           "Cannot remove at index {}, list has size {}",
           index,
           list.len()
         ),
-      );
+      ),
     }
-
-    let result = list.remove(index as usize);
-    Call::Ok(result)
   }
 }
 
@@ -475,19 +469,17 @@ impl LyNative for ListInsert {
       return self.call_error(hooks, format!("Cannot insert at index {index}"));
     }
 
-    if index as usize > list.len() {
-      return self.call_error(
+    match list.insert(index as usize, args[1], &hooks.as_gc()) {
+      IndexedResult::Ok(_) => Call::Ok(VALUE_NIL),
+      IndexedResult::OutOfBounds => self.call_error(
         hooks,
         format!(
           "Cannot insert at index {}, list has size {}",
           index,
           list.len()
         ),
-      );
+      ),
     }
-
-    list.insert(index as usize, args[1]);
-    Call::Ok(VALUE_NIL)
   }
 }
 
@@ -496,7 +488,7 @@ native!(ListClear, LIST_CLEAR);
 impl LyNative for ListClear {
   fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let mut list = this.unwrap().to_obj().to_list();
-    list.clear();
+    while list.pop().is_some() {}
     Call::Ok(VALUE_NIL)
   }
 }
@@ -527,8 +519,8 @@ native!(ListRev, LIST_REV);
 impl LyNative for ListRev {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
     let list = this.unwrap().to_obj().to_list();
-    let rev: List<Value> = list.iter().cloned().rev().collect();
-    Call::Ok(val!(hooks.manage_obj(rev)))
+    let rev: Vec<Value> = list.iter().cloned().rev().collect();
+    Call::Ok(val!(hooks.manage_obj(list!(&*rev))))
   }
 }
 
@@ -537,7 +529,8 @@ native_with_error!(ListSort, LIST_SORT);
 impl LyNative for ListSort {
   fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
     let comparator = args[0];
-    let mut list = hooks.manage_obj(this.unwrap().to_obj().to_list().to_list());
+    let list = this.unwrap().to_obj().to_list();
+    let mut list = hooks.manage_obj(list!(&*list));
     hooks.push_root(list);
 
     let mut failure: Option<Call> = None;
@@ -581,16 +574,16 @@ native!(ListCollect, LIST_COLLECT);
 impl LyNative for ListCollect {
   fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
     let mut iter = args[0].to_obj().to_enumerator();
-    let mut list = hooks.manage_obj(match iter.size_hint() {
-      Some(size) => List::with_capacity(size),
-      None => List::new(),
-    });
+    let mut list = match iter.size_hint() {
+      Some(size) => hooks.manage_obj(ListBuilder::cap_only(size)),
+      None => hooks.manage_obj(list!()),
+    };
 
     hooks.push_root(list);
 
     while !is_falsey(iter.next(hooks)?) {
       let current = iter.current();
-      list.push(current);
+      list.push(current, &hooks.as_gc());
     }
 
     hooks.pop_roots(1);
@@ -600,19 +593,17 @@ impl LyNative for ListCollect {
 
 #[derive(Debug)]
 struct ListIterator {
-  list: GcObj<List<Value>>,
+  list: List,
+  index: usize,
   current: Value,
-  iter: Iter<'static, Value>,
 }
 
 impl ListIterator {
-  fn new(list: GcObj<List<Value>>) -> Self {
-    let iter = unsafe { list.data_static().iter() };
-
+  fn new(list: List) -> Self {
     Self {
-      iter,
       current: VALUE_NIL,
       list,
+      index: 0,
     }
   }
 }
@@ -627,15 +618,13 @@ impl Enumerate for ListIterator {
   }
 
   fn next(&mut self, _hooks: &mut Hooks) -> Call {
-    match self.iter.next() {
-      Some(value) => {
-        self.current = *value;
-        Call::Ok(val!(true))
-      },
-      None => {
-        self.current = VALUE_NIL;
-        Call::Ok(val!(false))
-      },
+    if self.index < self.list.len() {
+      self.current = self.list[self.index];
+      self.index += 1;
+      Call::Ok(val!(true))
+    } else {
+      self.current = VALUE_NIL;
+      Call::Ok(val!(false))
     }
   }
 
@@ -701,8 +690,7 @@ mod test {
 
       let values = &[val!(0.0)];
 
-      let list = List::from(vec![VALUE_NIL, val!(10.0)]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
 
       let result = list_index_get.call(&mut hooks, Some(val!(this)), values);
       match result {
@@ -748,8 +736,7 @@ mod test {
 
       let values = &[val!(false), val!(1.0)];
 
-      let list = List::from(vec![VALUE_NIL, val!(10.0)]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
 
       let result = list_index_set
         .call(&mut hooks, Some(val!(this)), values)
@@ -792,12 +779,11 @@ mod test {
 
       let values = &[];
 
-      let list = List::from(vec![
+      let this = hooks.manage_obj(list!(&[
         VALUE_NIL,
         val!(10.0),
-        val!(hooks.manage_obj(List::from(vec![val!(5.0)]))),
-      ]);
-      let this = hooks.manage_obj(list);
+        val!(hooks.manage_obj(list!(&[val!(5.0)])))
+      ]));
 
       let result = list_str.call(&mut hooks, Some(val!(this)), values);
       match result {
@@ -840,8 +826,7 @@ mod test {
 
       let list_slice = ListSlice::native(&hooks.as_gc(), error);
 
-      let list = List::from(vec![val!(1.0), val!(2.0), val!(3.0)]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[val!(1.0), val!(2.0), val!(3.0)]));
 
       let result = list_slice
         .call(&mut hooks, Some(val!(this)), &[val!(0.0), val!(2.0)])
@@ -878,8 +863,7 @@ mod test {
 
       let values = &[];
 
-      let list = List::from(vec![VALUE_NIL, val!(10.0)]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
 
       let result = list_size.call(&mut hooks, Some(val!(this)), values);
       match result {
@@ -914,8 +898,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let list_push = ListPush::native(&hooks.as_gc());
 
-      let list = List::from(vec![VALUE_NIL, val!(10.0)]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
       let list_value = Some(val!(this));
 
       let result = list_push.call(&mut hooks, list_value, &[val!(false)]);
@@ -963,8 +946,7 @@ mod test {
 
       let list_pop = ListPop::native(&hooks.as_gc());
 
-      let list = List::from(vec![val!(true)]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[val!(true)]));
       let list_value = Some(val!(this));
 
       let result = list_pop.call(&mut hooks, list_value, &[]);
@@ -1015,8 +997,7 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_remove = ListRemove::native(&hooks.as_gc(), error);
 
-      let list = List::from(&[VALUE_NIL, val!(10.0), val!(true)] as &[Value]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
       let list_value = Some(val!(this));
 
       let result = list_remove.call(&mut hooks, list_value, &[val!(1.0)]);
@@ -1068,8 +1049,7 @@ mod test {
 
       let list_index = ListIndex::native(&hooks.as_gc());
 
-      let list = List::from(&[VALUE_NIL, val!(10.0), val!(true)] as &[Value]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
       let list_value = Some(val!(this));
 
       let result = list_index.call(&mut hooks, list_value, &[val!(10.0)]);
@@ -1114,8 +1094,7 @@ mod test {
 
       let list_insert = ListInsert::native(&hooks.as_gc(), error);
 
-      let list = List::from(&[VALUE_NIL, val!(10.0), val!(true)] as &[Value]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
       let list_value = Some(val!(this));
 
       let result = list_insert.call(&mut hooks, list_value, &[val!(1.0), val!(false)]);
@@ -1128,13 +1107,13 @@ mod test {
         _ => assert!(false),
       }
 
-      let result = list_insert.call(&mut hooks, list_value, &[val!(-1.0)]);
+      let result = list_insert.call(&mut hooks, list_value, &[val!(-1.0), val!(true)]);
       match result {
         Call::Ok(_) => assert!(false),
         _ => assert!(true),
       }
 
-      let result = list_insert.call(&mut hooks, list_value, &[val!(10.0)]);
+      let result = list_insert.call(&mut hooks, list_value, &[val!(10.0), val!(true)]);
       match result {
         Call::Ok(_) => assert!(false),
         _ => assert!(true),
@@ -1164,8 +1143,7 @@ mod test {
 
       let list_clear = ListClear::native(&hooks.as_gc());
 
-      let list = List::from(&[VALUE_NIL, val!(10.0), val!(true)] as &[Value]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
       let list_value = Some(val!(this));
 
       let result = list_clear.call(&mut hooks, list_value, &[]);
@@ -1214,8 +1192,7 @@ mod test {
 
       let list_has = ListHas::native(&hooks.as_gc());
 
-      let list = List::from(&[VALUE_NIL, val!(10.0), val!(true)] as &[Value]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
       let list_value = Some(val!(this));
 
       let result = list_has.call(&mut hooks, list_value, &[val!(10.0)]);
@@ -1257,8 +1234,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let list_iter = ListIter::native(&hooks.as_gc());
 
-      let list = List::from(&[VALUE_NIL, val!(10.0), val!(true)] as &[Value]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
       let list_value = Some(val!(this));
 
       let result = list_iter.call(&mut hooks, list_value, &[]);
@@ -1317,8 +1293,7 @@ mod test {
       let list_sort = ListSort::native(&hooks.as_gc(), error);
       let num_cmp = val!(ListTest::native(&hooks.as_gc()));
 
-      let list = List::from(&[val!(3.0), val!(5.0)] as &[Value]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[val!(3.0), val!(5.0)]));
       let list_value = Some(val!(this));
 
       let result = list_sort.call(&mut hooks, list_value, &[num_cmp]).unwrap();
@@ -1350,8 +1325,7 @@ mod test {
 
       let list_sort = ListRev::native(&hooks.as_gc());
 
-      let list = List::from(vec![val!(3.0), val!(5.0)]);
-      let this = hooks.manage_obj(list);
+      let this = hooks.manage_obj(list!(&[val!(3.0), val!(5.0)]));
       let list_value = Some(val!(this));
 
       let result = list_sort.call(&mut hooks, list_value, &[]).unwrap();

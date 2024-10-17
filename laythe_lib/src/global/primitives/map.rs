@@ -6,19 +6,7 @@ use crate::{
 };
 use hashbrown::hash_map::Iter;
 use laythe_core::{
-  constants::INDEX_GET,
-  constants::INDEX_SET,
-  hooks::{GcHooks, Hooks},
-  if_let_obj,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace},
-  module::Module,
-  object::{Enumerate, Enumerator, List, LyNative, Map, Native, NativeMetaBuilder, ObjectKind},
-  signature::{Arity, ParameterBuilder, ParameterKind},
-  to_obj_kind,
-  utils::use_sentinel_nan,
-  val,
-  value::{Value, VALUE_NIL},
-  Call, LyError,
+  constants::{INDEX_GET, INDEX_SET}, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace}, module::Module, object::{Enumerate, Enumerator, LyNative, Map, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::use_sentinel_nan, val, value::{Value, VALUE_NIL}, Call, LyError
 };
 use std::io::Write;
 
@@ -359,7 +347,7 @@ impl Enumerate for MapIterator {
   fn next(&mut self, hooks: &mut Hooks) -> Call {
     match self.iter.next() {
       Some(next) => {
-        self.current = val!(hooks.manage_obj(List::from(&[*next.0, *next.1] as &[Value])));
+        self.current = val!(hooks.manage_obj(list!(&[*next.0, *next.1])));
         Call::Ok(val!(true))
       },
       None => {
