@@ -2,7 +2,7 @@ mod call_frame;
 mod exception_handler;
 
 use self::{call_frame::CallFrame, exception_handler::ExceptionHandler};
-use super::{Channel, Fun, List, ObjectKind};
+use super::{Channel, Fun, ObjectKind};
 use crate::{
   captures::Captures,
   constants::SCRIPT,
@@ -633,7 +633,7 @@ impl Fiber {
   /// Signals to the fiber to finish unwinding. The fiber is
   /// moved back into the activated state. The unwound back trace
   /// is returned and then truncated off the fiber
-  pub fn finish_unwind(&mut self) -> List<String> {
+  pub fn finish_unwind(&mut self) -> Vec<String> {
     // Now that we've found a handler we truncate the frames
     let handler = self
       .exception_handler()
@@ -651,7 +651,7 @@ impl Fiber {
   }
 
   // Create the string representation of the backtrace
-  fn error_backtrace(&self, handler: &ExceptionHandler) -> List<String> {
+  fn error_backtrace(&self, handler: &ExceptionHandler) -> Vec<String> {
     let backtrace_len = (self.frames.len() - handler.call_frame_depth()) + 1;
 
     self
@@ -666,7 +666,7 @@ impl Fiber {
 
         frame_line(fun, offset.saturating_sub(1))
       })
-      .collect::<List<String>>()
+      .collect::<Vec<String>>()
   }
 
   /// Print a error message with the associated stack track if found

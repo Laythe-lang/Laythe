@@ -151,7 +151,7 @@ impl<'a> GcHooks<'a> {
     self.context.gc().manage(data, self.context)
   }
 
-  /// Request a string be managed by this allocator
+  /// Request a object be managed by this allocator
   #[inline]
   pub fn manage_obj<R, T>(&self, obj: T) -> R
   where

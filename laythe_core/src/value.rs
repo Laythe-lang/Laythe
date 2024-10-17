@@ -73,9 +73,9 @@ pub use self::boxed::*;
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
   use crate::{
-    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Instance, Trace, Tuple},
+    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Instance, Trace, Tuple, List},
     object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, List, LyBox, Map, Method, Native, ObjectKind,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, LyBox, Map, Method, Native, ObjectKind,
     },
   };
 
@@ -293,8 +293,8 @@ mod unboxed {
     }
   }
 
-  impl From<GcObj<List<Value>>> for Value {
-    fn from(managed: GcObj<List<Value>>) -> Value {
+  impl From<List> for Value {
+    fn from(managed: List) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -445,7 +445,6 @@ mod unboxed {
 
     #[test]
     fn size() {
-      assert_eq!(mem::size_of::<List<Value>>(), 24);
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 24);
       assert_eq!(mem::size_of::<Fun>(), 96);
@@ -460,7 +459,6 @@ mod unboxed {
     fn alignment() {
       let target: usize = 8;
 
-      assert_eq!(mem::align_of::<List<Value>>(), target);
       assert_eq!(mem::align_of::<Map<Value, Value>>(), target);
       assert_eq!(mem::align_of::<Closure>(), target);
       assert_eq!(mem::align_of::<Fun>(), target);
@@ -477,9 +475,9 @@ mod unboxed {
 mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
-    managed::{DebugHeap, GcObj, GcObject, GcStr, Instance, Trace, Tuple},
+    managed::{DebugHeap, GcObj, GcObject, GcStr, Instance, Trace, Tuple, List},
     object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, List, LyBox, Map, Method, Native, ObjectKind,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, LyBox, Map, Method, Native, ObjectKind,
     },
   };
 
@@ -702,8 +700,8 @@ mod boxed {
     }
   }
 
-  impl From<GcObj<List<Value>>> for Value {
-    fn from(managed: GcObj<List<Value>>) -> Value {
+  impl From<List> for Value {
+    fn from(managed: List) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
@@ -781,7 +779,6 @@ mod boxed {
 
     #[test]
     fn size() {
-      assert_eq!(mem::size_of::<List<Value>>(), 24);
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 16);
       assert_eq!(mem::size_of::<Fun>(), 56);
@@ -797,7 +794,6 @@ mod boxed {
     fn alignment() {
       let target: usize = 8;
 
-      assert_eq!(mem::align_of::<List<Value>>(), target);
       assert_eq!(mem::align_of::<Map<Value, Value>>(), target);
       assert_eq!(mem::align_of::<Closure>(), target);
       assert_eq!(mem::align_of::<Fun>(), target);
@@ -814,12 +810,7 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
-    captures::Captures,
-    hooks::{GcHooks, NoContext},
-    managed::{Gc, GcObj, GcStr},
-    memory::{Allocator, NO_GC},
-    module::Module,
-    object::{Class, Closure, Fun, List, Map, ObjectKind},
+    captures::Captures, hooks::{GcHooks, NoContext}, list, managed::{Gc, GcObj, GcStr}, memory::{Allocator, NO_GC}, module::Module, object::{Class, Closure, Fun, Map, ObjectKind}
   };
 
   const VALUE_VARIANTS: [ValueKind; 4] = [
@@ -973,7 +964,7 @@ mod test {
   #[test]
   fn list() {
     let mut gc = Allocator::default();
-    let list = gc.manage_obj(List::from(vec![VALUE_NIL, VALUE_TRUE, VALUE_FALSE]), &NO_GC);
+    let list = gc.manage_obj(list!(&[VALUE_NIL, VALUE_TRUE, VALUE_FALSE]), &NO_GC);
 
     let value = val!(list);
 
