@@ -1,7 +1,10 @@
 use laythe_vm::vm::VmExit;
-use support::{assert_file_exit_and_stdio, assert_files_exit};
+use support::assert_files_exit;
 
 mod support;
+
+#[cfg(not(feature = "debug"))]
+use support::assert_file_exit_and_stdio;
 
 fn test_files(paths: &[&str], result: VmExit) -> Result<(), std::io::Error> {
   assert_files_exit(paths, FILE_PATH, result)

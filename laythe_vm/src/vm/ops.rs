@@ -1,22 +1,10 @@
 use super::{source_loader::ImportResult, ExecutionSignal, Vm};
 use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
 use laythe_core::{
-  captures::Captures,
-  hooks::{GcHooks, Hooks},
-  if_let_obj,
-  managed::{Array, Gc, GcObj, GcStr, Tuple},
-  match_obj,
-  module::Import,
-  object::{
-    Channel, Class, Closure, Fun, List, LyBox, Map, Method, Native, NativeMeta, ObjectKind,
+  captures::Captures, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{Array, Gc, GcObj, GcStr, List, Tuple}, match_obj, module::Import, object::{
+    Channel, Class, Closure, Fun, LyBox, Map, Method, Native, NativeMeta, ObjectKind,
     ReceiveResult, SendResult,
-  },
-  signature::{ArityError, NativeEnvironment, ParameterKind, SignatureError},
-  to_obj_kind,
-  utils::is_falsey,
-  val,
-  value::{Value, VALUE_NIL, VALUE_TRUE},
-  Call, LyError,
+  }, signature::{ArityError, NativeEnvironment, ParameterKind, SignatureError}, to_obj_kind, utils::is_falsey, val, value::{Value, VALUE_NIL, VALUE_TRUE}, Call, LyError
 };
 use laythe_core::{managed::GcObject, object::Fiber};
 use std::{cmp::Ordering, mem};
@@ -56,7 +44,7 @@ impl Vm {
     let arg_count = self.read_short() as usize;
 
     let args = self.fiber.stack_slice(arg_count);
-    let list = val!(self.manage_obj(List::from(args)));
+    let list = val!(self.manage_obj(list!(args)));
     self.fiber.drop_n(arg_count);
     self.fiber.push(list);
 
@@ -551,14 +539,16 @@ impl Vm {
 
     match self.fiber.error() {
       Some(mut error) => {
-        let backtrace: Tuple = self.manage_obj(
-          &*backtrace
-            .iter()
-            .map(|line| val!(self.manage_str(line)))
-            .collect::<List<Value>>()
+        let mut managed_backtrace: Tuple = self.manage_obj(
+          &*vec![VALUE_NIL; backtrace.len()]
         );
 
-        error[1] = val!(backtrace)
+        // attach the error so we good on a gc
+        error[1] = val!(managed_backtrace);
+
+        for (slot, line) in managed_backtrace.iter_mut().zip(backtrace.iter()) {
+          *slot = val!(self.manage_str(line));
+        }
       },
       None => self.internal_error("Expected fiber error"),
     }
@@ -952,10 +942,8 @@ impl Vm {
     result
   }
 
-  fn extract_import_path(&mut self, path: GcObj<List<Value>>) -> List<GcStr> {
-    let mut path_segments: List<GcStr> = List::with_capacity(path.len());
-    path_segments.extend(path.iter().map(|segment| segment.to_obj().to_str()));
-    path_segments
+  fn extract_import_path(&mut self, path: List) -> Vec<GcStr> {
+    path.iter().map(|segment| segment.to_obj().to_str()).collect()
   }
 
   fn full_import_path(&mut self, path_segments: &[GcStr]) -> GcStr {

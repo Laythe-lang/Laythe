@@ -23,13 +23,14 @@ use ir::{
   token::{Lexeme, Token, TokenKind},
 };
 use laythe_core::{
-  constants::{INDEX_GET, INDEX_SET, OBJECT, SUPER, UNINITIALIZED_VAR},
-  constants::{ITER, ITER_VAR, SCRIPT, SELF},
+  constants::{
+    INDEX_GET, INDEX_SET, ITER, ITER_VAR, OBJECT, SCRIPT, SELF, SUPER, UNINITIALIZED_VAR,
+  },
   hooks::{GcContext, GcHooks, NoContext},
-  managed::{AllocResult, Allocate, DebugHeap, Gc, GcObj, GcStr, Trace, TraceRoot},
+  managed::{AllocResult, Allocate, DebugHeap, Gc, GcStr, ListBuilder, Trace, TraceRoot},
   memory::Allocator,
-  module, object,
-  object::{FunBuilder, FunKind, List, Map},
+  module,
+  object::{self, FunBuilder, FunKind, Map},
   signature::Arity,
   val,
   value::Value,
@@ -1212,17 +1213,17 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   /// Compile an import statement
   fn import(&mut self, import: &'a ast::Import<'src>) {
     let value = {
-      let mut gc = self.gc.borrow_mut();
+      let hooks = GcHooks::new(self);
 
-      let mut list: GcObj<List<Value>> =
-        gc.manage_obj(List::with_capacity(import.path.len()), self);
-      gc.push_root(list);
+      let mut list = hooks.manage_obj(ListBuilder::new(&[], import.path.len()));
+      hooks.push_root(list);
+
 
       for segment in &import.path {
-        list.push(val!(gc.manage_str(segment.str(), self)))
+        list.push(val!(hooks.manage_str(segment.str())), &hooks)
       }
 
-      gc.pop_roots(1);
+      hooks.pop_roots(1);
       val!(list)
     };
 
