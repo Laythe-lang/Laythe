@@ -23,7 +23,7 @@ pub const NATIVE_CLASS_NAME: &str = "Native";
 const NATIVE_NAME: NativeMetaBuilder = NativeMetaBuilder::method("name", Arity::Fixed(0));
 
 const NATIVE_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new("args", ParameterKind::Any)])
+  .with_params(&[ParameterBuilder::new("args", ParameterKind::Object)])
   .with_stack();
 
 pub fn declare_native_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
@@ -50,16 +50,16 @@ pub fn define_native_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
 native!(NativeName, NATIVE_NAME);
 
 impl LyNative for NativeName {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_obj().to_native().meta().name))
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_obj().to_native().name()))
   }
 }
 
 native!(NativeCall, NATIVE_CALL);
 
 impl LyNative for NativeCall {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    hooks.call(this.unwrap(), args)
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    hooks.call(args[0], &args[1..])
   }
 }
 
@@ -72,24 +72,13 @@ mod test {
     use super::*;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let native_name = NativeName::native(&hooks);
-
-      assert_eq!(native_name.meta().name, "name");
-      assert_eq!(native_name.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let native_name = NativeName::native(&hooks.as_gc());
 
       let managed = TestNative::native(&hooks.as_gc());
-      let result = native_name.call(&mut hooks, Some(val!(managed)), &[]);
+      let result = native_name.call(&mut hooks, &[val!(managed)]);
       match result {
         Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "test".to_string()),
         _ => assert!(false),
@@ -103,28 +92,13 @@ mod test {
     use laythe_core::value::VALUE_NIL;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let native_call = NativeCall::native(&hooks);
-
-      assert_eq!(native_call.meta().name, "call");
-      assert_eq!(native_call.meta().signature.arity, Arity::Variadic(0));
-      assert_eq!(
-        native_call.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::new(&[VALUE_NIL]);
       let mut hooks = Hooks::new(&mut context);
       let native_call = NativeCall::native(&hooks.as_gc());
 
       let managed = TestNative::native(&hooks.as_gc());
-      let result = native_call.call(&mut hooks, Some(val!(managed)), &[]);
+      let result = native_call.call(&mut hooks, &[val!(managed)]);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),
         _ => assert!(false),

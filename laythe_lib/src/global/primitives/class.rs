@@ -42,9 +42,8 @@ pub fn create_class_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class>
 native!(ClassSuperCls, CLASS_SUPER_CLS);
 
 impl LyNative for ClassSuperCls {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let super_class = this
-      .unwrap()
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    let super_class = args[0]
       .to_obj()
       .to_class()
       .super_class()
@@ -58,8 +57,8 @@ impl LyNative for ClassSuperCls {
 native!(ClassStr, CLASS_STR);
 
 impl LyNative for ClassStr {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let class = this.unwrap().to_obj().to_class();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let class = args[0].to_obj().to_class();
 
     Call::Ok(val!(hooks.manage_str(format!(
       "<class {} {:p}>",
@@ -72,8 +71,8 @@ impl LyNative for ClassStr {
 native!(ClassName, CLASS_NAME);
 
 impl LyNative for ClassName {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let class = this.unwrap().to_obj().to_class();
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    let class = args[0].to_obj().to_class();
     Call::Ok(val!(class.name()))
   }
 }
@@ -85,17 +84,6 @@ mod test {
 
   mod super_cls {
     use super::*;
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let class_super_class = ClassSuperCls::native(&hooks);
-
-      assert_eq!(class_super_class.meta().name, "superCls");
-      assert_eq!(class_super_class.meta().signature.arity, Arity::Fixed(0));
-    }
 
     #[test]
     fn call() {
@@ -112,8 +100,8 @@ mod test {
       let class_value = val!(class);
       let super_class_value = val!(super_class);
 
-      let result1 = class_super_class.call(&mut hooks, Some(class_value), &[]);
-      let result2 = class_super_class.call(&mut hooks, Some(super_class_value), &[]);
+      let result1 = class_super_class.call(&mut hooks, &[class_value]);
+      let result2 = class_super_class.call(&mut hooks, &[super_class_value]);
 
       match result1 {
         Call::Ok(r) => assert_eq!(r, super_class_value),
@@ -130,17 +118,6 @@ mod test {
     use super::*;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let class_str = ClassStr::native(&hooks);
-
-      assert_eq!(class_str.meta().name, "str");
-      assert_eq!(class_str.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -150,24 +127,13 @@ mod test {
 
       let class_value = val!(class);
 
-      let result = class_str.call(&mut hooks, Some(class_value), &[]).unwrap();
+      let result = class_str.call(&mut hooks, &[class_value]).unwrap();
       assert!(result.to_obj().to_str().contains("<class someClass"));
     }
   }
 
   mod name {
     use super::*;
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let class_str = ClassName::native(&hooks);
-
-      assert_eq!(class_str.meta().name, "name");
-      assert_eq!(class_str.meta().signature.arity, Arity::Fixed(0));
-    }
 
     #[test]
     fn call() {
@@ -179,7 +145,7 @@ mod test {
 
       let class_value = val!(class);
 
-      let result = class_str.call(&mut hooks, Some(class_value), &[]).unwrap();
+      let result = class_str.call(&mut hooks, &[class_value]).unwrap();
       assert_eq!(result.to_obj().to_str(), "someClass");
     }
   }

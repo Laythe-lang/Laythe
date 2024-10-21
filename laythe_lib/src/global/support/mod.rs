@@ -15,7 +15,7 @@ const TEST_META: NativeMetaBuilder = NativeMetaBuilder::fun("test", Arity::Fixed
 native!(TestNative, TEST_META);
 
 impl LyNative for TestNative {
-  fn call(&self, _: &mut Hooks, _this: Option<Value>, _: &[Value]) -> Call {
+  fn call(&self, _: &mut Hooks, _: &[Value]) -> Call {
     Call::Ok(VALUE_NIL)
   }
 }

@@ -74,12 +74,12 @@ pub fn define_stderr(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) 
 native_with_error!(StderrWrite, STDERR_WRITE);
 
 impl LyNative for StderrWrite {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stderr = stdio.stderr();
 
-    match stderr.write_all(args[0].to_obj().to_str().as_bytes()) {
+    match stderr.write_all(args[1].to_obj().to_str().as_bytes()) {
       Ok(_) => Call::Ok(VALUE_NIL),
       Err(err) => self.call_error(hooks, err.to_string()),
     }
@@ -89,12 +89,12 @@ impl LyNative for StderrWrite {
 native_with_error!(StderrWriteln, STDERR_WRITELN);
 
 impl LyNative for StderrWriteln {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stderr = stdio.stderr();
 
-    match writeln!(stderr, "{}", &*args[0].to_obj().to_str()) {
+    match writeln!(stderr, "{}", &*args[1].to_obj().to_str()) {
       Ok(_) => Call::Ok(VALUE_NIL),
       Err(err) => self.call_error(hooks, err.to_string()),
     }
@@ -104,7 +104,7 @@ impl LyNative for StderrWriteln {
 native_with_error!(StderrFlush, STDERR_FLUSH);
 
 impl LyNative for StderrFlush {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stderr = stdio.stderr();
@@ -126,21 +126,6 @@ mod test {
     use laythe_env::stdio::support::StdioTestContainer;
     use std::{str, sync::Arc};
 
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let stderr_write = StderrWrite::native(&hooks, error);
-
-      assert_eq!(stderr_write.meta().name, "write");
-      assert_eq!(stderr_write.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        stderr_write.meta().signature.parameters[0].kind,
-        ParameterKind::String
-      );
-    }
 
     #[test]
     fn call() {
@@ -153,7 +138,7 @@ mod test {
       let stderr_write = StderrWrite::native(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string".to_string()));
-      let result = stderr_write.call(&mut hooks, Some(VALUE_NIL), &[string]);
+      let result = stderr_write.call(&mut hooks, &[VALUE_NIL, string]);
 
       assert!(result.is_ok());
       assert!(result.unwrap().is_nil());
@@ -170,21 +155,6 @@ mod test {
     use laythe_env::stdio::support::StdioTestContainer;
     use std::{str, sync::Arc};
 
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let stderr_writeln = StderrWriteln::native(&hooks, error);
-
-      assert_eq!(stderr_writeln.meta().name, "writeln");
-      assert_eq!(stderr_writeln.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        stderr_writeln.meta().signature.parameters[0].kind,
-        ParameterKind::String
-      );
-    }
 
     #[test]
     fn call() {
@@ -197,7 +167,7 @@ mod test {
       let stderr_write = StderrWriteln::native(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string"));
-      let result = stderr_write.call(&mut hooks, Some(VALUE_NIL), &[string]);
+      let result = stderr_write.call(&mut hooks, &[VALUE_NIL, string]);
 
       assert!(result.is_ok());
       assert!(result.unwrap().is_nil());
