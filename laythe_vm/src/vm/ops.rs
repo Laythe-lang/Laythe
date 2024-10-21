@@ -1472,7 +1472,7 @@ impl Vm {
 
   /// check that the number of args is valid for the function arity
   unsafe fn check_arity(&mut self, fun: GcObj<Fun>, arg_count: u8) -> Option<ExecutionSignal> {
-    match fun.check_if_valid_call(&GcHooks::new(self), arg_count) {
+    match fun.check_if_valid_call(|| GcHooks::new(self), arg_count) {
       Ok(_) => None,
       Err(err) => Some(self.runtime_error(self.builtin.errors.runtime, err)),
     }
@@ -1484,7 +1484,7 @@ impl Vm {
     native: GcObj<Native>,
     args: &[Value],
   ) -> Option<ExecutionSignal> {
-    match native.check_if_valid_call(&GcHooks::new(self), args) {
+    match native.check_if_valid_call(|| GcHooks::new(self), args) {
       Ok(()) => None,
       Err(err) => Some(self.runtime_error(self.builtin.errors.runtime, err)),
     }

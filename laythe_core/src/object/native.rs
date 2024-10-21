@@ -143,7 +143,7 @@ impl Native {
   }
 
   #[inline]
-  pub fn check_if_valid_call(&self, hooks: &GcHooks, args: &[Value]) -> Result<(), GcStr> {
+  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(&self, hooks_gen: F, args: &[Value]) -> Result<(), GcStr> {
     let args_count = args.len();
 
     let parameters = &*self.meta.signature.parameters;
@@ -152,7 +152,7 @@ impl Native {
       // if fixed we need exactly the correct amount
       Arity::Fixed(arity) => {
         if args_count != arity as usize {
-          return Err(hooks.manage_str(format!(
+          return Err(hooks_gen().manage_str(format!(
             "{} expected {} argument(s) but received {}.",
             self.name(),
             self.real_arg_count(arity as usize),
@@ -162,7 +162,7 @@ impl Native {
 
         for (argument, parameter) in args.iter().zip(parameters.iter()) {
           if !parameter.kind.is_valid(*argument) {
-            return Err(hooks.manage_str(format!(
+            return Err(hooks_gen().manage_str(format!(
               "{}'s parameter \"{}\" required a {} but received a {}.",
               self.name(),
               parameter.name,
@@ -175,7 +175,7 @@ impl Native {
       // if variadic and ending with ... take arity +
       Arity::Variadic(arity) => {
         if args_count < arity as usize {
-          return Err(hooks.manage_str(format!(
+          return Err(hooks_gen().manage_str(format!(
             "{} expected at least {} argument(s) but received {}.",
             self.name(),
             self.real_arg_count(arity as usize),
@@ -188,7 +188,7 @@ impl Native {
         if arity != 0 {
           for (argument, parameter) in args.iter().zip(parameters.iter()).take(arity as usize) {
             if !parameter.kind.is_valid(*argument) {
-              return Err(hooks.manage_str(format!(
+              return Err(hooks_gen().manage_str(format!(
                 "{}'s parameter \"{}\" required a {} but received a {}.",
                 self.name(),
                 parameter.name,
@@ -201,7 +201,7 @@ impl Native {
 
         for argument in args[arity as usize..].iter() {
           if !variadic_type.kind.is_valid(*argument) {
-            return Err(hooks.manage_str(format!(
+            return Err(hooks_gen().manage_str(format!(
               "{}'s parameter \"{}\" required a {} but received a {}.",
               self.name(),
               variadic_type.name,
@@ -214,7 +214,7 @@ impl Native {
       // if defaulted we need between the min and max
       Arity::Default(min_arity, max_arity) => {
         if args_count < min_arity as usize {
-          return Err(hooks.manage_str(format!(
+          return Err(hooks_gen().manage_str(format!(
             "{} expected at least {} argument(s) but received {}.",
             self.name(),
             self.real_arg_count(min_arity as usize),
@@ -222,7 +222,7 @@ impl Native {
           )));
         }
         if args_count > max_arity as usize {
-          return Err(hooks.manage_str(format!(
+          return Err(hooks_gen().manage_str(format!(
             "{} expected at most {} argument(s) but received {}.",
             self.name(),
             self.real_arg_count(max_arity as usize),
@@ -233,7 +233,7 @@ impl Native {
         for (argument, parameter) in args.iter().zip(parameters.iter()) {
           if !parameter.kind.is_valid(*argument) {
             // return Err(SignatureError::TypeWrong(index as u8));
-            return Err(hooks.manage_str("todo"));
+            return Err(hooks_gen().manage_str("todo"));
           }
         }
       },

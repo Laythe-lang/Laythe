@@ -155,7 +155,7 @@ mod test {
     io::Io,
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
-  use std::{cell::RefCell, io::Write, iter::once, sync::Arc};
+  use std::{cell::RefCell, io::Write, sync::Arc};
 
   pub struct MockedContext {
     pub gc: RefCell<Allocator>,
@@ -253,21 +253,18 @@ mod test {
         return Err(LyError::Exit(1));
       }
 
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
       let result = match_obj!((&callable.to_obj()) {
         ObjectKind::Fun(fun) => {
-          fun.check_if_valid_call(&hooks, args.len() as u8)
+          fun.check_if_valid_call(|| GcHooks::new(self), args.len() as u8)
         },
         ObjectKind::Closure(closure) => {
-          closure.fun().check_if_valid_call(&hooks, args.len() as u8)
+          closure.fun().check_if_valid_call(|| GcHooks::new(self), args.len() as u8)
         },
         ObjectKind::Method(method) => {
-          method.method().to_obj().to_closure().fun().check_if_valid_call(&hooks, args.len() as u8)
+          method.method().to_obj().to_closure().fun().check_if_valid_call(|| GcHooks::new(self), args.len() as u8)
         },
         ObjectKind::Native(native) => {
-          native.check_if_valid_call(&hooks, args)
+          native.check_if_valid_call(|| GcHooks::new(self), args)
         },
         _ => return Err(LyError::Exit(1)),
       });
@@ -293,25 +290,21 @@ mod test {
         return Err(LyError::Exit(1));
       }
 
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-
       let result = match_obj!((&method.to_obj()) {
         ObjectKind::Fun(fun) => {
-          fun.check_if_valid_call(&hooks, args.len() as u8)
+          fun.check_if_valid_call(|| GcHooks::new(self), args.len() as u8)
         },
         ObjectKind::Closure(closure) => {
-          closure.fun().check_if_valid_call(&hooks, args.len() as u8)
+          closure.fun().check_if_valid_call(|| GcHooks::new(self), args.len() as u8)
         },
         ObjectKind::Method(method) => {
-          method.method().to_obj().to_closure().fun().check_if_valid_call(&hooks, args.len() as u8)
+          method.method().to_obj().to_closure().fun().check_if_valid_call(|| GcHooks::new(self), args.len() as u8)
         },
         ObjectKind::Native(native) => {
           let mut augmented_args = vec![this];
           augmented_args.extend_from_slice(args);
 
-          native.check_if_valid_call(&hooks, &augmented_args)
+          native.check_if_valid_call(|| GcHooks::new(self), &augmented_args)
         },
         _ => return Err(LyError::Exit(1)),
       });
