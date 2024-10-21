@@ -1011,7 +1011,6 @@ mod test {
     let fun2 = value.to_obj().to_fun();
 
     assert_eq!(fun.name(), fun2.name());
-    assert_eq!(fun.arity(), fun2.arity());
   }
 
   #[test]

@@ -1,7 +1,9 @@
 use crate::{
   hooks::{GcHooks, Hooks},
   managed::{DebugHeap, DebugWrap, GcStr, Object, Trace},
-  signature::{Arity, NativeEnvironment, ParameterBuilder, Signature, SignatureBuilder},
+  signature::{
+    Arity, NativeEnvironment, NativeSignature, ParameterBuilder, ParameterKind, SignatureBuilder,
+  },
   value::Value,
   Call,
 };
@@ -66,12 +68,21 @@ impl NativeMetaBuilder {
   }
 
   /// Create a native meta data struct from this builder
-  pub fn to_meta(&self, hooks: &GcHooks) -> NativeMeta {
-    NativeMeta {
-      name: hooks.manage_str(self.name),
-      is_method: self.is_method,
-      environment: self.environment,
-      signature: self.signature.to_sig(hooks),
+  pub fn build(&self, hooks: &GcHooks) -> NativeMeta {
+    if self.is_method {
+      NativeMeta {
+        name: hooks.manage_str(self.name),
+        is_method: true,
+        environment: self.environment,
+        signature: self.signature.to_method_sig(hooks),
+      }
+    } else {
+      NativeMeta {
+        name: hooks.manage_str(self.name),
+        is_method: false,
+        environment: self.environment,
+        signature: self.signature.to_sig(hooks),
+      }
     }
   }
 }
@@ -88,7 +99,7 @@ pub struct NativeMeta {
   pub environment: NativeEnvironment,
 
   /// The signature of this native function or method
-  pub signature: Signature,
+  pub signature: NativeSignature,
 }
 
 impl Trace for NativeMeta {
@@ -117,19 +128,137 @@ impl Native {
   }
 
   #[inline]
-  pub fn meta(&self) -> &NativeMeta {
-    &self.meta
+  pub fn name(&self) -> GcStr {
+    self.meta.name
   }
 
   #[inline]
-  pub fn call(&self, hooks: &mut Hooks, this: Option<Value>, values: &[Value]) -> Call {
-    self.native.call(hooks, this, values)
+  pub fn is_method(&self) -> bool {
+    self.meta.is_method
+  }
+
+  #[inline]
+  pub fn environment(&self) -> NativeEnvironment {
+    self.meta.environment
+  }
+
+  #[inline]
+  pub fn check_if_valid_call(&self, hooks: &GcHooks, args: &[Value]) -> Result<(), GcStr> {
+    let args_count = args.len();
+
+    let parameters = &*self.meta.signature.parameters;
+
+    match self.meta.signature.arity {
+      // if fixed we need exactly the correct amount
+      Arity::Fixed(arity) => {
+        if args_count != arity as usize {
+          return Err(hooks.manage_str(&format!(
+            "{} expected {} argument(s) but received {}.",
+            self.name(),
+            self.real_arg_count(arity as usize),
+            self.real_arg_count(args.len()),
+          )));
+        }
+
+        for (argument, parameter) in args.iter().zip(parameters.iter()) {
+          if !parameter.kind.is_valid(*argument) {
+            return Err(hooks.manage_str(&format!(
+              "{}'s parameter \"{}\" required a {} but received a {}.",
+              self.name(),
+              parameter.name,
+              parameter.kind,
+              ParameterKind::from(*argument)
+            )));
+          }
+        }
+      },
+      // if variadic and ending with ... take arity +
+      Arity::Variadic(arity) => {
+        if args_count < arity as usize {
+          return Err(hooks.manage_str(&format!(
+            "{} expected at least {} argument(s) but received {}.",
+            self.name(),
+            self.real_arg_count(arity as usize),
+            self.real_arg_count(args_count),
+          )));
+        }
+
+        let variadic_type = parameters[arity as usize];
+
+        if arity != 0 {
+          for (argument, parameter) in args.iter().zip(parameters.iter()).take(arity as usize) {
+            if !parameter.kind.is_valid(*argument) {
+              return Err(hooks.manage_str(&format!(
+                "{}'s parameter \"{}\" required a {} but received a {}.",
+                self.name(),
+                parameter.name,
+                parameter.kind,
+                ParameterKind::from(*argument)
+              )));
+            }
+          }
+        }
+
+        for argument in args[arity as usize..].iter() {
+          if !variadic_type.kind.is_valid(*argument) {
+            return Err(hooks.manage_str(&format!(
+              "{}'s parameter \"{}\" required a {} but received a {}.",
+              self.name(),
+              variadic_type.name,
+              variadic_type.kind,
+              ParameterKind::from(*argument)
+            )));
+          }
+        }
+      },
+      // if defaulted we need between the min and max
+      Arity::Default(min_arity, max_arity) => {
+        if args_count < min_arity as usize {
+          return Err(hooks.manage_str(&format!(
+            "{} expected at least {} argument(s) but received {}.",
+            self.name(),
+            self.real_arg_count(min_arity as usize),
+            self.real_arg_count(args_count),
+          )));
+        }
+        if args_count > max_arity as usize {
+          return Err(hooks.manage_str(&format!(
+            "{} expected at most {} argument(s) but received {}.",
+            self.name(),
+            self.real_arg_count(max_arity as usize),
+            self.real_arg_count(args_count),
+          )));
+        }
+
+        for (argument, parameter) in args.iter().zip(parameters.iter()) {
+          if !parameter.kind.is_valid(*argument) {
+            // return Err(SignatureError::TypeWrong(index as u8));
+            return Err(hooks.manage_str("todo"));
+          }
+        }
+      },
+    }
+
+    Ok(())
+  }
+
+  #[inline]
+  pub fn call(&self, hooks: &mut Hooks, values: &[Value]) -> Call {
+    self.native.call(hooks, values)
+  }
+
+  fn real_arg_count(&self, arg_count: usize) -> usize {
+    if self.is_method() {
+      arg_count - 1
+    } else {
+      arg_count
+    }
   }
 }
 
 impl fmt::Display for Native {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "<{} native {:p}>", &*self.meta().name, self)
+    write!(f, "<{} native {:p}>", &*self.name(), self)
   }
 }
 
@@ -155,11 +284,10 @@ impl Trace for Native {
 
 impl DebugHeap for Native {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    let meta = self.meta();
+    let name = self.name();
 
     f.debug_struct("Native")
-      .field("name", &DebugWrap(&meta.name, depth))
-      .field("signature", &meta.signature)
+      .field("name", &DebugWrap(&name, depth))
       .finish()
   }
 }
@@ -172,7 +300,7 @@ impl Object for Native {
 
 pub trait LyNative: Trace {
   /// Call the native functions
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, values: &[Value]) -> Call;
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call;
 }
 
 impl Trace for Box<dyn LyNative> {

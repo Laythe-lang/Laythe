@@ -68,6 +68,14 @@ impl Arity {
 
     Ok(())
   }
+
+  pub fn required_parameter(&self) -> usize {
+    match self {
+      &Self::Fixed(i) => i as usize,
+      &Self::Variadic(i) => i as usize + 1,
+      &Self::Default(_, i) => i as usize,
+    }
+  }
 }
 
 /// A native parameter indicating the name and kind of the parameter
@@ -119,44 +127,28 @@ impl Trace for Parameter {
 /// Indicating the type of the parameter passed in
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ParameterKind {
-  Any,
+  Object,
   Bool,
   Number,
   String,
-  Channel,
-  List,
-  Map,
-  Class,
-  Instance,
-  Enumerator,
-  Nil,
-  Fun,
-  Fiber,
+  Callable,
 }
 
 impl ParameterKind {
-  fn is_valid(&self, value: Value) -> bool {
-    if *self == ParameterKind::Any {
+  pub fn is_valid(&self, value: Value) -> bool {
+    if *self == ParameterKind::Object {
       return true;
     }
 
     match (self, value.kind()) {
       (ParameterKind::Bool, ValueKind::Bool) => true,
       (ParameterKind::Number, ValueKind::Number) => true,
-      (_, ValueKind::Nil) => false,
-      (_, ValueKind::Obj) => matches!(
-        (self, value.to_obj().kind()),
-        (ParameterKind::Class, ObjectKind::Class)
-          | (ParameterKind::Instance, ObjectKind::Instance)
-          | (ParameterKind::List, ObjectKind::List)
-          | (ParameterKind::Enumerator, ObjectKind::Enumerator)
-          | (ParameterKind::Map, ObjectKind::Map)
-          | (ParameterKind::Fun, ObjectKind::Closure)
-          | (ParameterKind::Fun, ObjectKind::Fun)
-          | (ParameterKind::Fun, ObjectKind::Method)
-          | (ParameterKind::Fun, ObjectKind::Native)
-          | (ParameterKind::String, ObjectKind::String)
+      (ParameterKind::Object, ValueKind::Nil) => true,
+      (ParameterKind::Callable, ValueKind::Obj) => matches!(
+        value.to_obj().kind(),
+        ObjectKind::Closure | ObjectKind::Fun | ObjectKind::Native | ObjectKind::Method
       ),
+      (ParameterKind::String, ValueKind::Obj) => value.is_obj_kind(ObjectKind::String),
       _ => false,
     }
   }
@@ -166,23 +158,15 @@ impl From<Value> for ParameterKind {
   fn from(value: Value) -> Self {
     match value.kind() {
       ValueKind::Bool => ParameterKind::Bool,
-      ValueKind::Nil => ParameterKind::Nil,
+      ValueKind::Nil => ParameterKind::Object,
       ValueKind::Number => ParameterKind::Number,
       ValueKind::Obj => match value.to_obj().kind() {
-        ObjectKind::Channel => ParameterKind::Channel,
-        ObjectKind::Class => ParameterKind::Class,
-        ObjectKind::Closure => ParameterKind::Fun,
-        ObjectKind::Enumerator => ParameterKind::Enumerator,
-        ObjectKind::Fun => ParameterKind::Fun,
-        ObjectKind::Fiber => ParameterKind::Fiber,
-        ObjectKind::Instance => ParameterKind::Instance,
-        ObjectKind::List => ParameterKind::List,
-        ObjectKind::Map => ParameterKind::Map,
-        ObjectKind::Method => ParameterKind::Fun,
-        ObjectKind::Native => ParameterKind::Fun,
-        ObjectKind::String => ParameterKind::String,
-        ObjectKind::Tuple => ParameterKind::List, // TODO: ??
+        ObjectKind::Closure => ParameterKind::Callable,
+        ObjectKind::Method => ParameterKind::Callable,
+        ObjectKind::Native => ParameterKind::Callable,
+        ObjectKind::Fun => ParameterKind::Callable,
         ObjectKind::LyBox => panic!("Should not pass in box directly"),
+        _ => ParameterKind::Object,
       },
     }
   }
@@ -191,19 +175,11 @@ impl From<Value> for ParameterKind {
 impl Display for ParameterKind {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
     match *self {
-      ParameterKind::Any => write!(f, "anything"),
+      ParameterKind::Object => write!(f, "object"),
       ParameterKind::Bool => write!(f, "boolean"),
-      ParameterKind::Nil => write!(f, "nil"),
       ParameterKind::Number => write!(f, "number"),
       ParameterKind::String => write!(f, "string"),
-      ParameterKind::Channel => write!(f, "channel"),
-      ParameterKind::Fiber => write!(f, "fiber"),
-      ParameterKind::List => write!(f, "list"),
-      ParameterKind::Map => write!(f, "map"),
-      ParameterKind::Class => write!(f, "class"),
-      ParameterKind::Instance => write!(f, "instance"),
-      ParameterKind::Enumerator => write!(f, "iterator"),
-      ParameterKind::Fun => write!(f, "function"),
+      ParameterKind::Callable => write!(f, "callable"),
     }
   }
 }
@@ -255,26 +231,63 @@ impl SignatureBuilder {
   }
 
   /// Build a full signature struct
-  pub fn to_sig(&self, hooks: &GcHooks) -> Signature {
-    Signature {
+  pub fn to_sig(&self, hooks: &GcHooks) -> NativeSignature {
+    let required_parameters = self.arity.required_parameter();
+    let parameters = self
+      .parameters
+      .iter()
+      .map(|p| p.to_param(hooks))
+      .collect::<Vec<Parameter>>()
+      .into_boxed_slice();
+
+    assert_eq!(
+      parameters.len(),
+      required_parameters,
+      "Incorrect number of parameters."
+    );
+
+    NativeSignature {
       arity: self.arity,
-      parameters: self
-        .parameters
-        .iter()
-        .map(|p| p.to_param(hooks))
-        .collect::<Vec<Parameter>>()
-        .into_boxed_slice(),
+      parameters,
+    }
+  }
+
+  pub fn to_method_sig(&self, hooks: &GcHooks) -> NativeSignature {
+    let arity = self.method_arity();
+    let required_parameters = arity.required_parameter();
+
+    let parameters = [ParameterBuilder::new("self", ParameterKind::Object)]
+      .iter()
+      .chain(self.parameters.iter())
+      .map(|p| p.to_param(hooks))
+      .collect::<Vec<Parameter>>()
+      .into_boxed_slice();
+
+    assert_eq!(
+      parameters.len(),
+      required_parameters,
+      "Incorrect number of parameters."
+    );
+
+    NativeSignature { arity, parameters }
+  }
+
+  fn method_arity(&self) -> Arity {
+    match self.arity {
+      Arity::Fixed(i) => Arity::Fixed(i + 1),
+      Arity::Variadic(i) => Arity::Variadic(i + 1),
+      Arity::Default(required, total) => Arity::Default(required + 1, total + 1),
     }
   }
 }
 
 #[derive(Clone, Debug)]
-pub struct Signature {
+pub struct NativeSignature {
   pub arity: Arity,
   pub parameters: Box<[Parameter]>,
 }
 
-impl Signature {
+impl NativeSignature {
   /// Check if the provides arguments are valid for this signature
   pub fn check(&self, args: &[Value]) -> SignatureResult {
     let count = args.len();
@@ -313,7 +326,7 @@ impl Signature {
           }
         }
 
-        if variadic_type.kind == ParameterKind::Any {
+        if variadic_type.kind == ParameterKind::Object {
           return Ok(());
         }
 
@@ -344,7 +357,7 @@ impl Signature {
   }
 }
 
-impl Trace for Signature {
+impl Trace for NativeSignature {
   fn trace(&self) {
     self.parameters.iter().for_each(|p| {
       p.trace();
@@ -396,7 +409,7 @@ mod test {
 
     const PARAMETERS_FIXED: [ParameterBuilder; 2] = [
       ParameterBuilder::new("index", ParameterKind::Number),
-      ParameterBuilder::new("val", ParameterKind::Any),
+      ParameterBuilder::new("val", ParameterKind::Object),
     ];
 
     #[test]
