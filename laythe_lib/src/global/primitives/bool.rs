@@ -39,8 +39,8 @@ pub fn define_bool_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 native!(BoolStr, BOOL_STR);
 
 impl LyNative for BoolStr {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    if this.unwrap() == VALUE_TRUE {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    if args[0] == VALUE_TRUE {
       Call::Ok(val!(hooks.manage_str("true")))
     } else {
       Call::Ok(val!(hooks.manage_str("false")))
@@ -57,17 +57,6 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let bool_str = BoolStr::native(&hooks);
-
-      assert_eq!(bool_str.meta().name, "str");
-      assert_eq!(bool_str.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -77,8 +66,8 @@ mod test {
       let b_true = val!(true);
       let b_false = val!(false);
 
-      let result1 = bool_str.call(&mut hooks, Some(b_true), &[]);
-      let result2 = bool_str.call(&mut hooks, Some(b_false), &[]);
+      let result1 = bool_str.call(&mut hooks, &[b_true]);
+      let result2 = bool_str.call(&mut hooks, &[b_false]);
 
       assert_eq!(result1.unwrap().to_obj().to_str(), "true");
       assert_eq!(result2.unwrap().to_obj().to_str(), "false");

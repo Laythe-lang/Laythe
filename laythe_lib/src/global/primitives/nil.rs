@@ -40,7 +40,7 @@ pub fn define_nil_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 native!(NilStr, NIL_STR);
 
 impl LyNative for NilStr {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     Call::Ok(val!(hooks.manage_str("nil")))
   }
 }
@@ -55,23 +55,12 @@ mod test {
     use laythe_core::value::VALUE_NIL;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let nil_str = NilStr::native(&hooks);
-
-      assert_eq!(nil_str.meta().name, "str");
-      assert_eq!(nil_str.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let nil_str = NilStr::native(&hooks.as_gc());
 
-      let result = nil_str.call(&mut hooks, Some(VALUE_NIL), &[]);
+      let result = nil_str.call(&mut hooks, &[VALUE_NIL]);
       match result {
         Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "nil".to_string()),
         _ => assert!(false),

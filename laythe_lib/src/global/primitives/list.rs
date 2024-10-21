@@ -32,7 +32,7 @@ const LIST_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, A
 
 const LIST_INDEX_SET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_SET, Arity::Fixed(2))
   .with_params(&[
-    ParameterBuilder::new("val", ParameterKind::Any),
+    ParameterBuilder::new("val", ParameterKind::Object),
     ParameterBuilder::new("index", ParameterKind::Number),
   ])
   .with_stack();
@@ -40,12 +40,12 @@ const LIST_INDEX_SET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_SET, A
 const LIST_CLEAR: NativeMetaBuilder = NativeMetaBuilder::method("clear", Arity::Fixed(0));
 
 const LIST_HAS: NativeMetaBuilder = NativeMetaBuilder::method("has", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("val", ParameterKind::Any)]);
+  .with_params(&[ParameterBuilder::new("val", ParameterKind::Object)]);
 
 const LIST_INSERT: NativeMetaBuilder = NativeMetaBuilder::method("insert", Arity::Fixed(2))
   .with_params(&[
     ParameterBuilder::new("index", ParameterKind::Number),
-    ParameterBuilder::new("val", ParameterKind::Any),
+    ParameterBuilder::new("val", ParameterKind::Object),
   ])
   .with_stack();
 
@@ -53,14 +53,14 @@ const LIST_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fi
 const LIST_POP: NativeMetaBuilder = NativeMetaBuilder::method("pop", Arity::Fixed(0));
 
 const LIST_PUSH: NativeMetaBuilder = NativeMetaBuilder::method("push", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)]);
+  .with_params(&[ParameterBuilder::new("values", ParameterKind::Object)]);
 
 const LIST_REMOVE: NativeMetaBuilder = NativeMetaBuilder::method("remove", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("index", ParameterKind::Number)])
   .with_stack();
 
 const LIST_INDEX: NativeMetaBuilder = NativeMetaBuilder::method("index", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("value", ParameterKind::Any)]);
+  .with_params(&[ParameterBuilder::new("value", ParameterKind::Object)]);
 
 const LIST_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
 const LIST_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0)).with_stack();
@@ -75,11 +75,11 @@ const LIST_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity::
 const LIST_REV: NativeMetaBuilder = NativeMetaBuilder::method("rev", Arity::Fixed(0));
 
 const LIST_SORT: NativeMetaBuilder = NativeMetaBuilder::method("sort", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("comparator", ParameterKind::Fun)])
+  .with_params(&[ParameterBuilder::new("comparator", ParameterKind::Callable)])
   .with_stack();
 
 const LIST_COLLECT: NativeMetaBuilder = NativeMetaBuilder::fun("collect", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("iter", ParameterKind::Enumerator)]);
+  .with_params(&[ParameterBuilder::new("iter", ParameterKind::Object)]);
 
 pub fn declare_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, LIST_CLASS_NAME)?;
@@ -190,7 +190,7 @@ impl ListStr {
     debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_name, error }) as Box<dyn LyNative>;
 
-    hooks.manage_obj(Native::new(LIST_STR.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(LIST_STR.build(hooks), native))
   }
 }
 
@@ -211,8 +211,8 @@ fn quote_string(buf: &mut String, string: &str) {
 }
 
 impl LyNative for ListStr {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let list = this.unwrap().to_obj().to_list();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let list = args[0].to_obj().to_list();
 
     // buffer for temporary strings
     let mut buf = String::new();
@@ -278,14 +278,14 @@ impl LyNative for ListStr {
 native_with_error!(ListSlice, LIST_SLICE);
 
 impl LyNative for ListSlice {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     // get underlying string slice
-    let list = this.unwrap().to_obj().to_list();
+    let list = args[0].to_obj().to_list();
 
     let (start, end) = match args.len() {
-      0 => (0.0, list.len() as f64),
-      1 => (args[0].to_num(), list.len() as f64),
-      2 => (args[0].to_num(), args[1].to_num()),
+      1 => (0.0, list.len() as f64),
+      2 => (args[1].to_num(), list.len() as f64),
+      3 => (args[1].to_num(), args[2].to_num()),
       _ => panic!("list slice should only been passed 0, 1 or 2 parameters"),
     };
 
@@ -358,9 +358,9 @@ fn determine_index(list: &List, index: f64) -> Result<usize, String> {
 native_with_error!(ListIndexGet, LIST_INDEX_GET);
 
 impl LyNative for ListIndexGet {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let index = args[0].to_num();
-    let list = this.unwrap().to_obj().to_list();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let index = args[1].to_num();
+    let list = args[0].to_obj().to_list();
 
     match determine_index(&list, index) {
       Ok(index) => Ok(list[index]),
@@ -372,14 +372,14 @@ impl LyNative for ListIndexGet {
 native_with_error!(ListIndexSet, LIST_INDEX_SET);
 
 impl LyNative for ListIndexSet {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let index = args[1].to_num();
-    let mut list = this.unwrap().to_obj().to_list();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let index = args[2].to_num();
+    let mut list = args[0].to_obj().to_list();
 
     match determine_index(&list, index) {
       Ok(index) => {
-        list[index] = args[0];
-        Call::Ok(args[0])
+        list[index] = args[1];
+        Call::Ok(args[1])
       },
       Err(message) => self.call_error(hooks, message),
     }
@@ -389,17 +389,17 @@ impl LyNative for ListIndexSet {
 native!(ListLen, LIST_LEN);
 
 impl LyNative for ListLen {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_obj().to_list().len() as f64))
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_obj().to_list().len() as f64))
   }
 }
 
 native!(ListPush, LIST_PUSH);
 
 impl LyNative for ListPush {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let mut list = this.unwrap().to_obj().to_list();
-    for arg in args {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let mut list = args[0].to_obj().to_list();
+    for arg in &args[1..] {
       list.push(*arg, &hooks.as_gc());
     }
     Call::Ok(VALUE_NIL)
@@ -409,8 +409,8 @@ impl LyNative for ListPush {
 native!(ListPop, LIST_POP);
 
 impl LyNative for ListPop {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    match this.unwrap().to_obj().to_list().pop() {
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    match args[0].to_obj().to_list().pop() {
       Some(value) => Call::Ok(value),
       None => Call::Ok(VALUE_NIL),
     }
@@ -420,9 +420,9 @@ impl LyNative for ListPop {
 native_with_error!(ListRemove, LIST_REMOVE);
 
 impl LyNative for ListRemove {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let index = args[0].to_num();
-    let mut list = this.unwrap().to_obj().to_list();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let index = args[1].to_num();
+    let mut list = args[0].to_obj().to_list();
 
     if index < 0.0 {
       return self.call_error(hooks, format!("Cannot remove at negative index {index}."));
@@ -445,14 +445,9 @@ impl LyNative for ListRemove {
 native!(ListIndex, LIST_INDEX);
 
 impl LyNative for ListIndex {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let item = args[0];
-    let index = this
-      .unwrap()
-      .to_obj()
-      .to_list()
-      .iter()
-      .position(|x| *x == item);
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    let item = args[1];
+    let index = args[0].to_obj().to_list().iter().position(|x| *x == item);
 
     Call::Ok(index.map(|i| val!(i as f64)).unwrap_or(VALUE_NIL))
   }
@@ -461,15 +456,15 @@ impl LyNative for ListIndex {
 native_with_error!(ListInsert, LIST_INSERT);
 
 impl LyNative for ListInsert {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let index = args[0].to_num();
-    let mut list = this.unwrap().to_obj().to_list();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let index = args[1].to_num();
+    let mut list = args[0].to_obj().to_list();
 
     if index < 0.0 {
       return self.call_error(hooks, format!("Cannot insert at index {index}"));
     }
 
-    match list.insert(index as usize, args[1], &hooks.as_gc()) {
+    match list.insert(index as usize, args[2], &hooks.as_gc()) {
       IndexedResult::Ok(_) => Call::Ok(VALUE_NIL),
       IndexedResult::OutOfBounds => self.call_error(
         hooks,
@@ -486,8 +481,8 @@ impl LyNative for ListInsert {
 native!(ListClear, LIST_CLEAR);
 
 impl LyNative for ListClear {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let mut list = this.unwrap().to_obj().to_list();
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    let mut list = args[0].to_obj().to_list();
     while list.pop().is_some() {}
     Call::Ok(VALUE_NIL)
   }
@@ -496,17 +491,16 @@ impl LyNative for ListClear {
 native!(ListHas, LIST_HAS);
 
 impl LyNative for ListHas {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_obj().to_list().contains(&args[0])))
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_obj().to_list().contains(&args[1])))
   }
 }
 
 native!(ListIter, LIST_ITER);
 
 impl LyNative for ListIter {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let inner_iter: Box<dyn Enumerate> =
-      Box::new(ListIterator::new(this.unwrap().to_obj().to_list()));
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let inner_iter: Box<dyn Enumerate> = Box::new(ListIterator::new(args[0].to_obj().to_list()));
     let iter = Enumerator::new(inner_iter);
     let iter = hooks.manage_obj(iter);
 
@@ -517,8 +511,8 @@ impl LyNative for ListIter {
 native!(ListRev, LIST_REV);
 
 impl LyNative for ListRev {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let list = this.unwrap().to_obj().to_list();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let list = args[0].to_obj().to_list();
     let rev: Vec<Value> = list.iter().cloned().rev().collect();
     Call::Ok(val!(hooks.manage_obj(list!(&*rev))))
   }
@@ -527,9 +521,9 @@ impl LyNative for ListRev {
 native_with_error!(ListSort, LIST_SORT);
 
 impl LyNative for ListSort {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let comparator = args[0];
-    let list = this.unwrap().to_obj().to_list();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let comparator = args[1];
+    let list = args[0].to_obj().to_list();
     let mut list = hooks.manage_obj(list!(&*list));
     hooks.push_root(list);
 
@@ -572,7 +566,7 @@ impl LyNative for ListSort {
 native!(ListCollect, LIST_COLLECT);
 
 impl LyNative for ListCollect {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let mut iter = args[0].to_obj().to_enumerator();
     let mut list = match iter.size_hint() {
       Some(size) => hooks.manage_obj(ListBuilder::cap_only(size)),
@@ -666,33 +660,16 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let error = val!(test_error_class(&hooks));
-      let list_index_get = ListIndexGet::native(&hooks, error);
-
-      assert_eq!(list_index_get.meta().name, "[]");
-      assert_eq!(list_index_get.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        list_index_get.meta().signature.parameters[0].kind,
-        ParameterKind::Number
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_index_get = ListIndexGet::native(&hooks.as_gc(), error);
 
-      let values = &[val!(0.0)];
-
       let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
+      let values = &[val!(this), val!(0.0)];
 
-      let result = list_index_get.call(&mut hooks, Some(val!(this)), values);
+      let result = list_index_get.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),
         _ => assert!(false),
@@ -707,26 +684,6 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let error = val!(test_error_class(&hooks));
-      let list_index_set = ListIndexSet::native(&hooks, error);
-
-      assert_eq!(list_index_set.meta().name, "[]=");
-      assert_eq!(list_index_set.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(
-        list_index_set.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-      assert_eq!(
-        list_index_set.meta().signature.parameters[1].kind,
-        ParameterKind::Number
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -734,13 +691,10 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_index_set = ListIndexSet::native(&hooks.as_gc(), error);
 
-      let values = &[val!(false), val!(1.0)];
-
       let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
+      let values = &[val!(this), val!(false), val!(1.0)];
 
-      let result = list_index_set
-        .call(&mut hooks, Some(val!(this)), values)
-        .unwrap();
+      let result = list_index_set.call(&mut hooks, values).unwrap();
       assert_eq!(result, val!(false));
       assert_eq!(this[1], val!(false))
     }
@@ -751,18 +705,6 @@ mod test {
 
     use super::*;
     use crate::support::{test_error_class, test_native_dependencies, MockedContext};
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let list_str = ListStr::native(&hooks, hooks.manage_str("str".to_string()), error);
-
-      assert_eq!(list_str.meta().name, "str");
-      assert_eq!(list_str.meta().signature.arity, Arity::Fixed(0));
-    }
 
     #[test]
     fn call() {
@@ -777,15 +719,15 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_str = ListStr::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
 
-      let values = &[];
-
       let this = hooks.manage_obj(list!(&[
         VALUE_NIL,
         val!(10.0),
         val!(hooks.manage_obj(list!(&[val!(5.0)])))
       ]));
 
-      let result = list_str.call(&mut hooks, Some(val!(this)), values);
+      let values = &[val!(this)];
+
+      let result = list_str.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "[nil, 10, [5]]"),
         _ => assert!(false),
@@ -798,25 +740,6 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
     use laythe_core::hooks::Hooks;
 
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
-      let error = val!(test_error_class(&hooks.as_gc()));
-
-      let list_slice = ListSlice::native(&hooks.as_gc(), error);
-
-      assert_eq!(list_slice.meta().name, "slice");
-      assert_eq!(list_slice.meta().signature.arity, Arity::Default(0, 2));
-      assert_eq!(
-        list_slice.meta().signature.parameters[0].kind,
-        ParameterKind::Number
-      );
-      assert_eq!(
-        list_slice.meta().signature.parameters[1].kind,
-        ParameterKind::Number
-      );
-    }
 
     #[test]
     fn call() {
@@ -829,7 +752,7 @@ mod test {
       let this = hooks.manage_obj(list!(&[val!(1.0), val!(2.0), val!(3.0)]));
 
       let result = list_slice
-        .call(&mut hooks, Some(val!(this)), &[val!(0.0), val!(2.0)])
+        .call(&mut hooks, &[val!(this), val!(0.0), val!(2.0)])
         .unwrap();
       assert!(result.is_obj_kind(ObjectKind::List));
 
@@ -845,27 +768,15 @@ mod test {
     use laythe_core::hooks::Hooks;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_size = ListLen::native(&hooks);
-
-      assert_eq!(list_size.meta().name, "len");
-      assert_eq!(list_size.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let list_size = ListLen::native(&hooks.as_gc());
 
-      let values = &[];
-
       let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
+      let values = &[val!(this)];
 
-      let result = list_size.call(&mut hooks, Some(val!(this)), values);
+      let result = list_size.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert_eq!(r.to_num(), 2.0),
         _ => assert!(false),
@@ -878,46 +789,31 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_push = ListPush::native(&hooks);
-
-      assert_eq!(list_push.meta().name, "push");
-      assert_eq!(list_push.meta().signature.arity, Arity::Variadic(0));
-      assert_eq!(
-        list_push.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let list_push = ListPush::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
+      let this = val!(list);
 
-      let result = list_push.call(&mut hooks, list_value, &[val!(false)]);
+      let result = list_push.call(&mut hooks, &[this, val!(false)]);
       match result {
         Call::Ok(r) => {
           assert_eq!(r, VALUE_NIL);
-          assert_eq!(list_value.unwrap().to_obj().to_list().len(), 3);
-          assert_eq!(list_value.unwrap().to_obj().to_list()[2], val!(false));
+          assert_eq!(list.len(), 3);
+          assert_eq!(list[2], val!(false));
         },
         _ => assert!(false),
       }
 
-      let result = list_push.call(&mut hooks, Some(val!(this)), &[val!(10.3), VALUE_NIL]);
+      let result = list_push.call(&mut hooks, &[this, val!(10.3), VALUE_NIL]);
       match result {
         Call::Ok(r) => {
           assert_eq!(r, VALUE_NIL);
-          assert_eq!(list_value.unwrap().to_obj().to_list().len(), 5);
-          assert_eq!(list_value.unwrap().to_obj().to_list()[3], val!(10.3));
-          assert_eq!(list_value.unwrap().to_obj().to_list()[4], VALUE_NIL);
+          assert_eq!(list.len(), 5);
+          assert_eq!(list[3], val!(10.3));
+          assert_eq!(list[4], VALUE_NIL);
         },
         _ => assert!(false),
       }
@@ -929,40 +825,29 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_pop = ListPop::native(&hooks);
-
-      assert_eq!(list_pop.meta().name, "pop");
-      assert_eq!(list_pop.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list_pop = ListPop::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj(list!(&[val!(true)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[val!(true)]));
+      let this = val!(list);
 
-      let result = list_pop.call(&mut hooks, list_value, &[]);
+      let result = list_pop.call(&mut hooks, &[this]);
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_bool(), true);
-          assert_eq!(this.len(), 0);
+          assert_eq!(list.len(), 0);
         },
         _ => assert!(false),
       }
 
-      let result = list_pop.call(&mut hooks, list_value, &[]);
+      let result = list_pop.call(&mut hooks, &[this]);
       match result {
         Call::Ok(r) => {
           assert!(r.is_nil());
-          assert_eq!(this.len(), 0);
+          assert_eq!(list.len(), 0);
         },
         _ => assert!(false),
       }
@@ -974,22 +859,6 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let list_remove = ListRemove::native(&hooks, error);
-
-      assert_eq!(list_remove.meta().name, "remove");
-      assert_eq!(list_remove.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        list_remove.meta().signature.parameters[0].kind,
-        ParameterKind::Number
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -997,25 +866,25 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_remove = ListRemove::native(&hooks.as_gc(), error);
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let this = val!(list);
 
-      let result = list_remove.call(&mut hooks, list_value, &[val!(1.0)]);
+      let result = list_remove.call(&mut hooks, &[this, val!(1.0)]);
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 10.0);
-          assert_eq!(this.len(), 2);
+          assert_eq!(list.len(), 2);
         },
         _ => assert!(false),
       }
 
-      let result = list_remove.call(&mut hooks, list_value, &[val!(-1.0)]);
+      let result = list_remove.call(&mut hooks, &[this, val!(-1.0)]);
       match result {
         Call::Ok(_) => assert!(false),
         _ => assert!(true),
       }
 
-      let result = list_remove.call(&mut hooks, list_value, &[val!(10.0)]);
+      let result = list_remove.call(&mut hooks, &[this, val!(10.0)]);
       match result {
         Call::Ok(_) => assert!(false),
         _ => assert!(true),
@@ -1028,31 +897,16 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_index = ListIndex::native(&hooks);
-
-      assert_eq!(list_index.meta().name, "index");
-      assert_eq!(list_index.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        list_index.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list_index = ListIndex::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let this = val!(list);
 
-      let result = list_index.call(&mut hooks, list_value, &[val!(10.0)]);
+      let result = list_index.call(&mut hooks, &[this, val!(10.0)]);
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 1.0);
@@ -1067,26 +921,6 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let list_insert = ListInsert::native(&hooks, error);
-
-      assert_eq!(list_insert.meta().name, "insert");
-      assert_eq!(list_insert.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(
-        list_insert.meta().signature.parameters[0].kind,
-        ParameterKind::Number
-      );
-      assert_eq!(
-        list_insert.meta().signature.parameters[1].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -1094,26 +928,26 @@ mod test {
 
       let list_insert = ListInsert::native(&hooks.as_gc(), error);
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let this = val!(list);
 
-      let result = list_insert.call(&mut hooks, list_value, &[val!(1.0), val!(false)]);
+      let result = list_insert.call(&mut hooks, &[this, val!(1.0), val!(false)]);
       match result {
         Call::Ok(r) => {
           assert!(r.is_nil());
-          assert_eq!(this[1], val!(false));
-          assert_eq!(this.len(), 4);
+          assert_eq!(list[1], val!(false));
+          assert_eq!(list.len(), 4);
         },
         _ => assert!(false),
       }
 
-      let result = list_insert.call(&mut hooks, list_value, &[val!(-1.0), val!(true)]);
+      let result = list_insert.call(&mut hooks, &[this, val!(-1.0), val!(true)]);
       match result {
         Call::Ok(_) => assert!(false),
         _ => assert!(true),
       }
 
-      let result = list_insert.call(&mut hooks, list_value, &[val!(10.0), val!(true)]);
+      let result = list_insert.call(&mut hooks, &[this, val!(10.0), val!(true)]);
       match result {
         Call::Ok(_) => assert!(false),
         _ => assert!(true),
@@ -1126,40 +960,29 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_clear = ListClear::native(&hooks);
-
-      assert_eq!(list_clear.meta().name, "clear");
-      assert_eq!(list_clear.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list_clear = ListClear::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let this = val!(list);
 
-      let result = list_clear.call(&mut hooks, list_value, &[]);
+      let result = list_clear.call(&mut hooks, &[this]);
       match result {
         Call::Ok(r) => {
           assert!(r.is_nil());
-          assert_eq!(this.len(), 0);
+          assert_eq!(list.len(), 0);
         },
         _ => assert!(false),
       }
 
-      let result = list_clear.call(&mut hooks, list_value, &[]);
+      let result = list_clear.call(&mut hooks,  &[this]);
       match result {
         Call::Ok(r) => {
           assert!(r.is_nil());
-          assert_eq!(this.len(), 0);
+          assert_eq!(list.len(), 0);
         },
         _ => assert!(false),
       }
@@ -1171,31 +994,16 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_has = ListHas::native(&hooks);
-
-      assert_eq!(list_has.meta().name, "has");
-      assert_eq!(list_has.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        list_has.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let list_has = ListHas::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let this = val!(list);
 
-      let result = list_has.call(&mut hooks, list_value, &[val!(10.0)]);
+      let result = list_has.call(&mut hooks,  &[this, val!(10.0)]);
       match result {
         Call::Ok(r) => {
           assert!(r.to_bool());
@@ -1203,7 +1011,7 @@ mod test {
         _ => assert!(false),
       }
 
-      let result = list_has.call(&mut hooks, list_value, &[val!(false)]);
+      let result = list_has.call(&mut hooks, &[this, val!(false)]);
       match result {
         Call::Ok(r) => {
           assert!(!r.to_bool());
@@ -1218,26 +1026,15 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_iter = ListIter::native(&hooks);
-
-      assert_eq!(list_iter.meta().name, "iter");
-      assert_eq!(list_iter.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let list_iter = ListIter::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let this = val!(list);
 
-      let result = list_iter.call(&mut hooks, list_value, &[]);
+      let result = list_iter.call(&mut hooks, &[this]);
       match result {
         Call::Ok(r) => {
           let mut iter = r.to_obj().to_enumerator();
@@ -1254,7 +1051,7 @@ mod test {
     use super::*;
     use crate::support::{test_error_class, MockedContext};
 
-    const LIST_TEST: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_SET, Arity::Fixed(2))
+    const LIST_TEST: NativeMetaBuilder = NativeMetaBuilder::fun(INDEX_SET, Arity::Fixed(2))
       .with_params(&[
         ParameterBuilder::new("a", ParameterKind::Number),
         ParameterBuilder::new("b", ParameterKind::Number),
@@ -1263,25 +1060,9 @@ mod test {
     native!(ListTest, LIST_TEST);
 
     impl LyNative for ListTest {
-      fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+      fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
         Call::Ok(args[0])
       }
-    }
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let list_sort = ListSort::native(&hooks, error);
-
-      assert_eq!(list_sort.meta().name, "sort");
-      assert_eq!(list_sort.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        list_sort.meta().signature.parameters[0].kind,
-        ParameterKind::Fun
-      );
     }
 
     #[test]
@@ -1293,10 +1074,10 @@ mod test {
       let list_sort = ListSort::native(&hooks.as_gc(), error);
       let num_cmp = val!(ListTest::native(&hooks.as_gc()));
 
-      let this = hooks.manage_obj(list!(&[val!(3.0), val!(5.0)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[val!(3.0), val!(5.0)]));
+      let this = val!(list);
 
-      let result = list_sort.call(&mut hooks, list_value, &[num_cmp]).unwrap();
+      let result = list_sort.call(&mut hooks, &[this, num_cmp]).unwrap();
       assert!(result.is_obj_kind(ObjectKind::List));
       assert_eq!(result.to_obj().to_list()[0], val!(5.0));
       assert_eq!(result.to_obj().to_list()[1], val!(3.0));
@@ -1308,27 +1089,16 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_sort = ListRev::native(&hooks);
-
-      assert_eq!(list_sort.meta().name, "rev");
-      assert_eq!(list_sort.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::new(&[val!(-2.0)]);
       let mut hooks = Hooks::new(&mut context);
 
       let list_sort = ListRev::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj(list!(&[val!(3.0), val!(5.0)]));
-      let list_value = Some(val!(this));
+      let list = hooks.manage_obj(list!(&[val!(3.0), val!(5.0)]));
+      let this = val!(list);
 
-      let result = list_sort.call(&mut hooks, list_value, &[]).unwrap();
+      let result = list_sort.call(&mut hooks, &[this]).unwrap();
       assert!(result.is_obj_kind(ObjectKind::List));
       assert_eq!(result.to_obj().to_list()[0], val!(5.0));
       assert_eq!(result.to_obj().to_list()[1], val!(3.0));
@@ -1340,21 +1110,6 @@ mod test {
     use crate::support::{test_iter, MockedContext};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_iter = ListCollect::native(&hooks);
-
-      assert_eq!(list_iter.meta().name, "collect");
-      assert_eq!(list_iter.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        list_iter.meta().signature.parameters[0].kind,
-        ParameterKind::Enumerator
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -1363,7 +1118,7 @@ mod test {
       let iter = test_iter();
       let iter_value = val!(hooks.manage_obj(Enumerator::new(iter)));
 
-      let result = list_iter.call(&mut hooks, None, &[iter_value]);
+      let result = list_iter.call(&mut hooks, &[iter_value]);
       match result {
         Call::Ok(r) => {
           let list = r.to_obj().to_list();

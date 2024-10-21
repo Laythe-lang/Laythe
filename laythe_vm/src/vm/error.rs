@@ -1,7 +1,7 @@
 use super::{ExecutionMode, ExecutionResult, ExecutionSignal, Vm};
 use laythe_core::{
   if_let_obj,
-  managed::{GcObj, Instance},
+  managed::{GcObj, GcStr, Instance},
   object::{Class, ObjectKind, UnwindResult},
   to_obj_kind, val,
   value::Value,
@@ -14,12 +14,24 @@ impl Vm {
   }
 
   /// Report a known laythe runtime error to the user
-  pub(super) unsafe fn runtime_error(
+  pub(super) unsafe fn runtime_error_from_str(
     &mut self,
     error: GcObj<Class>,
     message: &str,
   ) -> ExecutionSignal {
+    self.runtime_error(error, self.manage_str(message))
+  }
+
+  /// Report a known laythe runtime error to the user
+  pub(super) unsafe fn runtime_error(
+    &mut self,
+    error: GcObj<Class>,
+    message: GcStr,
+  ) -> ExecutionSignal {
     let error_message = val!(self.manage_str(message));
+    // Make sure we have enough space for the error message
+    // As this isn't accounted for during compilation
+    self.fiber.ensure_stack(1);
     self.fiber.push(error_message);
 
     let mode = ExecutionMode::CallingNativeCode(self.fiber.frames().len());

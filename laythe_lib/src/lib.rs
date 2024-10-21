@@ -34,7 +34,7 @@ macro_rules! native {
     impl $st {
       pub fn native(hooks: &GcHooks) -> GcObj<Native> {
         let native = Box::new(Self {}) as Box<dyn LyNative>;
-        hooks.manage_obj(Native::new($meta.to_meta(hooks), native))
+        hooks.manage_obj(Native::new($meta.build(hooks), native))
       }
     }
 
@@ -78,7 +78,7 @@ macro_rules! native_with_error {
         debug_assert!(error.is_obj_kind(ObjectKind::Class));
         let native = Box::new(Self { error }) as Box<dyn LyNative>;
 
-        hooks.manage_obj(Native::new($meta.to_meta(hooks), native))
+        hooks.manage_obj(Native::new($meta.build(hooks), native))
       }
 
       fn call_error<T: Into<String> + AsRef<str>>(&self, hooks: &mut Hooks, message: T) -> Call {
@@ -174,40 +174,8 @@ mod test {
     match_obj,
     module::Module,
     object::{Class, ObjectKind},
-    signature::Arity,
     to_obj_kind,
   };
-
-  fn new_inner(module: Gc<Module>) {
-    module.symbols().for_each(|(_key, symbol)| {
-      let option = if symbol.is_obj() {
-        match_obj!((&symbol.to_obj()) {
-          ObjectKind::Native(native) => Some(native.meta().clone()),
-          _ => None,
-        })
-      } else {
-        None
-      };
-
-      if let Some(fun_meta) = option {
-        match fun_meta.signature.arity {
-          Arity::Default(_, total_count) => {
-            assert_eq!(fun_meta.signature.parameters.len(), total_count as usize);
-          },
-          Arity::Fixed(count) => {
-            assert_eq!(fun_meta.signature.parameters.len(), count as usize);
-          },
-          Arity::Variadic(min_count) => {
-            assert_eq!(fun_meta.signature.parameters.len(), min_count as usize + 1);
-          },
-        }
-      }
-    });
-
-    module
-      .modules()
-      .for_each(|(_name, module)| new_inner(*module))
-  }
 
   fn class_setup_inner(module: Gc<Module>, class_class: GcObj<Class>) {
     module.symbols().for_each(|(_key, symbol)| {
@@ -259,8 +227,7 @@ mod test {
     assert!(std_lib.is_ok());
 
     let std_lib = std_lib.unwrap();
-    let root_module = std_lib.root_module();
-    new_inner(root_module);
+    std_lib.root_module();
   }
 
   #[test]

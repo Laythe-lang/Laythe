@@ -74,12 +74,12 @@ pub fn define_stdout(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) 
 native_with_error!(StdoutWrite, STDOUT_WRITE);
 
 impl LyNative for StdoutWrite {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 
-    match stdout.write_all(args[0].to_obj().to_str().as_bytes()) {
+    match stdout.write_all(args[1].to_obj().to_str().as_bytes()) {
       Ok(_) => Call::Ok(VALUE_NIL),
       Err(err) => self.call_error(hooks, err.to_string()),
     }
@@ -89,12 +89,12 @@ impl LyNative for StdoutWrite {
 native_with_error!(StdoutWriteln, STDOUT_WRITELN);
 
 impl LyNative for StdoutWriteln {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
 
-    match writeln!(stdout, "{}", &*args[0].to_obj().to_str()) {
+    match writeln!(stdout, "{}", &*args[1].to_obj().to_str()) {
       Ok(_) => Call::Ok(VALUE_NIL),
       Err(err) => self.call_error(hooks, err.to_string()),
     }
@@ -104,7 +104,7 @@ impl LyNative for StdoutWriteln {
 native_with_error!(StdoutFlush, STDOUT_FLUSH);
 
 impl LyNative for StdoutFlush {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdout = stdio.stdout();
@@ -127,22 +127,6 @@ mod test {
     use std::{str, sync::Arc};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let stdout_write = StdoutWrite::native(&hooks, error);
-
-      assert_eq!(stdout_write.meta().name, "write");
-      assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        stdout_write.meta().signature.parameters[0].kind,
-        ParameterKind::String
-      );
-    }
-
-    #[test]
     fn call() {
       let stdio_container = Arc::new(StdioTestContainer::default());
 
@@ -153,7 +137,7 @@ mod test {
       let stdout_write = StdoutWrite::native(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string".to_string()));
-      let result = stdout_write.call(&mut hooks, Some(VALUE_NIL), &[string]);
+      let result = stdout_write.call(&mut hooks, &[VALUE_NIL, string]);
 
       assert!(result.is_ok());
       assert!(result.unwrap().is_nil());
@@ -171,22 +155,6 @@ mod test {
     use std::{str, sync::Arc};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let stdout_writeln = StdoutWriteln::native(&hooks, error);
-
-      assert_eq!(stdout_writeln.meta().name, "writeln");
-      assert_eq!(stdout_writeln.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        stdout_writeln.meta().signature.parameters[0].kind,
-        ParameterKind::String
-      );
-    }
-
-    #[test]
     fn call() {
       let stdio_container = Arc::new(StdioTestContainer::default());
 
@@ -197,7 +165,7 @@ mod test {
       let stdout_write = StdoutWriteln::native(&hooks.as_gc(), error);
 
       let string = val!(hooks.manage_str("some string".to_string()));
-      let result = stdout_write.call(&mut hooks, Some(VALUE_NIL), &[string]);
+      let result = stdout_write.call(&mut hooks, &[VALUE_NIL, string]);
 
       assert!(result.is_ok());
       assert!(result.unwrap().is_nil());

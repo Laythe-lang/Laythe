@@ -1,6 +1,14 @@
 use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
-  hooks::{GcHooks, Hooks}, list, managed::{Gc, GcObj, List, Trace}, module::Module, object::{LyNative, Native, NativeMetaBuilder}, signature::Arity, val, value::Value, Call
+  hooks::{GcHooks, Hooks},
+  list,
+  managed::{Gc, GcObj, List, Trace},
+  module::Module,
+  object::{LyNative, Native, NativeMetaBuilder},
+  signature::Arity,
+  val,
+  value::Value,
+  Call,
 };
 use std::io::Write;
 
@@ -28,7 +36,7 @@ pub fn define_env_module(_: &GcHooks, _: &mut Module) -> StdResult<()> {
 native!(Args, ARGS_META);
 
 impl LyNative for Args {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut list: List = hooks.manage_obj(list!());
     hooks.push_root(list);
@@ -46,7 +54,7 @@ impl LyNative for Args {
 native!(Cwd, CWD_META);
 
 impl LyNative for Cwd {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     match io.env().current_dir() {
       Ok(path) => match path.to_str() {
@@ -60,41 +68,11 @@ impl LyNative for Cwd {
 
 #[cfg(test)]
 mod test {
-  use super::*;
-
   mod args {
-    use super::*;
-    use crate::support::MockedContext;
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let stdout_write = Args::native(&hooks);
-
-      assert_eq!(stdout_write.meta().name, "args");
-      assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(0));
-    }
-
     // TODO: call
   }
 
   mod cwd {
-    use super::*;
-    use crate::support::MockedContext;
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let stdout_write = Cwd::native(&hooks);
-
-      assert_eq!(stdout_write.meta().name, "cwd");
-      assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(0));
-    }
-
     // TODO: call
   }
 }

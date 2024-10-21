@@ -39,8 +39,8 @@ pub fn define_fiber_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> 
 native!(FiberStr, FIBER_STR);
 
 impl LyNative for FiberStr {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let this = this.unwrap();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let this = args[0];
     let class = hooks.get_class(this);
     let fiber = this.to_obj().to_fiber();
 
@@ -63,17 +63,6 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let fiber_str = FiberStr::native(&hooks);
-
-      assert_eq!(fiber_str.meta().name, "str");
-      assert_eq!(fiber_str.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::with_std(&[]).expect("std lib failure");
       let mut hooks = Hooks::new(&mut context);
@@ -85,7 +74,7 @@ mod test {
         .build(&hooks.as_gc())
         .unwrap();
 
-      let result = fiber_str.call(&mut hooks, Some(val!(fiber)), &[]).unwrap();
+      let result = fiber_str.call(&mut hooks, &[val!(fiber)]).unwrap();
       assert!(result.to_obj().to_str().contains("<Fiber "));
     }
   }

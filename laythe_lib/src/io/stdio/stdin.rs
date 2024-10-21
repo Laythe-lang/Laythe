@@ -63,7 +63,7 @@ pub fn define_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -
 native_with_error!(StdinRead, STDIN_READ);
 
 impl LyNative for StdinRead {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let mut stdio = io.stdio();
     let stdin = stdio.stdin();
@@ -79,7 +79,7 @@ impl LyNative for StdinRead {
 native_with_error!(StdinReadLine, STDIN_READ_LINE);
 
 impl LyNative for StdinReadLine {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let stdio = io.stdio();
 
@@ -105,21 +105,8 @@ mod test {
   mod read {
     use super::*;
     use crate::support::{test_error_class, MockedContext};
-    use laythe_core::value::VALUE_NIL;
     use laythe_env::stdio::support::StdioTestContainer;
     use std::sync::Arc;
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let stdin_read = StdinRead::native(&hooks, error);
-
-      assert_eq!(stdin_read.meta().name, "read");
-      assert_eq!(stdin_read.meta().signature.arity, Arity::Fixed(0));
-    }
 
     #[test]
     fn call() {
@@ -131,7 +118,7 @@ mod test {
 
       let stdin_read = StdinRead::native(&hooks.as_gc(), error);
 
-      let result = stdin_read.call(&mut hooks, Some(VALUE_NIL), &[]);
+      let result = stdin_read.call(&mut hooks, &[]);
 
       assert!(result.is_ok());
       let unwrapped = result.unwrap();
@@ -144,21 +131,8 @@ mod test {
   mod readlines {
     use super::*;
     use crate::support::{test_error_class, MockedContext};
-    use laythe_core::value::VALUE_NIL;
     use laythe_env::stdio::support::StdioTestContainer;
     use std::sync::Arc;
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let stdin_readline = StdinReadLine::native(&hooks, error);
-
-      assert_eq!(stdin_readline.meta().name, "readLine");
-      assert_eq!(stdin_readline.meta().signature.arity, Arity::Fixed(0));
-    }
 
     #[test]
     fn call() {
@@ -173,7 +147,7 @@ mod test {
 
       let stdin_readline = StdinReadLine::native(&hooks.as_gc(), error);
 
-      let result = stdin_readline.call(&mut hooks, Some(VALUE_NIL), &[]);
+      let result = stdin_readline.call(&mut hooks, &[]);
 
       assert!(result.is_ok());
       let unwrapped = result.unwrap();

@@ -136,13 +136,26 @@ mod test {
     create_std_lib, native,
   };
   use laythe_core::{
-    chunk::Chunk, hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext}, list, managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, TraceRoot}, match_obj, memory::{Allocator, NoGc}, module::{module_class, ImportResult, Module}, object::{Class, Enumerate, Fun, FunBuilder, LyNative, Native, NativeMetaBuilder}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::IdEmitter, val, value::Value, Call, LyError
+    chunk::Chunk,
+    hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
+    list,
+    managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, TraceRoot},
+    match_obj,
+    memory::{Allocator, NoGc},
+    module::{module_class, ImportResult, Module},
+    object::{Class, Enumerate, Fun, FunBuilder, LyNative, Native, NativeMetaBuilder},
+    signature::{Arity, ParameterBuilder, ParameterKind},
+    to_obj_kind,
+    utils::IdEmitter,
+    val,
+    value::Value,
+    Call, LyError,
   };
   use laythe_env::{
     io::Io,
     stdio::support::{IoStdioTest, StdioTestContainer},
   };
-  use std::{cell::RefCell, io::Write, sync::Arc};
+  use std::{cell::RefCell, io::Write, iter::once, sync::Arc};
 
   pub struct MockedContext {
     pub gc: RefCell<Allocator>,
@@ -240,23 +253,26 @@ mod test {
         return Err(LyError::Exit(1));
       }
 
-      let arity = match_obj!((&callable.to_obj()) {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+      let result = match_obj!((&callable.to_obj()) {
         ObjectKind::Fun(fun) => {
-          *fun.arity()
+          fun.check_if_valid_call(&hooks, args.len() as u8)
         },
         ObjectKind::Closure(closure) => {
-          *closure.fun().arity()
+          closure.fun().check_if_valid_call(&hooks, args.len() as u8)
         },
         ObjectKind::Method(method) => {
-          *method.method().to_obj().to_closure().fun().arity()
+          method.method().to_obj().to_closure().fun().check_if_valid_call(&hooks, args.len() as u8)
         },
         ObjectKind::Native(native) => {
-          native.meta().signature.arity
+          native.check_if_valid_call(&hooks, args)
         },
         _ => return Err(LyError::Exit(1)),
       });
 
-      match arity.check(args.len() as u8) {
+      match result {
         Ok(_) => (),
         Err(_) => {
           return Err(LyError::Exit(1));
@@ -272,25 +288,35 @@ mod test {
       Err(LyError::Exit(1))
     }
 
-    fn call_method(&mut self, _this: Value, method: Value, args: &[Value]) -> Call {
+    fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> Call {
       if !method.is_obj() {
         return Err(LyError::Exit(1));
       }
 
-      let arity = match_obj!((&method.to_obj()) {
+      let mut context = MockedContext::default();
+      let hooks = GcHooks::new(&mut context);
+
+
+      let result = match_obj!((&method.to_obj()) {
+        ObjectKind::Fun(fun) => {
+          fun.check_if_valid_call(&hooks, args.len() as u8)
+        },
         ObjectKind::Closure(closure) => {
-          *closure.fun().arity()
+          closure.fun().check_if_valid_call(&hooks, args.len() as u8)
         },
         ObjectKind::Method(method) => {
-          *method.method().to_obj().to_closure().fun().arity()
+          method.method().to_obj().to_closure().fun().check_if_valid_call(&hooks, args.len() as u8)
         },
         ObjectKind::Native(native) => {
-          native.meta().signature.arity
+          let mut augmented_args = vec![this];
+          augmented_args.extend_from_slice(args);
+
+          native.check_if_valid_call(&hooks, &augmented_args)
         },
         _ => return Err(LyError::Exit(1)),
       });
 
-      match arity.check(args.len() as u8) {
+      match result {
         Ok(_) => (),
         Err(_) => {
           return Err(LyError::Exit(1));
@@ -456,14 +482,14 @@ mod test {
   const ERROR_INIT: NativeMetaBuilder = NativeMetaBuilder::method("init", Arity::Default(1, 2))
     .with_params(&[
       ParameterBuilder::new("message", ParameterKind::String),
-      ParameterBuilder::new("inner", ParameterKind::Instance),
+      ParameterBuilder::new("inner", ParameterKind::Object),
     ]);
 
   native!(TestInit, ERROR_INIT);
 
   impl LyNative for TestInit {
-    fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-      let mut this = this.unwrap().to_obj().to_instance();
+    fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+      let mut this = args[0].to_obj().to_instance();
       this[0] = args[0];
       this[1] = val!(_hooks.manage_obj(list!()));
 

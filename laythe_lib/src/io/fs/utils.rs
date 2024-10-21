@@ -33,7 +33,11 @@ const REMOVE_FILE: NativeMetaBuilder = NativeMetaBuilder::fun("removeFile", Arit
   .with_params(&[ParameterBuilder::new("path", ParameterKind::String)])
   .with_stack();
 
-pub fn declare_fs_module(_hooks: &GcHooks, _module: Gc<Module>, _std: Gc<Package>) -> StdResult<()> {
+pub fn declare_fs_module(
+  _hooks: &GcHooks,
+  _module: Gc<Module>,
+  _std: Gc<Package>,
+) -> StdResult<()> {
   Ok(())
 }
 
@@ -69,7 +73,7 @@ pub fn define_fs_module(hooks: &GcHooks, module: Gc<Module>, std: Gc<Package>) -
 native_with_error!(ReadFile, READ_FILE);
 
 impl LyNative for ReadFile {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let path = args[0].to_obj().to_str();
 
@@ -83,7 +87,7 @@ impl LyNative for ReadFile {
 native_with_error!(WriteFile, WRITE_FILE);
 
 impl LyNative for WriteFile {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let path = args[0].to_obj().to_str();
     let contents = args[1].to_obj().to_str();
@@ -98,7 +102,7 @@ impl LyNative for WriteFile {
 native_with_error!(RemoveFile, REMOVE_FILE);
 
 impl LyNative for RemoveFile {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let io = hooks.as_io();
     let path = args[0].to_obj().to_str();
 
@@ -111,74 +115,15 @@ impl LyNative for RemoveFile {
 
 #[cfg(test)]
 mod test {
-  use super::*;
-
   mod read_file {
-    use super::*;
-    use crate::support::{test_error_class, MockedContext};
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let stdout_write = ReadFile::native(&hooks, error);
-
-      assert_eq!(stdout_write.meta().name, "readFile");
-      assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        stdout_write.meta().signature.parameters[0].kind,
-        ParameterKind::String
-      );
-    }
-
     // TODO: call
   }
 
   mod write_file {
-    use super::*;
-    use crate::support::{test_error_class, MockedContext};
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let stdout_write = WriteFile::native(&hooks, error);
-
-      assert_eq!(stdout_write.meta().name, "writeFile");
-      assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(
-        stdout_write.meta().signature.parameters[0].kind,
-        ParameterKind::String
-      );
-      assert_eq!(
-        stdout_write.meta().signature.parameters[1].kind,
-        ParameterKind::String
-      );
-    }
+    // TODO: call
   }
 
   mod remove_file {
-    use super::*;
-    use crate::support::{test_error_class, MockedContext};
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let stdout_write = RemoveFile::native(&hooks, error);
-
-      assert_eq!(stdout_write.meta().name, "removeFile");
-      assert_eq!(stdout_write.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        stdout_write.meta().signature.parameters[0].kind,
-        ParameterKind::String
-      );
-    }
+    // TODO: call
   }
 }

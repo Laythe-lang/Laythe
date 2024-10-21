@@ -17,7 +17,7 @@ pub fn add_misc_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 }
 
 const PRINT: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new("values", ParameterKind::Any)])
+  .with_params(&[ParameterBuilder::new("values", ParameterKind::Object)])
   .with_stack();
 
 const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Default(0, 1))
@@ -52,12 +52,12 @@ impl Print {
   pub fn native(hooks: &GcHooks, method_str: GcStr) -> GcObj<Native> {
     let native = Box::new(Self { method_str }) as Box<dyn LyNative>;
 
-    hooks.manage_obj(Native::new(PRINT.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(PRINT.build(hooks), native))
   }
 }
 
 impl LyNative for Print {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let str_method = hooks.get_method(args[0], self.method_str)?;
     let mut output = String::from(
       &*hooks
@@ -94,7 +94,7 @@ impl Trace for Print {
 native!(Exit, EXIT_META);
 
 impl LyNative for Exit {
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
     let code = if args.is_empty() {
       0
     } else {
@@ -117,20 +117,6 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let assert = Print::native(&hooks, hooks.manage_str("str".to_string()));
-
-      assert_eq!(&*assert.meta().name, "print");
-      assert_eq!(assert.meta().signature.arity, Arity::Variadic(0));
-      assert_eq!(
-        assert.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::with_std(&[]).unwrap();
       let response = context.gc.borrow_mut().manage_str("true", &NO_GC);
@@ -141,7 +127,7 @@ mod test {
       let print = Print::native(&hooks.as_gc(), hooks.manage_str("str".to_string()));
       let values = &[val!(true)];
 
-      let result = print.call(&mut hooks, None, values).unwrap();
+      let result = print.call(&mut hooks, values).unwrap();
 
       assert_eq!(result, VALUE_NIL);
     }
