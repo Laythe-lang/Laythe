@@ -70,10 +70,10 @@ impl Arity {
   }
 
   pub fn required_parameter(&self) -> usize {
-    match self {
-      &Self::Fixed(i) => i as usize,
-      &Self::Variadic(i) => i as usize + 1,
-      &Self::Default(_, i) => i as usize,
+    match *self {
+      Self::Fixed(i) => i as usize,
+      Self::Variadic(i) => i as usize + 1,
+      Self::Default(_, i) => i as usize,
     }
   }
 }

@@ -170,7 +170,7 @@ impl Fun {
       // if fixed we need exactly the correct amount
       Arity::Fixed(arity) => {
         if arg_count != arity {
-          return Err(hooks.manage_str(&format!(
+          return Err(hooks.manage_str(format!(
             "{} expected {} argument(s) but received {}.",
             self.name(),
             arity,
@@ -181,7 +181,7 @@ impl Fun {
       // if variadic and ending with ... take arity +
       Arity::Variadic(arity) => {
         if arg_count < arity {
-          return Err(hooks.manage_str(&format!(
+          return Err(hooks.manage_str(format!(
             "{} expected at least {} argument(s) but got {}.",
             self.name(),
             arity,
@@ -192,7 +192,7 @@ impl Fun {
       // if defaulted we need between the min and max
       Arity::Default(min_arity, max_arity) => {
         if arg_count < min_arity {
-          return Err(hooks.manage_str(&format!(
+          return Err(hooks.manage_str(format!(
             "{} expected at least {} argument(s) but got {}.",
             self.name(),
             min_arity,
@@ -200,7 +200,7 @@ impl Fun {
           )));
         }
         if arg_count > max_arity {
-          return Err(hooks.manage_str(&format!(
+          return Err(hooks.manage_str(format!(
             "{} expected at most {} argument(s) but got {}.",
             self.name(),
             max_arity,
