@@ -27,7 +27,7 @@ pub const METHOD_NOT_FOUND_ERROR_NAME: &str = "MethodNotFoundError";
 const ERROR_INIT: NativeMetaBuilder = NativeMetaBuilder::method("init", Arity::Default(1, 2))
   .with_params(&[
     ParameterBuilder::new("message", ParameterKind::String),
-    ParameterBuilder::new("inner", ParameterKind::Instance),
+    ParameterBuilder::new("inner", ParameterKind::Object),
   ]);
 
 pub fn create_error_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class> {
@@ -85,13 +85,13 @@ pub fn define_global_errors(_hooks: &GcHooks, _module: &Module) -> StdResult<()>
 native!(ErrorInit, ERROR_INIT);
 
 impl LyNative for ErrorInit {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let mut this = this.unwrap().to_obj().to_instance();
-    this[0] = args[0];
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    let mut this = args[0].to_obj().to_instance();
+    this[0] = args[1];
     this[1] = val!(_hooks.manage_obj(list!()));
 
-    if args.len() > 1 {
-      this[2] = args[1];
+    if args.len() > 2 {
+      this[2] = args[2];
     }
 
     Call::Ok(val!(this))
@@ -109,25 +109,6 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let bool_str = ErrorInit::native(&hooks);
-
-      assert_eq!(bool_str.meta().name, "init");
-      assert_eq!(bool_str.meta().signature.arity, Arity::Default(1, 2));
-      assert_eq!(
-        bool_str.meta().signature.parameters[0].kind,
-        ParameterKind::String
-      );
-      assert_eq!(
-        bool_str.meta().signature.parameters[1].kind,
-        ParameterKind::Instance
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -141,10 +122,10 @@ mod test {
       let instance = hooks.manage_obj(test_class);
 
       let name = val!(hooks.manage_str("test"));
-      let args = [name];
+      let args = [val!(instance), name];
 
       let result = error_init
-        .call(&mut hooks, Some(val!(instance)), &args)
+        .call(&mut hooks, &args)
         .unwrap();
 
       assert!(result.is_obj_kind(ObjectKind::Instance));

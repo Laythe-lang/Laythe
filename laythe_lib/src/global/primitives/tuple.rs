@@ -4,7 +4,18 @@ use crate::{
   StdResult,
 };
 use laythe_core::{
-  constants::INDEX_GET, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, ListBuilder, Trace, Tuple}, module::Module, object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::is_falsey, val, value::{Value, VALUE_NIL}, Call, LyError, LyResult
+  constants::INDEX_GET,
+  hooks::{GcHooks, Hooks},
+  if_let_obj, list,
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, ListBuilder, Trace, Tuple},
+  module::Module,
+  object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
+  signature::{Arity, ParameterBuilder, ParameterKind},
+  to_obj_kind,
+  utils::is_falsey,
+  val,
+  value::{Value, VALUE_NIL},
+  Call, LyError, LyResult,
 };
 use std::io::Write;
 use std::slice::Iter;
@@ -21,12 +32,12 @@ const TUPLE_INDEX_GET: NativeMetaBuilder = NativeMetaBuilder::method(INDEX_GET, 
   .with_stack();
 
 const TUPLE_HAS: NativeMetaBuilder = NativeMetaBuilder::method("has", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("val", ParameterKind::Any)]);
+  .with_params(&[ParameterBuilder::new("val", ParameterKind::Object)]);
 
 const TUPLE_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
 const TUPLE_INDEX: NativeMetaBuilder = NativeMetaBuilder::method("index", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("value", ParameterKind::Any)]);
+  .with_params(&[ParameterBuilder::new("value", ParameterKind::Object)]);
 
 const TUPLE_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed(0));
 const TUPLE_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0)).with_stack();
@@ -39,7 +50,7 @@ const TUPLE_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity:
   .with_stack();
 
 const TUPLE_COLLECT: NativeMetaBuilder = NativeMetaBuilder::fun("collect", Arity::Fixed(1))
-  .with_params(&[ParameterBuilder::new("iter", ParameterKind::Enumerator)]);
+  .with_params(&[ParameterBuilder::new("iter", ParameterKind::Object)]);
 
 pub fn declare_tuple_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, TUPLE_CLASS_NAME)?;
@@ -110,7 +121,7 @@ impl TupleStr {
     debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_name, error }) as Box<dyn LyNative>;
 
-    hooks.manage_obj(Native::new(TUPLE_STR.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(TUPLE_STR.build(hooks), native))
   }
 }
 
@@ -131,8 +142,8 @@ fn quote_string(buf: &mut String, string: &str) {
 }
 
 impl LyNative for TupleStr {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let tuple = this.unwrap().to_obj().to_tuple();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let tuple = args[0].to_obj().to_tuple();
 
     // buffer for temporary strings
     let mut buf = String::new();
@@ -198,14 +209,14 @@ impl LyNative for TupleStr {
 native_with_error!(TupleSlice, TUPLE_SLICE);
 
 impl LyNative for TupleSlice {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     // get underlying string slice
-    let tuple = this.unwrap().to_obj().to_tuple();
+    let tuple = args[0].to_obj().to_tuple();
 
     let (start, end) = match args.len() {
-      0 => (0.0, tuple.len() as f64),
-      1 => (args[0].to_num(), tuple.len() as f64),
-      2 => (args[0].to_num(), args[1].to_num()),
+      1 => (0.0, tuple.len() as f64),
+      2 => (args[1].to_num(), tuple.len() as f64),
+      3 => (args[1].to_num(), args[2].to_num()),
       _ => panic!("list slice should only been passed 0, 1 or 2 parameters"),
     };
 
@@ -217,9 +228,7 @@ impl LyNative for TupleSlice {
     let end_index = end_index.min(tuple.len());
 
     if start_index <= end_index {
-      Call::Ok(val!(
-        hooks.manage_obj(&tuple[start_index..end_index])
-      ))
+      Call::Ok(val!(hooks.manage_obj(&tuple[start_index..end_index])))
     } else {
       Call::Ok(val!(hooks.manage_obj(&[] as &[Value])))
     }
@@ -280,9 +289,9 @@ fn determine_index(tuple: &[Value], index: f64) -> Result<usize, String> {
 native_with_error!(TupleIndexGet, TUPLE_INDEX_GET);
 
 impl LyNative for TupleIndexGet {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let index = args[0].to_num();
-    let tuple = this.unwrap().to_obj().to_tuple();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let index = args[1].to_num();
+    let tuple = args[0].to_obj().to_tuple();
 
     match determine_index(&tuple, index) {
       Ok(index) => Ok(tuple[index]),
@@ -294,22 +303,17 @@ impl LyNative for TupleIndexGet {
 native!(TupleLen, TUPLE_LEN);
 
 impl LyNative for TupleLen {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_obj().to_tuple().len() as f64))
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_obj().to_tuple().len() as f64))
   }
 }
 
 native!(TupleIndex, TUPLE_INDEX);
 
 impl LyNative for TupleIndex {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    let item = args[0];
-    let index = this
-      .unwrap()
-      .to_obj()
-      .to_tuple()
-      .iter()
-      .position(|x| *x == item);
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    let item = args[1];
+    let index = args[0].to_obj().to_tuple().iter().position(|x| *x == item);
 
     Call::Ok(index.map(|i| val!(i as f64)).unwrap_or(VALUE_NIL))
   }
@@ -318,17 +322,16 @@ impl LyNative for TupleIndex {
 native!(TupleHas, TUPLE_HAS);
 
 impl LyNative for TupleHas {
-  fn call(&self, _hooks: &mut Hooks, this: Option<Value>, args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_obj().to_tuple().contains(&args[0])))
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_obj().to_tuple().contains(&args[1])))
   }
 }
 
 native!(TupleIter, TUPLE_ITER);
 
 impl LyNative for TupleIter {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let inner_iter: Box<dyn Enumerate> =
-      Box::new(TupleIterator::new(this.unwrap().to_obj().to_tuple()));
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let inner_iter: Box<dyn Enumerate> = Box::new(TupleIterator::new(args[0].to_obj().to_tuple()));
     let iter = Enumerator::new(inner_iter);
     let iter = hooks.manage_obj(iter);
 
@@ -339,7 +342,7 @@ impl LyNative for TupleIter {
 native!(TupleCollect, TUPLE_COLLECT);
 
 impl LyNative for TupleCollect {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let mut iter = args[0].to_obj().to_enumerator();
     let mut list = match iter.size_hint() {
       Some(size) => hooks.manage_obj(ListBuilder::cap_only(size)),
@@ -437,39 +440,23 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let error = val!(test_error_class(&hooks));
-      let tuple_index_get = TupleIndexGet::native(&hooks, error);
-
-      assert_eq!(tuple_index_get.meta().name, "[]");
-      assert_eq!(tuple_index_get.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        tuple_index_get.meta().signature.parameters[0].kind,
-        ParameterKind::Number
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
       let tuple_index_get = TupleIndexGet::native(&hooks.as_gc(), error);
 
-      let values = &[val!(0.0)];
+      let tuple = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0)]);
+      let this = val!(tuple);
+      let values = &[this, val!(0.0)];
 
-      let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0)]);
-
-      let result = tuple_index_get.call(&mut hooks, Some(val!(this)), values);
+      let result = tuple_index_get.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),
         _ => assert!(false),
       }
 
-      assert_eq!(this[0], VALUE_NIL)
+      assert_eq!(tuple[0], VALUE_NIL)
     }
   }
 
@@ -478,18 +465,6 @@ mod test {
 
     use super::*;
     use crate::support::{test_error_class, test_native_dependencies, MockedContext};
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let list_str = TupleStr::native(&hooks, hooks.manage_str("str".to_string()), error);
-
-      assert_eq!(list_str.meta().name, "str");
-      assert_eq!(list_str.meta().signature.arity, Arity::Fixed(0));
-    }
 
     #[test]
     fn call() {
@@ -504,15 +479,14 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_str = TupleStr::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
 
-      let values = &[];
-
       let this = hooks.manage_obj::<Tuple, &[Value]>(&[
         VALUE_NIL,
         val!(10.0),
         val!(hooks.manage_obj(list!(&[val!(5.0)]))),
       ]);
+      let values = &[val!(this)];
 
-      let result = list_str.call(&mut hooks, Some(val!(this)), values);
+      let result = list_str.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "(nil, 10, [5])"),
         _ => assert!(false),
@@ -526,26 +500,6 @@ mod test {
     use laythe_core::hooks::Hooks;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = Hooks::new(&mut context);
-      let error = val!(test_error_class(&hooks.as_gc()));
-
-      let tuple_slice = TupleSlice::native(&hooks.as_gc(), error);
-
-      assert_eq!(tuple_slice.meta().name, "slice");
-      assert_eq!(tuple_slice.meta().signature.arity, Arity::Default(0, 2));
-      assert_eq!(
-        tuple_slice.meta().signature.parameters[0].kind,
-        ParameterKind::Number
-      );
-      assert_eq!(
-        tuple_slice.meta().signature.parameters[1].kind,
-        ParameterKind::Number
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -556,7 +510,7 @@ mod test {
       let this = hooks.manage_obj::<Tuple, &[Value]>(&[val!(1.0), val!(2.0), val!(3.0)]);
 
       let result = tuple_slice
-        .call(&mut hooks, Some(val!(this)), &[val!(0.0), val!(2.0)])
+        .call(&mut hooks, &[val!(this), val!(0.0), val!(2.0)])
         .unwrap();
       assert!(result.is_obj_kind(ObjectKind::Tuple));
 
@@ -572,27 +526,15 @@ mod test {
     use laythe_core::hooks::Hooks;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let list_size = TupleLen::native(&hooks);
-
-      assert_eq!(list_size.meta().name, "len");
-      assert_eq!(list_size.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let list_size = TupleLen::native(&hooks.as_gc());
 
-      let values = &[];
-
       let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0)]);
+      let values = &[val!(this)];
 
-      let result = list_size.call(&mut hooks, Some(val!(this)), values);
+      let result = list_size.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert_eq!(r.to_num(), 2.0),
         _ => assert!(false),
@@ -605,21 +547,6 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let tuple_index = TupleIndex::native(&hooks);
-
-      assert_eq!(tuple_index.meta().name, "index");
-      assert_eq!(tuple_index.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        tuple_index.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -627,9 +554,8 @@ mod test {
       let tuple_index = TupleIndex::native(&hooks.as_gc());
 
       let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0), val!(true)]);
-      let tuple_value = Some(val!(this));
 
-      let result = tuple_index.call(&mut hooks, tuple_value, &[val!(10.0)]);
+      let result = tuple_index.call(&mut hooks, &[val!(this), val!(10.0)]);
       match result {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 1.0);
@@ -644,31 +570,16 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let tuple_has = TupleHas::native(&hooks);
-
-      assert_eq!(tuple_has.meta().name, "has");
-      assert_eq!(tuple_has.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        tuple_has.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let tuple_hash = TupleHas::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0), val!(true)]);
-      let tuple_value = Some(val!(this));
+      let tuple = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0), val!(true)]);
+      let this = val!(tuple);
 
-      let result = tuple_hash.call(&mut hooks, tuple_value, &[val!(10.0)]);
+      let result = tuple_hash.call(&mut hooks, &[this, val!(10.0)]);
       match result {
         Call::Ok(r) => {
           assert!(r.to_bool());
@@ -676,7 +587,7 @@ mod test {
         _ => assert!(false),
       }
 
-      let result = tuple_hash.call(&mut hooks, tuple_value, &[val!(false)]);
+      let result = tuple_hash.call(&mut hooks, &[this, val!(false)]);
       match result {
         Call::Ok(r) => {
           assert!(!r.to_bool());
@@ -691,26 +602,15 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let tuple_iter = TupleIter::native(&hooks);
-
-      assert_eq!(tuple_iter.meta().name, "iter");
-      assert_eq!(tuple_iter.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let tuple_iter = TupleIter::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0), val!(true)]);
-      let tuple_value = Some(val!(this));
+      let tuple = hooks.manage_obj::<Tuple, &[Value]>(&[VALUE_NIL, val!(10.0), val!(true)]);
+      let this = val!(tuple);
 
-      let result = tuple_iter.call(&mut hooks, tuple_value, &[]);
+      let result = tuple_iter.call(&mut hooks, &[this]);
       match result {
         Call::Ok(r) => {
           let mut iter = r.to_obj().to_enumerator();
@@ -728,21 +628,6 @@ mod test {
     use crate::support::{test_iter, MockedContext};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let tuple_collect = TupleCollect::native(&hooks);
-
-      assert_eq!(tuple_collect.meta().name, "collect");
-      assert_eq!(tuple_collect.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        tuple_collect.meta().signature.parameters[0].kind,
-        ParameterKind::Enumerator
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -751,7 +636,7 @@ mod test {
       let iter = test_iter();
       let iter_value = val!(hooks.manage_obj(Enumerator::new(iter)));
 
-      let result = tuple_collect.call(&mut hooks, None, &[iter_value]);
+      let result = tuple_collect.call(&mut hooks, &[iter_value]);
       match result {
         Call::Ok(r) => {
           let list = r.to_obj().to_tuple();

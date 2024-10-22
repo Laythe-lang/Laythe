@@ -1,10 +1,21 @@
 use super::{source_loader::ImportResult, ExecutionSignal, Vm};
 use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
 use laythe_core::{
-  captures::Captures, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{Array, Gc, GcObj, GcStr, List, Tuple}, match_obj, module::Import, object::{
-    Channel, Class, Closure, Fun, LyBox, Map, Method, Native, NativeMeta, ObjectKind,
-    ReceiveResult, SendResult,
-  }, signature::{ArityError, NativeEnvironment, ParameterKind, SignatureError}, to_obj_kind, utils::is_falsey, val, value::{Value, VALUE_NIL, VALUE_TRUE}, Call, LyError
+  captures::Captures,
+  hooks::{GcHooks, Hooks},
+  if_let_obj, list,
+  managed::{Array, Gc, GcObj, GcStr, List, Tuple},
+  match_obj,
+  module::Import,
+  object::{
+    Channel, Class, Closure, Fun, LyBox, Map, Method, Native, ObjectKind, ReceiveResult, SendResult,
+  },
+  signature::{NativeEnvironment, ParameterKind},
+  to_obj_kind,
+  utils::is_falsey,
+  val,
+  value::{Value, VALUE_NIL, VALUE_TRUE},
+  Call, LyError,
 };
 use laythe_core::{managed::GcObject, object::Fiber};
 use std::{cmp::Ordering, mem};
@@ -125,7 +136,7 @@ impl Vm {
     let capacity = self.fiber.pop();
 
     if !capacity.is_num() {
-      return self.runtime_error(
+      return self.runtime_error_from_str(
         self.builtin.errors.type_,
         &format!(
           "function \"chan\"'s parameter \"capacity\" required a number but received a {}.",
@@ -136,7 +147,7 @@ impl Vm {
 
     let capacity = capacity.to_num();
     if capacity.fract() != 0.0 || capacity < 1.0 {
-      return self.runtime_error(
+      return self.runtime_error_from_str(
         self.builtin.errors.type_,
         "buffer must be an positive integer.",
       );
@@ -163,7 +174,7 @@ impl Vm {
           ExecutionSignal::Ok
         }
         ReceiveResult::NoReceiveAccess => {
-          self.runtime_error(self.builtin.errors.value, "todo no read access")
+          self.runtime_error_from_str(self.builtin.errors.value, "todo no read access")
         }
         ReceiveResult::EmptyBlock(fiber) => {
           if let Some(mut fiber) = fiber.or_else(|| self.fiber.get_runnable())  {
@@ -193,7 +204,7 @@ impl Vm {
         }
       }
     } else {
-      self.runtime_error(
+      self.runtime_error_from_str(
         self.builtin.errors.type_,
         "Can only drain from a channel.",
       )
@@ -210,7 +221,7 @@ impl Vm {
 
       match channel.send(self.fiber, value) {
         SendResult::Ok => ExecutionSignal::Ok,
-        SendResult::NoSendAccess => self.runtime_error(
+        SendResult::NoSendAccess => self.runtime_error_from_str(
           self.builtin.errors.runtime,
           "Attempted to send into a receive only channel.",
         ),
@@ -241,13 +252,13 @@ impl Vm {
           self.fiber.sleep();
           ExecutionSignal::ContextSwitch
         }
-        SendResult::Closed => self.runtime_error(
+        SendResult::Closed => self.runtime_error_from_str(
           self.builtin.errors.runtime,
           "Attempted to send into a closed channel.",
         ),
       }
     } else {
-      self.runtime_error(self.builtin.errors.runtime, "Attempted to send into a non channel.")
+      self.runtime_error_from_str(self.builtin.errors.runtime, "Attempted to send into a non channel.")
     })
   }
 
@@ -346,7 +357,7 @@ impl Vm {
               .set_invoke_cache(inline_slot, class, method);
             self.resolve_call(method, arg_count)
           },
-          None => self.runtime_error(
+          None => self.runtime_error_from_str(
             self.builtin.errors.property,
             &format!(
               "Undefined property {} on class {}.",
@@ -398,7 +409,7 @@ impl Vm {
             .set_invoke_cache(inline_slot, super_class, method);
           self.resolve_call(method, arg_count)
         },
-        None => self.runtime_error(
+        None => self.runtime_error_from_str(
           self.builtin.errors.property,
           &format!(
             "Undefined property {} on class {}.",
@@ -424,7 +435,8 @@ impl Vm {
     let super_class = self.fiber.peek(1);
 
     if !super_class.is_obj() {
-      return self.runtime_error(self.builtin.errors.runtime, "Superclass must be a class.");
+      return self
+        .runtime_error_from_str(self.builtin.errors.runtime, "Superclass must be a class.");
     }
 
     let super_class = super_class.to_obj();
@@ -436,11 +448,11 @@ impl Vm {
         if ly_box.value.is_obj_kind(ObjectKind::Class) {
           ly_box.value.to_obj().to_class()
         } else {
-          return self.runtime_error(self.builtin.errors.runtime, "Superclass must be a class.");
+          return self.runtime_error_from_str(self.builtin.errors.runtime, "Superclass must be a class.");
         }
       },
       _ => {
-        return self.runtime_error(self.builtin.errors.runtime, "Superclass must be a class.");
+        return self.runtime_error_from_str(self.builtin.errors.runtime, "Superclass must be a class.");
       },
     });
 
@@ -516,7 +528,7 @@ impl Vm {
     if_let_obj!(ObjectKind::Class(error_class) = (error_class) {
       if !error_class.is_subclass(self.builtin.errors.error) {
         self.fiber.error_while_handling();
-        self.runtime_error(self.builtin.errors.type_, "Catch block must be blank or a subclass of Error.")
+        self.runtime_error_from_str(self.builtin.errors.type_, "Catch block must be blank or a subclass of Error.")
       } else {
 
         if !error.class().is_subclass(error_class) {
@@ -529,7 +541,7 @@ impl Vm {
 
     } else {
       self.fiber.error_while_handling();
-      self.runtime_error(self.builtin.errors.type_, "Catch block must be blank or a subclass of Error.")
+      self.runtime_error_from_str(self.builtin.errors.type_, "Catch block must be blank or a subclass of Error.")
     })
   }
 
@@ -539,9 +551,7 @@ impl Vm {
 
     match self.fiber.error() {
       Some(mut error) => {
-        let mut managed_backtrace: Tuple = self.manage_obj(
-          &*vec![VALUE_NIL; backtrace.len()]
-        );
+        let mut managed_backtrace: Tuple = self.manage_obj(&*vec![VALUE_NIL; backtrace.len()]);
 
         // attach the error so we good on a gc
         error[1] = val!(managed_backtrace);
@@ -581,13 +591,13 @@ impl Vm {
       if class.is_subclass(self.builtin.errors.error) {
         self.set_error(exception)
       } else {
-        self.runtime_error(
+        self.runtime_error_from_str(
           self.builtin.errors.runtime,
           "Can only raise an instance of Error",
         )
       }
     } else {
-      self.runtime_error(
+      self.runtime_error_from_str(
         self.builtin.errors.runtime,
         "Can only raise an instance of Error",
       )
@@ -638,7 +648,7 @@ impl Vm {
 
     let mut current_module = self.current_fun.module();
     if current_module.set_symbol(name, value).is_err() {
-      return self.runtime_error(
+      return self.runtime_error_from_str(
         self.builtin.errors.property,
         &format!("Undefined variable {name}"),
       );
@@ -709,7 +719,7 @@ impl Vm {
               instance[property_slot as usize] = value;
               ExecutionSignal::Ok
             },
-            None => self.runtime_error(
+            None => self.runtime_error_from_str(
               self.builtin.errors.property,
               &format!("Undefined property {} on class {}.", name, class.name()),
             ),
@@ -718,7 +728,7 @@ impl Vm {
       }
     });
 
-    self.runtime_error(
+    self.runtime_error_from_str(
       self.builtin.errors.runtime,
       "Only instances have settable fields.",
     )
@@ -733,7 +743,7 @@ impl Vm {
         self.fiber.push(gbl);
         ExecutionSignal::Ok
       },
-      None => self.runtime_error(
+      None => self.runtime_error_from_str(
         self.builtin.errors.runtime,
         &format!("Undefined variable {string}"),
       ),
@@ -841,7 +851,7 @@ impl Vm {
         let env = self.io.env();
         let resolved_path = env.current_dir().unwrap();
 
-        self.runtime_error(
+        self.runtime_error_from_str(
           self.builtin.errors.import,
           &format!(
             "Module {} not found in directory {:?}",
@@ -874,7 +884,7 @@ impl Vm {
           self.fiber.push(symbol);
           ExecutionSignal::Ok
         },
-        None => self.runtime_error(
+        None => self.runtime_error_from_str(
           self.builtin.errors.import,
           &format!(
             "Symbol {} not exported from module {}",
@@ -900,7 +910,7 @@ impl Vm {
             self.fiber.push(symbol);
             ExecutionSignal::Ok
           },
-          None => self.runtime_error(
+          None => self.runtime_error_from_str(
             self.builtin.errors.import,
             &format!(
               "Symbol {} not exported from module {}",
@@ -927,7 +937,7 @@ impl Vm {
         let env = self.io.env();
         let resolved_path = env.current_dir().unwrap();
 
-        self.runtime_error(
+        self.runtime_error_from_str(
           self.builtin.errors.import,
           &format!(
             "Module {} not found in directory {:?}",
@@ -943,7 +953,10 @@ impl Vm {
   }
 
   fn extract_import_path(&mut self, path: List) -> Vec<GcStr> {
-    path.iter().map(|segment| segment.to_obj().to_str()).collect()
+    path
+      .iter()
+      .map(|segment| segment.to_obj().to_str())
+      .collect()
   }
 
   fn full_import_path(&mut self, path_segments: &[GcStr]) -> GcStr {
@@ -980,7 +993,7 @@ impl Vm {
 
     match current_module.export_symbol(name) {
       Ok(_) => ExecutionSignal::Ok,
-      Err(error) => self.runtime_error(self.builtin.errors.export, &error.to_string()),
+      Err(error) => self.runtime_error_from_str(self.builtin.errors.export, &error.to_string()),
     }
   }
 
@@ -1006,7 +1019,7 @@ impl Vm {
       self.fiber.push(val!(-pop.to_num()));
       ExecutionSignal::Ok
     } else {
-      self.runtime_error(self.builtin.errors.runtime, "Operand must be a number.")
+      self.runtime_error_from_str(self.builtin.errors.runtime, "Operand must be a number.")
     }
   }
 
@@ -1034,7 +1047,7 @@ impl Vm {
       self.fiber.push(val!(string));
       ExecutionSignal::Ok
     } else {
-      self.runtime_error(
+      self.runtime_error_from_str(
         self.builtin.errors.runtime,
         "Operands must be two numbers or two strings.",
       )
@@ -1049,7 +1062,7 @@ impl Vm {
       return ExecutionSignal::Ok;
     }
 
-    self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
+    self.runtime_error_from_str(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
   pub(super) unsafe fn op_mul(&mut self) -> ExecutionSignal {
@@ -1060,7 +1073,7 @@ impl Vm {
       return ExecutionSignal::Ok;
     }
 
-    self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
+    self.runtime_error_from_str(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
   pub(super) unsafe fn op_div(&mut self) -> ExecutionSignal {
@@ -1071,7 +1084,7 @@ impl Vm {
       return ExecutionSignal::Ok;
     }
 
-    self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
+    self.runtime_error_from_str(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
   pub(super) unsafe fn op_and(&mut self) -> ExecutionSignal {
@@ -1115,7 +1128,7 @@ impl Vm {
       return ExecutionSignal::Ok;
     }
 
-    self.runtime_error(self.builtin.errors.runtime, "Operands must be numbers.")
+    self.runtime_error_from_str(self.builtin.errors.runtime, "Operands must be numbers.")
   }
 
   pub(super) unsafe fn op_less_equal(&mut self) -> ExecutionSignal {
@@ -1138,7 +1151,7 @@ impl Vm {
       return ExecutionSignal::Ok;
     }
 
-    self.runtime_error(
+    self.runtime_error_from_str(
       self.builtin.errors.runtime,
       "Operands must be numbers or strings.",
     )
@@ -1159,7 +1172,7 @@ impl Vm {
       return ExecutionSignal::Ok;
     }
 
-    self.runtime_error(
+    self.runtime_error_from_str(
       self.builtin.errors.runtime,
       "Operands must be numbers or strings.",
     )
@@ -1185,7 +1198,7 @@ impl Vm {
       return ExecutionSignal::Ok;
     }
 
-    self.runtime_error(
+    self.runtime_error_from_str(
       self.builtin.errors.runtime,
       "Operands must be numbers or strings.",
     )
@@ -1307,7 +1320,7 @@ impl Vm {
   pub(super) unsafe fn resolve_call(&mut self, callee: Value, arg_count: u8) -> ExecutionSignal {
     if !callee.is_obj() {
       let class_name = self.value_class(callee).name();
-      return self.runtime_error(
+      return self.runtime_error_from_str(
         self.builtin.errors.runtime,
         &format!("{class_name} is not callable."),
       );
@@ -1331,7 +1344,7 @@ impl Vm {
       },
       _ => {
         let class_name = self.value_class(callee).name();
-        self.runtime_error(
+        self.runtime_error_from_str(
           self.builtin.errors.runtime,
           &format!("{class_name} is not callable."),
         )
@@ -1348,7 +1361,7 @@ impl Vm {
       Some(init) => self.resolve_call(init, arg_count),
       None => {
         if arg_count != 0 {
-          self.runtime_error(
+          self.runtime_error_from_str(
             self.builtin.errors.runtime,
             &format!("Expected 0 arguments but got {arg_count}"),
           )
@@ -1361,26 +1374,23 @@ impl Vm {
 
   /// call a native function immediately returning the result
   unsafe fn call_native(&mut self, native: GcObj<Native>, arg_count: u8) -> ExecutionSignal {
-    let meta = native.meta();
     let mut fiber = self.fiber;
-    let args = fiber.stack_slice(arg_count as usize);
+
+    let args = match native.is_method() {
+      true => fiber.stack_slice(arg_count as usize + 1),
+      false => fiber.stack_slice(arg_count as usize),
+    };
 
     // check that the current function is called with the right number of args and types
-    if let Some(signal) = self.check_native_arity(meta, args) {
+    if let Some(signal) = self.check_native_arity(native, args) {
       return signal;
     }
-
-    let this = if meta.is_method {
-      Some(fiber.peek(arg_count as usize))
-    } else {
-      None
-    };
 
     #[cfg(debug_assertions)]
     let roots_before = self.gc().temp_roots();
 
-    match meta.environment {
-      NativeEnvironment::StackLess => match native.call(&mut Hooks::new(self), this, args) {
+    match native.environment() {
+      NativeEnvironment::StackLess => match native.call(&mut Hooks::new(self), args) {
         Call::Ok(value) => {
           fiber.drop_n(arg_count as usize + 1);
           fiber.push(value);
@@ -1397,19 +1407,16 @@ impl Vm {
       },
       NativeEnvironment::Normal => {
         let mut stub = self.native_fun_stubs.pop().unwrap_or_else(|| {
-          self.manage_obj(Fun::stub(&GcHooks::new(self), meta.name, self.global))
+          self.manage_obj(Fun::stub(&GcHooks::new(self), native.name(), self.global))
         });
-        stub.set_name(meta.name);
-        self.push_root(stub);
-
-        self.pop_roots(1);
-
+        stub.set_name(native.name());
         self.push_frame(stub, self.capture_stub, arg_count);
 
         // Because the stack can resize we need to store the values in a separate
-        // vec
+        // vec. TODO we should have a slice type which will keep the store alive.
+        // In general we should switch to using the new GcList
         let args = args.to_vec();
-        let result = native.call(&mut Hooks::new(self), this, &args);
+        let result = native.call(&mut Hooks::new(self), &args);
         self.native_fun_stubs.push(stub);
 
         match result {
@@ -1440,7 +1447,7 @@ impl Vm {
 
     // set the current current instruction pointer. check for overflow
     if self.fiber.frames().len() == MAX_FRAME_SIZE {
-      return self.runtime_error(self.builtin.errors.runtime, "Stack overflow.");
+      return self.runtime_error_from_str(self.builtin.errors.runtime, "Stack overflow.");
     }
 
     self.push_frame(closure.fun(), closure.captures(), arg_count);
@@ -1456,7 +1463,7 @@ impl Vm {
 
     // set the current current instruction pointer. check for overflow
     if self.fiber.frames().len() == MAX_FRAME_SIZE {
-      return self.runtime_error(self.builtin.errors.runtime, "Stack overflow.");
+      return self.runtime_error_from_str(self.builtin.errors.runtime, "Stack overflow.");
     }
 
     self.push_frame(fun, self.capture_stub, arg_count);
@@ -1465,118 +1472,21 @@ impl Vm {
 
   /// check that the number of args is valid for the function arity
   unsafe fn check_arity(&mut self, fun: GcObj<Fun>, arg_count: u8) -> Option<ExecutionSignal> {
-    match fun.arity().check(arg_count) {
+    match fun.check_if_valid_call(|| GcHooks::new(self), arg_count) {
       Ok(_) => None,
-      Err(error) => match error {
-        ArityError::Fixed(arity) => Some(self.runtime_error(
-          self.builtin.errors.runtime,
-          &format!(
-            "{} expected {} argument(s) but got {}.",
-            fun.name(),
-            arity,
-            arg_count,
-          ),
-        )),
-        ArityError::Variadic(arity) => Some(self.runtime_error(
-          self.builtin.errors.runtime,
-          &format!(
-            "{} expected at least {} argument(s) but got {}.",
-            fun.name(),
-            arity,
-            arg_count,
-          ),
-        )),
-        ArityError::DefaultLow(arity) => Some(self.runtime_error(
-          self.builtin.errors.runtime,
-          &format!(
-            "{} expected at least {} argument(s) but got {}.",
-            fun.name(),
-            arity,
-            arg_count,
-          ),
-        )),
-        ArityError::DefaultHigh(arity) => Some(self.runtime_error(
-          self.builtin.errors.runtime,
-          &format!(
-            "{} expected at most {} argument(s) but got {}.",
-            fun.name(),
-            arity,
-            arg_count,
-          ),
-        )),
-      },
+      Err(err) => Some(self.runtime_error(self.builtin.errors.runtime, err)),
     }
   }
 
-  /// Check the arity of a native functio
+  /// Check the arity of a native function
   unsafe fn check_native_arity(
     &mut self,
-    native_meta: &NativeMeta,
+    native: GcObj<Native>,
     args: &[Value],
   ) -> Option<ExecutionSignal> {
-    match native_meta.signature.check(args) {
+    match native.check_if_valid_call(|| GcHooks::new(self), args) {
       Ok(()) => None,
-      Err(err) => {
-        let callable_type = if native_meta.is_method {
-          "method"
-        } else {
-          "function"
-        };
-
-        match err {
-          SignatureError::LengthFixed(expected) => Some(self.runtime_error(
-            self.builtin.errors.runtime,
-            &format!(
-              "{} \"{}\" expected {} argument(s) but received {}.",
-              callable_type,
-              &*native_meta.name,
-              expected,
-              args.len(),
-            ),
-          )),
-          SignatureError::LengthVariadic(expected) => Some(self.runtime_error(
-            self.builtin.errors.runtime,
-            &format!(
-              "{} \"{}\" expected at least {} argument(s) but received {}.",
-              callable_type,
-              &*native_meta.name,
-              expected,
-              args.len(),
-            ),
-          )),
-          SignatureError::LengthDefaultLow(expected) => Some(self.runtime_error(
-            self.builtin.errors.runtime,
-            &format!(
-              "{} \"{}\" expected at least {} argument(s) but received {}.",
-              callable_type,
-              &*native_meta.name,
-              expected,
-              args.len(),
-            ),
-          )),
-          SignatureError::LengthDefaultHigh(expected) => Some(self.runtime_error(
-            self.builtin.errors.runtime,
-            &format!(
-              "{} \"{}\" expected at most {} argument(s) but received {}.",
-              callable_type,
-              &*native_meta.name,
-              expected,
-              args.len(),
-            ),
-          )),
-          SignatureError::TypeWrong(parameter) => Some(self.runtime_error(
-            self.builtin.errors.type_,
-            &format!(
-              "{} \"{}\"'s parameter \"{}\" required a {} but received a {}.",
-              callable_type,
-              &*native_meta.name,
-              &*native_meta.signature.parameters[parameter as usize].name,
-              native_meta.signature.parameters[parameter as usize].kind,
-              ParameterKind::from(args[parameter as usize])
-            ),
-          )),
-        }
-      },
+      Err(err) => Some(self.runtime_error(self.builtin.errors.runtime, err)),
     }
   }
 
@@ -1594,7 +1504,7 @@ impl Vm {
         self.fiber.peek_set(0, val!(bound));
         ExecutionSignal::Ok
       },
-      None => self.runtime_error(
+      None => self.runtime_error_from_str(
         self.builtin.errors.runtime,
         &format!("Undefined property {} on class {}.", name, class.name()),
       ),
@@ -1610,7 +1520,7 @@ impl Vm {
   ) -> ExecutionSignal {
     match class.get_method(&method_name) {
       Some(method) => self.resolve_call(method, arg_count),
-      None => self.runtime_error(
+      None => self.runtime_error_from_str(
         self.builtin.errors.property,
         &format!(
           "Undefined property {} on class {}.",
@@ -1627,7 +1537,7 @@ fn assert_roots(native: GcObj<Native>, roots_before: usize, roots_now: usize) {
   assert!(
     roots_before == roots_now,
     "Native function {} increased roots by {}.",
-    native.meta().name,
+    native.name(),
     roots_now - roots_before,
   );
 }

@@ -54,15 +54,15 @@ const ASSERT_META: NativeMetaBuilder = NativeMetaBuilder::fun("assert", Arity::F
 
 const ASSERTEQ_META: NativeMetaBuilder = NativeMetaBuilder::fun("assertEq", Arity::Fixed(2))
   .with_params(&[
-    ParameterBuilder::new("actual", ParameterKind::Any),
-    ParameterBuilder::new("expected", ParameterKind::Any),
+    ParameterBuilder::new("actual", ParameterKind::Object),
+    ParameterBuilder::new("expected", ParameterKind::Object),
   ])
   .with_stack();
 
 const ASSERTNE_META: NativeMetaBuilder = NativeMetaBuilder::fun("assertNe", Arity::Fixed(2))
   .with_params(&[
-    ParameterBuilder::new("actual", ParameterKind::Any),
-    ParameterBuilder::new("unexpected", ParameterKind::Any),
+    ParameterBuilder::new("actual", ParameterKind::Object),
+    ParameterBuilder::new("unexpected", ParameterKind::Object),
   ])
   .with_stack();
 
@@ -96,20 +96,16 @@ impl Assert {
     debug_assert!(error.is_obj_kind(laythe_core::object::ObjectKind::Class));
     let native = Box::new(Self { method_str, error }) as Box<dyn LyNative>;
 
-    hooks.manage_obj(Native::new(ASSERT_META.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(ASSERT_META.build(hooks), native))
   }
 }
 
 impl LyNative for Assert {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     if args[0].to_bool() {
       Call::Ok(VALUE_NIL)
     } else {
-      create_error!(
-        self.error,
-        hooks,
-        "Expected assertion to return true."
-      )
+      create_error!(self.error, hooks, "Expected assertion to return true.")
     }
   }
 }
@@ -136,12 +132,12 @@ impl AssertEq {
     debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_str, error }) as Box<dyn LyNative>;
 
-    hooks.manage_obj(Native::new(ASSERTEQ_META.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(ASSERTEQ_META.build(hooks), native))
   }
 }
 
 impl LyNative for AssertEq {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     if args[0] == args[1] {
       return Call::Ok(VALUE_NIL);
     }
@@ -181,12 +177,12 @@ impl AssertNe {
     debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_str, error }) as Box<dyn LyNative>;
 
-    hooks.manage_obj(Native::new(ASSERTNE_META.to_meta(hooks), native))
+    hooks.manage_obj(Native::new(ASSERTNE_META.build(hooks), native))
   }
 }
 
 impl LyNative for AssertNe {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     if args[0] != args[1] {
       return Call::Ok(VALUE_NIL);
     }
@@ -226,22 +222,6 @@ mod test {
     use super::*;
 
     #[test]
-    fn new() {
-      let mut context = NoContext::default();
-      let hooks = Hooks::new(&mut context);
-
-      let error = val!(test_error_class(&hooks.as_gc()));
-      let assert = Assert::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
-
-      assert_eq!(&*assert.meta().name, "assert");
-      assert_eq!(assert.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        assert.meta().signature.parameters[0].kind,
-        ParameterKind::Bool
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = NoContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -250,7 +230,7 @@ mod test {
       let assert = Assert::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
       let values = &[val!(true)];
 
-      let result = match assert.call(&mut hooks, None, values) {
+      let result = match assert.call(&mut hooks, values) {
         Call::Ok(res) => res,
         _ => panic!(),
       };
@@ -266,26 +246,6 @@ mod test {
     use super::*;
 
     #[test]
-    fn new() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let error = val!(test_error_class(&hooks));
-      let assert_eq = AssertEq::native(&hooks, hooks.manage_str("str".to_string()), error);
-
-      assert_eq!(&*assert_eq.meta().name, "assertEq");
-      assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(
-        assert_eq.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-      assert_eq!(
-        assert_eq.meta().signature.parameters[1].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = NoContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -295,7 +255,7 @@ mod test {
 
       let values = &[val!(10.5), val!(10.5)];
 
-      let result = match assert_eq.call(&mut hooks, None, values) {
+      let result = match assert_eq.call(&mut hooks, values) {
         Call::Ok(res) => res,
         _ => panic!(),
       };
@@ -311,26 +271,6 @@ mod test {
     use super::*;
 
     #[test]
-    fn new() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let error = val!(test_error_class(&hooks));
-      let assert_eq = AssertNe::native(&hooks, hooks.manage_str("str".to_string()), error);
-
-      assert_eq!(&*assert_eq.meta().name, "assertNe");
-      assert_eq!(assert_eq.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(
-        assert_eq.meta().signature.parameters[0].kind,
-        ParameterKind::Any
-      );
-      assert_eq!(
-        assert_eq.meta().signature.parameters[1].kind,
-        ParameterKind::Any
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = NoContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -340,7 +280,7 @@ mod test {
 
       let values = &[val!(10.5), VALUE_NIL];
 
-      let result = match assert_ne.call(&mut hooks, None, values) {
+      let result = match assert_ne.call(&mut hooks, values) {
         Call::Ok(res) => res,
         _ => panic!(),
       };

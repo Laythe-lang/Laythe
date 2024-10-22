@@ -164,10 +164,61 @@ impl Fun {
     self.name = new_name;
   }
 
-  /// Arity of this function
   #[inline]
-  pub fn arity(&self) -> &Arity {
-    &self.arity
+  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(&self, hooks_gen: F, arg_count: u8) -> Result<(), GcStr> {
+    match self.arity {
+      // if fixed we need exactly the correct amount
+      Arity::Fixed(arity) => {
+        if arg_count != arity {
+          return Err(hooks_gen().manage_str(format!(
+            "{} expected {} argument(s) but received {}.",
+            self.name(),
+            arity,
+            arg_count,
+          )));
+        }
+      },
+      // if variadic and ending with ... take arity +
+      Arity::Variadic(arity) => {
+        if arg_count < arity {
+          return Err(hooks_gen().manage_str(format!(
+            "{} expected at least {} argument(s) but got {}.",
+            self.name(),
+            arity,
+            arg_count,
+          )));
+        }
+      },
+      // if defaulted we need between the min and max
+      Arity::Default(min_arity, max_arity) => {
+        if arg_count < min_arity {
+          return Err(hooks_gen().manage_str(format!(
+            "{} expected at least {} argument(s) but got {}.",
+            self.name(),
+            min_arity,
+            arg_count,
+          )));
+        }
+        if arg_count > max_arity {
+          return Err(hooks_gen().manage_str(format!(
+            "{} expected at most {} argument(s) but got {}.",
+            self.name(),
+            max_arity,
+            arg_count,
+          )));
+        }
+      },
+    };
+    Ok(())
+  }
+
+  #[inline]
+  pub fn parameter_count(&self) -> u8 {
+    match self.arity {
+      Arity::Default(req, _) => req,
+      Arity::Fixed(req) => req,
+      Arity::Variadic(req) => req,
+    }
   }
 
   /// Code for the function body

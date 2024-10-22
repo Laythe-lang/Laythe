@@ -25,7 +25,7 @@ pub fn declare_clock_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> 
 native!(Clock, CLOCK_META);
 
 impl LyNative for Clock {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, _args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     let io = hooks.as_io();
     let time = io.time();
 
@@ -42,17 +42,6 @@ mod test {
   use crate::support::MockedContext;
 
   #[test]
-  fn new() {
-    let mut context = MockedContext::default();
-    let hooks = GcHooks::new(&mut context);
-
-    let clock = Clock::native(&hooks);
-
-    assert_eq!(clock.meta().name, "clock");
-    assert_eq!(clock.meta().signature.arity, Arity::Fixed(0));
-  }
-
-  #[test]
   fn call() {
     let mut context = MockedContext::default();
     let mut hooks = Hooks::new(&mut context);
@@ -60,8 +49,8 @@ mod test {
 
     let values = &[];
 
-    let result1 = clock.call(&mut hooks, None, values).unwrap();
-    let result2 = clock.call(&mut hooks, None, values).unwrap();
+    let result1 = clock.call(&mut hooks, values).unwrap();
+    let result2 = clock.call(&mut hooks, values).unwrap();
 
     if result1.is_num() && result2.is_num() {
       assert!(result1.to_num() <= result2.to_num());

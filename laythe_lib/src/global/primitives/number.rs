@@ -102,39 +102,39 @@ pub fn define_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
 native!(NumberStr, NUMBER_STR);
 
 impl LyNative for NumberStr {
-  fn call(&self, hook: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(hook.manage_str(this.unwrap().to_num().to_string())))
+  fn call(&self, hook: &mut Hooks, args: &[Value]) -> Call {
+    Call::Ok(val!(hook.manage_str(args[0].to_num().to_string())))
   }
 }
 
 native!(NumberFloor, NUMBER_FLOOR);
 
 impl LyNative for NumberFloor {
-  fn call(&self, _hook: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_num().floor()))
+  fn call(&self, _hook: &mut Hooks, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_num().floor()))
   }
 }
 
 native!(NumberCeil, NUMBER_CEIL);
 
 impl LyNative for NumberCeil {
-  fn call(&self, _hook: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_num().ceil()))
+  fn call(&self, _hook: &mut Hooks, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_num().ceil()))
   }
 }
 
 native!(NumberRound, NUMBER_ROUND);
 
 impl LyNative for NumberRound {
-  fn call(&self, _hook: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    Call::Ok(val!(this.unwrap().to_num().round()))
+  fn call(&self, _hook: &mut Hooks, args: &[Value]) -> Call {
+    Call::Ok(val!(args[0].to_num().round()))
   }
 }
 
 native_with_error!(NumberParse, NUMBER_PARSE);
 
 impl LyNative for NumberParse {
-  fn call(&self, hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let str = args[0].to_obj().to_str();
     match str.parse::<f64>() {
       Ok(num) => Call::Ok(val!(num)),
@@ -146,7 +146,7 @@ impl LyNative for NumberParse {
 native!(NumberCmp, NUMBER_CMP);
 
 impl LyNative for NumberCmp {
-  fn call(&self, _hooks: &mut Hooks, _this: Option<Value>, args: &[Value]) -> Call {
+  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
     Call::Ok(val!(args[0].to_num() - args[1].to_num()))
   }
 }
@@ -154,8 +154,8 @@ impl LyNative for NumberCmp {
 native_with_error!(NumberTimes, NUMBER_TIMES);
 
 impl LyNative for NumberTimes {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let max = this.unwrap().to_num();
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let max = args[0].to_num();
     if max < 0.0 || max.fract() != 0.0 {
       return self.call_error(hooks, "times requires a positive integer.");
     }
@@ -221,11 +221,11 @@ impl DebugHeap for TimesIterator {
 native_with_error!(NumberUntil, NUMBER_UNTIL);
 
 impl LyNative for NumberUntil {
-  fn call(&self, hooks: &mut Hooks, this: Option<Value>, _args: &[Value]) -> Call {
-    let start = this.unwrap().to_num();
-    let end = _args[0].to_num();
-    let stride = if _args.len() > 1 {
-      _args[1].to_num()
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let start = args[0].to_num();
+    let end = args[1].to_num();
+    let stride = if args.len() > 2 {
+      args[2].to_num()
     } else {
       1.0
     };
@@ -303,24 +303,13 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let number_str = NumberStr::native(&hooks);
-
-      assert_eq!(number_str.meta().name, "str");
-      assert_eq!(number_str.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let number_str = NumberStr::native(&hooks.as_gc());
 
-      let result = number_str.call(&mut hooks, Some(val!(10.0)), &[]);
+      let result = number_str.call(&mut hooks, &[val!(10.0)]);
       match result {
         Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "10".to_string()),
         _ => assert!(false),
@@ -333,18 +322,6 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let error = val!(test_error_class(&hooks));
-      let number_times = NumberTimes::native(&hooks, error);
-
-      assert_eq!(number_times.meta().name, "times");
-      assert_eq!(number_times.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::new(&[val!(5.0)]);
       let mut hooks = Hooks::new(&mut context);
@@ -352,7 +329,7 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let number_times = NumberTimes::native(&hooks.as_gc(), error);
 
-      let result = number_times.call(&mut hooks, Some(val!(3.0)), &[]);
+      let result = number_times.call(&mut hooks, &[val!(3.0)]);
       match result {
         Call::Ok(r) => {
           let mut number_times = r.to_obj().to_enumerator();
@@ -366,7 +343,7 @@ mod test {
           assert_eq!(number_times.current(), val!(2.0));
 
           assert_eq!(number_times.next(&mut hooks).unwrap(), val!(false));
-        }
+        },
         _ => assert!(false),
       }
     }
@@ -377,25 +354,6 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let number_cmp = NumberCmp::native(&hooks);
-
-      assert_eq!(number_cmp.meta().name, "cmp");
-      assert_eq!(number_cmp.meta().signature.arity, Arity::Fixed(2));
-      assert_eq!(
-        number_cmp.meta().signature.parameters[0].kind,
-        ParameterKind::Number
-      );
-      assert_eq!(
-        number_cmp.meta().signature.parameters[1].kind,
-        ParameterKind::Number
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
@@ -403,7 +361,7 @@ mod test {
       let number_cmp = NumberCmp::native(&hooks.as_gc());
 
       let result = number_cmp
-        .call(&mut hooks, None, &[val!(5.0), val!(3.0)])
+        .call(&mut hooks, &[val!(5.0), val!(3.0)])
         .unwrap();
 
       assert_eq!(result, val!(2.0));
@@ -415,26 +373,13 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let number_floor = NumberFloor::native(&hooks);
-
-      assert_eq!(number_floor.meta().name, "floor");
-      assert_eq!(number_floor.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let number_floor = NumberFloor::native(&hooks.as_gc());
 
-      let result = number_floor
-        .call(&mut hooks, Some(val!(10.5)), &[])
-        .unwrap();
+      let result = number_floor.call(&mut hooks, &[val!(10.5)]).unwrap();
       assert_eq!(result.to_num(), 10.0);
     }
   }
@@ -444,24 +389,13 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let number_ceil = NumberCeil::native(&hooks);
-
-      assert_eq!(number_ceil.meta().name, "ceil");
-      assert_eq!(number_ceil.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let number_ceil = NumberCeil::native(&hooks.as_gc());
 
-      let result = number_ceil.call(&mut hooks, Some(val!(10.5)), &[]).unwrap();
+      let result = number_ceil.call(&mut hooks, &[val!(10.5)]).unwrap();
       assert_eq!(result.to_num(), 11.0);
     }
   }
@@ -471,26 +405,13 @@ mod test {
     use crate::support::MockedContext;
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-
-      let number_round = NumberRound::native(&hooks);
-
-      assert_eq!(number_round.meta().name, "round");
-      assert_eq!(number_round.meta().signature.arity, Arity::Fixed(0));
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
 
       let number_round = NumberRound::native(&hooks.as_gc());
 
-      let result = number_round
-        .call(&mut hooks, Some(val!(10.3)), &[])
-        .unwrap();
+      let result = number_round.call(&mut hooks, &[val!(10.3)]).unwrap();
       assert_eq!(result.to_num(), 10.0);
     }
   }
@@ -498,22 +419,6 @@ mod test {
   mod parse {
     use super::*;
     use crate::support::{test_error_class, MockedContext};
-
-    #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let number_parse = NumberParse::native(&hooks, error);
-
-      assert_eq!(number_parse.meta().name, "parse");
-      assert_eq!(number_parse.meta().signature.arity, Arity::Fixed(1));
-      assert_eq!(
-        number_parse.meta().signature.parameters[0].kind,
-        ParameterKind::String
-      );
-    }
 
     #[test]
     fn call() {
@@ -524,7 +429,7 @@ mod test {
       let number_parse = NumberParse::native(&hooks.as_gc(), error);
 
       let args = val!(hooks.manage_str("1"));
-      let result = number_parse.call(&mut hooks, None, &[args]).unwrap();
+      let result = number_parse.call(&mut hooks, &[args]).unwrap();
 
       assert_eq!(result, val!(1.0));
     }
@@ -535,26 +440,6 @@ mod test {
     use crate::support::{test_error_class, MockedContext};
 
     #[test]
-    fn new() {
-      let mut context = MockedContext::default();
-      let hooks = GcHooks::new(&mut context);
-      let error = val!(test_error_class(&hooks));
-
-      let number_until = NumberUntil::native(&hooks, error);
-
-      assert_eq!(number_until.meta().name, "until");
-      assert_eq!(number_until.meta().signature.arity, Arity::Default(1, 2));
-      assert_eq!(
-        number_until.meta().signature.parameters[0].kind,
-        ParameterKind::Number
-      );
-      assert_eq!(
-        number_until.meta().signature.parameters[1].kind,
-        ParameterKind::Number
-      );
-    }
-
-    #[test]
     fn call() {
       let mut context = MockedContext::new(&[val!(5.0)]);
       let mut hooks = Hooks::new(&mut context);
@@ -562,7 +447,7 @@ mod test {
 
       let number_until = NumberUntil::native(&hooks.as_gc(), error);
 
-      let result = number_until.call(&mut hooks, Some(val!(2.0)), &[val!(6.0), val!(2.0)]);
+      let result = number_until.call(&mut hooks, &[val!(2.0), val!(6.0), val!(2.0)]);
       match result {
         Call::Ok(r) => {
           let mut number_until = r.to_obj().to_enumerator();
@@ -573,7 +458,7 @@ mod test {
           assert_eq!(number_until.current(), val!(4.0));
 
           assert_eq!(number_until.next(&mut hooks).unwrap(), val!(false));
-        }
+        },
         _ => assert!(false),
       }
     }
