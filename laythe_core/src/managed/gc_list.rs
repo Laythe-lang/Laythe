@@ -18,9 +18,6 @@ use std::{
 
 pub type List = GcList<Value, ObjHeader>;
 
-/// A dummy array so we can get a slice to nothing for free
-const DUMMY_ARRAY: [Value; 0] = [];
-
 /// the bit position
 const BIT_POSITION: u32 = usize::BITS - 1;
 const TOP_BIT: usize = 1 << BIT_POSITION;
@@ -39,32 +36,36 @@ pub fn strip_msb(value: usize) -> usize {
 }
 
 /// A structure used to construct a list via the allocator
-pub struct ListBuilder<'a> {
+pub struct ListBuilder<'a, T> {
   /// The source slice from which the list is copied from
-  slice: &'a [Value],
+  slice: &'a [T],
 
   /// The requested capacity of the list
   cap: usize,
 }
 
-impl<'a> ListBuilder<'a> {
+/// A dummy array so we can get a slice to nothing for free
+
+impl<'a, T> ListBuilder<'a, T> {
   /// Create a list builder with a dummy slice and capacity
   pub fn cap_only(cap: usize) -> Self {
+    let empty_slice: &'a [T] = &[];
+
     Self {
-      slice: &DUMMY_ARRAY,
+      slice: empty_slice,
       cap,
     }
   }
 
   /// Create a list builder with a slice and capacity
-  pub fn new(slice: &'a [Value], cap: usize) -> Self {
+  pub fn new(slice: &'a [T], cap: usize) -> Self {
     assert!(slice.len() <= cap);
 
     Self { slice, cap }
   }
 
   /// The underlying slice for the builder
-  pub fn slice(&self) -> &[Value] {
+  pub fn slice(&self) -> &[T] {
     self.slice
   }
 
@@ -682,7 +683,7 @@ impl<T, H> Drop for GcListHandle<T, H> {
   }
 }
 
-impl<'a> AllocateObj<List> for ListBuilder<'a> {
+impl<'a> AllocateObj<List> for ListBuilder<'a, Value> {
   fn alloc(self) -> AllocObjResult<List> {
     debug_assert!(self.slice.len() <= self.cap);
     let handle = GcListHandle::from_slice(self.slice, self.cap, ObjHeader::new(ObjectKind::List));
