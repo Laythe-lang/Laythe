@@ -36,7 +36,7 @@ pub enum CaptureIndex {
   Enclosing(u8),
 }
 
-/// Space Lox virtual machine byte codes
+/// Laythe virtual machine byte codes
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum SymbolicByteCode {
   /// Return from script or function
@@ -85,7 +85,7 @@ pub enum SymbolicByteCode {
   /// Initialize list from literal
   List(u16),
 
-  /// Initialize list from literal
+  /// Initialize tuple from literal
   Tuple(u16),
 
   /// Initialize map from literal

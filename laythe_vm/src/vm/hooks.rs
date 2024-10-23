@@ -75,6 +75,10 @@ impl Vm {
     }
   }
 
+  pub(super) fn scan_roots(&mut self) {
+    self.fiber.scan_roots();
+  }
+
   /// Convert an execute result to a call result
   fn to_call_result(&self, execute_result: ExecutionResult) -> Call {
     match execute_result {

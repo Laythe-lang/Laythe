@@ -108,6 +108,11 @@ impl<'a> Hooks<'a> {
   pub fn pop_roots(&self, count: usize) {
     self.as_gc().pop_roots(count)
   }
+
+  /// Provide a signal that the roots should be scanned for forwarded pointer
+  pub fn scan_roots(&mut self) {
+    self.as_value().scan_roots();
+  }
 }
 
 pub trait HookContext {
@@ -213,6 +218,11 @@ impl<'a> ValueHooks<'a> {
   pub fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
     self.context.get_method(this, method_name)
   }
+
+  /// Provide a signal that the roots should be scanned for forwarded pointer
+  fn scan_roots(&mut self) {
+    self.context.scan_roots();
+  }
 }
 
 /// A set of functions related to calling laythe values
@@ -228,6 +238,9 @@ pub trait ValueContext {
 
   /// Retrieve the class for this value
   fn get_class(&mut self, this: Value) -> GcObj<Class>;
+
+  /// Provide a signal that the roots should be scanned for forwarded pointer
+  fn scan_roots(&mut self);
 }
 
 /// A set of functionality required by the hooks objects in order to operate
@@ -316,4 +329,6 @@ impl ValueContext for NoContext {
   fn get_class(&mut self, _this: Value) -> GcObj<Class> {
     panic!("Cannot retrieve class")
   }
+
+  fn scan_roots(&mut self) {}
 }

@@ -7,7 +7,8 @@ use crate::{
   captures::Captures,
   constants::SCRIPT,
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, GcObj, Instance, Object, Trace},
+  if_let_obj,
+  managed::{DebugHeap, DebugWrap, GcObj, Instance, ListLocation, Object, Trace},
   val,
   value::{Value, VALUE_NIL},
 };
@@ -143,6 +144,17 @@ impl Fiber {
   #[inline]
   pub fn frames(&self) -> &[CallFrame] {
     &self.frames
+  }
+
+  #[inline]
+  pub fn scan_roots(&mut self) {
+    for value in self.stack.iter_mut() {
+      if_let_obj!(ObjectKind::List(list) = (*value) {
+        if let ListLocation::Forwarded(gc_list) = list.state() {
+          *value = val!(gc_list)
+        }
+      });
+    }
   }
 
   /// Get the current number of call frames on this fiber

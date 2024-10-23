@@ -13,6 +13,10 @@ pub mod support;
 pub mod utils;
 pub mod value;
 
+use fnv::FnvBuildHasher;
+use hashbrown::HashSet;
+use managed::Instance;
+
 pub type Call = LyResult<value::Value>;
 pub type LyResult<T> = Result<T, LyError>;
 
@@ -23,10 +27,6 @@ pub enum LyError {
 }
 
 pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;
-
-use fnv::FnvBuildHasher;
-use hashbrown::HashSet;
-use managed::Instance;
 
 #[macro_export]
 macro_rules! impl_trace {

@@ -346,6 +346,8 @@ mod test {
 
       b.primitives.for_value(this)
     }
+
+    fn scan_roots(&mut self) {}
   }
 
   impl TraceRoot for MockedContext {

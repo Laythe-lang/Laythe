@@ -1,4 +1,4 @@
-use laythe_core::managed::{Trace, GcObj};
+use laythe_core::managed::{GcObj, Trace};
 use laythe_core::object::Class;
 use laythe_core::{
   hooks::{GcContext, HookContext, ValueContext},
@@ -85,5 +85,9 @@ impl ValueContext for Vm {
 
   fn get_class(&mut self, this: Value) -> GcObj<Class> {
     self.value_class(this)
+  }
+
+  fn scan_roots(&mut self) {
+    self.scan_roots();
   }
 }

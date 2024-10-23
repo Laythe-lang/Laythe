@@ -95,7 +95,7 @@ pub use allocate::{AllocResult, Allocate, AllocateObj};
 pub use allocation::Allocation;
 pub use gc::Gc;
 pub use gc_array::{Array, GcArray, GcArrayHandle, Instance, Tuple};
-pub use gc_list::{List, ListBuilder, IndexedResult};
+pub use gc_list::{List, ListBuilder, IndexedResult, ListLocation};
 pub use gc_obj::{GcObj, Object, GcObject, GcObjectHandle, GcObjectHandleBuilder};
 pub use gc_str::{GcStr, GcStrHandle};
 pub use manage::{
