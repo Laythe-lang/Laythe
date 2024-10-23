@@ -142,15 +142,6 @@ impl<T, H> GcList<T, H> {
     }
   }
 
-  /// Retrieve the header from this list
-  #[inline]
-  fn header(&self) -> &H {
-    #[allow(clippy::cast_ptr_alignment)]
-    unsafe {
-      &*(self.ptr.as_ptr() as *const H)
-    }
-  }
-
   /// Determine the state of this list
   pub fn state(&self) -> ListLocation<T, H> {
     let cap: usize = self.read_cap();
@@ -161,6 +152,66 @@ impl<T, H> GcList<T, H> {
       ListLocation::Forwarded(self.relocated_list())
     } else {
       ListLocation::Here(cap)
+    }
+  }
+
+  /// Pop and element off the list.
+  pub fn pop(&mut self) -> Option<T> {
+    match self.state() {
+      ListLocation::Here(_) => {
+        let len: usize = unsafe { self.read_len() };
+        if len == 0 {
+          None
+        } else {
+          unsafe {
+            self.write_len(len - 1);
+            let offset_list_start = get_list_offset::<H, T>();
+
+            let slot = self
+              .ptr
+              .as_ptr()
+              .add(offset_list_start + (len - 1) * mem::size_of::<T>())
+              as *mut T;
+
+            Some(ptr::read(slot))
+          }
+        }
+      },
+      ListLocation::Forwarded(mut gc_list) => gc_list.pop(),
+    }
+  }
+
+  /// Remove an element from this list at the provided offset
+  pub fn remove(&mut self, index: usize) -> IndexedResult<T> {
+    match self.state() {
+      ListLocation::Here(_) => {
+        let len = unsafe { self.read_len() };
+        if index >= len {
+          return IndexedResult::OutOfBounds;
+        }
+
+        unsafe {
+          let value = self.read_value(index);
+          ptr::copy(
+            self.item_ptr(index + 1),
+            self.item_mut(index),
+            len - index - 1,
+          );
+
+          self.write_len(len - 1);
+          IndexedResult::Ok(value)
+        }
+      },
+      ListLocation::Forwarded(mut gc_list) => gc_list.remove(index),
+    }
+  }
+
+  /// Retrieve the header from this list
+  #[inline]
+  fn header(&self) -> &H {
+    #[allow(clippy::cast_ptr_alignment)]
+    unsafe {
+      &*(self.ptr.as_ptr() as *const H)
     }
   }
 
@@ -288,32 +339,6 @@ impl GcList<Value, ObjHeader> {
     }
   }
 
-  /// Pop and element off the list.
-  pub fn pop(&mut self) -> Option<Value> {
-    match self.state() {
-      ListLocation::Here(_) => {
-        let len: usize = unsafe { self.read_len() };
-        if len == 0 {
-          None
-        } else {
-          unsafe {
-            self.write_len(len - 1);
-            let offset_list_start = get_list_offset::<ObjHeader, Value>();
-
-            let slot = self
-              .ptr
-              .as_ptr()
-              .add(offset_list_start + (len - 1) * mem::size_of::<Value>())
-              as *mut Value;
-
-            Some(ptr::read(slot))
-          }
-        }
-      },
-      ListLocation::Forwarded(mut gc_list) => gc_list.pop(),
-    }
-  }
-
   /// Insert an element into this list at the provided offset
   pub fn insert(&mut self, index: usize, value: Value, hooks: &GcHooks) -> IndexedResult {
     match self.state() {
@@ -336,31 +361,6 @@ impl GcList<Value, ObjHeader> {
         IndexedResult::Ok(())
       },
       ListLocation::Forwarded(mut gc_list) => gc_list.insert(index, value, hooks),
-    }
-  }
-
-  /// Remove an element from this list at the provided offset
-  pub fn remove(&mut self, index: usize) -> IndexedResult<Value> {
-    match self.state() {
-      ListLocation::Here(_) => {
-        let len = unsafe { self.read_len() };
-        if index >= len {
-          return IndexedResult::OutOfBounds;
-        }
-
-        unsafe {
-          let value = self.read_value(index);
-          ptr::copy(
-            self.item_ptr(index + 1),
-            self.item_mut(index),
-            len - index - 1,
-          );
-
-          self.write_len(len - 1);
-          IndexedResult::Ok(value)
-        }
-      },
-      ListLocation::Forwarded(mut gc_list) => gc_list.remove(index),
     }
   }
 
