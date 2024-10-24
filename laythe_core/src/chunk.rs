@@ -1,22 +1,7 @@
 use crate::hooks::GcHooks;
 use crate::managed::{Array, DebugWrap};
-use crate::{impl_debug_heap, impl_trace};
 use crate::{managed::DebugHeap, managed::Trace, value::Value};
-use std::fmt::Debug;
 
-/// An object that can be encoded into a byte buffer
-pub trait Encode: Sized {
-  type Error: Debug;
-
-  /// consume the object and return the number of bytes written to the buffer
-  fn encode(data: Vec<Self>, lines: Vec<u16>) -> Result<(Vec<u8>, Vec<u16>), Self::Error>;
-}
-
-impl_trace!(u8);
-impl_debug_heap!(u8);
-
-impl_trace!(u16);
-impl_debug_heap!(u16);
 /// An immutable chunk of code
 #[derive(Clone, PartialEq, Eq)]
 pub struct Chunk {
@@ -129,24 +114,6 @@ impl DebugHeap for Chunk {
 
 #[cfg(test)]
 mod test {
-  use super::*;
-
-  #[derive(Default)]
-  struct Encodable();
-
-  impl Encode for Encodable {
-    type Error = ();
-
-    fn encode(data: Vec<Self>, lines: Vec<u16>) -> Result<(Vec<u8>, Vec<u16>), Self::Error> {
-      let mut encoded = Vec::with_capacity(data.len());
-      for _ in data {
-        encoded.push(7)
-      }
-
-      Ok((encoded, lines))
-    }
-  }
-
   #[cfg(test)]
   mod chunk {
     use crate::{

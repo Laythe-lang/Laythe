@@ -5,8 +5,7 @@ use std::{
 };
 
 use crate::{
-  managed::{Allocate, AllocateObj, DebugHeap, GcObj, GcStr, Trace, TraceRoot},
-  memory::Allocator,
+  managed::{Allocate, Allocator, AllocateObj, DebugHeap, GcObj, GcStr, Trace, TraceRoot},
   object::Class,
   value::{Value, VALUE_NIL},
   Call,
@@ -134,7 +133,7 @@ impl<'a> GcHooks<'a> {
   /// ```
   /// use laythe_core::hooks::{GcHooks, NoContext};
   /// use laythe_core::value::Value;
-  /// use laythe_core::memory::Allocator;
+  /// use laythe_core::managed::Allocator;
   ///
   /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);

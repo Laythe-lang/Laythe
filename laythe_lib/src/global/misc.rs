@@ -111,7 +111,7 @@ mod test {
 
   #[cfg(test)]
   mod print {
-    use laythe_core::memory::NO_GC;
+    use laythe_core::managed::NO_GC;
 
     use super::*;
     use crate::support::MockedContext;

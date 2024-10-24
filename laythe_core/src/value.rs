@@ -818,7 +818,7 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
-    captures::Captures, hooks::{GcHooks, NoContext}, list, managed::{Gc, GcObj, GcStr}, memory::{Allocator, NO_GC}, module::Module, object::{Class, Closure, Fun, Map, ObjectKind}
+    captures::Captures, hooks::{GcHooks, NoContext}, list, managed::{Allocator, Gc, GcObj, GcStr, NO_GC}, module::Module, object::{Class, Closure, Fun, Map, ObjectKind}
   };
 
   const VALUE_VARIANTS: [ValueKind; 4] = [

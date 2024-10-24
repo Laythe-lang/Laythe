@@ -54,7 +54,7 @@ impl Trace for Source {
 #[cfg(test)]
 mod test {
   use super::*;
-  use laythe_core::memory::{Allocator, NO_GC};
+  use laythe_core::managed::{Allocator, NO_GC};
 
   #[test]
   fn new() {

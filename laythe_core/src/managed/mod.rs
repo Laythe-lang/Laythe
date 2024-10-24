@@ -1,4 +1,5 @@
 mod allocate;
+mod allocator;
 mod allocation;
 mod gc;
 mod gc_array;
@@ -92,6 +93,7 @@ macro_rules! match_obj {
 }
 
 pub use allocate::{AllocResult, Allocate, AllocateObj};
+pub use allocator::{Allocator, NoGc, NO_GC};
 pub use allocation::Allocation;
 pub use gc::Gc;
 pub use gc_array::{Array, Instance, Tuple};

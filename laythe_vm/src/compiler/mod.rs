@@ -27,8 +27,7 @@ use laythe_core::{
     INDEX_GET, INDEX_SET, ITER, ITER_VAR, OBJECT, SCRIPT, SELF, SUPER, UNINITIALIZED_VAR,
   },
   hooks::{GcContext, GcHooks, NoContext},
-  managed::{AllocResult, Allocate, DebugHeap, Gc, GcStr, ListBuilder, Trace, TraceRoot},
-  memory::Allocator,
+  managed::{Allocator, AllocResult, Allocate, DebugHeap, Gc, GcStr, ListBuilder, Trace, TraceRoot},
   module,
   object::{self, FunBuilder, FunKind, Map},
   signature::Arity,
@@ -227,7 +226,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   /// use laythe_core::{
   ///   module::Module,
   ///   object::Class,
-  ///   memory::{NO_GC, Allocator},
+  ///   managed::{NO_GC, Allocator},
   /// };
   /// use std::path::PathBuf;
   /// use bumpalo::Bump;
@@ -2187,8 +2186,7 @@ mod test {
   };
   use laythe_core::{
     hooks::{GcHooks, NoContext},
-    managed::GcObj,
-    memory::{NoGc, NO_GC},
+    managed::{NoGc, NO_GC, GcObj},
     object::{Class, ObjectKind},
   };
   use laythe_env::stdio::{support::StdioTestContainer, Stdio};

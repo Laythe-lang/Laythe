@@ -53,7 +53,7 @@ impl Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::memory::Allocator;
+  /// use laythe_core::managed::Allocator;
   /// use laythe_env::stdio::Stdio;
   ///
   /// let gc = Allocator::new(Stdio::default());
@@ -82,7 +82,7 @@ impl Allocator {
     self.temp_roots.len()
   }
 
-  /// Create a `Managed<T>` from the provided `data`. This method will allocate space
+  /// Allocate some `data` based on it's allocate trait. This method will allocate space
   /// for `data` and return a pointer to it. In case of a gc the provided `context` is
   /// used to annotate active roots
   pub fn manage<R, T, C>(&mut self, data: T, context: &C) -> R
@@ -100,7 +100,7 @@ impl Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::memory::{Allocator, NO_GC};
+  /// use laythe_core::managed::{Allocator, NO_GC};
   /// use laythe_core::object::LyBox;
   /// use laythe_core::value::Value;
   ///
@@ -124,7 +124,7 @@ impl Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::memory::{Allocator, NO_GC};
+  /// use laythe_core::managed::{Allocator, NO_GC};
   ///
   /// let mut gc = Allocator::default();
   /// let str = gc.manage_str("hi!", &NO_GC);
@@ -151,7 +151,7 @@ impl Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::memory::{Allocator, NO_GC};
+  /// use laythe_core::managed::{Allocator, NO_GC};
   ///
   /// let mut gc = Allocator::default();
   /// gc.manage_str("hi!", &NO_GC);
@@ -210,6 +210,9 @@ impl Allocator {
     reference
   }
 
+  /// Allocate an object on the allocator's heap. If conditions are met
+  /// a garbage collection can be triggered. When triggered will use the
+  /// context to determine the active roots.
   fn allocate_obj<R, T, C>(&mut self, data: T, context: &C) -> R
   where
     R: 'static + Trace + Copy + fmt::Pointer + DebugHeap,

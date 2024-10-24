@@ -32,20 +32,6 @@ pub type Tuple = ObjArray<Value>;
 /// A non owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
 /// as a single pointer.
-///
-/// ## Example
-/// ```
-/// use laythe_core::managed::{GcArray, GcArrayHandle};
-/// use std::mem;
-///
-/// let data: &[u32] = &[1, 2, 3, 4];
-/// let handle = GcArrayHandle::<u32, u64>::from(data);
-/// let array = handle.value();
-///
-/// assert_eq!(mem::size_of::<GcArray<u32, u64>>(), mem::size_of::<&u32>());
-/// assert_eq!(data[0], array[0]);
-/// assert_eq!(data.len(), array.len());
-/// ```
 pub struct GcArray<T, H> {
   /// Pointer to the header of the array
   ptr: NonNull<u8>,
@@ -93,18 +79,6 @@ impl<T, H> GcArray<T, H> {
   /// whichever object hold this slice also hold a reference to
   /// the GcArray itself in order to keep it alive. This is primarily
   /// to use rust method requiring a lifetime, typically for iterators
-  ///
-  /// ## Example
-  /// ```
-  /// use laythe_core::managed::{GcArray, GcArrayHandle};
-  /// use std::mem;
-  ///
-  /// let data: &[u32] = &[1, 2, 3, 4];
-  /// let handle = GcArrayHandle::<u32, u64>::from(data);
-  /// let array = handle.value();
-  ///
-  /// unsafe { array.deref_static().iter(); }
-  /// ```
   pub unsafe fn deref_static(&self) -> &'static [T] {
     slice::from_raw_parts(self.as_ptr(), self.len())
   }
@@ -124,16 +98,6 @@ impl<T, H> GcArray<T, H> {
 
   /// Create a usize from the buffer pointer. This is used
   /// when the value is boxed
-  ///
-  /// ## Example
-  /// ```
-  /// use laythe_core::managed::{GcArray, GcArrayHandle};
-  ///
-  /// let data: &[u32] = &[1, 2, 3, 4];
-  /// let handle = GcArrayHandle::<u32, u64>::from(data);
-  /// let array = handle.value();
-  /// assert!(array.to_usize() > 0);
-  /// ```
   pub fn to_usize(self) -> usize {
     self.as_alloc_ptr() as *const () as usize
   }
@@ -323,52 +287,16 @@ impl AllocateObj<Tuple> for &[Value] {
 /// A owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
 /// as a single pointer.
-///
-/// ## Example
-/// ```
-/// use laythe_core::managed::GcArrayHandle;
-/// use std::mem;
-///
-/// let data: &[u32] = &[1, 2, 3, 4];
-/// let handle = GcArrayHandle::<u32, u32>::from(data);
-///
-/// assert_eq!(mem::size_of::<GcArrayHandle<u32, u32>>(), mem::size_of::<&u32>());
-/// ```
 pub struct GcArrayHandle<T, H>(GcArray<T, H>);
 
 impl<T, H> GcArrayHandle<T, H> {
   /// Create a non owning reference to this array.
-  ///
-  /// ## Examples
-  /// ```
-  /// use laythe_core::managed::GcArrayHandle;
-  ///
-  /// let data: &[u32] = &[1, 2, 3, 4];
-  /// let handle = GcArrayHandle::<u32, u32>::from(data);
-  ///
-  /// let array1 = handle.value();
-  /// let array2 = handle.value();
-  ///
-  /// assert_eq!(array1, array2);
-  /// assert_eq!(handle[0], array1[0]);
-  /// ```
   pub fn value(&self) -> GcArray<T, H> {
     self.0
   }
 
   /// Determine the size of the handle and the pointed to
   /// allocation
-  ///
-  /// ## Examples
-  /// ```
-  /// use laythe_core::managed::GcArrayHandle;
-  ///
-  /// let data: &[u32] = &[1, 2, 3, 4];
-  /// let handle = GcArrayHandle::<u32, u64>::from(data);
-  /// let array = handle.value();
-  ///
-  /// assert_eq!(handle.size(), 32);
-  /// ```
   #[inline]
   pub fn size(&self) -> usize {
     make_array_layout::<H, T>(self.0.len()).size()

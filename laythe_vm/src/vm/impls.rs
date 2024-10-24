@@ -2,8 +2,7 @@ use laythe_core::managed::{GcObj, Trace};
 use laythe_core::object::Class;
 use laythe_core::{
   hooks::{GcContext, HookContext, ValueContext},
-  managed::{GcStr, TraceRoot},
-  memory::Allocator,
+  managed::{Allocator, GcStr, TraceRoot},
   value::Value,
   Call,
 };

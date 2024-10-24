@@ -1,8 +1,5 @@
 use super::{
-  allocate::AllocObjResult,
-  header::ObjHeader,
-  utils::{get_list_cap_offset, get_list_len_offset, get_list_offset},
-  AllocateObj, DebugHeap, DebugWrap, GcObject, GcObjectHandle, Manage, Mark, Marked, Trace, Unmark,
+  allocate::AllocObjResult, header::ObjHeader, utils::{get_list_cap_offset, get_list_len_offset, get_list_offset}, AllocateObj, DebugHeap, DebugWrap, Gc, GcObject, GcObjectHandle, Manage, Mark, Marked, Trace, Unmark
 };
 use crate::{hooks::GcHooks, managed::utils::make_list_layout, object::ObjectKind, value::Value};
 use ptr::NonNull;
