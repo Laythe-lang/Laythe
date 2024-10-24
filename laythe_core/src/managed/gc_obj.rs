@@ -1,10 +1,23 @@
 use super::{
-  allocate::AllocObjResult, gc_array::{GcArray, Instance}, gc_list::{strip_msb, GcList}, header::ObjHeader, manage::{DebugHeap, DebugWrap, Trace}, utils::{get_array_len_offset, get_list_cap_offset, get_offset, make_array_layout, make_obj_layout}, AllocateObj, GcStr, List, Mark, Marked, Tuple, Unmark
+  allocate::AllocObjResult,
+  gc_list::{strip_msb, GcList},
+  header::ObjHeader,
+  manage::{DebugHeap, DebugWrap, Trace},
+  utils::{
+    get_array_len_offset, get_list_cap_offset, get_offset, make_array_layout, make_obj_layout,
+  },
+  AllocateObj, GcStr, Instance, List, Mark, Marked, Tuple, Unmark,
 };
 use crate::{
-  managed::{header::InstanceHeader, utils::{get_array_offset, get_list_offset, make_list_layout}}, match_obj, object::{
+  managed::{
+    header::InstanceHeader,
+    utils::{get_array_offset, get_list_offset, make_list_layout},
+  },
+  match_obj,
+  object::{
     Channel, Class, Closure, Enumerator, Fiber, Fun, LyBox, Map, Method, Native, ObjectKind,
-  }, value::Value
+  },
+  value::Value,
 };
 use std::{
   alloc::{alloc, dealloc, handle_alloc_error},
@@ -334,7 +347,7 @@ impl GcObject {
 
   #[inline]
   pub fn to_instance(self) -> Instance {
-    unsafe { GcArray::from_alloc_ptr(self.ptr) }
+    unsafe { Instance::from_alloc_ptr(self.ptr) }
   }
 
   #[inline]
@@ -719,10 +732,7 @@ impl Drop for GcObjectHandle {
             ptr::read(data_ptr.add(i));
           }
 
-          dealloc(
-            self.ptr.as_ptr(),
-            make_list_layout::<ObjHeader, Value>(cap),
-          );
+          dealloc(self.ptr.as_ptr(), make_list_layout::<ObjHeader, Value>(cap));
         },
         ObjectKind::Map => drop_kind!(Map<Value, Value>),
         ObjectKind::Fiber => drop_kind!(Fiber),
@@ -896,7 +906,10 @@ mod test {
 
   mod gc_obj {
     use super::*;
-    use crate::{val, value::{VALUE_FALSE, VALUE_TRUE}};
+    use crate::{
+      val,
+      value::{VALUE_FALSE, VALUE_TRUE},
+    };
 
     #[test]
     fn deref() {

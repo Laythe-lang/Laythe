@@ -1,15 +1,16 @@
 mod allocate;
-mod allocator;
 mod allocation;
+mod allocator;
 mod gc;
 mod gc_array;
 mod gc_list;
 mod gc_obj;
 mod gc_str;
 mod header;
+mod instance;
 mod manage;
-mod utils;
 mod tuple;
+mod utils;
 
 #[macro_export]
 macro_rules! list {
@@ -94,14 +95,15 @@ macro_rules! match_obj {
 }
 
 pub use allocate::{AllocResult, Allocate, AllocateObj};
-pub use allocator::{Allocator, NoGc, NO_GC};
 pub use allocation::Allocation;
+pub use allocator::{Allocator, NoGc, NO_GC};
 pub use gc::Gc;
-pub use gc_array::{Array, Instance};
-pub use tuple::Tuple;
+pub use gc_array::Array;
 pub use gc_list::{IndexedResult, List, ListBuilder, ListLocation};
 pub use gc_obj::{GcObj, GcObject, GcObjectHandle, Object};
 pub use gc_str::GcStr;
+pub use instance::Instance;
 pub use manage::{
   DebugHeap, DebugWrap, DebugWrapDyn, Manage, Mark, Marked, Trace, TraceRoot, Unmark,
 };
+pub use tuple::Tuple;

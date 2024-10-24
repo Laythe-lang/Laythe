@@ -4,7 +4,6 @@ mod closure;
 mod enumerator;
 mod fiber;
 mod fun;
-mod instance;
 mod ly_box;
 mod map;
 mod method;

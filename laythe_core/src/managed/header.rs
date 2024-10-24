@@ -130,12 +130,6 @@ impl InstanceHeader {
     }
   }
 
-  /// What is the value kind of this object
-  #[inline]
-  pub fn kind(&self) -> ObjectKind {
-    self.kind
-  }
-
   #[inline]
   pub fn class(&self) -> GcObj<Class> {
     self.class

@@ -1,14 +1,10 @@
 use super::{
-  allocate::AllocObjResult,
   header::{Header, InstanceHeader, ObjHeader},
   utils::{get_array_len_offset, get_array_offset, make_array_layout},
-  AllocResult, Allocate, AllocateObj, DebugHeap, DebugWrap, GcObj, GcObject, GcObjectHandle,
-  Manage, Mark, Marked, Trace, Unmark,
+  AllocResult, Allocate, DebugHeap, DebugWrap, GcObject, GcObjectHandle, Manage, Mark, Marked,
+  Trace, Unmark,
 };
-use crate::{
-  object::Class,
-  value::{Value, VALUE_NIL},
-};
+use crate::value::Value;
 use ptr::NonNull;
 use std::{
   alloc::{alloc, dealloc, handle_alloc_error},
@@ -20,12 +16,7 @@ use std::{
   slice::{self},
 };
 
-const MAX_FIELD_COUNT: usize = u16::MAX as usize;
-const NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
-
 pub type Array<T> = GcArray<T, Header>;
-
-pub type Instance = GcArray<Value, InstanceHeader>;
 
 /// A non owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
@@ -247,26 +238,6 @@ impl<T: Debug, H> Debug for GcArray<T, H> {
 unsafe impl<T: Send, H: Send> Send for GcArray<T, H> {}
 unsafe impl<T: Sync, H: Sync> Sync for GcArray<T, H> {}
 
-impl AllocateObj<Instance> for GcObj<Class> {
-  fn alloc(self) -> AllocObjResult<Instance> {
-    if self.fields() > 256 {
-      panic!("Cannot allocate class with more than 256 fields")
-    }
-
-    let slice = &NIL_ARRAY[..self.fields()];
-    let handle = GcArrayHandle::from_slice(slice, InstanceHeader::new(self));
-
-    let size = handle.size();
-    let reference = handle.value();
-
-    AllocObjResult {
-      handle: handle.degrade(),
-      size,
-      reference,
-    }
-  }
-}
-
 /// A owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
 /// as a single pointer.
@@ -483,39 +454,6 @@ mod test {
       assert_eq!(array[4], 5);
 
       assert_eq!(handle.len(), 5);
-    }
-  }
-
-  mod instance_handle {
-    use crate::{
-      hooks::{GcHooks, NoContext},
-      managed::AllocateObj,
-      support::{test_object_class, ClassBuilder},
-    };
-
-    #[test]
-    fn dude() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
-
-      let obj_class = test_object_class(&hooks);
-
-      let class = ClassBuilder::default()
-        .name("example")
-        .super_cls(obj_class)
-        .fields(
-          ["foo", "bar"]
-            .iter()
-            .map(|field| hooks.manage_str(field))
-            .collect(),
-        )
-        .build(&hooks);
-
-      let result = class.alloc();
-      let instance_value = result.reference;
-
-      assert_eq!(instance_value.len(), 2);
-      assert_eq!(instance_value.header().class(), class);
     }
   }
 }
