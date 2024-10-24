@@ -1,5 +1,5 @@
 use super::{
-  allocate::AllocObjResult, gc_array::{GcArray, Instance, Tuple}, gc_list::{strip_msb, GcList}, header::ObjHeader, manage::{DebugHeap, DebugWrap, Trace}, utils::{get_array_len_offset, get_list_cap_offset, get_offset, make_array_layout, make_obj_layout}, AllocateObj, GcStr, List, Mark, Marked, Unmark
+  allocate::AllocObjResult, gc_array::{GcArray, Instance}, gc_list::{strip_msb, GcList}, header::ObjHeader, manage::{DebugHeap, DebugWrap, Trace}, utils::{get_array_len_offset, get_list_cap_offset, get_offset, make_array_layout, make_obj_layout}, AllocateObj, GcStr, List, Mark, Marked, Tuple, Unmark
 };
 use crate::{
   managed::{header::InstanceHeader, utils::{get_array_offset, get_list_offset, make_list_layout}}, match_obj, object::{
@@ -287,7 +287,7 @@ impl GcObject {
 
   #[inline]
   pub fn to_tuple(self) -> Tuple {
-    unsafe { GcArray::from_alloc_ptr(self.ptr) }
+    unsafe { Tuple::from_alloc_ptr(self.ptr) }
   }
 
   #[inline]

@@ -9,6 +9,7 @@ mod gc_str;
 mod header;
 mod manage;
 mod utils;
+mod tuple;
 
 #[macro_export]
 macro_rules! list {
@@ -96,7 +97,8 @@ pub use allocate::{AllocResult, Allocate, AllocateObj};
 pub use allocator::{Allocator, NoGc, NO_GC};
 pub use allocation::Allocation;
 pub use gc::Gc;
-pub use gc_array::{Array, Instance, Tuple};
+pub use gc_array::{Array, Instance};
+pub use tuple::Tuple;
 pub use gc_list::{IndexedResult, List, ListBuilder, ListLocation};
 pub use gc_obj::{GcObj, GcObject, GcObjectHandle, Object};
 pub use gc_str::GcStr;

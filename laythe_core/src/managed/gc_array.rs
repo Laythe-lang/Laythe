@@ -6,7 +6,7 @@ use super::{
   Manage, Mark, Marked, Trace, Unmark,
 };
 use crate::{
-  object::{Class, ObjectKind},
+  object::Class,
   value::{Value, VALUE_NIL},
 };
 use ptr::NonNull;
@@ -23,11 +23,9 @@ use std::{
 const MAX_FIELD_COUNT: usize = u16::MAX as usize;
 const NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
 
-pub type ObjArray<T> = GcArray<T, ObjHeader>;
 pub type Array<T> = GcArray<T, Header>;
 
 pub type Instance = GcArray<Value, InstanceHeader>;
-pub type Tuple = ObjArray<Value>;
 
 /// A non owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
@@ -257,21 +255,6 @@ impl AllocateObj<Instance> for GcObj<Class> {
 
     let slice = &NIL_ARRAY[..self.fields()];
     let handle = GcArrayHandle::from_slice(slice, InstanceHeader::new(self));
-
-    let size = handle.size();
-    let reference = handle.value();
-
-    AllocObjResult {
-      handle: handle.degrade(),
-      size,
-      reference,
-    }
-  }
-}
-
-impl AllocateObj<Tuple> for &[Value] {
-  fn alloc(self) -> AllocObjResult<Tuple> {
-    let handle = GcArrayHandle::from_slice(self, ObjHeader::new(ObjectKind::Tuple));
 
     let size = handle.size();
     let reference = handle.value();
