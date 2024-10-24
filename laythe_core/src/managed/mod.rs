@@ -94,10 +94,10 @@ macro_rules! match_obj {
 pub use allocate::{AllocResult, Allocate, AllocateObj};
 pub use allocation::Allocation;
 pub use gc::Gc;
-pub use gc_array::{Array, GcArray, GcArrayHandle, Instance, Tuple};
-pub use gc_list::{List, ListBuilder, IndexedResult, ListLocation};
-pub use gc_obj::{GcObj, Object, GcObject, GcObjectHandle, GcObjectHandleBuilder};
-pub use gc_str::{GcStr, GcStrHandle};
+pub use gc_array::{Array, Instance, Tuple};
+pub use gc_list::{IndexedResult, List, ListBuilder, ListLocation};
+pub use gc_obj::{GcObj, GcObject, GcObjectHandle, Object};
+pub use gc_str::GcStr;
 pub use manage::{
   DebugHeap, DebugWrap, DebugWrapDyn, Manage, Mark, Marked, Trace, TraceRoot, Unmark,
 };
