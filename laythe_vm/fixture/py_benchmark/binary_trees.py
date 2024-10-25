@@ -20,7 +20,7 @@ class Tree:
         return self.item + self.left.check() - self.right.check()
 
 minDepth = 4
-maxDepth = 16
+maxDepth = 14
 stretchDepth = maxDepth + 1
 
 start = time.time()
