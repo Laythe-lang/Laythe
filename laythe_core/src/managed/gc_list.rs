@@ -434,7 +434,6 @@ impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for GcList<T, H> {
     };
   }
 
-  #[inline]
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
     if self.mark() {
       return;

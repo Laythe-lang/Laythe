@@ -4,11 +4,10 @@ use super::{
   AllocResult, Allocate, DebugHeap, DebugWrap, GcObject, GcObjectHandle, Manage, Mark, Marked,
   Trace, Unmark,
 };
-use crate::value::Value;
 use ptr::NonNull;
 use std::{
   alloc::{alloc, dealloc, handle_alloc_error},
-  fmt::{self, Debug, Display},
+  fmt::{self, Debug},
   marker::PhantomData,
   mem,
   ops::{Deref, DerefMut},
@@ -140,7 +139,6 @@ impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for GcArray<T, H> {
     self.iter().for_each(|i| i.trace());
   }
 
-  #[inline]
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
     if self.mark() {
       return;
@@ -212,22 +210,6 @@ impl<T, H> PartialEq<GcArray<T, H>> for GcArray<T, H> {
   }
 }
 impl<T, H> Eq for GcArray<T, H> {}
-
-impl Display for GcArray<Value, ObjHeader> {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "(")?;
-
-    if let Some((last, rest)) = self.split_last() {
-      for item in rest.iter() {
-        write!(f, "{item}, ")?;
-      }
-
-      write!(f, "{last}")?;
-    }
-
-    write!(f, ")")
-  }
-}
 
 impl<T: Debug, H> Debug for GcArray<T, H> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

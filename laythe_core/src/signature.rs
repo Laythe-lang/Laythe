@@ -115,6 +115,7 @@ impl Parameter {
 }
 
 impl Trace for Parameter {
+  #[inline]
   fn trace(&self) {
     self.name.trace()
   }

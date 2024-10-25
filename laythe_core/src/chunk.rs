@@ -89,6 +89,7 @@ impl Chunk {
 }
 
 impl Trace for Chunk {
+  #[inline]
   fn trace(&self) {
     self.instructions.trace();
     self.constants.trace();

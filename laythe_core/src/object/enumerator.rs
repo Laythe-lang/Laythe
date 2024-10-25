@@ -62,6 +62,7 @@ impl fmt::Display for Enumerator {
 }
 
 impl Trace for Enumerator {
+  #[inline]
   fn trace(&self) {
     self.current.trace();
     self.iterator.trace();

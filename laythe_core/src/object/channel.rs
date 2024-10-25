@@ -393,6 +393,7 @@ impl fmt::Debug for Channel {
 }
 
 impl Trace for Channel {
+  #[inline]
   fn trace(&self) {
     self.queue.trace()
   }

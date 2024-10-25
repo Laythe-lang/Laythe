@@ -17,9 +17,12 @@ use std::{
 };
 
 use super::{
-  allocate::AllocObjResult, gc_obj::GcObject, header::ObjHeader, utils::make_array_layout,
+  allocate::AllocObjResult, header::ObjHeader, utils::make_array_layout,
   AllocateObj, GcObjectHandle, Marked, Unmark,
 };
+
+#[cfg(not(feature = "nan_boxing"))]
+use super::gc_obj::GcObject;
 
 /// A non owning reference to a Garbage collector
 /// allocated string. Note this string is the same size
@@ -29,6 +32,7 @@ pub struct GcStr(GcArray<u8, ObjHeader>);
 impl GcStr {
   /// Create a usize from the buffer pointer. This is used
   /// when the value is boxed
+  #[cfg(feature = "nan_boxing")]
   pub fn to_usize(self) -> usize {
     self.0.to_usize()
   }
@@ -36,6 +40,7 @@ impl GcStr {
   /// Degrade this GcStr into the more generic GcObject.
   /// This allows the string to meet the same interface
   /// as the other managed objects
+  #[cfg(not(feature = "nan_boxing"))]
   pub fn degrade(self) -> GcObject {
     self.0.degrade()
   }
@@ -77,6 +82,7 @@ impl Marked for GcStr {
 }
 
 impl Trace for GcStr {
+  #[inline]
   fn trace(&self) {
     self.mark();
   }

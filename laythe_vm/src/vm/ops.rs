@@ -1013,10 +1013,10 @@ impl Vm {
   }
 
   pub(super) unsafe fn op_negate(&mut self) -> ExecutionSignal {
-    let pop = self.fiber.pop();
+    let value = self.fiber.pop();
 
-    if pop.is_num() {
-      self.fiber.push(val!(-pop.to_num()));
+    if value.is_num() {
+      self.fiber.push(val!(-value.to_num()));
       ExecutionSignal::Ok
     } else {
       self.runtime_error_from_str(self.builtin.errors.runtime, "Operand must be a number.")

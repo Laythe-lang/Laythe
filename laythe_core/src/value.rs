@@ -422,6 +422,7 @@ mod unboxed {
   }
 
   impl Trace for Value {
+    #[inline]
     fn trace(&self) {
       if let Value::Obj(obj) = self {
         obj.trace();

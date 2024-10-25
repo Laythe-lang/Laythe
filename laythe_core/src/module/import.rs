@@ -52,6 +52,7 @@ impl Import {
 }
 
 impl Trace for Import {
+  #[inline]
   fn trace(&self) {
     self.package.trace();
     self.path.trace();

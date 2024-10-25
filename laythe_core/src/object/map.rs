@@ -105,7 +105,8 @@ impl<K, V> Default for Map<K, V> {
   }
 }
 
-impl<K: 'static + Trace, V: 'static + Trace> Trace for Map<K, V> {
+impl<K: Trace, V: Trace> Trace for Map<K, V> {
+  #[inline]
   fn trace(&self) {
     self.iter().for_each(|(key, value)| {
       key.trace();
@@ -121,7 +122,7 @@ impl<K: 'static + Trace, V: 'static + Trace> Trace for Map<K, V> {
   }
 }
 
-impl<K: 'static + DebugHeap, V: 'static + DebugHeap> DebugHeap for Map<K, V> {
+impl<K: DebugHeap, V: DebugHeap> DebugHeap for Map<K, V> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_map()
       .entries(

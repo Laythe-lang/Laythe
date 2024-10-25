@@ -158,6 +158,7 @@ impl Marked for InstanceHeader {
 }
 
 impl Trace for InstanceHeader {
+  #[inline]
   fn trace(&self) {
     self.class.trace();
   }

@@ -12,13 +12,25 @@ use super::{
 };
 use crate::{object::ObjectKind, value::Value};
 
+#[cfg(not(feature = "nan_boxing"))]
+use super::gc_obj::GcObject;
+
 pub struct Tuple(GcArray<Value, ObjHeader>);
 
 impl Tuple {
   /// Create a usize from the buffer pointer. This is used
   /// when the value is boxed
+  #[cfg(feature = "nan_boxing")]
   pub fn to_usize(self) -> usize {
     self.0.to_usize()
+  }
+
+  /// Degrade this Tuple into the more generic GcObject.
+  /// This allows the string to meet the same interface
+  /// as the other managed objects
+  #[cfg(not(feature = "nan_boxing"))]
+  pub fn degrade(self) -> GcObject {
+    self.0.degrade()
   }
 
   /// Construct a `Tuple` from `NonNull<u8>`
@@ -67,7 +79,6 @@ impl Trace for Tuple {
     self.0.trace();
   }
 
-  #[inline]
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
     self.0.trace_debug(log);
   }
@@ -108,6 +119,16 @@ impl Debug for Tuple {
 
 impl Display for Tuple {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    Display::fmt(&self, f)
+    write!(f, "(")?;
+
+    if let Some((last, rest)) = self.split_last() {
+      for item in rest.iter() {
+        write!(f, "{item}, ")?;
+      }
+
+      write!(f, "{last}")?;
+    }
+
+    write!(f, ")")
   }
 }

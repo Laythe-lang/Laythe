@@ -15,6 +15,9 @@ use crate::{
   value::{Value, VALUE_NIL},
 };
 
+#[cfg(not(feature = "nan_boxing"))]
+use super::gc_obj::GcObject;
+
 const MAX_FIELD_COUNT: usize = u16::MAX as usize;
 const NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
 
@@ -25,6 +28,14 @@ impl Instance {
   /// when the value is boxed
   pub fn to_usize(self) -> usize {
     self.0.to_usize()
+  }
+
+  /// Degrade this Instance into the more generic GcObject.
+  /// This allows the string to meet the same interface
+  /// as the other managed objects
+  #[cfg(not(feature = "nan_boxing"))]
+  pub fn degrade(self) -> GcObject {
+    GcObject::new(self.0.ptr())
   }
 
   #[inline]
@@ -102,7 +113,6 @@ impl Trace for Instance {
     self.0.trace();
   }
 
-  #[inline]
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
     self.0.trace_debug(log);
   }
@@ -137,13 +147,13 @@ impl Eq for Instance {}
 
 impl Debug for Instance {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    Debug::fmt(&self, f)
+    Debug::fmt(&self.0, f)
   }
 }
 
 impl Display for Instance {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    Display::fmt(&self, f)
+    write!(f, "<instance {} {:p}>", self.class().name(), self)
   }
 }
 
