@@ -2,7 +2,7 @@
 
 ```bash
 echo -1 | sudo tee /proc/sys/kernel/perf_event_paranoid
-cargo flamegraph --bin=laythe <path>
+cargo flamegraph --root --bin=laythe -- <path>
 ```
 
 ## Callgrind
