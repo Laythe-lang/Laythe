@@ -8,8 +8,8 @@ use crate::{
   constants::SCRIPT,
   hooks::GcHooks,
   if_let_obj,
-  managed::{DebugHeap, DebugWrap, GcObj, Instance, ListLocation, Object, Trace},
-  val,
+  managed::{DebugHeap, DebugWrap, GcObj, Instance, List, ListLocation, Object, Trace},
+  match_obj, val,
   value::{Value, VALUE_NIL},
 };
 use std::{fmt, io::Write, mem, ptr};
@@ -155,11 +155,45 @@ impl Fiber {
   #[inline]
   pub fn scan_roots(&mut self) {
     for value in self.stack.iter_mut() {
-      if_let_obj!(ObjectKind::List(list) = (*value) {
+      fn compact_slice(slice: &mut [Value]) {
+        for value in slice {
+          compact_value(value);
+        }
+      }
+
+      fn compact_value(value: &mut Value) {
+        if_let_obj!(ObjectKind::List(list) = (*value) {
+          forward_list(value, list);
+        });
+      }
+
+      fn forward_list(value: &mut Value, list: List) {
         if let ListLocation::Forwarded(gc_list) = list.state() {
           *value = val!(gc_list)
         }
-      });
+      }
+
+      if value.is_obj() {
+        match_obj!((&value.to_obj()) {
+          ObjectKind::List(mut list) => {
+            forward_list(value, list);
+            compact_slice(&mut list);
+          },
+          ObjectKind::Tuple(mut tuple) => {
+            compact_slice(&mut tuple);
+          },
+          ObjectKind::Instance(mut instance) => {
+            compact_slice(&mut instance);
+          },
+          ObjectKind::Map(mut map) => {
+            for (_, value) in map.iter_mut() {
+              compact_value(value);
+            }
+          },
+          _ => (),
+        })
+      }
+
     }
   }
 

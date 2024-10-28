@@ -139,7 +139,7 @@ mod test {
     chunk::Chunk,
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
     list,
-    managed::{Allocator, DebugHeap, GcObj, GcObject, GcStr, NoGc, Trace, TraceRoot},
+    managed::{Allocator, DebugHeap, GcObj, GcStr, NoGc, Trace, TraceRoot},
     match_obj,
     module::{module_class, ImportResult, Module},
     object::{Class, Enumerate, Fun, FunBuilder, LyNative, Native, NativeMetaBuilder},

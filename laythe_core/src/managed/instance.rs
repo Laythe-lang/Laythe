@@ -76,7 +76,7 @@ impl Deref for Instance {
 
   #[inline]
   fn deref(&self) -> &Self::Target {
-    &*self.0
+    &self.0
   }
 }
 

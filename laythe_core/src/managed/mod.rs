@@ -82,7 +82,7 @@ macro_rules! match_obj {
     {
       use $crate::to_obj_kind;
 
-      let object: &GcObject = $scrutinee;
+      let object: &$crate::managed::GcObject = $scrutinee;
       match object.kind() {
         $(ObjectKind::$obj_kind => {
           let $p = to_obj_kind!(object, $obj_kind);

@@ -47,7 +47,7 @@ impl Deref for Tuple {
 
   #[inline]
   fn deref(&self) -> &Self::Target {
-    &*self.0
+    &self.0
   }
 }
 

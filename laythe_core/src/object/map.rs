@@ -45,6 +45,10 @@ impl<K, V> Map<K, V> {
     self.0.iter()
   }
 
+  pub fn iter_mut(&mut self) -> hash_map::IterMut<'_, K, V> {
+    self.0.iter_mut()
+  }
+
   pub fn keys(&self) -> hash_map::Keys<'_, K, V> {
     self.0.keys()
   }

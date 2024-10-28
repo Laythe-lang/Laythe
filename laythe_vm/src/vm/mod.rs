@@ -235,9 +235,8 @@ impl Vm {
           let file_id = self.files.upsert(managed_path, source_content);
           self.pop_roots(2);
 
-          match self.interpret(true, main_module, &source, file_id) {
-            ExecutionResult::Exit(code) => return (code as i32, VmExit::Ok),
-            _ => (),
+          if let ExecutionResult::Exit(code) = self.interpret(true, main_module, &source, file_id) {
+            return (code as i32, VmExit::Ok);
           }
         },
         Err(error) => panic!("{}", error),

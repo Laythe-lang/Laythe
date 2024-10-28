@@ -2,7 +2,7 @@ use crate::native;
 use laythe_core::{
   constants::OBJECT,
   hooks::{GcHooks, Hooks},
-  managed::{GcObj, GcObject, Trace},
+  managed::{GcObj, Trace},
   match_obj,
   object::{Class, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
