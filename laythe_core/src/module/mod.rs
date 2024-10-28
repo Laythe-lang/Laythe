@@ -231,6 +231,7 @@ impl Module {
 }
 
 impl Trace for Module {
+  #[inline]
   fn trace(&self) {
     self.module_class.trace();
 

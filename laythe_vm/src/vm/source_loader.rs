@@ -9,8 +9,7 @@ use bumpalo::Bump;
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
   hooks::GcHooks,
-  managed::{Gc, GcObj, GcStr},
-  memory::Allocator,
+  managed::{Allocator, Gc, GcObj, GcStr},
   module::{Import, ImportError, Module, ModuleInsertError, Package},
   object::{Class, Fun},
 };

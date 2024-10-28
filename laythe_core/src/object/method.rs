@@ -45,6 +45,7 @@ impl fmt::Debug for Method {
 }
 
 impl Trace for Method {
+  #[inline]
   fn trace(&self) {
     self.receiver.trace();
     self.method.trace();

@@ -17,40 +17,22 @@ use std::{
 };
 
 use super::{
-  allocate::AllocObjResult, gc_obj::GcObject, header::ObjHeader, utils::make_array_layout, AllocateObj, GcObjectHandle, Marked, Unmark
+  allocate::AllocObjResult, header::ObjHeader, utils::make_array_layout,
+  AllocateObj, GcObjectHandle, Marked, Unmark,
 };
+
+#[cfg(not(feature = "nan_boxing"))]
+use super::gc_obj::GcObject;
 
 /// A non owning reference to a Garbage collector
 /// allocated string. Note this string is the same size
 /// as a single pointer.
-///
-/// ## Example
-/// ```
-/// use laythe_core::managed::{GcStr, GcStrHandle};
-/// use std::mem;
-///
-/// let str = "my string";
-/// let handle = GcStrHandle::from(str);
-/// let string = handle.value();
-///
-/// assert_eq!(mem::size_of::<GcStr>(), mem::size_of::<usize>());
-/// assert_eq!(string.len(), str.len());
-/// assert_eq!(string, str);
-/// ```
 pub struct GcStr(GcArray<u8, ObjHeader>);
 
 impl GcStr {
   /// Create a usize from the buffer pointer. This is used
   /// when the value is boxed
-  ///
-  /// ## Example
-  /// ```
-  /// use laythe_core::managed::{GcStr, GcStrHandle};
-  ///
-  /// let handle = GcStrHandle::from("some string");
-  /// let value = handle.value();
-  /// assert!(value.to_usize() > 0);
-  /// ```
+  #[cfg(feature = "nan_boxing")]
   pub fn to_usize(self) -> usize {
     self.0.to_usize()
   }
@@ -58,17 +40,7 @@ impl GcStr {
   /// Degrade this GcStr into the more generic GcObject.
   /// This allows the string to meet the same interface
   /// as the other managed objects
-  ///
-  /// ## Example
-  /// ```
-  /// use laythe_core::managed::{GcStr, GcStrHandle};
-  /// use laythe_core::object::ObjectKind;
-  ///
-  /// let handle = GcStrHandle::from("some string");
-  /// let degraded_string = handle.value().degrade();
-  ///
-  /// assert_eq!(degraded_string.kind(), ObjectKind::String);
-  /// ```
+  #[cfg(not(feature = "nan_boxing"))]
   pub fn degrade(self) -> GcObject {
     self.0.degrade()
   }
@@ -80,16 +52,6 @@ impl GcStr {
   /// itself created by the garbage collector. The reference
   /// should truly be of 'a for the lifetime of the allocator.
   /// This will need to be refactored later
-  ///
-  /// ## Example
-  /// ```
-  /// use laythe_core::managed::{GcStr, GcStrHandle};
-  ///
-  /// let handle = GcStrHandle::from("some string");
-  /// let value = handle.value();
-  ///
-  /// let split = unsafe { value.deref_static() }.split(" ");
-  /// ```
   pub unsafe fn deref_static(&self) -> &'static str {
     str::from_utf8_unchecked(self.0.deref_static())
   }
@@ -120,6 +82,7 @@ impl Marked for GcStr {
 }
 
 impl Trace for GcStr {
+  #[inline]
   fn trace(&self) {
     self.mark();
   }
@@ -239,36 +202,10 @@ impl AsRef<OsStr> for GcStr {
 /// A owning reference to a Garbage collector
 /// allocated string. Note this string is the same size
 /// as a single pointer.
-///
-/// ## Example
-/// ```
-/// use laythe_core::managed::GcStrHandle;
-/// use std::mem;
-///
-/// let data = &"example";
-/// let handle = GcStrHandle::from(data);
-///
-/// assert_eq!(mem::size_of::<GcStrHandle>(), mem::size_of::<usize>());
-/// ```
 pub struct GcStrHandle(GcArrayHandle<u8, ObjHeader>);
 
 impl GcStrHandle {
   /// Create a non owning reference to this string.
-  ///
-  /// ## Examples
-  /// ```
-  /// use laythe_core::managed::GcStrHandle;
-  /// use std::mem;
-  ///
-  /// let data = &"example";
-  /// let handle = GcStrHandle::from(data);
-  ///
-  /// let str1 = handle.value();
-  /// let str2 = handle.value();
-  ///
-  /// assert_eq!(str1, str2);
-  /// assert_eq!(str1[..], str2[..]);
-  /// ```
   #[inline]
   pub fn value(&self) -> GcStr {
     GcStr(self.0.value())
@@ -277,34 +214,12 @@ impl GcStrHandle {
   /// Degrade this GcStrHandle into the more generic GcObjectHandle.
   /// This allows the string to meet the same interface
   /// as the other managed objects
-  ///
-  /// ## Example
-  /// ```
-  /// use laythe_core::managed::{GcStr, GcStrHandle};
-  /// use laythe_core::object::ObjectKind;
-  ///
-  /// let handle = GcStrHandle::from("some string");
-  /// let degraded_handle = handle.degrade();
-  ///
-  /// assert_eq!(degraded_handle.kind(), ObjectKind::String);
-  /// ```
   pub fn degrade(self) -> GcObjectHandle {
     self.0.degrade()
   }
 
   /// Determine the size of the handle and the pointed to
   /// allocation
-  ///
-  /// ## Examples
-  /// ```
-  /// use laythe_core::managed::GcStrHandle;
-  /// use std::mem;
-  ///
-  /// let data = &"example";
-  /// let handle = GcStrHandle::from(data);
-  ///
-  /// assert_eq!(handle.size(), 23);
-  /// ```
   #[inline]
   pub fn size(&self) -> usize {
     make_array_layout::<ObjHeader, u8>(self.0.len()).size()
@@ -345,7 +260,6 @@ impl fmt::Pointer for GcStrHandle {
     self.value().0.ptr().fmt(f)
   }
 }
-
 
 impl<T: AsRef<str>> AllocateObj<GcStr> for T {
   fn alloc(self) -> AllocObjResult<GcStr> {

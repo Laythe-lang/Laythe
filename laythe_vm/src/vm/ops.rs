@@ -1,5 +1,6 @@
 use super::{source_loader::ImportResult, ExecutionSignal, Vm};
 use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
+use laythe_core::object::Fiber;
 use laythe_core::{
   captures::Captures,
   hooks::{GcHooks, Hooks},
@@ -17,7 +18,6 @@ use laythe_core::{
   value::{Value, VALUE_NIL, VALUE_TRUE},
   Call, LyError,
 };
-use laythe_core::{managed::GcObject, object::Fiber};
 use std::{cmp::Ordering, mem};
 
 #[cfg(debug_assertions)]
@@ -1013,10 +1013,10 @@ impl Vm {
   }
 
   pub(super) unsafe fn op_negate(&mut self) -> ExecutionSignal {
-    let pop = self.fiber.pop();
+    let value = self.fiber.pop();
 
-    if pop.is_num() {
-      self.fiber.push(val!(-pop.to_num()));
+    if value.is_num() {
+      self.fiber.push(val!(-value.to_num()));
       ExecutionSignal::Ok
     } else {
       self.runtime_error_from_str(self.builtin.errors.runtime, "Operand must be a number.")

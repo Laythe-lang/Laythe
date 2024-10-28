@@ -70,6 +70,7 @@ impl DebugHeap for CallFrame {
 }
 
 impl Trace for CallFrame {
+  #[inline]
   fn trace(&self) {
     self.fun.trace();
     self.captures.trace();

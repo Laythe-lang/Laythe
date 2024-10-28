@@ -11,8 +11,8 @@ use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
   constants::OBJECT,
   constants::{ITER_VAR, SELF, SUPER, UNINITIALIZED_VAR},
+  managed::Allocator,
   managed::Gc,
-  memory::Allocator,
   module::{self, ImportError},
   object::FunKind,
 };
@@ -89,7 +89,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
   /// use laythe_core::{
   ///   module::Module,
   ///   object::Class,
-  ///   memory::{NO_GC, Allocator},
+  ///   managed::{NO_GC, Allocator},
   /// };
   /// use std::path::PathBuf;
   ///

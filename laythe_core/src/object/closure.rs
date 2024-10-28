@@ -68,6 +68,7 @@ impl fmt::Debug for Closure {
 }
 
 impl Trace for Closure {
+  #[inline]
   fn trace(&self) {
     self.fun.trace();
     self.captures.trace();

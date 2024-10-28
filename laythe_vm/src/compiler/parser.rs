@@ -101,7 +101,7 @@ impl<'a> Parser<'a> {
   ///   source::{Source, VM_FILE_TEST_ID},
   /// };
   /// use laythe_native::stdio::StdioNative;
-  /// use laythe_core::memory::{Allocator, NO_GC};
+  /// use laythe_core::managed::{Allocator, NO_GC};
   ///
   /// // an expression
   /// let mut gc = Allocator::default();
@@ -2323,7 +2323,7 @@ mod test {
 
   use super::super::ir::{AstPrint, Visitor};
   use super::*;
-  use laythe_core::memory::{Allocator, NO_GC};
+  use laythe_core::managed::{Allocator, NO_GC};
 
   fn test(src: &str) {
     let mut gc = Allocator::default();

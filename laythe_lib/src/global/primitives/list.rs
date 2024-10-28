@@ -185,6 +185,7 @@ struct ListStr {
   error: Value,
 }
 
+// native!(ListStr, LIST_STR);
 impl ListStr {
   fn native(hooks: &GcHooks, method_name: GcStr, error: Value) -> GcObj<Native> {
     debug_assert!(error.is_obj_kind(ObjectKind::Class));
@@ -271,6 +272,11 @@ impl LyNative for ListStr {
     }
 
     buf.push(']');
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
     Call::Ok(val!(hooks.manage_str(buf)))
   }
 }
@@ -295,6 +301,10 @@ impl LyNative for ListSlice {
 
     let start_index = start_index.max(0);
     let end_index = end_index.min(list.len());
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
 
     if start_index <= end_index {
       Call::Ok(val!(hooks.manage_obj(list!(&list[start_index..end_index]))))
@@ -362,6 +372,10 @@ impl LyNative for ListIndexGet {
     let index = args[1].to_num();
     let list = args[0].to_obj().to_list();
 
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
     match determine_index(&list, index) {
       Ok(index) => Ok(list[index]),
       Err(message) => self.call_error(hooks, message),
@@ -375,6 +389,10 @@ impl LyNative for ListIndexSet {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let index = args[2].to_num();
     let mut list = args[0].to_obj().to_list();
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
 
     match determine_index(&list, index) {
       Ok(index) => {
@@ -402,6 +420,11 @@ impl LyNative for ListPush {
     for arg in &args[1..] {
       list.push(*arg, &hooks.as_gc());
     }
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
     Call::Ok(VALUE_NIL)
   }
 }
@@ -409,7 +432,13 @@ impl LyNative for ListPush {
 native!(ListPop, LIST_POP);
 
 impl LyNative for ListPop {
-  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let list = args[0].to_obj().to_list();
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
     match args[0].to_obj().to_list().pop() {
       Some(value) => Call::Ok(value),
       None => Call::Ok(VALUE_NIL),
@@ -426,6 +455,10 @@ impl LyNative for ListRemove {
 
     if index < 0.0 {
       return self.call_error(hooks, format!("Cannot remove at negative index {index}."));
+    }
+
+    if list.has_moved() {
+      hooks.scan_roots();
     }
 
     match list.remove(index as usize) {
@@ -445,9 +478,14 @@ impl LyNative for ListRemove {
 native!(ListIndex, LIST_INDEX);
 
 impl LyNative for ListIndex {
-  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let item = args[1];
+    let list = args[0].to_obj().to_list();
     let index = args[0].to_obj().to_list().iter().position(|x| *x == item);
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
 
     Call::Ok(index.map(|i| val!(i as f64)).unwrap_or(VALUE_NIL))
   }
@@ -464,7 +502,13 @@ impl LyNative for ListInsert {
       return self.call_error(hooks, format!("Cannot insert at index {index}"));
     }
 
-    match list.insert(index as usize, args[2], &hooks.as_gc()) {
+    let result = list.insert(index as usize, args[2], &hooks.as_gc());
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
+    match result {
       IndexedResult::Ok(_) => Call::Ok(VALUE_NIL),
       IndexedResult::OutOfBounds => self.call_error(
         hooks,
@@ -481,9 +525,14 @@ impl LyNative for ListInsert {
 native!(ListClear, LIST_CLEAR);
 
 impl LyNative for ListClear {
-  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let mut list = args[0].to_obj().to_list();
     while list.pop().is_some() {}
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
     Call::Ok(VALUE_NIL)
   }
 }
@@ -491,7 +540,13 @@ impl LyNative for ListClear {
 native!(ListHas, LIST_HAS);
 
 impl LyNative for ListHas {
-  fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let list = args[0].to_obj().to_list();
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
     Call::Ok(val!(args[0].to_obj().to_list().contains(&args[1])))
   }
 }
@@ -500,7 +555,13 @@ native!(ListIter, LIST_ITER);
 
 impl LyNative for ListIter {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
-    let inner_iter: Box<dyn Enumerate> = Box::new(ListIterator::new(args[0].to_obj().to_list()));
+    let list = args[0].to_obj().to_list();
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
+    let inner_iter: Box<dyn Enumerate> = Box::new(ListIterator::new(list));
     let iter = Enumerator::new(inner_iter);
     let iter = hooks.manage_obj(iter);
 
@@ -514,6 +575,11 @@ impl LyNative for ListRev {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let list = args[0].to_obj().to_list();
     let rev: Vec<Value> = list.iter().cloned().rev().collect();
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
     Call::Ok(val!(hooks.manage_obj(list!(&*rev))))
   }
 }
@@ -524,6 +590,11 @@ impl LyNative for ListSort {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let comparator = args[1];
     let list = args[0].to_obj().to_list();
+
+    if list.has_moved() {
+      hooks.scan_roots();
+    }
+
     let mut list = hooks.manage_obj(list!(&*list));
     hooks.push_root(list);
 
@@ -559,6 +630,7 @@ impl LyNative for ListSort {
     });
 
     hooks.pop_roots(1);
+
     Call::Ok(val!(list))
   }
 }
@@ -701,7 +773,7 @@ mod test {
   }
 
   mod str {
-    use laythe_core::memory::NO_GC;
+    use laythe_core::managed::NO_GC;
 
     use super::*;
     use crate::support::{test_error_class, test_native_dependencies, MockedContext};
@@ -739,7 +811,6 @@ mod test {
     use super::*;
     use crate::support::{test_error_class, MockedContext};
     use laythe_core::hooks::Hooks;
-
 
     #[test]
     fn call() {
@@ -978,7 +1049,7 @@ mod test {
         _ => assert!(false),
       }
 
-      let result = list_clear.call(&mut hooks,  &[this]);
+      let result = list_clear.call(&mut hooks, &[this]);
       match result {
         Call::Ok(r) => {
           assert!(r.is_nil());
@@ -1003,7 +1074,7 @@ mod test {
       let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
       let this = val!(list);
 
-      let result = list_has.call(&mut hooks,  &[this, val!(10.0)]);
+      let result = list_has.call(&mut hooks, &[this, val!(10.0)]);
       match result {
         Call::Ok(r) => {
           assert!(r.to_bool());

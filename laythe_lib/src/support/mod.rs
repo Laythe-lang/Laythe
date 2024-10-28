@@ -139,9 +139,8 @@ mod test {
     chunk::Chunk,
     hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
     list,
-    managed::{DebugHeap, GcObj, GcObject, GcStr, Trace, TraceRoot},
+    managed::{Allocator, DebugHeap, GcObj, GcStr, NoGc, Trace, TraceRoot},
     match_obj,
-    memory::{Allocator, NoGc},
     module::{module_class, ImportResult, Module},
     object::{Class, Enumerate, Fun, FunBuilder, LyNative, Native, NativeMetaBuilder},
     signature::{Arity, ParameterBuilder, ParameterKind},
@@ -346,6 +345,8 @@ mod test {
 
       b.primitives.for_value(this)
     }
+
+    fn scan_roots(&mut self) {}
   }
 
   impl TraceRoot for MockedContext {

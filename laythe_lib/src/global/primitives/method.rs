@@ -99,9 +99,7 @@ mod test {
     use super::*;
     use crate::support::{test_fun, MockedContext};
     use laythe_core::{
-      captures::Captures,
-      memory::NO_GC,
-      object::{Class, Closure, Method},
+      captures::Captures, managed::NO_GC, object::{Class, Closure, Method}
     };
 
     #[test]

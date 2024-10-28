@@ -50,6 +50,7 @@ impl fmt::Debug for Package {
 }
 
 impl Trace for Package {
+  #[inline]
   fn trace(&self) {
     self.name.trace();
     self.root_module.trace();

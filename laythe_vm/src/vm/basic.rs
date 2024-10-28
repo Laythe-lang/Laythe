@@ -4,7 +4,7 @@ use core::fmt;
 use laythe_core::{
   captures::Captures,
   managed::{Allocate, AllocateObj, DebugHeap, GcObj, GcStr, Trace},
-  object::{Class, Fiber, Fun},
+  object::{Class, Fiber, FiberPopResult, Fun},
   value::Value,
 };
 use std::{convert::TryInto, ptr};
@@ -148,25 +148,25 @@ impl Vm {
   /// pointer and current function
   pub(super) unsafe fn pop_frame(&mut self) -> Option<ExecutionSignal> {
     match self.fiber.pop_frame() {
-      Some(current_fun) => match current_fun {
-        Some(current_fun) => {
-          self.current_fun = current_fun;
-          self.load_ip();
-          None
-        },
-        None => {
-          if self.fiber == self.main_fiber {
-            Some(ExecutionSignal::Exit)
-          } else {
-            if let Some(mut fiber) = Fiber::complete(self.fiber) {
-              fiber.unblock();
-              self.fiber_queue.push_back(fiber);
-            }
-            Some(ExecutionSignal::ContextSwitch)
-          }
-        },
+      FiberPopResult::Ok(current_fun) => {
+        self.current_fun = current_fun;
+        self.load_ip();
+        None
       },
-      None => self.internal_error("Compilation failure attempted to pop last frame"),
+      FiberPopResult::Emptied => {
+        if self.fiber == self.main_fiber {
+          Some(ExecutionSignal::Exit)
+        } else {
+          if let Some(mut fiber) = Fiber::complete(self.fiber) {
+            fiber.unblock();
+            self.fiber_queue.push_back(fiber);
+          }
+          Some(ExecutionSignal::ContextSwitch)
+        }
+      },
+      FiberPopResult::Empty => {
+        self.internal_error("Compilation failure attempted to pop last frame")
+      },
     }
   }
 }

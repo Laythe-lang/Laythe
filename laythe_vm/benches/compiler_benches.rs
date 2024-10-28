@@ -4,7 +4,7 @@ use laythe_core::module::Module;
 use laythe_core::{
   hooks::{GcHooks, NoContext},
   managed::GcStr,
-  memory::{Allocator, NO_GC},
+  managed::{Allocator, NO_GC},
   utils::IdEmitter,
 };
 use laythe_lib::create_std_lib;

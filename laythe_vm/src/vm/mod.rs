@@ -19,8 +19,7 @@ use laythe_core::{
   captures::Captures,
   constants::{PLACEHOLDER_NAME, SELF},
   hooks::{GcHooks, HookContext, NoContext},
-  managed::{Gc, GcObj, GcStr},
-  memory::Allocator,
+  managed::{Allocator, Gc, GcObj, GcStr},
   module::{Module, Package},
   object::{Fiber, Fun, Map},
   utils::IdEmitter,
@@ -236,7 +235,9 @@ impl Vm {
           let file_id = self.files.upsert(managed_path, source_content);
           self.pop_roots(2);
 
-          self.interpret(true, main_module, &source, file_id);
+          if let ExecutionResult::Exit(code) = self.interpret(true, main_module, &source, file_id) {
+            return (code as i32, VmExit::Ok);
+          }
         },
         Err(error) => panic!("{}", error),
       }

@@ -18,7 +18,6 @@ use laythe_core::{
   Call, LyError, LyResult,
 };
 use std::io::Write;
-use std::slice::Iter;
 
 use super::{
   class_inheritance,
@@ -365,15 +364,13 @@ impl LyNative for TupleCollect {
 struct TupleIterator {
   tuple: Tuple,
   current: Value,
-  iter: Iter<'static, Value>,
+  index: usize,
 }
 
 impl TupleIterator {
   fn new(tuple: Tuple) -> Self {
-    let iter = unsafe { tuple.deref_static().iter() };
-
     Self {
-      iter,
+      index: 0,
       current: VALUE_NIL,
       tuple,
     }
@@ -390,15 +387,13 @@ impl Enumerate for TupleIterator {
   }
 
   fn next(&mut self, _hooks: &mut Hooks) -> Call {
-    match self.iter.next() {
-      Some(value) => {
-        self.current = *value;
-        Call::Ok(val!(true))
-      },
-      None => {
-        self.current = VALUE_NIL;
-        Call::Ok(val!(false))
-      },
+    if self.index < self.tuple.len() {
+      self.current = self.tuple[self.index];
+      self.index += 1;
+      Call::Ok(val!(true))
+    } else {
+      self.current = VALUE_NIL;
+      Call::Ok(val!(false))
     }
   }
 
@@ -461,7 +456,7 @@ mod test {
   }
 
   mod str {
-    use laythe_core::memory::NO_GC;
+    use laythe_core::managed::NO_GC;
 
     use super::*;
     use crate::support::{test_error_class, test_native_dependencies, MockedContext};

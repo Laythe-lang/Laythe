@@ -156,7 +156,7 @@ impl VmFiles {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::memory::{Allocator, NO_GC};
+  /// use laythe_core::managed::{Allocator, NO_GC};
   /// use laythe_vm::source::VmFiles;
   ///
   /// let mut alloc = Allocator::default();
@@ -185,7 +185,7 @@ impl VmFiles {
         };
 
         VmFileId(*id)
-      }
+      },
       None => {
         self.files.push(VmFile {
           name,
@@ -196,7 +196,7 @@ impl VmFiles {
         let id = self.files.len() - 1;
         self.name_map.insert(name, id);
         VmFileId(id)
-      }
+      },
     }
   }
 
@@ -204,7 +204,7 @@ impl VmFiles {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::memory::{Allocator, NO_GC};
+  /// use laythe_core::managed::{Allocator, NO_GC};
   /// use laythe_vm::source::{VmFiles, LineOffsets};
   ///
   /// let mut alloc = Allocator::default();
@@ -337,7 +337,7 @@ mod test {
 
   mod vm_files {
     use super::*;
-    use laythe_core::memory::{Allocator, NO_GC};
+    use laythe_core::managed::{Allocator, NO_GC};
 
     #[test]
     fn get() {

@@ -1,7 +1,7 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use laythe_core::{
   managed::GcStr,
-  memory::{Allocator, NO_GC},
+  managed::{Allocator, NO_GC},
 };
 use laythe_vm::{compiler::Parser, source::{Source, VM_FILE_TEST_ID}};
 use std::fs::File;

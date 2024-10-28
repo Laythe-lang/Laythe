@@ -43,6 +43,7 @@ impl Captures {
 }
 
 impl Trace for Captures {
+  #[inline]
   fn trace(&self) {
     self.0.trace()
   }

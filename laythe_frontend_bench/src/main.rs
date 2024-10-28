@@ -1,7 +1,7 @@
 use bumpalo::Bump;
 use laythe_core::{
   hooks::{GcHooks, NoContext},
-  memory::{Allocator, NO_GC},
+  managed::{Allocator, NO_GC},
   module::Module,
   utils::IdEmitter,
 };

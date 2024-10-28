@@ -190,6 +190,7 @@ impl fmt::Debug for Class {
 }
 
 impl Trace for Class {
+  #[inline]
   fn trace(&self) {
     self.name.trace();
 

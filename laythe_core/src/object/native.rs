@@ -103,6 +103,7 @@ pub struct NativeMeta {
 }
 
 impl Trace for NativeMeta {
+  #[inline]
   fn trace(&self) {
     self.name.trace();
     self.signature.trace();
@@ -301,18 +302,4 @@ impl Object for Native {
 pub trait LyNative: Trace {
   /// Call the native functions
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call;
-}
-
-impl Trace for Box<dyn LyNative> {
-  #[inline]
-  fn trace(&self) {
-    let inner: &dyn LyNative = &**self;
-    inner.trace();
-  }
-
-  #[inline]
-  fn trace_debug(&self, log: &mut dyn Write) {
-    let inner: &dyn LyNative = &**self;
-    inner.trace_debug(log);
-  }
 }

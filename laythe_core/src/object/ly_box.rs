@@ -32,6 +32,7 @@ impl Display for LyBox {
 }
 
 impl Trace for LyBox {
+  #[inline]
   fn trace(&self) {
     self.value.trace();
   }

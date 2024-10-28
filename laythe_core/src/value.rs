@@ -19,6 +19,8 @@ macro_rules! val {
 #[macro_export]
 macro_rules! if_let_obj {
   (ObjectKind::$obj_kind:ident($p:pat) = ($v:expr) $b:block) => {{
+    use $crate::to_obj_kind;
+
     let val: Value = $v;
     if val.is_obj() {
       let obj = val.to_obj();
@@ -30,6 +32,8 @@ macro_rules! if_let_obj {
     }
   }};
   (ObjectKind::$obj_kind:ident(mut $p:pat) = ($v:expr) $b:block) => {{
+    use $crate::to_obj_kind;
+
     let val: Value = $v;
     if val.is_obj() {
       let obj = val.to_obj();
@@ -41,6 +45,8 @@ macro_rules! if_let_obj {
     }
   }};
   (ObjectKind::$obj_kind:ident($p:pat) = ($v:expr) $b1:block else $b2:block) => {{
+    use $crate::to_obj_kind;
+
     let val: Value = $v;
     if val.is_obj() {
       let obj = val.to_obj();
@@ -52,6 +58,8 @@ macro_rules! if_let_obj {
     } else $b2
   }};
   (ObjectKind::$obj_kind:ident(mut $p:pat) = ($v:expr) $b1:block else $b2:block) => {{
+    use $crate::to_obj_kind;
+
     let val: Value = $v;
     if val.is_obj() {
       let obj = val.to_obj();
@@ -414,6 +422,7 @@ mod unboxed {
   }
 
   impl Trace for Value {
+    #[inline]
     fn trace(&self) {
       if let Value::Obj(obj) = self {
         obj.trace();
@@ -810,7 +819,7 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
-    captures::Captures, hooks::{GcHooks, NoContext}, list, managed::{Gc, GcObj, GcStr}, memory::{Allocator, NO_GC}, module::Module, object::{Class, Closure, Fun, Map, ObjectKind}
+    captures::Captures, hooks::{GcHooks, NoContext}, list, managed::{Allocator, Gc, GcObj, GcStr, NO_GC}, module::Module, object::{Class, Closure, Fun, Map, ObjectKind}
   };
 
   const VALUE_VARIANTS: [ValueKind; 4] = [

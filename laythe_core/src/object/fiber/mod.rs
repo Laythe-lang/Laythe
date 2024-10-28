@@ -7,8 +7,9 @@ use crate::{
   captures::Captures,
   constants::SCRIPT,
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, GcObj, Instance, Object, Trace},
-  val,
+  if_let_obj,
+  managed::{DebugHeap, DebugWrap, GcObj, Instance, List, ListLocation, Object, Trace},
+  match_obj, val,
   value::{Value, VALUE_NIL},
 };
 use std::{fmt, io::Write, mem, ptr};
@@ -22,6 +23,12 @@ enum FiberState {
   Pending,
   Blocked,
   Complete,
+}
+
+pub enum FiberPopResult {
+  Empty,
+  Emptied,
+  Ok(GcObj<Fun>),
 }
 
 #[derive(Debug)]
@@ -143,6 +150,51 @@ impl Fiber {
   #[inline]
   pub fn frames(&self) -> &[CallFrame] {
     &self.frames
+  }
+
+  #[inline]
+  pub fn scan_roots(&mut self) {
+    for value in self.stack.iter_mut() {
+      fn compact_slice(slice: &mut [Value]) {
+        for value in slice {
+          compact_value(value);
+        }
+      }
+
+      fn compact_value(value: &mut Value) {
+        if_let_obj!(ObjectKind::List(list) = (*value) {
+          forward_list(value, list);
+        });
+      }
+
+      fn forward_list(value: &mut Value, list: List) {
+        if let ListLocation::Forwarded(gc_list) = list.state() {
+          *value = val!(gc_list)
+        }
+      }
+
+      if value.is_obj() {
+        match_obj!((&value.to_obj()) {
+          ObjectKind::List(mut list) => {
+            forward_list(value, list);
+            compact_slice(&mut list);
+          },
+          ObjectKind::Tuple(mut tuple) => {
+            compact_slice(&mut tuple);
+          },
+          ObjectKind::Instance(mut instance) => {
+            compact_slice(&mut instance);
+          },
+          ObjectKind::Map(mut map) => {
+            for (_, value) in map.iter_mut() {
+              compact_value(value);
+            }
+          },
+          _ => (),
+        })
+      }
+
+    }
   }
 
   /// Get the current number of call frames on this fiber
@@ -457,6 +509,7 @@ impl Fiber {
   }
 
   /// Push a frame onto the call stack
+  #[inline]
   pub fn push_frame(&mut self, fun: GcObj<Fun>, captures: Captures, arg_count: usize) {
     unsafe {
       self.ensure_stack(fun.max_slots());
@@ -474,16 +527,22 @@ impl Fiber {
   }
 
   /// Pop a frame off the call stack
-  pub fn pop_frame(&mut self) -> Option<Option<GcObj<Fun>>> {
-    if self.frames.is_empty() {
-      return None;
-    }
+  #[inline]
+  pub fn pop_frame(&mut self) -> FiberPopResult {
+    // Check if frame is empty
+    let len = self.frames.len();
+    match len {
+      0 => FiberPopResult::Empty,
+      1 => {
+        self.stack_top = self.frame().stack_start();
+        self.frame = ptr::null_mut();
+        self.frames.pop();
 
-    self.stack_top = self.frame().stack_start();
+        FiberPopResult::Emptied
+      },
+      _ => {
+        self.stack_top = self.frame().stack_start();
 
-    self.frames.pop();
-    Some(match self.frames.last() {
-      Some(frame) => {
         unsafe {
           self.frame = self.frame.offset(-1);
         }
@@ -491,13 +550,10 @@ impl Fiber {
         #[cfg(debug_assertions)]
         self.assert_frame_inbounds();
 
-        Some(frame.fun())
+        self.frames.pop();
+        FiberPopResult::Ok(self.frame().fun())
       },
-      None => {
-        self.frame = ptr::null_mut();
-        None
-      },
-    })
+    }
   }
 
   /// Attempt to create a new fiber using the most recent call frame
@@ -789,6 +845,7 @@ impl DebugHeap for Fiber {
 }
 
 impl Trace for Fiber {
+  #[inline]
   fn trace(&self) {
     unsafe {
       let start = self.stack.as_ptr();
@@ -1585,6 +1642,8 @@ mod test {
       .build(&hooks)
       .expect("Expected to build");
 
+    let og_fun = fiber.frame().fun();
+
     unsafe {
       fiber.push(VALUE_NIL);
       fiber.push(val!(fun));
@@ -1593,15 +1652,33 @@ mod test {
     }
 
     fiber.push_frame(fun, captures, 2);
-    let popped_frame = fiber.pop_frame().unwrap().unwrap();
 
-    assert_ne!(popped_frame, fun);
+    match fiber.pop_frame() {
+      FiberPopResult::Ok(popped_fun) => {
+        assert_eq!(og_fun, popped_fun);
 
-    let slice = fiber.frame_stack();
+        let slice = fiber.frame_stack();
 
-    assert_eq!(slice.len(), 2);
-    assert_eq!(slice[0], val!(fiber.frame().fun()));
-    assert_eq!(slice[1], VALUE_NIL);
+        assert_eq!(slice.len(), 2);
+        assert_eq!(slice[0], val!(fiber.frame().fun()));
+        assert_eq!(slice[1], VALUE_NIL);
+      },
+      _ => assert!(false),
+    };
+
+    match fiber.pop_frame() {
+      FiberPopResult::Emptied => {
+        assert!(true);
+      },
+      _ => assert!(false),
+    }
+
+    match fiber.pop_frame() {
+      FiberPopResult::Empty => {
+        assert!(true);
+      },
+      _ => assert!(false),
+    }
   }
 
   #[test]

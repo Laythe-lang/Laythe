@@ -18,9 +18,6 @@ use std::{
 
 pub type List = GcList<Value, ObjHeader>;
 
-/// A dummy array so we can get a slice to nothing for free
-const DUMMY_ARRAY: [Value; 0] = [];
-
 /// the bit position
 const BIT_POSITION: u32 = usize::BITS - 1;
 const TOP_BIT: usize = 1 << BIT_POSITION;
@@ -39,32 +36,36 @@ pub fn strip_msb(value: usize) -> usize {
 }
 
 /// A structure used to construct a list via the allocator
-pub struct ListBuilder<'a> {
+pub struct ListBuilder<'a, T> {
   /// The source slice from which the list is copied from
-  slice: &'a [Value],
+  slice: &'a [T],
 
   /// The requested capacity of the list
   cap: usize,
 }
 
-impl<'a> ListBuilder<'a> {
+/// A dummy array so we can get a slice to nothing for free
+
+impl<'a, T> ListBuilder<'a, T> {
   /// Create a list builder with a dummy slice and capacity
   pub fn cap_only(cap: usize) -> Self {
+    let empty_slice: &'a [T] = &[];
+
     Self {
-      slice: &DUMMY_ARRAY,
+      slice: empty_slice,
       cap,
     }
   }
 
   /// Create a list builder with a slice and capacity
-  pub fn new(slice: &'a [Value], cap: usize) -> Self {
+  pub fn new(slice: &'a [T], cap: usize) -> Self {
     assert!(slice.len() <= cap);
 
     Self { slice, cap }
   }
 
   /// The underlying slice for the builder
-  pub fn slice(&self) -> &[Value] {
+  pub fn slice(&self) -> &[T] {
     self.slice
   }
 
@@ -74,10 +75,10 @@ impl<'a> ListBuilder<'a> {
   }
 }
 
-/// The state of the list
-enum ListState<T, H> {
+/// The location of this list
+pub enum ListLocation<T, H> {
   /// The list is in it's default state which returns it's capacity
-  Default(usize),
+  Here(usize),
 
   /// The list has been forwarded to a new location
   Forwarded(GcList<T, H>),
@@ -112,32 +113,8 @@ impl<T, H> GcList<T, H> {
   #[inline]
   pub fn len(&self) -> usize {
     match self.state() {
-      ListState::Default(_) => unsafe { self.read_len() },
-      ListState::Forwarded(gc_list) => gc_list.len(),
-    }
-  }
-
-  /// Retrieve the capacity from this list
-  #[inline]
-  pub fn cap(&self) -> usize {
-    match self.state() {
-      ListState::Default(cap) => cap,
-      ListState::Forwarded(gc_list) => gc_list.cap(),
-    }
-  }
-
-  /// Is this list empty
-  #[inline]
-  pub fn is_empty(&self) -> bool {
-    self.len() == 0
-  }
-
-  /// Get a raw pointer to allocation
-  #[inline]
-  pub fn as_alloc_ptr(&self) -> *const u8 {
-    match self.state() {
-      ListState::Default(_) => self.ptr.as_ptr(),
-      ListState::Forwarded(gc_list) => gc_list.as_alloc_ptr(),
+      ListLocation::Here(_) => unsafe { self.read_len() },
+      ListLocation::Forwarded(gc_list) => gc_list.len(),
     }
   }
 
@@ -145,6 +122,12 @@ impl<T, H> GcList<T, H> {
   /// when the value is boxed
   pub fn to_usize(self) -> usize {
     self.as_alloc_ptr() as *const () as usize
+  }
+
+  /// Has this list moved
+  #[inline]
+  pub fn has_moved(&self) -> bool {
+    msb_set(self.read_cap())
   }
 
   /// Construct a `GcList<T>` from `NonNull<u8>`
@@ -159,6 +142,70 @@ impl<T, H> GcList<T, H> {
     }
   }
 
+  /// Determine the state of this list
+  pub fn state(&self) -> ListLocation<T, H> {
+    let cap: usize = self.read_cap();
+
+    // if capacity is a usize max we treat that as a flag that
+    // the array has actually moved elsewhere
+    if msb_set(cap) {
+      ListLocation::Forwarded(self.relocated_list())
+    } else {
+      ListLocation::Here(cap)
+    }
+  }
+
+  /// Pop and element off the list.
+  pub fn pop(&mut self) -> Option<T> {
+    match self.state() {
+      ListLocation::Here(_) => {
+        let len: usize = unsafe { self.read_len() };
+        if len == 0 {
+          None
+        } else {
+          unsafe {
+            self.write_len(len - 1);
+            let offset_list_start = get_list_offset::<H, T>();
+
+            let slot = self
+              .ptr
+              .as_ptr()
+              .add(offset_list_start + (len - 1) * mem::size_of::<T>())
+              as *mut T;
+
+            Some(ptr::read(slot))
+          }
+        }
+      },
+      ListLocation::Forwarded(mut gc_list) => gc_list.pop(),
+    }
+  }
+
+  /// Remove an element from this list at the provided offset
+  pub fn remove(&mut self, index: usize) -> IndexedResult<T> {
+    match self.state() {
+      ListLocation::Here(_) => {
+        let len = unsafe { self.read_len() };
+        if index >= len {
+          return IndexedResult::OutOfBounds;
+        }
+
+        unsafe {
+          let value = self.read_value(index);
+          ptr::copy(
+            self.item_ptr(index + 1),
+            self.item_mut(index),
+            len - index - 1,
+          );
+
+          self.write_len(len - 1);
+          IndexedResult::Ok(value)
+        }
+      },
+      ListLocation::Forwarded(mut gc_list) => gc_list.remove(index),
+    }
+  }
+
   /// Retrieve the header from this list
   #[inline]
   fn header(&self) -> &H {
@@ -168,16 +215,19 @@ impl<T, H> GcList<T, H> {
     }
   }
 
-  /// Determine the state of this list
-  fn state(&self) -> ListState<T, H> {
-    let cap: usize = self.read_cap();
+  /// Retrieve the capacity from this list
+  fn cap(&self) -> usize {
+    match self.state() {
+      ListLocation::Here(cap) => cap,
+      ListLocation::Forwarded(gc_list) => gc_list.cap(),
+    }
+  }
 
-    // if capacity is a usize max we treat that as a flag that
-    // the array has actually moved elsewhere
-    if msb_set(cap) {
-      ListState::Forwarded(self.relocated_list())
-    } else {
-      ListState::Default(cap)
+  /// Get a raw pointer to allocation
+  fn as_alloc_ptr(&self) -> *const u8 {
+    match self.state() {
+      ListLocation::Here(_) => self.ptr.as_ptr(),
+      ListLocation::Forwarded(gc_list) => gc_list.as_alloc_ptr(),
     }
   }
 
@@ -245,8 +295,8 @@ impl<T, H> GcList<T, H> {
   /// that this is only called within bounds
   unsafe fn item_mut(&self, index: usize) -> *mut T {
     match self.state() {
-      ListState::Default(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *mut T,
-      ListState::Forwarded(gc_list) => gc_list.item_mut(index),
+      ListLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *mut T,
+      ListLocation::Forwarded(gc_list) => gc_list.item_mut(index),
     }
   }
 
@@ -257,8 +307,8 @@ impl<T, H> GcList<T, H> {
   /// that this is only called within bounds
   unsafe fn item_ptr(&self, index: usize) -> *const T {
     match self.state() {
-      ListState::Default(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *const T,
-      ListState::Forwarded(gc_list) => gc_list.item_ptr(index),
+      ListLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *const T,
+      ListLocation::Forwarded(gc_list) => gc_list.item_ptr(index),
     }
   }
 
@@ -274,7 +324,7 @@ impl GcList<Value, ObjHeader> {
   /// a new list will be allocated and elements will be transferred
   pub fn push(&mut self, value: Value, hooks: &GcHooks) {
     match self.state() {
-      ListState::Default(cap) => {
+      ListLocation::Here(cap) => {
         let len = unsafe { self.read_len() };
 
         // determine if we need to grow the list then
@@ -285,39 +335,14 @@ impl GcList<Value, ObjHeader> {
           list.write_len(len + 1);
         }
       },
-      ListState::Forwarded(mut gc_list) => gc_list.push(value, hooks),
+      ListLocation::Forwarded(mut gc_list) => gc_list.push(value, hooks),
     }
   }
 
-  /// Pop and element off the list.
-  pub fn pop(&mut self) -> Option<Value> {
-    match self.state() {
-      ListState::Default(_) => {
-        let len: usize = unsafe { self.read_len() };
-        if len == 0 {
-          None
-        } else {
-          unsafe {
-            self.write_len(len - 1);
-            let offset_list_start = get_list_offset::<ObjHeader, Value>();
-
-            let slot = self
-              .ptr
-              .as_ptr()
-              .add(offset_list_start + (len - 1) * mem::size_of::<Value>())
-              as *mut Value;
-
-            Some(ptr::read(slot))
-          }
-        }
-      },
-      ListState::Forwarded(mut gc_list) => gc_list.pop(),
-    }
-  }
-
+  /// Insert an element into this list at the provided offset
   pub fn insert(&mut self, index: usize, value: Value, hooks: &GcHooks) -> IndexedResult {
     match self.state() {
-      ListState::Default(cap) => {
+      ListLocation::Here(cap) => {
         let len = unsafe { self.read_len() };
         if index > len {
           return IndexedResult::OutOfBounds;
@@ -335,31 +360,7 @@ impl GcList<Value, ObjHeader> {
 
         IndexedResult::Ok(())
       },
-      ListState::Forwarded(mut gc_list) => gc_list.insert(index, value, hooks),
-    }
-  }
-
-  pub fn remove(&mut self, index: usize) -> IndexedResult<Value> {
-    match self.state() {
-      ListState::Default(_) => {
-        let len = unsafe { self.read_len() };
-        if index >= len {
-          return IndexedResult::OutOfBounds;
-        }
-
-        unsafe {
-          let value = self.read_value(index);
-          ptr::copy(
-            self.item_ptr(index + 1),
-            self.item_mut(index),
-            len - index - 1,
-          );
-
-          self.write_len(len - 1);
-          IndexedResult::Ok(value)
-        }
-      },
-      ListState::Forwarded(mut gc_list) => gc_list.remove(index),
+      ListLocation::Forwarded(mut gc_list) => gc_list.insert(index, value, hooks),
     }
   }
 
@@ -428,12 +429,11 @@ impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for GcList<T, H> {
 
     self.header().trace();
     match self.state() {
-      ListState::Default(_) => self.iter().for_each(|i| i.trace()),
-      ListState::Forwarded(gc_list) => gc_list.trace(),
+      ListLocation::Here(_) => self.iter().for_each(|i| i.trace()),
+      ListLocation::Forwarded(gc_list) => gc_list.trace(),
     };
   }
 
-  #[inline]
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
     if self.mark() {
       return;
@@ -450,8 +450,8 @@ impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for GcList<T, H> {
 
     self.header().trace_debug(log);
     match self.state() {
-      ListState::Default(_) => self.iter().for_each(|i| i.trace_debug(log)),
-      ListState::Forwarded(gc_list) => gc_list.trace_debug(log),
+      ListLocation::Here(_) => self.iter().for_each(|i| i.trace_debug(log)),
+      ListLocation::Forwarded(gc_list) => gc_list.trace_debug(log),
     };
   }
 }
@@ -682,7 +682,7 @@ impl<T, H> Drop for GcListHandle<T, H> {
   }
 }
 
-impl<'a> AllocateObj<List> for ListBuilder<'a> {
+impl<'a> AllocateObj<List> for ListBuilder<'a, Value> {
   fn alloc(self) -> AllocObjResult<List> {
     debug_assert!(self.slice.len() <= self.cap);
     let handle = GcListHandle::from_slice(self.slice, self.cap, ObjHeader::new(ObjectKind::List));

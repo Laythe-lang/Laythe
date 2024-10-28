@@ -4,7 +4,6 @@ mod closure;
 mod enumerator;
 mod fiber;
 mod fun;
-mod instance;
 mod ly_box;
 mod map;
 mod method;
@@ -14,7 +13,8 @@ pub use channel::{Channel, CloseResult, ReceiveResult, SendResult};
 pub use class::Class;
 pub use closure::Closure;
 pub use enumerator::{Enumerate, Enumerator};
-pub use fiber::{Fiber, FiberResult, UnwindResult};
+
+pub use fiber::{Fiber, FiberPopResult, FiberResult, UnwindResult};
 pub use fun::{Fun, FunBuilder, FunKind};
 pub use ly_box::LyBox;
 pub use map::{Map, MapEntry};

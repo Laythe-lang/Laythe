@@ -170,7 +170,7 @@ mod test {
   use crate::support::{load_class_from_module, MockedContext};
   use global::CLASS_CLASS_NAME;
   use laythe_core::{
-    managed::{GcObj, GcObject},
+    managed::GcObj,
     match_obj,
     module::Module,
     object::{Class, ObjectKind},

@@ -1,18 +1,13 @@
 use super::{
-  allocate::AllocObjResult,
   header::{Header, InstanceHeader, ObjHeader},
   utils::{get_array_len_offset, get_array_offset, make_array_layout},
-  AllocResult, Allocate, AllocateObj, DebugHeap, DebugWrap, GcObj, GcObject, GcObjectHandle,
-  Manage, Mark, Marked, Trace, Unmark,
-};
-use crate::{
-  object::{Class, ObjectKind},
-  value::{Value, VALUE_NIL},
+  AllocResult, Allocate, DebugHeap, DebugWrap, GcObject, GcObjectHandle, Manage, Mark, Marked,
+  Trace, Unmark,
 };
 use ptr::NonNull;
 use std::{
   alloc::{alloc, dealloc, handle_alloc_error},
-  fmt::{self, Debug, Display},
+  fmt::{self, Debug},
   marker::PhantomData,
   mem,
   ops::{Deref, DerefMut},
@@ -20,32 +15,11 @@ use std::{
   slice::{self},
 };
 
-const MAX_FIELD_COUNT: usize = u16::MAX as usize;
-const NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
-
-pub type ObjArray<T> = GcArray<T, ObjHeader>;
 pub type Array<T> = GcArray<T, Header>;
-
-pub type Instance = GcArray<Value, InstanceHeader>;
-pub type Tuple = ObjArray<Value>;
 
 /// A non owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
 /// as a single pointer.
-///
-/// ## Example
-/// ```
-/// use laythe_core::managed::{GcArray, GcArrayHandle};
-/// use std::mem;
-///
-/// let data: &[u32] = &[1, 2, 3, 4];
-/// let handle = GcArrayHandle::<u32, u64>::from(data);
-/// let array = handle.value();
-///
-/// assert_eq!(mem::size_of::<GcArray<u32, u64>>(), mem::size_of::<&u32>());
-/// assert_eq!(data[0], array[0]);
-/// assert_eq!(data.len(), array.len());
-/// ```
 pub struct GcArray<T, H> {
   /// Pointer to the header of the array
   ptr: NonNull<u8>,
@@ -93,18 +67,6 @@ impl<T, H> GcArray<T, H> {
   /// whichever object hold this slice also hold a reference to
   /// the GcArray itself in order to keep it alive. This is primarily
   /// to use rust method requiring a lifetime, typically for iterators
-  ///
-  /// ## Example
-  /// ```
-  /// use laythe_core::managed::{GcArray, GcArrayHandle};
-  /// use std::mem;
-  ///
-  /// let data: &[u32] = &[1, 2, 3, 4];
-  /// let handle = GcArrayHandle::<u32, u64>::from(data);
-  /// let array = handle.value();
-  ///
-  /// unsafe { array.deref_static().iter(); }
-  /// ```
   pub unsafe fn deref_static(&self) -> &'static [T] {
     slice::from_raw_parts(self.as_ptr(), self.len())
   }
@@ -124,16 +86,6 @@ impl<T, H> GcArray<T, H> {
 
   /// Create a usize from the buffer pointer. This is used
   /// when the value is boxed
-  ///
-  /// ## Example
-  /// ```
-  /// use laythe_core::managed::{GcArray, GcArrayHandle};
-  ///
-  /// let data: &[u32] = &[1, 2, 3, 4];
-  /// let handle = GcArrayHandle::<u32, u64>::from(data);
-  /// let array = handle.value();
-  /// assert!(array.to_usize() > 0);
-  /// ```
   pub fn to_usize(self) -> usize {
     self.as_alloc_ptr() as *const () as usize
   }
@@ -187,7 +139,6 @@ impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for GcArray<T, H> {
     self.iter().for_each(|i| i.trace());
   }
 
-  #[inline]
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
     if self.mark() {
       return;
@@ -260,22 +211,6 @@ impl<T, H> PartialEq<GcArray<T, H>> for GcArray<T, H> {
 }
 impl<T, H> Eq for GcArray<T, H> {}
 
-impl Display for GcArray<Value, ObjHeader> {
-  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    write!(f, "(")?;
-
-    if let Some((last, rest)) = self.split_last() {
-      for item in rest.iter() {
-        write!(f, "{item}, ")?;
-      }
-
-      write!(f, "{last}")?;
-    }
-
-    write!(f, ")")
-  }
-}
-
 impl<T: Debug, H> Debug for GcArray<T, H> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_list().entries(self.iter()).finish()
@@ -285,90 +220,19 @@ impl<T: Debug, H> Debug for GcArray<T, H> {
 unsafe impl<T: Send, H: Send> Send for GcArray<T, H> {}
 unsafe impl<T: Sync, H: Sync> Sync for GcArray<T, H> {}
 
-impl AllocateObj<Instance> for GcObj<Class> {
-  fn alloc(self) -> AllocObjResult<Instance> {
-    if self.fields() > 256 {
-      panic!("Cannot allocate class with more than 256 fields")
-    }
-
-    let slice = &NIL_ARRAY[..self.fields()];
-    let handle = GcArrayHandle::from_slice(slice, InstanceHeader::new(self));
-
-    let size = handle.size();
-    let reference = handle.value();
-
-    AllocObjResult {
-      handle: handle.degrade(),
-      size,
-      reference,
-    }
-  }
-}
-
-impl AllocateObj<Tuple> for &[Value] {
-  fn alloc(self) -> AllocObjResult<Tuple> {
-    let handle = GcArrayHandle::from_slice(self, ObjHeader::new(ObjectKind::Tuple));
-
-    let size = handle.size();
-    let reference = handle.value();
-
-    AllocObjResult {
-      handle: handle.degrade(),
-      size,
-      reference,
-    }
-  }
-}
-
 /// A owning reference to a Garbage collector
 /// allocated array. Note this array is the same size
 /// as a single pointer.
-///
-/// ## Example
-/// ```
-/// use laythe_core::managed::GcArrayHandle;
-/// use std::mem;
-///
-/// let data: &[u32] = &[1, 2, 3, 4];
-/// let handle = GcArrayHandle::<u32, u32>::from(data);
-///
-/// assert_eq!(mem::size_of::<GcArrayHandle<u32, u32>>(), mem::size_of::<&u32>());
-/// ```
 pub struct GcArrayHandle<T, H>(GcArray<T, H>);
 
 impl<T, H> GcArrayHandle<T, H> {
   /// Create a non owning reference to this array.
-  ///
-  /// ## Examples
-  /// ```
-  /// use laythe_core::managed::GcArrayHandle;
-  ///
-  /// let data: &[u32] = &[1, 2, 3, 4];
-  /// let handle = GcArrayHandle::<u32, u32>::from(data);
-  ///
-  /// let array1 = handle.value();
-  /// let array2 = handle.value();
-  ///
-  /// assert_eq!(array1, array2);
-  /// assert_eq!(handle[0], array1[0]);
-  /// ```
   pub fn value(&self) -> GcArray<T, H> {
     self.0
   }
 
   /// Determine the size of the handle and the pointed to
   /// allocation
-  ///
-  /// ## Examples
-  /// ```
-  /// use laythe_core::managed::GcArrayHandle;
-  ///
-  /// let data: &[u32] = &[1, 2, 3, 4];
-  /// let handle = GcArrayHandle::<u32, u64>::from(data);
-  /// let array = handle.value();
-  ///
-  /// assert_eq!(handle.size(), 32);
-  /// ```
   #[inline]
   pub fn size(&self) -> usize {
     make_array_layout::<H, T>(self.0.len()).size()
@@ -572,39 +436,6 @@ mod test {
       assert_eq!(array[4], 5);
 
       assert_eq!(handle.len(), 5);
-    }
-  }
-
-  mod instance_handle {
-    use crate::{
-      hooks::{GcHooks, NoContext},
-      managed::AllocateObj,
-      support::{test_object_class, ClassBuilder},
-    };
-
-    #[test]
-    fn dude() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
-
-      let obj_class = test_object_class(&hooks);
-
-      let class = ClassBuilder::default()
-        .name("example")
-        .super_cls(obj_class)
-        .fields(
-          ["foo", "bar"]
-            .iter()
-            .map(|field| hooks.manage_str(field))
-            .collect(),
-        )
-        .build(&hooks);
-
-      let result = class.alloc();
-      let instance_value = result.reference;
-
-      assert_eq!(instance_value.len(), 2);
-      assert_eq!(instance_value.header().class(), class);
     }
   }
 }
