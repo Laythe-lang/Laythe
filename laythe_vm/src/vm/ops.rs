@@ -734,6 +734,23 @@ impl Vm {
     )
   }
 
+  pub(super) unsafe fn op_set_known_property(&mut self) -> ExecutionSignal {
+    let slot = self.read_short();
+    let value = self.fiber.peek(1);
+
+    if_let_obj!(ObjectKind::Instance(mut instance) = (value) {
+      let value = self.fiber.pop();
+
+      self.fiber.drop();
+      self.fiber.push(value);
+
+      instance[slot as usize] = value;
+      ExecutionSignal::Ok
+    } else {
+      self.internal_error("Attempted to access a non instance")
+    })
+  }
+
   pub(super) unsafe fn op_get_global(&mut self) -> ExecutionSignal {
     let store_index = self.read_short();
     let string = self.read_string(store_index);
@@ -804,6 +821,18 @@ impl Vm {
     let cache = self.inline_cache_mut();
     cache.clear_property_cache(inline_slot);
     self.bind_method(class, name)
+  }
+
+  pub(super) unsafe fn op_get_known_property(&mut self) -> ExecutionSignal {
+    let slot = self.read_short();
+    let value = self.fiber.peek(0);
+
+    if_let_obj!(ObjectKind::Instance(instance) = (value) {
+      self.fiber.peek_set(0, instance[slot as usize]);
+      ExecutionSignal::Ok
+    } else {
+      self.internal_error("Attempted to access a non instance")
+    })
   }
 
   pub(super) unsafe fn op_import(&mut self) -> ExecutionSignal {
