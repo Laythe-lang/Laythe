@@ -4,7 +4,6 @@ use std::ops::Range;
 
 use super::{symbol_table::SymbolTable, token::Token};
 
-
 /// An object that can specify it's start and end position and optionally the full range
 /// Implementors of ranges only need to implement `start` ad `end`
 pub trait Spanned {
@@ -598,7 +597,6 @@ impl<'a> Spanned for Try<'a> {
   }
 }
 
-
 pub struct Catch<'a> {
   pub name: Token<'a>,
   pub symbols: SymbolTable<'a>,
@@ -607,8 +605,18 @@ pub struct Catch<'a> {
 }
 
 impl<'a> Catch<'a> {
-  pub fn new(name: Token<'a>, class: Option<Token<'a>>, symbols: SymbolTable<'a>, block: Block<'a>) -> Self {
-    Self { name, class, symbols, block }
+  pub fn new(
+    name: Token<'a>,
+    class: Option<Token<'a>>,
+    symbols: SymbolTable<'a>,
+    block: Block<'a>,
+  ) -> Self {
+    Self {
+      name,
+      class,
+      symbols,
+      block,
+    }
   }
 }
 
@@ -750,12 +758,12 @@ impl<'a> Spanned for Expr<'a> {
 }
 
 pub struct Assign<'a> {
-  pub lhs: Expr<'a>,
+  pub lhs: Atom<'a>,
   pub rhs: Expr<'a>,
 }
 
 impl<'a> Assign<'a> {
-  pub fn new(lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
+  pub fn new(lhs: Atom<'a>, rhs: Expr<'a>) -> Self {
     Self { lhs, rhs }
   }
 }
@@ -771,12 +779,12 @@ impl<'a> Spanned for Assign<'a> {
 }
 
 pub struct Send<'a> {
-  pub lhs: Expr<'a>,
+  pub lhs: Atom<'a>,
   pub rhs: Expr<'a>,
 }
 
 impl<'a> Send<'a> {
-  pub fn new(lhs: Expr<'a>, rhs: Expr<'a>) -> Self {
+  pub fn new(lhs: Atom<'a>, rhs: Expr<'a>) -> Self {
     Self { lhs, rhs }
   }
 }
@@ -821,13 +829,13 @@ pub enum AssignBinaryOp {
 }
 
 pub struct AssignBinary<'a> {
-  pub lhs: Expr<'a>,
+  pub lhs: Atom<'a>,
   pub op: AssignBinaryOp,
   pub rhs: Expr<'a>,
 }
 
 impl<'a> AssignBinary<'a> {
-  pub fn new(lhs: Expr<'a>, op: AssignBinaryOp, rhs: Expr<'a>) -> Self {
+  pub fn new(lhs: Atom<'a>, op: AssignBinaryOp, rhs: Expr<'a>) -> Self {
     Self { lhs, op, rhs }
   }
 }
@@ -1044,6 +1052,15 @@ pub enum Primary<'a> {
   String(Token<'a>),
   Super(Super<'a>),
   True(Token<'a>),
+}
+
+impl<'a> Primary<'a> {
+  pub fn is_self(&self) -> bool {
+    match *self {
+      Self::Self_(_) => true,
+      _ => false,
+    }
+  }
 }
 
 impl<'a> Spanned for Primary<'a> {

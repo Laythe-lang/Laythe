@@ -570,10 +570,7 @@ impl<'a> Parser<'a> {
       };
 
       let block = self
-        .consume(
-          TokenKind::LeftBrace,
-          "Expected '{' after catch expression.",
-        )
+        .consume(TokenKind::LeftBrace, "Expected '{' after catch expression.")
         .and_then(|()| self.block(BlockReturn::Cannot))?;
 
       let table: SymbolTable<'_> = self.table();
@@ -943,7 +940,11 @@ impl<'a> Parser<'a> {
     }
 
     if can_assign {
-      expr = self.assign(expr)?;
+      if let Expr::Atom(atom) = expr {
+        expr = self.assign(Box::into_inner(atom))?;
+      } else {
+        return self.error("Expected expression. TODO can you get here?");
+      }
     }
 
     Ok(expr)
@@ -962,7 +963,11 @@ impl<'a> Parser<'a> {
     }
 
     if can_assign {
-      expr = self.assign(expr)?;
+      if let Expr::Atom(atom) = expr {
+        expr = self.assign(Box::into_inner(atom))?;
+      } else {
+        return self.error("Expected expression. TODO can you get here?");
+      }
     }
 
     Ok(expr)
@@ -980,7 +985,7 @@ impl<'a> Parser<'a> {
 
     let previous = mem::replace(&mut self.fun_kind, FunKind::Fun);
     let lambda = self.fun_body(BlockReturn::Can).map(|body| {
-      self.atom(Primary::Lambda(self.node(Fun::new(
+      self.atom_expr(Primary::Lambda(self.node(Fun::new(
         self.let_name.clone(),
         call_sig,
         self.table(),
@@ -1007,7 +1012,7 @@ impl<'a> Parser<'a> {
       end: self.previous.end(),
     };
 
-    Ok(self.atom(Primary::Channel(Channel::new(span, expr))))
+    Ok(self.atom_expr(Primary::Channel(Channel::new(span, expr))))
   }
 
   /// Parse a grouping expression
@@ -1019,7 +1024,7 @@ impl<'a> Parser<'a> {
         end: self.previous.end(),
       };
 
-      return Ok(self.atom(Primary::Tuple(Collection::new(range, self.vec()))));
+      return Ok(self.atom_expr(Primary::Tuple(Collection::new(range, self.vec()))));
     }
 
     let expr = self.expr()?;
@@ -1032,20 +1037,24 @@ impl<'a> Parser<'a> {
         end: self.previous.end(),
       };
 
-      Ok(self.atom(Primary::Tuple(Collection::new(range, items))))
+      Ok(self.atom_expr(Primary::Tuple(Collection::new(range, items))))
     } else {
       self.consume_basic(TokenKind::RightParen, "Expected ')' after expression")?;
 
-      Ok(self.atom(Primary::Grouping(self.node(expr))))
+      Ok(self.atom_expr(Primary::Grouping(self.node(expr))))
     }
   }
 
   /// Compile a variable statement
   fn variable(&mut self, can_assign: bool) -> ParseResult<Expr<'a>> {
-    let mut expr = self.atom(Primary::Ident(self.previous.clone()));
+    let mut expr = self.atom_expr(Primary::Ident(self.previous.clone()));
 
     if can_assign {
-      expr = self.assign(expr)?;
+      if let Expr::Atom(atom) = expr {
+        expr = self.assign(Box::into_inner(atom))?;
+      } else {
+        return self.error("Expected expression. TODO can you get here?");
+      }
     }
 
     Ok(expr)
@@ -1053,20 +1062,21 @@ impl<'a> Parser<'a> {
 
   /// Compile a variable statement
   fn instance_access(&mut self, can_assign: bool) -> ParseResult<Expr<'a>> {
-    let mut expr = self.atom(Primary::InstanceAccess(InstanceAccess::new(
-      self.previous.clone(),
-    )));
+    let atom = Atom::new(
+      Primary::InstanceAccess(InstanceAccess::new(self.previous.clone())),
+      self.vec(),
+    );
 
     if can_assign {
-      expr = self.assign(expr)?;
+      self.assign(atom)
+    } else {
+      Ok(Expr::Atom(self.node(atom)))
     }
-
-    Ok(expr)
   }
 
   /// Parse a class's self identifier
   fn self_(&mut self) -> Expr<'a> {
-    self.atom(Primary::Self_(self.previous.clone()))
+    self.atom_expr(Primary::Self_(self.previous.clone()))
   }
 
   /// Parse a class' super identifer
@@ -1076,7 +1086,7 @@ impl<'a> Parser<'a> {
     self.consume(TokenKind::Identifier, "Expected identifier after '.'.")?;
 
     let access = self.previous.clone();
-    Ok(self.atom(Primary::Super(Super::new(super_, access))))
+    Ok(self.atom_expr(Primary::Super(Super::new(super_, access))))
   }
 
   /// Parse a list literal
@@ -1089,7 +1099,7 @@ impl<'a> Parser<'a> {
       start,
       end: self.previous.end(),
     };
-    Ok(self.atom(Primary::List(Collection::new(range, items))))
+    Ok(self.atom_expr(Primary::List(Collection::new(range, items))))
   }
 
   /// Parse a map literal
@@ -1119,7 +1129,7 @@ impl<'a> Parser<'a> {
     self
       .consume(TokenKind::RightBrace, "Expected '}' after map")
       .map(|()| {
-        self.atom(Primary::Map(Map::new(
+        self.atom_expr(Primary::Map(Map::new(
           Span {
             start,
             end: self.previous.end(),
@@ -1131,12 +1141,12 @@ impl<'a> Parser<'a> {
 
   /// Parse a number literal
   fn number(&self) -> Expr<'a> {
-    self.atom(Primary::Number(self.previous.clone()))
+    self.atom_expr(Primary::Number(self.previous.clone()))
   }
 
   /// Parse a string literal
   fn string(&self) -> Expr<'a> {
-    self.atom(Primary::String(self.previous.clone()))
+    self.atom_expr(Primary::String(self.previous.clone()))
   }
 
   /// Parse a string literal
@@ -1169,7 +1179,7 @@ impl<'a> Parser<'a> {
     self.consume(TokenKind::StringEnd, "Unterminated interpolated string.")?;
     let end = self.previous.clone();
 
-    Ok(self.atom(Primary::Interpolation(
+    Ok(self.atom_expr(Primary::Interpolation(
       self.node(Interpolation::new(start, segments, end)),
     )))
   }
@@ -1178,16 +1188,21 @@ impl<'a> Parser<'a> {
   fn literal(&self) -> Expr<'a> {
     let previous = self.previous.clone();
     match self.previous.kind() {
-      TokenKind::True => self.atom(Primary::True(previous)),
-      TokenKind::False => self.atom(Primary::False(previous)),
-      TokenKind::Nil => self.atom(Primary::Nil(previous)),
+      TokenKind::True => self.atom_expr(Primary::True(previous)),
+      TokenKind::False => self.atom_expr(Primary::False(previous)),
+      TokenKind::Nil => self.atom_expr(Primary::Nil(previous)),
       _ => unreachable!("Unexpected token kind {:?}", previous.kind()),
     }
   }
 
-  /// Create an atom from a primary
-  fn atom(&self, primary: Primary<'a>) -> Expr<'a> {
-    Expr::Atom(self.node(Atom::new(primary, self.vec())))
+  /// Create an atom expression from a primary
+  fn atom_expr(&self, primary: Primary<'a>) -> Expr<'a> {
+    Expr::Atom(self.node(self.atom(primary)))
+  }
+
+  /// Create an atom expression from a primary
+  fn atom(&self, primary: Primary<'a>) -> Atom<'a> {
+    Atom::new(primary, self.vec())
   }
 
   /// Parse a calls parameters
@@ -1256,29 +1271,29 @@ impl<'a> Parser<'a> {
     Ok(CallSignature::new(range, type_params, params, return_type))
   }
 
-  fn assign(&mut self, expr: Expr<'a>) -> ParseResult<Expr<'a>> {
+  fn assign(&mut self, atom: Atom<'a>) -> ParseResult<Expr<'a>> {
     match self.current.kind() {
       TokenKind::Equal => self
         .advance()
         .and_then(|()| self.expr())
-        .map(|rhs| Expr::Assign(self.node(Assign::new(expr, rhs)))),
+        .map(|rhs| Expr::Assign(self.node(Assign::new(atom, rhs)))),
       TokenKind::LeftArrow => self
         .advance()
         .and_then(|()| self.expr())
-        .map(|rhs| Expr::Send(self.node(Send::new(expr, rhs)))),
+        .map(|rhs| Expr::Send(self.node(Send::new(atom, rhs)))),
       TokenKind::PlusEqual => self.advance().and_then(|()| self.expr()).map(|rhs| {
-        Expr::AssignBinary(self.node(AssignBinary::new(expr, AssignBinaryOp::Add, rhs)))
+        Expr::AssignBinary(self.node(AssignBinary::new(atom, AssignBinaryOp::Add, rhs)))
       }),
       TokenKind::MinusEqual => self.advance().and_then(|()| self.expr()).map(|rhs| {
-        Expr::AssignBinary(self.node(AssignBinary::new(expr, AssignBinaryOp::Sub, rhs)))
+        Expr::AssignBinary(self.node(AssignBinary::new(atom, AssignBinaryOp::Sub, rhs)))
       }),
       TokenKind::StarEqual => self.advance().and_then(|()| self.expr()).map(|rhs| {
-        Expr::AssignBinary(self.node(AssignBinary::new(expr, AssignBinaryOp::Mul, rhs)))
+        Expr::AssignBinary(self.node(AssignBinary::new(atom, AssignBinaryOp::Mul, rhs)))
       }),
       TokenKind::SlashEqual => self.advance().and_then(|()| self.expr()).map(|rhs| {
-        Expr::AssignBinary(self.node(AssignBinary::new(expr, AssignBinaryOp::Div, rhs)))
+        Expr::AssignBinary(self.node(AssignBinary::new(atom, AssignBinaryOp::Div, rhs)))
       }),
-      _ => Ok(expr),
+      _ => Ok(Expr::Atom(self.node(atom))),
     }
   }
 
