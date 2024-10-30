@@ -956,11 +956,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       Primary::Map(map) => self.map(map),
     }
 
-    if let Primary::Self_(_) = primary {
-      true
-    } else {
-      false
-    }
+    matches!(primary, Primary::Self_(_))
   }
 
   /// Compile a symbol declaration
@@ -1564,7 +1560,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       // if we have trailers compile to last trailer and emit specialized
       // set instruction
       Some(last) => {
-        self.apply_atom(&primary, &trailers[..trailers.len() - 1]);
+        self.apply_atom(primary, &trailers[..trailers.len() - 1]);
 
         match last {
           Trailer::Index(index) => {
@@ -1576,7 +1572,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           Trailer::Access(access) => {
             let class = if primary.is_self() && trailers.len() == 1 {
               if self.fun_kind == FunKind::Initializer {
-                self.record_field(&access.prop.str());
+                self.record_field(access.prop.str());
               }
               self.class_attributes
             } else {
@@ -1599,11 +1595,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           let property = instance_access.property();
 
           if self.fun_kind == FunKind::Initializer {
-            self.record_field(&property);
+            self.record_field(property);
           }
 
           self.expr(&assign.rhs);
-          self.property_set(&property, self.class_attributes, instance_access.end());
+          self.property_set(property, self.class_attributes, instance_access.end());
         },
         _ => unreachable!("Unexpected expression on left hand side of assignment."),
       },
@@ -1620,7 +1616,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       // if we have trailers compile to last trailer and emit specialized
       // set instruction
       Some(last) => {
-        self.apply_atom(&primary, &trailers[..trailers.len() - 1]);
+        self.apply_atom(primary, &trailers[..trailers.len() - 1]);
 
         match last {
           Trailer::Index(index) => {
@@ -1632,7 +1628,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           Trailer::Access(access) => {
             let class = if primary.is_self() && trailers.len() == 1 {
               if self.fun_kind == FunKind::Initializer {
-                self.record_field(&access.prop.str());
+                self.record_field(access.prop.str());
               }
               self.class_attributes
             } else {
@@ -1658,7 +1654,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           let property = instance_access.property();
 
           if self.fun_kind == FunKind::Initializer {
-            self.record_field(&property);
+            self.record_field(property);
           }
 
           self.property_get(
@@ -1689,7 +1685,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       // if we have trailers compile to last trailer and emit specialized
       // set instruction
       Some(last) => {
-        self.apply_atom(&primary, &trailers[..trailers.len() - 1]);
+        self.apply_atom(primary, &trailers[..trailers.len() - 1]);
 
         match last {
           Trailer::Index(index) => {
@@ -1709,7 +1705,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           Trailer::Access(access) => {
             let class = if primary.is_self() && trailers.len() == 1 {
               if self.fun_kind == FunKind::Initializer {
-                self.record_field(&access.prop.str());
+                self.record_field(access.prop.str());
               }
               self.class_attributes
             } else {
@@ -1717,12 +1713,12 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
             };
 
             self.emit_byte(SymbolicByteCode::Dup, access.end());
-            self.property_get(&access.prop.str(), class, access.end());
+            self.property_get(access.prop.str(), class, access.end());
 
             self.expr(&assign_binary.rhs);
             self.emit_byte(binary_op, assign_binary.rhs.start());
 
-            self.property_set(&access.prop.str(), self.class_attributes, access.end());
+            self.property_set(access.prop.str(), self.class_attributes, access.end());
           },
           _ => unreachable!("Unexpected expression on left hand side of assignment."),
         }
@@ -1739,7 +1735,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           let property = instance_access.property();
 
           if self.fun_kind == FunKind::Initializer {
-            self.record_field(&property);
+            self.record_field(property);
           }
 
           self.emit_byte(SymbolicByteCode::Dup, instance_access.end());
@@ -1855,7 +1851,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn property_get(&mut self, field: &str, class: Option<Gc<ClassAttributes>>, offset: u32) {
     match class {
       Some(class) => {
-        if let Some(position) = self.find_known_field(&field, class) {
+        if let Some(position) = self.find_known_field(field, class) {
           if class.has_explicit_super_class {
             let name = self.identifier_constant(field);
             self.emit_byte(SymbolicByteCode::GetProperty(name), offset);
@@ -1884,7 +1880,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn property_set(&mut self, field: &str, class: Option<Gc<ClassAttributes>>, offset: u32) {
     match class {
       Some(class) => {
-        if let Some(position) = self.find_known_field(&field, class) {
+        if let Some(position) = self.find_known_field(field, class) {
           if class.has_explicit_super_class {
             let name = self.identifier_constant(field);
             self.emit_byte(SymbolicByteCode::SetProperty(name), offset);
@@ -1913,8 +1909,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// Apply the components of the atom
   fn apply_atom(&mut self, primary: &'a ast::Primary<'src>, trailers: &'a [Trailer<'src>]) -> bool {
-    let is_self = self.primary(&primary);
-    self.apply_trailers(is_self, &trailers);
+    let is_self = self.primary(primary);
+    self.apply_trailers(is_self, trailers);
     is_self
   }
 

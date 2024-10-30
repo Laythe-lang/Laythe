@@ -1056,10 +1056,7 @@ pub enum Primary<'a> {
 
 impl<'a> Primary<'a> {
   pub fn is_self(&self) -> bool {
-    match *self {
-      Self::Self_(_) => true,
-      _ => false,
-    }
+    matches!(*self, Self::Self_(_))
   }
 }
 
