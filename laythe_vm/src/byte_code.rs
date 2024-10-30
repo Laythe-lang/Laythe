@@ -175,6 +175,12 @@ pub enum SymbolicByteCode {
   /// Set a property on a class instance
   SetProperty(u16),
 
+  /// Get a property off a class instance
+  GetKnownProperty(u16),
+
+  /// Set a property on a class instance
+  SetKnownProperty(u16),
+
   /// Jump to end of if block if false
   JumpIfFalse(Label),
 
@@ -318,6 +324,8 @@ impl SymbolicByteCode {
       Self::SetCapture(_) => 2,
       Self::GetProperty(_) => 3,
       Self::SetProperty(_) => 3,
+      Self::GetKnownProperty(_) => 3,
+      Self::SetKnownProperty(_) => 3,
       Self::JumpIfFalse(_) => 3,
       Self::Jump(_) => 3,
       Self::Loop(_) => 3,
@@ -399,7 +407,9 @@ impl SymbolicByteCode {
       Self::GetCapture(_) => 1,
       Self::SetCapture(_) => 0,
       Self::GetProperty(_) => 0,
+      Self::GetKnownProperty(_) => 0,
       Self::SetProperty(_) => -1,
+      Self::SetKnownProperty(_) => -1,
       Self::JumpIfFalse(_) => -1,
       Self::Jump(_) => 0,
       Self::Loop(_) => 0,
@@ -526,6 +536,8 @@ impl<'a> ByteCodeEncoder<'a> {
         SymbolicByteCode::SetCapture(slot) => self.op_byte(ByteCode::SetCapture, *line, *slot),
         SymbolicByteCode::GetProperty(slot) => self.op_short(ByteCode::GetProperty, *line, *slot),
         SymbolicByteCode::SetProperty(slot) => self.op_short(ByteCode::SetProperty, *line, *slot),
+        SymbolicByteCode::GetKnownProperty(slot) => self.op_short(ByteCode::GetKnownProperty, *line, *slot),
+        SymbolicByteCode::SetKnownProperty(slot) => self.op_short(ByteCode::SetKnownProperty, *line, *slot),
         SymbolicByteCode::JumpIfFalse(target) => {
           let jump = label_offsets[target.0 as usize] - offset - 3;
           self.op_jump(ByteCode::JumpIfFalse, *line, jump)
@@ -833,6 +845,12 @@ pub enum ByteCode {
   /// Set a property on a class instance
   SetProperty,
 
+  /// Get a property off a class instance
+  GetKnownProperty,
+
+  /// Set a property on a class instance
+  SetKnownProperty,
+
   /// Jump to end of if block if false
   JumpIfFalse,
 
@@ -1075,6 +1093,12 @@ pub enum AlignedByteCode {
   /// Set a property on a class instance
   SetProperty(u16),
 
+  /// Get a property at a known offset for a class instance
+  GetKnownProperty(u16),
+
+  /// Set a property  at a known offset for a class instance
+  SetKnownProperty(u16),
+
   /// Jump to end of if block if false
   JumpIfFalse(u16),
 
@@ -1266,6 +1290,14 @@ impl AlignedByteCode {
       ),
       ByteCode::SetProperty => (
         Self::SetProperty(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::GetKnownProperty => (
+        Self::GetKnownProperty(decode_u16(&store[offset + 1..offset + 3])),
+        offset + 3,
+      ),
+      ByteCode::SetKnownProperty => (
+        Self::SetKnownProperty(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::JumpIfFalse => (

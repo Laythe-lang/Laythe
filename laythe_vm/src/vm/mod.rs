@@ -235,9 +235,7 @@ impl Vm {
           let file_id = self.files.upsert(managed_path, source_content);
           self.pop_roots(2);
 
-          if let ExecutionResult::Exit(code) = self.interpret(true, main_module, &source, file_id) {
-            return (code as i32, VmExit::Ok);
-          }
+          self.interpret(true, main_module, &source, file_id);
         },
         Err(error) => panic!("{}", error),
       }
@@ -386,6 +384,8 @@ impl Vm {
           ByteCode::SetCapture => self.op_set_capture(),
           ByteCode::GetProperty => self.op_get_property(),
           ByteCode::SetProperty => self.op_set_property(),
+          ByteCode::GetKnownProperty => self.op_get_known_property(),
+          ByteCode::SetKnownProperty => self.op_set_known_property(),
           ByteCode::Import => self.op_import(),
           ByteCode::ImportSymbol => self.op_import_symbol(),
           ByteCode::Export => self.op_export(),

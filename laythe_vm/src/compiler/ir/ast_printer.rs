@@ -511,19 +511,19 @@ impl<'a> Visitor<'a> for AstPrint {
     self.buffer.push_str("}");
   }
   fn visit_assign(&mut self, assign: &Assign) -> Self::Result {
-    self.visit_expr(&assign.lhs);
+    self.visit_atom(&assign.lhs);
     self.buffer.push_str(" = ");
     self.visit_expr(&assign.rhs);
   }
 
   fn visit_drain(&mut self, assign: &Send) -> Self::Result {
-    self.visit_expr(&assign.lhs);
+    self.visit_atom(&assign.lhs);
     self.buffer.push_str(" <- ");
     self.visit_expr(&assign.rhs);
   }
 
   fn visit_assign_binary(&mut self, assign_binary: &AssignBinary) -> Self::Result {
-    self.visit_expr(&assign_binary.lhs);
+    self.visit_atom(&assign_binary.lhs);
     self.buffer.push(' ');
     match &assign_binary.op {
       AssignBinaryOp::Add => self.buffer.push_str("+="),

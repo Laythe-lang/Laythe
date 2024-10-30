@@ -722,18 +722,18 @@ impl<'a, 'src> Resolver<'a, 'src> {
 
   /// Resolve an assignment expression
   fn assign(&mut self, assign: &mut ast::Assign<'src>) {
-    self.expr(&mut assign.lhs);
+    self.atom(&mut assign.lhs);
     self.expr(&mut assign.rhs);
   }
 
   fn send(&mut self, send: &mut ast::Send<'src>) {
-    self.expr(&mut send.lhs);
+    self.atom(&mut send.lhs);
     self.expr(&mut send.rhs);
   }
 
   /// Resolve a binary assignment expression
   fn assign_binary(&mut self, assign_binary: &mut ast::AssignBinary<'src>) {
-    self.expr(&mut assign_binary.lhs);
+    self.atom(&mut assign_binary.lhs);
     self.expr(&mut assign_binary.rhs);
   }
 

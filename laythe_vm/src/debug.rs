@@ -15,7 +15,7 @@ pub fn print_symbolic_code(
   chunk_builder: &ChunkBuilder,
   name: &str,
 ) -> io::Result<()> {
-    use std::u16;
+  use std::u16;
 
   let stdout = stdio.stdout();
   writeln!(stdout)?;
@@ -191,6 +191,12 @@ pub fn print_byte_code(
     SymbolicByteCode::GetProperty(slot) => {
       symbolic_property_instruction(stdio.stdout(), "GetProperty", chunk, slot, offset)
     },
+    SymbolicByteCode::SetKnownProperty(slot) => {
+      short_instruction(stdio.stdout(), "SetKnownProperty", slot, offset)
+    },
+    SymbolicByteCode::GetKnownProperty(slot) => {
+      short_instruction(stdio.stdout(), "GetKnownProperty", slot, offset)
+    },
     SymbolicByteCode::Jump(jump) => symbolic_jump_instruction(stdio.stdout(), "Jump", jump, offset),
     SymbolicByteCode::JumpIfFalse(jump) => {
       symbolic_jump_instruction(stdio.stdout(), "JumpIfFalse", jump, offset)
@@ -200,9 +206,13 @@ pub fn print_byte_code(
       symbolic_push_handler_instruction(stdio.stdout(), "PushHandler", slots, jump, offset)
     },
     SymbolicByteCode::PopHandler => simple_instruction(stdio.stdout(), "PopHandler", offset),
-    SymbolicByteCode::CheckHandler(jump) => symbolic_jump_instruction(stdio.stdout(), "CheckHandler", jump, offset),
+    SymbolicByteCode::CheckHandler(jump) => {
+      symbolic_jump_instruction(stdio.stdout(), "CheckHandler", jump, offset)
+    },
     SymbolicByteCode::FinishUnwind => simple_instruction(stdio.stdout(), "FinishUnwind", offset),
-    SymbolicByteCode::ContinueUnwind => simple_instruction(stdio.stdout(), "ContinueUnwind", offset),
+    SymbolicByteCode::ContinueUnwind => {
+      simple_instruction(stdio.stdout(), "ContinueUnwind", offset)
+    },
     SymbolicByteCode::Raise => simple_instruction(stdio.stdout(), "Raise", offset),
     SymbolicByteCode::GetError => simple_instruction(stdio.stdout(), "GetError", offset),
     SymbolicByteCode::Equal => simple_instruction(stdio.stdout(), "Equal", offset),
@@ -526,6 +536,12 @@ pub fn disassemble_instruction(
     AlignedByteCode::GetProperty(slot) => {
       constant_instruction_with_slot(stdio.stdout(), "GetProperty", chunk, slot, offset)
     },
+    AlignedByteCode::SetKnownProperty(slot) => {
+      short_instruction(stdio.stdout(), "SetKnownProperty", slot, offset)
+    },
+    AlignedByteCode::GetKnownProperty(slot) => {
+      short_instruction(stdio.stdout(), "GetKnownProperty", slot, offset)
+    },
     AlignedByteCode::Jump(jump) => jump_instruction(stdio.stdout(), "Jump", 1, jump, offset),
     AlignedByteCode::JumpIfFalse(jump) => {
       jump_instruction(stdio.stdout(), "JumpIfFalse", 1, jump, offset)
@@ -534,7 +550,9 @@ pub fn disassemble_instruction(
     AlignedByteCode::PushHandler((slots, jump)) => {
       push_handler_instruction(stdio.stdout(), "PushHandler", slots, jump, offset)
     },
-    AlignedByteCode::CheckHandler(jump) => jump_instruction(stdio.stdout(), "CheckHandler", 1, jump, offset),
+    AlignedByteCode::CheckHandler(jump) => {
+      jump_instruction(stdio.stdout(), "CheckHandler", 1, jump, offset)
+    },
     AlignedByteCode::PopHandler => simple_instruction(stdio.stdout(), "PopHandler", offset),
     AlignedByteCode::FinishUnwind => simple_instruction(stdio.stdout(), "FinishUnwind", offset),
     AlignedByteCode::ContinueUnwind => simple_instruction(stdio.stdout(), "ContinueUnwind", offset),

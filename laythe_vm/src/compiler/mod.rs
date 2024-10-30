@@ -27,7 +27,9 @@ use laythe_core::{
     INDEX_GET, INDEX_SET, ITER, ITER_VAR, OBJECT, SCRIPT, SELF, SUPER, UNINITIALIZED_VAR,
   },
   hooks::{GcContext, GcHooks, NoContext},
-  managed::{Allocator, AllocResult, Allocate, DebugHeap, Gc, GcStr, ListBuilder, Trace, TraceRoot},
+  managed::{
+    AllocResult, Allocate, Allocator, DebugHeap, Gc, GcStr, ListBuilder, Trace, TraceRoot,
+  },
   module,
   object::{self, FunBuilder, FunKind, Map},
   signature::Arity,
@@ -69,16 +71,16 @@ pub struct ClassAttributes {
   /// the fields present on this class
   fields: Vec<GcStr>,
 
-  /// The name of this class
-  name: GcStr,
+  /// Does this class have an explicit super class
+  has_explicit_super_class: bool,
 }
 
 impl ClassAttributes {
-  fn new(name: GcStr) -> Self {
+  fn new() -> Self {
     ClassAttributes {
       fun_kind: None,
       fields: vec![],
-      name,
+      has_explicit_super_class: false,
     }
   }
 
@@ -92,7 +94,7 @@ impl DebugHeap for ClassAttributes {
     f.debug_struct("ClassInfo")
       .field("fun_kind", &self.fun_kind)
       .field("fields", &self.fields)
-      .field("name", &self.name)
+      .field("has_explicit_super_class", &self.has_explicit_super_class)
       .finish()
   }
 }
@@ -105,12 +107,10 @@ impl Allocate<Gc<Self>> for ClassAttributes {
 
 impl Trace for ClassAttributes {
   fn trace(&self) {
-    self.name.trace();
     self.fields.iter().for_each(|field| field.trace());
   }
 
   fn trace_debug(&self, log: &mut dyn Write) {
-    self.name.trace_debug(log);
     self.fields.iter().for_each(|field| field.trace_debug(log));
   }
 }
@@ -936,7 +936,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   }
 
   /// Compile a the base of an expression
-  fn primary(&mut self, primary: &'a Primary<'src>) {
+  fn primary(&mut self, primary: &'a Primary<'src>) -> bool {
     match primary {
       Primary::Channel(token) => self.channel(token),
       Primary::True(token) => self.true_(token),
@@ -955,6 +955,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       Primary::Tuple(tuple) => self.tuple(tuple),
       Primary::Map(map) => self.map(map),
     }
+
+    matches!(primary, Primary::Self_(_))
   }
 
   /// Compile a symbol declaration
@@ -998,11 +1000,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.define_variable(class_constant, class_state, class_name.end());
 
     // set this class as the current class compiler
-    let managed_class_name = self.gc.borrow_mut().manage_str(class_name.str(), self);
-    let class_attributes = self
-      .gc
-      .borrow_mut()
-      .manage(ClassAttributes::new(managed_class_name), self);
+    let mut class_attributes = self.gc.borrow_mut().manage(ClassAttributes::new(), self);
     let enclosing_class = mem::replace(&mut self.class_attributes, Some(class_attributes));
     if let Some(enclosing_class) = enclosing_class {
       self.gc.borrow_mut().push_root(enclosing_class);
@@ -1022,6 +1020,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     // Load an explicit or implicit super class
     if let Some(super_class) = &class.super_class {
+      // mark that we have an explicit super class
+      class_attributes.has_explicit_super_class = true;
       self.variable_get(&super_class.type_ref.name);
     } else {
       self.variable_get(&Token::new(
@@ -1217,7 +1217,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       let mut list = hooks.manage_obj(ListBuilder::new(&[], import.path.len()));
       hooks.push_root(list);
 
-
       for segment in &import.path {
         list.push(val!(hooks.manage_str(segment.str())), &hooks)
       }
@@ -1270,13 +1269,9 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       self_.expr(&for_.iter);
       let expr_line = for_.iter.end();
 
-      // get constant for 'iter' method
-      let iter_method_const = self_.string_constant(ITER);
-
       // declare the hidden local $iter variable
       self_.declare_local_variable(ITER_VAR);
-      self_.emit_byte(SymbolicByteCode::Invoke((iter_method_const, 0)), expr_line);
-      self_.emit_byte(SymbolicByteCode::InvokeSlot, expr_line);
+      self_.emit_known_invoke(ITER, 0, expr_line);
       self_.define_local_variable(ITER_VAR, SymbolState::Initialized, expr_line);
 
       let item_line = for_.item.end();
@@ -1388,8 +1383,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       Expr::Atom(atom) => match atom.trailers.last() {
         Some(Trailer::Call(call)) => {
           // emit instruction for everything but the actual call
-          self.primary(&atom.primary);
-          self.apply_trailers(&atom.trailers[..atom.trailers.len() - 1]);
+          self.apply_atom(&atom.primary, &atom.trailers[..atom.trailers.len() - 1]);
 
           // emit for each argument for the launch call
           for expr in &call.args {
@@ -1559,252 +1553,201 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// Compile an assignment expression
   fn assign(&mut self, assign: &'a ast::Assign<'src>) {
-    match &assign.lhs {
-      Expr::Atom(atom) => match atom.trailers.last() {
-        // if we have trailers compile to last trailer and emit specialized
-        // set instruction
-        Some(last) => {
-          self.primary(&atom.primary);
-          self.apply_trailers(&atom.trailers[..atom.trailers.len() - 1]);
+    let primary = &assign.lhs.primary;
+    let trailers = &*assign.lhs.trailers;
 
-          match last {
-            Trailer::Index(index) => {
-              self.expr(&assign.rhs);
-              self.expr(&index.index);
+    match trailers.last() {
+      // if we have trailers compile to last trailer and emit specialized
+      // set instruction
+      Some(last) => {
+        self.apply_atom(primary, &trailers[..trailers.len() - 1]);
 
-              self.emit_known_invoke(INDEX_SET, 2, assign.rhs.end());
-            },
-            Trailer::Access(access) => {
-              if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
-                if let Primary::Self_(_) = atom.primary {
-                  let mut class_info = self.class_attributes.unwrap();
-
-                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
-                    let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
-                    class_info.add_field(field);
-                  }
-                }
-              }
-
-              let name = self.identifier_constant(access.prop.str());
-
-              self.expr(&assign.rhs);
-              self.emit_byte(SymbolicByteCode::SetProperty(name), access.end());
-              self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
-            },
-            Trailer::Call(_) => {
-              unreachable!("Unexpected expression on left hand side of assignment.")
-            },
-          }
-        },
-        None => match &atom.primary {
-          Primary::Ident(name) => {
+        match last {
+          Trailer::Index(index) => {
             self.expr(&assign.rhs);
-            self.variable_set(name);
+            self.expr(&index.index);
+
+            self.emit_known_invoke(INDEX_SET, 2, assign.rhs.end());
           },
-          Primary::InstanceAccess(instance_access) => {
-            self.instance_access_self(instance_access);
-            let property = instance_access.property();
-
-            if self.fun_kind == FunKind::Initializer {
-              let mut class_info = self.class_attributes.unwrap();
-
-              if !class_info.fields.iter().any(|f| *f == property) {
-                let field = self.gc.borrow_mut().manage_str(property, self);
-                class_info.add_field(field);
+          Trailer::Access(access) => {
+            let class = if primary.is_self() && trailers.len() == 1 {
+              if self.fun_kind == FunKind::Initializer {
+                self.record_field(access.prop.str());
               }
-            }
-
-            let name = self.identifier_constant(property);
+              self.class_attributes
+            } else {
+              None
+            };
 
             self.expr(&assign.rhs);
-            self.emit_byte(SymbolicByteCode::SetProperty(name), instance_access.end());
-            self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
+            self.property_set(access.prop.str(), class, access.end());
           },
           _ => unreachable!("Unexpected expression on left hand side of assignment."),
-        },
+        }
       },
-      _ => unreachable!("Unexpected expression on left hand side of assignment."),
+      None => match &primary {
+        Primary::Ident(name) => {
+          self.expr(&assign.rhs);
+          self.variable_set(name);
+        },
+        Primary::InstanceAccess(instance_access) => {
+          self.instance_access_self(instance_access);
+          let property = instance_access.property();
+
+          if self.fun_kind == FunKind::Initializer {
+            self.record_field(property);
+          }
+
+          self.expr(&assign.rhs);
+          self.property_set(property, self.class_attributes, instance_access.end());
+        },
+        _ => unreachable!("Unexpected expression on left hand side of assignment."),
+      },
     }
   }
 
   fn send(&mut self, send: &'a ast::Send<'src>) {
     self.expr(&send.rhs);
 
-    match &send.lhs {
-      Expr::Atom(atom) => match atom.trailers.last() {
-        // if we have trailers compile to last trailer and emit specialized
-        // set instruction
-        Some(last) => {
-          self.primary(&atom.primary);
-          self.apply_trailers(&atom.trailers[..atom.trailers.len() - 1]);
+    let primary = &send.lhs.primary;
+    let trailers = &*send.lhs.trailers;
 
-          match last {
-            Trailer::Index(index) => {
-              // self.expr(&send.rhs);
-              self.expr(&index.index);
+    match trailers.last() {
+      // if we have trailers compile to last trailer and emit specialized
+      // set instruction
+      Some(last) => {
+        self.apply_atom(primary, &trailers[..trailers.len() - 1]);
 
-              self.emit_known_invoke(INDEX_GET, 1, index.end());
-              self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
-            },
-            Trailer::Access(access) => {
-              if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
-                if let Primary::Self_(_) = atom.primary {
-                  let mut class_info = self.class_attributes.unwrap();
+        match last {
+          Trailer::Index(index) => {
+            self.expr(&index.index);
 
-                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
-                    let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
-                    class_info.add_field(field);
-                  }
-                }
-              }
-
-              let name = self.identifier_constant(access.prop.str());
-
-              self.emit_byte(SymbolicByteCode::GetProperty(name), access.end());
-              self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
-
-              self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
-            },
-            Trailer::Call(_) => {
-              unreachable!("Unexpected expression on left hand side of send.")
-            },
-          }
-        },
-        None => match &atom.primary {
-          Primary::Ident(name) => {
-            self.variable_get(name);
-
+            self.emit_known_invoke(INDEX_GET, 1, index.end());
             self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
           },
-          Primary::InstanceAccess(instance_access) => {
-            self.instance_access_self(instance_access);
-            let property = instance_access.property();
-
-            if self.fun_kind == FunKind::Initializer {
-              let mut class_info = self.class_attributes.unwrap();
-
-              if !class_info.fields.iter().any(|f| *f == property) {
-                let field = self.gc.borrow_mut().manage_str(property, self);
-                class_info.add_field(field);
+          Trailer::Access(access) => {
+            let class = if primary.is_self() && trailers.len() == 1 {
+              if self.fun_kind == FunKind::Initializer {
+                self.record_field(access.prop.str());
               }
-            }
+              self.class_attributes
+            } else {
+              None
+            };
 
-            let name = self.identifier_constant(instance_access.property());
-
-            self.emit_byte(SymbolicByteCode::GetProperty(name), instance_access.end());
-            self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
-
+            self.property_get(access.prop.str(), class, access.end());
             self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
           },
-          _ => unreachable!("Unexpected expression on left hand side of assignment."),
-        },
+          Trailer::Call(_) => {
+            unreachable!("Unexpected expression on left hand side of send.")
+          },
+        }
       },
-      _ => unreachable!("Unexpected expression on left hand side of assignment."),
+      None => match &primary {
+        Primary::Ident(name) => {
+          self.variable_get(name);
+
+          self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
+        },
+        Primary::InstanceAccess(instance_access) => {
+          self.instance_access_self(instance_access);
+          let property = instance_access.property();
+
+          if self.fun_kind == FunKind::Initializer {
+            self.record_field(property);
+          }
+
+          self.property_get(
+            instance_access.property(),
+            self.class_attributes,
+            instance_access.end(),
+          );
+          self.emit_byte(SymbolicByteCode::Send, send.lhs.end())
+        },
+        _ => unreachable!("Unexpected expression on left hand side of assignment."),
+      },
     }
   }
 
   /// Compile a binary assignment expression
   fn assign_binary(&mut self, assign_binary: &'a ast::AssignBinary<'src>) {
-    let binary_op = |comp: &mut Compiler<'a, 'src>| match &assign_binary.op {
-      ast::AssignBinaryOp::Add => comp.emit_byte(SymbolicByteCode::Add, assign_binary.rhs.end()),
-      ast::AssignBinaryOp::Sub => {
-        comp.emit_byte(SymbolicByteCode::Subtract, assign_binary.rhs.end())
-      },
-      ast::AssignBinaryOp::Mul => {
-        comp.emit_byte(SymbolicByteCode::Multiply, assign_binary.rhs.end())
-      },
-      ast::AssignBinaryOp::Div => comp.emit_byte(SymbolicByteCode::Divide, assign_binary.rhs.end()),
+    let binary_op = match &assign_binary.op {
+      ast::AssignBinaryOp::Add => SymbolicByteCode::Add,
+      ast::AssignBinaryOp::Sub => SymbolicByteCode::Subtract,
+      ast::AssignBinaryOp::Mul => SymbolicByteCode::Multiply,
+      ast::AssignBinaryOp::Div => SymbolicByteCode::Divide,
     };
 
-    match &assign_binary.lhs {
-      Expr::Atom(atom) => match atom.trailers.last() {
-        // if we have trailers compile to last trailer and emit specialized
-        // set instruction
-        Some(last) => {
-          self.primary(&atom.primary);
-          self.apply_trailers(&atom.trailers[..atom.trailers.len() - 1]);
+    let primary = &assign_binary.lhs.primary;
+    let trailers = &*assign_binary.lhs.trailers;
 
-          match last {
-            Trailer::Index(index) => {
-              self.emit_byte(SymbolicByteCode::Dup, assign_binary.lhs.end());
+    match trailers.last() {
+      // if we have trailers compile to last trailer and emit specialized
+      // set instruction
+      Some(last) => {
+        self.apply_atom(primary, &trailers[..trailers.len() - 1]);
 
-              self.expr(&index.index);
+        match last {
+          Trailer::Index(index) => {
+            self.emit_byte(SymbolicByteCode::Dup, assign_binary.lhs.end());
 
-              self.emit_known_invoke(INDEX_GET, 1, assign_binary.rhs.end());
+            self.expr(&index.index);
 
-              self.expr(&assign_binary.rhs);
-              binary_op(self);
+            self.emit_known_invoke(INDEX_GET, 1, assign_binary.rhs.end());
 
-              self.expr(&index.index);
-
-              self.emit_known_invoke(INDEX_SET, 2, assign_binary.rhs.end());
-            },
-            Trailer::Access(access) => {
-              if self.fun_kind == FunKind::Initializer && atom.trailers.len() == 1 {
-                if let Primary::Self_(_) = atom.primary {
-                  let mut class_info = self.class_attributes.unwrap();
-
-                  if !class_info.fields.iter().any(|f| *f == access.prop.str()) {
-                    let field = self.gc.borrow_mut().manage_str(access.prop.str(), self);
-                    class_info.add_field(field);
-                  }
-                }
-              }
-
-              let name = self.identifier_constant(access.prop.str());
-
-              self.emit_byte(SymbolicByteCode::Dup, access.end());
-              self.emit_byte(SymbolicByteCode::GetProperty(name), access.end());
-              self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
-
-              self.expr(&assign_binary.rhs);
-              binary_op(self);
-
-              self.emit_byte(SymbolicByteCode::SetProperty(name), access.end());
-              self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
-            },
-            Trailer::Call(_) => {
-              unreachable!("Unexpected expression on left hand side of assignment.")
-            },
-          }
-        },
-        None => match &atom.primary {
-          Primary::Ident(name) => {
-            self.variable_get(name);
             self.expr(&assign_binary.rhs);
-            binary_op(self);
-            self.variable_set(name);
+            self.emit_byte(binary_op, assign_binary.rhs.start());
+
+            self.expr(&index.index);
+
+            self.emit_known_invoke(INDEX_SET, 2, assign_binary.rhs.end());
           },
-          Primary::InstanceAccess(instance_access) => {
-            self.instance_access_self(instance_access);
-            let property = instance_access.property();
-
-            if self.fun_kind == FunKind::Initializer {
-              let mut class_info = self.class_attributes.unwrap();
-
-              if !class_info.fields.iter().any(|f| *f == property) {
-                let field = self.gc.borrow_mut().manage_str(property, self);
-                class_info.add_field(field);
+          Trailer::Access(access) => {
+            let class = if primary.is_self() && trailers.len() == 1 {
+              if self.fun_kind == FunKind::Initializer {
+                self.record_field(access.prop.str());
               }
-            }
+              self.class_attributes
+            } else {
+              None
+            };
 
-            let name = self.identifier_constant(property);
-
-            self.emit_byte(SymbolicByteCode::Dup, instance_access.end());
-            self.emit_byte(SymbolicByteCode::GetProperty(name), instance_access.end());
-            self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
+            self.emit_byte(SymbolicByteCode::Dup, access.end());
+            self.property_get(access.prop.str(), class, access.end());
 
             self.expr(&assign_binary.rhs);
-            binary_op(self);
+            self.emit_byte(binary_op, assign_binary.rhs.start());
 
-            self.emit_byte(SymbolicByteCode::SetProperty(name), instance_access.end());
-            self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
+            self.property_set(access.prop.str(), self.class_attributes, access.end());
           },
           _ => unreachable!("Unexpected expression on left hand side of assignment."),
-        },
+        }
       },
-      _ => unreachable!("Unexpected expression on left hand side of assignment."),
+      None => match &primary {
+        Primary::Ident(name) => {
+          self.variable_get(name);
+          self.expr(&assign_binary.rhs);
+          self.emit_byte(binary_op, assign_binary.rhs.start());
+          self.variable_set(name);
+        },
+        Primary::InstanceAccess(instance_access) => {
+          self.instance_access_self(instance_access);
+          let property = instance_access.property();
+
+          if self.fun_kind == FunKind::Initializer {
+            self.record_field(property);
+          }
+
+          self.emit_byte(SymbolicByteCode::Dup, instance_access.end());
+          self.property_get(property, self.class_attributes, instance_access.end());
+
+          self.expr(&assign_binary.rhs);
+          self.emit_byte(binary_op, assign_binary.rhs.start());
+
+          self.property_set(property, self.class_attributes, instance_access.end());
+        },
+        _ => unreachable!("Unexpected expression on left hand side of assignment."),
+      },
     }
   }
 
@@ -1895,26 +1838,92 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   }
 
   /// Compile an access expression
-  fn access(&mut self, access: &ast::Access) {
-    let name = self.identifier_constant(access.prop.str());
-    self.emit_byte(SymbolicByteCode::GetProperty(name), access.prop.end());
-    self.emit_byte(SymbolicByteCode::PropertySlot, access.end());
+  fn access(&mut self, access: &ast::Access, is_self: bool) {
+    let class = if is_self { self.class_attributes } else { None };
+
+    self.property_get(access.prop.str(), class, access.prop.end());
+  }
+
+  /// Emit the instruction to get a property onto the stack from the instance
+  /// This method handle the optimized and non optimized case. In the optimized case
+  /// we emit an instruction for a property at a know offset. For the non optimized case
+  /// We emit the generic get property and place a property for runtime optimization
+  fn property_get(&mut self, field: &str, class: Option<Gc<ClassAttributes>>, offset: u32) {
+    match class {
+      Some(class) => {
+        if let Some(position) = self.find_known_field(field, class) {
+          if class.has_explicit_super_class {
+            let name = self.identifier_constant(field);
+            self.emit_byte(SymbolicByteCode::GetProperty(name), offset);
+            self.emit_byte(SymbolicByteCode::PropertySlot, offset);
+          } else {
+            self.emit_byte(SymbolicByteCode::GetKnownProperty(position as u16), offset);
+          }
+        } else {
+          let name = self.identifier_constant(field);
+          self.emit_byte(SymbolicByteCode::GetProperty(name), offset);
+          self.emit_byte(SymbolicByteCode::PropertySlot, offset);
+        }
+      },
+      None => {
+        let name = self.identifier_constant(field);
+        self.emit_byte(SymbolicByteCode::GetProperty(name), offset);
+        self.emit_byte(SymbolicByteCode::PropertySlot, offset);
+      },
+    }
+  }
+
+  /// Emit the instruction to set a property onto the stack from the instance
+  /// This method handle the optimized and non optimized case. In the optimized case
+  /// we emit an instruction for a property at a know offset. For the non optimized case
+  /// We emit the generic get property and place a property for runtime optimization
+  fn property_set(&mut self, field: &str, class: Option<Gc<ClassAttributes>>, offset: u32) {
+    match class {
+      Some(class) => {
+        if let Some(position) = self.find_known_field(field, class) {
+          if class.has_explicit_super_class {
+            let name = self.identifier_constant(field);
+            self.emit_byte(SymbolicByteCode::SetProperty(name), offset);
+            self.emit_byte(SymbolicByteCode::PropertySlot, offset);
+          } else {
+            self.emit_byte(SymbolicByteCode::SetKnownProperty(position as u16), offset);
+          }
+        } else {
+          let name = self.identifier_constant(field);
+          self.emit_byte(SymbolicByteCode::SetProperty(name), offset);
+          self.emit_byte(SymbolicByteCode::PropertySlot, offset);
+        }
+      },
+      None => {
+        let name = self.identifier_constant(field);
+        self.emit_byte(SymbolicByteCode::SetProperty(name), offset);
+        self.emit_byte(SymbolicByteCode::PropertySlot, offset);
+      },
+    }
   }
 
   /// Compile an atom expression
   fn atom(&mut self, atom: &'a ast::Atom<'src>) {
-    self.primary(&atom.primary);
-    self.apply_trailers(&atom.trailers);
+    self.apply_atom(&atom.primary, &atom.trailers);
+  }
+
+  /// Apply the components of the atom
+  fn apply_atom(&mut self, primary: &'a ast::Primary<'src>, trailers: &'a [Trailer<'src>]) -> bool {
+    let is_self = self.primary(primary);
+    self.apply_trailers(is_self, trailers);
+    is_self
   }
 
   /// Compile trailers onto a base primary
-  fn apply_trailers(&mut self, trailers: &'a [Trailer<'src>]) {
+  fn apply_trailers(&mut self, mut is_self: bool, trailers: &'a [Trailer<'src>]) {
     for trailer in trailers.iter() {
       match trailer {
         Trailer::Call(call) => self.call(call),
         Trailer::Index(index) => self.index(index),
-        Trailer::Access(access) => self.access(access),
+        Trailer::Access(access) => self.access(access, is_self),
       }
+
+      is_self = false
     }
   }
 
@@ -2000,10 +2009,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   /// Compile instance access
   fn instance_access(&mut self, instance_access: &ast::InstanceAccess<'src>) {
     if self.instance_access_self(instance_access) {
-      let name = self.identifier_constant(instance_access.property());
-
-      self.emit_byte(SymbolicByteCode::GetProperty(name), instance_access.end());
-      self.emit_byte(SymbolicByteCode::PropertySlot, instance_access.end());
+      self.property_get(
+        instance_access.property(),
+        self.class_attributes,
+        instance_access.end(),
+      );
     }
   }
 
@@ -2034,6 +2044,22 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         None
       })
       .is_some()
+  }
+
+  /// Record a field if it's new
+  fn record_field(&mut self, field: &str) {
+    let mut class_info = self.class_attributes.unwrap();
+
+    if !class_info.fields.iter().any(|f| *f == field) {
+      let field = self.gc.borrow_mut().manage_str(field, self);
+      class_info.add_field(field);
+    }
+  }
+
+  /// Attempt to find a known field returning it's
+  /// class offset if found
+  fn find_known_field(&mut self, field: &str, class: Gc<ClassAttributes>) -> Option<usize> {
+    class.fields.iter().position(|f| f == field)
   }
 
   /// Compile the self token
@@ -2186,7 +2212,7 @@ mod test {
   };
   use laythe_core::{
     hooks::{GcHooks, NoContext},
-    managed::{NoGc, NO_GC, GcObj},
+    managed::{GcObj, NoGc, NO_GC},
     object::{Class, ObjectKind},
   };
   use laythe_env::stdio::{support::StdioTestContainer, Stdio};
@@ -2935,8 +2961,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2949,8 +2974,7 @@ mod test {
           2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -3009,8 +3033,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3023,8 +3046,7 @@ mod test {
           2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -3083,8 +3105,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3097,8 +3118,7 @@ mod test {
           2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -3149,18 +3169,15 @@ mod test {
           4,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Dup),
-            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
-            ByteCodeTest::Code(AlignedByteCode::Constant(2)),
+            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Code(AlignedByteCode::Divide),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(2)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3203,18 +3220,15 @@ mod test {
           4,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Dup),
-            ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(1)),
-            ByteCodeTest::Code(AlignedByteCode::Constant(2)),
+            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Code(AlignedByteCode::Divide),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(2)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3223,6 +3237,60 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Method(2)),
         ByteCodeTest::Code(AlignedByteCode::Field(4)),
         ByteCodeTest::Code(AlignedByteCode::DropN(2)),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn property_access_outside_class() {
+    let example = "
+    class A {
+      init() {
+        self.a = 10;
+      }
+    }
+
+    let a = A();
+    a.a = 20;
+  ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      &fun,
+      4,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
+        ByteCodeTest::Fun((
+          3,
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Field(4)),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Call(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(4)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(4)),
+        ByteCodeTest::Code(AlignedByteCode::Constant(5)),
+        ByteCodeTest::Code(AlignedByteCode::SetProperty(4)),
+        ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -3335,6 +3403,84 @@ mod test {
   }
 
   #[test]
+  fn class_with_super() {
+    let example = "
+    class A {
+      init() {
+        @a = 10;
+      }
+    }
+
+    class B: A {
+      init() {
+        super.init();
+        @b = 10;
+      }
+    }
+  ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      &fun,
+      4,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::Class(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
+        ByteCodeTest::Fun((
+          3,
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Field(4)),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
+        ByteCodeTest::Code(AlignedByteCode::Class(5)),
+        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(5)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::Box(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetGlobal(5)),
+        ByteCodeTest::Code(AlignedByteCode::Inherit),
+        ByteCodeTest::Fun((
+          6,
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetSuper(0)),
+            ByteCodeTest::Code(AlignedByteCode::Call(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+            ByteCodeTest::Code(AlignedByteCode::SetProperty(2)),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::Drop),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::CaptureIndex(CaptureIndex::Local(1))),
+        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Field(7)),
+        ByteCodeTest::Code(AlignedByteCode::DropN(2)),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
   fn class_instance_access_with_captures() {
     let example = "
       class A {
@@ -3368,8 +3514,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(0)),
-            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3387,8 +3532,7 @@ mod test {
               2,
               vec![
                 ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
-                ByteCodeTest::Code(AlignedByteCode::GetProperty(0)),
-                ByteCodeTest::Code(AlignedByteCode::Slot(1)),
+                ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
                 ByteCodeTest::Code(AlignedByteCode::Return),
               ],
             )),
