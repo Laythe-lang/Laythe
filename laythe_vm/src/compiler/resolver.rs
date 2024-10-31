@@ -155,7 +155,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
 
   /// Declare all module scoped variables
   fn declare_module_scoped(&mut self, ast: &mut ast::Module<'src>) {
-    self.declare_variable_module(UNINITIALIZED_TOKEN);
+    self.declare_module_variable(UNINITIALIZED_TOKEN);
     self.define_variable(UNINITIALIZED_TOKEN);
 
     for decl in &mut ast.decls {
@@ -216,7 +216,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
   }
 
   /// Declare a module scoped variable
-  fn declare_variable_module(&mut self, name: &Token<'src>) {
+  fn declare_module_variable(&mut self, name: &Token<'src>) {
     debug_assert!(self.tables.len() == 1);
     let table = self.table_mut();
     if let AddSymbolResult::DuplicateSymbol(local) = table.table.add_symbol(name.str(), name.span())
@@ -251,7 +251,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
               );
             }
           },
-          SymbolState::Initialized => {
+          SymbolState::LocalInitialized => {
             if table.fun_depth < self.fun_depth {
               symbol.capture();
             }
@@ -263,28 +263,32 @@ impl<'a, 'src> Resolver<'a, 'src> {
       }
     }
 
-    // if we're resolving a file be more strict about finding symbols
-    if !self.repl {
-      if self
-        .gc
-        .has_str(name.str())
-        .ok_or(ImportError::SymbolDoesNotExist)
-        .and_then(|interned_name| {
-          self
-            .global_module
-            .get_exported_symbol(interned_name)
-            .ok_or(ImportError::SymbolDoesNotExist)
-        })
-        .is_ok()
-      {
-        let table = &mut self.tables.first_mut().unwrap();
-        table.table.add_global_symbol(name.str(), name.span());
-      } else {
-        self.error(
-          &format!("Attempted to access undeclared variable {}", name.str()),
-          Some(name.span()),
-        )
-      }
+    // if we're resolving the repl we are more permissive with missing symbols
+    if self.repl {
+      return;
+    }
+
+    // Check if symbol if found in the global scope if it is
+    // Add it as a global symbol. If not throw an error
+    if self
+      .gc
+      .has_str(name.str())
+      .ok_or(ImportError::SymbolDoesNotExist)
+      .and_then(|interned_name| {
+        self
+          .global_module
+          .get_exported_symbol(interned_name)
+          .ok_or(ImportError::SymbolDoesNotExist)
+      })
+      .is_ok()
+    {
+      let table = &mut self.tables.first_mut().unwrap();
+      table.table.add_global_symbol(name.str(), name.span());
+    } else {
+      self.error(
+        &format!("Attempted to access undeclared variable {}", name.str()),
+        Some(name.span()),
+      )
     }
   }
 
@@ -296,7 +300,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
     let symbol = table.table.get_mut(name.str()).expect("Expected symbol");
 
     if scope_depth == 1 {
-      symbol.global_initialize()
+      symbol.module_initialize()
     } else {
       symbol.initialize()
     }
@@ -501,7 +505,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
   fn class_module(&mut self, class: &ast::Class<'src>) {
     // declare the class by name
     let name = &class.name;
-    self.declare_variable_module(name);
+    self.declare_module_variable(name);
   }
 
   /// Resolve a method
@@ -530,7 +534,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
   /// Resolve a plain function
   fn fun_module(&mut self, fun: &ast::Fun<'src>) {
     let name = fun.name.as_ref().expect("Expected function name");
-    self.declare_variable_module(name);
+    self.declare_module_variable(name);
   }
 
   /// Resolve a let binding
@@ -546,7 +550,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
 
   /// Resolve a let binding
   fn let_module(&mut self, let_: &ast::Let<'src>) {
-    self.declare_variable_module(&let_.name);
+    self.declare_module_variable(&let_.name);
   }
 
   /// Resolve a function objects that presents, functions, methods
@@ -607,16 +611,16 @@ impl<'a, 'src> Resolver<'a, 'src> {
     match &import.stem {
       ast::ImportStem::None => {
         let name = import.path().last().expect("Expected path to be filled");
-        self.declare_variable_module(name);
+        self.declare_module_variable(name);
       },
       ast::ImportStem::Rename(rename) => {
-        self.declare_variable_module(rename);
+        self.declare_module_variable(rename);
       },
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
           let name = symbol.rename.as_ref().unwrap_or(&symbol.symbol);
 
-          self.declare_variable_module(name);
+          self.declare_module_variable(name);
         }
       },
     }
@@ -1031,7 +1035,9 @@ mod test {
 
     test_file_resolve(example, |ast, result| {
       assert!(result.is_ok());
-      assert!(ast.symbols.get("time").is_some())
+
+      let symbol = ast.symbols.get("time").unwrap();
+      assert_eq!(symbol.state(), SymbolState::ModuleInitialized);
     });
   }
 
@@ -1043,7 +1049,9 @@ mod test {
 
     test_file_resolve(example, |ast, result| {
       assert!(result.is_ok());
-      assert!(ast.symbols.get("thing").is_some())
+
+      let symbol = ast.symbols.get("thing").unwrap();
+      assert_eq!(symbol.state(), SymbolState::ModuleInitialized);
     });
   }
 
@@ -1055,8 +1063,12 @@ mod test {
 
     test_file_resolve(example, |ast, result| {
       assert!(result.is_ok());
-      assert!(ast.symbols.get("foo").is_some());
-      assert!(ast.symbols.get("bar").is_some());
+
+      let symbol1 = ast.symbols.get("foo").unwrap();
+      let symbol2 = ast.symbols.get("bar").unwrap();
+
+      assert_eq!(symbol1.state(), SymbolState::ModuleInitialized);
+      assert_eq!(symbol2.state(), SymbolState::ModuleInitialized);
     });
   }
 
@@ -1068,8 +1080,12 @@ mod test {
 
     test_file_resolve(example, |ast, result| {
       assert!(result.is_ok());
-      assert!(ast.symbols.get("baz").is_some());
-      assert!(ast.symbols.get("example").is_some());
+
+      let symbol1 = ast.symbols.get("baz").unwrap();
+      let symbol2 = ast.symbols.get("example").unwrap();
+
+      assert_eq!(symbol1.state(), SymbolState::ModuleInitialized);
+      assert_eq!(symbol2.state(), SymbolState::ModuleInitialized);
     });
   }
 
@@ -1081,7 +1097,9 @@ mod test {
 
     test_file_resolve(example, |ast, result| {
       assert!(result.is_ok());
-      assert!(ast.symbols.get("x").is_some())
+
+      let symbol = ast.symbols.get("x").unwrap();
+      assert_eq!(symbol.state(), SymbolState::ModuleInitialized);
     });
   }
 
@@ -1093,7 +1111,9 @@ mod test {
 
     test_file_resolve(example, |ast, result| {
       assert!(result.is_ok());
-      assert!(ast.symbols.get("example").is_some())
+
+      let symbol = ast.symbols.get("example").unwrap();
+      assert_eq!(symbol.state(), SymbolState::ModuleInitialized);
     });
   }
 
@@ -1105,7 +1125,9 @@ mod test {
 
     test_file_std_resolve(example, |ast, result| {
       assert!(result.is_ok());
-      assert!(ast.symbols.get("example").is_some())
+
+      let symbol = ast.symbols.get("example").unwrap();
+      assert_eq!(symbol.state(), SymbolState::ModuleInitialized);
     });
   }
 
@@ -1161,8 +1183,8 @@ mod test {
       let x = ast.symbols.get("x").unwrap();
       let capture = ast.symbols.get("capture").unwrap();
 
-      assert_eq!(x.state(), SymbolState::GlobalInitialized);
-      assert_eq!(capture.state(), SymbolState::GlobalInitialized);
+      assert_eq!(x.state(), SymbolState::ModuleInitialized);
+      assert_eq!(capture.state(), SymbolState::ModuleInitialized);
 
       match &ast.decls[2] {
         Decl::Stmt(stmt) => match &**stmt {
@@ -1170,8 +1192,8 @@ mod test {
             let x = if_.body.symbols.get("x").unwrap();
             let capture = if_.body.symbols.get("capture").unwrap();
 
-            assert_eq!(x.state(), SymbolState::Captured);
-            assert_eq!(capture.state(), SymbolState::Initialized);
+            assert_eq!(x.state(), SymbolState::LocalCaptured);
+            assert_eq!(capture.state(), SymbolState::LocalInitialized);
           },
           _ => panic!(),
         },
@@ -1200,7 +1222,7 @@ mod test {
 
             let self_ = foo.symbols.get(SELF).unwrap();
 
-            assert_eq!(self_.state(), SymbolState::Captured);
+            assert_eq!(self_.state(), SymbolState::LocalCaptured);
           },
           _ => panic!(),
         },
@@ -1229,7 +1251,7 @@ mod test {
 
             let self_ = foo.symbols.get(SELF).unwrap();
 
-            assert_eq!(self_.state(), SymbolState::Captured);
+            assert_eq!(self_.state(), SymbolState::LocalCaptured);
           },
           _ => panic!(),
         },
@@ -1253,9 +1275,9 @@ mod test {
       let example2 = ast.symbols.get("example2").unwrap();
       let example3 = ast.symbols.get("example3").unwrap();
 
-      assert_eq!(example1.state(), SymbolState::GlobalInitialized);
-      assert_eq!(example2.state(), SymbolState::GlobalInitialized);
-      assert_eq!(example3.state(), SymbolState::GlobalInitialized);
+      assert_eq!(example1.state(), SymbolState::ModuleInitialized);
+      assert_eq!(example2.state(), SymbolState::ModuleInitialized);
+      assert_eq!(example3.state(), SymbolState::ModuleInitialized);
     });
   }
 
@@ -1277,7 +1299,48 @@ mod test {
           Stmt::Try(try_) => {
             let captured = try_.catches.first().unwrap().symbols.get("e").unwrap();
 
-            assert_eq!(captured.state(), SymbolState::Initialized);
+            assert_eq!(captured.state(), SymbolState::LocalInitialized);
+          },
+          _ => panic!(),
+        },
+        _ => panic!(),
+      }
+    });
+  }
+
+  #[test]
+  fn try_catch_capture_error() {
+    let example = "
+      fn foo() {
+        try {
+        } catch e: Error {
+          fn bar () { e }
+        }
+      }
+  ";
+
+    test_file_std_resolve(example, |ast, result| {
+      assert!(result.is_ok());
+      assert_eq!(ast.decls.len(), 1);
+
+      let symbol = ast.symbols.get("foo").unwrap();
+      assert_eq!(symbol.state(), SymbolState::ModuleInitialized);
+
+      match &ast.decls[0] {
+        Decl::Symbol(symbol) => match &**symbol {
+          Symbol::Fun(fun) => match &fun.body {
+            ast::FunBody::Block(block) => match &block.decls[0] {
+              Decl::Stmt(stmt) => match &**stmt {
+                Stmt::Try(try_) => {
+                  let captured = try_.catches.first().unwrap().symbols.get("e").unwrap();
+
+                  assert_eq!(captured.state(), SymbolState::LocalCaptured);
+                },
+                _ => panic!(),
+              },
+              _ => panic!(),
+            },
+            _ => panic!(),
           },
           _ => panic!(),
         },
@@ -1306,9 +1369,9 @@ mod test {
             let example2 = if_.body.symbols.get("example2").unwrap();
             let example3 = if_.body.symbols.get("example3").unwrap();
 
-            assert_eq!(example1.state(), SymbolState::Initialized);
-            assert_eq!(example2.state(), SymbolState::Initialized);
-            assert_eq!(example3.state(), SymbolState::Initialized);
+            assert_eq!(example1.state(), SymbolState::LocalInitialized);
+            assert_eq!(example2.state(), SymbolState::LocalInitialized);
+            assert_eq!(example3.state(), SymbolState::LocalInitialized);
           },
           _ => panic!(),
         },

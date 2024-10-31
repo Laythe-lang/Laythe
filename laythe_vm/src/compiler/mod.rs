@@ -71,14 +71,18 @@ pub struct ClassAttributes {
   /// the fields present on this class
   fields: Vec<GcStr>,
 
+  /// The name of this class
+  name: GcStr,
+
   /// Does this class have an explicit super class
   has_explicit_super_class: bool,
 }
 
 impl ClassAttributes {
-  fn new() -> Self {
+  fn new(name: GcStr) -> Self {
     ClassAttributes {
       fun_kind: None,
+      name,
       fields: vec![],
       has_explicit_super_class: false,
     }
@@ -92,6 +96,7 @@ impl ClassAttributes {
 impl DebugHeap for ClassAttributes {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
     f.debug_struct("ClassInfo")
+      .field("name", &self.name)
       .field("fun_kind", &self.fun_kind)
       .field("fields", &self.fields)
       .field("has_explicit_super_class", &self.has_explicit_super_class)
@@ -295,7 +300,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     ast: &'a ast::Module<'src>,
   ) -> (FeResult<Fun>, Allocator, CacheIdEmitter) {
     self.begin_global_scope(&ast.symbols);
-    self.declare_script();
 
     for decl in &ast.decls {
       self.decl(decl);
@@ -485,6 +489,17 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     self.scope_depth += 1;
     self.global_table = Some(table);
+
+    self.locals.push(Local {
+      symbol: table.get(UNINITIALIZED_VAR).expect("Expected symbol."),
+      depth: self.scope_depth,
+    });
+    // for (name, value) in self.module.symbols() {
+    //   self.locals.push(Local {
+    //     symbol: table.get(UNINITIALIZED_VAR).expect("Expected symbol."),
+    //     depth: self.scope_depth,
+    //   });
+    // }
   }
 
   /// Decrease the scope depth by 1
@@ -522,8 +537,14 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn variable_get(&mut self, name: &Token<'src>) {
     match self.resolve_local(name.str()) {
       Some((local, state)) => match state {
-        SymbolState::Initialized => self.emit_byte(SymbolicByteCode::GetLocal(local), name.end()),
-        SymbolState::Captured => self.emit_byte(SymbolicByteCode::GetBox(local), name.end()),
+        SymbolState::LocalInitialized => {
+          self.emit_byte(SymbolicByteCode::GetLocal(local), name.end())
+        },
+        SymbolState::LocalCaptured => self.emit_byte(SymbolicByteCode::GetBox(local), name.end()),
+        SymbolState::ModuleInitialized => {
+          let global_index = self.identifier_constant(name.str());
+          self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
+        },
         SymbolState::GlobalInitialized => {
           let global_index = self.identifier_constant(name.str());
           self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
@@ -536,12 +557,18 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       },
       None => match self.resolve_capture(name.str()) {
         Some((local, state)) => match state {
-          SymbolState::Captured => self.emit_byte(SymbolicByteCode::GetCapture(local), name.end()),
+          SymbolState::LocalCaptured => {
+            self.emit_byte(SymbolicByteCode::GetCapture(local), name.end())
+          },
+          SymbolState::ModuleInitialized => {
+            let global_index = self.identifier_constant(name.str());
+            self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
+          },
           SymbolState::GlobalInitialized => {
             let global_index = self.identifier_constant(name.str());
             self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
           },
-          SymbolState::Initialized => panic!(
+          SymbolState::LocalInitialized => panic!(
             "Unexpected local symbol {} in {}.",
             name.str(),
             self.fun.name()
@@ -567,8 +594,14 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn variable_set(&mut self, name: &Token<'src>) {
     match self.resolve_local(name.str()) {
       Some((local, state)) => match state {
-        SymbolState::Initialized => self.emit_byte(SymbolicByteCode::SetLocal(local), name.end()),
-        SymbolState::Captured => self.emit_byte(SymbolicByteCode::SetBox(local), name.end()),
+        SymbolState::LocalInitialized => {
+          self.emit_byte(SymbolicByteCode::SetLocal(local), name.end())
+        },
+        SymbolState::LocalCaptured => self.emit_byte(SymbolicByteCode::SetBox(local), name.end()),
+        SymbolState::ModuleInitialized => {
+          let global_index = self.identifier_constant(name.str());
+          self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
+        },
         SymbolState::GlobalInitialized => {
           let global_index = self.identifier_constant(name.str());
           self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
@@ -581,12 +614,18 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       },
       None => match self.resolve_capture(name.str()) {
         Some((local, state)) => match state {
-          SymbolState::Captured => self.emit_byte(SymbolicByteCode::SetCapture(local), name.end()),
+          SymbolState::LocalCaptured => {
+            self.emit_byte(SymbolicByteCode::SetCapture(local), name.end())
+          },
+          SymbolState::ModuleInitialized => {
+            let global_index = self.identifier_constant(name.str());
+            self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
+          },
           SymbolState::GlobalInitialized => {
             let global_index = self.identifier_constant(name.str());
             self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
           },
-          SymbolState::Initialized => panic!(
+          SymbolState::LocalInitialized => panic!(
             "Unexpected local symbol {} in {}.",
             name.str(),
             self.fun.name()
@@ -611,8 +650,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   fn emit_local_get(&mut self, state: SymbolState, index: u8, end: u32) {
     let byte = match state {
-      SymbolState::Initialized => SymbolicByteCode::GetLocal(index),
-      SymbolState::Captured => SymbolicByteCode::GetBox(index),
+      SymbolState::LocalInitialized => SymbolicByteCode::GetLocal(index),
+      SymbolState::LocalCaptured => SymbolicByteCode::GetBox(index),
       _ => panic!("Expected local symbol"),
     };
     self.emit_byte(byte, end);
@@ -620,8 +659,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   fn emit_local_set(&mut self, state: SymbolState, index: u8, end: u32) {
     let byte = match state {
-      SymbolState::Initialized => SymbolicByteCode::SetLocal(index),
-      SymbolState::Captured => SymbolicByteCode::SetBox(index),
+      SymbolState::LocalInitialized => SymbolicByteCode::SetLocal(index),
+      SymbolState::LocalCaptured => SymbolicByteCode::SetBox(index),
       _ => panic!("Expected local symbol"),
     };
     self.emit_byte(byte, end);
@@ -727,7 +766,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       depth: self.scope_depth,
     });
 
-    if let SymbolState::Captured = symbol.state() {
+    if let SymbolState::LocalCaptured = symbol.state() {
       self.emit_byte(SymbolicByteCode::EmptyBox, offset);
     }
 
@@ -760,19 +799,9 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     symbol.state()
   }
 
-  // declare the script
-  fn declare_script(&mut self) {
-    let table = self.global_table.expect("Expected global symbol table.");
-
-    self.locals.push(Local {
-      symbol: table.get(UNINITIALIZED_VAR).expect("Expected symbol."),
-      depth: self.scope_depth,
-    });
-  }
-
   /// Define a variable
   fn define_variable(&mut self, variable: u16, state: SymbolState, offset: u32) {
-    if let SymbolState::Captured = state {
+    if let SymbolState::LocalCaptured = state {
       self.emit_byte(SymbolicByteCode::FillBox, offset);
     }
 
@@ -787,7 +816,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn define_local_variable(&mut self, name: &str, state: SymbolState, offset: u32) {
     assert!(self.scope_depth > 1);
 
-    if let SymbolState::Captured = state {
+    if let SymbolState::LocalCaptured = state {
       let (slot, _) = self.resolve_local(name).expect("Expected local symbol.");
       self.emit_byte(SymbolicByteCode::Box(slot), offset);
     }
@@ -1000,7 +1029,12 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.define_variable(class_constant, class_state, class_name.end());
 
     // set this class as the current class compiler
-    let mut class_attributes = self.gc.borrow_mut().manage(ClassAttributes::new(), self);
+    let name = self.gc.borrow_mut().manage_str(class_name.str(), self);
+
+    let mut class_attributes = self
+      .gc
+      .borrow_mut()
+      .manage(ClassAttributes::new(name), self);
     let enclosing_class = mem::replace(&mut self.class_attributes, Some(class_attributes));
     if let Some(enclosing_class) = enclosing_class {
       self.gc.borrow_mut().push_root(enclosing_class);
@@ -1272,7 +1306,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       // declare the hidden local $iter variable
       self_.declare_local_variable(ITER_VAR);
       self_.emit_known_invoke(ITER, 0, expr_line);
-      self_.define_local_variable(ITER_VAR, SymbolState::Initialized, expr_line);
+      self_.define_local_variable(ITER_VAR, SymbolState::LocalInitialized, expr_line);
 
       let item_line = for_.item.end();
       let item_state = self_.declare_local_variable(for_.item.str());

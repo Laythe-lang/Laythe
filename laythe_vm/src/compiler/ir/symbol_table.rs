@@ -5,11 +5,21 @@ use bumpalo::collections::vec::Vec;
 /// symbol
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Default)]
 pub enum SymbolState {
+  /// This symbol has been declared but is currently unset
   #[default]
   Uninitialized,
-  Initialized,
+
+  /// This symbol has been initialized in a local scope and is not captured
+  LocalInitialized,
+
+  /// This symbol has been initialized at the module scope
+  ModuleInitialized,
+
+  /// This symbol has been initialized at the global scope
   GlobalInitialized,
-  Captured,
+
+  /// This local symbol has been captured as part of a closure
+  LocalCaptured,
 }
 
 /// Was the local successfully added
@@ -58,21 +68,21 @@ impl Symbol {
   /// Mark this symbol as initialized
   pub fn initialize(&mut self) {
     if let SymbolState::Uninitialized = self.state {
-      self.state = SymbolState::Initialized
+      self.state = SymbolState::LocalInitialized
     }
   }
 
   /// Mark this symbol as initialized
-  pub fn global_initialize(&mut self) {
+  pub fn module_initialize(&mut self) {
     if let SymbolState::Uninitialized = self.state {
-      self.state = SymbolState::GlobalInitialized
+      self.state = SymbolState::ModuleInitialized
     }
   }
 
   /// Mark this symbol as captured
   pub fn capture(&mut self) {
-    if let SymbolState::Initialized = self.state {
-      self.state = SymbolState::Captured
+    if let SymbolState::LocalInitialized = self.state {
+      self.state = SymbolState::LocalCaptured
     }
   }
 }
@@ -103,7 +113,8 @@ impl<'a> SymbolTable<'a> {
     }
   }
 
-  /// Add a new symbol to this table
+  /// Add a new symbol to this table from the global scope. These symbols
+  /// are already initialized.
   pub fn add_global_symbol(&mut self, name: &str, span: Span) -> AddSymbolResult {
     match self.get_any_state(name) {
       Some(symbol) => AddSymbolResult::DuplicateSymbol(symbol.clone()),
@@ -174,23 +185,23 @@ mod test {
       let mut symbol = test_symbol("example", SymbolState::Uninitialized);
 
       symbol.initialize();
-      assert_eq!(symbol.state(), SymbolState::Initialized)
+      assert_eq!(symbol.state(), SymbolState::LocalInitialized)
     }
 
     #[test]
     fn initialize_wrong_state() {
-      let mut symbol = test_symbol("example", SymbolState::Captured);
+      let mut symbol = test_symbol("example", SymbolState::LocalCaptured);
 
       symbol.initialize();
-      assert_eq!(symbol.state(), SymbolState::Captured)
+      assert_eq!(symbol.state(), SymbolState::LocalCaptured)
     }
 
     #[test]
     fn capture() {
-      let mut symbol = test_symbol("example", SymbolState::Initialized);
+      let mut symbol = test_symbol("example", SymbolState::LocalInitialized);
 
       symbol.capture();
-      assert_eq!(symbol.state(), SymbolState::Captured)
+      assert_eq!(symbol.state(), SymbolState::LocalCaptured)
     }
 
     #[test]
