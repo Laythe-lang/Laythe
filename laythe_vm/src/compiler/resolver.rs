@@ -226,14 +226,32 @@ impl<'a, 'src> Resolver<'a, 'src> {
   }
 
   fn duplicate_declaration(&mut self, existing: &symbol_table::Symbol, duplicate: &Token<'src>) {
-    self.error_with_context(
-      "Variable with this name already declared in this scope.",
-      vec![
-        Label::primary(self.file_id, duplicate.span()).with_message("Declared a second time here"),
-        Label::secondary(self.file_id, existing.span())
-          .with_message(format!("{} was originally declared here", &duplicate.str())),
-      ],
-    )
+    const MESSAGE: &str = "Variable with this name already declared in this scope.";
+    const PRIMARY_LABEL: &str = "Declared a second time here";
+
+    match existing.span() {
+      Some(span) => self.error_with_context(
+        MESSAGE,
+        vec![
+          Label::primary(self.file_id, duplicate.span())
+            .with_message(PRIMARY_LABEL),
+          Label::secondary(self.file_id, span)
+            .with_message(format!("{} was originally declared here", &duplicate.str())),
+        ],
+      ),
+      None => {
+        if self.repl {
+          let error = Diagnostic::error()
+            .with_message(MESSAGE)
+            .with_labels(vec![Label::primary(self.file_id, duplicate.span())])
+            .with_notes(vec!["This symbol was declared previously in the repl session".to_string()]);
+
+          self.add_error(error);
+        } else {
+          panic!("Unexpected missing span")
+        }
+      },
+    }
   }
 
   /// resolve a named variable
@@ -312,7 +330,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
       .with_message(message_primary)
       .with_labels(labels);
 
-    self.errors.push(error);
+    self.add_error(error);
   }
 
   /// Indicate an error occurred at he current index
@@ -334,6 +352,10 @@ impl<'a, 'src> Resolver<'a, 'src> {
       None => error,
     };
 
+    self.add_error(error);
+  }
+
+  fn add_error(&mut self, error: Diagnostic<VmFileId>) {
     self.errors.push(error);
   }
 

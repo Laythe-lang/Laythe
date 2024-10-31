@@ -38,7 +38,7 @@ pub struct Symbol {
   name: String,
 
   /// the local where this symbol was declared
-  span: Span,
+  span: Option<Span>,
 
   /// What is the state of this local
   state: SymbolState,
@@ -47,7 +47,20 @@ pub struct Symbol {
 impl Symbol {
   /// Create a new symbol
   pub fn new(name: String, span: Span, state: SymbolState) -> Self {
-    Self { name, span, state }
+    Self {
+      name,
+      span: Some(span),
+      state,
+    }
+  }
+
+  /// Create a new symbol
+  pub fn without_span(name: String, state: SymbolState) -> Self {
+    Self {
+      name,
+      span: None,
+      state,
+    }
   }
 
   /// Retrieve this symbol's name
@@ -61,7 +74,7 @@ impl Symbol {
   }
 
   /// Retrieve the source span of this symbol
-  pub fn span(&self) -> Span {
+  pub fn span(&self) -> Option<Span> {
     self.span
   }
 
@@ -105,7 +118,7 @@ impl<'a> SymbolTable<'a> {
       None => {
         self.0.push(Symbol {
           name: name.to_string(),
-          span,
+          span: Some(span),
           state: SymbolState::Uninitialized,
         });
         AddSymbolResult::Ok
@@ -121,7 +134,7 @@ impl<'a> SymbolTable<'a> {
       None => {
         self.0.push(Symbol {
           name: name.to_string(),
-          span,
+          span: Some(span),
           state: SymbolState::GlobalInitialized,
         });
         AddSymbolResult::Ok
@@ -172,7 +185,7 @@ mod test {
   fn test_symbol(name: &str, state: SymbolState) -> Symbol {
     Symbol {
       name: name.to_string(),
-      span: test_span(),
+      span: Some(test_span()),
       state,
     }
   }
@@ -240,7 +253,7 @@ mod test {
         AddSymbolResult::DuplicateSymbol(Symbol {
           name: "example".to_string(),
           state: SymbolState::Uninitialized,
-          span: test_span(),
+          span: Some(test_span()),
         })
       );
     }
