@@ -1436,7 +1436,11 @@ impl Vm {
       },
       NativeEnvironment::Normal => {
         let mut stub = self.native_fun_stubs.pop().unwrap_or_else(|| {
-          self.manage_obj(Fun::stub(&GcHooks::new(self), native.name(), self.global))
+          self.manage_obj(Fun::stub(
+            &GcHooks::new(self),
+            native.name(),
+            self.global_module,
+          ))
         });
         stub.set_name(native.name());
         self.push_frame(stub, self.capture_stub, arg_count);

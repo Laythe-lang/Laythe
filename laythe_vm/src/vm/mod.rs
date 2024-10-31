@@ -127,7 +127,7 @@ pub struct Vm {
   inline_cache: Vec<InlineCache>,
 
   /// The global module
-  global: Gc<Module>,
+  global_module: Gc<Module>,
 
   /// The current frame's function
   current_fun: GcObj<Fun>,
@@ -189,7 +189,7 @@ impl Vm {
       emitter,
       module_cache: Map::default(),
       inline_cache,
-      global,
+      global_module: global,
       current_fun,
       exit_code: 0,
       ip: ptr::null(),

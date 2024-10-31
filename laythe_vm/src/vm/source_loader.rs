@@ -46,7 +46,8 @@ impl Vm {
       .expect("File id not set for line offsets");
 
     let mut ast = ast?;
-    Resolver::new(self.global, &self.gc.borrow(), source, file_id, repl).resolve(&mut ast)?;
+    Resolver::new(self.global_module, &self.gc.borrow(), source, file_id, repl)
+      .resolve(&mut ast)?;
 
     let gc = self.gc.replace(Allocator::default());
     let alloc = Bump::new();
@@ -91,8 +92,8 @@ impl Vm {
     hooks.pop_roots(2);
     hooks.push_root(module);
 
-    // transfer the symbols from the global module into the main module
-    self.global.transfer_exported(&hooks, &mut module);
+    // transfer the symbols from the global module into this module
+    self.global_module.transfer_exported(&hooks, &mut module);
 
     hooks.pop_roots(1);
     let package = hooks.manage(Package::new(name, module));
@@ -248,8 +249,16 @@ mod test {
       let class = test_class(&hooks, "Module");
       let module_path = hooks.manage_str("example");
 
-      let mut root_module = hooks.manage(Module::new(module_class(&hooks, "root", class), module_path, 0));
-      let nested_module = hooks.manage(Module::new(module_class(&hooks, "first", class), module_path, 1));
+      let mut root_module = hooks.manage(Module::new(
+        module_class(&hooks, "root", class),
+        module_path,
+        0,
+      ));
+      let nested_module = hooks.manage(Module::new(
+        module_class(&hooks, "first", class),
+        module_path,
+        1,
+      ));
 
       assert!(root_module.insert_module(nested_module).is_ok());
 
