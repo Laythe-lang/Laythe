@@ -209,7 +209,7 @@ pub struct Compiler<'a, 'src> {
   local_tables: collections::Vec<'a, &'a SymbolTable<'src>>,
 
   /// is this function the script with the global table
-  global_table: Option<&'a SymbolTable<'src>>,
+  module_table: Option<&'a SymbolTable<'src>>,
 
   /// captures in this function
   captures: Vec<CaptureIndex>,
@@ -286,7 +286,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       gc: RefCell::new(gc),
       enclosing: None,
       local_tables: collections::Vec::new_in(alloc),
-      global_table: None,
+      module_table: None,
       locals: collections::Vec::new_in(alloc),
       captures: vec![],
       constants: object::Map::default(),
@@ -299,7 +299,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     mut self,
     ast: &'a ast::Module<'src>,
   ) -> (FeResult<Fun>, Allocator, CacheIdEmitter) {
-    self.begin_global_scope(&ast.symbols);
+    self.begin_module_scope(&ast.symbols);
 
     for decl in &ast.decls {
       self.decl(decl);
@@ -354,7 +354,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       try_attributes: None,
       gc,
       locals: collections::Vec::new_in(enclosing.alloc),
-      global_table: None,
+      module_table: None,
       local_tables: collections::Vec::new_in(enclosing.alloc),
       enclosing: Some(NonNull::from(enclosing)),
       captures: vec![],
@@ -481,14 +481,14 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.local_tables.push(table);
   }
 
-  /// Set the global scope
-  fn begin_global_scope(&mut self, table: &'a SymbolTable<'src>) {
-    assert!(self.global_table.is_none());
+  /// Set the module scope
+  fn begin_module_scope(&mut self, table: &'a SymbolTable<'src>) {
+    assert!(self.module_table.is_none());
     assert!(self.local_tables.is_empty());
     assert!(self.scope_depth == 0);
 
     self.scope_depth += 1;
-    self.global_table = Some(table);
+    self.module_table = Some(table);
 
     self.locals.push(Local {
       symbol: table.get(UNINITIALIZED_VAR).expect("Expected symbol."),
@@ -543,11 +543,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         SymbolState::LocalCaptured => self.emit_byte(SymbolicByteCode::GetBox(local), name.end()),
         SymbolState::ModuleInitialized => {
           let global_index = self.identifier_constant(name.str());
-          self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
+          self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
         },
         SymbolState::GlobalInitialized => {
           let global_index = self.identifier_constant(name.str());
-          self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
+          self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
         },
         SymbolState::Uninitialized => panic!(
           "Unexpected uninitialized symbol {} in {}.",
@@ -562,11 +562,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           },
           SymbolState::ModuleInitialized => {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
           },
           SymbolState::GlobalInitialized => {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
           },
           SymbolState::LocalInitialized => panic!(
             "Unexpected local symbol {} in {}.",
@@ -582,7 +582,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         None => {
           if self.repl {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::GetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
           } else {
             panic!("Symbol {} not found in {}.", name.str(), self.fun.name());
           }
@@ -600,11 +600,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         SymbolState::LocalCaptured => self.emit_byte(SymbolicByteCode::SetBox(local), name.end()),
         SymbolState::ModuleInitialized => {
           let global_index = self.identifier_constant(name.str());
-          self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
+          self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
         },
         SymbolState::GlobalInitialized => {
           let global_index = self.identifier_constant(name.str());
-          self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
+          self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
         },
         SymbolState::Uninitialized => panic!(
           "Unexpected uninitialized symbol {} in {}.",
@@ -619,11 +619,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           },
           SymbolState::ModuleInitialized => {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
           },
           SymbolState::GlobalInitialized => {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
           },
           SymbolState::LocalInitialized => panic!(
             "Unexpected local symbol {} in {}.",
@@ -639,7 +639,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         None => {
           if self.repl {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::SetGlobal(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
           } else {
             panic!("Symbol {} not found in {}.", name.str(), self.fun.name())
           }
@@ -676,7 +676,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       }
     }
 
-    if let Some(global_table) = self.global_table {
+    if let Some(global_table) = self.module_table {
       if let Some(symbol) = global_table.get(name) {
         return Some((0, symbol.state()));
       }
@@ -742,7 +742,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     // if global exit
     if self.scope_depth == 1 {
       return self
-        .global_table
+        .module_table
         .and_then(|table| table.get(name.str()).map(|symbol| symbol.state()))
         .expect("Expected global symbol");
     }
@@ -809,7 +809,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       return;
     }
 
-    self.emit_byte(SymbolicByteCode::DefineGlobal(variable), offset);
+    self.emit_byte(SymbolicByteCode::DefineModuleSymbol(variable), offset);
   }
 
   /// Define a local only variable
@@ -1266,12 +1266,12 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         self.emit_byte(SymbolicByteCode::Import(path), import.start());
         let (name, _) =
           self.make_identifier(&import.path()[import.path().len() - 1], import.start());
-        self.emit_byte(SymbolicByteCode::DefineGlobal(name), import.end());
+        self.emit_byte(SymbolicByteCode::DefineModuleSymbol(name), import.end());
       },
       ast::ImportStem::Rename(rename) => {
         self.emit_byte(SymbolicByteCode::Import(path), import.start());
         let (name, _) = self.make_identifier(rename, import.start());
-        self.emit_byte(SymbolicByteCode::DefineGlobal(name), import.end());
+        self.emit_byte(SymbolicByteCode::DefineModuleSymbol(name), import.end());
       },
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
@@ -1286,7 +1286,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
             None => self.make_identifier(&symbol.symbol, import.start()).0,
           };
 
-          self.emit_byte(SymbolicByteCode::DefineGlobal(name), import.end());
+          self.emit_byte(SymbolicByteCode::DefineModuleSymbol(name), import.end());
         }
       },
     }
@@ -2549,7 +2549,7 @@ mod test {
       2,
       &vec![
         AlignedByteCode::Import(0),
-        AlignedByteCode::DefineGlobal(1),
+        AlignedByteCode::DefineModuleSymbol(1),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2570,7 +2570,7 @@ mod test {
       2,
       &vec![
         AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Export(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -2599,7 +2599,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Export(0)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2621,9 +2621,9 @@ mod test {
       3,
       &vec![
         AlignedByteCode::Class(0),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::GetModuleSymbol(1),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Inherit,
         AlignedByteCode::DropN(2),
         AlignedByteCode::Export(0),
@@ -2653,7 +2653,7 @@ mod test {
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(14),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::CheckHandler(7),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
@@ -2694,12 +2694,12 @@ mod test {
         AlignedByteCode::DropN(2),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(22),
-        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::GetModuleSymbol(3),
         AlignedByteCode::CheckHandler(15),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::GetError,
-        AlignedByteCode::GetGlobal(5),
+        AlignedByteCode::GetModuleSymbol(5),
         AlignedByteCode::Constant(6),
         AlignedByteCode::Call(1),
         AlignedByteCode::DropN(2),
@@ -2747,12 +2747,12 @@ mod test {
         AlignedByteCode::Drop,
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(22),
-        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::GetModuleSymbol(3),
         AlignedByteCode::CheckHandler(15),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::GetError,
-        AlignedByteCode::GetGlobal(5),
+        AlignedByteCode::GetModuleSymbol(5),
         AlignedByteCode::Constant(6),
         AlignedByteCode::Call(1),
         AlignedByteCode::DropN(2),
@@ -2760,12 +2760,12 @@ mod test {
         AlignedByteCode::ContinueUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(22),
-        AlignedByteCode::GetGlobal(3),
+        AlignedByteCode::GetModuleSymbol(3),
         AlignedByteCode::CheckHandler(15),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::GetError,
-        AlignedByteCode::GetGlobal(5),
+        AlignedByteCode::GetModuleSymbol(5),
         AlignedByteCode::Constant(7),
         AlignedByteCode::Call(1),
         AlignedByteCode::DropN(2),
@@ -2801,7 +2801,7 @@ mod test {
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(17),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::CheckHandler(7),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
@@ -2840,7 +2840,7 @@ mod test {
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Loop(13),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::CheckHandler(7),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
@@ -2882,7 +2882,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
             ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
             ByteCodeTest::Code(AlignedByteCode::CheckHandler(5)),
             ByteCodeTest::Code(AlignedByteCode::FinishUnwind),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
@@ -2894,7 +2894,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2917,15 +2917,15 @@ mod test {
       3,
       &vec![
         AlignedByteCode::Class(0),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::GetModuleSymbol(1),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Inherit,
         AlignedByteCode::DropN(2),
         AlignedByteCode::Class(2),
-        AlignedByteCode::DefineGlobal(2),
-        AlignedByteCode::GetGlobal(0),
-        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::DefineModuleSymbol(2),
+        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::GetModuleSymbol(2),
         AlignedByteCode::Inherit,
         AlignedByteCode::DropN(2),
         AlignedByteCode::Nil,
@@ -2948,9 +2948,9 @@ mod test {
       3,
       &vec![
         AlignedByteCode::Class(0),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::GetModuleSymbol(1),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Inherit,
         AlignedByteCode::DropN(2),
         AlignedByteCode::Nil,
@@ -2985,9 +2985,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3057,9 +3057,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3129,9 +3129,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3194,9 +3194,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3245,9 +3245,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3298,9 +3298,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3317,10 +3317,10 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Method(2)),
         ByteCodeTest::Code(AlignedByteCode::Field(4)),
         ByteCodeTest::Code(AlignedByteCode::DropN(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(4)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(4)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(4)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(4)),
         ByteCodeTest::Code(AlignedByteCode::Constant(5)),
         ByteCodeTest::Code(AlignedByteCode::SetProperty(4)),
         ByteCodeTest::Code(AlignedByteCode::Slot(0)),
@@ -3353,9 +3353,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3404,9 +3404,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3461,9 +3461,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3481,10 +3481,10 @@ mod test {
         ByteCodeTest::Code(AlignedByteCode::Field(4)),
         ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Class(5)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(5)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(5)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Box(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(5)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(5)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           6,
@@ -3538,9 +3538,9 @@ mod test {
       4,
       &vec![
         ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3596,7 +3596,7 @@ mod test {
       &fun,
       2,
       &vec![
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Launch(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3619,7 +3619,7 @@ mod test {
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(8),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Raise,
@@ -3645,9 +3645,9 @@ mod test {
       &vec![
         AlignedByteCode::Channel,
         AlignedByteCode::List(1),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Invoke((3, 1)),
         AlignedByteCode::Slot(0),
@@ -3674,9 +3674,9 @@ mod test {
       3,
       &vec![
         AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Constant(2),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::GetProperty(0),
         AlignedByteCode::Slot(0),
         AlignedByteCode::Send,
@@ -3702,9 +3702,9 @@ mod test {
       3,
       &vec![
         AlignedByteCode::Channel,
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Send,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -3727,12 +3727,12 @@ mod test {
       &fun,
       4,
       &vec![
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(1),
-        AlignedByteCode::GetGlobal(1),
+        AlignedByteCode::GetModuleSymbol(1),
+        AlignedByteCode::GetModuleSymbol(1),
+        AlignedByteCode::GetModuleSymbol(1),
         AlignedByteCode::List(3),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Invoke((4, 2)),
@@ -3762,9 +3762,9 @@ mod test {
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::List(3),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(4),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::GetModuleSymbol(4),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Constant(5),
         AlignedByteCode::Invoke((6, 1)),
         AlignedByteCode::Slot(0),
@@ -3794,8 +3794,8 @@ mod test {
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::List(3),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Dup,
         AlignedByteCode::Constant(1),
         AlignedByteCode::Invoke((4, 1)),
@@ -3831,7 +3831,7 @@ mod test {
         AlignedByteCode::False,
         AlignedByteCode::Constant(3),
         AlignedByteCode::List(5),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3852,7 +3852,7 @@ mod test {
       2,
       &vec![
         AlignedByteCode::List(0),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3878,7 +3878,7 @@ mod test {
         AlignedByteCode::False,
         AlignedByteCode::Constant(3),
         AlignedByteCode::Tuple(5),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3899,7 +3899,7 @@ mod test {
       2,
       &vec![
         AlignedByteCode::Tuple(0),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3927,7 +3927,7 @@ mod test {
         AlignedByteCode::Constant(3),
         AlignedByteCode::Nil,
         AlignedByteCode::Map(2),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3948,7 +3948,7 @@ mod test {
       2,
       &vec![
         AlignedByteCode::Map(0),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3977,8 +3977,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4009,8 +4009,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4048,8 +4048,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Constant(2)),
         ByteCodeTest::Code(AlignedByteCode::Constant(3)),
         ByteCodeTest::Code(AlignedByteCode::Constant(4)),
@@ -4119,8 +4119,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4169,11 +4169,11 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(2)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(2)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4200,8 +4200,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4234,11 +4234,11 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Constant(3)),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(2)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(2)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(2)),
         ByteCodeTest::Code(AlignedByteCode::Call(1)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4266,8 +4266,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4294,8 +4294,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4320,7 +4320,7 @@ mod test {
         AlignedByteCode::Constant(3),
         AlignedByteCode::Nil,
         AlignedByteCode::Map(2),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4343,7 +4343,7 @@ mod test {
         AlignedByteCode::Constant(3),
         AlignedByteCode::Constant(4),
         AlignedByteCode::List(4),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4366,9 +4366,9 @@ mod test {
       &vec![
         AlignedByteCode::Constant(1),
         AlignedByteCode::BufferedChannel,
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Channel,
-        AlignedByteCode::DefineGlobal(2),
+        AlignedByteCode::DefineModuleSymbol(2),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4400,7 +4400,7 @@ mod test {
         AlignedByteCode::IterCurrent(5),
         AlignedByteCode::SetLocal(2),
         AlignedByteCode::Drop,
-        AlignedByteCode::GetGlobal(6),
+        AlignedByteCode::GetModuleSymbol(6),
         AlignedByteCode::GetLocal(2),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
@@ -4459,7 +4459,7 @@ mod test {
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(11),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
@@ -4557,7 +4557,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -4629,7 +4629,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -4691,7 +4691,7 @@ mod test {
         AlignedByteCode::Constant(1),
         AlignedByteCode::Less,
         AlignedByteCode::JumpIfFalse(8),
-        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::GetModuleSymbol(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
@@ -4716,12 +4716,12 @@ mod test {
         AlignedByteCode::Constant(1),
         AlignedByteCode::Less,
         AlignedByteCode::JumpIfFalse(11),
-        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::GetModuleSymbol(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Jump(8),
-        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::GetModuleSymbol(2),
         AlignedByteCode::Constant(4),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
@@ -4764,7 +4764,7 @@ mod test {
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(11),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::GetGlobal(2),
+        AlignedByteCode::GetModuleSymbol(2),
         AlignedByteCode::GetLocal(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::DropN(2),
@@ -4809,7 +4809,7 @@ mod test {
       2,
       &vec![
         AlignedByteCode::Nil,
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4828,7 +4828,7 @@ mod test {
       2,
       &vec![
         AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4849,9 +4849,9 @@ mod test {
       3,
       &vec![
         AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineGlobal(0),
-        AlignedByteCode::GetGlobal(2),
-        AlignedByteCode::GetGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::GetModuleSymbol(2),
+        AlignedByteCode::GetModuleSymbol(0),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -4874,9 +4874,9 @@ mod test {
       2,
       &vec![
         AlignedByteCode::Nil,
-        AlignedByteCode::DefineGlobal(0),
+        AlignedByteCode::DefineModuleSymbol(0),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::SetGlobal(0),
+        AlignedByteCode::SetModuleSymbol(0),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,

@@ -166,14 +166,14 @@ pub fn print_byte_code(
     SymbolicByteCode::InvokeSlot => {
       simple_instruction(stdio.stdout(), "!=== InvokeSlot - Invalid ===!", offset)
     },
-    SymbolicByteCode::DefineGlobal(slot) => {
-      symbolic_constant_instruction(stdio.stdout(), "DefineGlobal", slot, chunk, offset)
+    SymbolicByteCode::DefineModuleSymbol(slot) => {
+      symbolic_constant_instruction(stdio.stdout(), "DefineModuleSymbol", slot, chunk, offset)
     },
-    SymbolicByteCode::GetGlobal(slot) => {
-      symbolic_constant_instruction(stdio.stdout(), "GetGlobal", slot, chunk, offset)
+    SymbolicByteCode::GetModuleSymbol(slot) => {
+      symbolic_constant_instruction(stdio.stdout(), "GetModuleSymbol", slot, chunk, offset)
     },
-    SymbolicByteCode::SetGlobal(slot) => {
-      symbolic_constant_instruction(stdio.stdout(), "SetGlobal", slot, chunk, offset)
+    SymbolicByteCode::SetModuleSymbol(slot) => {
+      symbolic_constant_instruction(stdio.stdout(), "SetModuleSymbol", slot, chunk, offset)
     },
     SymbolicByteCode::GetLocal(slot) => byte_instruction(stdio.stdout(), "GetLocal", slot, offset),
     SymbolicByteCode::SetLocal(slot) => byte_instruction(stdio.stdout(), "SetLocal", slot, offset),
@@ -511,14 +511,14 @@ pub fn disassemble_instruction(
     AlignedByteCode::StaticMethod(constant) => {
       constant_instruction(stdio.stdout(), "StaticMethod", chunk, constant, offset)
     },
-    AlignedByteCode::DefineGlobal(constant) => {
-      constant_instruction(stdio.stdout(), "DefineGlobal", chunk, constant, offset)
+    AlignedByteCode::DefineModuleSymbol(constant) => {
+      constant_instruction(stdio.stdout(), "DefineModuleSymbol", chunk, constant, offset)
     },
-    AlignedByteCode::GetGlobal(constant) => {
-      constant_instruction(stdio.stdout(), "GetGlobal", chunk, constant, offset)
+    AlignedByteCode::GetModuleSymbol(constant) => {
+      constant_instruction(stdio.stdout(), "GetModuleSymbol", chunk, constant, offset)
     },
-    AlignedByteCode::SetGlobal(constant) => {
-      constant_instruction(stdio.stdout(), "SetGlobal", chunk, constant, offset)
+    AlignedByteCode::SetModuleSymbol(constant) => {
+      constant_instruction(stdio.stdout(), "SetModuleSymbol", chunk, constant, offset)
     },
     AlignedByteCode::GetLocal(slot) => byte_instruction(stdio.stdout(), "GetLocal", slot, offset),
     AlignedByteCode::SetLocal(slot) => byte_instruction(stdio.stdout(), "SetLocal", slot, offset),

@@ -605,7 +605,7 @@ impl Vm {
   }
 
   /// Define a global variable
-  pub(super) unsafe fn op_define_global(&mut self) -> ExecutionSignal {
+  pub(super) unsafe fn op_define_module(&mut self) -> ExecutionSignal {
     let slot = self.read_short();
     let name = self.read_string(slot);
     let global = self.fiber.pop();
@@ -641,7 +641,7 @@ impl Vm {
     ExecutionSignal::Ok
   }
 
-  pub(super) unsafe fn op_set_global(&mut self) -> ExecutionSignal {
+  pub(super) unsafe fn op_set_module(&mut self) -> ExecutionSignal {
     let slot = self.read_short();
     let name = self.read_string(slot);
     let value = self.fiber.peek(0);
@@ -751,7 +751,7 @@ impl Vm {
     })
   }
 
-  pub(super) unsafe fn op_get_global(&mut self) -> ExecutionSignal {
+  pub(super) unsafe fn op_get_module(&mut self) -> ExecutionSignal {
     let store_index = self.read_short();
     let string = self.read_string(store_index);
 

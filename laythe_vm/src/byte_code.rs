@@ -133,14 +133,14 @@ pub enum SymbolicByteCode {
   /// Export a symbol from the current module
   Export(u16),
 
-  /// Define a global in the globals table at a index
-  DefineGlobal(u16),
+  /// Define a symbol in the module scope at this index
+  DefineModuleSymbol(u16),
 
-  /// Retrieve a global at the given index
-  GetGlobal(u16),
+  /// Retrieve a symbol at the module scope at this index
+  GetModuleSymbol(u16),
 
-  /// Set a global at the given index
-  SetGlobal(u16),
+  /// Set a symbol at the module scope at this index
+  SetModuleSymbol(u16),
 
   /// Box a local at a given index,
   Box(u8),
@@ -310,9 +310,9 @@ impl SymbolicByteCode {
       Self::Import(_) => 3,
       Self::ImportSymbol(_) => 5,
       Self::Export(_) => 3,
-      Self::DefineGlobal(_) => 3,
-      Self::GetGlobal(_) => 3,
-      Self::SetGlobal(_) => 3,
+      Self::DefineModuleSymbol(_) => 3,
+      Self::GetModuleSymbol(_) => 3,
+      Self::SetModuleSymbol(_) => 3,
       Self::Box(_) => 2,
       Self::EmptyBox => 1,
       Self::FillBox => 1,
@@ -394,9 +394,9 @@ impl SymbolicByteCode {
       Self::Import(_) => 1,
       Self::ImportSymbol(_) => 1,
       Self::Export(_) => 0,
-      Self::DefineGlobal(_) => -1,
-      Self::GetGlobal(_) => 1,
-      Self::SetGlobal(_) => 0,
+      Self::DefineModuleSymbol(_) => -1,
+      Self::GetModuleSymbol(_) => 1,
+      Self::SetModuleSymbol(_) => 0,
       Self::Box(_) => 0,
       Self::EmptyBox => 1,
       Self::FillBox => -1,
@@ -522,9 +522,15 @@ impl<'a> ByteCodeEncoder<'a> {
           self.push_op_u16_tuple(ByteCode::ImportSymbol, *line, *path, *slot)
         },
         SymbolicByteCode::Export(slot) => self.op_short(ByteCode::Export, *line, *slot),
-        SymbolicByteCode::DefineGlobal(slot) => self.op_short(ByteCode::DefineGlobal, *line, *slot),
-        SymbolicByteCode::GetGlobal(slot) => self.op_short(ByteCode::GetGlobal, *line, *slot),
-        SymbolicByteCode::SetGlobal(slot) => self.op_short(ByteCode::SetGlobal, *line, *slot),
+        SymbolicByteCode::DefineModuleSymbol(slot) => {
+          self.op_short(ByteCode::DefineModuleSymbol, *line, *slot)
+        },
+        SymbolicByteCode::GetModuleSymbol(slot) => {
+          self.op_short(ByteCode::GetModuleSymbol, *line, *slot)
+        },
+        SymbolicByteCode::SetModuleSymbol(slot) => {
+          self.op_short(ByteCode::SetModuleSymbol, *line, *slot)
+        },
         SymbolicByteCode::Box(slot) => self.op_byte(ByteCode::Box, *line, *slot),
         SymbolicByteCode::EmptyBox => self.op(ByteCode::EmptyBox, *line),
         SymbolicByteCode::FillBox => self.op(ByteCode::FillBox, *line),
@@ -536,8 +542,12 @@ impl<'a> ByteCodeEncoder<'a> {
         SymbolicByteCode::SetCapture(slot) => self.op_byte(ByteCode::SetCapture, *line, *slot),
         SymbolicByteCode::GetProperty(slot) => self.op_short(ByteCode::GetProperty, *line, *slot),
         SymbolicByteCode::SetProperty(slot) => self.op_short(ByteCode::SetProperty, *line, *slot),
-        SymbolicByteCode::GetKnownProperty(slot) => self.op_short(ByteCode::GetKnownProperty, *line, *slot),
-        SymbolicByteCode::SetKnownProperty(slot) => self.op_short(ByteCode::SetKnownProperty, *line, *slot),
+        SymbolicByteCode::GetKnownProperty(slot) => {
+          self.op_short(ByteCode::GetKnownProperty, *line, *slot)
+        },
+        SymbolicByteCode::SetKnownProperty(slot) => {
+          self.op_short(ByteCode::SetKnownProperty, *line, *slot)
+        },
         SymbolicByteCode::JumpIfFalse(target) => {
           let jump = label_offsets[target.0 as usize] - offset - 3;
           self.op_jump(ByteCode::JumpIfFalse, *line, jump)
@@ -803,14 +813,14 @@ pub enum ByteCode {
   /// Export a symbol from the current module
   Export,
 
-  /// Define a global in the globals table at a index
-  DefineGlobal,
+  /// Define a symbol in the module scope at this index
+  DefineModuleSymbol,
 
-  /// Retrieve a global at the given index
-  GetGlobal,
+  /// Retrieve a symbol at the module scope at this index
+  GetModuleSymbol,
 
-  /// Set a global at the given index
-  SetGlobal,
+  /// Set a symbol at the module scope at this index
+  SetModuleSymbol,
 
   /// Box a local at a given index,
   Box,
@@ -1051,14 +1061,14 @@ pub enum AlignedByteCode {
   /// Export a symbol from the current module
   Export(u16),
 
-  /// Define a global in the globals table at a index
-  DefineGlobal(u16),
+  /// Define a symbol in the module scope at this index
+  DefineModuleSymbol(u16),
 
-  /// Retrieve a global at the given index
-  GetGlobal(u16),
+  /// Retrieve a symbol at the module scope at this index
+  GetModuleSymbol(u16),
 
-  /// Set a global at the given index
-  SetGlobal(u16),
+  /// Set a symbol at the module scope at this index
+  SetModuleSymbol(u16),
 
   /// Box a local at a given index,
   Box(u8),
@@ -1263,16 +1273,16 @@ impl AlignedByteCode {
         Self::Export(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::DefineGlobal => (
-        Self::DefineGlobal(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::DefineModuleSymbol => (
+        Self::DefineModuleSymbol(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::GetGlobal => (
-        Self::GetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::GetModuleSymbol => (
+        Self::GetModuleSymbol(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::SetGlobal => (
-        Self::SetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::SetModuleSymbol => (
+        Self::SetModuleSymbol(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::Box => (Self::Box(store[offset + 1]), offset + 2),
@@ -1449,10 +1459,10 @@ mod test {
       (3, SymbolicByteCode::IterNext(81)),
       (3, SymbolicByteCode::IterCurrent(49882)),
       (1, SymbolicByteCode::Drop),
-      (3, SymbolicByteCode::DefineGlobal(42)),
-      (3, SymbolicByteCode::GetGlobal(14119)),
-      (3, SymbolicByteCode::SetGlobal(2043)),
-      (3, SymbolicByteCode::SetGlobal(38231)),
+      (3, SymbolicByteCode::DefineModuleSymbol(42)),
+      (3, SymbolicByteCode::GetModuleSymbol(14119)),
+      (3, SymbolicByteCode::SetModuleSymbol(2043)),
+      (3, SymbolicByteCode::SetModuleSymbol(38231)),
       (2, SymbolicByteCode::GetBox(183)),
       (2, SymbolicByteCode::SetBox(56)),
       (2, SymbolicByteCode::GetLocal(96)),
