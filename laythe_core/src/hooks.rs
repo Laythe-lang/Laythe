@@ -252,9 +252,6 @@ pub trait GcContext: TraceRoot {
 pub struct NoContext {
   /// A reference to a gc just to allocate
   gc: RefCell<Allocator>,
-
-  // can we collect from this context
-  can_collect: bool,
 }
 
 impl NoContext {
@@ -262,15 +259,11 @@ impl NoContext {
   pub fn new(gc: Allocator) -> Self {
     Self {
       gc: RefCell::new(gc),
-      can_collect: false,
     }
   }
 
-  pub fn with_collection(gc: Allocator) -> Self {
-    Self {
-      gc: RefCell::new(gc),
-      can_collect: true,
-    }
+  pub fn from_cell(gc: RefCell<Allocator>) -> Self {
+    Self { gc }
   }
 
   pub fn replace_gc(&self, gc: Allocator) -> Allocator {
@@ -288,7 +281,7 @@ impl TraceRoot for NoContext {
   fn trace_debug(&self, _stdout: &mut dyn Write) {}
 
   fn can_collect(&self) -> bool {
-    self.can_collect
+    false
   }
 }
 
