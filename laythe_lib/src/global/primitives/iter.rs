@@ -88,7 +88,7 @@ const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fi
 
 pub fn declare_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, ITER_CLASS_NAME)?;
-  export_and_insert(module, class.name(), val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

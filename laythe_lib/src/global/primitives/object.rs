@@ -77,6 +77,7 @@ impl LyNative for ObjectStr {
     let string = match this.kind() {
       ValueKind::Bool => format!("<{} {}>", &*class.name(), this.to_bool()),
       ValueKind::Nil => format!("<{} nil>", &*class.name()),
+      ValueKind::Undefined => panic!("Undefined should not be accessed"),
       ValueKind::Number => format!("<{} {}>", &*class.name(), this.to_num()),
       ValueKind::Obj => match_obj!((&this.to_obj()) {
         ObjectKind::Channel(channel) => {

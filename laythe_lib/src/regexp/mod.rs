@@ -21,8 +21,12 @@ pub fn regexp_module(
   let regexp_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(REGEXP_MODULE_NAME), module_class);
 
-  let module_path = hooks.manage_str(format!("native/{}", REGEXP_MODULE_NAME));
-  let module = hooks.manage(Module::new(regexp_module_class, module_path, emitter.emit()));
+  let module = hooks.manage(Module::new(
+    hooks,
+    regexp_module_class,
+    &format!("native/{}", REGEXP_MODULE_NAME),
+    emitter.emit(),
+  ));
 
   declare_regexp_class(hooks, module, std)?;
   define_regexp_class(hooks, module, std)?;

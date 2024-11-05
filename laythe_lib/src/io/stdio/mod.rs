@@ -27,8 +27,12 @@ pub fn stdio_module(
   let stdio_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(STDIO_MODULE_NAME), module_class);
 
-  let module_path = hooks.manage_str(format!("native/{}/{}", IO_MODULE_NAME, STDIO_MODULE_NAME));
-  let module = hooks.manage(Module::new(stdio_module_class, module_path, emitter.emit()));
+  let module = hooks.manage(Module::new(
+    hooks,
+    stdio_module_class,
+    &format!("native/{}/{}", IO_MODULE_NAME, STDIO_MODULE_NAME),
+    emitter.emit(),
+  ));
 
   declare_stderr(hooks, module, std)?;
   declare_stdin(hooks, module, std)?;

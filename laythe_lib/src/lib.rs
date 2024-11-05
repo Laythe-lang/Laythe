@@ -178,7 +178,7 @@ mod test {
   };
 
   fn class_setup_inner(module: Gc<Module>, class_class: GcObj<Class>) {
-    module.symbols().for_each(|(_key, symbol)| {
+    module.symbols().for_each(|symbol| {
       let option = if symbol.is_obj() {
         match_obj!((&symbol.to_obj()) {
           ObjectKind::Class(class) => Some(class),

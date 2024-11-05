@@ -29,7 +29,7 @@ const FUN_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::Var
 
 pub fn declare_fun_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, FUN_CLASS_NAME)?;
-  export_and_insert(module, class.name(), val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_fun_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

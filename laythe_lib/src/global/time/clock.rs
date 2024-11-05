@@ -16,8 +16,9 @@ const CLOCK_META: NativeMetaBuilder = NativeMetaBuilder::fun("clock", Arity::Fix
 
 pub fn declare_clock_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   export_and_insert(
+    hooks,
     module,
-    hooks.manage_str(CLOCK_META.name),
+    CLOCK_META.name,
     val!(Clock::native(hooks)),
   )
 }

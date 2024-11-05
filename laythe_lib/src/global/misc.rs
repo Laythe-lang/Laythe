@@ -1,4 +1,4 @@
-use crate::{native, support::export_and_insert, StdError, StdResult};
+use crate::{native, support::export_and_insert_native, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::GcObj,
@@ -6,7 +6,6 @@ use laythe_core::{
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  val,
   value::{Value, VALUE_NIL},
   Call, LyError,
 };
@@ -26,18 +25,8 @@ const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Defau
 pub fn declare_misc_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let str_name = hooks.manage_str("str");
 
-  export_and_insert(
-    module,
-    hooks.manage_str(PRINT.name),
-    val!(Print::native(hooks, str_name)),
-  )?;
-
-  export_and_insert(
-    module,
-    hooks.manage_str(EXIT_META.name),
-    val!(Exit::native(hooks)),
-  )
-  .map_err(StdError::from)
+  export_and_insert_native(hooks, module, Print::native(hooks, str_name))?;
+  export_and_insert_native(hooks, module, Exit::native(hooks))
 }
 
 #[derive(Debug)]
@@ -108,6 +97,7 @@ impl LyNative for Exit {
 #[cfg(test)]
 mod test {
   use super::*;
+  use laythe_core::val;
 
   #[cfg(test)]
   mod print {

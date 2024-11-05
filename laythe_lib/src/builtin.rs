@@ -111,6 +111,7 @@ impl BuiltInPrimitives {
     match value.kind() {
       ValueKind::Bool => self.bool,
       ValueKind::Nil => self.nil,
+      ValueKind::Undefined => panic!("Undefined should not be accesses"),
       ValueKind::Number => self.number,
       ValueKind::Obj => {
         let obj = value.to_obj();
@@ -202,111 +203,111 @@ pub fn builtin_from_module(hooks: &GcHooks, module: &Module) -> Option<BuiltIn> 
   Some(BuiltIn {
     primitives: BuiltInPrimitives {
       object: module
-        .get_symbol(hooks.manage_str(OBJECT_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(OBJECT_CLASS_NAME))?
         .to_obj()
         .to_class(),
       nil: module
-        .get_symbol(hooks.manage_str(NIL_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(NIL_CLASS_NAME))?
         .to_obj()
         .to_class(),
       bool: module
-        .get_symbol(hooks.manage_str(BOOL_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(BOOL_CLASS_NAME))?
         .to_obj()
         .to_class(),
       channel: module
-        .get_symbol(hooks.manage_str(CHANNEL_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(CHANNEL_CLASS_NAME))?
         .to_obj()
         .to_class(),
       class: module
-        .get_symbol(hooks.manage_str(CLASS_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(CLASS_CLASS_NAME))?
         .to_obj()
         .to_class(),
       fiber: module
-        .get_symbol(hooks.manage_str(FIBER_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(FIBER_CLASS_NAME))?
         .to_obj()
         .to_class(),
       fun: module
-        .get_symbol(hooks.manage_str(FUN_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(FUN_CLASS_NAME))?
         .to_obj()
         .to_class(),
       number: module
-        .get_symbol(hooks.manage_str(NUMBER_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(NUMBER_CLASS_NAME))?
         .to_obj()
         .to_class(),
       string: module
-        .get_symbol(hooks.manage_str(STRING_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(STRING_CLASS_NAME))?
         .to_obj()
         .to_class(),
       list: module
-        .get_symbol(hooks.manage_str(LIST_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(LIST_CLASS_NAME))?
         .to_obj()
         .to_class(),
       tuple: module
-        .get_symbol(hooks.manage_str(TUPLE_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(TUPLE_CLASS_NAME))?
         .to_obj()
         .to_class(),
       map: module
-        .get_symbol(hooks.manage_str(MAP_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(MAP_CLASS_NAME))?
         .to_obj()
         .to_class(),
       iter: module
-        .get_symbol(hooks.manage_str(ITER_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(ITER_CLASS_NAME))?
         .to_obj()
         .to_class(),
       closure: module
-        .get_symbol(hooks.manage_str(CLOSURE_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(CLOSURE_CLASS_NAME))?
         .to_obj()
         .to_class(),
       method: module
-        .get_symbol(hooks.manage_str(METHOD_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(METHOD_CLASS_NAME))?
         .to_obj()
         .to_class(),
       native_fun: module
-        .get_symbol(hooks.manage_str(NATIVE_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(NATIVE_CLASS_NAME))?
         .to_obj()
         .to_class(),
     },
     dependencies: BuiltInDependencies {
       module: module
-        .get_symbol(hooks.manage_str(MODULE_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(MODULE_CLASS_NAME))?
         .to_obj()
         .to_class(),
     },
     errors: BuiltInErrors {
       error: module
-        .get_symbol(hooks.manage_str(ERROR_CLASS_NAME))?
+        .get_symbol_by_name(hooks.manage_str(ERROR_CLASS_NAME))?
         .to_obj()
         .to_class(),
       runtime: module
-        .get_symbol(hooks.manage_str(RUNTIME_ERROR_NAME))?
+        .get_symbol_by_name(hooks.manage_str(RUNTIME_ERROR_NAME))?
         .to_obj()
         .to_class(),
       method_not_found: module
-        .get_symbol(hooks.manage_str(METHOD_NOT_FOUND_ERROR_NAME))?
+        .get_symbol_by_name(hooks.manage_str(METHOD_NOT_FOUND_ERROR_NAME))?
         .to_obj()
         .to_class(),
       type_: module
-        .get_symbol(hooks.manage_str(TYPE_ERROR_NAME))?
+        .get_symbol_by_name(hooks.manage_str(TYPE_ERROR_NAME))?
         .to_obj()
         .to_class(),
       deadlock: module
-        .get_symbol(hooks.manage_str(DEADLOCK_ERROR_NAME))?
+        .get_symbol_by_name(hooks.manage_str(DEADLOCK_ERROR_NAME))?
         .to_obj()
         .to_class(),
       value: module
-        .get_symbol(hooks.manage_str(VALUE_ERROR_NAME))?
+        .get_symbol_by_name(hooks.manage_str(VALUE_ERROR_NAME))?
         .to_obj()
         .to_class(),
       property: module
-        .get_symbol(hooks.manage_str(PROPERTY_ERROR_NAME))?
+        .get_symbol_by_name(hooks.manage_str(PROPERTY_ERROR_NAME))?
         .to_obj()
         .to_class(),
       import: module
-        .get_symbol(hooks.manage_str(IMPORT_ERROR_NAME))?
+        .get_symbol_by_name(hooks.manage_str(IMPORT_ERROR_NAME))?
         .to_obj()
         .to_class(),
       export: module
-        .get_symbol(hooks.manage_str(EXPORT_ERROR_NAME))?
+        .get_symbol_by_name(hooks.manage_str(EXPORT_ERROR_NAME))?
         .to_obj()
         .to_class(),
     },

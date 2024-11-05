@@ -59,7 +59,7 @@ fn error_inheritance(
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
   let error_name = hooks.manage_str(ERROR_CLASS_NAME);
-  let error_class = match module.get_exported_symbol(error_name) {
+  let error_class = match module.get_exported_symbol_by_name(error_name) {
     Some(class) => class,
     None => return Err(StdError::SymbolNotFound),
   };
@@ -82,7 +82,7 @@ fn class_inheritance(
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(class_name);
   let object_name = hooks.manage_str(OBJECT_CLASS_NAME);
-  let object_class = match module.get_exported_symbol(object_name) {
+  let object_class = match module.get_exported_symbol_by_name(object_name) {
     Some(class) => class,
     None => return Err(StdError::SymbolNotFound),
   };
@@ -165,13 +165,17 @@ fn bootstrap_classes(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<M
   let module_class = create_module_class(hooks, object_class);
   let std_module_class = Class::with_inheritance(hooks, hooks.manage_str(STD), module_class);
 
-  let module_path = hooks.manage_str("native");
-  let module = hooks.manage(Module::new(std_module_class, module_path, emitter.emit()));
+  let module = hooks.manage(Module::new(
+    hooks,
+    std_module_class,
+    "native",
+    emitter.emit(),
+  ));
 
-  export_and_insert(module, object_class.name(), val!(object_class))?;
-  export_and_insert(module, class_class.name(), val!(class_class))?;
-  export_and_insert(module, error_class.name(), val!(error_class))?;
-  export_and_insert(module, module_class.name(), val!(module_class))?;
+  export_and_insert(hooks, module, object_class.name(), val!(object_class))?;
+  export_and_insert(hooks, module, class_class.name(), val!(class_class))?;
+  export_and_insert(hooks, module, error_class.name(), val!(error_class))?;
+  export_and_insert(hooks, module, module_class.name(), val!(module_class))?;
 
   Ok(module)
 }

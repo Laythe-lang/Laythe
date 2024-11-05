@@ -23,7 +23,7 @@ const NIL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed
 
 pub fn declare_nil_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, NIL_CLASS_NAME)?;
-  export_and_insert(module, class.name(), val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_nil_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

@@ -1,7 +1,7 @@
 use crate::{
   create_error,
-  support::{default_error_inheritance, export_and_insert},
-  StdError, StdResult,
+  support::{default_error_inheritance, export_and_insert, export_and_insert_native},
+  StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -27,26 +27,11 @@ pub(crate) fn add_assert_funs(
 
   let error_val = val!(error);
   let str_name = hooks.manage_str("str");
-  export_and_insert(module, error.name(), error_val)?;
+  export_and_insert(hooks, module, ASSERT_ERROR_NAME, error_val)?;
 
-  export_and_insert(
-    module,
-    hooks.manage_str(ASSERT_META.name),
-    val!(Assert::native(hooks, str_name, error_val)),
-  )?;
-
-  export_and_insert(
-    module,
-    hooks.manage_str(ASSERTEQ_META.name),
-    val!(AssertEq::native(hooks, str_name, error_val)),
-  )?;
-
-  export_and_insert(
-    module,
-    hooks.manage_str(ASSERTNE_META.name),
-    val!(AssertNe::native(hooks, str_name, error_val)),
-  )
-  .map_err(StdError::from)
+  export_and_insert_native(hooks, module, Assert::native(hooks, str_name, error_val))?;
+  export_and_insert_native(hooks, module, AssertEq::native(hooks, str_name, error_val))?;
+  export_and_insert_native(hooks, module, AssertNe::native(hooks, str_name, error_val))
 }
 
 const ASSERT_META: NativeMetaBuilder = NativeMetaBuilder::fun("assert", Arity::Fixed(1))

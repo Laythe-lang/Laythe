@@ -31,6 +31,7 @@ pub fn declare_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) 
   let instance = hooks.manage_obj(class);
 
   export_and_insert(
+    hooks,
     module,
     hooks.manage_str(STDIN_INSTANCE_NAME),
     val!(instance),

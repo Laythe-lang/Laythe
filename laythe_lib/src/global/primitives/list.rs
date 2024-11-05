@@ -84,7 +84,7 @@ const LIST_COLLECT: NativeMetaBuilder = NativeMetaBuilder::fun("collect", Arity:
 pub fn declare_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, LIST_CLASS_NAME)?;
 
-  export_and_insert(module, class.name(), val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

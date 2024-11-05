@@ -27,7 +27,7 @@ const METHOD_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::
 
 pub fn declare_method_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let method_class = class_inheritance(hooks, module, METHOD_CLASS_NAME)?;
-  export_and_insert(module, method_class.name(), val!(method_class))
+  export_and_insert(hooks, module, method_class.name(), val!(method_class))
 }
 
 pub fn define_method_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

@@ -23,8 +23,12 @@ pub fn fs_module(
   let fs_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(FS_MODULE_NAME), module_class);
 
-  let module_path = hooks.manage_str(format!("native/{}/{}", IO_MODULE_NAME, FS_MODULE_NAME));
-  let module = hooks.manage(Module::new(fs_module_class, module_path, emitter.emit()));
+  let module = hooks.manage(Module::new(
+    hooks,
+    fs_module_class,
+    &format!("native/{}/{}", IO_MODULE_NAME, FS_MODULE_NAME),
+    emitter.emit(),
+  ));
 
   declare_fs_module(hooks, module, std)?;
   define_fs_module(hooks, module, std)?;

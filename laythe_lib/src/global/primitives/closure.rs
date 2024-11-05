@@ -29,7 +29,7 @@ const CLOSURE_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity:
 
 pub fn declare_closure_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, CLOSURE_CLASS_NAME)?;
-  export_and_insert(module, class.name(), val!(class))
+  export_and_insert(hooks, module, CLOSURE_CLASS_NAME, val!(class))
 }
 
 pub fn define_closure_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

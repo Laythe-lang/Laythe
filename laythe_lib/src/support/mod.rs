@@ -5,9 +5,9 @@ use crate::{
 use laythe_core::{
   hooks::GcHooks,
   if_let_obj,
-  managed::{Gc, GcObj, GcStr, Instance},
+  managed::{Gc, GcObj, Instance},
   module::{Import, Module, Package},
-  object::{Class, ObjectKind},
+  object::{Class, Native, ObjectKind},
   to_obj_kind,
   value::Value,
 };
@@ -21,7 +21,7 @@ pub fn default_class_inheritance(
 
   let import = Import::from_str(hooks, STD)?;
   let module = package.import(import)?;
-  let object_class = match module.get_exported_symbol(hooks.manage_str(OBJECT_CLASS_NAME)) {
+  let object_class = match module.get_exported_symbol_by_name(hooks.manage_str(OBJECT_CLASS_NAME)) {
     Some(class) => class,
     None => return Err(StdError::SymbolNotFound),
   };
@@ -47,7 +47,7 @@ pub fn default_error_inheritance(
 
   let import = Import::from_str(hooks, STD)?;
   let module = package.import(import)?;
-  let object_class = match module.get_exported_symbol(hooks.manage_str(error_name)) {
+  let object_class = match module.get_exported_symbol_by_name(hooks.manage_str(error_name)) {
     Some(class) => class,
     None => return Err(StdError::SymbolNotFound),
   };
@@ -72,7 +72,7 @@ pub fn load_class_from_package(
   let name = hooks.manage_str(name);
   let import = Import::from_str(hooks, path)?;
   let module = package.import(import)?;
-  let symbol = match module.get_exported_symbol(hooks.manage_str(name)) {
+  let symbol = match module.get_exported_symbol_by_name(hooks.manage_str(name)) {
     Some(class) => class,
     None => return Err(StdError::SymbolNotFound),
   };
@@ -90,7 +90,7 @@ pub fn load_class_from_module(
   name: &str,
 ) -> StdResult<GcObj<Class>> {
   let name = hooks.manage_str(name);
-  let symbol = match module.get_exported_symbol(name) {
+  let symbol = match module.get_exported_symbol_by_name(name) {
     Some(symbol) => symbol,
     None => return Err(StdError::SymbolNotFound),
   };
@@ -108,7 +108,7 @@ pub fn load_instance_from_module(
   name: &str,
 ) -> StdResult<Instance> {
   let name = hooks.manage_str(name);
-  match module.get_exported_symbol(name) {
+  match module.get_exported_symbol_by_name(name) {
     Some(symbol) => {
       if_let_obj!(ObjectKind::Instance(instance) = (symbol) {
         Ok(instance)
@@ -120,8 +120,24 @@ pub fn load_instance_from_module(
   }
 }
 
-pub fn export_and_insert(mut module: Gc<Module>, name: GcStr, symbol: Value) -> StdResult<()> {
-  module.insert_symbol(name, symbol)?;
+pub fn export_and_insert_native(
+  hooks: &GcHooks,
+  mut module: Gc<Module>,
+  native: GcObj<Native>,
+) -> StdResult<()> {
+  let name = native.name();
+  module.insert_symbol(hooks, name, Value::from(native))?;
+  module.export_symbol(name).map_err(StdError::from)
+}
+
+pub fn export_and_insert<S: AsRef<str>>(
+  hooks: &GcHooks,
+  mut module: Gc<Module>,
+  name: S,
+  symbol: Value,
+) -> StdResult<()> {
+  let name = hooks.manage_str(name);
+  module.insert_symbol(hooks, name, symbol)?;
   module.export_symbol(name).map_err(StdError::from)
 }
 
@@ -439,10 +455,10 @@ mod test {
 
   pub fn test_module(hooks: &GcHooks, name: &str) -> Gc<Module> {
     let base_class = test_class(hooks, "Module");
-    let string = hooks.manage_str("example");
     hooks.manage(Module::new(
+      hooks,
       module_class(hooks, name, base_class),
-      string,
+      "example",
       0,
     ))
   }
