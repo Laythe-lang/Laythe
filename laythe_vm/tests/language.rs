@@ -741,6 +741,7 @@ fn limit() -> Result<(), std::io::Error> {
     &vec![
       "language/limit/loop_too_large.lay",
       "language/limit/too_many_constants.lay",
+      // "language/limit/too_many_module_symbols.lay", TODO too slow
       "language/limit/too_many_locals.lay",
       "language/limit/too_many_captures.lay",
     ],
