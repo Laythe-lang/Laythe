@@ -161,6 +161,7 @@ impl From<Value> for ParameterKind {
       ValueKind::Bool => ParameterKind::Bool,
       ValueKind::Nil => ParameterKind::Object,
       ValueKind::Number => ParameterKind::Number,
+      ValueKind::Undefined => panic!("Should not pass in undefined directly"),
       ValueKind::Obj => match value.to_obj().kind() {
         ObjectKind::Closure => ParameterKind::Callable,
         ObjectKind::Method => ParameterKind::Callable,

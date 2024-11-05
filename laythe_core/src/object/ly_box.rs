@@ -2,7 +2,7 @@ use fmt::Display;
 
 use crate::{
   managed::{DebugHeap, DebugWrap, Object, Trace},
-  value::{Value, VALUE_NIL},
+  value::{Value, VALUE_UNDEFINED},
 };
 use std::{fmt, io::Write};
 
@@ -21,7 +21,7 @@ impl LyBox {
 
 impl Default for LyBox {
   fn default() -> Self {
-    Self { value: VALUE_NIL }
+    Self { value: VALUE_UNDEFINED }
   }
 }
 

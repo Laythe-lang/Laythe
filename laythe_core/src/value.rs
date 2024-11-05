@@ -5,6 +5,7 @@ pub struct Nil();
 pub enum ValueKind {
   Bool,
   Nil,
+  Undefined,
   Number,
   Obj,
 }
@@ -94,6 +95,7 @@ mod unboxed {
   use std::io::Write;
 
   pub const VALUE_NIL: Value = Value::Nil;
+  pub const VALUE_UNDEFINED: Value = Value::Undefined;
   pub const VALUE_FALSE: Value = Value::Bool(false);
   pub const VALUE_TRUE: Value = Value::Bool(true);
 
@@ -102,6 +104,7 @@ mod unboxed {
   pub enum Value {
     Bool(bool),
     Nil,
+    Undefined,
     Number(f64),
     Obj(GcObject),
   }
@@ -119,6 +122,11 @@ mod unboxed {
     #[inline]
     pub fn is_nil(&self) -> bool {
       matches!(self, Value::Nil)
+    }
+
+    #[inline]
+    pub fn is_undefined(&self) -> bool {
+      matches!(self, Value::Undefined)
     }
 
     #[inline]
@@ -228,6 +236,7 @@ mod unboxed {
     pub fn value_type(&self) -> &'static str {
       match self {
         Value::Nil => "nil",
+        Value::Undefined => "undefined",
         Value::Bool(_) => "bool",
         Value::Number(_) => "number",
         Value::Obj(obj) => match obj.kind() {
@@ -252,6 +261,7 @@ mod unboxed {
     pub fn kind(&self) -> ValueKind {
       match self {
         Value::Nil => ValueKind::Nil,
+        Value::Undefined => ValueKind::Undefined,
         Value::Bool(_) => ValueKind::Bool,
         Value::Number(_) => ValueKind::Number,
         Value::Obj(_) => ValueKind::Obj,
@@ -368,6 +378,7 @@ mod unboxed {
         Self::Number(num) => write!(f, "{}", num),
         Self::Bool(b) => write!(f, "{}", b),
         Self::Nil => write!(f, "nil"),
+        Self::Undefined => write!(f, "undefined"),
         Self::Obj(obj) => write!(f, "{}", obj),
       }
     }
@@ -413,6 +424,7 @@ mod unboxed {
           b.hash(state);
         },
         Self::Nil => ValueKind::Nil.hash(state),
+        Self::Undefined => ValueKind::Undefined.hash(state),
         Self::Obj(obj) => {
           ValueKind::Obj.hash(state);
           obj.hash(state);
@@ -440,6 +452,7 @@ mod unboxed {
     fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
       match self {
         Value::Nil => f.write_str("nil"),
+        Value::Undefined => f.write_str("undefined"),
         Value::Bool(b) => f.write_fmt(format_args!("{}", b)),
         Value::Number(num) => f.write_fmt(format_args!("{}", num)),
         Value::Obj(obj) => f.write_fmt(format_args!("{:?}", DebugWrap(obj, depth))),
@@ -498,7 +511,8 @@ mod boxed {
   const TAG_NIL: u64 = 1 | QNAN; // 001
   const TAG_FALSE: u64 = 2 | QNAN; // 010
   const TAG_TRUE: u64 = 3 | QNAN; // 011
-  const TAG_OBJ: u64 = BIT_SIGN | QNAN; // 100
+  const TAG_UNDEFINED: u64 = 4 | QNAN; // 100
+  const TAG_OBJ: u64 = BIT_SIGN | QNAN;
 
   #[derive(Clone, Copy)]
   #[repr(C)]
@@ -526,6 +540,9 @@ mod boxed {
   // 0111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0011
   pub const VALUE_FALSE: Value = Value(TAG_FALSE);
 
+  // 0111 1111 1111 1100 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0000 0100
+  pub const VALUE_UNDEFINED: Value = Value(TAG_UNDEFINED);
+
   #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug)]
   pub struct Value(u64);
 
@@ -533,6 +550,11 @@ mod boxed {
     #[inline]
     pub fn is_nil(&self) -> bool {
       self.0 == VALUE_NIL.0
+    }
+
+    #[inline]
+    pub fn is_undefined(&self) -> bool {
+      self.0 == VALUE_UNDEFINED.0
     }
 
     #[inline]
@@ -594,6 +616,7 @@ mod boxed {
       match self.0 & 0x7 {
         1 => ValueKind::Nil,
         2 | 3 => ValueKind::Bool,
+        4 => ValueKind::Undefined,
         _ => panic!("Improperly encoded value"),
       }
     }
@@ -618,6 +641,7 @@ mod boxed {
         ValueKind::Nil => "nil",
         ValueKind::Bool => "bool",
         ValueKind::Number => "number",
+        ValueKind::Undefined => "undefined",
         ValueKind::Obj => match self.to_obj().kind() {
           ObjectKind::String => "string",
           ObjectKind::Channel => "channel",
@@ -656,6 +680,7 @@ mod boxed {
       match self.kind() {
         ValueKind::Bool => f.write_fmt(format_args!("{}", self.to_bool())),
         ValueKind::Nil => f.write_str("nil"),
+        ValueKind::Undefined => f.write_str("undefined"),
         ValueKind::Number => f.write_fmt(format_args!("{}", self.to_num())),
         ValueKind::Obj => self.to_obj().fmt_heap(f, depth),
       }
@@ -776,6 +801,7 @@ mod boxed {
         ValueKind::Number => write!(f, "{}", self.to_num()),
         ValueKind::Bool => write!(f, "{}", self.to_bool()),
         ValueKind::Nil => write!(f, "nil"),
+        ValueKind::Undefined => write!(f, "undefined"),
         ValueKind::Obj => write!(f, "{}", self.to_obj()),
       }
     }
@@ -847,6 +873,7 @@ mod test {
     match variant {
       ValueKind::Bool => val.is_bool(),
       ValueKind::Nil => val.is_nil(),
+      ValueKind::Undefined => val.is_undefined(),
       ValueKind::Number => val.is_num(),
       ValueKind::Obj => val.is_obj(),
     }
@@ -904,7 +931,7 @@ mod test {
   fn test_module(hooks: &GcHooks) -> Gc<Module> {
     let class = test_class(hooks);
 
-    hooks.manage(Module::new(class, test_string(hooks), 0))
+    hooks.manage(Module::new(hooks, class, "sup", 0))
   }
 
   fn test_fun(hooks: &GcHooks) -> GcObj<Fun> {
