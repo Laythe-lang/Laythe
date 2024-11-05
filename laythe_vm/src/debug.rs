@@ -114,16 +114,9 @@ pub fn print_byte_code(
     SymbolicByteCode::Import(slot) => {
       symbolic_constant_instruction(stdio.stdout(), "Import", slot, chunk, offset)
     },
-    SymbolicByteCode::ImportSymbol((path, slot)) => symbolic_constant_pair_instruction(
-      stdio.stdout(),
-      "ImportSymbol",
-      (path, slot),
-      (
-        chunk.get_constant(path as usize),
-        chunk.get_constant(slot as usize),
-      ),
-      offset,
-    ),
+    SymbolicByteCode::ImportSym((path, slot)) => {
+      symbolic_import_instruction(stdio.stdout(), "ImportSym", (path, slot), chunk, offset)
+    },
     SymbolicByteCode::Export(slot) => {
       symbolic_constant_instruction(stdio.stdout(), "Export", slot, chunk, offset)
     },
@@ -166,14 +159,24 @@ pub fn print_byte_code(
     SymbolicByteCode::InvokeSlot => {
       simple_instruction(stdio.stdout(), "!=== InvokeSlot - Invalid ===!", offset)
     },
-    SymbolicByteCode::DefineModuleSymbol(slot) => {
-      symbolic_constant_instruction(stdio.stdout(), "DefineModuleSymbol", slot, chunk, offset)
+    SymbolicByteCode::LoadGlobal(slot) => {
+      symbolic_constant_instruction(stdio.stdout(), "LoadGlobal", slot as u16, chunk, offset)
     },
-    SymbolicByteCode::GetModuleSymbol(slot) => {
-      symbolic_constant_instruction(stdio.stdout(), "GetModuleSymbol", slot, chunk, offset)
+    SymbolicByteCode::DeclareModSym((symbol_slot, module_slot)) => {
+      symbolic_define_module_symbol_instruction(
+        stdio.stdout(),
+        "DeclareModSym",
+        symbol_slot,
+        module_slot,
+        chunk,
+        offset,
+      )
     },
-    SymbolicByteCode::SetModuleSymbol(slot) => {
-      symbolic_constant_instruction(stdio.stdout(), "SetModuleSymbol", slot, chunk, offset)
+    SymbolicByteCode::GetModSym(slot) => {
+      short_instruction(stdio.stdout(), "GetModSym", slot, offset)
+    },
+    SymbolicByteCode::SetModSym(slot) => {
+      short_instruction(stdio.stdout(), "SetModSym", slot, offset)
     },
     SymbolicByteCode::GetLocal(slot) => byte_instruction(stdio.stdout(), "GetLocal", slot, offset),
     SymbolicByteCode::SetLocal(slot) => byte_instruction(stdio.stdout(), "SetLocal", slot, offset),
@@ -185,18 +188,14 @@ pub fn print_byte_code(
     SymbolicByteCode::SetCapture(slot) => {
       byte_instruction(stdio.stdout(), "SetCapture", slot, offset)
     },
-    SymbolicByteCode::SetProperty(slot) => {
-      symbolic_property_instruction(stdio.stdout(), "SetProperty", chunk, slot, offset)
+    SymbolicByteCode::SetPropByName(slot) => {
+      symbolic_property_instruction(stdio.stdout(), "SetPropByName", chunk, slot, offset)
     },
-    SymbolicByteCode::GetProperty(slot) => {
-      symbolic_property_instruction(stdio.stdout(), "GetProperty", chunk, slot, offset)
+    SymbolicByteCode::GetPropByName(slot) => {
+      symbolic_property_instruction(stdio.stdout(), "GetPropByName", chunk, slot, offset)
     },
-    SymbolicByteCode::SetKnownProperty(slot) => {
-      short_instruction(stdio.stdout(), "SetKnownProperty", slot, offset)
-    },
-    SymbolicByteCode::GetKnownProperty(slot) => {
-      short_instruction(stdio.stdout(), "GetKnownProperty", slot, offset)
-    },
+    SymbolicByteCode::SetProp(slot) => short_instruction(stdio.stdout(), "SetProp", slot, offset),
+    SymbolicByteCode::GetProp(slot) => short_instruction(stdio.stdout(), "GetProp", slot, offset),
     SymbolicByteCode::Jump(jump) => symbolic_jump_instruction(stdio.stdout(), "Jump", jump, offset),
     SymbolicByteCode::JumpIfFalse(jump) => {
       symbolic_jump_instruction(stdio.stdout(), "JumpIfFalse", jump, offset)
@@ -271,15 +270,37 @@ fn symbolic_constant_instruction(
 
 /// print a constant
 #[cfg(feature = "debug")]
-fn symbolic_constant_pair_instruction(
+fn symbolic_import_instruction(
   stdout: &mut dyn Write,
   name: &str,
   slots: (u16, u16),
-  constants: (Value, Value),
+  chunk: &ChunkBuilder,
   offset: usize,
 ) -> io::Result<usize> {
   write!(stdout, "{:13} {:5} {:5}", name, slots.0, slots.1)?;
-  writeln!(stdout, "{} {}", &constants.0, &constants.1)?;
+  writeln!(
+    stdout,
+    "{} {}",
+    chunk.get_constant(slots.0 as usize),
+    &chunk.get_constant(slots.1 as usize)
+  )?;
+  Ok(offset)
+}
+
+/// print a constant
+#[cfg(feature = "debug")]
+fn symbolic_define_module_symbol_instruction(
+  stdout: &mut dyn Write,
+  name: &str,
+  symbol_slot: u16,
+  module_slot: u16,
+  chunk: &ChunkBuilder,
+  offset: usize,
+) -> io::Result<usize> {
+  write!(stdout, "{:13} {:5} ", name, symbol_slot)?;
+  write!(stdout, "{}", chunk.get_constant(symbol_slot as usize))?;
+  writeln!(stdout, " module[{}]", &module_slot)?;
+
   Ok(offset)
 }
 
@@ -296,7 +317,7 @@ fn symbolic_property_instruction(
   write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
 
   if let SymbolicByteCode::PropertySlot = chunk.instructions()[offset] {
-    writeln!(stdout, " cache slot")?;
+    writeln!(stdout, " inline-cache[x]")?;
   } else {
     panic!("Unexpected SymbolicByteCode following invoke")
   }
@@ -369,7 +390,7 @@ fn symbolic_invoke_instruction(
   write!(stdout, "{}", &chunk.get_constant(slot as usize))?;
 
   if let SymbolicByteCode::InvokeSlot = chunk.instructions()[offset] {
-    writeln!(stdout, " cache slot")?;
+    writeln!(stdout, " inline-cache[x]")?;
   } else {
     panic!("Unexpected SymbolicByteCode following invoke")
   }
@@ -475,8 +496,8 @@ pub fn disassemble_instruction(
     AlignedByteCode::Import(path) => {
       constant_instruction(stdio.stdout(), "Import", chunk, path, offset)
     },
-    AlignedByteCode::ImportSymbol((path, slot)) => {
-      import_symbol_instruction(stdio.stdout(), "ImportSymbol", chunk, (path, slot), offset)
+    AlignedByteCode::ImportSym((path, slot)) => {
+      import_symbol_instruction(stdio.stdout(), "ImportSym", chunk, (path, slot), offset)
     },
     AlignedByteCode::Export(constant) => {
       constant_instruction(stdio.stdout(), "Export", chunk, constant, offset)
@@ -511,14 +532,22 @@ pub fn disassemble_instruction(
     AlignedByteCode::StaticMethod(constant) => {
       constant_instruction(stdio.stdout(), "StaticMethod", chunk, constant, offset)
     },
-    AlignedByteCode::DefineModuleSymbol(constant) => {
-      constant_instruction(stdio.stdout(), "DefineModuleSymbol", chunk, constant, offset)
+    AlignedByteCode::LoadGlobal(slot) => {
+      constant_instruction(stdio.stdout(), "LoadGlobal", chunk, slot as u16, offset)
     },
-    AlignedByteCode::GetModuleSymbol(constant) => {
-      constant_instruction(stdio.stdout(), "GetModuleSymbol", chunk, constant, offset)
+    AlignedByteCode::DeclareModSym((symbol_slot, module_slot)) => define_module_symbol_instruction(
+      stdio.stdout(),
+      "DeclareModSym",
+      chunk,
+      symbol_slot,
+      module_slot,
+      offset,
+    ),
+    AlignedByteCode::GetModSym(slot) => {
+      short_instruction(stdio.stdout(), "GetModSym", slot, offset)
     },
-    AlignedByteCode::SetModuleSymbol(constant) => {
-      constant_instruction(stdio.stdout(), "SetModuleSymbol", chunk, constant, offset)
+    AlignedByteCode::SetModSym(slot) => {
+      short_instruction(stdio.stdout(), "SetModSym", slot, offset)
     },
     AlignedByteCode::GetLocal(slot) => byte_instruction(stdio.stdout(), "GetLocal", slot, offset),
     AlignedByteCode::SetLocal(slot) => byte_instruction(stdio.stdout(), "SetLocal", slot, offset),
@@ -530,18 +559,14 @@ pub fn disassemble_instruction(
     AlignedByteCode::SetCapture(slot) => {
       byte_instruction(stdio.stdout(), "SetCapture", slot, offset)
     },
-    AlignedByteCode::SetProperty(slot) => {
-      constant_instruction_with_slot(stdio.stdout(), "SetProperty", chunk, slot, offset)
+    AlignedByteCode::SetPropByName(slot) => {
+      constant_instruction_with_slot(stdio.stdout(), "SetPropByName", chunk, slot, offset)
     },
-    AlignedByteCode::GetProperty(slot) => {
-      constant_instruction_with_slot(stdio.stdout(), "GetProperty", chunk, slot, offset)
+    AlignedByteCode::GetPropByName(slot) => {
+      constant_instruction_with_slot(stdio.stdout(), "GetPropByName", chunk, slot, offset)
     },
-    AlignedByteCode::SetKnownProperty(slot) => {
-      short_instruction(stdio.stdout(), "SetKnownProperty", slot, offset)
-    },
-    AlignedByteCode::GetKnownProperty(slot) => {
-      short_instruction(stdio.stdout(), "GetKnownProperty", slot, offset)
-    },
+    AlignedByteCode::SetProp(slot) => short_instruction(stdio.stdout(), "SetProp", slot, offset),
+    AlignedByteCode::GetProp(slot) => short_instruction(stdio.stdout(), "GetProp", slot, offset),
     AlignedByteCode::Jump(jump) => jump_instruction(stdio.stdout(), "Jump", 1, jump, offset),
     AlignedByteCode::JumpIfFalse(jump) => {
       jump_instruction(stdio.stdout(), "JumpIfFalse", 1, jump, offset)
@@ -655,7 +680,7 @@ fn constant_instruction_with_slot(
   write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   writeln!(
     stdout,
-    " cache slot {}",
+    " inline-cache[{}]",
     &decode_u32(&chunk.instructions()[offset..offset + 4])
   )?;
 
@@ -717,6 +742,7 @@ fn closure_instruction(
   Ok(current_offset)
 }
 
+/// print an invocation
 fn invoke_instruction(
   stdout: &mut dyn Write,
   name: &str,
@@ -729,10 +755,25 @@ fn invoke_instruction(
   write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   writeln!(
     stdout,
-    " cache slot {}",
+    " inline-cache[{}]",
     &decode_u32(&chunk.instructions()[offset..offset + 4])
   )?;
   Ok(offset + 4)
+}
+
+/// print an invocation
+fn define_module_symbol_instruction(
+  stdout: &mut dyn Write,
+  name: &str,
+  chunk: &Chunk,
+  constant: u16,
+  module_slot: u16,
+  offset: usize,
+) -> io::Result<usize> {
+  write!(stdout, "{:13} {:5} ", name, constant)?;
+  write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
+  writeln!(stdout, " module[{}]", &module_slot)?;
+  Ok(offset)
 }
 
 /// print a short instruction

@@ -87,21 +87,24 @@ impl<'a, 'src> Resolver<'a, 'src> {
   ///   source::{Source, VM_FILE_TEST_ID},
   /// };
   /// use laythe_core::{
+  ///   hooks::{NoContext, GcHooks},
   ///   module::Module,
   ///   object::Class,
-  ///   managed::{NO_GC, Allocator},
+  ///   managed::{Allocator},
   /// };
   /// use std::path::PathBuf;
   ///
-  /// let mut gc = Allocator::default();
+  /// let mut context = NoContext::default();
+  /// let hooks = GcHooks::new(&mut context);
   ///
-  /// let name = gc.manage_str("module", &NO_GC);
-  /// let class = gc.manage_obj(Class::bare(name), &NO_GC);
-  /// let module_path = gc.manage_str("module/path", &NO_GC);
-  /// let module = gc.manage(Module::new(class, module_path, 0), &NO_GC);
+  /// let name = hooks.manage_str("module");
+  /// let class = hooks.manage_obj(Class::bare(name));
+  /// let module_path = "module/path";
+  /// let module = hooks.manage(Module::new(&hooks, class, module_path, 0));
   ///
   /// let file_id = VM_FILE_TEST_ID;
-  /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
+  /// let source = Source::new(hooks.manage_str("print('10');"));
+  /// let gc = context.done();
   ///
   /// let compiler = Resolver::new(module, &gc, &source, file_id, false);
   /// ```
@@ -233,8 +236,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
       Some(span) => self.error_with_context(
         MESSAGE,
         vec![
-          Label::primary(self.file_id, duplicate.span())
-            .with_message(PRIMARY_LABEL),
+          Label::primary(self.file_id, duplicate.span()).with_message(PRIMARY_LABEL),
           Label::secondary(self.file_id, span)
             .with_message(format!("{} was originally declared here", &duplicate.str())),
         ],
@@ -244,7 +246,9 @@ impl<'a, 'src> Resolver<'a, 'src> {
           let error = Diagnostic::error()
             .with_message(MESSAGE)
             .with_labels(vec![Label::primary(self.file_id, duplicate.span())])
-            .with_notes(vec!["This symbol was declared previously in the repl session".to_string()]);
+            .with_notes(vec![
+              "This symbol was declared previously in the repl session".to_string(),
+            ]);
 
           self.add_error(error);
         } else {
@@ -295,13 +299,13 @@ impl<'a, 'src> Resolver<'a, 'src> {
       .and_then(|interned_name| {
         self
           .global_module
-          .get_exported_symbol(interned_name)
+          .get_exported_symbol_by_name(interned_name)
           .ok_or(ImportError::SymbolDoesNotExist)
       })
       .is_ok()
     {
       let table = &mut self.tables.first_mut().unwrap();
-      table.table.add_global_symbol(name.str(), name.span());
+      table.table.add_symbol_from_global(name.str(), name.span());
     } else {
       self.error(
         &format!("Attempted to access undeclared variable {}", name.str()),
@@ -993,10 +997,8 @@ mod test {
   fn dummy_module(hooks: &GcHooks) -> Gc<Module> {
     let module_class = test_class(&hooks, "Module");
     hooks.push_root(module_class);
-    let module_path = hooks.manage_str("example");
-    hooks.push_root(module_path);
 
-    let module = hooks.manage(Module::new(module_class, module_path, 0));
+    let module = hooks.manage(Module::new(hooks, module_class, "example", 0));
     hooks.push_root(module);
 
     module

@@ -136,7 +136,7 @@ fn peephole_optimize(
       [SymbolicByteCode::Drop, SymbolicByteCode::Drop, ..] => {
         drop(&mut instructions_cursor, &mut lines_cursor)
       },
-      [SymbolicByteCode::GetProperty(slot), SymbolicByteCode::PropertySlot, SymbolicByteCode::Call(args), ..] =>
+      [SymbolicByteCode::GetPropByName(slot), SymbolicByteCode::PropertySlot, SymbolicByteCode::Call(args), ..] =>
       {
         let slot = *slot;
         let args = *args;
@@ -462,7 +462,7 @@ mod test {
       let args = 2;
 
       let mut instructions = VecCursor::new(vec![
-        SymbolicByteCode::GetProperty(slot),
+        SymbolicByteCode::GetPropByName(slot),
         SymbolicByteCode::PropertySlot,
         SymbolicByteCode::Call(args),
       ]);
@@ -623,7 +623,7 @@ mod test {
       let instructions = vec![
         SymbolicByteCode::Drop,
         SymbolicByteCode::Drop,
-        SymbolicByteCode::GetProperty(3),
+        SymbolicByteCode::GetPropByName(3),
         SymbolicByteCode::PropertySlot,
         SymbolicByteCode::Call(1),
         SymbolicByteCode::Nil,

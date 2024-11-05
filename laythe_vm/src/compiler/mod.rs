@@ -2,12 +2,14 @@
 mod ir;
 mod parser;
 mod peephole;
+mod ref_no_context;
 mod resolver;
 mod scanner;
 
 use bumpalo::{collections, Bump};
 use laythe_lib::global::ERROR_CLASS_NAME;
 pub use parser::Parser;
+use ref_no_context::RefNoContext;
 pub use resolver::Resolver;
 
 use crate::{
@@ -19,14 +21,14 @@ use crate::{
 };
 use codespan_reporting::diagnostic::{self, Diagnostic};
 use ir::{
-  ast::{self, Decl, Expr, Primary, Spanned, Stmt, Trailer},
+  ast::{self, Decl, Expr, Primary, Span, Spanned, Stmt, Trailer},
   token::{Lexeme, Token, TokenKind},
 };
 use laythe_core::{
   constants::{
     INDEX_GET, INDEX_SET, ITER, ITER_VAR, OBJECT, SCRIPT, SELF, SUPER, UNINITIALIZED_VAR,
   },
-  hooks::{GcContext, GcHooks, NoContext},
+  hooks::{GcContext, GcHooks},
   managed::{
     AllocResult, Allocate, Allocator, DebugHeap, Gc, GcStr, ListBuilder, Trace, TraceRoot,
   },
@@ -191,13 +193,20 @@ pub struct Compiler<'a, 'src> {
   label_emitter: LabelEmitter,
 
   /// hooks into the surround context. Used to allocate laythe objects
-  gc: RefCell<Allocator>,
+  gc: Rc<RefCell<Allocator>>,
 
   /// The file id for the current file
   file_id: VmFileId,
 
   /// Current scope depth
   scope_depth: usize,
+
+  /// Where each module symbol is offset to
+  module_symbols_offsets: Option<Map<u16, u16>>,
+
+  /// How many total symbols do we have at the
+  /// module scope
+  module_symbol_count: usize,
 
   /// Are we currently compile for a repl
   repl: bool,
@@ -229,6 +238,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   ///   source::{Source, VM_FILE_TEST_ID},
   /// };
   /// use laythe_core::{
+  ///   hooks::{NoContext, GcHooks},
   ///   module::Module,
   ///   object::Class,
   ///   managed::{NO_GC, Allocator},
@@ -236,18 +246,20 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   /// use std::path::PathBuf;
   /// use bumpalo::Bump;
   ///
-  /// let mut gc = Allocator::default();
+  /// let mut context = NoContext::default();
+  /// let hooks = GcHooks::new(&mut context);
   ///
-  /// let name = gc.manage_str("module", &NO_GC);
-  /// let class = gc.manage_obj(Class::bare(name), &NO_GC);
-  /// let module_path = gc.manage_str("module/path", &NO_GC);
-  /// let module = gc.manage(Module::new(class, module_path, 0), &NO_GC);
+  /// let name = hooks.manage_str("module");
+  /// let class = hooks.manage_obj(Class::bare(name));
+  /// let module_path = "module/path";
+  /// let module = hooks.manage(Module::new(&hooks, class, module_path, 0));
   ///
   /// let file_id = VM_FILE_TEST_ID;
-  /// let source = Source::new(gc.manage_str("print('10');", &NO_GC));
+  /// let source = Source::new(hooks.manage_str("print('10');"));
   /// let (_, line_offsets) = Parser::new(&source, file_id).parse();
   ///
   /// let alloc = Bump::new();
+  /// let gc = context.done();
   /// let compiler = Compiler::new(module, &alloc, &line_offsets, file_id, false, &NO_GC, gc);
   /// ```
   pub fn new(
@@ -283,9 +295,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       class_attributes: None,
       loop_attributes: None,
       try_attributes: None,
-      gc: RefCell::new(gc),
+      gc: Rc::new(RefCell::new(gc)),
       enclosing: None,
       local_tables: collections::Vec::new_in(alloc),
+      module_symbols_offsets: Some(object::Map::default()),
+      module_symbol_count: 0,
       module_table: None,
       locals: collections::Vec::new_in(alloc),
       captures: vec![],
@@ -307,7 +321,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     let end = ast.end();
     let cache_id_emitter = Rc::clone(&self.cache_id_emitter);
-    let (fun, errors, _, gc) = self.end_compiler(end);
+    let gc = Rc::clone(&self.gc);
+    let (fun, errors, _) = self.end_compiler(end);
+    let gc = gc.take();
+
     if errors.is_empty() {
       (Ok(fun), gc, cache_id_emitter.take())
     } else {
@@ -324,9 +341,6 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   ) -> Compiler<'b, 'src> {
     let fun = FunBuilder::new(name, enclosing.module, arity);
     let chunk = ChunkBuilder::default();
-
-    let gc = RefCell::new(Allocator::default());
-    gc.swap(&enclosing.gc);
 
     #[cfg(feature = "debug")]
     let io: Option<Io> = enclosing.io.clone();
@@ -352,9 +366,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       class_attributes: enclosing.class_attributes,
       loop_attributes: None,
       try_attributes: None,
-      gc,
+      gc: Rc::clone(&enclosing.gc),
       locals: collections::Vec::new_in(enclosing.alloc),
       module_table: None,
+      module_symbols_offsets: None,
+      module_symbol_count: 0,
       local_tables: collections::Vec::new_in(enclosing.alloc),
       enclosing: Some(NonNull::from(enclosing)),
       captures: vec![],
@@ -370,13 +386,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// End this compilers compilation emitting a final return
   /// and shrinking the function to the correct size
-  fn end_compiler(
-    mut self,
-    line: u32,
-  ) -> (Fun, Vec<Diagnostic<VmFileId>>, Vec<CaptureIndex>, Allocator) {
+  fn end_compiler(mut self, line: u32) -> (Fun, Vec<Diagnostic<VmFileId>>, Vec<CaptureIndex>) {
     self.emit_return(line);
 
-    let context = NoContext::new(self.gc.into_inner());
+    let context = RefNoContext::new(&*self.gc);
     let hooks = GcHooks::new(&context);
 
     #[cfg(feature = "debug")]
@@ -399,11 +412,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     );
 
     match result {
-      Ok(fun) => (fun, self.errors, self.captures, context.done()),
+      Ok(fun) => (fun, self.errors, self.captures),
       Err(errors) => {
         let fun = Fun::stub(&hooks, hooks.manage_str("error"), self.module);
         self.errors.extend_from_slice(&errors);
-        (fun, self.errors, self.captures, context.done())
+        (fun, self.errors, self.captures)
       },
     }
   }
@@ -483,6 +496,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// Set the module scope
   fn begin_module_scope(&mut self, table: &'a SymbolTable<'src>) {
+    // guard invariants
     assert!(self.module_table.is_none());
     assert!(self.local_tables.is_empty());
     assert!(self.scope_depth == 0);
@@ -490,16 +504,45 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.scope_depth += 1;
     self.module_table = Some(table);
 
+    // push the uninitialized var
     self.locals.push(Local {
       symbol: table.get(UNINITIALIZED_VAR).expect("Expected symbol."),
       depth: self.scope_depth,
     });
-    // for (name, value) in self.module.symbols() {
-    //   self.locals.push(Local {
-    //     symbol: table.get(UNINITIALIZED_VAR).expect("Expected symbol."),
-    //     depth: self.scope_depth,
-    //   });
-    // }
+
+    // emit instructions to load all module scoped variables
+    for symbol in table
+      .all_symbols()
+      .filter(|s| s.state() == SymbolState::GlobalInitialized)
+    {
+      // skip the dummy symbol
+      if symbol.name() == UNINITIALIZED_VAR {
+        continue;
+      }
+
+      let name_slot = self.identifier_constant(symbol.name());
+      self.declare_module_variable(symbol.name(), Span::new(0, 0));
+
+      self.emit_byte(SymbolicByteCode::LoadGlobal(name_slot), 0);
+      self.define_module_variable(symbol.name(), Span::new(0, 0));
+    }
+
+    // emit instructions to load all module scoped variables
+    for symbol in table
+      .all_symbols()
+      .filter(|s| s.state() == SymbolState::ModuleInitialized)
+    {
+      // skip the dummy symbol
+      if symbol.name() == UNINITIALIZED_VAR {
+        continue;
+      }
+
+      self.declare_module_variable(symbol.name(), Span::new(0, 0));
+    }
+
+    for _ in self.module.symbols() {
+      // todo potentially loading for repl
+    }
   }
 
   /// Decrease the scope depth by 1
@@ -541,18 +584,19 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           self.emit_byte(SymbolicByteCode::GetLocal(local), name.end())
         },
         SymbolState::LocalCaptured => self.emit_byte(SymbolicByteCode::GetBox(local), name.end()),
-        SymbolState::ModuleInitialized => {
-          let global_index = self.identifier_constant(name.str());
-          self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
-        },
-        SymbolState::GlobalInitialized => {
-          let global_index = self.identifier_constant(name.str());
-          self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
+        SymbolState::ModuleInitialized | SymbolState::GlobalInitialized => {
+          match self.get_module_symbol_offset(name.str()) {
+            Some(module_slot) => {
+              self.emit_byte(SymbolicByteCode::GetModSym(module_slot), name.end())
+            },
+            None => panic!("Unable to find module symbol offset"),
+          }
         },
         SymbolState::Uninitialized => panic!(
-          "Unexpected uninitialized symbol {} in {}.",
+          "Unexpected symbol {} in {} with state {:?}.",
           name.str(),
-          self.fun.name()
+          self.fun.name(),
+          state
         ),
       },
       None => match self.resolve_capture(name.str()) {
@@ -560,29 +604,25 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           SymbolState::LocalCaptured => {
             self.emit_byte(SymbolicByteCode::GetCapture(local), name.end())
           },
-          SymbolState::ModuleInitialized => {
-            let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
+          SymbolState::ModuleInitialized | SymbolState::GlobalInitialized => {
+            match self.get_module_symbol_offset(name.str()) {
+              Some(module_slot) => {
+                self.emit_byte(SymbolicByteCode::GetModSym(module_slot), name.end())
+              },
+              None => panic!("Unable to find module symbol offset"),
+            }
           },
-          SymbolState::GlobalInitialized => {
-            let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
-          },
-          SymbolState::LocalInitialized => panic!(
-            "Unexpected local symbol {} in {}.",
+          SymbolState::LocalInitialized | SymbolState::Uninitialized => panic!(
+            "Unexpected symbol {} in {} with state {:?}.",
             name.str(),
-            self.fun.name()
-          ),
-          SymbolState::Uninitialized => panic!(
-            "Unexpected uninitialized symbol {} in {}.",
-            name.str(),
-            self.fun.name()
+            self.fun.name(),
+            state
           ),
         },
         None => {
           if self.repl {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::GetModuleSymbol(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::GetModSym(global_index), name.end())
           } else {
             panic!("Symbol {} not found in {}.", name.str(), self.fun.name());
           }
@@ -598,18 +638,19 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           self.emit_byte(SymbolicByteCode::SetLocal(local), name.end())
         },
         SymbolState::LocalCaptured => self.emit_byte(SymbolicByteCode::SetBox(local), name.end()),
-        SymbolState::ModuleInitialized => {
-          let global_index = self.identifier_constant(name.str());
-          self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
-        },
-        SymbolState::GlobalInitialized => {
-          let global_index = self.identifier_constant(name.str());
-          self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
+        SymbolState::ModuleInitialized | SymbolState::GlobalInitialized => {
+          match self.get_module_symbol_offset(name.str()) {
+            Some(module_slot) => {
+              self.emit_byte(SymbolicByteCode::SetModSym(module_slot), name.end())
+            },
+            None => panic!("Unable to find module symbol offset"),
+          }
         },
         SymbolState::Uninitialized => panic!(
-          "Unexpected uninitialized symbol {} in {}.",
+          "Unexpected symbol {} in {} with state {:?}.",
           name.str(),
-          self.fun.name()
+          self.fun.name(),
+          state
         ),
       },
       None => match self.resolve_capture(name.str()) {
@@ -617,29 +658,25 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
           SymbolState::LocalCaptured => {
             self.emit_byte(SymbolicByteCode::SetCapture(local), name.end())
           },
-          SymbolState::ModuleInitialized => {
-            let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
+          SymbolState::ModuleInitialized | SymbolState::GlobalInitialized => {
+            match self.get_module_symbol_offset(name.str()) {
+              Some(module_slot) => {
+                self.emit_byte(SymbolicByteCode::SetModSym(module_slot), name.end())
+              },
+              None => panic!("Unable to find module symbol offset"),
+            }
           },
-          SymbolState::GlobalInitialized => {
-            let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
-          },
-          SymbolState::LocalInitialized => panic!(
-            "Unexpected local symbol {} in {}.",
+          SymbolState::LocalInitialized | SymbolState::Uninitialized => panic!(
+            "Unexpected symbol {} in {} with state {:?}.",
             name.str(),
-            self.fun.name()
-          ),
-          SymbolState::Uninitialized => panic!(
-            "Unexpected uninitialized symbol {} in {}.",
-            name.str(),
-            self.fun.name()
+            self.fun.name(),
+            state
           ),
         },
         None => {
           if self.repl {
             let global_index = self.identifier_constant(name.str());
-            self.emit_byte(SymbolicByteCode::SetModuleSymbol(global_index), name.end())
+            self.emit_byte(SymbolicByteCode::SetModSym(global_index), name.end())
           } else {
             panic!("Symbol {} not found in {}.", name.str(), self.fun.name())
           }
@@ -690,7 +727,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn resolve_capture(&mut self, name: &str) -> Option<(u8, SymbolState)> {
     match self.enclosing {
       Some(mut parent_ptr) => {
-        let parent = unsafe { parent_ptr.as_mut() };
+        let parent: &mut Compiler<'a, 'src> = unsafe { parent_ptr.as_mut() };
         match parent.resolve_local(name) {
           Some((local, state)) => match state {
             SymbolState::GlobalInitialized => Some((0, state)),
@@ -737,53 +774,77 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     capture_count
   }
 
-  /// Define a variable
-  fn declare_variable(&mut self, name: &Token<'src>, offset: u32) -> SymbolState {
-    // if global exit
+  /// Declare a variable
+  fn declare_variable(&mut self, name: &str, span: Span) -> (SymbolState, u16) {
     if self.scope_depth == 1 {
-      return self
-        .module_table
-        .and_then(|table| table.get(name.str()).map(|symbol| symbol.state()))
-        .expect("Expected global symbol");
+      // Module scope variables are declared immediately
+      // here we just need to load them
+      self.load_module_variable(name)
+    } else {
+      self.declare_local_variable(name, span)
     }
-
-    if self.locals.len() == u8::MAX as usize {
-      self.error(
-        &format!("Too many local variables in function {}.", self.fun.name()),
-        Some(name),
-      );
-    }
-
-    let table = self
-      .local_tables
-      .last()
-      .expect("Expected local symbol table.");
-
-    let symbol = table.get(name.str()).expect("Expected symbol.");
-
-    self.locals.push(Local {
-      symbol,
-      depth: self.scope_depth,
-    });
-
-    if let SymbolState::LocalCaptured = symbol.state() {
-      self.emit_byte(SymbolicByteCode::EmptyBox, offset);
-    }
-
-    symbol.state()
   }
 
-  /// declare variable only variable
-  fn declare_local_variable(&mut self, name: &str) -> SymbolState {
-    assert!(self.scope_depth > 1);
+  // Load a module scoped variable's symbol state and name slot
+  fn load_module_variable(&mut self, name: &str) -> (SymbolState, u16) {
+    // Grab the table and fetch the symbol
+    let table = self.module_table.expect("Expected local symbol table.");
 
-    if self.locals.len() == u8::MAX as usize {
+    let symbol: &Symbol = table.get(name).expect("Expected symbol.");
+    let name_slot = self
+      .get_module_symbol_offset(name)
+      .expect("Expected offset");
+
+    (symbol.state(), name_slot)
+  }
+
+  /// Declare a module scoped variable
+  fn declare_module_variable(&mut self, name: &str, span: Span) -> (SymbolState, u16) {
+    // check we don't have too many module symbols
+    if self.module_symbol_count > u16::MAX as usize {
       self.error(
-        &format!("Too many local variables in function {}.", self.fun.name()),
-        None,
+        &format!(
+          "Attempted to declare variable {}, Too many module scoped symbols",
+          name
+        ),
+        Some(span),
       );
     }
 
+    // Grab the table and fetch the symbol
+    let table = self.module_table.expect("Expected local symbol table.");
+
+    let symbol: &Symbol = table.get(name).expect("Expected symbol.");
+
+    // Determine the module slot and insert it
+    let module_slot = self.module_symbol_count as u16;
+    let name_slot = self.insert_module_symbol_offset(name, module_slot);
+
+    // declare the module scoped variable
+    self.emit_byte(
+      SymbolicByteCode::DeclareModSym((name_slot, module_slot)),
+      span.end,
+    );
+    self.module_symbol_count += 1;
+
+    (symbol.state(), name_slot)
+  }
+
+  /// declare a local variable
+  fn declare_local_variable(&mut self, name: &str, span: Span) -> (SymbolState, u16) {
+    // check we don't have too many local symbols
+    if self.locals.len() == u8::MAX as usize {
+      self.error(
+        &format!(
+          "Attempted to declare variable {}. too many local variables in function {}.",
+          name,
+          self.fun.name()
+        ),
+        Some(span),
+      );
+    }
+
+    // Grab the table and fetch the symbol
     let table = self
       .local_tables
       .last()
@@ -791,34 +852,126 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     let symbol = table.get(name).expect("Expected symbol.");
 
+    // push the local onto the stack
+    self.push_local(symbol);
+
+    if let SymbolState::LocalCaptured = symbol.state() {
+      self.emit_byte(SymbolicByteCode::EmptyBox, span.end);
+    }
+
+    (symbol.state(), 0)
+  }
+
+  fn declare_and_define_parameter(&mut self, name: &str, span: Span) {
+    assert!(self.scope_depth > 1);
+
+    // check we don't have too many local symbols
+    if self.locals.len() == u8::MAX as usize {
+      self.error(
+        &format!(
+          "Attempted to declare variable {}. too many local variables in function {}.",
+          name,
+          self.fun.name()
+        ),
+        Some(span),
+      );
+    }
+
+    // Grab the table and fetch the symbol
+    let table = self
+      .local_tables
+      .last()
+      .expect("Expected local symbol table.");
+
+    let symbol = table.get(name).expect("Expected symbol.");
+
+    // push the local onto the stack
+    self.push_local(symbol);
+
+    if let SymbolState::LocalCaptured = symbol.state() {
+      let (slot, _) = self.resolve_local(name).expect("Expected local symbol.");
+      self.emit_byte(SymbolicByteCode::Box(slot), span.end);
+    }
+  }
+
+  // Push a local onto the stack
+  fn push_local(&mut self, symbol: &'a Symbol) {
+    // push the local onto the stack
     self.locals.push(Local {
       symbol,
       depth: self.scope_depth,
     });
-
-    symbol.state()
   }
 
   /// Define a variable
-  fn define_variable(&mut self, variable: u16, state: SymbolState, offset: u32) {
-    if let SymbolState::LocalCaptured = state {
-      self.emit_byte(SymbolicByteCode::FillBox, offset);
-    }
-
+  fn define_variable(&mut self, name: &str, state: SymbolState, span: Span) {
     if self.scope_depth > 1 {
-      return;
+      self.define_local_variable(name, state, span)
+    } else {
+      self.define_module_variable(name, span)
+    }
+  }
+
+  fn define_module_variable(&mut self, name: &str, span: Span) {
+    if self.module_symbol_count > u16::MAX as usize {
+      self.error("Too many module scoped symbols", Some(span));
     }
 
-    self.emit_byte(SymbolicByteCode::DefineModuleSymbol(variable), offset);
+    match self.get_module_symbol_offset(name) {
+      Some(module_slot) => {
+        // When we define module it's basically just an assign
+        self.emit_byte(SymbolicByteCode::SetModSym(module_slot), span.end);
+        self.emit_byte(SymbolicByteCode::Drop, span.end);
+      },
+      None => panic!("Unable to find module symbol offset"),
+    }
   }
 
   /// Define a local only variable
-  fn define_local_variable(&mut self, name: &str, state: SymbolState, offset: u32) {
-    assert!(self.scope_depth > 1);
-
+  fn define_local_variable(&mut self, _name: &str, state: SymbolState, span: Span) {
     if let SymbolState::LocalCaptured = state {
-      let (slot, _) = self.resolve_local(name).expect("Expected local symbol.");
-      self.emit_byte(SymbolicByteCode::Box(slot), offset);
+      self.emit_byte(SymbolicByteCode::FillBox, span.end);
+    }
+  }
+
+  fn insert_module_symbol_offset(&mut self, name: &str, module_slot: u16) -> u16 {
+    if self.module_symbols_offsets.is_some() {
+      let name_slot = self.identifier_constant(name);
+
+      match &mut self.module_symbols_offsets {
+        Some(module_symbols_offsets) => {
+          module_symbols_offsets.insert(name_slot, module_slot);
+          name_slot
+        },
+        None => unreachable!("We literally check right before this"),
+      }
+    } else {
+      match self.enclosing {
+        Some(mut parent_ptr) => {
+          let parent: &mut Compiler<'a, 'src> = unsafe { parent_ptr.as_mut() };
+          parent.insert_module_symbol_offset(name, module_slot)
+        },
+        None => panic!("Expecting enclosing"),
+      }
+    }
+  }
+
+  fn get_module_symbol_offset(&mut self, name: &str) -> Option<u16> {
+    if self.module_symbols_offsets.is_some() {
+      let name_slot = self.identifier_constant(name);
+
+      match &mut self.module_symbols_offsets {
+        Some(module_symbols_offsets) => module_symbols_offsets.get(&name_slot).map(|x| *x),
+        None => unreachable!("We literally check right before this"),
+      }
+    } else {
+      match self.enclosing {
+        Some(mut parent_ptr) => {
+          let parent: &mut Compiler<'a, 'src> = unsafe { parent_ptr.as_mut() };
+          parent.get_module_symbol_offset(name)
+        },
+        None => panic!("Expecting enclosing"),
+      }
     }
   }
 
@@ -844,15 +997,15 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.chunk.write_instruction(op_code, line)
   }
 
-  /// Parse a variable from the provided token return it's new constant
-  /// identifer if an identifer was identified
-  fn make_identifier(&mut self, name: &Token<'src>, offset: u32) -> (u16, SymbolState) {
-    let state = self.declare_variable(name, offset);
-    if self.scope_depth > 1 {
-      return (0, state);
-    }
-    (self.identifier_constant(name.str()), state)
-  }
+  // /// Parse a variable from the provided token return it's new constant
+  // /// identifier if an identifier was identified
+  // fn make_identifier(&mut self, name: &Token<'src>, offset: u32) -> (u16, SymbolState) {
+  //   let state = self.declare_variable(name, offset);
+  //   if self.scope_depth > 1 {
+  //     return (0, state);
+  //   }
+  //   (self.identifier_constant(name.str()), state)
+  // }
 
   /// Generate a constant from the provided identifier token
   fn identifier_constant(&mut self, name: &str) -> u16 {
@@ -861,8 +1014,8 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// Generate a constant from the provided identifier token
   fn string_constant(&mut self, str: &str) -> u16 {
-    let identifer = self.gc.borrow_mut().manage_str(str, self);
-    self.make_constant(val!(identifer))
+    let identifier = self.gc.borrow_mut().manage_str(str, self);
+    self.make_constant(val!(identifier))
   }
 
   /// Add a constant to the current chunk
@@ -894,23 +1047,21 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   }
 
   /// Indicate an error occurred at he current index
-  fn error_at_current(&mut self, message: &str, token: Option<&Token>) {
+  fn error_at_current(&mut self, message: &str, token: Option<Span>) {
     self.error_at(message, token);
   }
 
   /// Indicate an error occurred at the previous index
-  fn error(&mut self, message: &str, token: Option<&Token>) {
+  fn error(&mut self, message: &str, token: Option<Span>) {
     self.error_at(message, token);
   }
 
   /// Print an error to the console for a user to address
-  fn error_at(&mut self, message: &str, token: Option<&Token>) {
+  fn error_at(&mut self, message: &str, token: Option<Span>) {
     let error = Diagnostic::error().with_message(message);
 
     let error = match token {
-      Some(token) => {
-        error.with_labels(vec![diagnostic::Label::primary(self.file_id, token.span())])
-      },
+      Some(span) => error.with_labels(vec![diagnostic::Label::primary(self.file_id, span)]),
       None => error,
     };
 
@@ -1021,12 +1172,12 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
   fn class(&mut self, class: &'a ast::Class<'src>) -> u16 {
     // declare the class by name
     let class_name = &class.name;
-    let class_state = self.declare_variable(class_name, class.start());
+    let (class_state, _) = self.declare_variable(&class_name.str(), class_name.span());
 
     let class_constant = self.identifier_constant(class_name.str());
 
     self.emit_byte(SymbolicByteCode::Class(class_constant), class_name.end());
-    self.define_variable(class_constant, class_state, class_name.end());
+    self.define_variable(class_name.str(), class_state, class_name.span());
 
     // set this class as the current class compiler
     let name = self.gc.borrow_mut().manage_str(class_name.str(), self);
@@ -1050,7 +1201,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       class.name.span()
     };
 
-    let super_state = self.declare_local_variable(SUPER);
+    let (super_state, _) = self.declare_variable(SUPER, span);
 
     // Load an explicit or implicit super class
     if let Some(super_class) = &class.super_class {
@@ -1066,7 +1217,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       ));
     };
 
-    self.define_local_variable(SUPER, super_state, span.end);
+    self.define_variable(SUPER, super_state, span);
 
     self.variable_get(class_name);
     self.emit_byte(SymbolicByteCode::Inherit, span.end);
@@ -1153,30 +1304,26 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
   /// Compile a plain function
   fn fun(&mut self, fun: &'a ast::Fun<'src>) -> u16 {
-    let (constant, fun_state) = fun
-      .name
-      .as_ref()
-      .map(|name| self.make_identifier(name, fun.end()))
-      .expect("Expected function name");
+    let name = fun.name.as_ref().expect("Expected function name");
+    let (state, name_slot) = self.declare_variable(&name.str(), name.span());
 
     self.function(fun, FunKind::Fun);
-    self.define_variable(constant, fun_state, fun.end());
+    self.define_variable(&name.str(), state, fun.span());
 
-    constant
+    name_slot
   }
 
   /// Compile a let binding
   fn let_(&mut self, let_: &'a ast::Let<'src>) -> u16 {
-    let var_state = self.declare_variable(&let_.name, let_.end());
-    let variable = self.identifier_constant(let_.name.str());
+    let (var_state, name_slot) = self.declare_variable(&let_.name.str(), let_.span());
 
     match &let_.value {
       Some(v) => self.expr(v),
       None => self.emit_byte(SymbolicByteCode::Nil, let_.name.end()),
     }
 
-    self.define_variable(variable, var_state, let_.end());
-    variable
+    self.define_variable(let_.name.str(), var_state, let_.span());
+    name_slot
   }
 
   /// Compile a function objects that presents, functions, methods
@@ -1198,11 +1345,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     match fun_kind {
       FunKind::Method | FunKind::Initializer => {
-        let self_state = compiler.declare_local_variable(SELF);
-        compiler.define_local_variable(SELF, self_state, fun.start());
+        compiler.declare_and_define_parameter(SELF, fun.call_sig.span());
       },
       FunKind::Fun | FunKind::StaticMethod => {
-        compiler.declare_local_variable(UNINITIALIZED_VAR);
+        compiler.declare_variable(UNINITIALIZED_VAR, fun.call_sig.span());
       },
       _ => panic!("Did not expect script."),
     };
@@ -1220,9 +1366,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     let end_line = fun.end();
 
     // end compilation of function chunk
-    let (fun, errors, captures, gc) = compiler.end_compiler(end_line);
-
-    self.gc.replace(gc);
+    let (fun, errors, captures) = compiler.end_compiler(end_line);
 
     let fun = self.gc.borrow_mut().manage_obj(fun, self);
 
@@ -1263,30 +1407,34 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     match &import.stem {
       ast::ImportStem::None => {
+        let name = &import.path()[import.path().len() - 1];
+
+        self.declare_variable(&name.str(), name.span());
         self.emit_byte(SymbolicByteCode::Import(path), import.start());
-        let (name, _) =
-          self.make_identifier(&import.path()[import.path().len() - 1], import.start());
-        self.emit_byte(SymbolicByteCode::DefineModuleSymbol(name), import.end());
+
+        self.define_variable(&name.str(), SymbolState::ModuleInitialized, import.span());
       },
       ast::ImportStem::Rename(rename) => {
+        self.declare_variable(&rename.str(), rename.span());
         self.emit_byte(SymbolicByteCode::Import(path), import.start());
-        let (name, _) = self.make_identifier(rename, import.start());
-        self.emit_byte(SymbolicByteCode::DefineModuleSymbol(name), import.end());
+
+        self.define_variable(&rename.str(), SymbolState::ModuleInitialized, import.span());
       },
       ast::ImportStem::Symbols(symbols) => {
         for symbol in symbols {
+          let name = match &symbol.rename {
+            Some(rename) => rename,
+            None => &symbol.symbol,
+          };
+          self.declare_variable(&name.str(), name.span());
+
           let symbol_slot = self.identifier_constant(symbol.symbol.str());
           self.emit_byte(
-            SymbolicByteCode::ImportSymbol((path, symbol_slot)),
+            SymbolicByteCode::ImportSym((path, symbol_slot)),
             symbol.start(),
           );
 
-          let name = match &symbol.rename {
-            Some(rename) => self.make_identifier(rename, import.start()).0,
-            None => self.make_identifier(&symbol.symbol, import.start()).0,
-          };
-
-          self.emit_byte(SymbolicByteCode::DefineModuleSymbol(name), import.end());
+          self.define_variable(&name.str(), SymbolState::ModuleInitialized, import.span());
         }
       },
     }
@@ -1301,23 +1449,23 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.scope(for_.end(), &for_.symbols, |self_| {
       // push iterable onto stack
       self_.expr(&for_.iter);
-      let expr_line = for_.iter.end();
+      let iter_span = for_.iter.span();
 
       // declare the hidden local $iter variable
-      self_.declare_local_variable(ITER_VAR);
-      self_.emit_known_invoke(ITER, 0, expr_line);
-      self_.define_local_variable(ITER_VAR, SymbolState::LocalInitialized, expr_line);
+      self_.declare_variable(ITER_VAR, iter_span);
+      self_.emit_known_invoke(ITER, 0, iter_span.end);
+      self_.define_variable(ITER_VAR, SymbolState::LocalInitialized, iter_span);
 
-      let item_line = for_.item.end();
-      let item_state = self_.declare_local_variable(for_.item.str());
+      let item_span = for_.item.span();
+      let (item_state, _) = self_.declare_variable(for_.item.str(), item_span);
 
       // initial fill iteration item with nil and define
-      self_.emit_byte(SymbolicByteCode::Nil, item_line);
-      self_.define_local_variable(for_.item.str(), item_state, item_line);
+      self_.emit_byte(SymbolicByteCode::Nil, item_span.end);
+      self_.define_variable(for_.item.str(), item_state, item_span);
 
       // mark start of loop
       let start_label = self_.label_emitter.emit();
-      self_.emit_byte(SymbolicByteCode::Label(start_label), item_line);
+      self_.emit_byte(SymbolicByteCode::Label(start_label), item_span.end);
 
       // define iterator method constants
       let next_const = self_.string_constant(NEXT);
@@ -1328,22 +1476,22 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         .resolve_local(ITER_VAR)
         .expect("Iterator variable was not defined.");
 
-      self_.emit_local_get(iterator_state, iterator_variable, expr_line);
-      self_.emit_byte(SymbolicByteCode::IterNext(next_const), expr_line);
+      self_.emit_local_get(iterator_state, iterator_variable, iter_span.end);
+      self_.emit_byte(SymbolicByteCode::IterNext(next_const), iter_span.end);
 
       // check at end of iterator
       let end_label = self_.label_emitter.emit();
-      self_.emit_byte(SymbolicByteCode::JumpIfFalse(end_label), expr_line);
+      self_.emit_byte(SymbolicByteCode::JumpIfFalse(end_label), iter_span.end);
 
       // assign $iter.current to loop variable
       let (loop_variable, loop_state) = self_
         .resolve_local(for_.item.str())
         .expect("Loop variable was not defined.");
 
-      self_.emit_local_get(iterator_state, iterator_variable, expr_line);
-      self_.emit_byte(SymbolicByteCode::IterCurrent(current_const), expr_line);
-      self_.emit_local_set(loop_state, loop_variable, expr_line);
-      self_.emit_byte(SymbolicByteCode::Drop, expr_line);
+      self_.emit_local_get(iterator_state, iterator_variable, iter_span.end);
+      self_.emit_byte(SymbolicByteCode::IterCurrent(current_const), iter_span.end);
+      self_.emit_local_set(loop_state, loop_variable, iter_span.end);
+      self_.emit_byte(SymbolicByteCode::Drop, item_span.end);
 
       // loop body
       self_.loop_scope(
@@ -1555,12 +1703,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       self_.emit_byte(SymbolicByteCode::FinishUnwind, catch.start());
       self_.emit_byte(SymbolicByteCode::PopHandler, catch.start());
 
-      let var_state = self_.declare_variable(&catch.name, catch.name.end());
-      let variable: u16 = self_.identifier_constant(catch.name.str());
+      let (var_state, _) = self_.declare_variable(&catch.name.str(), catch.name.span());
 
       self_.emit_byte(SymbolicByteCode::GetError, catch.name.start());
-
-      self_.define_variable(variable, var_state, catch.end());
+      self_.define_variable(catch.name.str(), var_state, catch.span());
 
       self_.scope(catch.end(), &catch.block.symbols, |self__| {
         self__.block(&catch.block);
@@ -1888,20 +2034,20 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         if let Some(position) = self.find_known_field(field, class) {
           if class.has_explicit_super_class {
             let name = self.identifier_constant(field);
-            self.emit_byte(SymbolicByteCode::GetProperty(name), offset);
+            self.emit_byte(SymbolicByteCode::GetPropByName(name), offset);
             self.emit_byte(SymbolicByteCode::PropertySlot, offset);
           } else {
-            self.emit_byte(SymbolicByteCode::GetKnownProperty(position as u16), offset);
+            self.emit_byte(SymbolicByteCode::GetProp(position as u16), offset);
           }
         } else {
           let name = self.identifier_constant(field);
-          self.emit_byte(SymbolicByteCode::GetProperty(name), offset);
+          self.emit_byte(SymbolicByteCode::GetPropByName(name), offset);
           self.emit_byte(SymbolicByteCode::PropertySlot, offset);
         }
       },
       None => {
         let name = self.identifier_constant(field);
-        self.emit_byte(SymbolicByteCode::GetProperty(name), offset);
+        self.emit_byte(SymbolicByteCode::GetPropByName(name), offset);
         self.emit_byte(SymbolicByteCode::PropertySlot, offset);
       },
     }
@@ -1917,20 +2063,20 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         if let Some(position) = self.find_known_field(field, class) {
           if class.has_explicit_super_class {
             let name = self.identifier_constant(field);
-            self.emit_byte(SymbolicByteCode::SetProperty(name), offset);
+            self.emit_byte(SymbolicByteCode::SetPropByName(name), offset);
             self.emit_byte(SymbolicByteCode::PropertySlot, offset);
           } else {
-            self.emit_byte(SymbolicByteCode::SetKnownProperty(position as u16), offset);
+            self.emit_byte(SymbolicByteCode::SetProp(position as u16), offset);
           }
         } else {
           let name = self.identifier_constant(field);
-          self.emit_byte(SymbolicByteCode::SetProperty(name), offset);
+          self.emit_byte(SymbolicByteCode::SetPropByName(name), offset);
           self.emit_byte(SymbolicByteCode::PropertySlot, offset);
         }
       },
       None => {
         let name = self.identifier_constant(field);
-        self.emit_byte(SymbolicByteCode::SetProperty(name), offset);
+        self.emit_byte(SymbolicByteCode::SetPropByName(name), offset);
         self.emit_byte(SymbolicByteCode::PropertySlot, offset);
       },
     }
@@ -2073,7 +2219,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       .or_else(|| {
         self.error(
           "Cannot access property off 'self' with '@' outside of class instance methods.",
-          Some(&instance_access.access),
+          Some(instance_access.access.span()),
         );
         None
       })
@@ -2113,7 +2259,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       .or_else(|| {
         self.error(
           "Cannot use 'self' outside of class instance methods.",
-          Some(self_),
+          Some(self_.span()),
         );
         None
       });
@@ -2124,7 +2270,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     if self.class_attributes.is_none() {
       self.error(
         "Cannot use 'super' outside of a class.",
-        Some(&super_.super_),
+        Some(super_.super_.span()),
       );
     }
 
@@ -2175,11 +2321,11 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     self.emit_byte(SymbolicByteCode::Map(map.entries.len() as u16), map.end());
   }
 
-  /// Set the functions arity from the call signature
+  /// Declare and define all of the parameters as part of the function's
+  /// call signature
   fn call_sig(&mut self, call_sig: &'a ast::CallSignature<'src>) {
     for param in &call_sig.params {
-      let param_state = self.declare_local_variable(param.name.str());
-      self.define_local_variable(param.name.str(), param_state, param.name.end());
+      self.declare_and_define_parameter(param.name.str(), param.name.span());
     }
   }
 
@@ -2290,22 +2436,22 @@ mod test {
     let module_class = test_class(&hooks, "Module");
     let object_class = module_class.super_class().expect("Expected Object");
     hooks.push_root(module_class);
-    let module_path = hooks.manage_str("module/path");
-    hooks.push_root(module_path);
-    let mut module = hooks.manage(Module::new(module_class, module_path, 0));
-    hooks.pop_roots(2);
+    let mut module = hooks.manage(Module::new(hooks, module_class, "module/path", 0));
+    hooks.pop_roots(1);
     hooks.push_root(module);
 
     let print = test_fun(hooks, module);
-    assert!(module.insert_symbol(print.name(), val!(print)).is_ok());
+    assert!(module
+      .insert_symbol(hooks, print.name(), val!(print))
+      .is_ok());
 
     let error_class = test_class(&hooks, "Error");
     assert!(module
-      .insert_symbol(error_class.name(), val!(error_class))
+      .insert_symbol(hooks, error_class.name(), val!(error_class))
       .is_ok());
 
     assert!(module
-      .insert_symbol(object_class.name(), val!(object_class))
+      .insert_symbol(hooks, object_class.name(), val!(object_class))
       .is_ok());
     assert!(module.export_symbol(print.name()).is_ok());
     assert!(module.export_symbol(error_class.name()).is_ok());
@@ -2369,8 +2515,8 @@ mod test {
           decoded.push(byte_code);
           offset = decode_byte_code_closure(fun, &mut decoded, new_offset, closure)
         },
-        AlignedByteCode::GetProperty(_)
-        | AlignedByteCode::SetProperty(_)
+        AlignedByteCode::GetPropByName(_)
+        | AlignedByteCode::SetPropByName(_)
         | AlignedByteCode::Invoke(_)
         | AlignedByteCode::SuperInvoke(_) => {
           decoded.push(byte_code);
@@ -2459,7 +2605,7 @@ mod test {
 
           match &code[i] {
             ByteCodeTest::Fun((expected_index, max_slots, inner)) => {
-              assert_eq!(*expected_index, index, "Function constant index not in expected spot. Found at index {} expected at index {}", expected_index, index);
+              assert_eq!(*expected_index, index, "Function constant index not in expected spot. Found at index {index} expected at index {expected_index}");
               assert_fun_bytecode(&*fun, *max_slots, &inner);
             },
             _ => assert!(false),
@@ -2548,8 +2694,10 @@ mod test {
       &fun,
       2,
       &vec![
-        AlignedByteCode::Import(0),
-        AlignedByteCode::DefineModuleSymbol(1),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::Import(1),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2569,8 +2717,10 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Export(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -2591,6 +2741,7 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
           1,
           2,
@@ -2599,7 +2750,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Export(0)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
@@ -2620,13 +2772,19 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::Class(0),
-        AlignedByteCode::DefineModuleSymbol(0),
-        AlignedByteCode::GetModuleSymbol(1),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::DeclareModSym((1, 1)),
+        AlignedByteCode::Class(1),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::GetModSym(0),
+        AlignedByteCode::GetModSym(1),
         AlignedByteCode::Inherit,
         AlignedByteCode::DropN(2),
-        AlignedByteCode::Export(0),
+        AlignedByteCode::Export(1),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -2650,10 +2808,14 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(14),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::CheckHandler(7),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
@@ -2685,22 +2847,30 @@ mod test {
       &fun,
       4,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::DeclareModSym((1, 1)),
+        AlignedByteCode::LoadGlobal(1),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::PushHandler((1, 21)),
         AlignedByteCode::Map(0),
         AlignedByteCode::GetLocal(1),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Invoke((2, 1)),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Invoke((3, 1)),
         AlignedByteCode::Slot(0),
         AlignedByteCode::DropN(2),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(22),
-        AlignedByteCode::GetModuleSymbol(3),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::CheckHandler(15),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::GetError,
-        AlignedByteCode::GetModuleSymbol(5),
-        AlignedByteCode::Constant(6),
+        AlignedByteCode::GetModSym(1),
+        AlignedByteCode::Constant(4),
         AlignedByteCode::Call(1),
         AlignedByteCode::DropN(2),
         AlignedByteCode::Jump(1),
@@ -2733,40 +2903,48 @@ mod test {
       &fun,
       4,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::DeclareModSym((1, 1)),
+        AlignedByteCode::LoadGlobal(1),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::PushHandler((1, 63)),
         AlignedByteCode::List(0),
-        AlignedByteCode::Constant(0),
-        AlignedByteCode::Invoke((1, 1)),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::Invoke((3, 1)),
         AlignedByteCode::Slot(0),
         AlignedByteCode::Drop,
         AlignedByteCode::PushHandler((1, 18)),
         AlignedByteCode::List(0),
-        AlignedByteCode::Constant(2),
-        AlignedByteCode::Invoke((1, 1)),
+        AlignedByteCode::Constant(4),
+        AlignedByteCode::Invoke((3, 1)),
         AlignedByteCode::Slot(1),
         AlignedByteCode::Drop,
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(22),
-        AlignedByteCode::GetModuleSymbol(3),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::CheckHandler(15),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::GetError,
-        AlignedByteCode::GetModuleSymbol(5),
-        AlignedByteCode::Constant(6),
+        AlignedByteCode::GetModSym(1),
+        AlignedByteCode::Constant(5),
         AlignedByteCode::Call(1),
         AlignedByteCode::DropN(2),
         AlignedByteCode::Jump(1),
         AlignedByteCode::ContinueUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(22),
-        AlignedByteCode::GetModuleSymbol(3),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::CheckHandler(15),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
         AlignedByteCode::GetError,
-        AlignedByteCode::GetModuleSymbol(5),
-        AlignedByteCode::Constant(7),
+        AlignedByteCode::GetModSym(1),
+        AlignedByteCode::Constant(6),
         AlignedByteCode::Call(1),
         AlignedByteCode::DropN(2),
         AlignedByteCode::Jump(1),
@@ -2796,12 +2974,16 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(26),
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Jump(17),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::CheckHandler(7),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
@@ -2835,12 +3017,16 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(26),
         AlignedByteCode::PushHandler((1, 4)),
         AlignedByteCode::PopHandler,
         AlignedByteCode::Loop(13),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::CheckHandler(7),
         AlignedByteCode::FinishUnwind,
         AlignedByteCode::PopHandler,
@@ -2873,16 +3059,21 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
         ByteCodeTest::Fun((
           // example
-          1,
+          2,
           3,
           vec![
             ByteCodeTest::Code(AlignedByteCode::PushHandler((1, 3))),
             ByteCodeTest::Code(AlignedByteCode::Nil),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
             ByteCodeTest::Code(AlignedByteCode::Return),
-            ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
             ByteCodeTest::Code(AlignedByteCode::CheckHandler(5)),
             ByteCodeTest::Code(AlignedByteCode::FinishUnwind),
             ByteCodeTest::Code(AlignedByteCode::PopHandler),
@@ -2894,7 +3085,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -2916,16 +3108,24 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::Class(0),
-        AlignedByteCode::DefineModuleSymbol(0),
-        AlignedByteCode::GetModuleSymbol(1),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::DeclareModSym((1, 1)),
+        AlignedByteCode::DeclareModSym((2, 2)),
+        AlignedByteCode::Class(1),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::GetModSym(0),
+        AlignedByteCode::GetModSym(1),
         AlignedByteCode::Inherit,
         AlignedByteCode::DropN(2),
         AlignedByteCode::Class(2),
-        AlignedByteCode::DefineModuleSymbol(2),
-        AlignedByteCode::GetModuleSymbol(0),
-        AlignedByteCode::GetModuleSymbol(2),
+        AlignedByteCode::SetModSym(2),
+        AlignedByteCode::Drop,
+        AlignedByteCode::GetModSym(1),
+        AlignedByteCode::GetModSym(2),
         AlignedByteCode::Inherit,
         AlignedByteCode::DropN(2),
         AlignedByteCode::Nil,
@@ -2947,10 +3147,16 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::Class(0),
-        AlignedByteCode::DefineModuleSymbol(0),
-        AlignedByteCode::GetModuleSymbol(1),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::DeclareModSym((1, 1)),
+        AlignedByteCode::Class(1),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::GetModSym(0),
+        AlignedByteCode::GetModSym(1),
         AlignedByteCode::Inherit,
         AlignedByteCode::DropN(2),
         AlignedByteCode::Nil,
@@ -2984,10 +3190,16 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -2995,7 +3207,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3008,7 +3220,7 @@ mod test {
           2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -3056,10 +3268,16 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3067,7 +3285,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3080,7 +3298,7 @@ mod test {
           2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -3128,10 +3346,16 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3139,7 +3363,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3152,7 +3376,7 @@ mod test {
           2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
-            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
@@ -3193,10 +3417,16 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3204,14 +3434,14 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Dup),
-            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Code(AlignedByteCode::Divide),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3244,10 +3474,16 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3255,14 +3491,14 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Dup),
-            ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::GetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
             ByteCodeTest::Code(AlignedByteCode::Divide),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3297,32 +3533,40 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((2, 2))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
-          3,
+          4,
           3,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::Method(2)),
-        ByteCodeTest::Code(AlignedByteCode::Field(4)),
+        ByteCodeTest::Code(AlignedByteCode::Method(3)),
+        ByteCodeTest::Code(AlignedByteCode::Field(2)),
         ByteCodeTest::Code(AlignedByteCode::DropN(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(4)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(4)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(2)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(2)),
         ByteCodeTest::Code(AlignedByteCode::Constant(5)),
-        ByteCodeTest::Code(AlignedByteCode::SetProperty(4)),
+        ByteCodeTest::Code(AlignedByteCode::SetPropByName(2)),
         ByteCodeTest::Code(AlignedByteCode::Slot(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -3352,10 +3596,16 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3403,10 +3653,16 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3460,31 +3716,40 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((2, 2))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
-          3,
+          4,
           3,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Constant(0)),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::Method(2)),
-        ByteCodeTest::Code(AlignedByteCode::Field(4)),
+        ByteCodeTest::Code(AlignedByteCode::Method(3)),
+        ByteCodeTest::Code(AlignedByteCode::Field(5)),
         ByteCodeTest::Code(AlignedByteCode::DropN(2)),
-        ByteCodeTest::Code(AlignedByteCode::Class(5)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(5)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::Box(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(5)),
+        ByteCodeTest::Code(AlignedByteCode::Class(2)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(2)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::EmptyBox),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::FillBox),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(2)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           6,
@@ -3497,7 +3762,7 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),
-            ByteCodeTest::Code(AlignedByteCode::SetProperty(2)),
+            ByteCodeTest::Code(AlignedByteCode::SetPropByName(2)),
             ByteCodeTest::Code(AlignedByteCode::Slot(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
@@ -3505,7 +3770,7 @@ mod test {
           ],
         )),
         ByteCodeTest::Code(AlignedByteCode::CaptureIndex(CaptureIndex::Local(1))),
-        ByteCodeTest::Code(AlignedByteCode::Method(2)),
+        ByteCodeTest::Code(AlignedByteCode::Method(3)),
         ByteCodeTest::Code(AlignedByteCode::Field(7)),
         ByteCodeTest::Code(AlignedByteCode::DropN(2)),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -3537,10 +3802,16 @@ mod test {
       &fun,
       4,
       &vec![
-        ByteCodeTest::Code(AlignedByteCode::Class(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(1)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::LoadGlobal(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::Class(1)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Inherit),
         ByteCodeTest::Fun((
           3,
@@ -3548,7 +3819,7 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::True),
-            ByteCodeTest::Code(AlignedByteCode::SetKnownProperty(0)),
+            ByteCodeTest::Code(AlignedByteCode::SetProp(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Return),
@@ -3566,7 +3837,7 @@ mod test {
               2,
               vec![
                 ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
-                ByteCodeTest::Code(AlignedByteCode::GetKnownProperty(0)),
+                ByteCodeTest::Code(AlignedByteCode::GetProp(0)),
                 ByteCodeTest::Code(AlignedByteCode::Return),
               ],
             )),
@@ -3596,7 +3867,11 @@ mod test {
       &fun,
       2,
       &vec![
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::Launch(0),
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -3617,10 +3892,18 @@ mod test {
       &fun,
       3,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::DeclareModSym((1, 1)),
+        AlignedByteCode::LoadGlobal(1),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(8),
-        AlignedByteCode::GetModuleSymbol(0),
-        AlignedByteCode::Constant(1),
+        AlignedByteCode::GetModSym(0),
+        AlignedByteCode::Constant(2),
         AlignedByteCode::Call(1),
         AlignedByteCode::Raise,
         AlignedByteCode::Nil,
@@ -3643,11 +3926,13 @@ mod test {
       &fun,
       4,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Channel,
         AlignedByteCode::List(1),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(1),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Invoke((3, 1)),
         AlignedByteCode::Slot(0),
@@ -3673,11 +3958,13 @@ mod test {
       &fun,
       3,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(2),
-        AlignedByteCode::GetModuleSymbol(0),
-        AlignedByteCode::GetProperty(0),
+        AlignedByteCode::GetModSym(0),
+        AlignedByteCode::GetPropByName(0),
         AlignedByteCode::Slot(0),
         AlignedByteCode::Send,
         AlignedByteCode::Drop,
@@ -3701,10 +3988,12 @@ mod test {
       &fun,
       3,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Channel,
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(1),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::Send,
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -3727,12 +4016,18 @@ mod test {
       &fun,
       4,
       &vec![
-        AlignedByteCode::GetModuleSymbol(1),
-        AlignedByteCode::GetModuleSymbol(1),
-        AlignedByteCode::GetModuleSymbol(1),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::DeclareModSym((1, 1)),
+        AlignedByteCode::GetModSym(0),
+        AlignedByteCode::GetModSym(0),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::List(3),
-        AlignedByteCode::DefineModuleSymbol(0),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::GetModSym(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Invoke((4, 2)),
@@ -3758,13 +4053,19 @@ mod test {
       &fun,
       4,
       &vec![
-        AlignedByteCode::Constant(1),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::DeclareModSym((1, 1)),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
+        AlignedByteCode::Constant(4),
         AlignedByteCode::List(3),
-        AlignedByteCode::DefineModuleSymbol(0),
-        AlignedByteCode::GetModuleSymbol(4),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::GetModSym(0),
+        AlignedByteCode::GetModSym(1),
         AlignedByteCode::Constant(5),
         AlignedByteCode::Invoke((6, 1)),
         AlignedByteCode::Slot(0),
@@ -3790,12 +4091,14 @@ mod test {
       &fun,
       4,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::List(3),
-        AlignedByteCode::DefineModuleSymbol(0),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::Dup,
         AlignedByteCode::Constant(1),
         AlignedByteCode::Invoke((4, 1)),
@@ -3825,13 +4128,15 @@ mod test {
       &fun,
       6,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Nil,
         AlignedByteCode::False,
         AlignedByteCode::Constant(3),
         AlignedByteCode::List(5),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3851,8 +4156,10 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::List(0),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3872,13 +4179,15 @@ mod test {
       &fun,
       6,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Nil,
         AlignedByteCode::False,
         AlignedByteCode::Constant(3),
         AlignedByteCode::Tuple(5),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3898,8 +4207,10 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Tuple(0),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3922,12 +4233,14 @@ mod test {
       &fun,
       5,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Nil,
         AlignedByteCode::Map(2),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3947,8 +4260,10 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Map(0),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -3968,8 +4283,8 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
-          // example
           1,
           2,
           vec![
@@ -3977,8 +4292,9 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4000,8 +4316,8 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
-          // example
           1,
           2,
           vec![
@@ -4009,8 +4325,9 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4020,7 +4337,7 @@ mod test {
   }
 
   #[test]
-  fn fn_with_variables() {
+  fn function_with_parameters() {
     let example = "
     fn example(a, b, c) {
       return a + b + c;
@@ -4035,8 +4352,8 @@ mod test {
       &fun,
       5,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
-          // example
           1,
           3,
           vec![
@@ -4048,8 +4365,9 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
         ByteCodeTest::Code(AlignedByteCode::Constant(2)),
         ByteCodeTest::Code(AlignedByteCode::Constant(3)),
         ByteCodeTest::Code(AlignedByteCode::Constant(4)),
@@ -4085,17 +4403,18 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
           // example
           1,
           4,
           vec![
             ByteCodeTest::Code(AlignedByteCode::EmptyBox),
-            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
             ByteCodeTest::Code(AlignedByteCode::FillBox),
             ByteCodeTest::Fun((
               // middle
-              2,
+              1,
               3,
               vec![
                 ByteCodeTest::Fun((
@@ -4119,8 +4438,9 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4149,15 +4469,17 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
         ByteCodeTest::Fun((
-          1,
+          2,
           4,
           vec![
             ByteCodeTest::Code(AlignedByteCode::EmptyBox),
-            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
             ByteCodeTest::Code(AlignedByteCode::FillBox),
             ByteCodeTest::Fun((
-              2,
+              1,
               2,
               vec![
                 ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
@@ -4169,11 +4491,63 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(2)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Call(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
+  #[test]
+  fn function_with_captured_parameters() {
+    let example = "
+    fn example(a) {
+      fn foo() { a }
+
+      return foo;
+    }
+    example(1)();
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+
+    assert_fun_bytecode(
+      &fun,
+      3,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Fun((
+          1,
+          3,
+          vec![
+            ByteCodeTest::Code(AlignedByteCode::Box(1)),
+            ByteCodeTest::Fun((
+              0,
+              2,
+              vec![
+                ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
+                ByteCodeTest::Code(AlignedByteCode::Return),
+              ],
+            )),
+            ByteCodeTest::Code(AlignedByteCode::CaptureIndex(CaptureIndex::Local(1))),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(2)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Constant(2)),
+        ByteCodeTest::Code(AlignedByteCode::Call(1)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4192,6 +4566,7 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
           1,
           2,
@@ -4200,8 +4575,9 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4226,19 +4602,23 @@ mod test {
       &fun,
       3,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
         ByteCodeTest::Fun((
-          1,
+          2,
           2,
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Constant(3)),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(2)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(2)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(1)),
         ByteCodeTest::Code(AlignedByteCode::Call(1)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4257,17 +4637,19 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
           1,
           3,
           vec![
-            ByteCodeTest::Code(AlignedByteCode::Constant(1)),
+            ByteCodeTest::Code(AlignedByteCode::Constant(0)),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4286,6 +4668,7 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
           1,
           2,
@@ -4294,8 +4677,9 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
-        ByteCodeTest::Code(AlignedByteCode::GetModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
         ByteCodeTest::Code(AlignedByteCode::Call(0)),
         ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
@@ -4315,12 +4699,14 @@ mod test {
       &fun,
       5,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Nil,
         AlignedByteCode::Map(2),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4338,12 +4724,14 @@ mod test {
       &fun,
       5,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Constant(4),
         AlignedByteCode::List(4),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4364,11 +4752,15 @@ mod test {
       &fun,
       2,
       &vec![
-        AlignedByteCode::Constant(1),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::DeclareModSym((1, 1)),
+        AlignedByteCode::Constant(2),
         AlignedByteCode::BufferedChannel,
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Channel,
-        AlignedByteCode::DefineModuleSymbol(2),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4386,21 +4778,25 @@ mod test {
       &fun,
       5,
       &vec![
-        AlignedByteCode::Constant(0),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(1),
         AlignedByteCode::Constant(2),
+        AlignedByteCode::Constant(3),
         AlignedByteCode::List(3),
-        AlignedByteCode::Invoke((3, 0)),
+        AlignedByteCode::Invoke((4, 0)),
         AlignedByteCode::Slot(0),
         AlignedByteCode::Nil,
         AlignedByteCode::GetLocal(1),
-        AlignedByteCode::IterNext(4),
+        AlignedByteCode::IterNext(5),
         AlignedByteCode::JumpIfFalse(19),
         AlignedByteCode::GetLocal(1),
-        AlignedByteCode::IterCurrent(5),
+        AlignedByteCode::IterCurrent(6),
         AlignedByteCode::SetLocal(2),
         AlignedByteCode::Drop,
-        AlignedByteCode::GetModuleSymbol(6),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::GetLocal(2),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
@@ -4436,8 +4832,8 @@ mod test {
         AlignedByteCode::IterCurrent(5),
         AlignedByteCode::SetLocal(2),
         AlignedByteCode::Drop,
-        AlignedByteCode::Constant(7),
-        AlignedByteCode::Constant(7),
+        AlignedByteCode::Constant(6),
+        AlignedByteCode::Constant(6),
         AlignedByteCode::DropN(2),
         AlignedByteCode::Loop(25),
         AlignedByteCode::DropN(2),
@@ -4457,9 +4853,13 @@ mod test {
       &fun,
       3,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(11),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::Constant(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
@@ -4482,8 +4882,8 @@ mod test {
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(9),
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(0),
+        AlignedByteCode::Constant(0),
         AlignedByteCode::DropN(2),
         AlignedByteCode::Loop(13),
         AlignedByteCode::Nil,
@@ -4502,6 +4902,10 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(3),
         AlignedByteCode::Jump(0),
@@ -4523,7 +4927,7 @@ mod test {
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(6),
-        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(0),
         AlignedByteCode::Drop,
         AlignedByteCode::Jump(0),
         AlignedByteCode::Nil,
@@ -4546,6 +4950,7 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
           1,
           2,
@@ -4557,7 +4962,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -4574,6 +4980,10 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(3),
         AlignedByteCode::Loop(7),
@@ -4595,7 +5005,7 @@ mod test {
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(6),
-        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(0),
         AlignedByteCode::Drop,
         AlignedByteCode::Loop(10),
         AlignedByteCode::Nil,
@@ -4618,6 +5028,7 @@ mod test {
       &fun,
       2,
       &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
         ByteCodeTest::Fun((
           1,
           2,
@@ -4629,7 +5040,8 @@ mod test {
             ByteCodeTest::Code(AlignedByteCode::Return),
           ],
         )),
-        ByteCodeTest::Code(AlignedByteCode::DefineModuleSymbol(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
         ByteCodeTest::Code(AlignedByteCode::Nil),
         ByteCodeTest::Code(AlignedByteCode::Return),
       ],
@@ -4687,11 +5099,15 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::Constant(0),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
         AlignedByteCode::Less,
         AlignedByteCode::JumpIfFalse(8),
-        AlignedByteCode::GetModuleSymbol(2),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
@@ -4712,16 +5128,20 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::Constant(0),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(2),
         AlignedByteCode::Less,
         AlignedByteCode::JumpIfFalse(11),
-        AlignedByteCode::GetModuleSymbol(2),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::Constant(3),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Jump(8),
-        AlignedByteCode::GetModuleSymbol(2),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::Constant(4),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
@@ -4743,7 +5163,7 @@ mod test {
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(3),
-        AlignedByteCode::Constant(1),
+        AlignedByteCode::Constant(0),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
@@ -4761,10 +5181,14 @@ mod test {
       &fun,
       4,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(11),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::GetModuleSymbol(2),
+        AlignedByteCode::GetModSym(0),
         AlignedByteCode::GetLocal(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::DropN(2),
@@ -4787,8 +5211,8 @@ mod test {
       &vec![
         AlignedByteCode::True,
         AlignedByteCode::JumpIfFalse(8),
+        AlignedByteCode::Constant(0),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::Constant(2),
         AlignedByteCode::SetLocal(1),
         AlignedByteCode::DropN(2),
         AlignedByteCode::Nil,
@@ -4808,8 +5232,10 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Nil,
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4827,8 +5253,10 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,
       ],
@@ -4836,7 +5264,7 @@ mod test {
   }
 
   #[test]
-  fn op_get_global() {
+  fn op_get_module() {
     let example = "
       let x = 10;
       print(x);
@@ -4848,10 +5276,16 @@ mod test {
       &fun,
       3,
       &vec![
-        AlignedByteCode::Constant(1),
-        AlignedByteCode::DefineModuleSymbol(0),
-        AlignedByteCode::GetModuleSymbol(2),
-        AlignedByteCode::GetModuleSymbol(0),
+        AlignedByteCode::DeclareModSym((0, 0)),
+        AlignedByteCode::LoadGlobal(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
+        AlignedByteCode::DeclareModSym((1, 1)),
+        AlignedByteCode::Constant(2),
+        AlignedByteCode::SetModSym(1),
+        AlignedByteCode::Drop,
+        AlignedByteCode::GetModSym(0),
+        AlignedByteCode::GetModSym(1),
         AlignedByteCode::Call(1),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
@@ -4873,10 +5307,12 @@ mod test {
       &fun,
       2,
       &vec![
+        AlignedByteCode::DeclareModSym((0, 0)),
         AlignedByteCode::Nil,
-        AlignedByteCode::DefineModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
+        AlignedByteCode::Drop,
         AlignedByteCode::Constant(1),
-        AlignedByteCode::SetModuleSymbol(0),
+        AlignedByteCode::SetModSym(0),
         AlignedByteCode::Drop,
         AlignedByteCode::Nil,
         AlignedByteCode::Return,

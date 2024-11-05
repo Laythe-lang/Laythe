@@ -85,18 +85,11 @@ impl Vm {
     let module_class = Class::with_inheritance(&hooks, name, self.builtin.dependencies.module);
     hooks.push_root(module_class);
 
-    let path = hooks.manage_str(path);
-    hooks.push_root(path);
-
-    let mut module = hooks.manage(Module::new(module_class, path, id));
-    hooks.pop_roots(2);
+    let module = hooks.manage(Module::new(&hooks, module_class, path, id));
     hooks.push_root(module);
 
-    // transfer the symbols from the global module into this module
-    self.global_module.transfer_exported(&hooks, &mut module);
-
-    hooks.pop_roots(1);
     let package = hooks.manage(Package::new(name, module));
+    hooks.pop_roots(2);
 
     self.packages.insert(name, package);
     module
@@ -247,16 +240,17 @@ mod test {
       let hooks = GcHooks::new(&context);
 
       let class = test_class(&hooks, "Module");
-      let module_path = hooks.manage_str("example");
 
       let mut root_module = hooks.manage(Module::new(
+        &hooks,
         module_class(&hooks, "root", class),
-        module_path,
+        "example",
         0,
       ));
       let nested_module = hooks.manage(Module::new(
+        &hooks,
         module_class(&hooks, "first", class),
-        module_path,
+        "example",
         1,
       ));
 

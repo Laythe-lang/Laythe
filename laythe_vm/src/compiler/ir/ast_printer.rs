@@ -23,7 +23,6 @@ impl AstPrint {
   }
 }
 
-
 /// A visitor pattern for the Laythe ast.
 /// Not sure if this currently provides any value as enum
 /// already know there variants. May still be useful
@@ -370,7 +369,7 @@ impl<'a> Visitor<'a> for AstPrint {
       None => self.buffer.push_str(import.path[0].str()),
     }
 
-    fn visit_rename(printer: &mut AstPrint, import_symbol: &ImportSymbol) {
+    fn visit_rename(printer: &mut AstPrint, import_symbol: &ImportSym) {
       printer.buffer.push_str(import_symbol.symbol.str());
 
       if let Some(rename) = &import_symbol.rename {

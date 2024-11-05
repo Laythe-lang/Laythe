@@ -522,9 +522,9 @@ impl<'a> Parser<'a> {
 
           if self.match_kind(TokenKind::As)? {
             self.consume(TokenKind::Identifier, "Expected identifier after 'as'.")?;
-            symbols.push(ImportSymbol::new(symbol, Some(self.previous.clone())))
+            symbols.push(ImportSym::new(symbol, Some(self.previous.clone())))
           } else {
-            symbols.push(ImportSymbol::new(symbol, None))
+            symbols.push(ImportSym::new(symbol, None))
           }
 
           if !self.match_kind(TokenKind::Comma)? {

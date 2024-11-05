@@ -366,21 +366,21 @@ impl<'a> Spanned for Stmt<'a> {
 pub enum ImportStem<'a> {
   None,
   Rename(Token<'a>),
-  Symbols(Vec<'a, ImportSymbol<'a>>),
+  Symbols(Vec<'a, ImportSym<'a>>),
 }
 
-pub struct ImportSymbol<'a> {
+pub struct ImportSym<'a> {
   pub symbol: Token<'a>,
   pub rename: Option<Token<'a>>,
 }
 
-impl<'a> ImportSymbol<'a> {
+impl<'a> ImportSym<'a> {
   pub fn new(symbol: Token<'a>, rename: Option<Token<'a>>) -> Self {
     Self { symbol, rename }
   }
 }
 
-impl<'a> Spanned for ImportSymbol<'a> {
+impl<'a> Spanned for ImportSym<'a> {
   fn start(&self) -> u32 {
     self.symbol.start()
   }

@@ -1,6 +1,7 @@
 use super::{source_loader::ImportResult, ExecutionSignal, Vm};
 use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
 use laythe_core::object::Fiber;
+use laythe_core::value::VALUE_UNDEFINED;
 use laythe_core::{
   captures::Captures,
   hooks::{GcHooks, Hooks},
@@ -604,14 +605,31 @@ impl Vm {
     })
   }
 
-  /// Define a global variable
-  pub(super) unsafe fn op_define_module(&mut self) -> ExecutionSignal {
-    let slot = self.read_short();
+  /// Load a variable from the global module into this module
+  pub(super) unsafe fn op_load_global_symbol(&mut self) -> ExecutionSignal {
+    let slot: u16 = self.read_short();
     let name = self.read_string(slot);
-    let global = self.fiber.pop();
+
+    match self.global_module.get_symbol_by_name(name) {
+      Some(symbol) => {
+        self.fiber.push(symbol);
+        ExecutionSignal::Ok
+      },
+      None => self.internal_error("Attempted to load non-existent global symbol"),
+    }
+  }
+
+  /// Define a global variable
+  pub(super) unsafe fn op_declare_module_symbol(&mut self) -> ExecutionSignal {
+    let name_slot = self.read_short();
+    let name = self.read_string(name_slot);
+    let module_slot = self.read_short();
     let mut current_module = self.current_fun.module();
-    match current_module.insert_symbol(name, global) {
-      Ok(_) => ExecutionSignal::Ok,
+    match current_module.insert_symbol(&GcHooks::new(self), name, VALUE_UNDEFINED) {
+      Ok(expected_slot) => {
+        assert_eq!(expected_slot, module_slot as usize);
+        ExecutionSignal::Ok
+      },
       Err(_) => ExecutionSignal::Ok,
     }
   }
@@ -641,17 +659,17 @@ impl Vm {
     ExecutionSignal::Ok
   }
 
-  pub(super) unsafe fn op_set_module(&mut self) -> ExecutionSignal {
+  pub(super) unsafe fn op_set_module_symbol(&mut self) -> ExecutionSignal {
     let slot = self.read_short();
-    let name = self.read_string(slot);
     let value = self.fiber.peek(0);
 
     let mut current_module = self.current_fun.module();
-    if current_module.set_symbol(name, value).is_err() {
-      return self.runtime_error_from_str(
-        self.builtin.errors.property,
-        &format!("Undefined variable {name}"),
-      );
+
+    if current_module
+      .set_symbol_by_slot(slot as usize, value)
+      .is_err()
+    {
+      self.internal_error("Module symbol should have been defined");
     }
 
     ExecutionSignal::Ok
@@ -686,7 +704,7 @@ impl Vm {
     ExecutionSignal::Ok
   }
 
-  pub(super) unsafe fn op_set_property(&mut self) -> ExecutionSignal {
+  pub(super) unsafe fn op_set_prop_by_name(&mut self) -> ExecutionSignal {
     let slot = self.read_short();
     let instance = self.fiber.peek(1);
     let name = self.read_string(slot);
@@ -734,7 +752,7 @@ impl Vm {
     )
   }
 
-  pub(super) unsafe fn op_set_known_property(&mut self) -> ExecutionSignal {
+  pub(super) unsafe fn op_set_prop(&mut self) -> ExecutionSignal {
     let slot = self.read_short();
     let value = self.fiber.peek(1);
 
@@ -751,19 +769,26 @@ impl Vm {
     })
   }
 
-  pub(super) unsafe fn op_get_module(&mut self) -> ExecutionSignal {
-    let store_index = self.read_short();
-    let string = self.read_string(store_index);
+  pub(super) unsafe fn op_get_module_symbol(&mut self) -> ExecutionSignal {
+    let slot = self.read_short();
+    let module = self.current_fun.module();
 
-    match self.current_fun.module().get_symbol(string) {
-      Some(gbl) => {
-        self.fiber.push(gbl);
-        ExecutionSignal::Ok
+    match module.get_symbol_by_slot(slot as usize) {
+      Some(symbol) => {
+        if symbol == VALUE_UNDEFINED {
+          match module.get_symbol_name_by_slot(slot as usize) {
+            Some(name) => self.runtime_error_from_str(
+              self.builtin.errors.runtime,
+              &format!("Undefined variable {name}"),
+            ),
+            None => self.internal_error("Could not find symbol name"),
+          }
+        } else {
+          self.fiber.push(symbol);
+          ExecutionSignal::Ok
+        }
       },
-      None => self.runtime_error_from_str(
-        self.builtin.errors.runtime,
-        &format!("Undefined variable {string}"),
-      ),
+      None => self.internal_error("Module symbol should have been defined"),
     }
   }
 
@@ -778,8 +803,22 @@ impl Vm {
     let slot = self.read_byte() as isize;
     let local = *self.stack_start().offset(slot);
     let local = local.to_obj().to_box().value;
-    self.fiber.push(local);
-    ExecutionSignal::Ok
+    if local == VALUE_UNDEFINED {
+      match self
+        .current_fun
+        .module()
+        .get_symbol_name_by_slot(slot as usize)
+      {
+        Some(name) => self.runtime_error_from_str(
+          self.builtin.errors.runtime,
+          &format!("Undefined variable {name}"),
+        ),
+        None => self.internal_error("Could not find symbol name"),
+      }
+    } else {
+      self.fiber.push(local);
+      ExecutionSignal::Ok
+    }
   }
 
   pub(super) unsafe fn op_get_capture(&mut self) -> ExecutionSignal {
@@ -791,7 +830,7 @@ impl Vm {
     ExecutionSignal::Ok
   }
 
-  pub(super) unsafe fn op_get_property(&mut self) -> ExecutionSignal {
+  pub(super) unsafe fn op_get_prop_by_name(&mut self) -> ExecutionSignal {
     let slot = self.read_short();
     let value = self.fiber.peek(0);
     let name = self.read_string(slot);
@@ -823,7 +862,7 @@ impl Vm {
     self.bind_method(class, name)
   }
 
-  pub(super) unsafe fn op_get_known_property(&mut self) -> ExecutionSignal {
+  pub(super) unsafe fn op_get_prop(&mut self) -> ExecutionSignal {
     let slot = self.read_short();
     let value = self.fiber.peek(0);
 
@@ -908,7 +947,7 @@ impl Vm {
     self.push_root(resolved);
 
     if let Some(module) = self.module_cache.get(&resolved).cloned() {
-      let signal = match module.get_exported_symbol(symbol_name) {
+      let signal = match module.get_exported_symbol_by_name(symbol_name) {
         Some(symbol) => {
           self.fiber.push(symbol);
           ExecutionSignal::Ok
@@ -934,7 +973,7 @@ impl Vm {
       ImportResult::Loaded(module) => {
         self.module_cache.insert(resolved, module);
 
-        match module.get_exported_symbol(symbol_name) {
+        match module.get_exported_symbol_by_name(symbol_name) {
           Some(symbol) => {
             self.fiber.push(symbol);
             ExecutionSignal::Ok

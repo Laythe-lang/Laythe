@@ -128,7 +128,7 @@ impl<'a> SymbolTable<'a> {
 
   /// Add a new symbol to this table from the global scope. These symbols
   /// are already initialized.
-  pub fn add_global_symbol(&mut self, name: &str, span: Span) -> AddSymbolResult {
+  pub fn add_symbol_from_global(&mut self, name: &str, span: Span) -> AddSymbolResult {
     match self.get_any_state(name) {
       Some(symbol) => AddSymbolResult::DuplicateSymbol(symbol.clone()),
       None => {
@@ -151,6 +151,11 @@ impl<'a> SymbolTable<'a> {
   /// was declared
   fn get_any_state(&self, name: &str) -> Option<&Symbol> {
     self.0.iter().find(|local| name == local.name)
+  }
+
+  /// Return an iterator to all symbols in this table
+  pub fn all_symbols(&'a self) -> std::slice::Iter<'_, Symbol> {
+    self.0.iter()
   }
 
   /// Retrieve a symbol from this table if it
