@@ -11,16 +11,14 @@ pub use package::Package;
 
 use crate::{
   hooks::GcHooks,
-  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Instance, Trace},
+  list,
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Instance, List, ListLocation, Trace},
   object::{Class, Map},
   value::Value,
   LyHashSet,
 };
 use hashbrown::hash_map;
-use std::{
-  fmt,
-  io::Write,
-};
+use std::{fmt, io::Write, slice::Iter};
 
 pub fn module_class<S: AsRef<str>>(
   hooks: &GcHooks,
@@ -44,7 +42,10 @@ pub struct Module {
   exports: LyHashSet<GcStr>,
 
   /// All of the top level symbols in this module
-  symbols: Map<GcStr, Value>,
+  symbols_by_name: Map<GcStr, usize>,
+
+  /// All the symbols
+  symbols: List,
 
   /// The path this module is located at
   path: GcStr,
@@ -55,14 +56,15 @@ pub struct Module {
 
 impl Module {
   /// Create a new laythe module
-  pub fn new(module_class: GcObj<Class>, path: GcStr, id: usize) -> Self {
+  pub fn new(hooks: &GcHooks, module_class: GcObj<Class>, path: &str, id: usize) -> Self {
     Module {
       id,
       module_class,
       exports: LyHashSet::default(),
-      symbols: Map::default(),
+      symbols_by_name: Map::default(),
       modules: Map::default(),
-      path,
+      symbols: hooks.manage_obj(list!()),
+      path: hooks.manage_str(path),
     }
   }
 
@@ -82,11 +84,11 @@ impl Module {
   }
 
   /// A symbols iterator
-  pub fn symbols(&self) -> hash_map::Iter<'_, GcStr, Value> {
+  pub fn symbols(&self) -> Iter<'_, Value> {
     self.symbols.iter()
   }
 
-  /// A symbols iterator
+  /// A module iterator
   pub fn modules(&self) -> hash_map::Iter<'_, GcStr, Gc<Module>> {
     self.modules.iter()
   }
@@ -99,13 +101,12 @@ impl Module {
     hooks.push_root(import);
 
     self.exports.iter().for_each(|export| {
-      import.set_field(
-        *export,
-        *self
-          .symbols
-          .get(export)
-          .expect("Exports should mirror symbols"),
-      );
+      let index = *self
+        .symbols_by_name
+        .get(export)
+        .expect("Exports should mirror symbols");
+
+      import.set_field(*export, self.symbols[index]);
     });
 
     hooks.pop_roots(1);
@@ -148,7 +149,7 @@ impl Module {
 
   /// Add export a new symbol from this module. Exported names must be unique
   pub fn export_symbol(&mut self, name: GcStr) -> SymbolExportResult {
-    if !self.symbols.contains_key(&name) {
+    if !self.symbols_by_name.contains_key(&name) {
       return Err(SymbolExportError::SymbolDoesNotExist);
     }
 
@@ -161,42 +162,88 @@ impl Module {
     }
   }
 
-  /// Set the value of a symbol in this module symbol table
+  /// Set the value of a symbol in this module symbol table by name
   #[inline]
-  pub fn set_symbol(&mut self, name: GcStr, symbol: Value) -> ImportResult<()> {
-    match self.symbols.get_mut(&name) {
-      Some(value) => {
-        *value = symbol;
+  pub fn set_symbol_by_name(&mut self, name: GcStr, symbol: Value) -> ImportResult<()> {
+    match self.symbols_by_name.get(&name) {
+      Some(index) => {
+        self.symbols[*index] = symbol;
         Ok(())
       },
       None => Err(ImportError::SymbolDoesNotExist),
     }
   }
 
-  /// Insert a symbol into this module's symbol table
+  /// Set the value of a symbol in this module symbol table by slot
   #[inline]
-  pub fn insert_symbol(&mut self, name: GcStr, symbol: Value) -> SymbolInsertResult {
-    match self.symbols.insert(name, symbol) {
-      Some(_) => Err(SymbolInsertError::SymbolAlreadyExists),
-      None => Ok(()),
+  pub fn set_symbol_by_slot(&mut self, slot: usize, symbol: Value) -> ImportResult<()> {
+    if self.symbols.len() > slot {
+      self.symbols[slot] = symbol;
+      Ok(())
+    } else {
+      Err(ImportError::SymbolDoesNotExist)
     }
   }
 
-  /// Insert a symbol into this module's symbol table. Overrides existing symbols
+  /// Insert a symbol into this module's symbol table
   #[inline]
-  fn insert_symbol_unchecked(&mut self, _hooks: &GcHooks, name: GcStr, symbol: Value) {
-    self.symbols.insert(name, symbol);
+  pub fn insert_symbol(
+    &mut self,
+    hooks: &GcHooks,
+    name: GcStr,
+    symbol: Value,
+  ) -> SymbolInsertResult {
+    let slot = self.symbols.len();
+    match self.symbols_by_name.insert(name, slot) {
+      Some(_) => Err(SymbolInsertError::SymbolAlreadyExists),
+      None => {
+        self.symbols.push(symbol, hooks);
+        match self.symbols.state() {
+          ListLocation::Forwarded(symbols) => self.symbols = symbols,
+          ListLocation::Here(_) => (),
+        }
+        Ok(slot)
+      },
+    }
   }
 
-  /// Get a symbol from this module's symbol table
+  /// Get a symbol from this module's symbol table by name
   #[inline]
-  pub fn get_symbol(&self, name: GcStr) -> Option<Value> {
-    self.symbols.get(&name).copied()
+  pub fn get_symbol_by_name(&self, name: GcStr) -> Option<Value> {
+    self
+      .symbols_by_name
+      .get(&name)
+      .map(|index| self.symbols[*index])
   }
 
-  /// Get an exported symbom from this module's symbol table
-  pub fn get_exported_symbol(&self, name: GcStr) -> Option<Value> {
-    self.get_symbol(name).and_then(|symbol| {
+  /// Get a symbol from this module's symbol table by slot
+  #[inline]
+  pub fn get_symbol_by_slot(&self, slot: usize) -> Option<Value> {
+    if self.symbols.len() > slot {
+      Some(self.symbols[slot])
+    } else {
+      None
+    }
+  }
+
+  /// Using a module slot determine it's symbol name. Note
+  /// this method isn't very efficient but it should be in the slow
+  /// path of us bailing out so it shouldn't matter too much
+  pub fn get_symbol_name_by_slot(&self, slot: usize) -> Option<GcStr> {
+    if self.symbols.len() > slot {
+      self
+        .symbols_by_name
+        .iter()
+        .find(|(_, value)| **value == slot)
+        .map(|(key, _)| *key)
+    } else {
+      None
+    }
+  }
+
+  /// Get an exported symbol from this module's symbol table
+  pub fn get_exported_symbol_by_name(&self, name: GcStr) -> Option<Value> {
+    self.get_symbol_by_name(name).and_then(|symbol| {
       if self.exports.contains(&name) {
         Some(symbol)
       } else {
@@ -207,26 +254,12 @@ impl Module {
 
   /// how many symbols are in this module
   pub fn len(&self) -> usize {
-    self.symbols.len()
+    self.symbols_by_name.len()
   }
 
   /// Is this module empty
   pub fn is_empty(&self) -> bool {
-    self.symbols.is_empty()
-  }
-
-  /// Transfer the export symbols to another module
-  pub fn transfer_exported(&self, hooks: &GcHooks, other: &mut Module) {
-    for export in &self.exports {
-      other.insert_symbol_unchecked(
-        hooks,
-        *export,
-        *self
-          .symbols
-          .get(export)
-          .expect("Exported value not in symbol table."),
-      );
-    }
+    self.symbols_by_name.is_empty()
   }
 }
 
@@ -238,6 +271,7 @@ impl Trace for Module {
     self.exports.iter().for_each(|key| {
       key.trace();
     });
+    self.symbols_by_name.keys().for_each(|key| key.trace());
     self.symbols.trace();
     self.modules.trace();
   }
@@ -248,6 +282,10 @@ impl Trace for Module {
     self.exports.iter().for_each(|key| {
       key.trace_debug(log);
     });
+    self
+      .symbols_by_name
+      .keys()
+      .for_each(|key| key.trace_debug(log));
     self.symbols.trace_debug(log);
     self.modules.trace_debug(log);
   }
@@ -258,6 +296,7 @@ impl DebugHeap for Module {
     f.debug_struct("Module")
       .field("module_class", &DebugWrap(&self.module_class, depth))
       .field("exports", &DebugWrap(&self.exports, depth))
+      .field("symbols_by_name", &self.symbols_by_name)
       .field("symbols", &DebugWrap(&self.symbols, depth))
       .finish()
   }
@@ -290,8 +329,9 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     Module::new(
+      &hooks,
       hooks.manage_obj(Class::bare(hooks.manage_str("example".to_string()))),
-      hooks.manage_str("example"),
+      "example",
       0,
     );
 
@@ -304,8 +344,9 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let module = Module::new(
+      &hooks,
       hooks.manage_obj(Class::bare(hooks.manage_str("example".to_string()))),
-      hooks.manage_str("example"),
+      "example",
       0,
     );
 
@@ -318,13 +359,16 @@ mod test {
     let hooks = GcHooks::new(&mut context);
 
     let mut module = Module::new(
+      &hooks,
       hooks.manage_obj(Class::bare(hooks.manage_str("module".to_string()))),
-      hooks.manage_str("example"),
+      "example",
       0,
     );
 
     let export_name = hooks.manage_str("exported".to_string());
-    assert!(module.insert_symbol(export_name, val!(true)).is_ok());
+    assert!(module
+      .insert_symbol(&hooks, export_name, val!(true))
+      .is_ok());
     assert!(module.export_symbol(export_name).is_ok());
 
     let symbols = module.module_instance(&hooks);
@@ -362,7 +406,9 @@ mod test {
     let mut module = test_module(&hooks, "example");
     let export_name = hooks.manage_str("exported");
 
-    assert!(module.insert_symbol(export_name, val!(true)).is_ok());
+    assert!(module
+      .insert_symbol(&hooks, export_name, val!(true))
+      .is_ok());
     let result1 = module.export_symbol(export_name);
     let result2 = module.export_symbol(export_name);
 
@@ -379,16 +425,16 @@ mod test {
     let mut module = test_module(&hooks, name);
 
     assert_eq!(
-      module.set_symbol(hooks.manage_str("does not exist"), val!(false)),
+      module.set_symbol_by_name(hooks.manage_str("does not exist"), val!(false)),
       Err(ImportError::SymbolDoesNotExist)
     );
 
     let symbol_name = hooks.manage_str("test");
-    module.insert_symbol(symbol_name, val!(true))?;
+    module.insert_symbol(&hooks, symbol_name, val!(true))?;
 
-    assert!(module.set_symbol(symbol_name, val!(false)).is_ok());
+    assert!(module.set_symbol_by_name(symbol_name, val!(false)).is_ok());
 
-    assert_eq!(module.get_symbol(symbol_name), Some(val!(false)));
+    assert_eq!(module.get_symbol_by_name(symbol_name), Some(val!(false)));
 
     Ok(())
   }
@@ -401,9 +447,9 @@ mod test {
     let mut module = test_module(&hooks, "test");
 
     let name = hooks.manage_str("exported".to_string());
-    assert!(module.insert_symbol(name, val!(true)).is_ok());
+    assert!(module.insert_symbol(&hooks, name, val!(true)).is_ok());
 
-    let symbol = module.get_symbol(name);
+    let symbol = module.get_symbol_by_name(name);
 
     if let Some(result) = symbol {
       assert_eq!(result, val!(true));
@@ -422,10 +468,10 @@ mod test {
 
     let name = hooks.manage_str("exported".to_string());
 
-    assert!(module.get_symbol(name).is_none());
+    assert!(module.get_symbol_by_name(name).is_none());
 
-    module.insert_symbol(name, val!(10.0))?;
-    assert_eq!(module.get_symbol(name), Some(val!(10.0)));
+    module.insert_symbol(&hooks, name, val!(10.0))?;
+    assert_eq!(module.get_symbol_by_name(name), Some(val!(10.0)));
 
     Ok(())
   }
@@ -440,13 +486,13 @@ mod test {
 
     let name = hooks.manage_str("exported".to_string());
 
-    assert_eq!(module.get_exported_symbol(name), None);
+    assert_eq!(module.get_exported_symbol_by_name(name), None);
 
-    module.insert_symbol(name, val!(10.0))?;
-    assert_eq!(module.get_exported_symbol(name), None);
+    module.insert_symbol(&hooks, name, val!(10.0))?;
+    assert_eq!(module.get_exported_symbol_by_name(name), None);
 
     module.export_symbol(name)?;
-    assert_eq!(module.get_exported_symbol(name), Some(val!(10.0)));
+    assert_eq!(module.get_exported_symbol_by_name(name), Some(val!(10.0)));
 
     Ok(())
   }
