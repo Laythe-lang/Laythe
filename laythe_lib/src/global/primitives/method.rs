@@ -109,10 +109,10 @@ mod test {
       context.responses.extend_from_slice(responses);
 
       let mut hooks = Hooks::new(&mut context);
-      let method_name = MethodName::native(&hooks.as_gc(), hooks.manage_str("name".to_string()));
+      let method_name = MethodName::native(&hooks.as_gc(), hooks.manage_str("name"));
 
       let fun = test_fun(&hooks.as_gc(), "example", "module");
-      let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
+      let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass")));
       let captures = Captures::new(&hooks.as_gc(), &[]);
       let closure = hooks.manage_obj(Closure::new(fun, captures));
       let instance = hooks.manage_obj(class);
@@ -122,7 +122,7 @@ mod test {
 
       match result1 {
         Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "example"),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -138,7 +138,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let method_call = MethodCall::native(&hooks.as_gc());
 
-      let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass".to_string())));
+      let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass")));
       let native = val!(MethodName::native(
         &hooks.as_gc(),
         hooks.manage_str(METHOD_NAME.name)
@@ -150,7 +150,7 @@ mod test {
 
       match result1 {
         Call::Ok(r) => assert_eq!(r.to_num(), 14.3),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }

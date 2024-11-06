@@ -177,7 +177,7 @@ mod test {
     to_obj_kind,
   };
 
-  fn class_setup_inner(module: Gc<Module>, class_class: GcObj<Class>) {
+  fn class_setup_inner(module: Gc<Module>, _class_class: GcObj<Class>) {
     module.symbols().for_each(|symbol| {
       let option = if symbol.is_obj() {
         match_obj!((&symbol.to_obj()) {
@@ -195,32 +195,32 @@ mod test {
 
         assert!(class.meta_class().is_some(), "{}", class.name());
 
-        if class != class {
-          let meta_super = class
-            .meta_class()
-            .and_then(|cls| *cls.super_class())
-            .unwrap();
+        // if class != class {
+        //   let meta_super = class
+        //     .meta_class()
+        //     .and_then(|cls| *cls.super_class())
+        //     .unwrap();
 
-          let meta_meta = class
-            .meta_class()
-            .and_then(|cls| *cls.meta_class())
-            .unwrap();
+        //   let meta_meta = class
+        //     .meta_class()
+        //     .and_then(|cls| *cls.meta_class())
+        //     .unwrap();
 
-          assert_eq!(meta_super, class_class);
-          assert_eq!(meta_meta, class_class);
-        }
+        //   assert_eq!(meta_super, class_class);
+        //   assert_eq!(meta_meta, class_class);
+        // }
       }
     });
 
     module
       .modules()
-      .for_each(|(_name, module)| class_setup_inner(*module, class_class))
+      .for_each(|(_name, module)| class_setup_inner(*module, _class_class))
   }
 
   #[test]
   fn new() {
-    let mut context = MockedContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = MockedContext::default();
+    let hooks = GcHooks::new(&context);
     let mut emitter = IdEmitter::default();
 
     let std_lib = create_std_lib(&hooks, &mut emitter);
@@ -232,8 +232,8 @@ mod test {
 
   #[test]
   fn class_setup() {
-    let mut context = MockedContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = MockedContext::default();
+    let hooks = GcHooks::new(&context);
     let mut emitter = IdEmitter::default();
 
     let std_lib = create_std_lib(&hooks, &mut emitter);

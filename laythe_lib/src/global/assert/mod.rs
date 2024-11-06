@@ -212,7 +212,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
-      let assert = Assert::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
+      let assert = Assert::native(&hooks.as_gc(), hooks.manage_str("str"), error);
       let values = &[val!(true)];
 
       let result = match assert.call(&mut hooks, values) {
@@ -236,7 +236,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
-      let assert_eq = AssertEq::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
+      let assert_eq = AssertEq::native(&hooks.as_gc(), hooks.manage_str("str"), error);
 
       let values = &[val!(10.5), val!(10.5)];
 
@@ -261,7 +261,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
-      let assert_ne = AssertNe::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
+      let assert_ne = AssertNe::native(&hooks.as_gc(), hooks.manage_str("str"), error);
 
       let values = &[val!(10.5), VALUE_NIL];
 

@@ -12,8 +12,7 @@ fn fixture_path(bench_path: &str) -> Option<PathBuf> {
   test_path
     .parent()
     .and_then(|path| path.parent())
-    .and_then(|path| path.parent())
-    .and_then(|path| Some(path.join("fixture").join("criterion").join(bench_path)))
+    .and_then(|path| path.parent()).map(|path| path.join("fixture").join("criterion").join(bench_path))
 }
 
 fn load_source(path: &PathBuf) -> String {
@@ -58,7 +57,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     &binary_trees,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(binary_trees_path.clone(), &s));
+      b.iter(|| vm.run(binary_trees_path.clone(), s));
     },
   );
   c.bench_with_input(
@@ -66,27 +65,27 @@ fn criterion_benchmark(c: &mut Criterion) {
     &channel,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(channel_path.clone(), &s));
+      b.iter(|| vm.run(channel_path.clone(), s));
     },
   );
   c.bench_with_input(BenchmarkId::new("run", "equality"), &equality, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(equality_path.clone(), &s));
+    b.iter(|| vm.run(equality_path.clone(), s));
   });
   c.bench_with_input(BenchmarkId::new("run", "fib"), &fib, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(fib_path.clone(), &s));
+    b.iter(|| vm.run(fib_path.clone(), s));
   });
   c.bench_with_input(BenchmarkId::new("run", "fibers"), &fibers, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(fibers_path.clone(), &s));
+    b.iter(|| vm.run(fibers_path.clone(), s));
   });
   c.bench_with_input(
     BenchmarkId::new("run", "invocation"),
     &invocation,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(invocation_path.clone(), &s));
+      b.iter(|| vm.run(invocation_path.clone(), s));
     },
   );
   c.bench_with_input(
@@ -94,7 +93,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     &instantiation,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(instantiation_path.clone(), &s));
+      b.iter(|| vm.run(instantiation_path.clone(), s));
     },
   );
   c.bench_with_input(
@@ -102,7 +101,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     &method_call,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(method_call_path.clone(), &s));
+      b.iter(|| vm.run(method_call_path.clone(), s));
     },
   );
   c.bench_with_input(
@@ -110,24 +109,24 @@ fn criterion_benchmark(c: &mut Criterion) {
     &properties,
     |b, s| {
       let mut vm = default_native_vm();
-      b.iter(|| vm.run(properties_path.clone(), &s));
+      b.iter(|| vm.run(properties_path.clone(), s));
     },
   );
   c.bench_with_input(BenchmarkId::new("run", "trees"), &trees, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(trees_path.clone(), &s));
+    b.iter(|| vm.run(trees_path.clone(), s));
   });
   c.bench_with_input(BenchmarkId::new("run", "zoo"), &zoo, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(zoo_path.clone(), &s));
+    b.iter(|| vm.run(zoo_path.clone(), s));
   });
   c.bench_with_input(BenchmarkId::new("run", "string"), &string, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(string_path.clone(), &s));
+    b.iter(|| vm.run(string_path.clone(), s));
   });
   c.bench_with_input(BenchmarkId::new("run", "fluent"), &fluent, |b, s| {
     let mut vm = default_native_vm();
-    b.iter(|| vm.run(fluent_path.clone(), &s));
+    b.iter(|| vm.run(fluent_path.clone(), s));
   });
 }
 

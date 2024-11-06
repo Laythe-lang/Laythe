@@ -114,7 +114,7 @@ mod test {
 
       let mut hooks = Hooks::new(&mut context);
 
-      let print = Print::native(&hooks.as_gc(), hooks.manage_str("str".to_string()));
+      let print = Print::native(&hooks.as_gc(), hooks.manage_str("str"));
       let values = &[val!(true)];
 
       let result = print.call(&mut hooks, values).unwrap();

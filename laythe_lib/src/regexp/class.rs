@@ -182,7 +182,7 @@ mod test {
     val!(regexp)
   }
 
-  mod test {
+  mod test_impl {
     use laythe_core::value::{VALUE_FALSE, VALUE_TRUE};
 
     use super::*;

@@ -485,11 +485,11 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let string_str = StringStr::native(&hooks.as_gc());
 
-      let this = val!(hooks.manage_str("test".to_string()));
+      let this = val!(hooks.manage_str("test"));
       let result = string_str.call(&mut hooks, &[this]);
       match result {
         Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "test".to_string()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -506,11 +506,11 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let string_index_get = StringIndexGet::native(&hooks.as_gc(), error);
 
-      let this = val!(hooks.manage_str("test".to_string()));
+      let this = val!(hooks.manage_str("test"));
       let result = string_index_get.call(&mut hooks, &[this, val!(0.0)]);
       match result {
         Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "t".to_string()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -533,7 +533,7 @@ mod test {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 3.0);
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -680,20 +680,20 @@ mod test {
 
       let string_str = StringHas::native(&hooks.as_gc());
 
-      let this = val!(hooks.manage_str("some string".to_string()));
-      let contained = val!(hooks.manage_str("ome".to_string()));
-      let not_contained = val!(hooks.manage_str("other".to_string()));
+      let this = val!(hooks.manage_str("some string"));
+      let contained = val!(hooks.manage_str("ome"));
+      let not_contained = val!(hooks.manage_str("other"));
 
       let result = string_str.call(&mut hooks, &[this, contained]);
       match result {
         Call::Ok(r) => assert!(r.to_bool()),
-        _ => assert!(false),
+        _ => panic!(),
       }
 
       let result = string_str.call(&mut hooks, &[this, not_contained]);
       match result {
         Call::Ok(r) => assert!(!r.to_bool()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }

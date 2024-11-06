@@ -216,7 +216,7 @@ mod test {
         response_count: 0,
       };
 
-      let hooks = GcHooks::new(&mut context);
+      let hooks = GcHooks::new(&context);
       let mut emitter = IdEmitter::default();
       let std = create_std_lib(&hooks, &mut emitter).unwrap();
 
@@ -230,7 +230,7 @@ mod test {
       Self {
         gc: RefCell::default(),
         no_gc: NoGc(),
-        responses: Vec::from(vec![]),
+        responses: vec![],
         io: Io::default().with_stdio(Arc::new(IoStdioTest::new(stdio_container))),
         builtin: None,
         response_count: 0,
@@ -468,16 +468,16 @@ mod test {
 
     let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
 
-    hooks.manage_obj(builder.build(Chunk::stub(&hooks)))
+    hooks.manage_obj(builder.build(Chunk::stub(hooks)))
   }
 
-  pub fn test_fun_builder<T: Default>(
+  pub fn test_fun_builder(
     hooks: &GcHooks,
     name: &str,
     module_name: &str,
     arity: Arity,
   ) -> FunBuilder {
-    let module = test_module(&hooks, module_name);
+    let module = test_module(hooks, module_name);
     FunBuilder::new(hooks.manage_str(name), module, arity)
   }
 

@@ -125,8 +125,8 @@ mod test {
 
     #[test]
     fn get_line() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let chunk = Chunk::new(
         hooks.manage::<_, &[u8]>(&[0]),

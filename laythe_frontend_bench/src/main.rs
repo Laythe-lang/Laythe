@@ -46,7 +46,7 @@ fn compiler_bench(src: &str) {
 
     let gc = context.done();
     assert!(
-      Resolver::new(global_module, &gc, &source, VM_FILE_TEST_ID, false)
+      Resolver::new(global_module, module, &gc, &source, VM_FILE_TEST_ID, false)
         .resolve(&mut ast)
         .is_ok()
     );

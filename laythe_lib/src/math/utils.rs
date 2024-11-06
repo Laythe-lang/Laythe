@@ -297,7 +297,7 @@ mod test {
       for _ in 0..10 {
         let r = rand.call(&mut hooks, &[]).unwrap();
         let num = r.to_num();
-        assert!(num >= 0.0 && num < 1.0);
+        assert!((0.0..1.0).contains(&num));
       }
     }
   }

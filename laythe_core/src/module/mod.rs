@@ -12,7 +12,10 @@ pub use package::Package;
 use crate::{
   hooks::GcHooks,
   list,
-  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Instance, List, ListLocation, Trace},
+  managed::{
+    AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Instance, List, ListLocation,
+    Trace,
+  },
   object::{Class, Map},
   value::Value,
   LyHashSet,
@@ -81,6 +84,13 @@ impl Module {
   /// The id of this module
   pub fn id(&self) -> usize {
     self.id
+  }
+
+  pub fn symbols_by_name(&self) -> impl Iterator<Item = (GcStr, Value, usize)> + '_ {
+    self
+      .symbols_by_name
+      .iter()
+      .map(|(name, id)| (*name, self.symbols[*id], *id))
   }
 
   /// A symbols iterator
@@ -325,27 +335,25 @@ mod test {
 
   #[test]
   fn new() {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     Module::new(
       &hooks,
-      hooks.manage_obj(Class::bare(hooks.manage_str("example".to_string()))),
+      hooks.manage_obj(Class::bare(hooks.manage_str("example"))),
       "example",
       0,
     );
-
-    assert!(true);
   }
 
   #[test]
   fn path() {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     let module = Module::new(
       &hooks,
-      hooks.manage_obj(Class::bare(hooks.manage_str("example".to_string()))),
+      hooks.manage_obj(Class::bare(hooks.manage_str("example"))),
       "example",
       0,
     );
@@ -355,17 +363,17 @@ mod test {
 
   #[test]
   fn module_instance() {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     let mut module = Module::new(
       &hooks,
-      hooks.manage_obj(Class::bare(hooks.manage_str("module".to_string()))),
+      hooks.manage_obj(Class::bare(hooks.manage_str("module"))),
       "example",
       0,
     );
 
-    let export_name = hooks.manage_str("exported".to_string());
+    let export_name = hooks.manage_str("exported");
     assert!(module
       .insert_symbol(&hooks, export_name, val!(true))
       .is_ok());
@@ -376,14 +384,14 @@ mod test {
     if let Some(result) = symbols.get_field(export_name) {
       assert_eq!(*result, val!(true));
     } else {
-      assert!(false);
+      panic!();
     }
   }
 
   #[test]
   fn insert_module() {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     let name_root = "self";
     let mut module_root = test_module(&hooks, name_root);
@@ -400,8 +408,8 @@ mod test {
 
   #[test]
   fn export_symbol() {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     let mut module = test_module(&hooks, "example");
     let export_name = hooks.manage_str("exported");
@@ -418,8 +426,8 @@ mod test {
 
   #[test]
   fn set_symbol() -> Result<(), Box<dyn error::Error>> {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     let name = "self";
     let mut module = test_module(&hooks, name);
@@ -441,12 +449,12 @@ mod test {
 
   #[test]
   fn insert_symbol() {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     let mut module = test_module(&hooks, "test");
 
-    let name = hooks.manage_str("exported".to_string());
+    let name = hooks.manage_str("exported");
     assert!(module.insert_symbol(&hooks, name, val!(true)).is_ok());
 
     let symbol = module.get_symbol_by_name(name);
@@ -454,19 +462,19 @@ mod test {
     if let Some(result) = symbol {
       assert_eq!(result, val!(true));
     } else {
-      assert!(false);
+      panic!();
     }
   }
 
   #[test]
   fn get_symbol() -> Result<(), SymbolInsertError> {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     let name = "self";
     let mut module = test_module(&hooks, name);
 
-    let name = hooks.manage_str("exported".to_string());
+    let name = hooks.manage_str("exported");
 
     assert!(module.get_symbol_by_name(name).is_none());
 
@@ -478,13 +486,13 @@ mod test {
 
   #[test]
   fn get_exported_symbol() -> Result<(), Box<dyn error::Error>> {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     let name = "self";
     let mut module = test_module(&hooks, name);
 
-    let name = hooks.manage_str("exported".to_string());
+    let name = hooks.manage_str("exported");
 
     assert_eq!(module.get_exported_symbol_by_name(name), None);
 

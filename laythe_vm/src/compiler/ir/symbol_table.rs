@@ -15,6 +15,9 @@ pub enum SymbolState {
   /// This symbol has been initialized at the module scope
   ModuleInitialized,
 
+  /// This symbol was already initialized in the module
+  AlreadyInitialized,
+
   /// This symbol has been initialized at the global scope
   GlobalInitialized,
 
@@ -89,6 +92,13 @@ impl Symbol {
   pub fn module_initialize(&mut self) {
     if let SymbolState::Uninitialized = self.state {
       self.state = SymbolState::ModuleInitialized
+    }
+  }
+
+  /// Mark this symbol as initialized
+  pub fn already_initialize(&mut self) {
+    if let SymbolState::Uninitialized = self.state {
+      self.state = SymbolState::AlreadyInitialized
     }
   }
 

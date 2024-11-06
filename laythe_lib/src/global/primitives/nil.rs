@@ -29,10 +29,7 @@ pub fn declare_nil_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 pub fn define_nil_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NIL_CLASS_NAME)?;
 
-  class.add_method(
-    hooks.manage_str(NIL_STR.name),
-    val!(NilStr::native(hooks)),
-  );
+  class.add_method(hooks.manage_str(NIL_STR.name), val!(NilStr::native(hooks)));
 
   Ok(())
 }
@@ -63,7 +60,7 @@ mod test {
       let result = nil_str.call(&mut hooks, &[VALUE_NIL]);
       match result {
         Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "nil".to_string()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }

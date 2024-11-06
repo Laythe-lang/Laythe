@@ -9,12 +9,11 @@ use crate::{
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
-  constants::OBJECT,
-  constants::{ITER_VAR, SELF, SUPER, UNINITIALIZED_VAR},
-  managed::Allocator,
-  managed::Gc,
+  constants::{ITER_VAR, OBJECT, SELF, SUPER, UNINITIALIZED_VAR},
+  managed::{Allocator, Gc, GcStr},
   module::{self, ImportError},
   object::FunKind,
+  value::Value,
 };
 use laythe_lib::global::ERROR_CLASS_NAME;
 use std::vec;
@@ -47,6 +46,9 @@ struct TrackedSymbolTable<'a> {
 pub struct Resolver<'a, 'src> {
   /// The global module
   global_module: Gc<module::Module>,
+
+  /// The current module
+  current_module: Gc<module::Module>,
 
   /// read only reference to the allocator
   gc: &'a Allocator,
@@ -106,10 +108,11 @@ impl<'a, 'src> Resolver<'a, 'src> {
   /// let source = Source::new(hooks.manage_str("print('10');"));
   /// let gc = context.done();
   ///
-  /// let compiler = Resolver::new(module, &gc, &source, file_id, false);
+  /// let compiler = Resolver::new(module, module, &gc, &source, file_id, false);
   /// ```
   pub fn new(
     global_module: Gc<module::Module>,
+    current_module: Gc<module::Module>,
     gc: &'a Allocator,
     source: &'src Source,
     file_id: VmFileId,
@@ -120,6 +123,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
     Self {
       file_id,
       global_module,
+      current_module,
       gc,
       source,
       repl,
@@ -158,6 +162,15 @@ impl<'a, 'src> Resolver<'a, 'src> {
 
   /// Declare all module scoped variables
   fn declare_module_scoped(&mut self, ast: &mut ast::Module<'src>) {
+    // Declare existing symbols
+    let mut symbols: Vec<(GcStr, Value, usize)> = self.current_module.symbols_by_name().collect();
+    symbols.sort_by(|(_, _, id1), (_, _, id2)| id1.cmp(id2));
+
+    for (name, _, _) in symbols {
+      let token = Token::new(TokenKind::Identifier, Lexeme::Owned(name.to_string()), 0, 0);
+      self.redeclare_existing_variable(&token);
+    }
+
     self.declare_module_variable(UNINITIALIZED_TOKEN);
     self.define_variable(UNINITIALIZED_TOKEN);
 
@@ -211,24 +224,36 @@ impl<'a, 'src> Resolver<'a, 'src> {
       return;
     }
 
+    self.add_symbol_to_table(name.str(), name.span());
+  }
+
+  fn redeclare_existing_variable(&mut self, name: &Token<'src>) {
+    debug_assert!(self.tables.len() == 1);
+
+    self.add_symbol_to_table(name.str(), name.span());
+
     let table = self.table_mut();
-    if let AddSymbolResult::DuplicateSymbol(local) = table.table.add_symbol(name.str(), name.span())
-    {
-      self.duplicate_declaration(&local, name)
-    }
+    let symbol = table.table.get_mut(name.str()).expect("Expected symbol");
+    symbol.already_initialize()
   }
 
   /// Declare a module scoped variable
   fn declare_module_variable(&mut self, name: &Token<'src>) {
     debug_assert!(self.tables.len() == 1);
+
+    self.add_symbol_to_table(name.str(), name.span());
+  }
+
+  /// Add a symbol to the current table
+  fn add_symbol_to_table(&mut self, name: &str, span: Span) {
     let table = self.table_mut();
-    if let AddSymbolResult::DuplicateSymbol(local) = table.table.add_symbol(name.str(), name.span())
-    {
-      self.duplicate_declaration(&local, name)
+
+    if let AddSymbolResult::DuplicateSymbol(local) = table.table.add_symbol(name, span) {
+      self.duplicate_declaration(&local, name, span)
     }
   }
 
-  fn duplicate_declaration(&mut self, existing: &symbol_table::Symbol, duplicate: &Token<'src>) {
+  fn duplicate_declaration(&mut self, existing: &symbol_table::Symbol, name: &str, span: Span) {
     const MESSAGE: &str = "Variable with this name already declared in this scope.";
     const PRIMARY_LABEL: &str = "Declared a second time here";
 
@@ -236,16 +261,16 @@ impl<'a, 'src> Resolver<'a, 'src> {
       Some(span) => self.error_with_context(
         MESSAGE,
         vec![
-          Label::primary(self.file_id, duplicate.span()).with_message(PRIMARY_LABEL),
+          Label::primary(self.file_id, span).with_message(PRIMARY_LABEL),
           Label::secondary(self.file_id, span)
-            .with_message(format!("{} was originally declared here", &duplicate.str())),
+            .with_message(format!("{} was originally declared here", name)),
         ],
       ),
       None => {
         if self.repl {
           let error = Diagnostic::error()
             .with_message(MESSAGE)
-            .with_labels(vec![Label::primary(self.file_id, duplicate.span())])
+            .with_labels(vec![Label::primary(self.file_id, span)])
             .with_notes(vec![
               "This symbol was declared previously in the repl session".to_string(),
             ]);
@@ -283,11 +308,6 @@ impl<'a, 'src> Resolver<'a, 'src> {
 
         return;
       }
-    }
-
-    // if we're resolving the repl we are more permissive with missing symbols
-    if self.repl {
-      return;
     }
 
     // Check if symbol if found in the global scope if it is
@@ -995,7 +1015,7 @@ mod test {
   }
 
   fn dummy_module(hooks: &GcHooks) -> Gc<Module> {
-    let module_class = test_class(&hooks, "Module");
+    let module_class = test_class(hooks, "Module");
     hooks.push_root(module_class);
 
     let module = hooks.manage(Module::new(hooks, module_class, "example", 0));
@@ -1006,7 +1026,7 @@ mod test {
 
   fn std_module(hooks: &GcHooks) -> Gc<Module> {
     let mut emitter = IdEmitter::default();
-    let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
+    let std_lib = create_std_lib(hooks, &mut emitter).expect("Standard library creation failed");
     std_lib.root_module()
   }
 
@@ -1038,14 +1058,23 @@ mod test {
     assert!(ast.is_ok(), "{}", src);
     let mut ast = ast.unwrap();
 
-    let module = if with_std {
+    let global_module = if with_std {
       std_module(hooks)
     } else {
       dummy_module(hooks)
     };
 
+    let current_module = dummy_module(hooks);
+
     let gc = context.done();
-    let resolver = Resolver::new(module, &gc, &source, VM_FILE_TEST_ID, repl);
+    let resolver = Resolver::new(
+      global_module,
+      current_module,
+      &gc,
+      &source,
+      VM_FILE_TEST_ID,
+      repl,
+    );
 
     let result = resolver.resolve(&mut ast);
     test_assert(&ast, result);
@@ -1236,7 +1265,7 @@ mod test {
       }
     ";
 
-    test_repl_resolve(example, |ast, result| {
+    test_file_std_resolve(example, |ast, result| {
       assert!(result.is_ok());
 
       match &ast.decls[0] {
@@ -1265,7 +1294,7 @@ mod test {
       }
     ";
 
-    test_repl_resolve(example, |ast, result| {
+    test_file_std_resolve(example, |ast, result| {
       assert!(result.is_ok());
 
       match &ast.decls[0] {

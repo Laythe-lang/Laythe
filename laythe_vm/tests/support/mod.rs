@@ -18,8 +18,7 @@ pub fn fixture_path_inner(fixture_path: &str, test_file_path: &str) -> Option<Pa
   test_path
     .parent()
     .and_then(|path| path.parent())
-    .and_then(|path| path.parent())
-    .and_then(|path| Some(path.join("fixture").join(fixture_path)))
+    .and_then(|path| path.parent()).map(|path| path.join("fixture").join(fixture_path))
 }
 
 #[allow(dead_code)]
@@ -48,11 +47,11 @@ pub fn assert_files_exit(paths: &[&str], test_file_path: &str, result: VmExit) -
         stdio_container.log_stdio();
         eprintln!(
           "{}",
-          str::from_utf8(&*stdio_container.stdout).expect("Could not unwrap stdout")
+          str::from_utf8(&stdio_container.stdout).expect("Could not unwrap stdout")
         );
         eprintln!(
           "{}",
-          str::from_utf8(&*stdio_container.stderr).expect("Could not unwrap stderr")
+          str::from_utf8(&stdio_container.stderr).expect("Could not unwrap stderr")
         );
         return Err(err);
       }
@@ -95,11 +94,11 @@ pub fn assert_files_exit_with_cwd(
         stdio_container.log_stdio();
         eprintln!(
           "{}",
-          str::from_utf8(&*stdio_container.stdout).expect("Could not unwrap stdout")
+          str::from_utf8(&stdio_container.stdout).expect("Could not unwrap stdout")
         );
         eprintln!(
           "{}",
-          str::from_utf8(&*stdio_container.stderr).expect("Could not unwrap stderr")
+          str::from_utf8(&stdio_container.stderr).expect("Could not unwrap stderr")
         );
         return Err(err);
       }
@@ -126,7 +125,7 @@ pub fn assert_file_exit_and_stdio(
     stdin: Box::new(Cursor::new(Vec::from(
       stdin.unwrap_or("".to_string()).as_bytes(),
     ))),
-    lines: lines.unwrap_or(vec![]),
+    lines: lines.unwrap_or_default(),
     line_index: Box::new(0),
   });
   let stdio = Arc::new(IoStdioTest::new(&stdio_container));

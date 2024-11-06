@@ -46,7 +46,7 @@ impl Vm {
       .expect("File id not set for line offsets");
 
     let mut ast = ast?;
-    Resolver::new(self.global_module, &self.gc.borrow(), source, file_id, repl)
+    Resolver::new(self.global_module, module, &self.gc.borrow(), source, file_id, repl)
       .resolve(&mut ast)?;
 
     let gc = self.gc.replace(Allocator::default());

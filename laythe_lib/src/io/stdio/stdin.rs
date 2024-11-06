@@ -111,7 +111,7 @@ mod test {
 
     #[test]
     fn call() {
-      let stdio_container = Arc::new(StdioTestContainer::with_stdin(&"dude".as_bytes()));
+      let stdio_container = Arc::new(StdioTestContainer::with_stdin("dude".as_bytes()));
 
       let mut context = MockedContext::with_test_stdio(&stdio_container);
       let mut hooks = Hooks::new(&mut context);

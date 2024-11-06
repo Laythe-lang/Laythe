@@ -995,7 +995,7 @@ mod test {
       let result = iter_str.call(&mut hooks, &[val!(this)]);
       match result {
         Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "Test"),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -1015,8 +1015,8 @@ mod test {
 
       let result = iter_next.call(&mut hooks, &[val!(this)]);
       match result {
-        Call::Ok(r) => assert_eq!(r.to_bool(), true),
-        _ => assert!(false),
+        Call::Ok(r) => assert!(r.to_bool()),
+        _ => panic!(),
       }
     }
   }
@@ -1057,7 +1057,7 @@ mod test {
       let result = iter_iter.call(&mut hooks, &[this]);
       match result {
         Call::Ok(r) => assert_eq!(r, this),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -1176,7 +1176,7 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
-      let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
@@ -1191,7 +1191,7 @@ mod test {
           assert_eq!(map_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(map_iter.current(), val!(5.0));
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -1214,7 +1214,7 @@ mod test {
       let iter = test_iter();
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
-      let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
@@ -1231,7 +1231,7 @@ mod test {
           assert_eq!(filter_iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(filter_iter.current(), val!(3.0));
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -1255,7 +1255,7 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
 
-      let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(2));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(2));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
@@ -1269,7 +1269,7 @@ mod test {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 10.1);
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -1292,7 +1292,7 @@ mod test {
           assert!(r.is_num());
           assert_eq!(r.to_num(), 4.0);
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -1316,7 +1316,7 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
 
-      let builder = test_fun_builder::<u8>(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
       let captures = Captures::new(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
@@ -1327,7 +1327,7 @@ mod test {
       let result = iter_each.call(&mut hooks, &[this, fun]);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -1354,7 +1354,7 @@ mod test {
       let result = iter_zip.call(&mut hooks, &[this, arg]);
       match result {
         Call::Ok(r) => assert!(r.is_obj_kind(ObjectKind::Enumerator)),
-        _ => assert!(false),
+        _ => panic!(),
       }
 
       let mut zip = result.unwrap().to_obj().to_enumerator();
@@ -1388,7 +1388,7 @@ mod test {
       let result = iter_chain.call(&mut hooks, &[this, arg]);
       match result {
         Call::Ok(r) => assert!(r.is_obj_kind(ObjectKind::Enumerator)),
-        _ => assert!(false),
+        _ => panic!(),
       }
 
       let mut chain = result.unwrap().to_obj().to_enumerator();
@@ -1425,7 +1425,7 @@ mod test {
       let result = iter_all.call(&mut hooks, &[this, identity]);
       match result {
         Call::Ok(r) => assert_eq!(r, VALUE_TRUE),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -1451,7 +1451,7 @@ mod test {
       let result = iter_any.call(&mut hooks, &[this, identity]);
       match result {
         Call::Ok(r) => assert_eq!(r, VALUE_TRUE),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -1485,8 +1485,8 @@ mod test {
 
       let result = iter_into.call(&mut hooks, &[this, echo]);
       match result {
-        Call::Ok(r) => assert_eq!(r.to_bool(), true),
-        _ => assert!(false),
+        Call::Ok(r) => assert!(r.to_bool()),
+        _ => panic!(),
       }
     }
   }

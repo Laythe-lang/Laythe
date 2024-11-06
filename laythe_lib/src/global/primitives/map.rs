@@ -403,14 +403,14 @@ mod test {
       let nil = val!(context
         .gc
         .borrow_mut()
-        .manage_str("nil".to_string(), &NO_GC));
+        .manage_str("nil", &NO_GC));
       let response = &[nil, nil];
       context.responses.extend_from_slice(response);
 
       let mut hooks = Hooks::new(&mut context);
 
       let error = val!(test_error_class(&hooks.as_gc()));
-      let map_str = MapStr::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
+      let map_str = MapStr::native(&hooks.as_gc(), hooks.manage_str("str"), error);
 
 
       let mut map = Map::default();
@@ -421,7 +421,7 @@ mod test {
       let result = map_str.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "{ nil: nil }"),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -446,7 +446,7 @@ mod test {
       let result = map_str.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert_eq!(r.to_num(), 1.0),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -469,14 +469,14 @@ mod test {
 
       let result = map_has.call(&mut hooks, &[this, VALUE_NIL]);
       match result {
-        Call::Ok(r) => assert_eq!(r.to_bool(), true),
-        _ => assert!(false),
+        Call::Ok(r) => assert!(r.to_bool()),
+        _ => panic!(),
       }
 
       let result = map_has.call(&mut hooks, &[this, val!(false)]);
       match result {
-        Call::Ok(r) => assert_eq!(r.to_bool(), false),
-        _ => assert!(false),
+        Call::Ok(r) => assert!(!r.to_bool()),
+        _ => panic!(),
       }
     }
   }
@@ -501,8 +501,8 @@ mod test {
 
       let result = map_index_get.call(&mut hooks, &[this, VALUE_NIL]);
       match result {
-        Call::Ok(r) => assert_eq!(r.to_bool(), false),
-        _ => assert!(false),
+        Call::Ok(r) => assert!(!r.to_bool()),
+        _ => panic!(),
       }
     }
   }
@@ -558,14 +558,14 @@ mod test {
 
       let result = map_get.call(&mut hooks, &[this, VALUE_NIL]);
       match result {
-        Call::Ok(r) => assert_eq!(r.to_bool(), false),
-        _ => assert!(false),
+        Call::Ok(r) => assert!(!r.to_bool()),
+        _ => panic!(),
       }
 
       let result = map_get.call(&mut hooks, &[this, val!(true)]);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -588,7 +588,7 @@ mod test {
       let result = map_set.call(&mut hooks, &[this, val!(true), val!(10.0)]);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),
-        _ => assert!(false),
+        _ => panic!(),
       }
 
       assert_eq!(map.len(), 1);
@@ -597,7 +597,7 @@ mod test {
       let result = map_set.call(&mut hooks, &[this, val!(true), val!(false)]);
       match result {
         Call::Ok(r) => assert_eq!(r.to_num(), 10.0),
-        _ => assert!(false),
+        _ => panic!(),
       }
 
       assert_eq!(map.len(), 1);
@@ -623,14 +623,14 @@ mod test {
 
       let result = map_insert.call(&mut hooks, &[this, VALUE_NIL, val!(true)]);
       match result {
-        Call::Ok(r) => assert_eq!(r.to_bool(), false),
-        _ => assert!(false),
+        Call::Ok(r) => assert!(!r.to_bool()),
+        _ => panic!(),
       }
 
       let result = map_insert.call(&mut hooks, &[this, val!(15.0), val!(true)]);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -654,16 +654,10 @@ mod test {
       let this = val!(map);
 
       let result = map_remove.call(&mut hooks, &[this, val!(10.5)]);
-      match result {
-        Call::Ok(_) => assert!(false),
-        _ => assert!(true),
-      }
+      if result.is_ok() { panic!() }
 
       let result = map_remove.call(&mut hooks, &[this, VALUE_NIL]);
-      match result {
-        Call::Ok(r) => assert_eq!(r.to_bool(), false),
-        _ => assert!(false),
-      }
+      if let Call::Ok(r) = result { assert!(!r.to_bool()) }
     }
   }
 }

@@ -234,7 +234,7 @@ mod test {
         let ptr = ((&*header) as *const InstanceHeader) as *const ObjHeader;
         let obj_header = &*ptr;
 
-        assert_eq!(obj_header.marked(), false);
+        assert!(!obj_header.marked());
         assert_eq!(obj_header.kind, ObjectKind::Instance);
       };
     }

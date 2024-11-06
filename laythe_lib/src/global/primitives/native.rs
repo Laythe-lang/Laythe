@@ -81,7 +81,7 @@ mod test {
       let result = native_name.call(&mut hooks, &[val!(managed)]);
       match result {
         Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "test".to_string()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -101,7 +101,7 @@ mod test {
       let result = native_call.call(&mut hooks, &[val!(managed)]);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }

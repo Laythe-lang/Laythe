@@ -105,11 +105,11 @@ mod test {
 
       match result1 {
         Call::Ok(r) => assert_eq!(r, super_class_value),
-        _ => assert!(false),
+        _ => panic!(),
       }
       match result2 {
         Call::Ok(r) => assert_eq!(r, VALUE_NIL),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -123,7 +123,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let class_str = ClassStr::native(&hooks.as_gc());
 
-      let class = hooks.manage_obj(Class::bare(hooks.manage_str("someClass".to_string())));
+      let class = hooks.manage_obj(Class::bare(hooks.manage_str("someClass")));
 
       let class_value = val!(class);
 
@@ -141,7 +141,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let class_str = ClassName::native(&hooks.as_gc());
 
-      let class = hooks.manage_obj(Class::bare(hooks.manage_str("someClass".to_string())));
+      let class = hooks.manage_obj(Class::bare(hooks.manage_str("someClass")));
 
       let class_value = val!(class);
 

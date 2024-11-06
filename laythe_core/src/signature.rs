@@ -416,8 +416,8 @@ mod test {
 
     #[test]
     fn check_fixed() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Fixed(2))
         .with_params(&PARAMETERS_FIXED)
@@ -445,8 +445,8 @@ mod test {
 
     #[test]
     fn check_variadic() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Variadic(1))
         .with_params(&PARAMETERS_VARIADIC)
@@ -482,8 +482,8 @@ mod test {
 
     #[test]
     fn check_default() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Default(1, 2))
         .with_params(&PARAMETERS_DEFAULT)

@@ -447,7 +447,7 @@ pub fn disassemble_instruction(
     write!(stdout, "{:>4} ", chunk.get_line(offset))?;
   }
 
-  let (instruction, offset) = AlignedByteCode::decode(chunk.instructions(), offset as usize);
+  let (instruction, offset) = AlignedByteCode::decode(chunk.instructions(), offset);
   match instruction {
     AlignedByteCode::Return => simple_instruction(stdio.stdout(), "Return", offset),
     AlignedByteCode::Negate => simple_instruction(stdio.stdout(), "Negate", offset),
@@ -533,7 +533,7 @@ pub fn disassemble_instruction(
       constant_instruction(stdio.stdout(), "StaticMethod", chunk, constant, offset)
     },
     AlignedByteCode::LoadGlobal(slot) => {
-      constant_instruction(stdio.stdout(), "LoadGlobal", chunk, slot as u16, offset)
+      constant_instruction(stdio.stdout(), "LoadGlobal", chunk, slot, offset)
     },
     AlignedByteCode::DeclareModSym((symbol_slot, module_slot)) => define_module_symbol_instruction(
       stdio.stdout(),

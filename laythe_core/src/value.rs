@@ -961,8 +961,8 @@ mod test {
     assert_value_type(val_true, ValueKind::Bool);
     assert_value_type(val_false, ValueKind::Bool);
 
-    assert_eq!(val_true.to_bool(), true);
-    assert_eq!(val_false.to_bool(), false);
+    assert!(val_true.to_bool());
+    assert!(!val_false.to_bool());
   }
 
   #[test]

@@ -193,7 +193,6 @@ impl Fiber {
           _ => (),
         })
       }
-
     }
   }
 
@@ -1322,7 +1321,7 @@ mod test {
           assert_eq!(frame.fun(), fun1);
           assert_eq!(frame.captures(), captures);
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
 
@@ -1337,7 +1336,7 @@ mod test {
         UnwindResult::PotentiallyHandled(frame) => {
           assert_eq!(frame.fun(), base_fun);
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
     let backtrace = fiber.finish_unwind();
@@ -1356,12 +1355,12 @@ mod test {
       .build(&hooks)
       .expect("Expected to build");
 
-    assert_eq!(fiber.is_complete(), false);
+    assert!(!fiber.is_complete());
 
     fiber.activate();
     Fiber::complete(fiber);
 
-    assert_eq!(fiber.is_complete(), true);
+    assert!(fiber.is_complete());
   }
 
   #[test]
@@ -1373,15 +1372,15 @@ mod test {
       .build(&hooks)
       .expect("Expected to build");
 
-    assert_eq!(fiber.is_pending(), true);
+    assert!(fiber.is_pending());
 
     fiber.activate();
 
-    assert_eq!(fiber.is_pending(), false);
+    assert!(!fiber.is_pending());
 
     fiber.sleep();
 
-    assert_eq!(fiber.is_pending(), true);
+    assert!(fiber.is_pending());
   }
 
   #[test]
@@ -1663,21 +1662,17 @@ mod test {
         assert_eq!(slice[0], val!(fiber.frame().fun()));
         assert_eq!(slice[1], VALUE_NIL);
       },
-      _ => assert!(false),
+      _ => panic!(),
     };
 
     match fiber.pop_frame() {
-      FiberPopResult::Emptied => {
-        assert!(true);
-      },
-      _ => assert!(false),
+      FiberPopResult::Emptied => {},
+      _ => panic!(),
     }
 
     match fiber.pop_frame() {
-      FiberPopResult::Empty => {
-        assert!(true);
-      },
-      _ => assert!(false),
+      FiberPopResult::Empty => {},
+      _ => panic!(),
     }
   }
 
@@ -1774,7 +1769,7 @@ mod test {
           assert_eq!(frame.fun(), fun1);
           assert_eq!(frame.captures(), captures);
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
 

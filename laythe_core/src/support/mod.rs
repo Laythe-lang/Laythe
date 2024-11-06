@@ -117,7 +117,7 @@ impl ClassBuilder {
 
 pub fn test_module(hooks: &GcHooks, name: &str) -> Gc<Module> {
   let base_class = test_class(hooks, "Module");
-  hooks.manage(Module::new(&hooks, module_class(hooks, name, base_class), "example", 0))
+  hooks.manage(Module::new(hooks, module_class(hooks, name, base_class), "example", 0))
 }
 
 pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
