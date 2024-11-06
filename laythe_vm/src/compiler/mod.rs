@@ -4015,7 +4015,7 @@ mod test {
         AlignedByteCode::LoadGlobal(1),
         AlignedByteCode::SetModSym(1),
         AlignedByteCode::GetModSym(1),
-        AlignedByteCode::GetModSym(1),
+        AlignedByteCode::Dup,
         AlignedByteCode::List(3),
         AlignedByteCode::SetModSym(0),
         AlignedByteCode::Constant(2),

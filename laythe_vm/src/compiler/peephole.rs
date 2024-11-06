@@ -33,7 +33,11 @@ impl<T> VecCursor<T> {
   }
 
   pub fn at_end(&self) -> bool {
-    self.reader >= self.len()
+    !self.inbounds(self.reader)
+  }
+
+  fn inbounds(&self, l: usize) -> bool {
+    l < self.len()
   }
 
   pub fn read_slice(&self) -> &[T] {
@@ -41,7 +45,7 @@ impl<T> VecCursor<T> {
   }
 
   pub fn write(&mut self, value: T) {
-    debug_assert!(self.writer <= self.len());
+    debug_assert!(self.inbounds(self.writer));
     self.vec[self.writer] = value;
     self.inc_writer(1);
   }
@@ -63,18 +67,22 @@ impl<T> VecCursor<T> {
 
 impl<T: Copy> VecCursor<T> {
   pub fn read(&mut self) -> T {
-    debug_assert!(self.reader <= self.len());
+    debug_assert!(!self.at_end());
     let value = self.vec[self.reader];
     self.inc_reader(1);
     value
   }
 
-  pub fn peek(&self) -> T {
-    self.vec[self.reader]
+  pub fn peek(&self) -> Option<T> {
+    if self.inbounds(self.reader) {
+      Some(self.vec[self.reader])
+    } else {
+      None
+    }
   }
 
   pub fn peek_next(&self) -> Option<T> {
-    if self.reader + 1 < self.len() {
+    if self.inbounds(self.reader + 1) {
       Some(self.vec[self.reader + 1])
     } else {
       None
@@ -180,11 +188,23 @@ fn peephole_optimize(
       },
       [SymbolicByteCode::SetModSym(set_slot), SymbolicByteCode::Drop, SymbolicByteCode::GetModSym(get_slot), ..] => {
         if set_slot == get_slot {
-          eliminate_drop(&mut instructions_cursor, &mut lines_cursor)
+          eliminate_drop(&mut instructions_cursor, &mut lines_cursor);
         } else {
           instructions_cursor.copy_cursors();
           lines_cursor.copy_cursors();
         }
+      },
+      [SymbolicByteCode::GetLocal(_), SymbolicByteCode::GetLocal(_), ..] => {
+        load_multiple(&mut instructions_cursor, &mut lines_cursor);
+      },
+      [SymbolicByteCode::GetModSym(_), SymbolicByteCode::GetModSym(_), ..] => {
+        load_multiple(&mut instructions_cursor, &mut lines_cursor);
+      },
+      [SymbolicByteCode::GetBox(_), SymbolicByteCode::GetBox(_), ..] => {
+        load_multiple(&mut instructions_cursor, &mut lines_cursor);
+      },
+      [SymbolicByteCode::GetCapture(_), SymbolicByteCode::GetCapture(_), ..] => {
+        load_multiple(&mut instructions_cursor, &mut lines_cursor);
       },
       [SymbolicByteCode::Jump(_)
       | SymbolicByteCode::Loop(_)
@@ -224,6 +244,19 @@ fn drop(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut VecCursor<u1
   instructions.inc_reader(1);
   lines.inc_reader(drop_count as usize - 1);
 }
+
+fn load_multiple(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut VecCursor<u16>) {
+  let load = instructions.read();
+  instructions.write(load);
+  lines.copy_cursors();
+
+  while instructions.peek() == Some(load) {
+    instructions.inc_reader(1);
+    instructions.write(SymbolicByteCode::Dup);
+    lines.copy_cursors();
+  }
+}
+
 
 fn eliminate_drop(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut VecCursor<u16>) {
   let instruction = instructions.read();
@@ -271,8 +304,8 @@ fn remove_dead_code(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut 
   instructions.copy_cursors();
   lines.copy_cursors();
 
-  while !instructions.at_end() {
-    if let SymbolicByteCode::Label(_) = instructions.peek() {
+  while let Some(instruction) = instructions.peek() {
+    if let SymbolicByteCode::Label(_) = instruction {
       break;
     }
 
@@ -410,9 +443,11 @@ mod test {
     fn peek() {
       let mut cursor = VecCursor::<u8>::new(vec![1, 2]);
 
-      assert_eq!(cursor.peek(), 1);
+      assert_eq!(cursor.peek(), Some(1));
       cursor.inc_reader(1);
-      assert_eq!(cursor.read(), 2);
+      assert_eq!(cursor.peek(), Some(2));
+      cursor.inc_reader(1);
+      assert_eq!(cursor.peek(), None);
     }
 
     #[test]
@@ -502,7 +537,34 @@ mod test {
       assert_eq!(lines[0], 1);
     }
 
-    mod eliminate_drop {
+    #[test]
+    fn load_multiple_replacement() {
+      let mut instructions = VecCursor::new(vec![
+        SymbolicByteCode::GetLocal(0),
+        SymbolicByteCode::GetLocal(0),
+        SymbolicByteCode::GetLocal(0),
+      ]);
+      let mut lines = VecCursor::new(vec![1, 2, 3]);
+
+      load_multiple(&mut instructions, &mut lines);
+
+      let instructions = instructions.take();
+      let lines = lines.take();
+
+      assert_eq!(instructions.len(), 3);
+      assert_eq!(instructions[0], SymbolicByteCode::GetLocal(0));
+      assert_eq!(instructions[1], SymbolicByteCode::Dup);
+      assert_eq!(instructions[2], SymbolicByteCode::Dup);
+
+      assert_eq!(lines.len(), 3);
+      assert_eq!(lines[0], 1);
+      assert_eq!(lines[1], 2);
+      assert_eq!(lines[2], 3);
+    }
+
+
+
+    mod eliminate_drop_replacement {
       use super::*;
 
       #[test]
@@ -589,7 +651,6 @@ mod test {
         assert_eq!(lines[0], 1);
       }
     }
-
 
     #[test]
     fn invoke_replacement() {
