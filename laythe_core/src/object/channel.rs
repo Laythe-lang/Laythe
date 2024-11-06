@@ -575,18 +575,18 @@ mod test {
             if waiter == fiber_waiter1 {
               match r2 {
                 SendResult::Full(Some(waiter)) => assert_eq!(waiter, fiber_waiter2),
-                _ => assert!(false),
+                _ => panic!(),
               }
             } else if waiter == fiber_waiter2 {
               match r2 {
                 SendResult::Full(Some(waiter)) => assert_eq!(waiter, fiber_waiter1),
-                _ => assert!(false),
+                _ => panic!(),
               }
             } else {
-              assert!(false)
+              panic!()
             }
           },
-          _ => assert!(false),
+          _ => panic!(),
         }
 
         assert_eq!(queue.len(), 1);

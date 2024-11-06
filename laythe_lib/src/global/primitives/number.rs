@@ -48,7 +48,7 @@ const NUMBER_PARSE: NativeMetaBuilder = NativeMetaBuilder::fun("parse", Arity::F
 
 pub fn declare_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, NUMBER_CLASS_NAME)?;
-  export_and_insert(module, class.name(), val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
@@ -312,7 +312,7 @@ mod test {
       let result = number_str.call(&mut hooks, &[val!(10.0)]);
       match result {
         Call::Ok(r) => assert_eq!(*r.to_obj().to_str(), "10".to_string()),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -344,7 +344,7 @@ mod test {
 
           assert_eq!(number_times.next(&mut hooks).unwrap(), val!(false));
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -459,7 +459,7 @@ mod test {
 
           assert_eq!(number_until.next(&mut hooks).unwrap(), val!(false));
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }

@@ -1,4 +1,8 @@
-use crate::{native, support::export_and_insert, StdResult};
+use crate::{
+  native,
+  support::{export_and_insert, export_and_insert_native},
+  StdResult,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
@@ -52,63 +56,29 @@ const POW_META: NativeMetaBuilder = NativeMetaBuilder::fun("pow", Arity::Fixed(2
 const RAND_META: NativeMetaBuilder = NativeMetaBuilder::fun("rand", Arity::Fixed(0));
 
 pub fn declare_math_module(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
-  export_and_insert(module, hooks.manage_str(PI), val!(std::f64::consts::PI))?;
-
-  export_and_insert(module, hooks.manage_str(E), val!(std::f64::consts::E))?;
-
   export_and_insert(
+    hooks,
     module,
-    hooks.manage_str(SIN_META.name),
-    val!(Sin::native(hooks)),
+    hooks.manage_str(PI),
+    val!(std::f64::consts::PI),
   )?;
 
   export_and_insert(
+    hooks,
     module,
-    hooks.manage_str(COS_META.name),
-    val!(Cos::native(hooks)),
+    hooks.manage_str(E),
+    val!(std::f64::consts::E),
   )?;
 
-  export_and_insert(
-    module,
-    hooks.manage_str(LN_META.name),
-    val!(Ln::native(hooks)),
-  )?;
-
-  export_and_insert(
-    module,
-    hooks.manage_str(ABS_META.name),
-    val!(Abs::native(hooks)),
-  )?;
-
-  export_and_insert(
-    module,
-    hooks.manage_str(MAX_META.name),
-    val!(Max::native(hooks)),
-  )?;
-
-  export_and_insert(
-    module,
-    hooks.manage_str(MIN_META.name),
-    val!(Min::native(hooks)),
-  )?;
-
-  export_and_insert(
-    module,
-    hooks.manage_str(REM_META.name),
-    val!(Rem::native(hooks)),
-  )?;
-
-  export_and_insert(
-    module,
-    hooks.manage_str(POW_META.name),
-    val!(Pow::native(hooks)),
-  )?;
-
-  export_and_insert(
-    module,
-    hooks.manage_str(RAND_META.name),
-    val!(Rand::native(hooks)),
-  )
+  export_and_insert_native(hooks, module, Sin::native(hooks))?;
+  export_and_insert_native(hooks, module, Cos::native(hooks))?;
+  export_and_insert_native(hooks, module, Ln::native(hooks))?;
+  export_and_insert_native(hooks, module, Abs::native(hooks))?;
+  export_and_insert_native(hooks, module, Max::native(hooks))?;
+  export_and_insert_native(hooks, module, Min::native(hooks))?;
+  export_and_insert_native(hooks, module, Rem::native(hooks))?;
+  export_and_insert_native(hooks, module, Pow::native(hooks))?;
+  export_and_insert_native(hooks, module, Rand::native(hooks))
 }
 
 pub fn define_math_module(_: &GcHooks, _: Gc<Module>) -> StdResult<()> {
@@ -327,7 +297,7 @@ mod test {
       for _ in 0..10 {
         let r = rand.call(&mut hooks, &[]).unwrap();
         let num = r.to_num();
-        assert!(num >= 0.0 && num < 1.0);
+        assert!((0.0..1.0).contains(&num));
       }
     }
   }

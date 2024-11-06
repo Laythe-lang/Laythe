@@ -20,8 +20,7 @@ pub fn add_math_module(
   let math_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(MATH_MODULE_NAME), module_class);
 
-  let module_path = hooks.manage_str(format!("native/{}", MATH_MODULE_NAME));
-  let module = hooks.manage(Module::new(math_module_class, module_path, emitter.emit()));
+  let module = hooks.manage(Module::new(hooks, math_module_class, &format!("native/{}", MATH_MODULE_NAME), emitter.emit()));
 
   let mut root = std.root_module();
   root.insert_module(module)?;

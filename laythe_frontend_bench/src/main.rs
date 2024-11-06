@@ -34,20 +34,19 @@ fn compiler_bench(src: &str) {
     let global_module = std_lib.root_module();
 
     let module_name = hooks.manage_str("Module");
-    let module_path = hooks.manage_str("module/path");
     let module_class = global_module
-      .get_symbol(module_name)
+      .get_symbol_by_name(module_name)
       .unwrap()
       .to_obj()
       .to_class();
 
     let (ast, line_offsets) = Parser::new(&source, VM_FILE_TEST_ID).parse();
     let mut ast = ast.unwrap();
-    let module = hooks.manage(Module::new(module_class, module_path, 0));
+    let module = hooks.manage(Module::new(&hooks, module_class, "module/path", 0));
 
     let gc = context.done();
     assert!(
-      Resolver::new(global_module, &gc, &source, VM_FILE_TEST_ID, false)
+      Resolver::new(global_module, module, &gc, &source, VM_FILE_TEST_ID, false)
         .resolve(&mut ast)
         .is_ok()
     );

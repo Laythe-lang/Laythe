@@ -23,8 +23,7 @@ fn fixture_path<P: AsRef<Path>>(bench_path: P) -> Option<PathBuf> {
   test_path
     .parent()
     .and_then(|path| path.parent())
-    .and_then(|path| path.parent())
-    .and_then(|path| Some(path.join(bench_path)))
+    .and_then(|path| path.parent()).map(|path| path.join(bench_path))
 }
 
 fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> GcStr {
@@ -36,32 +35,41 @@ fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> GcStr {
 }
 
 fn compile_source(source: GcStr) {
-  let mut context = NoContext::default();
-  let hooks = GcHooks::new(&mut context);
+  let context = NoContext::default();
+  let hooks = GcHooks::new(&context);
 
   let mut emitter = IdEmitter::default();
   let std_lib = create_std_lib(&hooks, &mut emitter).expect("Standard library creation failed");
   let global_module = std_lib.root_module();
 
   let module_name = hooks.manage_str("Module");
-  let module_path = hooks.manage_str("module/path");
   let module_class = global_module
-    .get_symbol(module_name)
+    .get_symbol_by_name(module_name)
     .unwrap()
     .to_obj()
     .to_class();
-  let module = hooks.manage(Module::new(module_class, module_path, 0));
+  let module = hooks.manage(Module::new(&hooks, module_class, "module/path", 0));
   let source = Source::new(source);
   let (ast, line_offsets) = Parser::new(&source, VM_FILE_TEST_ID).parse();
   let mut ast = ast.unwrap();
 
   let gc = context.done();
-  assert!(Resolver::new(global_module, &gc, &source, VM_FILE_TEST_ID, false)
-    .resolve(&mut ast)
-    .is_ok());
+  assert!(
+    Resolver::new(global_module, module, &gc, &source, VM_FILE_TEST_ID, false)
+      .resolve(&mut ast)
+      .is_ok()
+  );
 
   let alloc = Bump::new();
-  let compiler = Compiler::new(module, &alloc, &line_offsets, VM_FILE_TEST_ID, false, &NO_GC, gc);
+  let compiler = Compiler::new(
+    module,
+    &alloc,
+    &line_offsets,
+    VM_FILE_TEST_ID,
+    false,
+    &NO_GC,
+    gc,
+  );
   compiler.compile(&ast).0.unwrap();
 }
 

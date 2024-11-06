@@ -16,8 +16,7 @@ fn fixture_path<P: AsRef<Path>>(bench_path: P) -> Option<PathBuf> {
   test_path
     .parent()
     .and_then(|path| path.parent())
-    .and_then(|path| path.parent())
-    .and_then(|path| Some(path.join(bench_path)))
+    .and_then(|path| path.parent()).map(|path| path.join(bench_path))
 }
 
 fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> GcStr {

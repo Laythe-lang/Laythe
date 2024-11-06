@@ -2,7 +2,7 @@ use super::class_inheritance;
 use crate::{
   native,
   support::{export_and_insert, load_class_from_module},
-  StdError, StdResult,
+  StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -22,7 +22,7 @@ const FIBER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fix
 
 pub fn declare_fiber_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let bool_class = class_inheritance(hooks, module, FIBER_CLASS_NAME)?;
-  export_and_insert(module, bool_class.name(), val!(bool_class)).map_err(StdError::from)
+  export_and_insert(hooks, module, bool_class.name(), val!(bool_class))
 }
 
 pub fn define_fiber_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {

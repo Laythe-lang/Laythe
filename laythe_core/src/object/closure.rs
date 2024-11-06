@@ -28,8 +28,9 @@ impl Closure {
   /// let hooks = GcHooks::new(&mut context);
   ///
   /// let module = hooks.manage(Module::new(
+  ///   &hooks,
   ///   hooks.manage_obj(Class::bare(hooks.manage_str("module"))),
-  ///   hooks.manage_str("module/path"),
+  ///   "module/path",
   ///   0,
   /// ));
   /// let mut builder = FunBuilder::new(hooks.manage_str("example"), module, Arity::default());

@@ -37,6 +37,7 @@ pub fn declare_stderr(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>)
   let instance = hooks.manage_obj(class);
 
   export_and_insert(
+    hooks,
     module,
     hooks.manage_str(STDERR_INSTANCE_NAME),
     val!(instance),
@@ -137,13 +138,13 @@ mod test {
 
       let stderr_write = StderrWrite::native(&hooks.as_gc(), error);
 
-      let string = val!(hooks.manage_str("some string".to_string()));
+      let string = val!(hooks.manage_str("some string"));
       let result = stderr_write.call(&mut hooks, &[VALUE_NIL, string]);
 
       assert!(result.is_ok());
       assert!(result.unwrap().is_nil());
 
-      let stderr = str::from_utf8(&*stdio_container.stderr);
+      let stderr = str::from_utf8(&stdio_container.stderr);
       assert!(stderr.is_ok());
       assert_eq!(stderr.unwrap(), "some string");
     }
@@ -172,7 +173,7 @@ mod test {
       assert!(result.is_ok());
       assert!(result.unwrap().is_nil());
 
-      let stderr = str::from_utf8(&*stdio_container.stderr);
+      let stderr = str::from_utf8(&stdio_container.stderr);
       assert!(stderr.is_ok());
       assert_eq!(stderr.unwrap(), "some string\n");
     }

@@ -87,8 +87,8 @@ mod test {
 
   #[test]
   fn new() {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
     let module = test_module(&hooks, "package");
     Package::new(hooks.manage_str("package"), module);
@@ -96,8 +96,8 @@ mod test {
 
   #[test]
   fn name() {
-    let mut context = NoContext::default();
-    let hooks = GcHooks::new(&mut context);
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
     let name = "example";
 
     let module = test_module(&hooks, name);

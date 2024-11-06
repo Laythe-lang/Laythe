@@ -1,4 +1,8 @@
-use crate::{native, support::export_and_insert, StdResult};
+use crate::{
+  native,
+  support::{export_and_insert_native},
+  StdResult,
+};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   list,
@@ -16,17 +20,8 @@ const ARGS_META: NativeMetaBuilder = NativeMetaBuilder::fun("args", Arity::Fixed
 const CWD_META: NativeMetaBuilder = NativeMetaBuilder::fun("cwd", Arity::Fixed(0));
 
 pub fn declare_env_module(hooks: &GcHooks, self_module: Gc<Module>) -> StdResult<()> {
-  export_and_insert(
-    self_module,
-    hooks.manage_str(ARGS_META.name),
-    val!(Args::native(hooks)),
-  )?;
-
-  export_and_insert(
-    self_module,
-    hooks.manage_str(CWD_META.name),
-    val!(Cwd::native(hooks)),
-  )
+  export_and_insert_native(hooks, self_module, Args::native(hooks))?;
+  export_and_insert_native(hooks, self_module, Cwd::native(hooks))
 }
 
 pub fn define_env_module(_: &GcHooks, _: &mut Module) -> StdResult<()> {

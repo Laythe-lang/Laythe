@@ -161,6 +161,7 @@ impl From<Value> for ParameterKind {
       ValueKind::Bool => ParameterKind::Bool,
       ValueKind::Nil => ParameterKind::Object,
       ValueKind::Number => ParameterKind::Number,
+      ValueKind::Undefined => panic!("Should not pass in undefined directly"),
       ValueKind::Obj => match value.to_obj().kind() {
         ObjectKind::Closure => ParameterKind::Callable,
         ObjectKind::Method => ParameterKind::Callable,
@@ -415,8 +416,8 @@ mod test {
 
     #[test]
     fn check_fixed() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Fixed(2))
         .with_params(&PARAMETERS_FIXED)
@@ -444,8 +445,8 @@ mod test {
 
     #[test]
     fn check_variadic() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Variadic(1))
         .with_params(&PARAMETERS_VARIADIC)
@@ -481,8 +482,8 @@ mod test {
 
     #[test]
     fn check_default() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let fixed_signature = SignatureBuilder::new(Arity::Default(1, 2))
         .with_params(&PARAMETERS_DEFAULT)

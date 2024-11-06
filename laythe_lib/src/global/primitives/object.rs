@@ -77,6 +77,7 @@ impl LyNative for ObjectStr {
     let string = match this.kind() {
       ValueKind::Bool => format!("<{} {}>", &*class.name(), this.to_bool()),
       ValueKind::Nil => format!("<{} nil>", &*class.name()),
+      ValueKind::Undefined => panic!("Undefined should not be accessed"),
       ValueKind::Number => format!("<{} {}>", &*class.name(), this.to_num()),
       ValueKind::Obj => match_obj!((&this.to_obj()) {
         ObjectKind::Channel(channel) => {
@@ -161,12 +162,12 @@ mod test {
       let result2 = object_equals.call(&mut hooks, &[ten_2, b_false]);
 
       match result1 {
-        Call::Ok(r) => assert_eq!(r.to_bool(), true),
-        _ => assert!(false),
+        Call::Ok(r) => assert!(r.to_bool()),
+        _ => panic!(),
       }
       match result2 {
-        Call::Ok(r) => assert_eq!(r.to_bool(), false),
-        _ => assert!(false),
+        Call::Ok(r) => assert!(!r.to_bool()),
+        _ => panic!(),
       }
     }
   }
@@ -207,7 +208,7 @@ mod test {
 
       match result {
         Call::Ok(r) => assert_eq!(r.to_obj().to_str(), "<Number 10>"),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }

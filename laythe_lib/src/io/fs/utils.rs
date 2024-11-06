@@ -50,20 +50,23 @@ pub fn define_fs_module(hooks: &GcHooks, module: Gc<Module>, std: Gc<Package>) -
   )?);
 
   export_and_insert(
+    hooks,
     module,
-    hooks.manage_str(READ_FILE.name),
+    READ_FILE.name,
     val!(ReadFile::native(hooks, io_error)),
   )?;
 
   export_and_insert(
+    hooks,
     module,
-    hooks.manage_str(WRITE_FILE.name),
+    WRITE_FILE.name,
     val!(WriteFile::native(hooks, io_error)),
   )?;
 
   export_and_insert(
+    hooks,
     module,
-    hooks.manage_str(REMOVE_FILE.name),
+    REMOVE_FILE.name,
     val!(RemoveFile::native(hooks, io_error)),
   )?;
 

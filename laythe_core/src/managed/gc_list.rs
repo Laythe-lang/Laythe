@@ -744,8 +744,8 @@ mod test {
 
     #[test]
     fn push_with_capacity() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let handle = GcListHandle::from_slice(&[val!(1.0)], 2, ObjHeader::new(ObjectKind::List));
       let mut list = handle.value();
@@ -759,8 +759,8 @@ mod test {
 
     #[test]
     fn push_without_capacity() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let handle = GcListHandle::from_slice(&[val!(1.0)], 1, ObjHeader::new(ObjectKind::List));
       let mut list = handle.value();
@@ -798,8 +798,8 @@ mod test {
 
     #[test]
     fn insert_with_capacity() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let handle = GcListHandle::from_slice(&[val!(1.0)], 4, ObjHeader::new(ObjectKind::List));
       let mut list = handle.value();
@@ -833,8 +833,8 @@ mod test {
 
     #[test]
     fn insert_without_capacity() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let handle = GcListHandle::from_slice(&[val!(1.0)], 1, ObjHeader::new(ObjectKind::List));
       let mut list = handle.value();
@@ -897,8 +897,8 @@ mod test {
 
     #[test]
     fn remove_forwarded() {
-      let mut context = NoContext::default();
-      let hooks = GcHooks::new(&mut context);
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
       let handle = GcListHandle::from_slice(&[val!(1.0)], 1, ObjHeader::new(ObjectKind::List));
       let mut list = handle.value();

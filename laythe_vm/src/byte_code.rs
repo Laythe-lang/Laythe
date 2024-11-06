@@ -128,21 +128,25 @@ pub enum SymbolicByteCode {
   Import(u16),
 
   /// Import a single symbol
-  ImportSymbol((u16, u16)),
+  ImportSym((u16, u16)),
 
   /// Export a symbol from the current module
   Export(u16),
 
-  /// Define a global in the globals table at a index
-  DefineGlobal(u16),
+  /// Load a global symbol into this module
+  LoadGlobal(u16),
 
-  /// Retrieve a global at the given index
-  GetGlobal(u16),
+  /// Define a symbol in the module scope at this index
+  DeclareModSym((u16, u16)),
 
-  /// Set a global at the given index
-  SetGlobal(u16),
+  /// Retrieve a symbol at the module scope at this index
+  GetModSym(u16),
+
+  /// Set a symbol at the module scope at this index
+  SetModSym(u16),
 
   /// Box a local at a given index,
+  #[allow(dead_code)]
   Box(u8),
 
   /// Create a new empty box
@@ -170,16 +174,16 @@ pub enum SymbolicByteCode {
   SetCapture(u8),
 
   /// Get a property off a class instance
-  GetProperty(u16),
+  GetPropByName(u16),
 
   /// Set a property on a class instance
-  SetProperty(u16),
+  SetPropByName(u16),
 
   /// Get a property off a class instance
-  GetKnownProperty(u16),
+  GetProp(u16),
 
   /// Set a property on a class instance
-  SetKnownProperty(u16),
+  SetProp(u16),
 
   /// Jump to end of if block if false
   JumpIfFalse(Label),
@@ -308,11 +312,12 @@ impl SymbolicByteCode {
       Self::DropN(_) => 2,
       Self::Dup => 1,
       Self::Import(_) => 3,
-      Self::ImportSymbol(_) => 5,
+      Self::ImportSym(_) => 5,
       Self::Export(_) => 3,
-      Self::DefineGlobal(_) => 3,
-      Self::GetGlobal(_) => 3,
-      Self::SetGlobal(_) => 3,
+      Self::LoadGlobal(_) => 3,
+      Self::DeclareModSym(_) => 5,
+      Self::GetModSym(_) => 3,
+      Self::SetModSym(_) => 3,
       Self::Box(_) => 2,
       Self::EmptyBox => 1,
       Self::FillBox => 1,
@@ -322,10 +327,10 @@ impl SymbolicByteCode {
       Self::SetLocal(_) => 2,
       Self::GetCapture(_) => 2,
       Self::SetCapture(_) => 2,
-      Self::GetProperty(_) => 3,
-      Self::SetProperty(_) => 3,
-      Self::GetKnownProperty(_) => 3,
-      Self::SetKnownProperty(_) => 3,
+      Self::GetPropByName(_) => 3,
+      Self::SetPropByName(_) => 3,
+      Self::GetProp(_) => 3,
+      Self::SetProp(_) => 3,
       Self::JumpIfFalse(_) => 3,
       Self::Jump(_) => 3,
       Self::Loop(_) => 3,
@@ -392,11 +397,12 @@ impl SymbolicByteCode {
       Self::DropN(cnt) => -(*cnt as i32),
       Self::Dup => 1,
       Self::Import(_) => 1,
-      Self::ImportSymbol(_) => 1,
+      Self::ImportSym(_) => 1,
       Self::Export(_) => 0,
-      Self::DefineGlobal(_) => -1,
-      Self::GetGlobal(_) => 1,
-      Self::SetGlobal(_) => 0,
+      Self::LoadGlobal(_) => 1,
+      Self::DeclareModSym(_) => 0,
+      Self::GetModSym(_) => 1,
+      Self::SetModSym(_) => 0,
       Self::Box(_) => 0,
       Self::EmptyBox => 1,
       Self::FillBox => -1,
@@ -406,10 +412,10 @@ impl SymbolicByteCode {
       Self::SetLocal(_) => 0,
       Self::GetCapture(_) => 1,
       Self::SetCapture(_) => 0,
-      Self::GetProperty(_) => 0,
-      Self::GetKnownProperty(_) => 0,
-      Self::SetProperty(_) => -1,
-      Self::SetKnownProperty(_) => -1,
+      Self::GetPropByName(_) => 0,
+      Self::GetProp(_) => 0,
+      Self::SetPropByName(_) => -1,
+      Self::SetProp(_) => -1,
       Self::JumpIfFalse(_) => -1,
       Self::Jump(_) => 0,
       Self::Loop(_) => 0,
@@ -518,13 +524,16 @@ impl<'a> ByteCodeEncoder<'a> {
         SymbolicByteCode::Constant(slot) => self.op_byte(ByteCode::Constant, *line, *slot),
         SymbolicByteCode::ConstantLong(slot) => self.op_short(ByteCode::ConstantLong, *line, *slot),
         SymbolicByteCode::Import(path) => self.op_short(ByteCode::Import, *line, *path),
-        SymbolicByteCode::ImportSymbol((path, slot)) => {
-          self.push_op_u16_tuple(ByteCode::ImportSymbol, *line, *path, *slot)
+        SymbolicByteCode::ImportSym((path, slot)) => {
+          self.push_op_u16_tuple(ByteCode::ImportSym, *line, *path, *slot)
         },
         SymbolicByteCode::Export(slot) => self.op_short(ByteCode::Export, *line, *slot),
-        SymbolicByteCode::DefineGlobal(slot) => self.op_short(ByteCode::DefineGlobal, *line, *slot),
-        SymbolicByteCode::GetGlobal(slot) => self.op_short(ByteCode::GetGlobal, *line, *slot),
-        SymbolicByteCode::SetGlobal(slot) => self.op_short(ByteCode::SetGlobal, *line, *slot),
+        SymbolicByteCode::LoadGlobal(slot) => self.op_short(ByteCode::LoadGlobal, *line, *slot),
+        SymbolicByteCode::DeclareModSym((str_slot, module_slot)) => {
+          self.push_op_u16_tuple(ByteCode::DeclareModSym, *line, *str_slot, *module_slot)
+        },
+        SymbolicByteCode::GetModSym(slot) => self.op_short(ByteCode::GetModSym, *line, *slot),
+        SymbolicByteCode::SetModSym(slot) => self.op_short(ByteCode::SetModSym, *line, *slot),
         SymbolicByteCode::Box(slot) => self.op_byte(ByteCode::Box, *line, *slot),
         SymbolicByteCode::EmptyBox => self.op(ByteCode::EmptyBox, *line),
         SymbolicByteCode::FillBox => self.op(ByteCode::FillBox, *line),
@@ -534,10 +543,14 @@ impl<'a> ByteCodeEncoder<'a> {
         SymbolicByteCode::SetLocal(slot) => self.op_byte(ByteCode::SetLocal, *line, *slot),
         SymbolicByteCode::GetCapture(slot) => self.op_byte(ByteCode::GetCapture, *line, *slot),
         SymbolicByteCode::SetCapture(slot) => self.op_byte(ByteCode::SetCapture, *line, *slot),
-        SymbolicByteCode::GetProperty(slot) => self.op_short(ByteCode::GetProperty, *line, *slot),
-        SymbolicByteCode::SetProperty(slot) => self.op_short(ByteCode::SetProperty, *line, *slot),
-        SymbolicByteCode::GetKnownProperty(slot) => self.op_short(ByteCode::GetKnownProperty, *line, *slot),
-        SymbolicByteCode::SetKnownProperty(slot) => self.op_short(ByteCode::SetKnownProperty, *line, *slot),
+        SymbolicByteCode::GetPropByName(slot) => {
+          self.op_short(ByteCode::GetPropByName, *line, *slot)
+        },
+        SymbolicByteCode::SetPropByName(slot) => {
+          self.op_short(ByteCode::SetPropByName, *line, *slot)
+        },
+        SymbolicByteCode::GetProp(slot) => self.op_short(ByteCode::GetProp, *line, *slot),
+        SymbolicByteCode::SetProp(slot) => self.op_short(ByteCode::SetProp, *line, *slot),
         SymbolicByteCode::JumpIfFalse(target) => {
           let jump = label_offsets[target.0 as usize] - offset - 3;
           self.op_jump(ByteCode::JumpIfFalse, *line, jump)
@@ -798,19 +811,22 @@ pub enum ByteCode {
   Import,
 
   /// Import a single symbol
-  ImportSymbol,
+  ImportSym,
 
   /// Export a symbol from the current module
   Export,
 
-  /// Define a global in the globals table at a index
-  DefineGlobal,
+  /// Load a global symbol into this module
+  LoadGlobal,
 
-  /// Retrieve a global at the given index
-  GetGlobal,
+  /// Define a symbol in the module scope at this index
+  DeclareModSym,
 
-  /// Set a global at the given index
-  SetGlobal,
+  /// Retrieve a symbol at the module scope at this index
+  GetModSym,
+
+  /// Set a symbol at the module scope at this index
+  SetModSym,
 
   /// Box a local at a given index,
   Box,
@@ -840,16 +856,16 @@ pub enum ByteCode {
   SetCapture,
 
   /// Get a property off a class instance
-  GetProperty,
+  GetPropByName,
 
   /// Set a property on a class instance
-  SetProperty,
+  SetPropByName,
 
   /// Get a property off a class instance
-  GetKnownProperty,
+  GetProp,
 
   /// Set a property on a class instance
-  SetKnownProperty,
+  SetProp,
 
   /// Jump to end of if block if false
   JumpIfFalse,
@@ -1046,19 +1062,22 @@ pub enum AlignedByteCode {
   Import(u16),
 
   /// Import a single symbol
-  ImportSymbol((u16, u16)),
+  ImportSym((u16, u16)),
 
   /// Export a symbol from the current module
   Export(u16),
 
-  /// Define a global in the globals table at a index
-  DefineGlobal(u16),
+  /// Load a global symbol into this module
+  LoadGlobal(u16),
 
-  /// Retrieve a global at the given index
-  GetGlobal(u16),
+  /// Define a symbol in the module scope at this index
+  DeclareModSym((u16, u16)),
 
-  /// Set a global at the given index
-  SetGlobal(u16),
+  /// Retrieve a symbol at the module scope at this index
+  GetModSym(u16),
+
+  /// Set a symbol at the module scope at this index
+  SetModSym(u16),
 
   /// Box a local at a given index,
   Box(u8),
@@ -1088,16 +1107,16 @@ pub enum AlignedByteCode {
   SetCapture(u8),
 
   /// Get a property off a class instance
-  GetProperty(u16),
+  GetPropByName(u16),
 
   /// Set a property on a class instance
-  SetProperty(u16),
+  SetPropByName(u16),
 
   /// Get a property at a known offset for a class instance
-  GetKnownProperty(u16),
+  GetProp(u16),
 
   /// Set a property  at a known offset for a class instance
-  SetKnownProperty(u16),
+  SetProp(u16),
 
   /// Jump to end of if block if false
   JumpIfFalse(u16),
@@ -1252,8 +1271,8 @@ impl AlignedByteCode {
         Self::Import(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::ImportSymbol => (
-        Self::ImportSymbol((
+      ByteCode::ImportSym => (
+        Self::ImportSym((
           decode_u16(&store[offset + 1..offset + 3]),
           decode_u16(&store[offset + 3..offset + 5]),
         )),
@@ -1263,16 +1282,23 @@ impl AlignedByteCode {
         Self::Export(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::DefineGlobal => (
-        Self::DefineGlobal(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::LoadGlobal => (
+        Self::LoadGlobal(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::GetGlobal => (
-        Self::GetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::DeclareModSym => (
+        Self::DeclareModSym((
+          decode_u16(&store[offset + 1..offset + 3]),
+          decode_u16(&store[offset + 3..offset + 5]),
+        )),
+        offset + 5,
+      ),
+      ByteCode::GetModSym => (
+        Self::GetModSym(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::SetGlobal => (
-        Self::SetGlobal(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::SetModSym => (
+        Self::SetModSym(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::Box => (Self::Box(store[offset + 1]), offset + 2),
@@ -1284,20 +1310,20 @@ impl AlignedByteCode {
       ByteCode::SetLocal => (Self::SetLocal(store[offset + 1]), offset + 2),
       ByteCode::GetCapture => (Self::GetCapture(store[offset + 1]), offset + 2),
       ByteCode::SetCapture => (Self::SetCapture(store[offset + 1]), offset + 2),
-      ByteCode::GetProperty => (
-        Self::GetProperty(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::GetPropByName => (
+        Self::GetPropByName(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::SetProperty => (
-        Self::SetProperty(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::SetPropByName => (
+        Self::SetPropByName(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::GetKnownProperty => (
-        Self::GetKnownProperty(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::GetProp => (
+        Self::GetProp(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
-      ByteCode::SetKnownProperty => (
-        Self::SetKnownProperty(decode_u16(&store[offset + 1..offset + 3])),
+      ByteCode::SetProp => (
+        Self::SetProp(decode_u16(&store[offset + 1..offset + 3])),
         offset + 3,
       ),
       ByteCode::JumpIfFalse => (
@@ -1418,7 +1444,7 @@ mod test {
       (2, SymbolicByteCode::Constant(113)),
       (3, SymbolicByteCode::ConstantLong(45863)),
       (3, SymbolicByteCode::Import(2235)),
-      (5, SymbolicByteCode::ImportSymbol((2235, 113))),
+      (5, SymbolicByteCode::ImportSym((2235, 113))),
       (3, SymbolicByteCode::Export(7811)),
       (3, SymbolicByteCode::JumpIfFalse(Label::new(1))),
       (3, SymbolicByteCode::Jump(Label::new(1))),
@@ -1449,18 +1475,19 @@ mod test {
       (3, SymbolicByteCode::IterNext(81)),
       (3, SymbolicByteCode::IterCurrent(49882)),
       (1, SymbolicByteCode::Drop),
-      (3, SymbolicByteCode::DefineGlobal(42)),
-      (3, SymbolicByteCode::GetGlobal(14119)),
-      (3, SymbolicByteCode::SetGlobal(2043)),
-      (3, SymbolicByteCode::SetGlobal(38231)),
+      (3, SymbolicByteCode::LoadGlobal(2)),
+      (5, SymbolicByteCode::DeclareModSym((42, 0))),
+      (3, SymbolicByteCode::GetModSym(14119)),
+      (3, SymbolicByteCode::SetModSym(2043)),
+      (3, SymbolicByteCode::SetModSym(38231)),
       (2, SymbolicByteCode::GetBox(183)),
       (2, SymbolicByteCode::SetBox(56)),
       (2, SymbolicByteCode::GetLocal(96)),
       (2, SymbolicByteCode::SetLocal(149)),
       (2, SymbolicByteCode::GetBox(11)),
       (2, SymbolicByteCode::SetBox(197)),
-      (3, SymbolicByteCode::GetProperty(18273)),
-      (3, SymbolicByteCode::SetProperty(253)),
+      (3, SymbolicByteCode::GetPropByName(18273)),
+      (3, SymbolicByteCode::SetPropByName(253)),
       (2, SymbolicByteCode::Call(77)),
       (4, SymbolicByteCode::Invoke((5591, 19))),
       (4, SymbolicByteCode::SuperInvoke((2105, 15))),

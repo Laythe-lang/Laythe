@@ -122,5 +122,5 @@ impl Error for SymbolExportError {
 
 pub type ImportResult<T> = Result<T, ImportError>;
 pub type ModuleInsertResult = Result<(), ModuleInsertError>;
-pub type SymbolInsertResult = Result<(), SymbolInsertError>;
+pub type SymbolInsertResult = Result<usize, SymbolInsertError>;
 pub type SymbolExportResult = Result<(), SymbolExportError>;

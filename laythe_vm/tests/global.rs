@@ -24,41 +24,37 @@ const FILE_PATH: &str = file!();
 
 #[test]
 fn bool() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/global/bool/str.lay"], VmExit::Ok)?;
+  test_files(&["std_lib/global/bool/str.lay"], VmExit::Ok)?;
 
-  test_files(&vec![], VmExit::CompileError)?;
+  test_files(&[], VmExit::CompileError)?;
 
-  test_files(&vec![], VmExit::RuntimeError)
+  test_files(&[], VmExit::RuntimeError)
 }
 
 #[test]
 fn class() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/class/name.lay",
+    &["std_lib/global/class/name.lay",
       "std_lib/global/class/str.lay",
-      "std_lib/global/class/superCls.lay",
-    ],
+      "std_lib/global/class/superCls.lay"],
     VmExit::Ok,
   )?;
 
-  test_files(&vec![], VmExit::RuntimeError)
+  test_files(&[], VmExit::RuntimeError)
 }
 
 #[test]
 fn channel() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/channel/capacity.lay",
+    &["std_lib/global/channel/capacity.lay",
       "std_lib/global/channel/close.lay",
       "std_lib/global/channel/len.lay",
-      "std_lib/global/channel/str.lay",
-    ],
+      "std_lib/global/channel/str.lay"],
     VmExit::Ok,
   )?;
 
   test_files(
-    &vec!["std_lib/global/channel/close_close.lay"],
+    &["std_lib/global/channel/close_close.lay"],
     VmExit::RuntimeError,
   )
 }
@@ -66,20 +62,16 @@ fn channel() -> Result<(), std::io::Error> {
 #[test]
 fn closure() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/closure/name.lay",
+    &["std_lib/global/closure/name.lay",
       "std_lib/global/closure/call.lay",
-      "std_lib/global/closure/len.lay",
-    ],
+      "std_lib/global/closure/len.lay"],
     VmExit::Ok,
   )?;
 
   test_files(
-    &vec![
-      "std_lib/global/closure/name_wrong_args.lay",
+    &["std_lib/global/closure/name_wrong_args.lay",
       "std_lib/global/closure/call_wrong_args.lay",
-      "std_lib/global/closure/len_wrong_args.lay",
-    ],
+      "std_lib/global/closure/len_wrong_args.lay"],
     VmExit::RuntimeError,
   )
 }
@@ -87,16 +79,13 @@ fn closure() -> Result<(), std::io::Error> {
 #[test]
 fn error() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/error/construct.lay",
-      "std_lib/global/error/sub_class.lay",
-    ],
+    &["std_lib/global/error/construct.lay",
+      "std_lib/global/error/sub_class.lay"],
     VmExit::Ok,
   )?;
 
   test_files(
-    &vec![
-    ],
+    &[],
     VmExit::RuntimeError,
   )
 }
@@ -104,20 +93,16 @@ fn error() -> Result<(), std::io::Error> {
 #[test]
 fn fun() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/fun/name.lay",
+    &["std_lib/global/fun/name.lay",
       "std_lib/global/fun/call.lay",
-      "std_lib/global/fun/len.lay",
-    ],
+      "std_lib/global/fun/len.lay"],
     VmExit::Ok,
   )?;
 
   test_files(
-    &vec![
-      "std_lib/global/fun/name_wrong_args.lay",
+    &["std_lib/global/fun/name_wrong_args.lay",
       "std_lib/global/fun/call_wrong_args.lay",
-      "std_lib/global/fun/len_wrong_args.lay",
-    ],
+      "std_lib/global/fun/len_wrong_args.lay"],
     VmExit::RuntimeError,
   )
 }
@@ -150,7 +135,7 @@ fn iter() -> Result<(), std::io::Error> {
     VmExit::Ok,
   )?;
 
-  test_files(&vec![], VmExit::RuntimeError)
+  test_files(&[], VmExit::RuntimeError)
 }
 
 #[test]
@@ -182,8 +167,7 @@ fn list() -> Result<(), std::io::Error> {
   )?;
 
   test_files(
-    &vec![
-      "std_lib/global/list/index_get_fractional.lay",
+    &["std_lib/global/list/index_get_fractional.lay",
       "std_lib/global/list/index_get_fractional_negative.lay",
       "std_lib/global/list/index_get_out_of_range.lay",
       "std_lib/global/list/index_get_out_of_range_negative.lay",
@@ -192,8 +176,7 @@ fn list() -> Result<(), std::io::Error> {
       "std_lib/global/list/index_set_out_of_range.lay",
       "std_lib/global/list/index_set_out_of_range_negative.lay",
       "std_lib/global/list/insert_out_of_bounds.lay",
-      "std_lib/global/list/remove_out_of_bounds.lay",
-    ],
+      "std_lib/global/list/remove_out_of_bounds.lay"],
     VmExit::RuntimeError,
   )
 }
@@ -222,10 +205,8 @@ fn map() -> Result<(), std::io::Error> {
   )?;
 
   test_files(
-    &vec![
-      "std_lib/global/map/remove_missing_key.lay",
-      "std_lib/global/map/index_get_key_not_found.lay",
-    ],
+    &["std_lib/global/map/remove_missing_key.lay",
+      "std_lib/global/map/index_get_key_not_found.lay"],
     VmExit::RuntimeError,
   )
 }
@@ -233,60 +214,54 @@ fn map() -> Result<(), std::io::Error> {
 #[test]
 fn method() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/method/name.lay",
-      "std_lib/global/method/call.lay",
-    ],
+    &["std_lib/global/method/name.lay",
+      "std_lib/global/method/call.lay"],
     VmExit::Ok,
   )?;
 
-  test_files(&vec![], VmExit::RuntimeError)
+  test_files(&[], VmExit::RuntimeError)
 }
 
 #[test]
 fn module() -> Result<(), std::io::Error> {
   test_files(
-    &vec!["std_lib/global/module/name.lay"],
+    &["std_lib/global/module/name.lay"],
     VmExit::Ok,
   )?;
 
-  test_files(&vec![], VmExit::RuntimeError)
+  test_files(&[], VmExit::RuntimeError)
 }
 
 #[test]
 fn nil() -> Result<(), std::io::Error> {
-  test_files(&vec!["std_lib/global/nil/str.lay"], VmExit::Ok)?;
+  test_files(&["std_lib/global/nil/str.lay"], VmExit::Ok)?;
 
-  test_files(&vec![], VmExit::RuntimeError)
+  test_files(&[], VmExit::RuntimeError)
 }
 
 #[test]
 fn number() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/number/ceil.lay",
+    &["std_lib/global/number/ceil.lay",
       "std_lib/global/number/cmp.lay",
       "std_lib/global/number/floor.lay",
       "std_lib/global/number/parse.lay",
       "std_lib/global/number/round.lay",
       "std_lib/global/number/str.lay",
-      "std_lib/global/number/times.lay",
-    ],
+      "std_lib/global/number/times.lay"],
     VmExit::Ok,
   )?;
 
-  test_files(&vec![], VmExit::RuntimeError)
+  test_files(&[], VmExit::RuntimeError)
 }
 
 #[test]
 fn object() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/object/cls.lay",
+    &["std_lib/global/object/cls.lay",
       "std_lib/global/object/equals.lay",
       "std_lib/global/object/is_a.lay",
-      "std_lib/global/object/str.lay",
-    ],
+      "std_lib/global/object/str.lay"],
     VmExit::Ok,
   )
 }
@@ -319,8 +294,7 @@ fn print() -> Result<(), std::io::Error> {
 #[test]
 fn str() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/str/down_case.lay",
+    &["std_lib/global/str/down_case.lay",
       "std_lib/global/str/has.lay",
       "std_lib/global/str/index.lay",
       "std_lib/global/str/iter.lay",
@@ -331,19 +305,17 @@ fn str() -> Result<(), std::io::Error> {
       "std_lib/global/str/trim.lay",
       "std_lib/global/str/trim_start.lay",
       "std_lib/global/str/trim_end.lay",
-      "std_lib/global/str/up_case.lay",
-    ],
+      "std_lib/global/str/up_case.lay"],
     VmExit::Ok,
   )?;
 
-  test_files(&vec![], VmExit::RuntimeError)
+  test_files(&[], VmExit::RuntimeError)
 }
 
 #[test]
 fn tuple() -> Result<(), std::io::Error> {
   test_files(
-    &vec![
-      "std_lib/global/tuple/collect.lay",
+    &["std_lib/global/tuple/collect.lay",
       "std_lib/global/tuple/has.lay",
       "std_lib/global/tuple/index.lay",
       "std_lib/global/tuple/index_get.lay",
@@ -352,18 +324,15 @@ fn tuple() -> Result<(), std::io::Error> {
       "std_lib/global/tuple/iter.lay",
       "std_lib/global/tuple/len.lay",
       "std_lib/global/tuple/slice.lay",
-      "std_lib/global/tuple/str.lay",
-    ],
+      "std_lib/global/tuple/str.lay"],
     VmExit::Ok,
   )?;
 
   test_files(
-    &vec![
-      "std_lib/global/tuple/index_get_fractional.lay",
+    &["std_lib/global/tuple/index_get_fractional.lay",
       "std_lib/global/tuple/index_get_fractional_negative.lay",
       "std_lib/global/tuple/index_get_out_of_range.lay",
-      "std_lib/global/tuple/index_get_out_of_range_negative.lay",
-    ],
+      "std_lib/global/tuple/index_get_out_of_range_negative.lay"],
     VmExit::RuntimeError,
   )
 }

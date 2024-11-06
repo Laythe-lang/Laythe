@@ -968,7 +968,7 @@ mod test {
     }
     ";
 
-    let mut scanner = Scanner::new(&source);
+    let mut scanner = Scanner::new(source);
     let mut token = scanner.scan_token();
     assert_eq!(token.start(), 5);
     assert_eq!(token.end(), 8);
@@ -996,7 +996,7 @@ mod test {
       print(x);
     }";
 
-    let mut scanner = Scanner::new(&source);
+    let mut scanner = Scanner::new(source);
 
     scanner.scan_token();
     let offsets = scanner.line_offsets();
@@ -1035,7 +1035,7 @@ mod test {
     ];
 
     for (input, expected) in tests {
-      let mut scanner = Scanner::new(&input);
+      let mut scanner = Scanner::new(input);
       let scanned_token = scanner.scan_token();
       assert_eq!(scanned_token.kind(), TokenKind::String);
       assert_eq!(scanned_token.str(), expected);
@@ -1048,7 +1048,7 @@ mod test {
     let x = 'My name is ${name} and am ${'${20}'}';
     ";
 
-    let mut scanner = Scanner::new(&source);
+    let mut scanner = Scanner::new(source);
     let asserts = [
       (TokenKind::Let, "let"),
       (TokenKind::Identifier, "x"),

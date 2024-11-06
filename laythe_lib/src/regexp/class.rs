@@ -47,7 +47,7 @@ pub fn declare_regexp_class(
   package: Gc<Package>,
 ) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, REGEXP_CLASS_NAME)?;
-  export_and_insert(module, class.name(), val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_regexp_class(
@@ -182,7 +182,7 @@ mod test {
     val!(regexp)
   }
 
-  mod test {
+  mod test_impl {
     use laythe_core::value::{VALUE_FALSE, VALUE_TRUE};
 
     use super::*;

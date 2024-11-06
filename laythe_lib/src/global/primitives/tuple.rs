@@ -54,7 +54,7 @@ const TUPLE_COLLECT: NativeMetaBuilder = NativeMetaBuilder::fun("collect", Arity
 pub fn declare_tuple_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, TUPLE_CLASS_NAME)?;
 
-  export_and_insert(module, class.name(), val!(class))
+  export_and_insert(hooks, module, class.name(), val!(class))
 }
 
 pub fn define_tuple_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
@@ -448,7 +448,7 @@ mod test {
       let result = tuple_index_get.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert!(r.is_nil()),
-        _ => assert!(false),
+        _ => panic!(),
       }
 
       assert_eq!(tuple[0], VALUE_NIL)
@@ -465,14 +465,14 @@ mod test {
     fn call() {
       let mut gc = test_native_dependencies();
       let mut context = MockedContext::with_std(&[
-        val!(gc.manage_str("nil".to_string(), &NO_GC)),
-        val!(gc.manage_str("10".to_string(), &NO_GC)),
-        val!(gc.manage_str("[5]".to_string(), &NO_GC)),
+        val!(gc.manage_str("nil", &NO_GC)),
+        val!(gc.manage_str("10", &NO_GC)),
+        val!(gc.manage_str("[5]", &NO_GC)),
       ])
       .unwrap();
       let mut hooks = Hooks::new(&mut context);
       let error = val!(test_error_class(&hooks.as_gc()));
-      let list_str = TupleStr::native(&hooks.as_gc(), hooks.manage_str("str".to_string()), error);
+      let list_str = TupleStr::native(&hooks.as_gc(), hooks.manage_str("str"), error);
 
       let this = hooks.manage_obj::<Tuple, &[Value]>(&[
         VALUE_NIL,
@@ -484,7 +484,7 @@ mod test {
       let result = list_str.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert_eq!(&*r.to_obj().to_str(), "(nil, 10, [5])"),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -532,7 +532,7 @@ mod test {
       let result = list_size.call(&mut hooks, values);
       match result {
         Call::Ok(r) => assert_eq!(r.to_num(), 2.0),
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -555,7 +555,7 @@ mod test {
         Call::Ok(r) => {
           assert_eq!(r.to_num(), 1.0);
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -579,7 +579,7 @@ mod test {
         Call::Ok(r) => {
           assert!(r.to_bool());
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
 
       let result = tuple_hash.call(&mut hooks, &[this, val!(false)]);
@@ -587,7 +587,7 @@ mod test {
         Call::Ok(r) => {
           assert!(!r.to_bool());
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -613,7 +613,7 @@ mod test {
           assert_eq!(iter.next(&mut hooks).unwrap(), val!(true));
           assert_eq!(iter.current(), VALUE_NIL);
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }
@@ -637,7 +637,7 @@ mod test {
           let list = r.to_obj().to_tuple();
           assert_eq!(list.len(), 4);
         },
-        _ => assert!(false),
+        _ => panic!(),
       }
     }
   }

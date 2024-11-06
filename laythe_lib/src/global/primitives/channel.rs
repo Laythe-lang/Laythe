@@ -3,7 +3,7 @@ use crate::{
   global::primitives::error::CHANNEL_ERROR_NAME,
   native, native_with_error,
   support::{export_and_insert, load_class_from_module},
-  StdError, StdResult,
+  StdResult,
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -27,7 +27,7 @@ const CHANNEL_CAPACITY: NativeMetaBuilder = NativeMetaBuilder::method("capacity"
 
 pub fn declare_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   let channel_class = class_inheritance(hooks, module, CHANNEL_CLASS_NAME)?;
-  export_and_insert(module, channel_class.name(), val!(channel_class)).map_err(StdError::from)
+  export_and_insert(hooks, module, CHANNEL_CLASS_NAME, val!(channel_class))
 }
 
 pub fn define_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
@@ -119,9 +119,7 @@ mod test {
       let channel_str = ChannelStr::native(&hooks.as_gc());
       let channel = hooks.manage_obj(Channel::with_capacity(&hooks.as_gc(), 1));
 
-      let result = channel_str
-        .call(&mut hooks,  &[val!(channel)])
-        .unwrap();
+      let result = channel_str.call(&mut hooks, &[val!(channel)]).unwrap();
       assert!(result.to_obj().to_str().contains("<Channel "));
     }
   }
@@ -145,16 +143,12 @@ mod test {
         .build(&hooks.as_gc())
         .unwrap();
 
-      let result = channel_len
-        .call(&mut hooks, &[val!(channel)])
-        .unwrap();
+      let result = channel_len.call(&mut hooks, &[val!(channel)]).unwrap();
       assert_eq!(result, val!(0.0));
 
       channel.send(fiber, val!(1.0));
 
-      let result = channel_len
-        .call(&mut hooks, &[val!(channel)])
-        .unwrap();
+      let result = channel_len.call(&mut hooks, &[val!(channel)]).unwrap();
       assert_eq!(result, val!(1.0));
     }
   }
@@ -173,9 +167,7 @@ mod test {
       let channel_capacity = ChannelCapacity::native(&hooks.as_gc());
       let channel = hooks.manage_obj(Channel::with_capacity(&hooks.as_gc(), 4));
 
-      let result = channel_capacity
-        .call(&mut hooks, &[val!(channel)])
-        .unwrap();
+      let result = channel_capacity.call(&mut hooks, &[val!(channel)]).unwrap();
 
       assert_eq!(result, val!(4.0));
     }
@@ -196,9 +188,7 @@ mod test {
       let channel_close = ChannelClose::native(&hooks.as_gc(), error);
       let channel = hooks.manage_obj(Channel::with_capacity(&hooks.as_gc(), 4));
 
-      let result = channel_close
-        .call(&mut hooks,  &[val!(channel)])
-        .unwrap();
+      let result = channel_close.call(&mut hooks, &[val!(channel)]).unwrap();
 
       assert_eq!(result, VALUE_NIL);
       assert!(channel.is_closed());

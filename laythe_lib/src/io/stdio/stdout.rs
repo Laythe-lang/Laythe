@@ -37,6 +37,7 @@ pub fn declare_stdout(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>)
   let instance = hooks.manage_obj(class);
 
   export_and_insert(
+    hooks,
     module,
     hooks.manage_str(STDOUT_INSTANCE_NAME),
     val!(instance),
@@ -136,13 +137,13 @@ mod test {
 
       let stdout_write = StdoutWrite::native(&hooks.as_gc(), error);
 
-      let string = val!(hooks.manage_str("some string".to_string()));
+      let string = val!(hooks.manage_str("some string"));
       let result = stdout_write.call(&mut hooks, &[VALUE_NIL, string]);
 
       assert!(result.is_ok());
       assert!(result.unwrap().is_nil());
 
-      let stdout = str::from_utf8(&*stdio_container.stdout);
+      let stdout = str::from_utf8(&stdio_container.stdout);
       assert!(stdout.is_ok());
       assert_eq!(stdout.unwrap(), "some string");
     }
@@ -164,13 +165,13 @@ mod test {
 
       let stdout_write = StdoutWriteln::native(&hooks.as_gc(), error);
 
-      let string = val!(hooks.manage_str("some string".to_string()));
+      let string = val!(hooks.manage_str("some string"));
       let result = stdout_write.call(&mut hooks, &[VALUE_NIL, string]);
 
       assert!(result.is_ok());
       assert!(result.unwrap().is_nil());
 
-      let stdout = str::from_utf8(&*stdio_container.stdout);
+      let stdout = str::from_utf8(&stdio_container.stdout);
       assert!(stdout.is_ok());
       assert_eq!(stdout.unwrap(), "some string\n");
     }
