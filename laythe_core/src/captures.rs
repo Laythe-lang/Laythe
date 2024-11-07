@@ -2,18 +2,17 @@ use std::fmt;
 
 use crate::{
   hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, GcObj, Trace, Tuple},
+  managed::{Array, DebugHeap, DebugWrap, GcObj, Trace},
   object::LyBox,
-  val,
   value::Value,
 };
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub struct Captures(Tuple);
+pub struct Captures(Array<GcObj<LyBox>>);
 
 impl Captures {
   pub fn new(hooks: &GcHooks, captures: &[GcObj<LyBox>]) -> Self {
-    Self(hooks.manage_obj::<Tuple, &[Value]>(&captures.iter().map(|c| val!(*c)).collect::<Vec<Value>>()))
+    Self(hooks.manage(captures))
   }
 
   #[inline]
@@ -28,17 +27,17 @@ impl Captures {
 
   #[inline]
   pub fn get_capture(&self, index: usize) -> GcObj<LyBox> {
-    self.0[index].to_obj().to_box()
+    self.0[index]
   }
 
   #[inline]
   pub fn get_capture_value(&self, index: usize) -> Value {
-    self.0[index].to_obj().to_box().value
+    self.0[index].value
   }
 
   #[inline]
   pub fn set_capture_value(&mut self, index: usize, value: Value) {
-    self.0[index].to_obj().to_box().value = value;
+    self.0[index].value = value;
   }
 }
 

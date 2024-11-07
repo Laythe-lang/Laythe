@@ -7,7 +7,7 @@ use laythe_core::{
   constants::{INDEX_GET, INDEX_SET},
   hooks::{GcHooks, Hooks},
   if_let_obj, list,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, IndexedResult, List, ListBuilder, Trace},
+  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, IndexedResult, LyList, ListBuilder, Trace},
   module::Module,
   object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
@@ -333,7 +333,7 @@ impl ListSlice {
   }
 }
 
-fn determine_index(list: &List, index: f64) -> Result<usize, String> {
+fn determine_index(list: &LyList, index: f64) -> Result<usize, String> {
   if index.fract() != 0.0 {
     return Err("Index must be an integer.".to_string());
   }
@@ -659,13 +659,13 @@ impl LyNative for ListCollect {
 
 #[derive(Debug)]
 struct ListIterator {
-  list: List,
+  list: LyList,
   index: usize,
   current: Value,
 }
 
 impl ListIterator {
-  fn new(list: List) -> Self {
+  fn new(list: LyList) -> Self {
     Self {
       current: VALUE_NIL,
       list,

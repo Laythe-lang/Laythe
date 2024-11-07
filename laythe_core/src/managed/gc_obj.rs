@@ -6,7 +6,7 @@ use super::{
   utils::{
     get_array_len_offset, get_list_cap_offset, get_offset, make_array_layout, make_obj_layout,
   },
-  AllocateObj, GcStr, Instance, List, Mark, Marked, Tuple, Unmark,
+  AllocateObj, GcStr, Instance, LyList, Mark, Marked, Tuple, Unmark,
 };
 use crate::{
   managed::{
@@ -358,7 +358,7 @@ impl GcObject {
   }
 
   #[inline]
-  pub fn to_list(self) -> List {
+  pub fn to_list(self) -> LyList {
     unsafe { GcList::from_alloc_ptr(self.ptr) }
   }
 

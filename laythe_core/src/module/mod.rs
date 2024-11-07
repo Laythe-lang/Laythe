@@ -13,7 +13,7 @@ use crate::{
   hooks::GcHooks,
   list,
   managed::{
-    AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Instance, List, ListLocation,
+    AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Instance, LyList, ListLocation,
     Trace,
   },
   object::{Class, Map},
@@ -48,7 +48,7 @@ pub struct Module {
   symbols_by_name: Map<GcStr, usize>,
 
   /// All the symbols
-  symbols: List,
+  symbols: LyList,
 
   /// The path this module is located at
   path: GcStr,

@@ -23,7 +23,7 @@ impl<T: 'static> Allocation<T> {
   pub fn new(data: T) -> Self {
     Self {
       data,
-      header: Header::new(false),
+      header: Header::new(),
     }
   }
 }

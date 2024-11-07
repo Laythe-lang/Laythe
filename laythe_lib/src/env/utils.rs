@@ -6,7 +6,7 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   list,
-  managed::{Gc, GcObj, List, Trace},
+  managed::{Gc, GcObj, LyList, Trace},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
@@ -33,7 +33,7 @@ native!(Args, ARGS_META);
 impl LyNative for Args {
   fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     let io = hooks.as_io();
-    let mut list: List = hooks.manage_obj(list!());
+    let mut list: LyList = hooks.manage_obj(list!());
     hooks.push_root(list);
 
     for arg in io.env().args() {
