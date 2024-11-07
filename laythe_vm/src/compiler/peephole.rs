@@ -1,5 +1,8 @@
 use crate::{
-  byte_code::{SymbolicByteCode, ByteCodeEncoder, EncodedChunk}, cache::CacheIdEmitter, chunk_builder::ChunkBuilder, source::VmFileId,
+  byte_code::{ByteCodeEncoder, EncodedChunk, SymbolicByteCode},
+  cache::CacheIdEmitter,
+  chunk_builder::ChunkBuilder,
+  source::VmFileId,
 };
 use bumpalo::{collections, Bump};
 use codespan_reporting::diagnostic::Diagnostic;
@@ -30,7 +33,11 @@ impl<T> VecCursor<T> {
   }
 
   pub fn at_end(&self) -> bool {
-    self.reader >= self.len()
+    !self.inbounds(self.reader)
+  }
+
+  fn inbounds(&self, l: usize) -> bool {
+    l < self.len()
   }
 
   pub fn read_slice(&self) -> &[T] {
@@ -38,7 +45,7 @@ impl<T> VecCursor<T> {
   }
 
   pub fn write(&mut self, value: T) {
-    debug_assert!(self.writer <= self.len());
+    debug_assert!(self.inbounds(self.writer));
     self.vec[self.writer] = value;
     self.inc_writer(1);
   }
@@ -60,18 +67,22 @@ impl<T> VecCursor<T> {
 
 impl<T: Copy> VecCursor<T> {
   pub fn read(&mut self) -> T {
-    debug_assert!(self.reader <= self.len());
+    debug_assert!(!self.at_end());
     let value = self.vec[self.reader];
     self.inc_reader(1);
     value
   }
 
-  pub fn peek(&self) -> T {
-    self.vec[self.reader]
+  pub fn peek(&self) -> Option<T> {
+    if self.inbounds(self.reader) {
+      Some(self.vec[self.reader])
+    } else {
+      None
+    }
   }
 
   pub fn peek_next(&self) -> Option<T> {
-    if self.reader + 1 < self.len() {
+    if self.inbounds(self.reader + 1) {
       Some(self.vec[self.reader + 1])
     } else {
       None
@@ -111,7 +122,8 @@ pub fn peephole_compile<'a>(
   let errors = collections::Vec::new_in(alloc);
 
   let encoder = ByteCodeEncoder::new(line_buffer, code_buffer, errors, cache_id_emitter);
-  let EncodedChunk { code, lines } = encoder.encode(&instructions, &lines, &label_offsets[..label_count])?;
+  let EncodedChunk { code, lines } =
+    encoder.encode(&instructions, &lines, &label_offsets[..label_count])?;
 
   let instructions = hooks.manage(&*code);
   hooks.push_root(instructions);
@@ -149,6 +161,50 @@ fn peephole_optimize(
         let args = *args;
 
         invoke_super(&mut instructions_cursor, &mut lines_cursor, slot, args)
+      },
+      [SymbolicByteCode::SetLocal(set_slot), SymbolicByteCode::Drop, SymbolicByteCode::GetLocal(get_slot), ..] => {
+        if set_slot == get_slot {
+          eliminate_drop(&mut instructions_cursor, &mut lines_cursor)
+        } else {
+          instructions_cursor.copy_cursors();
+          lines_cursor.copy_cursors();
+        }
+      },
+      [SymbolicByteCode::SetBox(set_slot), SymbolicByteCode::Drop, SymbolicByteCode::GetBox(get_slot), ..] => {
+        if set_slot == get_slot {
+          eliminate_drop(&mut instructions_cursor, &mut lines_cursor)
+        } else {
+          instructions_cursor.copy_cursors();
+          lines_cursor.copy_cursors();
+        }
+      },
+      [SymbolicByteCode::SetCapture(set_slot), SymbolicByteCode::Drop, SymbolicByteCode::GetCapture(get_slot), ..] => {
+        if set_slot == get_slot {
+          eliminate_drop(&mut instructions_cursor, &mut lines_cursor)
+        } else {
+          instructions_cursor.copy_cursors();
+          lines_cursor.copy_cursors();
+        }
+      },
+      [SymbolicByteCode::SetModSym(set_slot), SymbolicByteCode::Drop, SymbolicByteCode::GetModSym(get_slot), ..] => {
+        if set_slot == get_slot {
+          eliminate_drop(&mut instructions_cursor, &mut lines_cursor);
+        } else {
+          instructions_cursor.copy_cursors();
+          lines_cursor.copy_cursors();
+        }
+      },
+      [SymbolicByteCode::GetLocal(_), SymbolicByteCode::GetLocal(_), ..] => {
+        load_multiple(&mut instructions_cursor, &mut lines_cursor);
+      },
+      [SymbolicByteCode::GetModSym(_), SymbolicByteCode::GetModSym(_), ..] => {
+        load_multiple(&mut instructions_cursor, &mut lines_cursor);
+      },
+      [SymbolicByteCode::GetBox(_), SymbolicByteCode::GetBox(_), ..] => {
+        load_multiple(&mut instructions_cursor, &mut lines_cursor);
+      },
+      [SymbolicByteCode::GetCapture(_), SymbolicByteCode::GetCapture(_), ..] => {
+        load_multiple(&mut instructions_cursor, &mut lines_cursor);
       },
       [SymbolicByteCode::Jump(_)
       | SymbolicByteCode::Loop(_)
@@ -189,6 +245,29 @@ fn drop(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut VecCursor<u1
   lines.inc_reader(drop_count as usize - 1);
 }
 
+fn load_multiple(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut VecCursor<u16>) {
+  let load = instructions.read();
+  instructions.write(load);
+  lines.copy_cursors();
+
+  while instructions.peek() == Some(load) {
+    instructions.inc_reader(1);
+    instructions.write(SymbolicByteCode::Dup);
+    lines.copy_cursors();
+  }
+}
+
+
+fn eliminate_drop(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut VecCursor<u16>) {
+  let instruction = instructions.read();
+  instructions.inc_reader(2);
+  instructions.write(instruction);
+
+  let first_line = lines.read();
+  lines.inc_reader(2);
+  lines.write(first_line);
+}
+
 fn invoke(
   instructions: &mut VecCursor<SymbolicByteCode>,
   lines: &mut VecCursor<u16>,
@@ -225,8 +304,8 @@ fn remove_dead_code(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut 
   instructions.copy_cursors();
   lines.copy_cursors();
 
-  while !instructions.at_end() {
-    if let SymbolicByteCode::Label(_) = instructions.peek() {
+  while let Some(instruction) = instructions.peek() {
+    if let SymbolicByteCode::Label(_) = instruction {
       break;
     }
 
@@ -364,9 +443,11 @@ mod test {
     fn peek() {
       let mut cursor = VecCursor::<u8>::new(vec![1, 2]);
 
-      assert_eq!(cursor.peek(), 1);
+      assert_eq!(cursor.peek(), Some(1));
       cursor.inc_reader(1);
-      assert_eq!(cursor.read(), 2);
+      assert_eq!(cursor.peek(), Some(2));
+      cursor.inc_reader(1);
+      assert_eq!(cursor.peek(), None);
     }
 
     #[test]
@@ -457,6 +538,121 @@ mod test {
     }
 
     #[test]
+    fn load_multiple_replacement() {
+      let mut instructions = VecCursor::new(vec![
+        SymbolicByteCode::GetLocal(0),
+        SymbolicByteCode::GetLocal(0),
+        SymbolicByteCode::GetLocal(0),
+      ]);
+      let mut lines = VecCursor::new(vec![1, 2, 3]);
+
+      load_multiple(&mut instructions, &mut lines);
+
+      let instructions = instructions.take();
+      let lines = lines.take();
+
+      assert_eq!(instructions.len(), 3);
+      assert_eq!(instructions[0], SymbolicByteCode::GetLocal(0));
+      assert_eq!(instructions[1], SymbolicByteCode::Dup);
+      assert_eq!(instructions[2], SymbolicByteCode::Dup);
+
+      assert_eq!(lines.len(), 3);
+      assert_eq!(lines[0], 1);
+      assert_eq!(lines[1], 2);
+      assert_eq!(lines[2], 3);
+    }
+
+
+
+    mod eliminate_drop_replacement {
+      use super::*;
+
+      #[test]
+      fn local() {
+        let mut instructions = VecCursor::new(vec![
+          SymbolicByteCode::SetLocal(0),
+          SymbolicByteCode::Drop,
+          SymbolicByteCode::GetLocal(0),
+        ]);
+        let mut lines = VecCursor::new(vec![1, 2, 3]);
+
+        eliminate_drop(&mut instructions, &mut lines);
+
+        let instructions = instructions.take();
+        let lines = lines.take();
+
+        assert_eq!(instructions.len(), 1);
+        assert_eq!(instructions[0], SymbolicByteCode::SetLocal(0));
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], 1);
+      }
+
+      #[test]
+      fn box_() {
+        let mut instructions = VecCursor::new(vec![
+          SymbolicByteCode::SetBox(0),
+          SymbolicByteCode::Drop,
+          SymbolicByteCode::GetBox(0),
+        ]);
+        let mut lines = VecCursor::new(vec![1, 2, 3]);
+
+        eliminate_drop(&mut instructions, &mut lines);
+
+        let instructions = instructions.take();
+        let lines = lines.take();
+
+        assert_eq!(instructions.len(), 1);
+        assert_eq!(instructions[0], SymbolicByteCode::SetBox(0));
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], 1);
+      }
+
+      #[test]
+      fn capture() {
+        let mut instructions = VecCursor::new(vec![
+          SymbolicByteCode::SetCapture(0),
+          SymbolicByteCode::Drop,
+          SymbolicByteCode::GetCapture(0),
+        ]);
+        let mut lines = VecCursor::new(vec![1, 2, 3]);
+
+        eliminate_drop(&mut instructions, &mut lines);
+
+        let instructions = instructions.take();
+        let lines = lines.take();
+
+        assert_eq!(instructions.len(), 1);
+        assert_eq!(instructions[0], SymbolicByteCode::SetCapture(0));
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], 1);
+      }
+
+      #[test]
+      fn module_symbol() {
+        let mut instructions = VecCursor::new(vec![
+          SymbolicByteCode::SetModSym(0),
+          SymbolicByteCode::Drop,
+          SymbolicByteCode::GetModSym(0),
+        ]);
+        let mut lines = VecCursor::new(vec![1, 2, 3]);
+
+        eliminate_drop(&mut instructions, &mut lines);
+
+        let instructions = instructions.take();
+        let lines = lines.take();
+
+        assert_eq!(instructions.len(), 1);
+        assert_eq!(instructions[0], SymbolicByteCode::SetModSym(0));
+
+        assert_eq!(lines.len(), 1);
+        assert_eq!(lines[0], 1);
+      }
+    }
+
+    #[test]
     fn invoke_replacement() {
       let slot = 3;
       let args = 2;
@@ -468,12 +664,7 @@ mod test {
       ]);
       let mut lines = VecCursor::new(vec![1, 2, 3]);
 
-      invoke(
-        &mut instructions,
-        &mut lines,
-        slot,
-        args,
-      );
+      invoke(&mut instructions, &mut lines, slot, args);
 
       let instructions = instructions.take();
       let lines = lines.take();
@@ -499,12 +690,7 @@ mod test {
       ]);
       let mut lines = VecCursor::new(vec![1, 2, 3]);
 
-      invoke_super(
-        &mut instructions,
-        &mut lines,
-        slot,
-        args,
-      );
+      invoke_super(&mut instructions, &mut lines, slot, args);
 
       let instructions = instructions.take();
       let lines = lines.take();
@@ -602,7 +788,7 @@ mod test {
         SymbolicByteCode::Constant(1),
         SymbolicByteCode::Constant(1),
         SymbolicByteCode::Constant(1),
-        SymbolicByteCode::PushHandler((0, Label::new(0)))
+        SymbolicByteCode::PushHandler((0, Label::new(0))),
       ];
 
       apply_stack_effects(&mut builder, &mut instructions);
@@ -611,7 +797,10 @@ mod test {
       assert_eq!(instructions[0], SymbolicByteCode::Constant(1));
       assert_eq!(instructions[1], SymbolicByteCode::Constant(1));
       assert_eq!(instructions[2], SymbolicByteCode::Constant(1));
-      assert_eq!(instructions[3], SymbolicByteCode::PushHandler((4, Label::new(0))));
+      assert_eq!(
+        instructions[3],
+        SymbolicByteCode::PushHandler((4, Label::new(0)))
+      );
     }
   }
 
@@ -630,35 +819,40 @@ mod test {
         SymbolicByteCode::Drop,
         SymbolicByteCode::Drop,
         SymbolicByteCode::Drop,
+        SymbolicByteCode::SetModSym(0),
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::GetModSym(0),
         SymbolicByteCode::GetSuper(1),
         SymbolicByteCode::PropertySlot,
         SymbolicByteCode::Call(2),
         SymbolicByteCode::Raise,
         SymbolicByteCode::False,
       ];
-      let lines = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14];
+      let lines = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
 
       let (instructions, lines) = peephole_optimize(instructions, lines);
 
-      assert_eq!(instructions.len(), 8);
+      assert_eq!(instructions.len(), 9);
       assert_eq!(instructions[0], SymbolicByteCode::DropN(2));
       assert_eq!(instructions[1], SymbolicByteCode::Invoke((3, 1)));
       assert_eq!(instructions[2], SymbolicByteCode::InvokeSlot);
       assert_eq!(instructions[3], SymbolicByteCode::Nil);
       assert_eq!(instructions[4], SymbolicByteCode::DropN(3));
-      assert_eq!(instructions[5], SymbolicByteCode::SuperInvoke((1, 2)));
-      assert_eq!(instructions[6], SymbolicByteCode::InvokeSlot);
-      assert_eq!(instructions[7], SymbolicByteCode::Raise);
+      assert_eq!(instructions[5], SymbolicByteCode::SetModSym(0));
+      assert_eq!(instructions[6], SymbolicByteCode::SuperInvoke((1, 2)));
+      assert_eq!(instructions[7], SymbolicByteCode::InvokeSlot);
+      assert_eq!(instructions[8], SymbolicByteCode::Raise);
 
-      assert_eq!(lines.len(), 8);
+      assert_eq!(lines.len(), 9);
       assert_eq!(lines[0], 1);
       assert_eq!(lines[1], 3);
       assert_eq!(lines[2], 3);
       assert_eq!(lines[3], 6);
       assert_eq!(lines[4], 7);
       assert_eq!(lines[5], 10);
-      assert_eq!(lines[6], 10);
+      assert_eq!(lines[6], 13);
       assert_eq!(lines[7], 13);
+      assert_eq!(lines[8], 16);
     }
   }
 }
