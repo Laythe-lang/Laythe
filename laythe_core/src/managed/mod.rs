@@ -99,7 +99,7 @@ pub use allocation::Allocation;
 pub use allocator::{Allocator, NoGc, NO_GC};
 pub use gc::Gc;
 pub use gc_array::Array;
-pub use gc_list::{IndexedResult, List, ListBuilder, ListLocation};
+pub use gc_list::{IndexedResult, ListBuilder, ListLocation, LyList, List};
 pub use gc_obj::{GcObj, GcObject, GcObjectHandle, Object};
 pub use gc_str::GcStr;
 pub use instance::Instance;

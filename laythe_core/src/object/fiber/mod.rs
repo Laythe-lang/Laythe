@@ -8,7 +8,7 @@ use crate::{
   constants::SCRIPT,
   hooks::GcHooks,
   if_let_obj,
-  managed::{DebugHeap, DebugWrap, GcObj, Instance, List, ListLocation, Object, Trace},
+  managed::{DebugHeap, DebugWrap, GcObj, Instance, ListLocation, LyList, Object, Trace},
   match_obj, val,
   value::{Value, VALUE_NIL},
 };
@@ -167,7 +167,7 @@ impl Fiber {
         });
       }
 
-      fn forward_list(value: &mut Value, list: List) {
+      fn forward_list(value: &mut Value, list: LyList) {
         if let ListLocation::Forwarded(gc_list) = list.state() {
           *value = val!(gc_list)
         }

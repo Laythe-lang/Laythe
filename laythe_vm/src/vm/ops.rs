@@ -6,7 +6,7 @@ use laythe_core::{
   captures::Captures,
   hooks::{GcHooks, Hooks},
   if_let_obj, list,
-  managed::{Array, Gc, GcObj, GcStr, List, Tuple},
+  managed::{Array, Gc, GcObj, GcStr, LyList, Tuple},
   match_obj,
   module::Import,
   object::{
@@ -1020,7 +1020,7 @@ impl Vm {
     result
   }
 
-  fn extract_import_path(&mut self, path: List) -> Vec<GcStr> {
+  fn extract_import_path(&mut self, path: LyList) -> Vec<GcStr> {
     path
       .iter()
       .map(|segment| segment.to_obj().to_str())

@@ -82,7 +82,7 @@ pub use self::boxed::*;
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
   use crate::{
-    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Instance, Trace, Tuple, List},
+    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Instance, LyList, Trace, Tuple},
     object::{
       Channel, Class, Closure, Enumerator, Fiber, Fun, LyBox, Map, Method, Native, ObjectKind,
     },
@@ -311,8 +311,8 @@ mod unboxed {
     }
   }
 
-  impl From<List> for Value {
-    fn from(managed: List) -> Value {
+  impl From<LyList> for Value {
+    fn from(managed: LyList) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -497,7 +497,7 @@ mod unboxed {
 mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
-    managed::{DebugHeap, GcObj, GcObject, GcStr, Instance, Trace, Tuple, List},
+    managed::{DebugHeap, GcObj, GcObject, GcStr, Instance, LyList, Trace, Tuple},
     object::{
       Channel, Class, Closure, Enumerator, Fiber, Fun, LyBox, Map, Method, Native, ObjectKind,
     },
@@ -734,8 +734,8 @@ mod boxed {
     }
   }
 
-  impl From<List> for Value {
-    fn from(managed: List) -> Value {
+  impl From<LyList> for Value {
+    fn from(managed: LyList) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
@@ -845,7 +845,12 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
-    captures::Captures, hooks::{GcHooks, NoContext}, list, managed::{Allocator, Gc, GcObj, GcStr, NO_GC}, module::Module, object::{Class, Closure, Fun, Map, ObjectKind}
+    captures::Captures,
+    hooks::{GcHooks, NoContext},
+    list,
+    managed::{Allocator, Gc, GcObj, GcStr, NO_GC},
+    module::Module,
+    object::{Class, Closure, Fun, Map, ObjectKind},
   };
 
   const VALUE_VARIANTS: [ValueKind; 4] = [

@@ -1,10 +1,16 @@
 use super::{
   allocate::AllocObjResult,
-  header::ObjHeader,
+  header::{Header, ObjHeader},
   utils::{get_list_cap_offset, get_list_len_offset, get_list_offset},
-  AllocateObj, DebugHeap, DebugWrap, GcObject, GcObjectHandle, Manage, Mark, Marked, Trace, Unmark,
+  Allocate, AllocateObj, DebugHeap, DebugWrap, GcObject, GcObjectHandle, Manage, Mark, Marked,
+  Trace, Unmark,
 };
-use crate::{hooks::GcHooks, managed::utils::make_list_layout, object::ObjectKind, value::Value};
+use crate::{
+  hooks::GcHooks,
+  managed::{utils::make_list_layout, AllocResult},
+  object::ObjectKind,
+  value::Value,
+};
 use ptr::NonNull;
 use std::{
   alloc::{alloc, dealloc, handle_alloc_error},
@@ -16,7 +22,8 @@ use std::{
   slice::{self},
 };
 
-pub type List = GcList<Value, ObjHeader>;
+pub type LyList = GcList<Value, ObjHeader>;
+pub type List<T> = GcList<T, Header>;
 
 /// the bit position
 const BIT_POSITION: u32 = usize::BITS - 1;
@@ -404,6 +411,82 @@ impl GcList<Value, ObjHeader> {
   }
 }
 
+impl<T> GcList<T, Header>
+where
+  T: Trace + DebugHeap + Copy + 'static,
+{
+  /// Push a new element onto this list. If a resize is needed
+  /// a new list will be allocated and elements will be transferred
+  pub fn push(&mut self, value: T, hooks: &GcHooks) {
+    match self.state() {
+      ListLocation::Here(cap) => {
+        let len = unsafe { self.read_len() };
+
+        // determine if we need to grow the list then
+        // persist the value
+        let mut list = self.ensure_capacity(len + 1, cap, hooks);
+        unsafe {
+          list.write_value(value, len);
+          list.write_len(len + 1);
+        }
+      },
+      ListLocation::Forwarded(mut gc_list) => gc_list.push(value, hooks),
+    }
+  }
+
+  /// Insert an element into this list at the provided offset
+  pub fn insert(&mut self, index: usize, value: T, hooks: &GcHooks) -> IndexedResult {
+    match self.state() {
+      ListLocation::Here(cap) => {
+        let len = unsafe { self.read_len() };
+        if index > len {
+          return IndexedResult::OutOfBounds;
+        }
+
+        // determine if we need to grow the list then
+        // persist the value
+        let mut list = self.ensure_capacity(len + 1, cap, hooks);
+
+        unsafe {
+          ptr::copy(list.item_ptr(index), list.item_mut(index + 1), len - index);
+          list.write_value(value, index);
+          list.write_len(len + 1);
+        }
+
+        IndexedResult::Ok(())
+      },
+      ListLocation::Forwarded(mut gc_list) => gc_list.insert(index, value, hooks),
+    }
+  }
+
+  /// Ensure this list has enough capacity for the operation
+  /// If it does it returns itself. Otherwise it returns a new list
+  /// which it will have just allocated
+  fn ensure_capacity(&mut self, needed: usize, cap: usize, hooks: &GcHooks) -> GcList<T, Header> {
+    if needed > cap {
+      self.grow(cap, cap * 2, hooks)
+    } else {
+      *self
+    }
+  }
+
+  /// Allocate a new list which the specified capacity. Mark the existing list as moved
+  /// by setting the MSB for capacity and replacing len with a pointer to the
+  /// new list
+  fn grow(&mut self, cap: usize, new_cap: usize, hooks: &GcHooks) -> GcList<T, Header> {
+    let new_list = hooks.manage(ListBuilder {
+      slice: self,
+      cap: new_cap,
+    });
+
+    unsafe {
+      self.write_len(new_list);
+      self.mark_moved(cap);
+    }
+    new_list
+  }
+}
+
 impl<T, H: Mark> Mark for GcList<T, H> {
   /// Mark the list itself as visited
   #[inline]
@@ -682,8 +765,30 @@ impl<T, H> Drop for GcListHandle<T, H> {
   }
 }
 
-impl<'a> AllocateObj<List> for ListBuilder<'a, Value> {
-  fn alloc(self) -> AllocObjResult<List> {
+impl<'a, T> Allocate<GcList<T, Header>> for ListBuilder<'a, T>
+where
+  T: Trace + DebugHeap + Copy + 'static,
+{
+  fn alloc(self) -> super::AllocResult<GcList<T, Header>> {
+    debug_assert!(self.slice.len() <= self.cap);
+    let handle = GcListHandle::from_slice(self.slice, self.cap, Header::new());
+
+    let size = handle.size();
+    let reference = handle.value();
+
+    let handle = Box::new(handle);
+    let handle = handle as Box<dyn Manage>;
+
+    AllocResult {
+      handle,
+      size,
+      reference,
+    }
+  }
+}
+
+impl<'a> AllocateObj<LyList> for ListBuilder<'a, Value> {
+  fn alloc(self) -> AllocObjResult<LyList> {
     debug_assert!(self.slice.len() <= self.cap);
     let handle = GcListHandle::from_slice(self.slice, self.cap, ObjHeader::new(ObjectKind::List));
 
@@ -743,38 +848,6 @@ mod test {
     }
 
     #[test]
-    fn push_with_capacity() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
-
-      let handle = GcListHandle::from_slice(&[val!(1.0)], 2, ObjHeader::new(ObjectKind::List));
-      let mut list = handle.value();
-
-      list.push(val!(3.0), &hooks);
-      assert_eq!(list[0], val!(1.0));
-      assert_eq!(list[1], val!(3.0));
-      assert_eq!(list.len(), 2);
-      assert_eq!(list.cap(), 2);
-    }
-
-    #[test]
-    fn push_without_capacity() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
-
-      let handle = GcListHandle::from_slice(&[val!(1.0)], 1, ObjHeader::new(ObjectKind::List));
-      let mut list = handle.value();
-
-      list.push(val!(3.0), &hooks);
-      list.push(val!(5.0), &hooks);
-      assert_eq!(list[0], val!(1.0));
-      assert_eq!(list[1], val!(3.0));
-      assert_eq!(list[2], val!(5.0));
-      assert_eq!(list.len(), 3);
-      assert_eq!(list.cap(), 4);
-    }
-
-    #[test]
     fn pop() {
       let handle = GcListHandle::from_slice(
         &[val!(1.0), val!(2.0), val!(true)],
@@ -796,74 +869,238 @@ mod test {
       assert_eq!(list.len(), 0);
     }
 
-    #[test]
-    fn insert_with_capacity() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+    mod ly_list {
+      use super::*;
 
-      let handle = GcListHandle::from_slice(&[val!(1.0)], 4, ObjHeader::new(ObjectKind::List));
-      let mut list = handle.value();
+      mod push {
+        use super::*;
+        #[test]
+        fn with_capacity() {
+          let context = NoContext::default();
+          let hooks = GcHooks::new(&context);
 
-      assert_eq!(list.insert(0, val!(2.0), &hooks), IndexedResult::Ok(()));
+          let handle = GcListHandle::from_slice(&[val!(1.0)], 2, ObjHeader::new(ObjectKind::List));
+          let mut list = handle.value();
 
-      assert_eq!(list.len(), 2);
-      assert_eq!(list.cap(), 4);
-      assert_eq!(list[0], val!(2.0));
-      assert_eq!(list[1], val!(1.0));
+          list.push(val!(3.0), &hooks);
+          assert_eq!(list[0], val!(1.0));
+          assert_eq!(list[1], val!(3.0));
+          assert_eq!(list.len(), 2);
+          assert_eq!(list.cap(), 2);
+        }
 
-      assert_eq!(list.insert(2, val!(3.0), &hooks), IndexedResult::Ok(()));
+        #[test]
+        fn without_capacity() {
+          let context = NoContext::default();
+          let hooks = GcHooks::new(&context);
 
-      assert_eq!(list.len(), 3);
-      assert_eq!(list.cap(), 4);
-      assert_eq!(list[0], val!(2.0));
-      assert_eq!(list[1], val!(1.0));
-      assert_eq!(list[2], val!(3.0));
+          let handle = GcListHandle::from_slice(&[val!(1.0)], 1, ObjHeader::new(ObjectKind::List));
+          let mut list = handle.value();
 
-      assert_eq!(
-        list.insert(5, val!(5.0), &hooks),
-        IndexedResult::OutOfBounds
-      );
+          list.push(val!(3.0), &hooks);
+          list.push(val!(5.0), &hooks);
+          assert_eq!(list[0], val!(1.0));
+          assert_eq!(list[1], val!(3.0));
+          assert_eq!(list[2], val!(5.0));
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+        }
+      }
 
-      assert_eq!(list.len(), 3);
-      assert_eq!(list.cap(), 4);
-      assert_eq!(list[0], val!(2.0));
-      assert_eq!(list[1], val!(1.0));
-      assert_eq!(list[2], val!(3.0));
+      mod insert {
+        use super::*;
+
+        #[test]
+        fn with_capacity() {
+          let context = NoContext::default();
+          let hooks = GcHooks::new(&context);
+
+          let handle = GcListHandle::from_slice(&[val!(1.0)], 4, ObjHeader::new(ObjectKind::List));
+          let mut list = handle.value();
+
+          assert_eq!(list.insert(0, val!(2.0), &hooks), IndexedResult::Ok(()));
+
+          assert_eq!(list.len(), 2);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], val!(2.0));
+          assert_eq!(list[1], val!(1.0));
+
+          assert_eq!(list.insert(2, val!(3.0), &hooks), IndexedResult::Ok(()));
+
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], val!(2.0));
+          assert_eq!(list[1], val!(1.0));
+          assert_eq!(list[2], val!(3.0));
+
+          assert_eq!(
+            list.insert(5, val!(5.0), &hooks),
+            IndexedResult::OutOfBounds
+          );
+
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], val!(2.0));
+          assert_eq!(list[1], val!(1.0));
+          assert_eq!(list[2], val!(3.0));
+        }
+
+        #[test]
+        fn without_capacity() {
+          let context = NoContext::default();
+          let hooks = GcHooks::new(&context);
+
+          let handle = GcListHandle::from_slice(&[val!(1.0)], 1, ObjHeader::new(ObjectKind::List));
+          let mut list = handle.value();
+
+          assert_eq!(list.insert(0, val!(2.0), &hooks), IndexedResult::Ok(()));
+
+          assert_eq!(list.len(), 2);
+          assert_eq!(list.cap(), 2);
+          assert_eq!(list[0], val!(2.0));
+          assert_eq!(list[1], val!(1.0));
+
+          assert_eq!(list.insert(2, val!(3.0), &hooks), IndexedResult::Ok(()));
+
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], val!(2.0));
+          assert_eq!(list[1], val!(1.0));
+          assert_eq!(list[2], val!(3.0));
+
+          assert_eq!(
+            list.insert(5, val!(5.0), &hooks),
+            IndexedResult::OutOfBounds
+          );
+
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], val!(2.0));
+          assert_eq!(list[1], val!(1.0));
+          assert_eq!(list[2], val!(3.0));
+        }
+      }
     }
 
-    #[test]
-    fn insert_without_capacity() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+    mod list {
+      use super::*;
 
-      let handle = GcListHandle::from_slice(&[val!(1.0)], 1, ObjHeader::new(ObjectKind::List));
-      let mut list = handle.value();
+      impl Trace for i32 {}
+      impl DebugHeap for i32 {
+        fn fmt_heap(&self, f: &mut fmt::Formatter, _: usize) -> fmt::Result {
+          f.write_fmt(format_args!("{}", self))
+        }
+      }
 
-      assert_eq!(list.insert(0, val!(2.0), &hooks), IndexedResult::Ok(()));
+      mod push {
+        use super::*;
 
-      assert_eq!(list.len(), 2);
-      assert_eq!(list.cap(), 2);
-      assert_eq!(list[0], val!(2.0));
-      assert_eq!(list[1], val!(1.0));
+        #[test]
+        fn with_capacity() {
+          let context = NoContext::default();
+          let hooks = GcHooks::new(&context);
 
-      assert_eq!(list.insert(2, val!(3.0), &hooks), IndexedResult::Ok(()));
+          let handle = GcListHandle::from_slice(&[1], 2, Header::new());
+          let mut list = handle.value();
 
-      assert_eq!(list.len(), 3);
-      assert_eq!(list.cap(), 4);
-      assert_eq!(list[0], val!(2.0));
-      assert_eq!(list[1], val!(1.0));
-      assert_eq!(list[2], val!(3.0));
+          list.push(3, &hooks);
+          assert_eq!(list[0], 1);
+          assert_eq!(list[1], 3);
+          assert_eq!(list.len(), 2);
+          assert_eq!(list.cap(), 2);
+        }
 
-      assert_eq!(
-        list.insert(5, val!(5.0), &hooks),
-        IndexedResult::OutOfBounds
-      );
+        #[test]
+        fn without_capacity() {
+          let context = NoContext::default();
+          let hooks = GcHooks::new(&context);
 
-      assert_eq!(list.len(), 3);
-      assert_eq!(list.cap(), 4);
-      assert_eq!(list[0], val!(2.0));
-      assert_eq!(list[1], val!(1.0));
-      assert_eq!(list[2], val!(3.0));
+          let handle = GcListHandle::from_slice(&[1], 1, Header::new());
+          let mut list = handle.value();
+
+          list.push(3, &hooks);
+          list.push(5, &hooks);
+          assert_eq!(list[0], 1);
+          assert_eq!(list[1], 3);
+          assert_eq!(list[2], 5);
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+        }
+      }
+
+      mod insert {
+        use super::*;
+
+        #[test]
+        fn with_capacity() {
+          let context = NoContext::default();
+          let hooks = GcHooks::new(&context);
+
+          let handle = GcListHandle::from_slice(&[1], 4, Header::new());
+          let mut list = handle.value();
+
+          assert_eq!(list.insert(0, 2, &hooks), IndexedResult::Ok(()));
+
+          assert_eq!(list.len(), 2);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], 2);
+          assert_eq!(list[1], 1);
+
+          assert_eq!(list.insert(2, 3, &hooks), IndexedResult::Ok(()));
+
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], 2);
+          assert_eq!(list[1], 1);
+          assert_eq!(list[2], 3);
+
+          assert_eq!(
+            list.insert(5, 5, &hooks),
+            IndexedResult::OutOfBounds
+          );
+
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], 2);
+          assert_eq!(list[1], 1);
+          assert_eq!(list[2], 3);
+        }
+
+        #[test]
+        fn without_capacity() {
+          let context = NoContext::default();
+          let hooks = GcHooks::new(&context);
+
+          let handle = GcListHandle::from_slice(&[1], 1, Header::new());
+          let mut list = handle.value();
+
+          assert_eq!(list.insert(0, 2, &hooks), IndexedResult::Ok(()));
+
+          assert_eq!(list.len(), 2);
+          assert_eq!(list.cap(), 2);
+          assert_eq!(list[0], 2);
+          assert_eq!(list[1], 1);
+
+          assert_eq!(list.insert(2, 3, &hooks), IndexedResult::Ok(()));
+
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], 2);
+          assert_eq!(list[1], 1);
+          assert_eq!(list[2], 3);
+
+          assert_eq!(
+            list.insert(5, 5, &hooks),
+            IndexedResult::OutOfBounds
+          );
+
+          assert_eq!(list.len(), 3);
+          assert_eq!(list.cap(), 4);
+          assert_eq!(list[0], 2);
+          assert_eq!(list[1], 1);
+          assert_eq!(list[2], 3);
+        }
+      }
     }
 
     #[test]
