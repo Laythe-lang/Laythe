@@ -14,9 +14,9 @@ pub struct Header {
 }
 
 impl Header {
-  pub fn new(marked: bool) -> Self {
+  pub fn new() -> Self {
     Self {
-      marked: AtomicBool::new(marked),
+      marked: AtomicBool::new(false),
     }
   }
 }

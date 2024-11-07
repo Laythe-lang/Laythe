@@ -369,7 +369,7 @@ impl<T, H> Drop for GcArrayHandle<T, H> {
 
 impl<T: 'static + Trace + Copy + DebugHeap> Allocate<GcArray<T, Header>> for &[T] {
   fn alloc(self) -> AllocResult<GcArray<T, Header>> {
-    let handle = GcArrayHandle::from_slice(self, Header::new(false));
+    let handle = GcArrayHandle::from_slice(self, Header::new());
     let reference = handle.value();
     let size = handle.size();
 
