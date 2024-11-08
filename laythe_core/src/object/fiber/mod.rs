@@ -12,7 +12,7 @@ use crate::{
   match_obj, val,
   value::{Value, VALUE_NIL},
 };
-use std::{fmt, io::Write, mem, ptr};
+use std::{fmt, io::Write, ptr};
 
 const INITIAL_FRAME_SIZE: usize = 4;
 
@@ -241,6 +241,50 @@ impl Fiber {
     self.state = FiberState::Running;
   }
 
+  /// Put this fiber to sleep
+  #[inline]
+  pub fn sleep(&mut self) {
+    assert_eq!(self.state, FiberState::Running);
+    self.state = FiberState::Pending;
+  }
+
+  /// Block this fiber
+  #[inline]
+  pub fn block(&mut self) {
+    assert_eq!(self.state, FiberState::Running);
+    self.state = FiberState::Blocked;
+  }
+
+  /// Unblock this fiber
+  #[inline]
+  pub fn unblock(&mut self) {
+    assert!(matches!(
+      self.state,
+      FiberState::Blocked | FiberState::Pending
+    ));
+    if let FiberState::Blocked = self.state {
+      self.state = FiberState::Pending;
+    }
+  }
+
+  /// Activate this fiber
+  #[inline]
+  pub fn complete(&mut self) -> Option<GcObj<Fiber>> {
+    assert_eq!(self.state, FiberState::Running);
+
+    self.state = FiberState::Complete;
+
+    // load from waiting fiber biases toward the parent fiber
+    let waiter = self
+      .parent
+      .filter(|parent| parent.is_pending())
+      .or_else(|| self.get_runnable());
+
+    self.channels.clear();
+
+    waiter
+  }
+
   /// When an error occurs while handling an exception as in
   /// there is an error with the handler itself we need to
   /// readjust the backtrace to point back to the current
@@ -273,52 +317,6 @@ impl Fiber {
         .map(|frame| frame.ip())
         .collect::<Vec<*const u8>>(),
     );
-  }
-
-  /// Put this fiber to sleep
-  #[inline]
-  pub fn sleep(&mut self) {
-    assert_eq!(self.state, FiberState::Running);
-    self.state = FiberState::Pending;
-  }
-
-  /// Block this fiber
-  #[inline]
-  pub fn block(&mut self) {
-    assert_eq!(self.state, FiberState::Running);
-    self.state = FiberState::Blocked;
-  }
-
-  /// Unblock this fiber
-  #[inline]
-  pub fn unblock(&mut self) {
-    assert!(matches!(
-      self.state,
-      FiberState::Blocked | FiberState::Pending
-    ));
-    if let FiberState::Blocked = self.state {
-      self.state = FiberState::Pending;
-    }
-  }
-
-  /// Activate the current fiber
-  #[inline]
-  pub fn complete(mut fiber: GcObj<Fiber>) -> Option<GcObj<Fiber>> {
-    assert_eq!(fiber.state, FiberState::Running);
-    fiber.state = FiberState::Complete;
-
-    // load from waiting fiber biases toward the parent fiber
-    let waiter = fiber
-      .parent
-      .filter(|parent| parent.is_pending())
-      .or_else(|| fiber.get_runnable());
-
-    let channels = mem::take(&mut fiber.channels);
-    for mut channel in channels {
-      channel.remove_waiter(fiber);
-    }
-
-    waiter
   }
 
   /// Try to get a runnable fiber
@@ -1358,7 +1356,7 @@ mod test {
     assert!(!fiber.is_complete());
 
     fiber.activate();
-    Fiber::complete(fiber);
+    fiber.complete();
 
     assert!(fiber.is_complete());
   }
@@ -1394,7 +1392,7 @@ mod test {
 
     fiber.activate();
 
-    assert_eq!(Fiber::complete(fiber), None)
+    assert_eq!(fiber.complete(), None)
   }
 
   #[test]
@@ -1430,7 +1428,7 @@ mod test {
     fiber.sleep();
     child.activate();
 
-    assert_eq!(Fiber::complete(child), Some(fiber))
+    assert_eq!(child.complete(), Some(fiber))
   }
 
   #[test]
@@ -1449,7 +1447,7 @@ mod test {
 
     fiber.activate();
 
-    assert_eq!(Fiber::complete(fiber), Some(parent))
+    assert_eq!(fiber.complete(), Some(parent))
   }
 
   #[test]
