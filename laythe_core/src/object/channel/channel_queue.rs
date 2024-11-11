@@ -147,7 +147,7 @@ impl ChannelQueue {
 
           let waiter = find_runnable_waiter(&mut self.send_waiters);
 
-          return if self.is_sync() {
+          if self.is_sync() {
             ReceiveResult::EmptyBlock(waiter)
           } else {
             ReceiveResult::Empty(waiter)
