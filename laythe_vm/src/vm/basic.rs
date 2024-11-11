@@ -157,7 +157,7 @@ impl Vm {
         if self.fiber == self.main_fiber {
           Some(ExecutionSignal::Exit)
         } else {
-          if let Some(mut fiber) = Fiber::complete(self.fiber) {
+          if let Some(mut fiber) = self.fiber.complete() {
             fiber.unblock();
             self.fiber_queue.push_back(fiber);
           }
