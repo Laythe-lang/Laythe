@@ -7,9 +7,8 @@ use crate::{
 use bumpalo::{collections, Bump};
 use codespan_reporting::diagnostic::Diagnostic;
 use laythe_core::{
-  chunk::Chunk,
   hooks::GcHooks,
-  object::{Fun, FunBuilder},
+  object::{Fun, FunBuilder}, Chunk,
 };
 use std::{cell::RefCell, rc::Rc};
 

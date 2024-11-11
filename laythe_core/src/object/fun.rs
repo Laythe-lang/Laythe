@@ -4,14 +4,10 @@ use std::{
 };
 
 use crate::{
-  chunk::Chunk,
-  hooks::GcHooks,
-  managed::{DebugHeap, DebugWrap, Gc, GcStr, Object, Trace},
-  module::Module,
-  signature::Arity,
+  chunk::Chunk, hooks::GcHooks, managed::{DebugHeap, DebugWrap, Trace}, module::Module, reference::{Object, Ref}, signature::Arity
 };
 
-use super::ObjectKind;
+use super::{LyStr, ObjectKind};
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum FunKind {
@@ -39,7 +35,7 @@ impl fmt::Display for FunKind {
 /// A mutable builder for an immutable function
 pub struct FunBuilder {
   /// Name if not top-level script
-  name: GcStr,
+  name: LyStr,
 
   /// Arity of this function
   arity: Arity,
@@ -51,11 +47,11 @@ pub struct FunBuilder {
   max_slots: i32,
 
   /// The module this function belongs to
-  module: Gc<Module>,
+  module: Ref<Module>,
 }
 
 impl FunBuilder {
-  pub fn new(name: GcStr, module: Gc<Module>, arity: Arity) -> Self {
+  pub fn new(name: LyStr, module: Ref<Module>, arity: Arity) -> Self {
     Self {
       arity,
       capture_count: 0,
@@ -125,7 +121,7 @@ impl Trace for FunBuilder {
 #[derive(Clone)]
 pub struct Fun {
   /// Name of this function
-  name: GcStr,
+  name: LyStr,
 
   /// Arity of this function
   arity: Arity,
@@ -140,14 +136,14 @@ pub struct Fun {
   module_id: usize,
 
   /// The module this function belongs to
-  module: Gc<Module>,
+  module: Ref<Module>,
 
   /// Code for the function body
   chunk: Chunk,
 }
 
 impl Fun {
-  pub fn stub(hooks: &GcHooks, name: GcStr, module: Gc<Module>) -> Fun {
+  pub fn stub(hooks: &GcHooks, name: LyStr, module: Ref<Module>) -> Fun {
     let builder = FunBuilder::new(name, module, Arity::Variadic(0));
 
     builder.build(Chunk::stub(hooks))
@@ -155,17 +151,17 @@ impl Fun {
 
   /// Name of this function
   #[inline]
-  pub fn name(&self) -> GcStr {
+  pub fn name(&self) -> LyStr {
     self.name
   }
 
   /// Name of this function
-  pub fn set_name(&mut self, new_name: GcStr) {
+  pub fn set_name(&mut self, new_name: LyStr) {
     self.name = new_name;
   }
 
   #[inline]
-  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(&self, hooks_gen: F, arg_count: u8) -> Result<(), GcStr> {
+  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(&self, hooks_gen: F, arg_count: u8) -> Result<(), LyStr> {
     match self.arity {
       // if fixed we need exactly the correct amount
       Arity::Fixed(arity) => {
@@ -235,7 +231,7 @@ impl Fun {
 
   /// The module this function belongs to
   #[inline]
-  pub fn module(&self) -> Gc<Module> {
+  pub fn module(&self) -> Ref<Module> {
     self.module
   }
 

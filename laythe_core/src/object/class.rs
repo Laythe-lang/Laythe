@@ -1,26 +1,26 @@
 use crate::{
   constants::INIT,
-  managed::{DebugHeap, DebugWrap, GcObj, GcStr, Object, Trace},
+  managed::{DebugHeap, DebugWrap, Trace}, reference::{ObjRef, Object},
 };
 use crate::{hooks::GcHooks, value::Value};
 use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
 use std::{fmt, io::Write};
 
-use super::ObjectKind;
+use super::{LyStr, ObjectKind};
 
 #[derive(PartialEq, Eq, Clone)]
 pub struct Class {
-  name: GcStr,
+  name: LyStr,
   init: Option<Value>,
-  methods: HashMap<GcStr, Value, FnvBuildHasher>,
-  fields: HashMap<GcStr, u16, FnvBuildHasher>,
-  meta_class: Option<GcObj<Class>>,
-  super_class: Option<GcObj<Class>>,
+  methods: HashMap<LyStr, Value, FnvBuildHasher>,
+  fields: HashMap<LyStr, u16, FnvBuildHasher>,
+  meta_class: Option<ObjRef<Class>>,
+  super_class: Option<ObjRef<Class>>,
 }
 
 impl Class {
-  pub fn with_inheritance(hooks: &GcHooks, name: GcStr, super_class: GcObj<Class>) -> GcObj<Self> {
+  pub fn with_inheritance(hooks: &GcHooks, name: LyStr, super_class: ObjRef<Class>) -> ObjRef<Self> {
     let mut class = hooks.manage_obj(Self {
       name,
       init: None,
@@ -38,7 +38,7 @@ impl Class {
     class
   }
 
-  pub fn bare(name: GcStr) -> Self {
+  pub fn bare(name: LyStr) -> Self {
     Self {
       name,
       init: None,
@@ -50,7 +50,7 @@ impl Class {
   }
 
   #[inline]
-  pub fn name(&self) -> GcStr {
+  pub fn name(&self) -> LyStr {
     self.name
   }
 
@@ -64,15 +64,15 @@ impl Class {
     self.init
   }
 
-  pub fn meta_class(&self) -> &Option<GcObj<Class>> {
+  pub fn meta_class(&self) -> &Option<ObjRef<Class>> {
     &self.meta_class
   }
 
-  pub fn super_class(&self) -> &Option<GcObj<Class>> {
+  pub fn super_class(&self) -> &Option<ObjRef<Class>> {
     &self.super_class
   }
 
-  pub fn is_subclass(&self, class: GcObj<Class>) -> bool {
+  pub fn is_subclass(&self, class: ObjRef<Class>) -> bool {
     if self == &*class {
       return true;
     }
@@ -83,7 +83,7 @@ impl Class {
     }
   }
 
-  pub fn set_meta(&mut self, meta_class: GcObj<Class>) -> &mut Self {
+  pub fn set_meta(&mut self, meta_class: ObjRef<Class>) -> &mut Self {
     if self.meta_class.is_some() {
       panic!("Meta class already set!");
     }
@@ -92,7 +92,7 @@ impl Class {
     self
   }
 
-  pub fn add_field(&mut self, name: GcStr) {
+  pub fn add_field(&mut self, name: LyStr) {
     if !self.fields.contains_key(&name) {
       let len = self.fields.len();
 
@@ -100,7 +100,7 @@ impl Class {
     }
   }
 
-  pub fn add_method(&mut self, name: GcStr, method: Value) {
+  pub fn add_method(&mut self, name: LyStr, method: Value) {
     if &*name == INIT {
       self.init = Some(method)
     }
@@ -108,16 +108,16 @@ impl Class {
     self.methods.insert(name, method);
   }
 
-  pub fn get_method(&self, name: &GcStr) -> Option<Value> {
+  pub fn get_method(&self, name: &LyStr) -> Option<Value> {
     self.methods.get(name).copied()
   }
 
   #[inline]
-  pub fn get_field_index(&self, name: &GcStr) -> Option<u16> {
+  pub fn get_field_index(&self, name: &LyStr) -> Option<u16> {
     self.fields.get(name).copied()
   }
 
-  pub fn inherit(&mut self, _hooks: &GcHooks, super_class: GcObj<Class>) {
+  pub fn inherit(&mut self, _hooks: &GcHooks, super_class: ObjRef<Class>) {
     debug_assert!(self.methods.is_empty());
     debug_assert!(self.fields.is_empty());
 

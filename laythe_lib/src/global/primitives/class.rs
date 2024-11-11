@@ -1,12 +1,12 @@
 use crate::native;
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{GcObj, Trace},
+  managed::Trace,
   object::{Class, LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::{Value, VALUE_NIL},
-  Call,
+  Call, ObjRef,
 };
 use std::io::Write;
 
@@ -16,7 +16,7 @@ const CLASS_SUPER_CLS: NativeMetaBuilder = NativeMetaBuilder::method("superCls",
 const CLASS_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 const CLASS_NAME: NativeMetaBuilder = NativeMetaBuilder::method("name", Arity::Fixed(0));
 
-pub fn create_class_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class> {
+pub fn create_class_class(hooks: &GcHooks, object: ObjRef<Class>) -> ObjRef<Class> {
   let name = hooks.manage_str(CLASS_CLASS_NAME);
   let mut class = hooks.manage_obj(Class::bare(name));
   class.inherit(hooks, object);

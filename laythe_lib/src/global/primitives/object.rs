@@ -2,13 +2,13 @@ use crate::native;
 use laythe_core::{
   constants::OBJECT,
   hooks::{GcHooks, Hooks},
-  managed::{GcObj, Trace},
+  managed::Trace,
   match_obj,
   object::{Class, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   to_obj_kind, val,
   value::{Value, ValueKind},
-  Call,
+  Call, ObjRef,
 };
 use std::io::Write;
 
@@ -24,7 +24,7 @@ const OBJECT_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fi
 const OBJECT_IS_A: NativeMetaBuilder = NativeMetaBuilder::method("isA?", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("class", ParameterKind::Object)]);
 
-pub fn create_object_class(hooks: &GcHooks) -> GcObj<Class> {
+pub fn create_object_class(hooks: &GcHooks) -> ObjRef<Class> {
   let name = hooks.manage_str(OBJECT_CLASS_NAME);
   let mut object = hooks.manage_obj(Class::bare(name));
 

@@ -2,10 +2,7 @@ mod utils;
 
 use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
 use laythe_core::{
-  hooks::GcHooks,
-  managed::Gc,
-  module::{Module, Package},
-  utils::IdEmitter, object::Class,
+  hooks::GcHooks, module::{Module, Package}, object::Class, utils::IdEmitter, Ref
 };
 use utils::{declare_math_module, define_math_module};
 
@@ -13,7 +10,7 @@ const MATH_MODULE_NAME: &str = "math";
 
 pub fn add_math_module(
   hooks: &GcHooks,
-  std: Gc<Package>,
+  std: Ref<Package>,
   emitter: &mut IdEmitter,
 ) -> StdResult<()> {
   let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;

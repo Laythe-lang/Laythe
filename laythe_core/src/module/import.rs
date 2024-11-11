@@ -1,40 +1,39 @@
 use super::{ImportError, ImportResult};
 use crate::{
-  hooks::GcHooks,
-  managed::{AllocResult, Allocate, Array, DebugHeap, DebugWrap, Gc, GcStr, Trace},
+  collections::Array, hooks::GcHooks, managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Header, Trace}, object::LyStr, reference::Ref
 };
 use std::fmt;
 
 /// An object representing an import request from a file
 pub struct Import {
-  package: GcStr,
-  path: Array<GcStr>,
+  package: LyStr,
+  path: Array<LyStr, Header>,
 }
 
 impl Import {
   /// Create a new import
-  pub fn new(package: GcStr, path: Array<GcStr>) -> Self {
+  pub fn new(package: LyStr, path: Array<LyStr, Header>) -> Self {
     Self { package, path }
   }
 
   /// Get the package name
-  pub fn package(&self) -> GcStr {
+  pub fn package(&self) -> LyStr {
     self.package
   }
 
-  pub fn path(&self) -> &[GcStr] {
+  pub fn path(&self) -> &[LyStr] {
     &self.path
   }
 
   /// Generate an import from a path
-  pub fn from_str(hooks: &GcHooks, path: &str) -> ImportResult<Gc<Self>> {
+  pub fn from_str(hooks: &GcHooks, path: &str) -> ImportResult<Ref<Self>> {
     let segments: Vec<&str> = path.trim_end_matches(".ly").split('/').collect();
 
     if let Some((package, path_slice)) = segments.split_first() {
       let package = hooks.manage_str(package);
       hooks.push_root(package);
 
-      let mut path: Vec<GcStr> = Vec::with_capacity(path.len());
+      let mut path: Vec<LyStr> = Vec::with_capacity(path.len());
       for segment in path_slice {
         let segment = hooks.manage_str(segment);
         path.push(segment);
@@ -64,9 +63,9 @@ impl Trace for Import {
   }
 }
 
-impl Allocate<Gc<Self>> for Import {
-  fn alloc(self) -> AllocResult<Gc<Self>> {
-    Gc::alloc_result(self)
+impl Allocate<Ref<Self>> for Import {
+  fn alloc(self) -> AllocResult<Ref<Self>> {
+    Ref::alloc_result(self)
   }
 }
 

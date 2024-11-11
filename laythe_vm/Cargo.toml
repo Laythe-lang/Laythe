@@ -13,7 +13,8 @@ name = "laythe_vm"
 path = "src/lib.rs"
 
 [dependencies]
-laythe_core = { path = "../laythe_core",  features=["nan_boxing"] }
+laythe_core = { path = "../laythe_core",  features=[] }
+# nan_boxing
 # gc_stress
 # gc_log_alloc
 # gc_log_free

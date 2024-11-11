@@ -5,14 +5,13 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::Trace,
-  managed::{DebugHeap, Gc, GcObj},
+  managed::{DebugHeap, Trace},
   module::Module,
   object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call, LyError,
+  Call, LyError, Ref,
 };
 use std::io::Write;
 
@@ -46,12 +45,12 @@ const NUMBER_PARSE: NativeMetaBuilder = NativeMetaBuilder::fun("parse", Arity::F
   .with_params(&[ParameterBuilder::new("str", ParameterKind::String)])
   .with_stack();
 
-pub fn declare_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_number_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, NUMBER_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_number_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_number_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NUMBER_CLASS_NAME)?;
   let format_error = val!(load_class_from_module(hooks, module, FORMAT_ERROR_NAME)?);
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);

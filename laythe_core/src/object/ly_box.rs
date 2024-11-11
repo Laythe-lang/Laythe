@@ -1,8 +1,7 @@
 use fmt::Display;
 
 use crate::{
-  managed::{DebugHeap, DebugWrap, Object, Trace},
-  value::{Value, VALUE_UNDEFINED},
+  managed::{DebugHeap, DebugWrap, Trace}, reference::Object, value::{Value, VALUE_UNDEFINED}
 };
 use std::{fmt, io::Write};
 

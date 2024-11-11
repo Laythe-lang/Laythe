@@ -1,9 +1,5 @@
 use crate::{
-  managed::{
-    gc_array::{GcArray, GcArrayHandle},
-    DebugHeap, Mark, Trace,
-  },
-  object::ObjectKind,
+  collections::{Array, ArrayHandle}, managed::{AllocObjResult, AllocateObj, DebugHeap, Mark, Marked, Trace, Unmark}, object::ObjectKind, reference::ObjectHandle
 };
 use std::{
   cmp::Ordering,
@@ -16,20 +12,16 @@ use std::{
   str,
 };
 
-use super::{
-  allocate::AllocObjResult, header::ObjHeader, utils::make_array_layout,
-  AllocateObj, GcObjectHandle, Marked, Unmark,
-};
-
 #[cfg(not(feature = "nan_boxing"))]
-use super::gc_obj::GcObject;
+use crate::ObjectRef;
+use super::header::Header;
 
 /// A non owning reference to a Garbage collector
 /// allocated string. Note this string is the same size
 /// as a single pointer.
-pub struct GcStr(GcArray<u8, ObjHeader>);
+pub struct LyStr(Array<u8, Header>);
 
-impl GcStr {
+impl LyStr {
   /// Create a usize from the buffer pointer. This is used
   /// when the value is boxed
   #[cfg(feature = "nan_boxing")]
@@ -37,11 +29,11 @@ impl GcStr {
     self.0.to_usize()
   }
 
-  /// Degrade this GcStr into the more generic GcObject.
+  /// Degrade this LyStr into the more generic ObjRefect.
   /// This allows the string to meet the same interface
   /// as the other managed objects
   #[cfg(not(feature = "nan_boxing"))]
-  pub fn degrade(self) -> GcObject {
+  pub fn degrade(self) -> ObjectRef {
     self.0.degrade()
   }
 
@@ -56,32 +48,32 @@ impl GcStr {
     str::from_utf8_unchecked(self.0.deref_static())
   }
 
-  /// Create a GcStr from a `NonNull<u8>`.
+  /// Create a LyStr from a `NonNull<u8>`.
   ///
   /// ## Safety
   /// This functions assumes that the pointer was originally
-  /// from a different instance of GcStr. Other pointer
+  /// from a different instance of LyStr. Other pointer
   /// will likely crash immediately
   pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
-    GcStr(GcArray::from_alloc_ptr(ptr))
+    LyStr(Array::from_alloc_ptr(ptr))
   }
 }
 
-impl Mark for GcStr {
+impl Mark for LyStr {
   #[inline]
   fn mark(&self) -> bool {
     self.0.mark()
   }
 }
 
-impl Marked for GcStr {
+impl Marked for LyStr {
   #[inline]
   fn marked(&self) -> bool {
     self.0.marked()
   }
 }
 
-impl Trace for GcStr {
+impl Trace for LyStr {
   #[inline]
   fn trace(&self) {
     self.mark();
@@ -98,7 +90,7 @@ impl Trace for GcStr {
   }
 }
 
-impl DebugHeap for GcStr {
+impl DebugHeap for LyStr {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> std::fmt::Result {
     if depth == 0 {
       f.write_fmt(format_args!("{:p}", self.0.ptr()))
@@ -108,69 +100,69 @@ impl DebugHeap for GcStr {
   }
 }
 
-impl fmt::Debug for GcStr {
+impl fmt::Debug for LyStr {
   fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "'{}'", self.deref())
   }
 }
 
-impl fmt::Display for GcStr {
+impl fmt::Display for LyStr {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.write_str(self)
   }
 }
 
-impl fmt::Pointer for GcStr {
+impl fmt::Pointer for LyStr {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     self.0.as_alloc_ptr().fmt(f)
   }
 }
 
-impl PartialEq<GcStr> for GcStr {
+impl PartialEq<LyStr> for LyStr {
   #[inline]
-  fn eq(&self, other: &GcStr) -> bool {
+  fn eq(&self, other: &LyStr) -> bool {
     ptr::eq(self.0.as_alloc_ptr(), other.0.as_alloc_ptr())
   }
 }
 
-impl PartialEq<str> for GcStr {
+impl PartialEq<str> for LyStr {
   #[inline]
   fn eq(&self, other: &str) -> bool {
     &**self == other
   }
 }
 
-impl PartialEq<&str> for GcStr {
+impl PartialEq<&str> for LyStr {
   #[inline]
   fn eq(&self, other: &&str) -> bool {
     &**self == *other
   }
 }
 
-impl Eq for GcStr {}
+impl Eq for LyStr {}
 
-impl PartialOrd for GcStr {
+impl PartialOrd for LyStr {
   #[inline]
-  fn partial_cmp(&self, other: &GcStr) -> Option<Ordering> {
+  fn partial_cmp(&self, other: &LyStr) -> Option<Ordering> {
     Some(self.cmp(other))
   }
 }
 
-impl Ord for GcStr {
+impl Ord for LyStr {
   #[inline]
-  fn cmp(&self, other: &GcStr) -> Ordering {
+  fn cmp(&self, other: &LyStr) -> Ordering {
     self.0.as_alloc_ptr().cmp(&other.0.as_alloc_ptr())
   }
 }
 
-impl Hash for GcStr {
+impl Hash for LyStr {
   #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
     ptr::hash(self.0.as_alloc_ptr(), state)
   }
 }
 
-impl Deref for GcStr {
+impl Deref for LyStr {
   type Target = str;
 
   #[inline]
@@ -179,20 +171,20 @@ impl Deref for GcStr {
   }
 }
 
-impl Copy for GcStr {}
-impl Clone for GcStr {
+impl Copy for LyStr {}
+impl Clone for LyStr {
   fn clone(&self) -> Self {
     *self
   }
 }
 
-impl AsRef<str> for GcStr {
+impl AsRef<str> for LyStr {
   fn as_ref(&self) -> &str {
     self
   }
 }
 
-impl AsRef<OsStr> for GcStr {
+impl AsRef<OsStr> for LyStr {
   fn as_ref(&self) -> &OsStr {
     let str: &str = self;
     OsStr::new(str)
@@ -202,19 +194,19 @@ impl AsRef<OsStr> for GcStr {
 /// A owning reference to a Garbage collector
 /// allocated string. Note this string is the same size
 /// as a single pointer.
-pub struct GcStrHandle(GcArrayHandle<u8, ObjHeader>);
+pub struct LyStrHandle(ArrayHandle<u8, Header>);
 
-impl GcStrHandle {
+impl LyStrHandle {
   /// Create a non owning reference to this string.
   #[inline]
-  pub fn value(&self) -> GcStr {
-    GcStr(self.0.value())
+  pub fn value(&self) -> LyStr {
+    LyStr(self.0.value())
   }
 
-  /// Degrade this GcStrHandle into the more generic GcObjectHandle.
+  /// Degrade this LyStrHandle into the more generic ObjectHandle.
   /// This allows the string to meet the same interface
   /// as the other managed objects
-  pub fn degrade(self) -> GcObjectHandle {
+  pub fn degrade(self) -> ObjectHandle {
     self.0.degrade()
   }
 
@@ -222,48 +214,48 @@ impl GcStrHandle {
   /// allocation
   #[inline]
   pub fn size(&self) -> usize {
-    make_array_layout::<ObjHeader, u8>(self.0.len()).size()
+    self.0.size()
   }
 }
 
-impl<T: AsRef<str>> From<T> for GcStrHandle {
+impl<T: AsRef<str>> From<T> for LyStrHandle {
   fn from(string: T) -> Self {
-    GcStrHandle(GcArrayHandle::from_slice(
+    LyStrHandle(ArrayHandle::from_slice(
       string.as_ref().as_bytes(),
-      ObjHeader::new(ObjectKind::String),
+      Header::new(ObjectKind::String),
     ))
   }
 }
 
-impl Unmark for GcStrHandle {
+impl Unmark for LyStrHandle {
   #[inline]
   fn unmark(&self) -> bool {
     self.0.unmark()
   }
 }
 
-impl Marked for GcStrHandle {
+impl Marked for LyStrHandle {
   #[inline]
   fn marked(&self) -> bool {
     self.0.marked()
   }
 }
 
-impl DebugHeap for GcStrHandle {
+impl DebugHeap for LyStrHandle {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> std::fmt::Result {
     self.value().fmt_heap(f, depth)
   }
 }
 
-impl fmt::Pointer for GcStrHandle {
+impl fmt::Pointer for LyStrHandle {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     self.value().0.ptr().fmt(f)
   }
 }
 
-impl<T: AsRef<str>> AllocateObj<GcStr> for T {
-  fn alloc(self) -> AllocObjResult<GcStr> {
-    let handle = GcStrHandle::from(self);
+impl<T: AsRef<str>> AllocateObj<LyStr> for T {
+  fn alloc(self) -> AllocObjResult<LyStr> {
+    let handle = LyStrHandle::from(self);
     let size = handle.size();
 
     let reference = handle.value();
@@ -285,7 +277,7 @@ mod test {
 
     #[test]
     fn deref_static() {
-      let handle = GcStrHandle::from("example");
+      let handle = LyStrHandle::from("example");
       let value = handle.value();
 
       unsafe {
@@ -299,7 +291,7 @@ mod test {
 
     #[test]
     fn from() {
-      let handle = GcStrHandle::from("example");
+      let handle = LyStrHandle::from("example");
       let value = handle.value();
 
       assert_eq!(&*value, "example");

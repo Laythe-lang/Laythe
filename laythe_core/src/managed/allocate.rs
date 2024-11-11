@@ -1,4 +1,6 @@
-use super::{GcObjectHandle, Manage, Trace};
+use crate::reference::ObjectHandle;
+
+use super::{Manage, Trace};
 
 /// Define how a struct should be allocated by the garbage collector
 pub trait Allocate<R: Trace> {
@@ -31,13 +33,13 @@ pub trait AllocateObj<R: Trace> {
 /// The result of an allocation including it's handle
 /// it's size and a client reference
 pub struct AllocObjResult<R> {
-  pub handle: GcObjectHandle,
+  pub handle: ObjectHandle,
   pub size: usize,
   pub reference: R,
 }
 
 impl<R> AllocObjResult<R> {
-  pub fn new(handle: GcObjectHandle, size: usize, reference: R) -> Self {
+  pub fn new(handle: ObjectHandle, size: usize, reference: R) -> Self {
     Self {
       handle,
       size,

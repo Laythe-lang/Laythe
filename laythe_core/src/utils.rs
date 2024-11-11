@@ -1,6 +1,10 @@
 use crate::value::Value;
 use std::mem;
 
+pub const BIT_POSITION: u32 = usize::BITS - 1;
+pub const TOP_BIT: usize = 1 << BIT_POSITION;
+pub const TOP_BIT_MASK: usize = !TOP_BIT;
+
 /// What is the previous unicode code point
 pub fn previous_boundary(source: &str, start: usize) -> usize {
   let mut current = start - 1;
@@ -62,6 +66,18 @@ pub fn use_sentinel_nan(val: f64) -> f64 {
   } else {
     val
   }
+}
+
+pub fn strip_msb(value: usize) -> usize {
+  value & TOP_BIT_MASK
+}
+
+pub fn msb_set(value: usize) -> bool {
+  (value & TOP_BIT) != 0
+}
+
+pub fn set_msb(value: usize) -> usize {
+  TOP_BIT | value
 }
 
 #[cfg(test)]

@@ -8,13 +8,12 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::Module,
   object::{CloseResult, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::Arity,
   val,
   value::{Value, VALUE_NIL},
-  Call, LyError,
+  Call, LyError, Ref,
 };
 use std::io::Write;
 
@@ -25,12 +24,12 @@ const CHANNEL_CLOSE: NativeMetaBuilder =
   NativeMetaBuilder::method("close", Arity::Fixed(0)).with_stack();
 const CHANNEL_CAPACITY: NativeMetaBuilder = NativeMetaBuilder::method("capacity", Arity::Fixed(0));
 
-pub fn declare_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_channel_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let channel_class = class_inheritance(hooks, module, CHANNEL_CLASS_NAME)?;
   export_and_insert(hooks, module, CHANNEL_CLASS_NAME, val!(channel_class))
 }
 
-pub fn define_channel_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_channel_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut channel_class = load_class_from_module(hooks, module, CHANNEL_CLASS_NAME)?;
   let channel_error = val!(load_class_from_module(hooks, module, CHANNEL_ERROR_NAME)?);
 

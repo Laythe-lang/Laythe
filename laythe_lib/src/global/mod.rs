@@ -8,7 +8,8 @@ mod support;
 
 use self::assert::add_assert_funs;
 use crate::{StdResult, STD};
-use laythe_core::{hooks::GcHooks, managed::Gc, module::Package, utils::IdEmitter};
+use laythe_core::Ref;
+use laythe_core::{hooks::GcHooks, module::Package, utils::IdEmitter};
 use misc::add_misc_funs;
 use time::add_clock_funs;
 
@@ -28,7 +29,7 @@ pub use primitives::error::{
 
 use self::primitives::create_primitives;
 
-pub fn create_std_core(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Package>> {
+pub fn create_std_core(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Ref<Package>> {
   let global_module = create_primitives(hooks, emitter)?;
   let std = hooks.manage(Package::new(hooks.manage_str(STD), global_module));
 

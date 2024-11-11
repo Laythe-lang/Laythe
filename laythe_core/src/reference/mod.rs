@@ -1,3 +1,7 @@
+mod obj_reference;
+
+use crate::managed::{AllocResult, Allocation, DebugHeap, DebugWrap, Manage, Mark, Trace};
+pub use obj_reference::{ObjRef, Object, ObjectHandle, ObjectRef};
 use std::{
   cmp::Ordering,
   fmt,
@@ -7,29 +11,27 @@ use std::{
   ptr::{self, NonNull},
 };
 
-use super::{
-  allocation::Allocation,
-  manage::{DebugHeap, DebugWrap, Manage, Trace},
-  AllocResult, Mark,
-};
-
-pub struct Gc<T: 'static> {
+pub struct Ref<T: 'static> {
   ptr: NonNull<Allocation<T>>,
 }
 
-impl<T: 'static + Trace + DebugHeap> Gc<T> {
-  pub fn alloc_result(data: T) -> AllocResult<Gc<T>> {
+impl<T: 'static + Trace + DebugHeap> Ref<T> {
+  pub fn alloc_result(data: T) -> AllocResult<Ref<T>> {
     let mut handle = Box::new(Allocation::new(data));
     let ptr = unsafe { NonNull::new_unchecked(&mut *handle) };
-    let reference = Gc::from(ptr);
+    let reference = Ref::from(ptr);
     let size = handle.size();
 
     let handle = handle as Box<dyn Manage>;
-    AllocResult { handle, size, reference }
+    AllocResult {
+      handle,
+      size,
+      reference,
+    }
   }
 }
 
-impl<T: 'static> Gc<T> {
+impl<T: 'static> Ref<T> {
   /// Get a static reference to the underlying data
   ///
   /// # Safety
@@ -59,7 +61,7 @@ impl<T: 'static> Gc<T> {
   }
 }
 
-impl<T: 'static + Trace + DebugHeap> Trace for Gc<T> {
+impl<T: 'static + Trace + DebugHeap> Trace for Ref<T> {
   #[inline]
   fn trace(&self) {
     if self.obj().mark() {
@@ -87,7 +89,7 @@ impl<T: 'static + Trace + DebugHeap> Trace for Gc<T> {
   }
 }
 
-impl<T: 'static + DebugHeap> DebugHeap for Gc<T> {
+impl<T: 'static + DebugHeap> DebugHeap for Ref<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
       f.write_fmt(format_args!("{:p}", self.ptr))
@@ -100,29 +102,29 @@ impl<T: 'static + DebugHeap> DebugHeap for Gc<T> {
   }
 }
 
-impl<T> fmt::Pointer for Gc<T> {
+impl<T> fmt::Pointer for Ref<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.ptr.fmt(f)
   }
 }
 
-unsafe impl<T: 'static + Trace> Send for Gc<T> {}
-unsafe impl<T: 'static + Trace> Sync for Gc<T> {}
+unsafe impl<T: 'static + Trace> Send for Ref<T> {}
+unsafe impl<T: 'static + Trace> Sync for Ref<T> {}
 
-impl<T: 'static + Trace> From<NonNull<Allocation<T>>> for Gc<T> {
+impl<T: 'static + Trace> From<NonNull<Allocation<T>>> for Ref<T> {
   fn from(ptr: NonNull<Allocation<T>>) -> Self {
     Self { ptr }
   }
 }
 
-impl<T: 'static> Copy for Gc<T> {}
-impl<T: 'static> Clone for Gc<T> {
-  fn clone(&self) -> Gc<T> {
+impl<T: 'static> Copy for Ref<T> {}
+impl<T: 'static> Clone for Ref<T> {
+  fn clone(&self) -> Ref<T> {
     *self
   }
 }
 
-impl<T: 'static> Deref for Gc<T> {
+impl<T: 'static> Deref for Ref<T> {
   type Target = T;
 
   #[inline]
@@ -131,16 +133,16 @@ impl<T: 'static> Deref for Gc<T> {
   }
 }
 
-impl<T: 'static> DerefMut for Gc<T> {
+impl<T: 'static> DerefMut for Ref<T> {
   #[inline]
   fn deref_mut(&mut self) -> &mut T {
     &mut self.obj_mut().data
   }
 }
 
-impl<T> PartialEq for Gc<T> {
+impl<T> PartialEq for Ref<T> {
   #[inline]
-  fn eq(&self, other: &Gc<T>) -> bool {
+  fn eq(&self, other: &Ref<T>) -> bool {
     let left_inner: &T = self;
     let right_inner: &T = other;
 
@@ -148,37 +150,37 @@ impl<T> PartialEq for Gc<T> {
   }
 }
 
-impl<T> Eq for Gc<T> {}
+impl<T> Eq for Ref<T> {}
 
-impl<T> Hash for Gc<T> {
+impl<T> Hash for Ref<T> {
   #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
     ptr::hash(self.ptr.as_ptr(), state)
   }
 }
 
-impl<T> PartialOrd for Gc<T> {
+impl<T> PartialOrd for Ref<T> {
   #[inline]
-  fn partial_cmp(&self, other: &Gc<T>) -> Option<Ordering> {
+  fn partial_cmp(&self, other: &Ref<T>) -> Option<Ordering> {
     Some(self.cmp(other))
   }
 }
 
-impl<T> Ord for Gc<T> {
+impl<T> Ord for Ref<T> {
   #[inline]
-  fn cmp(&self, other: &Gc<T>) -> Ordering {
+  fn cmp(&self, other: &Ref<T>) -> Ordering {
     self.ptr.cmp(&other.ptr)
   }
 }
 
-impl<T: fmt::Display> fmt::Display for Gc<T> {
+impl<T: fmt::Display> fmt::Display for Ref<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = self;
     write!(f, "{inner}")
   }
 }
 
-impl<T: fmt::Debug> fmt::Debug for Gc<T> {
+impl<T: fmt::Debug> fmt::Debug for Ref<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = self;
 

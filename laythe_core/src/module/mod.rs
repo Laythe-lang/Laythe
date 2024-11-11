@@ -12,11 +12,9 @@ pub use package::Package;
 use crate::{
   hooks::GcHooks,
   list,
-  managed::{
-    AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, GcStr, Instance, LyList, ListLocation,
-    Trace,
-  },
-  object::{Class, Map},
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Trace},
+  object::{Class, Instance, List, ListLocation, LyStr, Map},
+  reference::{ObjRef, Ref},
   value::Value,
   LyHashSet,
 };
@@ -26,8 +24,8 @@ use std::{fmt, io::Write, slice::Iter};
 pub fn module_class<S: AsRef<str>>(
   hooks: &GcHooks,
   name: S,
-  base_class: GcObj<Class>,
-) -> GcObj<Class> {
+  base_class: ObjRef<Class>,
+) -> ObjRef<Class> {
   let name = hooks.manage_str(name);
   Class::with_inheritance(hooks, name, base_class)
 }
@@ -39,40 +37,40 @@ pub struct Module {
   id: usize,
 
   /// The class that represents this module when imported
-  module_class: GcObj<Class>,
+  module_class: ObjRef<Class>,
 
   /// A key value set of named exports from the provided modules
-  exports: LyHashSet<GcStr>,
+  exports: LyHashSet<LyStr>,
 
   /// All of the top level symbols in this module
-  symbols_by_name: Map<GcStr, usize>,
+  symbols_by_name: Map<LyStr, usize>,
 
   /// All the symbols
-  symbols: LyList,
+  symbols: List,
 
   /// The path this module is located at
-  path: GcStr,
+  path: LyStr,
 
   /// All the child modules to this module
-  modules: Map<GcStr, Gc<Module>>,
+  modules: Map<LyStr, Ref<Module>>,
 }
 
 impl Module {
   /// Create a new laythe module
-  pub fn new(hooks: &GcHooks, module_class: GcObj<Class>, path: &str, id: usize) -> Self {
+  pub fn new(hooks: &GcHooks, module_class: ObjRef<Class>, path: &str, id: usize) -> Self {
     Module {
       id,
       module_class,
       exports: LyHashSet::default(),
       symbols_by_name: Map::default(),
       modules: Map::default(),
-      symbols: hooks.manage_obj(list!()),
+      symbols: List::new(hooks.manage_obj(list!())),
       path: hooks.manage_str(path),
     }
   }
 
   /// Get the name of this module
-  pub fn name(&self) -> GcStr {
+  pub fn name(&self) -> LyStr {
     self.module_class.name()
   }
 
@@ -86,7 +84,7 @@ impl Module {
     self.id
   }
 
-  pub fn symbols_by_name(&self) -> impl Iterator<Item = (GcStr, Value, usize)> + '_ {
+  pub fn symbols_by_name(&self) -> impl Iterator<Item = (LyStr, Value, usize)> + '_ {
     self
       .symbols_by_name
       .iter()
@@ -99,7 +97,7 @@ impl Module {
   }
 
   /// A module iterator
-  pub fn modules(&self) -> hash_map::Iter<'_, GcStr, Gc<Module>> {
+  pub fn modules(&self) -> hash_map::Iter<'_, LyStr, Ref<Module>> {
     self.modules.iter()
   }
 
@@ -125,7 +123,7 @@ impl Module {
   }
 
   /// Insert a module into this module
-  pub fn insert_module(&mut self, sub_module: Gc<Module>) -> ModuleInsertResult {
+  pub fn insert_module(&mut self, sub_module: Ref<Module>) -> ModuleInsertResult {
     let name = sub_module.name();
 
     match self.modules.insert(name, sub_module) {
@@ -135,12 +133,12 @@ impl Module {
   }
 
   /// Retrieve a module for the given that if it exists
-  pub fn get_module(&self, name: GcStr) -> Option<Gc<Module>> {
+  pub fn get_module(&self, name: LyStr) -> Option<Ref<Module>> {
     self.modules.get(&name).copied()
   }
 
   /// Attempt to import a module from the provided path
-  pub fn import(&self, path: &[GcStr]) -> ImportResult<Gc<Module>> {
+  pub fn import(&self, path: &[LyStr]) -> ImportResult<Ref<Module>> {
     if path.is_empty() {
       Err(ImportError::MalformedPath)
     } else {
@@ -158,7 +156,7 @@ impl Module {
   }
 
   /// Add export a new symbol from this module. Exported names must be unique
-  pub fn export_symbol(&mut self, name: GcStr) -> SymbolExportResult {
+  pub fn export_symbol(&mut self, name: LyStr) -> SymbolExportResult {
     if !self.symbols_by_name.contains_key(&name) {
       return Err(SymbolExportError::SymbolDoesNotExist);
     }
@@ -174,7 +172,7 @@ impl Module {
 
   /// Set the value of a symbol in this module symbol table by name
   #[inline]
-  pub fn set_symbol_by_name(&mut self, name: GcStr, symbol: Value) -> ImportResult<()> {
+  pub fn set_symbol_by_name(&mut self, name: LyStr, symbol: Value) -> ImportResult<()> {
     match self.symbols_by_name.get(&name) {
       Some(index) => {
         self.symbols[*index] = symbol;
@@ -200,7 +198,7 @@ impl Module {
   pub fn insert_symbol(
     &mut self,
     hooks: &GcHooks,
-    name: GcStr,
+    name: LyStr,
     symbol: Value,
   ) -> SymbolInsertResult {
     let slot = self.symbols.len();
@@ -219,7 +217,7 @@ impl Module {
 
   /// Get a symbol from this module's symbol table by name
   #[inline]
-  pub fn get_symbol_by_name(&self, name: GcStr) -> Option<Value> {
+  pub fn get_symbol_by_name(&self, name: LyStr) -> Option<Value> {
     self
       .symbols_by_name
       .get(&name)
@@ -239,7 +237,7 @@ impl Module {
   /// Using a module slot determine it's symbol name. Note
   /// this method isn't very efficient but it should be in the slow
   /// path of us bailing out so it shouldn't matter too much
-  pub fn get_symbol_name_by_slot(&self, slot: usize) -> Option<GcStr> {
+  pub fn get_symbol_name_by_slot(&self, slot: usize) -> Option<LyStr> {
     if self.symbols.len() > slot {
       self
         .symbols_by_name
@@ -252,7 +250,7 @@ impl Module {
   }
 
   /// Get an exported symbol from this module's symbol table
-  pub fn get_exported_symbol_by_name(&self, name: GcStr) -> Option<Value> {
+  pub fn get_exported_symbol_by_name(&self, name: LyStr) -> Option<Value> {
     self.get_symbol_by_name(name).and_then(|symbol| {
       if self.exports.contains(&name) {
         Some(symbol)
@@ -312,9 +310,9 @@ impl DebugHeap for Module {
   }
 }
 
-impl Allocate<Gc<Self>> for Module {
-  fn alloc(self) -> AllocResult<Gc<Self>> {
-    Gc::alloc_result(self)
+impl Allocate<Ref<Self>> for Module {
+  fn alloc(self) -> AllocResult<Ref<Self>> {
+    Ref::alloc_result(self)
   }
 }
 
@@ -329,7 +327,6 @@ mod test {
     object::Class,
     support::test_module,
     val,
-    value::Value,
   };
   use std::error;
 

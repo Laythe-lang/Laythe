@@ -2,14 +2,17 @@ mod call_frame;
 mod exception_handler;
 
 use self::{call_frame::CallFrame, exception_handler::ExceptionHandler};
-use super::{Channel, Fun, ObjectKind};
+use super::{Channel, Fun, Instance, ObjectKind};
 use crate::{
   captures::Captures,
   constants::SCRIPT,
   hooks::GcHooks,
   if_let_obj,
-  managed::{DebugHeap, DebugWrap, GcObj, Instance, ListLocation, LyList, Object, Trace},
-  match_obj, val,
+  managed::{DebugHeap, DebugWrap, Trace},
+  match_obj,
+  object::{List, ListLocation},
+  reference::{ObjRef, Object},
+  val,
   value::{Value, VALUE_NIL},
 };
 use std::{fmt, io::Write, ptr};
@@ -28,7 +31,7 @@ enum FiberState {
 pub enum FiberPopResult {
   Empty,
   Emptied,
-  Ok(GcObj<Fun>),
+  Ok(ObjRef<Fun>),
 }
 
 #[derive(Debug)]
@@ -45,7 +48,7 @@ pub enum UnwindResult<'a> {
   UnwindStopped,
 }
 
-fn frame_line(fun: GcObj<Fun>, offset: usize) -> String {
+fn frame_line(fun: ObjRef<Fun>, offset: usize) -> String {
   match &*fun.name() {
     SCRIPT => format!(
       "{}:{} in script",
@@ -74,10 +77,10 @@ pub struct Fiber {
   exception_handlers: Vec<ExceptionHandler>,
 
   /// A list of channels executed on this fiber
-  channels: Vec<GcObj<Channel>>,
+  channels: Vec<ObjRef<Channel>>,
 
   /// The parent fiber to this fiber
-  parent: Option<GcObj<Fiber>>,
+  parent: Option<ObjRef<Fiber>>,
 
   /// pointer to the top of the value stack
   stack_top: *mut Value,
@@ -100,8 +103,8 @@ impl Fiber {
   /// this initial closure to determine how much stack space to initially
   /// reserve
   pub fn new(
-    parent: Option<GcObj<Fiber>>,
-    fun: GcObj<Fun>,
+    parent: Option<ObjRef<Fiber>>,
+    fun: ObjRef<Fun>,
     captures: Captures,
   ) -> FiberResult<Self> {
     Fiber::new_inner(parent, fun, captures, fun.max_slots() + 1)
@@ -110,8 +113,8 @@ impl Fiber {
   /// Inner initialization function that actually reserver and create
   /// each structure
   fn new_inner(
-    parent: Option<GcObj<Fiber>>,
-    fun: GcObj<Fun>,
+    parent: Option<ObjRef<Fiber>>,
+    fun: ObjRef<Fun>,
     captures: Captures,
     stack_count: usize,
   ) -> FiberResult<Self> {
@@ -167,9 +170,9 @@ impl Fiber {
         });
       }
 
-      fn forward_list(value: &mut Value, list: LyList) {
-        if let ListLocation::Forwarded(gc_list) = list.state() {
-          *value = val!(gc_list)
+      fn forward_list(value: &mut Value, list: List) {
+        if let ListLocation::Forwarded(list) = list.state() {
+          *value = val!(list)
         }
       }
 
@@ -209,7 +212,7 @@ impl Fiber {
 
   /// Get the current frame's current function
   #[inline]
-  pub fn fun(&self) -> GcObj<Fun> {
+  pub fn fun(&self) -> ObjRef<Fun> {
     self.frame().fun()
   }
 
@@ -269,7 +272,7 @@ impl Fiber {
 
   /// Activate this fiber
   #[inline]
-  pub fn complete(&mut self) -> Option<GcObj<Fiber>> {
+  pub fn complete(&mut self) -> Option<ObjRef<Fiber>> {
     assert_eq!(self.state, FiberState::Running);
 
     self.state = FiberState::Complete;
@@ -321,7 +324,7 @@ impl Fiber {
 
   /// Try to get a runnable fiber
   #[inline]
-  pub fn get_runnable(&mut self) -> Option<GcObj<Fiber>> {
+  pub fn get_runnable(&mut self) -> Option<ObjRef<Fiber>> {
     if self.channels.is_empty() {
       return None;
     }
@@ -336,7 +339,7 @@ impl Fiber {
 
   /// Add a channel to the list of used channels by
   /// this fiber
-  pub fn add_used_channel(&mut self, channel: GcObj<Channel>) {
+  pub fn add_used_channel(&mut self, channel: ObjRef<Channel>) {
     if !self.channels.iter().any(|c| *c == channel) {
       self.channels.push(channel);
     }
@@ -507,7 +510,7 @@ impl Fiber {
 
   /// Push a frame onto the call stack
   #[inline]
-  pub fn push_frame(&mut self, fun: GcObj<Fun>, captures: Captures, arg_count: usize) {
+  pub fn push_frame(&mut self, fun: ObjRef<Fun>, captures: Captures, arg_count: usize) {
     unsafe {
       self.ensure_stack(fun.max_slots());
       let stack_start = self.stack_top.sub(arg_count + 1);
@@ -555,11 +558,11 @@ impl Fiber {
 
   /// Attempt to create a new fiber using the most recent call frame
   pub fn split(
-    mut _self: GcObj<Fiber>,
+    mut _self: ObjRef<Fiber>,
     hooks: &GcHooks,
     frame_count: usize,
     arg_count: usize,
-  ) -> Option<GcObj<Fiber>> {
+  ) -> Option<ObjRef<Fiber>> {
     if _self.frames().len() != frame_count + 1 {
       return None;
     }

@@ -1,13 +1,13 @@
 use core::panic;
 use std::vec;
 
-use laythe_core::{managed::GcObj, object::Class, utils::IdEmitter, value::Value};
+use laythe_core::{object::Class, utils::IdEmitter, value::Value, ObjRef};
 
 /// The cache for property access and setting
 #[derive(Clone, Debug)]
 struct PropertyCache {
   /// The cached class
-  class: GcObj<Class>,
+  class: ObjRef<Class>,
 
   /// The expected index given the class
   property_index: usize,
@@ -17,7 +17,7 @@ struct PropertyCache {
 #[derive(Clone, Debug)]
 struct InvokeCache {
   /// The cached class
-  class: GcObj<Class>,
+  class: ObjRef<Class>,
 
   /// The expected method given the class
   method: Value,
@@ -51,7 +51,7 @@ impl InlineCache {
 
   /// Attempt to retrieve the property cache at a given slot
   /// for the provided class
-  pub fn get_property_cache(&self, inline_slot: usize, class: GcObj<Class>) -> Option<usize> {
+  pub fn get_property_cache(&self, inline_slot: usize, class: ObjRef<Class>) -> Option<usize> {
     debug_assert!(inline_slot < self.property.len());
     match unsafe { self.property.get_unchecked(inline_slot) } {
       Some(cache) => {
@@ -70,7 +70,7 @@ impl InlineCache {
   pub fn set_property_cache(
     &mut self,
     inline_slot: usize,
-    class: GcObj<Class>,
+    class: ObjRef<Class>,
     property_index: usize,
   ) {
     self.set_property(
@@ -89,7 +89,7 @@ impl InlineCache {
 
   /// Attempt to retrieve the invoke cache at a given slot
   /// for the provided class
-  pub fn get_invoke_cache(&self, inline_slot: usize, class: GcObj<Class>) -> Option<Value> {
+  pub fn get_invoke_cache(&self, inline_slot: usize, class: ObjRef<Class>) -> Option<Value> {
     debug_assert!(inline_slot < self.invoke.len());
     match unsafe { self.invoke.get_unchecked(inline_slot) } {
       Some(cache) => {
@@ -105,7 +105,7 @@ impl InlineCache {
 
   /// Set the invoke cache at a given slot for the provided
   /// class and method
-  pub fn set_invoke_cache(&mut self, inline_slot: usize, class: GcObj<Class>, method: Value) {
+  pub fn set_invoke_cache(&mut self, inline_slot: usize, class: ObjRef<Class>, method: Value) {
     self.set_invoke(inline_slot, Some(InvokeCache { class, method }));
   }
 
@@ -197,11 +197,9 @@ mod test {
     use crate::cache::InlineCache;
     use laythe_core::{
       hooks::{GcHooks, NoContext},
-      managed::{Allocator, NO_GC},
       module::Module,
       object::{Class, Fun},
-      val,
-      value::Value,
+      val, Allocator, NO_GC,
     };
 
     #[test]

@@ -1,9 +1,14 @@
 #![deny(clippy::all)]
-pub mod captures;
-pub mod chunk;
+mod captures;
+mod chunk;
+mod align_utils;
+mod collections;
+mod reference;
+mod macros;
 pub mod constants;
 pub mod hooks;
 pub mod impls;
+mod allocator;
 pub mod managed;
 pub mod module;
 pub mod object;
@@ -14,7 +19,14 @@ pub mod value;
 
 use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
-use managed::Instance;
+use object::Instance;
+
+pub use collections::{VecBuilder, IndexedResult};
+pub use reference::{ObjectRef, ObjRef, Ref};
+pub use captures::Captures;
+pub use allocator::{Allocator, NO_GC};
+pub use chunk::Chunk;
+pub use hooks::*;
 
 pub type Call = LyResult<value::Value>;
 pub type LyResult<T> = Result<T, LyError>;
@@ -27,23 +39,3 @@ pub enum LyError {
 
 pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;
 
-#[macro_export]
-macro_rules! impl_trace {
-  ( $x:ty ) => {
-    impl $crate::managed::Trace for $x {
-      fn trace(&self) {}
-      fn trace_debug(&self, _log: &mut dyn std::io::Write) {}
-    }
-  };
-}
-
-#[macro_export]
-macro_rules! impl_debug_heap {
-  ( $x:ty ) => {
-    impl $crate::managed::DebugHeap for $x {
-      fn fmt_heap(&self, f: &mut std::fmt::Formatter, _depth: usize) -> std::fmt::Result {
-        f.write_fmt(format_args!("{:?}", self))
-      }
-    }
-  };
-}

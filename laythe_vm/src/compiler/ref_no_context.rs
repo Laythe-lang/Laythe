@@ -5,7 +5,7 @@ use std::{
 
 use laythe_core::{
   hooks::GcContext,
-  managed::{Allocator, TraceRoot},
+  managed::TraceRoot, Allocator,
 };
 
 pub struct RefNoContext<'a> {

@@ -6,14 +6,13 @@ use crate::{
 use laythe_core::{
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
-  managed::GcObj,
-  managed::{DebugHeap, DebugWrap, Gc, GcStr, Trace},
+  managed::{DebugHeap, DebugWrap, Trace},
   module::Module,
-  object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
+  object::{Enumerate, Enumerator, LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  Call, LyError, LyResult,
+  Call, LyError, LyResult, Ref,
 };
 use std::str::Chars;
 use std::{io::Write, str::Split};
@@ -56,12 +55,12 @@ const STRING_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity
 
 const STRING_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
-pub fn declare_string_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_string_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, STRING_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_string_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_string_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, STRING_CLASS_NAME)?;
   let index_error = val!(load_class_from_module(hooks, module, INDEX_ERROR_NAME)?);
 
@@ -222,14 +221,14 @@ impl LyNative for StringSplit {
 
 #[derive(Debug)]
 struct SplitIterator {
-  string: GcStr,
-  separator: GcStr,
+  string: LyStr,
+  separator: LyStr,
   iter: Split<'static, &'static str>,
   current: Value,
 }
 
 impl SplitIterator {
-  fn new(string: GcStr, separator: GcStr) -> Self {
+  fn new(string: LyStr, separator: LyStr) -> Self {
     let iter = unsafe { string.deref_static().split(separator.deref_static()) };
 
     Self {
@@ -399,13 +398,13 @@ impl LyNative for StringIter {
 
 #[derive(Debug)]
 struct StringIterator {
-  string: GcStr,
+  string: LyStr,
   iter: Chars<'static>,
   current: Value,
 }
 
 impl StringIterator {
-  fn new(string: GcStr) -> Self {
+  fn new(string: LyStr) -> Self {
     let iter = unsafe { string.deref_static().chars() };
 
     Self {

@@ -1,9 +1,6 @@
 use bumpalo::Bump;
 use laythe_core::{
-  hooks::{GcHooks, NoContext},
-  managed::{Allocator, NO_GC},
-  module::Module,
-  utils::IdEmitter,
+  hooks::{GcHooks, NoContext}, module::Module, utils::IdEmitter, Allocator, NO_GC
 };
 use laythe_lib::create_std_lib;
 use laythe_vm::{

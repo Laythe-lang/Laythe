@@ -9,11 +9,7 @@ use crate::{
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
-  constants::{ITER_VAR, OBJECT, SELF, SUPER, UNINITIALIZED_VAR},
-  managed::{Allocator, Gc, GcStr},
-  module::{self, ImportError},
-  object::FunKind,
-  value::Value,
+  constants::{ITER_VAR, OBJECT, SELF, SUPER, UNINITIALIZED_VAR}, module::{self, ImportError}, object::{FunKind, LyStr}, value::Value, Allocator, Ref
 };
 use laythe_lib::global::ERROR_CLASS_NAME;
 use std::vec;
@@ -45,10 +41,10 @@ struct TrackedSymbolTable<'a> {
 
 pub struct Resolver<'a, 'src> {
   /// The global module
-  global_module: Gc<module::Module>,
+  global_module: Ref<module::Module>,
 
   /// The current module
-  current_module: Gc<module::Module>,
+  current_module: Ref<module::Module>,
 
   /// read only reference to the allocator
   gc: &'a Allocator,
@@ -89,10 +85,10 @@ impl<'a, 'src> Resolver<'a, 'src> {
   ///   source::{Source, VM_FILE_TEST_ID},
   /// };
   /// use laythe_core::{
+  ///   Allocator,
   ///   hooks::{NoContext, GcHooks},
   ///   module::Module,
   ///   object::Class,
-  ///   managed::{Allocator},
   /// };
   /// use std::path::PathBuf;
   ///
@@ -111,8 +107,8 @@ impl<'a, 'src> Resolver<'a, 'src> {
   /// let compiler = Resolver::new(module, module, &gc, &source, file_id, false);
   /// ```
   pub fn new(
-    global_module: Gc<module::Module>,
-    current_module: Gc<module::Module>,
+    global_module: Ref<module::Module>,
+    current_module: Ref<module::Module>,
     gc: &'a Allocator,
     source: &'src Source,
     file_id: VmFileId,
@@ -163,7 +159,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
   /// Declare all module scoped variables
   fn declare_module_scoped(&mut self, ast: &mut ast::Module<'src>) {
     // Declare existing symbols
-    let mut symbols: Vec<(GcStr, Value, usize)> = self.current_module.symbols_by_name().collect();
+    let mut symbols: Vec<(LyStr, Value, usize)> = self.current_module.symbols_by_name().collect();
     symbols.sort_by(|(_, _, id1), (_, _, id2)| id1.cmp(id2));
 
     for (name, _, _) in symbols {
@@ -979,10 +975,9 @@ impl<'a, 'src> Resolver<'a, 'src> {
 mod test {
   use laythe_core::{
     hooks::{GcHooks, NoContext},
-    managed::GcObj,
     module::Module,
     object::Class,
-    utils::IdEmitter,
+    utils::IdEmitter, ObjRef,
   };
   use laythe_lib::create_std_lib;
 
@@ -993,7 +988,7 @@ mod test {
 
   use super::*;
 
-  pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
+  pub fn test_class(hooks: &GcHooks, name: &str) -> ObjRef<Class> {
     let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
     let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Class")));
     class_class.inherit(hooks, object_class);
@@ -1014,7 +1009,7 @@ mod test {
     Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
   }
 
-  fn dummy_module(hooks: &GcHooks) -> Gc<Module> {
+  fn dummy_module(hooks: &GcHooks) -> Ref<Module> {
     let module_class = test_class(hooks, "Module");
     hooks.push_root(module_class);
 
@@ -1024,7 +1019,7 @@ mod test {
     module
   }
 
-  fn std_module(hooks: &GcHooks) -> Gc<Module> {
+  fn std_module(hooks: &GcHooks) -> Ref<Module> {
     let mut emitter = IdEmitter::default();
     let std_lib = create_std_lib(hooks, &mut emitter).expect("Standard library creation failed");
     std_lib.root_module()

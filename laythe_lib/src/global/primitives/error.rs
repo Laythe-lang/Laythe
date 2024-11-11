@@ -1,6 +1,14 @@
 use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
-  hooks::{GcHooks, Hooks}, list, managed::{Gc, GcObj, Trace}, module::Module, object::{Class, LyNative, Native, NativeMetaBuilder}, signature::{Arity, ParameterBuilder, ParameterKind}, val, value::Value, Call
+  hooks::{GcHooks, Hooks},
+  list,
+  managed::Trace,
+  module::Module,
+  object::{Class, LyNative, Native, NativeMetaBuilder},
+  signature::{Arity, ParameterBuilder, ParameterKind},
+  val,
+  value::Value,
+  Call, ObjRef, Ref,
 };
 use std::io::Write;
 
@@ -30,7 +38,7 @@ const ERROR_INIT: NativeMetaBuilder = NativeMetaBuilder::method("init", Arity::D
     ParameterBuilder::new("inner", ParameterKind::Object),
   ]);
 
-pub fn create_error_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class> {
+pub fn create_error_class(hooks: &GcHooks, object: ObjRef<Class>) -> ObjRef<Class> {
   let mut class = Class::with_inheritance(hooks, hooks.manage_str(ERROR_CLASS_NAME), object);
 
   class.add_field(hooks.manage_str(ERROR_FIELD_MESSAGE));
@@ -45,7 +53,7 @@ pub fn create_error_class(hooks: &GcHooks, object: GcObj<Class>) -> GcObj<Class>
   class
 }
 
-pub fn declare_global_errors(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_global_errors(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let type_error = error_inheritance(hooks, module, TYPE_ERROR_NAME)?;
   let format_error = error_inheritance(hooks, module, FORMAT_ERROR_NAME)?;
   let value_error = error_inheritance(hooks, module, VALUE_ERROR_NAME)?;
@@ -124,9 +132,7 @@ mod test {
       let name = val!(hooks.manage_str("test"));
       let args = [val!(instance), name];
 
-      let result = error_init
-        .call(&mut hooks, &args)
-        .unwrap();
+      let result = error_init.call(&mut hooks, &args).unwrap();
 
       assert!(result.is_obj_kind(ObjectKind::Instance));
       let result = result.to_obj();

@@ -4,9 +4,7 @@ use channel_queue::ChannelQueue;
 
 use super::{Fiber, ObjectKind};
 use crate::{
-  hooks::GcHooks,
-  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcObj, Object, Trace},
-  value::Value,
+  hooks::GcHooks, managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Trace}, reference::{ObjRef, Object, Ref}, value::Value
 };
 use std::{fmt, io::Write};
 
@@ -27,8 +25,8 @@ enum ChannelKind {
 pub enum SendResult {
   Ok,
   NoSendAccess,
-  FullBlock(Option<GcObj<Fiber>>),
-  Full(Option<GcObj<Fiber>>),
+  FullBlock(Option<ObjRef<Fiber>>),
+  Full(Option<ObjRef<Fiber>>),
   Closed,
 }
 
@@ -36,8 +34,8 @@ pub enum SendResult {
 pub enum ReceiveResult {
   Ok(Value),
   NoReceiveAccess,
-  EmptyBlock(Option<GcObj<Fiber>>),
-  Empty(Option<GcObj<Fiber>>),
+  EmptyBlock(Option<ObjRef<Fiber>>),
+  Empty(Option<ObjRef<Fiber>>),
   Closed,
 }
 
@@ -47,15 +45,15 @@ pub enum CloseResult {
   AlreadyClosed,
 }
 
-impl Allocate<Gc<Self>> for ChannelQueue {
-  fn alloc(self) -> AllocResult<Gc<Self>> {
-    Gc::alloc_result(self)
+impl Allocate<Ref<Self>> for ChannelQueue {
+  fn alloc(self) -> AllocResult<Ref<Self>> {
+    Ref::alloc_result(self)
   }
 }
 
 #[derive(PartialEq, Clone)]
 pub struct Channel {
-  queue: Gc<ChannelQueue>,
+  queue: Ref<ChannelQueue>,
   kind: ChannelKind,
 }
 
@@ -132,7 +130,7 @@ impl Channel {
   /// channel is saturated or because the channel
   /// has already been closed
   #[inline]
-  pub fn send(&mut self, fiber: GcObj<Fiber>, val: Value) -> SendResult {
+  pub fn send(&mut self, fiber: ObjRef<Fiber>, val: Value) -> SendResult {
     match self.kind {
       ChannelKind::BiDirectional | ChannelKind::SendOnly => self.queue.send(fiber, val),
       ChannelKind::ReceiveOnly => SendResult::NoSendAccess,
@@ -142,7 +140,7 @@ impl Channel {
   /// Attempt to receive a value from this channel.
   /// If the channel is empty
   #[inline]
-  pub fn receive(&mut self, fiber: GcObj<Fiber>) -> ReceiveResult {
+  pub fn receive(&mut self, fiber: ObjRef<Fiber>) -> ReceiveResult {
     match self.kind {
       ChannelKind::BiDirectional | ChannelKind::ReceiveOnly => self.queue.receive(fiber),
       ChannelKind::SendOnly => ReceiveResult::NoReceiveAccess,
@@ -151,7 +149,7 @@ impl Channel {
 
   /// Attempt to get a runnable waiter
   /// from this channel
-  pub fn runnable_waiter(&mut self) -> Option<GcObj<Fiber>> {
+  pub fn runnable_waiter(&mut self) -> Option<ObjRef<Fiber>> {
     self.queue.runnable_waiter()
   }
 }

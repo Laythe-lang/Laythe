@@ -1,8 +1,5 @@
 use crate::{
-  hooks::Hooks,
-  managed::{DebugHeap, DebugWrap, DebugWrapDyn, Object, Trace},
-  value::{Value, VALUE_NIL},
-  Call,
+  hooks::Hooks, managed::{DebugHeap, DebugWrap, DebugWrapDyn, Trace}, reference::Object, value::{Value, VALUE_NIL}, Call
 };
 use std::fmt::Debug;
 use std::{fmt, io::Write};

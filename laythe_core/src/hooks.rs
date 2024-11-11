@@ -5,10 +5,7 @@ use std::{
 };
 
 use crate::{
-  managed::{Allocate, Allocator, AllocateObj, DebugHeap, GcObj, GcStr, Trace, TraceRoot},
-  object::Class,
-  value::{Value, VALUE_NIL},
-  Call,
+  managed::{Allocate, AllocateObj, DebugHeap, Trace, TraceRoot}, object::{Class, LyStr}, reference::ObjRef, value::{Value, VALUE_NIL}, Allocator, Call
 };
 use laythe_env::io::Io;
 
@@ -66,12 +63,12 @@ impl<'a> Hooks<'a> {
   }
 
   /// Provide a value and a method name for the surrounding context to execute
-  pub fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
+  pub fn get_method(&mut self, this: Value, method_name: LyStr) -> Call {
     self.context.value_context().get_method(this, method_name)
   }
 
   /// Provide a value and a method name for the surrounding context to execute
-  pub fn get_class(&mut self, this: Value) -> GcObj<Class> {
+  pub fn get_class(&mut self, this: Value) -> ObjRef<Class> {
     self.context.value_context().get_class(this)
   }
 
@@ -94,7 +91,7 @@ impl<'a> Hooks<'a> {
   }
 
   /// Request a string be managed by this allocator
-  pub fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
+  pub fn manage_str<S: AsRef<str>>(&self, string: S) -> LyStr {
     self.as_gc().manage_str(string)
   }
 
@@ -133,7 +130,7 @@ impl<'a> GcHooks<'a> {
   /// ```
   /// use laythe_core::hooks::{GcHooks, NoContext};
   /// use laythe_core::value::Value;
-  /// use laythe_core::managed::Allocator;
+  /// use laythe_core::Allocator;
   ///
   /// let mut context = NoContext::default();
   /// let hooks = GcHooks::new(&mut context);
@@ -167,7 +164,7 @@ impl<'a> GcHooks<'a> {
 
   /// Request a string be managed by this allocator
   #[inline]
-  pub fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
+  pub fn manage_str<S: AsRef<str>>(&self, string: S) -> LyStr {
     self.context.gc().manage_str(string, self.context)
   }
 
@@ -214,7 +211,7 @@ impl<'a> ValueHooks<'a> {
   }
 
   /// Provide a value and a method name for the surrounding context to execute
-  pub fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
+  pub fn get_method(&mut self, this: Value, method_name: LyStr) -> Call {
     self.context.get_method(this, method_name)
   }
 
@@ -233,10 +230,10 @@ pub trait ValueContext {
   fn call_method(&mut self, this: Value, method: Value, args: &[Value]) -> Call;
 
   /// Retrieve a method for this value with a given method name
-  fn get_method(&mut self, this: Value, method_name: GcStr) -> Call;
+  fn get_method(&mut self, this: Value, method_name: LyStr) -> Call;
 
   /// Retrieve the class for this value
-  fn get_class(&mut self, this: Value) -> GcObj<Class>;
+  fn get_class(&mut self, this: Value) -> ObjRef<Class>;
 
   /// Provide a signal that the roots should be scanned for forwarded pointer
   fn scan_roots(&mut self);
@@ -314,11 +311,11 @@ impl ValueContext for NoContext {
     Call::Ok(VALUE_NIL)
   }
 
-  fn get_method(&mut self, _this: Value, _method_name: GcStr) -> Call {
+  fn get_method(&mut self, _this: Value, _method_name: LyStr) -> Call {
     Call::Ok(VALUE_NIL)
   }
 
-  fn get_class(&mut self, _this: Value) -> GcObj<Class> {
+  fn get_class(&mut self, _this: Value) -> ObjRef<Class> {
     panic!("Cannot retrieve class")
   }
 

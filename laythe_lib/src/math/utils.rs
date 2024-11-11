@@ -6,13 +6,12 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call,
+  Call, Ref,
 };
 use std::io::Write;
 
@@ -55,7 +54,7 @@ const POW_META: NativeMetaBuilder = NativeMetaBuilder::fun("pow", Arity::Fixed(2
 
 const RAND_META: NativeMetaBuilder = NativeMetaBuilder::fun("rand", Arity::Fixed(0));
 
-pub fn declare_math_module(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_math_module(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   export_and_insert(
     hooks,
     module,
@@ -81,7 +80,7 @@ pub fn declare_math_module(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
   export_and_insert_native(hooks, module, Rand::native(hooks))
 }
 
-pub fn define_math_module(_: &GcHooks, _: Gc<Module>) -> StdResult<()> {
+pub fn define_math_module(_: &GcHooks, _: Ref<Module>) -> StdResult<()> {
   Ok(())
 }
 

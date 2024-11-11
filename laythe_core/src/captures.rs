@@ -1,17 +1,19 @@
 use std::fmt;
 
 use crate::{
+  collections::Array,
   hooks::GcHooks,
-  managed::{Array, DebugHeap, DebugWrap, GcObj, Trace},
+  managed::{DebugHeap, DebugWrap, Header, Trace},
   object::LyBox,
+  reference::ObjRef,
   value::Value,
 };
 
 #[derive(PartialEq, Eq, Clone, Copy)]
-pub struct Captures(Array<GcObj<LyBox>>);
+pub struct Captures(Array<ObjRef<LyBox>, Header>);
 
 impl Captures {
-  pub fn new(hooks: &GcHooks, captures: &[GcObj<LyBox>]) -> Self {
+  pub fn new(hooks: &GcHooks, captures: &[ObjRef<LyBox>]) -> Self {
     Self(hooks.manage(captures))
   }
 
@@ -26,7 +28,7 @@ impl Captures {
   }
 
   #[inline]
-  pub fn get_capture(&self, index: usize) -> GcObj<LyBox> {
+  pub fn get_capture(&self, index: usize) -> ObjRef<LyBox> {
     self.0[index]
   }
 

@@ -2,25 +2,19 @@ use crate::{native, support::export_and_insert, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::Value,
-  Call,
+  Call, Ref,
 };
 use std::io::Write;
 
 const CLOCK_META: NativeMetaBuilder = NativeMetaBuilder::fun("clock", Arity::Fixed(0));
 
-pub fn declare_clock_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
-  export_and_insert(
-    hooks,
-    module,
-    CLOCK_META.name,
-    val!(Clock::native(hooks)),
-  )
+pub fn declare_clock_funs(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
+  export_and_insert(hooks, module, CLOCK_META.name, val!(Clock::native(hooks)))
 }
 
 native!(Clock, CLOCK_META);

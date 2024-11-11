@@ -10,69 +10,6 @@ pub enum ValueKind {
   Obj,
 }
 
-#[macro_export]
-macro_rules! val {
-  ( $x:expr ) => {
-    Value::from($x)
-  };
-}
-
-#[macro_export]
-macro_rules! if_let_obj {
-  (ObjectKind::$obj_kind:ident($p:pat) = ($v:expr) $b:block) => {{
-    use $crate::to_obj_kind;
-
-    let val: Value = $v;
-    if val.is_obj() {
-      let obj = val.to_obj();
-
-      if obj.is_kind(ObjectKind::$obj_kind) {
-        let $p = to_obj_kind!(obj, $obj_kind);
-        $b
-      }
-    }
-  }};
-  (ObjectKind::$obj_kind:ident(mut $p:pat) = ($v:expr) $b:block) => {{
-    use $crate::to_obj_kind;
-
-    let val: Value = $v;
-    if val.is_obj() {
-      let obj = val.to_obj();
-
-      if obj.is_kind(ObjectKind::$obj_kind) {
-        let mut $p = to_obj_kind!(obj, $obj_kind);
-        $b
-      }
-    }
-  }};
-  (ObjectKind::$obj_kind:ident($p:pat) = ($v:expr) $b1:block else $b2:block) => {{
-    use $crate::to_obj_kind;
-
-    let val: Value = $v;
-    if val.is_obj() {
-      let obj = val.to_obj();
-
-      if obj.is_kind(ObjectKind::$obj_kind) {
-        let $p = to_obj_kind!(obj, $obj_kind);
-        $b1
-      } else $b2
-    } else $b2
-  }};
-  (ObjectKind::$obj_kind:ident(mut $p:pat) = ($v:expr) $b1:block else $b2:block) => {{
-    use $crate::to_obj_kind;
-
-    let val: Value = $v;
-    if val.is_obj() {
-      let obj = val.to_obj();
-
-      if obj.is_kind(ObjectKind::$obj_kind) {
-        let mut $p = to_obj_kind!(obj, $obj_kind);
-        $b1
-      } else $b2
-    } else $b2
-  }};
-}
-
 #[cfg(not(feature = "nan_boxing"))]
 pub use self::unboxed::*;
 
@@ -82,10 +19,9 @@ pub use self::boxed::*;
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
   use crate::{
-    managed::{DebugHeap, DebugWrap, GcObj, GcObject, GcStr, Instance, LyList, Trace, Tuple},
-    object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, LyBox, Map, Method, Native, ObjectKind,
-    },
+    collections::RawVector, managed::{DebugHeap, DebugWrap, Trace}, object::{
+      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, LyStr, Map, Method, Native, ObjHeader, ObjectKind, Tuple
+    }, ObjRef, ObjectRef
   };
 
   use super::{Nil, ValueKind};
@@ -106,7 +42,7 @@ mod unboxed {
     Nil,
     Undefined,
     Number(f64),
-    Obj(GcObject),
+    Obj(ObjectRef),
   }
 
   impl Value {
@@ -201,7 +137,7 @@ mod unboxed {
     /// ```
     /// use laythe_core::value::Value;
     /// use laythe_core::hooks::{Hooks, NoContext};
-    /// use laythe_core::memory::Allocator;
+    /// use laythe_core::Allocator;
     ///
     /// let gc = Allocator::default();
     /// let mut context = NoContext::new(gc);
@@ -212,7 +148,7 @@ mod unboxed {
     /// assert_eq!(&*value.to_obj().to_str(), "example")
     /// ```
     #[inline]
-    pub fn to_obj(self) -> GcObject {
+    pub fn to_obj(self) -> ObjectRef {
       match self {
         Self::Obj(obj) => obj,
         _ => panic!("Expected object."),
@@ -293,56 +229,62 @@ mod unboxed {
     }
   }
 
-  impl From<GcStr> for Value {
-    fn from(managed: GcStr) -> Value {
+  impl From<LyStr> for Value {
+    fn from(managed: LyStr) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<GcObj<Fiber>> for Value {
-    fn from(managed: GcObj<Fiber>) -> Value {
+  impl From<ObjRef<Fiber>> for Value {
+    fn from(managed: ObjRef<Fiber>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<GcObj<Channel>> for Value {
-    fn from(managed: GcObj<Channel>) -> Value {
+  impl From<ObjRef<Channel>> for Value {
+    fn from(managed: ObjRef<Channel>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<LyList> for Value {
-    fn from(managed: LyList) -> Value {
+  impl From<RawVector<Value, ObjHeader>> for Value {
+    fn from(managed: RawVector<Value, ObjHeader>) -> Value {
+      Value::Obj(List::new(managed).degrade())
+    }
+  }
+
+  impl From<List> for Value {
+    fn from(managed: List) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<GcObj<Map<Value, Value>>> for Value {
-    fn from(managed: GcObj<Map<Value, Value>>) -> Value {
+  impl From<ObjRef<Map<Value, Value>>> for Value {
+    fn from(managed: ObjRef<Map<Value, Value>>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<GcObj<Enumerator>> for Value {
-    fn from(managed: GcObj<Enumerator>) -> Value {
+  impl From<ObjRef<Enumerator>> for Value {
+    fn from(managed: ObjRef<Enumerator>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<GcObj<Closure>> for Value {
-    fn from(managed: GcObj<Closure>) -> Value {
+  impl From<ObjRef<Closure>> for Value {
+    fn from(managed: ObjRef<Closure>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<GcObj<Fun>> for Value {
-    fn from(managed: GcObj<Fun>) -> Value {
+  impl From<ObjRef<Fun>> for Value {
+    fn from(managed: ObjRef<Fun>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<GcObj<Class>> for Value {
-    fn from(managed: GcObj<Class>) -> Value {
+  impl From<ObjRef<Class>> for Value {
+    fn from(managed: ObjRef<Class>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -353,20 +295,20 @@ mod unboxed {
     }
   }
 
-  impl From<GcObj<Method>> for Value {
-    fn from(managed: GcObj<Method>) -> Value {
+  impl From<ObjRef<Method>> for Value {
+    fn from(managed: ObjRef<Method>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<GcObj<Native>> for Value {
-    fn from(managed: GcObj<Native>) -> Value {
+  impl From<ObjRef<Native>> for Value {
+    fn from(managed: ObjRef<Native>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
 
-  impl From<GcObj<LyBox>> for Value {
-    fn from(managed: GcObj<LyBox>) -> Value {
+  impl From<ObjRef<LyBox>> for Value {
+    fn from(managed: ObjRef<LyBox>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -468,9 +410,9 @@ mod unboxed {
     #[test]
     fn size() {
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
-      assert_eq!(mem::size_of::<Closure>(), 24);
-      assert_eq!(mem::size_of::<Fun>(), 96);
-      assert_eq!(mem::size_of::<Class>(), 128);
+      assert_eq!(mem::size_of::<Closure>(), 16);
+      assert_eq!(mem::size_of::<Fun>(), 56);
+      assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Method>(), 32);
       assert_eq!(mem::size_of::<Enumerator>(), 32);
       assert_eq!(mem::size_of::<Native>(), 56);
@@ -497,10 +439,13 @@ mod unboxed {
 mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
-    managed::{DebugHeap, GcObj, GcObject, GcStr, Instance, LyList, Trace, Tuple},
+    collections::RawVector,
+    managed::{DebugHeap, Trace},
     object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, LyBox, Map, Method, Native, ObjectKind,
+      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, LyStr, Map, Method,
+      Native, ObjHeader, ObjectKind, Tuple,
     },
+    reference::{ObjRef, ObjectRef},
   };
 
   use std::ptr::NonNull;
@@ -597,10 +542,10 @@ mod boxed {
     }
 
     #[inline]
-    pub fn to_obj(self) -> GcObject {
+    pub fn to_obj(self) -> ObjectRef {
       let as_unsigned = self.0 & !TAG_OBJ;
       let ptr = unsafe { NonNull::new_unchecked(as_unsigned as usize as *mut u8) };
-      GcObject::new(ptr)
+      ObjectRef::new(ptr)
     }
 
     #[inline]
@@ -716,56 +661,62 @@ mod boxed {
     }
   }
 
-  impl From<GcStr> for Value {
-    fn from(managed: GcStr) -> Value {
+  impl From<LyStr> for Value {
+    fn from(managed: LyStr) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<GcObj<Fiber>> for Value {
-    fn from(managed: GcObj<Fiber>) -> Value {
+  impl From<ObjRef<Fiber>> for Value {
+    fn from(managed: ObjRef<Fiber>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<GcObj<Channel>> for Value {
-    fn from(managed: GcObj<Channel>) -> Value {
+  impl From<ObjRef<Channel>> for Value {
+    fn from(managed: ObjRef<Channel>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<LyList> for Value {
-    fn from(managed: LyList) -> Value {
+  impl From<List> for Value {
+    fn from(managed: List) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<GcObj<Map<Value, Value>>> for Value {
-    fn from(managed: GcObj<Map<Value, Value>>) -> Value {
+  impl From<RawVector<Value, ObjHeader>> for Value {
+    fn from(managed: RawVector<Value, ObjHeader>) -> Value {
+      Self(List::new(managed).to_usize() as u64 | TAG_OBJ)
+    }
+  }
+
+  impl From<ObjRef<Map<Value, Value>>> for Value {
+    fn from(managed: ObjRef<Map<Value, Value>>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<GcObj<Enumerator>> for Value {
-    fn from(managed: GcObj<Enumerator>) -> Value {
+  impl From<ObjRef<Enumerator>> for Value {
+    fn from(managed: ObjRef<Enumerator>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<GcObj<Closure>> for Value {
-    fn from(managed: GcObj<Closure>) -> Value {
+  impl From<ObjRef<Closure>> for Value {
+    fn from(managed: ObjRef<Closure>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<GcObj<Fun>> for Value {
-    fn from(managed: GcObj<Fun>) -> Value {
+  impl From<ObjRef<Fun>> for Value {
+    fn from(managed: ObjRef<Fun>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<GcObj<Class>> for Value {
-    fn from(managed: GcObj<Class>) -> Value {
+  impl From<ObjRef<Class>> for Value {
+    fn from(managed: ObjRef<Class>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
@@ -776,20 +727,20 @@ mod boxed {
     }
   }
 
-  impl From<GcObj<Method>> for Value {
-    fn from(managed: GcObj<Method>) -> Value {
+  impl From<ObjRef<Method>> for Value {
+    fn from(managed: ObjRef<Method>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<GcObj<Native>> for Value {
-    fn from(managed: GcObj<Native>) -> Value {
+  impl From<ObjRef<Native>> for Value {
+    fn from(managed: ObjRef<Native>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
 
-  impl From<GcObj<LyBox>> for Value {
-    fn from(managed: GcObj<LyBox>) -> Value {
+  impl From<ObjRef<LyBox>> for Value {
+    fn from(managed: ObjRef<LyBox>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
@@ -845,12 +796,14 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
+    allocator::NO_GC,
     captures::Captures,
     hooks::{GcHooks, NoContext},
     list,
-    managed::{Allocator, Gc, GcObj, GcStr, NO_GC},
     module::Module,
-    object::{Class, Closure, Fun, Map, ObjectKind},
+    object::{Class, Closure, Fun, List, LyStr, Map, ObjectKind},
+    reference::{ObjRef, Ref},
+    val, Allocator,
   };
 
   const VALUE_VARIANTS: [ValueKind; 4] = [
@@ -929,30 +882,30 @@ mod test {
     });
   }
 
-  fn test_string(hooks: &GcHooks) -> GcStr {
+  fn test_string(hooks: &GcHooks) -> LyStr {
     hooks.manage_str("sup")
   }
 
-  fn test_module(hooks: &GcHooks) -> Gc<Module> {
+  fn test_module(hooks: &GcHooks) -> Ref<Module> {
     let class = test_class(hooks);
 
     hooks.manage(Module::new(hooks, class, "sup", 0))
   }
 
-  fn test_fun(hooks: &GcHooks) -> GcObj<Fun> {
+  fn test_fun(hooks: &GcHooks) -> ObjRef<Fun> {
     let name = test_string(hooks);
     let module = test_module(hooks);
 
     hooks.manage_obj(Fun::stub(hooks, name, module))
   }
 
-  fn test_closure(hooks: &GcHooks) -> GcObj<Closure> {
+  fn test_closure(hooks: &GcHooks) -> ObjRef<Closure> {
     let fun = test_fun(hooks);
 
     hooks.manage_obj(Closure::new(fun, Captures::new(hooks, &[])))
   }
 
-  fn test_class(hooks: &GcHooks) -> GcObj<Class> {
+  fn test_class(hooks: &GcHooks) -> ObjRef<Class> {
     let name = test_string(hooks);
 
     hooks.manage_obj(Class::bare(name))
@@ -998,14 +951,14 @@ mod test {
     assert_value_type(value, ValueKind::Obj);
     assert_object_type(value, ObjectKind::String);
 
-    let string2: GcStr = value.to_obj().to_str();
+    let string2: LyStr = value.to_obj().to_str();
     assert_eq!(string, string2);
   }
 
   #[test]
   fn list() {
     let mut gc = Allocator::default();
-    let list = gc.manage_obj(list!(&[VALUE_NIL, VALUE_TRUE, VALUE_FALSE]), &NO_GC);
+    let list = List::new(gc.manage_obj(list!(&[VALUE_NIL, VALUE_TRUE, VALUE_FALSE]), &NO_GC));
 
     let value = val!(list);
 

@@ -1,5 +1,5 @@
 use super::{ExecutionMode, ExecutionResult, ExecutionSignal, Vm};
-use laythe_core::{managed::GcStr, val, value::Value, Call, LyError};
+use laythe_core::{object::LyStr, val, value::Value, Call, LyError};
 
 impl Vm {
   /// Run a laythe function on top of the current stack.
@@ -58,7 +58,7 @@ impl Vm {
   }
 
   /// Get a method for this this value with a given method name
-  pub(super) unsafe fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
+  pub(super) unsafe fn get_method(&mut self, this: Value, method_name: LyStr) -> Call {
     let class = self.value_class(this);
 
     match class.get_method(&method_name) {

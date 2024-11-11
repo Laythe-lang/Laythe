@@ -5,18 +5,18 @@ use crate::{
 use laythe_core::{
   hooks::GcHooks,
   if_let_obj,
-  managed::{Gc, GcObj, Instance},
   module::{Import, Module, Package},
-  object::{Class, Native, ObjectKind},
+  object::{Class, Instance, Native, ObjectKind},
   to_obj_kind,
   value::Value,
+  ObjRef, Ref,
 };
 
 pub fn default_class_inheritance(
   hooks: &GcHooks,
-  package: Gc<Package>,
+  package: Ref<Package>,
   class_name: &str,
-) -> StdResult<GcObj<Class>> {
+) -> StdResult<ObjRef<Class>> {
   let name = hooks.manage_str(class_name);
 
   let import = Import::from_str(hooks, STD)?;
@@ -39,9 +39,9 @@ pub fn default_class_inheritance(
 
 pub fn default_error_inheritance(
   hooks: &GcHooks,
-  package: Gc<Package>,
+  package: Ref<Package>,
   class_name: &str,
-) -> StdResult<GcObj<Class>> {
+) -> StdResult<ObjRef<Class>> {
   let name = hooks.manage_str(class_name);
   let error_name = hooks.manage_str(ERROR_CLASS_NAME);
 
@@ -65,10 +65,10 @@ pub fn default_error_inheritance(
 
 pub fn load_class_from_package(
   hooks: &GcHooks,
-  package: Gc<Package>,
+  package: Ref<Package>,
   path: &str,
   name: &str,
-) -> StdResult<GcObj<Class>> {
+) -> StdResult<ObjRef<Class>> {
   let name = hooks.manage_str(name);
   let import = Import::from_str(hooks, path)?;
   let module = package.import(import)?;
@@ -86,9 +86,9 @@ pub fn load_class_from_package(
 
 pub fn load_class_from_module(
   hooks: &GcHooks,
-  module: Gc<Module>,
+  module: Ref<Module>,
   name: &str,
-) -> StdResult<GcObj<Class>> {
+) -> StdResult<ObjRef<Class>> {
   let name = hooks.manage_str(name);
   let symbol = match module.get_exported_symbol_by_name(name) {
     Some(symbol) => symbol,
@@ -104,7 +104,7 @@ pub fn load_class_from_module(
 
 pub fn load_instance_from_module(
   hooks: &GcHooks,
-  module: Gc<Module>,
+  module: Ref<Module>,
   name: &str,
 ) -> StdResult<Instance> {
   let name = hooks.manage_str(name);
@@ -122,8 +122,8 @@ pub fn load_instance_from_module(
 
 pub fn export_and_insert_native(
   hooks: &GcHooks,
-  mut module: Gc<Module>,
-  native: GcObj<Native>,
+  mut module: Ref<Module>,
+  native: ObjRef<Native>,
 ) -> StdResult<()> {
   let name = native.name();
   module.insert_symbol(hooks, name, Value::from(native))?;
@@ -132,7 +132,7 @@ pub fn export_and_insert_native(
 
 pub fn export_and_insert<S: AsRef<str>>(
   hooks: &GcHooks,
-  mut module: Gc<Module>,
+  mut module: Ref<Module>,
   name: S,
   symbol: Value,
 ) -> StdResult<()> {
@@ -152,19 +152,7 @@ mod test {
     create_std_lib, native,
   };
   use laythe_core::{
-    chunk::Chunk,
-    hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
-    list,
-    managed::{Allocator, DebugHeap, GcObj, GcStr, NoGc, Trace, TraceRoot},
-    match_obj,
-    module::{module_class, ImportResult, Module},
-    object::{Class, Enumerate, Fun, FunBuilder, LyNative, Native, NativeMetaBuilder},
-    signature::{Arity, ParameterBuilder, ParameterKind},
-    to_obj_kind,
-    utils::IdEmitter,
-    val,
-    value::Value,
-    Call, LyError,
+    hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext}, list, managed::{DebugHeap, Trace, TraceRoot}, match_obj, module::{module_class, ImportResult, Module}, object::{Class, Enumerate, Fun, FunBuilder, LyNative, LyStr, Native, NativeMetaBuilder}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::IdEmitter, val, value::Value, Allocator, Call, Chunk, LyError
   };
   use laythe_env::{
     io::Io,
@@ -176,7 +164,6 @@ mod test {
     pub gc: RefCell<Allocator>,
     pub responses: Vec<Value>,
     io: Io,
-    no_gc: NoGc,
     pub builtin: Option<BuiltIn>,
     response_count: usize,
   }
@@ -185,7 +172,6 @@ mod test {
     fn default() -> Self {
       Self {
         gc: RefCell::default(),
-        no_gc: NoGc(),
         responses: vec![],
         io: Io::default(),
         builtin: None,
@@ -198,7 +184,6 @@ mod test {
     pub fn new(responses: &[Value]) -> Self {
       Self {
         gc: RefCell::default(),
-        no_gc: NoGc(),
         responses: Vec::from(responses),
         io: Io::default(),
         builtin: None,
@@ -209,7 +194,6 @@ mod test {
     pub fn with_std(responses: &[Value]) -> ImportResult<Self> {
       let mut context = Self {
         gc: RefCell::default(),
-        no_gc: NoGc(),
         responses: Vec::from(responses),
         io: Io::default(),
         builtin: None,
@@ -229,7 +213,6 @@ mod test {
     pub fn with_test_stdio(stdio_container: &Arc<StdioTestContainer>) -> Self {
       Self {
         gc: RefCell::default(),
-        no_gc: NoGc(),
         responses: vec![],
         io: Io::default().with_stdio(Arc::new(IoStdioTest::new(stdio_container))),
         builtin: None,
@@ -340,7 +323,7 @@ mod test {
       Err(LyError::Exit(1))
     }
 
-    fn get_method(&mut self, this: Value, method_name: GcStr) -> Call {
+    fn get_method(&mut self, this: Value, method_name: LyStr) -> Call {
       let b = match &self.builtin {
         Some(b) => b,
         None => return Err(LyError::Exit(1)),
@@ -353,7 +336,7 @@ mod test {
       }
     }
 
-    fn get_class(&mut self, this: Value) -> GcObj<Class> {
+    fn get_class(&mut self, this: Value) -> ObjRef<Class> {
       let b = self
         .builtin
         .as_ref()
@@ -366,13 +349,9 @@ mod test {
   }
 
   impl TraceRoot for MockedContext {
-    fn trace(&self) {
-      self.no_gc.trace()
-    }
+    fn trace(&self) {}
 
-    fn trace_debug(&self, log: &mut dyn Write) {
-      self.no_gc.trace_debug(log)
-    }
+    fn trace_debug(&self, log: &mut dyn Write) {}
 
     fn can_collect(&self) -> bool {
       false
@@ -433,7 +412,7 @@ mod test {
     Box::new(TestIterator::new())
   }
 
-  pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
+  pub fn test_class(hooks: &GcHooks, name: &str) -> ObjRef<Class> {
     let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
     let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Class")));
     class_class.inherit(hooks, object_class);
@@ -453,7 +432,7 @@ mod test {
     Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
   }
 
-  pub fn test_module(hooks: &GcHooks, name: &str) -> Gc<Module> {
+  pub fn test_module(hooks: &GcHooks, name: &str) -> Ref<Module> {
     let base_class = test_class(hooks, "Module");
     hooks.manage(Module::new(
       hooks,
@@ -463,7 +442,7 @@ mod test {
     ))
   }
 
-  pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
+  pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> ObjRef<Fun> {
     let module = test_module(hooks, module_name);
 
     let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
@@ -481,7 +460,7 @@ mod test {
     FunBuilder::new(hooks.manage_str(name), module, arity)
   }
 
-  pub fn test_error_class(hooks: &GcHooks) -> GcObj<Class> {
+  pub fn test_error_class(hooks: &GcHooks) -> ObjRef<Class> {
     let mut error_class = Class::bare(hooks.manage_str("Error"));
 
     error_class.add_method(hooks.manage_str("init"), val!(TestInit::native(hooks)));

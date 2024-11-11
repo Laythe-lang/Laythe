@@ -8,13 +8,13 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   list,
-  managed::{Gc, GcObj, Trace},
+  managed::Trace,
   module::{Module, Package},
-  object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
+  object::{List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  Call, LyError,
+  Call, LyError, Ref,
 };
 use regex::Regex;
 use std::io::Write;
@@ -43,8 +43,8 @@ const REGEXP_CAPTURES: NativeMetaBuilder = NativeMetaBuilder::method("captures",
 
 pub fn declare_regexp_class(
   hooks: &GcHooks,
-  module: Gc<Module>,
-  package: Gc<Package>,
+  module: Ref<Module>,
+  package: Ref<Package>,
 ) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, REGEXP_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
@@ -52,8 +52,8 @@ pub fn declare_regexp_class(
 
 pub fn define_regexp_class(
   hooks: &GcHooks,
-  module: Gc<Module>,
-  package: Gc<Package>,
+  module: Ref<Module>,
+  package: Ref<Package>,
 ) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, REGEXP_CLASS_NAME)?;
   let syntax_error = val!(load_class_from_package(
@@ -145,7 +145,7 @@ impl LyNative for RegExpCaptures {
 
     match regexp.captures(&args[1].to_obj().to_str()) {
       Some(captures) => {
-        let mut results = hooks.manage_obj(list!());
+        let mut results = List::new(hooks.manage_obj(list!()));
         hooks.push_root(results);
 
         for capture in captures.iter().map(|sub_capture| match sub_capture {

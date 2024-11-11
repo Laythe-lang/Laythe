@@ -2,9 +2,9 @@ use laythe_core::{
   hooks::GcHooks,
   module::{Module, Package},
   object::Class,
-  val,
+  val, Ref,
 };
-use laythe_core::{managed::Gc, utils::IdEmitter, value::Value};
+use laythe_core::{utils::IdEmitter};
 
 use crate::{
   global::MODULE_CLASS_NAME,
@@ -18,9 +18,9 @@ pub const IO_ERROR: &str = "IoError";
 
 pub fn io_module(
   hooks: &GcHooks,
-  std: Gc<Package>,
+  std: Ref<Package>,
   emitter: &mut IdEmitter,
-) -> StdResult<Gc<Module>> {
+) -> StdResult<Ref<Module>> {
   let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
   let io_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(IO_MODULE_NAME), module_class);
@@ -40,8 +40,8 @@ pub fn io_module(
 
 pub fn declare_io_errors(
   hooks: &GcHooks,
-  module: Gc<Module>,
-  package: Gc<Package>,
+  module: Ref<Module>,
+  package: Ref<Package>,
 ) -> StdResult<()> {
   let io_error = default_error_inheritance(hooks, package, IO_ERROR)?;
 
@@ -50,8 +50,8 @@ pub fn declare_io_errors(
 
 pub fn define_io_errors(
   _hooks: &GcHooks,
-  _module: Gc<Module>,
-  _package: Gc<Package>,
+  _module: Ref<Module>,
+  _package: Ref<Package>,
 ) -> StdResult<()> {
   Ok(())
 }

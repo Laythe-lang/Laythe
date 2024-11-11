@@ -1,6 +1,6 @@
 use crate::{
-  impl_debug_heap, impl_trace,
-  managed::{DebugHeap, DebugWrap},
+  impl_debug_heap,
+  managed::{DebugHeap, DebugWrap, Trace},
 };
 use fnv::FnvBuildHasher;
 use hashbrown::{HashMap, HashSet};
@@ -9,10 +9,10 @@ use std::{
   fmt::{self},
 };
 
-impl_trace!(u8);
+impl Trace for u8 {}
 impl_debug_heap!(u8);
 
-impl_trace!(u16);
+impl Trace for u16 {}
 impl_debug_heap!(u16);
 
 impl<K: DebugHeap, V: DebugHeap> DebugHeap for HashMap<K, V, FnvBuildHasher> {

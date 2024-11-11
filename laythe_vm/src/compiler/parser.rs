@@ -101,7 +101,7 @@ impl<'a> Parser<'a> {
   ///   source::{Source, VM_FILE_TEST_ID},
   /// };
   /// use laythe_native::stdio::StdioNative;
-  /// use laythe_core::managed::{Allocator, NO_GC};
+  /// use laythe_core::{Allocator, NO_GC};
   ///
   /// // an expression
   /// let mut gc = Allocator::default();
@@ -2334,11 +2334,12 @@ const fn get_type_infix(kind: TokenKind) -> &'static Rule<TypeInfix, TypePrecede
 
 #[cfg(test)]
 mod test {
-  use crate::source::VM_FILE_TEST_ID;
+  use laythe_core::{Allocator, NO_GC};
+
+use crate::source::VM_FILE_TEST_ID;
 
   use super::super::ir::{AstPrint, Visitor};
   use super::*;
-  use laythe_core::managed::{Allocator, NO_GC};
 
   fn test(src: &str) {
     let mut gc = Allocator::default();

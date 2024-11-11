@@ -1,9 +1,9 @@
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use laythe_core::{
-  managed::GcStr,
-  managed::{Allocator, NO_GC},
+use laythe_core::{object::LyStr, Allocator, NO_GC};
+use laythe_vm::{
+  compiler::Parser,
+  source::{Source, VM_FILE_TEST_ID},
 };
-use laythe_vm::{compiler::Parser, source::{Source, VM_FILE_TEST_ID}};
 use std::fs::File;
 use std::io::prelude::*;
 use std::path::{Path, PathBuf};
@@ -16,10 +16,11 @@ fn fixture_path<P: AsRef<Path>>(bench_path: P) -> Option<PathBuf> {
   test_path
     .parent()
     .and_then(|path| path.parent())
-    .and_then(|path| path.parent()).map(|path| path.join(bench_path))
+    .and_then(|path| path.parent())
+    .map(|path| path.join(bench_path))
 }
 
-fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> GcStr {
+fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> LyStr {
   let assert = fixture_path(dir).expect("No parent directory");
   let mut file = File::open(assert).unwrap();
   let mut source = String::new();
@@ -27,7 +28,7 @@ fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> GcStr {
   gc.manage_str(source, &NO_GC)
 }
 
-fn parse_source(source: GcStr) {
+fn parse_source(source: LyStr) {
   let source = Source::new(source);
   let parser = Parser::new(&source, VM_FILE_TEST_ID);
   parser.parse().0.unwrap();

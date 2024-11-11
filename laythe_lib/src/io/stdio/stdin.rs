@@ -8,13 +8,12 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::{Module, Package},
   object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::Arity,
   val,
   value::{Value, VALUE_NIL},
-  Call, LyError,
+  Call, LyError, Ref,
 };
 use std::io::Write;
 
@@ -26,7 +25,7 @@ const STDIN_READ: NativeMetaBuilder =
 const STDIN_READ_LINE: NativeMetaBuilder =
   NativeMetaBuilder::method("readLine", Arity::Fixed(0)).with_stack();
 
-pub fn declare_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
+pub fn declare_stdin(hooks: &GcHooks, module: Ref<Module>, package: Ref<Package>) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDIN_CLASS_NAME)?;
   let instance = hooks.manage_obj(class);
 
@@ -38,7 +37,7 @@ pub fn declare_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) 
   )
 }
 
-pub fn define_stdin(hooks: &GcHooks, module: Gc<Module>, package: Gc<Package>) -> StdResult<()> {
+pub fn define_stdin(hooks: &GcHooks, module: Ref<Module>, package: Ref<Package>) -> StdResult<()> {
   let instance = load_instance_from_module(hooks, module, STDIN_INSTANCE_NAME)?;
   let mut class = instance.class();
   let io_error = val!(load_class_from_package(

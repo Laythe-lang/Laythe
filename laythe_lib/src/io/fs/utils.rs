@@ -7,13 +7,12 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::{Module, Package},
   object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::{Value, VALUE_NIL},
-  Call, LyError,
+  Call, LyError, Ref,
 };
 use std::io::Write;
 use std::path::Path;
@@ -35,13 +34,13 @@ const REMOVE_FILE: NativeMetaBuilder = NativeMetaBuilder::fun("removeFile", Arit
 
 pub fn declare_fs_module(
   _hooks: &GcHooks,
-  _module: Gc<Module>,
-  _std: Gc<Package>,
+  _module: Ref<Module>,
+  _std: Ref<Package>,
 ) -> StdResult<()> {
   Ok(())
 }
 
-pub fn define_fs_module(hooks: &GcHooks, module: Gc<Module>, std: Gc<Package>) -> StdResult<()> {
+pub fn define_fs_module(hooks: &GcHooks, module: Ref<Module>, std: Ref<Package>) -> StdResult<()> {
   let io_error = val!(load_class_from_package(
     hooks,
     std,

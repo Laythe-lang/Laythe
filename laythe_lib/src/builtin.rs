@@ -2,18 +2,19 @@ use std::io::Write;
 
 use laythe_core::{
   hooks::GcHooks,
-  managed::{GcObj, Trace},
+  managed::Trace,
   module::Module,
   object::{Class, ObjectKind},
-  value::{Value, ValueKind},
+  value::{Value, ValueKind}, ObjRef,
 };
 
 use crate::global::{
   BOOL_CLASS_NAME, CHANNEL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, DEADLOCK_ERROR_NAME,
-  EXPORT_ERROR_NAME, FIBER_CLASS_NAME, IMPORT_ERROR_NAME, ITER_CLASS_NAME, LIST_CLASS_NAME,
-  MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME, MODULE_CLASS_NAME,
-  NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME, PROPERTY_ERROR_NAME,
-  RUNTIME_ERROR_NAME, STRING_CLASS_NAME, TUPLE_CLASS_NAME, TYPE_ERROR_NAME, VALUE_ERROR_NAME, FUN_CLASS_NAME, ERROR_CLASS_NAME,
+  ERROR_CLASS_NAME, EXPORT_ERROR_NAME, FIBER_CLASS_NAME, FUN_CLASS_NAME, IMPORT_ERROR_NAME,
+  ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME,
+  MODULE_CLASS_NAME, NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME,
+  PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, STRING_CLASS_NAME, TUPLE_CLASS_NAME, TYPE_ERROR_NAME,
+  VALUE_ERROR_NAME,
 };
 
 pub struct BuiltIn {
@@ -43,7 +44,7 @@ impl Trace for BuiltIn {
 
 pub struct BuiltInDependencies {
   /// The
-  pub module: GcObj<Class>,
+  pub module: ObjRef<Class>,
 }
 
 impl Trace for BuiltInDependencies {
@@ -58,56 +59,56 @@ impl Trace for BuiltInDependencies {
 
 pub struct BuiltInPrimitives {
   /// The base Object class
-  pub object: GcObj<Class>,
+  pub object: ObjRef<Class>,
 
   /// the Nil class
-  pub nil: GcObj<Class>,
+  pub nil: ObjRef<Class>,
 
   /// the Bool class
-  pub bool: GcObj<Class>,
+  pub bool: ObjRef<Class>,
 
   /// The Channel class
-  pub channel: GcObj<Class>,
+  pub channel: ObjRef<Class>,
 
   /// the Class class
-  pub class: GcObj<Class>,
+  pub class: ObjRef<Class>,
 
   /// the Fiber class
-  pub fiber: GcObj<Class>,
+  pub fiber: ObjRef<Class>,
 
   /// the Fun class
-  pub fun: GcObj<Class>,
+  pub fun: ObjRef<Class>,
 
   /// the Number class
-  pub number: GcObj<Class>,
+  pub number: ObjRef<Class>,
 
   /// the String class
-  pub string: GcObj<Class>,
+  pub string: ObjRef<Class>,
 
   /// the List class
-  pub list: GcObj<Class>,
+  pub list: ObjRef<Class>,
 
   /// the Tuple class
-  pub tuple: GcObj<Class>,
+  pub tuple: ObjRef<Class>,
 
   /// the Map class
-  pub map: GcObj<Class>,
+  pub map: ObjRef<Class>,
 
   /// the Iter class
-  pub iter: GcObj<Class>,
+  pub iter: ObjRef<Class>,
 
   /// the Closure class
-  pub closure: GcObj<Class>,
+  pub closure: ObjRef<Class>,
 
   /// the method class
-  pub method: GcObj<Class>,
+  pub method: ObjRef<Class>,
 
   /// the NativeFun class
-  pub native_fun: GcObj<Class>,
+  pub native_fun: ObjRef<Class>,
 }
 
 impl BuiltInPrimitives {
-  pub fn for_value(&self, value: Value) -> GcObj<Class> {
+  pub fn for_value(&self, value: Value) -> ObjRef<Class> {
     match value.kind() {
       ValueKind::Bool => self.bool,
       ValueKind::Nil => self.nil,
@@ -132,7 +133,7 @@ impl BuiltInPrimitives {
           ObjectKind::Tuple => self.tuple,
           ObjectKind::LyBox => self.for_value(obj.to_box().value),
         }
-      }
+      },
     }
   }
 }
@@ -170,23 +171,23 @@ impl Trace for BuiltInPrimitives {
 }
 
 pub struct BuiltInErrors {
-  pub error: GcObj<Class>,
+  pub error: ObjRef<Class>,
 
-  pub runtime: GcObj<Class>,
+  pub runtime: ObjRef<Class>,
 
-  pub method_not_found: GcObj<Class>,
+  pub method_not_found: ObjRef<Class>,
 
-  pub type_: GcObj<Class>,
+  pub type_: ObjRef<Class>,
 
-  pub value: GcObj<Class>,
+  pub value: ObjRef<Class>,
 
-  pub deadlock: GcObj<Class>,
+  pub deadlock: ObjRef<Class>,
 
-  pub property: GcObj<Class>,
+  pub property: ObjRef<Class>,
 
-  pub import: GcObj<Class>,
+  pub import: ObjRef<Class>,
 
-  pub export: GcObj<Class>,
+  pub export: ObjRef<Class>,
 }
 
 impl Trace for BuiltInErrors {
