@@ -5,10 +5,9 @@ mod stdout;
 use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
 use laythe_core::{
   hooks::GcHooks,
-  managed::Gc,
   module::{Module, Package},
   object::Class,
-  utils::IdEmitter,
+  utils::IdEmitter, Ref,
 };
 use stderr::{declare_stderr, define_stderr};
 use stdin::{declare_stdin, define_stdin};
@@ -20,9 +19,9 @@ const STDIO_MODULE_NAME: &str = "stdio";
 
 pub fn stdio_module(
   hooks: &GcHooks,
-  std: Gc<Package>,
+  std: Ref<Package>,
   emitter: &mut IdEmitter,
-) -> StdResult<Gc<Module>> {
+) -> StdResult<Ref<Module>> {
   let module_class = load_class_from_package(hooks, std, STD, MODULE_CLASS_NAME)?;
   let stdio_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(STDIO_MODULE_NAME), module_class);

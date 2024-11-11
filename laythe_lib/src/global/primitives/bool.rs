@@ -7,25 +7,24 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::{Value, VALUE_TRUE},
-  Call,
+  Call, Ref,
 };
 use std::io::Write;
 
 pub const BOOL_CLASS_NAME: &str = "Bool";
 const BOOL_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_bool_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_bool_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let bool_class = class_inheritance(hooks, module, BOOL_CLASS_NAME)?;
   export_and_insert(hooks, module, BOOL_CLASS_NAME, val!(bool_class))
 }
 
-pub fn define_bool_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_bool_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut bool_class = load_class_from_module(hooks, module, BOOL_CLASS_NAME)?;
 
   bool_class.add_method(

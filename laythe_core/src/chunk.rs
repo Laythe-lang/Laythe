@@ -1,23 +1,28 @@
+use crate::collections::Array;
 use crate::hooks::GcHooks;
-use crate::managed::{Array, DebugWrap};
+use crate::managed::{DebugWrap, Header};
 use crate::{managed::DebugHeap, managed::Trace, value::Value};
 
 /// An immutable chunk of code
 #[derive(Clone, PartialEq, Eq)]
 pub struct Chunk {
   /// instruction in this code chunk
-  instructions: Array<u8>,
+  instructions: Array<u8, Header>,
 
   /// constants in this code chunk
-  constants: Array<Value>,
+  constants: Array<Value, Header>,
 
   /// debug line information
-  lines: Array<u16>,
+  lines: Array<u16, Header>,
 }
 
 impl Chunk {
   /// Create a new chunk
-  pub fn new(instructions: Array<u8>, constants: Array<Value>, lines: Array<u16>) -> Self {
+  pub fn new(
+    instructions: Array<u8, Header>,
+    constants: Array<Value, Header>,
+    lines: Array<u16, Header>,
+  ) -> Self {
     Self {
       instructions,
       constants,
@@ -70,7 +75,7 @@ impl Chunk {
   /// This method panics if an offset is past the last instruction
   ///
   /// ```rust
-  /// use laythe_core::chunk::Chunk;
+  /// use laythe_core::Chunk;
   /// use laythe_core::hooks::{NoContext, GcHooks};
   ///
   /// let mut context = NoContext::default();

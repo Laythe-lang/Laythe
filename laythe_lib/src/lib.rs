@@ -11,10 +11,7 @@ use env::env_module;
 use global::create_std_core;
 use io::add_io_package;
 use laythe_core::{
-  hooks::GcHooks,
-  managed::Gc,
-  module::{ImportError, ModuleInsertError, Package, SymbolExportError, SymbolInsertError},
-  utils::IdEmitter,
+  hooks::GcHooks, module::{ImportError, ModuleInsertError, Package, SymbolExportError, SymbolInsertError}, utils::IdEmitter, Ref
 };
 use math::add_math_module;
 use regexp::regexp_module;
@@ -32,7 +29,7 @@ macro_rules! native {
     pub struct $st {}
 
     impl $st {
-      pub fn native(hooks: &GcHooks) -> GcObj<Native> {
+      pub fn native(hooks: &GcHooks) -> laythe_core::ObjRef<Native> {
         let native = Box::new(Self {}) as Box<dyn LyNative>;
         hooks.manage_obj(Native::new($meta.build(hooks), native))
       }
@@ -74,7 +71,7 @@ macro_rules! native_with_error {
     }
 
     impl $st {
-      fn native(hooks: &GcHooks, error: Value) -> GcObj<Native> {
+      fn native(hooks: &GcHooks, error: Value) -> laythe_core::ObjRef<Native> {
         debug_assert!(error.is_obj_kind(ObjectKind::Class));
         let native = Box::new(Self { error }) as Box<dyn LyNative>;
 
@@ -148,7 +145,7 @@ impl From<ModuleInsertError> for StdError {
 pub const STD: &str = "std";
 pub const GLOBAL: &str = "global";
 
-pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Package>> {
+pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Ref<Package>> {
   let std = create_std_core(hooks, emitter)?;
 
   add_math_module(hooks, std, emitter)?;
@@ -170,14 +167,13 @@ mod test {
   use crate::support::{load_class_from_module, MockedContext};
   use global::CLASS_CLASS_NAME;
   use laythe_core::{
-    managed::GcObj,
     match_obj,
     module::Module,
     object::{Class, ObjectKind},
-    to_obj_kind,
+    to_obj_kind, ObjRef,
   };
 
-  fn class_setup_inner(module: Gc<Module>, _class_class: GcObj<Class>) {
+  fn class_setup_inner(module: Ref<Module>, _class_class: ObjRef<Class>) {
     module.symbols().for_each(|symbol| {
       let option = if symbol.is_obj() {
         match_obj!((&symbol.to_obj()) {

@@ -2,12 +2,12 @@ use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
 
 use crate::{
-  captures::Captures, chunk::Chunk, constants::SCRIPT, hooks::GcHooks, managed::{Gc, GcObj, GcStr}, module::{module_class, Module}, object::{Class, Fiber, FiberResult, Fun, FunBuilder}, signature::Arity, value::Value
+  captures::Captures, chunk::Chunk, constants::SCRIPT, hooks::GcHooks, module::{module_class, Module}, object::{Class, Fiber, FiberResult, Fun, FunBuilder, LyStr}, reference::{ObjRef, Ref}, signature::Arity, value::Value
 };
 
 pub struct FiberBuilder {
   name: String,
-  parent: Option<GcObj<Fiber>>,
+  parent: Option<ObjRef<Fiber>>,
   module_name: String,
   instructions: Vec<u8>,
   max_slots: i32,
@@ -41,7 +41,7 @@ impl FiberBuilder {
     self
   }
 
-  pub fn parent(mut self, parent: GcObj<Fiber>) -> Self {
+  pub fn parent(mut self, parent: ObjRef<Fiber>) -> Self {
     self.parent = Some(parent);
     self
   }
@@ -51,7 +51,7 @@ impl FiberBuilder {
     self
   }
 
-  pub fn build(self, hooks: &GcHooks) -> FiberResult<GcObj<Fiber>> {
+  pub fn build(self, hooks: &GcHooks) -> FiberResult<ObjRef<Fiber>> {
     let mut fun = test_fun_builder(hooks, &self.name, &self.module_name);
     fun.update_max_slots(self.max_slots);
 
@@ -73,9 +73,9 @@ impl FiberBuilder {
 #[derive(Default)]
 pub struct ClassBuilder {
   name: String,
-  super_cls: Option<GcObj<Class>>,
-  methods: HashMap<GcStr, Value, FnvBuildHasher>,
-  fields: Vec<GcStr>,
+  super_cls: Option<ObjRef<Class>>,
+  methods: HashMap<LyStr, Value, FnvBuildHasher>,
+  fields: Vec<LyStr>,
 }
 
 impl ClassBuilder {
@@ -84,22 +84,22 @@ impl ClassBuilder {
     self
   }
 
-  pub fn super_cls(mut self, super_cls: GcObj<Class>) -> Self {
+  pub fn super_cls(mut self, super_cls: ObjRef<Class>) -> Self {
     self.super_cls = Some(super_cls);
     self
   }
 
-  pub fn methods(mut self, methods: HashMap<GcStr, Value, FnvBuildHasher>) -> Self {
+  pub fn methods(mut self, methods: HashMap<LyStr, Value, FnvBuildHasher>) -> Self {
     self.methods = methods;
     self
   }
 
-  pub fn fields(mut self, fields: Vec<GcStr>) -> Self {
+  pub fn fields(mut self, fields: Vec<LyStr>) -> Self {
     self.fields = fields;
     self
   }
 
-  pub fn build(self, hooks: &GcHooks) -> GcObj<Class> {
+  pub fn build(self, hooks: &GcHooks) -> ObjRef<Class> {
     let super_cls = self.super_cls.unwrap_or_else(|| test_object_class(hooks));
     let mut class = Class::with_inheritance(hooks, hooks.manage_str(self.name), super_cls);
 
@@ -115,17 +115,17 @@ impl ClassBuilder {
   }
 }
 
-pub fn test_module(hooks: &GcHooks, name: &str) -> Gc<Module> {
+pub fn test_module(hooks: &GcHooks, name: &str) -> Ref<Module> {
   let base_class = test_class(hooks, "Module");
   hooks.manage(Module::new(hooks, module_class(hooks, name, base_class), "example", 0))
 }
 
-pub fn test_class(hooks: &GcHooks, name: &str) -> GcObj<Class> {
+pub fn test_class(hooks: &GcHooks, name: &str) -> ObjRef<Class> {
   let object_class = test_object_class(hooks);
   Class::with_inheritance(hooks, hooks.manage_str(name), object_class)
 }
 
-pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> GcObj<Fun> {
+pub fn test_fun(hooks: &GcHooks, name: &str, module_name: &str) -> ObjRef<Fun> {
   let module = test_module(hooks, module_name);
 
   let builder = FunBuilder::new(hooks.manage_str(name), module, Arity::default());
@@ -138,7 +138,7 @@ pub fn test_fun_builder(hooks: &GcHooks, name: &str, module_name: &str) -> FunBu
   FunBuilder::new(hooks.manage_str(name), module, Arity::default())
 }
 
-pub fn test_object_class(hooks: &GcHooks) -> GcObj<Class> {
+pub fn test_object_class(hooks: &GcHooks) -> ObjRef<Class> {
   let mut object_class = hooks.manage_obj(Class::bare(hooks.manage_str("Object")));
   let mut class_class = hooks.manage_obj(Class::bare(hooks.manage_str("Class")));
   class_class.inherit(hooks, object_class);

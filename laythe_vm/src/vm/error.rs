@@ -1,10 +1,9 @@
 use super::{ExecutionMode, ExecutionResult, ExecutionSignal, Vm};
 use laythe_core::{
   if_let_obj,
-  managed::{GcObj, GcStr, Instance},
-  object::{Class, ObjectKind, UnwindResult},
+  object::{Class, Instance, LyStr, ObjectKind, UnwindResult},
   to_obj_kind, val,
-  value::Value,
+  value::Value, ObjRef,
 };
 
 impl Vm {
@@ -16,7 +15,7 @@ impl Vm {
   /// Report a known laythe runtime error to the user
   pub(super) unsafe fn runtime_error_from_str(
     &mut self,
-    error: GcObj<Class>,
+    error: ObjRef<Class>,
     message: &str,
   ) -> ExecutionSignal {
     self.runtime_error(error, self.manage_str(message))
@@ -25,8 +24,8 @@ impl Vm {
   /// Report a known laythe runtime error to the user
   pub(super) unsafe fn runtime_error(
     &mut self,
-    error: GcObj<Class>,
-    message: GcStr,
+    error: ObjRef<Class>,
+    message: LyStr,
   ) -> ExecutionSignal {
     let error_message = val!(self.manage_str(message));
     // Make sure we have enough space for the error message

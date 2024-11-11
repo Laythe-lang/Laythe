@@ -2,16 +2,16 @@ mod files;
 pub use files::{LineError, LineOffsets, VmFileId, VmFiles, VM_FILE_TEST_ID};
 
 use bumpalo::{boxed::Box, collections::Vec, Bump};
-use laythe_core::managed::{GcStr, Trace};
+use laythe_core::{managed::Trace, object::LyStr};
 use std::ops::Deref;
 
 pub struct Source {
-  content: GcStr,
+  content: LyStr,
   alloc: Bump,
 }
 
 impl Source {
-  pub fn new(content: GcStr) -> Self {
+  pub fn new(content: LyStr) -> Self {
     Self {
       content,
       alloc: Bump::with_capacity(content.len() * 2),
@@ -53,8 +53,9 @@ impl Trace for Source {
 
 #[cfg(test)]
 mod test {
-  use super::*;
-  use laythe_core::managed::{Allocator, NO_GC};
+  use laythe_core::{Allocator, NO_GC};
+
+use super::*;
 
   #[test]
   fn new() {

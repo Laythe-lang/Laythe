@@ -1,15 +1,12 @@
 use crate::{
-  captures::Captures,
-  managed::{DebugHeap, DebugWrap, GcObj, Trace},
-  object::Fun,
-  value::Value,
+  captures::Captures, managed::{DebugHeap, DebugWrap, Trace}, object::Fun, reference::ObjRef, value::Value
 };
 
 /// A call frame in the Laythe interpreter
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CallFrame {
   /// The function defining this call frame
-  fun: GcObj<Fun>,
+  fun: ObjRef<Fun>,
 
   /// The captures for this call frame
   captures: Captures,
@@ -23,7 +20,7 @@ pub struct CallFrame {
 
 impl CallFrame {
   /// Create a new call frame from the provided closure
-  pub fn new(fun: GcObj<Fun>, captures: Captures, stack_start: *mut Value) -> Self {
+  pub fn new(fun: ObjRef<Fun>, captures: Captures, stack_start: *mut Value) -> Self {
     let ip = fun.chunk().instructions().as_ptr();
 
     CallFrame {
@@ -34,7 +31,7 @@ impl CallFrame {
     }
   }
 
-  pub fn fun(&self) -> GcObj<Fun> {
+  pub fn fun(&self) -> ObjRef<Fun> {
     self.fun
   }
 

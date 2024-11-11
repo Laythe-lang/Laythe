@@ -1,15 +1,11 @@
 use crate::{
-  hooks::{GcHooks, Hooks},
-  managed::{DebugHeap, DebugWrap, GcStr, Object, Trace},
-  signature::{
+  hooks::{GcHooks, Hooks}, managed::{DebugHeap, DebugWrap, Trace}, reference::Object, signature::{
     Arity, NativeEnvironment, NativeSignature, ParameterBuilder, ParameterKind, SignatureBuilder,
-  },
-  value::Value,
-  Call,
+  }, value::Value, Call
 };
 use std::{fmt, io::Write};
 
-use super::ObjectKind;
+use super::{LyStr, ObjectKind};
 
 #[derive(Clone, Debug)]
 pub struct NativeMetaBuilder {
@@ -90,7 +86,7 @@ impl NativeMetaBuilder {
 #[derive(Clone, Debug)]
 pub struct NativeMeta {
   /// The name of the native function
-  pub name: GcStr,
+  pub name: LyStr,
 
   /// Is this native function used as a method
   pub is_method: bool,
@@ -129,7 +125,7 @@ impl Native {
   }
 
   #[inline]
-  pub fn name(&self) -> GcStr {
+  pub fn name(&self) -> LyStr {
     self.meta.name
   }
 
@@ -144,7 +140,7 @@ impl Native {
   }
 
   #[inline]
-  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(&self, hooks_gen: F, args: &[Value]) -> Result<(), GcStr> {
+  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(&self, hooks_gen: F, args: &[Value]) -> Result<(), LyStr> {
     let args_count = args.len();
 
     let parameters = &*self.meta.signature.parameters;

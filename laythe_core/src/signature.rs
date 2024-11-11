@@ -1,7 +1,7 @@
 use crate::{
   hooks::GcHooks,
-  managed::{GcStr, Trace},
-  object::ObjectKind,
+  managed::Trace,
+  object::{LyStr, ObjectKind},
   value::{Value, ValueKind},
 };
 use std::{fmt::Display, io::Write};
@@ -103,13 +103,13 @@ impl ParameterBuilder {
 /// A native parameter indicating the name and kind of the parameter
 #[derive(Copy, Clone, Debug)]
 pub struct Parameter {
-  pub name: GcStr,
+  pub name: LyStr,
   pub kind: ParameterKind,
 }
 
 impl Parameter {
   /// Create a new parameter
-  pub const fn new(name: GcStr, kind: ParameterKind) -> Self {
+  pub const fn new(name: LyStr, kind: ParameterKind) -> Self {
     Self { name, kind }
   }
 }

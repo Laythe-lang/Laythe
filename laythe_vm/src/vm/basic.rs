@@ -2,15 +2,12 @@ use super::{ExecutionSignal, Vm};
 use crate::cache::InlineCache;
 use core::fmt;
 use laythe_core::{
-  captures::Captures,
-  managed::{Allocate, AllocateObj, DebugHeap, GcObj, GcStr, Trace},
-  object::{Class, Fiber, FiberPopResult, Fun},
-  value::Value,
+  managed::{Allocate, AllocateObj, DebugHeap, Trace}, object::{Class, Fiber, FiberPopResult, Fun, LyStr}, value::Value, Captures, ObjRef
 };
 use std::{convert::TryInto, ptr};
 
 impl Vm {
-  pub(super) fn value_class(&self, value: Value) -> GcObj<Class> {
+  pub(super) fn value_class(&self, value: Value) -> ObjRef<Class> {
     self.builtin.primitives.for_value(value)
   }
 
@@ -29,7 +26,7 @@ impl Vm {
     self.gc.borrow_mut().manage_obj(data, self)
   }
 
-  pub(super) fn manage_str<S: AsRef<str>>(&self, string: S) -> GcStr {
+  pub(super) fn manage_str<S: AsRef<str>>(&self, string: S) -> LyStr {
     self.gc.borrow_mut().manage_str(string, self)
   }
 
@@ -111,12 +108,12 @@ impl Vm {
   }
 
   /// read a constant as a string from the current chunk
-  pub(super) unsafe fn read_string(&self, index: u16) -> GcStr {
+  pub(super) unsafe fn read_string(&self, index: u16) -> LyStr {
     self.read_constant(index).to_obj().to_str()
   }
 
   /// Swap between the current fiber and the provided fiber
-  pub(super) unsafe fn context_switch(&mut self, fiber: GcObj<Fiber>) {
+  pub(super) unsafe fn context_switch(&mut self, fiber: ObjRef<Fiber>) {
     if !self.fiber.is_complete() {
       self.store_ip();
     }
@@ -131,7 +128,7 @@ impl Vm {
   /// Push a call frame onto the the call frame stack
   pub(super) unsafe fn push_frame(
     &mut self,
-    closure: GcObj<Fun>,
+    closure: ObjRef<Fun>,
     captures: Captures,
     arg_count: u8,
   ) {

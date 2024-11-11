@@ -7,14 +7,14 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   list,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, ListBuilder, Trace},
+  managed::{DebugHeap, DebugWrap, Trace},
   module::Module,
-  object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
+  object::{Enumerate, Enumerator, List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   utils::is_falsey,
   val,
   value::{Value, VALUE_NIL},
-  Call, LyError,
+  Call, LyError, ObjRef, Ref, VecBuilder,
 };
 use std::io::Write;
 
@@ -61,16 +61,10 @@ const ITER_EACH: NativeMetaBuilder = NativeMetaBuilder::method("each", Arity::Fi
   .with_stack();
 
 const ITER_ZIP: NativeMetaBuilder = NativeMetaBuilder::method("zip", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new(
-    "iterators",
-    ParameterKind::Object,
-  )]);
+  .with_params(&[ParameterBuilder::new("iterators", ParameterKind::Object)]);
 
 const ITER_CHAIN: NativeMetaBuilder = NativeMetaBuilder::method("chain", Arity::Variadic(0))
-  .with_params(&[ParameterBuilder::new(
-    "iterators",
-    ParameterKind::Object,
-  )]);
+  .with_params(&[ParameterBuilder::new("iterators", ParameterKind::Object)]);
 
 const ITER_ALL: NativeMetaBuilder = NativeMetaBuilder::method("all", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Callable)])
@@ -86,12 +80,12 @@ const ITER_INTO: NativeMetaBuilder = NativeMetaBuilder::method("into", Arity::Fi
   .with_params(&[ParameterBuilder::new("fun", ParameterKind::Callable)])
   .with_stack();
 
-pub fn declare_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_iter_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, ITER_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_iter_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_iter_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, ITER_CLASS_NAME)?;
   let value_error = val!(load_class_from_module(hooks, module, VALUE_ERROR_NAME)?);
 
@@ -282,12 +276,12 @@ impl LyNative for IterTake {
 #[derive(Debug)]
 struct TakeIterator {
   current: usize,
-  iter: GcObj<Enumerator>,
+  iter: ObjRef<Enumerator>,
   take_count: usize,
 }
 
 impl TakeIterator {
-  fn new(iter: GcObj<Enumerator>, take_count: usize) -> Self {
+  fn new(iter: ObjRef<Enumerator>, take_count: usize) -> Self {
     Self {
       current: 0,
       iter,
@@ -388,11 +382,11 @@ impl LyNative for IterSkip {
 #[derive(Debug)]
 struct SkipIterator {
   skip_count: usize,
-  iter: GcObj<Enumerator>,
+  iter: ObjRef<Enumerator>,
 }
 
 impl SkipIterator {
-  fn new(iter: GcObj<Enumerator>, skip_count: usize) -> Self {
+  fn new(iter: ObjRef<Enumerator>, skip_count: usize) -> Self {
     Self { skip_count, iter }
   }
 }
@@ -457,12 +451,12 @@ impl LyNative for IterMap {
 #[derive(Debug)]
 struct MapIterator {
   current: Value,
-  iter: GcObj<Enumerator>,
+  iter: ObjRef<Enumerator>,
   callable: Value,
 }
 
 impl MapIterator {
-  fn new(iter: GcObj<Enumerator>, callable: Value) -> Self {
+  fn new(iter: ObjRef<Enumerator>, callable: Value) -> Self {
     Self {
       current: VALUE_NIL,
       iter,
@@ -541,12 +535,12 @@ impl LyNative for IterFilter {
 #[derive(Debug)]
 struct FilterIterator {
   current: Value,
-  iter: GcObj<Enumerator>,
+  iter: ObjRef<Enumerator>,
   callable: Value,
 }
 
 impl FilterIterator {
-  fn new(iter: GcObj<Enumerator>, callable: Value) -> Self {
+  fn new(iter: ObjRef<Enumerator>, callable: Value) -> Self {
     Self {
       current: VALUE_NIL,
       iter,
@@ -677,7 +671,7 @@ native!(IterZip, ITER_ZIP);
 
 impl LyNative for IterZip {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
-    let iters: Vec<GcObj<Enumerator>> = args
+    let iters: Vec<ObjRef<Enumerator>> = args
       .iter()
       .map(|arg| arg.to_obj().to_enumerator())
       .collect();
@@ -693,11 +687,11 @@ impl LyNative for IterZip {
 #[derive(Debug)]
 struct ZipIterator {
   current: Value,
-  iters: Vec<GcObj<Enumerator>>,
+  iters: Vec<ObjRef<Enumerator>>,
 }
 
 impl ZipIterator {
-  fn new(iters: Vec<GcObj<Enumerator>>) -> Self {
+  fn new(iters: Vec<ObjRef<Enumerator>>) -> Self {
     Self {
       current: VALUE_NIL,
       iters,
@@ -781,7 +775,7 @@ native!(IterChain, ITER_CHAIN);
 
 impl LyNative for IterChain {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
-    let iters: Vec<GcObj<Enumerator>> = args
+    let iters: Vec<ObjRef<Enumerator>> = args
       .iter()
       .map(|arg| arg.to_obj().to_enumerator())
       .collect();
@@ -798,11 +792,11 @@ impl LyNative for IterChain {
 struct ChainIterator {
   current: Value,
   iter_index: usize,
-  iters: Vec<GcObj<Enumerator>>,
+  iters: Vec<ObjRef<Enumerator>>,
 }
 
 impl ChainIterator {
-  fn new(iters: Vec<GcObj<Enumerator>>) -> Self {
+  fn new(iters: Vec<ObjRef<Enumerator>>) -> Self {
     Self {
       current: VALUE_NIL,
       iter_index: 0,
@@ -930,10 +924,10 @@ native!(IterToList, ITER_LIST);
 impl LyNative for IterToList {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let mut iter = args[0].to_obj().to_enumerator();
-    let mut list = match iter.size_hint() {
-      Some(size) => hooks.manage_obj(ListBuilder::cap_only(size)),
+    let mut list = List::new(match iter.size_hint() {
+      Some(size) => hooks.manage_obj(VecBuilder::cap_only(size)),
       None => hooks.manage_obj(list!()),
-    };
+    });
 
     hooks.push_root(list);
 
@@ -1165,7 +1159,7 @@ mod test {
   mod map {
     use super::*;
     use crate::support::test_fun_builder;
-    use laythe_core::{captures::Captures, chunk::Chunk, object::Closure};
+    use laythe_core::{object::Closure, Captures, Chunk};
 
     #[test]
     fn call() {
@@ -1200,9 +1194,8 @@ mod test {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::{
-      captures::Captures,
-      chunk::Chunk,
       object::{Closure, Enumerator},
+      Captures, Chunk,
     };
 
     #[test]
@@ -1239,11 +1232,7 @@ mod test {
   mod reduce {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{
-      captures::Captures,
-      chunk::Chunk,
-      object::{Closure, Enumerator},
-    };
+    use laythe_core::{object::{Closure, Enumerator}, Captures, Chunk};
 
     #[test]
     fn call() {
@@ -1301,9 +1290,7 @@ mod test {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
     use laythe_core::{
-      captures::Captures,
-      chunk::Chunk,
-      object::{Closure, Enumerator},
+      object::{Closure, Enumerator}, Captures, Chunk,
     };
 
     #[test]

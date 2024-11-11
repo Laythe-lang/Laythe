@@ -65,13 +65,16 @@ pub const fn max_align<H, T>() -> usize {
   }
 }
 
-/// Create a rust `Layout` for a `GcObject`
-pub fn make_obj_layout<H, T>() -> Layout {
+/// Create a rust `Layout` for a `ObjRefect`
+pub const fn make_obj_layout<H, T>() -> Layout {
   let alignment = max_align::<H, T>();
 
   let header_size = mem::size_of::<H>();
   let num_bytes = next_aligned(header_size, mem::align_of::<T>()) + mem::size_of::<T>();
-  Layout::from_size_align(num_bytes, alignment).unwrap()
+  match Layout::from_size_align(num_bytes, alignment) {
+    Ok(result) => result,
+    Err(_) => panic!(),
+  }
 }
 
 /// Determine the max alignment between the item `T`
@@ -88,7 +91,7 @@ pub const fn max_array_align<H, T>() -> usize {
 }
 
 /// Create a rust `Layout` for a `GcArray` of `len` length.
-pub fn make_array_layout<H, T>(len: usize) -> Layout {
+pub const fn make_array_layout<H, T>(len: usize) -> Layout {
   let alignment = max_array_align::<H, T>();
 
   let num_bytes = if len == 0 {
@@ -97,17 +100,20 @@ pub fn make_array_layout<H, T>(len: usize) -> Layout {
     get_array_offset::<H, T>() + len * mem::size_of::<T>()
   };
 
-  Layout::from_size_align(num_bytes, alignment).unwrap()
+  match Layout::from_size_align(num_bytes, alignment) {
+    Ok(layout) => layout,
+    Err(_) => panic!(),
+  }
 }
 
 /// Determine the max alignment between the item `T`
-/// and the `GcList` header `Header`
+/// and the `Vector` header `Header`
 pub const fn max_list_align<H, T>() -> usize {
   max_array_align::<H, T>()
 }
 
 /// Create a rust `Layout` for a `GcArray` of `len` length.
-pub fn make_list_layout<H, T>(capacity: usize) -> Layout {
+pub const fn make_list_layout<H, T>(capacity: usize) -> Layout {
   let alignment = max_list_align::<H, T>();
 
   let num_bytes = if capacity == 0 {
@@ -116,7 +122,10 @@ pub fn make_list_layout<H, T>(capacity: usize) -> Layout {
     get_list_offset::<H, T>() + capacity * mem::size_of::<T>()
   };
 
-  Layout::from_size_align(num_bytes, alignment).unwrap()
+  match Layout::from_size_align(num_bytes, alignment) {
+    Ok(layout) => layout,
+    Err(_) => panic!(),
+  }
 }
 
 #[cfg(test)]
@@ -296,7 +305,10 @@ mod tests {
     fn get_list_cap_offset_test() {
       assert_eq!(get_list_cap_offset::<u8>(), mem::size_of::<usize>() * 2);
       assert_eq!(get_list_cap_offset::<usize>(), mem::size_of::<usize>() * 2);
-      assert_eq!(get_list_cap_offset::<u128>(), mem::size_of::<u128>() + mem::size_of::<usize>());
+      assert_eq!(
+        get_list_cap_offset::<u128>(),
+        mem::size_of::<u128>() + mem::size_of::<usize>()
+      );
     }
   }
 }

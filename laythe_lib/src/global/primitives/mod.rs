@@ -31,15 +31,7 @@ use class::create_class_class;
 use closure::{declare_closure_class, define_closure_class};
 use iter::{declare_iter_class, define_iter_class};
 use laythe_core::{
-  hooks::GcHooks,
-  if_let_obj,
-  managed::{Gc, GcObj},
-  module::Module,
-  object::{Class, ObjectKind},
-  to_obj_kind,
-  utils::IdEmitter,
-  val,
-  value::Value,
+  hooks::GcHooks, if_let_obj, module::Module, object::{Class, ObjectKind}, to_obj_kind, utils::IdEmitter, val, value::Value, ObjRef, Ref
 };
 use list::{declare_list_class, define_list_class};
 use map::{declare_map_class, define_map_class};
@@ -54,9 +46,9 @@ use super::OBJECT_CLASS_NAME;
 
 fn error_inheritance(
   hooks: &GcHooks,
-  module: Gc<Module>,
+  module: Ref<Module>,
   class_name: &str,
-) -> StdResult<GcObj<Class>> {
+) -> StdResult<ObjRef<Class>> {
   let name = hooks.manage_str(class_name);
   let error_name = hooks.manage_str(ERROR_CLASS_NAME);
   let error_class = match module.get_exported_symbol_by_name(error_name) {
@@ -77,9 +69,9 @@ fn error_inheritance(
 
 fn class_inheritance(
   hooks: &GcHooks,
-  module: Gc<Module>,
+  module: Ref<Module>,
   class_name: &str,
-) -> StdResult<GcObj<Class>> {
+) -> StdResult<ObjRef<Class>> {
   let name = hooks.manage_str(class_name);
   let object_name = hooks.manage_str(OBJECT_CLASS_NAME);
   let object_class = match module.get_exported_symbol_by_name(object_name) {
@@ -98,7 +90,7 @@ fn class_inheritance(
   })
 }
 
-pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Module>> {
+pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Ref<Module>> {
   let module = bootstrap_classes(hooks, emitter)?;
 
   declare_bool_class(hooks, module)?;
@@ -136,7 +128,7 @@ pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> Std
   Ok(module)
 }
 
-fn bootstrap_classes(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Gc<Module>> {
+fn bootstrap_classes(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Ref<Module>> {
   // create object class by itself
   let mut object_class = create_object_class(hooks);
 

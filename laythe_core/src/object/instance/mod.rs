@@ -1,27 +1,28 @@
+mod header;
+
+use crate::{
+  collections::{Array, ArrayHandle},
+  managed::{AllocObjResult, AllocateObj, DebugHeap, Trace},
+  object::Class,
+  reference::{ObjRef, ObjectHandle},
+  value::{Value, VALUE_NIL},
+};
+pub use header::Header;
 use std::{
   fmt::{self, Debug, Display, Pointer},
+  mem,
   ops::{Deref, DerefMut},
   ptr::NonNull,
 };
 
-use super::{
-  allocate::AllocObjResult,
-  gc_array::{GcArray, GcArrayHandle},
-  header::InstanceHeader,
-  AllocateObj, DebugHeap, GcObj, GcStr, Trace,
-};
-use crate::{
-  object::Class,
-  value::{Value, VALUE_NIL},
-};
-
+use super::LyStr;
 #[cfg(not(feature = "nan_boxing"))]
-use super::gc_obj::GcObject;
+use crate::ObjectRef;
 
 const MAX_FIELD_COUNT: usize = u16::MAX as usize;
 const NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
 
-pub struct Instance(GcArray<Value, InstanceHeader>);
+pub struct Instance(Array<Value, Header>);
 
 impl Instance {
   /// Create a usize from the buffer pointer. This is used
@@ -30,21 +31,21 @@ impl Instance {
     self.0.to_usize()
   }
 
-  /// Degrade this Instance into the more generic GcObject.
+  /// Degrade this Tuple into the more generic ObjRefect.
   /// This allows the string to meet the same interface
   /// as the other managed objects
   #[cfg(not(feature = "nan_boxing"))]
-  pub fn degrade(self) -> GcObject {
-    GcObject::new(self.0.ptr())
+  pub fn degrade(self) -> ObjectRef {
+    ObjectRef::new(self.0.ptr())
   }
 
   #[inline]
-  pub fn class(&self) -> GcObj<Class> {
+  pub fn class(&self) -> ObjRef<Class> {
     self.0.header().class()
   }
 
   #[inline]
-  pub fn set_field(&mut self, name: GcStr, value: Value) -> bool {
+  pub fn set_field(&mut self, name: LyStr, value: Value) -> bool {
     match self.class().get_field_index(&name) {
       Some(index) => {
         self[index as usize] = value;
@@ -55,7 +56,7 @@ impl Instance {
   }
 
   #[inline]
-  pub fn get_field(&self, name: GcStr) -> Option<&Value> {
+  pub fn get_field(&self, name: LyStr) -> Option<&Value> {
     self
       .class()
       .get_field_index(&name)
@@ -67,7 +68,7 @@ impl Instance {
   /// ## Safety
   /// This should only be constructed from a box value
   pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
-    Instance(GcArray::from_alloc_ptr(ptr))
+    Instance(Array::from_alloc_ptr(ptr))
   }
 }
 
@@ -87,14 +88,14 @@ impl DerefMut for Instance {
   }
 }
 
-impl AllocateObj<Instance> for GcObj<Class> {
+impl AllocateObj<Instance> for ObjRef<Class> {
   fn alloc(self) -> AllocObjResult<Instance> {
     if self.fields() > 256 {
       panic!("Cannot allocate class with more than 256 fields")
     }
 
     let slice = &NIL_ARRAY[..self.fields()];
-    let handle = GcArrayHandle::from_slice(slice, InstanceHeader::new(self));
+    let handle = ArrayHandle::from_slice(slice, Header::new(self));
 
     let size = handle.size();
     let reference = Instance(handle.value());
@@ -154,6 +155,15 @@ impl Debug for Instance {
 impl Display for Instance {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "<instance {} {:p}>", self.class().name(), self)
+  }
+}
+
+impl<Value> ArrayHandle<Value, Header> {
+  /// Degrade this handle into
+  pub fn degrade(self) -> ObjectHandle {
+    let handle = ObjectHandle::new(self.value().ptr());
+    mem::forget(self);
+    handle
   }
 }
 

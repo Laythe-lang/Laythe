@@ -1,13 +1,13 @@
 use super::{Fun, ObjectKind};
 use crate::{
   captures::Captures,
-  managed::{DebugHeap, DebugWrap, GcObj, Object, Trace},
+  managed::{DebugHeap, DebugWrap, Trace}, reference::{ObjRef, Object},
 };
 use std::{fmt, io::Write};
 
 #[derive(PartialEq, Eq, Clone)]
 pub struct Closure {
-  fun: GcObj<Fun>,
+  fun: ObjRef<Fun>,
   captures: Captures,
 }
 
@@ -19,9 +19,9 @@ impl Closure {
   /// use laythe_core::object::{Closure, Class, FunBuilder};
   /// use laythe_core::signature::Arity;
   /// use laythe_core::module::Module;
-  /// use laythe_core::captures::Captures;
+  /// use laythe_core::Captures;
   /// use laythe_core::hooks::{NoContext, GcHooks};
-  /// use laythe_core::chunk::Chunk;
+  /// use laythe_core::Chunk;
   /// use std::path::PathBuf;
   ///
   /// let mut context = NoContext::default();
@@ -41,12 +41,12 @@ impl Closure {
   /// let closure = Closure::new(managed_fun, captures);
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```
-  pub fn new(fun: GcObj<Fun>, captures: Captures) -> Self {
+  pub fn new(fun: ObjRef<Fun>, captures: Captures) -> Self {
     Closure { fun, captures }
   }
 
   #[inline]
-  pub fn fun(&self) -> GcObj<Fun> {
+  pub fn fun(&self) -> ObjRef<Fun> {
     self.fun
   }
 

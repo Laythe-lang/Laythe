@@ -1,12 +1,11 @@
 use super::{source_loader::ImportResult, ExecutionSignal, Vm};
 use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
-use laythe_core::object::Fiber;
+use laythe_core::object::{Fiber, List, LyStr};
 use laythe_core::value::VALUE_UNDEFINED;
+use laythe_core::{Captures, ObjRef, Ref};
 use laythe_core::{
-  captures::Captures,
   hooks::{GcHooks, Hooks},
   if_let_obj, list,
-  managed::{Array, Gc, GcObj, GcStr, LyList, Tuple},
   match_obj,
   module::Import,
   object::{
@@ -375,7 +374,7 @@ impl Vm {
   unsafe fn invoke(
     &mut self,
     receiver: Value,
-    method_name: GcStr,
+    method_name: LyStr,
     arg_count: u8,
   ) -> ExecutionSignal {
     if_let_obj!(ObjectKind::Instance(instance) = (receiver) {
@@ -552,7 +551,7 @@ impl Vm {
 
     match self.fiber.error() {
       Some(mut error) => {
-        let mut managed_backtrace: Tuple = self.manage_obj(&*vec![VALUE_NIL; backtrace.len()]);
+        let mut managed_backtrace = self.manage_obj(&*vec![VALUE_NIL; backtrace.len()]);
 
         // attach the error so we good on a gc
         error[1] = val!(managed_backtrace);
@@ -1020,14 +1019,14 @@ impl Vm {
     result
   }
 
-  fn extract_import_path(&mut self, path: LyList) -> Vec<GcStr> {
+  fn extract_import_path(&mut self, path: List) -> Vec<LyStr> {
     path
       .iter()
       .map(|segment| segment.to_obj().to_str())
       .collect()
   }
 
-  fn full_import_path(&mut self, path_segments: &[GcStr]) -> GcStr {
+  fn full_import_path(&mut self, path_segments: &[LyStr]) -> LyStr {
     let mut buffer = String::new();
     for segment in &path_segments[..path_segments.len() - 1] {
       buffer.push_str(segment);
@@ -1039,7 +1038,7 @@ impl Vm {
     self.manage_str(buffer)
   }
 
-  fn build_import(&mut self, path_segments: &[GcStr]) -> Gc<Import> {
+  fn build_import(&mut self, path_segments: &[LyStr]) -> Ref<Import> {
     match path_segments.split_first() {
       Some((package, path)) => {
         // generate a new import object
@@ -1048,7 +1047,7 @@ impl Vm {
       },
       None => {
         // generate a new import object
-        let path: Array<GcStr> = self.manage(&[] as &[GcStr]);
+        let path = self.manage(&[] as &[LyStr]);
         self.manage(Import::new(path_segments[0], path))
       },
     }
@@ -1358,7 +1357,7 @@ impl Vm {
           CaptureIndex::Enclosing(index) => self.fiber.captures().get_capture(index as usize),
         }
       })
-      .collect::<Vec<GcObj<LyBox>>>();
+      .collect::<Vec<ObjRef<LyBox>>>();
 
     let captures = Captures::new(&GcHooks::new(self), &captures);
     let closure = self.manage_obj(Closure::new(fun, captures));
@@ -1421,7 +1420,7 @@ impl Vm {
   }
 
   /// call a class creating a new instance of that class
-  unsafe fn call_class(&mut self, class: GcObj<Class>, arg_count: u8) -> ExecutionSignal {
+  unsafe fn call_class(&mut self, class: ObjRef<Class>, arg_count: u8) -> ExecutionSignal {
     let instance = val!(self.manage_obj(class));
     self.fiber.peek_set(arg_count as usize, instance);
 
@@ -1441,7 +1440,7 @@ impl Vm {
   }
 
   /// call a native function immediately returning the result
-  unsafe fn call_native(&mut self, native: GcObj<Native>, arg_count: u8) -> ExecutionSignal {
+  unsafe fn call_native(&mut self, native: ObjRef<Native>, arg_count: u8) -> ExecutionSignal {
     let mut fiber = self.fiber;
 
     let args = match native.is_method() {
@@ -1486,7 +1485,7 @@ impl Vm {
 
         // Because the stack can resize we need to store the values in a separate
         // vec. TODO we should have a slice type which will keep the store alive.
-        // In general we should switch to using the new GcList
+        // In general we should switch to using the new Vector
         let args = args.to_vec();
         let result = native.call(&mut Hooks::new(self), &args);
         self.native_fun_stubs.push(stub);
@@ -1511,7 +1510,7 @@ impl Vm {
   }
 
   /// call a laythe function setting it as the new call frame
-  unsafe fn call_closure(&mut self, closure: GcObj<Closure>, arg_count: u8) -> ExecutionSignal {
+  unsafe fn call_closure(&mut self, closure: ObjRef<Closure>, arg_count: u8) -> ExecutionSignal {
     // check that the current function is called with the right number of args
     if let Some(error) = self.check_arity(closure.fun(), arg_count) {
       return error;
@@ -1527,7 +1526,7 @@ impl Vm {
   }
 
   /// call a laythe function setting it as the new call frame
-  unsafe fn call(&mut self, fun: GcObj<Fun>, arg_count: u8) -> ExecutionSignal {
+  unsafe fn call(&mut self, fun: ObjRef<Fun>, arg_count: u8) -> ExecutionSignal {
     // check that the current function is called with the right number of args
     if let Some(error) = self.check_arity(fun, arg_count) {
       return error;
@@ -1543,7 +1542,7 @@ impl Vm {
   }
 
   /// check that the number of args is valid for the function arity
-  unsafe fn check_arity(&mut self, fun: GcObj<Fun>, arg_count: u8) -> Option<ExecutionSignal> {
+  unsafe fn check_arity(&mut self, fun: ObjRef<Fun>, arg_count: u8) -> Option<ExecutionSignal> {
     match fun.check_if_valid_call(|| GcHooks::new(self), arg_count) {
       Ok(_) => None,
       Err(err) => Some(self.runtime_error(self.builtin.errors.runtime, err)),
@@ -1553,7 +1552,7 @@ impl Vm {
   /// Check the arity of a native function
   unsafe fn check_native_arity(
     &mut self,
-    native: GcObj<Native>,
+    native: ObjRef<Native>,
     args: &[Value],
   ) -> Option<ExecutionSignal> {
     match native.check_if_valid_call(|| GcHooks::new(self), args) {
@@ -1563,13 +1562,13 @@ impl Vm {
   }
 
   /// Call a bound method
-  unsafe fn call_method(&mut self, bound: GcObj<Method>, arg_count: u8) -> ExecutionSignal {
+  unsafe fn call_method(&mut self, bound: ObjRef<Method>, arg_count: u8) -> ExecutionSignal {
     self.fiber.peek_set(arg_count as usize, bound.receiver());
     self.resolve_call(bound.method(), arg_count)
   }
 
   /// bind a method to an instance
-  unsafe fn bind_method(&mut self, class: GcObj<Class>, name: GcStr) -> ExecutionSignal {
+  unsafe fn bind_method(&mut self, class: ObjRef<Class>, name: LyStr) -> ExecutionSignal {
     match class.get_method(&name) {
       Some(method) => {
         let bound = self.manage_obj(Method::new(self.fiber.peek(0), method));
@@ -1586,8 +1585,8 @@ impl Vm {
   /// invoke a method from the provided class
   unsafe fn invoke_from_class(
     &mut self,
-    class: GcObj<Class>,
-    method_name: GcStr,
+    class: ObjRef<Class>,
+    method_name: LyStr,
     arg_count: u8,
   ) -> ExecutionSignal {
     match class.get_method(&method_name) {
@@ -1605,7 +1604,7 @@ impl Vm {
 }
 
 #[cfg(debug_assertions)]
-fn assert_roots(native: GcObj<Native>, roots_before: usize, roots_now: usize) {
+fn assert_roots(native: ObjRef<Native>, roots_before: usize, roots_now: usize) {
   assert!(
     roots_before == roots_now,
     "Native function {} increased roots by {}.",

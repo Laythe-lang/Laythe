@@ -6,13 +6,12 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call,
+  Call, Ref,
 };
 use std::io::Write;
 
@@ -27,12 +26,12 @@ const FUN_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::Var
   .with_params(&[ParameterBuilder::new("args", ParameterKind::Object)])
   .with_stack();
 
-pub fn declare_fun_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_fun_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, FUN_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_fun_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_fun_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, FUN_CLASS_NAME)?;
 
   class.add_method(
@@ -101,7 +100,7 @@ mod test {
   }
 
   mod len {
-    use laythe_core::chunk::Chunk;
+    use laythe_core::Chunk;
 
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
@@ -134,7 +133,7 @@ mod test {
   }
 
   mod call {
-    use laythe_core::chunk::Chunk;
+    use laythe_core::Chunk;
 
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};

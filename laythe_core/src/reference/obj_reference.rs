@@ -1,22 +1,13 @@
-use super::{
-  allocate::AllocObjResult,
-  gc_list::{strip_msb, GcList},
-  header::ObjHeader,
-  manage::{DebugHeap, DebugWrap, Trace},
-  utils::{
-    get_array_len_offset, get_list_cap_offset, get_offset, make_array_layout, make_obj_layout,
-  },
-  AllocateObj, GcStr, Instance, LyList, Mark, Marked, Tuple, Unmark,
-};
 use crate::{
-  managed::{
-    header::InstanceHeader,
-    utils::{get_array_offset, get_list_offset, make_list_layout},
+  align_utils::{
+    get_array_len_offset, get_array_offset, get_list_cap_offset, get_list_offset, get_offset, make_array_layout, make_list_layout, make_obj_layout
   },
+  managed::{AllocObjResult, AllocateObj, DebugHeap, DebugWrap, Mark, Marked, Trace, Unmark},
   match_obj,
   object::{
-    Channel, Class, Closure, Enumerator, Fiber, Fun, LyBox, Map, Method, Native, ObjectKind,
+    Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, InstanceHeader, List, LyBox, LyStr, Map, Method, Native, ObjHeader, ObjectKind, Tuple
   },
+  utils::strip_msb,
   value::Value,
 };
 use std::{
@@ -34,12 +25,12 @@ pub trait Object: Trace + DebugHeap {
   fn kind(&self) -> ObjectKind;
 }
 
-pub struct GcObj<T: 'static + Object> {
+pub struct ObjRef<T: 'static + Object> {
   /// Pointer to the header of the allocate
   ptr: NonNull<T>,
 }
 
-impl<T: 'static + Object> GcObj<T> {
+impl<T: 'static + Object> ObjRef<T> {
   /// A const pointer to the header of this object
   #[inline]
   unsafe fn header_ptr(&self) -> *mut u8 {
@@ -81,16 +72,16 @@ impl<T: 'static + Object> GcObj<T> {
     &*(self.ptr.as_ptr() as *const T)
   }
 
-  /// Degrade this `GcObj<T>` into a `GcObject`
+  /// Degrade this `ObjRef<T>` into a `ObjRefect`
   #[inline]
-  pub fn degrade(self) -> GcObject {
+  pub fn degrade(self) -> ObjectRef {
     let shifted = unsafe { NonNull::new_unchecked(self.header_ptr()) };
-    GcObject::new(shifted)
+    ObjectRef::new(shifted)
   }
 
-  /// Create a dangling GcObj pointer
-  pub fn dangling() -> GcObj<T> {
-    GcObj {
+  /// Create a dangling ObjRef pointer
+  pub fn dangling() -> ObjRef<T> {
+    ObjRef {
       ptr: NonNull::dangling(),
     }
   }
@@ -103,7 +94,7 @@ impl<T: 'static + Object> GcObj<T> {
   }
 }
 
-impl<T: 'static + Object> Trace for GcObj<T> {
+impl<T: 'static + Object> Trace for ObjRef<T> {
   #[inline]
   fn trace(&self) {
     if self.mark() {
@@ -131,7 +122,7 @@ impl<T: 'static + Object> Trace for GcObj<T> {
   }
 }
 
-impl<T: 'static + Object> DebugHeap for GcObj<T> {
+impl<T: 'static + Object> DebugHeap for ObjRef<T> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
       f.write_fmt(format_args!("{:p}", self.ptr))
@@ -144,32 +135,32 @@ impl<T: 'static + Object> DebugHeap for GcObj<T> {
   }
 }
 
-impl<T: 'static + Object> Mark for GcObj<T> {
+impl<T: 'static + Object> Mark for ObjRef<T> {
   #[inline]
   fn mark(&self) -> bool {
     self.header().mark()
   }
 }
 
-impl<T: 'static + Object> Marked for GcObj<T> {
+impl<T: 'static + Object> Marked for ObjRef<T> {
   #[inline]
   fn marked(&self) -> bool {
     self.header().marked()
   }
 }
 
-unsafe impl<T: 'static + Object> Send for GcObj<T> {}
-unsafe impl<T: 'static + Object> Sync for GcObj<T> {}
+unsafe impl<T: 'static + Object> Send for ObjRef<T> {}
+unsafe impl<T: 'static + Object> Sync for ObjRef<T> {}
 
-impl<T: 'static + Object> Copy for GcObj<T> {}
-impl<T: 'static + Object> Clone for GcObj<T> {
+impl<T: 'static + Object> Copy for ObjRef<T> {}
+impl<T: 'static + Object> Clone for ObjRef<T> {
   #[inline]
-  fn clone(&self) -> GcObj<T> {
+  fn clone(&self) -> ObjRef<T> {
     *self
   }
 }
 
-impl<T: 'static + Object> Deref for GcObj<T> {
+impl<T: 'static + Object> Deref for ObjRef<T> {
   type Target = T;
 
   #[inline]
@@ -178,16 +169,16 @@ impl<T: 'static + Object> Deref for GcObj<T> {
   }
 }
 
-impl<T: 'static + Object> DerefMut for GcObj<T> {
+impl<T: 'static + Object> DerefMut for ObjRef<T> {
   #[inline]
   fn deref_mut(&mut self) -> &mut T {
     self.data_mut()
   }
 }
 
-impl<T: 'static + Object> PartialEq for GcObj<T> {
+impl<T: 'static + Object> PartialEq for ObjRef<T> {
   #[inline]
-  fn eq(&self, other: &GcObj<T>) -> bool {
+  fn eq(&self, other: &ObjRef<T>) -> bool {
     let left_inner: &T = self;
     let right_inner: &T = other;
 
@@ -195,56 +186,56 @@ impl<T: 'static + Object> PartialEq for GcObj<T> {
   }
 }
 
-impl<T: 'static + Object> Eq for GcObj<T> {}
+impl<T: 'static + Object> Eq for ObjRef<T> {}
 
-impl<T: 'static + Object> Hash for GcObj<T> {
+impl<T: 'static + Object> Hash for ObjRef<T> {
   #[inline]
   fn hash<H: Hasher>(&self, state: &mut H) {
     ptr::hash(self.ptr.as_ptr(), state)
   }
 }
 
-impl<T: 'static + Object> PartialOrd for GcObj<T> {
+impl<T: 'static + Object> PartialOrd for ObjRef<T> {
   #[inline]
-  fn partial_cmp(&self, other: &GcObj<T>) -> Option<cmp::Ordering> {
+  fn partial_cmp(&self, other: &ObjRef<T>) -> Option<cmp::Ordering> {
     Some(self.cmp(other))
   }
 }
 
-impl<T: 'static + Object> Ord for GcObj<T> {
+impl<T: 'static + Object> Ord for ObjRef<T> {
   #[inline]
-  fn cmp(&self, other: &GcObj<T>) -> cmp::Ordering {
+  fn cmp(&self, other: &ObjRef<T>) -> cmp::Ordering {
     self.ptr.cmp(&other.ptr)
   }
 }
 
-impl<T: 'static + Object + fmt::Display> fmt::Display for GcObj<T> {
+impl<T: 'static + Object + fmt::Display> fmt::Display for ObjRef<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = self;
     write!(f, "{inner}")
   }
 }
 
-impl<T: 'static + Object + fmt::Debug> fmt::Debug for GcObj<T> {
+impl<T: 'static + Object + fmt::Debug> fmt::Debug for ObjRef<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     let inner: &T = self;
 
-    f.debug_struct("GcObj").field("ptr", inner).finish()
+    f.debug_struct("ObjRef").field("ptr", inner).finish()
   }
 }
 
-impl<T: 'static + Object> fmt::Pointer for GcObj<T> {
+impl<T: 'static + Object> fmt::Pointer for ObjRef<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
     self.ptr.fmt(f)
   }
 }
 
-impl<T> AllocateObj<GcObj<T>> for T
+impl<T> AllocateObj<ObjRef<T>> for T
 where
   T: Object,
 {
-  fn alloc(self) -> AllocObjResult<GcObj<T>> {
-    let handle = GcObjectHandleBuilder::from(self);
+  fn alloc(self) -> AllocObjResult<ObjRef<T>> {
+    let handle = ObjectHandlerBuilder::from(self);
     let size = handle.size();
     let reference = handle.value();
 
@@ -257,15 +248,15 @@ where
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, Hash)]
-pub struct GcObject {
+pub struct ObjectRef {
   /// Pointer to the header of the allocate
   ptr: NonNull<u8>,
 }
 
-impl GcObject {
+impl ObjectRef {
   #[inline]
   pub fn new(ptr: NonNull<u8>) -> Self {
-    GcObject { ptr }
+    ObjectRef { ptr }
   }
 
   #[inline]
@@ -294,8 +285,8 @@ impl GcObject {
   }
 
   #[inline]
-  pub fn to_str(self) -> GcStr {
-    unsafe { GcStr::from_alloc_ptr(self.ptr) }
+  pub fn to_str(self) -> LyStr {
+    unsafe { LyStr::from_alloc_ptr(self.ptr) }
   }
 
   #[inline]
@@ -304,43 +295,43 @@ impl GcObject {
   }
 
   #[inline]
-  pub fn to_box(self) -> GcObj<LyBox> {
-    GcObj {
+  pub fn to_box(self) -> ObjRef<LyBox> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<LyBox>() },
     }
   }
 
   #[inline]
-  pub fn to_channel(self) -> GcObj<Channel> {
-    GcObj {
+  pub fn to_channel(self) -> ObjRef<Channel> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<Channel>() },
     }
   }
 
   #[inline]
-  pub fn to_class(self) -> GcObj<Class> {
-    GcObj {
+  pub fn to_class(self) -> ObjRef<Class> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<Class>() },
     }
   }
 
   #[inline]
-  pub fn to_closure(self) -> GcObj<Closure> {
-    GcObj {
+  pub fn to_closure(self) -> ObjRef<Closure> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<Closure>() },
     }
   }
 
   #[inline]
-  pub fn to_fun(self) -> GcObj<Fun> {
-    GcObj {
+  pub fn to_fun(self) -> ObjRef<Fun> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<Fun>() },
     }
   }
 
   #[inline]
-  pub fn to_fiber(self) -> GcObj<Fiber> {
-    GcObj {
+  pub fn to_fiber(self) -> ObjRef<Fiber> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<Fiber>() },
     }
   }
@@ -351,40 +342,40 @@ impl GcObject {
   }
 
   #[inline]
-  pub fn to_enumerator(self) -> GcObj<Enumerator> {
-    GcObj {
+  pub fn to_enumerator(self) -> ObjRef<Enumerator> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<Enumerator>() },
     }
   }
 
   #[inline]
-  pub fn to_list(self) -> LyList {
-    unsafe { GcList::from_alloc_ptr(self.ptr) }
+  pub fn to_list(self) -> List {
+    unsafe { List::from_alloc_ptr(self.ptr) }
   }
 
   #[inline]
-  pub fn to_map(self) -> GcObj<Map<Value, Value>> {
-    GcObj {
+  pub fn to_map(self) -> ObjRef<Map<Value, Value>> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<Map<Value, Value>>() },
     }
   }
 
   #[inline]
-  pub fn to_method(self) -> GcObj<Method> {
-    GcObj {
+  pub fn to_method(self) -> ObjRef<Method> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<Method>() },
     }
   }
 
   #[inline]
-  pub fn to_native(self) -> GcObj<Native> {
-    GcObj {
+  pub fn to_native(self) -> ObjRef<Native> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<Native>() },
     }
   }
 }
 
-impl fmt::Display for GcObject {
+impl fmt::Display for ObjectRef {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match_obj!((self) {
       ObjectKind::String(string) => write!(f, "{string}"),
@@ -405,7 +396,7 @@ impl fmt::Display for GcObject {
   }
 }
 
-impl fmt::Debug for GcObject {
+impl fmt::Debug for ObjectRef {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     match_obj!((self) {
       ObjectKind::String(string) => write!(f, "{string:?}"),
@@ -426,27 +417,27 @@ impl fmt::Debug for GcObject {
   }
 }
 
-impl fmt::Pointer for GcObject {
+impl fmt::Pointer for ObjectRef {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     self.ptr.fmt(f)
   }
 }
 
-impl Mark for GcObject {
+impl Mark for ObjectRef {
   #[inline]
   fn mark(&self) -> bool {
     self.header().mark()
   }
 }
 
-impl Marked for GcObject {
+impl Marked for ObjectRef {
   #[inline]
   fn marked(&self) -> bool {
     self.header().marked()
   }
 }
 
-impl Trace for GcObject {
+impl Trace for ObjectRef {
   #[inline]
   fn trace(&self) {
     if self.marked() {
@@ -565,7 +556,7 @@ impl Trace for GcObject {
   }
 }
 
-impl DebugHeap for GcObject {
+impl DebugHeap for ObjectRef {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
       return f.write_fmt(format_args!("{:p}", self.ptr));
@@ -618,10 +609,10 @@ impl DebugHeap for GcObject {
   }
 }
 
-unsafe impl Send for GcObject {}
-unsafe impl Sync for GcObject {}
+unsafe impl Send for ObjectRef {}
+unsafe impl Sync for ObjectRef {}
 
-fn array_len<H>(this: &GcObjectHandle) -> usize {
+fn array_len<H>(this: &ObjectHandle) -> usize {
   unsafe {
     ptr::read(this.ptr.as_ptr() as *const H);
   }
@@ -631,7 +622,7 @@ fn array_len<H>(this: &GcObjectHandle) -> usize {
   unsafe { *(this.ptr.as_ptr().add(count) as *mut usize) }
 }
 
-fn list_capacity<H>(this: &GcObjectHandle) -> usize {
+fn list_capacity<H>(this: &ObjectHandle) -> usize {
   unsafe {
     ptr::read(this.ptr.as_ptr() as *const H);
   }
@@ -641,11 +632,15 @@ fn list_capacity<H>(this: &GcObjectHandle) -> usize {
   unsafe { strip_msb(*(this.ptr.as_ptr().add(count) as *mut usize)) }
 }
 
-pub struct GcObjectHandle {
-  pub(super) ptr: NonNull<u8>,
+pub struct ObjectHandle {
+  ptr: NonNull<u8>,
 }
 
-impl GcObjectHandle {
+impl ObjectHandle {
+  pub fn new(ptr: NonNull<u8>) -> Self {
+    Self { ptr }
+  }
+
   /// Retrieve the header from this array
   #[inline]
   fn header(&self) -> &ObjHeader {
@@ -656,8 +651,8 @@ impl GcObjectHandle {
   }
 
   #[inline]
-  fn value(&self) -> GcObject {
-    GcObject { ptr: self.ptr }
+  fn value(&self) -> ObjectRef {
+    ObjectRef { ptr: self.ptr }
   }
 
   #[inline]
@@ -705,7 +700,7 @@ impl GcObjectHandle {
   }
 }
 
-impl Drop for GcObjectHandle {
+impl Drop for ObjectHandle {
   #[inline]
   fn drop(&mut self) {
     unsafe {
@@ -786,57 +781,57 @@ impl Drop for GcObjectHandle {
   }
 }
 
-impl Marked for GcObjectHandle {
+impl Marked for ObjectHandle {
   #[inline]
   fn marked(&self) -> bool {
     self.header().marked()
   }
 }
 
-impl Unmark for GcObjectHandle {
+impl Unmark for ObjectHandle {
   #[inline]
   fn unmark(&self) -> bool {
     self.header().unmark()
   }
 }
 
-impl fmt::Pointer for GcObjectHandle {
+impl fmt::Pointer for ObjectHandle {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     self.ptr.fmt(f)
   }
 }
 
-impl DebugHeap for GcObjectHandle {
+impl DebugHeap for ObjectHandle {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     self.value().fmt_heap(f, depth)
   }
 }
 
-pub struct GcObjectHandleBuilder<T> {
+pub struct ObjectHandlerBuilder<T> {
   ptr: NonNull<u8>,
 
   /// Phantom data to hold the type parameter
   phantom: PhantomData<T>,
 }
 
-impl<T: 'static + Object> GcObjectHandleBuilder<T> {
+impl<T: 'static + Object> ObjectHandlerBuilder<T> {
   #[inline]
-  pub fn value(&self) -> GcObj<T> {
-    GcObj {
+  pub fn value(&self) -> ObjRef<T> {
+    ObjRef {
       ptr: unsafe { self.data_ptr::<T>() },
     }
   }
 }
 
-impl<T> GcObjectHandleBuilder<T> {
+impl<T> ObjectHandlerBuilder<T> {
   unsafe fn data_ptr<U>(&self) -> NonNull<U> {
     let offset = get_offset::<ObjHeader, U>();
     NonNull::new_unchecked(self.ptr.as_ptr().add(offset) as *mut U)
   }
 
   #[inline]
-  pub fn degrade(self) -> GcObjectHandle {
-    GcObjectHandle { ptr: self.ptr }
+  pub fn degrade(self) -> ObjectHandle {
+    ObjectHandle { ptr: self.ptr }
   }
 
   #[inline]
@@ -845,7 +840,7 @@ impl<T> GcObjectHandleBuilder<T> {
   }
 }
 
-impl<T: Object> From<T> for GcObjectHandleBuilder<T> {
+impl<T: Object> From<T> for ObjectHandlerBuilder<T> {
   #[inline]
   fn from(item: T) -> Self {
     let new_layout = make_obj_layout::<ObjHeader, T>();
@@ -862,7 +857,7 @@ impl<T: Object> From<T> for GcObjectHandleBuilder<T> {
       ptr::write(buf as *mut ObjHeader, header);
       ptr::write(buf.add(get_offset::<ObjHeader, T>()) as *mut T, item);
 
-      GcObjectHandleBuilder {
+      ObjectHandlerBuilder {
         ptr: NonNull::new_unchecked(buf),
         phantom: PhantomData,
       }
@@ -889,7 +884,7 @@ mod test {
 
     #[test]
     pub fn from() {
-      let handle_builder = GcObjectHandleBuilder::from(Map::new());
+      let handle_builder = ObjectHandlerBuilder::from(Map::new());
       let gc_value = handle_builder.value();
 
       assert_eq!(gc_value.kind(), ObjectKind::Map);
@@ -897,7 +892,7 @@ mod test {
 
     #[test]
     pub fn degrade() {
-      let handle_builder = GcObjectHandleBuilder::from(Map::new());
+      let handle_builder = ObjectHandlerBuilder::from(Map::new());
       let handle = handle_builder.degrade();
 
       assert_eq!(handle.kind(), ObjectKind::Map);
@@ -917,7 +912,7 @@ mod test {
       map.insert(VALUE_FALSE, VALUE_FALSE);
       map.insert(VALUE_TRUE, VALUE_TRUE);
 
-      let handle_builder = GcObjectHandleBuilder::from(map);
+      let handle_builder = ObjectHandlerBuilder::from(map);
       let gc_obj = handle_builder.value();
 
       assert_eq!(gc_obj.get(&VALUE_FALSE), Some(&VALUE_FALSE));
@@ -930,7 +925,7 @@ mod test {
       map.insert(VALUE_FALSE, VALUE_FALSE);
       map.insert(VALUE_TRUE, VALUE_TRUE);
 
-      let handle_builder = GcObjectHandleBuilder::from(map);
+      let handle_builder = ObjectHandlerBuilder::from(map);
       let mut gc_obj = handle_builder.value();
 
       gc_obj.insert(VALUE_TRUE, val!(1.0));
@@ -941,7 +936,7 @@ mod test {
 
     #[test]
     fn kind() {
-      let handle_builder = GcObjectHandleBuilder::from(Map::new());
+      let handle_builder = ObjectHandlerBuilder::from(Map::new());
       let gc_obj = handle_builder.value();
 
       assert_eq!(gc_obj.kind(), ObjectKind::Map);
@@ -949,7 +944,7 @@ mod test {
 
     #[test]
     fn degrade() {
-      let handle_builder = GcObjectHandleBuilder::from(Map::new());
+      let handle_builder = ObjectHandlerBuilder::from(Map::new());
       let gc_obj = handle_builder.value();
       let gc_object = gc_obj.degrade();
 
@@ -962,8 +957,8 @@ mod test {
 
     use super::*;
 
-    fn create_object<T: 'static + Object>(item: T) -> GcObjectHandle {
-      let handle_builder = GcObjectHandleBuilder::from(item);
+    fn create_object<T: 'static + Object>(item: T) -> ObjectHandle {
+      let handle_builder = ObjectHandlerBuilder::from(item);
       handle_builder.degrade()
     }
 

@@ -6,13 +6,12 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call,
+  Call, Ref,
 };
 use std::io::Write;
 
@@ -27,12 +26,12 @@ const CLOSURE_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity:
   .with_params(&[ParameterBuilder::new("args", ParameterKind::Object)])
   .with_stack();
 
-pub fn declare_closure_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_closure_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, CLOSURE_CLASS_NAME)?;
   export_and_insert(hooks, module, CLOSURE_CLASS_NAME, val!(class))
 }
 
-pub fn define_closure_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_closure_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, CLOSURE_CLASS_NAME)?;
 
   class.add_method(
@@ -86,7 +85,7 @@ mod test {
   use laythe_core::object::Closure;
 
   mod name {
-    use laythe_core::captures::Captures;
+    use laythe_core::Captures;
 
     use super::*;
 
@@ -112,7 +111,7 @@ mod test {
   mod size {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{captures::Captures, chunk::Chunk, object::Closure};
+    use laythe_core::{object::Closure, Captures, Chunk};
 
     #[test]
     fn call() {
@@ -154,7 +153,7 @@ mod test {
   mod call {
     use super::*;
     use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{captures::Captures, chunk::Chunk, object::Closure};
+    use laythe_core::{object::Closure, Captures, Chunk};
 
     #[test]
     fn call() {

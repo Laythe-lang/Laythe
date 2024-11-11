@@ -1,10 +1,7 @@
 use std::ops::Range;
 
 use codespan_reporting::files;
-use laythe_core::{
-  managed::{GcStr, Trace},
-  object::Map,
-};
+use laythe_core::{managed::Trace, object::{LyStr, Map}};
 
 /// A struct for efficiently determine lines for an associated
 /// file.
@@ -106,10 +103,10 @@ impl LineOffsets {
 /// by the virtual machine
 struct VmFile {
   /// The name of this file
-  name: GcStr,
+  name: LyStr,
 
   /// The full source of this file
-  source: GcStr,
+  source: LyStr,
 
   /// The line offsets for this file
   line_offsets: Option<LineOffsets>,
@@ -147,7 +144,7 @@ pub struct VmFiles {
   files: Vec<VmFile>,
 
   /// A map between file names and there unwrapped
-  name_map: Map<GcStr, usize>,
+  name_map: Map<LyStr, usize>,
 }
 
 impl VmFiles {
@@ -156,7 +153,7 @@ impl VmFiles {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::managed::{Allocator, NO_GC};
+  /// use laythe_core::{Allocator, NO_GC};
   /// use laythe_vm::source::VmFiles;
   ///
   /// let mut alloc = Allocator::default();
@@ -175,7 +172,7 @@ impl VmFiles {
   /// assert_ne!(id2, id3);
   /// assert_eq!(id1, id3);
   /// ```
-  pub fn upsert(&mut self, name: GcStr, source: GcStr) -> VmFileId {
+  pub fn upsert(&mut self, name: LyStr, source: LyStr) -> VmFileId {
     match self.name_map.get(&name) {
       Some(id) => {
         self.files[*id] = VmFile {
@@ -204,7 +201,7 @@ impl VmFiles {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::managed::{Allocator, NO_GC};
+  /// use laythe_core::{Allocator, NO_GC};
   /// use laythe_vm::source::{VmFiles, LineOffsets};
   ///
   /// let mut alloc = Allocator::default();
@@ -250,8 +247,8 @@ impl VmFiles {
 
 impl<'a> files::Files<'a> for VmFiles {
   type FileId = VmFileId;
-  type Name = GcStr;
-  type Source = GcStr;
+  type Name = LyStr;
+  type Source = LyStr;
 
   fn name(&'a self, id: Self::FileId) -> Result<Self::Name, files::Error> {
     Ok(self.get(id)?.name)
@@ -336,8 +333,9 @@ mod test {
   }
 
   mod vm_files {
+    use laythe_core::{Allocator, NO_GC};
+
     use super::*;
-    use laythe_core::managed::{Allocator, NO_GC};
 
     #[test]
     fn get() {

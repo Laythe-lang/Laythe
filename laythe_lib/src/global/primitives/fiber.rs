@@ -7,25 +7,24 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::Value,
-  Call,
+  Call, Ref,
 };
 use std::io::Write;
 
 pub const FIBER_CLASS_NAME: &str = "Fiber";
 const FIBER_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0));
 
-pub fn declare_fiber_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_fiber_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let bool_class = class_inheritance(hooks, module, FIBER_CLASS_NAME)?;
   export_and_insert(hooks, module, bool_class.name(), val!(bool_class))
 }
 
-pub fn define_fiber_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_fiber_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut bool_class = load_class_from_module(hooks, module, FIBER_CLASS_NAME)?;
 
   bool_class.add_method(

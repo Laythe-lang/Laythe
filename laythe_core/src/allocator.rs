@@ -1,6 +1,7 @@
-use crate::managed::{
-  Allocate, AllocateObj, DebugHeap, GcObjectHandle,
-  GcStr, Manage, Marked, Trace, TraceRoot, Unmark,
+use crate::{
+  managed::{Allocate, AllocateObj, DebugHeap, Manage, Marked, Trace, TraceRoot, Unmark},
+  object::LyStr,
+  reference::ObjectHandle,
 };
 use core::fmt;
 use hashbrown::HashMap;
@@ -25,10 +26,10 @@ pub struct Allocator {
   heap: Vec<Box<dyn Manage>>,
 
   /// The nursery obj heap for objects
-  nursery_obj_heap: Vec<GcObjectHandle>,
+  nursery_obj_heap: Vec<ObjectHandle>,
 
   /// The regular object heap for objects
-  obj_heap: Vec<GcObjectHandle>,
+  obj_heap: Vec<ObjectHandle>,
 
   /// A collection of temporary roots in the gc
   temp_roots: Vec<Box<dyn Trace>>,
@@ -37,7 +38,7 @@ pub struct Allocator {
   bytes_allocated: usize,
 
   /// The intern string cache
-  intern_cache: HashMap<&'static str, GcStr>,
+  intern_cache: HashMap<&'static str, LyStr>,
 
   /// The size in bytes of the gc before the next collection
   next_gc: usize,
@@ -53,7 +54,7 @@ impl Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::managed::Allocator;
+  /// use laythe_core::Allocator;
   /// use laythe_env::stdio::Stdio;
   ///
   /// let gc = Allocator::new(Stdio::default());
@@ -100,7 +101,7 @@ impl Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::managed::{Allocator, NO_GC};
+  /// use laythe_core::{Allocator, NO_GC};
   /// use laythe_core::object::LyBox;
   /// use laythe_core::value::Value;
   ///
@@ -118,20 +119,20 @@ impl Allocator {
     self.allocate_obj(data, context)
   }
 
-  /// Create a `GcStr` from a str slice. This creates
+  /// Create a `LyStr` from a str slice. This creates
   /// or returns an interned string and allocates a pointer to the intern
   /// cache.
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::managed::{Allocator, NO_GC};
+  /// use laythe_core::{Allocator, NO_GC};
   ///
   /// let mut gc = Allocator::default();
   /// let str = gc.manage_str("hi!", &NO_GC);
   ///
   /// assert_eq!(&*str, "hi!");
   /// ```
-  pub fn manage_str<S, C>(&mut self, src: S, context: &C) -> GcStr
+  pub fn manage_str<S, C>(&mut self, src: S, context: &C) -> LyStr
   where
     S: AsRef<str>,
     C: TraceRoot + ?Sized,
@@ -151,14 +152,14 @@ impl Allocator {
   ///
   /// # Examples
   /// ```
-  /// use laythe_core::managed::{Allocator, NO_GC};
+  /// use laythe_core::{Allocator, NO_GC};
   ///
   /// let mut gc = Allocator::default();
   /// gc.manage_str("hi!", &NO_GC);
   ///
   /// assert!(gc.has_str("hi!").is_some());
   /// ```
-  pub fn has_str<S: AsRef<str>>(&self, src: S) -> Option<GcStr> {
+  pub fn has_str<S: AsRef<str>>(&self, src: S) -> Option<LyStr> {
     let string = src.as_ref();
     self.intern_cache.get(string).copied()
   }
@@ -485,7 +486,7 @@ fn debug_free(obj: &Box<dyn Manage>, free: bool) {
 
 /// Debug logging for free an object.
 #[cfg(feature = "gc_log_free")]
-fn debug_free_obj(obj: &GcObjectHandle, free: bool) {
+fn debug_free_obj(obj: &ObjRefectHandle, free: bool) {
   if free {
     println!(
       "{:p} free {} bytes from {:?}",

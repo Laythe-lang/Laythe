@@ -1,25 +1,21 @@
-use crate::{
-  native,
-  support::{export_and_insert_native},
-  StdResult,
-};
+use crate::{native, support::export_and_insert_native, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   list,
-  managed::{Gc, GcObj, LyList, Trace},
+  managed::Trace,
   module::Module,
-  object::{LyNative, Native, NativeMetaBuilder},
+  object::{List, LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
   value::Value,
-  Call,
+  Call, Ref,
 };
 use std::io::Write;
 
 const ARGS_META: NativeMetaBuilder = NativeMetaBuilder::fun("args", Arity::Fixed(0));
 const CWD_META: NativeMetaBuilder = NativeMetaBuilder::fun("cwd", Arity::Fixed(0));
 
-pub fn declare_env_module(hooks: &GcHooks, self_module: Gc<Module>) -> StdResult<()> {
+pub fn declare_env_module(hooks: &GcHooks, self_module: Ref<Module>) -> StdResult<()> {
   export_and_insert_native(hooks, self_module, Args::native(hooks))?;
   export_and_insert_native(hooks, self_module, Cwd::native(hooks))
 }
@@ -33,7 +29,7 @@ native!(Args, ARGS_META);
 impl LyNative for Args {
   fn call(&self, hooks: &mut Hooks, _args: &[Value]) -> Call {
     let io = hooks.as_io();
-    let mut list: LyList = hooks.manage_obj(list!());
+    let mut list = List::new(hooks.manage_obj(list!()));
     hooks.push_root(list);
 
     for arg in io.env().args() {

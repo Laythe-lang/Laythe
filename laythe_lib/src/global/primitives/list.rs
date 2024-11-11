@@ -4,18 +4,7 @@ use crate::{
   StdResult,
 };
 use laythe_core::{
-  constants::{INDEX_GET, INDEX_SET},
-  hooks::{GcHooks, Hooks},
-  if_let_obj, list,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, IndexedResult, LyList, ListBuilder, Trace},
-  module::Module,
-  object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
-  signature::{Arity, ParameterBuilder, ParameterKind},
-  to_obj_kind,
-  utils::is_falsey,
-  val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, LyResult,
+  constants::{INDEX_GET, INDEX_SET}, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{DebugHeap, DebugWrap, Trace}, module::Module, object::{Enumerate, Enumerator, List, LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::is_falsey, val, value::{Value, VALUE_NIL}, Call, IndexedResult, LyError, LyResult, ObjRef, Ref, VecBuilder
 };
 use std::{cmp::Ordering, io::Write};
 
@@ -81,13 +70,13 @@ const LIST_SORT: NativeMetaBuilder = NativeMetaBuilder::method("sort", Arity::Fi
 const LIST_COLLECT: NativeMetaBuilder = NativeMetaBuilder::fun("collect", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("iter", ParameterKind::Object)]);
 
-pub fn declare_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_list_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, LIST_CLASS_NAME)?;
 
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_list_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, LIST_CLASS_NAME)?;
   let index_error = val!(load_class_from_module(hooks, module, INDEX_ERROR_NAME)?);
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);
@@ -181,13 +170,13 @@ pub fn define_list_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 
 #[derive(Debug)]
 struct ListStr {
-  method_name: GcStr,
+  method_name: LyStr,
   error: Value,
 }
 
 // native!(ListStr, LIST_STR);
 impl ListStr {
-  fn native(hooks: &GcHooks, method_name: GcStr, error: Value) -> GcObj<Native> {
+  fn native(hooks: &GcHooks, method_name: LyStr, error: Value) -> ObjRef<Native> {
     debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_name, error }) as Box<dyn LyNative>;
 
@@ -333,7 +322,7 @@ impl ListSlice {
   }
 }
 
-fn determine_index(list: &LyList, index: f64) -> Result<usize, String> {
+fn determine_index(list: &List, index: f64) -> Result<usize, String> {
   if index.fract() != 0.0 {
     return Err("Index must be an integer.".to_string());
   }
@@ -640,10 +629,10 @@ native!(ListCollect, LIST_COLLECT);
 impl LyNative for ListCollect {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let mut iter = args[0].to_obj().to_enumerator();
-    let mut list = match iter.size_hint() {
-      Some(size) => hooks.manage_obj(ListBuilder::cap_only(size)),
+    let mut list = List::new(match iter.size_hint() {
+      Some(size) => hooks.manage_obj(VecBuilder::cap_only(size)),
       None => hooks.manage_obj(list!()),
-    };
+    });
 
     hooks.push_root(list);
 
@@ -659,13 +648,13 @@ impl LyNative for ListCollect {
 
 #[derive(Debug)]
 struct ListIterator {
-  list: LyList,
+  list: List,
   index: usize,
   current: Value,
 }
 
 impl ListIterator {
-  fn new(list: LyList) -> Self {
+  fn new(list: List) -> Self {
     Self {
       current: VALUE_NIL,
       list,
@@ -773,7 +762,7 @@ mod test {
   }
 
   mod str {
-    use laythe_core::managed::NO_GC;
+    use laythe_core::NO_GC;
 
     use super::*;
     use crate::support::{test_error_class, test_native_dependencies, MockedContext};
@@ -950,10 +939,14 @@ mod test {
       }
 
       let result = list_remove.call(&mut hooks, &[this, val!(-1.0)]);
-      if result.is_ok() { panic!() }
+      if result.is_ok() {
+        panic!()
+      }
 
       let result = list_remove.call(&mut hooks, &[this, val!(10.0)]);
-      if result.is_ok() { panic!() }
+      if result.is_ok() {
+        panic!()
+      }
     }
   }
 
@@ -1007,10 +1000,14 @@ mod test {
       }
 
       let result = list_insert.call(&mut hooks, &[this, val!(-1.0), val!(true)]);
-      if result.is_ok() { panic!() }
+      if result.is_ok() {
+        panic!()
+      }
 
       let result = list_insert.call(&mut hooks, &[this, val!(10.0), val!(true)]);
-      if result.is_ok(){ panic!() }
+      if result.is_ok() {
+        panic!()
+      }
     }
   }
 

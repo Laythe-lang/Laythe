@@ -1,10 +1,10 @@
 use bumpalo::Bump;
 use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
 use laythe_core::module::Module;
+use laythe_core::object::LyStr;
+use laythe_core::{Allocator, NO_GC};
 use laythe_core::{
   hooks::{GcHooks, NoContext},
-  managed::GcStr,
-  managed::{Allocator, NO_GC},
   utils::IdEmitter,
 };
 use laythe_lib::create_std_lib;
@@ -23,10 +23,11 @@ fn fixture_path<P: AsRef<Path>>(bench_path: P) -> Option<PathBuf> {
   test_path
     .parent()
     .and_then(|path| path.parent())
-    .and_then(|path| path.parent()).map(|path| path.join(bench_path))
+    .and_then(|path| path.parent())
+    .map(|path| path.join(bench_path))
 }
 
-fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> GcStr {
+fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> LyStr {
   let assert = fixture_path(dir).expect("No parent directory");
   let mut file = File::open(assert).unwrap();
   let mut source = String::new();
@@ -34,7 +35,7 @@ fn load_source<P: AsRef<Path>>(gc: &mut Allocator, dir: P) -> GcStr {
   gc.manage_str(source, &NO_GC)
 }
 
-fn compile_source(source: GcStr) {
+fn compile_source(source: LyStr) {
   let context = NoContext::default();
   let hooks = GcHooks::new(&context);
 

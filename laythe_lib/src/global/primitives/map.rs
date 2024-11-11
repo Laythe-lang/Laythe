@@ -6,7 +6,7 @@ use crate::{
 };
 use hashbrown::hash_map::Iter;
 use laythe_core::{
-  constants::{INDEX_GET, INDEX_SET}, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, Trace}, module::Module, object::{Enumerate, Enumerator, LyNative, Map, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::use_sentinel_nan, val, value::{Value, VALUE_NIL}, Call, LyError
+  constants::{INDEX_GET, INDEX_SET}, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{DebugHeap, DebugWrap, Trace}, module::Module, object::{Enumerate, Enumerator, LyNative, LyStr, Map, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::use_sentinel_nan, val, value::{Value, VALUE_NIL}, Call, LyError, ObjRef, Ref
 };
 use std::io::Write;
 
@@ -49,7 +49,7 @@ const MAP_LEN: NativeMetaBuilder = NativeMetaBuilder::method("len", Arity::Fixed
 const MAP_STR: NativeMetaBuilder = NativeMetaBuilder::method("str", Arity::Fixed(0)).with_stack();
 const MAP_ITER: NativeMetaBuilder = NativeMetaBuilder::method("iter", Arity::Fixed(0));
 
-pub fn declare_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_map_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, MAP_CLASS_NAME)?;
   let key_error = error_inheritance(hooks, module, KEY_ERROR_NAME)?;
 
@@ -57,7 +57,7 @@ pub fn declare_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
   export_and_insert(hooks, module, key_error.name(), val!(key_error))
 }
 
-pub fn define_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_map_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, MAP_CLASS_NAME)?;
   let key_error = val!(load_class_from_module(hooks, module, KEY_ERROR_NAME)?);
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);
@@ -109,12 +109,12 @@ pub fn define_map_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 
 #[derive(Debug)]
 struct MapStr {
-  method_name: GcStr,
+  method_name: LyStr,
   error: Value,
 }
 
 impl MapStr {
-  fn native(hooks: &GcHooks, method_name: GcStr, error: Value) -> GcObj<Native> {
+  fn native(hooks: &GcHooks, method_name: LyStr, error: Value) -> ObjRef<Native> {
     debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_name, error }) as Box<dyn LyNative>;
 
@@ -151,7 +151,7 @@ impl LyNative for MapStr {
 
 fn format_map_entry(
   item: Value,
-  method_name: GcStr,
+  method_name: LyStr,
   error: Value,
   buffer: &mut String,
   hooks: &mut Hooks,
@@ -307,8 +307,7 @@ native!(MapIter, MAP_ITER);
 
 impl LyNative for MapIter {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
-    let inner_iter: Box<dyn Enumerate> =
-      Box::new(MapIterator::new(args[0].to_obj().to_map()));
+    let inner_iter: Box<dyn Enumerate> = Box::new(MapIterator::new(args[0].to_obj().to_map()));
     let iter = Enumerator::new(inner_iter);
     let iter = hooks.manage_obj(iter);
 
@@ -318,13 +317,13 @@ impl LyNative for MapIter {
 
 #[derive(Debug)]
 struct MapIterator {
-  map: GcObj<Map<Value, Value>>,
+  map: ObjRef<Map<Value, Value>>,
   iter: Iter<'static, Value, Value>,
   current: Value,
 }
 
 impl MapIterator {
-  fn new(map: GcObj<Map<Value, Value>>) -> Self {
+  fn new(map: ObjRef<Map<Value, Value>>) -> Self {
     let iter = unsafe { map.data_static().iter() };
 
     Self {
@@ -392,7 +391,7 @@ mod test {
 
   #[cfg(test)]
   mod str {
-    use laythe_core::managed::NO_GC;
+    use laythe_core::NO_GC;
 
     use super::*;
     use crate::support::{test_error_class, MockedContext};
@@ -400,10 +399,7 @@ mod test {
     #[test]
     fn call() {
       let mut context = MockedContext::with_std(&[]).unwrap();
-      let nil = val!(context
-        .gc
-        .borrow_mut()
-        .manage_str("nil", &NO_GC));
+      let nil = val!(context.gc.borrow_mut().manage_str("nil", &NO_GC));
       let response = &[nil, nil];
       context.responses.extend_from_slice(response);
 
@@ -411,7 +407,6 @@ mod test {
 
       let error = val!(test_error_class(&hooks.as_gc()));
       let map_str = MapStr::native(&hooks.as_gc(), hooks.manage_str("str"), error);
-
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, VALUE_NIL);
@@ -436,7 +431,6 @@ mod test {
       let mut context = MockedContext::default();
       let mut hooks = Hooks::new(&mut context);
       let map_str = MapLen::native(&hooks.as_gc());
-
 
       let mut map = Map::default();
       map.insert(VALUE_NIL, VALUE_NIL);
@@ -497,7 +491,7 @@ mod test {
       let mut map = Map::default();
       map.insert(VALUE_NIL, val!(false));
       let map = hooks.manage_obj(map);
-      let this =  val!(map);
+      let this = val!(map);
 
       let result = map_index_get.call(&mut hooks, &[this, VALUE_NIL]);
       match result {
@@ -654,10 +648,14 @@ mod test {
       let this = val!(map);
 
       let result = map_remove.call(&mut hooks, &[this, val!(10.5)]);
-      if result.is_ok() { panic!() }
+      if result.is_ok() {
+        panic!()
+      }
 
       let result = map_remove.call(&mut hooks, &[this, VALUE_NIL]);
-      if let Call::Ok(r) = result { assert!(!r.to_bool()) }
+      if let Call::Ok(r) = result {
+        assert!(!r.to_bool())
+      }
     }
   }
 }

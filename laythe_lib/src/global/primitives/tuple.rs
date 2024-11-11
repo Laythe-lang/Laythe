@@ -4,18 +4,7 @@ use crate::{
   StdResult,
 };
 use laythe_core::{
-  constants::INDEX_GET,
-  hooks::{GcHooks, Hooks},
-  if_let_obj, list,
-  managed::{DebugHeap, DebugWrap, Gc, GcObj, GcStr, ListBuilder, Trace, Tuple},
-  module::Module,
-  object::{Enumerate, Enumerator, LyNative, Native, NativeMetaBuilder, ObjectKind},
-  signature::{Arity, ParameterBuilder, ParameterKind},
-  to_obj_kind,
-  utils::is_falsey,
-  val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, LyResult,
+  constants::INDEX_GET, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{DebugHeap, DebugWrap, Trace}, module::Module, object::{Enumerate, Enumerator, List, LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind, Tuple}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::is_falsey, val, value::{Value, VALUE_NIL}, Call, LyError, LyResult, ObjRef, Ref, VecBuilder
 };
 use std::io::Write;
 
@@ -51,13 +40,13 @@ const TUPLE_SLICE: NativeMetaBuilder = NativeMetaBuilder::method("slice", Arity:
 const TUPLE_COLLECT: NativeMetaBuilder = NativeMetaBuilder::fun("collect", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("iter", ParameterKind::Object)]);
 
-pub fn declare_tuple_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_tuple_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, TUPLE_CLASS_NAME)?;
 
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_tuple_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_tuple_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, TUPLE_CLASS_NAME)?;
   let index_error = val!(load_class_from_module(hooks, module, INDEX_ERROR_NAME)?);
   let type_error = val!(load_class_from_module(hooks, module, TYPE_ERROR_NAME)?);
@@ -111,12 +100,12 @@ pub fn define_tuple_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> 
 
 #[derive(Debug)]
 struct TupleStr {
-  method_name: GcStr,
+  method_name: LyStr,
   error: Value,
 }
 
 impl TupleStr {
-  fn native(hooks: &GcHooks, method_name: GcStr, error: Value) -> GcObj<Native> {
+  fn native(hooks: &GcHooks, method_name: LyStr, error: Value) -> ObjRef<Native> {
     debug_assert!(error.is_obj_kind(ObjectKind::Class));
     let native = Box::new(Self { method_name, error }) as Box<dyn LyNative>;
 
@@ -343,10 +332,10 @@ native!(TupleCollect, TUPLE_COLLECT);
 impl LyNative for TupleCollect {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let mut iter = args[0].to_obj().to_enumerator();
-    let mut list = match iter.size_hint() {
-      Some(size) => hooks.manage_obj(ListBuilder::cap_only(size)),
+    let mut list = List::new(match iter.size_hint() {
+      Some(size) => hooks.manage_obj(VecBuilder::cap_only(size)),
       None => hooks.manage_obj(list!()),
-    };
+    });
 
     hooks.push_root(list);
 
@@ -356,7 +345,7 @@ impl LyNative for TupleCollect {
     }
 
     hooks.pop_roots(1);
-    Call::Ok(val!(hooks.manage_obj::<Tuple, &[Value]>(&list)))
+    Call::Ok(val!(hooks.manage_obj(&*list)))
   }
 }
 
@@ -456,7 +445,7 @@ mod test {
   }
 
   mod str {
-    use laythe_core::managed::NO_GC;
+    use laythe_core::NO_GC;
 
     use super::*;
     use crate::support::{test_error_class, test_native_dependencies, MockedContext};

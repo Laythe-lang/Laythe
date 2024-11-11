@@ -8,20 +8,17 @@ use crate::{
 use bumpalo::Bump;
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
-  hooks::GcHooks,
-  managed::{Allocator, Gc, GcObj, GcStr},
-  module::{Import, ImportError, Module, ModuleInsertError, Package},
-  object::{Class, Fun},
+  hooks::GcHooks, module::{Import, ImportError, Module, ModuleInsertError, Package}, object::{Class, Fun, LyStr}, Allocator, ObjRef, Ref
 };
 use std::path::PathBuf;
 
 /// What was the outcome of the attempted import
 pub enum ImportResult {
   /// The file was already loaded and the module is available
-  Loaded(Gc<Module>),
+  Loaded(Ref<Module>),
 
   /// The file was found be not yet executed
-  Compiled(GcObj<Fun>),
+  Compiled(ObjRef<Fun>),
 
   /// The file was not present
   NotFound,
@@ -35,10 +32,10 @@ impl Vm {
   pub(super) fn compile(
     &mut self,
     repl: bool,
-    module: Gc<Module>,
+    module: Ref<Module>,
     source: &Source,
     file_id: VmFileId,
-  ) -> FeResult<GcObj<Fun>> {
+  ) -> FeResult<ObjRef<Fun>> {
     let (ast, line_offsets) = Parser::new(source, file_id).parse();
     self
       .files
@@ -46,8 +43,15 @@ impl Vm {
       .expect("File id not set for line offsets");
 
     let mut ast = ast?;
-    Resolver::new(self.global_module, module, &self.gc.borrow(), source, file_id, repl)
-      .resolve(&mut ast)?;
+    Resolver::new(
+      self.global_module,
+      module,
+      &self.gc.borrow(),
+      source,
+      file_id,
+      repl,
+    )
+    .resolve(&mut ast)?;
 
     let gc = self.gc.replace(Allocator::default());
     let alloc = Bump::new();
@@ -75,7 +79,7 @@ impl Vm {
   }
 
   /// Create a new module
-  pub(super) fn module(&mut self, name: &str, path: &str) -> Gc<Module> {
+  pub(super) fn module(&mut self, name: &str, path: &str) -> Ref<Module> {
     let id = self.emitter.emit();
     let hooks = GcHooks::new(self);
 
@@ -98,7 +102,7 @@ impl Vm {
   /// Import a module into the current fiber. If the
   /// module already exists return that module otherwise attempt
   /// to load the missing module from the file system.
-  pub(super) fn import_module(&mut self, import: Gc<Import>) -> ImportResult {
+  pub(super) fn import_module(&mut self, import: Ref<Import>) -> ImportResult {
     let package = self.packages.get(&import.package()).cloned();
 
     match package {
@@ -120,8 +124,8 @@ impl Vm {
   /// onto it's parent
   fn load_missing_module(
     &mut self,
-    existing_package: Gc<Package>,
-    import: Gc<Import>,
+    existing_package: Ref<Package>,
+    import: Ref<Import>,
   ) -> ImportResult {
     let (mut parent_module, (found_path, remaining_path)) =
       find_missing_module(existing_package.root_module(), import.path(), 0);
@@ -175,10 +179,10 @@ impl Vm {
 }
 
 fn find_missing_module(
-  module: Gc<Module>,
-  path: &[GcStr],
+  module: Ref<Module>,
+  path: &[LyStr],
   index: usize,
-) -> (Gc<Module>, (&[GcStr], &[GcStr])) {
+) -> (Ref<Module>, (&[LyStr], &[LyStr])) {
   if path.is_empty() {
     return (module, (&[], &[]));
   }

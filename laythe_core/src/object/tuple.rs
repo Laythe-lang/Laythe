@@ -1,21 +1,18 @@
 use std::{
   fmt::{self, Debug, Display, Pointer},
+  mem,
   ops::{Deref, DerefMut},
   ptr::NonNull,
 };
 
-use super::{
-  allocate::AllocObjResult,
-  gc_array::{GcArray, GcArrayHandle},
-  header::ObjHeader,
-  AllocateObj, DebugHeap, Trace,
+use crate::{
+  collections::{Array, ArrayHandle}, managed::{AllocObjResult, AllocateObj, DebugHeap, Trace}, object::ObjectKind, reference::{ObjectHandle, ObjectRef}, value::Value
 };
-use crate::{object::ObjectKind, value::Value};
 
 #[cfg(not(feature = "nan_boxing"))]
-use super::gc_obj::GcObject;
+use super::header::Header;
 
-pub struct Tuple(GcArray<Value, ObjHeader>);
+pub struct Tuple(Array<Value, Header>);
 
 impl Tuple {
   /// Create a usize from the buffer pointer. This is used
@@ -25,11 +22,11 @@ impl Tuple {
     self.0.to_usize()
   }
 
-  /// Degrade this Tuple into the more generic GcObject.
+  /// Degrade this Tuple into the more generic ObjRefect.
   /// This allows the string to meet the same interface
   /// as the other managed objects
   #[cfg(not(feature = "nan_boxing"))]
-  pub fn degrade(self) -> GcObject {
+  pub fn degrade(self) -> ObjectRef {
     self.0.degrade()
   }
 
@@ -38,7 +35,7 @@ impl Tuple {
   /// ## Safety
   /// This should only be constructed from a box value
   pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
-    Tuple(GcArray::from_alloc_ptr(ptr))
+    Tuple(Array::from_alloc_ptr(ptr))
   }
 }
 
@@ -58,9 +55,27 @@ impl DerefMut for Tuple {
   }
 }
 
+impl<T> Array<T, Header> {
+  /// Degrade this GcArray into the more generic ObjRefect.
+  /// This allows the array to meet the same interface
+  /// as the other managed objects
+  pub fn degrade(self) -> ObjectRef {
+    ObjectRef::new(self.ptr())
+  }
+}
+
+impl<T> ArrayHandle<T, Header> {
+  /// Degrade this handle into
+  pub fn degrade(self) -> ObjectHandle {
+    let handle = ObjectHandle::new(self.value().ptr());
+    mem::forget(self);
+    handle
+  }
+}
+
 impl AllocateObj<Tuple> for &[Value] {
   fn alloc(self) -> AllocObjResult<Tuple> {
-    let handle = GcArrayHandle::from_slice(self, ObjHeader::new(ObjectKind::Tuple));
+    let handle = ArrayHandle::from_slice(self, Header::new(ObjectKind::Tuple));
 
     let size = handle.size();
     let reference = Tuple(handle.value());

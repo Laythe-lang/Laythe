@@ -16,15 +16,7 @@ use crate::{
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
-  captures::Captures,
-  constants::{PLACEHOLDER_NAME, SELF},
-  hooks::{GcHooks, HookContext, NoContext},
-  managed::{Allocator, Gc, GcObj, GcStr},
-  module::{Module, Package},
-  object::{Fiber, Fun, Map},
-  utils::IdEmitter,
-  val,
-  value::{Value, VALUE_NIL},
+  constants::{PLACEHOLDER_NAME, SELF}, hooks::{GcHooks, HookContext, NoContext}, module::{Module, Package}, object::{Fiber, Fun, LyStr, Map}, utils::IdEmitter, val, value::{Value, VALUE_NIL}, Allocator, Captures, ObjRef, Ref
 };
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
@@ -91,10 +83,10 @@ pub fn default_native_vm() -> Vm {
 /// The virtual machine for the laythe programming language
 pub struct Vm {
   /// The current running fiber
-  fiber: GcObj<Fiber>,
+  fiber: ObjRef<Fiber>,
 
   /// The main fiber
-  main_fiber: GcObj<Fiber>,
+  main_fiber: ObjRef<Fiber>,
 
   /// The vm's garbage collector
   gc: RefCell<Allocator>,
@@ -106,7 +98,7 @@ pub struct Vm {
   files: VmFiles,
 
   /// The queue of runnable fibers
-  fiber_queue: VecDeque<GcObj<Fiber>>,
+  fiber_queue: VecDeque<ObjRef<Fiber>>,
 
   /// The root directory
   root_dir: PathBuf,
@@ -115,22 +107,22 @@ pub struct Vm {
   builtin: BuiltIn,
 
   /// A collection of packages that have already been loaded
-  packages: Map<GcStr, Gc<Package>>,
+  packages: Map<LyStr, Ref<Package>>,
 
   /// A utility to emit ids for modules
   emitter: IdEmitter,
 
   /// A cache for full filepath to individual modules
-  module_cache: Map<GcStr, Gc<Module>>,
+  module_cache: Map<LyStr, Ref<Module>>,
 
   /// Inline caches for each module
   inline_cache: Vec<InlineCache>,
 
   /// The global module
-  global_module: Gc<Module>,
+  global_module: Ref<Module>,
 
   /// The current frame's function
-  current_fun: GcObj<Fun>,
+  current_fun: ObjRef<Fun>,
 
   /// What exit code is currently set
   exit_code: u16,
@@ -139,7 +131,7 @@ pub struct Vm {
   ip: *const u8,
 
   /// A vec of stub functions so native functions can have a call frame
-  native_fun_stubs: Vec<GcObj<Fun>>,
+  native_fun_stubs: Vec<ObjRef<Fun>>,
 
   /// A placeholder capture for functions without any captures
   capture_stub: Captures,
@@ -286,7 +278,7 @@ impl Vm {
   }
 
   /// Add a package to the vm
-  fn add_package(&mut self, package: Gc<Package>) {
+  fn add_package(&mut self, package: Ref<Package>) {
     self.packages.insert(package.name(), package);
   }
 
@@ -294,7 +286,7 @@ impl Vm {
   fn interpret(
     &mut self,
     repl: bool,
-    main_module: Gc<Module>,
+    main_module: Ref<Module>,
     source: &Source,
     file_id: VmFileId,
   ) -> ExecutionResult {
@@ -316,7 +308,7 @@ impl Vm {
   }
 
   /// Reset the vm to execute another script
-  fn prepare(&mut self, script: GcObj<Fun>) {
+  fn prepare(&mut self, script: ObjRef<Fun>) {
     let fiber = match Fiber::new(None, script, self.capture_stub) {
       Ok(fiber) => fiber,
       Err(_) => self.internal_error("Unable to generate initial fiber"),

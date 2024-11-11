@@ -1,9 +1,7 @@
 use std::{collections::VecDeque, fmt, io::Write};
 
 use crate::{
-  managed::{DebugHeap, DebugWrap, GcObj, Trace},
-  object::Fiber,
-  value::Value,
+  managed::{DebugHeap, DebugWrap, Trace}, object::Fiber, reference::ObjRef, value::Value
 };
 
 use super::{CloseResult, ReceiveResult, SendResult};
@@ -33,8 +31,8 @@ pub struct ChannelQueue {
   state: ChannelQueueState,
   kind: ChannelQueueKind,
 
-  send_waiters: VecDeque<GcObj<Fiber>>,
-  receive_waiters: VecDeque<GcObj<Fiber>>,
+  send_waiters: VecDeque<ObjRef<Fiber>>,
+  receive_waiters: VecDeque<ObjRef<Fiber>>,
 }
 
 impl ChannelQueue {
@@ -114,7 +112,7 @@ impl ChannelQueue {
   /// the value can be reject either because the
   /// channel is saturated or because the channel
   /// has already been closed
-  pub fn send(&mut self, fiber: GcObj<Fiber>, val: Value) -> SendResult {
+  pub fn send(&mut self, fiber: ObjRef<Fiber>, val: Value) -> SendResult {
     match self.state {
       ChannelQueueState::Ready => {
         if self.is_sync() && self.queue.is_empty() {
@@ -138,7 +136,7 @@ impl ChannelQueue {
   /// Attempt to receive a value from this channel.
   /// If the channel is empty return potentially a send
   /// waiter. If
-  pub fn receive(&mut self, fiber: GcObj<Fiber>) -> ReceiveResult {
+  pub fn receive(&mut self, fiber: ObjRef<Fiber>) -> ReceiveResult {
     match self.state {
       ChannelQueueState::Ready => match self.queue.pop_front() {
         Some(value) => ReceiveResult::Ok(value),
@@ -167,7 +165,7 @@ impl ChannelQueue {
 
   /// Attempt to get a runnable waiter
   /// from this channel
-  pub fn runnable_waiter(&mut self) -> Option<GcObj<Fiber>> {
+  pub fn runnable_waiter(&mut self) -> Option<ObjRef<Fiber>> {
     match self.kind {
       ChannelQueueKind::Sync => {
         if self.is_empty() && !self.is_closed() {
@@ -191,7 +189,7 @@ impl ChannelQueue {
 
 }
 
-fn find_runnable_waiter(queue: &mut VecDeque<GcObj<Fiber>>) -> Option<GcObj<Fiber>> {
+fn find_runnable_waiter(queue: &mut VecDeque<ObjRef<Fiber>>) -> Option<ObjRef<Fiber>> {
   while let Some(waiter) = queue.pop_front() {
     if !waiter.is_complete() {
       return Some(waiter)

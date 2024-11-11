@@ -1,17 +1,16 @@
 use crate::{native, support::export_and_insert_native, StdResult};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::GcObj,
-  managed::{Gc, GcStr, Trace},
+  managed::Trace,
   module::Module,
-  object::{LyNative, Native, NativeMetaBuilder},
+  object::{LyNative, LyStr, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   value::{Value, VALUE_NIL},
-  Call, LyError,
+  Call, LyError, ObjRef, Ref,
 };
 use std::io::Write;
 
-pub fn add_misc_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn add_misc_funs(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   declare_misc_funs(hooks, module)
 }
 
@@ -22,7 +21,7 @@ const PRINT: NativeMetaBuilder = NativeMetaBuilder::fun("print", Arity::Variadic
 const EXIT_META: NativeMetaBuilder = NativeMetaBuilder::fun("exit", Arity::Default(0, 1))
   .with_params(&[ParameterBuilder::new("code", ParameterKind::Number)]);
 
-pub fn declare_misc_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_misc_funs(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let str_name = hooks.manage_str("str");
 
   export_and_insert_native(hooks, module, Print::native(hooks, str_name))?;
@@ -33,12 +32,12 @@ pub fn declare_misc_funs(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
 /// A native method to assert that for a boolean true value
 pub struct Print {
   /// reference to 'str'
-  method_str: GcStr,
+  method_str: LyStr,
 }
 
 impl Print {
   /// Construct a new instance of the native assert function
-  pub fn native(hooks: &GcHooks, method_str: GcStr) -> GcObj<Native> {
+  pub fn native(hooks: &GcHooks, method_str: LyStr) -> ObjRef<Native> {
     let native = Box::new(Self { method_str }) as Box<dyn LyNative>;
 
     hooks.manage_obj(Native::new(PRINT.build(hooks), native))
@@ -101,7 +100,7 @@ mod test {
 
   #[cfg(test)]
   mod print {
-    use laythe_core::managed::NO_GC;
+    use laythe_core::NO_GC;
 
     use super::*;
     use crate::support::MockedContext;

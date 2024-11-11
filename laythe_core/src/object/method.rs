@@ -1,6 +1,5 @@
 use crate::{
-  managed::{DebugHeap, DebugWrap, Object, Trace},
-  value::Value,
+  managed::{DebugHeap, DebugWrap, Trace}, reference::Object, value::Value
 };
 use std::{
   fmt::{self, Display},

@@ -6,13 +6,12 @@ use crate::{
 use laythe_core::{
   hooks::{GcHooks, Hooks},
   managed::Trace,
-  managed::{Gc, GcObj},
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call,
+  Call, Ref,
 };
 use std::io::Write;
 
@@ -26,12 +25,12 @@ const NATIVE_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::
   .with_params(&[ParameterBuilder::new("args", ParameterKind::Object)])
   .with_stack();
 
-pub fn declare_native_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_native_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let class = class_inheritance(hooks, module, NATIVE_CLASS_NAME)?;
   export_and_insert(hooks, module, class.name(), val!(class))
 }
 
-pub fn define_native_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_native_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, NATIVE_CLASS_NAME)?;
 
   class.add_method(

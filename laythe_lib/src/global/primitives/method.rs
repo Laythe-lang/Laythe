@@ -5,13 +5,13 @@ use crate::{
 };
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  managed::{Gc, GcObj, GcStr, Trace},
+  managed::Trace,
   module::Module,
-  object::{LyNative, Native, NativeMetaBuilder},
+  object::{LyNative, LyStr, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call,
+  Call, ObjRef, Ref,
 };
 use std::io::Write;
 
@@ -25,12 +25,12 @@ const METHOD_CALL: NativeMetaBuilder = NativeMetaBuilder::method("call", Arity::
   .with_params(&[ParameterBuilder::new("args", ParameterKind::Object)])
   .with_stack();
 
-pub fn declare_method_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn declare_method_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let method_class = class_inheritance(hooks, module, METHOD_CLASS_NAME)?;
   export_and_insert(hooks, module, method_class.name(), val!(method_class))
 }
 
-pub fn define_method_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()> {
+pub fn define_method_class(hooks: &GcHooks, module: Ref<Module>) -> StdResult<()> {
   let mut class = load_class_from_module(hooks, module, METHOD_CLASS_NAME)?;
 
   class.add_method(
@@ -51,11 +51,11 @@ pub fn define_method_class(hooks: &GcHooks, module: Gc<Module>) -> StdResult<()>
 
 #[derive(Debug)]
 struct MethodName {
-  method_name: GcStr,
+  method_name: LyStr,
 }
 
 impl MethodName {
-  fn native(hooks: &GcHooks, method_name: GcStr) -> GcObj<Native> {
+  fn native(hooks: &GcHooks, method_name: LyStr) -> ObjRef<Native> {
     let native = Box::new(Self { method_name }) as Box<dyn LyNative>;
 
     hooks.manage_obj(Native::new(METHOD_NAME.build(hooks), native))
@@ -98,9 +98,7 @@ mod test {
   mod name {
     use super::*;
     use crate::support::{test_fun, MockedContext};
-    use laythe_core::{
-      captures::Captures, managed::NO_GC, object::{Class, Closure, Method}
-    };
+    use laythe_core::{object::{Class, Closure, Method}, Captures, NO_GC};
 
     #[test]
     fn call() {

@@ -1,35 +1,35 @@
 use super::{error::ImportResult, import::Import, ImportError, Module};
-use crate::managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Gc, GcStr, Trace};
+use crate::{managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Trace}, object::LyStr, reference::Ref};
 use std::{fmt, io::Write};
 
 #[derive(Clone)]
 pub struct Package {
   /// The name of the package
-  name: GcStr,
+  name: LyStr,
 
   /// A hash of names to sub packages and modules
-  root_module: Gc<Module>,
+  root_module: Ref<Module>,
 }
 
 impl Package {
   /// Create a new package
-  pub fn new(name: GcStr, root_module: Gc<Module>) -> Self {
+  pub fn new(name: LyStr, root_module: Ref<Module>) -> Self {
     assert_eq!(name, root_module.name());
     Self { name, root_module }
   }
 
   /// Retrieve the name of this package
-  pub fn name(&self) -> GcStr {
+  pub fn name(&self) -> LyStr {
     self.name
   }
 
   /// Retrieve the root module of this package
-  pub fn root_module(&self) -> Gc<Module> {
+  pub fn root_module(&self) -> Ref<Module> {
     self.root_module
   }
 
   /// Attempt to import a module from the provided import object
-  pub fn import(&self, import: Gc<Import>) -> ImportResult<Gc<Module>> {
+  pub fn import(&self, import: Ref<Import>) -> ImportResult<Ref<Module>> {
     if import.package() == self.name {
       let path = import.path();
       if path.is_empty() {
@@ -71,9 +71,9 @@ impl DebugHeap for Package {
   }
 }
 
-impl Allocate<Gc<Self>> for Package {
-  fn alloc(self) -> AllocResult<Gc<Self>> {
-    Gc::alloc_result(self)
+impl Allocate<Ref<Self>> for Package {
+  fn alloc(self) -> AllocResult<Ref<Self>> {
+    Ref::alloc_result(self)
   }
 }
 
