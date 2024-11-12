@@ -351,7 +351,7 @@ mod test {
   impl TraceRoot for MockedContext {
     fn trace(&self) {}
 
-    fn trace_debug(&self, log: &mut dyn Write) {}
+    fn trace_debug(&self, _log: &mut dyn Write) {}
 
     fn can_collect(&self) -> bool {
       false
