@@ -387,7 +387,7 @@ impl<T, H> VectorHandle<T, H> {
   /// allocation
   #[inline]
   pub fn size(&self) -> usize {
-    make_list_layout::<H, T>(self.0.cap()).size()
+    make_list_layout::<H, T>(strip_msb(self.0.read_cap())).size()
   }
 }
 
