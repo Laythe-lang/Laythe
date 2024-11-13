@@ -9,6 +9,7 @@ nan_boxing = []
 gc_log_mark = []
 gc_log_free = []
 gc_log_alloc = []
+gc_log_retain = []
 gc_stress = []
 
 [lib]
