@@ -6,13 +6,16 @@ use std::{
 };
 
 use crate::{
-  collections::{Array, ArrayHandle}, managed::{AllocObjResult, AllocateObj, DebugHeap, Trace}, object::ObjectKind, reference::{ObjectHandle, ObjectRef}, value::Value
+  collections::{Array, ArrayHandle},
+  managed::{AllocObjResult, AllocateObj, DebugHeap, Trace},
+  object::ObjectKind,
+  reference::{ObjectHandle, ObjectRef},
+  value::Value,
 };
 
-#[cfg(not(feature = "nan_boxing"))]
-use super::header::Header;
+use super::ObjHeader;
 
-pub struct Tuple(Array<Value, Header>);
+pub struct Tuple(Array<Value, ObjHeader>);
 
 impl Tuple {
   /// Create a usize from the buffer pointer. This is used
@@ -55,7 +58,7 @@ impl DerefMut for Tuple {
   }
 }
 
-impl<T> Array<T, Header> {
+impl<T> Array<T, ObjHeader> {
   /// Degrade this GcArray into the more generic ObjRefect.
   /// This allows the array to meet the same interface
   /// as the other managed objects
@@ -64,7 +67,7 @@ impl<T> Array<T, Header> {
   }
 }
 
-impl<T> ArrayHandle<T, Header> {
+impl<T> ArrayHandle<T, ObjHeader> {
   /// Degrade this handle into
   pub fn degrade(self) -> ObjectHandle {
     let handle = ObjectHandle::new(self.value().ptr());
@@ -75,7 +78,7 @@ impl<T> ArrayHandle<T, Header> {
 
 impl AllocateObj<Tuple> for &[Value] {
   fn alloc(self) -> AllocObjResult<Tuple> {
-    let handle = ArrayHandle::from_slice(self, Header::new(ObjectKind::Tuple));
+    let handle = ArrayHandle::from_slice(self, ObjHeader::new(ObjectKind::Tuple));
 
     let size = handle.size();
     let reference = Tuple(handle.value());
