@@ -95,7 +95,7 @@ impl DebugHeap for LyStr {
     if depth == 0 {
       f.write_fmt(format_args!("{:p}", self.0.ptr()))
     } else {
-      f.write_fmt(format_args!("{self}"))
+      f.write_fmt(format_args!("'{self}'"))
     }
   }
 }
