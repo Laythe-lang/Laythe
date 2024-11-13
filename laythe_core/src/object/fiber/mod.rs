@@ -833,9 +833,16 @@ impl Object for Fiber {
 
 impl DebugHeap for Fiber {
   fn fmt_heap(&self, f: &mut std::fmt::Formatter, depth: usize) -> std::fmt::Result {
+    let stack_slice = unsafe {
+      let start = self.stack.as_ptr();
+      let len = self.stack_top.offset_from(start) as usize;
+      std::slice::from_raw_parts(start, len)
+    };
+
     f.debug_struct("Fiber")
-      .field("stack", &DebugWrap(&&*self.stack, depth))
+      .field("stack", &DebugWrap(&stack_slice, depth))
       .field("frames", &DebugWrap(&&*self.frames, depth))
+      .field("channels", &DebugWrap(&&*self.channels, depth))
       .field("stack_top", &format_args!("{:p}", self.stack_top))
       .field("current_frame", &format_args!("{:p}", self.frame))
       .field("state", &self.state)
@@ -866,6 +873,10 @@ impl Trace for Fiber {
     if let Some(error) = &self.error {
       error.trace();
     }
+
+    if let Some(fiber) = &self.parent {
+      fiber.trace();
+    }
   }
 
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
@@ -890,6 +901,10 @@ impl Trace for Fiber {
 
     if let Some(error) = &self.error {
       error.trace_debug(log);
+    }
+
+    if let Some(fiber) = &self.parent {
+      fiber.trace_debug(log);
     }
   }
 }
