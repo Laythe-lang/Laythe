@@ -142,13 +142,16 @@ impl Vm {
 
     match fs.read_file(&resolved_path) {
       Ok(file_contents) => {
-        let source_content = self.manage_str(file_contents);
 
         match resolved_path.into_os_string().into_string() {
           Ok(name) => {
+            let source_content = self.manage_str(file_contents);
+            self.push_root(source_content);
+
             let path = self.manage_str(name);
             let source = Source::new(source_content);
             let file_id = self.files.upsert(path, source_content);
+            self.pop_roots(1);
 
             let module = self.module(&module_name, &path);
             if let Err(err) = parent_module.insert_module(module) {
