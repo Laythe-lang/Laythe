@@ -280,6 +280,7 @@ impl Trace for Module {
       key.trace();
     });
     self.symbols_by_name.keys().for_each(|key| key.trace());
+    self.path.trace();
     self.symbols.trace();
     self.modules.trace();
   }
@@ -294,6 +295,7 @@ impl Trace for Module {
       .symbols_by_name
       .keys()
       .for_each(|key| key.trace_debug(log));
+    self.path.trace_debug(log);
     self.symbols.trace_debug(log);
     self.modules.trace_debug(log);
   }
@@ -304,7 +306,7 @@ impl DebugHeap for Module {
     f.debug_struct("Module")
       .field("module_class", &DebugWrap(&self.module_class, depth))
       .field("exports", &DebugWrap(&self.exports, depth))
-      .field("symbols_by_name", &self.symbols_by_name)
+      .field("symbols_by_name", &DebugWrap(&self.symbols_by_name, depth))
       .field("symbols", &DebugWrap(&self.symbols, depth))
       .finish()
   }
