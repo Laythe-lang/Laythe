@@ -230,6 +230,8 @@ impl DebugHeap for ChannelQueue {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_struct("ChannelQueue")
       .field("queue", &DebugWrap(&self.queue, depth))
+      .field("send_waiters", &DebugWrap(&self.send_waiters, depth))
+      .field("receive_waiters", &DebugWrap(&self.receive_waiters, depth))
       .field("kind", &self.state)
       .finish()
   }
