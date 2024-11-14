@@ -59,6 +59,11 @@ impl<T, H> RawSharedVector<T, H> {
     }
   }
 
+  /// Is this shared vector empty
+  pub fn is_empty(&self) -> bool {
+    self.len() == 0
+  }
+
   /// Retrieve the underlying non Null
   pub fn ptr(&self) -> NonNull<u8> {
     self.ptr

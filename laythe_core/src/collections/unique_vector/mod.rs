@@ -3,7 +3,7 @@ mod raw_unique_vector;
 use std::{
   fmt::{self, Debug, Display, Pointer},
   ops::{Deref, DerefMut},
-  ptr::{self, NonNull},
+  ptr::{self},
 };
 
 use raw_unique_vector::RawUniqueVector;

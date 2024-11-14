@@ -41,6 +41,10 @@ impl List {
     self.0.len()
   }
 
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+
   pub fn cap(&self) -> usize {
     self.0.cap()
   }
@@ -410,7 +414,7 @@ mod test {
       assert_eq!(list[0], val!(2.0));
       assert_eq!(list[1], val!(1.0));
       assert_eq!(list[2], val!(3.0));
-      
+
       assert_eq!(
         list.insert(5, val!(5.0), &hooks),
         IndexedResult::OutOfBounds
