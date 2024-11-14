@@ -100,57 +100,6 @@ impl<T, H> RawVector<T, H> {
     }
   }
 
-  /// Pop and element off the list.
-  pub fn pop(&mut self) -> Option<T> {
-    match self.state() {
-      RawVecLocation::Here(_) => {
-        let len: usize = unsafe { self.read_len() };
-        if len == 0 {
-          None
-        } else {
-          unsafe {
-            self.write_len(len - 1);
-            let offset_list_start = get_list_offset::<H, T>();
-
-            let slot = self
-              .ptr
-              .as_ptr()
-              .add(offset_list_start + (len - 1) * mem::size_of::<T>())
-              as *mut T;
-
-            Some(ptr::read(slot))
-          }
-        }
-      },
-      RawVecLocation::Forwarded(mut gc_list) => gc_list.pop(),
-    }
-  }
-
-  /// Remove an element from this list at the provided offset
-  pub fn remove(&mut self, index: usize) -> IndexedResult<T> {
-    match self.state() {
-      RawVecLocation::Here(_) => {
-        let len = unsafe { self.read_len() };
-        if index >= len {
-          return IndexedResult::OutOfBounds;
-        }
-
-        unsafe {
-          let value = self.read_value(index);
-          ptr::copy(
-            self.item_ptr(index + 1),
-            self.item_mut(index),
-            len - index - 1,
-          );
-
-          self.write_len(len - 1);
-          IndexedResult::Ok(value)
-        }
-      },
-      RawVecLocation::Forwarded(mut gc_list) => gc_list.remove(index),
-    }
-  }
-
   /// Retrieve the header from this list
   #[inline]
   fn header(&self) -> &H {
@@ -179,14 +128,14 @@ impl<T, H> RawVector<T, H> {
   /// Read the length slot as a usize. When the length has not
   /// moved this will be the actual length. If it has move it
   /// is undefined behavior
-  unsafe fn read_len<L: Copy>(&self) -> L {
+  pub unsafe fn read_len<L: Copy>(&self) -> L {
     #[allow(clippy::cast_ptr_alignment)]
     let count = get_list_len_offset::<H>();
     *(self.ptr.as_ptr().add(count) as *mut L)
   }
 
   /// Write a length to to the length slot. This assumes the
-  unsafe fn write_len<L>(&mut self, len: L) {
+  pub unsafe fn write_len<L>(&mut self, len: L) {
     #[allow(clippy::cast_ptr_alignment)]
     let count = get_list_len_offset::<H>();
     ptr::write(self.ptr.as_ptr().add(count) as *mut L, len);
@@ -200,7 +149,7 @@ impl<T, H> RawVector<T, H> {
   }
 
   /// Make this list as moved
-  fn mark_moved(&mut self, cap: usize) {
+  pub fn mark_moved(&mut self, cap: usize) {
     #[allow(clippy::cast_ptr_alignment)]
     let count: usize = get_list_cap_offset::<H>();
     unsafe { ptr::write(self.ptr.as_ptr().add(count) as *mut usize, set_msb(cap)) };
@@ -221,7 +170,7 @@ impl<T, H> RawVector<T, H> {
   /// Note this function does not do bounds checks and is
   /// expected that the caller has already checked the bounds
   /// of len
-  unsafe fn write_value(&mut self, value: T, index: usize) {
+  pub unsafe fn write_value(&mut self, value: T, index: usize) {
     ptr::write(self.item_mut(index), value);
   }
 
@@ -229,7 +178,7 @@ impl<T, H> RawVector<T, H> {
   /// Note this function does not do bounds checks and is
   /// expected that the caller has already checked the bounds
   /// of len
-  unsafe fn read_value(&mut self, index: usize) -> T {
+  pub unsafe fn read_value(&mut self, index: usize) -> T {
     ptr::read(self.item_mut(index))
   }
 
@@ -238,7 +187,7 @@ impl<T, H> RawVector<T, H> {
   /// ## Safety
   /// This method does no bounds checks so the caller will need to ensure
   /// that this is only called within bounds
-  unsafe fn item_mut(&self, index: usize) -> *mut T {
+  pub unsafe fn item_mut(&self, index: usize) -> *mut T {
     match self.state() {
       RawVecLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *mut T,
       RawVecLocation::Forwarded(gc_list) => gc_list.item_mut(index),
@@ -250,7 +199,7 @@ impl<T, H> RawVector<T, H> {
   /// ## Safety
   /// This method does no bounds checks so the caller will need to ensure
   /// that this is only called within bounds
-  unsafe fn item_ptr(&self, index: usize) -> *const T {
+  pub unsafe fn item_ptr(&self, index: usize) -> *const T {
     match self.state() {
       RawVecLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *const T,
       RawVecLocation::Forwarded(gc_list) => gc_list.item_ptr(index),
@@ -261,89 +210,6 @@ impl<T, H> RawVector<T, H> {
   const fn offset_item(&self, index: usize) -> usize {
     let offset_list_start = get_list_offset::<H, T>();
     offset_list_start + index * mem::size_of::<T>()
-  }
-
-  /// Push a new element onto this list. If a resize is needed
-  /// a new list will be allocated and elements will be transferred
-  pub fn push<A: Fn(&[T], usize) -> Self>(&mut self, value: T, allocator: A) {
-    match self.state() {
-      RawVecLocation::Here(cap) => {
-        let len = unsafe { self.read_len() };
-
-        // determine if we need to grow the list then
-        // persist the value
-        let mut list = self.ensure_capacity(len + 1, cap, allocator);
-        unsafe {
-          list.write_value(value, len);
-          list.write_len(len + 1);
-        }
-      },
-      RawVecLocation::Forwarded(mut gc_list) => gc_list.push(value, allocator),
-    }
-  }
-
-  /// Insert an element into this list at the provided offset
-  pub fn insert<A: Fn(&[T], usize) -> Self>(
-    &mut self,
-    index: usize,
-    value: T,
-    allocator: A,
-  ) -> IndexedResult {
-    match self.state() {
-      RawVecLocation::Here(cap) => {
-        let len = unsafe { self.read_len() };
-        if index > len {
-          return IndexedResult::OutOfBounds;
-        }
-
-        // determine if we need to grow the list then
-        // persist the value
-        let mut list = self.ensure_capacity(len + 1, cap, allocator);
-
-        unsafe {
-          ptr::copy(list.item_ptr(index), list.item_mut(index + 1), len - index);
-          list.write_value(value, index);
-          list.write_len(len + 1);
-        }
-
-        IndexedResult::Ok(())
-      },
-      RawVecLocation::Forwarded(mut gc_list) => gc_list.insert(index, value, allocator),
-    }
-  }
-
-  /// Ensure this list has enough capacity for the operation
-  /// If it does it returns itself. Otherwise it returns a new list
-  /// which it will have just allocated
-  fn ensure_capacity<A: Fn(&[T], usize) -> Self>(
-    &mut self,
-    needed: usize,
-    cap: usize,
-    allocator: A,
-  ) -> RawVector<T, H> {
-    if needed > cap {
-      self.grow(cap, cap * 2, allocator)
-    } else {
-      *self
-    }
-  }
-
-  /// Allocate a new list which the specified capacity. Mark the existing list as moved
-  /// by setting the MSB for capacity and replacing len with a pointer to the
-  /// new list
-  fn grow<A: Fn(&[T], usize) -> Self>(
-    &mut self,
-    cap: usize,
-    new_cap: usize,
-    allocator: A,
-  ) -> RawVector<T, H> {
-    let new_list = allocator(self, new_cap);
-
-    unsafe {
-      self.write_len(new_list);
-      self.mark_moved(cap);
-    }
-    new_list
   }
 }
 
@@ -521,7 +387,7 @@ impl<T, H> VectorHandle<T, H> {
   /// allocation
   #[inline]
   pub fn size(&self) -> usize {
-    make_list_layout::<H, T>(self.0.cap()).size()
+    make_list_layout::<H, T>(strip_msb(self.0.read_cap())).size()
   }
 }
 
@@ -645,7 +511,6 @@ mod test {
   use super::*;
   mod raw_vector {
     use super::*;
-    use crate::{hooks::NoContext, managed::Header, val, GcHooks};
 
     #[test]
     fn header() {
@@ -680,223 +545,6 @@ mod test {
       let list = handle.value();
 
       assert_eq!(list.cap(), 10);
-    }
-
-    #[test]
-    fn pop() {
-      let handle = VectorHandle::from_slice(&[val!(1.0), val!(2.0), val!(true)], 3, Header::new());
-      let mut list = handle.value();
-
-      assert_eq!(list.pop(), Some(val!(true)));
-      assert_eq!(list.len(), 2);
-
-      assert_eq!(list.pop(), Some(val!(2.0)));
-      assert_eq!(list.len(), 1);
-
-      assert_eq!(list.pop(), Some(val!(1.0)));
-      assert_eq!(list.len(), 0);
-
-      assert_eq!(list.pop(), None);
-      assert_eq!(list.len(), 0);
-    }
-
-    mod push {
-      use super::*;
-      #[test]
-      fn with_capacity() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let handle = VectorHandle::from_slice(&[val!(1.0)], 2, Header::new());
-        let mut list = handle.value();
-
-        list.push(val!(3.0), |slice, cap| {
-          hooks.manage(VecBuilder::new(slice, cap))
-        });
-        assert_eq!(list[0], val!(1.0));
-        assert_eq!(list[1], val!(3.0));
-        assert_eq!(list.len(), 2);
-        assert_eq!(list.cap(), 2);
-      }
-
-      #[test]
-      fn without_capacity() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let handle = VectorHandle::from_slice(&[val!(1.0)], 1, Header::new());
-        let mut list = handle.value();
-
-        list.push(val!(3.0), |slice, cap| {
-          hooks.manage(VecBuilder::new(slice, cap))
-        });
-        list.push(val!(5.0), |slice, cap| {
-          hooks.manage(VecBuilder::new(slice, cap))
-        });
-        assert_eq!(list[0], val!(1.0));
-        assert_eq!(list[1], val!(3.0));
-        assert_eq!(list[2], val!(5.0));
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-      }
-    }
-
-    mod insert {
-      use super::*;
-
-      #[test]
-      fn with_capacity() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let handle = VectorHandle::from_slice(&[val!(1.0)], 4, Header::new());
-        let mut list = handle.value();
-
-        assert_eq!(
-          list.insert(0, val!(2.0), |slice, cap| {
-            hooks.manage(VecBuilder::new(slice, cap))
-          }),
-          IndexedResult::Ok(())
-        );
-
-        assert_eq!(list.len(), 2);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-
-        assert_eq!(
-          list.insert(2, val!(3.0), |slice, cap| {
-            hooks.manage(VecBuilder::new(slice, cap))
-          }),
-          IndexedResult::Ok(())
-        );
-
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-        assert_eq!(list[2], val!(3.0));
-
-        assert_eq!(
-          list.insert(5, val!(5.0), |slice, cap| {
-            hooks.manage(VecBuilder::new(slice, cap))
-          }),
-          IndexedResult::OutOfBounds
-        );
-
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-        assert_eq!(list[2], val!(3.0));
-      }
-
-      #[test]
-      fn without_capacity() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let handle = VectorHandle::from_slice(&[val!(1.0)], 1, Header::new());
-        let mut list = handle.value();
-
-        assert_eq!(
-          list.insert(0, val!(2.0), |slice, cap| {
-            hooks.manage(VecBuilder::new(slice, cap))
-          }),
-          IndexedResult::Ok(())
-        );
-
-        assert_eq!(list.len(), 2);
-        assert_eq!(list.cap(), 2);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-
-        assert_eq!(
-          list.insert(2, val!(3.0), |slice, cap| {
-            hooks.manage(VecBuilder::new(slice, cap))
-          }),
-          IndexedResult::Ok(())
-        );
-
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-        assert_eq!(list[2], val!(3.0));
-
-        assert_eq!(
-          list.insert(5, val!(5.0), |slice, cap| {
-            hooks.manage(VecBuilder::new(slice, cap))
-          }),
-          IndexedResult::OutOfBounds
-        );
-
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-        assert_eq!(list[2], val!(3.0));
-      }
-    }
-
-    #[test]
-    fn remove() {
-      let handle = VectorHandle::from_slice(&[val!(1.0), val!(3.0), val!(false)], 3, Header::new());
-      let mut list = handle.value();
-
-      assert_eq!(list.remove(3), IndexedResult::OutOfBounds);
-      assert_eq!(list.remove(1), IndexedResult::Ok(val!(3.0)));
-
-      assert_eq!(list.len(), 2);
-      assert_eq!(list.cap(), 3);
-      assert_eq!(list[0], val!(1.0));
-      assert_eq!(list[1], val!(false));
-
-      assert_eq!(list.remove(1), IndexedResult::Ok(val!(false)));
-
-      assert_eq!(list.len(), 1);
-      assert_eq!(list.cap(), 3);
-      assert_eq!(list[0], val!(1.0));
-
-      assert_eq!(list.remove(0), IndexedResult::Ok(val!(1.0)));
-
-      assert_eq!(list.len(), 0);
-      assert_eq!(list.cap(), 3);
-    }
-
-    #[test]
-    fn remove_forwarded() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
-
-      let handle = VectorHandle::from_slice(&[val!(1.0)], 1, Header::new());
-      let mut list = handle.value();
-
-      list.push(val!(3.0), |slice, cap| {
-        hooks.manage(VecBuilder::new(slice, cap))
-      });
-      list.push(val!(false), |slice, cap| {
-        hooks.manage(VecBuilder::new(slice, cap))
-      });
-
-      assert_eq!(list.remove(3), IndexedResult::OutOfBounds);
-      assert_eq!(list.remove(1), IndexedResult::Ok(val!(3.0)));
-
-      assert_eq!(list.len(), 2);
-      assert_eq!(list.cap(), 4);
-      assert_eq!(list[0], val!(1.0));
-      assert_eq!(list[1], val!(false));
-
-      assert_eq!(list.remove(1), IndexedResult::Ok(val!(false)));
-
-      assert_eq!(list.len(), 1);
-      assert_eq!(list.cap(), 4);
-      assert_eq!(list[0], val!(1.0));
-
-      assert_eq!(list.remove(0), IndexedResult::Ok(val!(1.0)));
-
-      assert_eq!(list.len(), 0);
-      assert_eq!(list.cap(), 4);
     }
   }
 

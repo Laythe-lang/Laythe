@@ -15,6 +15,9 @@ impl_debug_heap!(u8);
 impl Trace for u16 {}
 impl_debug_heap!(u16);
 
+impl Trace for usize {}
+impl_debug_heap!(usize);
+
 impl<K: DebugHeap, V: DebugHeap> DebugHeap for HashMap<K, V, FnvBuildHasher> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_map()

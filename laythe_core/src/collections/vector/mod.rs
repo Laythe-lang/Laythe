@@ -1,10 +1,7 @@
 mod raw_vector;
 mod vec_builder;
 
-use crate::{
-  hooks::GcHooks,
-  managed::{DebugHeap, Mark, Marked, Trace, Unmark},
-};
+use crate::managed::{DebugHeap, Mark, Marked, Trace};
 use ptr::NonNull;
 pub use raw_vector::{IndexedResult, RawVecLocation, RawVector, VectorHandle};
 use std::{
@@ -80,42 +77,6 @@ impl<T, H> Vector<T, H> {
       RawVecLocation::Here(cap) => VecLocation::Here(cap),
       RawVecLocation::Forwarded(raw_vector) => VecLocation::Forwarded(Vector(raw_vector)),
     }
-  }
-
-  /// Pop and element off the list.
-  #[allow(dead_code)]
-  pub fn pop(&mut self) -> Option<T> {
-    self.0.pop()
-  }
-
-  /// Remove an element from this list at the provided offset
-  #[allow(dead_code)]
-  pub fn remove(&mut self, index: usize) -> IndexedResult<T> {
-    self.0.remove(index)
-  }
-}
-
-impl<T, H> Vector<T, H>
-where
-  T: Trace + DebugHeap + Copy + 'static,
-  H: Trace + Mark + Unmark + Send + 'static + Default,
-{
-  /// Push a new element onto this list. If a resize is needed
-  /// a new list will be allocated and elements will be transferred
-  ///
-  #[allow(dead_code)]
-  pub fn push(&mut self, value: T, hooks: &GcHooks) {
-    self.0.push(value, |slice, cap| {
-      hooks.manage(VecBuilder::new(slice, cap))
-    });
-  }
-
-  /// Insert an element into this list at the provided offset
-  #[allow(dead_code)]
-  pub fn insert(&mut self, index: usize, value: T, hooks: &GcHooks) -> IndexedResult {
-    self.0.insert(index, value, |slice, cap| {
-      hooks.manage(VecBuilder::new(slice, cap))
-    })
   }
 }
 
@@ -211,8 +172,6 @@ mod test {
   mod list {
     use raw_vector::VectorHandle;
 
-    use crate::{hooks::NoContext, managed::Header, val};
-
     use super::*;
 
     #[test]
@@ -240,189 +199,6 @@ mod test {
       let list = Vector(handle.value());
 
       assert_eq!(list.cap(), 10);
-    }
-
-    #[test]
-    fn pop() {
-      let handle = VectorHandle::from_slice(&[val!(1.0), val!(2.0), val!(true)], 3, Header::new());
-      let mut list = Vector(handle.value());
-
-      assert_eq!(list.pop(), Some(val!(true)));
-      assert_eq!(list.len(), 2);
-
-      assert_eq!(list.pop(), Some(val!(2.0)));
-      assert_eq!(list.len(), 1);
-
-      assert_eq!(list.pop(), Some(val!(1.0)));
-      assert_eq!(list.len(), 0);
-
-      assert_eq!(list.pop(), None);
-      assert_eq!(list.len(), 0);
-    }
-
-    mod push {
-      use super::*;
-      #[test]
-      fn with_capacity() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let handle = VectorHandle::from_slice(&[val!(1.0)], 2, Header::new());
-        let mut list = Vector(handle.value());
-
-        list.push(val!(3.0), &hooks);
-        assert_eq!(list[0], val!(1.0));
-        assert_eq!(list[1], val!(3.0));
-        assert_eq!(list.len(), 2);
-        assert_eq!(list.cap(), 2);
-      }
-
-      #[test]
-      fn without_capacity() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let handle = VectorHandle::from_slice(&[val!(1.0)], 1, Header::new());
-        let mut list = Vector(handle.value());
-
-        list.push(val!(3.0), &hooks);
-        list.push(val!(5.0), &hooks);
-        assert_eq!(list[0], val!(1.0));
-        assert_eq!(list[1], val!(3.0));
-        assert_eq!(list[2], val!(5.0));
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-      }
-    }
-
-    mod insert {
-      use super::*;
-
-      #[test]
-      fn with_capacity() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let handle = VectorHandle::from_slice(&[val!(1.0)], 4, Header::new());
-        let mut list = Vector(handle.value());
-
-        assert_eq!(list.insert(0, val!(2.0), &hooks), IndexedResult::Ok(()));
-
-        assert_eq!(list.len(), 2);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-
-        assert_eq!(list.insert(2, val!(3.0), &hooks), IndexedResult::Ok(()));
-
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-        assert_eq!(list[2], val!(3.0));
-
-        assert_eq!(
-          list.insert(5, val!(5.0), &hooks),
-          IndexedResult::OutOfBounds
-        );
-
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-        assert_eq!(list[2], val!(3.0));
-      }
-
-      #[test]
-      fn without_capacity() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let handle = VectorHandle::from_slice(&[val!(1.0)], 1, Header::new());
-        let mut list = Vector(handle.value());
-
-        assert_eq!(list.insert(0, val!(2.0), &hooks), IndexedResult::Ok(()));
-
-        assert_eq!(list.len(), 2);
-        assert_eq!(list.cap(), 2);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-
-        assert_eq!(list.insert(2, val!(3.0), &hooks), IndexedResult::Ok(()));
-
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-        assert_eq!(list[2], val!(3.0));
-
-        assert_eq!(
-          list.insert(5, val!(5.0), &hooks),
-          IndexedResult::OutOfBounds
-        );
-
-        assert_eq!(list.len(), 3);
-        assert_eq!(list.cap(), 4);
-        assert_eq!(list[0], val!(2.0));
-        assert_eq!(list[1], val!(1.0));
-        assert_eq!(list[2], val!(3.0));
-      }
-    }
-
-    #[test]
-    fn remove() {
-      let handle = VectorHandle::from_slice(&[val!(1.0), val!(3.0), val!(false)], 3, Header::new());
-      let mut list = Vector(handle.value());
-
-      assert_eq!(list.remove(3), IndexedResult::OutOfBounds);
-      assert_eq!(list.remove(1), IndexedResult::Ok(val!(3.0)));
-
-      assert_eq!(list.len(), 2);
-      assert_eq!(list.cap(), 3);
-      assert_eq!(list[0], val!(1.0));
-      assert_eq!(list[1], val!(false));
-
-      assert_eq!(list.remove(1), IndexedResult::Ok(val!(false)));
-
-      assert_eq!(list.len(), 1);
-      assert_eq!(list.cap(), 3);
-      assert_eq!(list[0], val!(1.0));
-
-      assert_eq!(list.remove(0), IndexedResult::Ok(val!(1.0)));
-
-      assert_eq!(list.len(), 0);
-      assert_eq!(list.cap(), 3);
-    }
-
-    #[test]
-    fn remove_forwarded() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
-
-      let handle = VectorHandle::from_slice(&[val!(1.0)], 1, Header::new());
-      let mut list = Vector(handle.value());
-
-      list.push(val!(3.0), &hooks);
-      list.push(val!(false), &hooks);
-
-      assert_eq!(list.remove(3), IndexedResult::OutOfBounds);
-      assert_eq!(list.remove(1), IndexedResult::Ok(val!(3.0)));
-
-      assert_eq!(list.len(), 2);
-      assert_eq!(list.cap(), 4);
-      assert_eq!(list[0], val!(1.0));
-      assert_eq!(list[1], val!(false));
-
-      assert_eq!(list.remove(1), IndexedResult::Ok(val!(false)));
-
-      assert_eq!(list.len(), 1);
-      assert_eq!(list.cap(), 4);
-      assert_eq!(list[0], val!(1.0));
-
-      assert_eq!(list.remove(0), IndexedResult::Ok(val!(1.0)));
-
-      assert_eq!(list.len(), 0);
-      assert_eq!(list.cap(), 4);
     }
   }
 

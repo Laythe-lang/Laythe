@@ -1,11 +1,13 @@
 use crate::{
   align_utils::{
-    get_array_len_offset, get_array_offset, get_list_cap_offset, get_list_offset, get_offset, make_array_layout, make_list_layout, make_obj_layout
+    get_array_len_offset, get_array_offset, get_list_cap_offset, get_list_offset, get_offset,
+    make_array_layout, make_list_layout, make_obj_layout,
   },
   managed::{AllocObjResult, AllocateObj, DebugHeap, DebugWrap, Mark, Marked, Trace, Unmark},
   match_obj,
   object::{
-    Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, InstanceHeader, List, LyBox, LyStr, Map, Method, Native, ObjHeader, ObjectKind, Tuple
+    Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, InstanceHeader, List, LyBox, LyStr,
+    Map, Method, Native, ObjHeader, ObjectKind, Tuple,
   },
   utils::strip_msb,
   value::Value,
@@ -16,7 +18,6 @@ use std::{
   hash::{Hash, Hasher},
   io::Write,
   marker::PhantomData,
-  mem,
   ops::{Deref, DerefMut},
   ptr::{self, NonNull},
 };
@@ -226,7 +227,12 @@ impl<T: 'static + Object + fmt::Debug> fmt::Debug for ObjRef<T> {
 
 impl<T: 'static + Object> fmt::Pointer for ObjRef<T> {
   fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    self.ptr.fmt(f)
+    // Our value pointer pointer directly at T
+    // For debugging purposes we really want to know
+    // where the start of the allocation is instead
+    let offset = get_offset::<ObjHeader, T>();
+    let ptr = unsafe { self.ptr.as_ptr().sub(offset) };
+    ptr.fmt(f)
   }
 }
 
@@ -613,20 +619,12 @@ unsafe impl Send for ObjectRef {}
 unsafe impl Sync for ObjectRef {}
 
 fn array_len<H>(this: &ObjectHandle) -> usize {
-  unsafe {
-    ptr::read(this.ptr.as_ptr() as *const H);
-  }
-
   #[allow(clippy::cast_ptr_alignment)]
   let count = get_array_len_offset::<H>();
   unsafe { *(this.ptr.as_ptr().add(count) as *mut usize) }
 }
 
 fn list_capacity<H>(this: &ObjectHandle) -> usize {
-  unsafe {
-    ptr::read(this.ptr.as_ptr() as *const H);
-  }
-
   #[allow(clippy::cast_ptr_alignment)]
   let count = get_list_cap_offset::<H>();
   unsafe { strip_msb(*(this.ptr.as_ptr().add(count) as *mut usize)) }
@@ -668,35 +666,34 @@ impl ObjectHandle {
       }};
     }
 
-    mem::size_of::<Self>()
-      + match self.kind() {
-        ObjectKind::Fiber => kind_size!(Fiber),
-        ObjectKind::Channel => kind_size!(Channel),
-        ObjectKind::List => {
-          let cap: usize = list_capacity::<ObjHeader>(self);
-          make_list_layout::<ObjHeader, Value>(cap).size()
-        },
-        ObjectKind::Map => kind_size!(Map<Value, Value>),
-        ObjectKind::Fun => kind_size!(Fun),
-        ObjectKind::Closure => kind_size!(Closure),
-        ObjectKind::Class => kind_size!(Class),
-        ObjectKind::Instance => {
-          let len = array_len::<InstanceHeader>(self);
-          make_array_layout::<InstanceHeader, Value>(len).size()
-        },
-        ObjectKind::Enumerator => kind_size!(Enumerator),
-        ObjectKind::Method => kind_size!(Method),
-        ObjectKind::Native => kind_size!(Native),
-        ObjectKind::LyBox => kind_size!(LyBox),
-        ObjectKind::String => {
-          let len = array_len::<ObjHeader>(self);
-          make_array_layout::<ObjHeader, Value>(len).size()
-        },
-        ObjectKind::Tuple => {
-          let len = array_len::<ObjHeader>(self);
-          make_array_layout::<ObjHeader, Value>(len).size()
-        },
-      }
+    match self.kind() {
+      ObjectKind::Fiber => kind_size!(Fiber),
+      ObjectKind::Channel => kind_size!(Channel),
+      ObjectKind::List => {
+        let cap: usize = list_capacity::<ObjHeader>(self);
+        make_list_layout::<ObjHeader, Value>(cap).size()
+      },
+      ObjectKind::Map => kind_size!(Map<Value, Value>),
+      ObjectKind::Fun => kind_size!(Fun),
+      ObjectKind::Closure => kind_size!(Closure),
+      ObjectKind::Class => kind_size!(Class),
+      ObjectKind::Instance => {
+        let len = array_len::<InstanceHeader>(self);
+        make_array_layout::<InstanceHeader, Value>(len).size()
+      },
+      ObjectKind::Enumerator => kind_size!(Enumerator),
+      ObjectKind::Method => kind_size!(Method),
+      ObjectKind::Native => kind_size!(Native),
+      ObjectKind::LyBox => kind_size!(LyBox),
+      ObjectKind::String => {
+        let len = array_len::<ObjHeader>(self);
+        make_array_layout::<ObjHeader, u8>(len).size()
+      },
+      ObjectKind::Tuple => {
+        let len = array_len::<ObjHeader>(self);
+        make_array_layout::<ObjHeader, Value>(len).size()
+      },
+    }
   }
 }
 

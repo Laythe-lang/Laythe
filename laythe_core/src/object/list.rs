@@ -2,7 +2,7 @@ use std::{
   fmt::{self, Debug, Display, Pointer},
   mem,
   ops::{Deref, DerefMut},
-  ptr::NonNull,
+  ptr::{self, NonNull},
 };
 
 use crate::{
@@ -73,27 +73,114 @@ impl List {
 
   /// Pop the element off the list
   pub fn pop(&mut self) -> Option<Value> {
-    self.0.pop()
+    match self.state() {
+      ListLocation::Here(_) => {
+        let len: usize = unsafe { self.0.read_len() };
+        if len == 0 {
+          None
+        } else {
+          unsafe {
+            self.0.write_len(len - 1);
+            Some(self.0.read_value(len - 1))
+          }
+        }
+      },
+      ListLocation::Forwarded(mut gc_list) => gc_list.pop(),
+    }
   }
 
   /// Remove an element from this list at the provided offset
   pub fn remove(&mut self, index: usize) -> IndexedResult<Value> {
-    self.0.remove(index)
+    match self.state() {
+      ListLocation::Here(_) => {
+        let len = unsafe { self.0.read_len() };
+        if index >= len {
+          return IndexedResult::OutOfBounds;
+        }
+
+        unsafe {
+          let value = self.0.read_value(index);
+          ptr::copy(
+            self.0.item_ptr(index + 1),
+            self.0.item_mut(index),
+            len - index - 1,
+          );
+
+          self.0.write_len(len - 1);
+          IndexedResult::Ok(value)
+        }
+      },
+      ListLocation::Forwarded(mut gc_list) => gc_list.remove(index),
+    }
   }
 
   /// Push a new element onto this list. If a resize is needed
   /// a new list will be allocated and elements will be transferred
   pub fn push(&mut self, value: Value, hooks: &GcHooks) {
-    self.0.push(value, |slice, cap| {
-      hooks.manage_obj(VecBuilder::new(slice, cap))
-    });
+    match self.state() {
+      ListLocation::Here(cap) => {
+        let len = unsafe { self.0.read_len() };
+
+        // determine if we need to grow the list then
+        // persist the value
+        let mut list = self.ensure_capacity(len + 1, cap, hooks);
+
+        unsafe {
+          list.0.write_value(value, len);
+          list.0.write_len(len + 1);
+        }
+      },
+      ListLocation::Forwarded(mut list) => list.push(value, hooks),
+    }
   }
 
   /// Insert an element into this list at the provided offset
   pub fn insert(&mut self, index: usize, value: Value, hooks: &GcHooks) -> IndexedResult {
-    self.0.insert(index, value, |slice, cap| {
-      hooks.manage_obj(VecBuilder::new(slice, cap))
-    })
+    match self.state() {
+      ListLocation::Here(cap) => {
+        let len = unsafe { self.0.read_len() };
+        if index > len {
+          return IndexedResult::OutOfBounds;
+        }
+
+        // determine if we need to grow the list then
+        // persist the value
+        let mut list = self.ensure_capacity(len + 1, cap, hooks);
+
+        unsafe {
+          ptr::copy(list.0.item_ptr(index), list.0.item_mut(index + 1), len - index);
+          list.0.write_value(value, index);
+          list.0.write_len(len + 1);
+        }
+
+        IndexedResult::Ok(())
+      },
+      ListLocation::Forwarded(mut gc_list) => gc_list.insert(index, value, hooks),
+    }
+  }
+
+  /// Ensure this list has enough capacity for the operation
+  /// If it does it returns itself. Otherwise it returns a new list
+  /// which it will have just allocated
+  fn ensure_capacity(&mut self, needed: usize, cap: usize, hooks: &GcHooks) -> List {
+    if needed > cap {
+      self.grow(cap, cap * 2, hooks)
+    } else {
+      *self
+    }
+  }
+
+  /// Allocate a new list which the specified capacity. Mark the existing list as moved
+  /// by setting the MSB for capacity and replacing len with a pointer to the
+  /// new list
+  fn grow(&mut self, cap: usize, new_cap: usize, hooks: &GcHooks) -> List {
+    let new_list = List::new(hooks.manage_obj(VecBuilder::new(self, new_cap)));
+
+    unsafe {
+      self.0.write_len(new_list);
+      self.0.mark_moved(cap);
+    }
+    new_list
   }
 }
 

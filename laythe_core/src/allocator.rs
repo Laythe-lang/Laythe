@@ -378,10 +378,16 @@ impl Allocator {
       .extend(self.nursery_obj_heap.drain(..).filter(|obj| {
         let retain = (*obj).unmark();
 
-        #[cfg(feature = "gc_log_free")]
-        debug_free_obj(&obj, !retain);
 
         if retain {
+          #[cfg(feature = "gc_log_retain")]
+          debug_retained_obj(&obj);
+
+          remaining += obj.size();
+        } else {
+          #[cfg(feature = "gc_log_free")]
+          debug_free_obj(&obj);
+
           remaining += obj.size();
         }
 
@@ -399,11 +405,16 @@ impl Allocator {
     self.obj_heap.retain(|obj| {
       let retain = (*obj).unmark();
 
-      #[cfg(feature = "gc_log_free")]
-      debug_free_obj(&obj, !retain);
-
       if retain {
+        #[cfg(feature = "gc_log_retain")]
+        debug_retained_obj(&obj);
+
         remaining += obj.size();
+      } else {
+        #[cfg(feature = "gc_log_free")]
+        debug_free_obj(&obj);
+
+        remaining += 0;
       }
 
       retain
@@ -414,11 +425,16 @@ impl Allocator {
       .extend(self.nursery_obj_heap.drain(..).filter(|obj| {
         let retain = (*obj).unmark();
 
-        #[cfg(feature = "gc_log_free")]
-        debug_free_obj(&obj, !retain);
-
         if retain {
+          #[cfg(feature = "gc_log_retain")]
+          debug_retained_obj(&obj);
+
           remaining += obj.size();
+        } else {
+          #[cfg(feature = "gc_log_free")]
+          debug_free_obj(&obj);
+
+          remaining += 0;
         }
 
         retain
@@ -435,11 +451,16 @@ impl Allocator {
     self.heap.retain(|item| {
       let retain = item.unmark();
 
-      #[cfg(feature = "gc_log_free")]
-      debug_free(item, !retain);
-
       if retain {
+        #[cfg(feature = "gc_log_retain")]
+        debug_retained(item);
+
         remaining += item.size();
+      } else {
+        #[cfg(feature = "gc_log_free")]
+        debug_free(item);
+
+        remaining += 0
       }
 
       retain
@@ -465,36 +486,54 @@ impl Allocator {
       "{:p} allocated {} bytes for {:?}",
       reference,
       size,
-      DebugWrap(&reference, 1)
+      DebugWrap(&reference, 3)
     )
     .expect("unable to write to stdout");
   }
 }
 
 /// Debug logging for free an object.
-#[cfg(feature = "gc_log_free")]
-fn debug_free(obj: &Box<dyn Manage>, free: bool) {
-  if free {
-    println!(
-      "{:p} free {} bytes from {:?}",
-      obj.loc(),
-      obj.size(),
-      DebugWrapDyn((*obj).as_debug(), 1)
-    )
-  }
+#[cfg(feature = "gc_log_retain")]
+fn debug_retained(obj: &Box<dyn Manage>) {
+  println!(
+    "{:p} retained {} bytes for {:?}",
+    obj.loc(),
+    obj.size(),
+    DebugWrapDyn((*obj).as_debug(), 3)
+  )
+}
+
+/// Debug logging for free an object.
+#[cfg(feature = "gc_log_retain")]
+fn debug_retained_obj(obj: &ObjectHandle) {
+  println!(
+    "{:p} retained {} bytes for {:?}",
+    *obj,
+    obj.size(),
+    DebugWrapDyn(obj, 3)
+  )
 }
 
 /// Debug logging for free an object.
 #[cfg(feature = "gc_log_free")]
-fn debug_free_obj(obj: &ObjRefectHandle, free: bool) {
-  if free {
-    println!(
-      "{:p} free {} bytes from {:?}",
-      *obj,
-      obj.size(),
-      DebugWrapDyn(obj, 1)
-    )
-  }
+fn debug_free(obj: &Box<dyn Manage>) {
+  println!(
+    "{:p} free {} bytes from {:?}",
+    obj.loc(),
+    obj.size(),
+    DebugWrapDyn((*obj).as_debug(), 1)
+  )
+}
+
+/// Debug logging for free an object.
+#[cfg(feature = "gc_log_free")]
+fn debug_free_obj(obj: &ObjectHandle) {
+  println!(
+    "{:p} free {} bytes from {:?}",
+    *obj,
+    obj.size(),
+    DebugWrapDyn(obj, 1)
+  )
 }
 
 impl Default for Allocator {

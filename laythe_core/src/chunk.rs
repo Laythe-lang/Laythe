@@ -37,10 +37,19 @@ impl Chunk {
 
   /// Create a stubbed chunk
   pub fn stub_with_instructions(hooks: &GcHooks, instructions: &[u8]) -> Self {
+    let instructions = hooks.manage(instructions);
+    hooks.push_root(instructions);
+
+    let constants = hooks.manage::<_, &[Value]>(&[]);
+    hooks.push_root(constants);
+
+    let lines = hooks.manage::<_, &[u16]>(&[0]);
+    hooks.pop_roots(2);
+
     Self {
-      instructions: hooks.manage::<_, &[u8]>(instructions),
-      constants: hooks.manage::<_, &[Value]>(&[]),
-      lines: hooks.manage::<_, &[u16]>(&[0]),
+      instructions,
+      constants,
+      lines,
     }
   }
 

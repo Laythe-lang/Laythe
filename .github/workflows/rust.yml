@@ -26,7 +26,8 @@ jobs:
       with:
         rust-version: ${{ matrix.rust }}
     - uses: Swatinem/rust-cache@v2
-    - run: cargo test
+    - run: cargo test --features gc_stress
+    - run: cargo test --features nan_boxing
 
   lint:
     name: Lint Laythe

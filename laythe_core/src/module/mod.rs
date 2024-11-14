@@ -58,14 +58,21 @@ pub struct Module {
 impl Module {
   /// Create a new laythe module
   pub fn new(hooks: &GcHooks, module_class: ObjRef<Class>, path: &str, id: usize) -> Self {
+    let symbols = List::new(hooks.manage_obj(list!()));
+    hooks.push_root(symbols);
+
+    let path = hooks.manage_str(path);
+    hooks.pop_roots(1);
+
+
     Module {
       id,
       module_class,
       exports: LyHashSet::default(),
       symbols_by_name: Map::default(),
       modules: Map::default(),
-      symbols: List::new(hooks.manage_obj(list!())),
-      path: hooks.manage_str(path),
+      symbols,
+      path,
     }
   }
 
@@ -280,6 +287,7 @@ impl Trace for Module {
       key.trace();
     });
     self.symbols_by_name.keys().for_each(|key| key.trace());
+    self.path.trace();
     self.symbols.trace();
     self.modules.trace();
   }
@@ -294,6 +302,7 @@ impl Trace for Module {
       .symbols_by_name
       .keys()
       .for_each(|key| key.trace_debug(log));
+    self.path.trace_debug(log);
     self.symbols.trace_debug(log);
     self.modules.trace_debug(log);
   }
@@ -304,7 +313,7 @@ impl DebugHeap for Module {
     f.debug_struct("Module")
       .field("module_class", &DebugWrap(&self.module_class, depth))
       .field("exports", &DebugWrap(&self.exports, depth))
-      .field("symbols_by_name", &self.symbols_by_name)
+      .field("symbols_by_name", &DebugWrap(&self.symbols_by_name, depth))
       .field("symbols", &DebugWrap(&self.symbols, depth))
       .finish()
   }
