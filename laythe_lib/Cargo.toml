@@ -8,6 +8,12 @@ edition = "2021"
 default = ["desktop"]
 wasm = ["js-sys"]
 desktop = ["rand"]
+nan_boxing = ["laythe_core/nan_boxing"]
+gc_log_mark = ["laythe_core/gc_log_mark"]
+gc_log_free = ["laythe_core/gc_log_free"]
+gc_log_alloc = ["laythe_core/gc_log_alloc"]
+gc_log_retain = ["laythe_core/gc_log_retain"]
+gc_stress = ["laythe_core/gc_stress"]
 
 [lib]
 name = "laythe_lib"
