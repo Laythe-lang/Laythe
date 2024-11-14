@@ -30,15 +30,15 @@ pub const fn get_array_offset<H, T>() -> usize {
 }
 
 /// Assuming a layout of [H | len | cap | T+] get the offset in bytes
-/// to the list length
-pub const fn get_list_len_offset<H>() -> usize {
+/// to the vector length
+pub const fn get_vector_len_offset<H>() -> usize {
   next_aligned(mem::size_of::<H>(), mem::align_of::<usize>())
 }
 
 /// Assuming a layout of [H | len | cap | T+] get the offset in bytes
-/// to the list capacity
-pub const fn get_list_cap_offset<H>() -> usize {
-  let len_offset = get_list_len_offset::<H>();
+/// to the vector capacity
+pub const fn get_vector_cap_offset<H>() -> usize {
+  let len_offset = get_vector_len_offset::<H>();
   next_aligned(
     len_offset + mem::size_of::<usize>(),
     mem::align_of::<usize>(),
@@ -46,9 +46,9 @@ pub const fn get_list_cap_offset<H>() -> usize {
 }
 
 /// Assuming a layout of [H | len | cap | T+] get the offset in bytes
-/// to the first element of the list T
-pub const fn get_list_offset<H, T>() -> usize {
-  let cap_offset = get_list_cap_offset::<H>();
+/// to the first element of the vector T
+pub const fn get_vector_offset<H, T>() -> usize {
+  let cap_offset = get_vector_cap_offset::<H>();
   next_aligned(cap_offset + mem::size_of::<usize>(), mem::align_of::<T>())
 }
 
@@ -108,18 +108,18 @@ pub const fn make_array_layout<H, T>(len: usize) -> Layout {
 
 /// Determine the max alignment between the item `T`
 /// and the `Vector` header `Header`
-pub const fn max_list_align<H, T>() -> usize {
+pub const fn max_vector_align<H, T>() -> usize {
   max_array_align::<H, T>()
 }
 
 /// Create a rust `Layout` for a `GcArray` of `len` length.
-pub const fn make_list_layout<H, T>(capacity: usize) -> Layout {
-  let alignment = max_list_align::<H, T>();
+pub const fn make_vector_layout<H, T>(capacity: usize) -> Layout {
+  let alignment = max_vector_align::<H, T>();
 
   let num_bytes = if capacity == 0 {
-    get_list_offset::<H, T>()
+    get_vector_offset::<H, T>()
   } else {
-    get_list_offset::<H, T>() + capacity * mem::size_of::<T>()
+    get_vector_offset::<H, T>() + capacity * mem::size_of::<T>()
   };
 
   match Layout::from_size_align(num_bytes, alignment) {
@@ -274,39 +274,45 @@ mod tests {
     }
   }
 
-  mod list {
+  mod vector {
     use super::*;
 
     #[test]
-    fn max_list_align_test() {
-      assert_eq!(max_list_align::<u16, u8>(), mem::align_of::<usize>());
-      assert_eq!(max_list_align::<u128, u8>(), mem::align_of::<u128>());
+    fn max_vector_align_test() {
+      assert_eq!(max_vector_align::<u16, u8>(), mem::align_of::<usize>());
+      assert_eq!(max_vector_align::<u128, u8>(), mem::align_of::<u128>());
       assert_eq!(
-        max_list_align::<u128, OverAligned>(),
+        max_vector_align::<u128, OverAligned>(),
         mem::align_of::<OverAligned>()
       );
     }
 
     #[test]
-    fn get_list_offset_test() {
-      assert_eq!(get_list_offset::<u32, u8>(), mem::size_of::<usize>() * 3);
-      assert_eq!(get_list_offset::<u32, u32>(), mem::size_of::<usize>() * 3);
-      assert_eq!(get_list_offset::<u32, u128>(), mem::size_of::<usize>() * 4);
-    }
-
-    #[test]
-    fn get_list_len_offset_test() {
-      assert_eq!(get_list_len_offset::<u8>(), mem::size_of::<usize>());
-      assert_eq!(get_list_len_offset::<usize>(), mem::size_of::<usize>());
-      assert_eq!(get_list_len_offset::<u128>(), mem::size_of::<u128>());
-    }
-
-    #[test]
-    fn get_list_cap_offset_test() {
-      assert_eq!(get_list_cap_offset::<u8>(), mem::size_of::<usize>() * 2);
-      assert_eq!(get_list_cap_offset::<usize>(), mem::size_of::<usize>() * 2);
+    fn get_vector_offset_test() {
+      assert_eq!(get_vector_offset::<u32, u8>(), mem::size_of::<usize>() * 3);
+      assert_eq!(get_vector_offset::<u32, u32>(), mem::size_of::<usize>() * 3);
       assert_eq!(
-        get_list_cap_offset::<u128>(),
+        get_vector_offset::<u32, u128>(),
+        mem::size_of::<usize>() * 4
+      );
+    }
+
+    #[test]
+    fn get_vector_len_offset_test() {
+      assert_eq!(get_vector_len_offset::<u8>(), mem::size_of::<usize>());
+      assert_eq!(get_vector_len_offset::<usize>(), mem::size_of::<usize>());
+      assert_eq!(get_vector_len_offset::<u128>(), mem::size_of::<u128>());
+    }
+
+    #[test]
+    fn get_vector_cap_offset_test() {
+      assert_eq!(get_vector_cap_offset::<u8>(), mem::size_of::<usize>() * 2);
+      assert_eq!(
+        get_vector_cap_offset::<usize>(),
+        mem::size_of::<usize>() * 2
+      );
+      assert_eq!(
+        get_vector_cap_offset::<u128>(),
         mem::size_of::<u128>() + mem::size_of::<usize>()
       );
     }
