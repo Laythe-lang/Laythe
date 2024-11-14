@@ -64,7 +64,6 @@ impl Module {
     let path = hooks.manage_str(path);
     hooks.pop_roots(1);
 
-
     Module {
       id,
       module_class,

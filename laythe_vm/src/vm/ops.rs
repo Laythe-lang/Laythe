@@ -2,11 +2,9 @@ use super::{source_loader::ImportResult, ExecutionSignal, Vm};
 use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
 use laythe_core::object::{Fiber, List, LyStr};
 use laythe_core::value::VALUE_UNDEFINED;
-use laythe_core::{Captures, ObjRef, Ref};
 use laythe_core::{
   hooks::{GcHooks, Hooks},
-  if_let_obj, list,
-  match_obj,
+  if_let_obj, list, match_obj,
   module::Import,
   object::{
     Channel, Class, Closure, Fun, LyBox, Map, Method, Native, ObjectKind, ReceiveResult, SendResult,
@@ -18,6 +16,7 @@ use laythe_core::{
   value::{Value, VALUE_NIL, VALUE_TRUE},
   Call, LyError,
 };
+use laythe_core::{Captures, ObjRef, Ref};
 use std::{cmp::Ordering, mem};
 
 #[cfg(debug_assertions)]

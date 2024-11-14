@@ -13,7 +13,6 @@ macro_rules! list {
   }};
 }
 
-
 #[macro_export]
 macro_rules! to_obj_kind {
   ($o:expr, Channel) => {
@@ -80,7 +79,6 @@ macro_rules! match_obj {
     }
   };
 }
-
 
 #[macro_export]
 macro_rules! val {

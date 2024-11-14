@@ -109,7 +109,7 @@ impl<T, H> RawUniqueVector<T, H> {
   /// ## Safety
   /// This method does no bounds checks so the caller will need to ensure
   /// that this is only called within bounds
-  unsafe fn item_mut(&self, index: usize) -> *mut T {
+  pub unsafe fn item_mut(&self, index: usize) -> *mut T {
     self.ptr.as_ptr().add(self.offset_item(index)) as *mut T
   }
 
@@ -190,6 +190,17 @@ impl<T: DebugHeap, H> DebugHeap for RawUniqueVector<T, H> {
 impl<T, H> fmt::Pointer for RawUniqueVector<T, H> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     fmt::Pointer::fmt(&self.ptr, f)
+  }
+}
+
+// TODO we need this for now
+// As of today the allocator needs to hold a
+// boxed version of everything that is allocated
+// as a temporary root
+impl<T, H> Copy for RawUniqueVector<T, H> {}
+impl<T, H> Clone for RawUniqueVector<T, H> {
+  fn clone(&self) -> Self {
+    *self
   }
 }
 
