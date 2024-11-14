@@ -493,7 +493,7 @@ impl Allocator {
 }
 
 /// Debug logging for free an object.
-#[cfg(feature = "gc_log_free")]
+#[cfg(feature = "gc_log_retain")]
 fn debug_retained(obj: &Box<dyn Manage>) {
   println!(
     "{:p} retained {} bytes for {:?}",
@@ -504,7 +504,7 @@ fn debug_retained(obj: &Box<dyn Manage>) {
 }
 
 /// Debug logging for free an object.
-#[cfg(feature = "gc_log_free")]
+#[cfg(feature = "gc_log_retain")]
 fn debug_retained_obj(obj: &ObjectHandle) {
   println!(
     "{:p} retained {} bytes for {:?}",
