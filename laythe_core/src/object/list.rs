@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::{
-  collections::{IndexedResult, RawVecLocation, RawVector, VecBuilder, VectorHandle},
+  collections::{IndexedResult, RawVecLocation, RawSharedVector, VecBuilder, RawSharedVectorHandle},
   managed::{AllocObjResult, AllocateObj, DebugHeap, Trace},
   object::ObjectKind,
   reference::ObjectHandle,
@@ -28,10 +28,10 @@ pub enum ListLocation {
   Forwarded(List),
 }
 
-pub struct List(RawVector<Value, Header>);
+pub struct List(RawSharedVector<Value, Header>);
 
 impl List {
-  pub fn new(raw_vector: RawVector<Value, Header>) -> Self {
+  pub fn new(raw_vector: RawSharedVector<Value, Header>) -> Self {
     Self(raw_vector)
   }
 
@@ -55,7 +55,7 @@ impl List {
   /// ## Safety
   /// This should only be constructed from a box value
   pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
-    List(RawVector::from_alloc_ptr(ptr))
+    List(RawSharedVector::from_alloc_ptr(ptr))
   }
 
   /// Has this list moved
@@ -200,7 +200,7 @@ impl DerefMut for List {
   }
 }
 
-impl<T> VectorHandle<T, Header> {
+impl<T> RawSharedVectorHandle<T, Header> {
   /// Degrade this handle into
   pub fn degrade(self) -> ObjectHandle {
     let handle = ObjectHandle::new(self.value().ptr());
@@ -209,10 +209,10 @@ impl<T> VectorHandle<T, Header> {
   }
 }
 
-impl<'a> AllocateObj<RawVector<Value, Header>> for VecBuilder<'a, Value> {
-  fn alloc(self) -> AllocObjResult<RawVector<Value, Header>> {
+impl<'a> AllocateObj<RawSharedVector<Value, Header>> for VecBuilder<'a, Value> {
+  fn alloc(self) -> AllocObjResult<RawSharedVector<Value, Header>> {
     debug_assert!(self.slice().len() <= self.cap());
-    let handle = VectorHandle::from_slice(self.slice(), self.cap(), Header::new(ObjectKind::List));
+    let handle = RawSharedVectorHandle::from_slice(self.slice(), self.cap(), Header::new(ObjectKind::List));
 
     let size = handle.size();
     let reference = handle.value();

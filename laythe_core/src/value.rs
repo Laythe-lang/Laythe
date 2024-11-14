@@ -19,7 +19,7 @@ pub use self::boxed::*;
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
   use crate::{
-    collections::RawVector, managed::{DebugHeap, DebugWrap, Trace}, object::{
+    collections::RawSharedVector, managed::{DebugHeap, DebugWrap, Trace}, object::{
       Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, LyStr, Map, Method, Native, ObjHeader, ObjectKind, Tuple
     }, ObjRef, ObjectRef
   };
@@ -247,8 +247,8 @@ mod unboxed {
     }
   }
 
-  impl From<RawVector<Value, ObjHeader>> for Value {
-    fn from(managed: RawVector<Value, ObjHeader>) -> Value {
+  impl From<RawSharedVector<Value, ObjHeader>> for Value {
+    fn from(managed: RawSharedVector<Value, ObjHeader>) -> Value {
       Value::Obj(List::new(managed).degrade())
     }
   }
@@ -439,7 +439,7 @@ mod unboxed {
 mod boxed {
   use super::{Nil, ValueKind};
   use crate::{
-    collections::RawVector,
+    collections::RawSharedVector,
     managed::{DebugHeap, Trace},
     object::{
       Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, LyStr, Map, Method,

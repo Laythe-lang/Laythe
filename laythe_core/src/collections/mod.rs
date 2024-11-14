@@ -1,5 +1,7 @@
 mod array;
-mod vector;
+mod shared_vector;
 
 pub use array::{Array, ArrayHandle};
-pub use vector::{VecBuilder, RawVector, VecLocation, Vector, VectorHandle, RawVecLocation, IndexedResult};
+pub use shared_vector::{
+  IndexedResult, RawSharedVector, RawSharedVectorHandle, RawVecLocation, VecBuilder,
+};
