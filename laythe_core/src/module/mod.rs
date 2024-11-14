@@ -58,14 +58,21 @@ pub struct Module {
 impl Module {
   /// Create a new laythe module
   pub fn new(hooks: &GcHooks, module_class: ObjRef<Class>, path: &str, id: usize) -> Self {
+    let symbols = List::new(hooks.manage_obj(list!()));
+    hooks.push_root(symbols);
+
+    let path = hooks.manage_str(path);
+    hooks.pop_roots(1);
+
+
     Module {
       id,
       module_class,
       exports: LyHashSet::default(),
       symbols_by_name: Map::default(),
       modules: Map::default(),
-      symbols: List::new(hooks.manage_obj(list!())),
-      path: hooks.manage_str(path),
+      symbols,
+      path,
     }
   }
 
