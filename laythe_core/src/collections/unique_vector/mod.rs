@@ -174,6 +174,17 @@ impl<T, H> fmt::Pointer for UniqueVector<T, H> {
   }
 }
 
+// TODO we need this for now
+// As of today the allocator needs to hold a
+// boxed version of everything that is allocated
+// as a temporary root
+impl<T, H> Copy for UniqueVector<T, H> {}
+impl<T, H> Clone for UniqueVector<T, H> {
+  fn clone(&self) -> Self {
+    *self
+  }
+}
+
 impl<T, H> PartialEq<UniqueVector<T, H>> for UniqueVector<T, H> {
   #[inline]
   fn eq(&self, other: &UniqueVector<T, H>) -> bool {
