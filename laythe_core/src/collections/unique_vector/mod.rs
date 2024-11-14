@@ -25,19 +25,13 @@ impl<T, H> UniqueVector<T, H> {
     self.0.len()
   }
 
+  #[allow(dead_code)]
   pub fn cap(&self) -> usize {
     self.0.cap()
   }
 
-  /// Construct a `Tuple` from `NonNull<u8>`
-  ///
-  /// ## Safety
-  /// This should only be constructed from a box value
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
-    UniqueVector(RawUniqueVector::from_alloc_ptr(ptr))
-  }
-
   /// Pop the element off the vector
+  #[allow(dead_code)]
   pub fn pop(&mut self) -> Option<T> {
     let len = self.0.len();
 
@@ -52,6 +46,7 @@ impl<T, H> UniqueVector<T, H> {
   }
 
   /// Remove an element from this list at the provided offset
+  #[allow(dead_code)]
   pub fn remove(&mut self, index: usize) -> IndexedResult<T> {
     let len = self.0.len();
     if index >= len {
@@ -93,6 +88,7 @@ where
   }
 
   /// Insert an element into this list at the provided offset
+  #[allow(dead_code)]
   pub fn insert(&mut self, index: usize, value: T, hooks: &GcHooks) -> IndexedResult {
     let len = self.0.len();
     if index > len {

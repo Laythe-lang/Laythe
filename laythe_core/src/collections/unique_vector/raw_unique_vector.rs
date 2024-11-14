@@ -49,18 +49,6 @@ impl<T, H> RawUniqueVector<T, H> {
     self.as_alloc_ptr() as *const () as usize
   }
 
-  /// Construct a `Vector<T>` from `NonNull<u8>`
-  ///
-  /// ## Safety
-  /// This should only be constructed from a box value
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
-    Self {
-      ptr,
-      data: PhantomData,
-      header: PhantomData,
-    }
-  }
-
   /// Retrieve the header from this vector
   #[inline]
   fn header(&self) -> &H {

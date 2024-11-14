@@ -10,7 +10,13 @@ pub use import::Import;
 pub use package::Package;
 
 use crate::{
-  collections::UniqueVector, hooks::GcHooks, list, managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Header, Trace}, object::{Class, Instance, List, ListLocation, LyStr, Map}, reference::{ObjRef, Ref}, value::Value, LyHashSet, VecBuilder
+  collections::UniqueVector,
+  hooks::GcHooks,
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Header, Trace},
+  object::{Class, Instance, LyStr, Map},
+  reference::{ObjRef, Ref},
+  value::Value,
+  LyHashSet, VecBuilder,
 };
 use hashbrown::hash_map;
 use std::{fmt, io::Write, slice::Iter};

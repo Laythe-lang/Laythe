@@ -685,8 +685,8 @@ mod boxed {
     }
   }
 
-  impl From<RawVector<Value, ObjHeader>> for Value {
-    fn from(managed: RawVector<Value, ObjHeader>) -> Value {
+  impl From<RawSharedVector<Value, ObjHeader>> for Value {
+    fn from(managed: RawSharedVector<Value, ObjHeader>) -> Value {
       Self(List::new(managed).to_usize() as u64 | TAG_OBJ)
     }
   }
