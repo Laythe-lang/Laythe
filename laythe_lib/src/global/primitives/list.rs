@@ -4,7 +4,18 @@ use crate::{
   StdResult,
 };
 use laythe_core::{
-  constants::{INDEX_GET, INDEX_SET}, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{DebugHeap, DebugWrap, Trace}, module::Module, object::{Enumerate, Enumerator, List, LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::is_falsey, val, value::{Value, VALUE_NIL}, Call, IndexedResult, LyError, LyResult, ObjRef, Ref, VecBuilder
+  constants::{INDEX_GET, INDEX_SET},
+  hooks::{GcHooks, Hooks},
+  if_let_obj,
+  managed::{DebugHeap, DebugWrap, Trace},
+  module::Module,
+  object::{Enumerate, Enumerator, List, LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind},
+  signature::{Arity, ParameterBuilder, ParameterKind},
+  to_obj_kind,
+  utils::is_falsey,
+  val,
+  value::{Value, VALUE_NIL},
+  list, Call, IndexedResult, LyError, LyResult, ObjRef, Ref, VecBuilder,
 };
 use std::{cmp::Ordering, io::Write};
 
@@ -296,7 +307,9 @@ impl LyNative for ListSlice {
     }
 
     if start_index <= end_index {
-      Call::Ok(val!(hooks.manage_obj(list!(&list[start_index..end_index]))))
+      Call::Ok(val!(
+        hooks.manage_obj(list!(&list[start_index..end_index]))
+      ))
     } else {
       Call::Ok(val!(hooks.manage_obj(list!())))
     }

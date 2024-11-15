@@ -10,13 +10,13 @@ pub use import::Import;
 pub use package::Package;
 
 use crate::{
+  collections::UniqueVector,
   hooks::GcHooks,
-  list,
-  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Trace},
-  object::{Class, Instance, List, ListLocation, LyStr, Map},
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Header, Trace},
+  object::{Class, Instance, LyStr, Map},
   reference::{ObjRef, Ref},
   value::Value,
-  LyHashSet,
+  LyHashSet, VecBuilder,
 };
 use hashbrown::hash_map;
 use std::{fmt, io::Write, slice::Iter};
@@ -46,7 +46,7 @@ pub struct Module {
   symbols_by_name: Map<LyStr, usize>,
 
   /// All the symbols
-  symbols: List,
+  symbols: UniqueVector<Value, Header>,
 
   /// The path this module is located at
   path: LyStr,
@@ -58,12 +58,11 @@ pub struct Module {
 impl Module {
   /// Create a new laythe module
   pub fn new(hooks: &GcHooks, module_class: ObjRef<Class>, path: &str, id: usize) -> Self {
-    let symbols = List::new(hooks.manage_obj(list!()));
+    let symbols = UniqueVector::new(hooks.manage(VecBuilder::cap_only(4)));
     hooks.push_root(symbols);
 
     let path = hooks.manage_str(path);
     hooks.pop_roots(1);
-
 
     Module {
       id,
@@ -213,10 +212,6 @@ impl Module {
       Some(_) => Err(SymbolInsertError::SymbolAlreadyExists),
       None => {
         self.symbols.push(symbol, hooks);
-        match self.symbols.state() {
-          ListLocation::Forwarded(symbols) => self.symbols = symbols,
-          ListLocation::Here(_) => (),
-        }
         Ok(slot)
       },
     }

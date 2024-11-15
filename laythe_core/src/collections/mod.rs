@@ -1,5 +1,9 @@
 mod array;
-mod vector;
+mod shared_vector;
+mod unique_vector;
+mod vec_builder;
 
 pub use array::{Array, ArrayHandle};
-pub use vector::{VecBuilder, RawVector, VecLocation, Vector, VectorHandle, RawVecLocation, IndexedResult};
+pub use shared_vector::{IndexedResult, RawSharedVector, RawSharedVectorHandle, RawVecLocation};
+pub use unique_vector::UniqueVector;
+pub use vec_builder::VecBuilder;

@@ -1,7 +1,10 @@
 use crate::{
-  align_utils::{get_list_cap_offset, get_list_len_offset, get_list_offset, make_list_layout},
+  align_utils::{
+    get_vector_cap_offset, get_vector_len_offset, get_vector_offset, make_vector_layout,
+  },
   managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Manage, Mark, Marked, Trace, Unmark},
   utils::{msb_set, set_msb, strip_msb},
+  VecBuilder,
 };
 use ptr::NonNull;
 use std::{
@@ -14,14 +17,12 @@ use std::{
   slice::{self},
 };
 
-use super::vec_builder::VecBuilder;
-
 pub enum RawVecLocation<T, H> {
-  /// The list is in it's default state which returns it's capacity
+  /// The vector is in it's default state which returns it's capacity
   Here(usize),
 
-  /// The list has been forwarded to a new location
-  Forwarded(RawVector<T, H>),
+  /// The vector has been forwarded to a new location
+  Forwarded(RawSharedVector<T, H>),
 }
 
 /// The result of an indexed Operation
@@ -34,28 +35,33 @@ pub enum IndexedResult<T = ()> {
   OutOfBounds,
 }
 
-/// A non owning reference to a Garbage collector
-/// allocated list. Note this list is the same size
+/// A shared non owning reference to a Garbage collector
+/// allocated vector. Note this vector is the same size
 /// as a single pointer.
-pub struct RawVector<T, H> {
-  /// Pointer to the header of the list
+pub struct RawSharedVector<T, H> {
+  /// Pointer to the header of the vector
   ptr: NonNull<u8>,
 
-  /// Phantom data to hold the list data type
+  /// Phantom data to hold the vector data type
   data: PhantomData<T>,
 
-  /// Phantom data to hold the list header type
+  /// Phantom data to hold the vector header type
   header: PhantomData<H>,
 }
 
-impl<T, H> RawVector<T, H> {
-  /// Retrieve the len from this list
+impl<T, H> RawSharedVector<T, H> {
+  /// Retrieve the len from this vector
   #[inline]
   pub fn len(&self) -> usize {
     match self.state() {
       RawVecLocation::Here(_) => unsafe { self.read_len() },
-      RawVecLocation::Forwarded(gc_list) => gc_list.len(),
+      RawVecLocation::Forwarded(vector) => vector.len(),
     }
+  }
+
+  /// Is this shared vector empty
+  pub fn is_empty(&self) -> bool {
+    self.len() == 0
   }
 
   /// Retrieve the underlying non Null
@@ -69,7 +75,7 @@ impl<T, H> RawVector<T, H> {
     self.as_alloc_ptr() as *const () as usize
   }
 
-  /// Has this list moved
+  /// Has this vector moved
   #[inline]
   pub fn has_moved(&self) -> bool {
     msb_set(self.read_cap())
@@ -87,20 +93,20 @@ impl<T, H> RawVector<T, H> {
     }
   }
 
-  /// Determine the state of this list
+  /// Determine the state of this vector
   pub fn state(&self) -> RawVecLocation<T, H> {
     let cap: usize = self.read_cap();
 
     // if capacity is a usize max we treat that as a flag that
     // the array has actually moved elsewhere
     if msb_set(cap) {
-      RawVecLocation::Forwarded(self.relocated_list())
+      RawVecLocation::Forwarded(self.relocated_vector())
     } else {
       RawVecLocation::Here(cap)
     }
   }
 
-  /// Retrieve the header from this list
+  /// Retrieve the header from this vector
   #[inline]
   fn header(&self) -> &H {
     #[allow(clippy::cast_ptr_alignment)]
@@ -109,11 +115,11 @@ impl<T, H> RawVector<T, H> {
     }
   }
 
-  /// Retrieve the capacity from this list
+  /// Retrieve the capacity from this vector
   pub fn cap(&self) -> usize {
     match self.state() {
       RawVecLocation::Here(cap) => cap,
-      RawVecLocation::Forwarded(gc_list) => gc_list.cap(),
+      RawVecLocation::Forwarded(vector) => vector.cap(),
     }
   }
 
@@ -121,7 +127,7 @@ impl<T, H> RawVector<T, H> {
   fn as_alloc_ptr(&self) -> *const u8 {
     match self.state() {
       RawVecLocation::Here(_) => self.ptr.as_ptr(),
-      RawVecLocation::Forwarded(gc_list) => gc_list.as_alloc_ptr(),
+      RawVecLocation::Forwarded(vector) => vector.as_alloc_ptr(),
     }
   }
 
@@ -130,36 +136,36 @@ impl<T, H> RawVector<T, H> {
   /// is undefined behavior
   pub unsafe fn read_len<L: Copy>(&self) -> L {
     #[allow(clippy::cast_ptr_alignment)]
-    let count = get_list_len_offset::<H>();
+    let count = get_vector_len_offset::<H>();
     *(self.ptr.as_ptr().add(count) as *mut L)
   }
 
   /// Write a length to to the length slot. This assumes the
   pub unsafe fn write_len<L>(&mut self, len: L) {
     #[allow(clippy::cast_ptr_alignment)]
-    let count = get_list_len_offset::<H>();
+    let count = get_vector_len_offset::<H>();
     ptr::write(self.ptr.as_ptr().add(count) as *mut L, len);
   }
 
-  /// Read the capacity field on this list. This may indicate a forwarded pointer
+  /// Read the capacity field on this vector. This may indicate a forwarded pointer
   fn read_cap(&self) -> usize {
     #[allow(clippy::cast_ptr_alignment)]
-    let count: usize = get_list_cap_offset::<H>();
+    let count: usize = get_vector_cap_offset::<H>();
     unsafe { *(self.ptr.as_ptr().add(count) as *mut usize) }
   }
 
-  /// Make this list as moved
+  /// Mark this vector as moved
   pub fn mark_moved(&mut self, cap: usize) {
     #[allow(clippy::cast_ptr_alignment)]
-    let count: usize = get_list_cap_offset::<H>();
+    let count: usize = get_vector_cap_offset::<H>();
     unsafe { ptr::write(self.ptr.as_ptr().add(count) as *mut usize, set_msb(cap)) };
   }
 
-  /// The pointer to the moved list
-  fn relocated_list(&self) -> RawVector<T, H> {
+  /// The pointer to the moved vector
+  fn relocated_vector(&self) -> RawSharedVector<T, H> {
     let ptr = unsafe { NonNull::new_unchecked(self.read_len()) };
 
-    RawVector {
+    RawSharedVector {
       ptr,
       data: PhantomData,
       header: PhantomData,
@@ -190,7 +196,7 @@ impl<T, H> RawVector<T, H> {
   pub unsafe fn item_mut(&self, index: usize) -> *mut T {
     match self.state() {
       RawVecLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *mut T,
-      RawVecLocation::Forwarded(gc_list) => gc_list.item_mut(index),
+      RawVecLocation::Forwarded(vector) => vector.item_mut(index),
     }
   }
 
@@ -202,34 +208,34 @@ impl<T, H> RawVector<T, H> {
   pub unsafe fn item_ptr(&self, index: usize) -> *const T {
     match self.state() {
       RawVecLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *const T,
-      RawVecLocation::Forwarded(gc_list) => gc_list.item_ptr(index),
+      RawVecLocation::Forwarded(vector) => vector.item_ptr(index),
     }
   }
 
   /// Determine the byte offset of an item in the collection
   const fn offset_item(&self, index: usize) -> usize {
-    let offset_list_start = get_list_offset::<H, T>();
-    offset_list_start + index * mem::size_of::<T>()
+    let item_offset = get_vector_offset::<H, T>();
+    item_offset + index * mem::size_of::<T>()
   }
 }
 
-impl<T, H: Mark> Mark for RawVector<T, H> {
-  /// Mark the list itself as visited
+impl<T, H: Mark> Mark for RawSharedVector<T, H> {
+  /// Mark the vector itself as visited
   #[inline]
   fn mark(&self) -> bool {
     self.header().mark()
   }
 }
 
-impl<T, H: Marked> Marked for RawVector<T, H> {
-  /// Is this list marked
+impl<T, H: Marked> Marked for RawSharedVector<T, H> {
+  /// Is this vector marked
   #[inline]
   fn marked(&self) -> bool {
     self.header().marked()
   }
 }
 
-impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for RawVector<T, H> {
+impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for RawSharedVector<T, H> {
   #[inline]
   fn trace(&self) {
     if self.mark() {
@@ -239,7 +245,7 @@ impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for RawVector<T, H> {
     self.header().trace();
     match self.state() {
       RawVecLocation::Here(_) => self.iter().for_each(|i| i.trace()),
-      RawVecLocation::Forwarded(gc_list) => gc_list.trace(),
+      RawVecLocation::Forwarded(vector) => vector.trace(),
     };
   }
 
@@ -260,12 +266,12 @@ impl<T: Trace + DebugHeap, H: Send + Mark + Trace> Trace for RawVector<T, H> {
     self.header().trace_debug(log);
     match self.state() {
       RawVecLocation::Here(_) => self.iter().for_each(|i| i.trace_debug(log)),
-      RawVecLocation::Forwarded(gc_list) => gc_list.trace_debug(log),
+      RawVecLocation::Forwarded(vector) => vector.trace_debug(log),
     };
   }
 }
 
-impl<T: DebugHeap, H> DebugHeap for RawVector<T, H> {
+impl<T: DebugHeap, H> DebugHeap for RawSharedVector<T, H> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     if depth == 0 {
       f.write_fmt(format_args!("{:p}", self.ptr))
@@ -277,20 +283,20 @@ impl<T: DebugHeap, H> DebugHeap for RawVector<T, H> {
   }
 }
 
-impl<T, H> fmt::Pointer for RawVector<T, H> {
+impl<T, H> fmt::Pointer for RawSharedVector<T, H> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     fmt::Pointer::fmt(&self.ptr, f)
   }
 }
 
-impl<T, H> Copy for RawVector<T, H> {}
-impl<T, H> Clone for RawVector<T, H> {
+impl<T, H> Copy for RawSharedVector<T, H> {}
+impl<T, H> Clone for RawSharedVector<T, H> {
   fn clone(&self) -> Self {
     *self
   }
 }
 
-impl<T, H> Deref for RawVector<T, H> {
+impl<T, H> Deref for RawSharedVector<T, H> {
   type Target = [T];
 
   #[inline]
@@ -303,7 +309,7 @@ impl<T, H> Deref for RawVector<T, H> {
   }
 }
 
-impl<T, H> DerefMut for RawVector<T, H> {
+impl<T, H> DerefMut for RawSharedVector<T, H> {
   #[inline]
   fn deref_mut(&mut self) -> &mut Self::Target {
     unsafe {
@@ -314,15 +320,15 @@ impl<T, H> DerefMut for RawVector<T, H> {
   }
 }
 
-impl<T, H> PartialEq<RawVector<T, H>> for RawVector<T, H> {
+impl<T, H> PartialEq<RawSharedVector<T, H>> for RawSharedVector<T, H> {
   #[inline]
-  fn eq(&self, other: &RawVector<T, H>) -> bool {
+  fn eq(&self, other: &RawSharedVector<T, H>) -> bool {
     ptr::eq(self.as_alloc_ptr(), other.as_alloc_ptr())
   }
 }
-impl<T, H> Eq for RawVector<T, H> {}
+impl<T, H> Eq for RawSharedVector<T, H> {}
 
-impl<T: Display, H> Display for RawVector<T, H> {
+impl<T: Display, H> Display for RawSharedVector<T, H> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "[")?;
 
@@ -338,23 +344,23 @@ impl<T: Display, H> Display for RawVector<T, H> {
   }
 }
 
-impl<T: Debug, H> Debug for RawVector<T, H> {
+impl<T: Debug, H> Debug for RawSharedVector<T, H> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     f.debug_list().entries(self.iter()).finish()
   }
 }
 
-unsafe impl<T: Send, H: Send> Send for RawVector<T, H> {}
-unsafe impl<T: Sync, H: Sync> Sync for RawVector<T, H> {}
+unsafe impl<T: Send, H: Send> Send for RawSharedVector<T, H> {}
+unsafe impl<T: Sync, H: Sync> Sync for RawSharedVector<T, H> {}
 
-impl<'a, T, H> Allocate<RawVector<T, H>> for VecBuilder<'a, T>
+impl<'a, T, H> Allocate<RawSharedVector<T, H>> for VecBuilder<'a, T>
 where
   T: Trace + DebugHeap + Copy + 'static,
   H: Trace + Mark + Unmark + Send + Default + 'static,
 {
-  fn alloc(self) -> AllocResult<RawVector<T, H>> {
+  fn alloc(self) -> AllocResult<RawSharedVector<T, H>> {
     debug_assert!(self.slice().len() <= self.cap());
-    let handle = VectorHandle::from_slice(self.slice(), self.cap(), H::default());
+    let handle = RawSharedVectorHandle::from_slice(self.slice(), self.cap(), H::default());
 
     let size = handle.size();
     let reference = handle.value();
@@ -371,15 +377,15 @@ where
 }
 
 /// A owning reference to a Garbage collector
-/// allocated list. Note this list is the same size
+/// allocated vector. Note this vector is the same size
 /// as a single pointer.
-pub struct VectorHandle<T, H>(RawVector<T, H>);
+pub struct RawSharedVectorHandle<T, H>(RawSharedVector<T, H>);
 
-impl<T, H> VectorHandle<T, H> {
-  /// Create a non owning reference to this list.
+impl<T, H> RawSharedVectorHandle<T, H> {
+  /// Create a shared non owning reference to this vector.
   ///
   /// ## Examples
-  pub fn value(&self) -> RawVector<T, H> {
+  pub fn value(&self) -> RawSharedVector<T, H> {
     self.0
   }
 
@@ -387,18 +393,18 @@ impl<T, H> VectorHandle<T, H> {
   /// allocation
   #[inline]
   pub fn size(&self) -> usize {
-    make_list_layout::<H, T>(strip_msb(self.0.read_cap())).size()
+    make_vector_layout::<H, T>(strip_msb(self.0.read_cap())).size()
   }
 }
 
-impl<T: Copy, H> VectorHandle<T, H> {
+impl<T: Copy, H> RawSharedVectorHandle<T, H> {
   /// Create a new `VectorHandle` from the provided header
   /// and a copyable slice
   pub fn from_slice(slice: &[T], cap: usize, header: H) -> Self {
     debug_assert!(slice.len() <= cap);
     assert!(mem::size_of::<T>() > 0, "ZSTs currently not supported");
 
-    let new_layout = make_list_layout::<H, T>(cap);
+    let new_layout = make_vector_layout::<H, T>(cap);
     let buf = unsafe { alloc(new_layout) };
 
     if buf.is_null() {
@@ -406,27 +412,27 @@ impl<T: Copy, H> VectorHandle<T, H> {
     }
 
     #[allow(clippy::cast_ptr_alignment)]
-    let mut list = unsafe {
+    let mut vector = unsafe {
       ptr::write(buf as *mut H, header);
       ptr::write(
-        buf.add(get_list_len_offset::<H>()) as *mut usize,
+        buf.add(get_vector_len_offset::<H>()) as *mut usize,
         slice.len(),
       );
-      ptr::write(buf.add(get_list_cap_offset::<H>()) as *mut usize, cap);
+      ptr::write(buf.add(get_vector_cap_offset::<H>()) as *mut usize, cap);
 
-      VectorHandle(RawVector {
+      RawSharedVectorHandle(RawSharedVector {
         ptr: NonNull::new_unchecked(buf),
         data: PhantomData,
         header: PhantomData,
       })
     };
 
-    list.0.copy_from_slice(slice);
-    list
+    vector.0.copy_from_slice(slice);
+    vector
   }
 }
 
-impl<T, H: Unmark> Unmark for VectorHandle<T, H> {
+impl<T, H: Unmark> Unmark for RawSharedVectorHandle<T, H> {
   /// Unmark this allocation as visited, returning
   /// the existing marked status
   #[inline]
@@ -435,7 +441,7 @@ impl<T, H: Unmark> Unmark for VectorHandle<T, H> {
   }
 }
 
-impl<T, H: Marked> Marked for VectorHandle<T, H> {
+impl<T, H: Marked> Marked for RawSharedVectorHandle<T, H> {
   /// Is this allocation marked
   #[inline]
   fn marked(&self) -> bool {
@@ -443,7 +449,7 @@ impl<T, H: Marked> Marked for VectorHandle<T, H> {
   }
 }
 
-impl<T, H> Deref for VectorHandle<T, H> {
+impl<T, H> Deref for RawSharedVectorHandle<T, H> {
   type Target = [T];
 
   fn deref(&self) -> &Self::Target {
@@ -451,31 +457,31 @@ impl<T, H> Deref for VectorHandle<T, H> {
   }
 }
 
-impl<T, H> DerefMut for VectorHandle<T, H> {
+impl<T, H> DerefMut for RawSharedVectorHandle<T, H> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     self.0.deref_mut()
   }
 }
 
-impl<T: DebugHeap, H> DebugHeap for VectorHandle<T, H> {
+impl<T: DebugHeap, H> DebugHeap for RawSharedVectorHandle<T, H> {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     self.0.fmt_heap(f, depth)
   }
 }
 
-impl<T, H> fmt::Pointer for VectorHandle<T, H> {
+impl<T, H> fmt::Pointer for RawSharedVectorHandle<T, H> {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     self.0.fmt(f)
   }
 }
 
-impl<T: Copy, H: Default> From<&[T]> for VectorHandle<T, H> {
+impl<T: Copy, H: Default> From<&[T]> for RawSharedVectorHandle<T, H> {
   fn from(slice: &[T]) -> Self {
-    VectorHandle::from_slice(slice, slice.len(), H::default())
+    RawSharedVectorHandle::from_slice(slice, slice.len(), H::default())
   }
 }
 
-impl<T: DebugHeap, H: Unmark + Marked> Manage for VectorHandle<T, H> {
+impl<T: DebugHeap, H: Unmark + Marked> Manage for RawSharedVectorHandle<T, H> {
   fn size(&self) -> usize {
     self.size()
   }
@@ -489,7 +495,7 @@ impl<T: DebugHeap, H: Unmark + Marked> Manage for VectorHandle<T, H> {
   }
 }
 
-impl<T, H> Drop for VectorHandle<T, H> {
+impl<T, H> Drop for RawSharedVectorHandle<T, H> {
   fn drop(&mut self) {
     unsafe {
       #[allow(clippy::cast_ptr_alignment)]
@@ -500,7 +506,7 @@ impl<T, H> Drop for VectorHandle<T, H> {
         ptr::read(self.0.item_ptr(i));
       }
 
-      dealloc(self.0.ptr.as_ptr(), make_list_layout::<H, T>(cap));
+      dealloc(self.0.ptr.as_ptr(), make_vector_layout::<H, T>(cap));
     }
   }
 }
@@ -509,66 +515,68 @@ impl<T, H> Drop for VectorHandle<T, H> {
 mod test {
 
   use super::*;
-  mod raw_vector {
+  mod raw_shared_vector {
     use super::*;
 
     #[test]
     fn header() {
-      let handle = VectorHandle::from_slice(&[1, 2, 3, 4, 5], 5, String::from("header"));
-      let list = handle.value();
+      let handle = RawSharedVectorHandle::from_slice(&[1, 2, 3, 4, 5], 5, String::from("header"));
+      let vector = handle.value();
 
-      assert_eq!(list.header(), "header");
+      assert_eq!(vector.header(), "header");
     }
 
     #[test]
     fn len() {
-      let handle = VectorHandle::from_slice(&[1, 2, 3, 4, 5], 5, String::from("header"));
-      let list = handle.value();
+      let handle = RawSharedVectorHandle::from_slice(&[1, 2, 3, 4, 5], 5, String::from("header"));
+      let vector = handle.value();
 
-      assert_eq!(list.len(), 5);
+      assert_eq!(vector.len(), 5);
     }
 
     #[test]
     fn is_empty() {
-      let handle1 = VectorHandle::from_slice(&[1, 2, 3, 4, 5], 5, String::from("header"));
-      let handle2 = VectorHandle::<i32, String>::from_slice(&[], 5, String::from("header"));
-      let list1 = handle1.value();
-      let list2 = handle2.value();
+      let handle1 = RawSharedVectorHandle::from_slice(&[1, 2, 3, 4, 5], 5, String::from("header"));
+      let handle2 =
+        RawSharedVectorHandle::<i32, String>::from_slice(&[], 5, String::from("header"));
+      let vector1 = handle1.value();
+      let vector2 = handle2.value();
 
-      assert!(!list1.is_empty());
-      assert!(list2.is_empty());
+      assert!(!vector1.is_empty());
+      assert!(vector2.is_empty());
     }
 
     #[test]
     fn cap() {
-      let handle = VectorHandle::from_slice(&[1, 2, 3, 4, 5], 10, String::from("header"));
-      let list = handle.value();
+      let handle = RawSharedVectorHandle::from_slice(&[1, 2, 3, 4, 5], 10, String::from("header"));
+      let vector = handle.value();
 
-      assert_eq!(list.cap(), 10);
+      assert_eq!(vector.cap(), 10);
     }
   }
 
-  mod handle {
+  mod raw_shared_vector_handle {
     use super::*;
 
     #[test]
     fn from_slice() {
-      let list_handle = VectorHandle::from_slice(&[1, 2, 3, 4, 5], 6, String::from("header"));
-      let list = list_handle.value();
+      let vector_handle =
+        RawSharedVectorHandle::from_slice(&[1, 2, 3, 4, 5], 6, String::from("header"));
+      let vector = vector_handle.value();
 
-      assert_eq!(list.len(), 5);
-      assert_eq!(list.cap(), 6);
-      assert_eq!(list[0], 1);
-      assert_eq!(list[1], 2);
-      assert_eq!(list[2], 3);
-      assert_eq!(list[3], 4);
-      assert_eq!(list[4], 5);
+      assert_eq!(vector.len(), 5);
+      assert_eq!(vector.cap(), 6);
+      assert_eq!(vector[0], 1);
+      assert_eq!(vector[1], 2);
+      assert_eq!(vector[2], 3);
+      assert_eq!(vector[3], 4);
+      assert_eq!(vector[4], 5);
     }
 
     #[test]
     #[should_panic]
     fn from_slice_bad_cap() {
-      VectorHandle::from_slice(&[1, 2, 3, 4, 5], 3, String::from("header"));
+      RawSharedVectorHandle::from_slice(&[1, 2, 3, 4, 5], 3, String::from("header"));
     }
   }
 }

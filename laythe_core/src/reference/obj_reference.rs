@@ -1,7 +1,7 @@
 use crate::{
   align_utils::{
-    get_array_len_offset, get_array_offset, get_list_cap_offset, get_list_offset, get_offset,
-    make_array_layout, make_list_layout, make_obj_layout,
+    get_array_len_offset, get_array_offset, get_offset, get_vector_cap_offset, get_vector_offset,
+    make_array_layout, make_obj_layout, make_vector_layout,
   },
   managed::{AllocObjResult, AllocateObj, DebugHeap, DebugWrap, Mark, Marked, Trace, Unmark},
   match_obj,
@@ -626,7 +626,7 @@ fn array_len<H>(this: &ObjectHandle) -> usize {
 
 fn list_capacity<H>(this: &ObjectHandle) -> usize {
   #[allow(clippy::cast_ptr_alignment)]
-  let count = get_list_cap_offset::<H>();
+  let count = get_vector_cap_offset::<H>();
   unsafe { strip_msb(*(this.ptr.as_ptr().add(count) as *mut usize)) }
 }
 
@@ -671,7 +671,7 @@ impl ObjectHandle {
       ObjectKind::Channel => kind_size!(Channel),
       ObjectKind::List => {
         let cap: usize = list_capacity::<ObjHeader>(self);
-        make_list_layout::<ObjHeader, Value>(cap).size()
+        make_vector_layout::<ObjHeader, Value>(cap).size()
       },
       ObjectKind::Map => kind_size!(Map<Value, Value>),
       ObjectKind::Fun => kind_size!(Fun),
@@ -717,14 +717,17 @@ impl Drop for ObjectHandle {
       match kind {
         ObjectKind::List => {
           let cap = list_capacity::<ObjHeader>(self);
-          let count = get_list_offset::<ObjHeader, Value>();
+          let count = get_vector_offset::<ObjHeader, Value>();
           let data_ptr = self.ptr.as_ptr().add(count) as *mut Value;
 
           for i in 0..cap {
             ptr::read(data_ptr.add(i));
           }
 
-          dealloc(self.ptr.as_ptr(), make_list_layout::<ObjHeader, Value>(cap));
+          dealloc(
+            self.ptr.as_ptr(),
+            make_vector_layout::<ObjHeader, Value>(cap),
+          );
         },
         ObjectKind::Map => drop_kind!(Map<Value, Value>),
         ObjectKind::Fiber => drop_kind!(Fiber),

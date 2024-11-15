@@ -6,7 +6,9 @@ use std::{
 };
 
 use crate::{
-  collections::{IndexedResult, RawVecLocation, RawVector, VecBuilder, VectorHandle},
+  collections::{
+    IndexedResult, RawSharedVector, RawSharedVectorHandle, RawVecLocation, VecBuilder,
+  },
   managed::{AllocObjResult, AllocateObj, DebugHeap, Trace},
   object::ObjectKind,
   reference::ObjectHandle,
@@ -17,7 +19,7 @@ use crate::{
 #[cfg(not(feature = "nan_boxing"))]
 use crate::ObjectRef;
 
-use super::header::Header;
+use super::ObjHeader;
 
 /// The location of this list
 pub enum ListLocation {
@@ -28,11 +30,23 @@ pub enum ListLocation {
   Forwarded(List),
 }
 
-pub struct List(RawVector<Value, Header>);
+pub struct List(RawSharedVector<Value, ObjHeader>);
 
 impl List {
-  pub fn new(raw_vector: RawVector<Value, Header>) -> Self {
+  pub fn new(raw_vector: RawSharedVector<Value, ObjHeader>) -> Self {
     Self(raw_vector)
+  }
+
+  pub fn len(&self) -> usize {
+    self.0.len()
+  }
+
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
+  }
+
+  pub fn cap(&self) -> usize {
+    self.0.cap()
   }
 
   /// Create a usize from the buffer pointer. This is used
@@ -55,7 +69,7 @@ impl List {
   /// ## Safety
   /// This should only be constructed from a box value
   pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
-    List(RawVector::from_alloc_ptr(ptr))
+    List(RawSharedVector::from_alloc_ptr(ptr))
   }
 
   /// Has this list moved
@@ -148,7 +162,11 @@ impl List {
         let mut list = self.ensure_capacity(len + 1, cap, hooks);
 
         unsafe {
-          ptr::copy(list.0.item_ptr(index), list.0.item_mut(index + 1), len - index);
+          ptr::copy(
+            list.0.item_ptr(index),
+            list.0.item_mut(index + 1),
+            len - index,
+          );
           list.0.write_value(value, index);
           list.0.write_len(len + 1);
         }
@@ -200,7 +218,7 @@ impl DerefMut for List {
   }
 }
 
-impl<T> VectorHandle<T, Header> {
+impl<T> RawSharedVectorHandle<T, ObjHeader> {
   /// Degrade this handle into
   pub fn degrade(self) -> ObjectHandle {
     let handle = ObjectHandle::new(self.value().ptr());
@@ -209,10 +227,11 @@ impl<T> VectorHandle<T, Header> {
   }
 }
 
-impl<'a> AllocateObj<RawVector<Value, Header>> for VecBuilder<'a, Value> {
-  fn alloc(self) -> AllocObjResult<RawVector<Value, Header>> {
+impl<'a> AllocateObj<RawSharedVector<Value, ObjHeader>> for VecBuilder<'a, Value> {
+  fn alloc(self) -> AllocObjResult<RawSharedVector<Value, ObjHeader>> {
     debug_assert!(self.slice().len() <= self.cap());
-    let handle = VectorHandle::from_slice(self.slice(), self.cap(), Header::new(ObjectKind::List));
+    let handle =
+      RawSharedVectorHandle::from_slice(self.slice(), self.cap(), ObjHeader::new(ObjectKind::List));
 
     let size = handle.size();
     let reference = handle.value();
@@ -282,5 +301,190 @@ impl Display for List {
     }
 
     write!(f, "]")
+  }
+}
+
+#[cfg(test)]
+mod test {
+  use crate::{val, NoContext};
+
+  use super::*;
+
+  #[test]
+  fn len() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let list = List::new(hooks.manage_obj(VecBuilder::new(&[val!(1.0), val!(2.0), val!(true)], 4)));
+
+    assert_eq!(list.len(), 3);
+  }
+
+  #[test]
+  fn cap() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let list = List::new(hooks.manage_obj(VecBuilder::new(&[val!(1.0), val!(2.0), val!(true)], 4)));
+
+    assert_eq!(list.cap(), 4);
+  }
+
+  #[test]
+  fn pop() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut list =
+      List::new(hooks.manage_obj(VecBuilder::new(&[val!(1.0), val!(2.0), val!(true)], 4)));
+
+    assert_eq!(list.pop(), Some(val!(true)));
+    assert_eq!(list.len(), 2);
+
+    assert_eq!(list.pop(), Some(val!(2.0)));
+    assert_eq!(list.len(), 1);
+
+    assert_eq!(list.pop(), Some(val!(1.0)));
+    assert_eq!(list.len(), 0);
+
+    assert_eq!(list.pop(), None);
+    assert_eq!(list.len(), 0);
+  }
+
+  mod insert {
+    use super::*;
+
+    #[test]
+    fn with_capacity() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let mut list = List::new(hooks.manage_obj(VecBuilder::new(&[val!(1.0)], 4)));
+
+      assert_eq!(list.insert(0, val!(2.0), &hooks), IndexedResult::Ok(()));
+      assert_eq!(list.len(), 2);
+      assert_eq!(list.cap(), 4);
+
+      assert_eq!(list[0], val!(2.0));
+      assert_eq!(list[1], val!(1.0));
+
+      assert_eq!(list.insert(2, val!(3.0), &hooks), IndexedResult::Ok(()));
+      assert_eq!(list.len(), 3);
+      assert_eq!(list.cap(), 4);
+
+      assert_eq!(list.cap(), 4);
+
+      assert_eq!(list[0], val!(2.0));
+      assert_eq!(list[1], val!(1.0));
+      assert_eq!(list[2], val!(3.0));
+
+      assert_eq!(
+        list.insert(5, val!(5.0), &hooks),
+        IndexedResult::OutOfBounds
+      );
+
+      assert_eq!(list.len(), 3);
+      assert_eq!(list.cap(), 4);
+
+      assert_eq!(list[0], val!(2.0));
+      assert_eq!(list[1], val!(1.0));
+      assert_eq!(list[2], val!(3.0));
+    }
+
+    #[test]
+    fn without_capacity() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let mut list = List::new(hooks.manage_obj(VecBuilder::new(&[val!(1.0)], 1)));
+
+      assert_eq!(list.insert(0, val!(2.0), &hooks), IndexedResult::Ok(()));
+
+      assert_eq!(list.len(), 2);
+      assert_eq!(list.cap(), 2);
+
+      assert_eq!(list[0], val!(2.0));
+      assert_eq!(list[1], val!(1.0));
+
+      assert_eq!(list.insert(2, val!(3.0), &hooks), IndexedResult::Ok(()));
+
+      assert_eq!(list.len(), 3);
+      assert_eq!(list.cap(), 4);
+
+      assert_eq!(list[0], val!(2.0));
+      assert_eq!(list[1], val!(1.0));
+      assert_eq!(list[2], val!(3.0));
+
+      assert_eq!(
+        list.insert(5, val!(5.0), &hooks),
+        IndexedResult::OutOfBounds
+      );
+
+      assert_eq!(list.len(), 3);
+      assert_eq!(list.cap(), 4);
+
+      assert_eq!(list[0], val!(2.0));
+      assert_eq!(list[1], val!(1.0));
+      assert_eq!(list[2], val!(3.0));
+    }
+  }
+
+  #[test]
+  fn remove() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut list = List::new(hooks.manage_obj(VecBuilder::new(&[val!(1.0), val!(3.0), val!(false)], 3)));
+    assert_eq!(list.remove(3), IndexedResult::OutOfBounds);
+    assert_eq!(list.remove(1), IndexedResult::Ok(val!(3.0)));
+
+    assert_eq!(list.len(), 2);
+    assert_eq!(list.cap(), 3);
+
+    assert_eq!(list[0], val!(1.0));
+    assert_eq!(list[1], val!(false));
+
+    assert_eq!(list.remove(1), IndexedResult::Ok(val!(false)));
+
+    assert_eq!(list.len(), 1);
+    assert_eq!(list.cap(), 3);
+
+    assert_eq!(list[0], val!(1.0));
+
+    assert_eq!(list.remove(0), IndexedResult::Ok(val!(1.0)));
+    assert_eq!(list.len(), 0);
+    assert_eq!(list.cap(), 3);
+  }
+
+  #[test]
+  fn remove_forwarded() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut list = List::new(hooks.manage_obj(VecBuilder::new(&[val!(1.0)], 1)));
+
+    list.push(val!(3.0), &hooks);
+    list.push(val!(false), &hooks);
+
+    assert_eq!(list.remove(3), IndexedResult::OutOfBounds);
+    assert_eq!(list.remove(1), IndexedResult::Ok(val!(3.0)));
+
+    assert_eq!(list.len(), 2);
+    assert_eq!(list.cap(), 4);
+
+    assert_eq!(list[0], val!(1.0));
+    assert_eq!(list[1], val!(false));
+
+    assert_eq!(list.remove(1), IndexedResult::Ok(val!(false)));
+
+    assert_eq!(list.len(), 1);
+    assert_eq!(list.cap(), 4);
+
+    assert_eq!(list[0], val!(1.0));
+
+    assert_eq!(list.remove(0), IndexedResult::Ok(val!(1.0)));
+
+    assert_eq!(list.len(), 0);
+    assert_eq!(list.cap(), 4);
   }
 }
