@@ -398,13 +398,10 @@ impl<T: DebugHeap, H: Unmark + Marked> Manage for RawUniqueVectorHandle<T, H> {
 impl<T, H> Drop for RawUniqueVectorHandle<T, H> {
   fn drop(&mut self) {
     unsafe {
-      #[allow(clippy::cast_ptr_alignment)]
-      ptr::read(self.0.ptr.as_ptr() as *const H);
       let cap = self.0.cap();
 
-      for i in 0..cap {
-        ptr::read(self.0.item_ptr(i));
-      }
+      ptr::drop_in_place(self.as_mut_ptr() as *mut H);
+      ptr::drop_in_place(ptr::slice_from_raw_parts_mut(self.as_mut_ptr(), self.len()));
 
       dealloc(self.0.ptr.as_ptr(), make_vector_layout::<H, T>(cap));
     }
@@ -413,34 +410,41 @@ impl<T, H> Drop for RawUniqueVectorHandle<T, H> {
 
 #[cfg(test)]
 mod test {
-
   use super::*;
+  use crate::{GcHooks, NoContext};
+
   mod raw_shared_vector {
+    use crate::managed::Header;
+
     use super::*;
 
     #[test]
     fn header() {
-      let handle = RawUniqueVectorHandle::from_slice(&[1, 2, 3, 4, 5], 5, String::from("header"));
-      let vector = handle.value();
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-      assert_eq!(vector.header(), "header");
+      let vector: RawUniqueVector<u16, Header> = hooks.manage(VecBuilder::new(&[1, 2, 3], 4));
+
+      assert_eq!(vector.header().marked(), false);
     }
 
     #[test]
     fn len() {
-      let handle = RawUniqueVectorHandle::from_slice(&[1, 2, 3, 4, 5], 5, String::from("header"));
-      let vector = handle.value();
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let vector: RawUniqueVector<u16, Header> = hooks.manage(VecBuilder::new(&[1, 2, 3, 4, 5], 5));
 
       assert_eq!(vector.len(), 5);
     }
 
     #[test]
     fn is_empty() {
-      let handle1 = RawUniqueVectorHandle::from_slice(&[1, 2, 3, 4, 5], 5, String::from("header"));
-      let handle2 =
-        RawUniqueVectorHandle::<i32, String>::from_slice(&[], 5, String::from("header"));
-      let vector1 = handle1.value();
-      let vector2 = handle2.value();
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let vector1: RawUniqueVector<u16, Header> = hooks.manage(VecBuilder::new(&[1, 2, 3, 4, 5], 5));
+      let vector2: RawUniqueVector<u16, Header> = hooks.manage(VecBuilder::new(&[], 5));
 
       assert!(!vector1.is_empty());
       assert!(vector2.is_empty());
@@ -448,35 +452,12 @@ mod test {
 
     #[test]
     fn cap() {
-      let handle = RawUniqueVectorHandle::from_slice(&[1, 2, 3, 4, 5], 10, String::from("header"));
-      let vector = handle.value();
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let vector: RawUniqueVector<u16, Header> = hooks.manage(VecBuilder::new(&[1, 2, 3, 4, 5], 10));
 
       assert_eq!(vector.cap(), 10);
-    }
-  }
-
-  mod raw_shared_vector_handle {
-    use super::*;
-
-    #[test]
-    fn from_slice() {
-      let vector_handle =
-        RawUniqueVectorHandle::from_slice(&[1, 2, 3, 4, 5], 6, String::from("header"));
-      let vector = vector_handle.value();
-
-      assert_eq!(vector.len(), 5);
-      assert_eq!(vector.cap(), 6);
-      assert_eq!(vector[0], 1);
-      assert_eq!(vector[1], 2);
-      assert_eq!(vector[2], 3);
-      assert_eq!(vector[3], 4);
-      assert_eq!(vector[4], 5);
-    }
-
-    #[test]
-    #[should_panic]
-    fn from_slice_bad_cap() {
-      RawUniqueVectorHandle::from_slice(&[1, 2, 3, 4, 5], 3, String::from("header"));
     }
   }
 }

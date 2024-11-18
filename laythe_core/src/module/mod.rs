@@ -211,7 +211,7 @@ impl Module {
     match self.symbols_by_name.insert(name, slot) {
       Some(_) => Err(SymbolInsertError::SymbolAlreadyExists),
       None => {
-        self.symbols.push(symbol, hooks);
+        self.symbols.push(hooks, symbol);
         Ok(slot)
       },
     }
