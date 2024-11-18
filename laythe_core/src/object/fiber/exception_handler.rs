@@ -1,3 +1,5 @@
+use crate::managed::{DebugHeap, Trace};
+
 /// An exception handler in Laythe
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ExceptionHandler {
@@ -30,5 +32,16 @@ impl ExceptionHandler {
 
   pub fn slot_depth(&self) -> usize {
     self.slot_depth
+  }
+}
+
+impl Trace for ExceptionHandler {}
+impl DebugHeap for ExceptionHandler {
+  fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
+    f.debug_struct("ExceptionHandler")
+      .field("offset", &self.offset)
+      .field("call_frame_depth", &self.call_frame_depth)
+      .field("slot_depth", &self.slot_depth)
+      .finish()
   }
 }

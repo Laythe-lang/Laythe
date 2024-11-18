@@ -45,6 +45,32 @@ impl<T, H> UniqueVector<T, H> {
     }
   }
 
+  /// Clear all elements of this vector
+  #[allow(dead_code)]
+  pub fn clear(&mut self) {
+    let elements: *mut [T] = self.deref_mut();
+
+    unsafe {
+      self.0.write_len(0);
+      ptr::drop_in_place(elements);
+    }
+  }
+
+  /// Clear all elements of this vector
+  #[allow(dead_code)]
+  pub fn truncate(&mut self, new_len: usize) {
+    unsafe {
+      let len = self.len();
+      if new_len >= len {
+        return;
+      }
+      let remaining_len = len - new_len;
+      let s = ptr::slice_from_raw_parts_mut(self.as_mut_ptr().add(len), remaining_len);
+      self.0.write_len(new_len);
+      ptr::drop_in_place(s);
+    }
+  }
+
   /// Remove an element from this list at the provided offset
   #[allow(dead_code)]
   pub fn remove(&mut self, index: usize) -> IndexedResult<T> {
@@ -70,16 +96,26 @@ impl<T, H> UniqueVector<T, H> {
 impl<T, H> UniqueVector<T, H>
 where
   T: 'static + Trace + DebugHeap + Copy,
-  H: 'static + Send + Mark + Trace + Unmark + Default,
+  H: 'static + Send + Mark + Unmark + Trace + Default,
 {
+  /// Clear all elements of this vector
+  pub fn reserve(&mut self, hooks: &GcHooks, additional: usize) {
+    let len = self.0.len();
+    let cap = self.0.cap();
+
+    if len + additional > cap {
+      self.0 = hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2));
+    }
+  }
+
   /// Push a new element onto this list. If a resize is needed
   /// a new list will be allocated and elements will be transferred
-  pub fn push(&mut self, value: T, hooks: &GcHooks) {
+  pub fn push(&mut self, hooks: &GcHooks, value: T) {
     let len = self.0.len();
 
     // determine if we need to grow the list then
     // persist the value
-    self.ensure_capacity(len + 1, hooks);
+    self.reserve(hooks, 1);
 
     unsafe {
       self.0.write_value(value, len);
@@ -97,7 +133,7 @@ where
 
     // determine if we need to grow the list then
     // persist the value
-    self.ensure_capacity(len + 1, hooks);
+    self.reserve(hooks, 1);
 
     unsafe {
       ptr::copy(
@@ -110,17 +146,6 @@ where
     }
 
     IndexedResult::Ok(())
-  }
-
-  /// Ensure this list has enough capacity for the operation
-  /// If it does it returns itself. Otherwise it returns a new list
-  /// which it will have just allocated
-  fn ensure_capacity(&mut self, needed: usize, hooks: &GcHooks) {
-    let cap = self.0.cap();
-
-    if needed > cap {
-      self.0 = hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2));
-    }
   }
 }
 
@@ -248,6 +273,21 @@ mod test {
   }
 
   #[test]
+  fn reserve() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut vector: UniqueVector<u16, Header> =
+      UniqueVector::new(hooks.manage(VecBuilder::new(&[2, 2], 4)));
+
+    vector.reserve(&hooks, 2);
+    assert_eq!(vector.cap(), 4);
+
+    vector.reserve(&hooks, 4);
+    assert_eq!(vector.cap(), 8)
+  }
+
+  #[test]
   fn deref() {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
@@ -290,6 +330,41 @@ mod test {
   }
 
   #[test]
+  fn clear() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut vector: UniqueVector<u16, Header> =
+      UniqueVector::new(hooks.manage(VecBuilder::new(&[1, 2, 3], 4)));
+    assert_eq!(vector.len(), 3);
+    assert_eq!(vector.cap(), 4);
+
+    vector.clear();
+    assert_eq!(vector.len(), 0);
+    assert_eq!(vector.cap(), 4);
+  }
+
+  #[test]
+  fn truncate() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let mut vector: UniqueVector<u16, Header> =
+      UniqueVector::new(hooks.manage(VecBuilder::new(&[1, 2, 3], 4)));
+    assert_eq!(vector.len(), 3);
+    assert_eq!(vector.cap(), 4);
+    
+    vector.truncate(6);
+    assert_eq!(vector.len(), 3);
+    assert_eq!(vector.cap(), 4);
+
+    vector.truncate(1);
+    assert_eq!(vector.len(), 1);
+    assert_eq!(vector.cap(), 4);
+    assert_eq!(vector[0], 1);
+  }
+
+  #[test]
   fn remove() {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
@@ -312,8 +387,8 @@ mod test {
     let mut vector: UniqueVector<u16, Header> =
       UniqueVector::new(hooks.manage(VecBuilder::new(&[1, 2, 3], 4)));
 
-    vector.push(4, &hooks);
-    vector.push(5, &hooks);
+    vector.push(&hooks, 4);
+    vector.push(&hooks, 5);
 
     assert_eq!(vector[0], 1);
     assert_eq!(vector[1], 2);
@@ -333,8 +408,8 @@ mod test {
     let mut vector: UniqueVector<u16, Header> =
       UniqueVector::new(hooks.manage(VecBuilder::new(&[1, 2, 3], 4)));
 
-    vector.push(4, &hooks);
-    vector.push(5, &hooks);
+    vector.push(&hooks, 4);
+    vector.push(&hooks, 5);
 
     assert_eq!(vector[0], 1);
     assert_eq!(vector[1], 2);
