@@ -1,8 +1,8 @@
 use super::{ExecutionSignal, Vm};
-use crate::cache::InlineCache;
+use crate::{cache::InlineCache, fiber::{Fiber, FiberPopResult}};
 use core::fmt;
 use laythe_core::{
-  managed::{Allocate, AllocateObj, DebugHeap, Trace}, object::{Class, Fiber, FiberPopResult, Fun, LyStr}, value::Value, Captures, ObjRef
+  managed::{Allocate, AllocateObj, DebugHeap, Trace}, object::{ChannelWaiter, Class, Fun, LyStr}, value::Value, Captures, ObjRef, Ref
 };
 use std::{convert::TryInto, ptr};
 
@@ -113,7 +113,7 @@ impl Vm {
   }
 
   /// Swap between the current fiber and the provided fiber
-  pub(super) unsafe fn context_switch(&mut self, fiber: ObjRef<Fiber>) {
+  pub(super) unsafe fn context_switch(&mut self, fiber: Ref<Fiber>) {
     if !self.fiber.is_complete() {
       self.store_ip();
     }
@@ -154,9 +154,12 @@ impl Vm {
         if self.fiber == self.main_fiber {
           Some(ExecutionSignal::Exit)
         } else {
-          if let Some(mut fiber) = self.fiber.complete() {
-            fiber.unblock();
-            self.fiber_queue.push_back(fiber);
+          // remove fiber from waiter map
+          self.waiter_map.remove(&self.fiber.waiter());
+
+          // attempt to grab waiter and enqueue next fiber
+          if let Some(waiter) = self.fiber.complete() {
+            self.queue_blocked_fiber(waiter);
           }
           Some(ExecutionSignal::ContextSwitch)
         }
@@ -165,5 +168,16 @@ impl Vm {
         self.internal_error("Compilation failure attempted to pop last frame")
       },
     }
+  }
+
+  /// Queue a blocked fiber
+  pub (super) fn queue_blocked_fiber(&mut self, waiter: Ref<ChannelWaiter>) {
+    let fiber = match self.waiter_map.get_mut(&waiter) {
+        Some(fiber) => fiber,
+        None => self.internal_error("Unable to retrieve fiber waiter"),
+    };
+
+    fiber.unblock();
+    self.fiber_queue.push_back(*fiber);
   }
 }

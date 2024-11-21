@@ -9,14 +9,11 @@ mod ops;
 mod source_loader;
 
 use crate::{
-  byte_code::ByteCode,
-  cache::InlineCache,
-  constants::REPL_MODULE,
-  source::{Source, VmFileId, VmFiles},
+  byte_code::ByteCode, cache::InlineCache, constants::REPL_MODULE, fiber::Fiber, source::{Source, VmFileId, VmFiles}
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
-  constants::{PLACEHOLDER_NAME, SELF}, hooks::{GcHooks, HookContext, NoContext}, module::{Module, Package}, object::{Fiber, Fun, LyStr, Map}, utils::IdEmitter, val, value::{Value, VALUE_NIL}, Allocator, Captures, ObjRef, Ref
+  constants::{PLACEHOLDER_NAME, SELF}, hooks::{GcHooks, HookContext, NoContext}, module::{Module, Package}, object::{ChannelWaiter, Fun, LyStr, Map}, utils::IdEmitter, val, value::{Value, VALUE_NIL}, Allocator, Captures, ObjRef, Ref
 };
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
@@ -83,10 +80,10 @@ pub fn default_native_vm() -> Vm {
 /// The virtual machine for the laythe programming language
 pub struct Vm {
   /// The current running fiber
-  fiber: ObjRef<Fiber>,
+  fiber: Ref<Fiber>,
 
   /// The main fiber
-  main_fiber: ObjRef<Fiber>,
+  main_fiber: Ref<Fiber>,
 
   /// The vm's garbage collector
   gc: RefCell<Allocator>,
@@ -98,7 +95,7 @@ pub struct Vm {
   files: VmFiles,
 
   /// The queue of runnable fibers
-  fiber_queue: VecDeque<ObjRef<Fiber>>,
+  fiber_queue: VecDeque<Ref<Fiber>>,
 
   /// The root directory
   root_dir: PathBuf,
@@ -108,6 +105,9 @@ pub struct Vm {
 
   /// A collection of packages that have already been loaded
   packages: Map<LyStr, Ref<Package>>,
+
+  /// A mapping between waiters and fibers
+  waiter_map: Map<Ref<ChannelWaiter>, Ref<Fiber>>,
 
   /// A utility to emit ids for modules
   emitter: IdEmitter,
@@ -156,9 +156,14 @@ impl Vm {
 
     let current_fun = hooks.manage_obj(current_fun);
     let capture_stub = Captures::new(&hooks, &[]);
-    let fiber = hooks.manage_obj(
-      Fiber::new(None, current_fun, capture_stub).expect("Unable to generate placeholder fiber"),
+    let waiter = hooks.manage(ChannelWaiter::new(true));
+
+    let fiber = hooks.manage(
+      Fiber::new(None, waiter, current_fun, capture_stub, current_fun.max_slots() + 1)
     );
+
+    let mut waiter_map = Map::default();
+    waiter_map.insert(fiber.waiter(), fiber);
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
@@ -175,6 +180,7 @@ impl Vm {
       gc,
       files: VmFiles::default(),
       fiber_queue: VecDeque::new(),
+      waiter_map,
       builtin,
       root_dir,
       packages: Map::default(),
@@ -309,12 +315,11 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: ObjRef<Fun>) {
-    let fiber = match Fiber::new(None, script, self.capture_stub) {
-      Ok(fiber) => fiber,
-      Err(_) => self.internal_error("Unable to generate initial fiber"),
-    };
+    let waiter = self.manage(ChannelWaiter::new(true));
+    let fiber = self.manage(Fiber::new(None, waiter, script, self.capture_stub, script.max_slots() + 1));
 
-    self.fiber = self.manage_obj(fiber);
+    self.waiter_map.insert(fiber.waiter(), fiber);
+    self.fiber = fiber;
     self.main_fiber = self.fiber;
     self.fiber.activate();
     self.load_ip();
