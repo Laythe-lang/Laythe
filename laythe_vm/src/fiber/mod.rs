@@ -835,6 +835,7 @@ impl Trace for Fiber {
 
     self.frames.iter().for_each(|call_frame| call_frame.trace());
 
+    self.waiter.trace();
     if let Some(error) = &self.error {
       error.trace();
     }
@@ -863,6 +864,8 @@ impl Trace for Fiber {
       .frames
       .iter()
       .for_each(|call_frame| call_frame.trace_debug(log));
+
+    self.waiter.trace_debug(log);
 
     if let Some(error) = &self.error {
       error.trace_debug(log);

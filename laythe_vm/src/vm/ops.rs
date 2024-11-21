@@ -904,6 +904,7 @@ impl Vm {
         self.update_ip(-3);
         self.fiber.sleep();
 
+        self.push_root(fun);
         let import_fiber = Fiber::new(
           &mut self.gc(),
           self,
@@ -912,6 +913,7 @@ impl Vm {
           self.capture_stub,
           fun.max_slots() + 1,
         );
+        self.pop_roots(1);
         let import_fiber = self.manage(import_fiber);
 
         self.fiber_queue.push_back(import_fiber);
@@ -994,6 +996,7 @@ impl Vm {
         self.update_ip(-5);
         self.fiber.sleep();
 
+        self.push_root(fun);
         let import_fiber = Fiber::new(
           &mut self.gc(),
           self,
@@ -1002,6 +1005,8 @@ impl Vm {
           self.capture_stub,
           fun.max_slots() + 1,
         );
+
+        self.pop_roots(1);
         let import_fiber = self.manage(import_fiber);
 
         self.fiber_queue.push_back(import_fiber);

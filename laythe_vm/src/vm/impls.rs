@@ -23,6 +23,7 @@ impl TraceRoot for Vm {
     self.packages.trace();
     self.module_cache.trace();
     self.capture_stub.trace();
+    self.waiter_map.trace();
 
     for stub in &self.native_fun_stubs {
       stub.trace();
@@ -39,6 +40,7 @@ impl TraceRoot for Vm {
     self.packages.trace_debug(log);
     self.module_cache.trace_debug(log);
     self.capture_stub.trace_debug(log);
+    self.waiter_map.trace_debug(log);
 
     for stub in &self.native_fun_stubs {
       stub.trace_debug(log);
