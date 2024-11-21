@@ -27,9 +27,6 @@ macro_rules! to_obj_kind {
   ($o:expr, Fun) => {
     $o.to_fun()
   };
-  ($o:expr, Fiber) => {
-    $o.to_fiber()
-  };
   ($o:expr, Instance) => {
     $o.to_instance()
   };

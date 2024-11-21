@@ -2,7 +2,6 @@ mod channel;
 mod class;
 mod closure;
 mod enumerator;
-mod fiber;
 mod fun;
 mod header;
 mod instance;
@@ -14,11 +13,10 @@ mod method;
 mod native;
 mod tuple;
 
-pub use channel::{Channel, CloseResult, ReceiveResult, SendResult};
+pub use channel::{Channel, CloseResult, ChannelWaiter, ReceiveResult, SendResult};
 pub use class::Class;
 pub use closure::Closure;
 pub use enumerator::{Enumerate, Enumerator};
-pub use fiber::{Fiber, FiberPopResult, FiberResult, UnwindResult};
 pub use fun::{Fun, FunBuilder, FunKind};
 pub use header::Header as ObjHeader;
 pub use instance::{Header as InstanceHeader, Instance};
@@ -45,6 +43,5 @@ pub enum ObjectKind {
   Native,
   String,
   LyBox,
-  Fiber,
   Tuple,
 }

@@ -20,7 +20,7 @@ pub use self::boxed::*;
 mod unboxed {
   use crate::{
     collections::RawSharedVector, managed::{DebugHeap, DebugWrap, Trace}, object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, LyStr, Map, Method, Native, ObjHeader, ObjectKind, Tuple
+      Channel, Class, Closure, Enumerator, Fun, Instance, List, LyBox, LyStr, Map, Method, Native, ObjHeader, ObjectKind, Tuple
     }, ObjRef, ObjectRef
   };
 
@@ -180,7 +180,6 @@ mod unboxed {
           ObjectKind::String => "string",
           ObjectKind::Tuple => "tuple",
           ObjectKind::List => "list",
-          ObjectKind::Fiber => "fiber",
           ObjectKind::Map => "map",
           ObjectKind::Fun => "function",
           ObjectKind::Closure => "closure",
@@ -231,12 +230,6 @@ mod unboxed {
 
   impl From<LyStr> for Value {
     fn from(managed: LyStr) -> Value {
-      Value::Obj(managed.degrade())
-    }
-  }
-
-  impl From<ObjRef<Fiber>> for Value {
-    fn from(managed: ObjRef<Fiber>) -> Value {
       Value::Obj(managed.degrade())
     }
   }
@@ -442,7 +435,7 @@ mod boxed {
     collections::RawSharedVector,
     managed::{DebugHeap, Trace},
     object::{
-      Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, List, LyBox, LyStr, Map, Method,
+      Channel, Class, Closure, Enumerator, Fun, Instance, List, LyBox, LyStr, Map, Method,
       Native, ObjHeader, ObjectKind, Tuple,
     },
     reference::{ObjRef, ObjectRef},
@@ -593,7 +586,6 @@ mod boxed {
           ObjectKind::List => "list",
           ObjectKind::Map => "map",
           ObjectKind::Fun => "function",
-          ObjectKind::Fiber => "fiber",
           ObjectKind::Closure => "closure",
           ObjectKind::Class => "class",
           ObjectKind::Instance => "instance",
@@ -663,12 +655,6 @@ mod boxed {
 
   impl From<LyStr> for Value {
     fn from(managed: LyStr) -> Value {
-      Self(managed.to_usize() as u64 | TAG_OBJ)
-    }
-  }
-
-  impl From<ObjRef<Fiber>> for Value {
-    fn from(managed: ObjRef<Fiber>) -> Value {
       Self(managed.to_usize() as u64 | TAG_OBJ)
     }
   }
@@ -768,7 +754,6 @@ mod boxed {
       assert_eq!(mem::size_of::<Map<Value, Value>>(), 32);
       assert_eq!(mem::size_of::<Closure>(), 16);
       assert_eq!(mem::size_of::<Fun>(), 56);
-      assert_eq!(mem::size_of::<Fiber>(), 160);
       assert_eq!(mem::size_of::<Class>(), 104);
       assert_eq!(mem::size_of::<Method>(), 16);
       assert_eq!(mem::size_of::<Enumerator>(), 24);

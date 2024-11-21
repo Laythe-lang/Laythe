@@ -6,7 +6,7 @@ use crate::{
   managed::{AllocObjResult, AllocateObj, DebugHeap, DebugWrap, Mark, Marked, Trace, Unmark},
   match_obj,
   object::{
-    Channel, Class, Closure, Enumerator, Fiber, Fun, Instance, InstanceHeader, List, LyBox, LyStr,
+    Channel, Class, Closure, Enumerator, Fun, Instance, InstanceHeader, List, LyBox, LyStr,
     Map, Method, Native, ObjHeader, ObjectKind, Tuple,
   },
   utils::strip_msb,
@@ -336,13 +336,6 @@ impl ObjectRef {
   }
 
   #[inline]
-  pub fn to_fiber(self) -> ObjRef<Fiber> {
-    ObjRef {
-      ptr: unsafe { self.data_ptr::<Fiber>() },
-    }
-  }
-
-  #[inline]
   pub fn to_instance(self) -> Instance {
     unsafe { Instance::from_alloc_ptr(self.ptr) }
   }
@@ -389,7 +382,6 @@ impl fmt::Display for ObjectRef {
       ObjectKind::List(list) => write!(f, "{list}"),
       ObjectKind::Map(map) => write!(f, "{map}"),
       ObjectKind::Fun(fun) => write!(f, "{fun}"),
-      ObjectKind::Fiber(fiber) => write!(f, "{fiber}"),
       ObjectKind::LyBox(ly_box) => write!(f, "{ly_box}"),
       ObjectKind::Closure(closure) => write!(f, "{closure}"),
       ObjectKind::Method(method) => write!(f, "{method}"),
@@ -410,7 +402,6 @@ impl fmt::Debug for ObjectRef {
       ObjectKind::List(list) => write!(f, "{list:?}"),
       ObjectKind::Map(map) => write!(f, "{map:?}"),
       ObjectKind::Fun(fun) => write!(f, "{fun:?}"),
-      ObjectKind::Fiber(fiber) => write!(f, "{fiber:?}"),
       ObjectKind::LyBox(ly_box) => write!(f, "{ly_box:?}"),
       ObjectKind::Closure(closure) => write!(f, "{closure:?}"),
       ObjectKind::Method(method) => write!(f, "{method:?}"),
@@ -465,9 +456,6 @@ impl Trace for ObjectRef {
       },
       ObjectKind::Fun(fun) => {
         fun.trace();
-      },
-      ObjectKind::Fiber(fiber) => {
-        fiber.trace();
       },
       ObjectKind::Instance(instance) => {
         instance.trace();
@@ -531,9 +519,6 @@ impl Trace for ObjectRef {
       ObjectKind::Fun(fun) => {
         trace_debug!(fun);
       },
-      ObjectKind::Fiber(fiber) => {
-        trace_debug!(fiber);
-      },
       ObjectKind::Instance(instance) => {
         trace_debug!(instance);
       },
@@ -583,9 +568,6 @@ impl DebugHeap for ObjectRef {
       },
       ObjectKind::Fun(fun) => {
         fun.fmt_heap(f, depth)
-      },
-      ObjectKind::Fiber(fiber) => {
-        fiber.fmt_heap(f, depth)
       },
       ObjectKind::Instance(instance) => {
         instance.fmt_heap(f, depth)
@@ -667,7 +649,6 @@ impl ObjectHandle {
     }
 
     match self.kind() {
-      ObjectKind::Fiber => kind_size!(Fiber),
       ObjectKind::Channel => kind_size!(Channel),
       ObjectKind::List => {
         let cap: usize = list_capacity::<ObjHeader>(self);
@@ -730,7 +711,6 @@ impl Drop for ObjectHandle {
           );
         },
         ObjectKind::Map => drop_kind!(Map<Value, Value>),
-        ObjectKind::Fiber => drop_kind!(Fiber),
         ObjectKind::Channel => drop_kind!(Channel),
         ObjectKind::Fun => drop_kind!(Fun),
         ObjectKind::Closure => drop_kind!(Closure),

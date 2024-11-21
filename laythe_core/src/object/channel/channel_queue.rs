@@ -1,10 +1,11 @@
+use crate::{
+  managed::{DebugHeap, DebugWrap, DebugWrapDyn, Trace},
+  value::Value,
+  Ref,
+};
 use std::{collections::VecDeque, fmt, io::Write};
 
-use crate::{
-  managed::{DebugHeap, DebugWrap, Trace}, object::Fiber, reference::ObjRef, value::Value
-};
-
-use super::{CloseResult, ReceiveResult, SendResult};
+use super::{ChannelWaiter, CloseResult, ReceiveResult, SendResult};
 
 #[derive(PartialEq, Clone, Debug)]
 enum ChannelQueueState {
@@ -24,15 +25,14 @@ enum ChannelQueueKind {
   Buffered,
 }
 
-#[derive(PartialEq, Clone)]
 pub struct ChannelQueue {
   queue: VecDeque<Value>,
   capacity: usize,
   state: ChannelQueueState,
   kind: ChannelQueueKind,
 
-  send_waiters: VecDeque<ObjRef<Fiber>>,
-  receive_waiters: VecDeque<ObjRef<Fiber>>,
+  send_waiters: VecDeque<Ref<ChannelWaiter>>,
+  receive_waiters: VecDeque<Ref<ChannelWaiter>>,
 }
 
 impl ChannelQueue {
@@ -112,12 +112,12 @@ impl ChannelQueue {
   /// the value can be reject either because the
   /// channel is saturated or because the channel
   /// has already been closed
-  pub fn send(&mut self, fiber: ObjRef<Fiber>, val: Value) -> SendResult {
+  pub fn send(&mut self, waiter: Ref<ChannelWaiter>, val: Value) -> SendResult {
     match self.state {
       ChannelQueueState::Ready => {
         if self.is_sync() && self.queue.is_empty() {
           self.queue.push_back(val);
-          self.send_waiters.push_back(fiber);
+          self.send_waiters.push_back(waiter);
           return SendResult::FullBlock(find_runnable_waiter(&mut self.receive_waiters));
         }
 
@@ -125,7 +125,7 @@ impl ChannelQueue {
           self.queue.push_back(val);
           SendResult::Ok
         } else {
-          self.send_waiters.push_back(fiber);
+          self.send_waiters.push_back(waiter);
           SendResult::Full(find_runnable_waiter(&mut self.receive_waiters))
         }
       },
@@ -136,19 +136,19 @@ impl ChannelQueue {
   /// Attempt to receive a value from this channel.
   /// If the channel is empty return potentially a send
   /// waiter. If
-  pub fn receive(&mut self, fiber: ObjRef<Fiber>) -> ReceiveResult {
+  pub fn receive(&mut self, waiter: Ref<ChannelWaiter>) -> ReceiveResult {
     match self.state {
       ChannelQueueState::Ready => match self.queue.pop_front() {
         Some(value) => ReceiveResult::Ok(value),
         None => {
-          self.receive_waiters.push_back(fiber);
+          self.receive_waiters.push_back(waiter);
 
-          let waiter = find_runnable_waiter(&mut self.send_waiters);
+          let runnable = find_runnable_waiter(&mut self.send_waiters);
 
           if self.is_sync() {
-            ReceiveResult::EmptyBlock(waiter)
+            ReceiveResult::EmptyBlock(runnable)
           } else {
-            ReceiveResult::Empty(waiter)
+            ReceiveResult::Empty(runnable)
           }
         },
       },
@@ -165,7 +165,7 @@ impl ChannelQueue {
 
   /// Attempt to get a runnable waiter
   /// from this channel
-  pub fn runnable_waiter(&mut self) -> Option<ObjRef<Fiber>> {
+  pub fn runnable_waiter(&mut self) -> Option<Ref<ChannelWaiter>> {
     match self.kind {
       ChannelQueueKind::Sync => {
         if self.is_empty() && !self.is_closed() {
@@ -186,19 +186,17 @@ impl ChannelQueue {
       },
     }
   }
-
 }
 
-fn find_runnable_waiter(queue: &mut VecDeque<ObjRef<Fiber>>) -> Option<ObjRef<Fiber>> {
+fn find_runnable_waiter(queue: &mut VecDeque<Ref<ChannelWaiter>>) -> Option<Ref<ChannelWaiter>> {
   while let Some(waiter) = queue.pop_front() {
-    if !waiter.is_complete() {
-      return Some(waiter)
+    if waiter.is_runnable() {
+      return Some(waiter);
     }
   }
 
   None
 }
-
 
 impl Trace for ChannelQueue {
   fn trace(&self) {
@@ -230,8 +228,14 @@ impl DebugHeap for ChannelQueue {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_struct("ChannelQueue")
       .field("queue", &DebugWrap(&self.queue, depth))
-      .field("send_waiters", &DebugWrap(&self.send_waiters, depth))
-      .field("receive_waiters", &DebugWrap(&self.receive_waiters, depth))
+      .field(
+        "send_waiters",
+        &DebugWrapDyn(&self.send_waiters as &dyn DebugHeap, depth),
+      )
+      .field(
+        "receive_waiters",
+        &DebugWrapDyn(&self.receive_waiters, depth),
+      )
       .field("kind", &self.state)
       .finish()
   }
@@ -240,476 +244,459 @@ impl DebugHeap for ChannelQueue {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::{
+    hooks::{GcHooks, NoContext},
+    val,
+  };
 
-  mod channel_queue {
-    use crate::{
-      hooks::{GcHooks, NoContext},
-      support::FiberBuilder,
-      val,
-    };
+  #[test]
+  fn sync() {
+    let queue = ChannelQueue::sync();
 
+    assert_eq!(queue.len(), 0);
+    assert_eq!(queue.capacity(), 1);
+    assert!(!queue.is_closed())
+  }
+
+  #[test]
+  #[should_panic]
+  fn new_zero_sized_buffered() {
+    ChannelQueue::with_capacity(0);
+  }
+
+  #[test]
+  fn new_nonzero_sized_buffered() {
+    let queue = ChannelQueue::with_capacity(5);
+
+    assert_eq!(queue.len(), 0);
+    assert_eq!(queue.capacity(), 5);
+    assert!(!queue.is_closed());
+  }
+
+  #[test]
+  fn len() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let waiter = hooks.manage(ChannelWaiter::new(true));
+    let mut queue = ChannelQueue::with_capacity(5);
+
+    assert_eq!(queue.len(), 0);
+    queue.send(waiter, val!(0.0));
+    queue.send(waiter, val!(0.0));
+
+    assert_eq!(queue.len(), 2);
+    queue.receive(waiter);
+
+    assert_eq!(queue.len(), 1);
+  }
+
+  #[test]
+  fn capacity() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
+
+    let waiter = hooks.manage(ChannelWaiter::new(true));
+    let mut queue = ChannelQueue::with_capacity(5);
+
+    assert_eq!(queue.capacity(), 5);
+    queue.send(waiter, val!(0.0));
+
+    assert_eq!(queue.capacity(), 5);
+  }
+
+  #[test]
+  fn close() {
+    let mut queue = ChannelQueue::with_capacity(5);
+
+    assert_eq!(queue.close(), CloseResult::Ok);
+    assert_eq!(queue.close(), CloseResult::AlreadyClosed);
+  }
+
+  mod sync {
     use super::*;
 
     #[test]
-    fn sync() {
-      let queue = ChannelQueue::sync();
-
-      assert_eq!(queue.len(), 0);
-      assert_eq!(queue.capacity(), 1);
-      assert!(!queue.is_closed())
-    }
-
-    #[test]
-    #[should_panic]
-    fn new_zero_sized_buffered() {
-      ChannelQueue::with_capacity(0);
-    }
-
-    #[test]
-    fn new_nonzero_sized_buffered() {
-      let queue = ChannelQueue::with_capacity(5);
-
-      assert_eq!(queue.len(), 0);
-      assert_eq!(queue.capacity(), 5);
-      assert!(!queue.is_closed());
-    }
-
-    #[test]
-    fn len() {
+    fn enqueue_when_empty() {
       let context = NoContext::default();
       let hooks = GcHooks::new(&context);
 
-      let fiber = FiberBuilder::default().build(&hooks).unwrap();
-      let mut queue = ChannelQueue::with_capacity(5);
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::sync();
 
-      assert_eq!(queue.len(), 0);
-      queue.send(fiber, val!(0.0));
-      queue.send(fiber, val!(0.0));
+      let r = queue.send(waiter, val!(1.0));
+      assert_eq!(r, SendResult::FullBlock(None));
+      assert_eq!(queue.len(), 1);
+    }
 
-      assert_eq!(queue.len(), 2);
-      queue.receive(fiber);
+    #[test]
+    fn enqueue_when_waiter_not_runnable() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter1 = hooks.manage(ChannelWaiter::new(false));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::sync();
+
+      queue.receive(waiter1);
+
+      let r = queue.send(waiter2, val!(1.0));
+      assert_eq!(r, SendResult::FullBlock(None));
+      assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn enqueue_when_empty_with_waiter() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter1 = hooks.manage(ChannelWaiter::new(true));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::sync();
+
+      queue.receive(waiter1);
+
+      let r = queue.send(waiter2, val!(1.0));
+      assert_eq!(r, SendResult::FullBlock(Some(waiter1)));
+      assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn enqueue_when_full() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::sync();
+
+      queue.send(waiter, val!(1.0));
+      let r = queue.send(waiter, val!(1.0));
+      assert_eq!(r, SendResult::Full(None));
+      assert_eq!(queue.len(), 1);
+    }
+
+    #[test]
+    fn enqueue_when_full_with_waiter() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter1 = hooks.manage(ChannelWaiter::new(true));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
+      let waiter3 = hooks.manage(ChannelWaiter::new(true));
+
+      let mut queue = ChannelQueue::sync();
+      queue.receive(waiter1);
+      queue.receive(waiter2);
+      let r1 = queue.send(waiter3, val!(1.0));
+      let r2 = queue.send(waiter3, val!(1.0));
+
+      match r1 {
+        SendResult::FullBlock(Some(waiter)) => {
+          if waiter == waiter1 {
+            match r2 {
+              SendResult::Full(Some(waiter)) => assert_eq!(waiter, waiter2),
+              _ => panic!(),
+            }
+          } else if waiter == waiter2 {
+            match r2 {
+              SendResult::Full(Some(waiter)) => assert_eq!(waiter, waiter1),
+              _ => panic!(),
+            }
+          } else {
+            panic!()
+          }
+        },
+        _ => panic!(),
+      }
 
       assert_eq!(queue.len(), 1);
     }
 
     #[test]
-    fn capacity() {
+    fn enqueue_when_closed() {
       let context = NoContext::default();
       let hooks = GcHooks::new(&context);
 
-      let fiber = FiberBuilder::default().build(&hooks).unwrap();
-      let mut queue = ChannelQueue::with_capacity(5);
+      let waiter = hooks.manage(ChannelWaiter::new(true));
 
-      assert_eq!(queue.capacity(), 5);
-      queue.send(fiber, val!(0.0));
+      let mut queue = ChannelQueue::sync();
 
-      assert_eq!(queue.capacity(), 5);
+      assert_eq!(queue.close(), CloseResult::Ok);
+      let r = queue.send(waiter, val!(10.0));
+
+      assert_eq!(r, SendResult::Closed);
+      assert_eq!(queue.len(), 0);
     }
 
     #[test]
-    fn close() {
-      let mut queue = ChannelQueue::with_capacity(5);
+    fn dequeue_when_empty() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+
+      let mut queue = ChannelQueue::sync();
+
+      let r = queue.receive(waiter);
+      assert_eq!(r, ReceiveResult::EmptyBlock(None));
+      assert_eq!(queue.len(), 0);
+    }
+
+    #[test]
+    fn dequeue_when_full() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter1 = hooks.manage(ChannelWaiter::new(true));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
+
+      let mut queue = ChannelQueue::with_capacity(1);
+      queue.send(waiter2, val!(1.0));
+
+      let r = queue.receive(waiter1);
+      assert_eq!(r, ReceiveResult::Ok(val!(1.0)));
+      assert_eq!(queue.len(), 0);
+    }
+
+    #[test]
+    fn dequeue_when_full_with_waiter() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter1 = hooks.manage(ChannelWaiter::new(true));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::sync();
+
+      queue.send(waiter1, val!(1.0));
+      queue.send(waiter1, val!(2.0));
+
+      assert_eq!(queue.receive(waiter2), ReceiveResult::Ok(val!(1.0)));
+      assert_eq!(
+        queue.receive(waiter2),
+        ReceiveResult::EmptyBlock(Some(waiter1))
+      );
+      assert_eq!(queue.len(), 0);
+    }
+
+    #[test]
+    fn dequeue_when_waiter_not_runnable() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter1 = hooks.manage(ChannelWaiter::new(false));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::sync();
+
+      queue.send(waiter1, val!(1.0));
+      queue.send(waiter1, val!(2.0));
+
+      assert_eq!(queue.receive(waiter2), ReceiveResult::Ok(val!(1.0)));
+      assert_eq!(queue.receive(waiter2), ReceiveResult::EmptyBlock(None));
+      assert_eq!(queue.len(), 0);
+    }
+
+    #[test]
+    fn dequeue_when_closed() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::sync();
+
+      queue.send(waiter, val!(10.0));
+      assert_eq!(queue.close(), CloseResult::Ok);
+      let r = queue.receive(waiter);
+
+      assert_eq!(r, ReceiveResult::Ok(val!(10.0)));
+      assert_eq!(queue.len(), 0);
+    }
+
+    #[test]
+    fn dequeue_when_closed_empty() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::sync();
 
       assert_eq!(queue.close(), CloseResult::Ok);
-      assert_eq!(queue.close(), CloseResult::AlreadyClosed);
+      let r = queue.receive(waiter);
+
+      assert_eq!(r, ReceiveResult::Closed);
+      assert_eq!(queue.len(), 0);
+    }
+  }
+
+  mod buffered {
+    use super::*;
+
+    #[test]
+    fn enqueue_when_not_full() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
+
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::with_capacity(3);
+
+      let r = queue.send(waiter, val!(1.0));
+      assert_eq!(r, SendResult::Ok);
+      assert_eq!(queue.len(), 1);
     }
 
-    mod sync {
-      use super::*;
+    #[test]
+    fn enqueue_when_full() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-      #[test]
-      fn enqueue_when_empty() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::with_capacity(1);
 
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::sync();
-
-        let r = queue.send(fiber, val!(1.0));
-        assert_eq!(r, SendResult::FullBlock(None));
-        assert_eq!(queue.len(), 1);
-      }
-
-      #[test]
-      fn enqueue_when_completed_waiter() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut fiber_waiter = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::sync();
-
-        queue.receive(fiber_waiter);
-
-        fiber_waiter.activate();
-        fiber_waiter.complete();
-
-        let r = queue.send(fiber, val!(1.0));
-        assert_eq!(r, SendResult::FullBlock(None));
-        assert_eq!(queue.len(), 1);
-      }
-
-      #[test]
-      fn enqueue_when_empty_with_waiter() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let fiber_waiter = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::sync();
-
-        queue.receive(fiber_waiter);
-
-        let r = queue.send(fiber, val!(1.0));
-        assert_eq!(r, SendResult::FullBlock(Some(fiber_waiter)));
-        assert_eq!(queue.len(), 1);
-      }
-
-      #[test]
-      fn enqueue_when_full() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::sync();
-
-        queue.send(fiber, val!(1.0));
-        let r = queue.send(fiber, val!(1.0));
-        assert_eq!(r, SendResult::Full(None));
-        assert_eq!(queue.len(), 1);
-      }
-
-      #[test]
-      fn enqueue_when_full_with_waiter() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let fiber_waiter1 = FiberBuilder::default().build(&hooks).unwrap();
-        let fiber_waiter2 = FiberBuilder::default().build(&hooks).unwrap();
-
-        let mut queue = ChannelQueue::sync();
-        queue.receive(fiber_waiter1);
-        queue.receive(fiber_waiter2);
-        let r1 = queue.send(fiber, val!(1.0));
-        let r2 = queue.send(fiber, val!(1.0));
-
-        match r1 {
-          SendResult::FullBlock(Some(waiter)) => {
-            if waiter == fiber_waiter1 {
-              match r2 {
-                SendResult::Full(Some(waiter)) => assert_eq!(waiter, fiber_waiter2),
-                _ => panic!(),
-              }
-            } else if waiter == fiber_waiter2 {
-              match r2 {
-                SendResult::Full(Some(waiter)) => assert_eq!(waiter, fiber_waiter1),
-                _ => panic!(),
-              }
-            } else {
-              panic!()
-            }
-          },
-          _ => panic!(),
-        }
-
-        assert_eq!(queue.len(), 1);
-      }
-
-      #[test]
-      fn enqueue_when_closed() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::sync();
-
-        assert_eq!(queue.close(), CloseResult::Ok);
-        let r = queue.send(fiber, val!(10.0));
-
-        assert_eq!(r, SendResult::Closed);
-        assert_eq!(queue.len(), 0);
-      }
-
-      #[test]
-      fn dequeue_when_empty() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-
-        let mut queue = ChannelQueue::sync();
-
-        let r = queue.receive(fiber);
-        assert_eq!(r, ReceiveResult::EmptyBlock(None));
-        assert_eq!(queue.len(), 0);
-      }
-
-      #[test]
-      fn dequeue_when_full() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber1 = FiberBuilder::default().build(&hooks).unwrap();
-        let fiber2 = FiberBuilder::default().build(&hooks).unwrap();
-
-        let mut queue = ChannelQueue::with_capacity(1);
-        queue.send(fiber2, val!(1.0));
-
-        let r = queue.receive(fiber1);
-        assert_eq!(r, ReceiveResult::Ok(val!(1.0)));
-        assert_eq!(queue.len(), 0);
-      }
-
-
-      #[test]
-      fn dequeue_when_full_with_waiter() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let fiber_waiter = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::sync();
-
-        queue.send(fiber_waiter, val!(1.0));
-        queue.send(fiber_waiter, val!(2.0));
-
-        assert_eq!(queue.receive(fiber), ReceiveResult::Ok(val!(1.0)));
-        assert_eq!(queue.receive(fiber), ReceiveResult::EmptyBlock(Some(fiber_waiter)));
-        assert_eq!(queue.len(), 0);
-      }
-
-      #[test]
-      fn dequeue_when_waiter_complete() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut fiber_waiter = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::sync();
-
-        queue.send(fiber_waiter, val!(1.0));
-        queue.send(fiber_waiter, val!(2.0));
-
-        fiber_waiter.activate();
-        fiber_waiter.complete();
-
-        assert_eq!(queue.receive(fiber), ReceiveResult::Ok(val!(1.0)));
-        assert_eq!(queue.receive(fiber), ReceiveResult::EmptyBlock(None));
-        assert_eq!(queue.len(), 0);
-      }
-
-      #[test]
-      fn dequeue_when_closed() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::sync();
-
-        queue.send(fiber, val!(10.0));
-        assert_eq!(queue.close(), CloseResult::Ok);
-        let r = queue.receive(fiber);
-
-        assert_eq!(r, ReceiveResult::Ok(val!(10.0)));
-        assert_eq!(queue.len(), 0);
-      }
-
-      #[test]
-      fn dequeue_when_closed_empty() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::sync();
-
-        assert_eq!(queue.close(), CloseResult::Ok);
-        let r = queue.receive(fiber);
-
-        assert_eq!(r, ReceiveResult::Closed);
-        assert_eq!(queue.len(), 0);
-      }
+      queue.send(waiter, val!(1.0));
+      let r = queue.send(waiter, val!(1.0));
+      assert_eq!(r, SendResult::Full(None));
+      assert_eq!(queue.len(), 1);
     }
 
-    mod buffered {
-      use super::*;
+    #[test]
+    fn enqueue_when_full_with_waiter() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-      #[test]
-      fn enqueue_when_not_full() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
+      let waiter1 = hooks.manage(ChannelWaiter::new(true));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
 
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::with_capacity(3);
+      let mut queue = ChannelQueue::with_capacity(1);
+      queue.receive(waiter1);
+      queue.send(waiter2, val!(1.0));
+      let r = queue.send(waiter2, val!(1.0));
 
-        let r = queue.send(fiber, val!(1.0));
-        assert_eq!(r, SendResult::Ok);
-        assert_eq!(queue.len(), 1);
-      }
+      assert_eq!(r, SendResult::Full(Some(waiter1)));
+      assert_eq!(queue.len(), 1);
+    }
 
-      #[test]
-      fn enqueue_when_full() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
+    #[test]
+    fn enqueue_when_waiter_not_runnable() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::with_capacity(1);
+      let waiter1 = hooks.manage(ChannelWaiter::new(false));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::with_capacity(1);
 
-        queue.send(fiber, val!(1.0));
-        let r = queue.send(fiber, val!(1.0));
-        assert_eq!(r, SendResult::Full(None));
-        assert_eq!(queue.len(), 1);
-      }
+      queue.receive(waiter1);
 
-      #[test]
-      fn enqueue_when_full_with_waiter() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
+      assert_eq!(queue.send(waiter2, val!(1.0)), SendResult::Ok);
+      assert_eq!(queue.send(waiter2, val!(1.0)), SendResult::Full(None));
+      assert_eq!(queue.len(), 1);
+    }
 
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let fiber_waiter1 = FiberBuilder::default().build(&hooks).unwrap();
+    #[test]
+    fn enqueue_when_closed() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-        let mut queue = ChannelQueue::with_capacity(1);
-        queue.receive(fiber_waiter1);
-        queue.send(fiber, val!(1.0));
-        let r = queue.send(fiber, val!(1.0));
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::with_capacity(1);
 
-        assert_eq!(r, SendResult::Full(Some(fiber_waiter1)));
-        assert_eq!(queue.len(), 1);
-      }
+      assert_eq!(queue.close(), CloseResult::Ok);
+      let r = queue.send(waiter, val!(10.0));
 
+      assert_eq!(r, SendResult::Closed);
+      assert_eq!(queue.len(), 0);
+    }
 
-      #[test]
-      fn enqueue_when_completed_waiter() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
+    #[test]
+    fn dequeue_when_empty() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut fiber_waiter = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::with_capacity(1);
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::with_capacity(3);
 
-        queue.receive(fiber_waiter);
+      let r = queue.receive(waiter);
+      assert_eq!(r, ReceiveResult::Empty(None));
+      assert_eq!(queue.len(), 0);
+    }
 
-        fiber_waiter.activate();
-        fiber_waiter.complete();
+    #[test]
+    fn dequeue_when_empty_with_waiter() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-        assert_eq!(queue.send(fiber, val!(1.0)), SendResult::Ok);
-        assert_eq!(queue.send(fiber, val!(1.0)), SendResult::Full(None));
-        assert_eq!(queue.len(), 1);
-      }
+      let waiter1 = hooks.manage(ChannelWaiter::new(true));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
 
-      #[test]
-      fn enqueue_when_closed() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
+      let mut queue = ChannelQueue::with_capacity(1);
+      queue.send(waiter1, val!(1.0));
+      queue.send(waiter1, val!(1.0));
 
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::with_capacity(1);
+      queue.receive(waiter2);
+      let r = queue.receive(waiter2);
+      assert_eq!(r, ReceiveResult::Empty(Some(waiter1)));
+      assert_eq!(queue.len(), 0);
+    }
 
-        assert_eq!(queue.close(), CloseResult::Ok);
-        let r = queue.send(fiber, val!(10.0));
+    #[test]
+    fn dequeue_when_waiter_not_runnable() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-        assert_eq!(r, SendResult::Closed);
-        assert_eq!(queue.len(), 0);
-      }
+      let waiter1 = hooks.manage(ChannelWaiter::new(false));
+      let waiter2 = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::with_capacity(1);
 
-      #[test]
-      fn dequeue_when_empty() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
+      queue.send(waiter1, val!(1.0));
+      queue.send(waiter1, val!(2.0));
 
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::with_capacity(3);
+      assert_eq!(queue.receive(waiter2), ReceiveResult::Ok(val!(1.0)));
+      assert_eq!(queue.receive(waiter2), ReceiveResult::Empty(None));
+      assert_eq!(queue.len(), 0);
+    }
 
-        let r = queue.receive(fiber);
-        assert_eq!(r, ReceiveResult::Empty(None));
-        assert_eq!(queue.len(), 0);
-      }
+    #[test]
+    fn dequeue_when_nonempty() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-      #[test]
-      fn dequeue_when_empty_with_waiter() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::with_capacity(3);
 
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let fiber_waiter = FiberBuilder::default().build(&hooks).unwrap();
+      queue.send(waiter, val!(1.0));
+      queue.send(waiter, val!(2.0));
+      let r = queue.receive(waiter);
+      assert_eq!(r, ReceiveResult::Ok(val!(1.0)));
+      assert_eq!(queue.len(), 1);
+    }
 
-        let mut queue = ChannelQueue::with_capacity(1);
-        queue.send(fiber_waiter, val!(1.0));
-        queue.send(fiber_waiter, val!(1.0));
+    #[test]
+    fn dequeue_when_closed() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-        queue.receive(fiber);
-        let r = queue.receive(fiber);
-        assert_eq!(r, ReceiveResult::Empty(Some(fiber_waiter)));
-        assert_eq!(queue.len(), 0);
-      }
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::with_capacity(3);
 
-      #[test]
-      fn dequeue_when_waiter_complete() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
+      queue.send(waiter, val!(10.0));
+      assert_eq!(queue.close(), CloseResult::Ok);
+      let r = queue.receive(waiter);
 
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut fiber_waiter = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::with_capacity(1);
+      assert_eq!(r, ReceiveResult::Ok(val!(10.0)));
+      assert_eq!(queue.len(), 0);
+    }
 
-        queue.send(fiber_waiter, val!(1.0));
-        queue.send(fiber_waiter, val!(2.0));
+    #[test]
+    fn dequeue_when_closed_empty() {
+      let context = NoContext::default();
+      let hooks = GcHooks::new(&context);
 
-        fiber_waiter.activate();
-        fiber_waiter.complete();
+      let waiter = hooks.manage(ChannelWaiter::new(true));
+      let mut queue = ChannelQueue::with_capacity(1);
 
-        assert_eq!(queue.receive(fiber), ReceiveResult::Ok(val!(1.0)));
-        assert_eq!(queue.receive(fiber), ReceiveResult::Empty(None));
-        assert_eq!(queue.len(), 0);
-      }
+      assert_eq!(queue.close(), CloseResult::Ok);
+      let r = queue.receive(waiter);
 
-
-      #[test]
-      fn dequeue_when_nonempty() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::with_capacity(3);
-
-        queue.send(fiber, val!(1.0));
-        queue.send(fiber, val!(2.0));
-        let r = queue.receive(fiber);
-        assert_eq!(r, ReceiveResult::Ok(val!(1.0)));
-        assert_eq!(queue.len(), 1);
-      }
-
-      #[test]
-      fn dequeue_when_closed() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::with_capacity(3);
-
-        queue.send(fiber, val!(10.0));
-        assert_eq!(queue.close(), CloseResult::Ok);
-        let r = queue.receive(fiber);
-
-        assert_eq!(r, ReceiveResult::Ok(val!(10.0)));
-        assert_eq!(queue.len(), 0);
-      }
-
-      #[test]
-      fn dequeue_when_closed_empty() {
-        let context = NoContext::default();
-        let hooks = GcHooks::new(&context);
-
-        let fiber = FiberBuilder::default().build(&hooks).unwrap();
-        let mut queue = ChannelQueue::with_capacity(1);
-
-        assert_eq!(queue.close(), CloseResult::Ok);
-        let r = queue.receive(fiber);
-
-        assert_eq!(r, ReceiveResult::Closed);
-        assert_eq!(queue.len(), 0);
-      }
+      assert_eq!(r, ReceiveResult::Closed);
+      assert_eq!(queue.len(), 0);
     }
   }
 }

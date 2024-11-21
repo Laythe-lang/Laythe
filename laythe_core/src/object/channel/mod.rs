@@ -3,10 +3,14 @@ mod channel_waiter;
 
 use channel_queue::ChannelQueue;
 
-use super::{Fiber, ObjectKind};
+use super::ObjectKind;
 use crate::{
-  hooks::GcHooks, managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Trace}, reference::{ObjRef, Object, Ref}, value::Value
+  hooks::GcHooks,
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Trace},
+  reference::{Object, Ref},
+  value::Value,
 };
+pub use channel_waiter::ChannelWaiter;
 use std::{fmt, io::Write};
 
 /// What type of channel is this
@@ -22,21 +26,21 @@ enum ChannelKind {
   SendOnly,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SendResult {
   Ok,
   NoSendAccess,
-  FullBlock(Option<ObjRef<Fiber>>),
-  Full(Option<ObjRef<Fiber>>),
+  FullBlock(Option<Ref<ChannelWaiter>>),
+  Full(Option<Ref<ChannelWaiter>>),
   Closed,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReceiveResult {
   Ok(Value),
   NoReceiveAccess,
-  EmptyBlock(Option<ObjRef<Fiber>>),
-  Empty(Option<ObjRef<Fiber>>),
+  EmptyBlock(Option<Ref<ChannelWaiter>>),
+  Empty(Option<Ref<ChannelWaiter>>),
   Closed,
 }
 
@@ -131,9 +135,9 @@ impl Channel {
   /// channel is saturated or because the channel
   /// has already been closed
   #[inline]
-  pub fn send(&mut self, fiber: ObjRef<Fiber>, val: Value) -> SendResult {
+  pub fn send(&mut self, waiter: Ref<ChannelWaiter>, val: Value) -> SendResult {
     match self.kind {
-      ChannelKind::BiDirectional | ChannelKind::SendOnly => self.queue.send(fiber, val),
+      ChannelKind::BiDirectional | ChannelKind::SendOnly => self.queue.send(waiter, val),
       ChannelKind::ReceiveOnly => SendResult::NoSendAccess,
     }
   }
@@ -141,16 +145,16 @@ impl Channel {
   /// Attempt to receive a value from this channel.
   /// If the channel is empty
   #[inline]
-  pub fn receive(&mut self, fiber: ObjRef<Fiber>) -> ReceiveResult {
+  pub fn receive(&mut self, waiter: Ref<ChannelWaiter>) -> ReceiveResult {
     match self.kind {
-      ChannelKind::BiDirectional | ChannelKind::ReceiveOnly => self.queue.receive(fiber),
+      ChannelKind::BiDirectional | ChannelKind::ReceiveOnly => self.queue.receive(waiter),
       ChannelKind::SendOnly => ReceiveResult::NoReceiveAccess,
     }
   }
 
   /// Attempt to get a runnable waiter
   /// from this channel
-  pub fn runnable_waiter(&mut self) -> Option<ObjRef<Fiber>> {
+  pub fn runnable_waiter(&mut self) -> Option<Ref<ChannelWaiter>> {
     self.queue.runnable_waiter()
   }
 }
@@ -196,166 +200,160 @@ impl Object for Channel {
 #[cfg(test)]
 mod test {
   use super::*;
+  use crate::{
+    hooks::{GcHooks, NoContext},
+    val,
+  };
 
-  mod channel {
-    use crate::{
-      hooks::{GcHooks, NoContext},
-      support::FiberBuilder,
-      val,
-    };
+  #[test]
+  fn sync() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-    use super::*;
+    let channel = Channel::sync(&hooks);
+    assert_eq!(channel.capacity(), 1);
+    assert_eq!(channel.len(), 0);
+  }
 
-    #[test]
-    fn sync() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+  #[test]
+  #[should_panic]
+  fn with_zero_sized_capacity() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      let channel = Channel::sync(&hooks);
-      assert_eq!(channel.capacity(), 1);
-      assert_eq!(channel.len(), 0);
-    }
+    Channel::with_capacity(&hooks, 0);
+  }
 
-    #[test]
-    #[should_panic]
-    fn with_zero_sized_capacity() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+  #[test]
+  fn with_nonzero_sized_capacity() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      Channel::with_capacity(&hooks, 0);
-    }
+    let channel = Channel::with_capacity(&hooks, 5);
+    assert_eq!(channel.capacity(), 5);
+    assert_eq!(channel.len(), 0);
+  }
 
-    #[test]
-    fn with_nonzero_sized_capacity() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+  #[test]
+  fn len() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      let channel = Channel::with_capacity(&hooks, 5);
-      assert_eq!(channel.capacity(), 5);
-      assert_eq!(channel.len(), 0);
-    }
+    let waiter = hooks.manage(ChannelWaiter::new(true));
+    let mut channel = Channel::with_capacity(&hooks, 5);
 
-    #[test]
-    fn len() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+    assert_eq!(channel.len(), 0);
 
-      let fiber = FiberBuilder::default().build(&hooks).unwrap();
-      let mut channel = Channel::with_capacity(&hooks, 5);
+    channel.send(waiter, val!(1.0));
+    assert_eq!(channel.len(), 1);
 
-      assert_eq!(channel.len(), 0);
+    channel.send(waiter, val!(1.0));
+    channel.send(waiter, val!(1.0));
+    channel.send(waiter, val!(1.0));
+    assert_eq!(channel.len(), 4);
+  }
 
-      channel.send(fiber, val!(1.0));
-      assert_eq!(channel.len(), 1);
+  #[test]
+  fn capacity() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      channel.send(fiber, val!(1.0));
-      channel.send(fiber, val!(1.0));
-      channel.send(fiber, val!(1.0));
-      assert_eq!(channel.len(), 4);
-    }
+    let channel = Channel::with_capacity(&hooks, 5);
 
-    #[test]
-    fn capacity() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+    assert_eq!(channel.capacity(), 5);
+  }
 
-      let channel = Channel::with_capacity(&hooks, 5);
+  #[test]
+  fn close() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      assert_eq!(channel.capacity(), 5);
-    }
+    let mut channel = Channel::with_capacity(&hooks, 1);
 
-    #[test]
-    fn close() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+    assert_eq!(channel.close(), CloseResult::Ok);
+    assert!(channel.is_closed());
 
-      let mut channel = Channel::with_capacity(&hooks, 1);
+    assert_eq!(channel.close(), CloseResult::AlreadyClosed);
+    assert!(channel.is_closed())
+  }
 
-      assert_eq!(channel.close(), CloseResult::Ok);
-      assert!(channel.is_closed());
+  #[test]
+  fn enqueue_with_no_write_access() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      assert_eq!(channel.close(), CloseResult::AlreadyClosed);
-      assert!(channel.is_closed())
-    }
+    let waiter = hooks.manage(ChannelWaiter::new(true));
+    let mut channel = Channel::sync(&hooks).read_only().unwrap();
 
-    #[test]
-    fn enqueue_with_no_write_access() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+    let r = channel.send(waiter, val!(10.0));
 
-      let fiber = FiberBuilder::default().build(&hooks).unwrap();
-      let mut channel = Channel::sync(&hooks).read_only().unwrap();
+    assert_eq!(r, SendResult::NoSendAccess);
+    assert_eq!(channel.len(), 0);
+  }
 
-      let r = channel.send(fiber, val!(10.0));
+  #[test]
+  fn dequeue_when_no_read_access() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      assert_eq!(r, SendResult::NoSendAccess);
-      assert_eq!(channel.len(), 0);
-    }
+    let waiter = hooks.manage(ChannelWaiter::new(true));
+    let mut channel = Channel::sync(&hooks).write_only().unwrap();
 
-    #[test]
-    fn dequeue_when_no_read_access() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+    let r = channel.receive(waiter);
 
-      let fiber = FiberBuilder::default().build(&hooks).unwrap();
-      let mut channel = Channel::sync(&hooks).write_only().unwrap();
+    assert_eq!(r, ReceiveResult::NoReceiveAccess);
+    assert_eq!(channel.len(), 0);
+  }
 
-      let r = channel.receive(fiber);
+  #[test]
+  fn bi_directional_to_read_only() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      assert_eq!(r, ReceiveResult::NoReceiveAccess);
-      assert_eq!(channel.len(), 0);
-    }
+    assert!(Channel::with_capacity(&hooks, 1).read_only().is_some())
+  }
 
-    #[test]
-    fn bi_directional_to_read_only() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+  #[test]
+  fn bi_directional_to_write_only() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      assert!(Channel::with_capacity(&hooks, 1).read_only().is_some())
-    }
+    assert!(Channel::with_capacity(&hooks, 1).write_only().is_some())
+  }
 
-    #[test]
-    fn bi_directional_to_write_only() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+  #[test]
+  fn read_only_to_read_only() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      assert!(Channel::with_capacity(&hooks, 1).write_only().is_some())
-    }
+    let read_only = Channel::with_capacity(&hooks, 1).read_only().unwrap();
+    assert!(read_only.read_only().is_some())
+  }
 
-    #[test]
-    fn read_only_to_read_only() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+  #[test]
+  fn read_only_to_write_only() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      let read_only = Channel::with_capacity(&hooks, 1).read_only().unwrap();
-      assert!(read_only.read_only().is_some())
-    }
+    let read_only = Channel::with_capacity(&hooks, 1).read_only().unwrap();
+    assert!(read_only.write_only().is_none())
+  }
 
-    #[test]
-    fn read_only_to_write_only() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+  #[test]
+  fn write_only_to_read_only() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      let read_only = Channel::with_capacity(&hooks, 1).read_only().unwrap();
-      assert!(read_only.write_only().is_none())
-    }
+    let write_only = Channel::with_capacity(&hooks, 1).write_only().unwrap();
+    assert!(write_only.read_only().is_none())
+  }
 
-    #[test]
-    fn write_only_to_read_only() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
+  #[test]
+  fn write_only_to_write_only() {
+    let context = NoContext::default();
+    let hooks = GcHooks::new(&context);
 
-      let write_only = Channel::with_capacity(&hooks, 1).write_only().unwrap();
-      assert!(write_only.read_only().is_none())
-    }
-
-    #[test]
-    fn write_only_to_write_only() {
-      let context = NoContext::default();
-      let hooks = GcHooks::new(&context);
-
-      let write_only = Channel::with_capacity(&hooks, 1).write_only().unwrap();
-      assert!(write_only.write_only().is_some())
-    }
+    let write_only = Channel::with_capacity(&hooks, 1).write_only().unwrap();
+    assert!(write_only.write_only().is_some())
   }
 }
