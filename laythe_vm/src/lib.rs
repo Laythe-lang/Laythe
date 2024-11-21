@@ -3,6 +3,7 @@
 mod byte_code;
 mod cache;
 mod chunk_builder;
+mod fiber;
 pub mod compiler;
 mod constants;
 pub mod source;
