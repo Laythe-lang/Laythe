@@ -1171,7 +1171,7 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
-      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let captures = Captures::build(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
         hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
@@ -1208,7 +1208,7 @@ mod test {
       let managed = hooks.manage_obj(Enumerator::new(iter));
       let this = val!(managed);
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
-      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let captures = Captures::build(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
         hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
@@ -1245,7 +1245,7 @@ mod test {
       let this = val!(managed);
 
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(2));
-      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let captures = Captures::build(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
         hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
@@ -1304,7 +1304,7 @@ mod test {
       let this = val!(managed);
 
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
-      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let captures = Captures::build(&hooks.as_gc(), &[]);
 
       let fun = val!(hooks.manage_obj(Closure::new(
         hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),

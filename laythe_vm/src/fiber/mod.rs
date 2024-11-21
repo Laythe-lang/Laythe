@@ -1108,7 +1108,7 @@ mod test {
     let mut builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
     builder.update_max_slots(3);
 
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
     let fun = hooks.manage_obj(builder.build(Chunk::stub_with_instructions(&hooks, &[0, 0, 0])));
 
     let mut fiber = TestFiberBuilder::default()
@@ -1218,7 +1218,7 @@ mod test {
     let fun1 = hooks.manage_obj(builder1.build(chunk1));
     let fun2 = hooks.manage_obj(builder2.build(chunk2));
 
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
 
     let mut fiber = TestFiberBuilder::default()
       .max_slots(6)
@@ -1329,7 +1329,7 @@ mod test {
     let builder = FunBuilder::new(hooks.manage_str("test"), module, Arity::default());
 
     let fun = hooks.manage_obj(builder.build(Chunk::stub_with_instructions(&hooks, &[0, 0, 0])));
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
 
     let mut fiber = TestFiberBuilder::default().max_slots(3).build(&context);
 
@@ -1400,7 +1400,7 @@ mod test {
     let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -1435,7 +1435,7 @@ mod test {
     let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -1497,7 +1497,7 @@ mod test {
     let hooks = GcHooks::new(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
 
     let mut fiber = TestFiberBuilder::default().max_slots(3).build(&context);
 
@@ -1525,7 +1525,7 @@ mod test {
     let hooks = GcHooks::new(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
 
     let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
@@ -1572,7 +1572,7 @@ mod test {
     let fun1 = test_fun(&hooks, "first", "first module");
     let fun2 = test_fun(&hooks, "second", "second module");
 
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
 
     let mut fiber = TestFiberBuilder::default().max_slots(6).build(&context);
 
@@ -1623,7 +1623,7 @@ mod test {
     let fun1 = hooks.manage_obj(builder1.build(chunk1));
     let fun2 = hooks.manage_obj(builder2.build(chunk2));
 
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
 
     let mut fiber = TestFiberBuilder::default().max_slots(6).build(&context);
 
@@ -1682,7 +1682,7 @@ mod test {
     fun2.update_max_slots(3);
     let fun2 = hooks.manage_obj(fun2.build(Chunk::stub(&hooks)));
 
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
 
     let mut fiber = TestFiberBuilder::default().max_slots(6).build(&context);
 

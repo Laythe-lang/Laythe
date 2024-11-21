@@ -37,7 +37,7 @@ impl Closure {
   /// let chunk = Chunk::stub(&hooks);
   /// let managed_fun = hooks.manage_obj(builder.build(chunk));
   ///
-  /// let captures = Captures::new(&hooks, &[]);
+  /// let captures = Captures::build(&hooks, &[]);
   /// let closure = Closure::new(managed_fun, captures);
   /// assert_eq!(&*closure.fun().name(), "example");
   /// ```

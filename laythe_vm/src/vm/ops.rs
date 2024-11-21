@@ -1371,7 +1371,7 @@ impl Vm {
       })
       .collect::<Vec<ObjRef<LyBox>>>();
 
-    let captures = Captures::new(&GcHooks::new(self), &captures);
+    let captures = Captures::new(self.manage(&*captures));
     let closure = self.manage_obj(Closure::new(fun, captures));
 
     self.fiber.push(val!(closure));

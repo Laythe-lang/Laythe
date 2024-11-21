@@ -887,7 +887,7 @@ mod test {
   fn test_closure(hooks: &GcHooks) -> ObjRef<Closure> {
     let fun = test_fun(hooks);
 
-    hooks.manage_obj(Closure::new(fun, Captures::new(hooks, &[])))
+    hooks.manage_obj(Closure::new(fun, Captures::build(hooks, &[])))
   }
 
   fn test_class(hooks: &GcHooks) -> ObjRef<Class> {

@@ -1,6 +1,7 @@
 use super::Fiber;
 use laythe_core::{
-  constants::SCRIPT, object::ChannelWaiter, support::test_fun_builder, value::Value, Captures, Chunk, GcHooks, HookContext, NoContext, Ref
+  constants::SCRIPT, object::ChannelWaiter, support::test_fun_builder, value::Value, Captures,
+  Chunk, GcHooks, HookContext, NoContext, Ref,
 };
 
 pub struct TestFiberBuilder {
@@ -52,13 +53,20 @@ impl TestFiberBuilder {
     let fun = hooks.manage_obj(fun.build(chunk));
     hooks.push_root(fun);
 
-    let captures = Captures::new(&hooks, &[]);
+    let captures = Captures::build(&hooks, &[]);
     hooks.push_root(captures);
 
     let waiter = hooks.manage(ChannelWaiter::new(true));
     hooks.push_root(waiter);
 
-    let fiber = Fiber::new(&mut context.gc_context().gc(), context, self.parent, fun, captures, fun.max_slots() + 1);
+    let fiber = Fiber::new(
+      &mut context.gc_context().gc(),
+      context,
+      self.parent,
+      fun,
+      captures,
+      fun.max_slots() + 1,
+    );
     hooks.pop_roots(3);
     hooks.manage(fiber)
   }

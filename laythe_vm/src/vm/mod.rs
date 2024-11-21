@@ -9,11 +9,22 @@ mod ops;
 mod source_loader;
 
 use crate::{
-  byte_code::ByteCode, cache::InlineCache, constants::REPL_MODULE, fiber::Fiber, source::{Source, VmFileId, VmFiles}
+  byte_code::ByteCode,
+  cache::InlineCache,
+  constants::REPL_MODULE,
+  fiber::Fiber,
+  source::{Source, VmFileId, VmFiles},
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
-  constants::{PLACEHOLDER_NAME, SELF}, hooks::{GcHooks, HookContext, NoContext}, module::{Module, Package}, object::{ChannelWaiter, Fun, LyStr, Map}, utils::IdEmitter, val, value::{Value, VALUE_NIL}, Allocator, Captures, GcContext, ObjRef, Ref
+  constants::{PLACEHOLDER_NAME, SELF},
+  hooks::{GcHooks, HookContext, NoContext},
+  module::{Module, Package},
+  object::{ChannelWaiter, Fun, LyStr, Map},
+  utils::IdEmitter,
+  val,
+  value::{Value, VALUE_NIL},
+  Allocator, Captures, GcContext, ObjRef, Ref,
 };
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
@@ -155,9 +166,16 @@ impl Vm {
     let current_fun = Fun::stub(&hooks, hooks.manage_str(PLACEHOLDER_NAME), global);
 
     let current_fun = hooks.manage_obj(current_fun);
-    let capture_stub = Captures::new(&hooks, &[]);
+    let capture_stub = Captures::build(&hooks, &[]);
 
-    let fiber = Fiber::new(&mut context.gc(), &context, None, current_fun, capture_stub, current_fun.max_slots() + 1);
+    let fiber = Fiber::new(
+      &mut context.gc(),
+      &context,
+      None,
+      current_fun,
+      capture_stub,
+      current_fun.max_slots() + 1,
+    );
     let fiber = hooks.manage(fiber);
 
     let mut waiter_map = Map::default();
@@ -314,9 +332,16 @@ impl Vm {
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: ObjRef<Fun>) {
     self.push_root(script);
-    let fiber = Fiber::new(&mut self.gc(), self, None, script, self.capture_stub, script.max_slots() + 1);
+    let fiber = Fiber::new(
+      &mut self.gc(),
+      self,
+      None,
+      script,
+      self.capture_stub,
+      script.max_slots() + 1,
+    );
     self.pop_roots(1);
-    
+
     let fiber = self.manage(fiber);
 
     self.waiter_map.insert(fiber.waiter(), fiber);

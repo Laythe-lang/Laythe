@@ -13,7 +13,11 @@ use crate::{
 pub struct Captures(Array<ObjRef<LyBox>, Header>);
 
 impl Captures {
-  pub fn new(hooks: &GcHooks, captures: &[ObjRef<LyBox>]) -> Self {
+  pub fn new(captures: Array<ObjRef<LyBox>, Header>) -> Self {
+    Self(captures)
+  }
+
+  pub fn build(hooks: &GcHooks, captures: &[ObjRef<LyBox>]) -> Self {
     Self(hooks.manage(captures))
   }
 

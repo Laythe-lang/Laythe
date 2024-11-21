@@ -96,7 +96,7 @@ mod test {
       let closure_name = ClosureName::native(&hooks.as_gc());
 
       let fun = test_fun(&hooks.as_gc(), "example", "module");
-      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let captures = Captures::build(&hooks.as_gc(), &[]);
       let closure = hooks.manage_obj(Closure::new(fun, captures));
 
       let result1 = closure_name.call(&mut hooks, &[val!(closure)]);
@@ -119,7 +119,7 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let closure_name = ClosureLen::native(&hooks.as_gc());
 
-      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let captures = Captures::build(&hooks.as_gc(), &[]);
 
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(4));
       let closure = hooks.manage_obj(Closure::new(
@@ -162,7 +162,7 @@ mod test {
       let closure_call = ClosureCall::native(&hooks.as_gc());
 
       let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Fixed(1));
-      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let captures = Captures::build(&hooks.as_gc(), &[]);
 
       let closure = hooks.manage_obj(Closure::new(
         hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc()))),
