@@ -1,4 +1,5 @@
 mod channel_queue;
+mod channel_waiter;
 
 use channel_queue::ChannelQueue;
 
