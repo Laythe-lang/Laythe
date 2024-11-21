@@ -10,7 +10,7 @@ use laythe_core::{
 
 use crate::global::{
   BOOL_CLASS_NAME, CHANNEL_CLASS_NAME, CLASS_CLASS_NAME, CLOSURE_CLASS_NAME, DEADLOCK_ERROR_NAME,
-  ERROR_CLASS_NAME, EXPORT_ERROR_NAME, FIBER_CLASS_NAME, FUN_CLASS_NAME, IMPORT_ERROR_NAME,
+  ERROR_CLASS_NAME, EXPORT_ERROR_NAME, FUN_CLASS_NAME, IMPORT_ERROR_NAME,
   ITER_CLASS_NAME, LIST_CLASS_NAME, MAP_CLASS_NAME, METHOD_CLASS_NAME, METHOD_NOT_FOUND_ERROR_NAME,
   MODULE_CLASS_NAME, NATIVE_CLASS_NAME, NIL_CLASS_NAME, NUMBER_CLASS_NAME, OBJECT_CLASS_NAME,
   PROPERTY_ERROR_NAME, RUNTIME_ERROR_NAME, STRING_CLASS_NAME, TUPLE_CLASS_NAME, TYPE_ERROR_NAME,
@@ -73,9 +73,6 @@ pub struct BuiltInPrimitives {
   /// the Class class
   pub class: ObjRef<Class>,
 
-  /// the Fiber class
-  pub fiber: ObjRef<Class>,
-
   /// the Fun class
   pub fun: ObjRef<Class>,
 
@@ -123,7 +120,6 @@ impl BuiltInPrimitives {
           ObjectKind::Closure => self.closure,
           ObjectKind::Enumerator => self.iter,
           ObjectKind::Fun => self.fun,
-          ObjectKind::Fiber => self.fiber,
           ObjectKind::Instance => obj.to_instance().class(),
           ObjectKind::List => self.list,
           ObjectKind::Map => self.map,
@@ -143,7 +139,6 @@ impl Trace for BuiltInPrimitives {
     self.bool.trace();
     self.nil.trace();
     self.class.trace();
-    self.fiber.trace();
     self.number.trace();
     self.string.trace();
     self.list.trace();
@@ -158,7 +153,6 @@ impl Trace for BuiltInPrimitives {
     self.bool.trace_debug(stdio);
     self.nil.trace_debug(stdio);
     self.class.trace_debug(stdio);
-    self.fiber.trace_debug(stdio);
     self.number.trace_debug(stdio);
     self.string.trace_debug(stdio);
     self.list.trace_debug(stdio);
@@ -221,10 +215,6 @@ pub fn builtin_from_module(hooks: &GcHooks, module: &Module) -> Option<BuiltIn> 
         .to_class(),
       class: module
         .get_symbol_by_name(hooks.manage_str(CLASS_CLASS_NAME))?
-        .to_obj()
-        .to_class(),
-      fiber: module
-        .get_symbol_by_name(hooks.manage_str(FIBER_CLASS_NAME))?
         .to_obj()
         .to_class(),
       fun: module
