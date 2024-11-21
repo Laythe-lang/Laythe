@@ -13,7 +13,7 @@ use crate::{
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
-  constants::{PLACEHOLDER_NAME, SELF}, hooks::{GcHooks, HookContext, NoContext}, module::{Module, Package}, object::{ChannelWaiter, Fun, LyStr, Map}, utils::IdEmitter, val, value::{Value, VALUE_NIL}, Allocator, Captures, ObjRef, Ref
+  constants::{PLACEHOLDER_NAME, SELF}, hooks::{GcHooks, HookContext, NoContext}, module::{Module, Package}, object::{ChannelWaiter, Fun, LyStr, Map}, utils::IdEmitter, val, value::{Value, VALUE_NIL}, Allocator, Captures, GcContext, ObjRef, Ref
 };
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
@@ -156,11 +156,9 @@ impl Vm {
 
     let current_fun = hooks.manage_obj(current_fun);
     let capture_stub = Captures::new(&hooks, &[]);
-    let waiter = hooks.manage(ChannelWaiter::new(true));
 
-    let fiber = hooks.manage(
-      Fiber::new(None, waiter, current_fun, capture_stub, current_fun.max_slots() + 1)
-    );
+    let fiber = Fiber::new(&mut context.gc(), &context, None, current_fun, capture_stub, current_fun.max_slots() + 1);
+    let fiber = hooks.manage(fiber);
 
     let mut waiter_map = Map::default();
     waiter_map.insert(fiber.waiter(), fiber);
@@ -315,8 +313,8 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: ObjRef<Fun>) {
-    let waiter = self.manage(ChannelWaiter::new(true));
-    let fiber = self.manage(Fiber::new(None, waiter, script, self.capture_stub, script.max_slots() + 1));
+    let fiber = Fiber::new(&mut self.gc(), self, None, script, self.capture_stub, script.max_slots() + 1);
+    let fiber = self.manage(fiber);
 
     self.waiter_map.insert(fiber.waiter(), fiber);
     self.fiber = fiber;

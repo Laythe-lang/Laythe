@@ -98,21 +98,23 @@ impl Fiber {
   /// Create a new fiber from the provided closure. The fiber uses
   /// this initial closure to determine how much stack space to initially
   /// reserve
-  pub fn new(
+  pub fn new<C: TraceRoot>(
+    allocator: &mut RefMut<'_, Allocator>,
+    context: &C,
     parent: Option<Ref<Fiber>>,
-    waiter: Ref<ChannelWaiter>,
     fun: ObjRef<Fun>,
     captures: Captures,
     stack_count: usize,
   ) -> Self {
+    if fun.chunk().instructions().is_empty() {
+      panic!("Fiber's launch function lacking instructions")
+    }
+
     // reserve resources
     let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
     let mut stack = vec![VALUE_NIL; stack_count];
 
-    let instructions = fun.chunk().instructions();
-    if instructions.is_empty() {
-      panic!("Fiber's launch function lacking instructions")
-    }
+    let waiter = allocator.manage(ChannelWaiter::new(true), context);
 
     // push closure and frame onto fiber
     stack[0] = val!(fun);
@@ -528,18 +530,17 @@ impl Fiber {
   /// Attempt to create a new fiber using the most recent call frame
   pub fn split<C: TraceRoot>(
     mut fiber: Ref<Fiber>,
-    mut allocator: RefMut<'_, Allocator>,
+    allocator: &mut RefMut<'_, Allocator>,
     context: &C,
     arg_count: usize,
   ) -> Ref<Fiber> {
     let frame = fiber.frames.pop().expect("Expected call frame");
     allocator.push_root(frame);
 
-    let waiter = allocator.manage(ChannelWaiter::new(true), context);
-
     let new_fiber = Fiber::new(
+      allocator,
+      context,
       Some(fiber),
-      waiter,
       frame.fun(),
       frame.captures(),
       frame.fun().max_slots() + arg_count + 1,
@@ -891,9 +892,8 @@ mod test {
   #[test]
   fn new() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    TestFiberBuilder::default().build(&hooks);
+    TestFiberBuilder::default().build(&context);
   }
 
   #[test]
@@ -901,7 +901,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -920,9 +920,8 @@ mod test {
   #[should_panic]
   fn push_out_of_bounds() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(1).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(1).build(&context);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -935,7 +934,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -954,9 +953,8 @@ mod test {
   #[should_panic]
   fn pop_out_of_bounds() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.pop();
@@ -969,7 +967,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -988,9 +986,8 @@ mod test {
   #[should_panic]
   fn drop_out_of_bounds() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.drop();
@@ -1003,7 +1000,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -1021,9 +1018,8 @@ mod test {
   #[should_panic]
   fn drop_n_out_of_bounds() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.drop_n(2);
@@ -1035,7 +1031,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -1056,9 +1052,8 @@ mod test {
   #[should_panic]
   fn peek_out_of_bounds() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let fiber = TestFiberBuilder::default().max_slots(1).build(&hooks);
+    let fiber = TestFiberBuilder::default().max_slots(1).build(&context);
 
     unsafe {
       fiber.peek(2);
@@ -1070,7 +1065,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -1092,9 +1087,8 @@ mod test {
   #[should_panic]
   fn peek_set_out_of_bounds() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(0).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(0).build(&context);
 
     unsafe {
       fiber.peek_set(1, val!(true));
@@ -1117,7 +1111,7 @@ mod test {
     let mut fiber = TestFiberBuilder::default()
       .max_slots(4)
       .instructions(vec![1, 2, 3])
-      .build(&hooks);
+      .build(&context);
 
     fiber.push_exception_handler(0, 1);
 
@@ -1143,12 +1137,11 @@ mod test {
   #[should_panic]
   fn push_exception_handler_offset_out_of_bounds() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
     let mut fiber = TestFiberBuilder::default()
       .max_slots(3)
       .instructions(vec![1])
-      .build(&hooks);
+      .build(&context);
 
     fiber.push_exception_handler(2, 1);
   }
@@ -1157,12 +1150,11 @@ mod test {
   #[should_panic]
   fn push_exception_handler_slot_depth_out_of_bounds() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
     let mut fiber = TestFiberBuilder::default()
       .max_slots(1)
       .instructions(vec![1, 2, 3])
-      .build(&hooks);
+      .build(&context);
 
     fiber.push_exception_handler(2, 3);
   }
@@ -1170,12 +1162,11 @@ mod test {
   #[test]
   fn pop_exception_handler() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
     let mut fiber = TestFiberBuilder::default()
       .max_slots(4)
       .instructions(vec![1, 2, 3])
-      .build(&hooks);
+      .build(&context);
 
     fiber.push_exception_handler(2, 3);
 
@@ -1188,12 +1179,11 @@ mod test {
   #[should_panic]
   fn pop_exception_handler_no_handler_to_pop() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
     let mut fiber = TestFiberBuilder::default()
       .max_slots(4)
       .instructions(vec![1, 2, 3])
-      .build(&hooks);
+      .build(&context);
 
     fiber.pop_exception_handler();
   }
@@ -1230,7 +1220,7 @@ mod test {
     let mut fiber = TestFiberBuilder::default()
       .max_slots(6)
       .instructions(vec![0, 0, 0])
-      .build(&hooks);
+      .build(&context);
 
     let base_fun = fiber.frames()[0].fun();
 
@@ -1287,9 +1277,8 @@ mod test {
   #[test]
   fn is_complete() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().build(&hooks);
+    let mut fiber = TestFiberBuilder::default().build(&context);
 
     assert!(!fiber.is_complete());
 
@@ -1302,9 +1291,8 @@ mod test {
   #[test]
   fn is_pending() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().build(&hooks);
+    let mut fiber = TestFiberBuilder::default().build(&context);
 
     assert!(fiber.is_pending());
 
@@ -1320,9 +1308,8 @@ mod test {
   #[test]
   fn complete_without_parent_or_channels() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().build(&hooks);
+    let mut fiber = TestFiberBuilder::default().build(&context);
 
     fiber.activate();
 
@@ -1341,7 +1328,7 @@ mod test {
     let fun = hooks.manage_obj(builder.build(Chunk::stub_with_instructions(&hooks, &[0, 0, 0])));
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(3).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(3).build(&context);
 
     fiber.activate();
 
@@ -1354,7 +1341,7 @@ mod test {
     let arg_count = 2;
     fiber.push_frame(fun, captures, arg_count);
 
-    let mut child = Fiber::split(fiber, context.gc(), &context, arg_count);
+    let mut child = Fiber::split(fiber, &mut context.gc(), &context, arg_count);
 
     fiber.sleep();
     child.activate();
@@ -1365,11 +1352,10 @@ mod test {
   #[test]
   fn complete_with_parent_but_no_channels() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let parent = TestFiberBuilder::default().build(&hooks);
+    let parent = TestFiberBuilder::default().build(&context);
 
-    let mut fiber = TestFiberBuilder::default().parent(parent).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().parent(parent).build(&context);
 
     fiber.activate();
 
@@ -1379,9 +1365,8 @@ mod test {
   #[test]
   fn store_ip() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(0).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(0).build(&context);
 
     let val: u8 = 0;
     let ip = &val as *const u8;
@@ -1393,12 +1378,11 @@ mod test {
   #[test]
   fn load_ip() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
     let mut fiber = TestFiberBuilder::default()
       .max_slots(0)
       .instructions(vec![1, 2, 3])
-      .build(&hooks);
+      .build(&context);
 
     unsafe {
       assert_eq!(*fiber.load_ip(), 1);
@@ -1410,7 +1394,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
@@ -1445,7 +1429,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
@@ -1475,7 +1459,7 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     unsafe {
       fiber.push(val!(10.5));
@@ -1496,9 +1480,8 @@ mod test {
   #[should_panic]
   fn stack_slice_out_of_bounds() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let fiber = TestFiberBuilder::default().max_slots(0).build(&hooks);
+    let fiber = TestFiberBuilder::default().max_slots(0).build(&context);
 
     unsafe {
       fiber.stack_slice(3);
@@ -1513,7 +1496,7 @@ mod test {
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(3).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(3).build(&context);
 
     unsafe {
       fiber.push(val!(fun));
@@ -1541,7 +1524,7 @@ mod test {
     let fun = test_fun(&hooks, "next", "next module");
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(4).build(&context);
 
     let og_fun = fiber.frame().fun();
 
@@ -1588,7 +1571,7 @@ mod test {
 
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(6).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(6).build(&context);
 
     unsafe {
       fiber.push(VALUE_NIL);
@@ -1639,7 +1622,7 @@ mod test {
 
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(6).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(6).build(&context);
 
     unsafe {
       fiber.push(VALUE_NIL);
@@ -1698,7 +1681,7 @@ mod test {
 
     let captures = Captures::new(&hooks, &[]);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(6).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(6).build(&context);
 
     unsafe {
       fiber.push(VALUE_NIL);
@@ -1729,9 +1712,8 @@ mod test {
   #[test]
   fn ensure_stack() {
     let context = NoContext::default();
-    let hooks = GcHooks::new(&context);
 
-    let mut fiber = TestFiberBuilder::default().max_slots(2).build(&hooks);
+    let mut fiber = TestFiberBuilder::default().max_slots(2).build(&context);
 
     unsafe {
       fiber.push(VALUE_NIL);
