@@ -112,7 +112,7 @@ impl Vm {
     // call fiber split which will peel off the last frame
     // if it's above the previous water mark
     if fiber.frames().len() == frame_count + 1 {
-      let new_fiber = Fiber::split(fiber, &mut self.gc(), self, arg_count as usize);
+      let new_fiber = Fiber::split(fiber, &mut self.gc.borrow_mut(), self, arg_count as usize);
 
       self.waiter_map.insert(new_fiber.waiter(), new_fiber);
 
@@ -904,17 +904,7 @@ impl Vm {
         self.update_ip(-3);
         self.fiber.sleep();
 
-        self.push_root(fun);
-        let import_fiber = Fiber::new(
-          &mut self.gc(),
-          self,
-          Some(self.fiber),
-          fun,
-          self.capture_stub,
-          fun.max_slots() + 1,
-        );
-        self.pop_roots(1);
-        let import_fiber = self.manage(import_fiber);
+        let import_fiber = self.create_fiber(fun, Some(self.fiber));
 
         self.fiber_queue.push_back(import_fiber);
         ExecutionSignal::ContextSwitch
@@ -996,18 +986,7 @@ impl Vm {
         self.update_ip(-5);
         self.fiber.sleep();
 
-        self.push_root(fun);
-        let import_fiber = Fiber::new(
-          &mut self.gc(),
-          self,
-          Some(self.fiber),
-          fun,
-          self.capture_stub,
-          fun.max_slots() + 1,
-        );
-
-        self.pop_roots(1);
-        let import_fiber = self.manage(import_fiber);
+        let import_fiber = self.create_fiber(fun, Some(self.fiber));
 
         self.fiber_queue.push_back(import_fiber);
         ExecutionSignal::ContextSwitch
@@ -1493,7 +1472,11 @@ impl Vm {
           ))
         });
         stub.set_name(native.name());
+        self.push_root(stub);
+
         self.push_frame(stub, self.capture_stub, arg_count);
+
+        self.pop_roots(1);
 
         // Because the stack can resize we need to store the values in a separate
         // vec. TODO we should have a slice type which will keep the store alive.

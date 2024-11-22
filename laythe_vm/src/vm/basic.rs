@@ -134,10 +134,31 @@ impl Vm {
   ) {
     self.store_ip();
 
-    self.fiber.push_frame(closure, captures, arg_count as usize);
+    let mut fiber = self.fiber;
+    fiber.push_frame(self.gc.borrow_mut(), self, closure, captures, arg_count as usize);
+
     self.load_ip();
 
     self.current_fun = closure;
+  }
+
+  pub(super) fn create_fiber(&mut self, fun: ObjRef<Fun>, parent: Option<Ref<Fiber>>) -> Ref<Fiber> {
+    self.push_root(fun);
+    let fiber = Fiber::new(
+      &mut self.gc.borrow_mut(),
+      self,
+      parent,
+      fun,
+      self.capture_stub,
+      fun.max_slots() + 1,
+    );
+    self.pop_roots(1);
+
+    let fiber = self.manage(fiber);
+
+    self.waiter_map.insert(fiber.waiter(), fiber);
+
+    fiber
   }
 
   /// Pop a frame off the call stack. If no frame remain

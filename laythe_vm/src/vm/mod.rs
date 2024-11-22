@@ -331,22 +331,9 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: ObjRef<Fun>) {
-    self.push_root(script);
-    let fiber = Fiber::new(
-      &mut self.gc(),
-      self,
-      None,
-      script,
-      self.capture_stub,
-      script.max_slots() + 1,
-    );
-    self.pop_roots(1);
-
-    let fiber = self.manage(fiber);
-
-    self.waiter_map.insert(fiber.waiter(), fiber);
+    let fiber = self.create_fiber(script, None);
     self.fiber = fiber;
-    self.main_fiber = self.fiber;
+    self.main_fiber = fiber;
     self.fiber.activate();
     self.load_ip();
 
