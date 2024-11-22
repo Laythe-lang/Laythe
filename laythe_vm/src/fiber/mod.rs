@@ -8,12 +8,12 @@ use self::{call_frame::CallFrame, exception_handler::ExceptionHandler};
 use laythe_core::{
   constants::SCRIPT,
   if_let_obj,
-  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Trace, TraceRoot},
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Header, Trace, TraceRoot},
   match_obj,
   object::{Channel, ChannelWaiter, Fun, Instance, List, ListLocation, ObjectKind},
   val,
   value::{Value, VALUE_NIL},
-  Allocator, Captures, ObjRef, Ref,
+  Allocator, Captures, ObjRef, Ref, UniqueVector, VecBuilder,
 };
 use std::{cell::RefMut, fmt, io::Write, ptr};
 
@@ -64,7 +64,7 @@ pub struct Fiber {
   stack: Vec<Value>,
 
   /// A stack holding call frames currently in use
-  frames: Vec<CallFrame>,
+  frames: UniqueVector<CallFrame, Header>,
 
   /// A stack of exception handlers active on this fiber
   exception_handlers: Vec<ExceptionHandler>,
@@ -109,16 +109,23 @@ impl Fiber {
     if fun.chunk().instructions().is_empty() {
       panic!("Fiber's launch function lacking instructions")
     }
-
-    // reserve resources
-    let mut frames = Vec::<CallFrame>::with_capacity(INITIAL_FRAME_SIZE);
+    // Create stack and assign fun to first slot
     let mut stack = vec![VALUE_NIL; stack_count];
+    stack[0] = val!(fun);
+
+    // Create frames and initial stack frame
+    let mut frames = UniqueVector::new(allocator.manage(
+      VecBuilder::new(
+        &[CallFrame::new(fun, captures, stack.as_mut_ptr())],
+        INITIAL_FRAME_SIZE,
+      ),
+      context,
+    ));
+
+    allocator.push_root(frames);
 
     let waiter = allocator.manage(ChannelWaiter::new(true), context);
-
-    // push closure and frame onto fiber
-    stack[0] = val!(fun);
-    frames.push(CallFrame::new(fun, captures, stack.as_mut_ptr()));
+    allocator.pop_roots(1);
 
     // get pointers to the call frame and stack top
     let current_frame = frames.as_mut_ptr();
@@ -317,7 +324,7 @@ impl Fiber {
       .channels
       .iter_mut()
       .map(|channel| channel.runnable_waiter())
-      .find(|fiber| fiber.is_some())
+      .find(|waiter| waiter.is_some())
       .unwrap_or(None)
   }
 
@@ -482,7 +489,14 @@ impl Fiber {
   }
 
   /// Push a frame onto the call stack
-  pub fn push_frame(&mut self, fun: ObjRef<Fun>, captures: Captures, arg_count: usize) {
+  pub fn push_frame<C: TraceRoot>(
+    &mut self,
+    allocator: RefMut<'_, Allocator>,
+    context: &C,
+    fun: ObjRef<Fun>,
+    captures: Captures,
+    arg_count: usize,
+  ) {
     unsafe {
       self.ensure_stack(fun.max_slots());
       let stack_start = self.stack_top.sub(arg_count + 1);
@@ -490,7 +504,11 @@ impl Fiber {
       #[cfg(debug_assertions)]
       assert_inbounds(&self.stack, stack_start);
 
-      self.frames.push(CallFrame::new(fun, captures, stack_start));
+      self.frames.push(
+        allocator,
+        context,
+        CallFrame::new(fun, captures, stack_start),
+      );
       self.frame = self.frames.as_mut_ptr().add(self.frames.len() - 1);
 
       #[cfg(debug_assertions)]
@@ -833,7 +851,7 @@ impl Trace for Fiber {
       channel.trace();
     });
 
-    self.frames.iter().for_each(|call_frame| call_frame.trace());
+    self.frames.trace();
 
     self.waiter.trace();
     if let Some(error) = &self.error {
@@ -860,10 +878,7 @@ impl Trace for Fiber {
       channel.trace_debug(log);
     });
 
-    self
-      .frames
-      .iter()
-      .for_each(|call_frame| call_frame.trace_debug(log));
+    self.frames.trace_debug(log);
 
     self.waiter.trace_debug(log);
 
@@ -1124,7 +1139,7 @@ mod test {
       fiber.push(val!(true));
     }
 
-    fiber.push_frame(fun, captures, 2);
+    fiber.push_frame(context.gc(), &context, fun, captures, 2);
     fiber.push_exception_handler(2, 2);
 
     assert_eq!(fiber.exception_handlers[0].offset(), 0);
@@ -1237,11 +1252,11 @@ mod test {
     }
 
     fiber.push_exception_handler(2, 2);
-    fiber.push_frame(fun1, captures, 2);
+    fiber.push_frame(context.gc(), &context, fun1, captures, 2);
     fiber.store_ip(&fun1.chunk().instructions()[0]);
 
     fiber.push_exception_handler(1, 1);
-    fiber.push_frame(fun2, captures, 1);
+    fiber.push_frame(context.gc(), &context, fun2, captures, 1);
 
     fiber.activate();
     fiber.store_ip(&fun2.chunk().instructions()[2]);
@@ -1342,7 +1357,7 @@ mod test {
     }
 
     let arg_count = 2;
-    fiber.push_frame(fun, captures, arg_count);
+    fiber.push_frame(context.gc(), &context, fun, captures, arg_count);
 
     let mut child = Fiber::split(fiber, &mut context.gc(), &context, arg_count);
 
@@ -1417,7 +1432,7 @@ mod test {
       assert_eq!(frame_stack[3], VALUE_NIL);
       assert_eq!(frame_stack[4], val!(fun));
 
-      fiber.push_frame(fun, captures, 0);
+      fiber.push_frame(context.gc(), &context, fun, captures, 0);
 
       let frame_stack = fiber.frame_stack();
 
@@ -1452,7 +1467,7 @@ mod test {
       assert_eq!(frame_stack[3], VALUE_NIL);
       assert_eq!(frame_stack[4], val!(fun));
 
-      fiber.push_frame(fun, captures, 8);
+      fiber.push_frame(context.gc(), &context, fun, captures, 8);
       fiber.frame_stack();
     }
   }
@@ -1507,7 +1522,7 @@ mod test {
       fiber.push(val!(true));
     }
 
-    fiber.push_frame(fun, captures, 2);
+    fiber.push_frame(context.gc(), &context, fun, captures, 2);
 
     let slice = fiber.frame_stack();
 
@@ -1538,7 +1553,7 @@ mod test {
       fiber.push(val!(true));
     }
 
-    fiber.push_frame(fun, captures, 2);
+    fiber.push_frame(context.gc(), &context, fun, captures, 2);
 
     match fiber.pop_frame() {
       FiberPopResult::Ok(popped_fun) => {
@@ -1585,8 +1600,8 @@ mod test {
       fiber.push(val!(5.0));
     }
 
-    fiber.push_frame(fun1, captures, 2);
-    fiber.push_frame(fun2, captures, 1);
+    fiber.push_frame(context.gc(), &context, fun1, captures, 2);
+    fiber.push_frame(context.gc(), &context, fun2, captures, 1);
 
     unsafe {
       assert_eq!(fiber.stack_unwind(None), UnwindResult::Unhandled);
@@ -1636,11 +1651,11 @@ mod test {
       fiber.push(val!(5.0));
     }
 
-    fiber.push_frame(fun1, captures, 2);
+    fiber.push_frame(context.gc(), &context, fun1, captures, 2);
     fiber.push_exception_handler(2, 2);
     fiber.store_ip(&fun1.chunk().instructions()[1]);
 
-    fiber.push_frame(fun2, captures, 1);
+    fiber.push_frame(context.gc(), &context, fun2, captures, 1);
 
     fiber.activate();
     fiber.store_ip(&fun2.chunk().instructions()[2]);
@@ -1693,7 +1708,7 @@ mod test {
       fiber.push(val!(true));
     }
 
-    fiber.push_frame(fun1, captures, 2);
+    fiber.push_frame(context.gc(), &context, fun1, captures, 2);
 
     unsafe {
       fiber.push(val!(fun2));
@@ -1701,7 +1716,7 @@ mod test {
       fiber.push(val!(8.0));
     }
 
-    fiber.push_frame(fun2, captures, 1);
+    fiber.push_frame(context.gc(), &context, fun2, captures, 1);
 
     unsafe {
       assert_eq!(fiber.stack_unwind(Some(2)), UnwindResult::UnwindStopped);
