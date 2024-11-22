@@ -1,0 +1,11 @@
+let x = 5;
+
+fn outer() {
+  fn inner() { x }
+
+  return inner;
+}
+
+let inner = outer();
+
+assertEq(inner(), 5);
