@@ -1,6 +1,7 @@
 mod raw_unique_vector;
 
 use std::{
+  cell::RefMut,
   fmt::{self, Debug, Display, Pointer},
   ops::{Deref, DerefMut},
   ptr::{self},
@@ -10,8 +11,8 @@ use raw_unique_vector::RawUniqueVector;
 
 use crate::{
   collections::{IndexedResult, VecBuilder},
-  managed::{DebugHeap, Mark, Trace, Unmark},
-  GcHooks,
+  managed::{DebugHeap, Mark, Trace, TraceRoot, Unmark},
+  Allocator, GcHooks,
 };
 
 pub struct UniqueVector<T, H>(RawUniqueVector<T, H>);
@@ -98,24 +99,73 @@ where
   T: 'static + Trace + DebugHeap + Copy,
   H: 'static + Send + Mark + Unmark + Trace + Default,
 {
-  /// Clear all elements of this vector
-  pub fn reserve(&mut self, hooks: &GcHooks, additional: usize) {
+  /// Clear all elements of this vector using GcHooks
+  pub fn reserve_with_hooks(&mut self, hooks: &GcHooks, additional: usize) {
     let len = self.0.len();
     let cap = self.0.cap();
 
+    #[cfg(not(feature = "gc_stress"))]
     if len + additional > cap {
       self.0 = hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2));
+    }
+
+    // when stress testing if we don't allocate collect anyways
+    #[cfg(feature = "gc_stress")]
+    if len + additional > cap {
+      self.0 = hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2));
+    } else {
+      hooks.collect_garbage();
+    }
+  }
+
+  /// Clear all elements of this vector
+  #[inline]
+  pub fn reserve<C: TraceRoot>(
+    &mut self,
+    mut allocator: RefMut<'_, Allocator>,
+    context: &C,
+    additional: usize,
+  ) {
+    let len = self.0.len();
+    let cap = self.0.cap();
+
+    #[cfg(not(feature = "gc_stress"))]
+    if len + additional > cap {
+      self.0 = allocator.manage(VecBuilder::new(self, cap * 2), context);
+    }
+
+    // when stress testing if we don't allocate collect anyways
+    #[cfg(feature = "gc_stress")]
+    if len + additional > cap {
+      self.0 = allocator.manage(VecBuilder::new(self, cap * 2), context);
+    } else {
+      allocator.collect_garbage(context);
     }
   }
 
   /// Push a new element onto this list. If a resize is needed
   /// a new list will be allocated and elements will be transferred
-  pub fn push(&mut self, hooks: &GcHooks, value: T) {
+  pub fn push_with_hooks(&mut self, hooks: &GcHooks, value: T) {
     let len = self.0.len();
 
     // determine if we need to grow the list then
     // persist the value
-    self.reserve(hooks, 1);
+    self.reserve_with_hooks(hooks, 1);
+
+    unsafe {
+      self.0.write_value(value, len);
+      self.0.write_len(len + 1);
+    }
+  }
+
+  /// Clear all elements of this vector
+  #[inline]
+  pub fn push<C: TraceRoot>(&mut self, allocator: RefMut<'_, Allocator>, context: &C, value: T) {
+    let len = self.0.len();
+
+    // determine if we need to grow the list then
+    // persist the value
+    self.reserve(allocator, context, 1);
 
     unsafe {
       self.0.write_value(value, len);
@@ -133,7 +183,7 @@ where
 
     // determine if we need to grow the list then
     // persist the value
-    self.reserve(hooks, 1);
+    self.reserve_with_hooks(hooks, 1);
 
     unsafe {
       ptr::copy(
@@ -280,10 +330,10 @@ mod test {
     let mut vector: UniqueVector<u16, Header> =
       UniqueVector::new(hooks.manage(VecBuilder::new(&[2, 2], 4)));
 
-    vector.reserve(&hooks, 2);
+    vector.reserve_with_hooks(&hooks, 2);
     assert_eq!(vector.cap(), 4);
 
-    vector.reserve(&hooks, 4);
+    vector.reserve_with_hooks(&hooks, 4);
     assert_eq!(vector.cap(), 8)
   }
 
@@ -353,7 +403,7 @@ mod test {
       UniqueVector::new(hooks.manage(VecBuilder::new(&[1, 2, 3], 4)));
     assert_eq!(vector.len(), 3);
     assert_eq!(vector.cap(), 4);
-    
+
     vector.truncate(6);
     assert_eq!(vector.len(), 3);
     assert_eq!(vector.cap(), 4);
@@ -387,8 +437,8 @@ mod test {
     let mut vector: UniqueVector<u16, Header> =
       UniqueVector::new(hooks.manage(VecBuilder::new(&[1, 2, 3], 4)));
 
-    vector.push(&hooks, 4);
-    vector.push(&hooks, 5);
+    vector.push_with_hooks(&hooks, 4);
+    vector.push_with_hooks(&hooks, 5);
 
     assert_eq!(vector[0], 1);
     assert_eq!(vector[1], 2);
@@ -408,8 +458,8 @@ mod test {
     let mut vector: UniqueVector<u16, Header> =
       UniqueVector::new(hooks.manage(VecBuilder::new(&[1, 2, 3], 4)));
 
-    vector.push(&hooks, 4);
-    vector.push(&hooks, 5);
+    vector.push_with_hooks(&hooks, 4);
+    vector.push_with_hooks(&hooks, 5);
 
     assert_eq!(vector[0], 1);
     assert_eq!(vector[1], 2);
