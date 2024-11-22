@@ -4,7 +4,7 @@ use crate::{
 use std::{
   cmp::Ordering,
   ffi::OsStr,
-  fmt,
+  fmt::{self, Pointer},
   hash::{Hash, Hasher},
   io::Write,
   ops::Deref,
@@ -114,7 +114,7 @@ impl fmt::Display for LyStr {
 
 impl fmt::Pointer for LyStr {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    self.0.as_alloc_ptr().fmt(f)
+    Pointer::fmt(&self.0, f)
   }
 }
 

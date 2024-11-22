@@ -110,7 +110,7 @@ impl DebugHeap for Tuple {
 
 impl fmt::Pointer for Tuple {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-    Pointer::fmt(&self, f)
+    Pointer::fmt(&self.0, f)
   }
 }
 
