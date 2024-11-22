@@ -255,7 +255,7 @@ impl Allocator {
 
   /// Collect garbage present in the heap for unreachable objects. Use the provided context
   /// to mark a set of initial roots into the vm.
-  fn collect_garbage<C: TraceRoot + ?Sized>(&mut self, context: &C) {
+  pub fn collect_garbage<C: TraceRoot + ?Sized>(&mut self, context: &C) {
     #[cfg(any(
       feature = "gc_log_mark",
       feature = "gc_log_free",

@@ -5,7 +5,11 @@ use std::{
 };
 
 use crate::{
-  managed::{Allocate, AllocateObj, DebugHeap, Trace, TraceRoot}, object::{Class, LyStr}, reference::ObjRef, value::{Value, VALUE_NIL}, Allocator, Call
+  managed::{Allocate, AllocateObj, DebugHeap, Trace, TraceRoot},
+  object::{Class, LyStr},
+  reference::ObjRef,
+  value::{Value, VALUE_NIL},
+  Allocator, Call,
 };
 use laythe_env::io::Io;
 
@@ -166,6 +170,12 @@ impl<'a> GcHooks<'a> {
   #[inline]
   pub fn manage_str<S: AsRef<str>>(&self, string: S) -> LyStr {
     self.context.gc().manage_str(string, self.context)
+  }
+
+  /// Trigger a gc
+  #[inline]
+  pub fn collect_garbage(&self) {
+    self.context.gc().collect_garbage(self.context);
   }
 
   /// Push a new root onto the gc
