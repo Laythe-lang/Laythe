@@ -491,14 +491,6 @@ impl Trace for ObjectRef {
 
     macro_rules! trace_debug {
       ($obj:ident) => {
-        log
-          .write_fmt(format_args!(
-            "{:p} mark {:?}\n",
-            &*self.header(),
-            DebugWrap(&$obj, 2)
-          ))
-          .expect("unable to write to stdout");
-        log.flush().expect("unable to flush stdout");
         $obj.trace_debug(log)
       };
     }
