@@ -1,8 +1,14 @@
 use super::{ExecutionSignal, Vm};
-use crate::{cache::InlineCache, fiber::{Fiber, FiberPopResult}};
+use crate::{
+  cache::InlineCache,
+  fiber::{Fiber, FiberPopResult},
+};
 use core::fmt;
 use laythe_core::{
-  managed::{Allocate, AllocateObj, DebugHeap, Trace}, object::{ChannelWaiter, Class, Fun, LyStr}, value::Value, Captures, ObjRef, Ref
+  managed::{Allocate, AllocateObj, DebugHeap, Trace},
+  object::{ChannelWaiter, Class, Fun, LyStr},
+  value::Value,
+  Captures, ObjRef, Ref,
 };
 use std::{convert::TryInto, ptr};
 
@@ -135,14 +141,24 @@ impl Vm {
     self.store_ip();
 
     let mut fiber = self.fiber;
-    fiber.push_frame(self.gc.borrow_mut(), self, closure, captures, arg_count as usize);
+    fiber.push_frame(
+      self.gc.borrow_mut(),
+      self,
+      closure,
+      captures,
+      arg_count as usize,
+    );
 
     self.load_ip();
 
     self.current_fun = closure;
   }
 
-  pub(super) fn create_fiber(&mut self, fun: ObjRef<Fun>, parent: Option<Ref<Fiber>>) -> Ref<Fiber> {
+  pub(super) fn create_fiber(
+    &mut self,
+    fun: ObjRef<Fun>,
+    parent: Option<Ref<Fiber>>,
+  ) -> Ref<Fiber> {
     self.push_root(fun);
     let fiber = Fiber::new(
       &mut self.gc.borrow_mut(),
@@ -155,8 +171,8 @@ impl Vm {
     self.pop_roots(1);
 
     let fiber = self.manage(fiber);
-
-    self.waiter_map.insert(fiber.waiter(), fiber);
+    let mut waiter = fiber.waiter();
+    waiter.set_waiter(fiber);
 
     fiber
   }
@@ -175,9 +191,6 @@ impl Vm {
         if self.fiber == self.main_fiber {
           Some(ExecutionSignal::Exit)
         } else {
-          // remove fiber from waiter map
-          self.waiter_map.remove(&self.fiber.waiter());
-
           // attempt to grab waiter and enqueue next fiber
           if let Some(waiter) = self.fiber.complete() {
             self.queue_blocked_fiber(waiter);
@@ -192,13 +205,13 @@ impl Vm {
   }
 
   /// Queue a blocked fiber
-  pub (super) fn queue_blocked_fiber(&mut self, waiter: Ref<ChannelWaiter>) {
-    let fiber = match self.waiter_map.get_mut(&waiter) {
-        Some(fiber) => fiber,
-        None => self.internal_error("Unable to retrieve fiber waiter"),
-    };
-
-    fiber.unblock();
-    self.fiber_queue.push_back(*fiber);
+  pub(super) fn queue_blocked_fiber(&mut self, mut waiter: Ref<ChannelWaiter>) {
+    match waiter.get_waiter_mut::<Ref<Fiber>>() {
+      Some(fiber) => {
+        fiber.unblock();
+        self.fiber_queue.push_back(*fiber)
+      },
+      None => self.internal_error("Unable to find fiber"),
+    }
   }
 }

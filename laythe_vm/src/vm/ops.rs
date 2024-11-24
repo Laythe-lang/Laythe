@@ -114,7 +114,8 @@ impl Vm {
     if fiber.frames().len() == frame_count + 1 {
       let new_fiber = Fiber::split(fiber, &mut self.gc.borrow_mut(), self, arg_count as usize);
 
-      self.waiter_map.insert(new_fiber.waiter(), new_fiber);
+      let mut waiter = new_fiber.waiter();
+      waiter.set_waiter(new_fiber);
 
       // put the fiber in the queue
       self.fiber_queue.push_back(new_fiber);

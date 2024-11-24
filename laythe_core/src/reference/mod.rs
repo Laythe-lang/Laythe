@@ -1,6 +1,8 @@
 mod obj_reference;
 
-use crate::managed::{AllocResult, Allocation, DebugHeap, DebugWrap, Manage, Mark, Trace};
+use crate::managed::{
+  AllocResult, Allocation, DebugHeap, DebugWrap, Manage, Mark, Trace, TraceAny,
+};
 pub use obj_reference::{ObjRef, Object, ObjectHandle, ObjectRef};
 use std::{
   cmp::Ordering,
@@ -86,6 +88,20 @@ impl<T: 'static + Trace + DebugHeap> Trace for Ref<T> {
     log.flush().expect("unable to flush stdout");
 
     self.obj().data.trace_debug(log);
+  }
+}
+
+impl<T: 'static + Trace + DebugHeap> TraceAny for Ref<T> {
+  fn as_trace(&self) -> &dyn Trace {
+    self
+  }
+
+  fn as_any(&self) -> &dyn std::any::Any {
+    self
+  }
+
+  fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+    self
   }
 }
 

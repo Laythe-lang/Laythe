@@ -7,5 +7,5 @@ pub use allocate::{AllocObjResult, AllocResult, Allocate, AllocateObj};
 pub use allocation::Allocation;
 pub use header::Header;
 pub use manage::{
-  DebugHeap, DebugWrap, DebugWrapDyn, Manage, Mark, Marked, Trace, TraceRoot, Unmark,
+  DebugHeap, DebugWrap, DebugWrapDyn, Manage, Mark, Marked, Trace, TraceAny, TraceRoot, Unmark,
 };

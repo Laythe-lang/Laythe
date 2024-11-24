@@ -20,7 +20,7 @@ use laythe_core::{
   constants::{PLACEHOLDER_NAME, SELF},
   hooks::{GcHooks, HookContext, NoContext},
   module::{Module, Package},
-  object::{ChannelWaiter, Fun, LyStr, Map},
+  object::{Fun, LyStr, Map},
   utils::IdEmitter,
   val,
   value::{Value, VALUE_NIL},
@@ -117,9 +117,6 @@ pub struct Vm {
   /// A collection of packages that have already been loaded
   packages: Map<LyStr, Ref<Package>>,
 
-  /// A mapping between waiters and fibers
-  waiter_map: Map<Ref<ChannelWaiter>, Ref<Fiber>>,
-
   /// A utility to emit ids for modules
   emitter: IdEmitter,
 
@@ -196,7 +193,6 @@ impl Vm {
       gc,
       files: VmFiles::default(),
       fiber_queue: VecDeque::new(),
-      waiter_map,
       builtin,
       root_dir,
       packages: Map::default(),
