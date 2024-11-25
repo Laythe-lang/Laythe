@@ -443,6 +443,7 @@ impl Fiber {
   }
 
   /// Get a slice of the top count values on the stack
+  #[cfg(test)]
   pub fn frame_stack(&self) -> &[Value] {
     unsafe {
       let stack_start = (*self.frame).stack_start();
@@ -545,47 +546,70 @@ impl Fiber {
     }
   }
 
-  /// Attempt to create a new fiber using the most recent call frame
+  /// Create a new fiber using the top frame from the current fiber
   pub fn split<C: TraceRoot>(
     mut fiber: Ref<Fiber>,
     allocator: &mut RefMut<'_, Allocator>,
     context: &C,
     arg_count: usize,
   ) -> Ref<Fiber> {
-    let frame = fiber.frames.pop().expect("Expected call frame");
-    allocator.push_root(frame);
+    // Confirm we have 2 or more frames left
+    assert!(fiber.frames().len() > 1);
 
-    let new_fiber = Fiber::new(
-      allocator,
-      context,
-      Some(fiber),
-      frame.fun(),
-      frame.captures(),
-      frame.fun().max_slots() + arg_count + 1,
-    );
+    let mut frame = fiber.frames.pop().expect("Expected call frame");
+    let parent_stack_top = frame.stack_start();
+    let fun = frame.fun();
 
-    let mut new_fiber = allocator.manage(new_fiber, context);
+    // We need a slot for the function, each argument and
+    // any additional slots on top of that
+    let stack_count = fun.max_slots() + arg_count + 1;
+
+    // Create the stack
+    let mut stack = vec![VALUE_NIL; stack_count];
+
+    // Assign the frame to the start of the stack and write in the fun
+    let stack_start = stack.as_mut_ptr();
+    unsafe {
+      ptr::write(stack_start, val!(fun));
+    }
+    frame.store_stack_start(stack_start);
+
+    // Create the initial set of frames
+    let mut frames =
+      UniqueVector::new(allocator.manage(VecBuilder::new(&[frame], INITIAL_FRAME_SIZE), context));
+
+    allocator.push_root(frames);
+
+    let waiter = allocator.manage(ChannelWaiter::new(true), context);
     allocator.pop_roots(1);
 
-    let slots = fiber.frame_stack().len();
-    assert_eq!(slots, arg_count + 1);
+    // get pointers to the call frame and stack top
+    let current_frame = frames.as_mut_ptr();
+    let stack_top = unsafe { stack_start.add(1 + arg_count) };
 
-    // if we have any argument bulk copy them to the fiber
-    if slots > 1 {
-      unsafe {
-        ptr::copy_nonoverlapping(
-          fiber.frame().stack_start().offset(1),
-          new_fiber.stack_top,
-          arg_count,
-        );
-        new_fiber.stack_top = new_fiber.stack_top.add(arg_count);
-      }
-    }
+    let new_fiber = Self {
+      stack,
+      waiter,
+      frames,
+      parent: Some(fiber),
+      channels: vec![],
+      exception_handlers: vec![],
+      state: FiberState::Pending,
+      error: None,
+      frame: current_frame,
+      backtrace_ips: vec![],
+      stack_top,
+    };
 
-    // Effectively pop the current fibers frame so they're 'moved'
-    // to the new fiber
+    let new_fiber = allocator.manage(new_fiber, context);
+
     unsafe {
-      fiber.stack_top = fiber.frame().stack_start();
+      // Copy argument from the parent to the child fiber
+      ptr::copy_nonoverlapping(parent_stack_top.add(1), stack_start.add(1), arg_count);
+
+      // Effectively pop the current fibers frame so they're 'moved'
+      // to the new fiber
+      fiber.stack_top = parent_stack_top;
       fiber.frame = fiber.frame.sub(1);
     }
 

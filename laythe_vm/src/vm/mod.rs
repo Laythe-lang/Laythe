@@ -175,9 +175,6 @@ impl Vm {
     );
     let fiber = hooks.manage(fiber);
 
-    let mut waiter_map = Map::default();
-    waiter_map.insert(fiber.waiter(), fiber);
-
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
 
