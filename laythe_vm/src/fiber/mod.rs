@@ -443,7 +443,7 @@ impl Fiber {
   }
 
   /// Get a slice of the top count values on the stack
-  #[cfg(test)]
+  #[cfg(any(test, feature = "debug"))]
   pub fn frame_stack(&self) -> &[Value] {
     unsafe {
       let stack_start = (*self.frame).stack_start();
