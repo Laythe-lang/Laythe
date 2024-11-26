@@ -823,8 +823,8 @@ impl Vm {
   pub(super) unsafe fn op_get_capture(&mut self) -> ExecutionSignal {
     let slot = self.read_byte();
 
-    let upvalue = self.fiber.captures().get_capture_value(slot as usize);
-    self.fiber.push(upvalue);
+    let capture = self.fiber.captures().get_capture_value(slot as usize);
+    self.fiber.push(capture);
 
     ExecutionSignal::Ok
   }
