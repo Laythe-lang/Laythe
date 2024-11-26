@@ -1,7 +1,9 @@
+use crate::fiber::UnwindResult;
+
 use super::{ExecutionMode, ExecutionResult, ExecutionSignal, Vm};
 use laythe_core::{
   if_let_obj,
-  object::{Class, Instance, LyStr, ObjectKind, UnwindResult},
+  object::{Class, Instance, LyStr, ObjectKind},
   to_obj_kind, val,
   value::Value, ObjRef,
 };

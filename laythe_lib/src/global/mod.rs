@@ -15,7 +15,7 @@ use time::add_clock_funs;
 
 pub use primitives::{
   bool::BOOL_CLASS_NAME, channel::CHANNEL_CLASS_NAME, class::CLASS_CLASS_NAME,
-  closure::CLOSURE_CLASS_NAME, fiber::FIBER_CLASS_NAME, fun::FUN_CLASS_NAME, iter::ITER_CLASS_NAME,
+  closure::CLOSURE_CLASS_NAME, fun::FUN_CLASS_NAME, iter::ITER_CLASS_NAME,
   list::LIST_CLASS_NAME, map::MAP_CLASS_NAME, method::METHOD_CLASS_NAME, module::MODULE_CLASS_NAME,
   native::NATIVE_CLASS_NAME, nil::NIL_CLASS_NAME, number::NUMBER_CLASS_NAME,
   object::OBJECT_CLASS_NAME, string::STRING_CLASS_NAME, tuple::TUPLE_CLASS_NAME,

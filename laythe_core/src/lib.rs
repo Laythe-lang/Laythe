@@ -21,7 +21,7 @@ use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
 use object::Instance;
 
-pub use collections::{VecBuilder, IndexedResult};
+pub use collections::{VecBuilder, IndexedResult, UniqueVector};
 pub use reference::{ObjectRef, ObjRef, Ref};
 pub use captures::Captures;
 pub use allocator::{Allocator, NO_GC};

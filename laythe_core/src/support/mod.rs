@@ -2,73 +2,9 @@ use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
 
 use crate::{
-  captures::Captures, chunk::Chunk, constants::SCRIPT, hooks::GcHooks, module::{module_class, Module}, object::{Class, Fiber, FiberResult, Fun, FunBuilder, LyStr}, reference::{ObjRef, Ref}, signature::Arity, value::Value
+  chunk::Chunk, hooks::GcHooks, module::{module_class, Module}, object::{Class, Fun, FunBuilder, LyStr}, reference::{ObjRef, Ref}, signature::Arity, value::Value
 };
 
-pub struct FiberBuilder {
-  name: String,
-  parent: Option<ObjRef<Fiber>>,
-  module_name: String,
-  instructions: Vec<u8>,
-  max_slots: i32,
-}
-
-impl Default for FiberBuilder {
-  fn default() -> Self {
-    Self {
-      name: SCRIPT.to_string(),
-      parent: None,
-      module_name: "Fiber Module".to_string(),
-      instructions: vec![0],
-      max_slots: 0,
-    }
-  }
-}
-
-impl FiberBuilder {
-  pub fn name(mut self, name: &str) -> Self {
-    self.name = name.to_string();
-    self
-  }
-
-  pub fn module_name(mut self, name: &str) -> Self {
-    self.module_name = name.to_string();
-    self
-  }
-
-  pub fn instructions(mut self, instructions: Vec<u8>) -> Self {
-    self.instructions = instructions;
-    self
-  }
-
-  pub fn parent(mut self, parent: ObjRef<Fiber>) -> Self {
-    self.parent = Some(parent);
-    self
-  }
-
-  pub fn max_slots(mut self, max_slots: i32) -> Self {
-    self.max_slots = max_slots;
-    self
-  }
-
-  pub fn build(self, hooks: &GcHooks) -> FiberResult<ObjRef<Fiber>> {
-    let mut fun = test_fun_builder(hooks, &self.name, &self.module_name);
-    fun.update_max_slots(self.max_slots);
-
-    let instructions = hooks.manage(&*self.instructions);
-    let constants = hooks.manage::<_, &[Value]>(&[]);
-    let lines = hooks.manage::<_, &[u16]>(&vec![0; instructions.len()]);
-    let chunk = Chunk::new(instructions, constants, lines);
-
-    let fun = hooks.manage_obj(fun.build(chunk));
-    hooks.push_root(fun);
-
-    let captures = Captures::new(hooks, &[]);
-    hooks.pop_roots(1);
-
-    Fiber::new(self.parent, fun, captures).map(|fiber| hooks.manage_obj(fiber))
-  }
-}
 
 #[derive(Default)]
 pub struct ClassBuilder {

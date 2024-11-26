@@ -12,11 +12,19 @@ use crate::{
   byte_code::ByteCode,
   cache::InlineCache,
   constants::REPL_MODULE,
+  fiber::Fiber,
   source::{Source, VmFileId, VmFiles},
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
-  constants::{PLACEHOLDER_NAME, SELF}, hooks::{GcHooks, HookContext, NoContext}, module::{Module, Package}, object::{Fiber, Fun, LyStr, Map}, utils::IdEmitter, val, value::{Value, VALUE_NIL}, Allocator, Captures, ObjRef, Ref
+  constants::{PLACEHOLDER_NAME, SELF},
+  hooks::{GcHooks, HookContext, NoContext},
+  module::{Module, Package},
+  object::{Fun, LyStr, Map},
+  utils::IdEmitter,
+  val,
+  value::{Value, VALUE_NIL},
+  Allocator, Captures, GcContext, ObjRef, Ref,
 };
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
@@ -83,10 +91,10 @@ pub fn default_native_vm() -> Vm {
 /// The virtual machine for the laythe programming language
 pub struct Vm {
   /// The current running fiber
-  fiber: ObjRef<Fiber>,
+  fiber: Ref<Fiber>,
 
   /// The main fiber
-  main_fiber: ObjRef<Fiber>,
+  main_fiber: Ref<Fiber>,
 
   /// The vm's garbage collector
   gc: RefCell<Allocator>,
@@ -98,7 +106,7 @@ pub struct Vm {
   files: VmFiles,
 
   /// The queue of runnable fibers
-  fiber_queue: VecDeque<ObjRef<Fiber>>,
+  fiber_queue: VecDeque<Ref<Fiber>>,
 
   /// The root directory
   root_dir: PathBuf,
@@ -155,10 +163,17 @@ impl Vm {
     let current_fun = Fun::stub(&hooks, hooks.manage_str(PLACEHOLDER_NAME), global);
 
     let current_fun = hooks.manage_obj(current_fun);
-    let capture_stub = Captures::new(&hooks, &[]);
-    let fiber = hooks.manage_obj(
-      Fiber::new(None, current_fun, capture_stub).expect("Unable to generate placeholder fiber"),
+    let capture_stub = Captures::build(&hooks, &[]);
+
+    let fiber = Fiber::new(
+      &mut context.gc(),
+      &context,
+      None,
+      current_fun,
+      capture_stub,
+      current_fun.max_slots() + 1,
     );
+    let fiber = hooks.manage(fiber);
 
     let builtin = builtin_from_module(&hooks, &global)
       .expect("Failed to generate builtin class from global module");
@@ -309,13 +324,9 @@ impl Vm {
 
   /// Reset the vm to execute another script
   fn prepare(&mut self, script: ObjRef<Fun>) {
-    let fiber = match Fiber::new(None, script, self.capture_stub) {
-      Ok(fiber) => fiber,
-      Err(_) => self.internal_error("Unable to generate initial fiber"),
-    };
-
-    self.fiber = self.manage_obj(fiber);
-    self.main_fiber = self.fiber;
+    let fiber = self.create_fiber(script, None);
+    self.fiber = fiber;
+    self.main_fiber = fiber;
     self.fiber.activate();
     self.load_ip();
 

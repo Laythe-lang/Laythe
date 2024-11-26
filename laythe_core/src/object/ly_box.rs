@@ -43,7 +43,7 @@ impl Trace for LyBox {
 
 impl DebugHeap for LyBox {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
-    f.debug_struct("Capture")
+    f.debug_struct("LyBox")
       .field("value", &DebugWrap(&self.value, depth))
       .finish()
   }

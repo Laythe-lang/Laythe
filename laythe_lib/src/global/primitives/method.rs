@@ -111,7 +111,7 @@ mod test {
 
       let fun = test_fun(&hooks.as_gc(), "example", "module");
       let class = hooks.manage_obj(Class::bare(hooks.manage_str("exampleClass")));
-      let captures = Captures::new(&hooks.as_gc(), &[]);
+      let captures = Captures::build(&hooks.as_gc(), &[]);
       let closure = hooks.manage_obj(Closure::new(fun, captures));
       let instance = hooks.manage_obj(class);
       let method = hooks.manage_obj(Method::new(val!(instance), val!(closure)));

@@ -722,13 +722,13 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
         let parent: &mut Compiler<'a, 'src> = unsafe { parent_ptr.as_mut() };
         match parent.resolve_local(name) {
           Some((local, state)) => match state {
-            SymbolState::GlobalInitialized => Some((0, state)),
+            SymbolState::GlobalInitialized | SymbolState::ModuleInitialized => Some((0, state)),
             _ => Some((self.add_capture(CaptureIndex::Local(local)), state)),
           },
           None => parent
             .resolve_capture(name)
             .map(|(capture, state)| match state {
-              SymbolState::GlobalInitialized => (0, state),
+              SymbolState::GlobalInitialized | SymbolState::ModuleInitialized => (0, state),
               _ => (self.add_capture(CaptureIndex::Enclosing(capture)), state),
             }),
         }
@@ -4506,6 +4506,59 @@ mod test {
       ],
     );
   }
+
+  #[test]
+  fn module_capture() {
+    let example = "
+    let x = 10;
+
+    fn example() {
+      fn inner() { x }
+      return inner;
+    }
+    let inner = example();
+    inner();
+    ";
+
+    let context = NoContext::default();
+    let fun = test_compile(example, &context);
+    assert_fun_bytecode(
+      &fun,
+      2,
+      &vec![
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((0, 0))),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((1, 1))),
+        ByteCodeTest::Code(AlignedByteCode::DeclareModSym((2, 2))),
+        ByteCodeTest::Code(AlignedByteCode::Constant(3)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Fun((
+          4,
+          3,
+          vec![
+            ByteCodeTest::Fun((
+              0,
+              2,
+              vec![
+                ByteCodeTest::Code(AlignedByteCode::GetModSym(0)),
+                ByteCodeTest::Code(AlignedByteCode::Return),
+              ],
+            )),
+            ByteCodeTest::Code(AlignedByteCode::GetLocal(1)),
+            ByteCodeTest::Code(AlignedByteCode::Return),
+          ],
+        )),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(1)),
+        ByteCodeTest::Code(AlignedByteCode::Call(0)),
+        ByteCodeTest::Code(AlignedByteCode::SetModSym(2)),
+        ByteCodeTest::Code(AlignedByteCode::Call(0)),
+        ByteCodeTest::Code(AlignedByteCode::Drop),
+        ByteCodeTest::Code(AlignedByteCode::Nil),
+        ByteCodeTest::Code(AlignedByteCode::Return),
+      ],
+    );
+  }
+
 
   #[test]
   fn function_with_captured_parameters() {

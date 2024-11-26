@@ -1,6 +1,4 @@
-use crate::{
-  captures::Captures, managed::{DebugHeap, DebugWrap, Trace}, object::Fun, reference::ObjRef, value::Value
-};
+use laythe_core::{managed::{DebugHeap, DebugWrap, Trace}, object::Fun, value::Value, Captures, ObjRef};
 
 /// A call frame in the Laythe interpreter
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

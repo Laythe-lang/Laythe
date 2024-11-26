@@ -13,7 +13,11 @@ use crate::{
 pub struct Captures(Array<ObjRef<LyBox>, Header>);
 
 impl Captures {
-  pub fn new(hooks: &GcHooks, captures: &[ObjRef<LyBox>]) -> Self {
+  pub fn new(captures: Array<ObjRef<LyBox>, Header>) -> Self {
+    Self(captures)
+  }
+
+  pub fn build(hooks: &GcHooks, captures: &[ObjRef<LyBox>]) -> Self {
     Self(hooks.manage(captures))
   }
 
@@ -57,7 +61,7 @@ impl Trace for Captures {
 impl DebugHeap for Captures {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_tuple("Captures")
-      .field(&DebugWrap(&&*self.0, depth))
+      .field(&DebugWrap(&self.0, depth))
       .finish()
   }
 }

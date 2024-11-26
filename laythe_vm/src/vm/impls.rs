@@ -16,9 +16,7 @@ impl TraceRoot for Vm {
   fn trace(&self) {
     self.fiber.trace();
     self.main_fiber.trace();
-    for fiber in &self.fiber_queue {
-      fiber.trace();
-    }
+    self.fiber_queue.iter().for_each(|fiber| fiber.trace());
     self.files.trace();
     self.packages.trace();
     self.module_cache.trace();
@@ -32,9 +30,7 @@ impl TraceRoot for Vm {
   fn trace_debug(&self, log: &mut dyn Write) {
     self.fiber.trace_debug(log);
     self.main_fiber.trace_debug(log);
-    for fiber in &self.fiber_queue {
-      fiber.trace_debug(log);
-    }
+    self.fiber_queue.iter().for_each(|fiber| fiber.trace_debug(log));
     self.files.trace_debug(log);
     self.packages.trace_debug(log);
     self.module_cache.trace_debug(log);

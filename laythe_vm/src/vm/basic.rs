@@ -1,8 +1,14 @@
 use super::{ExecutionSignal, Vm};
-use crate::cache::InlineCache;
+use crate::{
+  cache::InlineCache,
+  fiber::{Fiber, FiberPopResult},
+};
 use core::fmt;
 use laythe_core::{
-  managed::{Allocate, AllocateObj, DebugHeap, Trace}, object::{Class, Fiber, FiberPopResult, Fun, LyStr}, value::Value, Captures, ObjRef
+  managed::{Allocate, AllocateObj, DebugHeap, Trace},
+  object::{ChannelWaiter, Class, Fun, LyStr},
+  value::Value,
+  Captures, ObjRef, Ref,
 };
 use std::{convert::TryInto, ptr};
 
@@ -113,7 +119,7 @@ impl Vm {
   }
 
   /// Swap between the current fiber and the provided fiber
-  pub(super) unsafe fn context_switch(&mut self, fiber: ObjRef<Fiber>) {
+  pub(super) unsafe fn context_switch(&mut self, fiber: Ref<Fiber>) {
     if !self.fiber.is_complete() {
       self.store_ip();
     }
@@ -134,10 +140,41 @@ impl Vm {
   ) {
     self.store_ip();
 
-    self.fiber.push_frame(closure, captures, arg_count as usize);
+    let mut fiber = self.fiber;
+    fiber.push_frame(
+      self.gc.borrow_mut(),
+      self,
+      closure,
+      captures,
+      arg_count as usize,
+    );
+
     self.load_ip();
 
     self.current_fun = closure;
+  }
+
+  pub(super) fn create_fiber(
+    &mut self,
+    fun: ObjRef<Fun>,
+    parent: Option<Ref<Fiber>>,
+  ) -> Ref<Fiber> {
+    self.push_root(fun);
+    let fiber = Fiber::new(
+      &mut self.gc.borrow_mut(),
+      self,
+      parent,
+      fun,
+      self.capture_stub,
+      fun.max_slots() + 1,
+    );
+    self.pop_roots(1);
+
+    let fiber = self.manage(fiber);
+    let mut waiter = fiber.waiter();
+    waiter.set_waiter(fiber);
+
+    fiber
   }
 
   /// Pop a frame off the call stack. If no frame remain
@@ -154,9 +191,9 @@ impl Vm {
         if self.fiber == self.main_fiber {
           Some(ExecutionSignal::Exit)
         } else {
-          if let Some(mut fiber) = self.fiber.complete() {
-            fiber.unblock();
-            self.fiber_queue.push_back(fiber);
+          // attempt to grab waiter and enqueue next fiber
+          if let Some(waiter) = self.fiber.complete() {
+            self.queue_blocked_fiber(waiter);
           }
           Some(ExecutionSignal::ContextSwitch)
         }
@@ -164,6 +201,17 @@ impl Vm {
       FiberPopResult::Empty => {
         self.internal_error("Compilation failure attempted to pop last frame")
       },
+    }
+  }
+
+  /// Queue a blocked fiber
+  pub(super) fn queue_blocked_fiber(&mut self, mut waiter: Ref<ChannelWaiter>) {
+    match waiter.get_waiter_mut::<Ref<Fiber>>() {
+      Some(fiber) => {
+        fiber.unblock();
+        self.fiber_queue.push_back(*fiber)
+      },
+      None => self.internal_error("Unable to find fiber"),
     }
   }
 }

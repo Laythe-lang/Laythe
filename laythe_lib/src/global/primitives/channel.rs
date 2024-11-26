@@ -124,7 +124,7 @@ mod test {
   }
 
   mod len {
-    use laythe_core::{object::Channel, support::FiberBuilder};
+    use laythe_core::object::{Channel, ChannelWaiter};
 
     use super::*;
     use crate::support::MockedContext;
@@ -137,15 +137,12 @@ mod test {
       let channel_len = ChannelLen::native(&hooks.as_gc());
       let mut channel = hooks.manage_obj(Channel::with_capacity(&hooks.as_gc(), 1));
 
-      let fiber = FiberBuilder::default()
-        .instructions(vec![0])
-        .build(&hooks.as_gc())
-        .unwrap();
+      let waiter = hooks.manage(ChannelWaiter::new(true));
 
       let result = channel_len.call(&mut hooks, &[val!(channel)]).unwrap();
       assert_eq!(result, val!(0.0));
 
-      channel.send(fiber, val!(1.0));
+      channel.send(waiter, val!(1.0));
 
       let result = channel_len.call(&mut hooks, &[val!(channel)]).unwrap();
       assert_eq!(result, val!(1.0));

@@ -1,4 +1,4 @@
-use std::{fmt, io::Write};
+use std::{any::Any, fmt, io::Write};
 
 /// A wrapper struct to print debug information to
 /// a provided depth. This is to handled cycles in
@@ -55,6 +55,17 @@ pub trait Trace {
   /// Mark all objects that are reachable printing debugging information
   /// for each object
   fn trace_debug(&self, _log: &mut dyn Write) {}
+}
+
+pub trait TraceAny {
+  /// Cast this trait to a dyn Any
+  fn as_trace(&self) -> &dyn Trace;
+
+  /// Cast this trait to a dyn Any
+  fn as_any(&self) -> &dyn Any;
+
+  /// Cast this trait to a dyn Any
+  fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 /// An entity that can provide tracing roots to the garbage collector

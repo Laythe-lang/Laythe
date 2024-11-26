@@ -1,6 +1,7 @@
 use super::{source_loader::ImportResult, ExecutionSignal, Vm};
+use crate::fiber::Fiber;
 use crate::{byte_code::CaptureIndex, constants::MAX_FRAME_SIZE};
-use laythe_core::object::{Fiber, List, LyStr};
+use laythe_core::object::{List, LyStr};
 use laythe_core::value::VALUE_UNDEFINED;
 use laythe_core::{
   hooks::{GcHooks, Hooks},
@@ -106,12 +107,16 @@ impl Vm {
       _ => return signal,
     };
 
-    let hooks = GcHooks::new(self);
     let fiber = self.fiber;
 
-    // call fiber split which will peel off the last frame if it's above the previous
-    // water mark
-    if let Some(new_fiber) = Fiber::split(fiber, &hooks, frame_count, arg_count as usize) {
+    // call fiber split which will peel off the last frame
+    // if it's above the previous water mark
+    if fiber.frames().len() == frame_count + 1 {
+      let new_fiber = Fiber::split(fiber, &mut self.gc.borrow_mut(), self, arg_count as usize);
+
+      let mut waiter = new_fiber.waiter();
+      waiter.set_waiter(new_fiber);
+
       // put the fiber in the queue
       self.fiber_queue.push_back(new_fiber);
       self.current_fun = current_fun;
@@ -166,7 +171,7 @@ impl Vm {
     if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
       self.fiber.add_used_channel(channel);
 
-      match channel.receive(self.fiber) {
+      match channel.receive(self.fiber.waiter()) {
         ReceiveResult::Ok(value) => {
           // Value was present put onto stack
           self.fiber.push(value);
@@ -176,9 +181,8 @@ impl Vm {
           self.runtime_error_from_str(self.builtin.errors.value, "todo no read access")
         }
         ReceiveResult::EmptyBlock(fiber) => {
-          if let Some(mut fiber) = fiber.or_else(|| self.fiber.get_runnable())  {
-            fiber.unblock();
-            self.fiber_queue.push_back(fiber);
+          if let Some(waiter) = fiber.or_else(|| self.fiber.get_runnable())  {
+            self.queue_blocked_fiber(waiter);
           }
 
           self.fiber.push(val!(channel));
@@ -187,9 +191,8 @@ impl Vm {
           ExecutionSignal::ContextSwitch
         },
         ReceiveResult::Empty(fiber) => {
-          if let Some(mut fiber) = fiber.or_else(|| self.fiber.get_runnable()) {
-            fiber.unblock();
-            self.fiber_queue.push_back(fiber);
+          if let Some(waiter) = fiber.or_else(|| self.fiber.get_runnable()) {
+            self.queue_blocked_fiber(waiter);
           }
 
           self.fiber.push(val!(channel));
@@ -218,7 +221,7 @@ impl Vm {
     if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
       self.fiber.add_used_channel(channel);
 
-      match channel.send(self.fiber, value) {
+      match channel.send(self.fiber.waiter(), value) {
         SendResult::Ok => ExecutionSignal::Ok,
         SendResult::NoSendAccess => self.runtime_error_from_str(
           self.builtin.errors.runtime,
@@ -227,9 +230,8 @@ impl Vm {
         SendResult::FullBlock(fiber) => {
           // if channel has a waiter put into
           // the fiber queue
-          if let Some(mut fiber) = fiber.or_else(|| self.fiber.get_runnable()) {
-            fiber.unblock();
-            self.fiber_queue.push_back(fiber);
+          if let Some(waiter) = fiber.or_else(|| self.fiber.get_runnable()) {
+            self.queue_blocked_fiber(waiter);
           }
 
           // the channel enqueued the result but is now full so we need to switch
@@ -239,9 +241,8 @@ impl Vm {
         SendResult::Full(fiber) => {
           // if channel has a waiter put into
           // the fiber queue
-          if let Some(mut fiber) = fiber.or_else(|| self.fiber.get_runnable()) {
-            fiber.unblock();
-            self.fiber_queue.push_back(fiber);
+          if let Some(waiter) = fiber.or_else(|| self.fiber.get_runnable()) {
+            self.queue_blocked_fiber(waiter);
           }
 
           // replace the channel on the stack and rewind the
@@ -904,11 +905,7 @@ impl Vm {
         self.update_ip(-3);
         self.fiber.sleep();
 
-        let import_fiber = match Fiber::new(Some(self.fiber), fun, self.capture_stub) {
-          Ok(fiber) => fiber,
-          Err(_) => self.internal_error("Importing fiber"),
-        };
-        let import_fiber = self.manage_obj(import_fiber);
+        let import_fiber = self.create_fiber(fun, Some(self.fiber));
 
         self.fiber_queue.push_back(import_fiber);
         ExecutionSignal::ContextSwitch
@@ -990,11 +987,7 @@ impl Vm {
         self.update_ip(-5);
         self.fiber.sleep();
 
-        let import_fiber = match Fiber::new(Some(self.fiber), fun, self.capture_stub) {
-          Ok(fiber) => fiber,
-          Err(_) => self.internal_error("Importing fiber"),
-        };
-        let import_fiber = self.manage_obj(import_fiber);
+        let import_fiber = self.create_fiber(fun, Some(self.fiber));
 
         self.fiber_queue.push_back(import_fiber);
         ExecutionSignal::ContextSwitch
@@ -1358,7 +1351,7 @@ impl Vm {
       })
       .collect::<Vec<ObjRef<LyBox>>>();
 
-    let captures = Captures::new(&GcHooks::new(self), &captures);
+    let captures = Captures::new(self.manage(&*captures));
     let closure = self.manage_obj(Closure::new(fun, captures));
 
     self.fiber.push(val!(closure));
@@ -1480,7 +1473,11 @@ impl Vm {
           ))
         });
         stub.set_name(native.name());
+        self.push_root(stub);
+
         self.push_frame(stub, self.capture_stub, arg_count);
+
+        self.pop_roots(1);
 
         // Because the stack can resize we need to store the values in a separate
         // vec. TODO we should have a slice type which will keep the store alive.

@@ -195,6 +195,8 @@ fn closure() -> Result<(), std::io::Error> {
   test_file_exits(
     &vec![
       "language/closure/assign_to_closure.lay",
+      "language/closure/assign_to_module_from_closure.lay",
+      "language/closure/retrieve_from_module_from_closure.lay",
       "language/closure/assign_to_shadowed_later.lay",
       "language/closure/close_over_function_parameter.lay",
       "language/closure/close_over_later_variable.lay",

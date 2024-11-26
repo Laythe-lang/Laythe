@@ -1,4 +1,4 @@
-use crate::managed::{DebugHeap, Trace};
+use laythe_core::managed::{DebugHeap, Trace};
 
 /// An exception handler in Laythe
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
