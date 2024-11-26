@@ -18,12 +18,19 @@ use crate::{
 pub struct UniqueVector<T, H>(RawUniqueVector<T, H>);
 
 impl<T, H> UniqueVector<T, H> {
+  #[inline]
   pub fn new(raw_vector: RawUniqueVector<T, H>) -> Self {
     Self(raw_vector)
   }
 
+  #[inline]
   pub fn len(&self) -> usize {
     self.0.len()
+  }
+
+  #[inline]
+  pub fn is_empty(&self) -> bool {
+    self.0.is_empty()
   }
 
   #[allow(dead_code)]
@@ -32,7 +39,7 @@ impl<T, H> UniqueVector<T, H> {
   }
 
   /// Pop the element off the vector
-  #[allow(dead_code)]
+  #[inline]
   pub fn pop(&mut self) -> Option<T> {
     let len = self.0.len();
 

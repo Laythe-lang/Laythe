@@ -53,14 +53,15 @@ impl ChannelWaiter {
 
 impl Trace for ChannelWaiter {
   fn trace(&self) {
-    self.waiter.as_ref().map(|waiter| waiter.as_trace().trace());
+    if let Some(waiter) = self.waiter.as_ref() {
+      waiter.as_trace().trace()
+    }
   }
 
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
-    self
-      .waiter
-      .as_ref()
-      .map(|waiter| waiter.as_trace().trace_debug(log));
+    if let Some(waiter) = self.waiter.as_ref() {
+      waiter.as_trace().trace_debug(log)
+    }
   }
 }
 impl DebugHeap for ChannelWaiter {
