@@ -3778,8 +3778,8 @@ mod test {
           vec![
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::GetCapture(0)),
-            ByteCodeTest::Code(AlignedByteCode::GetSuper(0)),
-            ByteCodeTest::Code(AlignedByteCode::Call(0)),
+            ByteCodeTest::Code(AlignedByteCode::SuperInvoke((0, 0))),
+            ByteCodeTest::Code(AlignedByteCode::Slot(0)),
             ByteCodeTest::Code(AlignedByteCode::Drop),
             ByteCodeTest::Code(AlignedByteCode::GetLocal(0)),
             ByteCodeTest::Code(AlignedByteCode::Constant(1)),

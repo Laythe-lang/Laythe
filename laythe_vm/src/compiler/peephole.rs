@@ -154,7 +154,7 @@ fn peephole_optimize(
 
         invoke(&mut instructions_cursor, &mut lines_cursor, slot, args)
       },
-      [SymbolicByteCode::GetSuper(slot), SymbolicByteCode::PropertySlot, SymbolicByteCode::Call(args), ..] =>
+      [SymbolicByteCode::GetSuper(slot), SymbolicByteCode::Call(args), ..] =>
       {
         let slot = *slot;
         let args = *args;
@@ -289,12 +289,12 @@ fn invoke_super(
   slot: u16,
   args: u8,
 ) {
-  instructions.inc_reader(3);
+  instructions.inc_reader(2);
   instructions.write(SymbolicByteCode::SuperInvoke((slot, args)));
   instructions.write(SymbolicByteCode::InvokeSlot);
 
   let first_line = lines.read();
-  lines.inc_reader(2);
+  lines.inc_reader(1);
   lines.write(first_line);
   lines.write(first_line);
 }
@@ -822,7 +822,6 @@ mod test {
         SymbolicByteCode::Drop,
         SymbolicByteCode::GetModSym(0),
         SymbolicByteCode::GetSuper(1),
-        SymbolicByteCode::PropertySlot,
         SymbolicByteCode::Call(2),
         SymbolicByteCode::Raise,
         SymbolicByteCode::False,
@@ -851,7 +850,7 @@ mod test {
       assert_eq!(lines[5], 10);
       assert_eq!(lines[6], 13);
       assert_eq!(lines[7], 13);
-      assert_eq!(lines[8], 16);
+      assert_eq!(lines[8], 15);
     }
   }
 }
