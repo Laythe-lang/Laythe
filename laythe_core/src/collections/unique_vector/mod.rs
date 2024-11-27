@@ -15,88 +15,120 @@ use crate::{
   Allocator, GcHooks,
 };
 
-pub struct UniqueVector<T, H>(RawUniqueVector<T, H>);
+pub struct UniqueVector<T, H>(Option<RawUniqueVector<T, H>>);
 
 impl<T, H> UniqueVector<T, H> {
   #[inline]
   pub fn new(raw_vector: RawUniqueVector<T, H>) -> Self {
-    Self(raw_vector)
+    Self(Some(raw_vector))
+  }
+
+  #[inline]
+  pub fn empty() -> Self {
+    Self(None)
   }
 
   #[inline]
   pub fn len(&self) -> usize {
-    self.0.len()
+    match self.0 {
+      Some(raw_vector) => raw_vector.len(),
+      None => 0,
+    }
   }
 
   #[inline]
   pub fn is_empty(&self) -> bool {
-    self.0.is_empty()
+    match self.0 {
+      Some(raw_vector) => raw_vector.is_empty(),
+      None => true,
+    }
   }
 
   #[allow(dead_code)]
   pub fn cap(&self) -> usize {
-    self.0.cap()
+    match self.0 {
+      Some(raw_vector) => raw_vector.cap(),
+      None => 0,
+    }
   }
 
   /// Pop the element off the vector
   #[inline]
   pub fn pop(&mut self) -> Option<T> {
-    let len = self.0.len();
+    match &mut self.0 {
+      Some(raw_vector) => {
+        let len = raw_vector.len();
 
-    if len == 0 {
-      None
-    } else {
-      unsafe {
-        self.0.write_len(len - 1);
-        Some(self.0.read_value(len - 1))
-      }
+        if len == 0 {
+          None
+        } else {
+          unsafe {
+            raw_vector.write_len(len - 1);
+            Some(raw_vector.read_value(len - 1))
+          }
+        }
+      },
+      None => None,
     }
   }
 
   /// Clear all elements of this vector
   #[allow(dead_code)]
   pub fn clear(&mut self) {
-    let elements: *mut [T] = self.deref_mut();
+    match &mut self.0 {
+      Some(raw_vector) => {
+        let elements: *mut [T] = raw_vector.deref_mut();
 
-    unsafe {
-      self.0.write_len(0);
-      ptr::drop_in_place(elements);
+        unsafe {
+          raw_vector.write_len(0);
+          ptr::drop_in_place(elements);
+        }
+      },
+      None => (),
     }
   }
 
   /// Clear all elements of this vector
   #[allow(dead_code)]
   pub fn truncate(&mut self, new_len: usize) {
-    unsafe {
-      let len = self.len();
-      if new_len >= len {
-        return;
-      }
-      let remaining_len = len - new_len;
-      let s = ptr::slice_from_raw_parts_mut(self.as_mut_ptr().add(len), remaining_len);
-      self.0.write_len(new_len);
-      ptr::drop_in_place(s);
+    match &mut self.0 {
+      Some(raw_vector) => unsafe {
+        let len = raw_vector.len();
+        if new_len >= len {
+          return ();
+        }
+        let remaining_len = len - new_len;
+        let s = ptr::slice_from_raw_parts_mut(raw_vector.as_mut_ptr().add(len), remaining_len);
+        raw_vector.write_len(new_len);
+        ptr::drop_in_place(s);
+      },
+      None => (),
     }
   }
 
   /// Remove an element from this list at the provided offset
   #[allow(dead_code)]
   pub fn remove(&mut self, index: usize) -> IndexedResult<T> {
-    let len = self.0.len();
-    if index >= len {
-      return IndexedResult::OutOfBounds;
-    }
+    match &mut self.0 {
+      Some(raw_vector) => {
+        let len = raw_vector.len();
+        if index >= len {
+          return IndexedResult::OutOfBounds;
+        }
 
-    unsafe {
-      let value = self.0.read_value(index);
-      ptr::copy(
-        self.0.item_ptr(index + 1),
-        self.0.item_mut(index),
-        len - index - 1,
-      );
+        unsafe {
+          let value = raw_vector.read_value(index);
+          ptr::copy(
+            raw_vector.item_ptr(index + 1),
+            raw_vector.item_mut(index),
+            len - index - 1,
+          );
 
-      self.0.write_len(len - 1);
-      IndexedResult::Ok(value)
+          raw_vector.write_len(len - 1);
+          IndexedResult::Ok(value)
+        }
+      },
+      None => IndexedResult::OutOfBounds,
     }
   }
 }
@@ -108,18 +140,20 @@ where
 {
   /// Clear all elements of this vector using GcHooks
   pub fn reserve_with_hooks(&mut self, hooks: &GcHooks, additional: usize) {
-    let len = self.0.len();
-    let cap = self.0.cap();
+    let (len, cap) = match self.0 {
+      Some(raw_vector) => (raw_vector.len(), raw_vector.cap()),
+      None => (0, 0),
+    };
 
     #[cfg(not(feature = "gc_stress"))]
     if len + additional > cap {
-      self.0 = hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2));
+      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2)));
     }
 
     // when stress testing if we don't allocate collect anyways
     #[cfg(feature = "gc_stress")]
     if len + additional > cap {
-      self.0 = hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2));
+      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2)));
     } else {
       hooks.collect_garbage();
     }
@@ -133,18 +167,20 @@ where
     context: &C,
     additional: usize,
   ) {
-    let len = self.0.len();
-    let cap = self.0.cap();
+    let (len, cap) = match self.0 {
+      Some(raw_vector) => (raw_vector.len(), raw_vector.cap()),
+      None => (0, 0),
+    };
 
     #[cfg(not(feature = "gc_stress"))]
     if len + additional > cap {
-      self.0 = allocator.manage(VecBuilder::new(self, cap * 2), context);
+      self.0 = Some(allocator.manage(VecBuilder::new(self, cap * 2), context));
     }
 
     // when stress testing if we don't allocate collect anyways
     #[cfg(feature = "gc_stress")]
     if len + additional > cap {
-      self.0 = allocator.manage(VecBuilder::new(self, cap * 2), context);
+      self.0 = Some(allocator.manage(VecBuilder::new(self, cap * 2), context));
     } else {
       allocator.collect_garbage(context);
     }
@@ -153,37 +189,41 @@ where
   /// Push a new element onto this list. If a resize is needed
   /// a new list will be allocated and elements will be transferred
   pub fn push_with_hooks(&mut self, hooks: &GcHooks, value: T) {
-    let len = self.0.len();
+    let len = self.len();
 
     // determine if we need to grow the list then
     // persist the value
     self.reserve_with_hooks(hooks, 1);
 
     unsafe {
-      self.0.write_value(value, len);
-      self.0.write_len(len + 1);
+      // we know there is now an allocation so we can blindly unwrap
+      let mut raw_vector = self.0.unwrap();
+      raw_vector.write_value(value, len);
+      raw_vector.write_len(len + 1);
     }
   }
 
   /// Clear all elements of this vector
   #[inline]
   pub fn push<C: TraceRoot>(&mut self, allocator: RefMut<'_, Allocator>, context: &C, value: T) {
-    let len = self.0.len();
+    let len = self.len();
 
     // determine if we need to grow the list then
     // persist the value
     self.reserve(allocator, context, 1);
 
     unsafe {
-      self.0.write_value(value, len);
-      self.0.write_len(len + 1);
+      // we know there is now an allocation so we can blindly unwrap
+      let mut raw_vector = self.0.unwrap();
+      raw_vector.write_value(value, len);
+      raw_vector.write_len(len + 1);
     }
   }
 
   /// Insert an element into this list at the provided offset
   #[allow(dead_code)]
   pub fn insert(&mut self, index: usize, value: T, hooks: &GcHooks) -> IndexedResult {
-    let len = self.0.len();
+    let len = self.len();
     if index > len {
       return IndexedResult::OutOfBounds;
     }
@@ -193,13 +233,14 @@ where
     self.reserve_with_hooks(hooks, 1);
 
     unsafe {
+      let mut raw_vector = self.0.unwrap();
       ptr::copy(
-        self.0.item_ptr(index),
-        self.0.item_mut(index + 1),
+        raw_vector.item_ptr(index),
+        raw_vector.item_mut(index + 1),
         len - index,
       );
-      self.0.write_value(value, index);
-      self.0.write_len(len + 1);
+      raw_vector.write_value(value, index);
+      raw_vector.write_len(len + 1);
     }
 
     IndexedResult::Ok(())
@@ -211,14 +252,20 @@ impl<T, H> Deref for UniqueVector<T, H> {
 
   #[inline]
   fn deref(&self) -> &Self::Target {
-    &self.0
+    match &self.0 {
+      Some(raw_vector) => &*raw_vector,
+      None => &[],
+    }
   }
 }
 
 impl<T, H> DerefMut for UniqueVector<T, H> {
   #[inline]
   fn deref_mut(&mut self) -> &mut Self::Target {
-    self.0.deref_mut()
+    match &mut self.0 {
+      Some(raw_vector) => &mut *raw_vector,
+      None => &mut [],
+    }
   }
 }
 
@@ -229,11 +276,15 @@ where
 {
   #[inline]
   fn trace(&self) {
-    self.0.trace();
+    if let Some(raw_vector) = self.0 {
+      raw_vector.trace();
+    }
   }
 
   fn trace_debug(&self, log: &mut dyn std::io::Write) {
-    self.0.trace_debug(log);
+    if let Some(raw_vector) = self.0 {
+      raw_vector.trace_debug(log);
+    }
   }
 }
 
