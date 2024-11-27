@@ -24,11 +24,6 @@ impl<T, H> UniqueVector<T, H> {
   }
 
   #[inline]
-  pub fn empty() -> Self {
-    Self(None)
-  }
-
-  #[inline]
   pub fn len(&self) -> usize {
     match self.0 {
       Some(raw_vector) => raw_vector.len(),
@@ -147,13 +142,13 @@ where
 
     #[cfg(not(feature = "gc_stress"))]
     if len + additional > cap {
-      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2)));
+      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, reserve_cap_growth(cap, len + additional))));
     }
 
     // when stress testing if we don't allocate collect anyways
     #[cfg(feature = "gc_stress")]
     if len + additional > cap {
-      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, cap * 2)));
+      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, reserve_cap_growth(cap, len + additional))));
     } else {
       hooks.collect_garbage();
     }
@@ -174,13 +169,13 @@ where
 
     #[cfg(not(feature = "gc_stress"))]
     if len + additional > cap {
-      self.0 = Some(allocator.manage(VecBuilder::new(self, cap * 2), context));
+      self.0 = Some(allocator.manage(VecBuilder::new(self, reserve_cap_growth(cap, len + additional)), context));
     }
 
     // when stress testing if we don't allocate collect anyways
     #[cfg(feature = "gc_stress")]
     if len + additional > cap {
-      self.0 = Some(allocator.manage(VecBuilder::new(self, cap * 2), context));
+      self.0 = Some(allocator.manage(VecBuilder::new(self, reserve_cap_growth(cap, len + additional)), context));
     } else {
       allocator.collect_garbage(context);
     }
@@ -220,6 +215,30 @@ where
     }
   }
 
+  /// Clear all elements of this vector
+  #[inline]
+  pub fn extend<C: TraceRoot>(
+    &mut self,
+    allocator: RefMut<'_, Allocator>,
+    context: &C,
+    values: &[T],
+  ) {
+    let len = self.len();
+
+    // determine if we need to grow the list then
+    // persist the value
+    self.reserve(allocator, context, values.len());
+
+    unsafe {
+      // we know there is now an allocation so we can blindly unwrap
+      let mut raw_vector = self.0.unwrap();
+      for (idx, value) in values.iter().enumerate() {
+        raw_vector.write_value(*value, len + idx);
+      }
+      raw_vector.write_len(len + values.len());
+    }
+  }
+
   /// Insert an element into this list at the provided offset
   #[allow(dead_code)]
   pub fn insert(&mut self, index: usize, value: T, hooks: &GcHooks) -> IndexedResult {
@@ -244,6 +263,17 @@ where
     }
 
     IndexedResult::Ok(())
+  }
+}
+
+fn reserve_cap_growth(cap: usize, new_cap: usize) -> usize {
+  usize::max(usize::max(new_cap, 4), cap * 2)
+}
+
+impl<T, H> Default for UniqueVector<T, H> {
+  #[inline]
+  fn default() -> Self {
+    Self(None)
   }
 }
 

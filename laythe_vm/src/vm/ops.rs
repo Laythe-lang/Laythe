@@ -169,7 +169,8 @@ impl Vm {
     let channel = self.fiber.pop();
 
     if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
-      self.fiber.add_used_channel(channel);
+      let mut fiber = self.fiber;
+      fiber.add_used_channel(self.gc.borrow_mut(), self, channel);
 
       match channel.receive(self.fiber.waiter()) {
         ReceiveResult::Ok(value) => {
@@ -219,7 +220,8 @@ impl Vm {
     let value = self.fiber.peek(0);
 
     if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
-      self.fiber.add_used_channel(channel);
+      let mut fiber = self.fiber;
+      fiber.add_used_channel(self.gc.borrow_mut(), self, channel);
 
       match channel.send(self.fiber.waiter(), value) {
         SendResult::Ok => ExecutionSignal::Ok,
@@ -505,7 +507,8 @@ impl Vm {
     let jump = self.read_short() as usize;
     let start = &self.fiber.fun().chunk().instructions()[0] as *const u8;
     let offset = self.ip.offset_from(start) as usize + jump;
-    self.fiber.push_exception_handler(offset, slot_depth);
+    let mut fiber = self.fiber;
+    fiber.push_exception_handler(self.gc.borrow_mut(), self, offset, slot_depth);
     ExecutionSignal::Ok
   }
 

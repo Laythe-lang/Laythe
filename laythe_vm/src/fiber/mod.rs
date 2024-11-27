@@ -67,10 +67,10 @@ pub struct Fiber {
   frames: UniqueVector<CallFrame, Header>,
 
   /// A stack of exception handlers active on this fiber
-  exception_handlers: Vec<ExceptionHandler>,
+  exception_handlers: UniqueVector<ExceptionHandler, Header>,
 
   /// A list of channels executed on this fiber
-  channels: Vec<ObjRef<Channel>>,
+  channels: UniqueVector<ObjRef<Channel>, Header>,
 
   /// The parent fiber to this fiber
   parent: Option<Ref<Self>>,
@@ -91,7 +91,7 @@ pub struct Fiber {
   error: Option<Instance>,
 
   /// Backtrace's instruction pointers used during an unwind
-  backtrace_ips: Vec<*const u8>,
+  backtrace_ips: UniqueVector<*const u8, Header>,
 }
 
 impl Fiber {
@@ -136,12 +136,12 @@ impl Fiber {
       waiter,
       frames,
       parent,
-      channels: vec![],
-      exception_handlers: vec![],
+      channels: UniqueVector::default(),
+      exception_handlers: UniqueVector::default(),
       state: FiberState::Pending,
       error: None,
       frame: current_frame,
-      backtrace_ips: vec![],
+      backtrace_ips: UniqueVector::default(),
       stack_top,
     }
   }
@@ -290,7 +290,12 @@ impl Fiber {
   }
 
   /// pause unwind to search for handler
-  fn pause_unwind(&mut self, new_frame_top: usize) {
+  fn pause_unwind<C: TraceRoot>(
+    &mut self,
+    allocator: RefMut<'_, Allocator>,
+    context: &C,
+    new_frame_top: usize,
+  ) {
     assert!(matches!(
       self.state,
       FiberState::Running | FiberState::Unwinding
@@ -301,17 +306,16 @@ impl Fiber {
     let current_len = self.backtrace_ips.len();
     let additional_len = ((self.frames().len() - new_frame_top) + 1) - current_len;
 
-    // extend backtraces instruction pointers
-    self.backtrace_ips.extend(
-      self
-        .frames()
-        .iter()
-        .rev()
-        .skip(current_len)
-        .take(additional_len)
-        .map(|frame| frame.ip())
-        .collect::<Vec<*const u8>>(),
-    );
+    let temp: Vec<*const u8> = self
+      .frames()
+      .iter()
+      .rev()
+      .skip(current_len)
+      .take(additional_len)
+      .map(|frame| frame.ip())
+      .collect();
+
+    self.backtrace_ips.extend(allocator, context, &temp);
   }
 
   /// Try to get a runnable fiber
@@ -330,9 +334,14 @@ impl Fiber {
 
   /// Add a channel to the list of used channels by
   /// this fiber
-  pub fn add_used_channel(&mut self, channel: ObjRef<Channel>) {
+  pub fn add_used_channel<C: TraceRoot>(
+    &mut self,
+    allocator: RefMut<'_, Allocator>,
+    context: &C,
+    channel: ObjRef<Channel>,
+  ) {
     if !self.channels.iter().any(|c| *c == channel) {
-      self.channels.push(channel);
+      self.channels.push(allocator, context, channel);
     }
   }
 
@@ -402,7 +411,13 @@ impl Fiber {
   }
 
   /// Push a new exception handler onto this fiber
-  pub fn push_exception_handler(&mut self, offset: usize, slot_depth: usize) {
+  pub fn push_exception_handler<C: TraceRoot>(
+    &mut self,
+    allocator: RefMut<'_, Allocator>,
+    context: &C,
+    offset: usize,
+    slot_depth: usize,
+  ) {
     debug_assert!(
       offset < self.fun().chunk().instructions().len(),
       "Offset past end of functions"
@@ -414,9 +429,11 @@ impl Fiber {
 
     let call_frame_depth = self.frame_count();
 
-    self
-      .exception_handlers
-      .push(ExceptionHandler::new(offset, call_frame_depth, slot_depth));
+    self.exception_handlers.push(
+      allocator,
+      context,
+      ExceptionHandler::new(offset, call_frame_depth, slot_depth),
+    );
   }
 
   /// Pop an exception handler off this fiber
@@ -592,12 +609,12 @@ impl Fiber {
       waiter,
       frames,
       parent: Some(fiber),
-      channels: vec![],
-      exception_handlers: vec![],
+      channels: UniqueVector::default(),
+      exception_handlers: UniqueVector::default(),
       state: FiberState::Pending,
       error: None,
       frame: current_frame,
-      backtrace_ips: vec![],
+      backtrace_ips: UniqueVector::default(),
       stack_top,
     };
 
@@ -655,7 +672,12 @@ impl Fiber {
   /// # Safety
   /// Assumes the function try block slot offset points to a valid offset into the
   /// associated call frames slots
-  pub unsafe fn stack_unwind(&mut self, bottom_frame: Option<usize>) -> UnwindResult {
+  pub unsafe fn stack_unwind<C: TraceRoot>(
+    &mut self,
+    allocator: RefMut<'_, Allocator>,
+    context: &C,
+    bottom_frame: Option<usize>,
+  ) -> UnwindResult {
     // grab the appropriate exception handler
     let exception_handler = match self.exception_handler() {
       Some(exception_handler) => {
@@ -680,7 +702,7 @@ impl Fiber {
     );
 
     // put the fiber in a state to search for handle
-    self.pause_unwind(exception_handler.call_frame_depth());
+    self.pause_unwind(allocator, context, exception_handler.call_frame_depth());
 
     // set the current frame based on the exception handler offset
     let frame = &mut self.frames[exception_handler.call_frame_depth() - 1];
@@ -871,13 +893,12 @@ impl Trace for Fiber {
       });
     }
 
-    self.channels.iter().for_each(|channel| {
-      channel.trace();
-    });
-
+    self.channels.trace();
     self.frames.trace();
-
+    self.exception_handlers.trace();
     self.waiter.trace();
+    self.backtrace_ips.trace();
+
     if let Some(error) = &self.error {
       error.trace();
     }
@@ -902,9 +923,11 @@ impl Trace for Fiber {
       channel.trace_debug(log);
     });
 
+    self.channels.trace_debug(log);
     self.frames.trace_debug(log);
-
+    self.exception_handlers.trace_debug(log);
     self.waiter.trace_debug(log);
+    self.backtrace_ips.trace_debug(log);
 
     if let Some(error) = &self.error {
       error.trace_debug(log);
@@ -1155,7 +1178,7 @@ mod test {
       .instructions(vec![1, 2, 3])
       .build(&context);
 
-    fiber.push_exception_handler(0, 1);
+    fiber.push_exception_handler(context.gc(), &context, 0, 1);
 
     unsafe {
       fiber.push(val!(fun));
@@ -1164,7 +1187,7 @@ mod test {
     }
 
     fiber.push_frame(context.gc(), &context, fun, captures, 2);
-    fiber.push_exception_handler(2, 2);
+    fiber.push_exception_handler(context.gc(), &context, 2, 2);
 
     assert_eq!(fiber.exception_handlers[0].offset(), 0);
     assert_eq!(fiber.exception_handlers[0].slot_depth(), 1);
@@ -1185,7 +1208,7 @@ mod test {
       .instructions(vec![1])
       .build(&context);
 
-    fiber.push_exception_handler(2, 1);
+    fiber.push_exception_handler(context.gc(), &context, 2, 1);
   }
 
   #[test]
@@ -1198,7 +1221,7 @@ mod test {
       .instructions(vec![1, 2, 3])
       .build(&context);
 
-    fiber.push_exception_handler(2, 3);
+    fiber.push_exception_handler(context.gc(), &context, 2, 3);
   }
 
   #[test]
@@ -1210,7 +1233,7 @@ mod test {
       .instructions(vec![1, 2, 3])
       .build(&context);
 
-    fiber.push_exception_handler(2, 3);
+    fiber.push_exception_handler(context.gc(), &context, 2, 3);
 
     assert_eq!(fiber.exception_handlers.len(), 1);
     fiber.pop_exception_handler();
@@ -1275,18 +1298,18 @@ mod test {
       fiber.push(val!(5.0));
     }
 
-    fiber.push_exception_handler(2, 2);
+    fiber.push_exception_handler(context.gc(), &context, 2, 2);
     fiber.push_frame(context.gc(), &context, fun1, captures, 2);
     fiber.store_ip(&fun1.chunk().instructions()[0]);
 
-    fiber.push_exception_handler(1, 1);
+    fiber.push_exception_handler(context.gc(), &context, 1, 1);
     fiber.push_frame(context.gc(), &context, fun2, captures, 1);
 
     fiber.activate();
     fiber.store_ip(&fun2.chunk().instructions()[2]);
 
     unsafe {
-      match fiber.stack_unwind(None) {
+      match fiber.stack_unwind(context.gc(), &context, None) {
         UnwindResult::PotentiallyHandled(frame) => {
           assert_eq!(frame.fun(), fun1);
           assert_eq!(frame.captures(), captures);
@@ -1302,7 +1325,7 @@ mod test {
     fiber.error_while_handling();
 
     unsafe {
-      match fiber.stack_unwind(None) {
+      match fiber.stack_unwind(context.gc(), &context, None) {
         UnwindResult::PotentiallyHandled(frame) => {
           assert_eq!(frame.fun(), base_fun);
         },
@@ -1628,7 +1651,10 @@ mod test {
     fiber.push_frame(context.gc(), &context, fun2, captures, 1);
 
     unsafe {
-      assert_eq!(fiber.stack_unwind(None), UnwindResult::Unhandled);
+      assert_eq!(
+        fiber.stack_unwind(context.gc(), &context, None),
+        UnwindResult::Unhandled
+      );
     }
 
     assert_eq!(fiber.frames().len(), 3);
@@ -1676,7 +1702,7 @@ mod test {
     }
 
     fiber.push_frame(context.gc(), &context, fun1, captures, 2);
-    fiber.push_exception_handler(2, 2);
+    fiber.push_exception_handler(context.gc(), &context, 2, 2);
     fiber.store_ip(&fun1.chunk().instructions()[1]);
 
     fiber.push_frame(context.gc(), &context, fun2, captures, 1);
@@ -1685,7 +1711,7 @@ mod test {
     fiber.store_ip(&fun2.chunk().instructions()[2]);
 
     unsafe {
-      match fiber.stack_unwind(None) {
+      match fiber.stack_unwind(context.gc(), &context, None) {
         UnwindResult::PotentiallyHandled(frame) => {
           assert_eq!(frame.fun(), fun1);
           assert_eq!(frame.captures(), captures);
@@ -1743,7 +1769,10 @@ mod test {
     fiber.push_frame(context.gc(), &context, fun2, captures, 1);
 
     unsafe {
-      assert_eq!(fiber.stack_unwind(Some(2)), UnwindResult::UnwindStopped);
+      assert_eq!(
+        fiber.stack_unwind(context.gc(), &context, Some(2)),
+        UnwindResult::UnwindStopped
+      );
     }
 
     assert_eq!(fiber.frames().len(), 3);

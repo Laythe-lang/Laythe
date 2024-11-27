@@ -68,7 +68,8 @@ impl Vm {
       ExecutionMode::CallingNativeCode(depth) => Some(depth),
     };
 
-    match self.fiber.stack_unwind(bottom_frame) {
+    let mut fiber = self.fiber;
+    match fiber.stack_unwind(self.gc.borrow_mut(), self, bottom_frame) {
       UnwindResult::PotentiallyHandled(frame) => {
         self.current_fun = frame.fun();
         self.ip = frame.ip();
