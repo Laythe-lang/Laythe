@@ -141,13 +141,7 @@ impl Vm {
     self.store_ip();
 
     let mut fiber = self.fiber;
-    fiber.push_frame(
-      self.gc.borrow_mut(),
-      self,
-      closure,
-      captures,
-      arg_count as usize,
-    );
+    fiber.push_frame(self, closure, captures, arg_count as usize);
 
     self.load_ip();
 
@@ -160,14 +154,7 @@ impl Vm {
     parent: Option<Ref<Fiber>>,
   ) -> Ref<Fiber> {
     self.push_root(fun);
-    let fiber = Fiber::new(
-      &mut self.gc.borrow_mut(),
-      self,
-      parent,
-      fun,
-      self.capture_stub,
-      fun.max_slots() + 1,
-    );
+    let fiber = Fiber::new(self, parent, fun, self.capture_stub, fun.max_slots() + 1);
     self.pop_roots(1);
 
     let fiber = self.manage(fiber);

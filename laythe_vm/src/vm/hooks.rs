@@ -5,10 +5,12 @@ impl Vm {
   /// Run a laythe function on top of the current stack.
   /// This acts as a hook for native functions to execute laythe function
   pub(super) unsafe fn run_fun(&mut self, callable: Value, args: &[Value]) -> Call {
-    self.fiber.ensure_stack(args.len() + 1);
-    self.fiber.push(callable);
+    let mut fiber = self.fiber;
+    fiber.ensure_stack(self, args.len() + 1);
+
+    fiber.push(callable);
     for arg in args {
-      self.fiber.push(*arg);
+      fiber.push(*arg);
     }
 
     #[cfg(feature = "debug")]
@@ -32,10 +34,12 @@ impl Vm {
   /// Run a laythe method on top of the current stack.
   /// This acts as a hook for native functions to execute laythe function
   pub(super) unsafe fn run_method(&mut self, this: Value, method: Value, args: &[Value]) -> Call {
-    self.fiber.ensure_stack(args.len() + 1);
-    self.fiber.push(this);
+    let mut fiber = self.fiber;
+
+    fiber.ensure_stack(self, args.len() + 1);
+    fiber.push(this);
     for arg in args {
-      self.fiber.push(*arg);
+      fiber.push(*arg);
     }
 
     #[cfg(feature = "debug")]

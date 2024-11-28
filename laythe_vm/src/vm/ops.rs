@@ -112,7 +112,7 @@ impl Vm {
     // call fiber split which will peel off the last frame
     // if it's above the previous water mark
     if fiber.frames().len() == frame_count + 1 {
-      let new_fiber = Fiber::split(fiber, &mut self.gc.borrow_mut(), self, arg_count as usize);
+      let new_fiber = Fiber::split(fiber, self, arg_count as usize);
 
       let mut waiter = new_fiber.waiter();
       waiter.set_waiter(new_fiber);
@@ -508,7 +508,7 @@ impl Vm {
     let start = &self.fiber.fun().chunk().instructions()[0] as *const u8;
     let offset = self.ip.offset_from(start) as usize + jump;
     let mut fiber = self.fiber;
-    fiber.push_exception_handler(self.gc.borrow_mut(), self, offset, slot_depth);
+    fiber.push_exception_handler(self, offset, slot_depth);
     ExecutionSignal::Ok
   }
 

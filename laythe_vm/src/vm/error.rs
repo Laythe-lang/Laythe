@@ -5,7 +5,8 @@ use laythe_core::{
   if_let_obj,
   object::{Class, Instance, LyStr, ObjectKind},
   to_obj_kind, val,
-  value::Value, ObjRef,
+  value::Value,
+  ObjRef,
 };
 
 impl Vm {
@@ -32,8 +33,9 @@ impl Vm {
     let error_message = val!(self.manage_str(message));
     // Make sure we have enough space for the error message
     // As this isn't accounted for during compilation
-    self.fiber.ensure_stack(1);
-    self.fiber.push(error_message);
+    let mut fiber = self.fiber;
+    fiber.ensure_stack(self, 1);
+    fiber.push(error_message);
 
     let mode = ExecutionMode::CallingNativeCode(self.fiber.frames().len());
     let result = match self.resolve_call(val!(error), 1) {
@@ -69,7 +71,7 @@ impl Vm {
     };
 
     let mut fiber = self.fiber;
-    match fiber.stack_unwind(self.gc.borrow_mut(), self, bottom_frame) {
+    match fiber.stack_unwind(self, bottom_frame) {
       UnwindResult::PotentiallyHandled(frame) => {
         self.current_fun = frame.fun();
         self.ip = frame.ip();
