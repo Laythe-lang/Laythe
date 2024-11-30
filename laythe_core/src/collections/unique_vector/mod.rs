@@ -70,34 +70,31 @@ impl<T, H> UniqueVector<T, H> {
   /// Clear all elements of this vector
   #[allow(dead_code)]
   pub fn clear(&mut self) {
-    match &mut self.0 {
-      Some(raw_vector) => {
-        let elements: *mut [T] = raw_vector.deref_mut();
+    if let Some(raw_vector) = &mut self.0 {
+      let elements: *mut [T] = raw_vector.deref_mut();
 
-        unsafe {
-          raw_vector.write_len(0);
-          ptr::drop_in_place(elements);
-        }
-      },
-      None => (),
+      unsafe {
+        raw_vector.write_len(0);
+        ptr::drop_in_place(elements);
+      }
     }
   }
 
   /// Clear all elements of this vector
   #[allow(dead_code)]
   pub fn truncate(&mut self, new_len: usize) {
-    match &mut self.0 {
-      Some(raw_vector) => unsafe {
-        let len = raw_vector.len();
-        if new_len >= len {
-          return ();
-        }
-        let remaining_len = len - new_len;
+    if let Some(raw_vector) = &mut self.0 {
+      let len = raw_vector.len();
+      if new_len >= len {
+        return;
+      }
+      let remaining_len = len - new_len;
+
+      unsafe {
         let s = ptr::slice_from_raw_parts_mut(raw_vector.as_mut_ptr().add(len), remaining_len);
         raw_vector.write_len(new_len);
         ptr::drop_in_place(s);
-      },
-      None => (),
+      }
     }
   }
 
@@ -142,13 +139,19 @@ where
 
     #[cfg(not(feature = "gc_stress"))]
     if len + additional > cap {
-      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, reserve_cap_growth(cap, len + additional))));
+      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(
+        self,
+        reserve_cap_growth(cap, len + additional),
+      )));
     }
 
     // when stress testing if we don't allocate collect anyways
     #[cfg(feature = "gc_stress")]
     if len + additional > cap {
-      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(self, reserve_cap_growth(cap, len + additional))));
+      self.0 = Some(hooks.manage::<RawUniqueVector<T, H>, _>(VecBuilder::new(
+        self,
+        reserve_cap_growth(cap, len + additional),
+      )));
     } else {
       hooks.collect_garbage();
     }
@@ -169,13 +172,19 @@ where
 
     #[cfg(not(feature = "gc_stress"))]
     if len + additional > cap {
-      self.0 = Some(allocator.manage(VecBuilder::new(self, reserve_cap_growth(cap, len + additional)), context));
+      self.0 = Some(allocator.manage(
+        VecBuilder::new(self, reserve_cap_growth(cap, len + additional)),
+        context,
+      ));
     }
 
     // when stress testing if we don't allocate collect anyways
     #[cfg(feature = "gc_stress")]
     if len + additional > cap {
-      self.0 = Some(allocator.manage(VecBuilder::new(self, reserve_cap_growth(cap, len + additional)), context));
+      self.0 = Some(allocator.manage(
+        VecBuilder::new(self, reserve_cap_growth(cap, len + additional)),
+        context,
+      ));
     } else {
       allocator.collect_garbage(context);
     }
@@ -283,7 +292,7 @@ impl<T, H> Deref for UniqueVector<T, H> {
   #[inline]
   fn deref(&self) -> &Self::Target {
     match &self.0 {
-      Some(raw_vector) => &*raw_vector,
+      Some(raw_vector) => raw_vector,
       None => &[],
     }
   }
