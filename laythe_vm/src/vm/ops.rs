@@ -112,7 +112,7 @@ impl Vm {
     // call fiber split which will peel off the last frame
     // if it's above the previous water mark
     if fiber.frames().len() == frame_count + 1 {
-      let new_fiber = Fiber::split(fiber, &mut self.gc.borrow_mut(), self, arg_count as usize);
+      let new_fiber = Fiber::split(fiber, self, arg_count as usize);
 
       let mut waiter = new_fiber.waiter();
       waiter.set_waiter(new_fiber);
@@ -169,7 +169,8 @@ impl Vm {
     let channel = self.fiber.pop();
 
     if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
-      self.fiber.add_used_channel(channel);
+      let mut fiber = self.fiber;
+      fiber.add_used_channel(self.gc.borrow_mut(), self, channel);
 
       match channel.receive(self.fiber.waiter()) {
         ReceiveResult::Ok(value) => {
@@ -219,7 +220,8 @@ impl Vm {
     let value = self.fiber.peek(0);
 
     if_let_obj!(ObjectKind::Channel(mut channel) = (channel) {
-      self.fiber.add_used_channel(channel);
+      let mut fiber = self.fiber;
+      fiber.add_used_channel(self.gc.borrow_mut(), self, channel);
 
       match channel.send(self.fiber.waiter(), value) {
         SendResult::Ok => ExecutionSignal::Ok,
@@ -505,7 +507,8 @@ impl Vm {
     let jump = self.read_short() as usize;
     let start = &self.fiber.fun().chunk().instructions()[0] as *const u8;
     let offset = self.ip.offset_from(start) as usize + jump;
-    self.fiber.push_exception_handler(offset, slot_depth);
+    let mut fiber = self.fiber;
+    fiber.push_exception_handler(self, offset, slot_depth);
     ExecutionSignal::Ok
   }
 
@@ -823,8 +826,8 @@ impl Vm {
   pub(super) unsafe fn op_get_capture(&mut self) -> ExecutionSignal {
     let slot = self.read_byte();
 
-    let upvalue = self.fiber.captures().get_capture_value(slot as usize);
-    self.fiber.push(upvalue);
+    let capture = self.fiber.captures().get_capture_value(slot as usize);
+    self.fiber.push(capture);
 
     ExecutionSignal::Ok
   }

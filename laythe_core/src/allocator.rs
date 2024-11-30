@@ -43,7 +43,7 @@ pub struct Allocator {
   /// The size in bytes of the gc before the next collection
   next_gc: usize,
 
-  /// The total number of garbage collections that have occured
+  /// The total number of garbage collections that have occurred
   gc_count: u128,
 }
 

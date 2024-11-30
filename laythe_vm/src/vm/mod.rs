@@ -24,7 +24,7 @@ use laythe_core::{
   utils::IdEmitter,
   val,
   value::{Value, VALUE_NIL},
-  Allocator, Captures, GcContext, ObjRef, Ref,
+  Allocator, Captures, ObjRef, Ref,
 };
 use laythe_env::io::Io;
 use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
@@ -166,7 +166,6 @@ impl Vm {
     let capture_stub = Captures::build(&hooks, &[]);
 
     let fiber = Fiber::new(
-      &mut context.gc(),
       &context,
       None,
       current_fun,

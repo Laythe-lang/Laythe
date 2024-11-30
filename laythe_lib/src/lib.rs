@@ -79,7 +79,10 @@ macro_rules! native_with_error {
       }
 
       fn call_error<T: Into<String> + AsRef<str>>(&self, hooks: &mut Hooks, message: T) -> Call {
-        match hooks.call(self.error, &[val!(hooks.manage_str(message))]) {
+        let message = hooks.manage_str(message);
+        hooks.push_root(message);
+
+        let result = match hooks.call(self.error, &[val!(message)]) {
           Call::Ok(err) => {
             if err.is_obj_kind(ObjectKind::Instance) {
               Call::Err(LyError::Err(err.to_obj().to_instance()))
@@ -91,7 +94,10 @@ macro_rules! native_with_error {
             }
           },
           Call::Err(err) => Call::Err(err),
-        }
+        };
+
+        hooks.pop_roots(1);
+        result
       }
     }
 
