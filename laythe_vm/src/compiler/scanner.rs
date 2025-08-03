@@ -1071,8 +1071,8 @@ mod test {
 
   #[test]
   fn single_token() {
-    for (token_kind, gen) in token_gen() {
-      let example = match gen {
+    for (token_kind, to_gen) in token_gen() {
+      let example = match to_gen {
         TokenGen::Symbol(x) => x(),
         TokenGen::ALpha(x) => x(),
         TokenGen::Comparator(x) => x(),

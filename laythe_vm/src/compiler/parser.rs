@@ -2472,7 +2472,7 @@ use crate::source::VM_FILE_TEST_ID;
   #[test]
   fn export_variable_type() {
     for type_ in EXAMPLE_TYPES.iter() {
-      let example = format!("export let x: {} = 10;", type_);
+      let example = format!("export let x: {type_} = 10;");
       test(&example);
     }
   }
@@ -3013,7 +3013,7 @@ use crate::source::VM_FILE_TEST_ID;
       .chain(EXAMPLE_ATOMS.iter())
       .chain(EXAMPLE_PRIMARIES.iter())
     {
-      let example = format!("{};", expr);
+      let example = format!("{expr};");
       test(&example);
     }
   }
@@ -3023,7 +3023,7 @@ use crate::source::VM_FILE_TEST_ID;
     for expr in EXAMPLE_EXPR.iter() {
       for atom in EXAMPLE_ATOMS.iter() {
         for assign in ASSIGNMENTS.iter() {
-          let example = format!("{}{}{};", atom, assign, expr);
+          let example = format!("{atom}{assign}{expr};");
           test(&example);
         }
       }
@@ -3047,7 +3047,7 @@ use crate::source::VM_FILE_TEST_ID;
           .chain(EXAMPLE_ATOMS.iter())
           .chain(EXAMPLE_PRIMARIES.iter())
         {
-          let example = format!("{} ?{}:{};", cond, then, else_);
+          let example = format!("{cond} ?{then}:{else_};");
           test(&example);
         }
       }
@@ -3059,7 +3059,7 @@ use crate::source::VM_FILE_TEST_ID;
     for p1 in EXAMPLE_ATOMS.iter().chain(EXAMPLE_PRIMARIES.iter()) {
       for p2 in EXAMPLE_ATOMS.iter().chain(EXAMPLE_PRIMARIES.iter()) {
         for op in BINARY_OPS.iter() {
-          let example = format!("{}{}{};", p1, op, p2);
+          let example = format!("{p1}{op}{p2};");
           test(&example);
         }
       }
@@ -3070,7 +3070,7 @@ use crate::source::VM_FILE_TEST_ID;
   fn unary() {
     for p in EXAMPLE_PRIMARIES.iter() {
       for op in UNARY_OPS.iter() {
-        let example = format!("{}{};", op, p);
+        let example = format!("{op}{p};");
         test(&example);
       }
     }
@@ -3080,7 +3080,7 @@ use crate::source::VM_FILE_TEST_ID;
   fn trailers() {
     for p in EXAMPLE_PRIMARIES.iter() {
       for t in EXAMPLE_TRAILERS.iter() {
-        let example = format!("{}{};", p, t);
+        let example = format!("{p}{t};");
         test(&example);
       }
     }
@@ -3089,7 +3089,7 @@ use crate::source::VM_FILE_TEST_ID;
   #[test]
   fn primaries() {
     for p in EXAMPLE_PRIMARIES.iter() {
-      let example = format!("{};", p);
+      let example = format!("{p};");
       test(&example);
     }
   }

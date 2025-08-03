@@ -4,7 +4,7 @@ use laythe_core::{object::LyStr, val, value::Value, Call, LyError};
 impl Vm {
   /// Run a laythe function on top of the current stack.
   /// This acts as a hook for native functions to execute laythe function
-  pub(super) unsafe fn run_fun(&mut self, callable: Value, args: &[Value]) -> Call {
+  pub(super) unsafe fn run_fun(&mut self, callable: Value, args: &[Value]) -> Call { unsafe {
     let mut fiber = self.fiber;
     fiber.ensure_stack(self, args.len() + 1);
 
@@ -16,7 +16,7 @@ impl Vm {
     #[cfg(feature = "debug")]
     {
       self
-        .print_hook_state("run_fun", &format!("{}", callable))
+        .print_hook_state("run_fun", &format!("{callable}"))
         .expect("Unable to print hook state");
     }
 
@@ -29,11 +29,11 @@ impl Vm {
     };
 
     self.to_call_result(result)
-  }
+  }}
 
   /// Run a laythe method on top of the current stack.
   /// This acts as a hook for native functions to execute laythe function
-  pub(super) unsafe fn run_method(&mut self, this: Value, method: Value, args: &[Value]) -> Call {
+  pub(super) unsafe fn run_method(&mut self, this: Value, method: Value, args: &[Value]) -> Call { unsafe {
     let mut fiber = self.fiber;
 
     fiber.ensure_stack(self, args.len() + 1);
@@ -45,7 +45,7 @@ impl Vm {
     #[cfg(feature = "debug")]
     {
       self
-        .print_hook_state("run_method", &format!("{}:{}", this, method))
+        .print_hook_state("run_method", &format!("{this}:{method}"))
         .expect("Unable to print hook state");
     }
 
@@ -59,10 +59,10 @@ impl Vm {
     };
 
     self.to_call_result(result)
-  }
+  }}
 
   /// Get a method for this this value with a given method name
-  pub(super) unsafe fn get_method(&mut self, this: Value, method_name: LyStr) -> Call {
+  pub(super) unsafe fn get_method(&mut self, this: Value, method_name: LyStr) -> Call { unsafe {
     let class = self.value_class(this);
 
     match class.get_method(&method_name) {
@@ -77,7 +77,7 @@ impl Vm {
         self.run_fun(val!(self.builtin.errors.import), &[error_message])
       },
     }
-  }
+  }}
 
   pub(super) fn scan_roots(&mut self) {
     self.fiber.scan_roots();

@@ -42,7 +42,6 @@ use object::Fun;
 use std::{
   cell::{RefCell, RefMut},
   io::Write,
-  mem,
   ptr::NonNull,
   rc::Rc,
 };
@@ -470,7 +469,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       start,
       end,
     };
-    let enclosing_loop = mem::replace(&mut self.loop_attributes, Some(loop_attributes));
+    let enclosing_loop = self.loop_attributes.replace(loop_attributes);
 
     self.scope(end_line, table, cb);
     self.emit_byte(SymbolicByteCode::Loop(start), end_line);
@@ -795,8 +794,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     if self.module_symbol_count > u16::MAX as usize {
       self.error(
         &format!(
-          "Attempted to declare variable {}, Too many module scoped symbols",
-          name
+          "Attempted to declare variable {name}, Too many module scoped symbols"
         ),
         Some(span),
       );
@@ -814,8 +812,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     if self.module_symbol_count > u16::MAX as usize {
       self.error(
         &format!(
-          "Attempted to declare variable {}, Too many module scoped symbols",
-          name
+          "Attempted to declare variable {name}, Too many module scoped symbols"
         ),
         Some(span),
       );
@@ -1196,7 +1193,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       .gc
       .borrow_mut()
       .manage(ClassAttributes::new(name), self);
-    let enclosing_class = mem::replace(&mut self.class_attributes, Some(class_attributes));
+    let enclosing_class = self.class_attributes.replace(class_attributes);
     if let Some(enclosing_class) = enclosing_class {
       self.gc.borrow_mut().push_root(enclosing_class);
     }
@@ -1656,7 +1653,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     let try_attributes = TryAttributes {
       scope_depth: self.scope_depth,
     };
-    let enclosing_try = mem::replace(&mut self.try_attributes, Some(try_attributes));
+    let enclosing_try = self.try_attributes.replace(try_attributes);
 
     let catch_label = self.label_emitter.emit();
 
@@ -2568,7 +2565,7 @@ mod test {
     for _ in 0..inner_fun.capture_count() {
       let scalar = decode_u16(&byte_slice[offset..offset + 2]);
 
-      let capture_index: CaptureIndex = unsafe { mem::transmute(scalar) };
+      let capture_index: CaptureIndex = unsafe { std::mem::transmute(scalar) };
       decoded.push(AlignedByteCode::CaptureIndex(capture_index));
       current_offset += 2;
     }
@@ -2603,8 +2600,7 @@ mod test {
       .for_each(|(index, (actual, expected))| {
         assert_eq!(
           actual, expected,
-          "compiled {:?} but expected {:?} at aligned instruction {}",
-          actual, expected, index
+          "compiled {actual:?} but expected {expected:?} at aligned instruction {index}"
         )
       });
 

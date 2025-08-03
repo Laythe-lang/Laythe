@@ -20,16 +20,16 @@ impl Vm {
     &mut self,
     error: ObjRef<Class>,
     message: &str,
-  ) -> ExecutionSignal {
+  ) -> ExecutionSignal { unsafe {
     self.runtime_error(error, self.manage_str(message))
-  }
+  }}
 
   /// Report a known laythe runtime error to the user
   pub(super) unsafe fn runtime_error(
     &mut self,
     error: ObjRef<Class>,
     message: LyStr,
-  ) -> ExecutionSignal {
+  ) -> ExecutionSignal { unsafe {
     let error_message = val!(self.manage_str(message));
     // Make sure we have enough space for the error message
     // As this isn't accounted for during compilation
@@ -55,14 +55,14 @@ impl Vm {
       },
       _ => self.internal_error("Failed to construct error"),
     }
-  }
+  }}
 
   /// Search for a catch block up the stack, printing the error if no catch is found
   pub(super) unsafe fn stack_unwind(
     &mut self,
     error: Instance,
     mode: ExecutionMode,
-  ) -> Option<ExecutionResult> {
+  ) -> Option<ExecutionResult> { unsafe {
     self.store_ip();
 
     let bottom_frame = match mode {
@@ -83,7 +83,7 @@ impl Vm {
       },
       UnwindResult::UnwindStopped => Some(ExecutionResult::RuntimeError),
     }
-  }
+  }}
 
   /// Set the current error place the vm signal a runtime error
   pub(super) fn set_error(&mut self, error: Instance) -> ExecutionSignal {

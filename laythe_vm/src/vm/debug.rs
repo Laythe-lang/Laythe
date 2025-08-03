@@ -6,7 +6,7 @@ use super::Vm;
 
 impl Vm {
   /// Print debugging information for the current instruction
-  pub(super) unsafe fn print_state(&self, ip: *const u8) -> io::Result<usize> {
+  pub(super) unsafe fn print_state(&self, ip: *const u8) -> io::Result<usize> { unsafe {
     let mut stdio = self.io.stdio();
 
     self.print_stack_debug(&mut stdio)?;
@@ -14,17 +14,17 @@ impl Vm {
     let start = self.current_fun.chunk().instructions().as_ptr();
     let offset = ip.offset_from(start) as usize;
     disassemble_instruction(&mut stdio, self.current_fun.chunk(), offset, false)
-  }
+  }}
 
   /// Print debugging information for the current hook
-  pub(super) unsafe fn print_hook_state(&self, hook_name: &str, with: &str) -> io::Result<()> {
+  pub(super) unsafe fn print_hook_state(&self, hook_name: &str, with: &str) -> io::Result<()> { unsafe {
     let mut stdio = self.io.stdio();
 
     self.print_stack_debug(&mut stdio)?;
 
     let stdout = stdio.stdout();
-    writeln!(stdout, "  Vm Hook {}: {}", hook_name, with)
-  }
+    writeln!(stdout, "  Vm Hook {hook_name}: {with}")
+  }}
 
   /// Print the current stack
   pub(super) unsafe fn print_stack_debug(&self, stdio: &mut Stdio) -> io::Result<()> {
@@ -45,7 +45,7 @@ impl Vm {
       write!(
         stdout,
         "[ {} ]",
-        s.chars().into_iter().take(60).collect::<String>()
+        s.chars().take(60).collect::<String>()
       )?;
     }
 
