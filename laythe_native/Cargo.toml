@@ -2,7 +2,7 @@
 name = "laythe_native"
 version = "0.1.0"
 authors = ["John Chabot <johnchabot2013@gmail.com>"]
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "laythe_native"
@@ -10,4 +10,4 @@ path = "src/lib.rs"
 
 [dependencies]
 laythe_env = { path = "../laythe_env" }
-termcolor = "1.1.3"
+termcolor = "1.4.1"
