@@ -68,9 +68,9 @@ impl List {
   ///
   /// ## Safety
   /// This should only be constructed from a box value
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self { unsafe {
     List(RawSharedVector::from_alloc_ptr(ptr))
-  }
+  }}
 
   /// Has this list moved
   pub fn has_moved(&self) -> bool {

@@ -42,7 +42,7 @@ impl<T: DebugHeap> DebugHeap for Option<T> {
   }
 }
 
-impl<'a, T: DebugHeap> DebugHeap for &'a [T] {
+impl<T: DebugHeap> DebugHeap for &[T] {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     f.debug_list()
       .entries(self.iter().map(|x| DebugWrap(x, depth)))

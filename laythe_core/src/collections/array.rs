@@ -64,9 +64,9 @@ impl<T, H> Array<T, H> {
   /// whichever object hold this slice also hold a reference to
   /// the Array itself in order to keep it alive. This is primarily
   /// to use rust method requiring a lifetime, typically for iterators
-  pub unsafe fn deref_static(&self) -> &'static [T] {
+  pub unsafe fn deref_static(&self) -> &'static [T] { unsafe {
     slice::from_raw_parts(self.as_ptr(), self.len())
-  }
+  }}
 
   /// Retrieve a pointer data array
   #[inline]

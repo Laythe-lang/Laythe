@@ -37,9 +37,9 @@ impl Tuple {
   ///
   /// ## Safety
   /// This should only be constructed from a box value
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self { unsafe {
     Tuple(Array::from_alloc_ptr(ptr))
-  }
+  }}
 }
 
 impl Deref for Tuple {

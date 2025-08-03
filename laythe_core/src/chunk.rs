@@ -73,9 +73,9 @@ impl Chunk {
   /// This method assumes the index comes from a trusted
   /// source that is inbounds.
   #[inline]
-  pub unsafe fn get_constant_unchecked(&self, offset: usize) -> Value {
+  pub unsafe fn get_constant_unchecked(&self, offset: usize) -> Value { unsafe {
     *self.constants.get_unchecked(offset)
-  }
+  }}
 
   /// Get the line number at a token offset
   ///
