@@ -22,7 +22,7 @@ pub fn env_module(
   let mut module = hooks.manage(Module::new(
     hooks,
     env_module_class,
-    &format!("native/{}", ENV_MODULE_NAME),
+    &format!("native/{ENV_MODULE_NAME}"),
     emitter.emit(),
   ));
 

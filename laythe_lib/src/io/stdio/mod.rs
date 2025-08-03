@@ -29,7 +29,7 @@ pub fn stdio_module(
   let module = hooks.manage(Module::new(
     hooks,
     stdio_module_class,
-    &format!("native/{}/{}", IO_MODULE_NAME, STDIO_MODULE_NAME),
+    &format!("native/{IO_MODULE_NAME}/{STDIO_MODULE_NAME}"),
     emitter.emit(),
   ));
 

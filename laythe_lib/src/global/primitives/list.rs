@@ -740,7 +740,8 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_index_get = ListIndexGet::native(&hooks.as_gc(), error);
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
+      let temp = &[VALUE_NIL, val!(10.0)];
+      let this = hooks.manage_obj(list!(temp));
       let values = &[val!(this), val!(0.0)];
 
       let result = list_index_get.call(&mut hooks, values);
@@ -765,7 +766,8 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_index_set = ListIndexSet::native(&hooks.as_gc(), error);
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
+      let temp = &[VALUE_NIL, val!(10.0)];
+      let this = hooks.manage_obj(list!(temp));
       let values = &[val!(this), val!(false), val!(1.0)];
 
       let result = list_index_set.call(&mut hooks, values).unwrap();
@@ -793,11 +795,13 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_str = ListStr::native(&hooks.as_gc(), hooks.manage_str("str"), error);
 
-      let this = hooks.manage_obj(list!(&[
+      let temp = &[val!(5.0)];
+      let temp = &[
         VALUE_NIL,
         val!(10.0),
-        val!(hooks.manage_obj(list!(&[val!(5.0)])))
-      ]));
+        val!(hooks.manage_obj(list!(temp)))
+      ];
+      let this = hooks.manage_obj(list!(temp));
 
       let values = &[val!(this)];
 
@@ -822,7 +826,8 @@ mod test {
 
       let list_slice = ListSlice::native(&hooks.as_gc(), error);
 
-      let this = hooks.manage_obj(list!(&[val!(1.0), val!(2.0), val!(3.0)]));
+      let temp = &[val!(1.0), val!(2.0), val!(3.0)];
+      let this = hooks.manage_obj(list!(temp));
 
       let result = list_slice
         .call(&mut hooks, &[val!(this), val!(0.0), val!(2.0)])
@@ -846,7 +851,8 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let list_size = ListLen::native(&hooks.as_gc());
 
-      let this = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
+      let temp = &[VALUE_NIL, val!(10.0)];
+      let this = hooks.manage_obj(list!(temp));
       let values = &[val!(this)];
 
       let result = list_size.call(&mut hooks, values);
@@ -867,7 +873,8 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let list_push = ListPush::native(&hooks.as_gc());
 
-      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0)]));
+      let temp = &[VALUE_NIL, val!(10.0)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_push.call(&mut hooks, &[this, val!(false)]);
@@ -904,7 +911,8 @@ mod test {
 
       let list_pop = ListPop::native(&hooks.as_gc());
 
-      let list = hooks.manage_obj(list!(&[val!(true)]));
+      let temp = &[val!(true)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_pop.call(&mut hooks, &[this]);
@@ -939,7 +947,8 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_remove = ListRemove::native(&hooks.as_gc(), error);
 
-      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let temp = &[VALUE_NIL, val!(10.0), val!(true)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_remove.call(&mut hooks, &[this, val!(1.0)]);
@@ -974,7 +983,8 @@ mod test {
 
       let list_index = ListIndex::native(&hooks.as_gc());
 
-      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let temp = &[VALUE_NIL, val!(10.0), val!(true)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_index.call(&mut hooks, &[this, val!(10.0)]);
@@ -999,7 +1009,8 @@ mod test {
 
       let list_insert = ListInsert::native(&hooks.as_gc(), error);
 
-      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let temp = &[VALUE_NIL, val!(10.0), val!(true)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_insert.call(&mut hooks, &[this, val!(1.0), val!(false)]);
@@ -1035,7 +1046,8 @@ mod test {
 
       let list_clear = ListClear::native(&hooks.as_gc());
 
-      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let temp = &[VALUE_NIL, val!(10.0), val!(true)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_clear.call(&mut hooks, &[this]);
@@ -1069,7 +1081,8 @@ mod test {
 
       let list_has = ListHas::native(&hooks.as_gc());
 
-      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let temp = &[VALUE_NIL, val!(10.0), val!(true)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_has.call(&mut hooks, &[this, val!(10.0)]);
@@ -1100,7 +1113,8 @@ mod test {
       let mut hooks = Hooks::new(&mut context);
       let list_iter = ListIter::native(&hooks.as_gc());
 
-      let list = hooks.manage_obj(list!(&[VALUE_NIL, val!(10.0), val!(true)]));
+      let temp = &[VALUE_NIL, val!(10.0), val!(true)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_iter.call(&mut hooks, &[this]);
@@ -1143,7 +1157,8 @@ mod test {
       let list_sort = ListSort::native(&hooks.as_gc(), error);
       let num_cmp = val!(ListTest::native(&hooks.as_gc()));
 
-      let list = hooks.manage_obj(list!(&[val!(3.0), val!(5.0)]));
+      let temp = &[val!(3.0), val!(5.0)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_sort.call(&mut hooks, &[this, num_cmp]).unwrap();
@@ -1164,7 +1179,8 @@ mod test {
 
       let list_sort = ListRev::native(&hooks.as_gc());
 
-      let list = hooks.manage_obj(list!(&[val!(3.0), val!(5.0)]));
+      let temp = &[val!(3.0), val!(5.0)];
+      let list = hooks.manage_obj(list!(temp));
       let this = val!(list);
 
       let result = list_sort.call(&mut hooks, &[this]).unwrap();

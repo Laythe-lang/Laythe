@@ -25,7 +25,7 @@ pub fn fs_module(
   let module = hooks.manage(Module::new(
     hooks,
     fs_module_class,
-    &format!("native/{}/{}", IO_MODULE_NAME, FS_MODULE_NAME),
+    &format!("native/{IO_MODULE_NAME}/{FS_MODULE_NAME}"),
     emitter.emit(),
   ));
 
