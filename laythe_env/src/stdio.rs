@@ -298,7 +298,7 @@ pub mod support {
     }
     fn read_line(&self, buffer: &mut String) -> std::io::Result<usize> {
       unsafe {
-        let line = match (*self.lines).get(*self.line_index) {
+        let line = match (&(*self.lines)).get(*self.line_index) {
           Some(line) => line.clone(),
           None => panic!("Not enough test lines"),
         };
