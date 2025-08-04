@@ -20,7 +20,7 @@ use super::LyStr;
 use crate::ObjectRef;
 
 const MAX_FIELD_COUNT: usize = u16::MAX as usize;
-const NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
+static NIL_ARRAY: [Value; MAX_FIELD_COUNT] = [VALUE_NIL; MAX_FIELD_COUNT];
 
 pub struct Instance(Array<Value, Header>);
 
@@ -67,9 +67,9 @@ impl Instance {
   ///
   /// ## Safety
   /// This should only be constructed from a box value
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self { unsafe {
     Instance(Array::from_alloc_ptr(ptr))
-  }
+  }}
 }
 
 impl Deref for Instance {

@@ -68,6 +68,10 @@ impl Class {
     &self.meta_class
   }
 
+  pub fn meta_class_mut(&mut self) -> &mut Option<ObjRef<Class>> {
+    &mut self.meta_class
+  }
+
   pub fn super_class(&self) -> &Option<ObjRef<Class>> {
     &self.super_class
   }

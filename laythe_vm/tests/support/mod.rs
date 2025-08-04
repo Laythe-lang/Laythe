@@ -212,7 +212,7 @@ fn assert_files_exit_inner(
   ly_assert_eq(
     &vm.run(test_path, &source).1,
     &result,
-    Some(format!("Failing file {:?}", debug_path)),
+    Some(format!("Failing file {debug_path:?}")),
   )?;
 
   Ok(())
@@ -229,8 +229,7 @@ fn ly_assert_eq<T: PartialEq + fmt::Debug>(
   }
 
   // should consider mapping io errors to something else
-  Err(io::Error::new(
-    io::ErrorKind::Other,
-    message.unwrap_or(format!("Expected {:?} Received {:?}", expected, received)),
+  Err(io::Error::other(
+    message.unwrap_or(format!("Expected {expected:?} Received {received:?}")),
   ))
 }

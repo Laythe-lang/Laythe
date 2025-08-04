@@ -310,11 +310,11 @@ mod unboxed {
     /// Implement display for value in laythe
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
       match self {
-        Self::Number(num) => write!(f, "{}", num),
-        Self::Bool(b) => write!(f, "{}", b),
+        Self::Number(num) => write!(f, "{num}"),
+        Self::Bool(b) => write!(f, "{b}"),
         Self::Nil => write!(f, "nil"),
         Self::Undefined => write!(f, "undefined"),
-        Self::Obj(obj) => write!(f, "{}", obj),
+        Self::Obj(obj) => write!(f, "{obj}"),
       }
     }
   }
@@ -388,8 +388,8 @@ mod unboxed {
       match self {
         Value::Nil => f.write_str("nil"),
         Value::Undefined => f.write_str("undefined"),
-        Value::Bool(b) => f.write_fmt(format_args!("{}", b)),
-        Value::Number(num) => f.write_fmt(format_args!("{}", num)),
+        Value::Bool(b) => f.write_fmt(format_args!("{b}")),
+        Value::Number(num) => f.write_fmt(format_args!("{num}")),
         Value::Obj(obj) => f.write_fmt(format_args!("{:?}", DebugWrap(obj, depth))),
       }
     }

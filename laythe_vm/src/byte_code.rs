@@ -965,9 +965,9 @@ impl ByteCode {
     unsafe { mem::transmute(byte) }
   }
 
-  pub unsafe fn from_byte_unchecked(byte: u8) -> Self {
+  pub unsafe fn from_byte_unchecked(byte: u8) -> Self { unsafe {
     mem::transmute(byte)
-  }
+  }}
 }
 
 /// Laythe virtual machine byte codes

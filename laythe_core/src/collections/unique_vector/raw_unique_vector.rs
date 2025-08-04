@@ -1,9 +1,9 @@
 use crate::{
+  VecBuilder,
   align_utils::{
     get_vector_cap_offset, get_vector_len_offset, get_vector_offset, make_vector_layout,
   },
   managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Manage, Mark, Marked, Trace, Unmark},
-  VecBuilder,
 };
 use ptr::NonNull;
 use std::{
@@ -73,7 +73,9 @@ impl<T, H> RawUniqueVector<T, H> {
   pub unsafe fn write_len(&mut self, len: usize) {
     #[allow(clippy::cast_ptr_alignment)]
     let count = get_vector_len_offset::<H>();
-    ptr::write(self.ptr.as_ptr().add(count) as *mut usize, len);
+    unsafe {
+      ptr::write(self.ptr.as_ptr().add(count) as *mut usize, len);
+    }
   }
 
   /// Write a value at the provided index
@@ -81,7 +83,9 @@ impl<T, H> RawUniqueVector<T, H> {
   /// expected that the caller has already checked the bounds
   /// of len
   pub unsafe fn write_value(&mut self, value: T, index: usize) {
-    ptr::write(self.item_mut(index), value);
+    unsafe {
+      ptr::write(self.item_mut(index), value);
+    }
   }
 
   /// Read a value at the provided index
@@ -89,7 +93,7 @@ impl<T, H> RawUniqueVector<T, H> {
   /// expected that the caller has already checked the bounds
   /// of len
   pub unsafe fn read_value(&mut self, index: usize) -> T {
-    ptr::read(self.item_mut(index))
+    unsafe { ptr::read(self.item_mut(index)) }
   }
 
   /// Get a mutable pointer to a index into the collection
@@ -98,7 +102,7 @@ impl<T, H> RawUniqueVector<T, H> {
   /// This method does no bounds checks so the caller will need to ensure
   /// that this is only called within bounds
   pub unsafe fn item_mut(&self, index: usize) -> *mut T {
-    self.ptr.as_ptr().add(self.offset_item(index)) as *mut T
+    unsafe { self.ptr.as_ptr().add(self.offset_item(index)) as *mut T }
   }
 
   /// Get a const pointer to a index into the collection
@@ -107,7 +111,7 @@ impl<T, H> RawUniqueVector<T, H> {
   /// This method does no bounds checks so the caller will need to ensure
   /// that this is only called within bounds
   pub unsafe fn item_ptr(&self, index: usize) -> *const T {
-    self.ptr.as_ptr().add(self.offset_item(index)) as *const T
+    unsafe { self.ptr.as_ptr().add(self.offset_item(index)) as *const T }
   }
 
   /// Determine the byte offset of an item in the collection
@@ -425,7 +429,7 @@ mod test {
 
       let vector: RawUniqueVector<u16, Header> = hooks.manage(VecBuilder::new(&[1, 2, 3], 4));
 
-      assert_eq!(vector.header().marked(), false);
+      assert!(!vector.header().marked());
     }
 
     #[test]
@@ -443,7 +447,8 @@ mod test {
       let context = NoContext::default();
       let hooks = GcHooks::new(&context);
 
-      let vector1: RawUniqueVector<u16, Header> = hooks.manage(VecBuilder::new(&[1, 2, 3, 4, 5], 5));
+      let vector1: RawUniqueVector<u16, Header> =
+        hooks.manage(VecBuilder::new(&[1, 2, 3, 4, 5], 5));
       let vector2: RawUniqueVector<u16, Header> = hooks.manage(VecBuilder::new(&[], 5));
 
       assert!(!vector1.is_empty());
@@ -455,7 +460,8 @@ mod test {
       let context = NoContext::default();
       let hooks = GcHooks::new(&context);
 
-      let vector: RawUniqueVector<u16, Header> = hooks.manage(VecBuilder::new(&[1, 2, 3, 4, 5], 10));
+      let vector: RawUniqueVector<u16, Header> =
+        hooks.manage(VecBuilder::new(&[1, 2, 3, 4, 5], 10));
 
       assert_eq!(vector.cap(), 10);
     }

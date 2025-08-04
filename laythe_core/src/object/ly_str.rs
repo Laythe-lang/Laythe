@@ -44,9 +44,9 @@ impl LyStr {
   /// itself created by the garbage collector. The reference
   /// should truly be of 'a for the lifetime of the allocator.
   /// This will need to be refactored later
-  pub unsafe fn deref_static(&self) -> &'static str {
+  pub unsafe fn deref_static(&self) -> &'static str { unsafe {
     str::from_utf8_unchecked(self.0.deref_static())
-  }
+  }}
 
   /// Create a LyStr from a `NonNull<u8>`.
   ///
@@ -54,9 +54,9 @@ impl LyStr {
   /// This functions assumes that the pointer was originally
   /// from a different instance of LyStr. Other pointer
   /// will likely crash immediately
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self { unsafe {
     LyStr(Array::from_alloc_ptr(ptr))
-  }
+  }}
 }
 
 impl Mark for LyStr {

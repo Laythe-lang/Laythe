@@ -164,7 +164,7 @@ impl<'a> SymbolTable<'a> {
   }
 
   /// Return an iterator to all symbols in this table
-  pub fn all_symbols(&'a self) -> std::slice::Iter<'_, Symbol> {
+  pub fn all_symbols(&'a self) -> std::slice::Iter<'a, Symbol> {
     self.0.iter()
   }
 

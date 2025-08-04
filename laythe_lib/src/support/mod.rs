@@ -160,7 +160,8 @@ mod test {
   };
   use std::{cell::RefCell, io::Write, sync::Arc};
 
-  pub struct MockedContext {
+  #[derive(Default)]
+pub struct MockedContext {
     pub gc: RefCell<Allocator>,
     pub responses: Vec<Value>,
     io: Io,
@@ -168,17 +169,7 @@ mod test {
     response_count: usize,
   }
 
-  impl Default for MockedContext {
-    fn default() -> Self {
-      Self {
-        gc: RefCell::default(),
-        responses: vec![],
-        io: Io::default(),
-        builtin: None,
-        response_count: 0,
-      }
-    }
-  }
+  
 
   impl MockedContext {
     pub fn new(responses: &[Value]) -> Self {
@@ -404,7 +395,7 @@ mod test {
 
   impl DebugHeap for TestIterator {
     fn fmt_heap(&self, f: &mut std::fmt::Formatter, _: usize) -> std::fmt::Result {
-      f.write_fmt(format_args!("{:?}", self))
+      f.write_fmt(format_args!("{self:?}"))
     }
   }
 

@@ -40,9 +40,9 @@ impl<T: 'static> Ref<T> {
   /// This object must be keep alive otherwise this can
   /// lead to dangling pointer error. This effectively
   /// completely circumvents rust type system completely
-  pub unsafe fn deref_static(&self) -> &'static T {
+  pub unsafe fn deref_static(&self) -> &'static T { unsafe {
     &(*self.ptr.as_ptr()).data
-  }
+  }}
 
   /// Return the underlying pointer as a usize. This is
   /// used by the nan boxing functionality

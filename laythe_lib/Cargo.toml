@@ -2,7 +2,7 @@
 name = "laythe_lib"
 version = "0.1.0"
 authors = ["John Chabot <johnchabot2013@gmail.com>"]
-edition = "2021"
+edition = "2024"
 
 [features]
 default = ["desktop"]
@@ -23,11 +23,11 @@ path = "src/lib.rs"
 laythe_core = { path = "../laythe_core" } # , features = ["nan_boxing"]
 laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }
-hashbrown = "0.14.5"
-js-sys = { version = "0.3.60", optional = true }
+hashbrown = "0.15.4"
+js-sys = { version = "0.3.77", optional = true }
 fnv = "1.0.7"
 rand = { version = "0.8.5", optional = true }
-regex = "1.7.1"
+regex = "1.11.1"
 
 [dev-dependencies]
-criterion = "0.4.0"
+criterion = "0.7.0"

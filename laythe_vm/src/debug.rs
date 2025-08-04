@@ -16,11 +16,9 @@ pub fn print_symbolic_code(
   chunk_builder: &ChunkBuilder,
   name: &str,
 ) -> io::Result<()> {
-  use std::u16;
-
   let stdout = stdio.stdout();
   writeln!(stdout)?;
-  writeln!(stdout, "{0}", name)?;
+  writeln!(stdout, "{name}")?;
 
   let mut offset: usize = 0;
   let mut last_line: u16 = u16::MAX;
@@ -57,12 +55,12 @@ pub fn print_byte_code(
     return Ok(offset);
   }
 
-  write!(stdout, "  {:0>4} ", offset)?;
+  write!(stdout, "  {offset:0>4} ")?;
 
   if show_line {
     write!(stdout, "   | ")?;
   } else {
-    write!(stdout, "{:>4} ", line)?;
+    write!(stdout, "{line:>4} ")?;
   }
 
   match instruction {
@@ -161,7 +159,7 @@ pub fn print_byte_code(
       simple_instruction(stdio.stdout(), "!=== InvokeSlot - Invalid ===!", offset)
     },
     SymbolicByteCode::LoadGlobal(slot) => {
-      symbolic_constant_instruction(stdio.stdout(), "LoadGlobal", slot as u16, chunk, offset)
+      symbolic_constant_instruction(stdio.stdout(), "LoadGlobal", slot, chunk, offset)
     },
     SymbolicByteCode::DeclareModSym((symbol_slot, module_slot)) => {
       symbolic_define_module_symbol_instruction(
@@ -240,7 +238,7 @@ pub fn print_byte_code(
 
 #[cfg(feature = "debug")]
 fn label_instruction(stdout: &mut dyn Write, label: Label, offset: usize) -> io::Result<usize> {
-  writeln!(stdout, "L{}:", label)?;
+  writeln!(stdout, "L{label}:")?;
   Ok(offset)
 }
 
@@ -251,7 +249,7 @@ fn symbolic_jump_instruction(
   label: Label,
   offset: usize,
 ) -> io::Result<usize> {
-  writeln!(stdout, "{:13} L{}:", name, label)?;
+  writeln!(stdout, "{name:13} L{label}:")?;
   Ok(offset)
 }
 
@@ -264,7 +262,7 @@ fn symbolic_constant_instruction(
   chunk: &ChunkBuilder,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:13} {:5} ", name, slot)?;
+  write!(stdout, "{name:13} {slot:5} ")?;
   writeln!(stdout, "{}", &chunk.get_constant(slot as usize))?;
   Ok(offset)
 }
@@ -298,7 +296,7 @@ fn symbolic_define_module_symbol_instruction(
   chunk: &ChunkBuilder,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:13} {:5} ", name, symbol_slot)?;
+  write!(stdout, "{name:13} {symbol_slot:5} ")?;
   write!(stdout, "{}", chunk.get_constant(symbol_slot as usize))?;
   writeln!(stdout, " module[{}]", &module_slot)?;
 
@@ -314,7 +312,7 @@ fn symbolic_property_instruction(
   constant: u16,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:13} {:5} ", name, constant)?;
+  write!(stdout, "{name:13} {constant:5} ")?;
   write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
 
   if let SymbolicByteCode::PropertySlot = chunk.instructions()[offset] {
@@ -337,7 +335,7 @@ fn symbolic_closure_instruction(
 ) -> io::Result<usize> {
   let stdout = stdio.stdout();
 
-  write!(stdout, "{:13} {:5} ", name, constant)?;
+  write!(stdout, "{name:13} {constant:5} ")?;
   writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
 
   let value = chunk.get_constant(constant as usize);
@@ -361,13 +359,11 @@ fn symbolic_closure_instruction(
       match capture_index {
         CaptureIndex::Local(local) => writeln!(
           stdout,
-          "  {:0>4}      |                  local {}",
-          current_offset, local
+          "  {current_offset:0>4}      |                  local {local}"
         ),
         CaptureIndex::Enclosing(capture) => writeln!(
           stdout,
-          "  {:0>4}      |                  capture {}",
-          current_offset, capture
+          "  {current_offset:0>4}      |                  capture {capture}"
         ),
       }?;
 
@@ -387,7 +383,7 @@ fn symbolic_invoke_instruction(
   chunk: &ChunkBuilder,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:13} {:5} ({} args) ", name, slot, arg_count)?;
+  write!(stdout, "{name:13} {slot:5} ({arg_count} args) ")?;
   write!(stdout, "{}", &chunk.get_constant(slot as usize))?;
 
   if let SymbolicByteCode::InvokeSlot = chunk.instructions()[offset] {
@@ -408,7 +404,7 @@ fn symbolic_push_handler_instruction(
   label: Label,
   offset: usize,
 ) -> io::Result<usize> {
-  writeln!(stdout, "{:13} L{}: {:5}", name, label, slots)?;
+  writeln!(stdout, "{name:13} L{label}: {slots:5}")?;
   Ok(offset)
 }
 
@@ -417,7 +413,7 @@ fn symbolic_push_handler_instruction(
 pub fn disassemble_chunk(stdio: &mut Stdio, chunk: &Chunk, name: &str) -> io::Result<()> {
   let stdout = stdio.stdout();
   writeln!(stdout)?;
-  writeln!(stdout, "{0}", name)?;
+  writeln!(stdout, "{name}")?;
 
   let mut offset: usize = 0;
   let mut last_offset: usize = 0;
@@ -440,7 +436,7 @@ pub fn disassemble_instruction(
   show_line: bool,
 ) -> io::Result<usize> {
   let stdout = stdio.stdout();
-  write!(stdout, "  {:0>4} ", offset)?;
+  write!(stdout, "  {offset:0>4} ")?;
 
   if offset != 0 && show_line {
     write!(stdout, "   | ")?;
@@ -627,7 +623,7 @@ fn constant_instruction(
   constant: u16,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:13} {:5} ", name, constant)?;
+  write!(stdout, "{name:13} {constant:5} ")?;
   writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   Ok(offset)
 }
@@ -677,7 +673,7 @@ fn constant_instruction_with_slot(
   constant: u16,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:13} {:5} ", name, constant)?;
+  write!(stdout, "{name:13} {constant:5} ")?;
   write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   writeln!(
     stdout,
@@ -698,7 +694,7 @@ fn closure_instruction(
 ) -> io::Result<usize> {
   let stdout = stdio.stdout();
 
-  write!(stdout, "{:13} {:5} ", name, constant)?;
+  write!(stdout, "{name:13} {constant:5} ")?;
   writeln!(stdout, "{}", &chunk.get_constant(constant as usize))?;
 
   let value = chunk.get_constant(constant as usize);
@@ -727,13 +723,11 @@ fn closure_instruction(
     match capture_index {
       CaptureIndex::Local(local) => writeln!(
         stdout,
-        "  {:0>4}      |                  local {}",
-        current_offset, local
+        "  {current_offset:0>4}      |                  local {local}"
       ),
       CaptureIndex::Enclosing(capture) => writeln!(
         stdout,
-        "  {:0>4}      |                  capture {}",
-        current_offset, capture
+        "  {current_offset:0>4}      |                  capture {capture}"
       ),
     }?;
 
@@ -752,7 +746,7 @@ fn invoke_instruction(
   arg_count: u8,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:13} {:5} ({} args) ", name, constant, arg_count)?;
+  write!(stdout, "{name:13} {constant:5} ({arg_count} args) ")?;
   write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   writeln!(
     stdout,
@@ -771,7 +765,7 @@ fn define_module_symbol_instruction(
   module_slot: u16,
   offset: usize,
 ) -> io::Result<usize> {
-  write!(stdout, "{:13} {:5} ", name, constant)?;
+  write!(stdout, "{name:13} {constant:5} ")?;
   write!(stdout, "{}", &chunk.get_constant(constant as usize))?;
   writeln!(stdout, " module[{}]", &module_slot)?;
   Ok(offset)
@@ -784,7 +778,7 @@ fn short_instruction(
   slot: u16,
   offset: usize,
 ) -> io::Result<usize> {
-  writeln!(stdout, "{:13} {:5}", name, slot)?;
+  writeln!(stdout, "{name:13} {slot:5}")?;
   Ok(offset)
 }
 
@@ -795,12 +789,12 @@ fn byte_instruction(
   slot: u8,
   offset: usize,
 ) -> io::Result<usize> {
-  writeln!(stdout, "{:13} {:5}", name, slot)?;
+  writeln!(stdout, "{name:13} {slot:5}")?;
   Ok(offset)
 }
 
 /// print a simple instruction
 fn simple_instruction(stdout: &mut dyn Write, name: &str, offset: usize) -> io::Result<usize> {
-  writeln!(stdout, "{:13}", name)?;
+  writeln!(stdout, "{name:13}")?;
   Ok(offset)
 }

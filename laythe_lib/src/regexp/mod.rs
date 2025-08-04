@@ -23,7 +23,7 @@ pub fn regexp_module(
   let module = hooks.manage(Module::new(
     hooks,
     regexp_module_class,
-    &format!("native/{}", REGEXP_MODULE_NAME),
+    &format!("native/{REGEXP_MODULE_NAME}"),
     emitter.emit(),
   ));
 

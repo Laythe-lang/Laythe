@@ -2,7 +2,7 @@
 name = "laythe_vm"
 version = "0.1.0"
 authors = ["John Chabot <johnchabot2013@gmail.com>"]
-edition = "2021"
+edition = "2024"
 
 [features]
 debug = []
@@ -24,13 +24,13 @@ laythe_lib = { path = "../laythe_lib" }
 laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }
 fnv = "1.0.7"
-codespan = "0.11.1"
-variant_count = "1.1.0"
-codespan-reporting = "0.11.1"
-bumpalo = { version = "3.16.0", features=["boxed", "collections"] }
+codespan = "0.12.0"
+variant_count = "1.2.0"
+codespan-reporting = "0.12.0"
+bumpalo = { version = "3.19.0", features=["boxed", "collections"] }
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion = "0.7.0"
 
 [[bench]]
 name = "vm_benches"

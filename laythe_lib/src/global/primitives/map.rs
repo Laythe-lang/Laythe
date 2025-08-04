@@ -126,7 +126,7 @@ impl LyNative for MapStr {
   fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
     let map = args[0].to_obj().to_map();
 
-    if map.len() == 0 {
+    if map.is_empty() {
       return Call::Ok(val!(hooks.manage_str("{}")));
     }
 
@@ -346,7 +346,9 @@ impl Enumerate for MapIterator {
   fn next(&mut self, hooks: &mut Hooks) -> Call {
     match self.iter.next() {
       Some(next) => {
-        self.current = val!(hooks.manage_obj(list!(&[*next.0, *next.1])));
+        let dawg = &[*next.0, *next.1];
+        let bro = list!(dawg);
+        self.current = val!(hooks.manage_obj(bro));
         Call::Ok(val!(true))
       },
       None => {

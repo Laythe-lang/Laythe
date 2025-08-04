@@ -476,10 +476,11 @@ mod test {
       let error = val!(test_error_class(&hooks.as_gc()));
       let list_str = TupleStr::native(&hooks.as_gc(), hooks.manage_str("str"), error);
 
+      let temp = &[val!(5.0)];
       let this = hooks.manage_obj::<Tuple, &[Value]>(&[
         VALUE_NIL,
         val!(10.0),
-        val!(hooks.manage_obj(list!(&[val!(5.0)]))),
+        val!(hooks.manage_obj(list!(temp))),
       ]);
       let values = &[val!(this)];
 

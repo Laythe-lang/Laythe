@@ -1,10 +1,10 @@
 use crate::{
+  VecBuilder,
   align_utils::{
     get_vector_cap_offset, get_vector_len_offset, get_vector_offset, make_vector_layout,
   },
   managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Manage, Mark, Marked, Trace, Unmark},
   utils::{msb_set, set_msb, strip_msb},
-  VecBuilder,
 };
 use ptr::NonNull;
 use std::{
@@ -137,14 +137,16 @@ impl<T, H> RawSharedVector<T, H> {
   pub unsafe fn read_len<L: Copy>(&self) -> L {
     #[allow(clippy::cast_ptr_alignment)]
     let count = get_vector_len_offset::<H>();
-    *(self.ptr.as_ptr().add(count) as *mut L)
+    unsafe { *(self.ptr.as_ptr().add(count) as *mut L) }
   }
 
   /// Write a length to to the length slot. This assumes the
   pub unsafe fn write_len<L>(&mut self, len: L) {
     #[allow(clippy::cast_ptr_alignment)]
     let count = get_vector_len_offset::<H>();
-    ptr::write(self.ptr.as_ptr().add(count) as *mut L, len);
+    unsafe {
+      ptr::write(self.ptr.as_ptr().add(count) as *mut L, len);
+    }
   }
 
   /// Read the capacity field on this vector. This may indicate a forwarded pointer
@@ -177,7 +179,9 @@ impl<T, H> RawSharedVector<T, H> {
   /// expected that the caller has already checked the bounds
   /// of len
   pub unsafe fn write_value(&mut self, value: T, index: usize) {
-    ptr::write(self.item_mut(index), value);
+    unsafe {
+      ptr::write(self.item_mut(index), value);
+    }
   }
 
   /// Read a value at the provided index
@@ -185,7 +189,7 @@ impl<T, H> RawSharedVector<T, H> {
   /// expected that the caller has already checked the bounds
   /// of len
   pub unsafe fn read_value(&mut self, index: usize) -> T {
-    ptr::read(self.item_mut(index))
+    unsafe { ptr::read(self.item_mut(index)) }
   }
 
   /// Get a mutable pointer to a index into the collection
@@ -194,9 +198,11 @@ impl<T, H> RawSharedVector<T, H> {
   /// This method does no bounds checks so the caller will need to ensure
   /// that this is only called within bounds
   pub unsafe fn item_mut(&self, index: usize) -> *mut T {
-    match self.state() {
-      RawVecLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *mut T,
-      RawVecLocation::Forwarded(vector) => vector.item_mut(index),
+    unsafe {
+      match self.state() {
+        RawVecLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *mut T,
+        RawVecLocation::Forwarded(vector) => vector.item_mut(index),
+      }
     }
   }
 
@@ -206,9 +212,11 @@ impl<T, H> RawSharedVector<T, H> {
   /// This method does no bounds checks so the caller will need to ensure
   /// that this is only called within bounds
   pub unsafe fn item_ptr(&self, index: usize) -> *const T {
-    match self.state() {
-      RawVecLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *const T,
-      RawVecLocation::Forwarded(vector) => vector.item_ptr(index),
+    unsafe {
+      match self.state() {
+        RawVecLocation::Here(_) => self.ptr.as_ptr().add(self.offset_item(index)) as *const T,
+        RawVecLocation::Forwarded(vector) => vector.item_ptr(index),
+      }
     }
   }
 

@@ -37,6 +37,10 @@ const REGEXP_MATCH: NativeMetaBuilder = NativeMetaBuilder::method("match", Arity
   .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
   .with_stack();
 
+const REGEXP_MATCH_ALL: NativeMetaBuilder = NativeMetaBuilder::method("matchAll", Arity::Fixed(1))
+  .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
+  .with_stack();
+
 const REGEXP_CAPTURES: NativeMetaBuilder = NativeMetaBuilder::method("captures", Arity::Fixed(1))
   .with_params(&[ParameterBuilder::new("string", ParameterKind::String)])
   .with_stack();
@@ -79,6 +83,11 @@ pub fn define_regexp_class(
   class.add_method(
     hooks.manage_str(REGEXP_MATCH.name),
     val!(RegExpMatch::native(hooks, syntax_error)),
+  );
+
+  class.add_method(
+    hooks.manage_str(REGEXP_MATCH_ALL.name),
+    val!(RegExpMatchAll::native(hooks, syntax_error)),
   );
 
   class.add_method(
@@ -133,6 +142,29 @@ impl LyNative for RegExpMatch {
     match regexp.find(&args[1].to_obj().to_str()) {
       Some(found) => Call::Ok(val!(hooks.manage_str(found.as_str()))),
       None => Call::Ok(VALUE_NIL),
+    }
+  }
+}
+
+native_with_error!(RegExpMatchAll, REGEXP_MATCH_ALL);
+
+impl LyNative for RegExpMatchAll {
+  fn call(&self, hooks: &mut Hooks, args: &[Value]) -> Call {
+    let regexp = get_regex!(self, args[0], hooks);
+
+    let mut list = List::new(hooks.manage_obj(list!()));
+    hooks.push_root(list);
+
+    for regexp_match in regexp.find_iter(&args[1].to_obj().to_str()) {
+      list.push(val!(hooks.manage_str(regexp_match.as_str())), &hooks.as_gc());
+    }
+
+    hooks.pop_roots(1);
+
+    if list.is_empty() {
+      Call::Ok(VALUE_NIL)
+    } else {
+      Call::Ok(val!(list))
     }
   }
 }

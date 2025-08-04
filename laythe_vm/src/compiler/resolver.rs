@@ -259,7 +259,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
         vec![
           Label::primary(self.file_id, span).with_message(PRIMARY_LABEL),
           Label::secondary(self.file_id, span)
-            .with_message(format!("{} was originally declared here", name)),
+            .with_message(format!("{name} was originally declared here")),
         ],
       ),
       None => {
