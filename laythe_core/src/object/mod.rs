@@ -9,6 +9,7 @@ mod list;
 mod ly_box;
 mod ly_str;
 mod map;
+mod new_map;
 mod method;
 mod native;
 mod tuple;
