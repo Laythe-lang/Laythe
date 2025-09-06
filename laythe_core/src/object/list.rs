@@ -69,7 +69,7 @@ impl List {
   /// ## Safety
   /// This should only be constructed from a box value
   pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self { unsafe {
-    List(RawSharedVector::from_alloc_ptr(ptr))
+    Self(RawSharedVector::from_alloc_ptr(ptr))
   }}
 
   /// Has this list moved
@@ -81,7 +81,7 @@ impl List {
   pub fn state(&self) -> ListLocation {
     match self.0.state() {
       RawVecLocation::Here(cap) => ListLocation::Here(cap),
-      RawVecLocation::Forwarded(raw_vector) => ListLocation::Forwarded(List(raw_vector)),
+      RawVecLocation::Forwarded(raw_vector) => ListLocation::Forwarded(Self(raw_vector)),
     }
   }
 
@@ -180,7 +180,7 @@ impl List {
   /// Ensure this list has enough capacity for the operation
   /// If it does it returns itself. Otherwise it returns a new list
   /// which it will have just allocated
-  fn ensure_capacity(&mut self, needed: usize, cap: usize, hooks: &GcHooks) -> List {
+  fn ensure_capacity(&mut self, needed: usize, cap: usize, hooks: &GcHooks) -> Self {
     if needed > cap {
       self.grow(cap, cap * 2, hooks)
     } else {
@@ -191,8 +191,8 @@ impl List {
   /// Allocate a new list which the specified capacity. Mark the existing list as moved
   /// by setting the MSB for capacity and replacing len with a pointer to the
   /// new list
-  fn grow(&mut self, cap: usize, new_cap: usize, hooks: &GcHooks) -> List {
-    let new_list = List::new(hooks.manage_obj(VecBuilder::new(self, new_cap)));
+  fn grow(&mut self, cap: usize, new_cap: usize, hooks: &GcHooks) -> Self {
+    let new_list = Self::new(hooks.manage_obj(VecBuilder::new(self, new_cap)));
 
     unsafe {
       self.0.write_len(new_list);
