@@ -1,16 +1,19 @@
+mod header;
+
 use std::{
   fmt::{self, Debug, Display, Pointer},
   mem,
   ops::{Deref, DerefMut},
-  ptr::{self, NonNull},
+  ptr::{self, NonNull}, sync::atomic::AtomicBool,
+  hash::{BuildHasherDefault}
 };
-
+use fnv::FnvHasher;
 use crate::{
   collections::{
     IndexedResult, RawSharedVector, RawSharedVectorHandle, RawVecLocation, VecBuilder,
   },
   managed::{AllocObjResult, AllocateObj, DebugHeap, Trace},
-  object::ObjectKind,
+  object::{new_map::header::{FnvBuild, Header}, ObjectKind},
   reference::ObjectHandle,
   value::Value,
   GcHooks,
@@ -19,7 +22,6 @@ use crate::{
 #[cfg(not(feature = "nan_boxing"))]
 use crate::ObjectRef;
 
-use super::ObjHeader;
 
 /// The location of this list
 pub enum MapLocation {
@@ -30,10 +32,10 @@ pub enum MapLocation {
   Forwarded(Map),
 }
 
-pub struct Map(RawSharedVector<(Value, Value), ObjHeader>);
+pub struct Map(RawSharedVector<(Value, Value), Header>);
 
 impl Map {
-  pub fn new(raw_vector: RawSharedVector<(Value, Value), ObjHeader>) -> Self {
+  pub fn new(raw_vector: RawSharedVector<(Value, Value), Header>) -> Self {
     Self(raw_vector)
   }
 
@@ -128,11 +130,20 @@ impl DerefMut for Map {
   }
 }
 
-impl<'a> AllocateObj<RawSharedVector<(Value, Value), ObjHeader>> for VecBuilder<'a, (Value, Value)> {
-  fn alloc(self) -> AllocObjResult<RawSharedVector<(Value, Value), ObjHeader>> {
+impl<T> RawSharedVectorHandle<T, Header> {
+  /// Degrade this handle into
+  pub fn degrade(self) -> ObjectHandle {
+    let handle = ObjectHandle::new(self.value().ptr());
+    mem::forget(self);
+    handle
+  }
+}
+
+impl<'a> AllocateObj<RawSharedVector<(Value, Value), Header>> for VecBuilder<'a, (Value, Value)> {
+  fn alloc(self) -> AllocObjResult<RawSharedVector<(Value, Value), Header>> {
     debug_assert!(self.slice().len() <= self.cap());
     let handle =
-      RawSharedVectorHandle::from_slice(self.slice(), self.cap(), ObjHeader::new(ObjectKind::List));
+      RawSharedVectorHandle::from_slice(self.slice(), self.cap(), Header::new(FnvBuild::default()));
 
     let size = handle.size();
     let reference = handle.value();
