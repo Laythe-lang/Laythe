@@ -1,21 +1,19 @@
 use crate::{
-  native, native_with_error,
+  StdResult, native, native_with_error,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, IndexedResult, LyError, LyResult, ObjRef, Ref, VecBuilder,
   constants::{INDEX_GET, INDEX_SET},
   hooks::{GcHooks, Hooks},
-  if_let_obj,
+  if_let_obj, list,
   managed::{DebugHeap, DebugWrap, Trace},
   module::Module,
   object::{Enumerate, Enumerator, List, LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  to_obj_kind,
   utils::is_falsey,
   val,
-  value::{Value, VALUE_NIL},
-  list, Call, IndexedResult, LyError, LyResult, ObjRef, Ref, VecBuilder,
+  value::{VALUE_NIL, Value},
 };
 use std::{cmp::Ordering, io::Write};
 
@@ -299,7 +297,6 @@ impl LyNative for ListSlice {
     let start_index = self.index(hooks, &list, start)?;
     let end_index = self.index(hooks, &list, end)?;
 
-    let start_index = start_index.max(0);
     let end_index = end_index.min(list.len());
 
     if list.has_moved() {
@@ -307,9 +304,7 @@ impl LyNative for ListSlice {
     }
 
     if start_index <= end_index {
-      Call::Ok(val!(
-        hooks.manage_obj(list!(&list[start_index..end_index]))
-      ))
+      Call::Ok(val!(hooks.manage_obj(list!(&list[start_index..end_index]))))
     } else {
       Call::Ok(val!(hooks.manage_obj(list!())))
     }
@@ -731,7 +726,7 @@ mod test {
 
   mod index_get {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -756,7 +751,7 @@ mod test {
 
   mod index_set {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -780,7 +775,7 @@ mod test {
     use laythe_core::NO_GC;
 
     use super::*;
-    use crate::support::{test_error_class, test_native_dependencies, MockedContext};
+    use crate::support::{MockedContext, test_error_class, test_native_dependencies};
 
     #[test]
     fn call() {
@@ -796,11 +791,7 @@ mod test {
       let list_str = ListStr::native(&hooks.as_gc(), hooks.manage_str("str"), error);
 
       let temp = &[val!(5.0)];
-      let temp = &[
-        VALUE_NIL,
-        val!(10.0),
-        val!(hooks.manage_obj(list!(temp)))
-      ];
+      let temp = &[VALUE_NIL, val!(10.0), val!(hooks.manage_obj(list!(temp)))];
       let this = hooks.manage_obj(list!(temp));
 
       let values = &[val!(this)];
@@ -815,7 +806,7 @@ mod test {
 
   mod slice {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
     use laythe_core::hooks::Hooks;
 
     #[test]
@@ -937,7 +928,7 @@ mod test {
 
   mod remove {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -999,7 +990,7 @@ mod test {
 
   mod insert {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -1132,7 +1123,7 @@ mod test {
 
   mod sort {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     const LIST_TEST: NativeMetaBuilder = NativeMetaBuilder::fun(INDEX_SET, Arity::Fixed(2))
       .with_params(&[
@@ -1192,7 +1183,7 @@ mod test {
 
   mod collect {
     use super::*;
-    use crate::support::{test_iter, MockedContext};
+    use crate::support::{MockedContext, test_iter};
 
     #[test]
     fn call() {

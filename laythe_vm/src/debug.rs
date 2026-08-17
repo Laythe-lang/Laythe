@@ -1,6 +1,6 @@
-use crate::byte_code::{decode_u16, decode_u32, AlignedByteCode, CaptureIndex};
+use crate::byte_code::{AlignedByteCode, CaptureIndex, decode_u16, decode_u32};
 use laythe_core::Chunk;
-use laythe_core::{if_let_obj, object::ObjectKind, to_obj_kind, value::Value};
+use laythe_core::{if_let_obj, object::ObjectKind, value::Value};
 use laythe_env::stdio::Stdio;
 use std::{io, io::Write, mem};
 

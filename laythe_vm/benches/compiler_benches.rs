@@ -1,5 +1,5 @@
 use bumpalo::Bump;
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use laythe_core::module::Module;
 use laythe_core::object::LyStr;
 use laythe_core::{Allocator, NO_GC};

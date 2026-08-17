@@ -4,11 +4,12 @@ use crate::{
   chunk_builder::ChunkBuilder,
   source::VmFileId,
 };
-use bumpalo::{collections, Bump};
+use bumpalo::{Bump, collections};
 use codespan_reporting::diagnostic::Diagnostic;
 use laythe_core::{
+  Chunk,
   hooks::GcHooks,
-  object::{Fun, FunBuilder}, Chunk,
+  object::{Fun, FunBuilder},
 };
 use std::{cell::RefCell, rc::Rc};
 
@@ -147,21 +148,33 @@ fn peephole_optimize(
       [SymbolicByteCode::Drop, SymbolicByteCode::Drop, ..] => {
         drop(&mut instructions_cursor, &mut lines_cursor)
       },
-      [SymbolicByteCode::GetPropByName(slot), SymbolicByteCode::PropertySlot, SymbolicByteCode::Call(args), ..] =>
-      {
+      [
+        SymbolicByteCode::GetPropByName(slot),
+        SymbolicByteCode::PropertySlot,
+        SymbolicByteCode::Call(args),
+        ..,
+      ] => {
         let slot = *slot;
         let args = *args;
 
         invoke(&mut instructions_cursor, &mut lines_cursor, slot, args)
       },
-      [SymbolicByteCode::GetSuper(slot), SymbolicByteCode::Call(args), ..] =>
-      {
+      [
+        SymbolicByteCode::GetSuper(slot),
+        SymbolicByteCode::Call(args),
+        ..,
+      ] => {
         let slot = *slot;
         let args = *args;
 
         invoke_super(&mut instructions_cursor, &mut lines_cursor, slot, args)
       },
-      [SymbolicByteCode::SetLocal(set_slot), SymbolicByteCode::Drop, SymbolicByteCode::GetLocal(get_slot), ..] => {
+      [
+        SymbolicByteCode::SetLocal(set_slot),
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::GetLocal(get_slot),
+        ..,
+      ] => {
         if set_slot == get_slot {
           eliminate_drop(&mut instructions_cursor, &mut lines_cursor)
         } else {
@@ -169,7 +182,12 @@ fn peephole_optimize(
           lines_cursor.copy_cursors();
         }
       },
-      [SymbolicByteCode::SetBox(set_slot), SymbolicByteCode::Drop, SymbolicByteCode::GetBox(get_slot), ..] => {
+      [
+        SymbolicByteCode::SetBox(set_slot),
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::GetBox(get_slot),
+        ..,
+      ] => {
         if set_slot == get_slot {
           eliminate_drop(&mut instructions_cursor, &mut lines_cursor)
         } else {
@@ -177,7 +195,12 @@ fn peephole_optimize(
           lines_cursor.copy_cursors();
         }
       },
-      [SymbolicByteCode::SetCapture(set_slot), SymbolicByteCode::Drop, SymbolicByteCode::GetCapture(get_slot), ..] => {
+      [
+        SymbolicByteCode::SetCapture(set_slot),
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::GetCapture(get_slot),
+        ..,
+      ] => {
         if set_slot == get_slot {
           eliminate_drop(&mut instructions_cursor, &mut lines_cursor)
         } else {
@@ -185,7 +208,12 @@ fn peephole_optimize(
           lines_cursor.copy_cursors();
         }
       },
-      [SymbolicByteCode::SetModSym(set_slot), SymbolicByteCode::Drop, SymbolicByteCode::GetModSym(get_slot), ..] => {
+      [
+        SymbolicByteCode::SetModSym(set_slot),
+        SymbolicByteCode::Drop,
+        SymbolicByteCode::GetModSym(get_slot),
+        ..,
+      ] => {
         if set_slot == get_slot {
           eliminate_drop(&mut instructions_cursor, &mut lines_cursor);
         } else {
@@ -193,24 +221,37 @@ fn peephole_optimize(
           lines_cursor.copy_cursors();
         }
       },
-      [SymbolicByteCode::GetLocal(_), SymbolicByteCode::GetLocal(_), ..] => {
+      [
+        SymbolicByteCode::GetLocal(_),
+        SymbolicByteCode::GetLocal(_),
+        ..,
+      ] => {
         load_multiple(&mut instructions_cursor, &mut lines_cursor);
       },
-      [SymbolicByteCode::GetModSym(_), SymbolicByteCode::GetModSym(_), ..] => {
+      [
+        SymbolicByteCode::GetModSym(_),
+        SymbolicByteCode::GetModSym(_),
+        ..,
+      ] => {
         load_multiple(&mut instructions_cursor, &mut lines_cursor);
       },
       [SymbolicByteCode::GetBox(_), SymbolicByteCode::GetBox(_), ..] => {
         load_multiple(&mut instructions_cursor, &mut lines_cursor);
       },
-      [SymbolicByteCode::GetCapture(_), SymbolicByteCode::GetCapture(_), ..] => {
+      [
+        SymbolicByteCode::GetCapture(_),
+        SymbolicByteCode::GetCapture(_),
+        ..,
+      ] => {
         load_multiple(&mut instructions_cursor, &mut lines_cursor);
       },
-      [SymbolicByteCode::Jump(_)
-      | SymbolicByteCode::Loop(_)
-      | SymbolicByteCode::Return
-      | SymbolicByteCode::Raise, ..] => {
-        remove_dead_code(&mut instructions_cursor, &mut lines_cursor)
-      },
+      [
+        SymbolicByteCode::Jump(_)
+        | SymbolicByteCode::Loop(_)
+        | SymbolicByteCode::Return
+        | SymbolicByteCode::Raise,
+        ..,
+      ] => remove_dead_code(&mut instructions_cursor, &mut lines_cursor),
       [SymbolicByteCode::ArgumentDelimiter, ..] => {
         instructions_cursor.inc_reader(1);
         lines_cursor.inc_reader(1);
@@ -255,7 +296,6 @@ fn load_multiple(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut Vec
     lines.copy_cursors();
   }
 }
-
 
 fn eliminate_drop(instructions: &mut VecCursor<SymbolicByteCode>, lines: &mut VecCursor<u16>) {
   let instruction = instructions.read();
@@ -560,8 +600,6 @@ mod test {
       assert_eq!(lines[1], 2);
       assert_eq!(lines[2], 3);
     }
-
-
 
     mod eliminate_drop_replacement {
       use super::*;

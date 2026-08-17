@@ -172,10 +172,10 @@ impl<'a, W: Fn(&JsValue)> Write for ConsoleWrapper<'a, W> {
             self.line_buffer = last.to_string();
             written += self.line_buffer.len();
             Ok(written - existing)
-          }
+          },
           None => Ok(0),
         }
-      }
+      },
       Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
     }
   }
@@ -246,10 +246,10 @@ impl Write for FunWrapper {
             written += self.line_buffer.borrow().len();
 
             Ok(written - existing)
-          }
+          },
           None => Ok(0),
         }
-      }
+      },
       Err(err) => Err(io::Error::new(io::ErrorKind::InvalidData, err.to_string())),
     }
   }

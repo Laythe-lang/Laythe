@@ -1,14 +1,17 @@
 use super::{Vm, VmFileId};
 use crate::{
+  FeResult,
   cache::InlineCache,
   compiler::{Compiler, Parser, Resolver},
   source::Source,
-  FeResult,
 };
 use bumpalo::Bump;
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
-  hooks::GcHooks, module::{Import, ImportError, Module, ModuleInsertError, Package}, object::{Class, Fun, LyStr}, Allocator, ObjRef, Ref
+  Allocator, ObjRef, Ref,
+  hooks::GcHooks,
+  module::{Import, ImportError, Module, ModuleInsertError, Package},
+  object::{Class, Fun, LyStr},
 };
 use std::path::PathBuf;
 
@@ -141,40 +144,37 @@ impl Vm {
     resolved_path.push(PathBuf::from(&format!("{module_name}.lay")));
 
     match fs.read_file(&resolved_path) {
-      Ok(file_contents) => {
+      Ok(file_contents) => match resolved_path.into_os_string().into_string() {
+        Ok(name) => {
+          let source_content = self.manage_str(file_contents);
+          self.push_root(source_content);
 
-        match resolved_path.into_os_string().into_string() {
-          Ok(name) => {
-            let source_content = self.manage_str(file_contents);
-            self.push_root(source_content);
+          let path = self.manage_str(name);
+          let source = Source::new(source_content);
+          let file_id = self.files.upsert(path, source_content);
+          self.pop_roots(1);
 
-            let path = self.manage_str(name);
-            let source = Source::new(source_content);
-            let file_id = self.files.upsert(path, source_content);
-            self.pop_roots(1);
+          let module = self.module(&module_name, &path);
+          if let Err(err) = parent_module.insert_module(module) {
+            match err {
+              ModuleInsertError::ModuleAlreadyExists => todo!(),
+            }
+          }
 
-            let module = self.module(&module_name, &path);
-            if let Err(err) = parent_module.insert_module(module) {
-              match err {
-                ModuleInsertError::ModuleAlreadyExists => todo!(),
+          match self.compile(false, module, &source, file_id) {
+            Ok(fun) => ImportResult::Compiled(fun),
+            Err(errors) => {
+              let mut stdio = self.io.stdio();
+              let stderr_color = stdio.stderr_color();
+              for error in errors.iter() {
+                term::emit(stderr_color, &Config::default(), &self.files, error)
+                  .expect("Unable to write to stderr");
               }
-            }
-
-            match self.compile(false, module, &source, file_id) {
-              Ok(fun) => ImportResult::Compiled(fun),
-              Err(errors) => {
-                let mut stdio = self.io.stdio();
-                let stderr_color = stdio.stderr_color();
-                for error in errors.iter() {
-                  term::emit(stderr_color, &Config::default(), &self.files, error)
-                    .expect("Unable to write to stderr");
-                }
-                ImportResult::CompileError
-              },
-            }
-          },
-          Err(_) => ImportResult::NotFound,
-        }
+              ImportResult::CompileError
+            },
+          }
+        },
+        Err(_) => ImportResult::NotFound,
       },
       Err(_) => ImportResult::NotFound,
     }

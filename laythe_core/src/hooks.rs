@@ -5,11 +5,11 @@ use std::{
 };
 
 use crate::{
+  Allocator, Call,
   managed::{Allocate, AllocateObj, DebugHeap, Trace, TraceRoot},
   object::{Class, LyStr},
   reference::ObjRef,
-  value::{Value, VALUE_NIL},
-  Allocator, Call,
+  value::{VALUE_NIL, Value},
 };
 use laythe_env::io::Io;
 
@@ -41,13 +41,13 @@ impl<'a> Hooks<'a> {
 
   /// Get a GcHooks from this hooks struct
   #[inline]
-  pub fn as_gc(&self) -> GcHooks {
+  pub fn as_gc(&self) -> GcHooks<'_> {
     GcHooks::new(self.context.gc_context())
   }
 
   /// Get a CallHooks from this Hooks struct
   #[inline]
-  pub fn as_value(&mut self) -> ValueHooks {
+  pub fn as_value(&mut self) -> ValueHooks<'_> {
     ValueHooks::new(self.context.value_context())
   }
 

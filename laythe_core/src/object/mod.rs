@@ -13,16 +13,16 @@ mod method;
 mod native;
 mod tuple;
 
-pub use channel::{Channel, CloseResult, ChannelWaiter, ReceiveResult, SendResult};
+pub use channel::{Channel, ChannelWaiter, CloseResult, ReceiveResult, SendResult};
 pub use class::Class;
 pub use closure::Closure;
 pub use enumerator::{Enumerate, Enumerator};
 pub use fun::{Fun, FunBuilder, FunKind};
 pub use header::Header as ObjHeader;
 pub use instance::{Header as InstanceHeader, Instance};
+pub use list::{List, ListLocation};
 pub use ly_box::LyBox;
 pub use ly_str::LyStr;
-pub use list::{List, ListLocation};
 pub use map::{Map, MapEntry};
 pub use method::Method;
 pub use native::{LyNative, Native, NativeMeta, NativeMetaBuilder};

@@ -1,7 +1,8 @@
 use super::{Fun, ObjectKind};
 use crate::{
   captures::Captures,
-  managed::{DebugHeap, DebugWrap, Trace}, reference::{ObjRef, Object},
+  managed::{DebugHeap, DebugWrap, Trace},
+  reference::{ObjRef, Object},
 };
 use std::{fmt, io::Write};
 

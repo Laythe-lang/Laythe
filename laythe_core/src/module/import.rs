@@ -1,6 +1,10 @@
 use super::{ImportError, ImportResult};
 use crate::{
-  collections::Array, hooks::GcHooks, managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Header, Trace}, object::LyStr, reference::Ref
+  collections::Array,
+  hooks::GcHooks,
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Header, Trace},
+  object::LyStr,
+  reference::Ref,
 };
 use std::fmt;
 

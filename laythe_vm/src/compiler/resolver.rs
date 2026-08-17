@@ -4,12 +4,16 @@ use super::ir::{
   token::{Lexeme, Token, TokenKind},
 };
 use crate::{
-  source::{Source, VmFileId},
   FeResult,
+  source::{Source, VmFileId},
 };
 use codespan_reporting::diagnostic::{Diagnostic, Label};
 use laythe_core::{
-  constants::{ITER_VAR, OBJECT, SELF, SUPER, UNINITIALIZED_VAR}, module::{self, ImportError}, object::{FunKind, LyStr}, value::Value, Allocator, Ref
+  Allocator, Ref,
+  constants::{ITER_VAR, OBJECT, SELF, SUPER, UNINITIALIZED_VAR},
+  module::{self, ImportError},
+  object::{FunKind, LyStr},
+  value::Value,
 };
 use laythe_lib::global::ERROR_CLASS_NAME;
 use std::vec;
@@ -160,7 +164,7 @@ impl<'a, 'src> Resolver<'a, 'src> {
   fn declare_module_scoped(&mut self, ast: &mut ast::Module<'src>) {
     // Declare existing symbols
     let mut symbols: Vec<(LyStr, Value, usize)> = self.current_module.symbols_by_name().collect();
-    symbols.sort_by(|(_, _, id1), (_, _, id2)| id1.cmp(id2));
+    symbols.sort_by_key(|(_, _, id1)| *id1);
 
     for (name, _, _) in symbols {
       let token = Token::new(TokenKind::Identifier, Lexeme::Owned(name.to_string()), 0, 0);
@@ -284,20 +288,16 @@ impl<'a, 'src> Resolver<'a, 'src> {
     for table in self.tables.iter_mut().rev() {
       if let Some(symbol) = table.table.get_mut(name.str()) {
         match symbol.state() {
-          SymbolState::Uninitialized => {
+          SymbolState::Uninitialized if table.scope_depth > 0 => {
             // If we are module scoped we'll defer to a runtime error
             // instead
-            if table.scope_depth > 0 {
-              self.error(
-                "Cannot read local variable in its own initializer.",
-                Some(name.span()),
-              );
-            }
+            self.error(
+              "Cannot read local variable in its own initializer.",
+              Some(name.span()),
+            );
           },
-          SymbolState::LocalInitialized => {
-            if table.fun_depth < self.fun_depth {
-              symbol.capture();
-            }
+          SymbolState::LocalInitialized if table.fun_depth < self.fun_depth => {
+            symbol.capture();
           },
           _ => (),
         }
@@ -974,10 +974,11 @@ impl<'a, 'src> Resolver<'a, 'src> {
 #[cfg(test)]
 mod test {
   use laythe_core::{
+    ObjRef,
     hooks::{GcHooks, NoContext},
     module::Module,
     object::Class,
-    utils::IdEmitter, ObjRef,
+    utils::IdEmitter,
   };
   use laythe_lib::create_std_lib;
 

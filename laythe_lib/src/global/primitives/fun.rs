@@ -1,9 +1,9 @@
 use crate::{
-  native,
+  StdResult, native,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::Module,
@@ -11,7 +11,6 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call, Ref,
 };
 use std::io::Write;
 
@@ -78,7 +77,7 @@ impl LyNative for FunCall {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_fun, MockedContext};
+  use crate::support::{MockedContext, test_fun};
 
   mod name {
     use super::*;
@@ -103,7 +102,7 @@ mod test {
     use laythe_core::Chunk;
 
     use super::*;
-    use crate::support::{test_fun_builder, MockedContext};
+    use crate::support::{MockedContext, test_fun_builder};
 
     #[test]
     fn call() {
@@ -117,8 +116,7 @@ mod test {
       let result = fun_name.call(&mut hooks, &[val!(fun)]);
       assert_eq!(result.unwrap().to_num(), 4.0);
 
-      let builder =
-        test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
+      let builder = test_fun_builder(&hooks.as_gc(), "example", "module", Arity::Default(2, 2));
       let fun = hooks.manage_obj(builder.build(Chunk::stub(&hooks.as_gc())));
 
       let result = fun_name.call(&mut hooks, &[val!(fun)]);
@@ -136,7 +134,7 @@ mod test {
     use laythe_core::Chunk;
 
     use super::*;
-    use crate::support::{test_fun_builder, MockedContext};
+    use crate::support::{MockedContext, test_fun_builder};
 
     #[test]
     fn call() {

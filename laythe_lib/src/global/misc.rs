@@ -1,12 +1,12 @@
-use crate::{native, support::export_and_insert_native, StdResult};
+use crate::{StdResult, native, support::export_and_insert_native};
 use laythe_core::{
+  Call, LyError, ObjRef, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::Module,
   object::{LyNative, LyStr, Native, NativeMetaBuilder},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  value::{Value, VALUE_NIL},
-  Call, LyError, ObjRef, Ref,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 

@@ -6,8 +6,8 @@ use crate::{
   managed::{AllocObjResult, AllocateObj, DebugHeap, DebugWrap, Mark, Marked, Trace, Unmark},
   match_obj,
   object::{
-    Channel, Class, Closure, Enumerator, Fun, Instance, InstanceHeader, List, LyBox, LyStr,
-    Map, Method, Native, ObjHeader, ObjectKind, Tuple,
+    Channel, Class, Closure, Enumerator, Fun, Instance, InstanceHeader, List, LyBox, LyStr, Map,
+    Method, Native, ObjHeader, ObjectKind, Tuple,
   },
   utils::strip_msb,
   value::Value,
@@ -34,10 +34,12 @@ pub struct ObjRef<T: 'static + Object> {
 impl<T: 'static + Object> ObjRef<T> {
   /// A const pointer to the header of this object
   #[inline]
-  unsafe fn header_ptr(&self) -> *mut u8 { unsafe {
-    let offset = get_offset::<ObjHeader, T>();
-    (self.ptr.as_ptr() as *mut u8).sub(offset)
-  }}
+  unsafe fn header_ptr(&self) -> *mut u8 {
+    unsafe {
+      let offset = get_offset::<ObjHeader, T>();
+      (self.ptr.as_ptr() as *mut u8).sub(offset)
+    }
+  }
 
   /// Retrieve the header from this array
   #[inline]
@@ -69,9 +71,9 @@ impl<T: 'static + Object> ObjRef<T> {
   /// object once all references include this reference have
   /// ended. If the allocator collects before this point we'll
   /// segfault or read unintended memory. In fewer word very bad
-  pub unsafe fn data_static(&self) -> &'static T { unsafe {
-    &*(self.ptr.as_ptr() as *const T)
-  }}
+  pub unsafe fn data_static(&self) -> &'static T {
+    unsafe { &*(self.ptr.as_ptr() as *const T) }
+  }
 
   /// Degrade this `ObjRef<T>` into a `ObjRefect`
   #[inline]
@@ -266,10 +268,12 @@ impl ObjectRef {
   }
 
   #[inline]
-  unsafe fn data_ptr<T>(&self) -> NonNull<T> { unsafe {
-    let offset = get_offset::<ObjHeader, T>();
-    NonNull::new_unchecked(self.ptr.as_ptr().add(offset) as *mut T)
-  }}
+  unsafe fn data_ptr<T>(&self) -> NonNull<T> {
+    unsafe {
+      let offset = get_offset::<ObjHeader, T>();
+      NonNull::new_unchecked(self.ptr.as_ptr().add(offset) as *mut T)
+    }
+  }
 
   /// Retrieve the header from this array
   #[inline]
@@ -635,9 +639,7 @@ impl ObjectHandle {
   #[inline]
   pub fn size(&self) -> usize {
     macro_rules! kind_size {
-      ($o:ty) => {{
-        make_obj_layout::<ObjHeader, $o>().size()
-      }};
+      ($o:ty) => {{ make_obj_layout::<ObjHeader, $o>().size() }};
     }
 
     match self.kind() {
@@ -796,10 +798,12 @@ impl<T: 'static + Object> ObjectHandlerBuilder<T> {
 }
 
 impl<T> ObjectHandlerBuilder<T> {
-  unsafe fn data_ptr<U>(&self) -> NonNull<U> { unsafe {
-    let offset = get_offset::<ObjHeader, U>();
-    NonNull::new_unchecked(self.ptr.as_ptr().add(offset) as *mut U)
-  }}
+  unsafe fn data_ptr<U>(&self) -> NonNull<U> {
+    unsafe {
+      let offset = get_offset::<ObjHeader, U>();
+      NonNull::new_unchecked(self.ptr.as_ptr().add(offset) as *mut U)
+    }
+  }
 
   #[inline]
   pub fn degrade(self) -> ObjectHandle {

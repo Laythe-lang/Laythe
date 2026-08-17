@@ -6,6 +6,7 @@ use std::{
 };
 
 use crate::{
+  GcHooks,
   collections::{
     IndexedResult, RawSharedVector, RawSharedVectorHandle, RawVecLocation, VecBuilder,
   },
@@ -13,7 +14,6 @@ use crate::{
   object::ObjectKind,
   reference::ObjectHandle,
   value::Value,
-  GcHooks,
 };
 
 #[cfg(not(feature = "nan_boxing"))]
@@ -68,9 +68,9 @@ impl List {
   ///
   /// ## Safety
   /// This should only be constructed from a box value
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self { unsafe {
-    List(RawSharedVector::from_alloc_ptr(ptr))
-  }}
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+    unsafe { List(RawSharedVector::from_alloc_ptr(ptr)) }
+  }
 
   /// Has this list moved
   pub fn has_moved(&self) -> bool {
@@ -306,7 +306,7 @@ impl Display for List {
 
 #[cfg(test)]
 mod test {
-  use crate::{val, NoContext};
+  use crate::{NoContext, val};
 
   use super::*;
 
@@ -434,7 +434,8 @@ mod test {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
 
-    let mut list = List::new(hooks.manage_obj(VecBuilder::new(&[val!(1.0), val!(3.0), val!(false)], 3)));
+    let mut list =
+      List::new(hooks.manage_obj(VecBuilder::new(&[val!(1.0), val!(3.0), val!(false)], 3)));
     assert_eq!(list.remove(3), IndexedResult::OutOfBounds);
     assert_eq!(list.remove(1), IndexedResult::Ok(val!(3.0)));
 

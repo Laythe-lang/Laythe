@@ -965,9 +965,9 @@ impl ByteCode {
     unsafe { mem::transmute(byte) }
   }
 
-  pub unsafe fn from_byte_unchecked(byte: u8) -> Self { unsafe {
-    mem::transmute(byte)
-  }}
+  pub unsafe fn from_byte_unchecked(byte: u8) -> Self {
+    unsafe { mem::transmute(byte) }
+  }
 }
 
 /// Laythe virtual machine byte codes
@@ -1421,7 +1421,10 @@ mod test {
   use super::*;
   use bumpalo::Bump;
 
-  fn test_encoder(bump: &Bump, cache_id_emitter: Rc<RefCell<CacheIdEmitter>>) -> ByteCodeEncoder {
+  fn test_encoder(
+    bump: &Bump,
+    cache_id_emitter: Rc<RefCell<CacheIdEmitter>>,
+  ) -> ByteCodeEncoder<'_> {
     let code_buffer = Vec::new_in(bump);
     let line_buffer = Vec::new_in(bump);
     let errors = Vec::new_in(bump);

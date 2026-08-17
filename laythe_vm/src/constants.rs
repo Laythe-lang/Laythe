@@ -1,4 +1,4 @@
-use laythe_core::value::{Value, VALUE_UNDEFINED};
+use laythe_core::value::{VALUE_UNDEFINED, Value};
 
 pub const MAX_FRAME_SIZE: usize = 255;
 pub const REPL_MODULE: &str = "repl.ly";

@@ -1,6 +1,6 @@
 use crate::{
-  managed::{AllocResult, Allocate, DebugHeap, Trace, TraceAny},
   Ref,
+  managed::{AllocResult, Allocate, DebugHeap, Trace, TraceAny},
 };
 use std::fmt::Debug;
 

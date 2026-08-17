@@ -5,10 +5,10 @@ use crate::{
 };
 use core::fmt;
 use laythe_core::{
+  Captures, ObjRef, Ref,
   managed::{Allocate, AllocateObj, DebugHeap, Trace},
   object::{ChannelWaiter, Class, Fun, LyStr},
   value::Value,
-  Captures, ObjRef, Ref,
 };
 use std::{convert::TryInto, ptr};
 
@@ -45,9 +45,9 @@ impl Vm {
   }
 
   /// Update the current instruction pointer
-  pub(super) unsafe fn update_ip(&mut self, offset: isize) { unsafe {
-    self.ip = self.ip.offset(offset)
-  }}
+  pub(super) unsafe fn update_ip(&mut self, offset: isize) {
+    unsafe { self.ip = self.ip.offset(offset) }
+  }
 
   /// Store the ip in the current frame
   pub(super) fn load_ip(&mut self) {
@@ -65,58 +65,70 @@ impl Vm {
   }
 
   /// Get the current closure
-  pub(super) unsafe fn inline_cache(&mut self) -> &InlineCache { unsafe {
-    self
-      .inline_cache
-      .get_unchecked(self.current_fun.module_id())
-  }}
+  pub(super) unsafe fn inline_cache(&mut self) -> &InlineCache {
+    unsafe {
+      self
+        .inline_cache
+        .get_unchecked(self.current_fun.module_id())
+    }
+  }
 
   /// Get the current closure
-  pub(super) unsafe fn inline_cache_mut(&mut self) -> &mut InlineCache { unsafe {
-    self
-      .inline_cache
-      .get_unchecked_mut(self.current_fun.module_id())
-  }}
+  pub(super) unsafe fn inline_cache_mut(&mut self) -> &mut InlineCache {
+    unsafe {
+      self
+        .inline_cache
+        .get_unchecked_mut(self.current_fun.module_id())
+    }
+  }
 
   /// read a u8 out of the bytecode
-  pub(super) unsafe fn read_byte(&mut self) -> u8 { unsafe {
-    let byte = ptr::read(self.ip);
-    self.update_ip(1);
-    byte
-  }}
+  pub(super) unsafe fn read_byte(&mut self) -> u8 {
+    unsafe {
+      let byte = ptr::read(self.ip);
+      self.update_ip(1);
+      byte
+    }
+  }
 
   /// read a u16 out of the bytecode
-  pub(super) unsafe fn read_short(&mut self) -> u16 { unsafe {
-    let slice = std::slice::from_raw_parts(self.ip, 2);
-    let buffer = slice.try_into().expect("slice of incorrect length.");
-    let short = u16::from_ne_bytes(buffer);
-    self.update_ip(2);
+  pub(super) unsafe fn read_short(&mut self) -> u16 {
+    unsafe {
+      let slice = std::slice::from_raw_parts(self.ip, 2);
+      let buffer = slice.try_into().expect("slice of incorrect length.");
+      let short = u16::from_ne_bytes(buffer);
+      self.update_ip(2);
 
-    short
-  }}
+      short
+    }
+  }
 
   /// read a u32 out of the bytecode
-  pub(super) unsafe fn read_slot(&mut self) -> u32 { unsafe {
-    let slice = std::slice::from_raw_parts(self.ip, 4);
-    let buffer = slice.try_into().expect("slice of incorrect length.");
-    let short = u32::from_ne_bytes(buffer);
-    self.update_ip(4);
+  pub(super) unsafe fn read_slot(&mut self) -> u32 {
+    unsafe {
+      let slice = std::slice::from_raw_parts(self.ip, 4);
+      let buffer = slice.try_into().expect("slice of incorrect length.");
+      let short = u32::from_ne_bytes(buffer);
+      self.update_ip(4);
 
-    short
-  }}
+      short
+    }
+  }
 
   /// read a constant from the current chunk
-  pub(super) unsafe fn read_constant(&self, index: u16) -> Value { unsafe {
-    self
-      .current_fun
-      .chunk()
-      .get_constant_unchecked(index as usize)
-  }}
+  pub(super) unsafe fn read_constant(&self, index: u16) -> Value {
+    unsafe {
+      self
+        .current_fun
+        .chunk()
+        .get_constant_unchecked(index as usize)
+    }
+  }
 
   /// read a constant as a string from the current chunk
-  pub(super) unsafe fn read_string(&self, index: u16) -> LyStr { unsafe {
-    self.read_constant(index).to_obj().to_str()
-  }}
+  pub(super) unsafe fn read_string(&self, index: u16) -> LyStr {
+    unsafe { self.read_constant(index).to_obj().to_str() }
+  }
 
   /// Swap between the current fiber and the provided fiber
   pub(super) unsafe fn context_switch(&mut self, fiber: Ref<Fiber>) {

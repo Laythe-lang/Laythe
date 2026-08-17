@@ -1,19 +1,19 @@
 use super::class_inheritance;
 use crate::{
+  StdResult,
   global::primitives::error::CHANNEL_ERROR_NAME,
   native, native_with_error,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, LyError, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::Module,
   object::{CloseResult, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::Arity,
   val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, Ref,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 
@@ -173,7 +173,7 @@ mod test {
     use laythe_core::object::Channel;
 
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {

@@ -1,7 +1,7 @@
 use crate::{
+  Ref,
   managed::{DebugHeap, DebugWrap, DebugWrapDyn, Trace},
   value::Value,
-  Ref,
 };
 use std::{collections::VecDeque, fmt, io::Write};
 

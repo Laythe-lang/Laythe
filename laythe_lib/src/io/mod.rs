@@ -5,7 +5,7 @@ mod stdio;
 use self::global::io_module;
 use crate::{StdError, StdResult};
 use fs::fs_module;
-use laythe_core::{hooks::GcHooks, module::Package, utils::IdEmitter, Ref};
+use laythe_core::{Ref, hooks::GcHooks, module::Package, utils::IdEmitter};
 use stdio::stdio_module;
 pub const IO_MODULE_PATH: &str = "std/io";
 

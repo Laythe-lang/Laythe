@@ -1,9 +1,9 @@
 use crate::{
-  native,
+  StdResult, native,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, ObjRef, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::Module,
@@ -11,7 +11,6 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call, ObjRef, Ref,
 };
 use std::io::Write;
 
@@ -97,8 +96,11 @@ mod test {
 
   mod name {
     use super::*;
-    use crate::support::{test_fun, MockedContext};
-    use laythe_core::{object::{Class, Closure, Method}, Captures, NO_GC};
+    use crate::support::{MockedContext, test_fun};
+    use laythe_core::{
+      Captures, NO_GC,
+      object::{Class, Closure, Method},
+    };
 
     #[test]
     fn call() {

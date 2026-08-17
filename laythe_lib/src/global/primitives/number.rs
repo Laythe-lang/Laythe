@@ -1,9 +1,9 @@
 use crate::{
-  native, native_with_error,
+  StdResult, native, native_with_error,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, LyError, Ref,
   hooks::{GcHooks, Hooks},
   managed::{DebugHeap, Trace},
   module::Module,
@@ -11,7 +11,6 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call, LyError, Ref,
 };
 use std::io::Write;
 
@@ -318,7 +317,7 @@ mod test {
 
   mod times {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -417,7 +416,7 @@ mod test {
 
   mod parse {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -436,7 +435,7 @@ mod test {
 
   mod until {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {

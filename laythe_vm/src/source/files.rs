@@ -1,7 +1,10 @@
 use std::ops::Range;
 
 use codespan_reporting::files;
-use laythe_core::{managed::Trace, object::{LyStr, Map}};
+use laythe_core::{
+  managed::Trace,
+  object::{LyStr, Map},
+};
 
 /// A struct for efficiently determine lines for an associated
 /// file.

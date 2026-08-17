@@ -1,15 +1,16 @@
+use laythe_core::utils::IdEmitter;
 use laythe_core::{
+  Ref,
   hooks::GcHooks,
   module::{Module, Package},
   object::Class,
-  val, Ref,
+  val,
 };
-use laythe_core::{utils::IdEmitter};
 
 use crate::{
+  STD, StdResult,
   global::MODULE_CLASS_NAME,
   support::{default_error_inheritance, export_and_insert, load_class_from_package},
-  StdResult, STD,
 };
 
 use super::IO_MODULE_NAME;

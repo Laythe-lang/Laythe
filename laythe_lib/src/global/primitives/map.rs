@@ -1,12 +1,21 @@
 use super::{class_inheritance, error::TYPE_ERROR_NAME, error_inheritance};
 use crate::{
-  native, native_with_error,
+  StdResult, native, native_with_error,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use hashbrown::hash_map::Iter;
 use laythe_core::{
-  constants::{INDEX_GET, INDEX_SET}, hooks::{GcHooks, Hooks}, if_let_obj, list, managed::{DebugHeap, DebugWrap, Trace}, module::Module, object::{Enumerate, Enumerator, LyNative, LyStr, Map, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::use_sentinel_nan, val, value::{Value, VALUE_NIL}, Call, LyError, ObjRef, Ref
+  Call, LyError, ObjRef, Ref,
+  constants::{INDEX_GET, INDEX_SET},
+  hooks::{GcHooks, Hooks},
+  if_let_obj, list,
+  managed::{DebugHeap, DebugWrap, Trace},
+  module::Module,
+  object::{Enumerate, Enumerator, LyNative, LyStr, Map, Native, NativeMetaBuilder, ObjectKind},
+  signature::{Arity, ParameterBuilder, ParameterKind},
+  utils::use_sentinel_nan,
+  val,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 
@@ -396,7 +405,7 @@ mod test {
     use laythe_core::NO_GC;
 
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -480,7 +489,7 @@ mod test {
   #[cfg(test)]
   mod get_index {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -634,7 +643,7 @@ mod test {
   #[cfg(test)]
   mod remove {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {

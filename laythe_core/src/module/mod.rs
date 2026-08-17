@@ -10,13 +10,13 @@ pub use import::Import;
 pub use package::Package;
 
 use crate::{
+  LyHashSet, VecBuilder,
   collections::UniqueVector,
   hooks::GcHooks,
   managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Header, Trace},
   object::{Class, Instance, LyStr, Map},
   reference::{ObjRef, Ref},
   value::Value,
-  LyHashSet, VecBuilder,
 };
 use hashbrown::hash_map;
 use std::{fmt, io::Write, slice::Iter};
@@ -253,13 +253,9 @@ impl Module {
 
   /// Get an exported symbol from this module's symbol table
   pub fn get_exported_symbol_by_name(&self, name: LyStr) -> Option<Value> {
-    self.get_symbol_by_name(name).and_then(|symbol| {
-      if self.exports.contains(&name) {
-        Some(symbol)
-      } else {
-        None
-      }
-    })
+    self
+      .get_symbol_by_name(name)
+      .filter(|_| self.exports.contains(&name))
   }
 
   /// how many symbols are in this module
@@ -322,12 +318,12 @@ impl Allocate<Ref<Self>> for Module {
 
 #[cfg(test)]
 mod test {
-  use super::error::SymbolInsertError;
   use super::Module;
+  use super::error::SymbolInsertError;
   use crate::hooks::{GcHooks, NoContext};
   use crate::module::SymbolExportError;
   use crate::{
-    module::{error::ModuleInsertError, ImportError},
+    module::{ImportError, error::ModuleInsertError},
     object::Class,
     support::test_module,
     val,
@@ -375,9 +371,11 @@ mod test {
     );
 
     let export_name = hooks.manage_str("exported");
-    assert!(module
-      .insert_symbol(&hooks, export_name, val!(true))
-      .is_ok());
+    assert!(
+      module
+        .insert_symbol(&hooks, export_name, val!(true))
+        .is_ok()
+    );
     assert!(module.export_symbol(export_name).is_ok());
 
     let symbols = module.module_instance(&hooks);
@@ -415,9 +413,11 @@ mod test {
     let mut module = test_module(&hooks, "example");
     let export_name = hooks.manage_str("exported");
 
-    assert!(module
-      .insert_symbol(&hooks, export_name, val!(true))
-      .is_ok());
+    assert!(
+      module
+        .insert_symbol(&hooks, export_name, val!(true))
+        .is_ok()
+    );
     let result1 = module.export_symbol(export_name);
     let result2 = module.export_symbol(export_name);
 

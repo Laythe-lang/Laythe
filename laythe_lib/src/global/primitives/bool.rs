@@ -1,18 +1,17 @@
 use super::class_inheritance;
 use crate::{
-  native,
+  StdResult, native,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::Module,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
   val,
-  value::{Value, VALUE_TRUE},
-  Call, Ref,
+  value::{VALUE_TRUE, Value},
 };
 use std::io::Write;
 

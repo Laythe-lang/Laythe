@@ -1,17 +1,17 @@
 #![deny(clippy::all)]
+mod align_utils;
+mod allocator;
 mod captures;
 mod chunk;
-mod align_utils;
 mod collections;
-mod reference;
-mod macros;
 pub mod constants;
 pub mod hooks;
 pub mod impls;
-mod allocator;
+mod macros;
 pub mod managed;
 pub mod module;
 pub mod object;
+mod reference;
 pub mod signature;
 pub mod support;
 pub mod utils;
@@ -21,12 +21,12 @@ use fnv::FnvBuildHasher;
 use hashbrown::HashSet;
 use object::Instance;
 
-pub use collections::{VecBuilder, IndexedResult, UniqueVector};
-pub use reference::{ObjectRef, ObjRef, Ref};
-pub use captures::Captures;
 pub use allocator::{Allocator, NO_GC};
+pub use captures::Captures;
 pub use chunk::Chunk;
+pub use collections::{IndexedResult, UniqueVector, VecBuilder};
 pub use hooks::*;
+pub use reference::{ObjRef, ObjectRef, Ref};
 
 pub type Call = LyResult<value::Value>;
 pub type LyResult<T> = Result<T, LyError>;
@@ -38,4 +38,3 @@ pub enum LyError {
 }
 
 pub type LyHashSet<K> = HashSet<K, FnvBuildHasher>;
-

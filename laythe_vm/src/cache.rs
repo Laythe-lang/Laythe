@@ -1,7 +1,7 @@
 use core::panic;
 use std::vec;
 
-use laythe_core::{object::Class, utils::IdEmitter, value::Value, ObjRef};
+use laythe_core::{ObjRef, object::Class, utils::IdEmitter, value::Value};
 
 /// The cache for property access and setting
 #[derive(Clone, Debug)]
@@ -196,10 +196,11 @@ mod test {
   mod inline_cache {
     use crate::cache::InlineCache;
     use laythe_core::{
+      Allocator, NO_GC,
       hooks::{GcHooks, NoContext},
       module::Module,
       object::{Class, Fun},
-      val, Allocator, NO_GC,
+      val,
     };
 
     #[test]

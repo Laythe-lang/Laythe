@@ -1,23 +1,21 @@
 use crate::{
-  native, native_with_error,
+  StdResult, native, native_with_error,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, LyError, LyResult, ObjRef, Ref, VecBuilder,
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
-  if_let_obj,
+  if_let_obj, list,
   managed::{DebugHeap, DebugWrap, Trace},
   module::Module,
   object::{
     Enumerate, Enumerator, List, LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind, Tuple,
   },
   signature::{Arity, ParameterBuilder, ParameterKind},
-  to_obj_kind,
   utils::is_falsey,
   val,
-  value::{Value, VALUE_NIL},
-  list, Call, LyError, LyResult, ObjRef, Ref, VecBuilder,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 
@@ -225,7 +223,6 @@ impl LyNative for TupleSlice {
     let start_index = self.index(hooks, &tuple, start)?;
     let end_index = self.index(hooks, &tuple, end)?;
 
-    let start_index = start_index.max(0);
     let end_index = end_index.min(tuple.len());
 
     if start_index <= end_index {
@@ -434,7 +431,7 @@ mod test {
 
   mod index_get {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -461,7 +458,7 @@ mod test {
     use laythe_core::NO_GC;
 
     use super::*;
-    use crate::support::{test_error_class, test_native_dependencies, MockedContext};
+    use crate::support::{MockedContext, test_error_class, test_native_dependencies};
 
     #[test]
     fn call() {
@@ -494,7 +491,7 @@ mod test {
 
   mod slice {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
     use laythe_core::hooks::Hooks;
 
     #[test]
@@ -623,7 +620,7 @@ mod test {
 
   mod collect {
     use super::*;
-    use crate::support::{test_iter, MockedContext};
+    use crate::support::{MockedContext, test_iter};
 
     #[test]
     fn call() {

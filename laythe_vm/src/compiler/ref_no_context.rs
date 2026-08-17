@@ -3,10 +3,7 @@ use std::{
   io::Write,
 };
 
-use laythe_core::{
-  hooks::GcContext,
-  managed::TraceRoot, Allocator,
-};
+use laythe_core::{Allocator, hooks::GcContext, managed::TraceRoot};
 
 pub struct RefNoContext<'a> {
   /// A reference to a gc just to allocate

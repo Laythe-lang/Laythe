@@ -1,10 +1,17 @@
 use crate::{
-  create_error,
+  StdResult, create_error,
   support::{default_error_inheritance, export_and_insert, export_and_insert_native},
-  StdResult,
 };
 use laythe_core::{
-  hooks::{GcHooks, Hooks}, if_let_obj, managed::Trace, module::{Module, Package}, object::{LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, val, value::{Value, VALUE_NIL}, Call, LyError, ObjRef, Ref
+  Call, LyError, ObjRef, Ref,
+  hooks::{GcHooks, Hooks},
+  if_let_obj,
+  managed::Trace,
+  module::{Module, Package},
+  object::{LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind},
+  signature::{Arity, ParameterBuilder, ParameterKind},
+  val,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 

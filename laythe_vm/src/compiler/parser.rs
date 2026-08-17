@@ -7,8 +7,8 @@ use super::{
   scanner::Scanner,
 };
 use crate::{
-  source::{LineOffsets, Source, VmFileId},
   FeResult,
+  source::{LineOffsets, Source, VmFileId},
 };
 use bumpalo::boxed::Box;
 use bumpalo::collections::vec::Vec;
@@ -812,22 +812,22 @@ impl<'a> Parser<'a> {
       })?);
     }
 
-    if let BlockReturn::Can = self.block_return {
-      if let Some((_, rest)) = decls.split_last() {
-        for decl in rest {
-          if let Decl::Stmt(stmt) = decl {
-            if let Stmt::ImplicitReturn(return_) = &**stmt {
-              return self.error_at::<Block<'a>>(
-                Token::new(
-                  TokenKind::Error,
-                  Lexeme::Slice(""),
-                  return_.start(),
-                  return_.end(),
-                ),
-                "Implicit return can only appear at the end of a block.",
-              );
-            }
-          }
+    if let BlockReturn::Can = self.block_return
+      && let Some((_, rest)) = decls.split_last()
+    {
+      for decl in rest {
+        if let Decl::Stmt(stmt) = decl
+          && let Stmt::ImplicitReturn(return_) = &**stmt
+        {
+          return self.error_at::<Block<'a>>(
+            Token::new(
+              TokenKind::Error,
+              Lexeme::Slice(""),
+              return_.start(),
+              return_.end(),
+            ),
+            "Implicit return can only appear at the end of a block.",
+          );
         }
       }
     }
@@ -2336,7 +2336,7 @@ const fn get_type_infix(kind: TokenKind) -> &'static Rule<TypeInfix, TypePrecede
 mod test {
   use laythe_core::{Allocator, NO_GC};
 
-use crate::source::VM_FILE_TEST_ID;
+  use crate::source::VM_FILE_TEST_ID;
 
   use super::super::ir::{AstPrint, Visitor};
   use super::*;

@@ -355,7 +355,7 @@ impl Allocator {
     return self.sweep_obj_full();
 
     #[cfg(not(feature = "gc_stress"))]
-    if self.gc_count % 10 == 0 {
+    if self.gc_count.is_multiple_of(10) {
       self.sweep_obj_full()
     } else {
       self.sweep_obj_nursery()
@@ -377,7 +377,6 @@ impl Allocator {
       .obj_heap
       .extend(self.nursery_obj_heap.drain(..).filter(|obj| {
         let retain = (*obj).unmark();
-
 
         if retain {
           #[cfg(feature = "gc_log_retain")]

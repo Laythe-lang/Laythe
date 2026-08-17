@@ -10,9 +10,9 @@ use std::{
 use raw_unique_vector::RawUniqueVector;
 
 use crate::{
+  Allocator, GcHooks,
   collections::{IndexedResult, VecBuilder},
   managed::{DebugHeap, Mark, Trace, TraceRoot, Unmark},
-  Allocator, GcHooks,
 };
 
 pub struct UniqueVector<T, H>(Option<RawUniqueVector<T, H>>);
@@ -389,7 +389,7 @@ where
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::{managed::Header, NoContext};
+  use crate::{NoContext, managed::Header};
 
   #[test]
   fn new() {

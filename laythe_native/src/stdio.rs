@@ -3,7 +3,7 @@ use laythe_env::{
   io::IoImpl,
   stdio::{Stdio, StdioImpl},
 };
-use std::io::{self, stdin, Write};
+use std::io::{self, Write, stdin};
 use termcolor::{StandardStream, WriteColor};
 
 #[derive(Debug)]

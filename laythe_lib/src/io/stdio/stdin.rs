@@ -1,19 +1,19 @@
 use crate::{
-  io::{global::IO_ERROR, IO_MODULE_PATH},
+  StdResult,
+  io::{IO_MODULE_PATH, global::IO_ERROR},
   native_with_error,
   support::load_class_from_package,
   support::{default_class_inheritance, export_and_insert, load_instance_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, LyError, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::{Module, Package},
   object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::Arity,
   val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, Ref,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 
@@ -104,7 +104,7 @@ mod test {
 
   mod read {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
     use laythe_env::stdio::support::StdioTestContainer;
     use std::sync::Arc;
 
@@ -130,7 +130,7 @@ mod test {
 
   mod readlines {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
     use laythe_env::stdio::support::StdioTestContainer;
     use std::sync::Arc;
 

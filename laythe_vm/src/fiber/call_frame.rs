@@ -1,4 +1,9 @@
-use laythe_core::{managed::{DebugHeap, DebugWrap, Trace}, object::Fun, value::Value, Captures, ObjRef};
+use laythe_core::{
+  Captures, ObjRef,
+  managed::{DebugHeap, DebugWrap, Trace},
+  object::Fun,
+  value::Value,
+};
 
 /// A call frame in the Laythe interpreter
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

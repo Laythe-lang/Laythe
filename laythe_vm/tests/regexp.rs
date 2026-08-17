@@ -12,9 +12,11 @@ const FILE_PATH: &str = file!();
 #[test]
 fn utils() -> Result<(), std::io::Error> {
   test_files(
-    &["std_lib/regexp/class/captures.lay",
+    &[
+      "std_lib/regexp/class/captures.lay",
       "std_lib/regexp/class/match.lay",
-      "std_lib/regexp/class/test.lay"],
+      "std_lib/regexp/class/test.lay",
+    ],
     VmExit::Ok,
   )?;
 

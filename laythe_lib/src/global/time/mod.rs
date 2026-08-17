@@ -1,7 +1,7 @@
 mod clock;
 
 use clock::declare_clock_funs;
-use laythe_core::{hooks::GcHooks, module::Module, Ref};
+use laythe_core::{Ref, hooks::GcHooks, module::Module};
 
 use crate::StdResult;
 

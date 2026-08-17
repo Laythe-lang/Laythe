@@ -1,9 +1,9 @@
 use crate::{
-  native,
+  StdResult, native,
   support::{export_and_insert, export_and_insert_native},
-  StdResult,
 };
 use laythe_core::{
+  Call, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::Module,
@@ -11,7 +11,6 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call, Ref,
 };
 use std::io::Write;
 
@@ -150,10 +149,12 @@ native!(Max, MAX_META);
 
 impl LyNative for Max {
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
-    Call::Ok(val!(args[1..]
-      .iter()
-      .map(|x| x.to_num())
-      .fold(args[0].to_num(), f64::max)))
+    Call::Ok(val!(
+      args[1..]
+        .iter()
+        .map(|x| x.to_num())
+        .fold(args[0].to_num(), f64::max)
+    ))
   }
 }
 
@@ -161,10 +162,12 @@ native!(Min, MIN_META);
 
 impl LyNative for Min {
   fn call(&self, _hooks: &mut Hooks, args: &[Value]) -> Call {
-    Call::Ok(val!(args[1..]
-      .iter()
-      .map(|x| x.to_num())
-      .fold(args[0].to_num(), f64::min)))
+    Call::Ok(val!(
+      args[1..]
+        .iter()
+        .map(|x| x.to_num())
+        .fold(args[0].to_num(), f64::min)
+    ))
   }
 }
 

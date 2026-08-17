@@ -1,6 +1,7 @@
 use crate::{
   constants::INIT,
-  managed::{DebugHeap, DebugWrap, Trace}, reference::{ObjRef, Object},
+  managed::{DebugHeap, DebugWrap, Trace},
+  reference::{ObjRef, Object},
 };
 use crate::{hooks::GcHooks, value::Value};
 use fnv::FnvBuildHasher;
@@ -20,7 +21,11 @@ pub struct Class {
 }
 
 impl Class {
-  pub fn with_inheritance(hooks: &GcHooks, name: LyStr, super_class: ObjRef<Class>) -> ObjRef<Self> {
+  pub fn with_inheritance(
+    hooks: &GcHooks,
+    name: LyStr,
+    super_class: ObjRef<Class>,
+  ) -> ObjRef<Self> {
     let mut class = hooks.manage_obj(Self {
       name,
       init: None,
@@ -137,10 +142,12 @@ impl Class {
       self.fields.insert(*field, *index);
     });
 
-    debug_assert!(self
-      .super_class
-      .map(|super_class| &*super_class.name == "Object")
-      .unwrap_or(true));
+    debug_assert!(
+      self
+        .super_class
+        .map(|super_class| &*super_class.name == "Object")
+        .unwrap_or(true)
+    );
 
     self.super_class = Some(super_class);
     self.init = self.init.or(super_class.init);

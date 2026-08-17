@@ -4,7 +4,12 @@ use std::{
 };
 
 use crate::{
-  chunk::Chunk, hooks::GcHooks, managed::{DebugHeap, DebugWrap, Trace}, module::Module, reference::{Object, Ref}, signature::Arity
+  chunk::Chunk,
+  hooks::GcHooks,
+  managed::{DebugHeap, DebugWrap, Trace},
+  module::Module,
+  reference::{Object, Ref},
+  signature::Arity,
 };
 
 use super::{LyStr, ObjectKind};
@@ -161,7 +166,11 @@ impl Fun {
   }
 
   #[inline]
-  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(&self, hooks_gen: F, arg_count: u8) -> Result<(), LyStr> {
+  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(
+    &self,
+    hooks_gen: F,
+    arg_count: u8,
+  ) -> Result<(), LyStr> {
     match self.arity {
       // if fixed we need exactly the correct amount
       Arity::Fixed(arity) => {

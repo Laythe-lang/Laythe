@@ -1,15 +1,14 @@
 use crate::{
+  STD, StdError, StdResult,
   global::{ERROR_CLASS_NAME, OBJECT_CLASS_NAME},
-  StdError, StdResult, STD,
 };
 use laythe_core::{
+  ObjRef, Ref,
   hooks::GcHooks,
   if_let_obj,
   module::{Import, Module, Package},
   object::{Class, Instance, Native, ObjectKind},
-  to_obj_kind,
   value::Value,
-  ObjRef, Ref,
 };
 
 pub fn default_class_inheritance(
@@ -148,11 +147,21 @@ pub use self::test::*;
 mod test {
   use super::*;
   use crate::{
-    builtin::{builtin_from_module, BuiltIn},
+    builtin::{BuiltIn, builtin_from_module},
     create_std_lib, native,
   };
   use laythe_core::{
-    hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext}, list, managed::{DebugHeap, Trace, TraceRoot}, match_obj, module::{module_class, ImportResult, Module}, object::{Class, Enumerate, Fun, FunBuilder, LyNative, LyStr, Native, NativeMetaBuilder}, signature::{Arity, ParameterBuilder, ParameterKind}, to_obj_kind, utils::IdEmitter, val, value::Value, Allocator, Call, Chunk, LyError
+    Allocator, Call, Chunk, LyError,
+    hooks::{GcContext, GcHooks, HookContext, Hooks, ValueContext},
+    list,
+    managed::{DebugHeap, Trace, TraceRoot},
+    match_obj,
+    module::{ImportResult, Module, module_class},
+    object::{Class, Enumerate, Fun, FunBuilder, LyNative, LyStr, Native, NativeMetaBuilder},
+    signature::{Arity, ParameterBuilder, ParameterKind},
+    utils::IdEmitter,
+    val,
+    value::Value,
   };
   use laythe_env::{
     io::Io,
@@ -161,15 +170,13 @@ mod test {
   use std::{cell::RefCell, io::Write, sync::Arc};
 
   #[derive(Default)]
-pub struct MockedContext {
+  pub struct MockedContext {
     pub gc: RefCell<Allocator>,
     pub responses: Vec<Value>,
     io: Io,
     pub builtin: Option<BuiltIn>,
     response_count: usize,
   }
-
-  
 
   impl MockedContext {
     pub fn new(responses: &[Value]) -> Self {

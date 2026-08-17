@@ -2,7 +2,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::{
   managed::{Mark, Marked, Trace, Unmark},
-  object::{Class, ObjectKind}, reference::ObjRef,
+  object::{Class, ObjectKind},
+  reference::ObjRef,
 };
 
 /// The `Header` meta data for `ObjRef<T>` and `ObjRefect`. This struct
@@ -75,7 +76,10 @@ impl Trace for Header {
 #[cfg(test)]
 mod test {
   use crate::{
-    hooks::{GcHooks, NoContext}, managed::Marked, object::{header::Header as ObjHeader, instance::header::Header, ObjectKind}, support::test_class
+    hooks::{GcHooks, NoContext},
+    managed::Marked,
+    object::{ObjectKind, header::Header as ObjHeader, instance::header::Header},
+    support::test_class,
   };
   use std::mem;
 
@@ -100,7 +104,6 @@ mod test {
     unsafe {
       let ptr: *const ObjHeader = ((&*header) as *const Header) as *const ObjHeader;
       let obj_header: &ObjHeader = &*ptr;
-
 
       assert!(!obj_header.marked());
       assert_eq!(obj_header.kind(), ObjectKind::Instance);

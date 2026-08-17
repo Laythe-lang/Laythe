@@ -1,9 +1,9 @@
 use crate::{
-  native,
+  StdResult, native,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::Module,
@@ -11,7 +11,6 @@ use laythe_core::{
   signature::Arity,
   val,
   value::Value,
-  Call, Ref,
 };
 use std::io::Write;
 

@@ -1,4 +1,3 @@
-
 /// A structure used to construct a list via the allocator
 pub struct VecBuilder<'a, T> {
   /// The source slice from which the list is copied from
@@ -7,7 +6,6 @@ pub struct VecBuilder<'a, T> {
   /// The requested capacity of the list
   cap: usize,
 }
-
 
 impl<'a, T> VecBuilder<'a, T> {
   /// Create a list builder with a dummy slice and capacity

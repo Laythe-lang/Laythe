@@ -1,11 +1,12 @@
 use crate::{
+  STD, StdResult,
   global::SYNTAX_ERROR_NAME,
   native, native_with_error,
   support::load_class_from_package,
   support::{default_class_inheritance, export_and_insert, load_class_from_module},
-  StdResult, STD,
 };
 use laythe_core::{
+  Call, LyError, Ref,
   hooks::{GcHooks, Hooks},
   list,
   managed::Trace,
@@ -13,8 +14,7 @@ use laythe_core::{
   object::{List, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, Ref,
+  value::{VALUE_NIL, Value},
 };
 use regex::Regex;
 use std::io::Write;
@@ -156,7 +156,10 @@ impl LyNative for RegExpMatchAll {
     hooks.push_root(list);
 
     for regexp_match in regexp.find_iter(&args[1].to_obj().to_str()) {
-      list.push(val!(hooks.manage_str(regexp_match.as_str())), &hooks.as_gc());
+      list.push(
+        val!(hooks.manage_str(regexp_match.as_str())),
+        &hooks.as_gc(),
+      );
     }
 
     hooks.pop_roots(1);
@@ -218,7 +221,7 @@ mod test {
     use laythe_core::value::{VALUE_FALSE, VALUE_TRUE};
 
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -243,7 +246,7 @@ mod test {
   mod match_ {
 
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -268,7 +271,7 @@ mod test {
 
   mod captures {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {

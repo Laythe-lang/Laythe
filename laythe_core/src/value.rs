@@ -19,9 +19,13 @@ pub use self::boxed::*;
 #[cfg(not(feature = "nan_boxing"))]
 mod unboxed {
   use crate::{
-    collections::RawSharedVector, managed::{DebugHeap, DebugWrap, Trace}, object::{
-      Channel, Class, Closure, Enumerator, Fun, Instance, List, LyBox, LyStr, Map, Method, Native, ObjHeader, ObjectKind, Tuple
-    }, ObjRef, ObjectRef
+    ObjRef, ObjectRef,
+    collections::RawSharedVector,
+    managed::{DebugHeap, DebugWrap, Trace},
+    object::{
+      Channel, Class, Closure, Enumerator, Fun, Instance, List, LyBox, LyStr, Map, Method, Native,
+      ObjHeader, ObjectKind, Tuple,
+    },
   };
 
   use super::{Nil, ValueKind};
@@ -435,8 +439,8 @@ mod boxed {
     collections::RawSharedVector,
     managed::{DebugHeap, Trace},
     object::{
-      Channel, Class, Closure, Enumerator, Fun, Instance, List, LyBox, LyStr, Map, Method,
-      Native, ObjHeader, ObjectKind, Tuple,
+      Channel, Class, Closure, Enumerator, Fun, Instance, List, LyBox, LyStr, Map, Method, Native,
+      ObjHeader, ObjectKind, Tuple,
     },
     reference::{ObjRef, ObjectRef},
   };
@@ -632,11 +636,7 @@ mod boxed {
 
   impl From<bool> for Value {
     fn from(b: bool) -> Self {
-      if b {
-        VALUE_TRUE
-      } else {
-        VALUE_FALSE
-      }
+      if b { VALUE_TRUE } else { VALUE_FALSE }
     }
   }
 
@@ -781,6 +781,7 @@ mod boxed {
 mod test {
   use super::*;
   use crate::{
+    Allocator,
     allocator::NO_GC,
     captures::Captures,
     hooks::{GcHooks, NoContext},
@@ -788,7 +789,7 @@ mod test {
     module::Module,
     object::{Class, Closure, Fun, List, LyStr, Map, ObjectKind},
     reference::{ObjRef, Ref},
-    val, Allocator,
+    val,
   };
 
   const VALUE_VARIANTS: [ValueKind; 4] = [

@@ -1,5 +1,6 @@
-use crate::{native, support::export_and_insert_native, StdResult};
+use crate::{StdResult, native, support::export_and_insert_native};
 use laythe_core::{
+  Call, Ref,
   hooks::{GcHooks, Hooks},
   list,
   managed::Trace,
@@ -8,7 +9,6 @@ use laythe_core::{
   signature::Arity,
   val,
   value::Value,
-  Call, Ref,
 };
 use std::io::Write;
 

@@ -1,19 +1,19 @@
 use crate::{
-  io::{global::IO_ERROR, IO_MODULE_PATH},
+  StdResult,
+  io::{IO_MODULE_PATH, global::IO_ERROR},
   native_with_error,
   support::load_class_from_package,
   support::{default_class_inheritance, export_and_insert, load_instance_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, LyError, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::{Module, Package},
   object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, Ref,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 
@@ -31,7 +31,11 @@ const STDERR_WRITELN: NativeMetaBuilder = NativeMetaBuilder::method("writeln", A
 const STDERR_FLUSH: NativeMetaBuilder =
   NativeMetaBuilder::method("flush", Arity::Fixed(0)).with_stack();
 
-pub fn declare_stderr(hooks: &GcHooks, module: Ref<Module>, package: Ref<Package>) -> StdResult<()> {
+pub fn declare_stderr(
+  hooks: &GcHooks,
+  module: Ref<Module>,
+  package: Ref<Package>,
+) -> StdResult<()> {
   let class = default_class_inheritance(hooks, package, STDERR_CLASS_NAME)?;
   let instance = hooks.manage_obj(class);
 
@@ -122,10 +126,9 @@ mod test {
 
   mod write {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
     use laythe_env::stdio::support::StdioTestContainer;
     use std::{str, sync::Arc};
-
 
     #[test]
     fn call() {
@@ -151,10 +154,9 @@ mod test {
 
   mod writeln {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
     use laythe_env::stdio::support::StdioTestContainer;
     use std::{str, sync::Arc};
-
 
     #[test]
     fn call() {

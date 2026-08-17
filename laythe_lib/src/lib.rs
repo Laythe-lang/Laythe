@@ -11,13 +11,16 @@ use env::env_module;
 use global::create_std_core;
 use io::add_io_package;
 use laythe_core::{
-  hooks::GcHooks, module::{ImportError, ModuleInsertError, Package, SymbolExportError, SymbolInsertError}, utils::IdEmitter, Ref
+  Ref,
+  hooks::GcHooks,
+  module::{ImportError, ModuleInsertError, Package, SymbolExportError, SymbolInsertError},
+  utils::IdEmitter,
 };
 use math::add_math_module;
 use regexp::regexp_module;
 
 pub use builtin::{
-  builtin_from_module, BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives,
+  BuiltIn, BuiltInDependencies, BuiltInErrors, BuiltInPrimitives, builtin_from_module,
 };
 
 type StdResult<T> = Result<T, StdError>;
@@ -170,13 +173,12 @@ pub fn create_std_lib(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Ref
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{load_class_from_module, MockedContext};
+  use crate::support::{MockedContext, load_class_from_module};
   use global::CLASS_CLASS_NAME;
   use laythe_core::{
-    match_obj,
+    ObjRef, match_obj,
     module::Module,
     object::{Class, ObjectKind},
-    to_obj_kind, ObjRef,
   };
 
   fn class_setup_inner(module: Ref<Module>, _class_class: ObjRef<Class>) {

@@ -1,11 +1,11 @@
 use crate::native;
 use laythe_core::{
+  Call,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   object::{LyNative, Native, NativeMetaBuilder},
   signature::Arity,
-  value::{Value, VALUE_NIL},
-  Call,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 

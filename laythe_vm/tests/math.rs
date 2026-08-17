@@ -12,14 +12,16 @@ const FILE_PATH: &str = file!();
 #[test]
 fn utils() -> Result<(), std::io::Error> {
   test_files(
-    &["std_lib/math/utils/abs.lay",
+    &[
+      "std_lib/math/utils/abs.lay",
       "std_lib/math/utils/cos.lay",
       "std_lib/math/utils/ln.lay",
       "std_lib/math/utils/max.lay",
       "std_lib/math/utils/min.lay",
       "std_lib/math/utils/rand.lay",
       "std_lib/math/utils/rem.lay",
-      "std_lib/math/utils/sin.lay"],
+      "std_lib/math/utils/sin.lay",
+    ],
     VmExit::Ok,
   )?;
 

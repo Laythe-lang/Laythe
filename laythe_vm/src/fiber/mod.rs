@@ -8,14 +8,14 @@ use crate::constants::UNDEFINED_ARRAY;
 
 use self::{call_frame::CallFrame, exception_handler::ExceptionHandler};
 use laythe_core::{
+  Allocator, Captures, GcContext, ObjRef, Ref, UniqueVector, VecBuilder,
   constants::SCRIPT,
   if_let_obj,
   managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Header, Trace, TraceRoot},
   match_obj,
   object::{Channel, ChannelWaiter, Fun, Instance, List, ListLocation, ObjectKind},
   val,
-  value::{Value, VALUE_UNDEFINED},
-  Allocator, Captures, GcContext, ObjRef, Ref, UniqueVector, VecBuilder,
+  value::{VALUE_UNDEFINED, Value},
 };
 use std::{cell::RefMut, fmt, io::Write, ptr};
 
@@ -355,10 +355,12 @@ impl Fiber {
   /// A stack push makes no bounds checks and it's possible
   /// to attempt to write a value past the end of the stack.
   /// ensure sufficient stack space has been allocated
-  pub unsafe fn push(&mut self, value: Value) { unsafe {
-    self.set_val(0, value);
-    self.stack_top = self.stack_top.offset(1);
-  }}
+  pub unsafe fn push(&mut self, value: Value) {
+    unsafe {
+      self.set_val(0, value);
+      self.stack_top = self.stack_top.offset(1);
+    }
+  }
 
   /// pop a value off the stack
   ///
@@ -366,43 +368,49 @@ impl Fiber {
   /// A stack pop makes no bounds checks and it's possible to
   /// attempt to write a value prior the start of the stack.
   /// ensure sufficient stack space has been allocated
-  pub unsafe fn pop(&mut self) -> Value { unsafe {
-    self.drop();
-    self.get_val(0)
-  }}
+  pub unsafe fn pop(&mut self) -> Value {
+    unsafe {
+      self.drop();
+      self.get_val(0)
+    }
+  }
 
   /// drop a value off the stack
   ///
   /// ## Safety
   /// A stack drop makes not bounds checks and it's possible to
   /// move the current stack top prior to the beginning of the stack
-  pub unsafe fn drop(&mut self) { unsafe {
-    self.stack_top = self.stack_top.offset(-1);
+  pub unsafe fn drop(&mut self) {
+    unsafe {
+      self.stack_top = self.stack_top.offset(-1);
 
-    #[cfg(debug_assertions)]
-    self.assert_stack_inbounds();
-  }}
+      #[cfg(debug_assertions)]
+      self.assert_stack_inbounds();
+    }
+  }
 
   /// drop n values off the stack
   ///
   /// ## Safety
   /// Dropping n values the stack makes not bounds checks and it' possible
   /// to move the current stack top prior to the beginning of the stack
-  pub unsafe fn drop_n(&mut self, count: usize) { unsafe {
-    self.stack_top = self.stack_top.sub(count);
+  pub unsafe fn drop_n(&mut self, count: usize) {
+    unsafe {
+      self.stack_top = self.stack_top.sub(count);
 
-    #[cfg(debug_assertions)]
-    self.assert_stack_inbounds();
-  }}
+      #[cfg(debug_assertions)]
+      self.assert_stack_inbounds();
+    }
+  }
 
   /// Retrieve a value n slots from the stack head
   ///
   /// ## Safety
   /// Peeking n slot down make no bounds checks if distance is
   /// greater than the current stack length
-  pub unsafe fn peek(&self, distance: usize) -> Value { unsafe {
-    self.get_val(distance + 1)
-  }}
+  pub unsafe fn peek(&self, distance: usize) -> Value {
+    unsafe { self.get_val(distance + 1) }
+  }
 
   /// Set a value n slots from the stack head
   ///
@@ -410,9 +418,9 @@ impl Fiber {
   /// ## Safety
   /// Setting a value n slot down make no bounds checks if distance is
   /// greater than the current stack length
-  pub unsafe fn peek_set(&mut self, distance: usize, val: Value) { unsafe {
-    self.set_val(distance + 1, val)
-  }}
+  pub unsafe fn peek_set(&mut self, distance: usize, val: Value) {
+    unsafe { self.set_val(distance + 1, val) }
+  }
 
   /// Push a new exception handler onto this fiber
   pub fn push_exception_handler<C: TraceRoot + GcContext>(
@@ -486,18 +494,20 @@ impl Fiber {
   /// Not bounds checks are made against the lower bound
   /// a value of len greater than the len will read past
   /// the beginning of the stack
-  pub unsafe fn stack_slice(&self, len: usize) -> &[Value] { unsafe {
-    let start = self.stack_top.sub(len);
+  pub unsafe fn stack_slice(&self, len: usize) -> &[Value] {
+    unsafe {
+      let start = self.stack_top.sub(len);
 
-    #[cfg(debug_assertions)]
-    {
-      if len > 0 {
-        assert_inbounds(&self.stack, start);
+      #[cfg(debug_assertions)]
+      {
+        if len > 0 {
+          assert_inbounds(&self.stack, start);
+        }
       }
-    }
 
-    std::slice::from_raw_parts(start, len)
-  }}
+      std::slice::from_raw_parts(start, len)
+    }
+  }
 
   /// Retrieve the current error on this fiber
   pub fn error(&self) -> Option<Instance> {
@@ -681,47 +691,49 @@ impl Fiber {
     &mut self,
     context: &C,
     bottom_frame: Option<usize>,
-  ) -> UnwindResult { unsafe {
-    // grab the appropriate exception handler
-    let exception_handler = match self.exception_handler() {
-      Some(exception_handler) => {
-        let bottom_frame = bottom_frame.unwrap_or(0);
-        if exception_handler.call_frame_depth() >= bottom_frame {
-          exception_handler
-        } else {
-          return UnwindResult::UnwindStopped;
-        }
-      },
-      None => {
-        return match bottom_frame {
-          Some(_) => UnwindResult::UnwindStopped,
-          None => UnwindResult::Unhandled,
-        }
-      },
-    };
+  ) -> UnwindResult<'_> {
+    unsafe {
+      // grab the appropriate exception handler
+      let exception_handler = match self.exception_handler() {
+        Some(exception_handler) => {
+          let bottom_frame = bottom_frame.unwrap_or(0);
+          if exception_handler.call_frame_depth() >= bottom_frame {
+            exception_handler
+          } else {
+            return UnwindResult::UnwindStopped;
+          }
+        },
+        None => {
+          return match bottom_frame {
+            Some(_) => UnwindResult::UnwindStopped,
+            None => UnwindResult::Unhandled,
+          };
+        },
+      };
 
-    debug_assert!(
-      self.frames.len() >= exception_handler.call_frame_depth(),
-      "Exception handler points to non existing stack frame"
-    );
+      debug_assert!(
+        self.frames.len() >= exception_handler.call_frame_depth(),
+        "Exception handler points to non existing stack frame"
+      );
 
-    // put the fiber in a state to search for handle
-    self.pause_unwind(context, exception_handler.call_frame_depth());
+      // put the fiber in a state to search for handle
+      self.pause_unwind(context, exception_handler.call_frame_depth());
 
-    // set the current frame based on the exception handler offset
-    let frame = &mut self.frames[exception_handler.call_frame_depth() - 1];
-    let fun = frame.fun();
-    let instructions = fun.chunk().instructions();
+      // set the current frame based on the exception handler offset
+      let frame = &mut self.frames[exception_handler.call_frame_depth() - 1];
+      let fun = frame.fun();
+      let instructions = fun.chunk().instructions();
 
-    let stack_top = frame.stack_start().add(exception_handler.slot_depth());
+      let stack_top = frame.stack_start().add(exception_handler.slot_depth());
 
-    // set the current ip frame and stack pointer
-    frame.store_ip(&instructions[exception_handler.offset()] as *const u8);
-    self.frame = frame as *mut CallFrame;
-    self.stack_top = stack_top;
+      // set the current ip frame and stack pointer
+      frame.store_ip(&instructions[exception_handler.offset()] as *const u8);
+      self.frame = frame as *mut CallFrame;
+      self.stack_top = stack_top;
 
-    UnwindResult::PotentiallyHandled(frame)
-  }}
+      UnwindResult::PotentiallyHandled(frame)
+    }
+  }
 
   /// Signals to the fiber to finish unwinding. The fiber is
   /// moved back into the activated state. The unwound back trace
@@ -789,24 +801,28 @@ impl Fiber {
   }
 
   /// Get a value on the stack
-  unsafe fn get_val(&self, offset: usize) -> Value { unsafe {
-    let location = self.stack_top.sub(offset);
+  unsafe fn get_val(&self, offset: usize) -> Value {
+    unsafe {
+      let location = self.stack_top.sub(offset);
 
-    #[cfg(debug_assertions)]
-    assert_inbounds(&self.stack, location);
+      #[cfg(debug_assertions)]
+      assert_inbounds(&self.stack, location);
 
-    *location
-  }}
+      *location
+    }
+  }
 
   /// Set a value on the stack
-  unsafe fn set_val(&mut self, offset: usize, val: Value) { unsafe {
-    let location = self.stack_top.sub(offset);
+  unsafe fn set_val(&mut self, offset: usize, val: Value) {
+    unsafe {
+      let location = self.stack_top.sub(offset);
 
-    #[cfg(debug_assertions)]
-    assert_inbounds(&self.stack, location);
+      #[cfg(debug_assertions)]
+      assert_inbounds(&self.stack, location);
 
-    *location = val
-  }}
+      *location = val
+    }
+  }
 
   /// An immutable reference to the current frame
   fn frame(&self) -> &CallFrame {
@@ -838,7 +854,10 @@ impl Fiber {
 fn assert_inbounds<T>(slice: &[T], ptr: *mut T) {
   unsafe {
     let offset = ptr.offset_from(slice.as_ptr());
-    assert!(offset >= 0, "Attempted to index prior to the slice. Pointer offset was {offset} with slice start {slice:p}, ptr {ptr:p}");
+    assert!(
+      offset >= 0,
+      "Attempted to index prior to the slice. Pointer offset was {offset} with slice start {slice:p}, ptr {ptr:p}"
+    );
     assert!(
       (offset as usize) < slice.len(),
       "Attempted to index past the end of the slice, Pointer offset was {offset} with slice start {slice:p} and ptr {ptr:p}"
@@ -954,11 +973,11 @@ unsafe impl Sync for Fiber {}
 mod test {
   use builder::TestFiberBuilder;
   use laythe_core::{
+    Chunk, GcHooks, NoContext,
     object::FunBuilder,
     signature::Arity,
     support::{test_fun, test_fun_builder, test_module},
     value::VALUE_NIL,
-    Chunk, GcHooks, NoContext,
   };
 
   use super::*;

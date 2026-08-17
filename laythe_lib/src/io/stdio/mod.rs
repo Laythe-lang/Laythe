@@ -2,12 +2,13 @@ mod stderr;
 mod stdin;
 mod stdout;
 
-use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
+use crate::{STD, StdResult, global::MODULE_CLASS_NAME, support::load_class_from_package};
 use laythe_core::{
+  Ref,
   hooks::GcHooks,
   module::{Module, Package},
   object::Class,
-  utils::IdEmitter, Ref,
+  utils::IdEmitter,
 };
 use stderr::{declare_stderr, define_stderr};
 use stdin::{declare_stdin, define_stdin};

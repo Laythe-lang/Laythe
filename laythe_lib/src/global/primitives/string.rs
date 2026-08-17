@@ -1,9 +1,9 @@
 use crate::{
-  native, native_with_error,
+  StdResult, native, native_with_error,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, LyError, LyResult, Ref,
   constants::INDEX_GET,
   hooks::{GcHooks, Hooks},
   managed::{DebugHeap, DebugWrap, Trace},
@@ -11,8 +11,7 @@ use laythe_core::{
   object::{Enumerate, Enumerator, LyNative, LyStr, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, LyResult, Ref,
+  value::{VALUE_NIL, Value},
 };
 use std::str::Chars;
 use std::{io::Write, str::Split};
@@ -495,7 +494,7 @@ mod test {
 
   mod index_get {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {
@@ -595,7 +594,7 @@ mod test {
 
   mod slice {
     use super::*;
-    use crate::support::{test_error_class, MockedContext};
+    use crate::support::{MockedContext, test_error_class};
 
     #[test]
     fn call() {

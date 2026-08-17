@@ -6,18 +6,18 @@ mod ref_no_context;
 mod resolver;
 mod scanner;
 
-use bumpalo::{collections, Bump};
+use bumpalo::{Bump, collections};
 use laythe_lib::global::ERROR_CLASS_NAME;
 pub use parser::Parser;
 use ref_no_context::RefNoContext;
 pub use resolver::Resolver;
 
 use crate::{
+  FeResult,
   byte_code::{CaptureIndex, Label, SymbolicByteCode},
   cache::CacheIdEmitter,
   chunk_builder::ChunkBuilder,
   source::{LineOffsets, VmFileId},
-  FeResult,
 };
 use codespan_reporting::diagnostic::{self, Diagnostic};
 use ir::{
@@ -25,6 +25,7 @@ use ir::{
   token::{Lexeme, Token, TokenKind},
 };
 use laythe_core::{
+  Allocator, Ref, VecBuilder,
   constants::{
     INDEX_GET, INDEX_SET, ITER, ITER_VAR, OBJECT, SCRIPT, SELF, SUPER, UNINITIALIZED_VAR,
   },
@@ -35,7 +36,6 @@ use laythe_core::{
   signature::Arity,
   val,
   value::Value,
-  Allocator, Ref, VecBuilder,
 };
 use laythe_env::io::Io;
 use object::Fun;
@@ -704,10 +704,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       }
     }
 
-    if let Some(global_table) = self.module_table {
-      if let Some(symbol) = global_table.get(name) {
-        return Some((0, symbol.state()));
-      }
+    if let Some(global_table) = self.module_table
+      && let Some(symbol) = global_table.get(name)
+    {
+      return Some((0, symbol.state()));
     }
 
     // not found
@@ -793,9 +793,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     // check we don't have too many module symbols
     if self.module_symbol_count > u16::MAX as usize {
       self.error(
-        &format!(
-          "Attempted to declare variable {name}, Too many module scoped symbols"
-        ),
+        &format!("Attempted to declare variable {name}, Too many module scoped symbols"),
         Some(span),
       );
     }
@@ -811,9 +809,7 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     // check we don't have too many module symbols
     if self.module_symbol_count > u16::MAX as usize {
       self.error(
-        &format!(
-          "Attempted to declare variable {name}, Too many module scoped symbols"
-        ),
+        &format!("Attempted to declare variable {name}, Too many module scoped symbols"),
         Some(span),
       );
     }
@@ -1615,10 +1611,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     // if our try catch is inside this loop
     // a break will jump outside of it so we need to pop the handler
-    if let Some(try_attributes) = self.try_attributes {
-      if try_attributes.scope_depth > loop_attributes.scope_depth {
-        self.emit_byte(SymbolicByteCode::PopHandler, continue_.start());
-      }
+    if let Some(try_attributes) = self.try_attributes
+      && try_attributes.scope_depth > loop_attributes.scope_depth
+    {
+      self.emit_byte(SymbolicByteCode::PopHandler, continue_.start());
     }
 
     self.emit_byte(
@@ -1638,10 +1634,10 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
 
     // if our try catch is inside this loop
     // a break will jump outside of it so we need to pop the handler
-    if let Some(try_attributes) = self.try_attributes {
-      if try_attributes.scope_depth > loop_attributes.scope_depth {
-        self.emit_byte(SymbolicByteCode::PopHandler, break_.start());
-      }
+    if let Some(try_attributes) = self.try_attributes
+      && try_attributes.scope_depth > loop_attributes.scope_depth
+    {
+      self.emit_byte(SymbolicByteCode::PopHandler, break_.start());
     }
 
     self.emit_byte(SymbolicByteCode::Jump(loop_attributes.end), break_.start());
@@ -2157,10 +2153,12 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
     const STR: &str = "str";
     let str_constant = self.string_constant(STR);
 
-    let value = val!(self
-      .gc
-      .borrow_mut()
-      .manage_str(interpolation.start.str(), self));
+    let value = val!(
+      self
+        .gc
+        .borrow_mut()
+        .manage_str(interpolation.start.str(), self)
+    );
     self.emit_constant(value, interpolation.start.end());
 
     for segment in interpolation.segments.iter() {
@@ -2177,10 +2175,12 @@ impl<'a, 'src: 'a> Compiler<'a, 'src> {
       }
     }
 
-    let value = val!(self
-      .gc
-      .borrow_mut()
-      .manage_str(interpolation.end.str(), self));
+    let value = val!(
+      self
+        .gc
+        .borrow_mut()
+        .manage_str(interpolation.end.str(), self)
+    );
     self.emit_constant(value, interpolation.end.end());
     self.emit_byte(
       SymbolicByteCode::Interpolate((interpolation.segments.len() + 2) as u16),
@@ -2392,16 +2392,17 @@ impl<'a, 'src: 'a> TraceRoot for Compiler<'a, 'src> {
 mod test {
   use super::*;
   use crate::{
-    byte_code::{decode_u16, decode_u32, AlignedByteCode},
+    byte_code::{AlignedByteCode, decode_u16, decode_u32},
     compiler::Parser,
     debug::disassemble_chunk,
     source::{Source, VM_FILE_TEST_ID},
   };
   use laythe_core::{
+    NO_GC, ObjRef,
     hooks::{GcHooks, NoContext},
-    object::{Class, ObjectKind}, ObjRef, NO_GC,
+    object::{Class, ObjectKind},
   };
-  use laythe_env::stdio::{support::StdioTestContainer, Stdio};
+  use laythe_env::stdio::{Stdio, support::StdioTestContainer};
   use module::Module;
 
   #[cfg(feature = "debug")]
@@ -2447,18 +2448,24 @@ mod test {
     hooks.push_root(module);
 
     let print = test_fun(hooks, module);
-    assert!(module
-      .insert_symbol(hooks, print.name(), val!(print))
-      .is_ok());
+    assert!(
+      module
+        .insert_symbol(hooks, print.name(), val!(print))
+        .is_ok()
+    );
 
     let error_class = test_class(hooks, "Error");
-    assert!(module
-      .insert_symbol(hooks, error_class.name(), val!(error_class))
-      .is_ok());
+    assert!(
+      module
+        .insert_symbol(hooks, error_class.name(), val!(error_class))
+        .is_ok()
+    );
 
-    assert!(module
-      .insert_symbol(hooks, object_class.name(), val!(object_class))
-      .is_ok());
+    assert!(
+      module
+        .insert_symbol(hooks, object_class.name(), val!(object_class))
+        .is_ok()
+    );
     assert!(module.export_symbol(print.name()).is_ok());
     assert!(module.export_symbol(error_class.name()).is_ok());
     assert!(module.export_symbol(object_class.name()).is_ok());
@@ -2490,16 +2497,18 @@ mod test {
 
     let gc = context.replace_gc(Allocator::default());
 
-    assert!(Resolver::new(
-      global_module,
-      current_module,
-      &gc,
-      &source,
-      VM_FILE_TEST_ID,
-      repl
-    )
-    .resolve(&mut ast)
-    .is_ok());
+    assert!(
+      Resolver::new(
+        global_module,
+        current_module,
+        &gc,
+        &source,
+        VM_FILE_TEST_ID,
+        repl
+      )
+      .resolve(&mut ast)
+      .is_ok()
+    );
 
     let fake_vm_root = &NO_GC;
     let alloc = Bump::new();
@@ -2624,7 +2633,10 @@ mod test {
 
           match &code[i] {
             ByteCodeTest::Fun((expected_index, max_slots, inner)) => {
-              assert_eq!(*expected_index, index, "Function constant index not in expected spot. Found at index {index} expected at index {expected_index}");
+              assert_eq!(
+                *expected_index, index,
+                "Function constant index not in expected spot. Found at index {index} expected at index {expected_index}"
+              );
               assert_fun_bytecode(&fun, *max_slots, inner);
             },
             _ => panic!(),
@@ -4554,7 +4566,6 @@ mod test {
       ],
     );
   }
-
 
   #[test]
   fn function_with_captured_parameters() {

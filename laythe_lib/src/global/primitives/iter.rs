@@ -1,10 +1,11 @@
 use crate::{
+  StdResult,
   global::VALUE_ERROR_NAME,
   native, native_with_error,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, LyError, ObjRef, Ref, VecBuilder,
   hooks::{GcHooks, Hooks},
   list,
   managed::{DebugHeap, DebugWrap, Trace},
@@ -13,8 +14,7 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   utils::is_falsey,
   val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, ObjRef, Ref, VecBuilder,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 
@@ -959,7 +959,7 @@ impl LyNative for IterInto {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_iter, MockedContext};
+  use crate::support::{MockedContext, test_iter};
   use laythe_core::object::Enumerator;
 
   const TEST_FUN: NativeMetaBuilder = NativeMetaBuilder::fun("test", Arity::Fixed(1))
@@ -1159,7 +1159,7 @@ mod test {
   mod map {
     use super::*;
     use crate::support::test_fun_builder;
-    use laythe_core::{object::Closure, Captures, Chunk};
+    use laythe_core::{Captures, Chunk, object::Closure};
 
     #[test]
     fn call() {
@@ -1192,10 +1192,10 @@ mod test {
 
   mod filter {
     use super::*;
-    use crate::support::{test_fun_builder, MockedContext};
+    use crate::support::{MockedContext, test_fun_builder};
     use laythe_core::{
-      object::{Closure, Enumerator},
       Captures, Chunk,
+      object::{Closure, Enumerator},
     };
 
     #[test]
@@ -1231,8 +1231,11 @@ mod test {
 
   mod reduce {
     use super::*;
-    use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{object::{Closure, Enumerator}, Captures, Chunk};
+    use crate::support::{MockedContext, test_fun_builder};
+    use laythe_core::{
+      Captures, Chunk,
+      object::{Closure, Enumerator},
+    };
 
     #[test]
     fn call() {
@@ -1288,9 +1291,10 @@ mod test {
 
   mod each {
     use super::*;
-    use crate::support::{test_fun_builder, MockedContext};
+    use crate::support::{MockedContext, test_fun_builder};
     use laythe_core::{
-      object::{Closure, Enumerator}, Captures, Chunk,
+      Captures, Chunk,
+      object::{Closure, Enumerator},
     };
 
     #[test]

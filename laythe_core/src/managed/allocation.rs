@@ -1,9 +1,9 @@
 use std::{fmt, mem};
 
 use super::{
+  Mark, Marked, Unmark,
   header::Header,
   manage::{DebugHeap, Manage},
-  Mark, Marked, Unmark,
 };
 
 #[derive(Debug)]

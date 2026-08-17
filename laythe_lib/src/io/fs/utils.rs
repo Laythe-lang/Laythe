@@ -1,18 +1,18 @@
 use crate::{
-  io::{global::IO_ERROR, IO_MODULE_PATH},
+  StdResult,
+  io::{IO_MODULE_PATH, global::IO_ERROR},
   native_with_error,
   support::{export_and_insert, load_class_from_package},
-  StdResult,
 };
 use laythe_core::{
+  Call, LyError, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::{Module, Package},
   object::{LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
-  value::{Value, VALUE_NIL},
-  Call, LyError, Ref,
+  value::{VALUE_NIL, Value},
 };
 use std::io::Write;
 use std::path::Path;

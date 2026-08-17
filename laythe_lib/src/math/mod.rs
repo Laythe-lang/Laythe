@@ -1,8 +1,12 @@
 mod utils;
 
-use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
+use crate::{STD, StdResult, global::MODULE_CLASS_NAME, support::load_class_from_package};
 use laythe_core::{
-  hooks::GcHooks, module::{Module, Package}, object::Class, utils::IdEmitter, Ref
+  Ref,
+  hooks::GcHooks,
+  module::{Module, Package},
+  object::Class,
+  utils::IdEmitter,
 };
 use utils::{declare_math_module, define_math_module};
 
@@ -17,7 +21,12 @@ pub fn add_math_module(
   let math_module_class =
     Class::with_inheritance(hooks, hooks.manage_str(MATH_MODULE_NAME), module_class);
 
-  let module = hooks.manage(Module::new(hooks, math_module_class, &format!("native/{MATH_MODULE_NAME}"), emitter.emit()));
+  let module = hooks.manage(Module::new(
+    hooks,
+    math_module_class,
+    &format!("native/{MATH_MODULE_NAME}"),
+    emitter.emit(),
+  ));
 
   let mut root = std.root_module();
   root.insert_module(module)?;

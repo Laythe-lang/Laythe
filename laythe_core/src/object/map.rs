@@ -1,9 +1,11 @@
 use crate::{
-  managed::{DebugHeap, DebugWrap, Trace}, reference::Object, value::Value
+  managed::{DebugHeap, DebugWrap, Trace},
+  reference::Object,
+  value::Value,
 };
 use fmt::Display;
 use fnv::FnvBuildHasher;
-use hashbrown::{hash_map, HashMap};
+use hashbrown::{HashMap, hash_map};
 use std::{fmt, hash::Hash, io::Write};
 
 use super::ObjectKind;

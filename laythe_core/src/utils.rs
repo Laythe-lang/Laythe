@@ -61,11 +61,7 @@ impl IdEmitter {
 /// Get a specific NAN value to sit in place
 /// of any nan
 pub fn use_sentinel_nan(val: f64) -> f64 {
-  if val.is_nan() {
-    f64::NAN
-  } else {
-    val
-  }
+  if val.is_nan() { f64::NAN } else { val }
 }
 
 pub fn strip_msb(value: usize) -> usize {

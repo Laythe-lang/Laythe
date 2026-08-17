@@ -17,17 +17,17 @@ use crate::{
 };
 use codespan_reporting::term::{self, Config};
 use laythe_core::{
+  Allocator, Captures, ObjRef, Ref,
   constants::{PLACEHOLDER_NAME, SELF},
   hooks::{GcHooks, HookContext, NoContext},
   module::{Module, Package},
   object::{Fun, LyStr, Map},
   utils::IdEmitter,
   val,
-  value::{Value, VALUE_NIL},
-  Allocator, Captures, ObjRef, Ref,
+  value::{VALUE_NIL, Value},
 };
 use laythe_env::io::Io;
-use laythe_lib::{builtin_from_module, create_std_lib, BuiltIn};
+use laythe_lib::{BuiltIn, builtin_from_module, create_std_lib};
 use laythe_native::io::io_native;
 use std::cell::RefCell;
 use std::collections::VecDeque;
@@ -284,8 +284,7 @@ impl Vm {
         }
       },
       Err(err) => {
-        writeln!(self.io.stdio().stderr(), "{}", &err.to_string())
-          .expect("Unable to write to stderr");
+        writeln!(self.io.stdio().stderr(), "{}", err).expect("Unable to write to stderr");
         (1, VmExit::RuntimeError)
       },
     }
@@ -428,10 +427,10 @@ impl Vm {
           ExecutionSignal::Ok => (),
           // somewhere we decided we need to return
           ExecutionSignal::OkReturn => {
-            if let ExecutionMode::CallingNativeCode(depth) = mode {
-              if depth == self.fiber.frames().len() {
-                return ExecutionResult::Ok(self.fiber.pop());
-              }
+            if let ExecutionMode::CallingNativeCode(depth) = mode
+              && depth == self.fiber.frames().len()
+            {
+              return ExecutionResult::Ok(self.fiber.pop());
             }
           },
           ExecutionSignal::ContextSwitch => match self.fiber_queue.pop_front() {

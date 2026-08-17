@@ -1,14 +1,14 @@
 use crate::native;
 use laythe_core::{
+  Call, ObjRef,
   constants::OBJECT,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   match_obj,
   object::{Class, LyNative, Native, NativeMetaBuilder, ObjectKind},
   signature::{Arity, ParameterBuilder, ParameterKind},
-  to_obj_kind, val,
+  val,
   value::{Value, ValueKind},
-  Call, ObjRef,
 };
 use std::io::Write;
 

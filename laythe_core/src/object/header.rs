@@ -63,7 +63,7 @@ impl Trace for Header {}
 mod test {
   use std::mem;
 
-use crate::object::header::Header;
+  use crate::object::header::Header;
 
   #[test]
   fn size() {

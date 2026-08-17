@@ -18,7 +18,8 @@ pub fn fixture_path_inner(fixture_path: &str, test_file_path: &str) -> Option<Pa
   test_path
     .parent()
     .and_then(|path| path.parent())
-    .and_then(|path| path.parent()).map(|path| path.join("fixture").join(fixture_path))
+    .and_then(|path| path.parent())
+    .map(|path| path.join("fixture").join(fixture_path))
 }
 
 #[allow(dead_code)]
@@ -229,7 +230,7 @@ fn ly_assert_eq<T: PartialEq + fmt::Debug>(
   }
 
   // should consider mapping io errors to something else
-  Err(io::Error::other(
-    message.unwrap_or(format!("Expected {expected:?} Received {received:?}")),
-  ))
+  Err(io::Error::other(message.unwrap_or(format!(
+    "Expected {expected:?} Received {received:?}"
+  ))))
 }

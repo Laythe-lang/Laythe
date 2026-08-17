@@ -1,7 +1,12 @@
 use crate::{
-  hooks::{GcHooks, Hooks}, managed::{DebugHeap, DebugWrap, Trace}, reference::Object, signature::{
+  Call,
+  hooks::{GcHooks, Hooks},
+  managed::{DebugHeap, DebugWrap, Trace},
+  reference::Object,
+  signature::{
     Arity, NativeEnvironment, NativeSignature, ParameterBuilder, ParameterKind, SignatureBuilder,
-  }, value::Value, Call
+  },
+  value::Value,
 };
 use std::{fmt, io::Write};
 
@@ -140,7 +145,11 @@ impl Native {
   }
 
   #[inline]
-  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(&self, hooks_gen: F, args: &[Value]) -> Result<(), LyStr> {
+  pub fn check_if_valid_call<'a, F: FnOnce() -> GcHooks<'a>>(
+    &self,
+    hooks_gen: F,
+    args: &[Value],
+  ) -> Result<(), LyStr> {
     let args_count = args.len();
 
     let parameters = &*self.meta.signature.parameters;

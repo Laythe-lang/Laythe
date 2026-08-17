@@ -1,9 +1,9 @@
 use crate::{
-  native,
+  StdResult, native,
   support::{export_and_insert, load_class_from_module},
-  StdResult,
 };
 use laythe_core::{
+  Call, Ref,
   hooks::{GcHooks, Hooks},
   managed::Trace,
   module::Module,
@@ -11,7 +11,6 @@ use laythe_core::{
   signature::{Arity, ParameterBuilder, ParameterKind},
   val,
   value::Value,
-  Call, Ref,
 };
 use std::io::Write;
 
@@ -81,7 +80,7 @@ impl LyNative for ClosureCall {
 #[cfg(test)]
 mod test {
   use super::*;
-  use crate::support::{test_fun, MockedContext};
+  use crate::support::{MockedContext, test_fun};
   use laythe_core::object::Closure;
 
   mod name {
@@ -110,8 +109,8 @@ mod test {
 
   mod size {
     use super::*;
-    use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{object::Closure, Captures, Chunk};
+    use crate::support::{MockedContext, test_fun_builder};
+    use laythe_core::{Captures, Chunk, object::Closure};
 
     #[test]
     fn call() {
@@ -152,8 +151,8 @@ mod test {
 
   mod call {
     use super::*;
-    use crate::support::{test_fun_builder, MockedContext};
-    use laythe_core::{object::Closure, Captures, Chunk};
+    use crate::support::{MockedContext, test_fun_builder};
+    use laythe_core::{Captures, Chunk, object::Closure};
 
     #[test]
     fn call() {

@@ -1,4 +1,4 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use laythe_vm::vm::default_native_vm;
 use std::fs::File;
 use std::io::prelude::*;
@@ -12,7 +12,8 @@ fn fixture_path(bench_path: &str) -> Option<PathBuf> {
   test_path
     .parent()
     .and_then(|path| path.parent())
-    .and_then(|path| path.parent()).map(|path| path.join("fixture").join("criterion").join(bench_path))
+    .and_then(|path| path.parent())
+    .map(|path| path.join("fixture").join("criterion").join(bench_path))
 }
 
 fn load_source(path: &PathBuf) -> String {
@@ -60,14 +61,10 @@ fn criterion_benchmark(c: &mut Criterion) {
       b.iter(|| vm.run(binary_trees_path.clone(), s));
     },
   );
-  c.bench_with_input(
-    BenchmarkId::new("run", "channel"),
-    &channel,
-    |b, s| {
-      let mut vm = default_native_vm();
-      b.iter(|| vm.run(channel_path.clone(), s));
-    },
-  );
+  c.bench_with_input(BenchmarkId::new("run", "channel"), &channel, |b, s| {
+    let mut vm = default_native_vm();
+    b.iter(|| vm.run(channel_path.clone(), s));
+  });
   c.bench_with_input(BenchmarkId::new("run", "equality"), &equality, |b, s| {
     let mut vm = default_native_vm();
     b.iter(|| vm.run(equality_path.clone(), s));

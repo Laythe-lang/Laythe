@@ -1,10 +1,11 @@
 mod utils;
-use crate::{global::MODULE_CLASS_NAME, support::load_class_from_package, StdResult, STD};
+use crate::{STD, StdResult, global::MODULE_CLASS_NAME, support::load_class_from_package};
 use laythe_core::{
+  Ref,
   hooks::GcHooks,
   module::{Module, Package},
   object::Class,
-  utils::IdEmitter, Ref,
+  utils::IdEmitter,
 };
 use utils::{declare_env_module, define_env_module};
 

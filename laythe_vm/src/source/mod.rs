@@ -1,7 +1,7 @@
 mod files;
-pub use files::{LineError, LineOffsets, VmFileId, VmFiles, VM_FILE_TEST_ID};
+pub use files::{LineError, LineOffsets, VM_FILE_TEST_ID, VmFileId, VmFiles};
 
-use bumpalo::{boxed::Box, collections::Vec, Bump};
+use bumpalo::{Bump, boxed::Box, collections::Vec};
 use laythe_core::{managed::Trace, object::LyStr};
 use std::ops::Deref;
 
@@ -18,11 +18,11 @@ impl Source {
     }
   }
 
-  pub fn node<T>(&self, node: T) -> Box<T> {
+  pub fn node<T>(&self, node: T) -> Box<'_, T> {
     Box::new_in(node, &self.alloc)
   }
 
-  pub fn vec<T>(&self) -> Vec<T> {
+  pub fn vec<T>(&self) -> Vec<'_, T> {
     Vec::new_in(&self.alloc)
   }
 }
@@ -55,7 +55,7 @@ impl Trace for Source {
 mod test {
   use laythe_core::{Allocator, NO_GC};
 
-use super::*;
+  use super::*;
 
   #[test]
   fn new() {

@@ -1,5 +1,8 @@
 use crate::{
-  collections::{Array, ArrayHandle}, managed::{AllocObjResult, AllocateObj, DebugHeap, Mark, Marked, Trace, Unmark}, object::ObjectKind, reference::ObjectHandle
+  collections::{Array, ArrayHandle},
+  managed::{AllocObjResult, AllocateObj, DebugHeap, Mark, Marked, Trace, Unmark},
+  object::ObjectKind,
+  reference::ObjectHandle,
 };
 use std::{
   cmp::Ordering,
@@ -12,9 +15,9 @@ use std::{
   str,
 };
 
+use super::header::Header;
 #[cfg(not(feature = "nan_boxing"))]
 use crate::ObjectRef;
-use super::header::Header;
 
 /// A non owning reference to a Garbage collector
 /// allocated string. Note this string is the same size
@@ -44,9 +47,9 @@ impl LyStr {
   /// itself created by the garbage collector. The reference
   /// should truly be of 'a for the lifetime of the allocator.
   /// This will need to be refactored later
-  pub unsafe fn deref_static(&self) -> &'static str { unsafe {
-    str::from_utf8_unchecked(self.0.deref_static())
-  }}
+  pub unsafe fn deref_static(&self) -> &'static str {
+    unsafe { str::from_utf8_unchecked(self.0.deref_static()) }
+  }
 
   /// Create a LyStr from a `NonNull<u8>`.
   ///
@@ -54,9 +57,9 @@ impl LyStr {
   /// This functions assumes that the pointer was originally
   /// from a different instance of LyStr. Other pointer
   /// will likely crash immediately
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self { unsafe {
-    LyStr(Array::from_alloc_ptr(ptr))
-  }}
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+    unsafe { LyStr(Array::from_alloc_ptr(ptr)) }
+  }
 }
 
 impl Mark for LyStr {

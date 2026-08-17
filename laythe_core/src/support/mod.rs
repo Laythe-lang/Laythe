@@ -2,9 +2,14 @@ use fnv::FnvBuildHasher;
 use hashbrown::HashMap;
 
 use crate::{
-  chunk::Chunk, hooks::GcHooks, module::{module_class, Module}, object::{Class, Fun, FunBuilder, LyStr}, reference::{ObjRef, Ref}, signature::Arity, value::Value
+  chunk::Chunk,
+  hooks::GcHooks,
+  module::{Module, module_class},
+  object::{Class, Fun, FunBuilder, LyStr},
+  reference::{ObjRef, Ref},
+  signature::Arity,
+  value::Value,
 };
-
 
 #[derive(Default)]
 pub struct ClassBuilder {
@@ -53,7 +58,12 @@ impl ClassBuilder {
 
 pub fn test_module(hooks: &GcHooks, name: &str) -> Ref<Module> {
   let base_class = test_class(hooks, "Module");
-  hooks.manage(Module::new(hooks, module_class(hooks, name, base_class), "example", 0))
+  hooks.manage(Module::new(
+    hooks,
+    module_class(hooks, name, base_class),
+    "example",
+    0,
+  ))
 }
 
 pub fn test_class(hooks: &GcHooks, name: &str) -> ObjRef<Class> {

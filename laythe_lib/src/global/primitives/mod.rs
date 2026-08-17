@@ -19,17 +19,24 @@ pub mod tuple;
 use self::{
   bool::{declare_bool_class, define_bool_class},
   channel::{declare_channel_class, define_channel_class},
-  error::{create_error_class, declare_global_errors, define_global_errors, ERROR_CLASS_NAME},
+  error::{ERROR_CLASS_NAME, create_error_class, declare_global_errors, define_global_errors},
   fun::{declare_fun_class, define_fun_class},
   module::create_module_class,
   tuple::{declare_tuple_class, define_tuple_class},
 };
-use crate::{support::export_and_insert, StdError, StdResult, STD};
+use crate::{STD, StdError, StdResult, support::export_and_insert};
 use class::create_class_class;
 use closure::{declare_closure_class, define_closure_class};
 use iter::{declare_iter_class, define_iter_class};
 use laythe_core::{
-  hooks::GcHooks, if_let_obj, module::Module, object::{Class, ObjectKind}, to_obj_kind, utils::IdEmitter, val, value::Value, ObjRef, Ref
+  ObjRef, Ref,
+  hooks::GcHooks,
+  if_let_obj,
+  module::Module,
+  object::{Class, ObjectKind},
+  utils::IdEmitter,
+  val,
+  value::Value,
 };
 use list::{declare_list_class, define_list_class};
 use map::{declare_map_class, define_map_class};
@@ -88,7 +95,10 @@ fn class_inheritance(
   })
 }
 
-pub(crate) fn create_primitives(hooks: &GcHooks, emitter: &mut IdEmitter) -> StdResult<Ref<Module>> {
+pub(crate) fn create_primitives(
+  hooks: &GcHooks,
+  emitter: &mut IdEmitter,
+) -> StdResult<Ref<Module>> {
   let module = bootstrap_classes(hooks, emitter)?;
 
   declare_bool_class(hooks, module)?;

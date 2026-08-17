@@ -2,10 +2,10 @@ use laythe_core::managed::Trace;
 use laythe_core::object::{Class, LyStr};
 use laythe_core::{Allocator, ObjRef};
 use laythe_core::{
+  Call,
   hooks::{GcContext, HookContext, ValueContext},
   managed::TraceRoot,
   value::Value,
-  Call,
 };
 use laythe_env::io::Io;
 use std::io::Write;
@@ -30,7 +30,10 @@ impl TraceRoot for Vm {
   fn trace_debug(&self, log: &mut dyn Write) {
     self.fiber.trace_debug(log);
     self.main_fiber.trace_debug(log);
-    self.fiber_queue.iter().for_each(|fiber| fiber.trace_debug(log));
+    self
+      .fiber_queue
+      .iter()
+      .for_each(|fiber| fiber.trace_debug(log));
     self.files.trace_debug(log);
     self.packages.trace_debug(log);
     self.module_cache.trace_debug(log);

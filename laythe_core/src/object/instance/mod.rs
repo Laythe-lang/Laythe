@@ -5,7 +5,7 @@ use crate::{
   managed::{AllocObjResult, AllocateObj, DebugHeap, Trace},
   object::Class,
   reference::{ObjRef, ObjectHandle},
-  value::{Value, VALUE_NIL},
+  value::{VALUE_NIL, Value},
 };
 pub use header::Header;
 use std::{
@@ -67,9 +67,9 @@ impl Instance {
   ///
   /// ## Safety
   /// This should only be constructed from a box value
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self { unsafe {
-    Instance(Array::from_alloc_ptr(ptr))
-  }}
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+    unsafe { Instance(Array::from_alloc_ptr(ptr)) }
+  }
 }
 
 impl Deref for Instance {
@@ -173,7 +173,7 @@ mod test {
     use crate::{
       hooks::{GcHooks, NoContext},
       managed::AllocateObj,
-      support::{test_object_class, ClassBuilder},
+      support::{ClassBuilder, test_object_class},
     };
 
     #[test]

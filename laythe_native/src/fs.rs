@@ -4,11 +4,10 @@ use laythe_env::{
 };
 use std::{
   ffi::OsString,
-  fs::{canonicalize, read_dir, read_to_string, remove_file, DirEntry, File},
+  fs::{DirEntry, File, canonicalize, read_dir, read_to_string, remove_file},
   io::{self, Write},
   path::{Path, PathBuf},
 };
-
 
 #[derive(Debug)]
 pub struct IoFsNative();

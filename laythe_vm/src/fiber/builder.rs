@@ -1,7 +1,7 @@
 use super::Fiber;
 use laythe_core::{
-  constants::SCRIPT, object::ChannelWaiter, support::test_fun_builder, value::Value, Captures,
-  Chunk, GcHooks, NoContext, Ref,
+  Captures, Chunk, GcHooks, NoContext, Ref, constants::SCRIPT, object::ChannelWaiter,
+  support::test_fun_builder, value::Value,
 };
 
 pub struct TestFiberBuilder {

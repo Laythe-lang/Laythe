@@ -3,9 +3,9 @@
 mod byte_code;
 mod cache;
 mod chunk_builder;
-mod fiber;
 pub mod compiler;
 mod constants;
+mod fiber;
 pub mod source;
 pub mod vm;
 use codespan_reporting::diagnostic::Diagnostic;

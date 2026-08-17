@@ -1,6 +1,6 @@
 pub mod ast;
-pub mod token;
 pub mod symbol_table;
+pub mod token;
 
 #[cfg(test)]
 mod ast_printer;

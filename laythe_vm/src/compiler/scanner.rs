@@ -255,12 +255,12 @@ impl<'a> Scanner<'a> {
       let mut chars = self.source[self.current_offset()..].chars();
       chars.next();
 
-      if let Some(peek_next) = chars.next() {
-        if is_digit(peek_next) {
-          self.next();
+      if let Some(peek_next) = chars.next()
+        && is_digit(peek_next)
+      {
+        self.next();
 
-          while self.next_if(|c| is_digit(*c)).is_some() {}
-        }
+        while self.next_if(|c| is_digit(*c)).is_some() {}
       }
     }
 
@@ -354,13 +354,13 @@ impl<'a> Scanner<'a> {
               return self.error_token_owned(format!(
                 "Invalid escape character '{}'.",
                 self.current_slice()
-              ))
+              ));
             },
             None => {
               return self.error_token_owned(format!(
                 "Invalid escape character '{}'.",
                 self.current_slice()
-              ))
+              ));
             },
           }
         },
@@ -411,14 +411,8 @@ impl<'a> Scanner<'a> {
           chars.next();
 
           match chars.next() {
-            Some(c) => {
-              if c == '/' {
-                while self.next_if(|c| *c != '\n').is_some() {}
-              } else {
-                return;
-              }
-            },
-            None => return,
+            Some('/') => while self.next_if(|c| *c != '\n').is_some() {},
+            _ => return,
           }
         },
         _ => return,
@@ -435,14 +429,8 @@ impl<'a> Scanner<'a> {
           chars.next();
 
           match chars.next() {
-            Some(c) => {
-              if c == '/' {
-                while self.next_if(|c| *c != '\n').is_some() {}
-              } else {
-                return;
-              }
-            },
-            None => return,
+            Some('/') => while self.next_if(|c| *c != '\n').is_some() {},
+            _ => return,
           }
         },
         _ => return,
@@ -651,7 +639,7 @@ impl<'a> Scanner<'a> {
 }
 
 /// Make a new token
-fn make_token(kind: TokenKind, lexeme: &str, start: usize, end: usize) -> Token {
+fn make_token(kind: TokenKind, lexeme: &str, start: usize, end: usize) -> Token<'_> {
   Token::new(kind, Lexeme::Slice(lexeme), start as u32, end as u32)
 }
 

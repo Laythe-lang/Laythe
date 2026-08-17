@@ -1,5 +1,9 @@
-use super::{error::ImportResult, import::Import, ImportError, Module};
-use crate::{managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Trace}, object::LyStr, reference::Ref};
+use super::{ImportError, Module, error::ImportResult, import::Import};
+use crate::{
+  managed::{AllocResult, Allocate, DebugHeap, DebugWrap, Trace},
+  object::LyStr,
+  reference::Ref,
+};
 use std::{fmt, io::Write};
 
 #[derive(Clone)]

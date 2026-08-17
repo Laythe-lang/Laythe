@@ -1,5 +1,5 @@
-use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion};
-use laythe_core::{object::LyStr, Allocator, NO_GC};
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
+use laythe_core::{Allocator, NO_GC, object::LyStr};
 use laythe_vm::{
   compiler::Parser,
   source::{Source, VM_FILE_TEST_ID},
