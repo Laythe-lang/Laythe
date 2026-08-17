@@ -24,13 +24,13 @@ laythe_lib = { path = "../laythe_lib" }
 laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }
 fnv = "1.0.7"
-codespan = "0.12.0"
-variant_count = "1.2.0"
-codespan-reporting = "0.12.0"
-bumpalo = { version = "3.19.0", features=["boxed", "collections"] }
+codespan = "0.13.1"
+variant_count = "1.2.1"
+codespan-reporting = "0.13.1"
+bumpalo = { version = "3.20.3", features=["boxed", "collections"] }
 
 [dev-dependencies]
-criterion = "0.7.0"
+criterion = "0.8.2"
 
 [[bench]]
 name = "vm_benches"

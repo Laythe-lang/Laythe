@@ -19,4 +19,4 @@ path = "src/lib.rs"
 [dependencies]
 laythe_env = { path = "../laythe_env" }
 fnv = "1.0.7"
-hashbrown = "0.15.4"
+hashbrown = "0.17.1"

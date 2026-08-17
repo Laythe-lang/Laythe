@@ -312,7 +312,7 @@ impl Vm {
         let mut stdio = self.io.stdio();
         let stderr_color = stdio.stderr_color();
         for error in errors.iter() {
-          term::emit(stderr_color, &Config::default(), &self.files, error)
+          term::emit_to_io_write(stderr_color, &Config::default(), &self.files, error)
             .expect("Unable to write to stderr");
         }
         ExecutionResult::CompileError

@@ -23,11 +23,11 @@ path = "src/lib.rs"
 laythe_core = { path = "../laythe_core" } # , features = ["nan_boxing"]
 laythe_env = { path = "../laythe_env" }
 laythe_native = { path = "../laythe_native" }
-hashbrown = "0.15.4"
-js-sys = { version = "0.3.77", optional = true }
+hashbrown = "0.17.1"
+js-sys = { version = "0.3.104", optional = true }
 fnv = "1.0.7"
-rand = { version = "0.8.5", optional = true }
-regex = "1.11.1"
+rand = { version = "0.10.2", optional = true, features = ["thread_rng"]}
+regex = "1.13.1"
 
 [dev-dependencies]
-criterion = "0.7.0"
+criterion = "0.8.2"

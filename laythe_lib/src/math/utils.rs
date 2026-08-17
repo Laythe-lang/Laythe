@@ -176,9 +176,10 @@ native!(Rand, RAND_META);
 impl LyNative for Rand {
   #[cfg(not(feature = "wasm"))]
   fn call(&self, _hooks: &mut Hooks, _args: &[Value]) -> Call {
-    use rand::Rng;
-    let mut rng = rand::thread_rng();
-    let val: f64 = rng.gen_range(0.0..1.0);
+    use rand::RngExt;
+
+    let mut rng = rand::rng();
+    let val: f64 = rng.random_range(0.0..1.0);
     Call::Ok(val!(val))
   }
 

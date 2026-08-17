@@ -13,7 +13,7 @@ default = ["console_error_panic_hook"]
 crate-type = ["cdylib"]
 
 [dependencies]
-laythe_vm = { path = "../laythe_vm", features=["wasm"] }
+laythe_vm = { path = "../laythe_vm" }
 laythe_env = { path = "../laythe_env" }
 laythe_core = { path = "../laythe_core" }
 
