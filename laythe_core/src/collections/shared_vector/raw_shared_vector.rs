@@ -390,6 +390,31 @@ where
 pub struct RawSharedVectorHandle<T, H>(RawSharedVector<T, H>);
 
 impl<T, H> RawSharedVectorHandle<T, H> {
+  // Create a empty shared vector handle with a given capacity
+  pub fn with_cap(cap: usize, header: H) -> Self {
+    assert!(mem::size_of::<T>() > 0, "ZSTs currently not supported");
+
+    let new_layout = make_vector_layout::<H, T>(cap);
+    let buf = unsafe { alloc(new_layout) };
+
+    if buf.is_null() {
+      handle_alloc_error(new_layout);
+    }
+
+    #[allow(clippy::cast_ptr_alignment)]
+    unsafe {
+      ptr::write(buf as *mut H, header);
+      ptr::write(buf.add(get_vector_len_offset::<H>()) as *mut usize, 0);
+      ptr::write(buf.add(get_vector_cap_offset::<H>()) as *mut usize, cap);
+
+      RawSharedVectorHandle(RawSharedVector {
+        ptr: NonNull::new_unchecked(buf),
+        data: PhantomData,
+        header: PhantomData,
+      })
+    }
+  }
+
   /// Create a shared non owning reference to this vector.
   ///
   /// ## Examples

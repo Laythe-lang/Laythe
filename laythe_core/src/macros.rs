@@ -14,6 +14,21 @@ macro_rules! list {
 }
 
 #[macro_export]
+macro_rules! map {
+  () => {{
+    use $crate::MapBuilder;
+
+    MapBuilder::new(&[] as &[Value], 4)
+  }};
+  ( $x:expr ) => {{
+    use $crate::VecBuilder;
+
+    let len = $x.len();
+    VecBuilder::new($x, std::cmp::max(len, 4))
+  }};
+}
+
+#[macro_export]
 macro_rules! to_obj_kind {
   ($o:expr, Channel) => {
     $o.to_channel()

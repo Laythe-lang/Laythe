@@ -1,27 +1,28 @@
+mod bucket;
 mod header;
+mod map_builder;
 
+pub use bucket::Bucket;
+pub use header::MapHeader;
+pub use map_builder::MapBuilder;
+
+use crate::{
+  GcHooks,
+  collections::{RawSharedVector, RawSharedVectorHandle, RawVecLocation},
+  managed::{AllocObjResult, AllocateObj, DebugHeap, Trace},
+  object::new_map::header::FnvBuild,
+  reference::ObjectHandle,
+  value::Value,
+};
 use std::{
   fmt::{self, Debug, Display, Pointer},
   mem,
   ops::{Deref, DerefMut},
-  ptr::{self, NonNull}, sync::atomic::AtomicBool,
-  hash::{BuildHasherDefault}
-};
-use fnv::FnvHasher;
-use crate::{
-  collections::{
-    IndexedResult, RawSharedVector, RawSharedVectorHandle, RawVecLocation, VecBuilder,
-  },
-  managed::{AllocObjResult, AllocateObj, DebugHeap, Trace},
-  object::{new_map::header::{FnvBuild, Header}, ObjectKind},
-  reference::ObjectHandle,
-  value::Value,
-  GcHooks,
+  ptr::NonNull,
 };
 
 #[cfg(not(feature = "nan_boxing"))]
 use crate::ObjectRef;
-
 
 /// The location of this list
 pub enum MapLocation {
@@ -29,13 +30,13 @@ pub enum MapLocation {
   Here(usize),
 
   /// The list has been forwarded to a new location
-  Forwarded(Map),
+  Forwarded(NewMap),
 }
 
-pub struct Map(RawSharedVector<(Value, Value), Header>);
+pub struct NewMap(RawSharedVector<Bucket, MapHeader>);
 
-impl Map {
-  pub fn new(raw_vector: RawSharedVector<(Value, Value), Header>) -> Self {
+impl NewMap {
+  pub fn new(raw_vector: RawSharedVector<Bucket, MapHeader>) -> Self {
     Self(raw_vector)
   }
 
@@ -70,9 +71,9 @@ impl Map {
   ///
   /// ## Safety
   /// This should only be constructed from a box value
-  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self { unsafe {
-    Map(RawSharedVector::from_alloc_ptr(ptr))
-  }}
+  pub unsafe fn from_alloc_ptr(ptr: NonNull<u8>) -> Self {
+    unsafe { NewMap(RawSharedVector::from_alloc_ptr(ptr)) }
+  }
 
   /// Has this list moved
   pub fn has_moved(&self) -> bool {
@@ -83,11 +84,20 @@ impl Map {
   pub fn state(&self) -> MapLocation {
     match self.0.state() {
       RawVecLocation::Here(cap) => MapLocation::Here(cap),
-      RawVecLocation::Forwarded(raw_vector) => MapLocation::Forwarded(Map(raw_vector)),
+      RawVecLocation::Forwarded(raw_vector) => MapLocation::Forwarded(NewMap(raw_vector)),
     }
   }
 
   // TODO hash methods
+  /// Public insert: returns the old value if the key existed.
+  pub fn insert(&mut self, key: Value, value: Value) -> Option<Value> {
+    // determine if we need to grow the list then
+    // persist the value
+    let mut map = self.ensure_capacity(len + 1, cap, hooks);
+
+    let hash = self.make_hash(&key);
+    self.insert_hashed(hash, key, value)
+  }
 
   /// Ensure this list has enough capacity for the operation
   /// If it does it returns itself. Otherwise it returns a new list
@@ -100,11 +110,16 @@ impl Map {
     }
   }
 
+  fn needs_resize(&self) -> bool {
+    let used = self.len + self.tombstones;
+    used * 10 > self.capacity() * 7
+  }
+
   /// Allocate a new list which the specified capacity. Mark the existing list as moved
   /// by setting the MSB for capacity and replacing len with a pointer to the
   /// new list
   fn grow(&mut self, cap: usize, new_cap: usize, hooks: &GcHooks) -> Self {
-    let new_map = Map::new(hooks.manage_obj(VecBuilder::new(self, new_cap)));
+    let new_map = NewMap::new(hooks.manage_obj(MapBuilder::new(new_cap)));
 
     unsafe {
       self.0.write_len(new_map);
@@ -114,8 +129,8 @@ impl Map {
   }
 }
 
-impl Deref for Map {
-  type Target = [(Value, Value)];
+impl Deref for NewMap {
+  type Target = [Bucket];
 
   #[inline]
   fn deref(&self) -> &Self::Target {
@@ -123,14 +138,14 @@ impl Deref for Map {
   }
 }
 
-impl DerefMut for Map {
+impl DerefMut for NewMap {
   #[inline]
   fn deref_mut(&mut self) -> &mut Self::Target {
     self.0.deref_mut()
   }
 }
 
-impl<T> RawSharedVectorHandle<T, Header> {
+impl<T> RawSharedVectorHandle<T, MapHeader> {
   /// Degrade this handle into
   pub fn degrade(self) -> ObjectHandle {
     let handle = ObjectHandle::new(self.value().ptr());
@@ -139,11 +154,9 @@ impl<T> RawSharedVectorHandle<T, Header> {
   }
 }
 
-impl<'a> AllocateObj<RawSharedVector<(Value, Value), Header>> for VecBuilder<'a, (Value, Value)> {
-  fn alloc(self) -> AllocObjResult<RawSharedVector<(Value, Value), Header>> {
-    debug_assert!(self.slice().len() <= self.cap());
-    let handle =
-      RawSharedVectorHandle::from_slice(self.slice(), self.cap(), Header::new(FnvBuild::default()));
+impl AllocateObj<RawSharedVector<Bucket, MapHeader>> for MapBuilder {
+  fn alloc(self) -> AllocObjResult<RawSharedVector<Bucket, MapHeader>> {
+    let handle = RawSharedVectorHandle::with_cap(self.cap(), MapHeader::new(FnvBuild::default()));
 
     let size = handle.size();
     let reference = handle.value();
@@ -156,7 +169,7 @@ impl<'a> AllocateObj<RawSharedVector<(Value, Value), Header>> for VecBuilder<'a,
   }
 }
 
-impl Trace for Map {
+impl Trace for NewMap {
   #[inline]
   fn trace(&self) {
     self.0.trace();
@@ -167,49 +180,49 @@ impl Trace for Map {
   }
 }
 
-impl DebugHeap for Map {
+impl DebugHeap for NewMap {
   fn fmt_heap(&self, f: &mut fmt::Formatter, depth: usize) -> fmt::Result {
     self.0.fmt_heap(f, depth)
   }
 }
 
-impl fmt::Pointer for Map {
+impl fmt::Pointer for NewMap {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     Pointer::fmt(&self, f)
   }
 }
 
-impl Copy for Map {}
-impl Clone for Map {
+impl Copy for NewMap {}
+impl Clone for NewMap {
   fn clone(&self) -> Self {
     *self
   }
 }
 
-impl PartialEq<Map> for Map {
+impl PartialEq<NewMap> for NewMap {
   #[inline]
-  fn eq(&self, other: &Map) -> bool {
+  fn eq(&self, other: &NewMap) -> bool {
     self.0.eq(&other.0)
   }
 }
-impl Eq for Map {}
+impl Eq for NewMap {}
 
-impl Debug for Map {
+impl Debug for NewMap {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     Debug::fmt(&self, f)
   }
 }
 
-impl Display for Map {
+impl Display for NewMap {
   fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     write!(f, "[")?;
 
-    if let Some(((last_key, last_value), rest)) = self.split_last() {
-      for (key, value) in rest.iter() {
-        write!(f, "{key}: {value}, ")?;
+    if let Some((last_bucket, rest)) = self.split_last() {
+      for bucket in rest.iter() {
+        write!(f, "{}: {}, ", bucket.key(), bucket.value())?;
       }
 
-      write!(f, "{last_key}: {last_value}")?;
+      write!(f, "{}: {}", last_bucket.key(), last_bucket.value())?;
     }
 
     write!(f, "]")
@@ -218,7 +231,7 @@ impl Display for Map {
 
 #[cfg(test)]
 mod test {
-  use crate::{val, NoContext};
+  use crate::{NoContext, val};
 
   use super::*;
 
@@ -226,8 +239,12 @@ mod test {
   fn len() {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
+    let hasher = FnvBuild::default();
 
-    let map = Map::new(hooks.manage_obj(VecBuilder::new(&[(val!(1.0), val!(true))], 4)));
+    let map = NewMap::new(hooks.manage_obj(MapBuilder::new(
+      &[Bucket::build(val!(1.0), val!(false), hasher)],
+      4,
+    )));
 
     assert_eq!(map.len(), 1);
   }
@@ -236,8 +253,12 @@ mod test {
   fn cap() {
     let context = NoContext::default();
     let hooks = GcHooks::new(&context);
+    let hasher = FnvBuild::default();
 
-    let map = Map::new(hooks.manage_obj(VecBuilder::new(&[(val!(1.0), val!(2.0))], 4)));
+    let map = NewMap::new(hooks.manage_obj(MapBuilder::new(
+      &[Bucket::build(val!(1.0), val!(false), hasher)],
+      4,
+    )));
 
     assert_eq!(map.cap(), 4);
   }

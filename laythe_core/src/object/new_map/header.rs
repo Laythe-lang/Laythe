@@ -17,7 +17,7 @@ pub type FnvBuild = BuildHasherDefault<FnvHasher>;
 /// [Header (potential padding)| T ]
 /// ```
 #[repr(C)]
-pub struct Header {
+pub struct MapHeader {
   /// Has this allocation been marked by the garbage collector
   marked: AtomicBool,
 
@@ -28,7 +28,7 @@ pub struct Header {
   hasher: FnvBuild,
 }
 
-impl Header {
+impl MapHeader {
   /// Create a new object header
   #[inline]
   pub fn new(hasher: FnvBuild) -> Self {
@@ -45,25 +45,25 @@ impl Header {
   }
 }
 
-impl Mark for Header {
+impl Mark for MapHeader {
   #[inline]
   fn mark(&self) -> bool {
     self.marked.swap(true, Ordering::Release)
   }
 }
 
-impl Unmark for Header {
+impl Unmark for MapHeader {
   #[inline]
   fn unmark(&self) -> bool {
     self.marked.swap(false, Ordering::Release)
   }
 }
 
-impl Marked for Header {
+impl Marked for MapHeader {
   #[inline]
   fn marked(&self) -> bool {
     self.marked.load(Ordering::Acquire)
   }
 }
 
-impl Trace for Header {}
+impl Trace for MapHeader {}

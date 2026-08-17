@@ -786,7 +786,7 @@ mod test {
     hooks::{GcHooks, NoContext},
     list,
     module::Module,
-    object::{Class, Closure, Fun, List, LyStr, Map, ObjectKind},
+    object::{Class, Closure, Fun, List, LyStr, Map, NewMap, ObjectKind},
     reference::{ObjRef, Ref},
     val, Allocator,
   };
@@ -966,6 +966,7 @@ mod test {
     map.insert(VALUE_NIL, VALUE_TRUE);
     map.insert(val!(10.0), VALUE_FALSE);
 
+    let mut map = NewMap::new(gc.manage_obj(list!()));
     let map = gc.manage_obj(map, &NO_GC);
     let value = val!(map);
 
